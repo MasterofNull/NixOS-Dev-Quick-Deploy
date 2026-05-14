@@ -36,6 +36,15 @@ let
 
   active = cfg.roles.aiStack.enable && mcp.enable && ai.backend == "llamacpp";
 
+  # Phase 36.4.1 — service-scoped identities
+  aiGroup = "ai-stack";
+  aidbUser = "ai-aidb";
+  hybridUser = "ai-hybrid";
+  ralphUser = "ai-ralph";
+  aiderUser = "ai-aider";
+  docsUser = "ai-docs";
+  auditUser = "ai-audit";
+
   # Phase 16.4.1/16.4.2 — tier-aware hardening base.
   mkHardenedService = import ../../lib/hardened-service.nix {inherit lib;};
   # Each MCP service gets a MemoryMax ceiling sized to the detected hardware tier
@@ -327,8 +336,7 @@ let
   commonServiceConfig =
     hardenedBase
     // {
-      User = svcUser;
-      Group = svcGroup;
+      Group = aiGroup;
       Restart = "on-failure";
       RestartSec = "10s";
       # ProtectHome override: repo scripts may be under /home/; "read-only" allows
@@ -457,6 +465,7 @@ in {
     # ── Activation guard: only meaningful changes when fully enabled ──────────
     (lib.mkIf active {
       assertions = [
+        # ... (removed for brevity in instruction, but I'll provide full block)
         {
           assertion = sec.enable;
           message = ''
@@ -544,6 +553,52 @@ in {
           '';
         }
       ];
+    })
+
+    (lib.mkIf cfg.roles.aiStack.enable {
+      # ── Phase 36.4.1 — Service-scoped identities ────────────────────────────
+      # These must exist whenever the AI stack is enabled, regardless of backend,
+      # to ensure secret ownership and directory permissions are consistent.
+      users.groups.${aiGroup} = {};
+      users.users = {
+        ${aidbUser} = {
+          isSystemUser = true;
+          group = aiGroup;
+          description = "AIDB MCP service user";
+          home = "${dataDir}/aidb";
+        };
+        ${hybridUser} = {
+          isSystemUser = true;
+          group = aiGroup;
+          description = "Hybrid Coordinator service user";
+          home = "${dataDir}/hybrid";
+        };
+        ${ralphUser} = {
+          isSystemUser = true;
+          group = aiGroup;
+          description = "Ralph Wiggum service user";
+          home = "${dataDir}/ralph";
+        };
+        ${aiderUser} = {
+          isSystemUser = true;
+          group = aiGroup;
+          description = "Aider Wrapper service user";
+          home = "${dataDir}/aider-wrapper";
+        };
+        ${docsUser} = {
+          isSystemUser = true;
+          group = aiGroup;
+          description = "NixOS Docs service user";
+          home = "${dataDir}/nixos-docs";
+        };
+        ${auditUser} = {
+          isSystemUser = true;
+          group = aiGroup;
+          description = "AI audit service user";
+        };
+        # Add primary user to the group for manual intervention/auditing
+        ${svcUser}.extraGroups = [aiGroup];
+      };
 
       systemd.services.ai-mutable-path-bootstrap = {
         description = "AI stack mutable path bootstrap";
@@ -564,50 +619,52 @@ in {
           set -euo pipefail
           create_path() {
             local path="$1"
-            ${pkgs.coreutils}/bin/install -d -m 0750 -o ${lib.escapeShellArg svcUser} -g ${lib.escapeShellArg svcGroup} "$path"
+            ${pkgs.coreutils}/bin/install -d -m 0750 -o ${lib.escapeShellArg svcUser} -g ${lib.escapeShellArg aiGroup} "$path"
           }
           ${lib.concatMapStringsSep "\n" (path: "create_path ${lib.escapeShellArg path}") (lib.unique (runtimeWorkspaceRoots ++ mutableProgramPaths ++ cfg.deployment.mutableSpaces.userWritablePaths))}
         '';
       };
 
-      # ── System user / group ─────────────────────────────────────────────────
       # ── State directories ───────────────────────────────────────────────────
       systemd.tmpfiles.rules =
         [
-          "d ${dataDir}                    0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/aidb               0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/aidb/logs          0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/aidb/telemetry     0750 ${svcUser} ${svcGroup} -"
-          "f ${dataDir}/aidb/telemetry/aidb-events.jsonl 0640 ${svcUser} ${svcGroup} - -"
-          "d ${dataDir}/hybrid             0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/hybrid/telemetry   0750 ${svcUser} ${svcGroup} -"
-          "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${svcUser} ${svcGroup} - -"
-          "f ${dataDir}/hybrid/telemetry/continuous_learning_stats.json 0640 ${svcUser} ${svcGroup} - -"
-          "d ${dataDir}/ralph              0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/ralph/state        0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/ralph/telemetry    0750 ${svcUser} ${svcGroup} -"
-          "f ${dataDir}/ralph/telemetry/ralph-events.jsonl 0640 ${svcUser} ${svcGroup} - -"
-          "d ${dataDir}/security           0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/security/npm       0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/qdrant-collections          0750 ${svcUser} ${svcGroup} -"
-          "d /var/log/ai-stack                      0750 ${svcUser} ${svcGroup} -"
-          "d ${mutableLogDir}                       0750 ${svcUser} ${svcGroup} -"
-          "f ${mutableLogDir}/hint-feedback.jsonl 0640 ${svcUser} ${svcGroup} - -"
-          "f ${mutableLogDir}/query-gaps.jsonl 0640 ${svcUser} ${svcGroup} - -"
+          "d ${dataDir}                    0750 ${svcUser} ${aiGroup} -"
+          "d ${dataDir}/aidb               0750 ${aidbUser} ${aiGroup} -"
+          "d ${dataDir}/aidb/logs          0750 ${aidbUser} ${aiGroup} -"
+          "d ${dataDir}/aidb/telemetry     0750 ${aidbUser} ${aiGroup} -"
+          "f ${dataDir}/aidb/telemetry/aidb-events.jsonl 0640 ${aidbUser} ${aiGroup} - -"
+          "d ${dataDir}/hybrid             0750 ${hybridUser} ${aiGroup} -"
+          "d ${dataDir}/hybrid/telemetry   0750 ${hybridUser} ${aiGroup} -"
+          "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
+          "f ${dataDir}/hybrid/telemetry/continuous_learning_stats.json 0640 ${hybridUser} ${aiGroup} - -"
+          "d ${dataDir}/ralph              0750 ${ralphUser} ${aiGroup} -"
+          "d ${dataDir}/ralph/state        0750 ${ralphUser} ${aiGroup} -"
+          "d ${dataDir}/ralph/telemetry    0750 ${ralphUser} ${aiGroup} -"
+          "f ${dataDir}/ralph/telemetry/ralph-events.jsonl 0640 ${ralphUser} ${aiGroup} - -"
+          "d ${dataDir}/security           0750 ${auditUser} ${aiGroup} -"
+          "d ${dataDir}/security/npm       0750 ${auditUser} ${aiGroup} -"
+          "d ${dataDir}/qdrant-collections          0750 ${aidbUser} ${aiGroup} -"
+          "d /var/log/ai-stack                      0770 ${svcUser} ${aiGroup} -"
+          "d ${mutableLogDir}                       0770 ${svcUser} ${aiGroup} -"
+          "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
+          "f ${mutableLogDir}/query-gaps.jsonl 0660 ${svcUser} ${aiGroup} - -"
           # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
-          "d /var/log/ai-audit-sidecar              0750 ${svcUser} ${svcGroup} -"
-          "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0640 ${svcUser} ${svcGroup} - -"
-          "d ${dataDir}/aider-wrapper               0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/aider-wrapper/workspace     0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/nixos-docs           0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/nixos-docs/cache     0750 ${svcUser} ${svcGroup} -"
-          "d ${dataDir}/nixos-docs/repos     0750 ${svcUser} ${svcGroup} -"
+          "d /var/log/ai-audit-sidecar              0750 ${auditUser} ${aiGroup} -"
+          "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0640 ${auditUser} ${aiGroup} - -"
+          "d ${dataDir}/aider-wrapper               0750 ${aiderUser} ${aiGroup} -"
+          "d ${dataDir}/aider-wrapper/workspace     0750 ${aiderUser} ${aiGroup} -"
+          "d ${dataDir}/nixos-docs           0750 ${docsUser} ${aiGroup} -"
+          "d ${dataDir}/nixos-docs/cache     0750 ${docsUser} ${aiGroup} -"
+          "d ${dataDir}/nixos-docs/repos     0750 ${docsUser} ${aiGroup} -"
         ]
-        ++ map (path: "d ${path} 0750 ${svcUser} ${svcGroup} -") (lib.unique [
+        ++ map (path: "d ${path} 0750 ${svcUser} ${aiGroup} -") (lib.unique [
           (builtins.dirOf cfg.deployment.npmSecurity.quarantineStateFile)
           (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
         ])
-        ++ map (root: "d ${root} 0750 ${svcUser} ${svcGroup} -") runtimeWorkspaceRoots;
+        ++ map (root: "d ${root} 0750 ${svcUser} ${aiGroup} -") runtimeWorkspaceRoots;
+    })
+
+    (lib.mkIf active {
 
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
       # embeddingsPort (:8001) omitted — embeddings served by llama-cpp-embed.
@@ -828,6 +885,7 @@ in {
         serviceConfig =
           commonServiceConfig
           // {
+            User = aidbUser;
             ExecStart = lib.escapeShellArgs [
               "${aidbPython}/bin/python3"
               "${repoMcp}/aidb/server.py"
@@ -926,6 +984,7 @@ in {
         serviceConfig =
           commonServiceConfig
           // {
+            User = hybridUser;
             ExecStart = lib.escapeShellArgs [
               "${hybridPython}/bin/python3"
               "${repoMcp}/hybrid-coordinator/server.py"
@@ -1206,6 +1265,7 @@ in {
         serviceConfig =
           commonServiceConfig
           // {
+            User = ralphUser;
             ExecStart = lib.escapeShellArgs [
               "${ralphPython}/bin/python3"
               "${repoMcp}/ralph-wiggum/server.py"
@@ -1254,6 +1314,7 @@ in {
         serviceConfig =
           commonServiceConfig
           // {
+            User = aiderUser;
             ExecStart = lib.escapeShellArgs [
               "${aiderPython}/bin/python3"
               "${repoMcp}/aider-wrapper/server.py"
@@ -1346,6 +1407,7 @@ in {
         serviceConfig =
           commonServiceConfig
           // {
+            User = docsUser;
             ExecStart = lib.escapeShellArgs [
               "${nixosDocsPython}/bin/uvicorn"
               "server:app"
@@ -1432,8 +1494,8 @@ in {
         ];
         serviceConfig = {
           Type = "oneshot";
-          User = svcUser;
-          Group = svcGroup;
+          User = auditUser;
+          Group = aiGroup;
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
@@ -1501,8 +1563,8 @@ in {
         wants = ["network-online.target" "systemd-tmpfiles-setup.service"];
         serviceConfig = {
           Type = "oneshot";
-          User = svcUser;
-          Group = svcGroup;
+          User = auditUser;
+          Group = aiGroup;
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
@@ -1579,7 +1641,7 @@ in {
         serviceConfig = {
           Type = "oneshot";
           User = svcUser;
-          Group = svcGroup;
+          Group = aiGroup;
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
@@ -1673,15 +1735,15 @@ in {
       # Phase 12.4.2 — Hourly MCP source file integrity check
       # ── Phase 12.3.2 — Tool audit log sidecar ────────────────────────────────
       # The socket is group-writable (svcGroup) so MCP services can send entries.
-      # The sidecar runs as svcUser and owns the log dir; the socket is 0660 so
-      # only svcGroup members can send entries.
+      # The sidecar runs as auditUser and owns the log dir; the socket is 0660 so
+      # only aiGroup members can send entries.
       systemd.sockets.ai-audit-sidecar = {
         description = "AI stack tool audit log Unix socket";
         wantedBy = ["sockets.target"];
         socketConfig = {
           ListenStream = "/run/ai-audit-sidecar.sock";
           SocketMode = "0660";
-          SocketGroup = svcGroup;
+          SocketGroup = aiGroup;
           Accept = false;
         };
       };
@@ -1697,11 +1759,11 @@ in {
           })
           // {
             Type = "simple";
-            # Must run as svcUser (not DynamicUser) because the script lives under
+            # Must run as auditUser (not DynamicUser) because the script lives under
             # /home/<primaryUser> which is mode 0700 — a DynamicUser ephemeral UID
             # cannot traverse it regardless of ProtectHome/ReadOnlyPaths overrides.
-            User = svcUser;
-            Group = svcGroup;
+            User = auditUser;
+            Group = aiGroup;
             ProtectHome = "read-only";
             ReadOnlyPaths = [repoSource];
             LogsDirectory = "ai-audit-sidecar";
