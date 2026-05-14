@@ -44,15 +44,24 @@ in
       # Expose runtime-decrypted secrets in /run/secrets/*.
       # Services consume these paths via *_FILE environment variables or
       # systemd LoadCredential= to avoid plaintext values in unit env blocks.
-      secrets = {
-        "${sec.names.aidbApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
-        "${sec.names.hybridApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
-        "${sec.names.embeddingsApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
-        "${sec.names.postgresPassword}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
-        "${sec.names.redisPassword}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
-        "${sec.names.aiderWrapperApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
+      #
+      # Phase 36.4.1 — Identity segmentation: secrets are owned by root:ai-stack
+      # with 0440 permissions, allowing service-scoped users in the ai-stack
+      # group to read them while isolating them from the primary user.
+      secrets = let
+        aiGroup = "ai-stack";
+        aiSvcOwner = "root";
+        aiSvcGroup = if cfg.roles.aiStack.enable then aiGroup else secretsGroup;
+        aiSvcMode = if cfg.roles.aiStack.enable then "0440" else "0400";
+      in {
+        "${sec.names.aidbApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
+        "${sec.names.hybridApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
+        "${sec.names.embeddingsApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
+        "${sec.names.postgresPassword}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
+        "${sec.names.redisPassword}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
+        "${sec.names.aiderWrapperApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
       } // lib.optionalAttrs needsRemoteLlmSecret {
-        "${sec.names.remoteLlmApiKey}" = { mode = "0400"; owner = secretsOwner; group = secretsGroup; };
+        "${sec.names.remoteLlmApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
       } // lib.optionalAttrs needsCrowdsecSecret {
         "${sec.names.crowdsecBouncerApiKey}" = { mode = "0400"; owner = "root"; group = "root"; };
       };
