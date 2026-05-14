@@ -39,6 +39,7 @@ class RateLimiterConfig:
     burst_multiplier: float = 1.5
     endpoint_limits: Dict[str, int] = field(default_factory=dict)
     exempt_paths: Set[str] = field(default_factory=lambda: {"/health", "/metrics"})
+    exempt_loopback: bool = True  # bypass rate limits for 127.0.0.1 / ::1
     header_name: str = "X-API-Key"
     include_retry_after: bool = True
 
@@ -90,6 +91,9 @@ class SlidingWindowRateLimiter:
 
         path = request.path
         if path in self.config.exempt_paths:
+            return True, None, None
+
+        if self.config.exempt_loopback and request.remote in ("127.0.0.1", "::1", "localhost"):
             return True, None, None
 
         client_id = self._get_client_id(request)
