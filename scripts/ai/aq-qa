@@ -754,6 +754,26 @@ except Exception as e:
     _fail 4 "0.9.10" "budget/cost guardrail policy + API" "missing: ${_budget_missing[*]}"
   fi
 
+  # 0.9.11 PAR-012 Staged rollout + rollback drill (Phase 46)
+  local drill_script="${REPO_ROOT}/scripts/testing/drill-rollback.sh"
+  local rollout_runbook="${REPO_ROOT}/docs/runbooks/staged-rollout-and-rollback.md"
+  local par012_ok=true
+  local _par012_missing=()
+  if [[ ! -x "$drill_script" ]]; then
+    par012_ok=false; _par012_missing+=("drill-rollback.sh(missing/not-executable)")
+  elif ! bash -n "$drill_script" 2>/dev/null; then
+    par012_ok=false; _par012_missing+=("drill-rollback.sh(syntax)")
+  else
+    grep -q "Stage 4.*[Rr]ollback\|rollback" "$drill_script" 2>/dev/null \
+      || { par012_ok=false; _par012_missing+=("drill-rollback.sh(no-rollback-stage)"); }
+  fi
+  [[ ! -f "$rollout_runbook" ]] && { par012_ok=false; _par012_missing+=("staged-rollout-and-rollback.md"); }
+  if $par012_ok; then
+    _pass 4 "0.9.11" "PAR-012 rollout/rollback drill: drill-rollback.sh + runbook present"
+  else
+    _fail 4 "0.9.11" "PAR-012 rollout/rollback drill" "missing: ${_par012_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

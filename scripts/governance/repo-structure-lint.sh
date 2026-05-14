@@ -9,7 +9,7 @@ MODE="all"
 
 DOC_ALLOWED_DIRS=(
   agent-guides api archive development generated harness-first prsi sql
-  operations architecture security testing roadmap memory-system configuration user-guides
+  operations architecture security testing roadmap memory-system configuration user-guides runbooks
 )
 # Approved scripts subdirs map to OSI roles: AI (L4/L6), Data (L5), Health (L7), etc.
 SCRIPT_ALLOWED_DIRS=(
