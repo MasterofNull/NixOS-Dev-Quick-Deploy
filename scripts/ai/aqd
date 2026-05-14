@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$PROJECT_ROOT"
-AQD_VERSION="0.3.0"
+AQD_VERSION="0.4.0"
 
 die() {
   echo "ERROR: $*" >&2
@@ -49,6 +49,15 @@ Usage:
   aqd parity check-boot-shutdown
   aqd parity chaos-smoke
   aqd parity cross-client-smoke
+
+  aqd run plan   <task>                     -- plan-readonly query via coordinator
+  aqd run execute <task> [--mode MODE]      -- execute-mutating query via coordinator
+  aqd run replay  <session-id>              -- replay lifecycle session trajectory
+  aqd run review  <session-id>             -- show full session state
+  aqd run status  <session-id>             -- compact status line
+  aqd run budget                           -- show active budget policy
+  aqd run rollout-drill [--offline]        -- PAR-012 staged rollout/rollback drill
+  aqd run harness [--offline]              -- run unified harness gate
 
 Notes:
   - Run from repository root or ensure this script can resolve repo paths.
@@ -1557,6 +1566,112 @@ cmd_mcp_deploy_aidb() {
   "${REPO_ROOT}/scripts/deploy/deploy-aidb-mcp-server.sh"
 }
 
+# ── run subcommands (Phase 47: agent lifecycle ergonomics) ────────────────────
+
+_aqd_coordinator_url() {
+  local port="${HYBRID_COORDINATOR_PORT:-8003}"
+  echo "${HYBRID_COORDINATOR_URL:-http://127.0.0.1:${port}}"
+}
+
+_aqd_http_get() {
+  curl -sf --max-time 15 "$1" || { echo "ERROR: coordinator unreachable at $1" >&2; exit 1; }
+}
+
+_aqd_http_post() {
+  curl -sf --max-time 60 -X POST -H "Content-Type: application/json" -d "$2" "$1" \
+    || { echo "ERROR: POST failed at $1" >&2; exit 1; }
+}
+
+cmd_run_plan() {
+  local task="${*}"
+  [[ -n "$task" ]] || die "Usage: aqd run plan <task description>"
+  local url; url="$(_aqd_coordinator_url)/query"
+  local payload; payload=$(python3 -c "import json,sys; print(json.dumps({'query': sys.argv[1], 'mode': 'plan-readonly', 'prefer_local': True}))" "$task")
+  echo "[aqd run plan] submitting: ${task:0:80}..."
+  _aqd_http_post "$url" "$payload" | python3 -m json.tool
+}
+
+cmd_run_execute() {
+  local mode="execute-mutating"
+  local task_parts=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --mode) shift; mode="$1" ;;
+      *) task_parts+=("$1") ;;
+    esac
+    shift
+  done
+  local task="${task_parts[*]:-}"
+  [[ -n "$task" ]] || die "Usage: aqd run execute <task> [--mode MODE]"
+  local url; url="$(_aqd_coordinator_url)/query"
+  local payload; payload=$(python3 -c "import json,sys; print(json.dumps({'query': sys.argv[1], 'mode': sys.argv[2], 'prefer_local': True}))" "$task" "$mode")
+  echo "[aqd run execute] mode=${mode} task: ${task:0:80}..."
+  _aqd_http_post "$url" "$payload" | python3 -m json.tool
+}
+
+cmd_run_replay() {
+  local session_id="${1:-}"
+  [[ -n "$session_id" ]] || die "Usage: aqd run replay <session-id>"
+  local url; url="$(_aqd_coordinator_url)/agent/lifecycle/${session_id}/replay"
+  echo "[aqd run replay] session=${session_id}"
+  _aqd_http_get "$url" | python3 -m json.tool
+}
+
+cmd_run_review() {
+  local session_id="${1:-}"
+  [[ -n "$session_id" ]] || die "Usage: aqd run review <session-id>"
+  local url; url="$(_aqd_coordinator_url)/workflow/session/${session_id}"
+  echo "[aqd run review] session=${session_id}"
+  _aqd_http_get "$url" | python3 -m json.tool
+}
+
+cmd_run_status() {
+  local session_id="${1:-}"
+  [[ -n "$session_id" ]] || die "Usage: aqd run status <session-id>"
+  local url; url="$(_aqd_coordinator_url)/workflow/session/${session_id}"
+  local resp; resp=$(_aqd_http_get "$url")
+  local status phase updated
+  status=$(echo "$resp"  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null || echo "?")
+  phase=$(echo "$resp"   | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('current_phase_index','?'))" 2>/dev/null || echo "?")
+  updated=$(echo "$resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('updated_at','?'))" 2>/dev/null || echo "?")
+  printf "[aqd run status] session=%-36s  status=%-14s  phase=%-3s  updated=%s\n" \
+    "$session_id" "$status" "$phase" "$updated"
+}
+
+cmd_run_budget() {
+  local url; url="$(_aqd_coordinator_url)/control/budget/policy"
+  echo "[aqd run budget] fetching active policy from ${url}"
+  _aqd_http_get "$url" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+p = d.get('policy', {})
+dflt = p.get('default', {})
+print(f\"  file_exists : {d.get('file_exists')}\")
+print(f\"  version     : {p.get('version','?')}\")
+print(f\"  token_limit : {dflt.get('token_limit','?')}\")
+print(f\"  tool_limit  : {dflt.get('tool_call_limit','?')}\")
+print(f\"  time_limit  : {dflt.get('time_limit_seconds','?')}s\")
+print(f\"  fail_safe   : {dflt.get('fail_safe','?')}\")
+modes = p.get('per_mode', {})
+if modes:
+    print('  per-mode overrides:')
+    for m, v in modes.items():
+        print(f\"    {m:20s} tokens={v.get('token_limit','?')} tools={v.get('tool_call_limit','?')} fail_safe={v.get('fail_safe','?')}\")
+"
+}
+
+cmd_run_rollout_drill() {
+  local drill="${REPO_ROOT}/scripts/testing/drill-rollback.sh"
+  [[ -x "$drill" ]] || die "drill-rollback.sh not found or not executable: ${drill}"
+  exec bash "$drill" "$@"
+}
+
+cmd_run_harness() {
+  local runner="${REPO_ROOT}/scripts/testing/harness-runner.sh"
+  [[ -x "$runner" ]] || die "harness-runner.sh not found or not executable: ${runner}"
+  exec bash "$runner" "$@"
+}
+
 main() {
   local topic="${1:-}"
   local action="${2:-}"
@@ -1600,6 +1715,14 @@ main() {
     workflows:brownfield) cmd_workflows_brownfield "$@" ;;
     workflows:retrofit) cmd_workflows_retrofit "$@" ;;
     workflows:bootstrap) cmd_workflows_bootstrap "$@" ;;
+    run:plan)           cmd_run_plan "$@" ;;
+    run:execute)        cmd_run_execute "$@" ;;
+    run:replay)         cmd_run_replay "$@" ;;
+    run:review)         cmd_run_review "$@" ;;
+    run:status)         cmd_run_status "$@" ;;
+    run:budget)         cmd_run_budget "$@" ;;
+    run:rollout-drill)  cmd_run_rollout_drill "$@" ;;
+    run:harness)        cmd_run_harness "$@" ;;
     :|help:|--help:|-h:)
       usage
       ;;
