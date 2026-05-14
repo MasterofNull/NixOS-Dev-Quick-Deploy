@@ -172,20 +172,29 @@ async def _run_aq_qa_layered() -> Dict[str, Any]:
     proc = await asyncio.create_subprocess_exec(
         aq_qa_bin, "0", "--json",
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
         env=env,
     )
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90.0)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.communicate()
         raise RuntimeError("aq-qa timed out after 90s")
 
+    if stderr:
+        logger.info("aq-qa stderr:\n%s", stderr.decode("utf-8", errors="replace"))
+
     if proc.returncode not in (0, 1):  # 0=all pass, 1=some fail — both produce valid JSON
         raise RuntimeError(f"aq-qa exited {proc.returncode}")
 
-    return json.loads(stdout.decode("utf-8"))
+    data = json.loads(stdout.decode("utf-8"))
+
+    # Attach stderr for debugging service-context failures (stripped to 4 KB max)
+    stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
+    data["_debug_stderr"] = stderr_text[:4096] if stderr_text else None
+
+    return data
 
 
 @router.get("/layered")

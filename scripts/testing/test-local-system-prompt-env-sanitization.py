@@ -17,15 +17,15 @@ def main() -> None:
     text = MCP_SERVERS_NIX.read_text(encoding="utf-8")
 
     assert_true(
-        'singleLineEnv = value:' in text,
-        "expected mcp-servers module to define single-line env normalization helper",
+        'singleLineValue = value:' in text,
+        "expected mcp-servers module to define single-line value normalization helper",
     )
     assert_true(
         'lib.replaceStrings ["\\r" "\\n"] [" " " "] value' in text,
-        "expected single-line env helper to strip carriage returns and newlines",
+        "expected single-line value helper to strip carriage returns and newlines",
     )
     assert_true(
-        "AI_LOCAL_SYSTEM_PROMPT_IDENTITY=${singleLineEnv ai.aiHarness.runtime.localSystemPrompt.identity}" in text,
+        "AI_LOCAL_SYSTEM_PROMPT_IDENTITY=${singleLineValue ai.aiHarness.runtime.localSystemPrompt.identity}" in text,
         "expected local system prompt identity env injection to use single-line normalization",
     )
 
