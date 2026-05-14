@@ -642,6 +642,7 @@ in {
           "d ${dataDir}/ralph/telemetry    0750 ${ralphUser} ${aiGroup} -"
           "f ${dataDir}/ralph/telemetry/ralph-events.jsonl 0640 ${ralphUser} ${aiGroup} - -"
           "d ${dataDir}/security           0750 ${auditUser} ${aiGroup} -"
+          "Z ${dataDir}/security           0750 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/security/evidence  0770 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/security/npm       0750 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/qdrant-collections          0750 ${aidbUser} ${aiGroup} -"
@@ -1504,7 +1505,7 @@ in {
             "${pkgs.bash}/bin/bash"
             "${toString repoSource}/scripts/security/security-audit.sh"
             "--repo-root"
-            mcp.repoPath
+            "${toString repoSource}"
             "--output-dir"
             "${dataDir}/security"
           ];
