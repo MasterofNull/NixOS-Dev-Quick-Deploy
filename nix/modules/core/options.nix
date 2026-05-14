@@ -486,6 +486,51 @@
         };
       };
 
+      aidbReindex = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Enable periodic AIDB knowledge re-indexing.  Two jobs run on a timer:
+            (1) aq-index-logic-patterns — cross-cutting code patterns (rate-limit
+            exemptions, auth bypass lists, port constants, error handlers) into the
+            `logic-patterns` project for semantic logic-error discovery.
+            (2) ingest-project-knowledge.py — chunked .md/.nix/.py/.sh docs from
+            ai-stack/, dashboard/, scripts/, config/, nix/, docs/ into the
+            `nixos-dev-quick-deploy` project to keep the RAG corpus current.
+          '';
+        };
+
+        intervalHours = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 24;
+          description = ''
+            How often (in hours) to re-run both AIDB indexing jobs.
+            Default 24 h keeps the corpus fresh after a day of development.
+          '';
+        };
+
+        onBootDelaySec = lib.mkOption {
+          type = lib.types.str;
+          default = "10min";
+          description = ''
+            How long after boot to wait before the first AIDB re-index run.
+            Keeps startup I/O contention low while the rest of the AI stack boots.
+          '';
+        };
+
+        projectKnowledgeDelay = lib.mkOption {
+          type = lib.types.str;
+          default = "0.3";
+          description = ''
+            Seconds between POST /documents calls in ingest-project-knowledge.py.
+            Throttles AIDB at ~200 RPM to stay well below the 60 RPM per-key limit
+            across multiple concurrent callers.  Lower = faster; raise if AIDB
+            returns 429s.
+          '';
+        };
+      };
+
       autoRemediation = {
         enable = lib.mkOption {
           type = lib.types.bool;

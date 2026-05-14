@@ -875,7 +875,7 @@ in {
           "render"
         ];
       };
-      users.users.${cfg.primaryUser}.extraGroups = lib.mkAfter ["llama"];
+      users.users.${cfg.primaryUser}.extraGroups = lib.mkAfter ["llama" "ai-stack"];
 
       systemd.tmpfiles.rules = [
         "d /var/lib/llama-cpp 0750 llama llama -"
