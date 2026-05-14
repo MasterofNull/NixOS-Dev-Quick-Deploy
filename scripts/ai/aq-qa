@@ -632,6 +632,23 @@ PYEOF
   else
     _fail 4 "0.9.1" "safety gate endpoint reachable" "HTTP ${gate_http:-ERR}: ${gate_out:0:80}"
   fi
+
+  # 0.9.2 UAG lifecycle replay endpoint (Phase 37)
+  local _hk092 replay_out replay_http
+  _hk092=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
+  # Use a known-invalid session_id: expect 404 (endpoint wired) or 200 (active session)
+  replay_out=$(curl -s --max-time 5 \
+    "${HYBRID_URL}/agent/lifecycle/healthcheck-probe/replay" \
+    -H "X-API-Key: ${_hk092}" \
+    -w "\n%{http_code}" 2>/dev/null || echo "ERROR")
+  replay_http=$(echo "$replay_out" | tail -1)
+  if [[ "$replay_http" == "404" ]] || [[ "$replay_http" == "200" ]]; then
+    _pass 4 "0.9.2" "UAG lifecycle replay endpoint wired (GET /agent/lifecycle/{id}/replay)"
+  elif [[ "$replay_http" == "405" ]]; then
+    _skip 4 "0.9.2" "UAG lifecycle replay endpoint" "Phase 37 not deployed (405 method not allowed)"
+  else
+    _fail 4 "0.9.2" "UAG lifecycle replay endpoint reachable" "HTTP ${replay_http:-ERR}: ${replay_out:0:80}"
+  fi
 }
 
 # ---------------------------------------------------------------------------

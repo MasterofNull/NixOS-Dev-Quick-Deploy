@@ -319,6 +319,37 @@ async def handle_abort_session(request: web.Request) -> web.Response:
     })
 
 
+async def handle_lifecycle_replay(request: web.Request) -> web.Response:
+    """GET /agent/lifecycle/{session_id}/replay
+
+    Query params:
+      phase       — filter by phase name (optional)
+      status      — filter by status: passed|failed|skipped (optional)
+    """
+    session_id = request.match_info["session_id"]
+    session = lifecycle_fsm.get_session(session_id)
+    if not session:
+        return web.json_response({"error": "session not found"}, status=404)
+
+    phase_filter = request.rel_url.query.get("phase", "").strip()
+    status_filter = request.rel_url.query.get("status", "").strip().lower()
+
+    events = list(session.trajectory)
+    if phase_filter:
+        events = [e for e in events if e.get("phase") == phase_filter]
+    if status_filter:
+        events = [e for e in events if e.get("status") == status_filter]
+
+    return web.json_response({
+        "session_id": session_id,
+        "current_phase": session.current_phase,
+        "is_terminal": lifecycle_fsm.is_terminal(session),
+        "count": len(events),
+        "trajectory": events,
+        "phases_summary": session.phase_summary(),
+    })
+
+
 async def handle_agent_registry(request: web.Request) -> web.Response:
     """GET /agent/registry — current agent capability registry."""
     force = request.rel_url.query.get("refresh") == "true"
@@ -369,5 +400,6 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_get("/agent/lifecycle/{session_id}",            handle_get_session)
     http_app.router.add_post("/agent/lifecycle/{session_id}/advance",   handle_advance_phase)
     http_app.router.add_post("/agent/lifecycle/{session_id}/abort",     handle_abort_session)
+    http_app.router.add_get("/agent/lifecycle/{session_id}/replay",     handle_lifecycle_replay)
     http_app.router.add_get("/agent/registry",                          handle_agent_registry)
     http_app.router.add_get("/agent/domains",                           handle_domain_catalog)

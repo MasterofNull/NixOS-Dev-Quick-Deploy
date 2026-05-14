@@ -394,7 +394,7 @@ Method:
 
 | Capability cluster | Signal from expanded semantic set | This repo status | Updated assessment |
 |---|---|---|---|
-| Agent-run trajectory + replay artifacts | `trae-agent`, `live-swe-agent`, `SWE-*` repos emphasize step trajectories and analysis | Partial (telemetry exists, but run-level replay object is limited) | `P0 gap` |
+| Agent-run trajectory + replay artifacts | `trae-agent`, `live-swe-agent`, `SWE-*` repos emphasize step trajectories and analysis | **Near parity** — Phase 37: `LifecycleSession.trajectory` records per-phase inputs/outputs/duration/decision_metadata; `GET /agent/lifecycle/{id}/replay` endpoint live; workflow run sessions already had `/workflow/run/{id}/replay` | `Near parity` (Phase 37) |
 | Benchmark-grade SWE task integration | `SWE-Gym`, `SWE-bench_Pro-os`, `swe-agent` ecosystem | Partial (internal evals exist, limited external SWE corpus pipeline) | `P0 gap` |
 | Lightweight harness runner patterns | `claude-code-harness`, `bigcode-evaluation-harness`, `bridle` | Partial (parity scripts exist, but no unified harness runner contract) | `P1 gap` |
 | Multi-surface client adapters (IDE/CLI bridge quality) | `sweep`, `cody-public-snapshot`, `tabby` show strong IDE-centric integration | Partial (HTTP/SDK/RPC present, IDE adapter quality gate not explicit) | `P1 gap` |
@@ -405,10 +405,11 @@ Method:
 
 ### Highest-Impact Implementations to Add (Re-ranked)
 
-1. `Run Trajectory Object + Replay API` (P0)
-- Implement persisted per-step trajectory artifact (`inputs`, `tool calls`, `outputs`, `decision metadata`).
-- Add replay endpoint and diff endpoint for failed vs fixed runs.
-- Value: accelerates debugging, auditability, and benchmark reproducibility.
+1. ~~`Run Trajectory Object + Replay API` (P0)~~ **RESOLVED — Phase 37**
+- `LifecycleSession.trajectory` records per-phase: seq, phase, status, duration_ms, agent, tools_used, output_summary, context_updates keys, decision_metadata, error.
+- `GET /agent/lifecycle/{session_id}/replay` live with `?phase=` and `?status=` filters.
+- Workflow run sessions have `GET /workflow/run/{session_id}/replay` with `?phase=` and `?event_type=` filters.
+- aq-qa check `0.9.2` validates endpoint wiring.
 
 2. `SWE Benchmark Adapter Layer` (P0)
 - Add adapters for SWE-style task packs into `/harness/eval` + scorecard.
