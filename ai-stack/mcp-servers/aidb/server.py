@@ -2133,6 +2133,7 @@ class MCPServer:
         )
         self._ensure_telemetry_schema()
         self._ensure_imported_documents_schema()
+        self._ensure_interaction_history_schema()
         self._ensure_embedding_dimension()
 
         # Create Redis connection pool (will be tested on first use)
@@ -2665,6 +2666,24 @@ class MCPServer:
             LOGGER.info("imported_documents_schema_updated: %s", ", ".join(missing))
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("imported_documents_schema_update_failed: %s", exc)
+
+    def _ensure_interaction_history_schema(self) -> None:
+        """Create the interaction_history table if it does not exist."""
+        try:
+            inspector = sa.inspect(self._engine)
+            if not inspector.has_table("interaction_history"):
+                LOGGER.info("Creating interaction_history table...")
+                from schema import INTERACTION_HISTORY
+                INTERACTION_HISTORY.create(self._engine)
+                # Create indexes manually if not handled by create()
+                with self._engine.begin() as conn:
+                    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_interaction_history_agent_type ON interaction_history(agent_type)"))
+                    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_interaction_history_session_id ON interaction_history(session_id)"))
+                    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_interaction_history_created_at ON interaction_history(created_at)"))
+                    conn.execute(sa.text("CREATE INDEX IF NOT EXISTS idx_interaction_history_metadata ON interaction_history USING GIN (metadata)"))
+                LOGGER.info("interaction_history_table_created")
+        except Exception as exc:
+            LOGGER.warning("interaction_history_schema_check_failed: %s", exc)
 
     def _ensure_embedding_dimension(self) -> None:
         try:

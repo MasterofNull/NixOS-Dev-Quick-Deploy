@@ -27,7 +27,7 @@ Trivial single-line fixes may skip to VALIDATE, but never skip COMMIT.
 **Purpose**: Establish current harness state and task scope before touching any code.
 
 ```bash
-aq-prime                                     # progressive disclosure onboarding
+aq-prime                                     # orientation (available for AI tool calls)
 aq-hints "<task summary>" --format=json      # ranked workflow guidance
 aq-qa 0                                      # health check — know what's live
 aq-context-bootstrap --task "<task>"         # minimal context + entrypoint
