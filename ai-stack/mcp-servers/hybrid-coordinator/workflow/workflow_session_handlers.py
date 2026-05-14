@@ -1023,6 +1023,9 @@ async def handle_workflow_run_event(request: web.Request) -> web.Response:
         tool_call_delta = int(data.get("tool_call_delta", 0))
         detail = str(data.get("detail", "")).strip()
 
+        # Phase 39: extract tool_name from body for tool-level enforcement
+        tool_name = str(data.get("tool_name", "")).strip().lower()
+
         async with _workflow_sessions_lock:
             sessions = await _load_workflow_sessions()
             session = sessions.get(session_id)
@@ -1041,6 +1044,17 @@ async def handle_workflow_run_event(request: web.Request) -> web.Response:
                 return web.json_response({"error": "review-required event must include approved=true"}, status=403)
             if risk_class not in allowed and risk_class not in requires_approval:
                 return web.json_response({"error": "risk_class not allowed by runtime safety policy", "risk_class": risk_class, "safety_mode": mode}, status=403)
+
+            # Phase 39: per-mode tool_blocklist enforcement
+            if tool_name:
+                tool_blocklist = set(t.lower() for t in mode_policy.get("tool_blocklist", []))
+                if tool_name in tool_blocklist:
+                    return web.json_response({
+                        "error": "tool blocked by safety mode policy",
+                        "tool_name": tool_name,
+                        "safety_mode": mode,
+                        "policy_description": mode_policy.get("description", ""),
+                    }, status=403)
 
             isolation_error = _check_isolation_constraints(session, data)
             if isolation_error:
@@ -1065,7 +1079,7 @@ async def handle_workflow_run_event(request: web.Request) -> web.Response:
                 phase_id = str(phases[current_idx].get("id", phase_id))
 
             event_ts = int(time.time())
-            session["trajectory"].append({
+            traj_entry: Dict[str, Any] = {
                 "ts": event_ts,
                 "event_type": event_type,
                 "phase_id": phase_id,
@@ -1074,7 +1088,10 @@ async def handle_workflow_run_event(request: web.Request) -> web.Response:
                 "token_delta": token_delta,
                 "tool_call_delta": tool_call_delta,
                 "detail": detail,
-            })
+            }
+            if tool_name:
+                traj_entry["tool_name"] = tool_name
+            session["trajectory"].append(traj_entry)
             session["updated_at"] = event_ts
             sessions[session_id] = session
             await _save_workflow_sessions(sessions)

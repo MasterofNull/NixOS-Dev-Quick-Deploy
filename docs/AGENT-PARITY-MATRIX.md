@@ -420,10 +420,11 @@ Method:
 - Include deterministic fixtures + offline mode for CI.
 - Value: external parity signal and measurable quality against real SE tasks.
 
-3. `Safety Mode Runtime Contract` (P0)
-- Introduce explicit runtime modes: `plan-readonly` and `execute-mutating`.
-- Enforce per-mode tool allowlist + approval behavior at runtime.
-- Value: reduces destructive actions and aligns with leading coding-agent UX/safety patterns.
+3. ~~`Safety Mode Runtime Contract` (P0)~~ **RESOLVED — Phase 39**
+- `config/runtime-safety-policy.json` v1.1: `plan-readonly` blocks `mutating`/`destructive` risk classes and write/exec tools; `execute-mutating` allows `review-required` with approval; `strict` mode added.
+- `handle_workflow_run_event` now enforces per-mode `tool_blocklist`; blocked tool returns HTTP 403 with `policy_description`.
+- `tool_name` field recorded in trajectory entries for auditability.
+- aq-qa check `0.9.4` validates policy file differentiation (44 total).
 
 4. `Unified Harness Runner Spec` (P1)
 - Create a single runner contract for harness tasks (inputs, environment, outputs, verdict).
