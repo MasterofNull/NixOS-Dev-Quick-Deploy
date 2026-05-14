@@ -2751,19 +2751,26 @@ async def get_security_audit() -> Dict[str, Any]:
     npm_quarantine = npm_dir / "quarantine-state.json"
     npm_incidents = npm_dir / "incidents.jsonl"
 
+    def _path_readable(p: Path) -> bool:
+        """Return True if path exists and is readable; False on any OSError (Python 3.12+ raises PermissionError from .exists())."""
+        try:
+            return p.exists()
+        except OSError:
+            return False
+
     report_data: Dict[str, Any] = {
         "status": "no_report",
         "generated_at": "unknown",
         "summary": {},
     }
     message: Optional[str] = None
-    if not latest_report.exists():
+    if not _path_readable(latest_report):
         message = "No security audit report found. Run manually or wait for weekly timer."
     else:
         try:
             with open(latest_report) as f:
                 report_data = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.error(f"Failed to read security audit report: {e}")
             report_data = {
                 "status": "error",
@@ -2774,11 +2781,11 @@ async def get_security_audit() -> Dict[str, Any]:
 
     # Check for high severity alert
     high_severity_alert = None
-    if high_alert.exists():
+    if _path_readable(high_alert):
         try:
             with open(high_alert) as f:
                 high_severity_alert = json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, OSError):
             pass
 
     npm_monitor: Dict[str, Any] = {
@@ -2788,7 +2795,7 @@ async def get_security_audit() -> Dict[str, Any]:
         "quarantine_state": None,
         "recent_incidents": [],
     }
-    if npm_latest_report.exists():
+    if _path_readable(npm_latest_report):
         try:
             with open(npm_latest_report) as f:
                 npm_report_data = json.load(f)
@@ -2796,11 +2803,11 @@ async def get_security_audit() -> Dict[str, Any]:
             npm_monitor["generated_at"] = npm_report_data.get("generated_at")
             npm_monitor["severity_counts"] = npm_report_data.get("severity_counts", {})
             npm_monitor["summary"] = npm_report_data.get("summary", {})
-        except (json.JSONDecodeError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             npm_monitor["status"] = "error"
             npm_monitor["message"] = f"Failed to parse npm monitor report: {str(e)}"
 
-    if npm_quarantine.exists():
+    if _path_readable(npm_quarantine):
         try:
             with open(npm_quarantine) as f:
                 quarantine_data = json.load(f)
@@ -2808,10 +2815,10 @@ async def get_security_audit() -> Dict[str, Any]:
             npm_monitor["quarantine_active"] = (
                 str(quarantine_data.get("status", "")).lower() == "active"
             )
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, OSError):
             pass
 
-    if npm_incidents.exists():
+    if _path_readable(npm_incidents):
         try:
             # Keep payload small for dashboard polling cadence.
             lines = npm_incidents.read_text().splitlines()[-20:]
@@ -2836,11 +2843,11 @@ async def get_security_audit() -> Dict[str, Any]:
         "report_path": str(latest_report),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    if dashboard_scan.exists():
+    if _path_readable(dashboard_scan):
         try:
             with open(dashboard_scan) as f:
                 payload["dashboard_operator"] = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             payload["dashboard_operator"] = {
                 "status": "error",
                 "report_path": str(dashboard_scan),
@@ -2851,11 +2858,11 @@ async def get_security_audit() -> Dict[str, Any]:
             "status": "no_report",
             "report_path": str(dashboard_scan),
         }
-    if secrets_rotation.exists():
+    if _path_readable(secrets_rotation):
         try:
             with open(secrets_rotation) as f:
                 payload["secrets_rotation"] = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             payload["secrets_rotation"] = {
                 "status": "error",
                 "report_path": str(secrets_rotation),

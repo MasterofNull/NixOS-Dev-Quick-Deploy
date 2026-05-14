@@ -242,7 +242,10 @@ class AIInsightsService:
         logger.info("Seeded dashboard insights cache from %s", self._persisted_report_path)
 
     def _load_persisted_report(self) -> Optional[Dict[str, Any]]:
-        if not self._persisted_report_path.exists():
+        try:
+            if not self._persisted_report_path.exists():
+                return None
+        except OSError:
             return None
         try:
             raw = json.loads(self._persisted_report_path.read_text(encoding="utf-8"))
@@ -291,7 +294,11 @@ class AIInsightsService:
         path = _optimization_proposals_path()
         if limit <= 0:
             limit = 1
-        if not path.exists():
+        try:
+            path_exists = path.exists()
+        except OSError:
+            path_exists = False
+        if not path_exists:
             return {
                 "available": False,
                 "path": str(path),
@@ -367,7 +374,11 @@ class AIInsightsService:
     def _load_improvement_candidates_summary(self, limit: int = 5) -> Dict[str, Any]:
         """Load a bounded summary of persisted improvement candidates."""
         path = _improvement_candidates_path()
-        if not path.exists():
+        try:
+            path_exists = path.exists()
+        except OSError:
+            path_exists = False
+        if not path_exists:
             return {
                 "available": False,
                 "path": str(path),
@@ -480,7 +491,11 @@ class AIInsightsService:
     def _load_code_review_summary(self, limit: int = 5) -> Dict[str, Any]:
         """Load a bounded summary of persisted LLM code-review results."""
         path = _code_review_results_path()
-        if not path.exists():
+        try:
+            path_exists = path.exists()
+        except OSError:
+            path_exists = False
+        if not path_exists:
             return {
                 "available": False,
                 "path": str(path),
