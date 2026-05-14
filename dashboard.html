@@ -263,6 +263,223 @@
             min-height: 1.2em;
         }
 
+        .command-deck {
+            display: grid;
+            grid-template-columns: minmax(320px, 1.15fr) minmax(320px, 0.95fr);
+            gap: 1rem;
+            margin: 0 0 1.25rem;
+            padding: 1rem;
+            border: 1px solid rgba(0, 217, 255, 0.35);
+            border-radius: 6px;
+            background:
+                linear-gradient(120deg, rgba(0, 217, 255, 0.1), transparent 28%),
+                linear-gradient(300deg, rgba(255, 0, 110, 0.08), transparent 38%),
+                rgba(10, 14, 20, 0.94);
+            box-shadow: 0 0 28px rgba(0, 217, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        .deck-panel {
+            border: 1px solid var(--border-primary);
+            border-radius: 6px;
+            background: rgba(17, 24, 34, 0.78);
+            padding: 1rem;
+            min-width: 0;
+        }
+
+        .deck-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.85rem;
+            border-bottom: 1px solid rgba(30, 58, 95, 0.85);
+            padding-bottom: 0.65rem;
+        }
+
+        .deck-title {
+            font-family: 'Orbitron', monospace;
+            font-size: 0.88rem;
+            color: var(--accent-cyan);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .deck-subtitle {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+        }
+
+        .deck-critical-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(92px, 1fr));
+            gap: 0.6rem;
+        }
+
+        .deck-tile {
+            position: relative;
+            overflow: hidden;
+            min-height: 92px;
+            border: 1px solid rgba(30, 58, 95, 0.95);
+            border-left: 3px solid var(--accent-cyan);
+            border-radius: 5px;
+            background: linear-gradient(180deg, rgba(26, 35, 50, 0.9), rgba(10, 14, 20, 0.92));
+            padding: 0.75rem;
+        }
+
+        .deck-tile::after {
+            content: '';
+            position: absolute;
+            inset: auto 0 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.65), transparent);
+            opacity: 0.4;
+        }
+
+        .deck-tile.warning {
+            border-left-color: var(--status-warning);
+        }
+
+        .deck-tile.error {
+            border-left-color: var(--status-error);
+        }
+
+        .deck-tile.online {
+            border-left-color: var(--status-online);
+        }
+
+        .deck-label {
+            color: var(--text-muted);
+            font-size: 0.62rem;
+            letter-spacing: 0.11em;
+            text-transform: uppercase;
+            margin-bottom: 0.45rem;
+        }
+
+        .deck-value {
+            color: var(--text-primary);
+            font-size: 1.35rem;
+            font-weight: 700;
+            line-height: 1;
+            word-break: break-word;
+        }
+
+        .deck-detail {
+            color: var(--text-secondary);
+            font-size: 0.68rem;
+            margin-top: 0.45rem;
+            line-height: 1.35;
+        }
+
+        .deck-layer-rail {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(42px, 1fr));
+            gap: 0.4rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .deck-layer {
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: rgba(20, 29, 43, 0.85);
+            padding: 0.55rem 0.4rem;
+            text-align: center;
+            min-height: 62px;
+            text-decoration: none;
+        }
+
+        .deck-layer.online {
+            border-color: rgba(0, 255, 136, 0.55);
+        }
+
+        .deck-layer.warning {
+            border-color: rgba(255, 190, 11, 0.75);
+        }
+
+        .deck-layer.error {
+            border-color: rgba(255, 0, 110, 0.8);
+        }
+
+        .deck-layer-id {
+            color: var(--accent-cyan);
+            font-weight: 700;
+            font-size: 0.76rem;
+        }
+
+        .deck-layer-score {
+            color: var(--text-secondary);
+            font-size: 0.62rem;
+            margin-top: 0.25rem;
+        }
+
+        .deck-alert-list {
+            display: grid;
+            gap: 0.5rem;
+            max-height: 10.5rem;
+            overflow-y: auto;
+            padding-right: 0.15rem;
+        }
+
+        .deck-alert {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 0.55rem;
+            align-items: center;
+            border: 1px solid rgba(30, 58, 95, 0.9);
+            border-left: 3px solid var(--status-warning);
+            border-radius: 4px;
+            background: rgba(10, 14, 20, 0.72);
+            padding: 0.55rem 0.65rem;
+        }
+
+        .deck-alert.error {
+            border-left-color: var(--status-error);
+        }
+
+        .deck-alert.online {
+            border-left-color: var(--status-online);
+        }
+
+        .deck-alert-main {
+            color: var(--text-primary);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .deck-alert-meta {
+            color: var(--text-muted);
+            font-size: 0.64rem;
+            margin-top: 0.1rem;
+        }
+
+        .deck-action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.85rem;
+        }
+
+        .deck-action {
+            color: var(--text-primary);
+            text-decoration: none;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: rgba(26, 35, 50, 0.85);
+            padding: 0.48rem 0.7rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .deck-action:hover {
+            color: var(--accent-cyan);
+            border-color: var(--border-glow);
+        }
+
         .operator-actions {
             display: flex;
             flex-wrap: wrap;
@@ -303,6 +520,69 @@
             border-color: var(--border-glow);
             color: var(--accent-cyan);
             transform: translateY(-1px);
+        }
+
+        .command-lenses {
+            display: grid;
+            grid-template-columns: minmax(260px, 1fr) auto;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding: 1rem;
+            border: 1px solid rgba(0, 217, 255, 0.32);
+            border-radius: 6px;
+            background:
+                linear-gradient(135deg, rgba(0, 217, 255, 0.08), transparent 35%),
+                linear-gradient(180deg, rgba(20, 29, 43, 0.96), rgba(10, 14, 20, 0.96));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .command-lenses-title {
+            font-family: 'Orbitron', monospace;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .command-lenses-detail {
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+        }
+
+        .lens-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        .lens-btn {
+            background: rgba(17, 24, 34, 0.92);
+            border: 1px solid var(--border-primary);
+            color: var(--text-secondary);
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            padding: 0.55rem 0.75rem;
+            text-transform: uppercase;
+            transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+        }
+
+        .lens-btn:hover,
+        .lens-btn.active {
+            background: rgba(0, 217, 255, 0.12);
+            border-color: var(--border-glow);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 14px rgba(0, 217, 255, 0.12);
+        }
+
+        .dashboard-section.lens-hidden,
+        #section-graphs.lens-hidden {
+            display: none !important;
         }
 
         /* Grid Layout */
@@ -809,13 +1089,41 @@
             }
 
             .legacy-runtime-banner,
-            .operator-actions {
+            .operator-actions,
+            .command-lenses,
+            .command-deck {
                 flex-direction: column;
                 align-items: stretch;
             }
 
             .operator-actions-meta {
                 margin-right: 0;
+            }
+
+            .command-lenses {
+                display: flex;
+            }
+
+            .lens-controls {
+                justify-content: flex-start;
+            }
+
+            .command-deck {
+                display: flex;
+            }
+
+            .deck-critical-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .deck-layer-rail {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        @media (min-width: 1200px) and (max-width: 1680px) {
+            .deck-critical-grid {
+                grid-template-columns: repeat(3, minmax(92px, 1fr));
             }
         }
 
@@ -2612,6 +2920,80 @@
             </div>
         </div>
 
+        <section class="command-deck" id="commandDeck" aria-label="Command deck">
+            <div class="deck-panel">
+                <div class="deck-header">
+                    <div class="deck-title">Command Deck</div>
+                    <div class="deck-subtitle" id="deckHeartbeat">awaiting heartbeat</div>
+                </div>
+                <div class="deck-critical-grid">
+                    <div class="deck-tile" id="deckCpuTile">
+                        <div class="deck-label">CPU</div>
+                        <div class="deck-value" id="deckCpuValue">--</div>
+                        <div class="deck-detail" id="deckCpuDetail">usage / load pending</div>
+                    </div>
+                    <div class="deck-tile" id="deckGpuTile">
+                        <div class="deck-label">GPU</div>
+                        <div class="deck-value" id="deckGpuValue">--</div>
+                        <div class="deck-detail" id="deckGpuDetail">activity pending</div>
+                    </div>
+                    <div class="deck-tile" id="deckMemoryTile">
+                        <div class="deck-label">Memory</div>
+                        <div class="deck-value" id="deckMemoryValue">--</div>
+                        <div class="deck-detail" id="deckMemoryDetail">pressure pending</div>
+                    </div>
+                    <div class="deck-tile" id="deckDiskTile">
+                        <div class="deck-label">Disk</div>
+                        <div class="deck-value" id="deckDiskValue">--</div>
+                        <div class="deck-detail" id="deckDiskDetail">root filesystem pending</div>
+                    </div>
+                    <div class="deck-tile" id="deckNetworkTile">
+                        <div class="deck-label">Network</div>
+                        <div class="deck-value" id="deckNetworkValue">--</div>
+                        <div class="deck-detail" id="deckNetworkDetail">throughput pending</div>
+                    </div>
+                    <div class="deck-tile" id="deckStackTile">
+                        <div class="deck-label">Stack</div>
+                        <div class="deck-value" id="deckStackValue">--</div>
+                        <div class="deck-detail" id="deckStackDetail">health pending</div>
+                    </div>
+                </div>
+            </div>
+            <div class="deck-panel">
+                <div class="deck-header">
+                    <div class="deck-title">Layer Rail & Alerts</div>
+                    <div class="deck-subtitle" id="deckAlertCount">0 active</div>
+                </div>
+                <div class="deck-layer-rail" id="deckLayerRail" aria-label="OSI layer health rail">
+                    <div class="deck-layer"><div class="deck-layer-id">L1</div><div class="deck-layer-score">--</div></div>
+                    <div class="deck-layer"><div class="deck-layer-id">L2</div><div class="deck-layer-score">--</div></div>
+                    <div class="deck-layer"><div class="deck-layer-id">L3</div><div class="deck-layer-score">--</div></div>
+                    <div class="deck-layer"><div class="deck-layer-id">L4</div><div class="deck-layer-score">--</div></div>
+                    <div class="deck-layer"><div class="deck-layer-id">L5</div><div class="deck-layer-score">--</div></div>
+                    <div class="deck-layer"><div class="deck-layer-id">L6</div><div class="deck-layer-score">--</div></div>
+                    <div class="deck-layer"><div class="deck-layer-id">L7</div><div class="deck-layer-score">--</div></div>
+                </div>
+                <div class="deck-alert-list" id="deckAlertList">
+                    <div class="deck-alert online">
+                        <span>●</span>
+                        <div>
+                            <div class="deck-alert-main">Awaiting live telemetry</div>
+                            <div class="deck-alert-meta">Command deck will update as metrics arrive</div>
+                        </div>
+                        <span class="deck-alert-meta">L1-L7</span>
+                    </div>
+                </div>
+                <div class="deck-action-row">
+                    <button class="deck-action" type="button" onclick="refreshDashboard()">Refresh</button>
+                    <a class="deck-action" href="#section-osi-health">Layer Detail</a>
+                    <a class="deck-action" href="#section-security">Security</a>
+                    <a class="deck-action" href="#section-deployments">Deployments</a>
+                    <a class="deck-action" href="#section-testing">Validation</a>
+                    <a class="deck-action" href="#section-ai-services">Data/Mem</a>
+                </div>
+            </div>
+        </section>
+
         <div class="operator-actions">
             <div class="operator-actions-meta" id="operatorSummary">Primary operator view for local AI stack runtime and control actions.</div>
             <a class="action-link" href="#section-stack-health">Stack Health</a>
@@ -2629,6 +3011,21 @@
             <button class="export-btn" onclick="refreshDashboard()">⟳ Refresh Now</button>
             <button class="export-btn" onclick="exportData()">⬇ Export JSON for AI</button>
         </div>
+
+        <section class="command-lenses" aria-label="Command center dashboard lenses">
+            <div>
+                <div class="command-lenses-title">Command Lenses</div>
+                <div class="command-lenses-detail" id="lensSummary">Focused monitoring lanes preserve every detail while reducing scan load.</div>
+            </div>
+            <div class="lens-controls" role="group" aria-label="Dashboard lens controls">
+                <button class="lens-btn active" type="button" data-lens="overview">Overview</button>
+                <button class="lens-btn" type="button" data-lens="stack">Stack</button>
+                <button class="lens-btn" type="button" data-lens="operations">Operations</button>
+                <button class="lens-btn" type="button" data-lens="intelligence">Intelligence</button>
+                <button class="lens-btn" type="button" data-lens="security">Security</button>
+                <button class="lens-btn" type="button" data-lens="all">All Detail</button>
+            </div>
+        </section>
 
             <div class="dashboard-grid">
             <!-- System Overview -->
@@ -2860,7 +3257,7 @@
             </div>
 
             <!-- Agentic Readiness -->
-            <div class="dashboard-section" id="section-security">
+            <div class="dashboard-section" id="section-agentic-readiness">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3799,7 +4196,7 @@
             </div>
 
             <!-- Network & Firewall -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" id="section-security">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -5920,6 +6317,153 @@
             lazyLoadManager.init();
         });
 
+        const DASHBOARD_LENS_DEFINITIONS = {
+            overview: {
+                label: 'Overview',
+                detail: 'Health, host load, layer posture, topology, and aggregate stack state.',
+                modules: ['command-deck', 'layer-explorer'],
+                criticality: ['critical', 'high']
+            },
+            stack: {
+                label: 'Stack',
+                detail: 'AI services, models, RAG, routing, runtime inventory, and service controls.',
+                modules: ['runtime-operations', 'data-memory']
+            },
+            operations: {
+                label: 'Operations',
+                detail: 'Deployments, tests, harness actions, PRSI queue, workflow execution, and quick links.',
+                modules: ['validation-release', 'recovery-admin', 'event-spine']
+            },
+            intelligence: {
+                label: 'Intelligence',
+                detail: 'Agentic readiness, continuous learning, orchestration, discovery, insights, and graph views.',
+                modules: ['intelligence-workbench']
+            },
+            security: {
+                label: 'Security',
+                detail: 'Network, firewall, hardening, security monitor, circuit breakers, and configuration posture.',
+                modules: ['security-network']
+            },
+            all: {
+                label: 'All Detail',
+                detail: 'Every command center panel is visible.'
+            }
+        };
+
+        const DASHBOARD_CARD_SEMANTICS = {
+            'System Overview (Host)': { layers: 'l1,l2,l3', module: 'command-deck', criticality: 'critical' },
+            'AI Stack Status': { layers: 'l2,l3', module: 'runtime-operations', criticality: 'critical' },
+            'Agentic Readiness': { layers: 'l6', module: 'intelligence-workbench', criticality: 'normal' },
+            'OSI Layer Health': { layers: 'l1,l2,l3,l4,l5,l6,l7', module: 'layer-explorer', criticality: 'critical' },
+            'System Map': { layers: 'l3,l4', module: 'layer-explorer', criticality: 'high' },
+            'Request Routing Flow': { layers: 'l4', module: 'layer-explorer', criticality: 'high' },
+            'AIDB Health & Security': { layers: 'l5,l6', module: 'data-memory', criticality: 'critical' },
+            'Stack Health (Aggregate)': { layers: 'l2,l3', module: 'command-deck', criticality: 'critical' },
+            'Knowledge Base': { layers: 'l5,l6', module: 'data-memory', criticality: 'high' },
+            'Telemetry Proof': { layers: 'l5', module: 'event-spine', criticality: 'normal' },
+            'Hybrid Coordinator Metrics': { layers: 'l4,l6', module: 'runtime-operations', criticality: 'high' },
+            'AI Internals': { layers: 'l6', module: 'intelligence-workbench', criticality: 'normal' },
+            'QA Phase 0 Status': { layers: 'l7', module: 'validation-release', criticality: 'high' },
+            'Switchboard Profiles': { layers: 'l4', module: 'runtime-operations', criticality: 'normal' },
+            'Task Classifier Routing': { layers: 'l4', module: 'runtime-operations', criticality: 'normal' },
+            'Verifier Self-Consistency': { layers: 'l6', module: 'intelligence-workbench', criticality: 'normal' },
+            'Continuous Improvement': { layers: 'l6', module: 'intelligence-workbench', criticality: 'low' },
+            'AI Orchestration': { layers: 'l4,l7', module: 'intelligence-workbench', criticality: 'normal' },
+            'Agent Evaluation Trends': { layers: 'l6', module: 'intelligence-workbench', criticality: 'low' },
+            'Discovery Signals': { layers: 'l6', module: 'event-spine', criticality: 'normal' },
+            'Local Usage Proof': { layers: 'l5,l6', module: 'event-spine', criticality: 'normal' },
+            'Feedback Pipeline': { layers: 'l5', module: 'event-spine', criticality: 'normal' },
+            'Network & Firewall': { layers: 'l3', module: 'security-network', criticality: 'critical' },
+            'Security Monitor': { layers: 'l3,l4,l5', module: 'security-network', criticality: 'high' },
+            'System Configuration': { layers: 'l1,l2,l3,l4,l5,l6,l7', module: 'recovery-admin', criticality: 'normal' },
+            'Continuous Learning Status': { layers: 'l6', module: 'intelligence-workbench', criticality: 'low' },
+            'Circuit Breakers (P2-REL-002)': { layers: 'l2,l4', module: 'runtime-operations', criticality: 'high' },
+            'AI Harness Operations': { layers: 'l7', module: 'recovery-admin', criticality: 'high' },
+            'PRSI Orchestrator Queue': { layers: 'l4,l7', module: 'recovery-admin', criticality: 'high' },
+            'Production Hardening Progress': { layers: 'l1,l2,l3,l4,l5', module: 'security-network', criticality: 'normal' },
+            'Runtime Inventory': { layers: 'l2', module: 'runtime-operations', criticality: 'high' },
+            'AI Stack Services': { layers: 'l2,l7', module: 'runtime-operations', criticality: 'critical' },
+            'Deployment Operations': { layers: 'l2,l7', module: 'validation-release', criticality: 'critical' },
+            'Testing Operations': { layers: 'l7', module: 'validation-release', criticality: 'high' },
+            'Persistent AI Data': { layers: 'l5', module: 'data-memory', criticality: 'high' },
+            'Database Metrics': { layers: 'l5', module: 'data-memory', criticality: 'high' },
+            'Quick Access': { layers: 'l7', module: 'recovery-admin', criticality: 'low' },
+            'AI Insights & Intelligence': { layers: 'l6,l7', module: 'intelligence-workbench', criticality: 'normal' },
+            'Workflow DAG Visualization': { layers: 'l4,l7', module: 'validation-release', criticality: 'normal' },
+            'Execution History': { layers: 'l5,l7', module: 'event-spine', criticality: 'high' },
+            'Ralph Wiggum Configuration': { layers: 'l6,l7', module: 'recovery-admin', criticality: 'low' },
+            'Relational Repo File / Folder Graph': { layers: 'l6,l7', module: 'intelligence-workbench', criticality: 'normal' },
+            'Agentic Harness Workflow Logic': { layers: 'l4,l7', module: 'intelligence-workbench', criticality: 'normal' }
+        };
+
+        function dashboardSectionTitle(section) {
+            const title = section.querySelector('.card-title');
+            return title ? title.textContent.trim() : '';
+        }
+
+        function sectionMatchesLens(section, lensName) {
+            if (lensName === 'all') return true;
+            const definition = DASHBOARD_LENS_DEFINITIONS[lensName] || DASHBOARD_LENS_DEFINITIONS.overview;
+            const moduleName = section.dataset.module || '';
+            const criticality = section.dataset.criticality || 'normal';
+            if (definition.modules?.includes(moduleName)) return true;
+            if (definition.criticality?.includes(criticality)) {
+                return ['command-deck', 'layer-explorer'].includes(moduleName);
+            }
+            return false;
+        }
+
+        function applyDashboardLens(lensName = 'overview') {
+            const lens = DASHBOARD_LENS_DEFINITIONS[lensName] ? lensName : 'overview';
+            const sections = Array.from(document.querySelectorAll('.dashboard-section, #section-graphs'));
+            let visibleCount = 0;
+
+            sections.forEach((section) => {
+                const visible = sectionMatchesLens(section, lens);
+                section.classList.toggle('lens-hidden', !visible);
+                if (visible) visibleCount += 1;
+            });
+
+            document.querySelectorAll('.lens-btn').forEach((button) => {
+                const active = button.dataset.lens === lens;
+                button.classList.toggle('active', active);
+                button.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+
+            const summary = document.getElementById('lensSummary');
+            if (summary) {
+                const definition = DASHBOARD_LENS_DEFINITIONS[lens];
+                summary.textContent = `${definition.label}: ${definition.detail} ${visibleCount} panel(s) visible.`;
+            }
+            try {
+                window.localStorage?.setItem('command-center-dashboard-lens', lens);
+            } catch (_) {}
+        }
+
+        function initializeDashboardLenses() {
+            applyDashboardCardSemantics();
+            document.querySelectorAll('.lens-btn').forEach((button) => {
+                button.addEventListener('click', () => applyDashboardLens(button.dataset.lens));
+            });
+            let savedLens = 'overview';
+            try {
+                savedLens = window.localStorage?.getItem('command-center-dashboard-lens') || 'overview';
+            } catch (_) {}
+            applyDashboardLens(savedLens);
+        }
+
+        function applyDashboardCardSemantics() {
+            const sections = Array.from(document.querySelectorAll('.dashboard-section, #section-graphs'));
+            sections.forEach((section) => {
+                const title = dashboardSectionTitle(section);
+                const semantics = DASHBOARD_CARD_SEMANTICS[title];
+                if (!semantics) return;
+                section.dataset.layer = semantics.layers;
+                section.dataset.module = semantics.module;
+                section.dataset.criticality = semantics.criticality;
+            });
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof Chart !== 'undefined') {
@@ -5930,6 +6474,7 @@
             }
             updateOperatorLinks();
             renderOperatorStrip();
+            initializeDashboardLenses();
 
             // Load initial data
             loadData(); // Initial full load (AI stack, containers, etc.)
@@ -7161,6 +7706,183 @@
                     `${dashboardRuntimeState.dataModeText} | ${dashboardRuntimeState.runtimeText} | `
                     + `${dashboardRuntimeState.transportText} | stack ${dashboardRuntimeState.stackText}`;
             }
+            renderCommandDeckAlerts();
+        }
+
+        const commandDeckState = {
+            metrics: null,
+            stack: null,
+            layers: null,
+            networkRates: null,
+            lastHeartbeat: null
+        };
+
+        function commandDeckClass(value, warn, critical) {
+            if (!Number.isFinite(value)) return '';
+            if (value >= critical) return 'error';
+            if (value >= warn) return 'warning';
+            return 'online';
+        }
+
+        function setDeckTile(tileId, valueId, detailId, value, detail, state = '') {
+            const tile = document.getElementById(tileId);
+            const valueEl = document.getElementById(valueId);
+            const detailEl = document.getElementById(detailId);
+            if (tile) tile.className = `deck-tile ${state}`.trim();
+            if (valueEl) valueEl.textContent = value;
+            if (detailEl) detailEl.textContent = detail;
+        }
+
+        function formatDeckPercent(value) {
+            const number = Number(value);
+            return Number.isFinite(number) ? `${number.toFixed(1)}%` : '--';
+        }
+
+        function updateCommandDeckMetrics(metrics, rates = null) {
+            if (!metrics) return;
+            commandDeckState.metrics = metrics;
+            if (rates) commandDeckState.networkRates = rates;
+            commandDeckState.lastHeartbeat = new Date();
+
+            const cpu = Number(metrics?.cpu?.usage_percent);
+            const memory = Number(metrics?.memory?.percent);
+            const disk = Number(metrics?.disk?.percent);
+            const gpu = Number(metrics?.gpu?.busy_percent);
+            const load = formatLoadAverage(metrics?.load_average);
+            const cpuDetail = `${load || 'load pending'} · ${metrics?.cpu?.temperature || 'temp n/a'}`;
+            setDeckTile('deckCpuTile', 'deckCpuValue', 'deckCpuDetail', formatDeckPercent(cpu), cpuDetail, commandDeckClass(cpu, 75, 90));
+
+            const gpuValue = Number.isFinite(gpu) ? `${gpu.toFixed(0)}%` : 'n/a';
+            const gpuDetail = metrics?.gpu?.name && metrics.gpu.name !== 'N/A'
+                ? `${metrics.gpu.name} · ${metrics?.gpu?.vram_used_mb ?? '--'}/${metrics?.gpu?.vram_total_mb ?? '--'} MB`
+                : 'GPU telemetry unavailable';
+            setDeckTile('deckGpuTile', 'deckGpuValue', 'deckGpuDetail', gpuValue, gpuDetail, commandDeckClass(gpu, 80, 95));
+
+            const memUsed = metrics?.memory?.used ? `${(metrics.memory.used / (1024 ** 3)).toFixed(1)} GB` : '--';
+            const memTotal = metrics?.memory?.total ? `${(metrics.memory.total / (1024 ** 3)).toFixed(1)} GB` : '--';
+            setDeckTile('deckMemoryTile', 'deckMemoryValue', 'deckMemoryDetail', formatDeckPercent(memory), `${memUsed} / ${memTotal}`, commandDeckClass(memory, 80, 92));
+
+            const diskUsed = metrics?.disk?.used ? `${(metrics.disk.used / (1024 ** 3)).toFixed(0)} GB` : '--';
+            const diskTotal = metrics?.disk?.total ? `${(metrics.disk.total / (1024 ** 3)).toFixed(0)} GB` : '--';
+            setDeckTile('deckDiskTile', 'deckDiskValue', 'deckDiskDetail', formatDeckPercent(disk), `${diskUsed} / ${diskTotal}`, commandDeckClass(disk, 82, 93));
+
+            const rate = commandDeckState.networkRates;
+            const rx = rate?.rxRate ? formatBytes(rate.rxRate) : '--';
+            const tx = rate?.txRate ? formatBytes(rate.txRate) : '--';
+            setDeckTile(
+                'deckNetworkTile',
+                'deckNetworkValue',
+                'deckNetworkDetail',
+                `${rx}/s`,
+                `up ${tx}/s · ${metrics?.network?.interface || 'iface pending'}`,
+                ''
+            );
+
+            const heartbeat = document.getElementById('deckHeartbeat');
+            if (heartbeat) heartbeat.textContent = `heartbeat ${commandDeckState.lastHeartbeat.toLocaleTimeString()}`;
+            renderCommandDeckAlerts();
+        }
+
+        function updateCommandDeckStack(data, issueCount = null, serviceCount = null) {
+            commandDeckState.stack = { data, issueCount, serviceCount };
+            const status = String(data?.overall_status || dashboardRuntimeState.stackText || 'pending').toLowerCase();
+            const state = status === 'healthy' ? 'online' : status === 'degraded' ? 'warning' : status === 'pending' ? '' : 'error';
+            const issues = Number.isFinite(issueCount) ? issueCount : '--';
+            const services = Number.isFinite(serviceCount) ? serviceCount : '--';
+            setDeckTile('deckStackTile', 'deckStackValue', 'deckStackDetail', status, `${issues} issue(s) across ${services} services`, state);
+            renderCommandDeckAlerts();
+        }
+
+        function updateCommandDeckLayers(layerPayload) {
+            commandDeckState.layers = layerPayload;
+            const rail = document.getElementById('deckLayerRail');
+            if (!rail) return;
+            const layers = layerPayload?.layers || {};
+            rail.innerHTML = [1, 2, 3, 4, 5, 6, 7].map((layerNum) => {
+                const checks = layers[String(layerNum)] || [];
+                const pass = checks.filter(c => c.status === 'PASS').length;
+                const fail = checks.filter(c => c.status === 'FAIL').length;
+                const skip = checks.filter(c => c.status === 'SKIP').length;
+                const state = fail > 0 ? 'error' : checks.length === 0 || (skip > 0 && pass === 0) ? 'warning' : 'online';
+                const score = checks.length ? `${pass}/${checks.length}` : '--';
+                const title = fail > 0 ? `${fail} fail` : skip > 0 ? `${skip} skip` : 'ok';
+                return `<a class="deck-layer ${state}" href="#section-osi-health" title="Layer ${layerNum}: ${title}">
+                    <div class="deck-layer-id">L${layerNum}</div>
+                    <div class="deck-layer-score">${score}</div>
+                </a>`;
+            }).join('');
+            renderCommandDeckAlerts();
+        }
+
+        function commandDeckAlert(level, title, detail, layer = 'L?') {
+            return { level, title, detail, layer };
+        }
+
+        function collectCommandDeckAlerts() {
+            const alerts = [];
+            const metrics = commandDeckState.metrics;
+            if (metrics) {
+                const cpu = Number(metrics?.cpu?.usage_percent);
+                const memory = Number(metrics?.memory?.percent);
+                const disk = Number(metrics?.disk?.percent);
+                const gpu = Number(metrics?.gpu?.busy_percent);
+                if (cpu >= 90) alerts.push(commandDeckAlert('error', 'CPU saturation', `${cpu.toFixed(1)}% usage; wait before heavy jobs`, 'L1'));
+                else if (cpu >= 75) alerts.push(commandDeckAlert('warning', 'CPU pressure', `${cpu.toFixed(1)}% usage`, 'L1'));
+                if (memory >= 92) alerts.push(commandDeckAlert('error', 'Memory pressure critical', `${memory.toFixed(1)}% used`, 'L1'));
+                else if (memory >= 80) alerts.push(commandDeckAlert('warning', 'Memory pressure elevated', `${memory.toFixed(1)}% used`, 'L1'));
+                if (disk >= 93) alerts.push(commandDeckAlert('error', 'Root disk near full', `${disk.toFixed(1)}% used`, 'L1'));
+                else if (disk >= 82) alerts.push(commandDeckAlert('warning', 'Root disk pressure', `${disk.toFixed(1)}% used`, 'L1'));
+                if (gpu >= 95) alerts.push(commandDeckAlert('error', 'GPU saturated', `${gpu.toFixed(0)}% busy`, 'L1'));
+                else if (gpu >= 80) alerts.push(commandDeckAlert('warning', 'GPU heavily loaded', `${gpu.toFixed(0)}% busy`, 'L1'));
+            } else {
+                alerts.push(commandDeckAlert('warning', 'Telemetry not loaded', 'Waiting for hardware metrics heartbeat', 'L1'));
+            }
+
+            if (dashboardRuntimeState.transport === 'error') {
+                alerts.push(commandDeckAlert('error', 'Metrics transport offline', dashboardRuntimeState.transportDetail, 'L3'));
+            } else if (dashboardRuntimeState.transport === 'warning') {
+                alerts.push(commandDeckAlert('warning', 'Metrics transport degraded', dashboardRuntimeState.transportDetail, 'L3'));
+            }
+            if (dashboardRuntimeState.stack === 'error') {
+                alerts.push(commandDeckAlert('error', 'Stack health probe failed', dashboardRuntimeState.stackDetail, 'L2'));
+            } else if (dashboardRuntimeState.stack === 'warning') {
+                alerts.push(commandDeckAlert('warning', 'Stack health degraded', dashboardRuntimeState.stackDetail, 'L2'));
+            }
+            if (dashboardRuntimeState.refresh === 'error') {
+                alerts.push(commandDeckAlert('error', 'Dashboard refresh failed', dashboardRuntimeState.refreshDetail, 'L7'));
+            } else if (dashboardRuntimeState.refresh === 'warning') {
+                alerts.push(commandDeckAlert('warning', 'Dashboard refresh partial', dashboardRuntimeState.refreshDetail, 'L7'));
+            }
+
+            const layers = commandDeckState.layers?.layers || {};
+            Object.entries(layers).forEach(([layerNum, checks]) => {
+                const failed = (checks || []).filter(c => c.status === 'FAIL');
+                if (failed.length) {
+                    alerts.push(commandDeckAlert('error', `Layer ${layerNum} failing`, `${failed.length} failed check(s)`, `L${layerNum}`));
+                }
+            });
+
+            if (!alerts.length) {
+                alerts.push(commandDeckAlert('online', 'System nominal', 'No command deck alerts from current telemetry', 'L1-L7'));
+            }
+            return alerts.slice(0, 8);
+        }
+
+        function renderCommandDeckAlerts() {
+            const list = document.getElementById('deckAlertList');
+            const count = document.getElementById('deckAlertCount');
+            if (!list) return;
+            const alerts = collectCommandDeckAlerts();
+            const activeCount = alerts.filter(alert => alert.level !== 'online').length;
+            if (count) count.textContent = `${activeCount} active`;
+            list.innerHTML = alerts.map(alert => `<div class="deck-alert ${escapeHtml(alert.level)}">
+                <span>${alert.level === 'online' ? '●' : alert.level === 'error' ? '!' : '▲'}</span>
+                <div>
+                    <div class="deck-alert-main">${escapeHtml(alert.title)}</div>
+                    <div class="deck-alert-meta">${escapeHtml(alert.detail)}</div>
+                </div>
+                <span class="deck-alert-meta">${escapeHtml(alert.layer)}</span>
+            </div>`).join('');
         }
 
         async function fetchAIMetrics() {
@@ -9151,9 +9873,14 @@
             if (paramBase) {
                 return paramBase.replace(/\/+$/, '');
             }
-            // In TLS/ingress mode the API is reverse-proxied at same-origin /api.
+            // In production the API serves this page and /api from one origin.
+            // Legacy dev frontends still proxy to the dashboard API port unless
+            // apiBase/apiPort is passed explicitly.
             const browserPort = window.location.port || '';
             if (browserPort === '' || browserPort === '80' || browserPort === '443') {
+                return window.location.origin.replace(/\/+$/, '');
+            }
+            if (!paramPort && !['8888', '8890', '5173'].includes(browserPort)) {
                 return window.location.origin.replace(/\/+$/, '');
             }
             const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
@@ -9422,10 +10149,12 @@
 
             // Update Network (calculate rates)
             const now = Date.now();
+            let deckNetworkRates = null;
             if (lastNetworkSample) {
                 const deltaSeconds = (now - lastNetworkSample.timestamp) / 1000;
                 const rxRate = (metrics.network.bytes_recv - lastNetworkSample.bytes_recv) / deltaSeconds;
                 const txRate = (metrics.network.bytes_sent - lastNetworkSample.bytes_sent) / deltaSeconds;
+                deckNetworkRates = { rxRate, txRate };
 
                 document.getElementById('netRxRate').textContent = formatBytes(rxRate) + '/s';
                 document.getElementById('netTxRate').textContent = formatBytes(txRate) + '/s';
@@ -9485,6 +10214,7 @@
             // Update health score
             updateHealthScore();
             updateLastUpdate();
+            updateCommandDeckMetrics(metrics, deckNetworkRates);
         }
 
         async function refreshDashboard() {
@@ -9542,6 +10272,7 @@
                 }
                 dashboardRuntimeState.stackText = data.overall_status || 'awaiting aggregate health';
                 dashboardRuntimeState.stackDetail = `${issueCount} issue(s) across ${entries.length} checked services`;
+                updateCommandDeckStack(data, issueCount, entries.length);
                 renderOperatorStrip();
 
                 list.innerHTML = entries.map(([name, info]) => {
@@ -9560,6 +10291,7 @@
                 dashboardRuntimeState.stack = 'error';
                 dashboardRuntimeState.stackText = 'probe unavailable';
                 dashboardRuntimeState.stackDetail = 'Aggregate health endpoint did not respond';
+                updateCommandDeckStack({ overall_status: 'unavailable' }, 1, 0);
                 renderOperatorStrip();
             }
         }
@@ -9581,6 +10313,7 @@
                 const data = await response.json();
 
                 const layers = data.layers || {};
+                updateCommandDeckLayers(data);
                 const degraded = data.degraded_confidence || false;
                 const totalPassed = data.passed || 0;
                 const totalFailed = data.failed || 0;
@@ -9651,6 +10384,7 @@
                 grid.innerHTML = `<div class="data-item"><span>OSI layer health unavailable</span><span class="data-meta status-offline">${err.message}</span></div>`;
                 badge.textContent = 'unavailable';
                 badge.style.background = 'var(--status-error)';
+                updateCommandDeckLayers({ layers: {} });
             }
         }
 
