@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+# agrep — Agentic Grep: Universal token-optimized search tool.
+#
+# Optimized for AI agents and human users to search large codebases
+# with minimal token waste via smart defaults and match limits.
+import sys
+import os
+import re
+import argparse
+import pathlib
+import json
+
+# Universal default ignore patterns
+DEFAULT_IGNORES = {
+    '.git', 'node_modules', '__pycache__', '.pytest_cache', 
+    '.venv', '.cache', '.direnv', 'dist', 'build', '.DS_Store',
+    'venv', 'target', '.idea', '.vscode'
+}
+
+def load_config():
+    """Load configuration from global and local paths."""
+    config = {'ignores': list(DEFAULT_IGNORES)}
+    
+    # Global config: ~/.config/agentic-tools/config.json
+    global_config_path = pathlib.Path.home() / '.config' / 'agentic-tools' / 'config.json'
+    if global_config_path.exists():
+        try:
+            with open(global_config_path, 'r') as f:
+                global_data = json.load(f)
+                config['ignores'].extend(global_data.get('ignores', []))
+        except Exception as e:
+            print(f"Warning: Failed to load global config: {e}", file=sys.stderr)
+
+    # Local config: .agentic-tools.json in current or parent dirs
+    current = pathlib.Path.cwd()
+    for parent in [current] + list(current.parents):
+        local_config_path = parent / '.agentic-tools.json'
+        if local_config_path.exists():
+            try:
+                with open(local_config_path, 'r') as f:
+                    local_data = json.load(f)
+                    config['ignores'].extend(local_data.get('ignores', []))
+                break # Found the nearest local config
+            except Exception as e:
+                print(f"Warning: Failed to load local config at {local_config_path}: {e}", file=sys.stderr)
+    
+    config['ignores'] = set(config['ignores'])
+    return config
+
+def is_ignored(path, ignores):
+    parts = path.parts
+    # Check if any part of the path is in the ignore list
+    return any(part in ignores for part in parts if part not in ('.', '..'))
+
+def search_file(file_path, pattern, max_per_file, context_lines):
+    matches = []
+    try:
+        # Avoid binary files
+        if file_path.suffix.lower() in ('.png', '.jpg', '.exe', '.so', '.dll', '.pyc'):
+            return []
+            
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+            for i, line in enumerate(lines):
+                if pattern.search(line):
+                    start = max(0, i - context_lines)
+                    end = min(len(lines), i + context_lines + 1)
+                    matches.append({
+                        'line_no': i + 1,
+                        'content': line.strip(),
+                        'context': [l.strip() for l in lines[start:end]]
+                    })
+                    if len(matches) >= max_per_file:
+                        break
+    except Exception:
+        pass
+    return matches
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic Grep: Universal token-optimized search tool.")
+    parser.add_argument("pattern", help="Regex pattern to search for")
+    parser.add_argument("path", nargs="?", default=".", help="Path to search in (default: .)")
+    parser.add_argument("--max-per-file", type=int, default=3, help="Max matches per file")
+    parser.add_argument("--max-total", type=int, default=50, help="Max total matches")
+    parser.add_argument("--context", type=int, default=0, help="Lines of context")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--all", action="store_true", help="Do not ignore default patterns")
+    parser.add_argument("--debug", action="store_true", help="Show debug information")
+    
+    args = parser.parse_args()
+    config = load_config()
+    ignores = set() if args.all else config['ignores']
+    
+    try:
+        regex = re.compile(args.pattern, re.IGNORECASE)
+    except re.error as e:
+        print(f"Error: Invalid regex: {e}", file=sys.stderr)
+        sys.exit(1)
+        
+    search_path = pathlib.Path(args.path)
+    if not search_path.exists():
+        print(f"Error: Path does not exist: {search_path}", file=sys.stderr)
+        sys.exit(1)
+
+    total_matches = 0
+    results = {}
+
+    def process_file(file_path):
+        nonlocal total_matches
+        if not args.all and is_ignored(file_path, ignores):
+            if args.debug:
+                print(f"DEBUG: Ignoring file {file_path}", file=sys.stderr)
+            return False
+        
+        if args.debug:
+            print(f"DEBUG: Searching file {file_path}", file=sys.stderr)
+        
+        file_matches = search_file(file_path, regex, args.max_per_file, args.context)
+        if file_matches:
+            results[str(file_path)] = file_matches
+            total_matches += len(file_matches)
+        return total_matches >= args.max_total
+
+    if search_path.is_file():
+        process_file(search_path)
+    else:
+        for root, dirs, files in os.walk(search_path):
+            root_path = pathlib.Path(root)
+            
+            if not args.all and is_ignored(root_path, ignores):
+                if args.debug:
+                    print(f"DEBUG: Ignoring directory {root_path}", file=sys.stderr)
+                dirs[:] = [] 
+                continue
+            
+            if args.debug:
+                print(f"DEBUG: Entering directory {root_path}", file=sys.stderr)
+                
+            for file in files:
+                if process_file(root_path / file):
+                    break
+            if total_matches >= args.max_total:
+                break
+
+    if args.json:
+        print(json.dumps({'total': total_matches, 'results': results}, indent=2))
+    else:
+        if not results:
+            return
+
+        for path, matches in results.items():
+            # Use environment-aware coloring or strip if not a TTY
+            if sys.stdout.isatty():
+                print(f"\033[1;32m{path}\033[0m")
+                for m in matches:
+                    print(f"  \033[1;34m{m['line_no']}\033[0m: {m['content']}")
+            else:
+                print(f"{path}")
+                for m in matches:
+                    print(f"  {m['line_no']}: {m['content']}")
+            print()
+            
+        if sys.stdout.isatty():
+            print(f"---\nFound {total_matches} matches in {len(results)} files.")
+            if total_matches >= args.max_total:
+                print("\033[1;33mWarning: Results truncated by --max-total\033[0m")
+        else:
+            print(f"Total: {total_matches} matches in {len(results)} files.")
+
+if __name__ == "__main__":
+    main()

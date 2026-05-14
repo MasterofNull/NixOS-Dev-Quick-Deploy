@@ -113,6 +113,27 @@ LEARNING_FEEDBACK = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
 )
 
+INTERACTION_HISTORY = sa.Table(
+    "interaction_history",
+    METADATA,
+    sa.Column("interaction_id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("uuid_generate_v4()")),
+    sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=True),
+    sa.Column("project", sa.String(255), nullable=True),
+    sa.Column("query", sa.Text, nullable=False),
+    sa.Column("response", sa.Text, nullable=True),
+    sa.Column("agent_type", sa.String(50), nullable=False),
+    sa.Column("model_used", sa.String(100), nullable=True),
+    sa.Column("role", sa.String(50), nullable=True),
+    sa.Column("outcome", sa.String(50), server_default=sa.text("'unknown'")),
+    sa.Column("tokens_in", sa.Integer, server_default=sa.text("0")),
+    sa.Column("tokens_out", sa.Integer, server_default=sa.text("0")),
+    sa.Column("latency_ms", sa.Integer, server_default=sa.text("0")),
+    sa.Column("value_score", sa.Float, server_default=sa.text("0.0")),
+    sa.Column("metadata", JSONB, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+)
+
 
 def document_embeddings_table(metadata: sa.MetaData, embedding_dimension: int) -> sa.Table:
     return sa.Table(

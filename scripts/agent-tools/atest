@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# atest — Agentic Test: Token-optimized test runner wrapper.
+#
+# Suppresses passing noise and surgically extracts failure stack
+# traces to minimize token usage during debugging.
+import sys
+import subprocess
+import argparse
+import re
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic Test: Token-optimized test runner wrapper.")
+    parser.add_argument("command", nargs="+", help="Test command to run (e.g., pytest, npm test)")
+    
+    args = parser.parse_args()
+    
+    try:
+        # Run the test command and capture everything
+        result = subprocess.run(args.command, capture_output=True, text=True)
+        
+        stdout = result.stdout
+        stderr = result.stderr
+        
+        is_tty = sys.stdout.isatty()
+        
+        if result.returncode == 0:
+            if is_tty:
+                print("\033[1;32m✅ Tests Passed\033[0m")
+            else:
+                print("Tests Passed")
+            return
+            
+        # If failed, extract the high-signal failure info
+        if is_tty:
+            print("\033[1;31m❌ Tests Failed\033[0m")
+            print("-" * 40)
+        else:
+            print("Tests Failed")
+            
+        # Simple extraction for pytest/common runners
+        # Look for "FAILURES", "ERRORS", or stack traces
+        combined = stdout + "\n" + stderr
+        failure_patterns = [
+            r"FAILURES", r"ERRORS", r"FAILED", 
+            r"Traceback", r"Error:", r"AssertionError"
+        ]
+        
+        output_lines = []
+        in_failure_block = False
+        
+        for line in combined.splitlines():
+            if any(re.search(p, line) for p in failure_patterns):
+                in_failure_block = True
+            
+            if in_failure_block:
+                output_lines.append(line)
+            
+            # Reset after a few lines of context or next test
+            if line.startswith("_____") or line.startswith("====="):
+                in_failure_block = False
+                
+        if not output_lines:
+            # Fallback: show last 50 lines
+            output_lines = combined.splitlines()[-50:]
+            
+        for line in output_lines:
+            print(line)
+            
+        sys.exit(result.returncode)
+        
+    except Exception as e:
+        print(f"Error running tests: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

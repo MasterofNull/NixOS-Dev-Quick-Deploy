@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+# acat — Agentic Cat: Universal token-optimized file reader.
+#
+# Prevents context blowout with automatic truncation and provides
+# surgical read options for efficient file inspection.
+import sys
+import argparse
+import pathlib
+
+def format_line(line_no, content, is_tty=True):
+    if is_tty:
+        prefix = f"\033[1;34m{line_no:>4}\033[0m | "
+    else:
+        prefix = f"{line_no:>4} | "
+    return f"{prefix}{content}"
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic Cat: Universal token-optimized reader.")
+    parser.add_argument("path", help="Path to file")
+    parser.add_argument("-s", "--start", type=int, default=1, help="Start line")
+    parser.add_argument("-e", "--end", type=int, help="End line")
+    parser.add_argument("-n", "--lines", type=int, default=500, help="Max lines")
+    parser.add_argument("--head", type=int, help="Show first N lines")
+    parser.add_argument("--tail", type=int, help="Show last N lines")
+    
+    args = parser.parse_args()
+    file_path = pathlib.Path(args.path)
+    
+    if not file_path.exists():
+        print(f"Error: File does not exist: {file_path}", file=sys.stderr)
+        sys.exit(1)
+    if not file_path.is_file():
+        print(f"Error: Not a file: {file_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            all_lines = f.readlines()
+    except Exception as e:
+        print(f"Error reading file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    total_lines = len(all_lines)
+    start = args.start
+    end = args.end if args.end else (start + args.lines - 1)
+    
+    if args.head:
+        start = 1
+        end = args.head
+    elif args.tail:
+        start = max(1, total_lines - args.tail + 1)
+        end = total_lines
+
+    start = max(1, start)
+    end = min(total_lines, end)
+    
+    is_tty = sys.stdout.isatty()
+    if is_tty:
+        print(f"\033[1;34mFile: {file_path.absolute()} ({total_lines} lines)\033[0m")
+        if start > 1 or end < total_lines:
+            print(f"\033[1;33mShowing lines {start} to {end}\033[0m")
+    else:
+        print(f"File: {file_path.absolute()} ({total_lines} lines)")
+        
+    print("-" * 40)
+
+    for i in range(start - 1, end):
+        print(format_line(i + 1, all_lines[i].rstrip(), is_tty))
+
+    print("-" * 40)
+    if end < total_lines and is_tty:
+        print(f"\033[1;33mTruncated. Use --start {end+1} to see more.\033[0m")
+    
+    chars = sum(len(l) for l in all_lines[start-1:end])
+    print(f"Estimated tokens: ~{chars // 4}")
+
+if __name__ == "__main__":
+    main()

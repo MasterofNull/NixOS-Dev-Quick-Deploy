@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+# aenv — Agentic Env: Token-optimized and secure env viewer.
+#
+# Filters system noise and automatically masks sensitive keys
+# (secrets, tokens, passwords) for secure agentic workflows.
+import os
+import sys
+import argparse
+import re
+
+# Sensitive keys to mask
+SENSITIVE_PATTERNS = [
+    re.compile(r'key|token|secret|password|auth|credential|api', re.IGNORECASE)
+]
+
+def mask_value(key, value):
+    if any(p.search(key) for p in SENSITIVE_PATTERNS):
+        return "[MASKED]"
+    return value
+
+def main():
+    parser = argparse.ArgumentParser(description="Agentic Env: Token-optimized and secure env viewer.")
+    parser.add_argument("filter", nargs="?", help="Filter by key (regex)")
+    parser.add_argument("--all", action="store_true", help="Do not mask sensitive values")
+    
+    args = parser.parse_args()
+    
+    is_tty = sys.stdout.isatty()
+    count = 0
+    
+    # Common system noise to hide by default unless explicitly filtered
+    NOISE_PREFIXES = ('LS_COLORS', 'PATH', 'XDG_', 'DBUS_', 'GJS_', 'GNOME_', 'GTK_', 'QT_')
+    
+    for key, value in sorted(os.environ.items()):
+        if args.filter and not re.search(args.filter, key, re.IGNORECASE):
+            continue
+            
+        if not args.filter and key.startswith(NOISE_PREFIXES):
+            continue
+            
+        count += 1
+        display_value = value if args.all else mask_value(key, value)
+        
+        if is_tty:
+            print(f"\033[1;34m{key}\033[0m={display_value}")
+        else:
+            print(f"{key}={display_value}")
+            
+    if is_tty:
+        print(f"\n---\nShown {count} environment variables.")
+
+if __name__ == "__main__":
+    main()

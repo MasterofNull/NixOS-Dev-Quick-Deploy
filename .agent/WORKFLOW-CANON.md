@@ -34,8 +34,8 @@ aq-context-bootstrap --task "<task>"         # minimal context + entrypoint
 ```
 
 **Rules**:
-- Never run `ls` on repo root as first action — use targeted grep/glob
-- Never guess file locations — search first, read what search returns
+- Never run raw `ls` on repo root — use `als` or targeted grep/glob
+- Never guess file locations — search first (`agrep`), read what search returns
 - If session is continuing: recall harness memory BEFORE taking any action
   - MCP: `mcp_server_get_working_memory` → `mcp_server_recall_memory`
   - Shell fallback: `aq-memory recall`
@@ -46,11 +46,12 @@ aq-context-bootstrap --task "<task>"         # minimal context + entrypoint
 
 **Purpose**: Gather both codebase context and external best practices for the specific task.
 
-**Codebase research** (always):
+**Codebase research** (always use Agentic CLI Tools):
 ```bash
-grep -r "<keyword>" . --include="*.py" -l    # locate relevant files
-grep -r "<keyword>" . --include="*.nix" -l
-# Read identified files — read ONLY files relevant to the slice
+agrep "<keyword>" .                    # replaces grep; optimized for signal
+als -d 2                                # replaces ls/tree; hides noise
+acat <file>                             # replaces cat; line numbers + capped output
+asum <file>                             # structural overview (Py, JS, Go, Nix)
 ```
 
 **External research** (for implementation decisions, new integrations, security topics):

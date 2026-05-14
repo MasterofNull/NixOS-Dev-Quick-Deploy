@@ -12,7 +12,7 @@ Every non-trivial task follows this 7-step sequence:
 ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VALIDATE → COMMIT
 ```
 - **ORIENT**: `aq-prime` · `aq-hints "<task>"` · recall memory (`mcp_server_get_working_memory`)
-- **RESEARCH**: `grep` codebase + web search for cutting-edge practices + OWASP if security-sensitive
+- **RESEARCH**: Agentic CLI Tools (`agrep`, `als`, `acat`, `asum`) + web search + OWASP
 - **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
 - **MEMORY-CHECKPOINT**: `mcp_server_store_memory` / `aq-memory store` before executing
 - **EXECUTE**: one slice at a time; read before editing; no hallucinated deps
@@ -25,7 +25,7 @@ no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted
 
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
-- Search first: `grep -r "<keyword>" . --include="*.py" -l` before editing
+- Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
 - Commit format: `type(scope): msg\n\nCo-Authored-By: <agent-name> <noreply@harness.local>`
 
