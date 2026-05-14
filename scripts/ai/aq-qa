@@ -684,6 +684,22 @@ PYEOF
     _fail 4 "0.9.7" "fleet control-plane UX complete" "missing: ${_fleet_missing[*]}"
   fi
 
+  # 0.9.8 Benchmark-grade SWE integration (Phase 43 PAR-010/011)
+  local eval_pack="${REPO_ROOT}/data/harness-gap-eval-pack.json"
+  local trend_script="${REPO_ROOT}/scripts/automation/publish-eval-trend.py"
+  local bench_gate="${REPO_ROOT}/scripts/testing/run-benchmark-gate.sh"
+  local pack_cases=0
+  [[ -f "$eval_pack" ]] && pack_cases=$(python3 -c "import json; d=json.load(open('${eval_pack}')); print(len(d.get('cases',[])))" 2>/dev/null || echo "0")
+  if [[ -f "$eval_pack" ]] && [[ "$pack_cases" -ge 10 ]] && [[ -x "$trend_script" ]] && [[ -x "$bench_gate" ]]; then
+    _pass 4 "0.9.8" "benchmark harness: eval pack (${pack_cases} cases) + trend publisher + benchmark gate present"
+  else
+    local _bench_missing=()
+    { [[ ! -f "$eval_pack" ]] || [[ "$pack_cases" -lt 10 ]]; } && _bench_missing+=("eval-pack(need≥10,got${pack_cases})")
+    [[ ! -x "$trend_script" ]] && _bench_missing+=("publish-eval-trend.py")
+    [[ ! -x "$bench_gate" ]]   && _bench_missing+=("run-benchmark-gate.sh")
+    _fail 4 "0.9.8" "benchmark harness complete" "missing: ${_bench_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then
