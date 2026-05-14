@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "name": "harness-gap-eval-pack",
-  "description": "Targeted harness evaluation pack for recurring NixOS/system gaps.",
+  "description": "SWE-grade evaluation pack for the NixOS-Dev-Quick-Deploy AI harness. Covers NixOS module patterns, agent orchestration, Python async, workflow reasoning, and tool-call analysis.",
   "cases": [
     {
       "id": "mkif-mkforce-basics",
@@ -25,6 +25,54 @@
       "id": "nixos-module-options",
       "query": "NixOS module options basics",
       "expected_keywords": ["options", "mkOption", "types", "config", "lib"],
+      "mode": "auto"
+    },
+    {
+      "id": "agent-workflow-phases",
+      "query": "Describe the phases in an agent workflow session: discover, plan, implement, validate",
+      "expected_keywords": ["discover", "plan", "implement", "validate", "phase"],
+      "mode": "auto"
+    },
+    {
+      "id": "python-async-aiohttp",
+      "query": "How does aiohttp handle concurrent HTTP requests in an async Python server?",
+      "expected_keywords": ["async", "await", "aiohttp", "concurrent", "event"],
+      "mode": "auto"
+    },
+    {
+      "id": "retry-backoff-pattern",
+      "query": "Explain exponential backoff retry policy with max_attempts and backoff_factor",
+      "expected_keywords": ["exponential", "backoff", "retry", "attempt", "delay"],
+      "mode": "auto"
+    },
+    {
+      "id": "nix-overlay-pattern",
+      "query": "How do Nix overlays work and what is the correct way to add a package override?",
+      "expected_keywords": ["overlay", "final", "prev", "override", "pkgs"],
+      "mode": "auto"
+    },
+    {
+      "id": "agent-safety-modes",
+      "query": "What is the difference between plan-readonly and execute-mutating safety modes in an agent runtime?",
+      "expected_keywords": ["plan-readonly", "execute-mutating", "mutating", "blocked", "safe"],
+      "mode": "auto"
+    },
+    {
+      "id": "git-worktree-isolation",
+      "query": "Explain how git worktrees provide workspace isolation for parallel agent coding tasks",
+      "expected_keywords": ["worktree", "branch", "isolation", "parallel", "checkout"],
+      "mode": "auto"
+    },
+    {
+      "id": "systemd-dynamicuser",
+      "query": "What is SystemD DynamicUser and when should you NOT use it in a NixOS service?",
+      "expected_keywords": ["DynamicUser", "ephemeral", "UID", "home", "persistent"],
+      "mode": "auto"
+    },
+    {
+      "id": "tool-call-json-schema",
+      "query": "Describe how a tool-call in an LLM agent is represented: name, input parameters, and output",
+      "expected_keywords": ["tool", "name", "input", "output", "parameters"],
       "mode": "auto"
     }
   ]
