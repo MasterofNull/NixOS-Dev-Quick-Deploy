@@ -29,9 +29,9 @@ no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
 - Commit format: `type(scope): msg\n\nCo-Authored-By: <agent-name> <noreply@harness.local>`
 
-## Operator Terminal CLIs (human-run, not AI tool calls)
+## Harness Entrypoints & Diagnostic CLIs
 ```bash
-aq-prime                    # onboard / orient
+aq-prime                    # onboard / orient (available for AI tool calls)
 ```
 
 ## Ports
