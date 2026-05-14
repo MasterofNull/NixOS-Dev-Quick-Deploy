@@ -1065,6 +1065,201 @@
             color: var(--status-error);
         }
 
+        /* Operator-window layout: optimized for half-screen monitoring. */
+        @media (max-width: 1180px) {
+            .container {
+                padding: 1rem;
+            }
+
+            header {
+                margin-bottom: 1.5rem;
+                padding-bottom: 1.25rem;
+            }
+
+            h1 {
+                font-size: 2.35rem;
+                line-height: 1.08;
+                letter-spacing: 0.06em;
+            }
+
+            .header-meta {
+                gap: 0.75rem 1.1rem;
+            }
+
+            .health-score {
+                position: static;
+                margin-top: 1rem;
+                width: fit-content;
+                max-width: 100%;
+            }
+
+            .operator-strip {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.65rem;
+            }
+
+            .operator-tile,
+            .deck-panel,
+            .card,
+            .hardware-block,
+            .metric {
+                padding: 0.85rem;
+            }
+
+            .operator-value,
+            .operator-detail,
+            .deck-value,
+            .deck-detail,
+            .metric-value,
+            .metric-label,
+            .data-item {
+                overflow-wrap: anywhere;
+            }
+
+            .command-deck {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+                padding: 0.75rem;
+            }
+
+            .deck-header {
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+
+            .deck-subtitle {
+                white-space: normal;
+            }
+
+            .deck-critical-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 0.5rem;
+            }
+
+            .deck-tile {
+                min-height: 82px;
+                padding: 0.65rem;
+            }
+
+            .deck-value {
+                font-size: 1.1rem;
+                line-height: 1.12;
+            }
+
+            .deck-detail {
+                font-size: 0.64rem;
+            }
+
+            .deck-layer-rail {
+                grid-template-columns: repeat(7, minmax(0, 1fr));
+            }
+
+            .deck-alert {
+                grid-template-columns: auto minmax(0, 1fr) auto;
+            }
+
+            .operator-actions,
+            .command-lenses {
+                padding: 0.75rem;
+            }
+
+            .operator-actions-meta {
+                flex: 1 1 100%;
+                margin-right: 0;
+            }
+
+            .action-link,
+            .export-btn,
+            .deck-action,
+            .lens-btn {
+                font-size: 0.68rem;
+                padding: 0.45rem 0.6rem;
+            }
+
+            .command-lenses {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+
+            .lens-controls {
+                justify-content: flex-start;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .card-header {
+                align-items: flex-start;
+                gap: 0.75rem;
+                margin-bottom: 1rem;
+                padding-bottom: 0.75rem;
+            }
+
+            .card-title {
+                font-size: 0.96rem;
+                line-height: 1.25;
+            }
+
+            .card-badge {
+                white-space: nowrap;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 0.65rem;
+            }
+
+            .metric-value {
+                font-size: 1.25rem;
+                line-height: 1.12;
+            }
+
+            .chart-grid {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            }
+
+            .chart-container {
+                height: 160px;
+            }
+
+            .hardware-block {
+                grid-template-columns: 1fr;
+                gap: 0.85rem;
+            }
+
+            .data-item {
+                align-items: flex-start;
+                gap: 0.75rem;
+            }
+        }
+
+        @media (max-width: 860px) {
+            .operator-strip {
+                grid-template-columns: 1fr;
+            }
+
+            .deck-critical-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .deck-layer-rail {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+
+            .operator-actions,
+            .command-lenses {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .lens-controls {
+                justify-content: flex-start;
+            }
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .container {
@@ -1118,6 +1313,31 @@
 
             .deck-layer-rail {
                 grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 560px) {
+            .container {
+                padding: 0.75rem;
+            }
+
+            h1 {
+                font-size: 1.65rem;
+            }
+
+            .deck-critical-grid,
+            .metrics-grid,
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .deck-alert {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .deck-alert-status,
+            .deck-alert-layer {
+                justify-self: start;
             }
         }
 
@@ -1766,6 +1986,33 @@
         .welcome-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        @media (max-width: 1180px) {
+            .welcome-banner {
+                padding: 1rem;
+                margin-bottom: 1rem;
+                text-align: left;
+            }
+
+            .welcome-banner h2 {
+                font-size: 1.15rem;
+                line-height: 1.3;
+                letter-spacing: 0.04em;
+            }
+
+            .welcome-banner p {
+                margin-bottom: 0.75rem;
+            }
+
+            .welcome-buttons {
+                justify-content: flex-start;
+                gap: 0.5rem;
+            }
+
+            .welcome-btn {
+                padding: 0.55rem 0.85rem;
+            }
         }
 
         /* Onboarding Steps */
