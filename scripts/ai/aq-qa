@@ -718,6 +718,42 @@ PYEOF
     _fail 4 "0.9.9" "unified harness runner + PAR-002 CI gate" "missing: ${_harness_missing[*]}"
   fi
 
+  # 0.9.10 Budget/cost guardrail policy (Phase 45)
+  local budget_policy_file="${RUNTIME_BUDGET_POLICY_FILE:-${REPO_ROOT}/config/runtime-budget-policy.json}"
+  local budget_handler_file="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_control_handlers.py"
+  local budget_ok=true
+  local _budget_missing=()
+  [[ ! -f "$budget_policy_file" ]] && { budget_ok=false; _budget_missing+=("runtime-budget-policy.json"); }
+  if [[ -f "$budget_policy_file" ]]; then
+    local policy_valid
+    policy_valid=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$budget_policy_file'))
+    assert 'default' in d, 'missing default'
+    assert 'token_limit' in d['default'], 'missing token_limit'
+    assert 'tool_call_limit' in d['default'], 'missing tool_call_limit'
+    assert d['default'].get('fail_safe') in ('abort','warn','checkpoint'), 'invalid fail_safe'
+    print('ok')
+except Exception as e:
+    print('fail:' + str(e))
+" 2>/dev/null || echo "fail:parse_error")
+    [[ "$policy_valid" != "ok" ]] && { budget_ok=false; _budget_missing+=("policy-schema($policy_valid)"); }
+  fi
+  if [[ -f "$budget_handler_file" ]]; then
+    grep -q "handle_budget_policy_get\|handle_budget_policy_post" "$budget_handler_file" 2>/dev/null \
+      || { budget_ok=false; _budget_missing+=("budget-handlers"); }
+    grep -q '"/control/budget/policy"' "$budget_handler_file" 2>/dev/null \
+      || { budget_ok=false; _budget_missing+=("budget-route"); }
+  else
+    budget_ok=false; _budget_missing+=("runtime_control_handlers.py")
+  fi
+  if $budget_ok; then
+    _pass 4 "0.9.10" "budget/cost guardrail: policy file valid + GET/POST /control/budget/policy handlers registered"
+  else
+    _fail 4 "0.9.10" "budget/cost guardrail policy + API" "missing: ${_budget_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

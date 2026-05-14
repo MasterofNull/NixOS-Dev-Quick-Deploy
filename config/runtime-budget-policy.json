@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "description": "Runtime budget and cost guardrails for agent sessions and workflow runs.",
+  "default": {
+    "token_limit": 8000,
+    "tool_call_limit": 40,
+    "time_limit_seconds": 300,
+    "fail_safe": "abort",
+    "warn_threshold_pct": 80
+  },
+  "per_mode": {
+    "plan-readonly": {
+      "token_limit": 4000,
+      "tool_call_limit": 20,
+      "time_limit_seconds": 120,
+      "fail_safe": "abort"
+    },
+    "execute-mutating": {
+      "token_limit": 16000,
+      "tool_call_limit": 80,
+      "time_limit_seconds": 600,
+      "fail_safe": "warn"
+    },
+    "strict": {
+      "token_limit": 2000,
+      "tool_call_limit": 10,
+      "time_limit_seconds": 60,
+      "fail_safe": "abort"
+    }
+  },
+  "enforcement": {
+    "enabled": true,
+    "scope": ["session", "workflow_run"],
+    "emit_telemetry": true
+  }
+}

@@ -7,7 +7,11 @@ Owns the runtime register/list/get/status/deploy/rollback/schedule endpoints.
 All registry mutations go through runtime_manager singletons.
 """
 
+import asyncio
+import json
+import os
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
@@ -521,6 +525,116 @@ async def handle_runtime_health(request: web.Request) -> web.Response:
         return web.json_response(_error_payload("internal_error", exc), status=500)
 
 
+# ── Budget / cost guardrail policy (Phase 45) ─────────────────────────────────
+
+_BUDGET_POLICY_PATH = Path(
+    os.getenv(
+        "RUNTIME_BUDGET_POLICY_FILE",
+        str(Path(__file__).parent.parent / "config" / "runtime-budget-policy.json"),
+    )
+)
+_budget_policy_lock = asyncio.Lock()
+
+_BUDGET_POLICY_SCHEMA = {
+    "required_top": {"version", "default"},
+    "default_fields": {"token_limit", "tool_call_limit", "time_limit_seconds", "fail_safe"},
+    "valid_fail_safe": {"abort", "warn", "checkpoint"},
+}
+
+
+def _load_budget_policy_sync() -> Dict[str, Any]:
+    if _BUDGET_POLICY_PATH.exists():
+        try:
+            return json.loads(_BUDGET_POLICY_PATH.read_text())
+        except Exception:
+            pass
+    return {
+        "version": "1.0",
+        "default": {"token_limit": 8000, "tool_call_limit": 40,
+                    "time_limit_seconds": 300, "fail_safe": "abort",
+                    "warn_threshold_pct": 80},
+        "per_mode": {},
+        "enforcement": {"enabled": True, "scope": ["session", "workflow_run"],
+                        "emit_telemetry": True},
+    }
+
+
+def check_budget_policy(usage: Dict[str, Any], mode: str = "") -> Dict[str, Any]:
+    """Check usage against the active budget policy.  Returns {over_budget, field, limit, used, action}."""
+    policy = _load_budget_policy_sync()
+    limits = dict(policy.get("default", {}))
+    per_mode = policy.get("per_mode", {})
+    if mode and mode in per_mode:
+        limits.update(per_mode[mode])
+    token_limit = int(limits.get("token_limit") or 0)
+    tool_limit = int(limits.get("tool_call_limit") or 0)
+    tokens_used = int(usage.get("tokens_used") or 0)
+    tools_used = int(usage.get("tool_calls_used") or 0)
+    fail_safe = str(limits.get("fail_safe") or "abort")
+    if token_limit and tokens_used >= token_limit:
+        return {"over_budget": True, "field": "token_limit", "limit": token_limit,
+                "used": tokens_used, "action": fail_safe}
+    if tool_limit and tools_used >= tool_limit:
+        return {"over_budget": True, "field": "tool_call_limit", "limit": tool_limit,
+                "used": tools_used, "action": fail_safe}
+    return {"over_budget": False}
+
+
+async def handle_budget_policy_get(request: web.Request) -> web.Response:
+    """GET /control/budget/policy — return active budget guardrail policy."""
+    try:
+        async with _budget_policy_lock:
+            policy = _load_budget_policy_sync()
+        return web.json_response({
+            "policy": policy,
+            "policy_file": str(_BUDGET_POLICY_PATH),
+            "file_exists": _BUDGET_POLICY_PATH.exists(),
+        })
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
+async def handle_budget_policy_post(request: web.Request) -> web.Response:
+    """POST /control/budget/policy — update budget guardrail policy at runtime."""
+    try:
+        data = await request.json()
+        # Validate required structure
+        if "default" not in data:
+            return web.json_response(
+                {"error": "missing required field 'default' in policy body"}, status=400
+            )
+        default_block = data["default"]
+        fail_safe = str(default_block.get("fail_safe") or "abort")
+        if fail_safe not in _BUDGET_POLICY_SCHEMA["valid_fail_safe"]:
+            return web.json_response(
+                {"error": f"invalid fail_safe '{fail_safe}'; must be one of: abort, warn, checkpoint"},
+                status=400,
+            )
+        # Merge with existing (allow partial updates)
+        async with _budget_policy_lock:
+            existing = _load_budget_policy_sync()
+            existing["default"].update(default_block)
+            if "per_mode" in data:
+                existing.setdefault("per_mode", {}).update(data["per_mode"])
+            if "enforcement" in data:
+                existing.setdefault("enforcement", {}).update(data["enforcement"])
+            existing["version"] = str(data.get("version") or existing.get("version") or "1.0")
+            existing["updated_at"] = int(time.time())
+            try:
+                _BUDGET_POLICY_PATH.parent.mkdir(parents=True, exist_ok=True)
+                _BUDGET_POLICY_PATH.write_text(json.dumps(existing, indent=2))
+            except OSError as write_err:
+                logger.warning("budget policy: could not persist to %s: %s",
+                               _BUDGET_POLICY_PATH, write_err)
+        logger.info("budget policy updated: token_limit=%s tool_call_limit=%s fail_safe=%s",
+                    existing["default"].get("token_limit"),
+                    existing["default"].get("tool_call_limit"),
+                    existing["default"].get("fail_safe"))
+        return web.json_response({"ok": True, "policy": existing})
+    except Exception as exc:
+        return web.json_response(_error_payload("internal_error", exc), status=500)
+
+
 def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/control/runtimes/register", handle_runtime_register)
     http_app.router.add_get("/control/runtimes", handle_runtime_list)
@@ -534,3 +648,5 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_get("/control/fleet/summary", handle_fleet_summary)
     http_app.router.add_get("/control/runtimes/schedule/policy", handle_runtime_schedule_policy)
     http_app.router.add_post("/control/runtimes/schedule/select", handle_runtime_schedule)
+    http_app.router.add_get("/control/budget/policy", handle_budget_policy_get)
+    http_app.router.add_post("/control/budget/policy", handle_budget_policy_post)

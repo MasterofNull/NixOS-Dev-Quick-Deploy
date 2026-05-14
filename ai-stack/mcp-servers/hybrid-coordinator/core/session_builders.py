@@ -292,13 +292,40 @@ def _blueprint_requires_reviewer_gate(blueprint: Optional[Dict[str, Any]]) -> bo
     return any(bool(item.get("requires_approval")) for item in phases if isinstance(item, dict))
 
 
+def _load_budget_policy_limits(mode: str = "") -> Dict[str, int]:
+    """Load token/tool limits from runtime-budget-policy.json, applying per-mode overrides."""
+    import json as _json
+    from pathlib import Path as _Path
+    policy_path = _Path(os.getenv(
+        "RUNTIME_BUDGET_POLICY_FILE",
+        str(_Path(__file__).parent.parent / "config" / "runtime-budget-policy.json"),
+    ))
+    try:
+        policy = _json.loads(policy_path.read_text()) if policy_path.exists() else {}
+    except Exception:
+        policy = {}
+    limits = dict(policy.get("default", {}))
+    per_mode = policy.get("per_mode", {})
+    if mode and mode in per_mode:
+        limits.update(per_mode[mode])
+    enforcement = policy.get("enforcement", {})
+    if not enforcement.get("enabled", True):
+        return {}
+    return limits
+
+
 def _budget_exceeded(session: Dict[str, Any]) -> Optional[str]:
     budget = session.get("budget", {})
     usage = session.get("usage", {})
-    token_limit = int(budget.get("token_limit", 0))
-    tool_call_limit = int(budget.get("tool_call_limit", 0))
+    safety_mode = str(session.get("safety_mode") or "").strip()
     tokens_used = int(usage.get("tokens_used", 0))
     tool_calls_used = int(usage.get("tool_calls_used", 0))
+
+    # Per-session limits take precedence; fall back to runtime policy file defaults
+    policy_limits = _load_budget_policy_limits(safety_mode)
+    token_limit = int(budget.get("token_limit") or policy_limits.get("token_limit") or 0)
+    tool_call_limit = int(budget.get("tool_call_limit") or policy_limits.get("tool_call_limit") or 0)
+
     if token_limit > 0 and tokens_used > token_limit:
         return f"token budget exceeded: {tokens_used}>{token_limit}"
     if tool_call_limit > 0 and tool_calls_used > tool_call_limit:
