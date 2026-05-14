@@ -929,6 +929,47 @@ for p in profiles:
     _fail 4 "0.9.17" "aqd reasoning subcommands" "missing: ${_aqd_reasoning_missing[*]}"
   fi
 
+  # 0.9.18 Logic pattern indexer + AIDB project (Phase 52.1)
+  local indexer_script="${REPO_ROOT}/scripts/ai/aq-index-logic-patterns"
+  local logic_route_ok=false
+  grep -q 'logic/search\|logic_search' "${REPO_ROOT}/dashboard/backend/api/routes/topology.py" 2>/dev/null \
+    && logic_route_ok=true
+  if [[ -x "$indexer_script" ]] && $logic_route_ok; then
+    _pass 4 "0.9.18" "logic pattern indexer + /api/logic/search route present"
+  else
+    local _logic_missing=()
+    [[ -x "$indexer_script" ]] || _logic_missing+=("aq-index-logic-patterns")
+    $logic_route_ok || _logic_missing+=("dashboard/api/routes/topology.py:logic/search")
+    _fail 4 "0.9.18" "logic pattern indexer + route" "missing: ${_logic_missing[*]}"
+  fi
+
+  # 0.9.19 aqd logic:search + topology subcommands (Phase 52.2)
+  local aqd_logic_ok=true
+  local _aqd_logic_missing=()
+  for subcmd in "logic:search" "cmd_logic_search" "topology" "cmd_topology"; do
+    grep -q "$subcmd" "$aqd_script" 2>/dev/null \
+      || { aqd_logic_ok=false; _aqd_logic_missing+=("$subcmd"); }
+  done
+  if $aqd_logic_ok; then
+    _pass 4 "0.9.19" "aqd logic:search + topology subcommands present"
+  else
+    _fail 4 "0.9.19" "aqd logic/topology subcommands" "missing: ${_aqd_logic_missing[*]}"
+  fi
+
+  # 0.9.20 System topology API routes (Phase 52.3)
+  local topo_file="${REPO_ROOT}/dashboard/backend/api/routes/topology.py"
+  local topo_nodes_ok=false topo_flow_ok=false
+  grep -q 'get_topology\b' "$topo_file" 2>/dev/null && topo_nodes_ok=true
+  grep -q 'get_topology_flow\|topology/flow' "$topo_file" 2>/dev/null && topo_flow_ok=true
+  if $topo_nodes_ok && $topo_flow_ok; then
+    _pass 4 "0.9.20" "topology API: GET /api/topology + GET /api/topology/flow registered"
+  else
+    local _topo_missing=()
+    $topo_nodes_ok || _topo_missing+=("/api/topology")
+    $topo_flow_ok  || _topo_missing+=("/api/topology/flow")
+    _fail 4 "0.9.20" "topology API routes" "missing: ${_topo_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then

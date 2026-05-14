@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$PROJECT_ROOT"
-AQD_VERSION="0.6.0"
+AQD_VERSION="0.7.0"
 
 die() {
   echo "ERROR: $*" >&2
@@ -1517,6 +1517,56 @@ else:
 " 2>/dev/null || die "failed to apply profile '${name}' (coordinator not reachable or profile not found)"
 }
 
+cmd_logic_search() {
+  local query="${1:?usage: aqd logic search <description>}"
+  local top_k="${2:-5}"
+  local dash_url="${DASHBOARD_URL:-http://127.0.0.1:${DASHBOARD_PORT:-8889}}"
+  curl -sf -X POST -H "Content-Type: application/json" \
+    -d "{\"query\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$query"),\"top_k\":${top_k}}" \
+    "${dash_url}/api/logic/search" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+results = d.get('results', [])
+note = d.get('note', '')
+if note:
+    print('[NOTE]', note)
+if not results:
+    print('(no results)')
+    sys.exit(0)
+print(f'Query: {d[\"query\"]}  top_k={d[\"top_k\"]}  results={len(results)}')
+print()
+for i, r in enumerate(results, 1):
+    dist = r.get('distance', '')
+    dist_str = f' [{dist:.4f}]' if isinstance(dist, (int,float)) else ''
+    print(f'{i}. [{r.get(\"pattern_type\",\"?\")}]{dist_str}  {r.get(\"file\",\"\")}')
+    print(f'   {r.get(\"title\",\"\")}')
+    if r.get('excerpt'):
+        print('   ' + r['excerpt'][:120].replace('\n',' '))
+    print()
+" 2>/dev/null || die "dashboard not reachable — start dashboard or run aq-index-logic-patterns first"
+}
+
+cmd_topology() {
+  local dash_url="${DASHBOARD_URL:-http://127.0.0.1:${DASHBOARD_PORT:-8889}}"
+  curl -sf "${dash_url}/api/topology" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+nodes = d.get('nodes', [])
+edges = d.get('edges', [])
+STATUS_SYMBOL = {'up': '✓', 'down': '✗', 'degraded': '~', 'unknown': '?'}
+print(f'System topology  (generated {d.get(\"generated_at\",\"?\")})')
+print()
+print('Services:')
+for n in nodes:
+    sym = STATUS_SYMBOL.get(n.get('status','?'), '?')
+    print(f'  {sym} {n[\"label\"]:30s} :{n[\"port\"]}  [{n[\"role\"]}]')
+print()
+print('Data flows:')
+for e in edges:
+    print(f'  {e[\"from\"]:25s} → {e[\"to\"]:25s}  ({e.get(\"label\",\"\")})')
+" 2>/dev/null || die "dashboard not reachable"
+}
+
 cmd_parity_advanced_suite() {
   "${REPO_ROOT}/scripts/automation/run-advanced-parity-suite.sh"
 }
@@ -1867,6 +1917,8 @@ main() {
     skill:verify-index) cmd_skill_verify_index "$@" ;;
     policy:evaluate) cmd_policy_evaluate "$@" ;;
     reasoning:route)  cmd_reasoning_route "$@" ;;
+    logic:search)     cmd_logic_search "$@" ;;
+    topology)         cmd_topology ;;
     reasoning:list)   cmd_reasoning_list "$@" ;;
     reasoning:get)    cmd_reasoning_get "$@" ;;
     reasoning:apply)  cmd_reasoning_apply "$@" ;;

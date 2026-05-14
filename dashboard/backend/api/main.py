@@ -208,6 +208,8 @@ app.include_router(collaboration.router, prefix="/api", tags=["collaboration"])
 app.include_router(firewall.router, prefix="/api/firewall", tags=["firewall"])
 app.include_router(adk.router, prefix="/api/adk", tags=["adk"])
 app.include_router(testing.router, prefix="/api/testing", tags=["testing"])
+from .routes import topology as topology_mod  # noqa: E402
+app.include_router(topology_mod.router, prefix="/api", tags=["topology"])
 
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
