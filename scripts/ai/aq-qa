@@ -862,6 +862,29 @@ print('ok' if not missing else 'missing-category:' + ','.join(missing[:3]))
     _fail 4 "0.9.14" "orchestration graph runner" "missing: ${_graph_missing[*]}"
   fi
 
+  # 0.9.15 IDE adapter compatibility gate (Phase 50)
+  local ide_smoke="${REPO_ROOT}/scripts/testing/smoke-ide-adapter-compat.sh"
+  local ide_ok=true
+  local _ide_missing=()
+  if [[ ! -x "$ide_smoke" ]]; then
+    ide_ok=false; _ide_missing+=("smoke-ide-adapter-compat.sh(missing/not-executable)")
+  elif ! bash -n "$ide_smoke" 2>/dev/null; then
+    ide_ok=false; _ide_missing+=("smoke-ide-adapter-compat.sh(syntax)")
+  else
+    # Verify key sections present
+    grep -q "Continue extension" "$ide_smoke" 2>/dev/null \
+      || { ide_ok=false; _ide_missing+=("ide-smoke(no-continue-section)"); }
+    grep -q "VS Code\|VSCodium" "$ide_smoke" 2>/dev/null \
+      || { ide_ok=false; _ide_missing+=("ide-smoke(no-vscode-section)"); }
+    grep -q "MCP adapter" "$ide_smoke" 2>/dev/null \
+      || { ide_ok=false; _ide_missing+=("ide-smoke(no-mcp-section)"); }
+  fi
+  if $ide_ok; then
+    _pass 4 "0.9.15" "IDE adapter compatibility gate: smoke-ide-adapter-compat.sh (Continue + VS Code + CLI + MCP)"
+  else
+    _fail 4 "0.9.15" "IDE adapter compatibility gate" "missing: ${_ide_missing[*]}"
+  fi
+
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then
