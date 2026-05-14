@@ -901,8 +901,7 @@ required_fields = {'name', 'reasoning_style', 'safety_mode', 'tags'}
 for p in profiles:
     missing = required_fields - set(p.keys())
     assert not missing, f'profile {p.get(\"name\",\"?\")} missing fields: {missing}'
-print(len(profiles))
-" 2>/dev/null || { ablation_ok=false; _ablation_missing+=("ablation-profiles(schema-invalid)"); }
+" >/dev/null 2>&1 || { ablation_ok=false; _ablation_missing+=("ablation-profiles(schema-invalid)"); }
     grep -q "handle_reasoning_profiles_list\|reasoning/profiles" \
       "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_control_handlers.py" 2>/dev/null \
       || { ablation_ok=false; _ablation_missing+=("runtime_control_handlers(no-reasoning-routes)"); }
