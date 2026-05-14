@@ -1749,7 +1749,7 @@ PYEOF
         {
           "name": "Harness MCP",
           "command": "python3",
-          "args": ["/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"],
+          "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],
           "env": {
             "HYBRID_URL": "http://127.0.0.1:8003",
             "AIDB_URL": "http://127.0.0.1:8002",

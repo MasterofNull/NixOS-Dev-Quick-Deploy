@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 echo "=== Local Agent Smoke Test ==="
 echo
 
@@ -58,9 +60,9 @@ check_service "http://127.0.0.1:8002/health" "AIDB"
 echo
 echo "Checking tool registry..."
 
-python3 << 'EOPYTHON'
+python3 << EOPYTHON
 import sys
-sys.path.insert(0, "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack")
+sys.path.insert(0, "$REPO_ROOT/ai-stack")
 
 try:
     from local_agents import get_registry, initialize_builtin_tools
@@ -93,10 +95,10 @@ fi
 echo
 echo "Checking code executor..."
 
-python3 << 'EOPYTHON'
+python3 << EOPYTHON
 import asyncio
 import sys
-sys.path.insert(0, "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack")
+sys.path.insert(0, "$REPO_ROOT/ai-stack")
 
 async def test_code_executor():
     from local_agents import get_code_executor, Language
@@ -160,7 +162,7 @@ fi
 echo
 echo "Checking tool files..."
 
-TOOLS_DIR="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/local-agents"
+TOOLS_DIR="${REPO_ROOT}/ai-stack/local-agents"
 
 check_file() {
     if [ -f "$1" ]; then
