@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 import sys
 from pathlib import Path
 
-# Add lib to path
-lib_path = Path(__file__).parent.parent.parent.parent.parent / "lib"
+# Add lib/l4-coord to path — workflows package lives there
+lib_path = Path(__file__).parent.parent.parent.parent.parent / "lib" / "l4-coord"
 sys.path.insert(0, str(lib_path))
 
 from ..config import service_endpoints

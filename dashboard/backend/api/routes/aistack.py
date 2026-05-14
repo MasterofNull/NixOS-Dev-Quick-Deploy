@@ -2595,10 +2595,15 @@ async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
     if cached and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
         return cached
 
-    # Resolve aq-report: prefer repo-relative path; fall back to PATH (Nix store installs)
+    # Resolve aq-report: prefer repo-relative path; fall back to PATH then NixOS profile
+    # (/run/current-system/sw/bin/ is not in the systemd service PATH by default)
     report_script = _script_path("aq-report")
     if not report_script.exists():
-        _which = shutil.which("aq-report")
+        _which = (
+            shutil.which("aq-report")
+            or (os.path.isfile("/run/current-system/sw/bin/aq-report") and "/run/current-system/sw/bin/aq-report")
+            or None
+        )
         report_script = Path(_which) if _which else report_script
     if not report_script.exists():
         payload = {}

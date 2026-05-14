@@ -154,21 +154,33 @@ _LAYERED_CACHE_TTL = 30  # seconds
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
     """Run aq-qa 0 --json and return parsed JSON. Times out after 60s."""
-    aq_qa_bin = shutil.which("aq-qa")
+    # shutil.which uses the service PATH; fall back to NixOS profile symlink
+    # (/run/current-system/sw/bin/ is not in the systemd service PATH by default)
+    aq_qa_bin = (
+        shutil.which("aq-qa")
+        or (os.path.isfile("/run/current-system/sw/bin/aq-qa") and "/run/current-system/sw/bin/aq-qa")
+        or None
+    )
     if not aq_qa_bin:
-        raise RuntimeError("aq-qa not found in PATH")
+        raise RuntimeError("aq-qa not found in PATH or /run/current-system/sw/bin")
+
+    # Prepend /run/current-system/sw/bin so aq-qa subprocesses (python3, curl,
+    # redis-cli) can be found — systemd service PATH is minimal by default.
+    env = dict(os.environ)
+    env["PATH"] = "/run/current-system/sw/bin:" + env.get("PATH", "")
 
     proc = await asyncio.create_subprocess_exec(
         aq_qa_bin, "0", "--json",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        env=env,
     )
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90.0)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.communicate()
-        raise RuntimeError("aq-qa timed out after 60s")
+        raise RuntimeError("aq-qa timed out after 90s")
 
     if proc.returncode not in (0, 1):  # 0=all pass, 1=some fail — both produce valid JSON
         raise RuntimeError(f"aq-qa exited {proc.returncode}")
