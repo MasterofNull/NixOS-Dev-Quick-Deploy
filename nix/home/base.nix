@@ -678,6 +678,12 @@ in {
       hms = "home-manager switch --flake .";
       # AI CLI tools
       continue = "cn"; # Continue CLI shorthand
+      # Agentic CLI Tools (Token-optimized)
+      ag = "agrep";
+      al = "als";
+      ac = "acat";
+      as = "asum";
+      ad = "adiff";
       # pi-coding-agent wired to local switchboard (OpenAI-compatible proxy at :8085)
       pi = "OPENAI_BASE_URL=\"http://127.0.0.1:${toString aiSwitchboardPort}/v1\" OPENAI_API_KEY=dummy $HOME/.npm-global/bin/pi --provider openai";
     };
