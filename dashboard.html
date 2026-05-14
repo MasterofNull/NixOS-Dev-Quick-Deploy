@@ -9506,6 +9506,96 @@
             }
         }
 
+        // OSI Layer Health Functions
+        async function loadOsiLayerHealth() {
+            const grid = document.getElementById('osiLayerGrid');
+            const badge = document.getElementById('osiHealthBadge');
+            if (!grid || !badge) return;
+
+            const LAYER_NAMES = {
+                1: 'Services', 2: 'Data Link', 3: 'Network',
+                4: 'Transport', 5: 'Session', 6: 'Presentation', 7: 'Application'
+            };
+
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/health/layered`, { cache: 'no-store' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+
+                const layers = data.layers || {};
+                const degraded = data.degraded_confidence || false;
+                const totalPassed = data.passed || 0;
+                const totalFailed = data.failed || 0;
+                const totalSkipped = data.skipped || 0;
+                const durationS = data.duration_s || 0;
+
+                const allOk = totalFailed === 0 && !degraded;
+                badge.textContent = allOk
+                    ? `✓ ${totalPassed}/${totalPassed + totalFailed + totalSkipped}`
+                    : `⚠ ${totalFailed} fail`;
+                badge.style.background = totalFailed > 0
+                    ? 'var(--status-error)'
+                    : degraded ? 'var(--status-warning)' : 'var(--status-online)';
+
+                const layerKeys = Object.keys(layers).map(Number).sort((a, b) => a - b);
+                if (layerKeys.length === 0) {
+                    grid.innerHTML = '<div class="data-item"><span>No layer data available</span></div>';
+                    return;
+                }
+
+                const cards = layerKeys.map(layerNum => {
+                    const checks = layers[String(layerNum)] || [];
+                    const pass = checks.filter(c => c.status === 'PASS').length;
+                    const fail = checks.filter(c => c.status === 'FAIL').length;
+                    const skip = checks.filter(c => c.status === 'SKIP').length;
+                    const name = LAYER_NAMES[layerNum] || `Layer ${layerNum}`;
+                    const cardColor = fail > 0 ? 'var(--status-error)'
+                        : skip > 0 && pass === 0 ? 'var(--status-warning)'
+                        : 'var(--status-online)';
+
+                    const checkRows = checks.map(c => {
+                        const icon = c.status === 'PASS' ? '✓' : c.status === 'FAIL' ? '✗' : '○';
+                        const color = c.status === 'PASS' ? 'var(--status-online)'
+                            : c.status === 'FAIL' ? 'var(--status-error)' : 'var(--status-warning)';
+                        const shortId = c.id.replace(/^0\./, '');
+                        return `<div style="display:flex;gap:0.4rem;align-items:baseline;font-size:0.68rem;padding:0.15rem 0;">
+                            <span style="color:${color};flex-shrink:0">${icon}</span>
+                            <span style="color:var(--text-muted);flex-shrink:0;white-space:nowrap">${shortId}</span>
+                            <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.description}">${c.description}</span>
+                        </div>`;
+                    }).join('');
+
+                    return `<div style="background:var(--bg-tertiary);border:1px solid var(--border-primary);border-top:3px solid ${cardColor};border-radius:6px;padding:0.75rem;min-width:0;overflow:hidden;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
+                            <span style="font-size:0.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em">L${layerNum}</span>
+                            <span style="font-size:0.72rem;color:${cardColor};font-weight:600">${pass}/${checks.length}</span>
+                        </div>
+                        <div style="font-size:0.8rem;font-weight:600;color:var(--text-primary);margin-bottom:0.5rem;">${name}</div>
+                        <div style="max-height:9rem;overflow-y:auto;">${checkRows}</div>
+                    </div>`;
+                });
+
+                grid.innerHTML = cards.join('');
+
+                if (degraded) {
+                    const warn = document.createElement('div');
+                    warn.style.cssText = 'grid-column:1/-1;padding:0.5rem;background:rgba(255,190,11,0.08);border:1px solid var(--status-warning);border-radius:4px;font-size:0.72rem;color:var(--status-warning)';
+                    warn.textContent = '⚠ DEGRADED CONFIDENCE — lower-layer failure may invalidate upper-layer results';
+                    grid.prepend(warn);
+                }
+
+                const footer = document.createElement('div');
+                footer.style.cssText = 'grid-column:1/-1;font-size:0.68rem;color:var(--text-muted);text-align:right;margin-top:0.25rem';
+                footer.textContent = `${totalPassed} passed · ${totalFailed} failed · ${totalSkipped} skipped · ${durationS}s${data.cached ? ' · cached' : ''}`;
+                grid.appendChild(footer);
+
+            } catch (err) {
+                grid.innerHTML = `<div class="data-item"><span>OSI layer health unavailable</span><span class="data-meta status-offline">${err.message}</span></div>`;
+                badge.textContent = 'unavailable';
+                badge.style.background = 'var(--status-error)';
+            }
+        }
+
         // AI Insights Functions
         async function loadAIInsights() {
             await Promise.all([
