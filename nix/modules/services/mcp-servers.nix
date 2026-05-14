@@ -75,9 +75,8 @@ let
   mutableStateDir = cfg.deployment.mutableSpaces.aiStackStateDir;
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
-  singleLineEnv = value:
-    lib.escapeShellArg
-      (lib.replaceStrings ["\r" "\n"] [" " " "] value);
+  singleLineValue = value:
+    lib.replaceStrings ["\r" "\n"] [" " " "] value;
   mcpIntegrityBaseline = "${mutableStateDir}/mcp-source-baseline.sha256";
   migrationsIni = "${toString repoSource}/ai-stack/migrations/alembic.ini";
   aidbConfig = pkgs.writeText "aidb-config.yaml" ''
@@ -1081,7 +1080,7 @@ in {
                   then "true"
                   else "false"
                 }"
-                "AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.escapeShellArg (lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries)}"
+                (lib.escapeShellArg "AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries}")
                 "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
                 "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
                 "WORKFLOW_BLUEPRINTS_FILE=${repoSource}/config/workflow-blueprints.json"
@@ -1120,7 +1119,7 @@ in {
                 "AI_WEB_RESEARCH_MAX_TEXT_CHARS=${toString ai.aiHarness.runtime.webResearch.maxTextChars}"
                 "AI_WEB_RESEARCH_MAX_LINKS=${toString ai.aiHarness.runtime.webResearch.maxLinks}"
                 "AI_WEB_RESEARCH_MAX_REDIRECTS=${toString ai.aiHarness.runtime.webResearch.maxRedirects}"
-                "AI_WEB_RESEARCH_USER_AGENT=${lib.escapeShellArg ai.aiHarness.runtime.webResearch.userAgent}"
+                (lib.escapeShellArg "AI_WEB_RESEARCH_USER_AGENT=${ai.aiHarness.runtime.webResearch.userAgent}")
                 "AI_BROWSER_RESEARCH_ENABLED=${
                   if ai.aiHarness.runtime.browserResearch.enable
                   then "true"
@@ -1133,7 +1132,7 @@ in {
                 "AI_BROWSER_RESEARCH_MAX_TEXT_CHARS=${toString ai.aiHarness.runtime.browserResearch.maxTextChars}"
                 "AI_BROWSER_RESEARCH_MAX_LINKS=${toString ai.aiHarness.runtime.browserResearch.maxLinks}"
                 "AI_BROWSER_RESEARCH_MAX_REDIRECTS=${toString ai.aiHarness.runtime.browserResearch.maxRedirects}"
-                "AI_BROWSER_RESEARCH_USER_AGENT=${lib.escapeShellArg ai.aiHarness.runtime.browserResearch.userAgent}"
+                (lib.escapeShellArg "AI_BROWSER_RESEARCH_USER_AGENT=${ai.aiHarness.runtime.browserResearch.userAgent}")
                 "AI_BROWSER_RESEARCH_CHROMIUM_BIN=${
                   if ai.aiHarness.runtime.browserResearch.chromiumBinary == "chromium"
                   then lib.getExe pkgs.chromium
@@ -1145,7 +1144,7 @@ in {
                   then "true"
                   else "false"
                 }"
-                "AI_LOCAL_SYSTEM_PROMPT_IDENTITY=${singleLineEnv ai.aiHarness.runtime.localSystemPrompt.identity}"
+                (lib.escapeShellArg "AI_LOCAL_SYSTEM_PROMPT_IDENTITY=${singleLineValue ai.aiHarness.runtime.localSystemPrompt.identity}")
                 "AI_LOCAL_SYSTEM_PROMPT_RULES_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.rules}"
                 "AI_LOCAL_SYSTEM_PROMPT_WORKFLOW_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.workflow}"
                 "AI_LOCAL_SYSTEM_PROMPT_OUTPUT_SECTIONS_JSON=${builtins.toJSON ai.aiHarness.runtime.localSystemPrompt.outputSections}"

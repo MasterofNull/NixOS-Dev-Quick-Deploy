@@ -159,6 +159,22 @@ def cmd_add(args, store: InMemoryFactStore):
         print(f"   Content: {fact.content[:60]}{'...' if len(fact.content) > 60 else ''}")
 
 
+def cmd_store(args, store: InMemoryFactStore):
+    """Store a fact (alias for add with legacy support)"""
+    # Map legacy key/value to topic/content
+    if args.key and not args.topic:
+        args.topic = args.key
+    if args.value and not args.content:
+        args.content = args.value
+
+    if not args.content:
+        print("Error: content (or --value) is required", file=sys.stderr)
+        sys.exit(1)
+
+    # Call original cmd_add
+    cmd_add(args, store)
+
+
 def cmd_search(args, store: InMemoryFactStore):
     """Search for facts by content"""
     all_facts = store.get_all()
@@ -402,6 +418,25 @@ def main():
     add_parser.add_argument('--source', help='Source of this fact')
     add_parser.add_argument('--created-by', help='Creator identifier')
 
+    # Store command (alias for add)
+    store_parser = subparsers.add_parser('store', help='Store a new fact (alias for add)')
+    store_parser.add_argument('--key', help='Legacy key support (mapped to topic)')
+    store_parser.add_argument('--value', help='Legacy value support (mapped to content)')
+    store_parser.add_argument('content', nargs='?', help='Fact content')
+    store_parser.add_argument('--project', default='default', help='Project name')
+    store_parser.add_argument('--topic', help='Topic/category')
+    store_parser.add_argument('--type', default='fact',
+                           choices=['decision', 'preference', 'discovery', 'event', 'advice', 'fact'],
+                           help='Fact type (default: fact)')
+    store_parser.add_argument('--valid-from', help='Start of validity (ISO format)')
+    store_parser.add_argument('--valid-until', help='End of validity (ISO format)')
+    store_parser.add_argument('--agent-owner', help='Agent that owns this fact')
+    store_parser.add_argument('--tags', help='Comma-separated tags')
+    store_parser.add_argument('--confidence', type=float, default=1.0,
+                           help='Confidence score 0.0-1.0 (default: 1.0)')
+    store_parser.add_argument('--source', help='Source of this fact')
+    store_parser.add_argument('--created-by', help='Creator identifier')
+
     # Search command
     search_parser = subparsers.add_parser('search', help='Search for facts')
     search_parser.add_argument('query', help='Search query')
@@ -461,6 +496,7 @@ def main():
     # Dispatch to command handler
     commands = {
         'add': cmd_add,
+        'store': cmd_store,
         'search': cmd_search,
         'list': cmd_list,
         'expire': cmd_expire,

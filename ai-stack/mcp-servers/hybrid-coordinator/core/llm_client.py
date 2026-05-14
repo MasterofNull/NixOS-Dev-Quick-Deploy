@@ -52,6 +52,12 @@ class LLMClient:
             api_key: API key (or None for local)
             base_url: Custom API base URL
         """
+        # Standardization: Auto-detect OpenRouter and force openai provider logic
+        # since OpenRouter uses OpenAI-compatible payloads.
+        if base_url and "openrouter.ai" in base_url and provider == "anthropic":
+            logger.info("OpenRouter detected with 'anthropic' provider; switching to 'openai' for compatibility")
+            provider = "openai"
+
         self.provider = provider
         self.api_key = api_key or self._get_api_key(provider)
         self.base_url = base_url
