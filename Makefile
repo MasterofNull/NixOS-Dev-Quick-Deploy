@@ -36,7 +36,7 @@ security-scan:
 	./scripts/security/security-scan.sh
 
 hospital-gate:
-	./scripts/security/hospital-classified-gate.sh
+	./scripts/security/hospital-classified-gate.sh --bundle
 
 test:
 	python3 -m pytest tests/integration/test_mcp_contracts.py -v

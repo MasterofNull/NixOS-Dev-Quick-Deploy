@@ -642,6 +642,7 @@ in {
           "d ${dataDir}/ralph/telemetry    0750 ${ralphUser} ${aiGroup} -"
           "f ${dataDir}/ralph/telemetry/ralph-events.jsonl 0640 ${ralphUser} ${aiGroup} - -"
           "d ${dataDir}/security           0750 ${auditUser} ${aiGroup} -"
+          "d ${dataDir}/security/evidence  0770 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/security/npm       0750 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/qdrant-collections          0750 ${aidbUser} ${aiGroup} -"
           "d /var/log/ai-stack                      0770 ${svcUser} ${aiGroup} -"
