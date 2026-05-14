@@ -218,8 +218,12 @@ Purpose:
 1. Add remote trust roots and key rotation policy for signed registries
 - Remote index consumption and signature checks are implemented; enterprise trust distribution/rotation workflow is not yet automated.
 
-2. Add full orchestration graph executor for staged agent pipelines
-- Staged workflows exist with session/tree controls, but a single DAG executor with retries/backoff is not yet implemented.
+2. ~~Add full orchestration graph executor for staged agent pipelines~~ **RESOLVED — Phase 38**
+- `RetryPolicy` dataclass (max_attempts, initial_delay_s, backoff_factor, max_delay_s) in `workflow_executor.py`.
+- `WorkflowExecutor` now retries failed phases with exponential backoff; retry state persisted per session+phase; trajectory records `phase_retry_scheduled` and `phase_exhausted` events.
+- `POST /workflow/run/{id}/execute` — trigger priority execution with optional retry policy override.
+- `GET /workflow/run/{id}/execute/status` — poll per-phase retry state, attempt counts, and retry_in_s.
+- aq-qa check `0.9.3` validates endpoint wiring.
 
 3. ~~**Enable semantic embeddings in llama-cpp backend (Phase 13.1)**~~ **RESOLVED**
 - `--embedding` flag confirmed present at `ai-stack.nix:1321`; `POST /embedding` returns
@@ -295,7 +299,7 @@ Notes:
 
 | Capability cluster | External benchmark signal | This repo status | Gap classification |
 |---|---|---|---|
-| Workflow orchestration runtime | Code-agent leaders expose explicit run loops with retries/recovery | Session + phase APIs exist, but no single DAG executor | `P0 gap` |
+| Workflow orchestration runtime | Code-agent leaders expose explicit run loops with retries/recovery | **Near parity** — Phase 38: `RetryPolicy` (max_attempts, backoff_factor, max_delay) wired into `WorkflowExecutor`; retry state tracked per session+phase; `POST /workflow/run/{id}/execute` + `GET /workflow/run/{id}/execute/status` live | `Near parity` (Phase 38) |
 | Guarded tool execution | Mature agents gate risky actions and isolate execution context | blast_radius_classifier + safety_gate in DELEGATE phase; open/review/strict modes | `Near parity` (Phase 28) |
 | Trust distribution and key lifecycle | Production systems publish trust-root and rotation processes | Signed skill registry exists; remote trust rotation not automated | `P0 gap` |
 | Continuous quality benchmarking | Common use of repeatable eval/regression loops | Harness eval + regression scripts exist | `P1 gap` (external benchmark corpus integration) |
