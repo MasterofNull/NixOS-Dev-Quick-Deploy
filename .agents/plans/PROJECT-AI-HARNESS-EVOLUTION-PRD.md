@@ -110,6 +110,123 @@ One non-obvious system constraint: `http_server.py` has TWO auth middleware inst
 
 ---
 
+## 7. Organism Architecture — The Living System Model (2026-05-14)
+
+*Architectural framing for Phase 56 and the long-term integration vision.*
+
+### The Organ Map
+
+The system is not a collection of features — it is a living organism. Each module
+has a primary function AND a signal output that feeds the whole.
+
+| Module | Organ Role | Primary Function | Signal Output |
+|---|---|---|---|
+| `hybrid-coordinator` | Nervous System | Intent routing, orchestration | Trace spans → TraceCollector |
+| `AIDB` (Qdrant + PostgreSQL) | Long-Term Memory | Vector retrieval, fact storage | RAG results → RagAugmentor |
+| `MemoryBroker` | Working Memory | Typed memory (working/episodic/semantic/procedural) | `valid_from`/`valid_until` tagged facts |
+| `TraceCollector` | Sensory Cortex | Observes every query span | Span data → DriftAnalyzer, EvalRunner |
+| `DriftAnalyzer` | Immune System | Detects reasoning degradation | `drift_score` → profile activation |
+| `MemoryCrystallizer` | Sleep / Consolidation | Distills sessions into episodic facts | Structured facts → AIDB episodic |
+| `MemorySuperseder` | Immune Memory | Invalidates stale facts | `valid_until` on deprecated docs |
+| `ContinuousLearning` | Adaptive Cortex | Extracts patterns from outcomes | Lesson candidates → lesson registry |
+| `LessonEffectivenessTracker` | Feedback Loop | Scores which lessons work | Promoted lessons → session starts |
+| `EvalRunner` | Proprioception | Knows if the system is working | Eval trend → regression detection |
+| `IntentClassifier` | Thalamus | Routes signals to right subsystem | Intent → switchboard profile |
+| `WorkflowCheckpointer` | Procedural Memory | Durable DAG state across restarts | Checkpoint → recovery playbooks |
+| Qwen (local) | Prefrontal Cortex | Deep async reasoning, fact extraction | Structured JSON → AIDB, MemoryBroker |
+| Gemini / Codex / Claude | Specialized Organs | Fast, domain-specific tasks | Outcomes → event bus → learning |
+| `delegate-to-*` scripts | Motor Neurons | Dispatch work to the right agent | Events → `POST /api/agent-events` |
+| `aq-session-start` | Wake Cycle | Hydrates agents with institutional memory | Lessons + context → agent session |
+| Dashboard | Sensory Display | Operator visibility into organism health | Read-only (displays, does not steer) |
+
+### The Knowledge Circulation Loop
+
+```
+Agent works
+    │
+    ▼
+outcome captured via POST /api/agent-events
+    │
+    ├──► tool-audit.jsonl (fixes 0.8.1, feeds /stats/delegate)
+    │
+    └──► continuous_learning._process_event()
+              │
+              ▼
+         pattern extracted → lesson candidate created
+              │
+              ▼
+         aq-lesson-promote (human or agent review)
+              │
+              ▼
+         promoted lesson in lesson registry
+              │
+              ▼
+         aq-session-start pulls GET /control/ai-coordinator/lessons
+              │
+              ▼
+         next agent session starts with institutional memory
+              │
+              ▼
+         Agent works (loop continues — knowledge accumulates)
+```
+
+### The Memory Consolidation Loop (nightly)
+
+```
+~/.continue/sessions/*.json (raw session logs)
+    │
+    ▼ (ai-crystallize-sessions.timer, 2am nightly)
+aq-crystallize → POST /memory/crystalline/run
+    │
+    ▼ (Qwen distills — bounded async, 90-120s)
+structured episodic facts → AIDB episodic collection
+    │
+    ▼
+RagAugmentor retrieves on next /query
+    │
+    ▼
+agents receive distilled knowledge from previous sessions
+```
+
+### Design Principles for the Organism
+
+1. **Every module is both autonomous and connected.** Each has its own health
+   endpoint, its own aq-qa checks, its own failure mode. But its outputs feed
+   the coordinator's shared signal bus.
+
+2. **Local agent earns centrality through bounded reliability.** Qwen is not
+   asked to orchestrate or implement — it distills, labels, and validates.
+   As it proves reliable on small tasks, it takes progressively more critical-path
+   roles (re-ranker → step validator → intent classifier fallback).
+
+3. **Remote agents are fast, specialized, and forgetful.** Gemini/Codex/Claude
+   execute at high speed in their domains. Their outputs are captured by the
+   event bus and crystallized so the organism retains the knowledge even when
+   those agents are not present.
+
+4. **The coordinator is homeostasis.** It detects drift, adjusts profiles,
+   routes traffic, and synthesizes health signals from all organs. It does not
+   decide what to build — it maintains the conditions under which good work can happen.
+
+5. **Lessons are earned, not assumed.** No output from any agent automatically
+   becomes active knowledge. The lifecycle is always:
+   `observed → candidate → validated → promoted → active → superseded → archived`
+
+### Local Agent Promotion Roadmap
+
+| Phase | Qwen Role | Input Bound | Time Horizon |
+|---|---|---|---|
+| 56 | Session crystallization, commit fact extraction | ≤800 chars | 90-120s async |
+| 57 | RAG re-ranker (5 results → ranked list) | 5 snippets | 60-90s inline |
+| 58 | Workflow step validator (diff vs. acceptance criteria) | 1 DAG step output | 90s async |
+| 59 | Intent classifier escalation (when confidence < 0.6) | 1 query | 30-60s inline |
+| 60 | Error pattern labeler (labels delegation failures) | ≤400 char error | 30s async |
+
+Each phase is gated on the previous phase proving reliable. The model earns
+centrality by handling progressively more critical decisions at its natural time horizon.
+
+---
+
 ## 6. Codex Implementation Perspective (2026-05-15)
 
 Gemini's AI OS framing is useful as architectural intent, and Claude's Section 5 is the right execution filter. The implementation risk is that the documentation can become aspirational unless every AI OS concept is tied to a live surface and a gate.
