@@ -44,7 +44,9 @@ find "${_find_args[@]}" 2>/dev/null | sort | while IFS= read -r session_path; do
     printf '%s\n' "${session_path}"
     continue
   fi
+  _payload="$(printf '{"session_path":"%s"}' "${session_path}")"
   curl -sf -X POST "${HYBRID_COORDINATOR_URL}/memory/crystalline/run" \
     -H 'Content-Type: application/json' \
-    -d "$(python3 -c 'import json,sys; print(json.dumps({\"session_path\": sys.argv[1]}))' "${session_path}")" >/dev/null
+    -d "${_payload}" >/dev/null 2>&1 \
+    || printf 'WARN: crystallize skipped %s (coordinator unavailable)\n' "${session_path}" >&2
 done

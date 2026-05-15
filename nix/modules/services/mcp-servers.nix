@@ -1715,8 +1715,6 @@ in {
         wantedBy = ["timers.target"];
         timerConfig = {
           OnCalendar = "*-*-* 02:00:00";
-          OnBootSec = "20min";
-          Persistent = true;
           Unit = "ai-crystallize-sessions.service";
         };
       };
