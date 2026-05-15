@@ -85,6 +85,9 @@ import harness_eval
 import http_server
 import interaction_tracker
 import memory_manager
+import memory_superseder
+import drift_analyzer
+import memory_crystallizer
 import mcp_handlers
 import model_loader
 import model_probe
@@ -700,11 +703,16 @@ async def initialize_server():
     import eval_runner as _er54
     _tc54.init(postgres_client=postgres_client)
     _er54.init(postgres_client=postgres_client)
+    memory_superseder.init(postgres_client=postgres_client)
+    drift_analyzer.init(postgres_client=postgres_client)
+    memory_crystallizer.init(postgres_client=postgres_client)
     if postgres_client is not None:
         try:
             await _tc54.ensure_schema(postgres_client)
             await _er54.ensure_schema()
-            logger.info("✓ Phase 54 TraceCollector + EvalRunner schemas ready")
+            await memory_superseder.get_superseder().ensure_schema()
+            await memory_crystallizer.get_crystallizer().ensure_schema()
+            logger.info("✓ Phase 54/55 trace, eval, supersession, and crystallization schemas ready")
         except Exception as _e54:
             logger.warning("Phase 54 schema init error (non-fatal): %s", _e54)
 

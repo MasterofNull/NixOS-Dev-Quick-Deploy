@@ -7,7 +7,7 @@ class _FakePostgres:
     def __init__(self, rows):
         self.rows = rows
 
-    async def fetch(self, _query, _limit):
+    async def fetch_all(self, _query, _limit):
         return self.rows
 
 
