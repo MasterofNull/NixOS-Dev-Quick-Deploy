@@ -1,111 +1,161 @@
 # System Overview
+**Last updated:** 2026-05-15 (Phase 56.9 revamp)
 
-**Purpose**: Describe the current local AI stack, how it is deployed, and which services are authoritative for operators and agents.
+**Purpose**: Describe the current local AI stack, how it is deployed, which services are authoritative, and how the key components actually interconnect.
+
+> Full architecture: [docs/architecture/AI-STACK-ARCHITECTURE.md](../architecture/AI-STACK-ARCHITECTURE.md)
+> Routing flow (corrected): [docs/architecture/REQUEST-ROUTING-FLOW.md](../architecture/REQUEST-ROUTING-FLOW.md)
+> Relational graph (scripts, Nix, delegation): [docs/architecture/RELATIONAL-GRAPH.md](../architecture/RELATIONAL-GRAPH.md)
+
+---
 
 ## What This System Is
 
-This repository runs a declarative NixOS AI stack functioning as an **Agentic AI Operating System (AI OS)**. It treats local model inference as compute, multi-tiered persistence as memory, and host-local `systemd` services as the foundational platform. The current runtime is not K3s-first and it is not a container-orchestrated control plane.
+A local-first NixOS AI agent stack. All inference runs on-device (Qwen3.6-35B via llama.cpp). Remote access is optional, gated by budget policy. This is an **agentic harness**, not a chatbot — it is designed for AI agents to orchestrate, execute, and improve workflows.
 
 Core characteristics:
+- **Local-first inference**: Qwen3.6-35B at :8080, 12 GPU layers (Vulkan + CPU)
+- **Orchestration brain**: hybrid-coordinator at :8003 owns workflow DAGs, memory, hints, learning
+- **Profile-based routing**: switchboard at :8085 executes LLM requests under configurable profiles
+- **Knowledge persistence**: AIDB + Qdrant + PostgreSQL for semantic memory and RAG
+- **Declarative infrastructure**: NixOS flake — no bare pip install, no manual systemctl
 
-- **AI OS Architecture**: Treats LLMs as the CPU and vector/graph DBs as persistent memory.
-- **Cyclic DAG Orchestration**: The `hybrid-coordinator` handles stateful, cyclic multi-agent workflows using Model Context Protocol (MCP).
-- **Foundation Persistence**: `ai-aidb` handles temporal knowledge and supersession logic to prevent context rot, moving beyond standard bolt-on RAG.
-- NixOS modules define ports, service wiring, and environment injection.
-- `systemd` units run the active AI stack on host-local ports.
-- The dashboard API and token-optimized CLI tools (`aq-prime`, `als`, `agrep`) form the primary operator health and agent execution surface.
+---
+
+## Component Name Clarifications
+
+These names cause common confusion — read this section before diagrams.
+
+### "hybrid-coordinator" — what "hybrid" means
+
+**"Hybrid" = dual protocol (MCP stdio + HTTP REST), NOT hybrid local/remote routing.**
+
+The coordinator orchestrates workflows, manages memory, serves hints, and owns the agent event bus. It does NOT route between local and remote LLMs — the **switchboard** does that.
+
+### "switchboard" — what it actually does
+
+The switchboard is a profile-execution proxy at :8085. It:
+- Receives OpenAI-compatible requests from IDE clients OR from the coordinator (as a backend)
+- Selects a profile based on the `x-ai-profile` header
+- Optionally fetches hints from the coordinator (`GET /hints`) and injects them
+- Routes to local llama or remote API based on the profile's `forceProvider` setting
+
+**It is called by TWO different traffic flows that share the same service:**
+1. IDE/editor direct chat → Switchboard → llama (Path A)
+2. Coordinator → Switchboard → llama or remote (Path B, coordinator uses switchboard as LLM backend)
+
+### Three "agent" namespaces — they are different things
+
+| Term | Location | Meaning |
+|------|----------|---------|
+| **local-agents** | `ai-stack/local-agents/` | Qwen executor loop (aq-agent-loop) — runs task slices locally via llama:8080 DIRECTLY |
+| **agent-mesh** | `ai-stack/agents/` + AGI scaffold | Identity/affective/world-model peer network (AGI Phase 16–20) |
+| **agent_registry** | coordinator module | Runtime registry of live agent sessions tracked by coordinator |
+| **external agents** | Claude Code, Codex, Gemini | AI systems that CALL the harness as a backend |
+
+### "local-orchestrator" — legacy CLI, not the orchestrator
+
+`scripts/ai/local-orchestrator` is a shell CLI that calls `/v1/orchestrate` on the coordinator. The Python `LocalOrchestrator` class in `ai-stack/local-orchestrator/` is a fallback. The **coordinator is the actual orchestrator**. The local-orchestrator script is a front-door CLI, not a routing authority.
+
+---
 
 ## Main Components
 
-### Dashboard API and Health Surface
+| Component | Port | Role |
+|-----------|------|------|
+| hybrid-coordinator | 8003 | Orchestration brain: workflows, hints, memory, events, learning |
+| AIDB | 8002 | Knowledge base: document ingest, vector search |
+| switchboard | 8085 | Profile-execution proxy: IDE ingress + coordinator LLM backend |
+| llama-server (chat) | 8080 | Local inference: Qwen3.6-35B |
+| llama-embed | 8081 | Embeddings for RAG, memory dedup, loop detection |
+| ralph-wiggum | 8004 | Secondary inference (POST /task with `prompt` field) |
+| dashboard | 8889 | Read-only metrics/health UI |
+| PostgreSQL | 5432 | Relational: history, audit, eval trends |
+| Redis | 6379 | Session cache, rate limit state |
+| Qdrant | 6333 | Vector store: memories, patterns, docs |
 
-- `command-center-dashboard-api.service`
-- Endpoint: `http://127.0.0.1:8889`
-- Provides `/api/health`, `/api/health/aggregate`, and AI metrics endpoints.
+All port values are defined in `nix/modules/core/options.nix` — the single source of truth. Never hardcode.
 
-### AIDB
+---
 
-- AIDB API endpoint: `http://127.0.0.1:8002`
-- Used for local project knowledge and AI stack integration workflows.
+## Request Flow Summary (Three Paths)
 
-### Hybrid Coordinator
-
-- `ai-hybrid-coordinator.service`
-- Endpoint: `http://127.0.0.1:8003`
-- Handles hybrid orchestration, memory endpoints, and authenticated stats queries.
-
-### Local Model Runtime
-
-- `llama-cpp.service` on `127.0.0.1:8080`
-- `llama-cpp-embed.service` on `127.0.0.1:8081`
-- Exposes OpenAI-compatible local inference and embeddings endpoints.
-
-### Data Services
-
-- Qdrant on `127.0.0.1:6333`
-- PostgreSQL on `127.0.0.1:5432`
-- Redis on `127.0.0.1:6379`
-
-### Automation
-
-- `ai-prsi-orchestrator.service`
-- `ai-prsi-orchestrator.timer`
-- Runs periodic PRSI/optimizer automation and can be validated manually.
-
-## Security Features
-
-- Secrets are loaded from runtime secret providers such as `/run/secrets/*`, not hardcoded into docs, code, or service definitions.
-- Sensitive hybrid routes require API-key authentication and should be checked with local secret-backed requests.
-- Core operator endpoints are documented as host-local services on `127.0.0.1`, which is the current safe default exposure model.
-- Port and endpoint values are intended to flow from Nix options and environment injection rather than scattered literals.
-- Operator validation includes both health and auth smoke checks, not only process liveness.
-
-## Current Runtime Model (AI OS)
-
-```text
-NixOS modules (Configuration Layer)
-  -> typed options in nix/modules/core/options.nix
-  -> AI stack wiring in nix/modules/roles/ai-stack.nix
-
-systemd units (Platform Layer)
-  -> dashboard API (:8889)
-  -> AIDB (Temporal Memory :8002)
-  -> hybrid coordinator (Cyclic DAG Orchestration :8003)
-  -> switchboard (Governance/Execution :8085)
-  -> llama.cpp + embeddings (Compute Layer)
-  -> postgres / redis / qdrant (Data Layer)
-  -> PRSI timer and one-shot automation
+**Path A — IDE chat (most user-facing):**
+```
+Continue/Claude Code Extension
+  → Switchboard :8085 (profile: continue-local / default / local-agent)
+  → [if injectHints: GET coordinator:8003/hints, inject]
+  → llama :8080
 ```
 
-## Operator Workflow
+**Path B — Orchestration (agent tasks, CLI, MCP):**
+```
+aq-* / Claude Code MCP tools / REST
+  → Coordinator :8003 (/query, /v1/orchestrate, /workflow/*, /control/*)
+  → internal routing (task_classifier, RAG, hints)
+  → Switchboard :8085 (as LLM backend)
+  → llama :8080 or remote API
+```
 
-Use these as the current source of operational truth:
+**Path C — Agent delegation (external AI agents):**
+```
+Claude/Codex/Gemini → delegate-to-* scripts
+  → audit-write.sh → POST /api/agent-events (coordinator)
+  → ContinuousLearning → lesson registry
+```
 
-- `README.md`
-- `docs/operations/OPERATOR-RUNBOOK.md`
-- `docs/operations/reference/QUICK-REFERENCE.md`
-- `docs/operations/reference/QUICK-REFERENCE-CARD.md`
+See [REQUEST-ROUTING-FLOW.md](../architecture/REQUEST-ROUTING-FLOW.md) for full sequence diagrams.
 
-Use these commands for routine checks:
+---
+
+## Harness CLI Entry Points
 
 ```bash
-bash scripts/health/system-health-check.sh --detailed
-bash scripts/ai/ai-stack-health.sh
-aq-qa 0 --json
-aq-qa 1 --json
-python3 -m pytest tests/integration/test_mcp_contracts.py -v
+aq-prime                          # orient session, layer health check
+aq-session-start --task "<task>"  # hydrate context + promoted lessons
+aq-qa 0                           # 61-check health suite (0 = phase 0)
+aq-report                         # full system report
+aq-hints "<query>"                # ranked workflow hints from coordinator
+aqd workflows list                # list available workflow blueprints
 ```
+
+---
+
+## Key File Locations
+
+| Topic | Location |
+|-------|----------|
+| Port options (single source of truth) | `nix/modules/core/options.nix` |
+| AI stack NixOS wiring | `nix/modules/roles/ai-stack.nix` |
+| Switchboard profiles + Python | `nix/modules/services/switchboard.nix` |
+| Coordinator entry point | `ai-stack/mcp-servers/hybrid-coordinator/http_server.py` |
+| Routing contract (canonical tiers) | `ai-stack/mcp-servers/hybrid-coordinator/routing_contract.py` |
+| Harness CLI tools | `scripts/ai/` |
+| Governance gates | `scripts/governance/` |
+| Delegation registry | `.agents/delegation/registry.jsonl` |
+| Active plans | `.agents/plans/` |
+| PRSI queue | `/var/lib/nixos-ai-stack/prsi/action-queue.json` |
+
+---
+
+## Deployment Rule
+
+Python files run from the nix store. `systemctl restart` does **NOT** pick up new commits. `nixos-rebuild switch` is required for every code change. Execute from a terminal session (not Claude shell — sudo setuid missing in that context).
+
+---
 
 ## What Is No Longer Current
 
-These are no longer the active operating model:
+- K3s, pod, PVC, or container-orchestrated guidance
+- AIDB on port 8091 (now 8002)
+- Dashboard on port 8888 (now 8889)
+- MindsDB, Hugging Face TGI
+- CLI-bridge on port 8089 (decommissioned 2026-05-12, commit 7dc4c950)
+- OpenRouter / qwen:free (zero credits as of 2026-05)
+- "Hybrid coordinator routes between local and remote" — switchboard does this
 
-- K3s-first operator guidance
-- pod or PVC-based runbook assumptions
-- AIDB on port `8091`
-- dashboard guidance that points to port `8888`
-- MindsDB and Hugging Face TGI as current required runtime components
+---
 
 ## Next Step
 
-Read [01-QUICK-START.md](01-QUICK-START.md) for the task-oriented entry point.
+Read [01-QUICK-START.md](01-QUICK-START.md) for task-oriented entry. Or read [REQUEST-ROUTING-FLOW.md](../architecture/REQUEST-ROUTING-FLOW.md) to understand data flow before coding.
