@@ -48,6 +48,15 @@ aq-qa 0                               # phase-0 health check (all services)
 aq-report                             # full stack health digest
 ```
 
+## Agentic Core CLI Tools (Token Optimized)
+Always prefer these tools over standard bash commands for system interaction:
+```bash
+als -d 1                 # Agentic LS: concise directory listing
+agrep "<term>" .         # Agentic Grep: token-optimized search
+acat <file>              # Agentic Cat: syntax-aware file reader
+asum <file>              # Agentic Sum: AI-optimized file summarization
+```
+
 ## Required Verification Before Commit
 
 ```bash
