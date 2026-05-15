@@ -51,6 +51,12 @@ LOOPBACK_AGENT_PREFIXES = (
     "/alerts",
     "/stats",
     "/learning/stats",
+    # Phase 54: Agentic-First Architecture Elevation endpoints
+    "/control/intent/",
+    "/api/health/",
+    "/api/traces",
+    "/eval/run",
+    "/eval/trend",
 )
 
 
