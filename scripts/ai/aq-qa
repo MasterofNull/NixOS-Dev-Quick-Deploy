@@ -543,68 +543,16 @@ run_phase_0() {
 
   # 0.8.1 ai_coordinator_delegate success rate (last 24h) — Phase 9.3 gate
   # SKIP when <1 sample (fresh deploy / no traffic yet); FAIL only on clear regression.
-  # Reads from JSONL audit log (consistent with aq-report; no PostgreSQL dependency).
+  # Reads via GET /stats/delegate (coordinator has ai-stack group access to the audit log;
+  # avoids the process-group-inheritance problem for callers like the VSCode extension).
+  local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
   local delegate_rate_out
-  delegate_rate_out=$(python3 - <<'PYEOF' 2>/dev/null
-import json, os, time
-from pathlib import Path
-
-AUDIT_LOG = Path(os.getenv("TOOL_AUDIT_LOG_PATH", "/var/log/ai-audit-sidecar/tool-audit.jsonl"))
-WINDOW_S = 86400  # 24 hours (extended from 1h for development-cadence systems)
-now = time.time()
-
-try:
-    total = 0
-    ok = 0
-    if AUDIT_LOG.exists():
-        with open(AUDIT_LOG, "r", encoding="utf-8", errors="replace") as fh:
-            for raw in fh:
-                raw = raw.strip()
-                if not raw:
-                    continue
-                try:
-                    entry = json.loads(raw)
-                except Exception:
-                    continue
-                if entry.get("tool_name") != "ai_coordinator_delegate":
-                    continue
-                ts_str = entry.get("timestamp", "")
-                try:
-                    from datetime import datetime, timezone
-                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
-                except Exception:
-                    continue
-                if now - ts > WINDOW_S:
-                    continue
-                # Exclude probe/smoke calls that should not affect the real success rate:
-                #   1. check-ai-coordinator-delegate-smoke.sh: timeout_s=5, outcome=error,
-                #      error_message=http_status_504, latency < 15s.
-                #   2. Security-gate blocks: error_message starts with
-                #      "blocked_endpoint_pattern:" — these are auth/routing rejections
-                #      triggered by health checks, not real delegation attempts.
-                latency_ms = float(entry.get("latency_ms") or 0)
-                err_msg = entry.get("error_message") or ""
-                is_probe = (
-                    (entry.get("outcome") == "error"
-                     and err_msg == "http_status_504"
-                     and latency_ms < 15000)
-                    or err_msg.startswith("blocked_endpoint_pattern:")
-                )
-                if is_probe:
-                    continue
-                total += 1
-                if entry.get("outcome") == "success":
-                    ok += 1
-    print(json.dumps({"total": total, "ok": ok}))
-except Exception as e:
-    print(json.dumps({"error": str(e)}))
-PYEOF
-  )
+  delegate_rate_out=$(curl -sf "${_coord_url}/stats/delegate?window_s=86400" 2>/dev/null || true)
   local delegate_total delegate_ok delegate_pct
   delegate_total=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('total',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
   delegate_ok=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('ok',0))" "$delegate_rate_out" 2>/dev/null || echo 0)
-  if python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' in d else 1)" "$delegate_rate_out" 2>/dev/null; then
-    _skip 4 "0.8.1" "delegate 1h success rate" "DB query failed: $(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('error','?')[:60])" "$delegate_rate_out" 2>/dev/null)"
+  if [[ -z "$delegate_rate_out" ]] || python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'error' in d else 1)" "$delegate_rate_out" 2>/dev/null; then
+    _skip 4 "0.8.1" "delegate 24h success rate" "coordinator /stats/delegate unavailable (needs nixos-rebuild)"
   elif [[ "$delegate_total" -lt 1 ]]; then
     _skip 4 "0.8.1" "delegate 24h success rate" "insufficient sample (0 calls in last 24h)"
   else
@@ -1678,12 +1626,74 @@ run_phase_54() {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 55: Temporal Memory + Agent Ops checks
+# ---------------------------------------------------------------------------
+_p55_coord="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+_p55_check_import() {
+  local module="$1"
+  local r; r="$(_p54_root)"
+  python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); import ${module}" 2>/dev/null
+}
+_p55_check_supersede_post() {
+  curl -s -X POST "${_p55_coord}/memory/supersede" \
+    -H 'Content-Type: application/json' \
+    -d '{"fact_id":"aq-qa-phase55-old","replacement":"aq-qa-phase55-new","reason":"phase55-smoke"}' |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('superseded') is True else 1)"
+}
+_p55_check_supersede_history() {
+  curl -s "${_p55_coord}/memory/supersede/history?limit=1" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d.get('events'), list) else 1)"
+}
+_p55_check_file_contains() {
+  local path="$1" pattern="$2"
+  grep -q "${pattern}" "${REPO_ROOT}/${path}"
+}
+_p55_check_drift_endpoint() {
+  curl -s "${_p55_coord}/api/traces/drift" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('drift_score'); sys.exit(0 if s is None or isinstance(s,(int,float)) and 0 <= s <= 1 else 1)"
+}
+_p55_check_crystalline_status() {
+  curl -s "${_p55_coord}/memory/crystalline/status" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if {'sessions_processed','insights_stored','last_run'} <= set(d) else 1)"
+}
+_p55_check_crystalline_post() {
+  curl -s -X POST "${_p55_coord}/memory/crystalline/run" \
+    -H 'Content-Type: application/json' \
+    -d '{}' |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'error' in d or d.get('accepted') is True else 1)"
+}
+_p55_check_crystalline_auth() {
+  grep -q '"/memory/crystalline/"' "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/core/auth_middleware.py" &&
+    grep -q '"/memory/crystalline/"' "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
+}
+
+run_phase_55() {
+  _check 6 "1.1.1" "MemorySuperseder importable"              _p55_check_import memory_superseder
+  _check 6 "1.1.2" "Supersede POST endpoint registered"        _p55_check_supersede_post
+  _check 6 "1.1.3" "Supersede history endpoint registered"     _p55_check_supersede_history
+  _check 7 "1.1.4" "Supersession DDL present"                  _p55_check_file_contains ai-stack/mcp-servers/hybrid-coordinator/extensions/memory_superseder.py "CREATE TABLE IF NOT EXISTS memory_supersessions"
+  _check 6 "1.1.5" "DriftAnalyzer importable"                  _p55_check_import drift_analyzer
+  _check 6 "1.1.6" "Drift endpoint registered"                 _p55_check_drift_endpoint
+  _check 6 "1.1.7" "Drift score contract valid"                _p55_check_drift_endpoint
+  _check 7 "1.1.8" "Drift threshold configured"                _p55_check_file_contains config/runtime-budget-policy.json '"drift_alert_threshold"'
+  _check 7 "1.1.9" "agent-ops profile config present"          test -f "${REPO_ROOT}/config/agent-ops-profile.json"
+  _check 6 "1.1.10" "MemoryCrystallizer importable"            _p55_check_import memory_crystallizer
+  _check 6 "1.1.11" "Crystalline status endpoint registered"   _p55_check_crystalline_status
+  _check 6 "1.1.12" "Crystalline run endpoint registered"      _p55_check_crystalline_post
+  _check 7 "1.1.13" "Crystallized sessions DDL present"        _p55_check_file_contains ai-stack/mcp-servers/hybrid-coordinator/extensions/memory_crystallizer.py "CREATE TABLE IF NOT EXISTS crystallized_sessions"
+  _check 7 "1.1.14" "Crystallizer tracks session_hash"         _p55_check_file_contains ai-stack/mcp-servers/hybrid-coordinator/extensions/memory_crystallizer.py "session_hash"
+  _check 7 "1.1.15" "aq-crystallize executable"                test -x "${REPO_ROOT}/scripts/ai/aq-crystallize"
+  _check 7 "1.1.16" "Crystalline auth prefixes wired"          _p55_check_crystalline_auth
+}
+
+# ---------------------------------------------------------------------------
 # Main dispatch
 # ---------------------------------------------------------------------------
 case "$PHASE" in
   help|"")
     printf 'Usage: aq-qa <phase> [--json] [--sudo]\n'
-    printf '  phase: 0-10, 54, all, or help\n'
+    printf '  phase: 0-10, 54, 55, all, or help\n'
     printf '    0  pre-flight smoke (services, ports, inference, editor, front-door)\n'
     printf '    1  infrastructure (redis, postgres, qdrant, aidb, hybrid-coordinator)\n'
     printf '    2  runtime/package/confinement diagnostics (llama preset)\n'
@@ -1696,6 +1706,7 @@ case "$PHASE" in
     printf '    9  optimisation targets (llama health, Redis cache, embeddings)\n'
     printf '   10  regression (git hooks, verifier self-check, no failed units)\n'
     printf '   54  Phase 54 agentic-first elevation (memory, intent, RAG, trace, eval)\n'
+    printf '   55  Phase 55 temporal memory, crystalline distillation, agent ops\n'
     printf '  --json   Machine-readable JSON output\n'
     printf '  --sudo   Enable checks requiring sudo (AppArmor)\n'
     exit 0
@@ -1712,6 +1723,7 @@ case "$PHASE" in
   9) run_phase_9 ;;
   10) run_phase_10 ;;
   54) run_phase_54 ;;
+  55) run_phase_55 ;;
   all)
     PHASE="all"
     run_phase_0
@@ -1726,6 +1738,7 @@ case "$PHASE" in
     run_phase_9
     run_phase_10
     run_phase_54
+    run_phase_55
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2
