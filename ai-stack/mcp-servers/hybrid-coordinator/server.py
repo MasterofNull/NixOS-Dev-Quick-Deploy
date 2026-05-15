@@ -698,6 +698,22 @@ async def initialize_server():
         federated_integration_client = None
         logger.info("⚠ Continuous learning DISABLED (federated learning also disabled)")
 
+    # G-1 (arch-revamp Round 4) — wire GarbageCollector background scheduler
+    try:
+        import asyncpg as _asyncpg
+        from extensions.garbage_collector import GarbageCollector, run_gc_scheduler
+        _gc_dsn = (
+            f"postgresql://{_require_env('POSTGRES_USER')}:"
+            f"{pg_password}@{_require_env('POSTGRES_HOST')}:"
+            f"{_require_env('POSTGRES_PORT')}/{_require_env('POSTGRES_DB')}"
+        )
+        _gc_pool = await _asyncpg.create_pool(_gc_dsn, min_size=1, max_size=2)
+        _gc = GarbageCollector(db_pool=_gc_pool, qdrant_client=qdrant_client)
+        asyncio.create_task(run_gc_scheduler(_gc, interval_seconds=3600))
+        logger.info("✓ GarbageCollector background scheduler started (interval=1h)")
+    except Exception as _gc_exc:
+        logger.warning("⚠ GarbageCollector unavailable: %s", _gc_exc)
+
     # Phase 54.5/54.6 — wire TraceCollector + EvalRunner postgres client
     import trace_collector as _tc54
     import eval_runner as _er54
