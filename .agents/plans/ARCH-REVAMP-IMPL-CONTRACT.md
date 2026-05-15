@@ -1,5 +1,5 @@
 # Architecture Revamp — Implementation Contract
-**Status:** DRAFT — Awaiting agent review and sign-off
+**Status:** FINAL — All senior agents confirmed; all Open Questions resolved; ready for Round 1 execution
 **Date:** 2026-05-15
 **Lead:** Claude Sonnet 4.6 (Orchestrator)
 **Agents:** Gemini CLI · Codex CLI · Qwen (local, aq-agent-loop)
@@ -111,12 +111,12 @@ These changes live in the coordinator Python files. They require `nixos-rebuild 
 
 | ID | Priority | Bug ref | Change | Done when |
 |----|----------|---------|--------|-----------|
-| C-1 | **P0** | §15.1 | In coordinator outbound switchboard calls (find in `llm_client.py` or `llm_router.py`), inject `X-AI-Profile: coordinator-internal` header | Coordinator calls never trigger circular hints fetch |
-| C-2 | **P1** | §13 | Fix `_probe_remote_fallback()` in `agent_executor.py:654–663`: 401/403/404 must be treated as unhealthy (not healthy) | Probe returns unhealthy for auth failures |
-| C-3 | **P1** | §13 | Fix hardcoded endpoints in `agent_executor.py:201–207` — replace with env var reads | No bare `127.0.0.1` strings in file |
-| C-4 | P2 | §13 | Fix `can (you|i|we)` regex misclassification in `router.py:97–108`: implementation requests should NOT route as QUERY | `"can you implement X"` → IMPLEMENTATION tier |
-| C-5 | P2 | §9 | Create thin adapter in `ai-stack/local-orchestrator/router.py`: replace `AgentBackend.*` enum with `RoutingDecision` from `routing_contract.py` | Old enum gone; callers receive `RoutingDecision` |
-| C-6 | P2 | §9 | Retire `ai-stack/local-agents/task_router.py`: verify zero callers then delete OR convert to `RoutingDecision` emitter if called | File deleted or emits `RoutingDecision` only |
+| C-1 | **P0** | §15.1 | Inject `X-AI-Profile: coordinator-internal` header at outbound switchboard POST in `core/llm_client.py:460-473` ONLY | Coordinator-originated calls never trigger circular hints fetch |
+| C-2 | **P1** | §13 | Fix `_probe_remote_fallback()` in `ai-stack/local-agents/agent_executor.py`: 401/403/404 must be treated as unhealthy (not healthy) | Probe returns unhealthy for auth failures |
+| C-3 | **P1** | §13 | Fix hardcoded `127.0.0.1:*` endpoints in `ai-stack/local-agents/agent_executor.py` — replace with env var reads | No bare `127.0.0.1` strings remain in file |
+| C-4 | P2 | §13 | Fix `can (you|i|we)` regex in `ai-stack/local-orchestrator/router.py:97–108`: implementation requests must NOT route as QUERY | `"can you implement X"` → IMPLEMENTATION category |
+| C-5 | P2 | §9 | Thin adapter in `ai-stack/local-orchestrator/router.py`: emit canonical `RoutingDecision` from `routing_contract.py`; preserve `AgentBackend` as compatibility shim while callers migrate | Callers receive `RoutingDecision`; old enum still importable |
+| C-6 | P2 | §9 | Staged retirement of `ai-stack/local-agents/task_router.py`: update callers (self_improvement.py, __init__.py) to use `routing_contract.RoutingDecision`; then delete | All callers migrated; file removed |
 
 ### 2.3 Module Audit Slice — Owner: Gemini
 
@@ -192,12 +192,42 @@ flagging any concerns, and confirming their slice assignments.
   accidentally receive hints or loop detection
 - Note: nixos-rebuild must be run from terminal, not Claude shell
 
-### 4.2 Gemini — PENDING REVIEW
-*(Gemini to fill in: confirm slice assignments, flag concerns, add constraints)*
+### 4.2 Gemini — CONFIRMED (2026-05-15)
+- **Slice Assignments:** Confirmed G-1, G-2, G-4 (Round 1) and G-3 (Round 3)
+- **Role:** Audit, risk identification, conformance review — aligns with senior architecture critique in §14 of PRD
+- **Concerns:**
+  - G-1/G-2 (dead code): "dead" status may be obscured by shell script calls or dynamic endpoints; report will categorize as `CONFIRMED_DEAD` vs `POTENTIALLY_REACHABLE`
+  - G-3 (review): requires Codex to publish C-5/C-6 adapter output to `.agents/delegation/outputs/` before formal approval can be issued
+- **Constraints:**
+  - Will use sub-agent for high-volume G-1/G-2 audits to keep main session lean
+  - Strictly adheres to `X-AI-` header namespace and `RoutingTier` taxonomy in all recommendations
+- **Q3 answer:** Report only — destructive ops (git rm) consolidated under Claude for single point of accountability; Gemini delivers "Ready-to-Execute" report with exact commands
+- **Q4 answer:** Document only — no `SWB_HINTS_MODE` toggle; stale hints behavior is a deliberate KV cache optimization; document as "intended architectural priority" in REQUEST-ROUTING-FLOW.md
 
-### 4.3 Codex — PENDING REVIEW
-*(Codex to fill in: confirm slice assignments, flag any API surface concerns,
-note which files will be touched)*
+### 4.3 Codex — CONFIRMED (2026-05-15)
+- Owns **C-1 through C-6**, all compatible with Part 1 standards
+- C-1 uses existing `X-AI-*` namespace; C-2/C-3 are Python hygiene; C-4–C-6 converge onto routing_contract.py
+- New code will be typed, async-safe, httpx-only, no hardcoded URLs, no vendor routing names
+
+**Exact files per slice (corrected from draft):**
+
+| Slice | Files |
+|-------|-------|
+| C-1 | `ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py:460-473`; `tests/test_llm_client.py` |
+| C-2 | `ai-stack/local-agents/agent_executor.py`; `ai-stack/local-agents/test_agent_executor.py` |
+| C-3 | `ai-stack/local-agents/agent_executor.py`; `ai-stack/local-agents/test_agent_executor.py` |
+| C-4 | `ai-stack/local-orchestrator/router.py`; add `test_router.py` regression coverage |
+| C-5 | `ai-stack/local-orchestrator/router.py`, `orchestrator.py`, `__init__.py`, `test_router.py` |
+| C-6 | `ai-stack/local-agents/task_router.py`, `__init__.py`, `self_improvement.py`, `scripts/testing/test-local-agent-offline-resilience.py` |
+
+**Concerns / corrections:**
+1. Root `llm_client.py` and `llm_router.py` are shim re-exports only; live implementations are `core/llm_client.py` and `knowledge/llm_router.py`
+2. C-1: inject `X-AI-Profile: coordinator-internal` ONLY at `core/llm_client.py:460-473` (coordinator → switchboard path), NOT at every local profile use
+3. C-5: router.py has live runtime callers — thin compatibility adapter required, not deletion
+4. C-6: task_router.py has live source imports (self_improvement.py:27) — staged retirement, not immediate deletion
+
+**Q2 answer:** `local-orchestrator/router.py` is live. Active callers: `orchestrator.py:21,78,117`, `__init__.py:10`. **Adapt with thin adapter.**
+**Q5 answer:** Forcing `stream=True` does not materially hurt KV cache. Cache reuse is driven by prompt-prefix stability, not HTTP transport. N-2 fix is acceptable.
 
 ### 4.4 Qwen (local) — PENDING REVIEW
 *(Qwen to fill in: confirm Q-1 through Q-4, flag any doc structure issues)*
@@ -206,22 +236,21 @@ note which files will be touched)*
 
 ## Part 5 — Open Questions (resolve before Round 1)
 
-1. **N-1 profile name:** `coordinator-internal` vs `internal` vs `local-nocard`?
-   Should be short, clear, and not break existing profile validation.
+1. **N-1 profile name:** ~~RESOLVED~~ — **`coordinator-internal`**. Clear, self-documenting
+   (tells callers and log readers who set it), consistent with `coordinator-*` naming
+   used elsewhere. Short enough for headers and logs.
 
-2. **C-5 adapter scope:** Does `local-orchestrator/router.py` have any live
-   callers in the running service? If zero, should we delete it entirely rather
-   than write an adapter?
+2. **C-5 adapter scope:** ~~RESOLVED~~ — Live callers confirmed: `orchestrator.py:21,78,117`
+   and `__init__.py:10`. **Adapt** with thin compatibility shim, do NOT delete.
 
-3. **G-1/G-2 delete authority:** Gemini audit produces recommendation; Claude
-   executes delete. Is Gemini authorized to write the delete directly, or
-   report only? (Recommend: report only, Claude executes to maintain single
-   committer on destructive ops.)
+3. **G-1/G-2 delete authority:** ~~RESOLVED~~ — Gemini report-only; Claude
+   executes `git rm` after reviewing "Ready-to-Execute" report. Single
+   committer on destructive ops.
 
-4. **§14.1 BUG-1 stale hints:** Document the trade-off only (N-4-adjacent) or
-   also add a `SWB_HINTS_MODE=first|latest` toggle? Toggling busts KV cache
-   when `latest` — needs explicit opt-in. Current plan: document only.
+4. **§14.1 BUG-1 stale hints:** ~~RESOLVED~~ — Document only. No
+   `SWB_HINTS_MODE` toggle. Stale hints = intentional KV cache optimization.
+   Document in REQUEST-ROUTING-FLOW.md as "intended architectural priority."
 
-5. **Streaming (N-2) and KV cache:** Forcing stream=True on continue-local
-   eliminates blank-screen UX but may affect KV cache hit rate in llama-server.
-   Is this acceptable? (Recommend: yes — UX > marginal cache benefit.)
+5. **Streaming (N-2) and KV cache:** ~~RESOLVED~~ — Acceptable. `stream=True` only
+   changes HTTP transport, not prompt prefix or slot selection in llama.cpp.
+   Cache reuse is driven by prompt stability, not streaming. N-2 fix approved.
