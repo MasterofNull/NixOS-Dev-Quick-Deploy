@@ -459,11 +459,9 @@ class LLMClient:
 
         headers = {
             "Content-Type": "application/json",
-            "X-AI-Profile": (
-                self.local_tool_profile if tools else self.local_profile
-            ),
             "X-AI-Route": "local",
         }
+        headers.setdefault("X-AI-Profile", "coordinator-internal")
 
         try:
             response = await self.client.post(
