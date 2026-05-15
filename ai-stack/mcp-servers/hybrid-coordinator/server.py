@@ -705,7 +705,18 @@ async def initialize_server():
     _er54.init(postgres_client=postgres_client)
     memory_superseder.init(postgres_client=postgres_client)
     drift_analyzer.init(postgres_client=postgres_client)
-    memory_crystallizer.init(postgres_client=postgres_client)
+    async def _store_crystallized_insight(insight: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        return await memory_manager.store_agent_memory(
+            "episodic",
+            insight,
+            content=insight,
+            metadata=metadata,
+        )
+
+    memory_crystallizer.init(
+        postgres_client=postgres_client,
+        store_insight_fn=_store_crystallized_insight,
+    )
     if postgres_client is not None:
         try:
             await _tc54.ensure_schema(postgres_client)

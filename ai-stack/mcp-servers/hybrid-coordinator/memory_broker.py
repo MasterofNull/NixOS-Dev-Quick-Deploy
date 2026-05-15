@@ -137,6 +137,7 @@ class MemoryBroker:
             result = await asyncio.wait_for(
                 self._store(
                     memory_type=memory_type,
+                    summary=content,
                     content=content,
                     metadata=metadata,
                 ),

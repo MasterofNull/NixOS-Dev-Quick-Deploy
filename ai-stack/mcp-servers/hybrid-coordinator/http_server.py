@@ -1667,7 +1667,6 @@ async def run_http_mode(port: int) -> None:
         Response:
           {total, ok, success_rate, window_s, skipped_probes}
         """
-        import time as _t
         try:
             window_s = int(request.rel_url.query.get("window_s", "86400"))
         except (TypeError, ValueError):
@@ -1677,7 +1676,7 @@ async def run_http_mode(port: int) -> None:
             "TOOL_AUDIT_LOG_PATH",
             "/var/log/ai-audit-sidecar/tool-audit.jsonl",
         )
-        now = _t.time()
+        now = time.time()
         total = 0
         ok = 0
         skipped_probes = 0
@@ -1752,7 +1751,7 @@ async def run_http_mode(port: int) -> None:
             return web.json_response({"error": "facts must be array"}, status=400)
 
         stored = 0
-        ts = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         mb = memory_broker.get_broker()
         for f in facts[:8]:  # cap at 8 per call
             if not isinstance(f, dict):
@@ -1761,10 +1760,10 @@ async def run_http_mode(port: int) -> None:
             if not fact_text:
                 continue
             try:
-                await mb.store(
+                result = await mb.write(
                     memory_type="semantic",
                     content=fact_text,
-                    metadata={
+                    context={
                         "scope":      str(f.get("scope") or "other")[:64],
                         "confidence": float(f.get("confidence") or 0.8),
                         "source":     str(f.get("source") or "aq-commit-facts")[:128],
@@ -1772,7 +1771,8 @@ async def run_http_mode(port: int) -> None:
                         "origin":     "commit_facts",
                     },
                 )
-                stored += 1
+                if result.get("status") == "stored":
+                    stored += 1
             except Exception as _exc:
                 logger.debug("memory_facts_store_skip err=%s", _exc)
 
@@ -1830,7 +1830,7 @@ async def run_http_mode(port: int) -> None:
         if agent not in _VALID_AGENTS:
             agent = "unknown"
 
-        ts = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         # Write to tool-audit.jsonl — same format /stats/delegate reads
         audit_entry = {
@@ -1924,7 +1924,7 @@ async def run_http_mode(port: int) -> None:
             "TOOL_AUDIT_LOG_PATH",
             "/var/log/ai-audit-sidecar/tool-audit.jsonl",
         )
-        now = _t.time()
+        now = time.time()
         events = []
         try:
             with open(audit_log, "r", encoding="utf-8", errors="replace") as _fh:

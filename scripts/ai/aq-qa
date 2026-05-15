@@ -1732,10 +1732,12 @@ _p56_check_aq_commit_facts() {
   bash -n "${REPO_ROOT}/scripts/ai/aq-commit-facts"
 }
 _p56_check_memory_facts_post() {
+  local fact
+  fact="aq-qa phase56 smoke $(date +%s%N)"
   curl -s -X POST "${_p56_coord}/api/memory/facts" \
     -H 'Content-Type: application/json' \
-    -d '{"facts":[{"fact":"aq-qa phase56 smoke","scope":"other","confidence":0.9,"source":"aq-qa"}]}' |
-    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'stored' in d else 1)"
+    -d "{\"facts\":[{\"fact\":\"${fact}\",\"scope\":\"other\",\"confidence\":0.9,\"source\":\"aq-qa\"}]}" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if int(d.get('stored',0)) >= 1 else 1)"
 }
 _p56_check_agent_ops_status() {
   curl -s "${_p56_coord}/api/agent-ops/status" |

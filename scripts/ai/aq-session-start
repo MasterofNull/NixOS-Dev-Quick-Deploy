@@ -167,7 +167,7 @@ try:
 except Exception:
     print("Lessons: (unavailable)")
 PYEOF
-printf '--------------------\n'
+printf '%s\n' '--------------------'
 
 # Optional Qwen brief
 if [[ "$summarize" -eq 1 ]]; then

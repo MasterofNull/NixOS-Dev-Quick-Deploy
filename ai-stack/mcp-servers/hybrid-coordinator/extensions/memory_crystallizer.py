@@ -36,7 +36,7 @@ class MemoryCrystallizer:
         self,
         postgres_client: Optional[Any] = None,
         *,
-        store_insight_fn: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
+        store_insight_fn: Optional[Callable[[str, Dict[str, Any]], Awaitable[Dict[str, Any]]]] = None,
     ) -> None:
         self._pg = postgres_client
         self._store_insight = store_insight_fn
@@ -63,10 +63,24 @@ class MemoryCrystallizer:
             return {"status": "already_processed", "session_hash": session_hash, "insights_stored": 0}
 
         insight = _distill_session_payload(raw)
-        if self._store_insight is not None:
-            await self._store_insight(insight)
-
         now = datetime.now(timezone.utc).isoformat()
+        if self._store_insight is not None:
+            await self._store_insight(
+                insight,
+                {
+                    "source_event_id": f"session:{session_hash}",
+                    "evidence": [{"type": "session_hash", "value": session_hash}],
+                    "scope": "episodic",
+                    "confidence": 0.8,
+                    "last_validated_at": now,
+                    "promotion_status": "crystallized",
+                    "supersedes": [],
+                    "expires_at": None,
+                    "source": "memory_crystallizer",
+                    "session_path": str(path),
+                },
+            )
+
         if self._pg is not None:
             await self._pg.execute(
                 """
@@ -145,7 +159,7 @@ _crystallizer = MemoryCrystallizer()
 def init(
     postgres_client: Optional[Any] = None,
     *,
-    store_insight_fn: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
+    store_insight_fn: Optional[Callable[[str, Dict[str, Any]], Awaitable[Dict[str, Any]]]] = None,
 ) -> None:
     global _crystallizer
     _crystallizer = MemoryCrystallizer(
