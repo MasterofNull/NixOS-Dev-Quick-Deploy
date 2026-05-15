@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from learning_lifecycle import is_default_runtime_active, normalize_promotion_status, strongest_status
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +57,7 @@ class LessonUsageEvent:
 class LessonEffectivenessStats:
     """Aggregated statistics for a lesson."""
     lesson_key: str
+    promotion_status: str = "candidate"
     total_uses: int = 0
     successful_uses: int = 0
     failed_uses: int = 0
@@ -73,6 +76,8 @@ class LessonEffectivenessStats:
         """Convert to dictionary."""
         return {
             "lesson_key": self.lesson_key,
+            "promotion_status": self.promotion_status,
+            "runtime_active": is_default_runtime_active(self.promotion_status),
             "total_uses": self.total_uses,
             "successful_uses": self.successful_uses,
             "failed_uses": self.failed_uses,
@@ -114,6 +119,8 @@ def track_lesson_usage(
         metadata: Optional additional context
     """
     global _tracker_state
+    metadata = metadata or {}
+    promotion_status = normalize_promotion_status(metadata.get("promotion_status")).value
 
     event = LessonUsageEvent(
         lesson_key=lesson_key,
@@ -122,16 +129,20 @@ def track_lesson_usage(
         success=success,
         agent=agent,
         latency_ms=latency_ms,
-        metadata=metadata or {},
+        metadata=metadata,
     )
 
     _tracker_state.usage_history.append(event)
 
     # Update lesson stats
     if lesson_key not in _tracker_state.lesson_stats:
-        _tracker_state.lesson_stats[lesson_key] = LessonEffectivenessStats(lesson_key=lesson_key)
+        _tracker_state.lesson_stats[lesson_key] = LessonEffectivenessStats(
+            lesson_key=lesson_key,
+            promotion_status=promotion_status,
+        )
 
     stats = _tracker_state.lesson_stats[lesson_key]
+    stats.promotion_status = strongest_status((stats.promotion_status, promotion_status)).value
     stats.total_uses += 1
     if success:
         stats.successful_uses += 1
@@ -233,7 +244,8 @@ def get_lesson_recommendation(context: str) -> List[str]:
     # Get lessons that were successful in this context
     successful_lessons = [
         s.lesson_key for s in _tracker_state.lesson_stats.values()
-        if s.success_rate >= 0.8 and s.total_uses >= 3
+        if is_default_runtime_active(s.promotion_status)
+        and s.success_rate >= 0.8 and s.total_uses >= 3
         and context in list(s.recent_contexts)
     ]
 
