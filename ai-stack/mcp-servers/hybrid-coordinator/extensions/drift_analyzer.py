@@ -48,7 +48,10 @@ class DriftAnalyzer:
                 "error": "postgres_unavailable",
             }
 
-        rows = await self._pg.fetch(
+        fetch_rows = getattr(self._pg, "fetch_all", None) or getattr(self._pg, "fetch", None)
+        if fetch_rows is None:
+            raise AttributeError("postgres client supports neither fetch_all nor fetch")
+        rows = await fetch_rows(
             """
             SELECT intent, retrieval_hits, retrieval_ms, llm_ms, total_ms
             FROM query_traces

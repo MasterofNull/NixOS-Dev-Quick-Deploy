@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=../../config/service-endpoints.sh
+source "${REPO_ROOT}/config/service-endpoints.sh"
+
+SESSION_DIR="${AQ_CONTINUE_SESSIONS_DIR:-${HOME}/.continue/sessions}"
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --session-dir)
+      SESSION_DIR="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    *)
+      printf 'usage: aq-crystallize [--session-dir PATH] [--dry-run]\n' >&2
+      exit 2
+      ;;
+  esac
+done
+
+find "${SESSION_DIR}" -type f -name '*.json' 2>/dev/null | sort | while IFS= read -r session_path; do
+  [[ -n "${session_path}" ]] || continue
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    printf '%s\n' "${session_path}"
+    continue
+  fi
+  curl -sf -X POST "${HYBRID_COORDINATOR_URL}/memory/crystalline/run" \
+    -H 'Content-Type: application/json' \
+    -d "$(python3 -c 'import json,sys; print(json.dumps({\"session_path\": sys.argv[1]}))' "${session_path}")" >/dev/null
+done

@@ -42,6 +42,7 @@ LOOPBACK_AGENT_PREFIXES = (
     "/control/runtimes",
     "/control/runtimes/",
     "/memory/",
+    "/memory/crystalline/",
     "/learning/",
     "/cache/",
     "/harness/",

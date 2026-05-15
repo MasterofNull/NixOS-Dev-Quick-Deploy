@@ -1,4 +1,5 @@
 {
+  "drift_alert_threshold": 0.7,
   "version": "1.0",
   "description": "Runtime budget and cost guardrails for agent sessions and workflow runs.",
   "default": {
