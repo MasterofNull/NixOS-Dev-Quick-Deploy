@@ -1636,11 +1636,6 @@ async def run_http_mode(port: int) -> None:
 
     async def handle_query(request):
         """HTTP endpoint for query routing."""
-        # Phase 54.5 — wrap entire handler in trace span
-        _trace = trace_collector.TraceCollector(
-            postgres_client=None,  # uses module-level _pg set by trace_collector.init()
-            query=(await request.clone().text())[:200] if hasattr(request, "clone") else "",
-        )
         try:
             data = await request.json()
             (
@@ -1649,6 +1644,12 @@ async def run_http_mode(port: int) -> None:
             ) = _parse_query_input(data)
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+            # Phase 54.5 — wrap handler in trace span (init after body parse to avoid
+            # consuming the aiohttp request body stream via request.clone().text())
+            _trace = trace_collector.TraceCollector(
+                postgres_client=None,  # uses module-level _pg set by trace_collector.init()
+                query=query[:200],
+            )
 
             # Phase 54.2 — classify intent before any routing decisions
             _clf = intent_classifier.get_classifier()
@@ -1797,6 +1798,12 @@ async def run_http_mode(port: int) -> None:
                 prefer_local = bool(data.get("prefer_local", True)) if "data" in locals() and isinstance(data, dict) else True
                 if str(audit_metadata.get("backend", "unknown")) == "unknown":
                     audit_metadata["backend"] = "local" if prefer_local else "remote"
+            logger.exception(
+                "query_handler_failed query=%r generate_response=%s prefer_local=%s",
+                query[:120] if "query" in locals() else "",
+                generate_response if "generate_response" in locals() else False,
+                prefer_local if "prefer_local" in locals() else True,
+            )
             return web.json_response({"error": "route_search_failed", "detail": str(exc)}, status=500)
 
     async def handle_orchestrate(request):
