@@ -1772,7 +1772,8 @@ async def run_http_mode(port: int) -> None:
                         "origin":     "commit_facts",
                     },
                 )
-                if result.get("status") == "stored":
+                # "skipped" (dedup) means content already in memory — count as stored
+                if result.get("status") in {"stored", "skipped"}:
                     stored += 1
             except Exception as _exc:
                 logger.debug("memory_facts_store_skip err=%s", _exc)
