@@ -3606,6 +3606,68 @@
                 </div>
             </div>
 
+            <!-- Agent Ops — Phase 55 -->
+            <div class="dashboard-section" id="section-agent-ops">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Agent Ops</h2>
+                        </div>
+                        <span class="card-badge" id="agentOpsBadge">phase 55</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+                            <button onclick="loadAgentOps()" style="font-size:0.75rem;padding:0.3rem 0.75rem;border-radius:4px;border:1px solid var(--border,#333);background:var(--card-bg,#1e1e2e);color:var(--text,#cdd6f4);cursor:pointer;">Refresh</button>
+                            <span id="agentOpsUpdated" style="font-size:0.7rem;color:var(--subtext,#6c7086);align-self:center;"></span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;">
+
+                            <!-- Drift Score card -->
+                            <div style="background:var(--surface,#181825);border-radius:8px;padding:1rem;">
+                                <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--subtext,#6c7086);margin-bottom:0.5rem;">Reasoning Drift</div>
+                                <div style="display:flex;align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">
+                                    <span id="agentOpsDriftScore" style="font-size:2rem;font-weight:700;color:var(--text,#cdd6f4);">--</span>
+                                    <span style="font-size:0.75rem;color:var(--subtext,#6c7086);padding-bottom:0.25rem;">/ 1.0</span>
+                                </div>
+                                <div style="background:var(--border,#333);border-radius:4px;height:6px;overflow:hidden;margin-bottom:0.5rem;">
+                                    <div id="agentOpsDriftBar" style="height:100%;width:0%;background:#a6e3a1;border-radius:4px;transition:width 0.4s,background 0.4s;"></div>
+                                </div>
+                                <div id="agentOpsDriftAlert" style="font-size:0.75rem;margin-bottom:0.25rem;"></div>
+                                <div id="agentOpsDriftBreakdown" style="font-size:0.72rem;color:var(--subtext,#6c7086);line-height:1.6;"></div>
+                            </div>
+
+                            <!-- Memory Freshness card -->
+                            <div style="background:var(--surface,#181825);border-radius:8px;padding:1rem;">
+                                <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--subtext,#6c7086);margin-bottom:0.5rem;">Memory Freshness</div>
+                                <div style="display:flex;align-items:flex-end;gap:0.5rem;margin-bottom:0.5rem;">
+                                    <span id="agentOpsSupersessionCount" style="font-size:2rem;font-weight:700;color:var(--text,#cdd6f4);">--</span>
+                                    <span style="font-size:0.75rem;color:var(--subtext,#6c7086);padding-bottom:0.25rem;">supersessions</span>
+                                </div>
+                                <div id="agentOpsSupersessionList" style="font-size:0.72rem;color:var(--subtext,#6c7086);line-height:1.7;max-height:90px;overflow-y:auto;"></div>
+                            </div>
+
+                            <!-- Crystallization Queue card -->
+                            <div style="background:var(--surface,#181825);border-radius:8px;padding:1rem;">
+                                <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--subtext,#6c7086);margin-bottom:0.5rem;">Crystallization Queue</div>
+                                <div style="display:flex;gap:1.5rem;margin-bottom:0.5rem;">
+                                    <div>
+                                        <div style="font-size:2rem;font-weight:700;color:var(--text,#cdd6f4);" id="agentOpsCrystalSessions">--</div>
+                                        <div style="font-size:0.7rem;color:var(--subtext,#6c7086);">sessions</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size:2rem;font-weight:700;color:var(--text,#cdd6f4);" id="agentOpsCrystalInsights">--</div>
+                                        <div style="font-size:0.7rem;color:var(--subtext,#6c7086);">insights</div>
+                                    </div>
+                                </div>
+                                <div id="agentOpsCrystalLastRun" style="font-size:0.72rem;color:var(--subtext,#6c7086);"></div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- AIDB Health Monitoring (P1/P2 Features) -->
             <div class="dashboard-section" id="section-ai-services">
                 <div class="card">
@@ -6749,6 +6811,8 @@
             loadSystemMap();
             setInterval(loadSystemMap, 60000);
             loadLogicFlow();
+            loadAgentOps();
+            setInterval(loadAgentOps, 30000);
             lazyLoadManager.registerCard('deployment-ops', 'loadDeploymentOps');
 
             // Connect WebSocket for real-time metrics (2-second updates)
@@ -10750,6 +10814,94 @@
                 container.innerHTML = `<pre style="font-size:0.75rem;color:var(--text,#cdd6f4);white-space:pre-wrap;margin:0">${flowchart}</pre>`;
             }
             if (badge) { badge.textContent = 'ok'; badge.style.background = 'var(--status-ok,#a6e3a1)'; }
+        }
+
+        // ── Agent Ops — Phase 55 ─────────────────────────────────────────────
+        async function loadAgentOps() {
+            const badge = document.getElementById('agentOpsBadge');
+            const updated = document.getElementById('agentOpsUpdated');
+
+            const [driftRes, historyRes, crystalRes] = await Promise.allSettled([
+                fetch(`${FASTAPI_BASE}/api/traces/drift`, { cache: 'no-store' }),
+                fetch(`${FASTAPI_BASE}/memory/supersede/history?limit=5`, { cache: 'no-store' }),
+                fetch(`${FASTAPI_BASE}/memory/crystalline/status`, { cache: 'no-store' }),
+            ]);
+
+            let anyError = false;
+
+            // Drift score
+            try {
+                const driftData = driftRes.status === 'fulfilled' && driftRes.value.ok
+                    ? await driftRes.value.json() : null;
+                const scoreEl = document.getElementById('agentOpsDriftScore');
+                const barEl = document.getElementById('agentOpsDriftBar');
+                const alertEl = document.getElementById('agentOpsDriftAlert');
+                const bdEl = document.getElementById('agentOpsDriftBreakdown');
+                if (driftData && driftData.drift_score !== undefined && driftData.drift_score !== null) {
+                    const s = parseFloat(driftData.drift_score);
+                    scoreEl.textContent = s.toFixed(2);
+                    barEl.style.width = `${Math.min(s * 100, 100)}%`;
+                    barEl.style.background = s >= 0.7 ? '#f38ba8' : s >= 0.4 ? '#fab387' : '#a6e3a1';
+                    if (driftData.alert_triggered) {
+                        alertEl.innerHTML = '<span style="color:#f38ba8;font-weight:600">ALERT: drift threshold exceeded</span>';
+                    } else {
+                        alertEl.innerHTML = '<span style="color:#a6e3a1">nominal</span>';
+                    }
+                    const bd = driftData.breakdown || {};
+                    bdEl.innerHTML = [
+                        bd.intent_flip_rate !== undefined ? `flip rate: ${(bd.intent_flip_rate * 100).toFixed(0)}%` : '',
+                        bd.latency_trend !== undefined ? `latency trend: ${bd.latency_trend > 0 ? '+' : ''}${bd.latency_trend.toFixed(0)} ms/q` : '',
+                        driftData.window_size ? `window: ${driftData.window_size} queries` : '',
+                    ].filter(Boolean).join(' · ');
+                } else {
+                    scoreEl.textContent = 'n/a';
+                    alertEl.textContent = driftData?.error || 'unavailable';
+                    anyError = true;
+                }
+            } catch (_) { anyError = true; }
+
+            // Supersession history
+            try {
+                const histData = historyRes.status === 'fulfilled' && historyRes.value.ok
+                    ? await historyRes.value.json() : null;
+                const countEl = document.getElementById('agentOpsSupersessionCount');
+                const listEl = document.getElementById('agentOpsSupersessionList');
+                if (histData) {
+                    const events = Array.isArray(histData) ? histData : (histData.events || []);
+                    countEl.textContent = histData.total ?? events.length;
+                    listEl.innerHTML = events.length
+                        ? events.map(e => `<div style="border-bottom:1px solid var(--border,#333);padding:0.15rem 0;">${e.reason || e.fact_id || JSON.stringify(e)}</div>`).join('')
+                        : '<span style="color:var(--subtext,#6c7086)">no supersessions yet</span>';
+                } else {
+                    countEl.textContent = '--';
+                    listEl.textContent = 'unavailable';
+                    anyError = true;
+                }
+            } catch (_) { anyError = true; }
+
+            // Crystallization status
+            try {
+                const crystalData = crystalRes.status === 'fulfilled' && crystalRes.value.ok
+                    ? await crystalRes.value.json() : null;
+                if (crystalData) {
+                    document.getElementById('agentOpsCrystalSessions').textContent = crystalData.sessions_processed ?? '--';
+                    document.getElementById('agentOpsCrystalInsights').textContent = crystalData.insights_stored ?? '--';
+                    const lr = crystalData.last_run;
+                    document.getElementById('agentOpsCrystalLastRun').textContent = lr
+                        ? `last run: ${new Date(lr).toLocaleString()}` : 'never run';
+                } else {
+                    document.getElementById('agentOpsCrystalSessions').textContent = '--';
+                    document.getElementById('agentOpsCrystalInsights').textContent = '--';
+                    document.getElementById('agentOpsCrystalLastRun').textContent = 'unavailable';
+                    anyError = true;
+                }
+            } catch (_) { anyError = true; }
+
+            if (badge) {
+                badge.textContent = anyError ? 'partial' : 'ok';
+                badge.style.background = anyError ? 'var(--status-warn,#fab387)' : 'var(--status-ok,#a6e3a1)';
+            }
+            if (updated) updated.textContent = `updated ${new Date().toLocaleTimeString()}`;
         }
 
         // AI Insights Functions
