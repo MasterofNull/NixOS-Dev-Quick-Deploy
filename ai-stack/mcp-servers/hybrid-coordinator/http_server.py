@@ -1447,6 +1447,11 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
         "/control/reasoning/", # Phase 51: ablation/reasoning profile pack
         "/control/budget/",    # Phase 45: budget policy read
         "/control/fleet/",     # Phase 42: fleet summary
+        "/control/intent/",    # Phase 54: intent classification map + reload
+        "/api/health/",        # Phase 54: RAG health gate (L6)
+        "/api/traces",         # Phase 54: query trace explorer
+        "/eval/run",           # Phase 54: trigger eval run
+        "/eval/trend",         # Phase 54: eval trend history
     )
     return any(req.path.startswith(pfx) for pfx in agent_prefixes)
 
