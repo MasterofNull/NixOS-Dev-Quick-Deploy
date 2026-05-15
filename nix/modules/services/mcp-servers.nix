@@ -1706,7 +1706,7 @@ in {
           StandardError = "journal";
         };
         environment = {
-          HYBRID_COORDINATOR_URL = "http://127.0.0.1:${toString mcp.coordinatorPort}";
+          HYBRID_COORDINATOR_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
         };
       };
 
