@@ -100,7 +100,6 @@ class TaskRouter:
         r"^where (is|are|can)",
         r"^when (should|do|does)",
         r"^why (is|are|does|do)",
-        r"^can (you|i|we)",
         r"^show me",
         r"^list",
         r"^find",

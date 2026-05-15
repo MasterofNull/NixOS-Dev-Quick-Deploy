@@ -200,10 +200,10 @@ class LocalAgentExecutor:
 
     def __init__(
         self,
-        llama_endpoint: str = "http://127.0.0.1:8080",
+        llama_endpoint: str = os.environ.get("LLAMA_CPP_URL", ""),
         tool_registry: Optional[ToolRegistry] = None,
         enable_fallback: bool = True,
-        fallback_endpoint: str = "http://127.0.0.1:8003",
+        fallback_endpoint: str = os.environ.get("COORDINATOR_URL", ""),
         offline_mode: Optional[bool] = None,
         allow_degraded_local_execution: Optional[bool] = None,
         remote_timeout_seconds: Optional[float] = None,
@@ -657,7 +657,7 @@ class LocalAgentExecutor:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(health_url, timeout=self.remote_probe_timeout_seconds)
-            return response.status_code < 500
+            return response.status_code < 400
         except Exception as exc:
             logger.info("Remote fallback probe failed for %s: %s", health_url, exc)
             return False

@@ -349,6 +349,22 @@ let
       toolExecution = null;
       profileCard = embeddedAssistCard;
     };
+    # Internal profile for coordinator-originated LLM calls.
+    # Disables hint injection to break the circular hints loop:
+    # coordinator → switchboard(default) → coordinator(GET /hints) → circular.
+    # No profile card, no loop detection — coordinator manages its own context.
+    "coordinator-internal" = {
+      forceProvider = "local";
+      injectHints = false;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = 8000;
+      maxMessages = 20;
+      maxOutputTokens = 4096;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = "";
+    };
   };
   configuredSwitchboardProfiles = swb.profiles;
   switchboardProfileCatalog =
@@ -515,7 +531,7 @@ let
     if LOCAL_AGENTS_PATH and LOCAL_AGENTS_PATH not in sys.path:
         sys.path.insert(0, LOCAL_AGENTS_PATH)
 
-    HINTS_TIMEOUT_S = float(os.environ.get("SWB_HINTS_TIMEOUT_S", "1.5"))
+    HINTS_TIMEOUT_S = float(os.environ.get("SWB_HINTS_TIMEOUT_S", "3.0"))
 
     app = FastAPI(title="AI Switchboard")
     _local_sem = None
@@ -1546,33 +1562,40 @@ let
         return ([{"role": "system", "content": card}] + list(messages)), True
 
     async def _get_hints(query: str):
-        """Return a hints string from hybrid-coordinator, or None on any failure."""
+        """Return a hints string from hybrid-coordinator, or None on any failure.
+
+        Retries once after 0.5s on timeout to survive transient coordinator latency spikes.
+        Caller should set X-AI-Hints-Skipped response header if this returns None.
+        """
         if not HYBRID_URL or not query.strip() or _hints_client is None:
             return None
-        try:
-            from urllib.parse import urlencode
-            params = urlencode({"q": query[:200], "limit": HINTS_LIMIT})
-            hdrs = {}
-            if HYBRID_API_KEY:
-                hdrs["X-API-Key"] = HYBRID_API_KEY
-            resp = await _hints_client.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            hints_list = data.get("hints", []) if isinstance(data, dict) else []
-            if not hints_list:
-                return None
-            lines = ["[AI stack — tools available for this task]"]
-            for item in hints_list:
-                if isinstance(item, dict):
-                    name = item.get("name") or item.get("title") or item.get("id") or ""
-                    tip  = item.get("hint") or item.get("description") or item.get("text") or ""
-                    txt  = (f"{name}: {tip}".strip(": ")) if name else tip
-                    if txt:
-                        lines.append(f"- {txt}")
-            return "\n".join(lines) if len(lines) > 1 else None
-        except Exception:
-            return None
+        from urllib.parse import urlencode
+        params = urlencode({"q": query[:200], "limit": HINTS_LIMIT})
+        hdrs = {}
+        if HYBRID_API_KEY:
+            hdrs["X-API-Key"] = HYBRID_API_KEY
+        for attempt in range(2):
+            try:
+                resp = await _hints_client.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                hints_list = data.get("hints", []) if isinstance(data, dict) else []
+                if not hints_list:
+                    return None
+                lines = ["[AI stack — tools available for this task]"]
+                for item in hints_list:
+                    if isinstance(item, dict):
+                        name = item.get("name") or item.get("title") or item.get("id") or ""
+                        tip  = item.get("hint") or item.get("description") or item.get("text") or ""
+                        txt  = (f"{name}: {tip}".strip(": ")) if name else tip
+                        if txt:
+                            lines.append(f"- {txt}")
+                return "\n".join(lines) if len(lines) > 1 else None
+            except Exception:
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
+        return None
 
     def _loading_error_payload(detail: dict | None = None) -> dict:
         payload = {
@@ -1746,8 +1769,13 @@ let
                 },
             )
 
+        model_alias_used = ""
         if isinstance(payload, dict):
+            original_model = str(payload.get("model", ""))
             payload = _rewrite_model(payload, profile)
+            rewritten_model = str(payload.get("model", ""))
+            if rewritten_model and rewritten_model != original_model:
+                model_alias_used = rewritten_model
             payload = _apply_local_thinking_profile(payload, profile, target_type)
             payload = _apply_compact_local_response_budget(payload, profile)
             if path == "chat/completions":
@@ -1762,7 +1790,13 @@ let
                             isinstance(m, dict) and "[loop-guard]" in str(m.get("content", ""))
                             for m in with_guidance_contract
                         )
-                        if not already_injected:
+                        if already_injected:
+                            # 2nd+ consecutive loop guard trigger — hard stop instead of forwarding
+                            return JSONResponse(
+                                status_code=503,
+                                content={"error": "loop_detected"},
+                            )
+                        else:
                             with_guidance_contract = [{"role": "system", "content": loop_msg}] + list(with_guidance_contract)
                             _log_loop_event(profile, LOOP_DETECT_THRESHOLD, LOOP_DETECT_WINDOW)
                     # --- end loop guard ---
@@ -1787,12 +1821,14 @@ let
             or request.headers.get(PROVIDER_HINT_HEADER, "").strip().lower() == "remote"
             or any(payload_model.startswith(prefix) for prefix in REMOTE_MODEL_PREFIXES)
         )
+        budget_fallback = False
         if target_type == "remote" and REMOTE_DAILY_TOKEN_CAP > 0:
             allowed, remote_budget = _remote_budget_status(remote_token_delta)
             if not allowed:
                 if REMOTE_BUDGET_FALLBACK_LOCAL and not explicit_remote and path != "embeddings":
                     target_type = "local"
                     target = EMBEDDING_URL if path == "embeddings" and EMBEDDING_URL else LLAMA_URL
+                    budget_fallback = True
                 else:
                     return JSONResponse(
                         status_code=429,
@@ -1805,6 +1841,7 @@ let
                         },
                     )
 
+        hints_skipped = False
         use_hints = bool(_profile_flag(profile, "injectHints", HINTS_INJECT))
         if use_hints and path == "chat/completions" and isinstance(payload, dict):
             messages = payload.get("messages") or []
@@ -1815,15 +1852,24 @@ let
             if first_user:
                 hint_text = await _get_hints(str(first_user))
                 if hint_text:
+                    # Inject hints as FIRST system message so they appear before any
+                    # profile card or client-provided system content. Appending to the
+                    # last system message risks breaking client prompt structure.
                     sys_idxs = [i for i, m in enumerate(messages) if m.get("role") == "system"]
                     if sys_idxs:
-                        i = sys_idxs[-1]
+                        i = sys_idxs[0]
                         messages[i] = dict(messages[i])
-                        messages[i]["content"] = messages[i]["content"].rstrip() + "\n\n" + hint_text
+                        messages[i]["content"] = hint_text + "\n\n" + messages[i]["content"].lstrip()
                     else:
                         messages = [{"role": "system", "content": hint_text}] + list(messages)
                     payload["messages"] = messages
                     body = json.dumps(payload).encode("utf-8")
+                else:
+                    hints_skipped = True
+            else:
+                hints_skipped = True
+        elif use_hints:
+            hints_skipped = True
 
         # Inject cache_prompt=true for local chat/completions so llama.cpp reuses
         # KV-cache state for the fixed system-prompt prefix across requests.
@@ -1837,12 +1883,14 @@ let
             payload["cache_prompt"] = True
             body = json.dumps(payload).encode("utf-8")
 
-        # Force streaming for user-facing local chat so callers see progressive output
+        # Force streaming for all local chat profiles so callers see progressive output
         # instead of a blank screen during the 90-120s local inference window.
+        # continue-local was previously excluded — this caused a 90s blank screen UX bug.
+        # coordinator-internal is excluded: coordinator parses full JSON responses.
         if (
             target_type == "local"
             and path == "chat/completions"
-            and profile in ("local-agent", "default")
+            and profile not in ("coordinator-internal", "embedding-local", "local-tool-calling")
             and isinstance(payload, dict)
             and not payload.get("stream")
         ):
@@ -2022,6 +2070,12 @@ let
 
         response.headers["X-AI-Route"] = target_type
         response.headers["X-AI-Profile"] = profile
+        if hints_skipped:
+            response.headers["X-AI-Hints-Skipped"] = "timeout"
+        if budget_fallback:
+            response.headers["X-AI-Fallback"] = "budget-exceeded"
+        if model_alias_used:
+            response.headers["X-AI-Model-Alias"] = model_alias_used
         if local_tool_execution_used:
             response.headers["X-AI-Tool-Execution"] = "local-agent"
             response.headers["X-AI-Tool-Calls-Used"] = str(local_tool_calls_used)
