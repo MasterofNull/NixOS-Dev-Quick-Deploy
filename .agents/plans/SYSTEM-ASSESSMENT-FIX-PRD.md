@@ -1,23 +1,55 @@
 # System Assessment & Fix PRD
 **Date**: 2026-05-15
 **Assessment by**: Claude Sonnet 4.6 (Orchestrator) + Gemini (Architecture) + Codex (Code Audit) + Qwen (Health Scan)
-**Status**: ACTIVE — execution in progress
+**Status**: PHASE A+B COMPLETE — pending nixos-rebuild + verification
+
+---
+
+## Agent Assessment Summary
+
+### Gemini Findings (Architecture Review)
+- P0: hints tool 30.6% OK → root cause: wrong audit log path (FIXED)
+- P0: audit-post.sh Python heredoc shell injection (FIXED)
+- P1: Postgres query-gaps table empty (interaction_tracker CONTINUOUS_LEARNING path broken)
+- P1: hints_feedback 0% OK (permission or payload issue)
+- P1: Zero remote fallback coverage (no test exercising remote route)
+- P2: Continuation downshift inactive (TokenBudgetContext.detect_phase logic)
+- P2: Suspicious 98.9% cache hit rate (cache key may be too coarse)
+- P2: Memory recall miss rate 0% (threshold may be too low, returning noise)
+
+### Codex Findings (Code Audit)
+- P1-SEC: X-Forwarded-For spoofable loopback bypass (FIXED — removed header trust)
+- P1-BUG: asyncio.coroutine() removed in Python 3.12 → events never reach CL (FIXED)
+- P1-BUG: agent-events CL payload schema mismatch (stripped payload lacks fields CL expects)
+- P1-SEC: audit-post.sh heredoc injection (FIXED — rewritten with sys.argv)
+- P2: GET /api/memory/facts missing (FIXED — added endpoint)
+- P2: latency_ms ValueError on non-integer input → 500 response
+- P2: Unknown event_type silently coerced to task_completed (pollutes audit metrics)
+
+### Qwen (Local) — timed out (expected — 300s limit for full health scan)
 
 ---
 
 ## Executive Summary
 
 Full-stack assessment of NixOS-Dev-Quick-Deploy AI harness revealed:
-- **1 P0 Bug** — hints engine reads wrong audit log path → 30–70% hints failure rate
-- **1 P0 Bug** — coordinator cannot write to audit log → Phase 56 agent-events silently failing
-- **1 P1 Gap** — 14 uncommitted Phase 56 files (API signature changes, session saving, sub_type field)
-- **1 P1 Gap** — `.agents/sessions/` untracked and not gitignored
-- **1 P1 Bug** — `qa_check` tool 0% success rate (7 errors in trace data)
-- **2 P1 Issues** — route_search 5.4% failure + hints_feedback 0% OK
-- **1 P1 Gap** — aq-qa 0.8.1 always skipping (delegation audit trail not seeded)
-- **1 P2 Gap** — Postgres query-gaps table empty (gaps collection not writing)
-- **1 P2 Gap** — Memory recall miss rate 0% suspicious (recall may be bypassing AIDB)
-- **1 P2 Gap** — Continuation downshift 0/10 (no sessions hitting downshift gate)
+- **1 P0 Bug** ✅ — hints engine reads wrong audit log path → 30–70% hints failure rate
+- **1 P0 Bug** ✅ — coordinator cannot write to audit log → Phase 56 agent-events silently failing
+- **1 P1-SEC** ✅ — X-Forwarded-For loopback bypass spoofable by any remote client
+- **1 P1-BUG** ✅ — asyncio.coroutine() removed in Python 3.12 → events never reach ContinuousLearning
+- **1 P1-SEC** ✅ — audit-post.sh Python heredoc shell injection on summary/task fields
+- **1 P2-FEAT** ✅ — GET /api/memory/facts missing (aq-session-start constraints hydration broken)
+- **1 P1 Gap** ✅ — 14 uncommitted Phase 56 files committed (sub_type, session saving)
+- **1 P1 Gap** ✅ — `.agents/sessions/` gitignored
+- **1 P1 Bug** ✓ — `qa_check` 0% success → historical; system now 60/60 healthy
+- **2 P1 Issues** — route_search 5.4% failure + hints_feedback 0% OK (P2 phase investigation)
+- **1 P1 Gap** — aq-qa 0.8.1 always skipping (pending rebuild + delegation seed)
+- **1 P1 BUG** — agent-events → CL payload schema mismatch (stripped payload lacks CL fields)
+- **1 P2 Gap** — Postgres query-gaps table empty (interaction_tracker broken)
+- **1 P2 Gap** — Memory recall miss rate 0% suspicious
+- **1 P2 Gap** — Continuation downshift 0/10
+- **1 P2 Bug** — latency_ms ValueError on invalid input → HTTP 500
+- **1 P2 Bug** — Unknown event_type silently coerced → audit pollution
 
 ---
 
