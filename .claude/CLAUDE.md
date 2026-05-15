@@ -26,17 +26,17 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ```bash
 aq-prime                          # progressive disclosure onboarding
-aq-hints "<task>" --format=json   # ranked hints before any implementation
+aq-session-start --task "<task>"  # mandatory context hydration
 ```
 
 ## Key Commands
 
 ```bash
 aq-prime                                              # onboard / orient
-aq-hints "<task>" --format=json                       # workflow hints
+aq-session-start                                      # mandatory hydration
 aq-qa 0                                               # health check
 aq-report                                             # full system report
-aq-context-bootstrap --task "<task>"                  # minimal context + entrypoint
+aq-commit-facts                                       # extract institutional memory
 scripts/governance/tier0-validation-gate.sh --pre-commit  # required before every commit
 ```
 

@@ -203,6 +203,8 @@ let
   serviceWritablePaths = lib.unique ([
       dataDir
       "/tmp"
+      # Phase A.2 fix: coordinator appends Phase 56 agent-events to sidecar audit log
+      "/var/log/ai-audit-sidecar"
     ]
     ++ mutableProgramPaths ++ runtimeWorkspaceRoots);
 
@@ -652,9 +654,9 @@ in {
           "d ${mutableLogDir}                       0750 ${svcUser} ${aiGroup} -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
           "f ${mutableLogDir}/query-gaps.jsonl 0660 ${svcUser} ${aiGroup} - -"
-          # Audit sidecar log dir — used when socket-activated sidecar writes JSONL.
+          # Audit sidecar log dir — coordinator (ai-stack group) needs rw to append Phase 56 events.
           "d /var/log/ai-audit-sidecar              0750 ${auditUser} ${aiGroup} -"
-          "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0640 ${auditUser} ${aiGroup} - -"
+          "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0660 ${auditUser} ${aiGroup} - -"
           "d ${dataDir}/aider-wrapper               0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/aider-wrapper/workspace     0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs           0750 ${docsUser} ${aiGroup} -"
@@ -1226,6 +1228,8 @@ in {
                 "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator:${repoAiStack}:${repoAiStack}/capability-gap:${repoAiStack}/efficiency:${repoAiStack}/offloading:${repoAiStack}/observability:${repoAiStack}/world-model:${repoAiStack}/progressive-disclosure:${repoAiStack}/affective-engine:${repoAiStack}/autoresearch:${repoAiStack}/identity-kernel:${repoAiStack}/local-agents:${repoAiStack}/model-optimization:${repoAiStack}/real-time-learning"
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
+                # Phase A.1 fix: point hints_engine at sidecar audit log (group-readable by ai-stack)
+                "TOOL_AUDIT_LOG_PATH=/var/log/ai-audit-sidecar/tool-audit.jsonl"
                 "AI_SEARCH_SCORE_THRESHOLD=${toString ai.aiHarness.retrieval.searchScoreThreshold}"
                 # Phase 8.1 — hard cap on LLM generation within /query to bound route_search P95
                 "AI_QUERY_LLM_TIMEOUT_S=${toString ai.aiHarness.runtime.queryLlmTimeoutSeconds}"

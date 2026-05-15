@@ -1,100 +1,84 @@
 #!/usr/bin/env bash
-# aq-commit-facts — Phase 56.4: Extract structured facts from recent commits
-#
-# After a commit batch, delegates a bounded fact-extraction call to the local
-# Qwen model (≤800 char diff summary, JSON output) and stores the result to
-# POST /api/memory/facts (MemoryBroker semantic store).
-#
-# Designed to run async (background) so it never blocks the commit workflow.
+# aq-commit-facts — Extract semantic facts from recent commits via local model (Phase 56.4)
 #
 # Usage:
-#   aq-commit-facts                      # extract from HEAD commit
-#   aq-commit-facts --since HEAD~3       # since a specific ref
-#   aq-commit-facts --dry-run            # show diff summary without posting
-#   aq-commit-facts --wait               # block until Qwen responds
+#   aq-commit-facts [--since COMMIT_SHA] [--dry-run]
+#
+# Process:
+#   1. Extract diff + commit message
+#   2. Local Qwen distills into 2-4 structured facts (JSON)
+#   3. POSTs facts to /api/memory/facts for semantic storage
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/config/service-endpoints.sh"
 
-since="HEAD~1"
-dry_run=0
-wait_mode=0
+SINCE="HEAD~1"
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --since)   since="$2"; shift 2 ;;
-        --dry-run) dry_run=1; shift ;;
-        --wait)    wait_mode=1; shift ;;
-        --help|-h)
-            printf 'usage: aq-commit-facts [--since REF] [--dry-run] [--wait]\n'
-            exit 0 ;;
-        *) printf 'unknown arg: %s\n' "$1" >&2; exit 2 ;;
-    esac
+  case "$1" in
+    --since)   SINCE="$2";   shift 2 ;;
+    --dry-run) DRY_RUN=1;    shift   ;;
+    *)
+      printf 'usage: aq-commit-facts [--since SHA] [--dry-run]\n' >&2
+      exit 2
+      ;;
+  esac
 done
 
-# Build ≤800 char diff summary: stat + first lines of commit message
-diff_stat="$(git -C "$REPO_ROOT" diff --stat "${since}..HEAD" 2>/dev/null | tail -5)" || diff_stat=""
-commit_msg="$(git -C "$REPO_ROOT" log --oneline "${since}..HEAD" 2>/dev/null | head -5)" || commit_msg=""
-summary="${commit_msg}
----
-${diff_stat}"
-summary="${summary:0:800}"
+printf "🔍 Analyzing recent commits since %s...\n" "${SINCE}"
 
-if [[ -z "${commit_msg}" ]]; then
-    printf 'aq-commit-facts: no commits since %s, nothing to extract\n' "$since"
+# 1. Get Diff Summary
+DIFF_CONTENT=$(git diff "${SINCE}"..HEAD --stat --patch | head -c 2000)
+COMMIT_MSGS=$(git log "${SINCE}"..HEAD --oneline | head -n 5)
+
+if [[ -z "${DIFF_CONTENT}" ]]; then
+    printf "No changes detected.\n"
     exit 0
 fi
 
-if [[ "$dry_run" -eq 1 ]]; then
-    printf '=== Diff summary (would send to Qwen) ===\n%s\n' "$summary"
+# 2. Extract Facts via Local Agent
+# Use direct mode for bounded distillation
+PROMPT="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.
+Focus on architectural decisions, constraints, or bug patterns. Ignore implementation noise.
+
+Output MUST be a JSON array of objects:
+[{\"fact\": \"string\", \"scope\": \"coordinator|nix|scripts|dashboard\", \"confidence\": 0.9}]
+
+COMMIT HISTORY:
+${COMMIT_MSGS}
+
+DIFF SUMMARY:
+${DIFF_CONTENT}"
+
+printf "  [*] Distilling architectural facts via local Qwen...\n"
+FACTS_JSON=$("${SCRIPT_DIR}/delegate-to-local" --mode direct --prompt "${PROMPT}" --wait 2>/dev/null | grep -o '\[.*\]' || echo "[]")
+
+if [[ "${FACTS_JSON}" == "[]" ]]; then
+    printf "No significant facts extracted.\n"
     exit 0
 fi
 
-# Extraction prompt — structured, bounded
-extraction_prompt="Extract 2-4 architectural facts from this git diff summary as a JSON array.
-Each element: {\"fact\":\"...\",\"scope\":\"coordinator|nix|scripts|dashboard|other\",\"confidence\":0.8,\"source\":\"$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)\"}
-Only include decisions, constraints, or patterns future agents should know. No trivial detail.
+printf "  [*] Extracted facts:\n%s\n" "$(echo "${FACTS_JSON}" | python3 -m json.tool)"
 
-${summary}"
-
-printf 'aq-commit-facts: delegating to local Qwen (%s)...\n' "$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null)"
-
-_delegate_args=(--mode direct --prompt "$extraction_prompt")
-[[ "$wait_mode" -eq 1 ]] && _delegate_args+=(--wait) || _delegate_args+=(--timeout 300)
-
-output_json="$("${SCRIPT_DIR}/delegate-to-local" "${_delegate_args[@]}" 2>/dev/null)" || output_json=""
-
-if [[ "$wait_mode" -eq 1 ]] && [[ -n "$output_json" ]]; then
-    # Parse and POST facts to coordinator
-    facts_payload="$(python3 - "$output_json" <<'PYEOF'
-import json, sys, re
-
-raw = sys.argv[1]
-# Find JSON array in output (Qwen may add prose around it)
-match = re.search(r'\[.*\]', raw, re.DOTALL)
-if not match:
-    sys.exit(0)
-try:
-    facts = json.loads(match.group(0))
-    if isinstance(facts, list):
-        print(json.dumps({"facts": facts[:4]}))
-except Exception:
-    sys.exit(0)
-PYEOF
-)" || true
-
-    if [[ -n "$facts_payload" ]]; then
-        result="$(curl -sf --max-time 10 -X POST "${COORD_URL}/api/memory/facts" \
-            -H 'Content-Type: application/json' \
-            -d "$facts_payload" 2>/dev/null)" || result=""
-        if [[ -n "$result" ]]; then
-            stored="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('stored',0))" "$result" 2>/dev/null || echo 0)"
-            printf 'aq-commit-facts: %s fact(s) stored to semantic memory\n' "$stored"
-        fi
-    fi
-else
-    printf 'aq-commit-facts: running in background (--wait to block)\n'
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+    printf "Dry run: skipping storage.\n"
+    exit 0
 fi
+
+# 3. Store Facts in Semantic Memory
+printf "  [*] Storing facts in semantic memory...\n"
+curl -sf -X POST "${HYBRID_COORDINATOR_URL}/api/memory/facts" \
+    -H 'Content-Type: application/json' \
+    -d "{\"facts\": ${FACTS_JSON}, \"source_commit\": \"$(git rev-parse HEAD)\"}" \
+    >/dev/null || printf "⚠️ Failed to store facts (coordinator unreachable)\n"
+
+# 4. Post Event (Phase 56.6)
+source "${SCRIPT_DIR}/lib/audit-write.sh"
+audit_event_end "coordinator" "fact-extraction" "success" "0" "Stored $(echo "${FACTS_JSON}" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))") architectural facts" "decision"
+
+printf "✅ Done.\n"

@@ -853,8 +853,17 @@ class HintsEngine:
 
         if audit_log_path is None:
             env_val = os.getenv("TOOL_AUDIT_LOG_PATH", "")
-            candidate = Path(env_val) if env_val else Path("/var/log/nixos-ai-stack/tool-audit.jsonl")
-            if not candidate.exists() and Path("/var/log/ai-audit-sidecar/tool-audit.jsonl").exists():
+            # Default to sidecar path (coordinator has group-read access via ai-stack group).
+            # nixos-ai-stack/ directory is drwxr-x--- hyperd:users — coordinator cannot enter it.
+            candidate = Path(env_val) if env_val else Path("/var/log/ai-audit-sidecar/tool-audit.jsonl")
+            # Python 3.12+ Path.exists() raises PermissionError instead of returning False
+            # when the parent directory is not traversable — use try/except defensively.
+            def _path_readable(p: Path) -> bool:
+                try:
+                    return p.exists()
+                except (PermissionError, OSError):
+                    return False
+            if not _path_readable(candidate) and _path_readable(Path("/var/log/ai-audit-sidecar/tool-audit.jsonl")):
                 candidate = Path("/var/log/ai-audit-sidecar/tool-audit.jsonl")
             self._audit_log_path = candidate
         else:

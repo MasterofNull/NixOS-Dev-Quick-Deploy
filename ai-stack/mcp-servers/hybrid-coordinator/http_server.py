@@ -1818,6 +1818,7 @@ async def run_http_mode(port: int) -> None:
             return web.json_response({"error": "invalid_json"}, status=400)
 
         event_type = str(data.get("event_type") or "task_completed").strip()
+        sub_type   = str(data.get("sub_type") or "").strip()
         agent      = str(data.get("agent") or "unknown").strip()
         outcome    = str(data.get("outcome") or "success").strip()
         summary    = str(data.get("summary") or "")[:400]
@@ -1842,6 +1843,7 @@ async def run_http_mode(port: int) -> None:
                 "agent": agent,
                 "task_id": task_id,
                 "event_type": event_type,
+                "sub_type": sub_type,
                 "summary": summary,
                 "tags": tags,
             },
@@ -1862,6 +1864,7 @@ async def run_http_mode(port: int) -> None:
             try:
                 _cl_event = {
                     "event": event_type,
+                    "sub_type": sub_type,
                     "agent": agent,
                     "outcome": outcome,
                     "summary": summary,

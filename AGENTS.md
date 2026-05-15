@@ -11,7 +11,7 @@ Every non-trivial task follows this 7-step sequence:
 ```
 ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VALIDATE → COMMIT
 ```
-- **ORIENT**: `aq-prime` · `aq-hints "<task>"` · recall memory (`mcp_server_get_working_memory`)
+- **ORIENT**: `aq-prime` · `aq-session-start --task "<task>"` · recall memory (`mcp_server_get_working_memory`)
 - **RESEARCH**: Agentic CLI Tools (`agrep`, `als`, `acat`, `asum`) + web search + OWASP
 - **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
 - **MEMORY-CHECKPOINT**: `mcp_server_store_memory` / `aq-memory store` before executing
@@ -29,9 +29,17 @@ no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
 - Commit format: `type(scope): msg\n\nCo-Authored-By: <agent-name> <noreply@harness.local>`
 
+## Session Initialization (Mandatory)
+Every session MUST start with:
+```bash
+aq-session-start --task "implement X"
+```
+This hydrates context from AIDB, hints, and institutional memory into `.agents/scratchpad/session-context-*.md`.
+
 ## Harness Entrypoints & Diagnostic CLIs
 ```bash
-aq-prime                    # onboard / orient (available for AI tool calls)
+aq-prime                    # onboard / orient
+aq-session-start            # mandatory context hydration
 ```
 
 ## Ports
