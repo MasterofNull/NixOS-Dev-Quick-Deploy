@@ -68,6 +68,10 @@ These are two independent, bidirectional relationships on the same pair of servi
 
 **Key insight:** `continue-local` and `default` differ in ONE way — hints injection. Neither creates a "lane to the coordinator." The coordinator contact, when it occurs, is a GET sidecar call to `/hints`, not a routing lane.
 
+**forceProvider resolution:** `forceProvider=null` (or unset) means **auto** — the switchboard routes to local when `REMOTE_URL` is unset (the default out-of-the-box configuration). With `REMOTE_URL` set, `auto` checks the remote budget and falls back to local when the budget is exhausted. Setting `forceProvider=remote` makes the profile always target remote; `forceProvider=local` always targets local regardless of `REMOTE_URL`.
+
+**Stale hints (intended behavior):** When `injectHints=true`, hints are fetched using the **first user message** in the conversation and locked for the lifetime of that request. This is intentional — locking hints to the first message preserves KV-cache locality across turns on the local model. The same cache slot is reused when the prompt prefix is stable, reducing per-turn latency significantly. If the query context shifts mid-conversation, the next request's first user message will produce fresh hints.
+
 ---
 
 ### Path B — Orchestration & Agent Tasks

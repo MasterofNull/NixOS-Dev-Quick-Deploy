@@ -117,9 +117,27 @@ Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
   as defaults only. The authoritative internal-traffic budget should come from
   workflow/session policy such as `token_limit`.
 
+## Compact Guidance Contract (`[compact-guidance]`)
+
+The `[compact-guidance]` system message is injected by the switchboard to instruct the model
+to produce concise, token-efficient responses suited for agent-to-agent traffic.
+
+**This contract applies ONLY to:**
+- `continue-local` — IDE inline chat; brief completions expected
+- `embedded-assist` — compact Q&A; low-token bounded queries
+
+**This contract does NOT apply to:**
+- `local-agent` — agent tasks require full reasoning depth; compact guidance would degrade quality
+- Any `remote-*` profile — remote models are not token-constrained at the switchboard level
+- `default` — general-purpose profile; not subject to compact guidance override
+
+If you observe unexpectedly terse responses on `local-agent`, verify you are not inadvertently
+sending `x-ai-profile: continue-local` or `embedded-assist` headers.
+
 ## Loop Detection (added 2026-04-20)
 
 The switchboard detects degenerate self-correction loops in local model output:
 - Scans last `SWB_LOOP_DETECT_WINDOW` (default 3) assistant turns
 - Injects `[loop-guard]` system message when similarity ≥ `SWB_LOOP_DETECT_THRESHOLD` (0.72)
+- On the **2nd+ consecutive trigger** for the same conversation, returns HTTP 503 `{"error":"loop_detected"}`
 - Events logged to `/var/log/nixos-ai-stack/loop-events.jsonl`
