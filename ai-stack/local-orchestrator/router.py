@@ -6,17 +6,19 @@ Analyzes incoming prompts and routes to appropriate agent backend.
 """
 
 import re
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from routing_contract import RoutingDecision, RoutingTier, profile_for_tier, validate_profile
+
 
 class AgentBackend(Enum):
-    """Available agent backends."""
-    LOCAL = "local"  # Gemma 4 via llama-cpp
-    QWEN = "qwen"  # Qwen/Codex for implementation
-    CLAUDE_SONNET = "claude-sonnet"  # Claude Sonnet for complex tasks
-    CLAUDE_OPUS = "claude-opus"  # Claude Opus for architecture/security
+    """Backward-compatible backend shim for legacy imports."""
+    LOCAL = RoutingTier.LOCAL.value
+    EDGE = RoutingTier.EDGE.value
+    REMOTE_FREE = RoutingTier.REMOTE_FREE.value
+    REMOTE_PAID = RoutingTier.REMOTE_PAID.value
+    REMOTE_FLAGSHIP = RoutingTier.REMOTE_FLAGSHIP.value
 
 
 class TaskCategory(Enum):
@@ -32,18 +34,9 @@ class TaskCategory(Enum):
     CONFIGURATION = "configuration"  # Config/Nix changes
 
 
-@dataclass
-class RouteDecision:
-    """Routing decision for a task."""
-    backend: AgentBackend
-    category: TaskCategory
-    confidence: float
-    reasoning: str
-    estimated_complexity: str  # "trivial", "simple", "moderate", "complex"
-    estimated_tokens: int
-    estimated_cost_usd: float
-    context_needed: List[str] = field(default_factory=list)
-    constraints: Dict[str, Any] = field(default_factory=dict)
+# Backward-compatible name retained while callers migrate to the canonical type.
+RouteDecision = RoutingDecision
+
 
 
 class TaskRouter:
@@ -121,7 +114,7 @@ class TaskRouter:
         self.complexity_threshold = default_complexity_threshold
         self.cost_budget = cost_budget_usd
         self.cost_spent = 0.0
-        self._routing_history: List[RouteDecision] = []
+        self._routing_history: List[RoutingDecision] = []
 
     def analyze_prompt(self, prompt: str) -> Tuple[TaskCategory, float]:
         """
@@ -239,7 +232,7 @@ class TaskRouter:
         category: TaskCategory,
         complexity: str,
         estimated_cost: float,
-    ) -> AgentBackend:
+    ) -> RoutingTier:
         """
         Select appropriate backend for task.
 
@@ -249,64 +242,64 @@ class TaskRouter:
             estimated_cost: Estimated cost
 
         Returns:
-            Selected AgentBackend
+            Selected RoutingTier
         """
-        # Security and architecture always go to Opus
+        # Security and architecture use the highest tier when sufficiently complex.
         if category in (TaskCategory.SECURITY, TaskCategory.PLANNING):
             if complexity in ("moderate", "complex"):
-                return AgentBackend.CLAUDE_OPUS
+                return RoutingTier.REMOTE_FLAGSHIP
 
         # Simple queries and analysis stay local
         if category == TaskCategory.QUERY:
-            return AgentBackend.LOCAL
+            return RoutingTier.LOCAL
 
         if category == TaskCategory.ANALYSIS and complexity in ("trivial", "simple"):
-            return AgentBackend.LOCAL
+            return RoutingTier.LOCAL
 
         # Trivial tasks stay local
         if complexity == "trivial":
-            return AgentBackend.LOCAL
+            return RoutingTier.LOCAL
 
         # Implementation tasks
         if category == TaskCategory.IMPLEMENTATION:
             if complexity in ("trivial", "simple"):
-                return AgentBackend.QWEN
+                return RoutingTier.REMOTE_FREE
             elif complexity == "moderate":
-                return AgentBackend.CLAUDE_SONNET
+                return RoutingTier.REMOTE_PAID
             else:
-                return AgentBackend.CLAUDE_OPUS
+                return RoutingTier.REMOTE_FLAGSHIP
 
-        # Testing and documentation go to Qwen
+        # Testing and documentation use a remote-free tier.
         if category in (TaskCategory.TESTING, TaskCategory.DOCUMENTATION):
-            return AgentBackend.QWEN
+            return RoutingTier.REMOTE_FREE
 
         # Refactoring
         if category == TaskCategory.REFACTORING:
             if complexity in ("trivial", "simple"):
-                return AgentBackend.QWEN
+                return RoutingTier.REMOTE_FREE
             else:
-                return AgentBackend.CLAUDE_SONNET
+                return RoutingTier.REMOTE_PAID
 
         # Configuration
         if category == TaskCategory.CONFIGURATION:
             if complexity in ("trivial", "simple"):
-                return AgentBackend.LOCAL
+                return RoutingTier.LOCAL
             else:
-                return AgentBackend.QWEN
+                return RoutingTier.REMOTE_FREE
 
         # Default to local for unknown
-        return AgentBackend.LOCAL
+        return RoutingTier.LOCAL
 
     def estimate_cost(
         self,
-        backend: AgentBackend,
+        tier: RoutingTier,
         estimated_tokens: int,
     ) -> float:
         """
         Estimate cost for backend and tokens.
 
         Args:
-            backend: Target backend
+            tier: Target routing tier
             estimated_tokens: Estimated token usage
 
         Returns:
@@ -314,19 +307,20 @@ class TaskRouter:
         """
         # Pricing estimates (input + output per MTok)
         pricing = {
-            AgentBackend.LOCAL: 0.0,  # Free
-            AgentBackend.QWEN: 0.002,  # ~$2/MTok total
-            AgentBackend.CLAUDE_SONNET: 0.018,  # ~$18/MTok total
-            AgentBackend.CLAUDE_OPUS: 0.090,  # ~$90/MTok total
+            RoutingTier.LOCAL: 0.0,
+            RoutingTier.EDGE: 0.0,
+            RoutingTier.REMOTE_FREE: 0.002,
+            RoutingTier.REMOTE_PAID: 0.018,
+            RoutingTier.REMOTE_FLAGSHIP: 0.090,
         }
 
-        return estimated_tokens / 1_000_000 * pricing.get(backend, 0.0)
+        return estimated_tokens / 1_000_000 * pricing.get(tier, 0.0)
 
     def route(
         self,
         prompt: str,
         context: Optional[Dict[str, Any]] = None,
-    ) -> RouteDecision:
+    ) -> RoutingDecision:
         """
         Route a prompt to the appropriate backend.
 
@@ -335,7 +329,7 @@ class TaskRouter:
             context: Optional context (files, hints, etc.)
 
         Returns:
-            RouteDecision with routing details
+            RoutingDecision with routing details
         """
         context = context or {}
 
@@ -349,20 +343,20 @@ class TaskRouter:
         )
 
         # Select backend
-        backend = self.select_backend(category, complexity, 0.0)
+        tier = self.select_backend(category, complexity, 0.0)
 
         # Estimate cost
-        estimated_cost = self.estimate_cost(backend, estimated_tokens)
+        estimated_cost = self.estimate_cost(tier, estimated_tokens)
 
         # Check budget
         if self.cost_spent + estimated_cost > self.cost_budget:
             # Downgrade to cheaper option
-            if backend == AgentBackend.CLAUDE_OPUS:
-                backend = AgentBackend.CLAUDE_SONNET
-                estimated_cost = self.estimate_cost(backend, estimated_tokens)
-            elif backend == AgentBackend.CLAUDE_SONNET:
-                backend = AgentBackend.QWEN
-                estimated_cost = self.estimate_cost(backend, estimated_tokens)
+            if tier == RoutingTier.REMOTE_FLAGSHIP:
+                tier = RoutingTier.REMOTE_PAID
+                estimated_cost = self.estimate_cost(tier, estimated_tokens)
+            elif tier == RoutingTier.REMOTE_PAID:
+                tier = RoutingTier.REMOTE_FREE
+                estimated_cost = self.estimate_cost(tier, estimated_tokens)
 
         # Build context needs
         context_needed = []
@@ -378,22 +372,30 @@ class TaskRouter:
         reasoning = (
             f"Task categorized as {category.value} with {confidence:.0%} confidence. "
             f"Complexity: {complexity} (~{estimated_tokens} tokens). "
-            f"Selected {backend.value} backend (est. ${estimated_cost:.4f})."
+            f"Selected {tier.value} tier (est. ${estimated_cost:.4f})."
         )
 
-        decision = RouteDecision(
-            backend=backend,
-            category=category,
+        profile = profile_for_tier(tier)
+        profile_entry = validate_profile(profile)
+        decision = RoutingDecision(
+            tier=tier,
+            profile=profile,
+            model_alias=profile_entry.model_alias,
+            task_type=category.value,
+            reason="local_orchestrator_heuristic",
             confidence=confidence,
-            reasoning=reasoning,
-            estimated_complexity=complexity,
-            estimated_tokens=estimated_tokens,
-            estimated_cost_usd=estimated_cost,
-            context_needed=context_needed,
-            constraints={
-                "max_files": 10 if complexity in ("trivial", "simple") else 20,
-                "require_tests": category == TaskCategory.IMPLEMENTATION,
-                "safety_level": "high" if category == TaskCategory.SECURITY else "medium",
+            extra={
+                "category": category,
+                "reasoning": reasoning,
+                "estimated_complexity": complexity,
+                "estimated_tokens": estimated_tokens,
+                "estimated_cost_usd": estimated_cost,
+                "context_needed": context_needed,
+                "constraints": {
+                    "max_files": 10 if complexity in ("trivial", "simple") else 20,
+                    "require_tests": category == TaskCategory.IMPLEMENTATION,
+                    "safety_level": "high" if category == TaskCategory.SECURITY else "medium",
+                },
             },
         )
 
@@ -404,7 +406,7 @@ class TaskRouter:
         """Record actual cost spent."""
         self.cost_spent += amount
 
-    def get_routing_history(self) -> List[RouteDecision]:
+    def get_routing_history(self) -> List[RoutingDecision]:
         """Get routing history."""
         return list(self._routing_history)
 

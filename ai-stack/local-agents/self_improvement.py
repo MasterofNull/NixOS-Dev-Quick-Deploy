@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from agent_executor import Task, TaskStatus, AgentType
-from task_router import AgentTarget
 
 logger = logging.getLogger(__name__)
 
