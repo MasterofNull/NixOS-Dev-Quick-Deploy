@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# aq-session-start — Phase 56.3/56.8: One-command session hydration
+#
+# Pulls AIDB context, ranked hints, and promoted lessons so agents start
+# with institutional memory rather than a blank slate. Always exits 0
+# even when coordinator is unavailable.
+#
+# Usage:
+#   aq-session-start --task "implement X"
+#   aq-session-start --task "..." --format brief   # 5-line stdout summary
+#   aq-session-start --task "..." --summarize      # optional Qwen brief
+#   aq-session-start --task "..." --no-write       # stdout only, no file
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SCRATCHPAD="${REPO_ROOT}/.agents/scratchpad"
+COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+task=""
+format="brief"
+summarize=0
+no_write=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --task)        task="$2"; shift 2 ;;
+        --format)      format="$2"; shift 2 ;;
+        --summarize)   summarize=1; shift ;;
+        --no-write)    no_write=1; shift ;;
+        --help|-h)
+            printf 'usage: aq-session-start --task "description" [--format brief|full] [--summarize] [--no-write]\n'
+            exit 0 ;;
+        *) printf 'unknown arg: %s\n' "$1" >&2; exit 2 ;;
+    esac
+done
+
+[[ -n "$task" ]] || { printf 'error: --task is required\n' >&2; exit 2; }
+
+TODAY="$(date +%Y%m%d)"
+OUTPUT_FILE="${SCRATCHPAD}/session-context-${TODAY}.md"
+mkdir -p "$SCRATCHPAD"
+
+_curl_json() { curl -sf --max-time 8 "$@" 2>/dev/null || true; }
+
+printf '=== aq-session-start: %s ===\n' "$task"
+
+# ── 1. Context bootstrap ──────────────────────────────────────────────────────
+printf '\n[1/3] Context bootstrap...\n'
+bootstrap_out="$(_curl_json -X POST "${COORD_URL}/api/context/bootstrap" \
+    -H 'Content-Type: application/json' \
+    -d "{\"task\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$task")}")" || true
+
+# ── 2. Ranked hints ───────────────────────────────────────────────────────────
+printf '[2/3] Ranked hints...\n'
+hints_out="$(_curl_json "${COORD_URL}/hints?q=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$task")&format=json&limit=5")" || true
+
+# ── 3. Promoted lessons ───────────────────────────────────────────────────────
+printf '[3/3] Lesson registry...\n'
+lessons_out="$(_curl_json "${COORD_URL}/control/ai-coordinator/lessons")" || true
+# Also pull active constraints from procedural memory (Gemini recommendation: 56.8)
+constraints_out="$(_curl_json "${COORD_URL}/api/memory/facts?scope=procedural&limit=5")" || true
+
+# ── Build context document ────────────────────────────────────────────────────
+{
+    printf '# Session Context — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '**Task**: %s\n\n' "$task"
+
+    printf '## AIDB Context\n'
+    if [[ -n "$bootstrap_out" ]]; then
+        python3 - <<PYEOF
+import json, sys
+try:
+    d = json.loads("""$bootstrap_out""")
+    docs = d.get('documents') or d.get('results') or []
+    for doc in docs[:3]:
+        content = str(doc.get('content') or doc.get('text') or '')[:300]
+        print(f"- {content}")
+except Exception:
+    print("(unavailable)")
+PYEOF
+    else
+        printf '(coordinator unavailable — starting without AIDB context)\n'
+    fi
+
+    printf '\n## Hints\n'
+    if [[ -n "$hints_out" ]]; then
+        python3 - <<PYEOF
+import json
+try:
+    d = json.loads("""$hints_out""")
+    hints = d if isinstance(d, list) else d.get('hints', [])
+    for h in hints[:5]:
+        text = str(h.get('hint') or h.get('text') or h)[:200]
+        print(f"- {text}")
+except Exception:
+    print("(unavailable)")
+PYEOF
+    else
+        printf '(hints unavailable)\n'
+    fi
+
+    printf '\n## Promoted Lessons\n'
+    if [[ -n "$lessons_out" ]]; then
+        python3 - <<PYEOF
+import json
+try:
+    d = json.loads("""$lessons_out""")
+    registry = d.get('agent_lessons') or {}
+    entries = registry.get('entries') or []
+    active = [e for e in entries if e.get('state') in ('promoted', 'crystallized')]
+    if active:
+        for e in active[:5]:
+            summary = str(e.get('summary') or e.get('lesson_key') or '')[:200]
+            agent = e.get('source_agent', '')
+            print(f"- [{agent}] {summary}")
+    else:
+        print("(no promoted lessons yet)")
+except Exception:
+    print("(unavailable)")
+PYEOF
+    else
+        printf '(lessons unavailable)\n'
+    fi
+
+    printf '\n## Active Constraints (procedural memory)\n'
+    if [[ -n "$constraints_out" ]]; then
+        python3 - <<PYEOF
+import json
+try:
+    d = json.loads("""$constraints_out""")
+    facts = d.get('facts') or []
+    if facts:
+        for f in facts[:5]:
+            print(f"- {str(f.get('fact',''))[:200]}")
+    else:
+        print("(none stored)")
+except Exception:
+    print("(unavailable)")
+PYEOF
+    else
+        printf '(unavailable)\n'
+    fi
+} > /tmp/aq-session-context-$$.md 2>/dev/null || true
+
+# ── Write / print ─────────────────────────────────────────────────────────────
+if [[ "$no_write" -eq 0 ]]; then
+    cp /tmp/aq-session-context-$$.md "$OUTPUT_FILE" 2>/dev/null || true
+    printf '\nContext written to: %s\n' "$OUTPUT_FILE"
+fi
+rm -f /tmp/aq-session-context-$$.md
+
+# Brief summary to stdout
+printf '\n--- Session Brief ---\n'
+printf 'Task : %s\n' "$task"
+printf 'Date : %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+python3 - "$lessons_out" <<'PYEOF'
+import json, sys
+try:
+    d = json.loads(sys.argv[1] or '{}')
+    registry = d.get('agent_lessons') or {}
+    entries = registry.get('entries') or []
+    promoted = sum(1 for e in entries if e.get('state') in ('promoted','crystallized'))
+    pending  = sum(1 for e in entries if e.get('state') == 'pending_review')
+    print(f"Lessons: {promoted} promoted, {pending} pending review")
+except Exception:
+    print("Lessons: (unavailable)")
+PYEOF
+printf '--------------------\n'
+
+# Optional Qwen brief
+if [[ "$summarize" -eq 1 ]]; then
+    _brief_prompt="In 3 bullet points summarise what context and lessons are relevant for: ${task:0:300}"
+    printf '\n[Qwen brief requested — delegating async]\n'
+    "${SCRIPT_DIR}/delegate-to-local" --mode direct \
+        --prompt "$_brief_prompt" --wait \
+        --timeout 150 2>/dev/null | head -20 || true
+fi
+
+exit 0

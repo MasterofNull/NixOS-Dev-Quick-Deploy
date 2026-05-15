@@ -58,6 +58,10 @@ LOOPBACK_AGENT_PREFIXES = (
     "/api/traces",
     "/eval/run",
     "/eval/trend",
+    # Phase 56: Harness Integration Loop
+    "/api/agent-events",
+    "/api/agent-ops/",
+    "/api/memory/facts",
 )
 
 

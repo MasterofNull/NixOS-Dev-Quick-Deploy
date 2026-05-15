@@ -32,6 +32,10 @@ OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 CODEX_BIN="${CODEX_BIN:-$HOME/.npm-global/bin/codex}"
 
+# Phase 56.1/56.7 — delegation audit bridge
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
@@ -178,6 +182,7 @@ cmd_delegate() {
     cmd+=("$prompt")
 
     registry_append "$id" "$prompt" "$rel_output"
+    audit_event_start "codex" "$id" "${prompt:0:200}"
 
     if [[ "$wait_mode" == "true" ]]; then
         info "Running in blocking mode..."
@@ -185,15 +190,28 @@ cmd_delegate() {
         local exit_code="${PIPESTATUS[0]}"
         if [[ "$exit_code" -eq 0 ]]; then
             update_registry "$REGISTRY" "$id" "status" "done"
+            audit_event_end "codex" "$id" "success" "0" "completed: ${prompt:0:100}"
         else
             update_registry "$REGISTRY" "$id" "status" "failed"
+            audit_event_end "codex" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}"
         fi
         info "Task $id $([ "$exit_code" -eq 0 ] && echo 'completed' || echo 'failed')."
     else
+        local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+        local _prompt_brief; _prompt_brief="${prompt:0:100}"
+        local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         # Background — write output to persistent file, not /tmp
         nohup bash -c "
+            _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             $(printf '%q ' "${cmd[@]}") > \"$output_file\" 2>&1
             exit_code=\$?
+            _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
+            _lat=\$(( _end_ms - _start_ms ))
+            if [[ \$exit_code -eq 0 ]]; then
+                bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" || true
+            else
+                bash \"$_audit_helper\" \"$_coord_url\" error_resolution codex error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" || true
+            fi
             python3 - \"$REGISTRY\" \"$id\" status \"\$([ \$exit_code -eq 0 ] && echo done || echo failed)\" <<'PYEOF'
 import sys, json
 rf, tid, field, val = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]

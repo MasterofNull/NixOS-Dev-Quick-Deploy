@@ -758,6 +758,44 @@ async def initialize_server():
     asyncio.create_task(_gap_sync_loop())
     logger.info("✓ PRSI gap-sync loop started (interval=300s)")
 
+    # Phase 56.5 — Drift-aware profile auto-activation (homeostasis loop)
+    async def _drift_homeostasis_loop() -> None:
+        """Every 60s: check drift score; auto-activate agent-ops profile when threshold exceeded."""
+        import drift_analyzer as _da
+        import http_server as _hs
+        _threshold = 0.7
+        try:
+            import json as _json
+            _bp_path = os.path.join(os.path.dirname(__file__), "config", "runtime-budget-policy.json")
+            with open(_bp_path) as _f:
+                _threshold = float(_json.load(_f).get("drift_alert_threshold", 0.7))
+        except Exception:
+            pass
+        while True:
+            await asyncio.sleep(60)
+            try:
+                _analyzer = _da.get_analyzer()
+                _result = await _analyzer.compute_drift(window=20)
+                _score = _result.get("drift_score")
+                _state = _hs._agent_ops_state  # type: ignore[attr-defined]
+                if _score is not None:
+                    if float(_score) >= _threshold and not _state.get("alert_active"):
+                        _state["drift_score"] = _score
+                        _state["profile_override"] = "agent-ops"
+                        _state["alert_active"] = True
+                        _state["since"] = __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())
+                        logger.warning("drift_homeostasis: score=%.3f >= %.2f → agent-ops profile active", float(_score), _threshold)
+                    elif float(_score) < _threshold and _state.get("alert_active"):
+                        _state["profile_override"] = None
+                        _state["alert_active"] = False
+                        _state["since"] = None
+                        logger.info("drift_homeostasis: score=%.3f < %.2f → profile override cleared", float(_score), _threshold)
+            except Exception as _exc:
+                logger.debug("drift_homeostasis_loop_skip err=%s", _exc)
+
+    asyncio.create_task(_drift_homeostasis_loop())
+    logger.info("✓ Drift homeostasis loop started (interval=60s, threshold=%.2f)", 0.7)
+
     # Phase 6.1 — wire extracted http_server module
     http_server.init(
         augment_query_fn=augment_query_with_context,

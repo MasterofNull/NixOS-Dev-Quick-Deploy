@@ -39,6 +39,10 @@ OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 GEMINI_BIN="${GEMINI_BIN:-$HOME/.npm-global/bin/gemini}"
 
+# Phase 56.1/56.7 — delegation audit bridge
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
@@ -223,6 +227,7 @@ ${prompt}"
 
     # Register before launching so the task is findable even if we die
     registry_append "$id" "$prompt" "$rel_output" "" "$role"
+    audit_event_start "gemini" "$id" "${prompt:0:200}"
 
     if [[ "$wait_mode" == "true" ]]; then
         # Blocking mode: run in foreground, tee to output file
@@ -231,19 +236,28 @@ ${prompt}"
         local exit_code="${PIPESTATUS[0]}"
         if [[ "$exit_code" -eq 0 ]]; then
             registry_update_status "$id" "done"
+            audit_event_end "gemini" "$id" "success" "0" "completed: ${prompt:0:100}"
             info "Task $id completed successfully."
         else
             registry_update_status "$id" "failed"
+            audit_event_end "gemini" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}"
             info "Task $id failed (exit $exit_code)."
         fi
     else
         # Background mode: fully detach so it survives session eviction
         # Use printf '%q ' to safely quote each cmd element before embedding in bash -c string
         local cmd_q; cmd_q="$(printf '%q ' "${cmd[@]}")"
+        local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+        local _prompt_brief; _prompt_brief="${prompt:0:100}"
+        local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         nohup bash -c "
+            _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             $cmd_q > \"$output_file\" 2>&1
             exit_code=\$?
+            _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
+            _lat=\$(( _end_ms - _start_ms ))
             if [[ \$exit_code -eq 0 ]]; then
+                bash \"$_audit_helper\" \"$_coord_url\" task_completed gemini success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" || true
                 python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
 import sys, json
 rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -260,6 +274,7 @@ with open(rf) as f:
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
             else
+                bash \"$_audit_helper\" \"$_coord_url\" error_resolution gemini error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" || true
                 python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
 import sys, json
 rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]

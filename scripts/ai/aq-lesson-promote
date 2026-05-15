@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# aq-lesson-promote — Phase 56.8: Promote a candidate lesson to active
+#
+# Wraps POST /control/ai-coordinator/lessons/review with state=promoted.
+# Any agent or human can call this after reviewing a lesson candidate.
+#
+# Usage:
+#   aq-lesson-promote --key LESSON_KEY [--reviewer "claude"] [--comment "..."]
+#   aq-lesson-promote --key LESSON_KEY --reject          # mark avoided/rejected
+#   aq-lesson-promote --list                             # list pending candidates
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+key=""
+reviewer="${DELEGATE_AGENT:-claude}"
+comment=""
+state="promoted"
+list_mode=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --key)      key="$2"; shift 2 ;;
+        --reviewer) reviewer="$2"; shift 2 ;;
+        --comment)  comment="$2"; shift 2 ;;
+        --reject)   state="rejected"; shift ;;
+        --avoid)    state="avoided"; shift ;;
+        --list)     list_mode=1; shift ;;
+        --help|-h)
+            printf 'usage: aq-lesson-promote --key KEY [--reviewer STR] [--comment STR] [--reject|--avoid]\n'
+            printf '       aq-lesson-promote --list\n'
+            exit 0 ;;
+        *) printf 'unknown arg: %s\n' "$1" >&2; exit 2 ;;
+    esac
+done
+
+if [[ "$list_mode" -eq 1 ]]; then
+    out="$(curl -sf --max-time 8 "${COORD_URL}/control/ai-coordinator/lessons" 2>/dev/null)" || {
+        printf 'error: coordinator unavailable\n' >&2; exit 1
+    }
+    python3 - "$out" <<'PYEOF'
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    registry = d.get('agent_lessons') or {}
+    entries = registry.get('entries') or []
+    pending = [e for e in entries if e.get('state') == 'pending_review']
+    if not pending:
+        print("No lessons pending review.")
+    else:
+        print(f"Pending review ({len(pending)}):")
+        for e in pending:
+            key = e.get('lesson_key','?')
+            summary = str(e.get('summary',''))[:120]
+            agent = e.get('source_agent','')
+            print(f"  [{key}] ({agent}) {summary}")
+except Exception as ex:
+    print(f"error: {ex}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+    exit 0
+fi
+
+[[ -n "$key" ]] || { printf 'error: --key is required (use --list to see candidates)\n' >&2; exit 2; }
+
+payload="$(python3 -c "
+import json, sys
+print(json.dumps({
+    'lesson_key': sys.argv[1],
+    'state':      sys.argv[2],
+    'reviewer':   sys.argv[3],
+    'comment':    sys.argv[4],
+}))" "$key" "$state" "$reviewer" "$comment")"
+
+out="$(curl -sf --max-time 10 -X POST "${COORD_URL}/control/ai-coordinator/lessons/review" \
+    -H 'Content-Type: application/json' \
+    -d "$payload" 2>/dev/null)" || {
+    printf 'error: coordinator unavailable or lesson not found\n' >&2; exit 1
+}
+
+python3 - "$out" "$state" "$key" <<'PYEOF'
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    state, key = sys.argv[2], sys.argv[3]
+    reviewed = d.get('reviewed_lesson') or {}
+    print(f"OK: lesson '{key}' → {state}")
+    if reviewed.get('review',{}).get('comment'):
+        print(f"    comment: {reviewed['review']['comment']}")
+except Exception:
+    print(sys.argv[1])
+PYEOF
