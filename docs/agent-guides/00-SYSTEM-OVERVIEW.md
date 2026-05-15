@@ -4,15 +4,16 @@
 
 ## What This System Is
 
-This repository runs a declarative NixOS AI stack with host-local `systemd` services, local model inference, retrieval infrastructure, and an operator-facing dashboard/API. The current runtime is not K3s-first and it is not a container-orchestrated control plane.
+This repository runs a declarative NixOS AI stack functioning as an **Agentic AI Operating System (AI OS)**. It treats local model inference as compute, multi-tiered persistence as memory, and host-local `systemd` services as the foundational platform. The current runtime is not K3s-first and it is not a container-orchestrated control plane.
 
 Core characteristics:
 
+- **AI OS Architecture**: Treats LLMs as the CPU and vector/graph DBs as persistent memory.
+- **Cyclic DAG Orchestration**: The `hybrid-coordinator` handles stateful, cyclic multi-agent workflows using Model Context Protocol (MCP).
+- **Foundation Persistence**: `ai-aidb` handles temporal knowledge and supersession logic to prevent context rot, moving beyond standard bolt-on RAG.
 - NixOS modules define ports, service wiring, and environment injection.
 - `systemd` units run the active AI stack on host-local ports.
-- Local LLM inference is provided by `llama.cpp` and an embeddings service.
-- Retrieval, memory, and coordination depend on Qdrant, PostgreSQL, and Redis.
-- The dashboard API and shell QA scripts are the main operator health surface.
+- The dashboard API and token-optimized CLI tools (`aq-prime`, `als`, `agrep`) form the primary operator health and agent execution surface.
 
 ## Main Components
 
@@ -59,20 +60,20 @@ Core characteristics:
 - Port and endpoint values are intended to flow from Nix options and environment injection rather than scattered literals.
 - Operator validation includes both health and auth smoke checks, not only process liveness.
 
-## Current Runtime Model
+## Current Runtime Model (AI OS)
 
 ```text
-NixOS modules
+NixOS modules (Configuration Layer)
   -> typed options in nix/modules/core/options.nix
   -> AI stack wiring in nix/modules/roles/ai-stack.nix
-  -> service endpoints exported through config/service-endpoints.sh
 
-systemd units
-  -> dashboard API
-  -> AIDB
-  -> hybrid coordinator
-  -> llama.cpp + embeddings
-  -> postgres / redis / qdrant
+systemd units (Platform Layer)
+  -> dashboard API (:8889)
+  -> AIDB (Temporal Memory :8002)
+  -> hybrid coordinator (Cyclic DAG Orchestration :8003)
+  -> switchboard (Governance/Execution :8085)
+  -> llama.cpp + embeddings (Compute Layer)
+  -> postgres / redis / qdrant (Data Layer)
   -> PRSI timer and one-shot automation
 ```
 

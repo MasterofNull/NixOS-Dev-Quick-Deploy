@@ -107,3 +107,43 @@ One non-obvious system constraint: `http_server.py` has TWO auth middleware inst
 55.1 → 55.3 → 55.2 (supersession first so crystallization can tag distilled insights with proper temporal validity; drift detection second since it builds on existing TraceCollector data; crystallization last as it is the most compute-intensive and depends on both).
 
 **aq-qa target: 16 new checks (1.1.1–1.1.16), total 87 checks.**
+
+---
+
+## 6. Codex Implementation Perspective (2026-05-15)
+
+Gemini's AI OS framing is useful as architectural intent, and Claude's Section 5 is the right execution filter. The implementation risk is that the documentation can become aspirational unless every AI OS concept is tied to a live surface and a gate.
+
+### Execution Contract
+
+Every Phase 55 capability should carry this mapping before implementation is considered complete:
+
+| AI OS Concept | Runtime Surface | Validation Surface | Operator Surface |
+|---|---|---|---|
+| Supersession | `/memory/supersede`, AIDB metadata, PostgreSQL supersession ledger | `aq-qa 55` checks 1.1.1-1.1.4 | Command center memory freshness / stale fact count |
+| Crystallization | `/memory/crystalline/*`, `aq-crystallize`, session hash ledger | `aq-qa 55` checks 1.1.10-1.1.16 | Command center distillation queue and insight count |
+| Drift Detection | `/api/traces/drift`, TraceCollector, `agent-ops` profile | `aq-qa 55` checks 1.1.5-1.1.9 | Command center Agent Ops alert and drift score |
+
+### Current Implementation Gate
+
+Do not start supersession writes while the retrieval path is failing. As of the 2026-05-15 Codex review, the original `ai-security-audit.service` validation blocker is fixed, but `aq-qa 0` still fails on:
+
+- `0.5.6` Continue/editor prompt to feedback smoke
+- `0.7.2` hybrid `/query` retrieval smoke
+
+Both failures converge on `/query` returning:
+
+```json
+{"error":"route_search_failed","detail":"Expecting value: line 1 column 1 (char 0)"}
+```
+
+This means the AI OS control plane is healthy enough for health, hints, workflow planning, and orchestration, but the retrieval query path is not yet safe as a foundation for temporal memory. Phase 55 implementation should therefore begin with a stabilization slice that restores `/query` before adding supersession, crystallization, or drift logic.
+
+### Codex Recommendation
+
+Execution order becomes:
+
+1. **55.0 — Retrieval Gate Stabilization**: fix `/query`, restore `aq-qa 0` checks 0.5.6 and 0.7.2.
+2. **55.1 — Supersession Logic**: temporal invalidation after retrieval is stable.
+3. **55.3 — Drift Detection**: build on TraceCollector and restored query traffic.
+4. **55.2 — Crystallization**: last, because it is compute-heavy and depends on valid temporal semantics.

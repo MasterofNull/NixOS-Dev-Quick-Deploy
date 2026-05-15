@@ -15,11 +15,41 @@ aq-qa target: 16 new checks (1.1.1–1.1.16), total 87 checks.
 
 ## Execution Order DAG
 
-55.1 ──► 55.3 ──► 55.2
+55.0 ──► 55.1 ──► 55.3 ──► 55.2
 
-Rationale: supersession first (so crystallization can tag distilled insights with valid_until);
+Rationale: retrieval gate first (so memory work does not build on a failing `/query` path);
+supersession second (so crystallization can tag distilled insights with valid_until);
 drift detection second (builds on existing TraceCollector table, no new infra);
 crystallization last (most compute-intensive, depends on both).
+
+---
+
+## Slice 55.0 — Retrieval Gate Stabilization (Codex Precondition)
+
+### Problem
+`aq-qa 0` is blocked before Phase 55 can safely begin. The original
+`ai-security-audit.service` failure is fixed, but both remaining failures converge on
+the hybrid `/query` path:
+
+- `0.5.6` Continue/editor prompt to feedback smoke
+- `0.7.2` hybrid `/query` retrieval smoke
+
+Observed response:
+
+```json
+{"error":"route_search_failed","detail":"Expecting value: line 1 column 1 (char 0)"}
+```
+
+### Deliverables
+1. Restore `/query` retrieval success for the existing smoke payloads.
+2. Preserve existing `/health`, `/hints`, `/workflow/plan`, and `/v1/orchestrate` behavior.
+3. Add/adjust a focused regression check if the fix touches parsing or route error handling.
+4. Rerun `aq-qa 0` before implementing 55.1.
+
+### Validation
+- `scripts/testing/smoke-continue-editor-flow.sh`
+- `aq-qa 0` checks `0.5.6` and `0.7.2`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit`
 
 ---
 
