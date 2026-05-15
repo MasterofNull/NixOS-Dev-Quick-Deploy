@@ -714,6 +714,19 @@ class ContinuousLearningPipeline:
         )
         return True
 
+    async def process_event(self, event: Dict[str, Any]) -> None:
+        """Process an incoming agent event from the bus."""
+        try:
+            self._update_batch_insights(event)
+            pattern = await self._extract_pattern_from_event(event)
+            if pattern:
+                self.patterns.append(pattern)
+                examples = await self.generate_finetuning_examples([pattern])
+                await self._save_finetuning_examples(examples)
+                await self._index_patterns([pattern])
+        except Exception as e:
+            logger.error("event_processing_failed", error=str(e))
+
     async def _learning_loop(self):
         """Background learning loop with backpressure monitoring"""
         first_cycle = True

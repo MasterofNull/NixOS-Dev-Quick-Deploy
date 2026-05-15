@@ -69,6 +69,7 @@ def _default_agent_lessons_registry() -> Dict[str, Any]:
         "available": True,
         "path": str(_agent_lessons_registry_path()),
         "entries": [],
+        "constraints": [],  # Phase 56.8: active procedural memory constraints
         "counts": {
             "total": 0,
             "pending_review": 0,
@@ -123,6 +124,9 @@ def _normalize_agent_lessons_registry(data: Any) -> Dict[str, Any]:
         entries = data.get("entries")
         if isinstance(entries, list):
             registry["entries"] = [item for item in entries if isinstance(item, dict)]
+        constraints = data.get("constraints")
+        if isinstance(constraints, list):
+            registry["constraints"] = _normalize_string_list(constraints)
     counts = {
         "total": len(registry["entries"]),
         "pending_review": 0,

@@ -359,12 +359,14 @@ ${prompt}"
         if $runner_func "$full_prompt" "$output_file" "$timeout_secs"; then
             update_tokens "$id" "${output_file}.usage.json"
             update_status "$REGISTRY" "$id" "done"
-            audit_event_end "local" "$id" "success" "0" "completed mode=${mode}: ${prompt:0:100}"
+            audit_event_end "local" "$id" "success" "0" "completed mode=${mode}: ${prompt:0:100}" "$mode"
+            audit_save_session "local-${mode}" "$id" "$prompt" "$output_file"
             info "Task $id completed."
             cat "$output_file"
         else
             update_status "$REGISTRY" "$id" "failed"
-            audit_event_end "local" "$id" "error" "0" "failed mode=${mode}: ${prompt:0:100}"
+            audit_event_end "local" "$id" "error" "0" "failed mode=${mode}: ${prompt:0:100}" "$mode"
+            audit_save_session "local-${mode}" "$id" "$prompt" "$output_file"
             info "Task $id failed. Output:"
             cat "$output_file"
             return 1
@@ -380,7 +382,7 @@ ${prompt}"
             if $(printf '%q ' "$runner_func" "$full_prompt" "$output_file" "$timeout_secs") ; then
                 _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
                 _lat=\$(( _end_ms - _start_ms ))
-                bash \"$_audit_helper\" \"$_coord_url\" task_completed local success \"\$_lat\" \"$id\" \"completed mode=$mode: $_prompt_brief\" || true
+                bash \"$_audit_helper\" \"$_coord_url\" task_completed local success \"\$_lat\" \"$id\" \"completed mode=$mode: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
                 update_tokens \"$id\" \"${output_file}.usage.json\"
                 python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
 import sys, json
@@ -400,7 +402,7 @@ PYEOF
             else
                 _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
                 _lat=\$(( _end_ms - _start_ms ))
-                bash \"$_audit_helper\" \"$_coord_url\" error_resolution local error \"\$_lat\" \"$id\" \"failed mode=$mode: $_prompt_brief\" || true
+                bash \"$_audit_helper\" \"$_coord_url\" error_resolution local error \"\$_lat\" \"$id\" \"failed mode=$mode: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
                 python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
 import sys, json
 rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]

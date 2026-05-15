@@ -190,10 +190,12 @@ cmd_delegate() {
         local exit_code="${PIPESTATUS[0]}"
         if [[ "$exit_code" -eq 0 ]]; then
             update_registry "$REGISTRY" "$id" "status" "done"
-            audit_event_end "codex" "$id" "success" "0" "completed: ${prompt:0:100}"
+            audit_event_end "codex" "$id" "success" "0" "completed: ${prompt:0:100}" "$mode"
+            audit_save_session "codex" "$id" "$prompt" "$output_file"
         else
             update_registry "$REGISTRY" "$id" "status" "failed"
-            audit_event_end "codex" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}"
+            audit_event_end "codex" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$mode"
+            audit_save_session "codex" "$id" "$prompt" "$output_file"
         fi
         info "Task $id $([ "$exit_code" -eq 0 ] && echo 'completed' || echo 'failed')."
     else
@@ -208,9 +210,9 @@ cmd_delegate() {
             _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             _lat=\$(( _end_ms - _start_ms ))
             if [[ \$exit_code -eq 0 ]]; then
-                bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" || true
+                bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
             else
-                bash \"$_audit_helper\" \"$_coord_url\" error_resolution codex error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" || true
+                bash \"$_audit_helper\" \"$_coord_url\" error_resolution codex error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
             fi
             python3 - \"$REGISTRY\" \"$id\" status \"\$([ \$exit_code -eq 0 ] && echo done || echo failed)\" <<'PYEOF'
 import sys, json
