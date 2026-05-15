@@ -184,6 +184,47 @@ def switch_model(key: str, embed: bool, dry_run: bool) -> None:
         except Exception:
             pass
 
+    # 3b. Apply per-model GPU layer override via systemd drop-in (chat model only).
+    # Reads recommended_gpu_layers from catalog; skips if 0 or embed mode.
+    if not embed:
+        gpu_layers = int(entry.get("recommended_gpu_layers", 0))
+        dropin_dir = Path(f"/etc/systemd/system/{service}.service.d")
+        dropin_path = dropin_dir / "99-model-gpu-layers.conf"
+        if gpu_layers > 0:
+            # Read current ExecStart, replace --n-gpu-layers value
+            try:
+                result = subprocess.run(
+                    ["systemctl", "show", f"{service}.service", "--property=ExecStart"],
+                    capture_output=True, text=True, check=True,
+                )
+                # Extract the argv string from systemctl output
+                import re as _re
+                m = _re.search(r"argv\[\]=(.+?) ; ignore_errors", result.stdout)
+                if m:
+                    exec_line = m.group(1).strip()
+                    new_exec = _re.sub(r"--n-gpu-layers\s+\d+", f"--n-gpu-layers {gpu_layers}", exec_line)
+                    dropin_content = f"[Service]\nExecStart=\nExecStart={new_exec}\n"
+                    if dry_run:
+                        print(f"  [dry-run] would write drop-in: {dropin_path}")
+                        print(f"    --n-gpu-layers -> {gpu_layers}")
+                    else:
+                        dropin_dir.mkdir(parents=True, exist_ok=True)
+                        dropin_path.write_text(dropin_content)
+                        _run(["systemctl", "daemon-reload"], dry_run)
+                        print(f"  GPU layers drop-in: --n-gpu-layers {gpu_layers} ({dropin_path})")
+                else:
+                    print(f"  WARNING: could not parse ExecStart for GPU drop-in; keeping current layers")
+            except Exception as exc:
+                print(f"  WARNING: GPU drop-in skipped ({exc}); keeping current --n-gpu-layers")
+        elif dropin_path.exists():
+            # Catalog says 0 (use default) — remove any previous drop-in
+            if dry_run:
+                print(f"  [dry-run] would remove GPU drop-in: {dropin_path}")
+            else:
+                dropin_path.unlink()
+                _run(["systemctl", "daemon-reload"], dry_run)
+                print(f"  GPU layers drop-in removed (using service default)")
+
     # 4. Start service
     rc = _run(["systemctl", "start", service], dry_run)
     if rc != 0 and not dry_run:
