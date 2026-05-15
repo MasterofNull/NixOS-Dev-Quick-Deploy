@@ -391,6 +391,7 @@ let
   switchboardScript = pkgs.writeText "ai-switchboard.py" ''
     #!/usr/bin/env python3
     """AI Switchboard — OpenAI-compatible LLM routing proxy."""
+    import asyncio
     import hashlib
     import os
     import json
