@@ -1859,11 +1859,18 @@ async def run_http_mode(port: int) -> None:
         outcome    = str(data.get("outcome") or "success").strip()
         summary    = str(data.get("summary") or "")[:400]
         tags       = data.get("tags") or []
-        latency_ms = int(data.get("latency_ms") or 0)
+        try:
+            latency_ms = int(data.get("latency_ms") or 0)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "latency_ms must be integer"}, status=400)
         task_id    = str(data.get("task_id") or "")[:64]
 
         if event_type not in _VALID_EVENT_TYPES:
-            event_type = "task_completed"
+            # Preserve unknown types under a flagged key rather than silently coercing
+            return web.json_response(
+                {"error": f"unknown event_type '{event_type}'; valid: {sorted(_VALID_EVENT_TYPES)}"},
+                status=400,
+            )
         if agent not in _VALID_AGENTS:
             agent = "unknown"
 
