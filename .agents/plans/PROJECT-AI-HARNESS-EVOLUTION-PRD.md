@@ -124,6 +124,22 @@ Every Phase 55 capability should carry this mapping before implementation is con
 | Crystallization | `/memory/crystalline/*`, `aq-crystallize`, session hash ledger | `aq-qa 55` checks 1.1.10-1.1.16 | Command center distillation queue and insight count |
 | Drift Detection | `/api/traces/drift`, TraceCollector, `agent-ops` profile | `aq-qa 55` checks 1.1.5-1.1.9 | Command center Agent Ops alert and drift score |
 
+### Continuous Learning Contract
+
+Continuous learning must be a gated promotion pipeline, not a parallel system that writes new dormant structures.
+Every learned artifact moves through this lifecycle:
+
+`observed -> candidate -> validated -> promoted -> crystallized -> superseded -> archived`
+
+Durable learning records must include `source_event_id`, `evidence`, `scope`, `confidence`,
+`last_validated_at`, `promotion_status`, `supersedes`, and `expires_at`. Runtime consumers
+(`aq-hints`, `/query`, workflow planning, recovery playbooks, and dashboard alerts) may only use
+`promoted` or `crystallized` records by default. `candidate` records are visible for debug and review,
+but they must not steer production agent behavior without an explicit debug flag.
+
+This makes continuous learning accountable: each lesson must come from a real event, have measurable
+validation evidence, expose where it is active, and be removable when drift or supersession proves it stale.
+
 ### Current Implementation Gate
 
 Do not start supersession writes while the retrieval path is failing. As of the 2026-05-15 Codex review, the original `ai-security-audit.service` validation blocker is fixed, but `aq-qa 0` still fails on:

@@ -939,6 +939,32 @@ _HINT_AUDIT_PATH = Path(
 )
 
 
+class _QueryShimRequest:
+    """Minimal request facade used to keep /query and /v1/orchestrate semantics identical."""
+
+    def __init__(self, body: bytes, real_req, *, path: str = "/query"):
+        self._body = body
+        self.headers = real_req.headers
+        self.match_info = real_req.match_info
+        self.method = "POST"
+        self.path = path
+        self.rel_url = real_req.rel_url
+        self.app = getattr(real_req, "app", None)
+        self._audit: dict = {}
+
+    async def json(self):
+        return json.loads(self._body)
+
+    def __setitem__(self, key, val):
+        self._audit[key] = val
+
+    def __getitem__(self, key):
+        return self._audit[key]
+
+    def get(self, key, default=None):
+        return self._audit.get(key, default)
+
+
 def _write_query_hint_audit(hints: list, query: str) -> None:
     """P22-004: append coordinator hint injections to hint-audit.jsonl.
 
@@ -1806,6 +1832,15 @@ async def run_http_mode(port: int) -> None:
             )
             return web.json_response({"error": "route_search_failed", "detail": str(exc)}, status=500)
 
+    async def handle_query_http(request):
+        """Normalize public /query requests through the same facade used by /v1/orchestrate."""
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON body"}, status=400)
+        body = json.dumps(data).encode()
+        return await handle_query(_QueryShimRequest(body, request))
+
     async def handle_orchestrate(request):
         """Phase 0 Slice 0.2 — unified front-door routing endpoint.
 
@@ -1862,33 +1897,7 @@ async def run_http_mode(port: int) -> None:
         if "limit" in options:
             forwarded_payload["limit"] = options["limit"]
 
-        # Wrap as a minimal shim so handle_query can consume it
-        import json as _json_inner
-
-        class _ShimRequest:
-            def __init__(self, body: bytes, real_req):
-                self._body = body
-                self.headers = real_req.headers
-                self.match_info = real_req.match_info
-                self.method = "POST"
-                self.path = "/query"
-                self.rel_url = real_req.rel_url
-                self.app = getattr(real_req, "app", None)
-                self._audit: dict = {}
-
-            async def json(self):
-                return _json_inner.loads(self._body)
-
-            def __setitem__(self, key, val):
-                self._audit[key] = val
-
-            def __getitem__(self, key):
-                return self._audit[key]
-
-            def get(self, key, default=None):
-                return self._audit.get(key, default)
-
-        shim = _ShimRequest(_json_inner.dumps(forwarded_payload).encode(), request)
+        shim = _QueryShimRequest(json.dumps(forwarded_payload).encode(), request)
         resp = await handle_query(shim)
 
         # Inject routing telemetry headers on success
@@ -2073,7 +2082,7 @@ async def run_http_mode(port: int) -> None:
     ops_handlers.register_routes(http_app)
     http_app.router.add_get("/status", handle_status)
     http_app.router.add_post("/augment_query", handle_augment_query)
-    http_app.router.add_post("/query", handle_query)
+    http_app.router.add_post("/query", handle_query_http)
     http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2
     http_app.router.add_post("/search/tree", handle_tree_search)
     memory_context_handlers.register_routes(http_app)

@@ -53,6 +53,34 @@ Observed response:
 
 ---
 
+## Slice 55.0b — Continuous Learning Runtime Contract
+
+### Problem
+Continuous learning currently risks becoming broad infrastructure without a hard path from
+runtime evidence to active behavior. That creates dead-code learning systems: artifacts are
+stored, but not validated, promoted, surfaced, or retired.
+
+### Deliverables
+1. Define the durable learning lifecycle:
+   `observed -> candidate -> validated -> promoted -> crystallized -> superseded -> archived`
+2. Require learned records to carry:
+   `source_event_id`, `evidence`, `scope`, `confidence`, `last_validated_at`,
+   `promotion_status`, `supersedes`, and `expires_at`.
+3. Gate runtime use:
+   - `candidate`: debug/review visibility only
+   - `validated`: eligible for human/QA promotion
+   - `promoted`/`crystallized`: allowed in `aq-hints`, `/query`, workflow planning, recovery playbooks, and dashboard alerts
+   - `superseded`/`archived`: excluded from runtime retrieval by default
+4. Expose operator visibility in the command center:
+   learning candidates, promoted lessons, superseded facts, drift warnings, and dead-code candidates.
+
+### Validation
+- New/updated checks verify that unpromoted learning records do not affect default `/query` or `aq-hints`.
+- Dashboard/health surface can count candidates, promoted records, and superseded records.
+- Documentation points each continuous-learning store to an active runtime consumer or marks it review-only.
+
+---
+
 ## Slice 55.1 — Supersession Logic (Temporal Fact Invalidation)
 
 ### Problem
