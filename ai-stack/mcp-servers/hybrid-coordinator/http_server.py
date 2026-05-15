@@ -145,6 +145,9 @@ import context_summary_handlers   # Phase 25-007: agent context summarization + 
 import intake_gateway              # Phase 26: Unified Agent Orchestration Gateway (UAG)
 # Phase 54: Agentic-First Architecture Elevation
 import memory_broker               # 54.1 — unified memory layer
+import memory_superseder           # 55.1 — temporal memory supersession
+import drift_analyzer              # 55.3 — reasoning drift detection
+import memory_crystallizer         # 55.2 — crystalline session distillation
 import intent_classifier           # 54.2 — semantic intent classification
 import rag_augmentor               # 54.3 — active RAG pipeline
 import trace_collector             # 54.5 — end-to-end query trace
@@ -1459,6 +1462,7 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
         "/control/runtimes",
         "/control/runtimes/",
         "/memory/",
+        "/memory/crystalline/",
         "/learning/",
         "/cache/",
         "/harness/",
@@ -1646,6 +1650,87 @@ async def run_http_mode(port: int) -> None:
         if lesson_refs:
             payload["active_lesson_refs"] = lesson_refs
         return web.json_response(payload)
+
+    async def handle_delegate_stats(request):
+        """GET /stats/delegate — delegation success rate from audit log.
+
+        Reads the ai-audit-sidecar JSONL log under the coordinator's own
+        process credentials (ai-hybrid:ai-stack), so callers like aq-qa
+        do not need direct file-system group membership to get the rate.
+
+        Query params:
+          window_s  — lookback window in seconds (default 86400 = 24h)
+
+        Response:
+          {total, ok, success_rate, window_s, skipped_probes}
+        """
+        import time as _t
+        try:
+            window_s = int(request.rel_url.query.get("window_s", "86400"))
+        except (TypeError, ValueError):
+            window_s = 86400
+
+        audit_log = os.getenv(
+            "TOOL_AUDIT_LOG_PATH",
+            "/var/log/ai-audit-sidecar/tool-audit.jsonl",
+        )
+        now = _t.time()
+        total = 0
+        ok = 0
+        skipped_probes = 0
+        error_msg = None
+        try:
+            with open(audit_log, "r", encoding="utf-8", errors="replace") as fh:
+                for raw in fh:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        entry = json.loads(raw)
+                    except Exception:
+                        continue
+                    if entry.get("tool_name") != "ai_coordinator_delegate":
+                        continue
+                    ts_str = entry.get("timestamp", "")
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        ts = _dt.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                    except Exception:
+                        continue
+                    if now - ts > window_s:
+                        continue
+                    latency_ms = float(entry.get("latency_ms") or 0)
+                    err_msg_e = entry.get("error_message") or ""
+                    is_probe = (
+                        (entry.get("outcome") == "error"
+                         and err_msg_e == "http_status_504"
+                         and latency_ms < 15000)
+                        or err_msg_e.startswith("blocked_endpoint_pattern:")
+                    )
+                    if is_probe:
+                        skipped_probes += 1
+                        continue
+                    total += 1
+                    if entry.get("outcome") == "success":
+                        ok += 1
+        except OSError as exc:
+            error_msg = str(exc)
+        except Exception as exc:
+            error_msg = str(exc)
+
+        if error_msg:
+            return web.json_response(
+                {"error": error_msg, "total": 0, "ok": 0, "window_s": window_s},
+                status=503,
+            )
+        success_rate = round(ok / total, 3) if total > 0 else None
+        return web.json_response({
+            "total": total,
+            "ok": ok,
+            "success_rate": success_rate,
+            "window_s": window_s,
+            "skipped_probes": skipped_probes,
+        })
 
     async def handle_augment_query(request):
         try:
@@ -2081,6 +2166,7 @@ async def run_http_mode(port: int) -> None:
     openai_a2a_handlers.register_routes(http_app)
     ops_handlers.register_routes(http_app)
     http_app.router.add_get("/status", handle_status)
+    http_app.router.add_get("/stats/delegate", handle_delegate_stats)
     http_app.router.add_post("/augment_query", handle_augment_query)
     http_app.router.add_post("/query", handle_query_http)
     http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2
@@ -2122,6 +2208,9 @@ async def run_http_mode(port: int) -> None:
 
     # Phase 54: Agentic-First Architecture Elevation routes
     http_app.router.add_get("/memory/broker/status", memory_broker.handle_broker_status)
+    memory_superseder.register_routes(http_app)
+    drift_analyzer.register_routes(http_app)
+    memory_crystallizer.register_routes(http_app)
     http_app.router.add_get("/control/intent/map", intent_classifier.handle_get_intent_map)
     http_app.router.add_post("/control/intent/reload", intent_classifier.handle_reload_intent_map)
     http_app.router.add_get("/api/health/rag", rag_augmentor.handle_rag_health)
