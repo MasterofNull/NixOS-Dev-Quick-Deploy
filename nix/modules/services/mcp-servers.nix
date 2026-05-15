@@ -1677,6 +1677,50 @@ in {
         };
       };
 
+      # Phase 56.2 — Automated session crystallization (nightly, Qwen distills async)
+      systemd.services.ai-crystallize-sessions = {
+        description = "Crystallize Continue sessions into AIDB episodic memory";
+        restartIfChanged = false;
+        path = with pkgs; [ bash coreutils curl findutils python3 ];
+        after = [
+          "network-online.target"
+          "ai-hybrid-coordinator.service"
+        ];
+        wants = ["network-online.target" "ai-hybrid-coordinator.service"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "hyperd";   # needs ~/.continue/sessions access
+          Group = aiGroup;
+          WorkingDirectory = "/home/hyperd";
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${mcp.repoPath}/scripts/ai/aq-crystallize"
+            "--session-dir" "/home/hyperd/.continue/sessions"
+            "--since-hours" "25"   # process sessions from last 25h (overlap buffer)
+          ];
+          PrivateTmp = true;
+          PrivateNetwork = false;
+          NoNewPrivileges = true;
+          TimeoutStartSec = "3600";
+          StandardOutput = "journal";
+          StandardError = "journal";
+        };
+        environment = {
+          HYBRID_COORDINATOR_URL = "http://127.0.0.1:${toString mcp.coordinatorPort}";
+        };
+      };
+
+      systemd.timers.ai-crystallize-sessions = {
+        description = "Nightly session crystallization timer (Phase 56.2)";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar = "*-*-* 02:00:00";
+          OnBootSec = "20min";
+          Persistent = true;
+          Unit = "ai-crystallize-sessions.service";
+        };
+      };
+
       systemd.services.ai-post-deploy-converge = {
         description = "AI stack post-deploy declarative convergence";
         # Timer/manual-trigger driven only — never started by switch-to-configuration.

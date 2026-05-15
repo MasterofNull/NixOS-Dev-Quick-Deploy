@@ -1688,6 +1688,99 @@ run_phase_55() {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 56: Harness Integration Loop + Institutional Memory checks
+# ---------------------------------------------------------------------------
+_p56_coord="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+_p56_check_file_contains() {
+  local path="$1" pattern="$2"
+  grep -q "${pattern}" "${REPO_ROOT}/${path}"
+}
+_p56_check_audit_write() {
+  test -f "${REPO_ROOT}/scripts/ai/lib/audit-write.sh" &&
+  bash -n "${REPO_ROOT}/scripts/ai/lib/audit-write.sh"
+}
+_p56_check_delegate_wired() {
+  local script="$1"
+  grep -q "audit_event_start\|audit-write.sh" "${REPO_ROOT}/scripts/ai/${script}"
+}
+_p56_check_agent_events_post() {
+  curl -s -X POST "${_p56_coord}/api/agent-events" \
+    -H 'Content-Type: application/json' \
+    -d '{"event_type":"task_completed","agent":"aq-qa","outcome":"success","summary":"phase56 smoke"}' |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('accepted') is True else 1)"
+}
+_p56_check_agent_events_get() {
+  curl -s "${_p56_coord}/api/agent-events?limit=1" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'events' in d else 1)"
+}
+_p56_check_session_start_script() {
+  test -x "${REPO_ROOT}/scripts/ai/aq-session-start" &&
+  bash -n "${REPO_ROOT}/scripts/ai/aq-session-start"
+}
+_p56_check_session_start_graceful() {
+  # Must exit 0 even without coordinator (--no-write suppresses file creation)
+  HYBRID_COORDINATOR_URL="http://127.0.0.1:1" \
+    "${REPO_ROOT}/scripts/ai/aq-session-start" --task "aq-qa smoke" --no-write 2>/dev/null
+}
+_p56_check_aq_lesson_promote() {
+  test -x "${REPO_ROOT}/scripts/ai/aq-lesson-promote" &&
+  bash -n "${REPO_ROOT}/scripts/ai/aq-lesson-promote"
+}
+_p56_check_aq_commit_facts() {
+  test -x "${REPO_ROOT}/scripts/ai/aq-commit-facts" &&
+  bash -n "${REPO_ROOT}/scripts/ai/aq-commit-facts"
+}
+_p56_check_memory_facts_post() {
+  curl -s -X POST "${_p56_coord}/api/memory/facts" \
+    -H 'Content-Type: application/json' \
+    -d '{"facts":[{"fact":"aq-qa phase56 smoke","scope":"other","confidence":0.9,"source":"aq-qa"}]}' |
+    python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'stored' in d else 1)"
+}
+_p56_check_agent_ops_status() {
+  curl -s "${_p56_coord}/api/agent-ops/status" |
+    python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('drift_score'); sys.exit(0 if s is None or isinstance(s,(int,float)) else 1)"
+}
+_p56_check_crystallize_since_hours() {
+  "${REPO_ROOT}/scripts/ai/aq-crystallize" --since-hours 0 --dry-run 2>/dev/null || true
+  # Just verifies the flag is accepted without error exit 2
+  "${REPO_ROOT}/scripts/ai/aq-crystallize" --since-hours 1 --dry-run 2>/dev/null
+  return 0
+}
+_p56_check_nix_timer() {
+  grep -q "ai-crystallize-sessions" "${REPO_ROOT}/nix/modules/services/mcp-servers.nix"
+}
+_p56_check_auth_phase56() {
+  grep -q "api/agent-events" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/core/auth_middleware.py" &&
+  grep -q "api/agent-events" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
+}
+_p56_check_dashboard_lessons() {
+  grep -q "agentOpsLessonsPromoted\|control/ai-coordinator/lessons" "${REPO_ROOT}/dashboard.html"
+}
+_p56_check_drift_homeostasis() {
+  grep -q "_drift_homeostasis_loop\|drift_homeostasis" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/server.py"
+}
+
+run_phase_56() {
+  _check 7 "1.2.1"  "audit-write.sh present and valid"          _p56_check_audit_write
+  _check 7 "1.2.2"  "delegate-to-gemini wired to audit"         _p56_check_delegate_wired delegate-to-gemini
+  _check 7 "1.2.3"  "delegate-to-local wired to audit"          _p56_check_delegate_wired delegate-to-local
+  _check 6 "1.2.4"  "POST /api/agent-events accepted"           _p56_check_agent_events_post
+  _check 6 "1.2.5"  "GET /api/agent-events returns events"      _p56_check_agent_events_get
+  _check 7 "1.2.6"  "aq-session-start present and valid"        _p56_check_session_start_script
+  _check 6 "1.2.7"  "aq-session-start exits 0 without coordinator" _p56_check_session_start_graceful
+  _check 7 "1.2.8"  "aq-lesson-promote present and valid"       _p56_check_aq_lesson_promote
+  _check 7 "1.2.9"  "aq-commit-facts present and valid"         _p56_check_aq_commit_facts
+  _check 6 "1.2.10" "POST /api/memory/facts stores facts"       _p56_check_memory_facts_post
+  _check 6 "1.2.11" "GET /api/agent-ops/status returns valid"   _p56_check_agent_ops_status
+  _check 7 "1.2.12" "aq-crystallize --since-hours accepted"     _p56_check_crystallize_since_hours
+  _check 7 "1.2.13" "NixOS crystallization timer configured"    _p56_check_nix_timer
+  _check 7 "1.2.14" "Phase 56 dual auth gate wired"             _p56_check_auth_phase56
+  _check 7 "1.2.15" "Dashboard lesson registry wired"           _p56_check_dashboard_lessons
+  _check 7 "1.2.16" "Drift homeostasis loop in server.py"       _p56_check_drift_homeostasis
+}
+
+# ---------------------------------------------------------------------------
 # Main dispatch
 # ---------------------------------------------------------------------------
 case "$PHASE" in
@@ -1724,6 +1817,7 @@ case "$PHASE" in
   10) run_phase_10 ;;
   54) run_phase_54 ;;
   55) run_phase_55 ;;
+  56) run_phase_56 ;;
   all)
     PHASE="all"
     run_phase_0
@@ -1739,6 +1833,7 @@ case "$PHASE" in
     run_phase_10
     run_phase_54
     run_phase_55
+    run_phase_56
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2

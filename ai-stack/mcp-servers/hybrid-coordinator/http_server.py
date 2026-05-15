@@ -1482,6 +1482,9 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
         "/api/traces",         # Phase 54: query trace explorer
         "/eval/run",           # Phase 54: trigger eval run
         "/eval/trend",         # Phase 54: eval trend history
+        "/api/agent-events",   # Phase 56: agent event bus
+        "/api/agent-ops/",     # Phase 56: agent ops status
+        "/api/memory/facts",   # Phase 56: commit fact ingest
     )
     return any(req.path.startswith(pfx) for pfx in agent_prefixes)
 
@@ -1731,6 +1734,237 @@ async def run_http_mode(port: int) -> None:
             "window_s": window_s,
             "skipped_probes": skipped_probes,
         })
+
+    # Phase 56.4 — Commit Fact Ingest
+    async def handle_memory_facts_post(request):
+        """POST /api/memory/facts — store structured facts from aq-commit-facts.
+
+        Writes each fact to MemoryBroker semantic store with valid_from=now().
+        Body: {"facts": [{"fact":str, "scope":str, "confidence":float, "source":str}]}
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid_json"}, status=400)
+
+        facts = data.get("facts") or []
+        if not isinstance(facts, list):
+            return web.json_response({"error": "facts must be array"}, status=400)
+
+        stored = 0
+        ts = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
+        mb = memory_broker.get_broker()
+        for f in facts[:8]:  # cap at 8 per call
+            if not isinstance(f, dict):
+                continue
+            fact_text = str(f.get("fact") or "").strip()[:500]
+            if not fact_text:
+                continue
+            try:
+                await mb.store(
+                    memory_type="semantic",
+                    content=fact_text,
+                    metadata={
+                        "scope":      str(f.get("scope") or "other")[:64],
+                        "confidence": float(f.get("confidence") or 0.8),
+                        "source":     str(f.get("source") or "aq-commit-facts")[:128],
+                        "valid_from": ts,
+                        "origin":     "commit_facts",
+                    },
+                )
+                stored += 1
+            except Exception as _exc:
+                logger.debug("memory_facts_store_skip err=%s", _exc)
+
+        return web.json_response({"stored": stored, "timestamp": ts})
+
+    # Phase 56.5 — Agent Ops Status
+    _agent_ops_state: dict = {"drift_score": None, "profile_override": None, "alert_active": False, "since": None}
+
+    async def handle_agent_ops_status(_request):
+        """GET /api/agent-ops/status — live drift state + profile override."""
+        da = drift_analyzer.get_analyzer()
+        try:
+            drift_data = await da.compute_drift(window=20)
+            score = drift_data.get("drift_score")
+        except Exception:
+            score = None
+        return web.json_response({
+            "drift_score":      score,
+            "profile_override": _agent_ops_state.get("profile_override"),
+            "alert_active":     _agent_ops_state.get("alert_active", False),
+            "since":            _agent_ops_state.get("since"),
+            "window_size":      20,
+        })
+
+    # Phase 56.6 — Agent Event Bus
+    _VALID_EVENT_TYPES = frozenset({
+        "task_completed", "error_resolution", "lesson", "decision",
+        "delegation_start", "delegation_end",
+    })
+    _VALID_AGENTS = frozenset({
+        "gemini", "codex", "claude", "local", "coordinator", "unknown",
+    })
+
+    async def handle_agent_events_post(request):
+        """POST /api/agent-events — ingest a delegation/lesson/decision event.
+
+        Writes to tool-audit.jsonl (fixes 0.8.1) and feeds ContinuousLearning
+        when event_type is task_completed or error_resolution.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid_json"}, status=400)
+
+        event_type = str(data.get("event_type") or "task_completed").strip()
+        agent      = str(data.get("agent") or "unknown").strip()
+        outcome    = str(data.get("outcome") or "success").strip()
+        summary    = str(data.get("summary") or "")[:400]
+        tags       = data.get("tags") or []
+        latency_ms = int(data.get("latency_ms") or 0)
+        task_id    = str(data.get("task_id") or "")[:64]
+
+        if event_type not in _VALID_EVENT_TYPES:
+            event_type = "task_completed"
+        if agent not in _VALID_AGENTS:
+            agent = "unknown"
+
+        ts = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
+
+        # Write to tool-audit.jsonl — same format /stats/delegate reads
+        audit_entry = {
+            "tool_name": "ai_coordinator_delegate",
+            "timestamp": ts,
+            "outcome": outcome,
+            "latency_ms": latency_ms,
+            "parameters": {
+                "agent": agent,
+                "task_id": task_id,
+                "event_type": event_type,
+                "summary": summary,
+                "tags": tags,
+            },
+            "error_message": "" if outcome == "success" else summary[:120],
+        }
+        audit_log = os.getenv(
+            "TOOL_AUDIT_LOG_PATH",
+            "/var/log/ai-audit-sidecar/tool-audit.jsonl",
+        )
+        try:
+            with open(audit_log, "a", encoding="utf-8") as _fh:
+                _fh.write(json.dumps(audit_entry) + "\n")
+        except OSError as _e:
+            logger.warning("agent_event_audit_write_failed path=%s err=%s", audit_log, _e)
+
+        # Feed ContinuousLearning for task_completed / error_resolution
+        if event_type in {"task_completed", "error_resolution"}:
+            try:
+                _cl_event = {
+                    "event": event_type,
+                    "agent": agent,
+                    "outcome": outcome,
+                    "summary": summary,
+                    "task_id": task_id,
+                    "timestamp": ts,
+                }
+                if hasattr(_continuous_learning, "process_event"):
+                    asyncio.create_task(
+                        asyncio.coroutine(
+                            lambda e=_cl_event: _continuous_learning.process_event(e)
+                        )()
+                    )
+            except Exception as _exc:
+                logger.debug("agent_event_cl_feed_skip err=%s", _exc)
+
+        # Lesson events → agent-lesson registry candidate
+        if event_type == "lesson" and summary:
+            try:
+                async with _agent_lessons_lock:
+                    _registry = await _load_agent_lessons_registry()
+                    _entries = list(_registry.get("entries") or [])
+                    import hashlib as _hl
+                    _key = "auto-" + _hl.md5(summary.encode()).hexdigest()[:8]
+                    _exists = any(e.get("lesson_key") == _key for e in _entries)
+                    if not _exists:
+                        _entries.append({
+                            "lesson_key": _key,
+                            "summary": summary[:240],
+                            "source_agent": agent,
+                            "state": "pending_review",
+                            "created_at": ts,
+                            "tags": tags,
+                        })
+                        _registry["entries"] = _entries
+                        await _save_agent_lessons_registry(_registry)
+            except Exception as _exc:
+                logger.debug("agent_event_lesson_registry_skip err=%s", _exc)
+
+        return web.json_response({
+            "accepted": True,
+            "event_type": event_type,
+            "agent": agent,
+            "outcome": outcome,
+            "timestamp": ts,
+        })
+
+    async def handle_agent_events_get(request):
+        """GET /api/agent-events — recent events from tool-audit.jsonl."""
+        try:
+            limit = min(int(request.rel_url.query.get("limit", "20")), 100)
+        except (ValueError, TypeError):
+            limit = 20
+        filter_type = request.rel_url.query.get("event_type", "")
+        try:
+            window_s = int(request.rel_url.query.get("window_s", "86400"))
+        except (ValueError, TypeError):
+            window_s = 86400
+
+        audit_log = os.getenv(
+            "TOOL_AUDIT_LOG_PATH",
+            "/var/log/ai-audit-sidecar/tool-audit.jsonl",
+        )
+        now = _t.time()
+        events = []
+        try:
+            with open(audit_log, "r", encoding="utf-8", errors="replace") as _fh:
+                lines = _fh.readlines()
+            for raw in reversed(lines):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                if entry.get("tool_name") != "ai_coordinator_delegate":
+                    continue
+                ts_str = entry.get("timestamp", "")
+                try:
+                    from datetime import datetime as _dt, timezone as _tz
+                    ts = _dt.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    continue
+                if now - ts > window_s:
+                    continue
+                params = entry.get("parameters") or {}
+                if filter_type and params.get("event_type") != filter_type:
+                    continue
+                events.append({
+                    "event_type": params.get("event_type", "task_completed"),
+                    "agent":      params.get("agent", "unknown"),
+                    "outcome":    entry.get("outcome", ""),
+                    "summary":    params.get("summary", ""),
+                    "task_id":    params.get("task_id", ""),
+                    "tags":       params.get("tags") or [],
+                    "latency_ms": entry.get("latency_ms", 0),
+                    "timestamp":  ts_str,
+                })
+                if len(events) >= limit:
+                    break
+        except OSError:
+            pass
+        return web.json_response({"events": events, "total_in_window": len(events)})
 
     async def handle_augment_query(request):
         try:
@@ -2167,6 +2401,11 @@ async def run_http_mode(port: int) -> None:
     ops_handlers.register_routes(http_app)
     http_app.router.add_get("/status", handle_status)
     http_app.router.add_get("/stats/delegate", handle_delegate_stats)
+    # Phase 56.4/56.5/56.6 — Commit facts, Agent Ops status, Event Bus
+    http_app.router.add_post("/api/memory/facts", handle_memory_facts_post)
+    http_app.router.add_get("/api/agent-ops/status", handle_agent_ops_status)
+    http_app.router.add_post("/api/agent-events", handle_agent_events_post)
+    http_app.router.add_get("/api/agent-events", handle_agent_events_get)
     http_app.router.add_post("/augment_query", handle_augment_query)
     http_app.router.add_post("/query", handle_query_http)
     http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2

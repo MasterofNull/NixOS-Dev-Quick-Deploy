@@ -3663,6 +3663,22 @@
                                 <div id="agentOpsCrystalLastRun" style="font-size:0.72rem;color:var(--subtext,#6c7086);"></div>
                             </div>
 
+                            <!-- Lesson Registry card -->
+                            <div style="background:var(--surface,#181825);border-radius:8px;padding:1rem;">
+                                <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--subtext,#6c7086);margin-bottom:0.5rem;">Lesson Registry</div>
+                                <div style="display:flex;gap:1.5rem;margin-bottom:0.5rem;">
+                                    <div>
+                                        <div style="font-size:2rem;font-weight:700;color:#a6e3a1;" id="agentOpsLessonsPromoted">--</div>
+                                        <div style="font-size:0.7rem;color:var(--subtext,#6c7086);">promoted</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size:2rem;font-weight:700;color:#fab387;" id="agentOpsLessonsPending">--</div>
+                                        <div style="font-size:0.7rem;color:var(--subtext,#6c7086);">pending review</div>
+                                    </div>
+                                </div>
+                                <div id="agentOpsLessonsList" style="font-size:0.72rem;color:var(--subtext,#6c7086);line-height:1.7;max-height:80px;overflow-y:auto;"></div>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -10821,10 +10837,12 @@
             const badge = document.getElementById('agentOpsBadge');
             const updated = document.getElementById('agentOpsUpdated');
 
-            const [driftRes, historyRes, crystalRes] = await Promise.allSettled([
+            const [driftRes, historyRes, crystalRes, lessonsRes, opsStatusRes] = await Promise.allSettled([
                 fetch(`${FASTAPI_BASE}/api/traces/drift`, { cache: 'no-store' }),
                 fetch(`${FASTAPI_BASE}/memory/supersede/history?limit=5`, { cache: 'no-store' }),
                 fetch(`${FASTAPI_BASE}/memory/crystalline/status`, { cache: 'no-store' }),
+                fetch(`${FASTAPI_BASE}/control/ai-coordinator/lessons`, { cache: 'no-store' }),
+                fetch(`${FASTAPI_BASE}/api/agent-ops/status`, { cache: 'no-store' }),
             ]);
 
             let anyError = false;
@@ -10896,6 +10914,43 @@
                     anyError = true;
                 }
             } catch (_) { anyError = true; }
+
+            // Lesson registry (Phase 56.8)
+            try {
+                const lessonsData = lessonsRes.status === 'fulfilled' && lessonsRes.value.ok
+                    ? await lessonsRes.value.json() : null;
+                const promotedEl = document.getElementById('agentOpsLessonsPromoted');
+                const pendingEl  = document.getElementById('agentOpsLessonsPending');
+                const listEl     = document.getElementById('agentOpsLessonsList');
+                if (lessonsData) {
+                    const registry = lessonsData.agent_lessons || {};
+                    const entries  = registry.entries || [];
+                    const promoted = entries.filter(e => ['promoted','crystallized'].includes(e.state));
+                    const pending  = entries.filter(e => e.state === 'pending_review');
+                    if (promotedEl) promotedEl.textContent = promoted.length;
+                    if (pendingEl)  pendingEl.textContent  = pending.length;
+                    if (listEl) {
+                        listEl.innerHTML = promoted.slice(0, 4).map(e =>
+                            `<div style="border-bottom:1px solid var(--border,#333);padding:0.1rem 0;">[${e.source_agent||'?'}] ${(e.summary||e.lesson_key||'').slice(0,120)}</div>`
+                        ).join('') || '<span style="color:var(--subtext,#6c7086)">no promoted lessons</span>';
+                    }
+                } else {
+                    if (promotedEl) promotedEl.textContent = '--';
+                    if (pendingEl)  pendingEl.textContent  = '--';
+                }
+            } catch (_) { anyError = true; }
+
+            // Agent Ops profile override (Phase 56.5)
+            try {
+                const opsData = opsStatusRes.status === 'fulfilled' && opsStatusRes.value.ok
+                    ? await opsStatusRes.value.json() : null;
+                const alertEl = document.getElementById('agentOpsDriftAlert');
+                if (opsData && opsData.alert_active && opsData.profile_override) {
+                    const since = opsData.since ? ` since ${new Date(opsData.since).toLocaleTimeString()}` : '';
+                    if (alertEl) alertEl.innerHTML =
+                        `<span style="color:#f38ba8;font-weight:600">ALERT: ${opsData.profile_override} profile active${since}</span>`;
+                }
+            } catch (_) {}
 
             if (badge) {
                 badge.textContent = anyError ? 'partial' : 'ok';

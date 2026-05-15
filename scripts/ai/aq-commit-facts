@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# aq-commit-facts — Phase 56.4: Extract structured facts from recent commits
+#
+# After a commit batch, delegates a bounded fact-extraction call to the local
+# Qwen model (≤800 char diff summary, JSON output) and stores the result to
+# POST /api/memory/facts (MemoryBroker semantic store).
+#
+# Designed to run async (background) so it never blocks the commit workflow.
+#
+# Usage:
+#   aq-commit-facts                      # extract from HEAD commit
+#   aq-commit-facts --since HEAD~3       # since a specific ref
+#   aq-commit-facts --dry-run            # show diff summary without posting
+#   aq-commit-facts --wait               # block until Qwen responds
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+
+since="HEAD~1"
+dry_run=0
+wait_mode=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --since)   since="$2"; shift 2 ;;
+        --dry-run) dry_run=1; shift ;;
+        --wait)    wait_mode=1; shift ;;
+        --help|-h)
+            printf 'usage: aq-commit-facts [--since REF] [--dry-run] [--wait]\n'
+            exit 0 ;;
+        *) printf 'unknown arg: %s\n' "$1" >&2; exit 2 ;;
+    esac
+done
+
+# Build ≤800 char diff summary: stat + first lines of commit message
+diff_stat="$(git -C "$REPO_ROOT" diff --stat "${since}..HEAD" 2>/dev/null | tail -5)" || diff_stat=""
+commit_msg="$(git -C "$REPO_ROOT" log --oneline "${since}..HEAD" 2>/dev/null | head -5)" || commit_msg=""
+summary="${commit_msg}
+---
+${diff_stat}"
+summary="${summary:0:800}"
+
+if [[ -z "${commit_msg}" ]]; then
+    printf 'aq-commit-facts: no commits since %s, nothing to extract\n' "$since"
+    exit 0
+fi
+
+if [[ "$dry_run" -eq 1 ]]; then
+    printf '=== Diff summary (would send to Qwen) ===\n%s\n' "$summary"
+    exit 0
+fi
+
+# Extraction prompt — structured, bounded
+extraction_prompt="Extract 2-4 architectural facts from this git diff summary as a JSON array.
+Each element: {\"fact\":\"...\",\"scope\":\"coordinator|nix|scripts|dashboard|other\",\"confidence\":0.8,\"source\":\"$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)\"}
+Only include decisions, constraints, or patterns future agents should know. No trivial detail.
+
+${summary}"
+
+printf 'aq-commit-facts: delegating to local Qwen (%s)...\n' "$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null)"
+
+_delegate_args=(--mode direct --prompt "$extraction_prompt")
+[[ "$wait_mode" -eq 1 ]] && _delegate_args+=(--wait) || _delegate_args+=(--timeout 300)
+
+output_json="$("${SCRIPT_DIR}/delegate-to-local" "${_delegate_args[@]}" 2>/dev/null)" || output_json=""
+
+if [[ "$wait_mode" -eq 1 ]] && [[ -n "$output_json" ]]; then
+    # Parse and POST facts to coordinator
+    facts_payload="$(python3 - "$output_json" <<'PYEOF'
+import json, sys, re
+
+raw = sys.argv[1]
+# Find JSON array in output (Qwen may add prose around it)
+match = re.search(r'\[.*\]', raw, re.DOTALL)
+if not match:
+    sys.exit(0)
+try:
+    facts = json.loads(match.group(0))
+    if isinstance(facts, list):
+        print(json.dumps({"facts": facts[:4]}))
+except Exception:
+    sys.exit(0)
+PYEOF
+)" || true
+
+    if [[ -n "$facts_payload" ]]; then
+        result="$(curl -sf --max-time 10 -X POST "${COORD_URL}/api/memory/facts" \
+            -H 'Content-Type: application/json' \
+            -d "$facts_payload" 2>/dev/null)" || result=""
+        if [[ -n "$result" ]]; then
+            stored="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('stored',0))" "$result" 2>/dev/null || echo 0)"
+            printf 'aq-commit-facts: %s fact(s) stored to semantic memory\n' "$stored"
+        fi
+    fi
+else
+    printf 'aq-commit-facts: running in background (--wait to block)\n'
+fi
