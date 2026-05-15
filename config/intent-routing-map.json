@@ -1,0 +1,63 @@
+{
+  "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
+  "_version": "1.0",
+  "_updated": "2026-05-14",
+  "intents": {
+    "code_generation": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": false,
+      "rag_project": "logic-patterns"
+    },
+    "code_review": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": false,
+      "rag_project": "logic-patterns"
+    },
+    "knowledge_lookup": {
+      "profile": "local",
+      "min_confidence": 0.3,
+      "fallback_profile": "local",
+      "memory_recall": true,
+      "rag_project": "semantic"
+    },
+    "planning": {
+      "profile": "local",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": true,
+      "rag_project": "episodic"
+    },
+    "math_reasoning": {
+      "profile": "local",
+      "min_confidence": 0.5,
+      "fallback_profile": "local",
+      "memory_recall": false,
+      "rag_project": "semantic"
+    },
+    "tool_execution": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": false,
+      "rag_project": "logic-patterns"
+    },
+    "delegation": {
+      "profile": "local",
+      "min_confidence": 0.5,
+      "fallback_profile": "local",
+      "memory_recall": true,
+      "rag_project": "procedural"
+    },
+    "unknown": {
+      "profile": "local",
+      "min_confidence": 0.0,
+      "fallback_profile": "local",
+      "memory_recall": true,
+      "rag_project": "semantic"
+    }
+  }
+}

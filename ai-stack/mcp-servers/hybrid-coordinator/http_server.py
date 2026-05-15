@@ -143,6 +143,12 @@ import trading_handlers          # Phase 24: multi-agent trading framework (agen
 import auto_tool_select_handlers  # Phase 24: autonomous tool auto-selection for all agents
 import context_summary_handlers   # Phase 25-007: agent context summarization + working memory
 import intake_gateway              # Phase 26: Unified Agent Orchestration Gateway (UAG)
+# Phase 54: Agentic-First Architecture Elevation
+import memory_broker               # 54.1 — unified memory layer
+import intent_classifier           # 54.2 — semantic intent classification
+import rag_augmentor               # 54.3 — active RAG pipeline
+import trace_collector             # 54.5 — end-to-end query trace
+import eval_runner                 # 54.6 — continuous evaluation
 import agent_capability_registry   # Phase 26: dynamic agent capability registry
 import domain_router               # Phase 26: domain classifier + team routing
 from delegation_handlers import (
@@ -775,6 +781,21 @@ def init(
         aidb_url=os.getenv("AIDB_URL", ""),
         aidb_api_key=_read_secret_file(os.getenv("AIDB_API_KEY_FILE", "")),
     )
+    # Phase 54.1 — MemoryBroker: unified typed memory interface
+    memory_broker.init(store_fn=_store_memory, recall_fn=_recall_memory)
+
+    # Phase 54.3 — RagAugmentor: active RAG pipeline (uses aidb_client from journal init)
+    _aidb_key_54 = _read_secret_file(os.getenv("AIDB_API_KEY_FILE", ""))
+    rag_augmentor.init(
+        aidb_client=_journal._aidb_client if hasattr(_journal, "_aidb_client") else None,
+        aidb_api_key=_aidb_key_54,
+    )
+
+    # Phase 54.5 / 54.6 — TraceCollector + EvalRunner (share postgres_client)
+    # postgres_client may be None if DB is unavailable; modules degrade gracefully
+    trace_collector.init(postgres_client=None)  # wired after postgres_client init below
+    eval_runner.init(postgres_client=None)       # wired after postgres_client init below
+
     # Phase 16.4: Identity kernel
     identity_handlers.init()
     memory_context_handlers.init(
@@ -1610,6 +1631,11 @@ async def run_http_mode(port: int) -> None:
 
     async def handle_query(request):
         """HTTP endpoint for query routing."""
+        # Phase 54.5 — wrap entire handler in trace span
+        _trace = trace_collector.TraceCollector(
+            postgres_client=None,  # uses module-level _pg set by trace_collector.init()
+            query=(await request.clone().text())[:200] if hasattr(request, "clone") else "",
+        )
         try:
             data = await request.json()
             (
@@ -1618,6 +1644,36 @@ async def run_http_mode(port: int) -> None:
             ) = _parse_query_input(data)
             if not query:
                 return web.json_response({"error": "query required"}, status=400)
+
+            # Phase 54.2 — classify intent before any routing decisions
+            _clf = intent_classifier.get_classifier()
+            _intent_result = _clf.classify(query)
+            _detected_intent = _intent_result.get("intent", "unknown")
+            _intent_conf = _intent_result.get("confidence", 0.0)
+            request_context["intent"] = _detected_intent
+            request_context["intent_confidence"] = _intent_conf
+            request_context["intent_profile"] = _intent_result.get("profile", "local")
+            _trace.set_intent(_detected_intent)
+            _trace.set_profile(_intent_result.get("profile", "local"))
+            # Elevate memory_recall_priority based on intent routing map
+            if _intent_result.get("memory_recall") and not memory_recall_priority:
+                memory_recall_priority = True
+
+            # Phase 54.3 — RAG augmentation (default ON, 500ms cap)
+            _rag = rag_augmentor.get_augmentor()
+            _rag_result = await _rag.augment(
+                query=query,
+                intent=_detected_intent,
+                rag_project=_intent_result.get("rag_project", "semantic"),
+            )
+            _trace.set_retrieval(
+                hits=_rag_result.get("hits", 0),
+                latency_ms=_rag_result.get("latency_ms", 0),
+                skipped=_rag_result.get("skipped", True),
+            )
+            if _rag_result.get("augmented") and _rag_result.get("context_text"):
+                request_context["rag_context"] = _rag_result["context_text"]
+                request_context["rag_project"] = _rag_result.get("project", "")
 
             tooling_layer = _init_query_audit_and_tooling(
                 request, orchestration, generate_response,
@@ -1715,6 +1771,16 @@ async def run_http_mode(port: int) -> None:
                 except Exception as _aff_exc:
                     logger.debug("affective pipeline skipped (non-fatal): %s", _aff_exc)
 
+            # Phase 54.2 — annotate result with detected intent
+            result["intent_classification"] = {
+                "intent": _detected_intent,
+                "confidence": _intent_conf,
+                "profile": _intent_result.get("profile", "local"),
+            }
+            # Phase 54.5 — commit trace span
+            asyncio.create_task(_trace._commit(
+                int((time.perf_counter() - _trace._start) * 1000)
+            ))
             return web.json_response(result)
         except Exception as exc:
             audit_metadata = request.get("audit_metadata")
@@ -2032,6 +2098,15 @@ async def run_http_mode(port: int) -> None:
     trading_handlers.register_routes(http_app)          # Phase 24: trading analysis (all-agent API)
     auto_tool_select_handlers.register_routes(http_app)  # Phase 24: autonomous tool auto-selection
     context_summary_handlers.register_routes(http_app)   # Phase 25-007: /agent/summarize-context + working-memory
+
+    # Phase 54: Agentic-First Architecture Elevation routes
+    http_app.router.add_get("/memory/broker/status", memory_broker.handle_broker_status)
+    http_app.router.add_get("/control/intent/map", intent_classifier.handle_get_intent_map)
+    http_app.router.add_post("/control/intent/reload", intent_classifier.handle_reload_intent_map)
+    http_app.router.add_get("/api/health/rag", rag_augmentor.handle_rag_health)
+    http_app.router.add_get("/api/traces", trace_collector.handle_get_traces)
+    http_app.router.add_post("/eval/run", eval_runner.handle_eval_run)
+    http_app.router.add_get("/eval/trend", eval_runner.handle_eval_trend)
 
     # Phase 26: Unified Agent Orchestration Gateway
     _lifecycle_dir = Path(

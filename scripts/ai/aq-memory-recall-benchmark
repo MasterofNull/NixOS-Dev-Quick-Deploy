@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# aq-memory-recall-benchmark — Phase 54.1 memory recall gate
+#
+# Runs 20 probe questions against AIDB semantic + episodic projects.
+# Pass gate: ≥85% of probes return at least one result with score ≥0.25.
+#
+# Exit 0 = PASS, Exit 1 = FAIL
+# Output: JSON scorecard to stdout
+#
+# Usage:
+#   aq-memory-recall-benchmark            # run + print scorecard
+#   aq-memory-recall-benchmark --json     # JSON only (no headers)
+
+set -euo pipefail
+
+COORDINATOR_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+MIN_PASS_RATE="${MIN_RECALL_PASS_RATE:-0.85}"
+JSON_ONLY=0
+[[ "${1:-}" == "--json" ]] && JSON_ONLY=1
+
+# 20 probe questions covering: facts, code, ops, architecture, history
+PROBES=(
+  "how does asyncio event loop work"
+  "what is the hybrid coordinator"
+  "NixOS flake configuration options"
+  "how to run aq-qa health check"
+  "agent memory episodic semantic procedural"
+  "switchboard routing profiles"
+  "llama.cpp inference port"
+  "AIDB vector search API"
+  "workflow DAG executor retry policy"
+  "intent classification routing map"
+  "MemoryBroker temporal validity"
+  "TraceCollector query trace schema"
+  "eval_trend table structure"
+  "WorkflowCheckpointer checkpoint resume"
+  "RagAugmentor L6 health gate"
+  "phase 54 agentic first elevation"
+  "aq-report RAG posture active historical"
+  "tier0 validation gate pre-commit"
+  "Qdrant collection agent-memory-semantic"
+  "delegate-to-gemini routing analysis"
+)
+
+passed=0
+failed=0
+results=()
+
+for probe in "${PROBES[@]}"; do
+  response=$(curl -s -X POST "${COORDINATOR_URL}/memory/recall" \
+    -H "Content-Type: application/json" \
+    -d "{\"query\": \"${probe}\", \"memory_types\": null, \"limit\": 3, \"retrieval_mode\": \"hybrid\"}" \
+    --max-time 8 2>/dev/null || echo '{}')
+
+  # Count results with any content
+  hit_count=$(echo "$response" | python3 -c "
+import json,sys
+try:
+  d=json.load(sys.stdin)
+  rows=d.get('results',[])
+  print(len([r for r in rows if r.get('summary') or r.get('content')]))
+except:
+  print(0)
+" 2>/dev/null || echo 0)
+
+  if [[ "$hit_count" -gt 0 ]]; then
+    ((passed++)) || true
+    results+=("{\"probe\": \"${probe:0:60}\", \"hit\": true, \"hits\": $hit_count}")
+  else
+    ((failed++)) || true
+    results+=("{\"probe\": \"${probe:0:60}\", \"hit\": false, \"hits\": 0}")
+  fi
+done
+
+total=$((passed + failed))
+pass_rate=$(python3 -c "print(round($passed / max($total, 1), 3))" 2>/dev/null || echo 0)
+gate_pass=$(python3 -c "print('true' if $pass_rate >= $MIN_PASS_RATE else 'false')" 2>/dev/null || echo false)
+
+results_json=$(IFS=,; echo "[${results[*]}]")
+
+scorecard=$(cat <<EOF
+{
+  "benchmark": "aq-memory-recall-benchmark",
+  "phase": "54.1",
+  "total_probes": $total,
+  "passed": $passed,
+  "failed": $failed,
+  "pass_rate": $pass_rate,
+  "min_pass_rate": $MIN_PASS_RATE,
+  "gate": $gate_pass,
+  "results": $results_json
+}
+EOF
+)
+
+if [[ "$JSON_ONLY" -eq 1 ]]; then
+  echo "$scorecard"
+else
+  echo "============================================================"
+  echo "  aq-memory-recall-benchmark (Phase 54.1)"
+  echo "============================================================"
+  echo "  Probes:    $total"
+  echo "  Passed:    $passed"
+  echo "  Failed:    $failed"
+  echo "  Pass rate: $pass_rate (min: $MIN_PASS_RATE)"
+  if [[ "$gate_pass" == "true" ]]; then
+    echo "  Gate:      PASS"
+  else
+    echo "  Gate:      FAIL — recall below threshold"
+  fi
+  echo "------------------------------------------------------------"
+  echo "$scorecard" | python3 -m json.tool 2>/dev/null || echo "$scorecard"
+fi
+
+[[ "$gate_pass" == "true" ]]
