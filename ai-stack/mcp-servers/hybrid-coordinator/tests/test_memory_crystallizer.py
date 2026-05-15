@@ -35,3 +35,21 @@ def test_crystallizer_is_idempotent(tmp_path: Path):
     assert first["status"] == "crystallized"
     assert second["status"] == "already_processed"
     assert any("CREATE TABLE IF NOT EXISTS crystallized_sessions" in query for query, _ in pg.executed)
+
+
+def test_crystallizer_emits_runtime_learning_metadata(tmp_path: Path):
+    session = tmp_path / "session.json"
+    session.write_text('{"messages":[{"role":"user","content":"hello"}]}', encoding="utf-8")
+    stored = []
+
+    async def _store(insight, metadata):
+        stored.append((insight, metadata))
+        return {"status": "stored"}
+
+    asyncio.run(MemoryCrystallizer(store_insight_fn=_store).crystallize_session(str(session)))
+
+    assert stored
+    _insight, metadata = stored[0]
+    assert metadata["promotion_status"] == "crystallized"
+    assert metadata["source_event_id"].startswith("session:")
+    assert metadata["scope"] == "episodic"
