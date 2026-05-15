@@ -1652,7 +1652,8 @@ _p54_check_trace_collector() {
   python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); import trace_collector; trace_collector.TraceCollector" 2>/dev/null
 }
 _p54_check_traces_endpoint() {
-  curl -sf "${_p54_coord}/api/traces" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'traces' in d or 'error' in d else 1)"
+  # Use -s without -f so 503 (postgres_unavailable) responses are still parsed
+  curl -s "${_p54_coord}/api/traces" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'traces' in d or 'error' in d else 1)"
 }
 _p54_check_eval_runner() {
   local r; r="$(_p54_root)"
