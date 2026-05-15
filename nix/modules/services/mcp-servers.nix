@@ -690,6 +690,14 @@ in {
         wants = aiStackTargetWants ++ ["network-online.target"];
         after = ["network-online.target"];
       };
+
+      # base.nix generates a z-rule for mutableLogDir (= mutableUserServicePaths)
+      # that resets the group to primaryGroup (= "users"), overriding the ai-stack
+      # group set above.  Using lib.mkAfter ensures this z-rule is appended AFTER
+      # base.nix's rule in the merged tmpfiles list so coordinator can traverse the dir.
+      systemd.tmpfiles.rules = lib.mkAfter [
+        "z ${mutableLogDir} 0750 ${svcUser} ${aiGroup} -"
+      ];
     })
 
     (lib.mkIf active {

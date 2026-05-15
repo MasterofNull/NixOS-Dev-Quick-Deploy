@@ -1795,14 +1795,13 @@ async def run_http_mode(port: int) -> None:
             results = await mb.read(
                 memory_type="semantic",
                 query=scope or "procedural constraints",
-                limit=limit,
-                filters={"origin": "commit_facts"},
+                top_k=limit,
             )
         except Exception as _exc:
             return web.json_response({"facts": [], "error": str(_exc)})
 
         facts = []
-        for item in (results if isinstance(results, list) else results.get("memories") or []):
+        for item in (results if isinstance(results, list) else []):
             content = item.get("content") or item.get("text") or ""
             ctx = item.get("context") or {}
             if scope and ctx.get("scope", "") != scope:
@@ -1903,18 +1902,32 @@ async def run_http_mode(port: int) -> None:
         except OSError as _e:
             logger.warning("agent_event_audit_write_failed path=%s err=%s", audit_log, _e)
 
-        # Feed ContinuousLearning for task_completed / error_resolution
+        # Feed ContinuousLearning for task_completed / error_resolution.
+        # CL._extract_pattern_from_event() reads a nested "task" sub-object for
+        # task_completed and flat error_description/solution for error_resolution.
         if event_type in {"task_completed", "error_resolution"}:
             try:
-                _cl_event = {
-                    "event": event_type,
-                    "sub_type": sub_type,
-                    "agent": agent,
-                    "outcome": outcome,
-                    "summary": summary,
-                    "task_id": task_id,
-                    "timestamp": ts,
-                }
+                if event_type == "task_completed":
+                    _cl_event = {
+                        "event": event_type,
+                        "timestamp": ts,
+                        "task": {
+                            "task_id": task_id,
+                            "prompt": summary,
+                            "output": summary,
+                            "backend": agent,
+                            "context": {"sub_type": sub_type, "outcome": outcome},
+                        },
+                    }
+                else:  # error_resolution
+                    _cl_event = {
+                        "event": event_type,
+                        "timestamp": ts,
+                        "error_id": task_id,
+                        "error_description": summary,
+                        "solution": summary,
+                        "resolution_time": latency_ms / 1000.0,
+                    }
                 if hasattr(_continuous_learning, "process_event"):
                     # asyncio.coroutine() was removed in Python 3.12 — call directly
                     asyncio.create_task(_continuous_learning.process_event(_cl_event))
