@@ -1942,6 +1942,9 @@ in {
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
           ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py cycle --since=1d --execute-limit=5";
+          # aq-report --format=json can take 180-240s on cold Qwen3 start; give the
+          # full cycle (report + approve + execute) 10 minutes to avoid false failures.
+          TimeoutSec = "600";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
