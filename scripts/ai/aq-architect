@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# aq-architect — switch to Qwen3.6-35B for deep reasoning, architecture, planning
+# Full harness model: tool-calling, thinking-capable, 262K context.
+# Switch to fast coding with: aq-coder
+#
+# Usage:
+#   aq-architect              Switch to qwen3.6-35b
+#   aq-architect --dry-run    Preview without changes
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "Switching to architect model (qwen3.6-35b)..."
+exec sudo "$SCRIPT_DIR/aq-model-switch" qwen3.6-35b "$@"

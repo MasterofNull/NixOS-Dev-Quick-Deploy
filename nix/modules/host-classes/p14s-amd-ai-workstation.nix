@@ -90,6 +90,12 @@ in
             command = "/run/current-system/sw/bin/flatpak *";
             options = [ "NOPASSWD" ];
           }
+          # Model-switch CLI: allows aq-coder / aq-architect without password prompt.
+          # Script is repo-local, executable, Python shebang — sudo resolves interpreter.
+          {
+            command = "${cfg.mcpServers.repoPath}/scripts/ai/aq-model-switch *";
+            options = [ "NOPASSWD" ];
+          }
         ];
       }
     ];
