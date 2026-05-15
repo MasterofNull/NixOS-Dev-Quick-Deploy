@@ -694,3 +694,78 @@ When `SWB_REMOTE_DAILY_TOKEN_CAP` is exceeded, remote-profile requests silently 
 | 15.1 | Code | **P0** | Coordinator must tag its switchboard calls with a non-hints-injecting profile (e.g., `x-ai-profile: local-agent` or new `internal` profile) to break circular hints fetch |
 | 15.2 | Code | P1 | Force `stream=true` for all local profiles in switchboard to eliminate 90s blank-screen UX |
 | 15.3 | Code | P2 | Add `X-AI-Fallback` response header + logging when remote budget fallback activates |
+
+---
+
+## 16. Switchboard Deep-Dive Subagent — Code-Level Audit (switchboard.nix:375–2053)
+
+Full wiring read of the 1678-line Python inline script. Confirms/adds to sec14–15. New findings with exact line citations:
+
+### 16.1 Confirmed bugs with line numbers
+
+| Bug | Location | Summary |
+|-----|----------|---------|
+| Stale hints (first msg) | switchboard.nix:1548–1575 | Already in sec14.1 BUG-1; `_get_hints()` `next((m for m in messages if role==user))` |
+| continue-local no streaming | switchboard.nix:1842–1850 | Already in sec15.2; only `local-agent` and `default` force `stream=True` |
+| Remote budget silent fallback | switchboard.nix:1790–1806 | Already in sec15.3; silent HTTP 200 downgrade |
+
+### 16.2 New bugs
+
+**BUG-A: Hints timeout too short, no retry** (`switchboard.nix:518`)
+```
+HINTS_TIMEOUT_S = float(os.environ.get("SWB_HINTS_TIMEOUT_S", "1.5"))
+```
+1.5s timeout with no retry. On coordinator latency spike, hints silently lost (exception eaten at lines 1574–1575). User receives untimely response with no ranked context and no indication hints were skipped.
+**Fix:** Increase default to 3s; add one retry; emit `X-AI-Hints-Skipped: timeout` response header.
+
+**BUG-B: Model alias rewrite is silent** (`switchboard.nix:710–727`)
+- When payload has `{"model": "remote/coding"}`, switchboard rewrites it to the configured alias (e.g., `openrouter/code-optimized`) before forwarding
+- The rewritten model name is never returned to the client
+- Client thinks it called `remote/coding`; actual model differs
+- **Fix:** Add `X-AI-Model-Alias: <actual_model>` response header
+
+**BUG-C: Loop detection injects guard message but does not hard-fail** (`switchboard.nix:1376–1406`)
+- When repetitive output detected (avg similarity >= 0.72 over recent assistant turns), `[loop-guard]` is injected as a system message
+- No fallback to different lane; no user notification; no forced stop
+- If model ignores the guard message, loop continues indefinitely
+- **Fix:** After 2+ consecutive loop detections, return HTTP 503 with `{"error": "loop_detected"}` instead of forwarding
+
+**BUG-D: Compact guidance contract not applied to `local-agent`** (`switchboard.nix:543–558`)
+```python
+if profile not in ("continue-local", "embedded-assist"):
+    return messages, False
+```
+`local-agent` profile is designed for brief agent guidance but does NOT receive the `[compact-guidance]` contract (max 3 numbered lines, no preamble). Docs (`46-SWITCHBOARD-PROFILES.md`) don't mention this. **Fix:** Add `local-agent` to the compact guidance profile list or document the intentional exclusion.
+
+### 16.3 Routing decision chain (confirmed, no drift)
+
+```
+_effective_profile() → profile from x-ai-profile header (fallback: "default")
+  ↓
+_route_target() → forceProvider (highest) → ROUTING_MODE → request headers → model prefix → DEFAULT_PROVIDER
+  ↓
+_apply_token_budget() → trim messages to maxMessages, maxInputTokens
+  ↓
+_ensure_profile_card() → inject card (unless reply-only suppression triggers)
+  ↓
+[if injectHints=true] _get_hints() → GET coordinator:8003/hints (1.5s timeout)
+  ↓
+_detect_loop() → embed recent turns, check similarity >= 0.72
+  ↓
+_rewrite_model() → alias model name if remote
+  ↓
+proxy → llama:8080 (local) OR REMOTE_URL (remote)
+```
+
+### 16.4 Architecture verdict from deep-dive
+
+"Architecture is sound, but hints timeout + streaming bug + silent fallback need addressing. The Nix-inline-Python structure is the highest structural risk — unit testing the routing logic requires a full Nix rebuild."
+
+### 16.5 New slices from sec16
+
+| Slice | Type | Priority | Description |
+|-------|------|----------|-------------|
+| 16.A | Code | P1 | Increase `SWB_HINTS_TIMEOUT_S` default to 3s; add 1 retry; emit `X-AI-Hints-Skipped` header |
+| 16.B | Code | P2 | Add `X-AI-Model-Alias` response header when model rewrite occurs |
+| 16.C | Code | P2 | HTTP 503 + `loop_detected` after 2+ consecutive loop guard triggers |
+| 16.D | Docs | P3 | Document compact guidance exclusion in `46-SWITCHBOARD-PROFILES.md` or add `local-agent` to the list |
