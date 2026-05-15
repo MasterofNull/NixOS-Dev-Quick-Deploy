@@ -17,19 +17,25 @@ _sub_type="${8:-}"
 _prompt="${9:-}"
 _log_file="${10:-}"
 
-payload="$(python3 - <<PYEOF
+# Use sys.argv for all dynamic values — shell expansion inside Python heredoc
+# is a code-injection surface when summary/task fields contain quotes or backslashes.
+payload="$(python3 -c "
 import json, sys
+event_type, sub_type, agent, outcome, latency_raw, task_id, summary = sys.argv[1:8]
+try:
+    latency_ms = int(latency_raw) if latency_raw.isdigit() else 0
+except (ValueError, TypeError):
+    latency_ms = 0
 print(json.dumps({
-    "event_type": "${_event_type}",
-    "sub_type":   "${_sub_type}",
-    "agent":      "${_agent}",
-    "outcome":    "${_outcome}",
-    "latency_ms": int("${_latency_ms}") if "${_latency_ms}".isdigit() else 0,
-    "task_id":    "${_task_id}",
-    "summary":    "${_summary}"[:400],
+    'event_type': event_type,
+    'sub_type':   sub_type,
+    'agent':      agent,
+    'outcome':    outcome,
+    'latency_ms': latency_ms,
+    'task_id':    task_id,
+    'summary':    summary[:400],
 }))
-PYEOF
-)" 2>/dev/null || exit 0
+" "$_event_type" "$_sub_type" "$_agent" "$_outcome" "$_latency_ms" "$_task_id" "$_summary" 2>/dev/null)" || exit 0
 
 curl -sf -X POST "${_coord_url}/api/agent-events" \
     -H 'Content-Type: application/json' \

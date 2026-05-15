@@ -1430,12 +1430,13 @@ def _collect_query_audit(request, result: Dict[str, Any], tooling_layer: Dict[st
 
 
 def _is_loopback_request(req: web.Request) -> bool:
-    """Return True when the request originates from localhost."""
+    """Return True when the request originates from localhost.
+
+    NOTE: X-Forwarded-For is intentionally NOT trusted — it is trivially spoofable
+    by any remote client.  Only the aiohttp transport-level peer address is used.
+    """
     remote = (req.remote or "").strip()
-    if remote in {"127.0.0.1", "::1", "localhost"}:
-        return True
-    forwarded_for = (req.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
-    return forwarded_for in {"127.0.0.1", "::1", "localhost"}
+    return remote in {"127.0.0.1", "::1", "localhost"}
 
 
 def _is_loopback_agent_request(req: web.Request) -> bool:
@@ -1778,6 +1779,41 @@ async def run_http_mode(port: int) -> None:
 
         return web.json_response({"stored": stored, "timestamp": ts})
 
+    async def handle_memory_facts_get(request):
+        """GET /api/memory/facts — retrieve stored facts (used by aq-session-start).
+
+        Query params: scope=<str> (filter by scope), limit=<int> (default 10)
+        """
+        scope = request.rel_url.query.get("scope", "")
+        try:
+            limit = max(1, min(int(request.rel_url.query.get("limit", "10")), 50))
+        except (ValueError, TypeError):
+            limit = 10
+
+        mb = memory_broker.get_broker()
+        try:
+            results = await mb.recall(
+                memory_type="semantic",
+                query=scope or "procedural constraints",
+                limit=limit,
+                context={"origin": "commit_facts"},
+            )
+        except Exception as _exc:
+            return web.json_response({"facts": [], "error": str(_exc)})
+
+        facts = []
+        for item in (results.get("memories") or []):
+            content = item.get("content") or item.get("text") or ""
+            if scope and item.get("context", {}).get("scope", "") != scope:
+                continue
+            facts.append({
+                "fact":       content[:500],
+                "scope":      item.get("context", {}).get("scope", ""),
+                "confidence": item.get("context", {}).get("confidence", 0.8),
+                "source":     item.get("context", {}).get("source", ""),
+            })
+        return web.json_response({"facts": facts[:limit]})
+
     # Phase 56.5 — Agent Ops Status
     _agent_ops_state: dict = {"drift_score": None, "profile_override": None, "alert_active": False, "since": None}
 
@@ -1872,11 +1908,8 @@ async def run_http_mode(port: int) -> None:
                     "timestamp": ts,
                 }
                 if hasattr(_continuous_learning, "process_event"):
-                    asyncio.create_task(
-                        asyncio.coroutine(
-                            lambda e=_cl_event: _continuous_learning.process_event(e)
-                        )()
-                    )
+                    # asyncio.coroutine() was removed in Python 3.12 — call directly
+                    asyncio.create_task(_continuous_learning.process_event(_cl_event))
             except Exception as _exc:
                 logger.debug("agent_event_cl_feed_skip err=%s", _exc)
 
@@ -2406,6 +2439,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/stats/delegate", handle_delegate_stats)
     # Phase 56.4/56.5/56.6 — Commit facts, Agent Ops status, Event Bus
     http_app.router.add_post("/api/memory/facts", handle_memory_facts_post)
+    http_app.router.add_get("/api/memory/facts", handle_memory_facts_get)
     http_app.router.add_get("/api/agent-ops/status", handle_agent_ops_status)
     http_app.router.add_post("/api/agent-events", handle_agent_events_post)
     http_app.router.add_get("/api/agent-events", handle_agent_events_get)
