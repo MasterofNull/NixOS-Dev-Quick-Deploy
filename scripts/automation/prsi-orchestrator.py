@@ -191,7 +191,7 @@ def _fetch_report(since: str) -> Dict[str, Any]:
         [sys.executable, str(AI_SCRIPT_DIR / "aq-report"), f"--since={since}", "--format=json"],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=300,  # raised from 120 — aq-report can take 180-240s on cold Qwen3 start
         check=False,
     )
     if result.returncode != 0:
