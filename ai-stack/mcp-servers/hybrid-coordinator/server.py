@@ -695,6 +695,19 @@ async def initialize_server():
         federated_integration_client = None
         logger.info("⚠ Continuous learning DISABLED (federated learning also disabled)")
 
+    # Phase 54.5/54.6 — wire TraceCollector + EvalRunner postgres client
+    import trace_collector as _tc54
+    import eval_runner as _er54
+    _tc54.init(postgres_client=postgres_client)
+    _er54.init(postgres_client=postgres_client)
+    if postgres_client is not None:
+        try:
+            await _tc54.ensure_schema(postgres_client)
+            await _er54.ensure_schema()
+            logger.info("✓ Phase 54 TraceCollector + EvalRunner schemas ready")
+        except Exception as _e54:
+            logger.warning("Phase 54 schema init error (non-fatal): %s", _e54)
+
     # Phase 6.1 — wire extracted interaction_tracker module
     interaction_tracker.init(
         qdrant_client=qdrant_client,

@@ -1599,12 +1599,90 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
+# Phase 54: Agentic-First Architecture Elevation checks
+# ---------------------------------------------------------------------------
+_p54_coord="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
+_p54_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd; }
+
+_p54_check_memory_broker() {
+  local r; r="$(_p54_root)"
+  python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); import memory_broker; memory_broker.MemoryBroker" 2>/dev/null
+}
+_p54_check_broker_endpoint() {
+  curl -sf "${_p54_coord}/memory/broker/status" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'memory_types' in d else 1)"
+}
+_p54_check_recall_script() {
+  local r; r="$(_p54_root)"
+  test -x "${r}/scripts/ai/aq-memory-recall-benchmark" && bash -n "${r}/scripts/ai/aq-memory-recall-benchmark"
+}
+_p54_check_intent_classifier() {
+  local r; r="$(_p54_root)"
+  python3 -c "
+import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator')
+import intent_classifier
+clf = intent_classifier.get_classifier()
+r = clf.classify('implement a function')
+assert r['intent'] == 'code_generation', repr(r)
+" 2>/dev/null
+}
+_p54_check_intent_endpoint() {
+  curl -sf "${_p54_coord}/control/intent/map" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('intent_count',0)>0 else 1)"
+}
+_p54_check_rag_augmentor() {
+  local r; r="$(_p54_root)"
+  python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); import rag_augmentor; rag_augmentor.RagAugmentor" 2>/dev/null
+}
+_p54_check_rag_endpoint() {
+  curl -sf "${_p54_coord}/api/health/rag" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'status' in d else 1)"
+}
+_p54_check_checkpointer() {
+  local r; r="$(_p54_root)"
+  python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); from workflow.workflow_checkpointer import WorkflowCheckpointer" 2>/dev/null
+}
+_p54_check_checkpointer_ddl() {
+  local r; r="$(_p54_root)"
+  grep -q "workflow_checkpoints" "${r}/ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_checkpointer.py"
+}
+_p54_check_dlq() {
+  local r; r="$(_p54_root)"
+  grep -rql "workflow_dlq\|dead.letter" "${r}/ai-stack/mcp-servers/hybrid-coordinator/" --include="*.py"
+}
+_p54_check_trace_collector() {
+  local r; r="$(_p54_root)"
+  python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); import trace_collector; trace_collector.TraceCollector" 2>/dev/null
+}
+_p54_check_traces_endpoint() {
+  curl -sf "${_p54_coord}/api/traces" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'traces' in d or 'error' in d else 1)"
+}
+_p54_check_eval_runner() {
+  local r; r="$(_p54_root)"
+  python3 -c "import sys; sys.path.insert(0,'${r}/ai-stack/mcp-servers/hybrid-coordinator'); import eval_runner" 2>/dev/null &&
+  curl -sf "${_p54_coord}/eval/trend" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'runs' in d or 'error' in d else 1)"
+}
+
+run_phase_54() {
+  _check 6 "1.0.1" "MemoryBroker importable"                _p54_check_memory_broker
+  _check 6 "1.0.2" "MemoryBroker status endpoint"           _p54_check_broker_endpoint
+  _check 6 "1.0.3" "aq-memory-recall-benchmark present"     _p54_check_recall_script
+  _check 6 "1.0.4" "IntentClassifier classify correct"      _p54_check_intent_classifier
+  _check 6 "1.0.5" "Intent routing map endpoint"            _p54_check_intent_endpoint
+  _check 6 "1.0.6" "RagAugmentor importable"                _p54_check_rag_augmentor
+  _check 6 "1.0.7" "RAG health endpoint registered"         _p54_check_rag_endpoint
+  _check 5 "1.0.8" "WorkflowCheckpointer importable"        _p54_check_checkpointer
+  _check 5 "1.0.9" "WorkflowCheckpointer DDL present"       _p54_check_checkpointer_ddl
+  _check 5 "1.0.10" "Workflow DLQ pattern present"          _p54_check_dlq
+  _check 5 "1.0.11" "TraceCollector importable"             _p54_check_trace_collector
+  _check 5 "1.0.12" "Traces endpoint registered"            _p54_check_traces_endpoint
+  _check 7 "1.0.13" "EvalRunner importable + trend endpoint" _p54_check_eval_runner
+}
+
+# ---------------------------------------------------------------------------
 # Main dispatch
 # ---------------------------------------------------------------------------
 case "$PHASE" in
   help|"")
     printf 'Usage: aq-qa <phase> [--json] [--sudo]\n'
-    printf '  phase: 0-10, all, or help\n'
+    printf '  phase: 0-10, 54, all, or help\n'
     printf '    0  pre-flight smoke (services, ports, inference, editor, front-door)\n'
     printf '    1  infrastructure (redis, postgres, qdrant, aidb, hybrid-coordinator)\n'
     printf '    2  runtime/package/confinement diagnostics (llama preset)\n'
@@ -1616,6 +1694,7 @@ case "$PHASE" in
     printf '    8  E2E workflows (hints, /query, weekly report timer)\n'
     printf '    9  optimisation targets (llama health, Redis cache, embeddings)\n'
     printf '   10  regression (git hooks, verifier self-check, no failed units)\n'
+    printf '   54  Phase 54 agentic-first elevation (memory, intent, RAG, trace, eval)\n'
     printf '  --json   Machine-readable JSON output\n'
     printf '  --sudo   Enable checks requiring sudo (AppArmor)\n'
     exit 0
@@ -1631,6 +1710,7 @@ case "$PHASE" in
   8) run_phase_8 ;;
   9) run_phase_9 ;;
   10) run_phase_10 ;;
+  54) run_phase_54 ;;
   all)
     PHASE="all"
     run_phase_0
@@ -1644,6 +1724,7 @@ case "$PHASE" in
     run_phase_8
     run_phase_9
     run_phase_10
+    run_phase_54
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2
