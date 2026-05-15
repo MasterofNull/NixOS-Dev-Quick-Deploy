@@ -310,14 +310,18 @@ Orchestrator: `scripts/automation/prsi-orchestrator.py [sync|list|verify|approve
 
 ## Known Architecture Issues (Active Backlog)
 
-| Issue | Location | Severity | Plan |
-|-------|----------|----------|------|
-| Orphaned routing taxonomy in router.py | `ai-stack/local-orchestrator/router.py` | Medium | Retire or adapt to routing_contract.py |
-| Orphaned routing taxonomy in task_router.py | `ai-stack/local-agents/task_router.py` | Medium | Retire or adapt |
-| Duplicate: garbage_collection.py vs garbage_collector.py | coordinator | Low | Audit callers, delete one |
-| Duplicate: continuous_learning.py vs real_time_learning_engine.py | coordinator | Medium | Audit symbols, merge or deprecate |
-| 121 Python files in flat directory (no subdir structure) | coordinator | Medium | Execute Phase B.2 split plan |
-| Tests mixed with production code | coordinator | Low | Move to tests/ subdirectory |
-| System map was 2.5 months stale | docs/architecture/ | **RESOLVED** this commit | — |
+| Issue | Location | Severity | Status |
+|-------|----------|----------|--------|
+| ~~Orphaned routing taxonomy in router.py~~ | `ai-stack/local-orchestrator/router.py` | Medium | **RESOLVED** — C-5 (arch-revamp): thin adapter emits `RoutingDecision`/`RoutingTier` from routing_contract.py; `AgentBackend` shim preserved |
+| ~~Orphaned routing taxonomy in task_router.py~~ | `ai-stack/local-agents/task_router.py` | Medium | **RESOLVED** — C-6 (arch-revamp): DEPRECATED comment added; callers migrated to canonical import; file kept for compat |
+| ~~Duplicate: garbage_collection.py vs garbage_collector.py~~ | coordinator | Low | **RESOLVED** — G-1: archive copy deleted; `extensions/garbage_collector.py` wired into `server.py` (1h GC scheduler) |
+| ~~Duplicate: continuous_learning.py vs real_time_learning_engine.py~~ | coordinator | Medium | **RESOLVED** — G-2: `continuous_learning.py` marked DEPRECATED; `real_time_learning_engine.py` is canonical |
+| 121 Python files in flat directory (no subdir structure) | coordinator | Medium | Deferred — Phase B.2 split plan (Q-4) |
+| Tests mixed with production code | coordinator | Low | Deferred — move to tests/ subdirectory |
+| ~~System map was 2.5 months stale~~ | docs/architecture/ | — | **RESOLVED** — arch-revamp rewrite |
+| ~~Circular hints loop (P0)~~ | switchboard ↔ coordinator | Critical | **RESOLVED** — N-1 + C-1: coordinator-internal profile + header injection |
+| ~~continue-local blank screen~~ | switchboard N-2 | High | **RESOLVED** — streaming forced for all local profiles |
+| ~~Hint injection at wrong position~~ | switchboard N-4 | Medium | **RESOLVED** — now injects at FIRST system message |
+| ~~Auth probe treats 401/403/404 as healthy~~ | agent_executor.py C-2 | High | **RESOLVED** — status_code < 400 threshold |
 
-See [ARCH-REVAMP-PRD.md](../../.agents/plans/ARCH-REVAMP-PRD.md) for the full revamp plan and slice assignments.
+See [ARCH-REVAMP-PRD.md](../../.agents/plans/ARCH-REVAMP-PRD.md) for full revamp history.
