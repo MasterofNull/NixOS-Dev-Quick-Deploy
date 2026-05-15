@@ -1792,25 +1792,26 @@ async def run_http_mode(port: int) -> None:
 
         mb = memory_broker.get_broker()
         try:
-            results = await mb.recall(
+            results = await mb.read(
                 memory_type="semantic",
                 query=scope or "procedural constraints",
                 limit=limit,
-                context={"origin": "commit_facts"},
+                filters={"origin": "commit_facts"},
             )
         except Exception as _exc:
             return web.json_response({"facts": [], "error": str(_exc)})
 
         facts = []
-        for item in (results.get("memories") or []):
+        for item in (results if isinstance(results, list) else results.get("memories") or []):
             content = item.get("content") or item.get("text") or ""
-            if scope and item.get("context", {}).get("scope", "") != scope:
+            ctx = item.get("context") or {}
+            if scope and ctx.get("scope", "") != scope:
                 continue
             facts.append({
                 "fact":       content[:500],
-                "scope":      item.get("context", {}).get("scope", ""),
-                "confidence": item.get("context", {}).get("confidence", 0.8),
-                "source":     item.get("context", {}).get("source", ""),
+                "scope":      ctx.get("scope", ""),
+                "confidence": ctx.get("confidence", 0.8),
+                "source":     ctx.get("source", ""),
             })
         return web.json_response({"facts": facts[:limit]})
 

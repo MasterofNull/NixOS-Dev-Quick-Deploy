@@ -652,6 +652,9 @@ in {
           "f /var/log/ai-stack/tool-audit.jsonl     0660 ${svcUser} ${aiGroup} - -"
           "f /var/log/ai-stack/agent-commands.jsonl 0660 ${svcUser} ${aiGroup} - -"
           "d ${mutableLogDir}                       0750 ${svcUser} ${aiGroup} -"
+          # base.nix z-rule sets mutableLogDir group to primaryGroup (users) — override it
+          # so ai-stack services (coordinator, etc.) can traverse the directory.
+          "z ${mutableLogDir}                       0750 ${svcUser} ${aiGroup} -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
           "f ${mutableLogDir}/query-gaps.jsonl 0660 ${svcUser} ${aiGroup} - -"
           # Audit sidecar log dir — coordinator (ai-stack group) needs rw to append Phase 56 events.
