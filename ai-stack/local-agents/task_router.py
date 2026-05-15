@@ -1,3 +1,4 @@
+# DEPRECATED: use ai-stack/mcp-servers/hybrid-coordinator/routing_contract.py
 #!/usr/bin/env python3
 """
 Task Router - Multi-Agent Delegation

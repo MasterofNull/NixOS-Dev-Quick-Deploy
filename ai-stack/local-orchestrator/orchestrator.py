@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .mcp_client import MCPClient, get_mcp_client
-from .router import TaskRouter, RouteDecision, AgentBackend, TaskCategory
+from routing_contract import RoutingDecision, RoutingTier
+
+from .router import TaskRouter, TaskCategory
 
 # Add parent path for autonomous-orchestrator imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -115,13 +117,13 @@ class LocalOrchestrator:
 
         # 1. Route the task
         decision = self.router.route(prompt, context)
-        logger.info(f"Routing decision: {decision.reasoning}")
+        logger.info(f"Routing decision: {decision.extra['reasoning']}")
 
         # 2. Gather context based on needs
         gathered_context = await self._gather_context(prompt, decision)
 
         # 3. Execute based on backend
-        if decision.backend == AgentBackend.LOCAL:
+        if decision.is_local:
             response = await self._execute_local(prompt, gathered_context, decision)
         else:
             response = await self._execute_delegate(prompt, gathered_context, decision)
@@ -147,7 +149,7 @@ class LocalOrchestrator:
     async def _gather_context(
         self,
         prompt: str,
-        decision: RouteDecision,
+        decision: RoutingDecision,
     ) -> Dict[str, Any]:
         """
         Gather context based on routing decision needs.
@@ -167,12 +169,12 @@ class LocalOrchestrator:
         }
 
         # Always get hints for non-trivial tasks
-        if decision.estimated_complexity != "trivial":
+        if decision.extra["estimated_complexity"] != "trivial":
             hints = self.mcp.get_hints(prompt, limit=3)
             context["hints"] = [h.content for h in hints]
 
         # Search for relevant context
-        if "relevant_files" in decision.context_needed:
+        if "relevant_files" in decision.extra["context_needed"]:
             results = self.mcp.hybrid_search(prompt, limit=5)
             context["search_results"] = [
                 {"content": r.content, "source": r.source}
@@ -189,7 +191,7 @@ class LocalOrchestrator:
         self,
         prompt: str,
         context: Dict[str, Any],
-        decision: RouteDecision,
+        decision: RoutingDecision,
     ) -> OrchestratorResponse:
         """
         Execute task locally using Gemma model.
@@ -229,12 +231,12 @@ class LocalOrchestrator:
         # Call local model
         response_text = self.mcp.llm_chat(
             messages,
-            max_tokens=decision.estimated_tokens,
+            max_tokens=decision.extra["estimated_tokens"],
             temperature=0.7,
         )
 
         # Store memory if significant
-        if decision.category in (TaskCategory.PLANNING, TaskCategory.ANALYSIS):
+        if decision.extra["category"] in (TaskCategory.PLANNING, TaskCategory.ANALYSIS):
             self.mcp.store_memory(
                 f"Analyzed: {prompt[:100]}... Response key points: {response_text[:200]}",
                 memory_type="semantic",
@@ -244,7 +246,7 @@ class LocalOrchestrator:
             action="direct_response",
             content=response_text,
             backend_used="local",
-            tokens_used=decision.estimated_tokens,
+            tokens_used=decision.extra["estimated_tokens"],
             cost_usd=0.0,
         )
 
@@ -252,7 +254,7 @@ class LocalOrchestrator:
         self,
         prompt: str,
         context: Dict[str, Any],
-        decision: RouteDecision,
+        decision: RoutingDecision,
     ) -> OrchestratorResponse:
         """
         Delegate task to remote agent.
@@ -277,17 +279,19 @@ class LocalOrchestrator:
             TaskCategory.CONFIGURATION: TaskType.IMPLEMENTATION,
         }
 
-        # Map backend to AgentPreference
+        # Map canonical routing tiers to delegation preferences.
         agent_pref_map = {
-            AgentBackend.QWEN: AgentPreference.LOCAL,  # Use local for Qwen (via OpenRouter)
-            AgentBackend.CLAUDE_SONNET: AgentPreference.CLAUDE,
-            AgentBackend.CLAUDE_OPUS: AgentPreference.FLAGSHIP,
+            RoutingTier.LOCAL: AgentPreference.LOCAL,
+            RoutingTier.EDGE: AgentPreference.LOCAL,
+            RoutingTier.REMOTE_FREE: AgentPreference.LOCAL,
+            RoutingTier.REMOTE_PAID: AgentPreference.CLAUDE,
+            RoutingTier.REMOTE_FLAGSHIP: AgentPreference.FLAGSHIP,
         }
 
         # Create delegated task
         task = DelegatedTask(
             task_id=f"local-orch-{int(time.time())}",
-            task_type=task_type_map.get(decision.category, TaskType.IMPLEMENTATION),
+            task_type=task_type_map.get(decision.extra["category"], TaskType.IMPLEMENTATION),
             description=prompt,
             context=TaskContext(
                 files_to_read=[r["source"] for r in context.get("search_results", [])],
@@ -298,12 +302,12 @@ class LocalOrchestrator:
                 "No breaking changes introduced",
             ],
             constraints=TaskConstraints(
-                max_files_changed=decision.constraints.get("max_files", 10),
-                require_tests=decision.constraints.get("require_tests", False),
-                safety_level=decision.constraints.get("safety_level", "medium"),
+                max_files_changed=decision.extra["constraints"].get("max_files", 10),
+                require_tests=decision.extra["constraints"].get("require_tests", False),
+                safety_level=decision.extra["constraints"].get("safety_level", "medium"),
             ),
-            agent_preference=agent_pref_map.get(decision.backend, AgentPreference.ANY),
-            max_cost_usd=min(decision.estimated_cost_usd * 2, 1.0),
+            agent_preference=agent_pref_map.get(decision.tier, AgentPreference.ANY),
+            max_cost_usd=min(decision.extra["estimated_cost_usd"] * 2, 1.0),
         )
 
         # Delegate
@@ -325,8 +329,8 @@ class LocalOrchestrator:
         return OrchestratorResponse(
             action="delegate",
             content=content,
-            backend_used=decision.backend.value,
-            tokens_used=decision.estimated_tokens,
+            backend_used=decision.tier.value,
+            tokens_used=decision.extra["estimated_tokens"],
             cost_usd=result.cost_usd,
             metadata={
                 "task_id": task.task_id,

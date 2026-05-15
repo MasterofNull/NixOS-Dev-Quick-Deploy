@@ -41,9 +41,10 @@ from .agent_executor import (
     LocalAgentExecutor,
     get_executor,
 )
+from routing_contract import RoutingDecision
+
 from .task_router import (
     AgentTarget,
-    RoutingDecision,
     TaskRouter,
     get_router,
 )

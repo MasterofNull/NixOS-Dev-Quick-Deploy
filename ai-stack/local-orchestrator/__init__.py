@@ -7,7 +7,12 @@ uses MCP tools for context, and delegates to remote agents when needed.
 """
 
 from .orchestrator import LocalOrchestrator, get_orchestrator
-from .router import TaskRouter, RouteDecision, AgentBackend, TaskCategory
+from routing_contract import RoutingDecision
+
+from .router import TaskRouter, AgentBackend, TaskCategory
+
+# Backward-compatible name retained while callers migrate to the canonical type.
+RouteDecision = RoutingDecision
 from .mcp_client import MCPClient, get_mcp_client
 from .remote_agents import (
     RemoteAgentClient,
@@ -23,6 +28,7 @@ __all__ = [
     "get_orchestrator",
     # Router
     "TaskRouter",
+    "RoutingDecision",
     "RouteDecision",
     "AgentBackend",
     "TaskCategory",
