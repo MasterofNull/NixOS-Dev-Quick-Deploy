@@ -60,8 +60,11 @@ _SERVICES = [
 ]
 
 _EDGES = [
-    {"from": "switchboard",        "to": "hybrid-coordinator", "label": "route"},
-    {"from": "hybrid-coordinator", "to": "llama-cpp",          "label": "query"},
+    # Switchboard calls coordinator ONLY for hints injection (GET /hints, injectHints=true profiles)
+    {"from": "switchboard",        "to": "hybrid-coordinator", "label": "GET /hints"},
+    # Coordinator uses switchboard as its LLM generation backend
+    {"from": "hybrid-coordinator", "to": "switchboard",        "label": "LLM backend"},
+    {"from": "switchboard",        "to": "llama-cpp",          "label": "local inference"},
     {"from": "hybrid-coordinator", "to": "aidb",               "label": "vector search"},
     {"from": "hybrid-coordinator", "to": "ralph-wiggum",       "label": "rag"},
     {"from": "ralph-wiggum",       "to": "aidb",               "label": "retrieve"},
@@ -117,14 +120,27 @@ async def get_topology() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _FLOWCHART = """flowchart LR
-    User([User / Agent]) --> SWB[Switchboard :8085]
-    SWB -->|default profile| HC[Hybrid Coordinator :8003]
-    SWB -->|continue-local| HC
-    HC -->|prefer_local=true| LLAMA[LLaMA.cpp :8080]
-    HC -->|vector search| AIDB[(AIDB :8002)]
-    HC -->|rag task| RALPH[Ralph Wiggum :8004]
-    HC -->|embed request| EMBED[LLaMA Embed :8081]
-    RALPH --> AIDB
+    subgraph PathA["Path A — IDE / Editor Direct Chat"]
+        IDE([IDE / Claude Code]) -->|x-ai-profile header| SWB[Switchboard :8085]
+        SWB -->|injectHints=true profiles only| HC[Coordinator :8003]
+        HC -.->|GET /hints| SWB
+        SWB -->|local inference| LLAMA[LLaMA.cpp :8080]
+        SWB -.->|remote| REMOTE([Remote API])
+    end
+
+    subgraph PathB["Path B — Orchestration & Agent Tasks"]
+        CLI([aq-* CLIs / MCP tools]) --> HC
+        HC -->|LLM backend POST| SWB
+        HC -->|vector search| AIDB[(AIDB :8002)]
+        HC -->|rag| RALPH[Ralph Wiggum :8004]
+        HC -->|embed| EMBED[LLaMA Embed :8081]
+        RALPH --> AIDB
+    end
+
+    subgraph PathC["Path C — Agent Delegation"]
+        AGENTS([Codex / Gemini / Qwen]) -->|delegate-to-*| HC
+    end
+
     DASHBOARD[Dashboard :8889] -->|/api/*| HC
     DASHBOARD -->|/api/logic/search| AIDB
 """

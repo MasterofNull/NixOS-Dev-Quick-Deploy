@@ -230,16 +230,14 @@ Drift detection:
 
 ---
 
-## Orphaned Routing Components (Known Drift)
+## Routing Taxonomy — Resolved (arch-revamp Rounds 3–4)
 
-These components have their own routing taxonomies that are NOT connected to the canonical `routing_contract.py`:
+The canonical routing taxonomy lives in `routing_contract.py` (tiers: `LOCAL → EDGE → REMOTE_FREE → REMOTE_PAID → REMOTE_FLAGSHIP`). All routing decisions converge on `RoutingDecision` from this module.
 
-| Component | Location | Taxonomy used | Status |
-|-----------|----------|---------------|--------|
-| `router.py` | `ai-stack/local-orchestrator/router.py` | `AgentBackend.LOCAL, QWEN, CLAUDE_SONNET, CLAUDE_OPUS` | **ORPHANED** — must become thin adapter or be retired |
-| `task_router.py` | `ai-stack/local-agents/task_router.py` | `REMOTE_CODEX, REMOTE_CLAUDE, REMOTE_QWEN` | **ORPHANED** — violates no-vendor-names rule |
-
-The canonical routing taxonomy lives in `routing_contract.py` (tiers: LOCAL → EDGE → REMOTE_FREE → REMOTE_PAID → REMOTE_FLAGSHIP). All routing decisions must converge on `RoutingDecision` from this module.
+| Component | Location | Status |
+|-----------|----------|--------|
+| `router.py` | `ai-stack/local-orchestrator/router.py` | **RESOLVED (C-5)** — thin adapter emits `RoutingDecision`/`RoutingTier`; `AgentBackend` enum preserved as backward-compat shim; `RouteDecision` alias at package boundary |
+| `task_router.py` | `ai-stack/local-agents/task_router.py` | **RESOLVED (C-6)** — DEPRECATED; callers migrated to `routing_contract.RoutingDecision`; file kept for compat pending final deletion |
 
 ---
 
