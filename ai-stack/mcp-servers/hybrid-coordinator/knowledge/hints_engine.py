@@ -881,6 +881,8 @@ class HintsEngine:
 
         if hint_feedback_path is None:
             fb_env = os.getenv("HINT_FEEDBACK_LOG_PATH", "")
+            # Default to mutableLogDir path (coordinator has group-write via ai-stack).
+            # nixos-ai-stack/ is drwxr-x--- hyperd:users — coordinator cannot enter it.
             self._hint_feedback_path = (
                 Path(fb_env)
                 if fb_env
