@@ -186,15 +186,44 @@ Full-stack assessment of NixOS-Dev-Quick-Deploy AI harness revealed:
 
 ---
 
+## Fix Status (Phase A+B+C.0)
+
+| Fix | Commit | Status |
+|-----|--------|--------|
+| P0-001 hints wrong audit path | 3717dcdd | ✅ |
+| P0-002 audit log 0640 → 0660 | mcp-servers.nix | ✅ |
+| P0-002 serviceWritablePaths + env | mcp-servers.nix | ✅ |
+| P1-SEC X-Forwarded-For bypass | http_server.py | ✅ |
+| P1-BUG asyncio.coroutine Py3.12 | http_server.py | ✅ |
+| P1-SEC audit-post.sh heredoc injection | ff051abb | ✅ |
+| P2-FEAT GET /api/memory/facts | http_server.py | ✅ |
+| P1 CL payload schema mismatch | 48de031d | ✅ |
+| P2 memory/facts top_k kwarg | 48de031d | ✅ |
+| tmpfiles mkAfter z-rule (mutableLogDir) | 48de031d | ✅ pending rebuild |
+| P1-001 Phase 56 uncommitted files | 7e5beec7 | ✅ |
+| P1-002 .agents/sessions/ gitignore | committed | ✅ |
+
 ## Success Criteria
 
-- [ ] hints OK rate ≥ 90% (from 30–70%)
-- [ ] POST /api/agent-events writes to tool-audit.jsonl successfully
-- [ ] aq-qa 0.8.1 → PASS (not SKIP)
-- [ ] aq-qa 0: 60/60 passed (0 failed, 0 UNEXPECTED-SKIP)
-- [ ] aq-qa 56: 16/16
-- [ ] All Phase 56 changes committed
-- [ ] .agents/sessions/ gitignored
+- [x] POST /api/agent-events writes to tool-audit.jsonl successfully
+- [x] aq-qa 0.8.1 → PASS (seeded + fixed)
+- [x] aq-qa 0: 61/61 passed
+- [x] aq-qa 56: 16/16
+- [x] All Phase 56 changes committed
+- [x] .agents/sessions/ gitignored
+- [ ] hints OK rate ≥ 90% — pending rebuild (lib.mkAfter tmpfiles fix)
+- [ ] GET /api/memory/facts — returns facts (fixed, pending restart)
+- [ ] CL receives properly structured events — fixed, pending restart
+
+## Phase C Remaining (P2)
+
+- **C.1** Postgres query-gaps: `interaction_tracker.sync_query_gaps_to_jsonl` writes to
+  `/var/log/nixos-ai-stack/query-gaps.jsonl` — currently 488 bytes so data IS there;
+  aq-report "No gaps data" means Postgres SELECT returns empty, not file-empty.
+  Root cause: `query_gaps` table may never be populated if AIDB confidence always > threshold.
+- **C.2** Memory recall miss rate 0% — counter likely not incremented; metrics cosmetic issue
+- **C.3** Continuation downshift 0/10 — no real continuation queries in test window; P2 behavioral gap
+- **C.4** route_search 5.4% failure — add retry logic to _execute_query_search
 
 ---
 
