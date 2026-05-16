@@ -897,6 +897,13 @@ class HintsEngine:
             if hint_audit_env
             else Path("/var/log/nixos-ai-stack/hint-audit.jsonl")
         )
+        # Repo Parity Database (Source G)
+        parity_db_env = os.getenv("REPO_PARITY_DB_PATH", "")
+        self._repo_parity_db_path = (
+            Path(parity_db_env)
+            if parity_db_env
+            else Path("/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/data/parity/repo-parity-db.json")
+        )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
         # Batch 6.1: Reduced from 45% to 25% for <30% concentration target
         self._div_repeat_cap_pct = self._parse_float_env("AI_HINT_DIVERSITY_REPEAT_CAP_PCT", 25.0, min_value=10.0, max_value=100.0)
@@ -1008,12 +1015,13 @@ class HintsEngine:
         source_c = self._hints_from_static_rules(query_tokens)
         source_d = self._hints_from_runtime_signals(query, query_tokens)
         source_e = self._hints_from_prompt_coaching(query, query_tokens, agent_type)
+        source_g = self._hints_from_repo_parity(query, query_tokens)
 
         feedback = self._load_hint_feedback_scores()
         db_feedback_profiles = self._load_db_feedback_profiles()
         preference_profile = self._load_agent_preference_profile(agent_type)
         source_f = self._hints_from_feedback_profiles(query, query_tokens, db_feedback_profiles)
-        combined: List[Hint] = source_e + source_d + source_f + source_a + source_b + source_c
+        combined: List[Hint] = source_e + source_d + source_g + source_f + source_a + source_b + source_c
         combined = [self._apply_efficiency_adjustment(h) for h in combined]
         combined = [self._apply_feedback_adjustment(h, feedback, db_feedback_profiles, query_tokens) for h in combined]
         combined = [self._apply_agent_preference_adjustment(h, preference_profile) for h in combined]
@@ -1032,6 +1040,78 @@ class HintsEngine:
                 seen.add(hint.id)
                 deduped.append(hint)
         return self._select_with_diversity_policy(deduped, max_hints=max_hints, overused_ids=overused_ids)
+
+    def _hints_from_repo_parity(self, query: str, query_tokens: List[str]) -> List[Hint]:
+        """
+        Source G: Repo Parity Database (Phase 13.1)
+        Surfaces hints about outdated or missing repositories from docs/REPO-LIBRARY.md.
+        """
+        if not self._repo_parity_db_path.exists():
+            return []
+
+        try:
+            with open(self._repo_parity_db_path, "r", encoding="utf-8") as f:
+                db = json.load(f)
+        except Exception:
+            return []
+
+        query_lower = query.lower()
+        hints: List[Hint] = []
+
+        # Keywords that trigger repo parity checks
+        repo_keywords = {"repo", "repository", "flake", "input", "update", "outdated", "upstream", "parity", "github"}
+        trigger_active = any(tok in query_lower for tok in repo_keywords)
+
+        for repo_url, data in db.items():
+            if not isinstance(data, dict):
+                continue
+
+            status = data.get("status", "unknown")
+            repo_name = repo_url.split('/')[-1] if '/' in repo_url else repo_url
+            
+            # Match based on repo name in query
+            repo_token_match = repo_name.lower() in query_lower or any(tok in repo_name.lower() for tok in query_tokens if len(tok) >= 4)
+            
+            if status == "outdated":
+                score = 0.85 if repo_token_match else (0.70 if trigger_active else 0.40)
+                hints.append(
+                    Hint(
+                        id=f"repo_parity_outdated_{re.sub(r'[^a-z0-9]+', '_', repo_url.lower())}",
+                        type="runtime_signal",
+                        title=f"Upstream repository is outdated: {repo_name}",
+                        score=score,
+                        snippet=(
+                            f"Repo {repo_name} has a newer version upstream ({data.get('upstream_rev', 'N/A')[:7]}). "
+                            f"Current local: {data.get('local_rev', 'N/A')[:7]}. "
+                            f"Use `nix flake lock --update-input <name>` to sync."
+                        ),
+                        reason=f"Matched outdated status in parity database (repo: {repo_name})",
+                        tags=["repo", "parity", "outdated", repo_name.lower()],
+                        agent_hints={"human": f"Update {repo_name} in flake.nix if stability warrants it."},
+                    )
+                )
+            elif status == "unknown" and trigger_active:
+                # Missing from local config but in library
+                score = 0.65 if repo_token_match else 0.35
+                hints.append(
+                    Hint(
+                        id=f"repo_parity_missing_{re.sub(r'[^a-z0-9]+', '_', repo_url.lower())}",
+                        type="runtime_signal",
+                        title=f"Library repo is not active in local config: {repo_name}",
+                        score=score,
+                        snippet=(
+                            f"Repository {repo_name} is in the REPO-LIBRARY but not detected in flake.nix. "
+                            "Consider integrating it if its features are needed."
+                        ),
+                        reason=f"Matched unknown status in parity database (repo: {repo_name})",
+                        tags=["repo", "parity", "missing", repo_name.lower()],
+                        agent_hints={},
+                    )
+                )
+
+        # Sort by score and limit to avoid overwhelming
+        hints.sort(key=lambda h: h.score, reverse=True)
+        return hints[:3]
 
     def _pg_dsn(self) -> str:
         host = os.getenv("POSTGRES_HOST", "127.0.0.1")
