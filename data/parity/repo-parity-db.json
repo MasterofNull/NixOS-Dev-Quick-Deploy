@@ -1,0 +1,590 @@
+{
+  "github:Aider-AI/aider": {
+    "last_checked": "2026-05-15T13:38:31.605521",
+    "upstream_rev": "3ec8ec5a7d695b08a6c24fe6c0c235c8f87df9af",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/Aider-AI/aider",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:Arize-ai/phoenix": {
+    "last_checked": "2026-05-15T13:38:31.605521",
+    "upstream_rev": "acd1626b7839dc42f7a8c40054e0fdf67f7f6f5e",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/Arize-ai/phoenix",
+    "section": "RAG, Memory & Vector Databases",
+    "tracking_kind": "reference_only"
+  },
+  "github:Beach-Bum/Agentix": {
+    "last_checked": "2026-05-15T13:38:31.605521",
+    "upstream_rev": "2ba9c4da05b32c0cc362932a1f235dab22d58d93",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/Beach-Bum/Agentix",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only"
+  },
+  "github:CodebuffAI/codebuff": {
+    "last_checked": "2026-05-15T13:38:31.605521",
+    "upstream_rev": "665698778d9581b5502b2eb055eeb447b4c29e16",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/CodebuffAI/codebuff",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:Mic92/sops-nix": {
+    "last_checked": "2026-05-15T13:38:31.605521",
+    "upstream_rev": "c591bf665727040c6cc5cb409079acb22dcce33c",
+    "local_rev": "d4971dd58c6627bfee52a1ad4237637c0a2fb0cd",
+    "status": "outdated",
+    "url": "https://github.com/Mic92/sops-nix",
+    "section": "Core Dependencies (Flake Inputs)",
+    "tracking_kind": "core_flake_input"
+  },
+  "github:Misterio77/nix-starter-configs": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "fe4c4b136e0e073c71d8190a791ba03ccb47c5ac",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/Misterio77/nix-starter-configs",
+    "section": "NixOS Developer Experience (DX)",
+    "tracking_kind": "reference_only"
+  },
+  "github:NixOS/nixos-hardware": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "9bd7c80d43e258aaa607d83b43661df11444d808",
+    "local_rev": "c775c2772ba56e906cbeb4e0b2db19079ef11ff7",
+    "status": "outdated",
+    "url": "https://github.com/NixOS/nixos-hardware",
+    "section": "Core Dependencies (Flake Inputs)",
+    "tracking_kind": "core_flake_input"
+  },
+  "github:NixOS/nixpkgs": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "f2adf326f3480d817accae85f8b65080d30794d0",
+    "local_rev": "f8573b9c935cfaa162dd62cc9e75ae2db86f85df",
+    "status": "outdated",
+    "url": "https://github.com/NixOS/nixpkgs",
+    "section": "Core Dependencies (Flake Inputs)",
+    "tracking_kind": "core_flake_input",
+    "fetch_attempts": 1
+  },
+  "github:TracecatHQ/tracecat": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "e678b08eb3df1c8a7f6c874b3d4ec5e3e217d606",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/TracecatHQ/tracecat",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:agno-agi/agno": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "bb7ddb05ba5163209dc426b2809a673d97755476",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/agno-agi/agno",
+    "section": "Agent Frameworks & Stateful Orchestration",
+    "tracking_kind": "reference_only"
+  },
+  "github:anomalyco/opencode": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "f21c582db9e0abb9f2c2ef769567a44787fcfa17",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/anomalyco/opencode",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:anthropic/mcp-servers": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "status": "retired_reference",
+    "section": "Tool Aggregators & MCP Directories",
+    "tracking_kind": "retired_reference",
+    "error_kind": "legacy_error",
+    "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
+    "retired_at": "2026-05-15T15:22:59.484466"
+  },
+  "github:anthropics/claude-code": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "d61bfb5b562eea5091b11ad1858a9ae429b6bd23",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/anthropics/claude-code",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:badlogic/pi-mono": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "a8af0b5e99e3309c5cbc3301c276302512789ca5",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/badlogic/pi-mono",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:blink-new/blink-mcp": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "status": "retired_reference",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "retired_reference",
+    "error_kind": "legacy_error",
+    "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
+    "retired_at": "2026-05-15T15:22:59.484466"
+  },
+  "github:block/goose": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "3cf0bcdec708da8e6ebbb45e470ed0dd48c63a94",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/block/goose",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:cachix/devenv": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "e44d88a683bf945c72445babd85f1d2e4e933409",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/cachix/devenv",
+    "section": "NixOS Developer Experience (DX)",
+    "tracking_kind": "reference_only"
+  },
+  "github:cline/cline": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "52493c5ba12cffe4b0be18fc814de4111a3d88e0",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/cline/cline",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only"
+  },
+  "github:crewAIInc/crewAI": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "a95d26763f4766b1a4f7c19c039133d1202dbdaa",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/crewAIInc/crewAI",
+    "section": "Agent Frameworks & Stateful Orchestration",
+    "tracking_kind": "reference_only"
+  },
+  "github:explodinggradients/ragas": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "298b68274234c060deacab3cf5fb52aa3a20e885",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/explodinggradients/ragas",
+    "section": "RAG, Memory & Vector Databases",
+    "tracking_kind": "reference_only"
+  },
+  "github:flox/flox": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "c11a81df9a2bae5ec9b1c7d40d38e7f283697440",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/flox/flox",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only"
+  },
+  "github:gmodena/nix-flatpak": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "22a3adbe7c5c8c8a10a635d32c9ef7fc01a6e4b8",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/gmodena/nix-flatpak",
+    "section": "Specialized Modules",
+    "tracking_kind": "reference_only"
+  },
+  "github:google/adk": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "status": "retired_reference",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "retired_reference",
+    "error_kind": "legacy_error",
+    "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
+    "retired_at": "2026-05-15T15:22:59.484466"
+  },
+  "github:hashicorp/terraform-mcp": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "status": "retired_reference",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "retired_reference",
+    "error_kind": "legacy_error",
+    "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
+    "retired_at": "2026-05-15T15:22:59.484466"
+  },
+  "github:hercules-ci/flake-parts": {
+    "last_checked": "2026-05-15T13:39:30.798531",
+    "upstream_rev": "f7c1a2d347e4c52d5fb8d10cb4d94b5884e546fb",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/hercules-ci/flake-parts",
+    "section": "NixOS Developer Experience (DX)",
+    "tracking_kind": "reference_only"
+  },
+  "github:langchain-ai/langgraph": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "076e2a3627206f5a1aef573aaca4a01e5af897ca",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/langchain-ai/langgraph",
+    "section": "Agent Frameworks & Stateful Orchestration",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:langgenius/dify": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "c0bdd6792f703ceef5efc2e8e0ccccdbda6ed85a",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/langgenius/dify",
+    "section": "Agent Frameworks & Stateful Orchestration",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:makalin/SecureMCP": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "e284f0e607a77d25aad72ebea6c84c84ed1825b3",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/makalin/SecureMCP",
+    "section": "Integrated Tools & MCP Servers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:mendableai/firecrawl": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "9893e784098a2bc48323cc77567382cc31d9d12e",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/mendableai/firecrawl",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:microsoft/TaskWeaver": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "d44ddef23f90059fb17999d3095db4240e98f955",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/microsoft/TaskWeaver",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:microsoft/mcp-server-playwright": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "status": "retired_reference",
+    "url": "https://github.com/microsoft/mcp-server-playwright",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "retired_reference",
+    "error_kind": "git_ls_remote_failed",
+    "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/microsoft/mcp-server-playwright.git/' not found",
+    "fetch_attempts": 2,
+    "retired_at": "2026-05-15T15:22:59.484466"
+  },
+  "github:mksglu/context-mode": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "bdcdc1363f5856a6898082a94610121e948e1d97",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/mksglu/context-mode",
+    "section": "Integrated Tools & MCP Servers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:nix-community/disko": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "63b4e7e6cf75307c1d26ac3762b886b5b0247267",
+    "local_rev": "32f4236bfc141ae930b5ba2fb604f561fed5219d",
+    "status": "outdated",
+    "url": "https://github.com/nix-community/disko",
+    "section": "Core Dependencies (Flake Inputs)",
+    "tracking_kind": "core_flake_input",
+    "fetch_attempts": 1
+  },
+  "github:nix-community/home-manager": {
+    "last_checked": "2026-05-15T14:57:03.774533",
+    "upstream_rev": "c7fad8197070948d8aa02cb8922240ee129cab2e",
+    "local_rev": "0d02ec1d0a05f88ef9e74b516842900c41f0f2fe",
+    "status": "outdated",
+    "url": "https://github.com/nix-community/home-manager",
+    "section": "Core Dependencies (Flake Inputs)",
+    "tracking_kind": "core_flake_input",
+    "fetch_attempts": 1
+  },
+  "github:nix-community/lanzaboote": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "f11608843ca4fa95049c096ec0a50c93b41080b8",
+    "local_rev": "67384fbc57e36fad6fd59fa191341cdea89e6b7d",
+    "status": "outdated",
+    "url": "https://github.com/nix-community/lanzaboote",
+    "section": "Core Dependencies (Flake Inputs)",
+    "tracking_kind": "core_flake_input",
+    "fetch_attempts": 1
+  },
+  "github:nix-community/nix-direnv": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "3f3ea351261b55ee709c8cc1cde4dfab7384a48e",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/nix-community/nix-direnv",
+    "section": "NixOS Developer Experience (DX)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:nix-community/nix-vscode-extensions": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "4c7363877370df92f9d0f3d7283add16fec8c596",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/nix-community/nix-vscode-extensions",
+    "section": "Specialized Modules",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:nixified-ai/flake": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "411868ab9797ea67068ee13bbf932a2b9bb1eef7",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/nixified-ai/flake",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:nixos-rocm/nixos-rocm": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "242305cac651e136928ddae922a4edec723ddf59",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/nixos-rocm/nixos-rocm",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:numtide/nix-ai-tools": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "114876827da720ef711ceb7de0141d27a1e9f2c3",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/numtide/nix-ai-tools",
+    "section": "Integrated Tools & MCP Servers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:princeton-nlp/SWE-agent": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "0f4f3bba990e01ca8460b9963abdcd89e38042f2",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/princeton-nlp/SWE-agent",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:punkpeye/awesome-mcp-servers": {
+    "last_checked": "2026-05-15T14:57:55.931651",
+    "upstream_rev": "39b5e990fe94734de271a2b13ec1513811da9cdd",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/punkpeye/awesome-mcp-servers",
+    "section": "Tool Aggregators & MCP Directories",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:blink-new/blink-plugin": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "476a4f45b029c31ebe635542142a8a74a166f16a",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/blink-new/blink-plugin",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:google/adk-python": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "ec54bd439e31c99a32d773ace04b73cb3a275675",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/google/adk-python",
+    "section": "Parity Checks & Update Triggers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:hashicorp/terraform-mcp-server": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "5ca056e353684865e36525dbb3706f0f9c8b8a87",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/hashicorp/terraform-mcp-server",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:microsoft/playwright-mcp": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "ae27b8638aaf3a6be17d378964ae683864d20440",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/microsoft/playwright-mcp",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:modelcontextprotocol/servers": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "acedea0c24b3e20d7265f87b8b2afe2e0c6eb2f4",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/modelcontextprotocol/servers",
+    "section": "Tool Aggregators & MCP Directories",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 2
+  },
+  "github:pydantic/pydantic-ai": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "206453a0c6c10ff90f1f8ec881458b38ca7e4b36",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/pydantic/pydantic-ai",
+    "section": "Agent Frameworks & Stateful Orchestration",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:pyproject-nix/uv2nix": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "b48abe99ef639cd100c224898529370e5d935294",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/pyproject-nix/uv2nix",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:qdrant/qdrant": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "d98e6cdb7fc5aa76e80c01dc4d18920be87a4adf",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/qdrant/qdrant",
+    "section": "RAG, Memory & Vector Databases",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:run-llama/llama_index": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "23bd65aaf79ffed587af35f325738b1580b35dea",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/run-llama/llama_index",
+    "section": "RAG, Memory & Vector Databases",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:serokell/deploy-rs": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "77c906c0ba56aabdbc72041bf9111b565cdd6171",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/serokell/deploy-rs",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:stanfordnlp/dspy": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "621c3a6140e3da1622127fc75c775e1f6fe37129",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/stanfordnlp/dspy",
+    "section": "Agent Frameworks & Stateful Orchestration",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:tpwrules/nixos-apple-silicon": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "3d7fe422ef6162154830209b9e50bf69e150cff7",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/tpwrules/nixos-apple-silicon",
+    "section": "Specialized Modules",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:upstash/context7": {
+    "last_checked": "2026-05-15T15:18:30.271270",
+    "upstream_rev": "61de754d48e57d5c22dadd4540a74203fd55ecf1",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/upstash/context7",
+    "section": "Specialized MCP Servers (High Signal)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:utensils/mcp-nixos": {
+    "last_checked": "2026-05-15T15:18:56.093878",
+    "upstream_rev": "fd51bb236e75cfec2fed16353a143faa1398bf2a",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/utensils/mcp-nixos",
+    "section": "Integrated Tools & MCP Servers",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:viperML/nh": {
+    "last_checked": "2026-05-15T15:18:56.093878",
+    "upstream_rev": "247d26d2058eda0ca26315cac8cb415ea599927f",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/viperML/nh",
+    "section": "NixOS Developer Experience (DX)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:weaviate/weaviate": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "20ecfd6f157208a278f1944ba639371c2b04cc8b",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/weaviate/weaviate",
+    "section": "RAG, Memory & Vector Databases",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 2
+  },
+  "github:wong2/mcp-directory": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "status": "retired_reference",
+    "url": "https://github.com/wong2/mcp-directory",
+    "section": "Tool Aggregators & MCP Directories",
+    "tracking_kind": "retired_reference",
+    "error_kind": "git_ls_remote_failed",
+    "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/wong2/mcp-directory.git/' not found",
+    "fetch_attempts": 2,
+    "retired_at": "2026-05-15T15:22:59.484466"
+  },
+  "github:zhaofengli/colmena": {
+    "last_checked": "2026-05-15T15:11:28.982240",
+    "upstream_rev": "349b035a5027f23d88eeb3bc41085d7ee29f18ed",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/zhaofengli/colmena",
+    "section": "Recommended Repositories (For Evaluation)",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  },
+  "github:wong2/awesome-mcp-servers": {
+    "last_checked": "2026-05-15T15:17:49.897227",
+    "upstream_rev": "d589dba2dd2a1969f5500f171e04d89030be2cdb",
+    "local_rev": null,
+    "status": "reference_only",
+    "url": "https://github.com/wong2/awesome-mcp-servers",
+    "section": "Tool Aggregators & MCP Directories",
+    "tracking_kind": "reference_only",
+    "fetch_attempts": 1
+  }
+}
