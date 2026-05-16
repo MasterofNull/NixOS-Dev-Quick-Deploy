@@ -74,10 +74,10 @@ def get_library_repos():
 
     return repos
 
-def get_flake_locked_rev(repo_url):
-    """Try to find the locked revision in flake.lock."""
+def get_flake_input_metadata(repo_url):
+    """Return the best matching root flake input metadata for a repo."""
     if not FLAKE_LOCK.exists():
-        return None
+        return {}
     
     with open(FLAKE_LOCK, 'r') as f:
         lock = json.load(f)
@@ -89,15 +89,33 @@ def get_flake_locked_rev(repo_url):
     
     owner, repo = path_parts[0], path_parts[1]
     
-    for node in lock.get('nodes', {}).values():
-        locked = node.get('locked', {})
-        if locked.get('type') == 'github' and \
-           locked.get('owner') == owner and \
-           locked.get('repo') == repo:
-            return locked.get('rev')
-    return None
+    candidates = []
+    root_inputs = (lock.get("nodes", {}).get("root", {}) or {}).get("inputs", {}) or {}
+    for input_name, node_key in root_inputs.items():
+        node = lock.get("nodes", {}).get(node_key, {}) or {}
+        locked = node.get("locked", {}) or {}
+        original = node.get("original", {}) or {}
+        if (
+            locked.get("type") == "github"
+            and locked.get("owner") == owner
+            and locked.get("repo") == repo
+        ):
+            candidates.append(
+                {
+                    "input_name": input_name,
+                    "local_rev": locked.get("rev"),
+                    "target_ref": original.get("ref") or "HEAD",
+                }
+            )
 
-def fetch_upstream_metadata(repo_url):
+    if not candidates:
+        return {}
+
+    # Prefer the canonical input name when a repository is included more than
+    # once (for example `nixpkgs` and `nixpkgs-unstable` both point at nixpkgs).
+    return next((c for c in candidates if c["input_name"] == repo), candidates[0])
+
+def fetch_upstream_metadata(repo_url, target_ref="HEAD"):
     """Fetch latest commit from GitHub without needing a full git clone."""
     # Use 'git ls-remote' for a lightweight check
     parts = repo_url.split(':')
@@ -108,7 +126,7 @@ def fetch_upstream_metadata(repo_url):
     for attempt in range(1, FETCH_ATTEMPTS + 1):
         try:
             result = subprocess.run(
-                ["git", "ls-remote", https_url, "HEAD"],
+                ["git", "ls-remote", https_url, target_ref],
                 capture_output=True,
                 text=True,
                 timeout=FETCH_TIMEOUT_SECONDS,
@@ -119,6 +137,7 @@ def fetch_upstream_metadata(repo_url):
                     "rev": rev,
                     "timestamp": datetime.now().isoformat(),
                     "attempts": attempt,
+                    "target_ref": target_ref,
                 }
 
             stderr = (result.stderr or "").strip()
@@ -176,6 +195,11 @@ def main():
             continue
         db[repo]["section"] = metadata["section"]
         db[repo]["tracking_kind"] = metadata["tracking_kind"]
+        if metadata["tracking_kind"] == "core_flake_input":
+            flake_metadata = get_flake_input_metadata(repo)
+            db[repo]["local_rev"] = flake_metadata.get("local_rev")
+            db[repo]["target_ref"] = flake_metadata.get("target_ref")
+            db[repo]["input_name"] = flake_metadata.get("input_name")
         if (
             metadata["tracking_kind"] == "reference_only"
             and db[repo].get("status") == "unknown"
@@ -207,7 +231,7 @@ def main():
         entry = db.get(repo, {})
         last_checked_str = entry.get('last_checked')
         current_local_rev = (
-            get_flake_locked_rev(repo)
+            get_flake_input_metadata(repo).get("local_rev")
             if lib_repos[repo]["tracking_kind"] == "core_flake_input"
             else None
         )
@@ -243,10 +267,16 @@ def main():
             break
             
         print(f"Updating {repo}...")
-        upstream = fetch_upstream_metadata(repo)
         metadata = lib_repos[repo]
+        flake_metadata = (
+            get_flake_input_metadata(repo)
+            if metadata["tracking_kind"] == "core_flake_input"
+            else {}
+        )
+        target_ref = flake_metadata.get("target_ref", "HEAD")
+        upstream = fetch_upstream_metadata(repo, target_ref)
         if "rev" in upstream:
-            local_rev = get_flake_locked_rev(repo)
+            local_rev = flake_metadata.get("local_rev")
 
             if metadata["tracking_kind"] == "reference_only":
                 status = "reference_only"
@@ -264,6 +294,8 @@ def main():
                 "section": metadata["section"],
                 "tracking_kind": metadata["tracking_kind"],
                 "fetch_attempts": upstream["attempts"],
+                "target_ref": upstream["target_ref"],
+                "input_name": flake_metadata.get("input_name"),
             }
             print(
                 f"  Result: {status} "
@@ -283,9 +315,12 @@ def main():
                 "url": f"https://github.com/{repo.split(':')[1]}",
                 "section": metadata["section"],
                 "tracking_kind": metadata["tracking_kind"],
+                "local_rev": flake_metadata.get("local_rev"),
                 "error_kind": error.get("kind", "unknown"),
                 "error_detail": error.get("detail", "unknown fetch failure"),
                 "fetch_attempts": error.get("attempts", FETCH_ATTEMPTS),
+                "target_ref": target_ref,
+                "input_name": flake_metadata.get("input_name"),
             }
             print(
                 f"  [{status.upper()}] {repo}: {db[repo]['error_kind']} "

@@ -42,7 +42,9 @@
     "status": "outdated",
     "url": "https://github.com/Mic92/sops-nix",
     "section": "Core Dependencies (Flake Inputs)",
-    "tracking_kind": "core_flake_input"
+    "tracking_kind": "core_flake_input",
+    "target_ref": "HEAD",
+    "input_name": "sops-nix"
   },
   "github:Misterio77/nix-starter-configs": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -61,17 +63,21 @@
     "url": "https://github.com/NixOS/nixos-hardware",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
-    "fetch_attempts": 1
+    "fetch_attempts": 1,
+    "target_ref": "HEAD",
+    "input_name": "nixos-hardware"
   },
   "github:NixOS/nixpkgs": {
-    "last_checked": "2026-05-15T15:18:30.271270",
-    "upstream_rev": "f2adf326f3480d817accae85f8b65080d30794d0",
-    "local_rev": "f8573b9c935cfaa162dd62cc9e75ae2db86f85df",
+    "last_checked": "2026-05-16T11:32:26.491757",
+    "upstream_rev": "d7a713c0b7e47c908258e71cba7a2d77cc8d71d5",
+    "local_rev": "c7f47036d3df2add644c46d712d14262b7d86c0c",
     "status": "outdated",
     "url": "https://github.com/NixOS/nixpkgs",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
-    "fetch_attempts": 1
+    "fetch_attempts": 2,
+    "target_ref": "nixos-25.11",
+    "input_name": "nixpkgs"
   },
   "github:TracecatHQ/tracecat": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -107,7 +113,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T10:55:26.211637"
+    "retired_at": "2026-05-16T11:32:26.491757"
   },
   "github:anthropics/claude-code": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -134,7 +140,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T10:55:26.211637"
+    "retired_at": "2026-05-16T11:32:26.491757"
   },
   "github:block/goose": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -206,7 +212,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T10:55:26.211637"
+    "retired_at": "2026-05-16T11:32:26.491757"
   },
   "github:hashicorp/terraform-mcp": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -215,7 +221,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T10:55:26.211637"
+    "retired_at": "2026-05-16T11:32:26.491757"
   },
   "github:hercules-ci/flake-parts": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -285,7 +291,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/microsoft/mcp-server-playwright.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-16T10:55:26.211637"
+    "retired_at": "2026-05-16T11:32:26.491757"
   },
   "github:mksglu/context-mode": {
     "last_checked": "2026-05-15T14:57:03.774533",
@@ -305,17 +311,21 @@
     "url": "https://github.com/nix-community/disko",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
-    "fetch_attempts": 1
+    "fetch_attempts": 1,
+    "target_ref": "HEAD",
+    "input_name": "disko"
   },
   "github:nix-community/home-manager": {
-    "last_checked": "2026-05-15T14:57:03.774533",
-    "upstream_rev": "c7fad8197070948d8aa02cb8922240ee129cab2e",
-    "local_rev": "0d02ec1d0a05f88ef9e74b516842900c41f0f2fe",
-    "status": "outdated",
+    "last_checked": "2026-05-16T11:32:26.491757",
+    "upstream_rev": "d1686dc7d36cbd1234cb226ad6ef97e882716acb",
+    "local_rev": "d1686dc7d36cbd1234cb226ad6ef97e882716acb",
+    "status": "parity",
     "url": "https://github.com/nix-community/home-manager",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
-    "fetch_attempts": 1
+    "fetch_attempts": 1,
+    "target_ref": "release-25.11",
+    "input_name": "home-manager"
   },
   "github:nix-community/lanzaboote": {
     "last_checked": "2026-05-15T14:57:55.931651",
@@ -325,7 +335,9 @@
     "url": "https://github.com/nix-community/lanzaboote",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
-    "fetch_attempts": 1
+    "fetch_attempts": 1,
+    "target_ref": "HEAD",
+    "input_name": "lanzaboote"
   },
   "github:nix-community/nix-direnv": {
     "last_checked": "2026-05-15T14:57:55.931651",
@@ -566,7 +578,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/wong2/mcp-directory.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-16T10:55:26.211637"
+    "retired_at": "2026-05-16T11:32:26.491757"
   },
   "github:zhaofengli/colmena": {
     "last_checked": "2026-05-15T15:11:28.982240",
