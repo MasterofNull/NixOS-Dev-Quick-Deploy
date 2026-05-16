@@ -113,7 +113,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T11:32:26.491757"
+    "retired_at": "2026-05-16T11:39:51.856254"
   },
   "github:anthropics/claude-code": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -140,7 +140,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T11:32:26.491757"
+    "retired_at": "2026-05-16T11:39:51.856254"
   },
   "github:block/goose": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -212,7 +212,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T11:32:26.491757"
+    "retired_at": "2026-05-16T11:39:51.856254"
   },
   "github:hashicorp/terraform-mcp": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -221,7 +221,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-16T11:32:26.491757"
+    "retired_at": "2026-05-16T11:39:51.856254"
   },
   "github:hercules-ci/flake-parts": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -291,7 +291,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/microsoft/mcp-server-playwright.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-16T11:32:26.491757"
+    "retired_at": "2026-05-16T11:39:51.856254"
   },
   "github:mksglu/context-mode": {
     "last_checked": "2026-05-15T14:57:03.774533",
@@ -330,8 +330,8 @@
   "github:nix-community/lanzaboote": {
     "last_checked": "2026-05-15T14:57:55.931651",
     "upstream_rev": "f11608843ca4fa95049c096ec0a50c93b41080b8",
-    "local_rev": "67384fbc57e36fad6fd59fa191341cdea89e6b7d",
-    "status": "outdated",
+    "local_rev": "f11608843ca4fa95049c096ec0a50c93b41080b8",
+    "status": "parity",
     "url": "https://github.com/nix-community/lanzaboote",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
@@ -578,7 +578,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/wong2/mcp-directory.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-16T11:32:26.491757"
+    "retired_at": "2026-05-16T11:39:51.856254"
   },
   "github:zhaofengli/colmena": {
     "last_checked": "2026-05-15T15:11:28.982240",

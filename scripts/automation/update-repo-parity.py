@@ -197,9 +197,14 @@ def main():
         db[repo]["tracking_kind"] = metadata["tracking_kind"]
         if metadata["tracking_kind"] == "core_flake_input":
             flake_metadata = get_flake_input_metadata(repo)
-            db[repo]["local_rev"] = flake_metadata.get("local_rev")
             db[repo]["target_ref"] = flake_metadata.get("target_ref")
             db[repo]["input_name"] = flake_metadata.get("input_name")
+            if (
+                db[repo].get("status") == "outdated"
+                and db[repo].get("local_rev")
+                and db[repo].get("local_rev") == db[repo].get("upstream_rev")
+            ):
+                db[repo]["status"] = "parity"
         if (
             metadata["tracking_kind"] == "reference_only"
             and db[repo].get("status") == "unknown"
