@@ -1589,6 +1589,22 @@ async def _shutdown():
     _local_last_completion = None
     _hints_client = _embed_client = _local_health_client = None
 
+# --- Health ---
+
+@app.get("/health")
+async def health():
+    local_runtime = await _local_runtime_health_snapshot()
+    local_lane_status = _local_lane_status(local_runtime)
+    return {
+        "status": "ok",
+        "routing_mode": ROUTING_MODE,
+        "default_provider": DEFAULT_PROVIDER,
+        "remote_configured": bool(REMOTE_URL),
+        "profiles": PROFILE_CATALOG,
+        "local_runtime": local_runtime,
+        "local_lane_status": local_lane_status,
+    }
+
 # --- Main Proxy Route ---
 
 @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])

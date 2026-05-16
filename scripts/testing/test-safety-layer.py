@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+"""Smoke test for destructive-tool interception in the safety control layer."""
+
 import asyncio
 import os
 import json
