@@ -1,0 +1,12 @@
+{
+  "proposals": [
+    {
+      "id": 1,
+      "ts": 1778881855.156133,
+      "tier": "critical",
+      "status": "pending",
+      "path": ".agent/proposals/proposal_0001.json"
+    }
+  ],
+  "last_id": 1
+}

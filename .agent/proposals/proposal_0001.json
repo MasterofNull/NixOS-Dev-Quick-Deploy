@@ -1,0 +1,12 @@
+{
+  "id": 1,
+  "ts": 1778881855.156133,
+  "agent_id": "test-agent",
+  "action_type": "destructive_tool",
+  "params": {
+    "cmd": "rm -rf /"
+  },
+  "tier": "critical",
+  "status": "pending",
+  "validation": "unverified"
+}
