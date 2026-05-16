@@ -107,7 +107,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T20:35:41.932112"
+    "retired_at": "2026-05-16T10:55:26.211637"
   },
   "github:anthropics/claude-code": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -134,7 +134,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T20:35:41.932112"
+    "retired_at": "2026-05-16T10:55:26.211637"
   },
   "github:block/goose": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -206,7 +206,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T20:35:41.932112"
+    "retired_at": "2026-05-16T10:55:26.211637"
   },
   "github:hashicorp/terraform-mcp": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -215,7 +215,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T20:35:41.932112"
+    "retired_at": "2026-05-16T10:55:26.211637"
   },
   "github:hercules-ci/flake-parts": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -285,7 +285,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/microsoft/mcp-server-playwright.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-15T20:35:41.932112"
+    "retired_at": "2026-05-16T10:55:26.211637"
   },
   "github:mksglu/context-mode": {
     "last_checked": "2026-05-15T14:57:03.774533",
@@ -298,10 +298,10 @@
     "fetch_attempts": 1
   },
   "github:nix-community/disko": {
-    "last_checked": "2026-05-15T14:57:03.774533",
+    "last_checked": "2026-05-16T10:55:26.211637",
     "upstream_rev": "63b4e7e6cf75307c1d26ac3762b886b5b0247267",
-    "local_rev": "32f4236bfc141ae930b5ba2fb604f561fed5219d",
-    "status": "outdated",
+    "local_rev": "63b4e7e6cf75307c1d26ac3762b886b5b0247267",
+    "status": "parity",
     "url": "https://github.com/nix-community/disko",
     "section": "Core Dependencies (Flake Inputs)",
     "tracking_kind": "core_flake_input",
@@ -566,7 +566,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/wong2/mcp-directory.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-15T20:35:41.932112"
+    "retired_at": "2026-05-16T10:55:26.211637"
   },
   "github:zhaofengli/colmena": {
     "last_checked": "2026-05-15T15:11:28.982240",
