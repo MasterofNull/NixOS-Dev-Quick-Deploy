@@ -17,14 +17,31 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+# Add parent directory to path for imports to reach workflow.safety_control_layer
+# (Assumes being run from ai-stack/local-agents)
+_MODULE_DIR = Path(__file__).parent
+_COORDINATOR_DIR = _MODULE_DIR.parent / "mcp-servers" / "hybrid-coordinator"
+if str(_COORDINATOR_DIR) not in sys.path:
+    sys.path.insert(0, str(_COORDINATOR_DIR))
+
+try:
+    from workflow.safety_control_layer import SafetyControlLayer
+except ImportError:
+    # Fallback/stub if not available
+    class SafetyControlLayer: # type: ignore
+        def __init__(self, mode="open"): pass
+        def intercept_action(self, *args, **kwargs): return None
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +82,7 @@ class ToolDefinition:
     # Execution
     handler: Callable  # Async function to execute tool
     requires_confirmation: bool = False
+    requires_proposal: bool = False # Agentix style staging
     audit: bool = True
 
     # Rate limiting
@@ -74,6 +92,11 @@ class ToolDefinition:
     # Metadata
     version: str = "1.0.0"
     enabled: bool = True
+
+    def __post_init__(self):
+        # Auto-set requires_proposal for risky policies
+        if self.safety_policy in (SafetyPolicy.SYSTEM_MODIFY, SafetyPolicy.DESTRUCTIVE):
+            self.requires_proposal = True
 
     def to_json_schema(self) -> Dict[str, Any]:
         """
@@ -160,6 +183,10 @@ class ToolRegistry:
 
         # Rate limiting tracking
         self.call_counts: Dict[str, List[float]] = {}  # tool_name → timestamps
+
+        # Safety Control Layer (Phase 13.1)
+        safety_mode = os.getenv("AI_SAFETY_MODE", "review").lower()
+        self.safety_layer = SafetyControlLayer(mode=safety_mode)
 
         # Database for audit trail
         self.db_path = db_path or Path.home() / ".local/share/nixos-ai-stack/local-agents/tool_audit.db"
@@ -336,6 +363,20 @@ class ToolRegistry:
             tool_call.error = reason
             await self._audit_tool_call(tool_call)
             return tool_call
+
+        # --- Phase 13.1: Safety Control Layer (Agentix style) ---
+        if tool.requires_proposal:
+            intercept_result = self.safety_layer.intercept_action(
+                action_type=tool_call.tool_name,
+                params=tool_call.arguments,
+                agent_id=tool_call.model_id or "unknown"
+            )
+            if intercept_result:
+                tool_call.status = "intercepted"
+                tool_call.result = intercept_result
+                tool_call.safety_check_passed = False
+                await self._audit_tool_call(tool_call)
+                return tool_call
 
         # Safety check (placeholder - can be extended)
         tool_call.safety_check_passed = True

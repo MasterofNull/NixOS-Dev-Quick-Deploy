@@ -263,13 +263,21 @@ async def store_agent_memory(
         max_chars=MAX_MEMORY_CONTENT_CHARS,
     )
     sanitized_metadata = _sanitize_metadata(metadata)
+    
+    # Phase 13.1: Temporal Facts (valid_from/valid_until)
+    now_ts = int(datetime.now().timestamp())
+    valid_from = sanitized_metadata.pop("valid_from", now_ts)
+    valid_until = sanitized_metadata.pop("valid_until", 0) # 0 means forever
+    
     memory_id = str(uuid4())
     payload = {
         "memory_id": memory_id,
         "memory_type": normalized_type,
         "summary": normalized_summary,
         "content": sanitized_content,
-        "timestamp": int(datetime.now().timestamp()),
+        "timestamp": now_ts,
+        "valid_from": valid_from,
+        "valid_until": valid_until,
     }
     if sanitized_metadata:
         payload.update(sanitized_metadata)
@@ -427,8 +435,20 @@ async def recall_agent_memory(
         raw_results = final_results
 
     memory_rows = []
-    for item in raw_results[:limit_value]:
+    now_ts = int(time.time())
+    
+    for item in raw_results:
         payload = item.get("payload") or {}
+        
+        # Phase 13.1: Temporal filtering
+        vf = payload.get("valid_from", 0)
+        vu = payload.get("valid_until", 0)
+        
+        if vf > 0 and now_ts < vf:
+            continue # Not yet valid
+        if vu > 0 and now_ts > vu:
+            continue # Expired
+            
         memory_rows.append(
             {
                 "memory_id": payload.get("memory_id") or item.get("id"),
@@ -437,8 +457,12 @@ async def recall_agent_memory(
                 "content": payload.get("content"),
                 "score": item.get("score"),
                 "sources": item.get("sources"),
+                "valid_from": vf,
+                "valid_until": vu,
             }
         )
+        if len(memory_rows) >= limit_value:
+            break
 
     # Batch 2.1: Track recall latency
     elapsed_ms = (time.time() - start_time) * 1000
