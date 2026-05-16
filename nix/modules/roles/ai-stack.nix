@@ -96,7 +96,7 @@ let
     explicit = ai.acceleration;
     autoDetected =
       if cfg.hardware.gpuVendor == "amd" || cfg.hardware.igpuVendor == "amd"
-      then "vulkan" # Vulkan via Mesa RADV is stable on AMD APUs
+      then "rocm" # Native ROCm via nixos-rocm/nixified-ai
       else if cfg.hardware.gpuVendor == "nvidia"
       then "cuda"
       else if cfg.hardware.gpuVendor == "intel" || cfg.hardware.igpuVendor == "intel"
@@ -105,8 +105,6 @@ let
   in
     if explicit == "auto"
     then autoDetected
-    else if explicit == "rocm"
-    then "vulkan" # ROCm deprecated; use Vulkan
     else explicit;
 
   hasGpuLayersArg =
@@ -841,7 +839,7 @@ in {
           useFallback = llama.useFallback;
           # GPU acceleration flags based on resolved acceleration mode
           enableVulkan = resolvedAccel == "vulkan";
-          enableRocm = false; # Disabled: ROCm crashes on Cezanne APU
+          enableRocm = resolvedAccel == "rocm"; # Phase B: Enabled via nixos-rocm
           enableCuda = resolvedAccel == "cuda";
         })
       ];
@@ -882,6 +880,8 @@ in {
         "d /var/lib/llama-cpp/models 0750 llama llama -"
         # Log directory writable by llama service
         "d /var/log/llama-cpp 0750 llama llama -"
+        # Phase B: Persistent worktrees for multi-agent isolation
+        "d /var/lib/nixos-ai-stack/worktrees 0750 ${cfg.primaryUser} users -"
       ];
 
       systemd.services.llama-cpp = {

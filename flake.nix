@@ -21,6 +21,13 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nixified-ai = {
+      url = "github:nixified-ai/flake";
+    };
+    nixos-rocm = {
+      url = "github:nixos-rocm/nixos-rocm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # Apple Silicon (Asahi Linux) — only needed for Apple M-series hosts.
     # When cpuVendor = "apple", set mySystem.hardware.nixosHardwareModule = "apple-m1"
     # (or apple-m2) in facts.nix to pull in the Asahi kernel + Mesa overlay via
