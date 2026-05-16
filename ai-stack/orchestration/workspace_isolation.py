@@ -114,7 +114,7 @@ class WorkspaceManager:
         default_mode: IsolationMode = IsolationMode.TEMP_DIR,
         conflict_strategy: ConflictStrategy = ConflictStrategy.FAIL,
     ) -> None:
-        self.base_dir = base_dir or Path(tempfile.gettempdir()) / "agent-workspaces"
+        self.base_dir = base_dir or Path("/var/lib/nixos-ai-stack/worktrees")
         self.default_mode = default_mode
         self.conflict_strategy = conflict_strategy
         self.workspaces: Dict[str, Workspace] = {}
