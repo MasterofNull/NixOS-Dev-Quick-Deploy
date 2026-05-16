@@ -3283,6 +3283,7 @@
                 <button class="lens-btn" type="button" data-lens="stack">Stack</button>
                 <button class="lens-btn" type="button" data-lens="operations">Operations</button>
                 <button class="lens-btn" type="button" data-lens="intelligence">Intelligence</button>
+                <button class="lens-btn" type="button" data-lens="memory">Memory</button>
                 <button class="lens-btn" type="button" data-lens="security">Security</button>
                 <button class="lens-btn" type="button" data-lens="all">All Detail</button>
             </div>
@@ -6173,6 +6174,55 @@
         </div>
     </div>
 
+            <!-- Memory Browser (Phase 5) -->
+            <div class="dashboard-section" id="section-memory">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">AIDB Memory Browser</h2>
+                        </div>
+                        <span class="card-badge">Intelligence</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="workflow-history-toolbar">
+                            <div class="toolbar-group" style="flex-grow: 1;">
+                                <input type="text" id="memorySearchInput" class="toolbar-input" placeholder="Search agent memory (e.g., 'nix-config', 'auth-fix')...">
+                            </div>
+                            <div class="toolbar-group">
+                                <label class="toolbar-label">Type</label>
+                                <select id="memoryTypeFilter" class="toolbar-select">
+                                    <option value="">All Types</option>
+                                    <option value="episodic">Episodic</option>
+                                    <option value="semantic">Semantic</option>
+                                    <option value="procedural">Procedural</option>
+                                </select>
+                            </div>
+                            <div class="toolbar-group">
+                                <button onclick="searchMemory()" class="toolbar-button active">Search</button>
+                            </div>
+                        </div>
+                        
+                        <div class="history-table-container">
+                            <table class="history-table" id="memoryResultsTable">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Summary</th>
+                                        <th>Content</th>
+                                        <th>Score</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="memoryResultsTableBody">
+                                    <tr><td colspan="5" style="text-align: center; padding: 1rem; color: var(--text-muted);">Use the search box to find memories.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
     <!-- ================================================================ -->
     <!-- Command Center Graph Workspace                                    -->
     <!-- ================================================================ -->
@@ -6678,6 +6728,11 @@
                 detail: 'Agentic readiness, continuous learning, orchestration, discovery, insights, and graph views.',
                 modules: ['intelligence-workbench']
             },
+            memory: {
+                label: 'Memory',
+                detail: 'AIDB knowledge base browser, temporal facts, and agent diaries.',
+                modules: ['data-memory']
+            },
             security: {
                 label: 'Security',
                 detail: 'Network, firewall, hardening, security monitor, circuit breakers, and configuration posture.',
@@ -6699,6 +6754,7 @@
             'AIDB Health & Security': { layers: 'l5,l6', module: 'data-memory', criticality: 'critical' },
             'Stack Health (Aggregate)': { layers: 'l2,l3', module: 'command-deck', criticality: 'critical' },
             'Knowledge Base': { layers: 'l5,l6', module: 'data-memory', criticality: 'high' },
+            'AIDB Memory Browser': { layers: 'l5,l6', module: 'data-memory', criticality: 'high' },
             'Telemetry Proof': { layers: 'l5', module: 'event-spine', criticality: 'normal' },
             'Hybrid Coordinator Metrics': { layers: 'l4,l6', module: 'runtime-operations', criticality: 'high' },
             'AI Internals': { layers: 'l6', module: 'intelligence-workbench', criticality: 'normal' },
@@ -14305,7 +14361,7 @@
                     if (!response.ok) throw new Error('Failed to fetch execution status');
 
                     const execution = await response.json();
-                    const taskExecution = execution.task_executions?.find(t => t.task_id === this.taskId);
+                    const taskExecution = execution.task_executions ? execution.task_executions[this.taskId] : null;
 
                     if (!taskExecution) {
                         this.showError('Task execution not found');
@@ -14908,52 +14964,43 @@
                 // Clear previous graph
                 this.container.selectAll('*').remove();
 
-                if (!data || !data.levels) {
+                if (!data || !data.levels || !data.nodes) {
                     this.showError('Invalid graph data');
                     return;
                 }
 
-                const levels = data.levels;
+                const levels = data.levels; // Array of arrays of IDs
+                const rawNodes = data.nodes; // Array of node objects
                 const nodes = [];
                 const links = [];
                 const nodeMap = new Map();
 
+                // Build lookup map for nodes
+                rawNodes.forEach(n => nodeMap.set(n.id, n));
+
                 // Calculate node positions based on levels
                 const levelHeight = this.height / (levels.length + 1);
-                const levelWidths = new Map();
 
-                // First pass: count nodes per level
-                levels.forEach((level) => {
-                    levelWidths.set(level, (level.nodes || []).length);
-                });
-
-                // Create nodes with calculated positions
-                levels.forEach((level, levelIndex) => {
-                    const levelNodes = level.nodes || [];
-                    const nodeCount = levelNodes.length;
-                    const nodeWidth = Math.min(160, (this.width - 100) / Math.max(nodeCount, 1));
+                levels.forEach((levelIds, levelIndex) => {
+                    const nodeCount = levelIds.length;
                     const spacing = (this.width - 100) / Math.max(nodeCount + 1, 1);
 
-                    levelNodes.forEach((nodeData, nodeIndex) => {
+                    levelIds.forEach((nodeId, nodeIndex) => {
+                        const nodeData = nodeMap.get(nodeId);
+                        if (!nodeData) return;
+
                         const x = (nodeIndex + 1) * spacing;
                         const y = (levelIndex + 1) * levelHeight;
 
                         const node = {
-                            id: nodeData.id || `node-${levelIndex}-${nodeIndex}`,
-                            label: nodeData.name || nodeData.label || `Node ${levelIndex}-${nodeIndex}`,
-                            agent: nodeData.agent || 'unknown',
-                            status: nodeData.status || 'pending',
+                            ...nodeData,
                             x: x,
                             y: y,
-                            progress: nodeData.progress || 0,
-                            duration: nodeData.duration || 0,
-                            retry_count: nodeData.retry_count || 0,
-                            outputs: nodeData.outputs || {},
-                            error: nodeData.error || null
+                            label: nodeData.name || nodeData.label || nodeId,
                         };
 
                         nodes.push(node);
-                        nodeMap.set(node.id, node);
+                        nodeMap.set(node.id, node); // Update map with position info
                     });
                 });
 
@@ -14981,7 +15028,7 @@
                     .attr('d', (d) => {
                         const dx = d.target.x - d.source.x;
                         const dy = d.target.y - d.source.y;
-                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
                         const offsetX = (dx / distance) * 80;
                         const offsetY = (dy / distance) * 40;
 
@@ -15844,6 +15891,9 @@
             // Initialize Workflow DAG visualization
             initializeWorkflowDAG();
 
+            // Initialize Memory Browser listeners
+            initializeMemoryBrowser();
+
             // Initialize Log Viewer Modal
             logViewer = new LogViewerModal();
             logViewer.initialize();
@@ -16115,8 +16165,72 @@
                     if (badge) badge.textContent = 'error';
                     renderGraphDetails(detailsId, [{ label: 'error', value: e.message }]);
                     console.error('workflow graph error', e);
+                }
+                }
+
+                // --- Memory Browser (Phase 5) ---
+                async function searchMemory() {
+                const input = document.getElementById('memorySearchInput');
+                const typeFilter = document.getElementById('memoryTypeFilter');
+                const tableBody = document.getElementById('memoryResultsTableBody');
+
+                if (!input || !tableBody) return;
+
+                const query = input.value.trim();
+                if (!query) return;
+
+                const memoryTypes = typeFilter.value ? [typeFilter.value] : null;
+
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;"><div class="spinner"></div> Searching AIDB...</td></tr>';
+
+                try {
+                    const response = await fetch('/api/memory/recall', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: query,
+                            memory_types: memoryTypes,
+                            limit: 20
+                        })
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                    const data = await response.json();
+                    const memories = data.results || [];
+
+                    if (memories.length === 0) {
+                        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 1rem; color: var(--text-muted);">No matching memories found in AIDB.</td></tr>';
+                        return;
+                    }
+
+                    tableBody.innerHTML = memories.map(m => `
+                        <tr>
+                            <td><span class="status-badge" style="background: var(--bg-tertiary); color: var(--accent-cyan); border-color: var(--border-primary);">${m.memory_type}</span></td>
+                            <td style="font-weight: 600;">${escapeHtml(m.summary)}</td>
+                            <td style="font-size: 0.8rem; color: var(--text-secondary); max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(m.content)}">${escapeHtml(m.content)}</td>
+                            <td>${(m.score * 100).toFixed(1)}%</td>
+                            <td>
+                                <button class="export-btn" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="viewMemoryDetail('${m.memory_id}')">View</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } catch (error) {
+                    console.error('Memory search failed:', error);
+                    tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 1rem; color: var(--status-error);">Search failed: ${error.message}</td></tr>`;
+                }
+                }
+
+                function viewMemoryDetail(memoryId) {
+                showNotification(`Opening memory detail: ${memoryId}`, 'info');
+                }
+
+                // Initialize Memory Browser listeners
+                function initializeMemoryBrowser() {
+                document.getElementById('memorySearchInput')?.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') searchMemory();
                 });
-        }
-    </script>
-</body>
-</html>
+                }
+                </script>
+                </body>
+                </html>

@@ -54,13 +54,14 @@
     "tracking_kind": "reference_only"
   },
   "github:NixOS/nixos-hardware": {
-    "last_checked": "2026-05-15T13:39:30.798531",
+    "last_checked": "2026-05-15T20:35:41.932112",
     "upstream_rev": "9bd7c80d43e258aaa607d83b43661df11444d808",
-    "local_rev": "c775c2772ba56e906cbeb4e0b2db19079ef11ff7",
-    "status": "outdated",
+    "local_rev": "9bd7c80d43e258aaa607d83b43661df11444d808",
+    "status": "parity",
     "url": "https://github.com/NixOS/nixos-hardware",
     "section": "Core Dependencies (Flake Inputs)",
-    "tracking_kind": "core_flake_input"
+    "tracking_kind": "core_flake_input",
+    "fetch_attempts": 1
   },
   "github:NixOS/nixpkgs": {
     "last_checked": "2026-05-15T15:18:30.271270",
@@ -106,7 +107,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T15:22:59.484466"
+    "retired_at": "2026-05-15T20:35:41.932112"
   },
   "github:anthropics/claude-code": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -133,7 +134,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T15:22:59.484466"
+    "retired_at": "2026-05-15T20:35:41.932112"
   },
   "github:block/goose": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -205,7 +206,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T15:22:59.484466"
+    "retired_at": "2026-05-15T20:35:41.932112"
   },
   "github:hashicorp/terraform-mcp": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -214,7 +215,7 @@
     "tracking_kind": "retired_reference",
     "error_kind": "legacy_error",
     "error_detail": "Recorded by an older parity run before detailed fetch errors were stored",
-    "retired_at": "2026-05-15T15:22:59.484466"
+    "retired_at": "2026-05-15T20:35:41.932112"
   },
   "github:hercules-ci/flake-parts": {
     "last_checked": "2026-05-15T13:39:30.798531",
@@ -284,7 +285,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/microsoft/mcp-server-playwright.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-15T15:22:59.484466"
+    "retired_at": "2026-05-15T20:35:41.932112"
   },
   "github:mksglu/context-mode": {
     "last_checked": "2026-05-15T14:57:03.774533",
@@ -565,7 +566,7 @@
     "error_kind": "git_ls_remote_failed",
     "error_detail": "remote: Repository not found.\nfatal: repository 'https://github.com/wong2/mcp-directory.git/' not found",
     "fetch_attempts": 2,
-    "retired_at": "2026-05-15T15:22:59.484466"
+    "retired_at": "2026-05-15T20:35:41.932112"
   },
   "github:zhaofengli/colmena": {
     "last_checked": "2026-05-15T15:11:28.982240",

@@ -22,7 +22,7 @@ FLAKE_LOCK = ROOT / "flake.lock"
 
 # Configuration
 STAGGER_INTERVAL_DAYS = 3
-UPDATE_LIMIT_PER_RUN = 100  # Full check for final validation
+UPDATE_LIMIT_PER_RUN = 8  # Balanced limit for regular staggered updates
 FETCH_TIMEOUT_SECONDS = 20
 FETCH_ATTEMPTS = 2
 CORE_SECTION = "Core Dependencies (Flake Inputs)"
@@ -206,6 +206,11 @@ def main():
     for repo in sorted(lib_repos):
         entry = db.get(repo, {})
         last_checked_str = entry.get('last_checked')
+        current_local_rev = (
+            get_flake_locked_rev(repo)
+            if lib_repos[repo]["tracking_kind"] == "core_flake_input"
+            else None
+        )
         
         should_update = False
         if args.retry_problematic and entry.get("status") in {
@@ -213,6 +218,11 @@ def main():
             "transient_error",
             "invalid_remote",
         }:
+            should_update = True
+        elif (
+            lib_repos[repo]["tracking_kind"] == "core_flake_input"
+            and current_local_rev != entry.get("local_rev")
+        ):
             should_update = True
         elif not last_checked_str:
             should_update = True
