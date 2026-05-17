@@ -3244,8 +3244,7 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     if cached and (now - cached.get("cached_at", 0)) < _AQ_QA_CACHE_TTL_S:
         return {**cached["payload"], "cached": True, "cached_at": cached["cached_at"]}
 
-    repo_root = Path(__file__).resolve().parents[5]
-    aq_qa_script = repo_root / "scripts" / "ai" / "aq-qa"
+    aq_qa_script = _script_path("aq-qa")
     if not aq_qa_script.exists():
         raise HTTPException(status_code=503, detail="aq-qa script not found")
 
@@ -3262,7 +3261,7 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     try:
         proc = await asyncio.create_subprocess_exec(
             "bash", str(aq_qa_script), phase, "--json",
-            cwd=str(repo_root),
+            cwd=str(_repo_root()),
             env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -3374,7 +3373,7 @@ async def get_task_classification_stats() -> Dict[str, Any]:
     Return task complexity routing statistics from the hybrid coordinator.
     Reads tool_audit.jsonl to aggregate local vs remote routing decisions.
     """
-    repo_root = Path(__file__).resolve().parents[5]
+    repo_root = _repo_root()
     audit_log = Path(os.getenv("TOOL_AUDIT_LOG", "/var/log/nixos-ai-stack/tool-audit.jsonl"))
 
     local_count = 0
@@ -3542,7 +3541,7 @@ async def get_routing_summary() -> Dict[str, Any]:
     """Operator-facing live routing summary across alias policy, switchboard, and audit signals."""
     switchboard_health = await fetch_with_fallback(f"{SERVICES['switchboard']}/health", {})
     task_stats = await get_task_classification_stats()
-    repo_root = Path(__file__).resolve().parents[5]
+    repo_root = _repo_root()
     route_aliases_path = repo_root / "config" / "route-aliases.json"
 
     route_aliases_payload: Dict[str, Any] = {}
@@ -3761,7 +3760,7 @@ async def get_verify_self_results() -> Dict[str, Any]:
     roadmap verifier check_pattern calls match their target files.
     Cached for 10 minutes since this is a static analysis scan.
     """
-    repo_root = Path(__file__).resolve().parents[5]
+    repo_root = _repo_root()
     script = repo_root / "scripts" / "testing" / "verify-self-consistency.py"
     if not script.exists():
         raise HTTPException(status_code=503, detail="verify-self-consistency.py not found")
@@ -3928,7 +3927,7 @@ async def get_workflow_graph() -> Dict[str, Any]:
     if _WORKFLOW_GRAPH_CACHE["payload"] and now - _WORKFLOW_GRAPH_CACHE["ts"] < _WORKFLOW_GRAPH_TTL_S:
         return _WORKFLOW_GRAPH_CACHE["payload"]
 
-    repo_root = Path(__file__).resolve().parents[5]
+    repo_root = _repo_root()
     audit_path = Path("/var/lib/nixos-ai-stack/audit/tool_audit.jsonl")
     if not audit_path.exists():
         audit_path = repo_root / "logs" / "tool_audit.jsonl"
