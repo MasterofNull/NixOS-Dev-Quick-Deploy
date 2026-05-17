@@ -1598,6 +1598,23 @@ async def proxy_aidb_metrics() -> Response:
     return Response(content=metrics, media_type="text/plain")
 
 
+@router.get("/query/traces")
+async def query_traces(limit: int = 20) -> Dict[str, Any]:
+    """Proxy coordinator /api/traces for dashboard Intelligence lane.
+    Returns empty list with coordinator_offline=True when coordinator is down."""
+    hybrid_base = SERVICES["hybrid"]
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    result = await fetch_with_fallback(
+        f"{hybrid_base}/api/traces?limit={limit}",
+        {"traces": [], "total": 0, "coordinator_offline": True},
+        headers=headers,
+    )
+    if isinstance(result, dict) and "error" in result:
+        return {"traces": [], "total": 0, "coordinator_offline": True, "error": result["error"]}
+    return result
+
+
 # Collection metadata: label, type (knowledge|memory|training|other), purpose
 _COLLECTION_META: Dict[str, Dict[str, str]] = {
     "codebase-context":       {"label": "Codebase Context",     "type": "knowledge", "purpose": "Code patterns & project structure"},
