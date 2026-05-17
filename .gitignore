@@ -174,3 +174,6 @@ tmp/
 # not project-specific configuration)
 .continue/prompts/new-prompt.md
 .continue/mcpServers/new-mcp-server.yaml
+
+# Phase 57 — per-host runtime state (not committed; contains host-specific promotion results)
+config/rocm-promotion-state.json

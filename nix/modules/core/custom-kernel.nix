@@ -168,6 +168,8 @@ let
   selectedKernelPackages =
     if customCfg.enable then
       pkgs.linuxPackagesFor customKernel
+    else if cfg.track == "lts" && pkgs ? linuxPackages_6_18 then
+      pkgs.linuxPackages_6_18
     else if cfg.track == "latest-stable" && pkgs ? linuxPackages_latest then
       pkgs.linuxPackages_latest
     else

@@ -639,6 +639,7 @@ in {
           "d ${dataDir}/hybrid/telemetry   0750 ${hybridUser} ${aiGroup} -"
           "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/continuous_learning_stats.json 0640 ${hybridUser} ${aiGroup} - -"
+          "f ${dataDir}/hybrid/telemetry/aidb-reindex-latest.json 0660 ${svcUser} ${aiGroup} - -"
           "d ${dataDir}/ralph              0750 ${ralphUser} ${aiGroup} -"
           "d ${dataDir}/ralph/state        0750 ${ralphUser} ${aiGroup} -"
           "d ${dataDir}/ralph/telemetry    0750 ${ralphUser} ${aiGroup} -"
@@ -1587,9 +1588,9 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/security/npm-security-monitor.sh"
+            "${toString repoSource}/scripts/security/npm-security-monitor.sh"
             "--repo-root"
-            mcp.repoPath
+            (toString repoSource)
             "--output-dir"
             "${dataDir}/security/npm"
           ];

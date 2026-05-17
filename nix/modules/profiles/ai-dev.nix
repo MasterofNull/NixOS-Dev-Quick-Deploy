@@ -23,8 +23,8 @@ in
     # These features are profile-driven: any host using ai-dev gets them.
     # Override in host/default.nix with lib.mkForce if needed.
 
-    # Kernel: 6.19-latest for AMD GPU boost (+30%), HDR, ext4 improvements
-    mySystem.kernel.track = lib.mkDefault "6.19-latest";
+    # Kernel: track the newest supported stable kernel for workstation-class AI workloads.
+    mySystem.kernel.track = lib.mkDefault "latest-stable";
 
     # Security: Maximum kernel hardening (CFI, shadow call stack, lockdown)
     mySystem.kernel.hardening = {
