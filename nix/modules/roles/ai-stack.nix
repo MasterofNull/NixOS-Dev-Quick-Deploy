@@ -90,13 +90,14 @@ let
 
   # Resolve GPU acceleration mode.
   # "auto" detects AMD → vulkan, NVIDIA → cuda, otherwise cpu.
-  # "rocm" is deprecated (crashes on APUs) and remaps to "vulkan".
+  # Keep ROCm explicit-only: generic AMD auto-detection must stay on Vulkan
+  # because ROCm remains unsafe on many APUs.
   # Portable profiles: config/ai-stack-hardware-profiles.json
   resolvedAccel = let
     explicit = ai.acceleration;
     autoDetected =
       if cfg.hardware.gpuVendor == "amd" || cfg.hardware.igpuVendor == "amd"
-      then "rocm" # Native ROCm via nixos-rocm/nixified-ai
+      then "vulkan" # Stable default for AMD APUs/iGPUs and generic AMD hosts
       else if cfg.hardware.gpuVendor == "nvidia"
       then "cuda"
       else if cfg.hardware.gpuVendor == "intel" || cfg.hardware.igpuVendor == "intel"

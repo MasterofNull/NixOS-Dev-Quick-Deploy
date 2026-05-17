@@ -101,6 +101,8 @@ AI_STACK_DATA_DIR="${AI_STACK_DATA_DIR:-/var/lib/ai-stack}"
 DEPLOY_START_EPOCH="$(date +%s)"
 declare -a PHASE_TIMINGS=()
 POST_FLIGHT_MODE="${POST_FLIGHT_MODE:-declarative}" # declarative|inline|both
+POST_FLIGHT_HEALTH_POLICY="${POST_FLIGHT_HEALTH_POLICY:-strict}" # strict|warn
+STATEFUL_DOWNGRADE_POLICY="${STATEFUL_DOWNGRADE_POLICY:-strict}" # strict|warn
 POST_FLIGHT_REBUILD_TIMEOUT_SECONDS="${POST_FLIGHT_REBUILD_TIMEOUT_SECONDS:-900}"
 POST_FLIGHT_REPORT_TIMEOUT_SECONDS="${POST_FLIGHT_REPORT_TIMEOUT_SECONDS:-60}"
 POST_FLIGHT_SEED_TIMEOUT_SECONDS="${POST_FLIGHT_SEED_TIMEOUT_SECONDS:-120}"
@@ -1366,6 +1368,65 @@ run_nonfatal_postflight_check() {
     log "${success_message}"
   else
     log "${failure_message}"
+  fi
+}
+
+run_required_postflight_check() {
+  local start_message="$1"
+  local success_message="$2"
+  local failure_message="$3"
+  shift 3
+
+  log "${start_message}"
+  if "$@"; then
+    log "${success_message}"
+    return 0
+  fi
+
+  if [[ "${POST_FLIGHT_HEALTH_POLICY}" == "warn" ]]; then
+    log "${failure_message} (warning only: POST_FLIGHT_HEALTH_POLICY=warn)"
+    return 0
+  fi
+
+  die "${failure_message}"
+}
+
+version_lt() {
+  local lhs="$1"
+  local rhs="$2"
+  [[ "${lhs}" != "${rhs}" ]] && [[ "$(printf '%s\n%s\n' "${lhs}" "${rhs}" | sort -V | head -n1)" == "${lhs}" ]]
+}
+
+current_redis_version() {
+  local exec_start redis_bin
+  exec_start="$(systemctl show redis-mcp.service -p ExecStart --value 2>/dev/null || true)"
+  redis_bin="$(grep -oE '/nix/store/[^ ]+/bin/redis-server' <<<"${exec_start}" | head -n1 || true)"
+  [[ -n "${redis_bin}" && -x "${redis_bin}" ]] || return 1
+  "${redis_bin}" --version 2>/dev/null | sed -nE 's/.*v=([0-9.]+).*/\1/p'
+}
+
+target_redis_version() {
+  nix --extra-experimental-features 'nix-command flakes' eval --raw \
+    "${FLAKE_REF}#nixosConfigurations.\"${HOST_NAME}-${PROFILE}\".pkgs.redis.version" \
+    2>/dev/null
+}
+
+guard_stateful_service_downgrades() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  command -v nix >/dev/null 2>&1 || return 0
+
+  local current_version target_version
+  current_version="$(current_redis_version || true)"
+  target_version="$(target_redis_version || true)"
+  [[ -n "${current_version}" && -n "${target_version}" ]] || return 0
+
+  if version_lt "${target_version}" "${current_version}"; then
+    local message="Refusing Redis downgrade from ${current_version} to ${target_version}: newer on-disk state may not be readable by the older target package."
+    if [[ "${STATEFUL_DOWNGRADE_POLICY}" == "warn" ]]; then
+      log "WARNING: ${message} (STATEFUL_DOWNGRADE_POLICY=warn)"
+      return 0
+    fi
+    die "${message}"
   fi
 }
 
@@ -3041,6 +3102,14 @@ case "${POST_FLIGHT_MODE}" in
   declarative|inline|both) ;;
   *) die "Invalid POST_FLIGHT_MODE='${POST_FLIGHT_MODE}'. Expected: declarative|inline|both." ;;
 esac
+case "${POST_FLIGHT_HEALTH_POLICY}" in
+  strict|warn) ;;
+  *) die "Invalid POST_FLIGHT_HEALTH_POLICY='${POST_FLIGHT_HEALTH_POLICY}'. Expected: strict|warn." ;;
+esac
+case "${STATEFUL_DOWNGRADE_POLICY}" in
+  strict|warn) ;;
+  *) die "Invalid STATEFUL_DOWNGRADE_POLICY='${STATEFUL_DOWNGRADE_POLICY}'. Expected: strict|warn." ;;
+esac
 
 if [[ "${SELF_CHECK_ONLY}" == true ]]; then
   run_script_runtime_contract_check
@@ -4406,10 +4475,10 @@ run_general_postflight_checks() {
 
   if [[ "${RUN_HEALTH_CHECK}" == true && -x "${REPO_ROOT}/scripts/health/system-health-check.sh" ]]; then
     section "Post-flight Health"
-    run_nonfatal_postflight_check \
+    run_required_postflight_check \
       "Running post-deploy health check" \
       "Post-deploy health check passed" \
-      "Post-deploy health check reported issues (non-critical)" \
+      "Post-deploy health check reported issues" \
       run_timed_step "System Health Check" "${REPO_ROOT}/scripts/health/system-health-check.sh" --detailed
   fi
 
@@ -4427,10 +4496,10 @@ run_ai_postflight_checks() {
   verify_repo_backed_ai_services_are_live_if_needed
 
   if [[ "${RUN_HEALTH_CHECK}" == true && -x "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" ]]; then
-    run_nonfatal_postflight_check \
+    run_required_postflight_check \
       "Running AI stack MCP health check" \
       "AI MCP health check passed" \
-      "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details (non-critical)" \
+      "AI MCP health check reported issues — check 'scripts/testing/check-mcp-health.sh --optional' for details" \
       "${REPO_ROOT}/scripts/testing/check-mcp-health.sh" --optional
   fi
 }
@@ -4593,6 +4662,7 @@ main() {
   fi
 
   run_pre_deploy_guardrails
+  guard_stateful_service_downgrades
   run_optional_pre_deploy_steps
   snapshot_pre_switch_generations
 
