@@ -421,6 +421,9 @@ derive_acceleration_class() {
       gfx1035)        echo "amd-apu-rembrandt"; return ;;
       gfx1036)        echo "amd-apu-cezanne"; return ;;
       gfx1100|gfx1101|gfx1102) echo "amd-rdna3-dgpu"; return ;;
+      gfx1103)        echo "amd-apu-phoenix"; return ;;
+      gfx1200)        echo "amd-apu-strix"; return ;;
+      gfx1201)        echo "amd-apu-strix"; return ;;
     esac
   fi
 

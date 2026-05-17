@@ -68,11 +68,19 @@ log() {
 # Resolve model path
 # ---------------------------------------------------------------------------
 if [[ -z "${MODEL_PATH}" ]]; then
+  # Resolution order:
+  # 1. BENCHMARK_MODEL_PATH (injected by NixOS module — resolves DynamicUser boundary)
+  # 2. LLAMA_CPP_MODEL_PATH (alias)
+  # 3. Symlink fallback (works if running as the service user)
+  MODEL_PATH="${BENCHMARK_MODEL_PATH:-${LLAMA_CPP_MODEL_PATH:-}}"
+fi
+if [[ -z "${MODEL_PATH}" ]]; then
   MODEL_PATH="$(readlink -f /var/lib/llama-cpp/model.gguf 2>/dev/null || true)"
 fi
 if [[ -z "${MODEL_PATH}" ]]; then
-  log "No model path provided and /var/lib/llama-cpp/model.gguf not found."
-  log "Pass --model PATH to benchmark with a specific GGUF file."
+  log "No model path provided."
+  log "Set BENCHMARK_MODEL_PATH (injected by NixOS ai-stack module after rebuild),"
+  log "or pass --model PATH explicitly."
   printf '{"error":"no_model","results":{}}\n' > "${OUTPUT_FILE}"
   exit 1
 fi
@@ -264,8 +272,9 @@ benchmark_backend() {
   wait "${pid}" 2>/dev/null || true
 
   # Compute median
-  local sorted median
-  sorted=($(printf '%d\n' "${tps_values[@]}" | sort -n))
+  local median
+  local -a sorted
+  mapfile -t sorted < <(printf '%d\n' "${tps_values[@]}" | sort -n)
   local count="${#sorted[@]}"
   if (( count % 2 == 1 )); then
     median="${sorted[$(( count / 2 ))]}"

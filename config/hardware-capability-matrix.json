@@ -140,6 +140,63 @@
       "soak_hours": 48,
       "notes": "Rembrandt RDNA2 iGPU has partial ROCm community support via gfx1035 override. Requires validation before candidate promotion."
     },
+    "amd-apu-phoenix": {
+      "description": "AMD Phoenix APU — Ryzen 7040/8040 series (gfx1103). RDNA3 iGPU with up to 12 GB dedicated VRAM on some SKUs.",
+      "detection_hints": {
+        "gpu_vendor": "amd",
+        "cpu_vendor": "amd",
+        "is_mobile": true,
+        "rocm_target_prefix": "gfx1103"
+      },
+      "default_backend": "vulkan",
+      "fallback_backend": "cpu",
+      "candidate_backend": "rocm",
+      "promotion_status": "experimental",
+      "promotion_blocked_reason": null,
+      "rocm_compat_key": "gfx1103",
+      "max_gpu_layers": 32,
+      "benchmark_win_threshold_pct": 10,
+      "soak_hours": 48,
+      "notes": "Phoenix RDNA3 iGPU has growing ROCm 6.x community support via gfx1103. Higher shared VRAM budget than Renoir. Requires cold_start + hang_check before candidate promotion."
+    },
+    "amd-apu-hawkpoint": {
+      "description": "AMD Hawk Point APU — Ryzen 8040 series refresh (gfx1103 variant). RDNA3 iGPU.",
+      "detection_hints": {
+        "gpu_vendor": "amd",
+        "cpu_vendor": "amd",
+        "is_mobile": true,
+        "rocm_target_prefix": "gfx1103"
+      },
+      "default_backend": "vulkan",
+      "fallback_backend": "cpu",
+      "candidate_backend": "rocm",
+      "promotion_status": "experimental",
+      "promotion_blocked_reason": null,
+      "rocm_compat_key": "gfx1103",
+      "max_gpu_layers": 32,
+      "benchmark_win_threshold_pct": 10,
+      "soak_hours": 48,
+      "notes": "Hawk Point is a Phoenix die refresh with same gfx1103 target. Treat identically to phoenix for ROCm purposes."
+    },
+    "amd-apu-strix": {
+      "description": "AMD Strix Point / Strix Halo APU — Ryzen AI 300 series (gfx1201/gfx1200). RDNA3.5 iGPU with up to 96 GB shared VRAM on Strix Halo.",
+      "detection_hints": {
+        "gpu_vendor": "amd",
+        "cpu_vendor": "amd",
+        "is_mobile": true,
+        "rocm_target_prefixes": ["gfx1200", "gfx1201"]
+      },
+      "default_backend": "vulkan",
+      "fallback_backend": "cpu",
+      "candidate_backend": "rocm",
+      "promotion_status": "experimental",
+      "promotion_blocked_reason": null,
+      "rocm_compat_key": "gfx1201",
+      "max_gpu_layers": 64,
+      "benchmark_win_threshold_pct": 10,
+      "soak_hours": 48,
+      "notes": "Strix/Strix Halo RDNA3.5 — very new hardware. ROCm support emerging in 6.2+. High VRAM budget on Strix Halo makes full offload plausible. Needs cold_start validation first."
+    },
     "amd-rdna1-dgpu": {
       "description": "AMD RDNA1 discrete GPU — RX 5000 series (gfx1010/1011/1012). Navi10/12/14.",
       "detection_hints": {
@@ -408,6 +465,33 @@
       "promotion_eligible": false,
       "last_verified": "2026-05-16",
       "notes": "APU iGPU. Not in official ROCm matrix. Vulkan preferred."
+    },
+    "gfx1103": {
+      "family": "Phoenix / Hawk Point APU / RDNA3 iGPU",
+      "devices": ["Ryzen 7040 series (Phoenix)", "Ryzen 8040 series (Hawk Point)"],
+      "supported_rocm_versions": ["6.x"],
+      "validated_gfx_override": "11.0.3",
+      "promotion_eligible": true,
+      "last_verified": "2026-05-16",
+      "notes": "RDNA3 iGPU. ROCm 6.x community support. Lower VRAM than desktop RDNA3 but significantly more than Renoir. Needs cold_start validation on specific SKU."
+    },
+    "gfx1200": {
+      "family": "Strix Point APU / RDNA3.5 iGPU",
+      "devices": ["Ryzen AI 9 365", "Ryzen AI 9 HX 370"],
+      "supported_rocm_versions": ["6.2+"],
+      "validated_gfx_override": "12.0.0",
+      "promotion_eligible": true,
+      "last_verified": "2026-05-16",
+      "notes": "RDNA3.5. Very new. ROCm 6.2+ required. Promotion to candidate requires soak on specific device."
+    },
+    "gfx1201": {
+      "family": "Strix Halo APU / RDNA3.5 iGPU",
+      "devices": ["Ryzen AI MAX 395 (Strix Halo)", "Ryzen AI MAX+ 395"],
+      "supported_rocm_versions": ["6.2+"],
+      "validated_gfx_override": "12.0.1",
+      "promotion_eligible": true,
+      "last_verified": "2026-05-16",
+      "notes": "Strix Halo with up to 96 GB shared VRAM — full model offload plausible. ROCm 6.2+ required. High-value target for future promotion."
     },
     "gfx1100": {
       "family": "Navi31 / RDNA3",

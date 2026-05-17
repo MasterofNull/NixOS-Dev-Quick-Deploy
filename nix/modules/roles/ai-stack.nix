@@ -1548,6 +1548,13 @@ in {
 
         # Tool paths (backwards compatible)
         AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
+
+        # Model path for benchmark/diagnostic scripts running as the primary user.
+        # Resolves the DynamicUser=/var/lib/llama-cpp permission boundary:
+        # scripts outside the service sandbox read the model via this env var
+        # rather than needing direct /var/lib/llama-cpp access.
+        BENCHMARK_MODEL_PATH = llama.model;
+        LLAMA_CPP_MODEL_PATH = llama.model;
       };
 
       environment.etc."profile.d/aq-path.sh" = {
