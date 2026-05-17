@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run path-aware CI-sensitive checks for changed files.
+# Checks are defined in config/validation-check-registry.json — edit that file to add new checks.
 # Usage: ./scripts/governance/run-focused-ci-checks.sh [--pre-commit|--pre-deploy]
 
 set -euo pipefail
@@ -8,7 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-MODE="${1:---pre-commit}"
+export REGISTRY="${REPO_ROOT}/config/validation-check-registry.json"
+export MODE="${1:---pre-commit}"
 
 collect_changed_files() {
   if [[ "${MODE}" == "--pre-commit" ]]; then
@@ -22,110 +24,80 @@ collect_changed_files() {
   } | awk 'NF && !seen[$0]++'
 }
 
-has_changed_path() {
-  local target="$1"
-  local file
-  while IFS= read -r file; do
-    [[ "${file}" == "${target}" ]] && return 0
-  done < <(collect_changed_files)
-  return 1
-}
 
-any_changed_path() {
-  local target
-  for target in "$@"; do
-    if has_changed_path "${target}"; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-run_check() {
-  local description="$1"
-  shift
-  echo "[focused-ci] RUN: ${description}"
-  "$@"
-  echo "[focused-ci] PASS: ${description}"
-}
-
-ran_any=0
-
-if has_changed_path "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"; then
-  ran_any=1
-  run_check \
-    "hybrid coordinator route handler optimizations regression" \
-    python -m pytest ai-stack/mcp-servers/hybrid-coordinator/test_route_handler_optimizations.py
+if [[ ! -f "${REGISTRY}" ]]; then
+  echo "[focused-ci] WARN: registry not found at ${REGISTRY} — no path-gated checks run"
+  exit 0
 fi
 
-if any_changed_path \
-  "dashboard/backend/api/main.py" \
-  "dashboard/backend/api/services/ai_insights.py" \
-  "scripts/testing/test-dashboard-insights-report-cache.py"
-then
-  ran_any=1
-  run_check \
-    "dashboard insights cache regression" \
-    python scripts/testing/test-dashboard-insights-report-cache.py
-fi
+# Read registry and dispatch checks
+python3 - <<'PYEOF'
+import json, os, subprocess, sys, shlex
 
-if any_changed_path \
-  "config/package-count-baseline.json" \
-  "scripts/data/generate-package-counts.sh" \
-  "scripts/testing/check-package-count-drift.sh" \
-  "flake.nix"
-then
-  ran_any=1
-  run_check \
-    "package count drift guard" \
-    ./scripts/testing/check-package-count-drift.sh --flake-ref path:.
-fi
+registry_path = os.environ.get("REGISTRY", "config/validation-check-registry.json")
+mode = os.environ.get("MODE", "--pre-commit")
 
-if any_changed_path \
-  "nix/modules/roles/ai-stack.nix" \
-  "nix/lib/ai-stack-hardware.nix" \
-  "config/ai-stack-hardware-profiles.json" \
-  "scripts/testing/test-ai-stack-acceleration-policy.py"
-then
-  ran_any=1
-  run_check \
-    "ai stack acceleration policy regression" \
-    python3 scripts/testing/test-ai-stack-acceleration-policy.py
-fi
+with open(registry_path) as f:
+    registry = json.load(f)
 
-if any_changed_path \
-  "nixos-quick-deploy.sh" \
-  "scripts/testing/test-postflight-health-policy.py" \
-  "scripts/testing/test-stateful-downgrade-policy.py"
-then
-  ran_any=1
-  run_check \
-    "post-flight health policy regression" \
-    python3 scripts/testing/test-postflight-health-policy.py
-  run_check \
-    "stateful service downgrade policy regression" \
-    python3 scripts/testing/test-stateful-downgrade-policy.py
-fi
+import subprocess as sp
 
-if has_changed_path "dashboard.html"; then
-  ran_any=1
-  run_check \
-    "dashboard.html inline JS syntax validation" \
-    node -e "
-const fs = require('fs');
-const html = fs.readFileSync('dashboard.html', 'utf8');
-// Skip type=module scripts — they use ES import syntax not valid in new Function()
-const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([^]*?)<\/script>/g)]
-  .filter(m => !/type\s*=\s*[\"']?module/i.test(m[0]))
-  .map(m => m[1]).filter(s => s.trim());
-scripts.forEach((s, i) => {
-  try { new Function(s); }
-  catch(e) { process.stderr.write('Script block ' + i + ': ' + e.message + '\n'); process.exit(1); }
-});
-console.log('Checked ' + scripts.length + ' non-module script blocks: syntax OK');
-"
-fi
+def collect_changed_files(mode):
+    if mode == "--pre-commit":
+        r = sp.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+                   capture_output=True, text=True)
+        return set(r.stdout.splitlines())
+    else:
+        r1 = sp.run(["git", "diff", "--name-only", "--diff-filter=ACM", "origin/main...HEAD"],
+                    capture_output=True, text=True)
+        r2 = sp.run(["git", "diff", "--name-only", "--diff-filter=ACM"],
+                    capture_output=True, text=True)
+        return set(r1.stdout.splitlines()) | set(r2.stdout.splitlines())
 
-if [[ "${ran_any}" -eq 0 ]]; then
-  echo "[focused-ci] SKIP: no CI-sensitive changed paths detected"
-fi
+staged = collect_changed_files(mode)
+ran_any = False
+any_failed = False
+
+for check in registry.get("checks", []):
+    if not check.get("enabled", True):
+        continue
+
+    check_id = check["id"]
+    desc = check["description"]
+    triggers = check.get("trigger_paths", [])
+    cmd = check["command"]
+    timeout = check.get("timeout_seconds", 0) or None
+    require_tool = check.get("require_tool")
+
+    # Check tool availability
+    if require_tool:
+        import shutil
+        if not shutil.which(require_tool):
+            print(f"[focused-ci] SKIP ({check_id}): '{require_tool}' not in PATH")
+            continue
+
+    # Check if any trigger path is staged
+    if not any(t in staged for t in triggers):
+        continue
+
+    ran_any = True
+    print(f"[focused-ci] RUN: {desc}")
+    try:
+        result = sp.run(cmd, timeout=timeout)
+        if result.returncode == 0:
+            print(f"[focused-ci] PASS: {desc}")
+        else:
+            print(f"[focused-ci] FAIL: {desc}", file=sys.stderr)
+            any_failed = True
+    except sp.TimeoutExpired:
+        print(f"[focused-ci] FAIL: {desc} (timed out after {timeout}s)", file=sys.stderr)
+        any_failed = True
+    except FileNotFoundError as e:
+        print(f"[focused-ci] FAIL: {desc} — command not found: {e}", file=sys.stderr)
+        any_failed = True
+
+if not ran_any:
+    print("[focused-ci] SKIP: no CI-sensitive changed paths detected")
+
+sys.exit(1 if any_failed else 0)
+PYEOF

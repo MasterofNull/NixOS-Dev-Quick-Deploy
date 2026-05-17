@@ -1,0 +1,116 @@
+{
+  "_comment": "Validation check registry — SSOT for all path-gated CI checks. Edit this file to add/modify behavioral checks. See scripts/governance/run-focused-ci-checks.sh for the runner.",
+  "version": "1.0",
+  "schema": {
+    "id": "unique kebab-case identifier",
+    "description": "human-readable check name (shown in CI output)",
+    "trigger_paths": "list of repo-relative paths; check runs if ANY staged file matches (exact or prefix)",
+    "trigger_mode": "any_path (default) | all_paths | prefix",
+    "command": "array of command + args (run from repo root)",
+    "tier": "structural (syntax/parse) | behavioral (regression/integration)",
+    "timeout_seconds": "integer; 0 = no timeout",
+    "enabled": "bool; false = skip without error (default true)",
+    "require_tool": "optional tool name; if not in PATH, check is skipped with warning"
+  },
+  "checks": [
+    {
+      "id": "hybrid-coordinator-route-handler",
+      "description": "hybrid coordinator route handler optimizations regression",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py"
+      ],
+      "command": [
+        "python", "-m", "pytest",
+        "ai-stack/mcp-servers/hybrid-coordinator/test_route_handler_optimizations.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "dashboard-insights-cache",
+      "description": "dashboard insights cache regression",
+      "trigger_paths": [
+        "dashboard/backend/api/main.py",
+        "dashboard/backend/api/services/ai_insights.py",
+        "scripts/testing/test-dashboard-insights-report-cache.py"
+      ],
+      "command": [
+        "python", "scripts/testing/test-dashboard-insights-report-cache.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "package-count-drift",
+      "description": "package count drift guard",
+      "trigger_paths": [
+        "config/package-count-baseline.json",
+        "scripts/data/generate-package-counts.sh",
+        "scripts/testing/check-package-count-drift.sh",
+        "flake.nix"
+      ],
+      "command": [
+        "./scripts/testing/check-package-count-drift.sh", "--flake-ref", "path:."
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 120
+    },
+    {
+      "id": "ai-stack-acceleration-policy",
+      "description": "ai stack acceleration policy regression",
+      "trigger_paths": [
+        "nix/modules/roles/ai-stack.nix",
+        "nix/lib/ai-stack-hardware.nix",
+        "config/ai-stack-hardware-profiles.json",
+        "scripts/testing/test-ai-stack-acceleration-policy.py"
+      ],
+      "command": [
+        "python3", "scripts/testing/test-ai-stack-acceleration-policy.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "postflight-health-policy",
+      "description": "post-flight health policy regression",
+      "trigger_paths": [
+        "nixos-quick-deploy.sh",
+        "scripts/testing/test-postflight-health-policy.py",
+        "scripts/testing/test-stateful-downgrade-policy.py"
+      ],
+      "command": [
+        "python3", "scripts/testing/test-postflight-health-policy.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "stateful-downgrade-policy",
+      "description": "stateful service downgrade policy regression",
+      "trigger_paths": [
+        "nixos-quick-deploy.sh",
+        "scripts/testing/test-postflight-health-policy.py",
+        "scripts/testing/test-stateful-downgrade-policy.py"
+      ],
+      "command": [
+        "python3", "scripts/testing/test-stateful-downgrade-policy.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "dashboard-html-js-syntax",
+      "description": "dashboard.html inline JS syntax validation",
+      "trigger_paths": [
+        "dashboard.html"
+      ],
+      "command": [
+        "node", "-e",
+        "const fs=require('fs');const html=fs.readFileSync('dashboard.html','utf8');const scripts=[...html.matchAll(/<script(?:\\s[^>]*)?>([^]*?)<\\/script>/g)].filter(m=>!/type\\s*=\\s*[\"']?module/i.test(m[0])).map(m=>m[1]).filter(s=>s.trim());scripts.forEach((s,i)=>{try{new Function(s);}catch(e){process.stderr.write('Script block '+i+': '+e.message+'\\n');process.exit(1);}});console.log('Checked '+scripts.length+' non-module script blocks: syntax OK');"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 15,
+      "require_tool": "node"
+    }
+  ]
+}
