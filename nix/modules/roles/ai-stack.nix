@@ -90,8 +90,10 @@ let
 
   # Resolve GPU acceleration mode.
   # "auto" detects AMD → vulkan, NVIDIA → cuda, otherwise cpu.
-  # Keep ROCm explicit-only: generic AMD auto-detection must stay on Vulkan
-  # because ROCm remains unsafe on many APUs.
+  # ROCm is a promotion-gated backend — it is NEVER selected by "auto".
+  # It must be explicitly set (acceleration = "rocm") AFTER passing all 6 stages
+  # of scripts/governance/rocm-promotion-gate.sh for this hardware class.
+  # Backend eligibility per hardware class: config/hardware-capability-matrix.json
   # Portable profiles: config/ai-stack-hardware-profiles.json
   resolvedAccel = let
     explicit = ai.acceleration;
@@ -107,6 +109,23 @@ let
     if explicit == "auto"
     then autoDetected
     else explicit;
+
+  rocmTargetFromOverride =
+    if ai.rocmGfxOverride == null then
+      null
+    else
+      let
+        match = builtins.match "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$" ai.rocmGfxOverride;
+      in
+        if match == null then
+          null
+        else
+          "gfx${builtins.elemAt match 0}${builtins.elemAt match 1}${builtins.elemAt match 2}";
+
+  rocmGpuTargets =
+    lib.optional
+      (cfg.hardware.rocmGpuTarget != null || rocmTargetFromOverride != null)
+      (if cfg.hardware.rocmGpuTarget != null then cfg.hardware.rocmGpuTarget else rocmTargetFromOverride);
 
   hasGpuLayersArg =
     lib.any (
@@ -150,11 +169,18 @@ let
 
   # Combined GPU environment based on resolved acceleration mode.
   # Vulkan: AMD/Intel via Mesa RADV/ANV
+  # ROCm: Native AMD HIP/ROCm
   # CUDA: handled by nixpkgs (no special env needed)
   # CPU: no GPU env needed
+  rocmEnv = lib.optionalAttrs (ai.rocmGfxOverride != null) {
+    HSA_OVERRIDE_GFX_VERSION = ai.rocmGfxOverride;
+  };
+
   gpuEnv =
     if resolvedAccel == "vulkan"
     then vulkanEnv
+    else if resolvedAccel == "rocm"
+    then rocmEnv
     else {}; # cuda/cpu need no special GPU env
 
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
@@ -842,6 +868,7 @@ in {
           enableVulkan = resolvedAccel == "vulkan";
           enableRocm = resolvedAccel == "rocm"; # Phase B: Enabled via nixos-rocm
           enableCuda = resolvedAccel == "cuda";
+          inherit rocmGpuTargets;
         })
       ];
     })

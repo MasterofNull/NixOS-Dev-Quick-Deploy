@@ -99,6 +99,32 @@
         '';
       };
 
+      rocmGpuTarget = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "gfx1030";
+        description = ''
+          ROCm/HIP build target for AMD GPUs, for example "gfx1030".
+          Set automatically by hardware discovery when `rocminfo` is available.
+          null keeps upstream/default target selection.
+        '';
+      };
+
+      accelerationClass = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "amd-rdna2-dgpu";
+        description = ''
+          Hardware acceleration class identifier from config/hardware-capability-matrix.json.
+          Used by the ROCm promotion pipeline to determine backend eligibility, fallback
+          chain, and soak requirements.
+          Set automatically by hardware discovery (scripts/governance/discover-system-facts.sh)
+          when the host can be matched to a known class.
+          Override per-host when auto-detection is wrong.
+          null means "not yet classified" — treated as unknown promotion status.
+        '';
+      };
+
       cpuVendor = lib.mkOption {
         type = lib.types.enum [
           # ── x86_64 ──────────────────────────────────────────────────────────
@@ -219,13 +245,12 @@
 
     kernel = {
       track = lib.mkOption {
-        type = lib.types.enum ["latest-stable" "6.19-latest" "6.18-lts" "default"];
+        type = lib.types.enum ["latest-stable" "lts" "default"];
         default = "latest-stable";
         description = ''
           Kernel package selection policy.
           - latest-stable: use pkgs.linuxPackages_latest when available.
-          - 6.19-latest: Linux 6.19 with AMD GPU boost, HDR, ext4 improvements.
-          - 6.18-lts: Linux 6.18 LTS with Apple Silicon, XFS online fsck.
+          - lts: use the supported long-term support kernel track.
           - default: use pkgs.linuxPackages (board/vendor defaults).
           This is generated from local hardware facts during deployment.
         '';
@@ -995,9 +1020,12 @@
           GPU acceleration for inference.
           "auto" derives from hardware.gpuVendor: amd→vulkan, nvidia→cuda, else→cpu.
           "vulkan" — Vulkan compute via Mesa RADV (best for AMD APU/iGPU).
-          "rocm" — AMD ROCm/HIP (deprecated: crashes on APUs, remaps to vulkan).
-          "cuda" — NVIDIA CUDA.
-          "cpu" — CPU-only inference.
+          "rocm"   — AMD ROCm/HIP. Promotion-gated: only set this after
+                     scripts/governance/rocm-promotion-gate.sh passes all 6 stages.
+                     Blocked on APUs (Renoir/Cezanne/Rembrandt). See
+                     config/hardware-capability-matrix.json for per-class eligibility.
+          "cuda"   — NVIDIA CUDA.
+          "cpu"    — CPU-only inference.
         '';
       };
 

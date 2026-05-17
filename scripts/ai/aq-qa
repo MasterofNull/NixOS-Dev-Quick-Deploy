@@ -1763,6 +1763,118 @@ _p56_check_drift_homeostasis() {
   grep -q "_drift_homeostasis_loop\|drift_homeostasis" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/server.py"
 }
 
+# ---------------------------------------------------------------------------
+# Phase 57: Hardware Capability Matrix + ROCm Promotion Pipeline checks
+# ---------------------------------------------------------------------------
+_p57_matrix="${REPO_ROOT}/config/hardware-capability-matrix.json"
+_p57_profiles="${REPO_ROOT}/config/ai-stack-hardware-profiles.json"
+_p57_gate="${REPO_ROOT}/scripts/governance/rocm-promotion-gate.sh"
+_p57_bench="${REPO_ROOT}/scripts/testing/benchmark-acceleration-backends.sh"
+
+_p57_check_matrix_present() {
+  [[ -f "${_p57_matrix}" ]] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "${_p57_matrix}"
+}
+_p57_check_matrix_keys() {
+  python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+required = {'hardware_classes','rocm_compatibility_matrix','promotion_pipeline','backend_definitions','class_detection_order'}
+missing = required - set(d.keys())
+if missing:
+    print('missing keys:', missing, file=sys.stderr)
+    sys.exit(1)
+" "${_p57_matrix}"
+}
+_p57_check_gate_present() {
+  [[ -x "${_p57_gate}" ]]
+}
+_p57_check_bench_present() {
+  [[ -x "${_p57_bench}" ]]
+}
+_p57_check_host_class_recognized() {
+  # Verify the capability matrix contains a hardware_classes entry for the class
+  # reported by facts.nix (or derived from the running system's GPU vendor).
+  local host_class=""
+  # Try facts.nix first
+  if [[ -f "${REPO_ROOT}/nix/hosts/${HOSTNAME:-$(hostname -s)}/facts.nix" ]]; then
+    host_class="$(grep -Eo 'accelerationClass = "[^"]*"' \
+      "${REPO_ROOT}/nix/hosts/${HOSTNAME:-$(hostname -s)}/facts.nix" 2>/dev/null \
+      | awk -F'"' '{print $2}' | head -1 || true)"
+  fi
+  # Fall back: derive from running GPU vendor
+  if [[ -z "${host_class}" ]]; then
+    local gpu_vendor="none"
+    if command -v lspci >/dev/null 2>&1; then
+      local gpu_info
+      gpu_info="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' || true)"
+      [[ "${gpu_info}" =~ AMD|ATI|Radeon ]] && gpu_vendor="amd"
+      [[ "${gpu_info}" =~ NVIDIA ]] && gpu_vendor="nvidia"
+    fi
+    case "${gpu_vendor}" in
+      amd)    host_class="amd-apu-renoir" ;;
+      nvidia) host_class="nvidia-turing-plus" ;;
+      *)      host_class="generic-cpu" ;;
+    esac
+  fi
+  [[ -n "${host_class}" ]] && \
+    python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+cls = sys.argv[2]
+if cls not in d.get('hardware_classes', {}):
+    print('class not found:', cls, file=sys.stderr)
+    sys.exit(1)
+" "${_p57_matrix}" "${host_class}"
+}
+_p57_check_host_promotion_status_set() {
+  local host_class=""
+  if [[ -f "${REPO_ROOT}/nix/hosts/${HOSTNAME:-$(hostname -s)}/facts.nix" ]]; then
+    host_class="$(grep -Eo 'accelerationClass = "[^"]*"' \
+      "${REPO_ROOT}/nix/hosts/${HOSTNAME:-$(hostname -s)}/facts.nix" 2>/dev/null \
+      | awk -F'"' '{print $2}' | head -1 || true)"
+  fi
+  [[ -z "${host_class}" ]] && host_class="amd-apu-renoir"
+  local status
+  status="$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+cls = sys.argv[2]
+print(d.get('hardware_classes', {}).get(cls, {}).get('promotion_status', ''))
+" "${_p57_matrix}" "${host_class}" 2>/dev/null || true)"
+  [[ -n "${status}" && "${status}" != "unknown" ]]
+}
+_p57_check_profiles_rocm_gated() {
+  python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+rocm = d.get('accelerators', {}).get('rocm', {})
+if rocm.get('promotion_gated') is not True:
+    print('rocm entry missing promotion_gated:true', file=sys.stderr)
+    sys.exit(1)
+" "${_p57_profiles}"
+}
+_p57_check_pipeline_stages() {
+  python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+stages = d.get('promotion_pipeline', {}).get('stages', [])
+if len(stages) < 6:
+    print(f'expected >=6 stages, got {len(stages)}', file=sys.stderr)
+    sys.exit(1)
+" "${_p57_matrix}"
+}
+
+run_phase_57() {
+  _check 7 "1.3.1" "hardware-capability-matrix.json present + valid JSON"  _p57_check_matrix_present
+  _check 7 "1.3.2" "capability matrix required top-level keys present"      _p57_check_matrix_keys
+  _check 7 "1.3.3" "rocm-promotion-gate.sh present and executable"          _p57_check_gate_present
+  _check 7 "1.3.4" "benchmark-acceleration-backends.sh present/executable"  _p57_check_bench_present
+  _check 7 "1.3.5" "current host class recognized in capability matrix"     _p57_check_host_class_recognized
+  _check 7 "1.3.6" "current host promotion_status is not unknown"           _p57_check_host_promotion_status_set
+  _check 7 "1.3.7" "ai-stack-hardware-profiles ROCm is promotion-gated"     _p57_check_profiles_rocm_gated
+  _check 7 "1.3.8" "promotion pipeline has >= 6 stages"                     _p57_check_pipeline_stages
+}
+
 run_phase_56() {
   _check 7 "1.2.1"  "audit-write.sh present and valid"          _p56_check_audit_write
   _check 7 "1.2.2"  "delegate-to-gemini wired to audit"         _p56_check_delegate_wired delegate-to-gemini
@@ -1802,6 +1914,7 @@ case "$PHASE" in
     printf '   10  regression (git hooks, verifier self-check, no failed units)\n'
     printf '   54  Phase 54 agentic-first elevation (memory, intent, RAG, trace, eval)\n'
     printf '   55  Phase 55 temporal memory, crystalline distillation, agent ops\n'
+    printf '   57  Phase 57 hardware capability matrix + ROCm promotion pipeline\n'
     printf '  --json   Machine-readable JSON output\n'
     printf '  --sudo   Enable checks requiring sudo (AppArmor)\n'
     exit 0
@@ -1820,6 +1933,7 @@ case "$PHASE" in
   54) run_phase_54 ;;
   55) run_phase_55 ;;
   56) run_phase_56 ;;
+  57) run_phase_57 ;;
   all)
     PHASE="all"
     run_phase_0
@@ -1836,6 +1950,7 @@ case "$PHASE" in
     run_phase_54
     run_phase_55
     run_phase_56
+    run_phase_57
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2

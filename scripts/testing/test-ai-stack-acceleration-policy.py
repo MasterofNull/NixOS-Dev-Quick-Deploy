@@ -13,17 +13,21 @@ HARDWARE_PROFILES = REPO_ROOT / "config" / "ai-stack-hardware-profiles.json"
 
 REQUIRED_SNIPPETS = {
     AI_STACK_MODULE: [
+        # AMD auto-detection MUST stay on Vulkan — core stability invariant
         'then "vulkan" # Stable default for AMD APUs/iGPUs and generic AMD hosts',
-        '# Keep ROCm explicit-only: generic AMD auto-detection must stay on Vulkan',
+        # ROCm must remain explicitly-gated, never selected by "auto"
+        '# ROCm is a promotion-gated backend',
     ],
     HARDWARE_LIB: [
         'Supported accelerators:',
         'else if explicit == "rocm" then',
-        '# ROCm is deprecated; remap to vulkan',
+        # Container layer falls back to Vulkan (promotion gate enforced by NixOS module)
+        '# ROCm is promotion-gated; container layer remaps to vulkan',
     ],
     HARDWARE_PROFILES: [
-        '"status": "deprecated"',
-        '"notes": "ROCm crashes on APUs; use Vulkan instead"',
+        # ROCm must be promotion-gated (not freely selectable)
+        '"promotion_gated": true',
+        # AMD auto-acceleration default must remain Vulkan
         '"amd": "vulkan"',
     ],
 }

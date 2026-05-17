@@ -8,7 +8,7 @@
   Supported accelerators:
     - cuda   — NVIDIA GPUs (discrete)
     - vulkan — AMD/Intel/NVIDIA via Vulkan compute (best for APUs)
-    - rocm   — AMD ROCm/HIP (deprecated; falls back to vulkan)
+    - rocm   — AMD ROCm/HIP (promotion-gated; falls back to vulkan in container layer)
     - metal  — Apple Silicon (macOS native only)
     - cpu    — Universal fallback
 
@@ -93,7 +93,7 @@ in {
       resolved =
         if explicit == "auto" then autoDetected
         else if explicit == "rocm" then
-          # ROCm is deprecated; remap to vulkan
+          # ROCm is promotion-gated; container layer remaps to vulkan
           if acceleratorAvailable { accel = "vulkan"; inherit platform; }
           then "vulkan"
           else "cpu"
