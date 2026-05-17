@@ -417,6 +417,13 @@ run_phase_58() {
   _check 2 "1.0.7" "focused-ci: registry schema v1.0"  grep -q '"version": "1.0"' "${REPO_ROOT}/config/validation-check-registry.json"
 }
 
+run_phase_59() {
+  _check 7 "1.0.1" "ConsensusArbiter importable"       _p55_check_import consensus_arbiter
+  _check 7 "1.0.2" "Arbiter resolve method present"    python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); import consensus_arbiter; a=consensus_arbiter.get_arbiter(); exit(0 if hasattr(a, 'resolve') else 1)"
+  _check 7 "1.0.3" "Graph Runner consensus support"    grep -q "node_type == \"consensus\"" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/orchestration_graph_runner.py"
+  _check 7 "1.0.4" "Consensus coding template present" grep -q '"id": "consensus-coding"' "${REPO_ROOT}/config/orchestration-graph-templates.json"
+}
+
 run_phase_0() {
   # 0.1 systemd service health
   for unit in llama-cpp.service ai-aidb.service ai-hybrid-coordinator.service \
@@ -2014,6 +2021,7 @@ case "$PHASE" in
   56) run_phase_56 ;;
   57) run_phase_57 ;;
   58) run_phase_58 ;;
+  59) run_phase_59 ;;
   all)
     PHASE="all"
     run_phase_0
@@ -2032,6 +2040,7 @@ case "$PHASE" in
     run_phase_56
     run_phase_57
     run_phase_58
+    run_phase_59
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2

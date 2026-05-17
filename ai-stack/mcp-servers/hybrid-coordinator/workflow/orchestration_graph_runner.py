@@ -173,11 +173,49 @@ async def _execute_graph_run(run_id: str, nodes: List[Dict[str, Any]], task: str
         _save_graph_runs(data)
 
 
+import consensus_arbiter
+
 async def _execute_node(run_id: str, nid: str, node: Dict[str, Any], base_task: str,
                          prior_outputs: Dict[str, Any], coordinator_url: str) -> Any:
-    """Execute one node: build prompt, POST to coordinator, store result."""
+    """Execute one node: build prompt, POST to coordinator, OR apply consensus."""
     import httpx
 
+    node_type = str(node.get("type", "agent")).strip()
+    
+    # Phase 59 — Multi-Agent Consensus Node
+    if node_type == "consensus":
+        strategy = str(node.get("strategy", "majority_vote")).strip()
+        parents = node.get("depends_on", [])
+        candidates = [prior_outputs[p] for p in parents if p in prior_outputs]
+        
+        logger.info("graph runner: applying consensus resolution (%s) for node %s", strategy, nid)
+        
+        async with _graph_runs_lock:
+            data = _load_graph_runs()
+            run = data["runs"].get(run_id, {})
+            run.setdefault("nodes", {})[nid] = {
+                "status": "calculating_consensus", "started_at": int(time.time()),
+                "strategy": strategy, "candidate_count": len(candidates)
+            }
+            _save_graph_runs(data)
+
+        arbiter = consensus_arbiter.get_arbiter()
+        result = await arbiter.resolve(candidates, strategy=strategy)
+        
+        async with _graph_runs_lock:
+            data = _load_graph_runs()
+            run = data["runs"].get(run_id, {})
+            run.setdefault("nodes", {})[nid].update({
+                "status": "completed",
+                "completed_at": int(time.time()),
+                "consensus_score": result.get("consensus_score"),
+                "response_preview": str(result.get("response") or "")[:300]
+            })
+            _save_graph_runs(data)
+            
+        return result
+
+    # Standard Agent Node execution...
     lane = str(node.get("lane") or node.get("role") or "implementation").strip()
     safety_mode = str(node.get("safety_mode") or "plan-readonly").strip()
     prompt_template = str(node.get("prompt_template") or "{task}").strip()
