@@ -34,7 +34,7 @@ from pathlib import Path
 PORT = int(os.getenv("DASHBOARD_PORT", 8889))
 BIND_ADDRESS = os.getenv("DASHBOARD_BIND_ADDRESS", "127.0.0.1")
 WEB_ROOT = Path(os.getenv("WEB_ROOT", ".")).resolve()
-AQ_QA_PATH = WEB_ROOT / "scripts" / "ai" / "aq-qa.sh"
+AQ_QA_PATH = WEB_ROOT / "scripts" / "ai" / "aq-qa"
 
 class LayeredHealthHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):

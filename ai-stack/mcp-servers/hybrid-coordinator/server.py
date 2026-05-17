@@ -723,10 +723,16 @@ async def initialize_server():
     # Phase 54.5/54.6 — wire TraceCollector + EvalRunner postgres client
     import trace_collector as _tc54
     import eval_runner as _er54
+    from core.llm_client import LLMClient
+    
     _tc54.init(postgres_client=postgres_client)
     _er54.init(postgres_client=postgres_client)
     memory_superseder.init(postgres_client=postgres_client)
+    
+    # Drift Analyzer (L6) initialization
     drift_analyzer.init(postgres_client=postgres_client)
+    drift_analyzer.get_analyzer().set_embed_fn(embed_text)
+
     async def _store_crystallized_insight(insight: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         return await memory_manager.store_agent_memory(
             "episodic",
@@ -735,17 +741,31 @@ async def initialize_server():
             metadata=metadata,
         )
 
+    # Memory Crystallizer (L5) initialization
+    crystallizer_llm = LLMClient(provider="local", base_url=Config.SWITCHBOARD_URL)
     memory_crystallizer.init(
         postgres_client=postgres_client,
         store_insight_fn=_store_crystallized_insight,
+        llama_client=crystallizer_llm,
+        broker=None # wired later in initialize_server if needed
     )
+
+    # Homeostasis Manager (L6 Active Remediation)
+    import homeostasis_manager
+    homeostasis_manager.init(
+        drift_analyzer=drift_analyzer.get_analyzer(),
+        crystallizer=memory_crystallizer.get_crystallizer(),
+        route_handler=None # wired later
+    )
+
     if postgres_client is not None:
         try:
             await _tc54.ensure_schema(postgres_client)
             await _er54.ensure_schema()
             await memory_superseder.get_superseder().ensure_schema()
             await memory_crystallizer.get_crystallizer().ensure_schema()
-            logger.info("✓ Phase 54/55 trace, eval, supersession, and crystallization schemas ready")
+            await drift_analyzer.get_analyzer().ensure_schema()
+            logger.info("✓ Phase 54/55 trace, eval, supersession, drift, and crystallization schemas ready")
         except Exception as _e54:
             logger.warning("Phase 54 schema init error (non-fatal): %s", _e54)
 
@@ -833,23 +853,6 @@ async def initialize_server():
     import intent_classifier
     global _intent_classifier
     _intent_classifier = intent_classifier.get_classifier()
-
-    # Phase 55.1 / 55.2 / 55.3 — Agentic Self-Evolution
-    import memory_superseder
-    import memory_crystallizer
-    import drift_analyzer
-    from core.llm_client import LLMClient
-    
-    # Initialize Drift Analyzer with current embedding client
-    drift_analyzer.get_analyzer().set_embed_fn(embed_text)
-    
-    # Initialize Memory Crystallizer
-    # Uses a dedicated LLMClient for factual distillation
-    crystallizer_llm = LLMClient(provider="local", base_url=Config.SWITCHBOARD_URL)
-    memory_crystallizer.init(
-        broker=memory_broker.get_broker() if memory_broker._broker else None,
-        llama_client=crystallizer_llm
-    )
 
     # Phase 6.1 — wire extracted http_server module
     http_server.init(
@@ -959,6 +962,10 @@ async def initialize_server():
         intent_classifier=_intent_classifier,
         collections=COLLECTIONS,
     )
+    
+    # Wire route_handler into homeostasis_manager (L6 Active Loop)
+    homeostasis_manager.get_manager() # ensure instance
+    homeostasis_manager._route_handler = route_search
 
     # Phase 6.1 — wire extracted memory_manager module
     memory_manager.init(

@@ -24,11 +24,20 @@ logger = logging.getLogger("hybrid-coordinator")
 # ---------------------------------------------------------------------------
 _memory_broker: Optional[Any] = None
 _llama_client: Optional[Any] = None
+_postgres_client: Optional[Any] = None
+_store_insight_fn: Optional[Callable] = None
 
-def init(broker: Any, llama_client: Any) -> None:
-    global _memory_broker, _llama_client
-    _memory_broker = broker
-    _llama_client = llama_client
+def init(
+    broker: Optional[Any] = None, 
+    llama_client: Optional[Any] = None,
+    postgres_client: Optional[Any] = None,
+    store_insight_fn: Optional[Callable] = None
+) -> None:
+    global _memory_broker, _llama_client, _postgres_client, _store_insight_fn
+    if broker: _memory_broker = broker
+    if llama_client: _llama_client = llama_client
+    if postgres_client: _postgres_client = postgres_client
+    if store_insight_fn: _store_insight_fn = store_insight_fn
     logger.info("memory_crystallizer: initialized (Phase 55.2 Active)")
 
 
@@ -39,6 +48,27 @@ class MemoryCrystallizer:
 
     def __init__(self) -> None:
         pass
+
+    async def ensure_schema(self) -> None:
+        """Create crystallized sessions table if it doesn't exist."""
+        if not _postgres_client:
+            return
+
+        ddl = """
+        CREATE TABLE IF NOT EXISTS crystallized_sessions (
+            id SERIAL PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            session_hash TEXT NOT NULL,
+            facts_count INTEGER NOT NULL,
+            crystallized_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_crystallized_session ON crystallized_sessions(session_id);
+        """
+        try:
+            await _postgres_client.execute(ddl)
+            logger.info("memory_crystallizer: PostgreSQL schema verified")
+        except Exception as exc:
+            logger.warning("memory_crystallizer: schema init failed: %s", exc)
 
     async def crystallize_session(self, history: List[Dict[str, str]], metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """

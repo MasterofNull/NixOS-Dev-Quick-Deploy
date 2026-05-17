@@ -17,6 +17,17 @@ import time
 
 logger = logging.getLogger("hybrid-coordinator")
 
+# ---------------------------------------------------------------------------
+# Module state
+# ---------------------------------------------------------------------------
+_postgres_client: Optional[Any] = None
+
+def init(postgres_client: Optional[Any] = None) -> None:
+    global _postgres_client
+    _postgres_client = postgres_client
+    logger.info("drift_analyzer: initialized (Phase 55.3 Active)")
+
+
 class DriftAnalyzer:
     """
     Measures semantic divergence in model reasoning.
@@ -26,6 +37,27 @@ class DriftAnalyzer:
         self._embed = embed_fn
         self._baseline_embeddings: Dict[str, np.ndarray] = {}
         self._recent_scores: List[float] = []
+
+    async def ensure_schema(self) -> None:
+        """Create reasoning drift table if it doesn't exist."""
+        if not _postgres_client:
+            return
+
+        ddl = """
+        CREATE TABLE IF NOT EXISTS reasoning_drifts (
+            id SERIAL PRIMARY KEY,
+            intent TEXT NOT NULL,
+            drift_score FLOAT NOT NULL,
+            is_stable BOOLEAN NOT NULL,
+            recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_drifts_intent ON reasoning_drifts(intent);
+        """
+        try:
+            await _postgres_client.execute(ddl)
+            logger.info("drift_analyzer: PostgreSQL schema verified")
+        except Exception as exc:
+            logger.warning("drift_analyzer: schema init failed: %s", exc)
 
     def set_embed_fn(self, embed_fn: Any) -> None:
         self._embed = embed_fn
