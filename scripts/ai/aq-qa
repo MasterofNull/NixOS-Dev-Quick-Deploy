@@ -407,6 +407,16 @@ _port() {
 # ---------------------------------------------------------------------------
 # Phase 0 — Pre-flight smoke tests
 # ---------------------------------------------------------------------------
+run_phase_58() {
+  _check 1 "1.0.1" "tier0: JSON syntax gate"           grep -q "gate_json_syntax" "${REPO_ROOT}/scripts/governance/tier0-validation-gate.sh"
+  _check 1 "1.0.2" "tier0: YAML syntax gate"           grep -q "gate_yaml_syntax" "${REPO_ROOT}/scripts/governance/tier0-validation-gate.sh"
+  _check 1 "1.0.3" "tier0: TOML syntax gate"           grep -q "gate_toml_syntax" "${REPO_ROOT}/scripts/governance/tier0-validation-gate.sh"
+  _check 1 "1.0.4" "tier0: JS/TS syntax gates"         grep -q "gate_ts_syntax"   "${REPO_ROOT}/scripts/governance/tier0-validation-gate.sh"
+  _check 1 "1.0.5" "tier0: SQL syntax gate"             grep -q "gate_sql_syntax"  "${REPO_ROOT}/scripts/governance/tier0-validation-gate.sh"
+  _check 2 "1.0.6" "focused-ci: registry-driven"       grep -q "config/validation-check-registry.json" "${REPO_ROOT}/scripts/governance/run-focused-ci-checks.sh"
+  _check 2 "1.0.7" "focused-ci: registry schema v1.0"  grep -q '"version": "1.0"' "${REPO_ROOT}/config/validation-check-registry.json"
+}
+
 run_phase_0() {
   # 0.1 systemd service health
   for unit in llama-cpp.service ai-aidb.service ai-hybrid-coordinator.service \
@@ -2003,6 +2013,7 @@ case "$PHASE" in
   55) run_phase_55 ;;
   56) run_phase_56 ;;
   57) run_phase_57 ;;
+  58) run_phase_58 ;;
   all)
     PHASE="all"
     run_phase_0
@@ -2020,6 +2031,7 @@ case "$PHASE" in
     run_phase_55
     run_phase_56
     run_phase_57
+    run_phase_58
     ;;
   *)
     printf 'aq-qa: unknown phase "%s"\n' "$PHASE" >&2
