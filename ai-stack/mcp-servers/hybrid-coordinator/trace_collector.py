@@ -244,7 +244,7 @@ async def handle_get_traces(request) -> Any:
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
         params.append(limit)
 
-        rows = await _pg.fetch(
+        rows = await _pg.fetch_all(
             f"""
             SELECT trace_id, query_text, intent, profile,
                    retrieval_hits, retrieval_ms, rag_skipped,
