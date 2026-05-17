@@ -22,7 +22,7 @@
   # Pin the workstation to the current kernel/hardening posture explicitly so
   # the install/rebuild/switch workflow keeps these choices visible at host
   # level instead of only inheriting them implicitly from the ai-dev profile.
-  mySystem.kernel.track = lib.mkForce "6.19-latest";
+  mySystem.kernel.track = lib.mkForce "latest-stable";
   mySystem.kernel.hardening = {
     enable = lib.mkForce true;
     level = lib.mkForce "maximum";

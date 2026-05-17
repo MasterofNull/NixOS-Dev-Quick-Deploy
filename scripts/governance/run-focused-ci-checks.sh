@@ -81,6 +81,32 @@ then
     ./scripts/testing/check-package-count-drift.sh --flake-ref path:.
 fi
 
+if any_changed_path \
+  "nix/modules/roles/ai-stack.nix" \
+  "nix/lib/ai-stack-hardware.nix" \
+  "config/ai-stack-hardware-profiles.json" \
+  "scripts/testing/test-ai-stack-acceleration-policy.py"
+then
+  ran_any=1
+  run_check \
+    "ai stack acceleration policy regression" \
+    python3 scripts/testing/test-ai-stack-acceleration-policy.py
+fi
+
+if any_changed_path \
+  "nixos-quick-deploy.sh" \
+  "scripts/testing/test-postflight-health-policy.py" \
+  "scripts/testing/test-stateful-downgrade-policy.py"
+then
+  ran_any=1
+  run_check \
+    "post-flight health policy regression" \
+    python3 scripts/testing/test-postflight-health-policy.py
+  run_check \
+    "stateful service downgrade policy regression" \
+    python3 scripts/testing/test-stateful-downgrade-policy.py
+fi
+
 if [[ "${ran_any}" -eq 0 ]]; then
   echo "[focused-ci] SKIP: no CI-sensitive changed paths detected"
 fi
