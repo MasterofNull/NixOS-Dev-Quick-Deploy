@@ -436,8 +436,25 @@ run_stage6_soak() {
 
   if (( elapsed_hours < soak_hours )); then
     stage_fail "soak" "soak elapsed=${elapsed_hours}h required=${soak_hours}h — not enough soak time"
+    return
+  fi
+
+  # Verify clean operation: no GPU resets during the soak period (not just since last run)
+  local hang_events=0
+  if command -v journalctl >/dev/null 2>&1; then
+    local soak_since
+    soak_since="$(date -u -d "@${soak_start_epoch}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null \
+      || date -u -r "${soak_start_epoch}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null \
+      || echo '2000-01-01 00:00:00')"
+    hang_events="$(journalctl -k --since "${soak_since}" 2>/dev/null \
+      | grep -cE 'amdgpu.*GPU reset|amdgpu.*ring.*timeout|ErrorDeviceLost|amdgpu.*fatal' \
+      || true)"
+  fi
+
+  if [[ "${hang_events}" -gt 0 ]]; then
+    stage_fail "soak" "soak elapsed=${elapsed_hours}h but ${hang_events} GPU hang events detected during soak window"
   else
-    stage_pass "soak" "soak elapsed=${elapsed_hours}h >= required=${soak_hours}h"
+    stage_pass "soak" "soak elapsed=${elapsed_hours}h >= required=${soak_hours}h · ${hang_events} GPU hangs during soak"
   fi
 }
 
