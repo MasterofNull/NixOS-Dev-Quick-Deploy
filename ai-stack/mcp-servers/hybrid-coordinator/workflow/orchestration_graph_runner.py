@@ -30,8 +30,12 @@ logger = __import__("logging").getLogger("hybrid-coordinator")
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _GRAPH_RUNS_FILE = Path(
-    os.getenv("ORCHESTRATION_GRAPH_RUNS_FILE", "data/orchestration-graph-runs.json")
+    os.getenv("ORCHESTRATION_GRAPH_RUNS_FILE", "/var/lib/ai-stack/hybrid/orchestration-graph-runs.json")
 )
+# Fallback to local data/ if /var/lib is not writable (for dev)
+if not os.access(_GRAPH_RUNS_FILE.parent, os.W_OK):
+    _GRAPH_RUNS_FILE = Path("data/orchestration-graph-runs.json")
+
 _graph_runs_lock = asyncio.Lock()
 
 # Derive repo root: workflow/orchestration_graph_runner.py -> mcp-servers/hybrid-coordinator -> ai-stack -> repo root
