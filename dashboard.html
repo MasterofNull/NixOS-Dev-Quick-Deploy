@@ -4286,6 +4286,14 @@
                                     <span>Best Practices</span>
                                     <span id="kbBestPractices" class="status-badge" style="font-size: 0.7rem;">--</span>
                                 </div>
+                                <div class="data-item">
+                                    <span>Crystalline Facts</span>
+                                    <span id="kbCrystalline" class="status-badge" style="font-size: 0.7rem;">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>Institutional Knowledge</span>
+                                    <span id="kbInstitutional" class="status-badge" style="font-size: 0.7rem;">--</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -8032,7 +8040,7 @@
 
         async function fetchPrometheusMetrics() {
             try {
-                const response = await fetch(`${HYBRID_BASE}/metrics`, { cache: 'no-store' });
+                const response = await fetch(`${FASTAPI_BASE}/api/ai/metrics/hybrid`, { cache: 'no-store' });
                 if (!response.ok) return null;
                 return await response.text();
             } catch (_) { return null; }
@@ -8876,11 +8884,13 @@
                 const pass = checks.filter(c => c.status === 'PASS').length;
                 const fail = checks.filter(c => c.status === 'FAIL').length;
                 const skip = checks.filter(c => c.status === 'SKIP').length;
-                const state = fail > 0 ? 'error' : checks.length === 0 || (skip > 0 && pass === 0) ? 'warning' : 'online';
-                const score = checks.length ? `${pass}/${checks.length}` : '--';
-                
+                const pending = layerPayload?.pending;
+                const state = pending ? '' : fail > 0 ? 'error' : checks.length === 0 || (skip > 0 && pass === 0) ? 'warning' : 'online';
+                const score = checks.length ? `${pass}/${checks.length}` : (pending ? '⟳' : '--');
+
                 const name = LAYER_NAMES[layerNum] || `Layer ${layerNum}`;
-                let tooltip = `${name} (L${layerNum}): ${pass} passed, ${fail} failed, ${skip} skipped`;
+                let tooltip = pending ? `${name} (L${layerNum}): aq-qa running…`
+                    : `${name} (L${layerNum}): ${pass} passed, ${fail} failed, ${skip} skipped`;
                 if (checks.length > 0) {
                     tooltip += '\n' + checks.slice(0, 15).map(c => {
                         const icon = c.status === 'PASS' ? '✓' : c.status === 'FAIL' ? '✗' : '○';
@@ -8937,11 +8947,13 @@
                 alerts.push(commandDeckAlert('warning', 'Dashboard refresh partial', dashboardRuntimeState.refreshDetail, 'L7'));
             }
 
-            // Coordinator offline detection
-            const coordStatus = commandDeckState.stack?.data?.services?.hybrid_coordinator?.status
-                             ?? commandDeckState.stack?.data?.services?.hybrid?.status;
-            if (!coordStatus || coordStatus === 'unknown') {
-                alerts.push(commandDeckAlert('error', 'Hybrid Coordinator OFFLINE', 'Port 8003 unreachable — run: sudo nixos-rebuild switch', 'L7'));
+            // Coordinator offline detection — only fire after stack data has loaded
+            if (commandDeckState.stack !== null) {
+                const coordStatus = commandDeckState.stack?.data?.services?.hybrid_coordinator?.status
+                                 ?? commandDeckState.stack?.data?.services?.hybrid?.status;
+                if (coordStatus === 'unknown' || coordStatus === 'offline' || coordStatus === 'error') {
+                    alerts.push(commandDeckAlert('error', 'Hybrid Coordinator OFFLINE', 'Port 8003 unreachable — run: sudo nixos-rebuild switch', 'L7'));
+                }
             }
 
             const layers = commandDeckState.stack?.layerPayload?.layers || commandDeckState.layers?.layers || {};
@@ -9567,6 +9579,8 @@
             document.getElementById('kbCodebaseContext').textContent = namedCollections.includes('codebase-context') ? 'present' : '--';
             document.getElementById('kbErrorSolutions').textContent = namedCollections.includes('error-solutions') ? 'present' : '--';
             document.getElementById('kbBestPractices').textContent = namedCollections.includes('best-practices') ? 'present' : '--';
+            document.getElementById('kbCrystalline').textContent = namedCollections.includes('agent-memory-crystalline') ? 'present' : '--';
+            document.getElementById('kbInstitutional').textContent = namedCollections.includes('agent-memory-institutional') ? 'present' : '--';
 
             const badge = document.getElementById('knowledgeBaseBadge');
             if (badge) {
@@ -11672,6 +11686,7 @@
                         <div style="margin-bottom:0.4rem">⟳ OSI layer health check running…</div>
                         <div style="font-size:0.7rem;opacity:0.6">${data.message || 'Refresh in ~60s'}</div>
                     </div>`;
+                    updateCommandDeckLayers({ pending: true, layers: {} });
                     return;
                 }
 

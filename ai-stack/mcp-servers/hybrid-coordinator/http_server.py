@@ -2202,7 +2202,7 @@ async def run_http_mode(port: int) -> None:
             import drift_analyzer
             _resp_text = result.get("response", "")
             if _resp_text and _detected_intent != "unknown":
-                _drift = await drift_analyzer.get_analyzer().compute_drift(_resp_text, _detected_intent)
+                _drift = await drift_analyzer.get_analyzer().compute_live_drift(_resp_text, _detected_intent)
                 result["intent_classification"]["drift"] = _drift
                 if not _drift.get("is_stable", True):
                     logger.warning("reasoning_drift_detected intent=%s score=%.3f", _detected_intent, _drift["drift_score"])
@@ -2554,6 +2554,7 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/control/intent/map", intent_classifier.handle_get_intent_map)
     http_app.router.add_post("/control/intent/reload", intent_classifier.handle_reload_intent_map)
     http_app.router.add_get("/api/health/rag", rag_augmentor.handle_rag_health)
+    http_app.router.add_get("/homeostasis/events", lambda r: web.json_response(homeostasis_manager.get_manager().get_recent_events()))
     http_app.router.add_get("/api/traces", trace_collector.handle_get_traces)
     http_app.router.add_post("/eval/run", eval_runner.handle_eval_run)
     http_app.router.add_get("/eval/trend", eval_runner.handle_eval_trend)
