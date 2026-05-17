@@ -392,6 +392,7 @@ ai_backend="${AI_BACKEND_OVERRIDE:-llamacpp}"
 # nixos-quick-deploy.sh).  Probes GPU VRAM first, falls back to host RAM.
 # Tier map:  ≥24 GB GPU → 14B coder,  ≥16 GB GPU or ≥32 GB RAM → 7B coder,  else → 4B.
 _gpu_vram_gb=0
+rocm_gpu_target=""
 if [[ "${gpu_vendor}" == "nvidia" ]] && command -v nvidia-smi >/dev/null 2>&1; then
   _gpu_vram_gb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null \
     | head -1 | awk '{print int($1/1024)}' || echo 0)
@@ -399,6 +400,57 @@ elif [[ "${gpu_vendor}" == "amd" ]] && command -v rocm-smi >/dev/null 2>&1; then
   _gpu_vram_gb=$(rocm-smi --showmeminfo vram --csv 2>/dev/null \
     | tail -1 | awk -F',' '{print int($2/1024)}' || echo 0)
 fi
+if [[ "${gpu_vendor}" == "amd" ]] && command -v rocminfo >/dev/null 2>&1; then
+  rocm_gpu_target="$(rocminfo 2>/dev/null | grep -Eo 'gfx[0-9a-z]+' | head -1 || true)"
+fi
+
+# ---------------------------------------------------------------------------
+# Hardware acceleration class — maps to config/hardware-capability-matrix.json
+# ---------------------------------------------------------------------------
+derive_acceleration_class() {
+  local gv="$1" cv="$2" mob="$3" hw_mod="$4" rocm_tgt="$5"
+
+  # ROCm target takes priority — most precise identification
+  if [[ -n "${rocm_tgt}" ]]; then
+    case "${rocm_tgt}" in
+      gfx90c|gfx902) echo "amd-apu-renoir"; return ;;
+      gfx90c*)        echo "amd-apu-cezanne"; return ;;
+      gfx908|gfx90a|gfx940|gfx941) echo "amd-cdna-instinct"; return ;;
+      gfx1010|gfx1011|gfx1012) echo "amd-rdna1-dgpu"; return ;;
+      gfx1030|gfx1031|gfx1032|gfx1034) echo "amd-rdna2-dgpu"; return ;;
+      gfx1035)        echo "amd-apu-rembrandt"; return ;;
+      gfx1036)        echo "amd-apu-cezanne"; return ;;
+      gfx1100|gfx1101|gfx1102) echo "amd-rdna3-dgpu"; return ;;
+    esac
+  fi
+
+  # NixOS hardware module prefix match
+  case "${hw_mod}" in
+    lenovo-thinkpad-p14s-amd-gen2*) echo "amd-apu-renoir"; return ;;
+    lenovo-thinkpad-p14s-amd-gen3*) echo "amd-apu-rembrandt"; return ;;
+    lenovo-thinkpad-t14*-amd-gen3*) echo "amd-apu-rembrandt"; return ;;
+  esac
+
+  # Vendor + mobile heuristic
+  if [[ "${gv}" == "amd" && "${cv}" == "amd" && "${mob}" == "true" ]]; then
+    echo "amd-apu-renoir"  # conservative: unknown AMD mobile → treat as blocked APU
+  elif [[ "${gv}" == "amd" && "${mob}" == "false" ]]; then
+    echo "amd-rdna2-dgpu"  # optimistic default for unknown discrete AMD
+  elif [[ "${gv}" == "nvidia" ]]; then
+    echo "nvidia-turing-plus"
+  elif [[ "${gv}" == "intel-arc" ]]; then
+    echo "intel-arc-dgpu"
+  elif [[ "${gv}" == "intel" ]]; then
+    echo "intel-integrated"
+  elif [[ "${gv}" == "apple" && "${cv}" == "apple" ]]; then
+    echo "apple-silicon"
+  else
+    echo "generic-cpu"
+  fi
+}
+
+acceleration_class="${ACCELERATION_CLASS_OVERRIDE:-$(derive_acceleration_class \
+  "${gpu_vendor}" "${cpu_vendor}" "${is_mobile}" "${nixos_hardware_module}" "${rocm_gpu_target}")}"
 _gpu_vram_gb="${_gpu_vram_gb:-0}"
 
 ai_llama_model_id="unsloth/Qwen3-4B-Instruct-2507-GGUF"
@@ -751,6 +803,16 @@ if [[ -n "${nixos_hardware_module}" ]]; then
 else
   nixos_hardware_module_value="null"
 fi
+if [[ -n "${rocm_gpu_target}" ]]; then
+  rocm_gpu_target_value="\"${rocm_gpu_target}\""
+else
+  rocm_gpu_target_value="null"
+fi
+if [[ -n "${acceleration_class}" ]]; then
+  acceleration_class_value="\"${acceleration_class}\""
+else
+  acceleration_class_value="null"
+fi
 
 cat > "${tmp_file}" <<FACTS
 { ... }:
@@ -763,6 +825,8 @@ cat > "${tmp_file}" <<FACTS
     hardware = {
       gpuVendor = "${gpu_vendor}";
       igpuVendor = "${igpu_vendor}";
+      rocmGpuTarget = ${rocm_gpu_target_value};
+      accelerationClass = ${acceleration_class_value};
       cpuVendor = "${cpu_vendor}";
       storageType = "${storage_type}";
       systemRamGb = ${system_ram_gb};

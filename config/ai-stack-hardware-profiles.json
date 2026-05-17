@@ -63,9 +63,9 @@
     "rocm": {
       "name": "AMD ROCm/HIP",
       "platforms": ["x86_64-linux"],
-      "status": "deprecated",
+      "promotion_gated": true,
       "fallback": "vulkan",
-      "notes": "ROCm crashes on APUs; use Vulkan instead",
+      "notes": "ROCm is a promotion-gated backend. Safe only on validated discrete AMD GPUs (RDNA2/RDNA3, Instinct). Blocked on APUs. See config/hardware-capability-matrix.json for per-class eligibility and config/rocm-promotion-state.json for per-host status. Run scripts/governance/rocm-promotion-gate.sh before setting acceleration=rocm.",
       "detection": {
         "linux": "rocminfo 2>/dev/null | grep -i 'agent'"
       },
@@ -119,7 +119,8 @@
 
   "platform_defaults": {
     "x86_64-linux": {
-      "priority": ["cuda", "vulkan", "rocm", "cpu"],
+      "priority": ["cuda", "vulkan", "cpu"],
+      "priority_note": "rocm removed from auto-priority; it is promotion-gated via hardware-capability-matrix.json",
       "nvidia": "cuda",
       "amd": "vulkan",
       "intel": "vulkan",
