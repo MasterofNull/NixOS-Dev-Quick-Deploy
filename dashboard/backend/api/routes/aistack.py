@@ -2609,14 +2609,20 @@ async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
         payload = {}
     else:
         try:
-            proc = await asyncio.to_thread(
-                subprocess.run,
-                [str(report_script), "--since=7d", "--format=json"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=30,
-                cwd=str(_repo_root()),
+            # aq-report can take 30–60s on large repos; use a short timeout so that
+            # the /api/metrics endpoint stays responsive for the dashboard.
+            # Stale cached data (ttl_seconds=30) is returned on subsequent calls anyway.
+            proc = await asyncio.wait_for(
+                asyncio.to_thread(
+                    subprocess.run,
+                    [str(report_script), "--since=7d", "--format=json"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=8,
+                    cwd=str(_repo_root()),
+                ),
+                timeout=10.0,
             )
             if proc.returncode == 0:
                 payload = json.loads(proc.stdout or "{}")
