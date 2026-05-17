@@ -90,7 +90,10 @@ assert_prefix "${post_wd}" "/var/lib/" "ai-post-deploy-converge WorkingDirectory
 log "Checking service executable wiring"
 npm_exec="$(nix_raw 'systemd.services.ai-npm-security-monitor.serviceConfig.ExecStart')"
 post_exec="$(nix_raw 'systemd.services.ai-post-deploy-converge.serviceConfig.ExecStart')"
-assert_file_in_execstart "${npm_exec}" "${ROOT_DIR}/scripts/security/npm-security-monitor.sh"
+echo "${npm_exec}" | grep -E ' /nix/store/[^ ]+-source/scripts/security/npm-security-monitor\.sh ' >/dev/null \
+  || die "ai-npm-security-monitor ExecStart is not store-backed"
+echo "${npm_exec}" | grep -F "scripts/security/npm-security-monitor.sh" >/dev/null \
+  || die "ai-npm-security-monitor ExecStart missing npm-security-monitor.sh"
 assert_file_in_execstart "${post_exec}" "${ROOT_DIR}/scripts/automation/post-deploy-converge.sh"
 
 log "Checking package dependencies for monitored services"
@@ -107,5 +110,7 @@ echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/security/npm"))' >/dev/null
   || die "systemd.tmpfiles.rules missing /security/npm directory declaration"
 echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/hybrid"))' >/dev/null \
   || die "systemd.tmpfiles.rules missing /hybrid directory declaration"
+echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/hybrid/telemetry/aidb-reindex-latest.json 0660"))' >/dev/null \
+  || die "systemd.tmpfiles.rules missing writable aidb reindex summary file"
 
 log "PASS: known dry-run failure modes validated"

@@ -22,7 +22,7 @@
     • enableRocm = true   — AMD ROCm/HIP (discrete GPUs, unstable on APUs)
     • enableCuda = true   — NVIDIA CUDA (requires cudaPackages)
 */
-{ pinFile, useFallback ? false, enableVulkan ? false, enableRocm ? false, enableCuda ? false }:
+{ pinFile, useFallback ? false, enableVulkan ? false, enableRocm ? false, enableCuda ? false, rocmGpuTargets ? [] }:
 
 final: prev:
 let
@@ -72,7 +72,11 @@ in
     # Note: We do NOT enable GGML_BACKEND_DL - static backend linking ensures
     # GGML_USE_VULKAN is defined and the Vulkan backend auto-registers in the
     # ggml_backend_registry constructor.
-    cmakeFlags = stripConflicts (oldAttrs.cmakeFlags or []);
+    cmakeFlags =
+      stripConflicts (oldAttrs.cmakeFlags or [])
+      ++ prev.lib.optionals (enableRocm && rocmGpuTargets != []) [
+        "-DGPU_TARGETS=${prev.lib.concatStringsSep ";" rocmGpuTargets}"
+      ];
 
     # Phase 36: Add dependencies for build 9144 Vulkan support
     nativeBuildInputs = (oldAttrs.nativeBuildInputs or []) ++ (with prev; [
@@ -97,6 +101,7 @@ in
         pinFile = toString pinFile;
         vulkanEnabled = enableVulkan;
         rocmEnabled = enableRocm;
+        rocmGpuTargets = rocmGpuTargets;
         cudaEnabled = enableCuda;
       };
     };

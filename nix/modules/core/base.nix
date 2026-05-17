@@ -5,9 +5,7 @@ let
   bootFsType = lib.attrByPath [ "fileSystems" "/boot" "fsType" ] null config;
   useSystemdBoot = (!cfg.secureboot.enable) && (cfg.hardware.firmwareType == "efi" || bootFsType == "vfat");
   selectedKernelPackages =
-    if cfg.kernel.track == "6.19-latest" && pkgs ? linuxPackages_6_19 then
-      pkgs.linuxPackages_6_19
-    else if cfg.kernel.track == "6.18-lts" && pkgs ? linuxPackages_6_18 then
+    if cfg.kernel.track == "lts" && pkgs ? linuxPackages_6_18 then
       pkgs.linuxPackages_6_18
     else if cfg.kernel.track == "latest-stable" && pkgs ? linuxPackages_latest then
       pkgs.linuxPackages_latest
@@ -281,6 +279,8 @@ in
       "Ignoring unknown package names in mySystem.profileData.systemPackageNames: ${lib.concatStringsSep ", " missingPackageNames}"
     ] ++ lib.optionals (cfg.kernel.track == "latest-stable" && !(pkgs ? linuxPackages_latest)) [
       "mySystem.kernel.track=latest-stable requested, but pkgs.linuxPackages_latest is unavailable for this platform. Falling back to pkgs.linuxPackages."
+    ] ++ lib.optionals (cfg.kernel.track == "lts" && !(pkgs ? linuxPackages_6_18)) [
+      "mySystem.kernel.track=lts requested, but pkgs.linuxPackages_6_18 is unavailable for this platform. Falling back to pkgs.linuxPackages."
     ];
 
     assertions =

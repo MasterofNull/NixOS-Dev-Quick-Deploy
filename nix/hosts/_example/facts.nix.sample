@@ -20,6 +20,7 @@
     hardware = {
       gpuVendor            = "amd";   # amd | intel | nvidia | none
       igpuVendor           = "none";  # amd | intel | none
+      rocmGpuTarget        = null;     # e.g. "gfx1030"; null = let discovery/ROCm defaults decide
       cpuVendor            = "amd";   # amd | intel | unknown
       storageType          = "nvme";  # nvme | ssd | hdd | sd
       systemRamGb          = 32;
