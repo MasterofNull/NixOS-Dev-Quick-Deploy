@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NixOS System Command Center</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a0f14'/%3E%3Cpath d='M18 32h28M32 18v28' stroke='%2300d9ff' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+    <script>
+    // JS error visibility: renders a red banner for any uncaught error (SyntaxError, ReferenceError, etc.)
+    window.onerror = function(msg, src, line, col, err) {
+        var banner = document.getElementById('js-error-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'js-error-banner';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0392b;color:#fff;font-family:monospace;font-size:13px;padding:10px 16px;border-bottom:2px solid #922b21;white-space:pre-wrap;word-break:break-all;';
+            document.body ? document.body.prepend(banner) : document.addEventListener('DOMContentLoaded', function(){ document.body.prepend(banner); });
+        }
+        var loc = src ? ' @ ' + src.split('/').pop() + ':' + line + ':' + col : '';
+        banner.textContent = '\u26a0 JS Error' + loc + '\n' + msg;
+        return false;
+    };
+    </script>
     <script src="./assets/vendor/chart.umd.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>

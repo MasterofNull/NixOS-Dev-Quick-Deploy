@@ -107,6 +107,25 @@ then
     python3 scripts/testing/test-stateful-downgrade-policy.py
 fi
 
+if has_changed_path "dashboard.html"; then
+  ran_any=1
+  run_check \
+    "dashboard.html inline JS syntax validation" \
+    node -e "
+const fs = require('fs');
+const html = fs.readFileSync('dashboard.html', 'utf8');
+// Skip type=module scripts — they use ES import syntax not valid in new Function()
+const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([^]*?)<\/script>/g)]
+  .filter(m => !/type\s*=\s*[\"']?module/i.test(m[0]))
+  .map(m => m[1]).filter(s => s.trim());
+scripts.forEach((s, i) => {
+  try { new Function(s); }
+  catch(e) { process.stderr.write('Script block ' + i + ': ' + e.message + '\n'); process.exit(1); }
+});
+console.log('Checked ' + scripts.length + ' non-module script blocks: syntax OK');
+"
+fi
+
 if [[ "${ran_any}" -eq 0 ]]; then
   echo "[focused-ci] SKIP: no CI-sensitive changed paths detected"
 fi
