@@ -119,24 +119,34 @@ class AIInsightsService:
         self._shutting_down = False
         self._seed_cache_from_persisted_report()
 
-    async def get_full_report(self) -> Dict[str, Any]:
-        """Get the complete aq-report data."""
+    async def get_full_report(self, http_timeout: float = 8.0) -> Dict[str, Any]:
+        """Get the complete aq-report data.
+
+        Returns cached/persisted data immediately if aq-report is still running.
+        The background task continues; subsequent calls will get fresh data once
+        aq-report completes.  http_timeout limits how long an HTTP request waits
+        before falling back to stale data (default 8s).
+        """
         if self._is_cache_valid():
             return self._cache
 
         try:
             task = await self._get_or_start_report_task()
-            return await asyncio.shield(task)
-        except RuntimeError:
+            # Use a short HTTP-facing timeout so dashboard requests stay responsive.
+            # aq-report takes ~60s on large repos; waiting the full duration would
+            # block Promise.all and stall all insight panels.
+            return await asyncio.wait_for(asyncio.shield(task), timeout=http_timeout)
+        except (asyncio.TimeoutError, RuntimeError):
             stale = self._get_cached_report(max_age_seconds=None)
             if stale is not None:
-                logger.warning("Serving stale aq-report cache after refresh failure")
+                logger.warning("Serving stale aq-report cache after timeout/failure")
                 return stale
             persisted = self._load_persisted_report()
             if persisted is not None:
-                logger.warning("Serving persisted aq-report snapshot after refresh failure")
+                logger.warning("Serving persisted aq-report snapshot after timeout/failure")
                 return persisted
-            raise
+            # Return empty dict so callers can render partial data gracefully
+            return {}
 
     async def _get_or_start_report_task(self) -> asyncio.Task[Dict[str, Any]]:
         """Share one in-flight aq-report refresh across concurrent dashboard requests."""
