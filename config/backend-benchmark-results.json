@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "timestamp": "2026-05-17T01:11:43Z",
+  "timestamp": "2026-05-17T01:18:32Z",
   "host": "hyperd",
   "model": "127.0.0.1:8080",
   "runs": 3,
@@ -10,7 +10,7 @@
       "startup_ms": 0,
       "note": "existing-server",
       "tokens_per_sec": [
-        5,
+        4,
         4,
         4
       ],
