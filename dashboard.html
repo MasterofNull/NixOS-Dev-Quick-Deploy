@@ -462,6 +462,16 @@
             opacity: 0.4;
         }
 
+        .deck-sparkline {
+            position: absolute;
+            bottom: 2px;
+            left: 0;
+            width: 100%;
+            height: 32px;
+            pointer-events: none;
+            overflow: visible;
+        }
+
         .deck-tile.warning {
             border-left-color: var(--status-warning);
             box-shadow: inset 3px 0 12px rgba(255, 190, 11, 0.08);
@@ -3404,16 +3414,19 @@
                         <div class="deck-label">CPU</div>
                         <div class="deck-value" id="deckCpuValue">--</div>
                         <div class="deck-detail" id="deckCpuDetail">usage / load pending</div>
+                        <svg class="deck-sparkline" id="sparkCpu" aria-hidden="true"></svg>
                     </div>
                     <div class="deck-tile" id="deckGpuTile">
                         <div class="deck-label">GPU</div>
                         <div class="deck-value" id="deckGpuValue">--</div>
                         <div class="deck-detail" id="deckGpuDetail">activity pending</div>
+                        <svg class="deck-sparkline" id="sparkGpu" aria-hidden="true"></svg>
                     </div>
                     <div class="deck-tile" id="deckMemoryTile">
                         <div class="deck-label">Memory</div>
                         <div class="deck-value" id="deckMemoryValue">--</div>
                         <div class="deck-detail" id="deckMemoryDetail">pressure pending</div>
+                        <svg class="deck-sparkline" id="sparkMem" aria-hidden="true"></svg>
                     </div>
                     <div class="deck-tile" id="deckDiskTile">
                         <div class="deck-label">Disk</div>
@@ -3424,6 +3437,7 @@
                         <div class="deck-label">Network</div>
                         <div class="deck-value" id="deckNetworkValue">--</div>
                         <div class="deck-detail" id="deckNetworkDetail">throughput pending</div>
+                        <svg class="deck-sparkline" id="sparkNet" aria-hidden="true"></svg>
                     </div>
                     <div class="deck-tile" id="deckStackTile">
                         <div class="deck-label">Stack</div>
@@ -4114,6 +4128,24 @@
                             <span style="font-size:0.7rem;color:var(--text-muted);">
                                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--status-online);margin-right:4px;"></span>other
                             </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Query Trace Timeline — Intelligence lane -->
+            <div class="dashboard-section full-width" id="section-query-trace">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Query Trace Timeline</h2>
+                        </div>
+                        <span class="card-badge" id="tracesBadge">Intelligence lane</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div id="queryTraceContainer">
+                            <div style="color:var(--text-muted);font-size:0.8rem;padding:1rem 0;">Awaiting coordinator — run nixos-rebuild switch to activate</div>
                         </div>
                     </div>
                 </div>
@@ -5954,9 +5986,12 @@
                                     <span class="status-label">LLM Routing (Local)</span>
                                     <span class="status-value" id="llmRoutingLocal">--</span>
                                 </div>
-                                <div class="status-item">
+                                <div class="status-item" style="flex-direction:column;align-items:flex-start;gap:0.2rem;">
                                     <span class="status-label">Eval Trend</span>
-                                    <span class="status-value" id="evalTrend">--</span>
+                                    <div style="display:flex;align-items:center;gap:0.5rem;width:100%;">
+                                        <span class="status-value" id="evalTrend">--</span>
+                                        <svg id="sparkEval" aria-hidden="true" style="flex:1;height:20px;min-width:60px;max-width:120px;overflow:visible;"></svg>
+                                    </div>
                                 </div>
                             </div>
                             <div id="sysHealthRecommendations" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);"></div>
@@ -6633,6 +6668,42 @@
     <script>
         // Global state
         let dashboardData = {};
+
+        // Rolling metric history for Command Deck sparklines (60 points ≈ 5 min at 5s)
+        const _SPARKLINE_MAX = 60;
+        const _deckHistory = { cpu: [], mem: [], net: [], gpu: [] };
+        const _evalHistory = []; // eval score % history across refresh cycles (max 40)
+        function _pushDeckMetric(key, val) {
+            if (!Number.isFinite(val)) return;
+            _deckHistory[key].push(val);
+            if (_deckHistory[key].length > _SPARKLINE_MAX) _deckHistory[key].shift();
+        }
+        function _renderDeckSparkline(svgId, data, strokeColor) {
+            const el = document.getElementById(svgId);
+            if (!el || data.length < 2 || typeof d3 === 'undefined') return;
+            const W = el.getBoundingClientRect().width || el.parentElement?.clientWidth || 140;
+            const H = 30;
+            el.setAttribute('viewBox', `0 0 ${W} ${H}`);
+            d3.select(el).selectAll('*').remove();
+            const xSc = d3.scaleLinear().domain([0, data.length - 1]).range([0, W]);
+            const yMax = Math.max(...data, 10);
+            const ySc = d3.scaleLinear().domain([0, yMax]).range([H - 2, 2]);
+            // Area fill
+            const area = d3.area().x((_, i) => xSc(i)).y0(H).y1(d => ySc(d)).curve(d3.curveCatmullRom.alpha(0.5));
+            d3.select(el).append('path').datum(data)
+                .attr('fill', strokeColor).attr('fill-opacity', 0.08).attr('d', area);
+            // Line
+            const line = d3.line().x((_, i) => xSc(i)).y(d => ySc(d)).curve(d3.curveCatmullRom.alpha(0.5));
+            d3.select(el).append('path').datum(data)
+                .attr('fill', 'none').attr('stroke', strokeColor)
+                .attr('stroke-width', 1.4).attr('stroke-opacity', 0.7).attr('d', line);
+            // Latest dot
+            const last = data[data.length - 1];
+            d3.select(el).append('circle')
+                .attr('cx', xSc(data.length - 1)).attr('cy', ySc(last)).attr('r', 2.5)
+                .attr('fill', strokeColor).attr('fill-opacity', 0.9);
+        }
+
         let cpuChart = null;
         let memoryChart = null;
         let diskChart = null;
@@ -7491,7 +7562,8 @@
                     'switchboardProfiles',
                     'taskClassStats',
                     'verifySelf',
-                    'knowledgeObservatory'
+                    'knowledgeObservatory',
+                    'queryTraces'
                 ];
                 const settled = await Promise.allSettled([
                     fetchSystemMetrics(),
@@ -7515,7 +7587,8 @@
                     fetchTaskClassificationStats(),
                     fetchVerifySelf(),
                     fetchPrometheusMetrics(),
-                    fetchKnowledgeObservatory()
+                    fetchKnowledgeObservatory(),
+                    fetchQueryTraces()
                 ]);
                 const payloads = {};
                 const failedSources = [];
@@ -7642,6 +7715,7 @@
                 });
                 updateKpiRibbon(aiInternals, aiMetrics, payloads.learningStats, payloads.knowledgeObservatory);
                 updateKnowledgeObservatory(payloads.knowledgeObservatory);
+                updateQueryTraceTimeline(payloads.queryTraces);
                 updatePRSIQueue(prsiActions);
                 updateFirewallOperator(firewallOps);
                 updateHealthScore();
@@ -7957,6 +8031,86 @@
                 `${data.passed ?? '--'} pass / ${data.failed ?? '--'} fail / ${data.skipped ?? '--'} skip`;
             document.getElementById('qaStatusSummary').style.color = ok ? 'var(--accent-green)' : 'var(--accent-red)';
             document.getElementById('qaStatusCached').textContent = data.cached ? '(cached)' : '';
+        }
+
+        async function fetchQueryTraces() {
+            try {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 6000);
+                try {
+                    const resp = await fetch('/api/aistack/query/traces?limit=15', { signal: ctrl.signal, cache: 'no-store' });
+                    return resp.ok ? resp.json() : null;
+                } finally { clearTimeout(timer); }
+            } catch (_) { return null; }
+        }
+
+        function updateQueryTraceTimeline(data) {
+            const container = document.getElementById('queryTraceContainer');
+            const badge = document.getElementById('tracesBadge');
+            if (!container) return;
+
+            if (!data || data.coordinator_offline || (data.traces && data.traces.length === 0 && data.coordinator_offline !== false)) {
+                const msg = data?.coordinator_offline
+                    ? '[ COORDINATOR OFFLINE ] — traces will appear here after nixos-rebuild switch'
+                    : 'No query traces recorded yet — send a query to the coordinator to populate';
+                container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;padding:0.75rem 0;border-left:3px solid var(--accent-magenta);padding-left:0.75rem;">${msg}</div>`;
+                if (badge) badge.textContent = data?.coordinator_offline ? 'OFFLINE' : '0 traces';
+                return;
+            }
+
+            const traces = data.traces || [];
+            if (badge) badge.textContent = `${traces.length} traces`;
+
+            const SPAN_COLORS = {
+                retrieval: 'var(--accent-cyan)',
+                llm:       'var(--accent-magenta)',
+                memory:    'var(--accent-yellow)',
+                other:     'var(--status-online)',
+            };
+
+            const INTENT_ICONS = {
+                code_generation: '&lt;/&gt;',
+                knowledge_lookup: '&#9670;',
+                planning: '&#9741;',
+                troubleshooting: '&#9888;',
+                tool_execution: '&#9881;',
+                delegation: '&#8652;',
+            };
+
+            container.innerHTML = `
+            <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-muted);margin-bottom:0.75rem;">
+                Last ${traces.length} queries — span breakdown (retrieval / llm / total)
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            ${traces.map(t => {
+                const total = t.total_ms || 1;
+                const retPct = Math.round(((t.retrieval_ms || 0) / total) * 100);
+                const llmPct = Math.round(((t.llm_ms || 0) / total) * 100);
+                const otherPct = Math.max(0, 100 - retPct - llmPct);
+                const intentIcon = INTENT_ICONS[t.intent] || '&#9632;';
+                const profile = t.profile ? t.profile.replace('local-', '').replace('-', ' ') : 'local';
+                const queryShort = (t.query_text || '').substring(0, 60) + ((t.query_text || '').length > 60 ? '&hellip;' : '');
+                const ts = t.trace_at ? new Date(t.trace_at).toLocaleTimeString() : '';
+                const ragBadge = t.rag_skipped ? '' : `<span style="font-size:0.62rem;background:rgba(0,217,255,0.12);color:var(--accent-cyan);border-radius:2px;padding:0 4px;margin-left:4px;">RAG ${t.retrieval_hits || 0} hits</span>`;
+                return `<div style="background:var(--surface,#181825);border-radius:4px;padding:0.6rem 0.75rem;border-left:2px solid var(--border-primary);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;gap:0.5rem;flex-wrap:wrap;">
+                        <span style="font-size:0.72rem;color:var(--text-secondary);">${intentIcon} <strong style="color:var(--accent-cyan);">${escapeHtml(t.intent || 'unknown')}</strong> &middot; ${escapeHtml(profile)}${ragBadge}</span>
+                        <span style="font-size:0.68rem;color:var(--text-muted);">${total >= 1000 ? (total/1000).toFixed(1)+'s' : total+'ms'} &middot; ${ts}</span>
+                    </div>
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(t.query_text || '')}">${queryShort || '(no query text)'}</div>
+                    <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:1px;" title="retrieval ${retPct}% / llm ${llmPct}% / other ${otherPct}%">
+                        ${retPct > 0 ? `<div style="width:${retPct}%;background:${SPAN_COLORS.retrieval};opacity:0.8;"></div>` : ''}
+                        ${llmPct > 0 ? `<div style="width:${llmPct}%;background:${SPAN_COLORS.llm};opacity:0.8;"></div>` : ''}
+                        ${otherPct > 0 ? `<div style="width:${otherPct}%;background:${SPAN_COLORS.other};opacity:0.5;"></div>` : ''}
+                    </div>
+                    <div style="display:flex;gap:1rem;margin-top:0.3rem;">
+                        <span style="font-size:0.62rem;color:${SPAN_COLORS.retrieval};">retrieval ${t.retrieval_ms || 0}ms</span>
+                        <span style="font-size:0.62rem;color:${SPAN_COLORS.llm};">llm ${t.llm_ms || 0}ms</span>
+                        ${t.tokens_in ? `<span style="font-size:0.62rem;color:var(--text-muted);">${t.tokens_in}&#8594;${t.tokens_out || 0} tok</span>` : ''}
+                    </div>
+                </div>`;
+            }).join('')}
+            </div>`;
         }
 
         function renderSwitchboardProfiles(data) {
@@ -8596,6 +8750,19 @@
             const memTotal = metrics?.memory?.total ? `${(metrics.memory.total / (1024 ** 3)).toFixed(1)} GB` : '--';
             setDeckTile('deckMemoryTile', 'deckMemoryValue', 'deckMemoryDetail', formatDeckPercent(memory), `${memUsed} / ${memTotal}`, commandDeckClass(memory, 80, 92));
 
+            // Push to sparkline history and render
+            _pushDeckMetric('cpu', cpu);
+            _pushDeckMetric('mem', memory);
+            _pushDeckMetric('gpu', Number.isFinite(gpu) ? gpu : 0);
+            const netBytesRx = rates?.rxRate ? rates.rxRate / 1024 : null; // KB/s for y-axis
+            if (netBytesRx !== null) _pushDeckMetric('net', netBytesRx);
+            requestAnimationFrame(() => {
+                _renderDeckSparkline('sparkCpu', _deckHistory.cpu, commandDeckClass(cpu, 75, 90) === 'error' ? 'var(--status-error)' : commandDeckClass(cpu, 75, 90) === 'warning' ? 'var(--accent-yellow)' : 'var(--accent-cyan)');
+                _renderDeckSparkline('sparkMem', _deckHistory.mem, commandDeckClass(memory, 80, 92) === 'error' ? 'var(--status-error)' : commandDeckClass(memory, 80, 92) === 'warning' ? 'var(--accent-yellow)' : 'var(--accent-magenta)');
+                _renderDeckSparkline('sparkGpu', _deckHistory.gpu, 'var(--accent-yellow)');
+                _renderDeckSparkline('sparkNet', _deckHistory.net, 'var(--status-online)');
+            });
+
             const diskUsed = metrics?.disk?.used ? `${(metrics.disk.used / (1024 ** 3)).toFixed(0)} GB` : '--';
             const diskTotal = metrics?.disk?.total ? `${(metrics.disk.total / (1024 ** 3)).toFixed(0)} GB` : '--';
             setDeckTile('deckDiskTile', 'deckDiskValue', 'deckDiskDetail', formatDeckPercent(disk), `${diskUsed} / ${diskTotal}`, commandDeckClass(disk, 82, 93));
@@ -8702,7 +8869,14 @@
                 alerts.push(commandDeckAlert('warning', 'Dashboard refresh partial', dashboardRuntimeState.refreshDetail, 'L7'));
             }
 
-            const layers = commandDeckState.layers?.layers || {};
+            // Coordinator offline detection
+            const coordStatus = commandDeckState.stack?.data?.services?.hybrid_coordinator?.status
+                             ?? commandDeckState.stack?.data?.services?.hybrid?.status;
+            if (!coordStatus || coordStatus === 'unknown') {
+                alerts.push(commandDeckAlert('error', 'Hybrid Coordinator OFFLINE', 'Port 8003 unreachable — run: sudo nixos-rebuild switch', 'L7'));
+            }
+
+            const layers = commandDeckState.stack?.layerPayload?.layers || commandDeckState.layers?.layers || {};
             Object.entries(layers).forEach(([layerNum, checks]) => {
                 const failed = (checks || []).filter(c => c.status === 'FAIL');
                 if (failed.length) {
@@ -9991,6 +10165,20 @@
             document.getElementById('aiInternalsEvalLatest').textContent = displayPercent(evalLatest, 1, 'queued', 'awaiting result') + (evalLatest === null && !aqReportOnline ? offlineSuffix : '');
             document.getElementById('aiInternalsToolRows').textContent = displayCount(toolRows, '0', 'awaiting tool telemetry') + (toolRows === null && !aqReportOnline ? offlineSuffix : '');
             document.getElementById('aiInternalsGapCount').textContent = displayCount(gapCount, 'clear', 'awaiting gap telemetry') + (gapCount === null && !aqReportOnline ? offlineSuffix : '');
+
+            // Eval sparkline — accumulate score history across refresh cycles
+            if (evalLatest !== null) {
+                _evalHistory.push(evalLatest);
+                if (_evalHistory.length > 40) _evalHistory.shift();
+            }
+            requestAnimationFrame(() => {
+                if (_evalHistory.length >= 2) {
+                    const last = _evalHistory[_evalHistory.length - 1];
+                    const prev = _evalHistory[_evalHistory.length - 2];
+                    const trendColor = last >= prev ? 'var(--status-online)' : last < 50 ? 'var(--status-error)' : 'var(--accent-yellow)';
+                    _renderDeckSparkline('sparkEval', _evalHistory, trendColor);
+                }
+            });
         }
 
         const HARNESS_ACTION_SCRIPT = {
