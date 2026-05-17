@@ -14,12 +14,22 @@ ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VA
 - **ORIENT**: `aq-prime` · `aq-session-start --task "<task>"` · recall memory (`mcp_server_get_working_memory`)
 - **RESEARCH**: Agentic CLI Tools (`agrep`, `als`, `acat`, `asum`) + web search + OWASP
 - **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
-- **MEMORY-CHECKPOINT**: `mcp_server_store_memory` / `aq-memory store` before executing
-- **EXECUTE**: one slice at a time; read before editing; no hallucinated deps
+- **MEMORY-CHECKPOINT**: `mcp_server_store_memory` + **Intent Lock** (`.agent/collaboration/PENDING.json`)
+- **EXECUTE**: one slice at a time; read before editing; **Atomic Pulse** (`.agent/collaboration/PULSE.log`)
 - **VALIDATE**: `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist
-- **COMMIT**: `git add <specific files>` + atomic commit with validation evidence + `Co-Authored-By`
+- **COMMIT**: atomic commit + **Handoff Memo** (`.agent/collaboration/HANDOFF.md`)
 
-**Security checklist (OWASP Agentic Top 10)**: no hardcoded secrets/ports; verify all new deps exist;
+## Collaboration & Handoff (Multi-Agent Resilience)
+
+**Full rules → `.agent/collaboration/RULES.md`**
+
+To prevent state loss during rate limits or model switches, all agents MUST:
+1. **Intent Lock**: Write intended changes to `PENDING.json` before a complex `replace`.
+2. **Atomic Pulse**: Append a success line to `PULSE.log` after every file write.
+3. **Handoff Memo**: Update `HANDOFF.md` when finishing a slice or hitting a limit.
+4. **Recovery**: On 429/400 errors, attempt a 1-turn emergency write to `RECOVERY.md`.
+
+## Security checklist (OWASP Agentic Top 10) continua...
 no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
 `bash -n` on shell, `py_compile` on Python; privilege minimization. Never use `--no-verify`.
 

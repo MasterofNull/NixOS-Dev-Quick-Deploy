@@ -27,6 +27,8 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
+import memory_superseder
+
 logger = logging.getLogger("hybrid-coordinator")
 
 # ---------------------------------------------------------------------------
@@ -58,7 +60,11 @@ def init(store_fn: Callable, recall_fn: Callable) -> None:
     global _store_fn, _recall_fn, _broker
     _store_fn = store_fn
     _recall_fn = recall_fn
-    _broker = MemoryBroker(store_fn=store_fn, recall_fn=recall_fn)
+    _broker = MemoryBroker(
+        store_fn=store_fn, 
+        recall_fn=recall_fn,
+        superseder=memory_superseder.get_superseder()
+    )
     logger.info("memory_broker: initialized (store=%s recall=%s)", store_fn, recall_fn)
 
 
@@ -82,9 +88,10 @@ class MemoryBroker:
     overwriting them.
     """
 
-    def __init__(self, store_fn: Callable, recall_fn: Callable) -> None:
+    def __init__(self, store_fn: Callable, recall_fn: Callable, superseder: Optional[Any] = None) -> None:
         self._store = store_fn
         self._recall = recall_fn
+        self._superseder = superseder
 
     # ------------------------------------------------------------------
     # Public API
@@ -100,23 +107,38 @@ class MemoryBroker:
         valid_from: Optional[datetime] = None,
         valid_until: Optional[datetime] = None,
         source: str = "coordinator",
+        check_contradictions: bool = True,
+        supersede: bool = True,
     ) -> Dict[str, Any]:
         """
-        Write a memory entry.
-
-        Args:
-            memory_type: One of working | episodic | semantic | procedural
-            content: Text to store
-            context: Optional free-form metadata dict
-            ttl_seconds: If set, valid_until = now + ttl_seconds (shorthand)
-            valid_from: Explicit validity start (default: now)
-            valid_until: Explicit validity end (default: None = perpetual)
-            source: Tag identifying the caller / module
-
-        Returns:
-            Store result dict from memory_manager (includes memory_id)
+        Write a memory entry with automatic contradiction detection and supersession.
         """
         _validate_type(memory_type)
+
+        superseded_id = None
+        # Phase 55.1 — Memory Supersession (Logical Versioning)
+        if check_contradictions:
+            existing = await self.read(memory_type, content, top_k=2, include_superseded=True)
+            for entry in existing:
+                if self.check_contradiction(entry.get("content", ""), content):
+                    if supersede and self._superseder:
+                        superseded_id = self._superseder.resolve_lineage(content, [entry])
+                        logger.info(
+                            "memory_broker.superseding: old_id=%s content=%r -> new_content=%r",
+                            superseded_id, entry.get("content"), content
+                        )
+                        break # Only supersede the most relevant match
+                    else:
+                        logger.warning(
+                            "memory_broker.contradiction detected type=%s content=%r existing=%r",
+                            memory_type, content, entry.get("content")
+                        )
+                        return {
+                            "status": "contradiction_blocked",
+                            "memory_type": memory_type,
+                            "conflicting_entry": entry.get("id"),
+                            "reason": "New entry contradicts existing memory"
+                        }
 
         now = datetime.now(timezone.utc)
         valid_from = valid_from or now
@@ -130,10 +152,15 @@ class MemoryBroker:
             "source": source,
             "broker_write": True,
         }
+        
+        if superseded_id and self._superseder:
+            metadata.update(self._superseder.prepare_superseded_metadata(superseded_id))
+            
         if context:
             metadata.update(context)
 
         try:
+            start_time = time.perf_counter()
             result = await asyncio.wait_for(
                 self._store(
                     memory_type=memory_type,
@@ -143,16 +170,29 @@ class MemoryBroker:
                 ),
                 timeout=8.0,
             )
+            latency = time.perf_counter() - start_time
             logger.debug(
-                "memory_broker.write type=%s len=%d id=%s",
-                memory_type, len(content), result.get("memory_id", "?"),
+                "memory_broker.write type=%s len=%d id=%s supersedes=%s",
+                memory_type, len(content), result.get("memory_id", "?"), superseded_id
             )
+            status = "superseded" if superseded_id else "success"
+            
+            if superseded_id:
+                try:
+                    from metrics import MEMORY_SUPERSESSIONS_TOTAL
+                    MEMORY_SUPERSESSIONS_TOTAL.labels(memory_type=memory_type).inc()
+                except (ImportError, Exception):
+                    pass
+
+            _record_broker_metrics("write", memory_type, status, latency)
             return result
         except asyncio.TimeoutError:
             logger.warning("memory_broker.write timeout type=%s", memory_type)
+            _record_broker_metrics("write", memory_type, "timeout", 8.0)
             return {"status": "timeout", "memory_type": memory_type}
         except Exception as exc:
             logger.warning("memory_broker.write error type=%s exc=%s", memory_type, exc)
+            _record_broker_metrics("write", memory_type, "error", 0.0)
             return {"status": "error", "detail": str(exc), "memory_type": memory_type}
 
     async def read(
@@ -162,11 +202,12 @@ class MemoryBroker:
         *,
         top_k: int = 5,
         include_expired: bool = False,
+        include_superseded: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Retrieve memory entries relevant to query.
 
-        Filters out temporally expired entries unless include_expired=True.
+        Filters out temporally expired entries and superseded facts.
 
         Returns:
             List of result dicts (content, score, metadata, valid_until)
@@ -174,25 +215,46 @@ class MemoryBroker:
         _validate_type(memory_type)
 
         try:
+            start_time = time.perf_counter()
             raw = await asyncio.wait_for(
                 self._recall(
                     query=query,
                     memory_types=[memory_type],
-                    limit=top_k + 2,   # extra for filtering
+                    limit=top_k * 2,   # extra for filtering
                     retrieval_mode="hybrid",
                 ),
                 timeout=5.0,
             )
+            latency = time.perf_counter() - start_time
+            _record_broker_metrics("read", memory_type, "success", latency)
         except asyncio.TimeoutError:
             logger.warning("memory_broker.read timeout type=%s", memory_type)
+            _record_broker_metrics("read", memory_type, "timeout", 5.0)
             return []
         except Exception as exc:
             logger.warning("memory_broker.read error type=%s exc=%s", memory_type, exc)
+            _record_broker_metrics("read", memory_type, "error", 0.0)
             return []
 
         rows = raw.get("results", []) if isinstance(raw, dict) else []
+        
+        # 1. Temporal Filter
         if not include_expired:
             rows = [r for r in rows if not _is_expired(r)]
+            
+        # 2. Supersession Filter (Phase 55.1)
+        if not include_superseded:
+            # Map of ID -> Row for quick lookup
+            row_map = { (r.get("memory_id") or r.get("id")): r for r in rows if (r.get("memory_id") or r.get("id")) }
+            superseded_ids = set()
+            for r in rows:
+                meta = r.get("metadata") or {}
+                sid = meta.get("supersedes")
+                if sid:
+                    superseded_ids.add(sid)
+            
+            rows = [r for r in rows if (r.get("memory_id") or r.get("id")) not in superseded_ids]
+
         return rows[:top_k]
 
     async def read_all_types(
@@ -223,9 +285,12 @@ class MemoryBroker:
 
         # Simple antonym pair check on shared subject tokens
         for word_a, word_b in _CONTRADICTION_ANTONYMS:
-            if word_a in e_lower and word_b in c_lower:
-                return True
-            if word_b in e_lower and word_a in c_lower:
+            if (word_a in e_lower and word_b in c_lower) or (word_b in e_lower and word_a in c_lower):
+                try:
+                    from metrics import MEMORY_CONTRADICTIONS_DETECTED
+                    MEMORY_CONTRADICTIONS_DETECTED.labels(memory_type="unknown").inc()
+                except (ImportError, Exception):
+                    pass
                 return True
         return False
 
@@ -233,6 +298,24 @@ class MemoryBroker:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _record_broker_metrics(operation: str, memory_type: str, status: str, latency: float) -> None:
+    """Record Memory Broker metrics to Prometheus."""
+    try:
+        from metrics import MEMORY_BROKER_OPERATIONS, MEMORY_BROKER_LATENCY
+        MEMORY_BROKER_OPERATIONS.labels(
+            operation=operation,
+            memory_type=memory_type,
+            status=status
+        ).inc()
+        if status == "success" and latency > 0:
+            MEMORY_BROKER_LATENCY.labels(
+                operation=operation,
+                memory_type=memory_type
+            ).observe(latency)
+    except (ImportError, Exception):
+        pass
+
 
 def _validate_type(memory_type: str) -> None:
     if memory_type not in MEMORY_TYPES:

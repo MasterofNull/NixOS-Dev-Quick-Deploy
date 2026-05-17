@@ -266,40 +266,78 @@ REASONING_PATTERN_BOOST_MULTIPLIER = Gauge(
     ["pattern"],
 )
 
-# Phase 1.3 — Live Bottleneck Detection metrics
-BOTTLENECK_COUNT = Gauge(
-    "bottleneck_count",
-    "Number of detected bottlenecks by severity",
-    ["severity"],
+# Phase 55 — Agentic Self-Evolution (Advanced L5/L6)
+
+REASONING_DRIFT_SCORE = Histogram(
+    "hybrid_reasoning_drift_score",
+    "Semantic drift score per intent",
+    ["intent"],
+    buckets=[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75],
 )
-BOTTLENECK_TOTAL_TIME_MS = Gauge(
-    "bottleneck_total_time_ms",
-    "Total time consumed by bottleneck operations",
-    ["operation"],
+CRYSTALLIZATION_FACTS_EXTRACTED = Counter(
+    "hybrid_crystallization_facts_extracted_total",
+    "Total units of knowledge distilled from history",
 )
-BOTTLENECK_AVG_DURATION_MS = Gauge(
-    "bottleneck_avg_duration_ms",
-    "Average duration of bottleneck operations",
-    ["operation"],
+HOMEOSTATIC_EVENTS_TOTAL = Counter(
+    "hybrid_homeostatic_events_total",
+    "Total homeostatic self-correction events triggered",
+    ["action", "intent"],  # action: "profile_elevation", "emergency_crystallization"
 )
-BOTTLENECK_P95_DURATION_MS = Gauge(
-    "bottleneck_p95_duration_ms",
-    "P95 duration of bottleneck operations",
-    ["operation"],
+
+# Level 6: Cognitive/Semantic Layer
+INTENT_CLASSIFICATIONS = Counter(
+    "hybrid_intent_classifications_total",
+    "Total intent classification events",
+    ["intent", "profile"],
 )
-OPTIMIZATION_RECOMMENDATIONS_PENDING = Gauge(
-    "optimization_recommendations_pending",
-    "Number of pending optimization recommendations by priority",
-    ["priority"],
+INTENT_CONFIDENCE = Histogram(
+    "hybrid_intent_confidence",
+    "Confidence scores for intent classification",
+    ["intent"],
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
 )
-PROFILED_OPERATIONS = Counter(
-    "profiled_operations_total",
-    "Total operations profiled",
-    ["operation"],
+RAG_AUGMENTATIONS = Counter(
+    "hybrid_rag_augmentations_total",
+    "Total RAG augmentation events",
+    ["status", "project"],  # status: "augmented", "skipped", "error", "timeout"
 )
-PROFILED_OPERATION_DURATION = Histogram(
-    "profiled_operation_duration_seconds",
-    "Duration of profiled operations",
-    ["operation"],
-    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+RAG_AUGMENTATION_LATENCY = Histogram(
+    "hybrid_rag_augmentation_latency_seconds",
+    "Latency of RAG augmentation retrieval",
+    ["project"],
+    buckets=[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0],
+)
+RAG_AUGMENTATION_HITS = Histogram(
+    "hybrid_rag_augmentation_hits",
+    "Number of context hits retrieved per augmentation",
+    ["project"],
+    buckets=[0, 1, 2, 3, 5, 10],
+)
+
+# Level 5: Session/Persistence Layer (Memory Broker)
+MEMORY_BROKER_OPERATIONS = Counter(
+    "hybrid_memory_broker_operations_total",
+    "Total memory broker read/write operations",
+    ["operation", "memory_type", "status"],  # operation: "read", "write"
+)
+MEMORY_BROKER_LATENCY = Histogram(
+    "hybrid_memory_broker_latency_seconds",
+    "Latency of memory broker operations",
+    ["operation", "memory_type"],
+)
+MEMORY_CONTRADICTIONS_DETECTED = Counter(
+    "hybrid_memory_contradictions_detected_total",
+    "Total memory contradictions detected by broker",
+    ["memory_type"],
+)
+
+# Observability Spine
+QUERY_TRACES_COMMITTED = Counter(
+    "hybrid_query_traces_committed_total",
+    "Total end-to-end query traces committed to database",
+)
+QUERY_TRACE_TOTAL_LATENCY = Histogram(
+    "hybrid_query_trace_total_latency_seconds",
+    "Total end-to-end query latency from trace records",
+    buckets=[1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 120.0],
 )

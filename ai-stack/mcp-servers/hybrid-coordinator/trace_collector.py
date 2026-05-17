@@ -201,6 +201,14 @@ class TraceCollector:
                 "trace_collector.commit trace_id=%s intent=%s total_ms=%d",
                 self.trace_id, self.intent, total_ms,
             )
+            
+            # Phase 54.5 — Observability Spine Metrics
+            try:
+                from metrics import QUERY_TRACES_COMMITTED, QUERY_TRACE_TOTAL_LATENCY
+                QUERY_TRACES_COMMITTED.inc()
+                QUERY_TRACE_TOTAL_LATENCY.observe(total_ms / 1000.0)
+            except (ImportError, Exception):
+                pass
         except Exception as exc:
             logger.debug("trace_collector.commit error: %s", exc)
 

@@ -58,15 +58,14 @@ asum <file>                             # structural overview (Py, JS, Go, Nix)
 
 ### Step 4 — MEMORY CHECKPOINT
 ```bash
-# MCP preferred:
 mcp_server_store_memory  key="<task>-plan"  value="<condensed plan + files + next steps>"
-# Shell fallback:
-aq-memory store --key "<task>" --value "<plan summary>"
+# COLLABORATION: Write Intent Lock to .agent/collaboration/PENDING.json
 ```
 Checkpoint before executing any slice. If context exceeds ~60% of model window, compact first.
 
 ### Step 5 — EXECUTE (one slice at a time)
 - Read files before editing — never edit blind
+- **Atomic Pulse**: Append success to `.agent/collaboration/PULSE.log` after every write
 - Smallest change that moves the system forward — no "while I'm here" additions
 - Verify all new library/package references exist (no hallucinated deps)
 - One slice = one commit
@@ -91,12 +90,8 @@ aq-qa 0
 ```bash
 git add <specific files>
 scripts/governance/tier0-validation-gate.sh --pre-commit
-git commit -m "type(scope): description
-
-- Bullet: what changed and why
-- Validation: tier0 passed / N tests / aq-qa clean
-
-Co-Authored-By: <active-agent-name> <noreply@google.com>"
+git commit -m "..."
+# COLLABORATION: Update .agent/collaboration/HANDOFF.md
 ```
 Replace `<active-agent-name>` with the model generating the work (e.g. Gemini 2.5 Pro).
 Never commit without validation evidence. Never use `--no-verify`.

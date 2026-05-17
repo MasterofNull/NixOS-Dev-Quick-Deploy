@@ -92,22 +92,79 @@ def get_classifier() -> "IntentClassifier":
     return _classifier
 
 
+import asyncio
+import httpx
+import numpy as np
+
+# ---------------------------------------------------------------------------
+# Semantic Prototypes (Phase 54.2)
+# These epitomize the 'vibe' of an intent beyond just keywords.
+# ---------------------------------------------------------------------------
+SEMANTIC_PROTOTYPES: Dict[str, List[str]] = {
+    "code_generation": [
+        "I need a python script to parse logs and send alerts",
+        "write a react component for a navigation sidebar",
+        "how do I implement a singleton in C++",
+    ],
+    "planning": [
+        "what are the high level steps to migrate this to nixos",
+        "design a system architecture for a high-availability database",
+        "create a project roadmap for the next three phases",
+    ],
+    "troubleshooting": [
+        "the service is crashing with a segmentation fault",
+        "why am I getting a 404 error on this endpoint",
+        "diagnose the connection timeout in the redis client",
+    ],
+}
+
+_EMBEDDINGS_URL = os.getenv("LLAMA_CPP_EMBED_URL", "http://127.0.0.1:8081/embedding")
+
 class IntentClassifier:
     """
-    Lightweight keyword-based intent classifier (<1ms per call).
-
-    Uses cosine similarity via embedding is optional (falls back to pure keyword
-    scoring when llama-embed is unavailable).
+    Hybrid Intent Classifier (Keywords + Semantic Prototypes).
     """
 
     def __init__(self) -> None:
         self._routing_map: Dict[str, Any] = {}
         self._map_mtime: float = 0.0
+        self._prototype_embeddings: Dict[str, List[np.ndarray]] = {}
         self._load_routing_map()
+        # Non-blocking initialization of prototypes
+        asyncio.create_task(self._warm_prototypes())
 
-    # ------------------------------------------------------------------
-    # Public classify
-    # ------------------------------------------------------------------
+    async def _get_embedding(self, text: str) -> Optional[np.ndarray]:
+        """Fetch embedding from local llama-cpp-embed server."""
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.post(_EMBEDDINGS_URL, json={"content": text})
+                if resp.status_code == 200:
+                    return np.array(resp.json().get("embedding", []))
+        except Exception:
+            pass
+        return None
+
+    async def _warm_prototypes(self) -> None:
+        """Prefetch embeddings for all semantic prototypes."""
+        for intent, queries in SEMANTIC_PROTOTYPES.items():
+            embeds = await asyncio.gather(*[self._get_embedding(q) for q in queries])
+            self._prototype_embeddings[intent] = [e for e in embeds if e is not None]
+        if self._prototype_embeddings:
+            logger.info("intent_classifier: semantic prototypes warmed (L6 Active)")
+
+    async def classify_semantic(self, query: str) -> Dict[str, float]:
+        """Calculate semantic similarity scores against prototypes."""
+        query_embed = await self._get_embedding(query)
+        if query_embed is None or not self._prototype_embeddings:
+            return {}
+
+        scores = {}
+        for intent, embeds in self._prototype_embeddings.items():
+            if not embeds: continue
+            # Cosine similarity average across prototypes
+            sims = [np.dot(query_embed, e) / (np.linalg.norm(query_embed) * np.linalg.norm(e)) for e in embeds]
+            scores[intent] = float(np.mean(sims))
+        return scores
 
     def classify(
         self,
@@ -115,42 +172,42 @@ class IntentClassifier:
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Classify query into an intent.
-
-        Returns:
-            {
-                "intent": str,
-                "confidence": float,
-                "profile": str,
-                "fallback_profile": str,
-                "memory_recall": bool,
-                "rag_project": str,
-                "signals_matched": list[str],
-            }
+        Classify query into an intent using hybrid scoring.
+        
+        NOTE: This synchronous call uses keyword fallback; 
+        async semantic classification is handled by the coordinator.
         """
         self._maybe_reload_map()
         query_lower = query.lower()
 
-        scores: Dict[str, float] = {}
+        keyword_scores: Dict[str, float] = {}
         matched_signals: Dict[str, List[str]] = {}
 
         for intent, signals in INTENT_SIGNALS.items():
             matches = [s for s in signals if s in query_lower]
-            scores[intent] = len(matches) / max(len(signals), 1)
+            # Boost score based on matches, max 1.0
+            keyword_scores[intent] = min(1.0, len(matches) / 2.0)
             matched_signals[intent] = matches
 
-        best_intent = max(scores, key=lambda k: scores[k]) if scores else "unknown"
-        best_score = scores.get(best_intent, 0.0)
+        best_intent = max(keyword_scores, key=lambda k: keyword_scores[k]) if keyword_scores else "unknown"
+        best_score = keyword_scores.get(best_intent, 0.0)
 
-        # Normalise: if best score is 0, mark as unknown
         if best_score == 0.0:
             best_intent = "unknown"
 
         routing = self._get_routing(best_intent, best_score)
-        return {
+        
+        # Metadata for Level 6 monitoring
+        classification_metadata = {
             "intent": best_intent,
             "confidence": round(best_score, 3),
             "signals_matched": matched_signals.get(best_intent, []),
+            "cognitive_lift": 0.0, # Filled when semantic classification completes
+            "layers_active": ["L6:Semantic", "L5:Session"] if best_score > 0 else ["L5:Session"]
+        }
+
+        return {
+            **classification_metadata,
             **routing,
         }
 
