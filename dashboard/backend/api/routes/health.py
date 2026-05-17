@@ -147,9 +147,10 @@ async def get_aggregate_health():
 # OSI Layer Health — fed by aq-qa layers{} JSON (Phase 34.1)
 # ============================================================================
 
-# Simple in-process TTL cache so repeated dashboard refreshes don't hammer aq-qa
+# In-process TTL cache + background-runner state (same pattern as aistack.py fetchQaStatus fix)
 _layered_cache: Dict[str, Any] = {"result": None, "expires_at": 0.0}
-_LAYERED_CACHE_TTL = 30  # seconds
+_layered_running: bool = False
+_LAYERED_CACHE_TTL = 300  # 5 min — aq-qa takes 60s+ so 30s TTL caused perpetual misses
 
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
@@ -197,10 +198,26 @@ async def _run_aq_qa_layered() -> Dict[str, Any]:
     return data
 
 
+async def _run_aq_qa_layered_background() -> None:
+    """Run aq-qa --json in background and populate _layered_cache. Never raises."""
+    global _layered_running
+    try:
+        data = await _run_aq_qa_layered()
+        _layered_cache["result"] = data
+        _layered_cache["expires_at"] = time.monotonic() + _LAYERED_CACHE_TTL
+        logger.info("OSI layer health cache populated: %s passed, %s failed",
+                    data.get("passed", "?"), data.get("failed", "?"))
+    except Exception as exc:
+        logger.error("OSI layer background aq-qa failed: %s", exc)
+    finally:
+        _layered_running = False
+
+
 @router.get("/layered")
 async def get_layered_health():
     """
     OSI Layer Health — returns aq-qa phase-0 results grouped by layer.
+    Non-blocking: returns {pending:true} on cold cache while background task runs.
 
     Response shape:
       {
@@ -211,30 +228,36 @@ async def get_layered_health():
           "1": [{"layer": 1, "id": "...", "status": "PASS", "description": "..."}],
           ...
         },
-        "cached": false,
-        "cache_expires_in_s": 30
+        "cached": bool,
+        "pending": bool,
+        "cache_expires_in_s": N
       }
     """
+    global _layered_running
     now = time.monotonic()
+
+    # Cache hit — return immediately
     if _layered_cache["result"] is not None and now < _layered_cache["expires_at"]:
         result = dict(_layered_cache["result"])
         result["cached"] = True
+        result["pending"] = False
         result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
         return result
 
-    try:
-        data = await _run_aq_qa_layered()
-    except Exception as exc:
-        logger.error("aq-qa layered health check failed: %s", exc)
-        raise HTTPException(status_code=503, detail=f"aq-qa unavailable: {exc}")
+    # Cold cache — kick off background run if not already running
+    if not _layered_running:
+        _layered_running = True
+        asyncio.create_task(_run_aq_qa_layered_background())
 
-    _layered_cache["result"] = data
-    _layered_cache["expires_at"] = now + _LAYERED_CACHE_TTL
-
-    result = dict(data)
-    result["cached"] = False
-    result["cache_expires_in_s"] = _LAYERED_CACHE_TTL
-    return result
+    return {
+        "phase": "0",
+        "pending": True,
+        "running": True,
+        "cached": False,
+        "passed": 0, "failed": 0, "skipped": 0, "duration_s": 0,
+        "layers": {},
+        "message": "OSI layer health check running in background; refresh in ~60s",
+    }
 
 
 # ============================================================================
