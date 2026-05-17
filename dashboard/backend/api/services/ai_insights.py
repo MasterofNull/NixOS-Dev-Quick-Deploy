@@ -9,6 +9,7 @@ import subprocess
 import json
 import logging
 import os
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +118,7 @@ class AIInsightsService:
         self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
         self._report_process: Optional[asyncio.subprocess.Process] = None
         self._shutting_down = False
+        self._last_stale_log: float = 0.0  # monotonic; rate-limit stale-cache WARNINGs
         self._seed_cache_from_persisted_report()
 
     async def get_full_report(self, http_timeout: float = 2.0) -> Dict[str, Any]:
@@ -139,11 +141,17 @@ class AIInsightsService:
         except (asyncio.TimeoutError, RuntimeError):
             stale = self._get_cached_report(max_age_seconds=None)
             if stale is not None:
-                logger.warning("Serving stale aq-report cache after timeout/failure")
+                now = time.monotonic()
+                if now - self._last_stale_log > 60:
+                    logger.warning("Serving stale aq-report cache after timeout/failure (rate-limited; suppressing repeats for 60s)")
+                    self._last_stale_log = now
                 return stale
             persisted = self._load_persisted_report()
             if persisted is not None:
-                logger.warning("Serving persisted aq-report snapshot after timeout/failure")
+                now = time.monotonic()
+                if now - self._last_stale_log > 60:
+                    logger.warning("Serving persisted aq-report snapshot after timeout/failure (rate-limited; suppressing repeats for 60s)")
+                    self._last_stale_log = now
                 return persisted
             # Return empty dict so callers can render partial data gracefully
             return {}
@@ -278,7 +286,7 @@ class AIInsightsService:
             temp_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             temp_path.replace(self._persisted_report_path)
         except OSError as exc:
-            logger.warning("Failed to persist aq-report snapshot to %s: %s", self._persisted_report_path, exc)
+            logger.debug("Failed to persist aq-report snapshot to %s: %s", self._persisted_report_path, exc)
 
     def _update_cache(self, report: Dict[str, Any], *, timestamp: datetime, persist: bool) -> None:
         self._cache = report

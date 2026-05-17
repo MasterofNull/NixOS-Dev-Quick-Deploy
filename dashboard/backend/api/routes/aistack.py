@@ -137,6 +137,13 @@ def _aider_wrapper_auth_headers() -> Dict[str, str]:
         or _load_secret_from_file("AIDER_WRAPPER_API_KEY_FILE")
     )
     if not api_key:
+        # Fallback: try well-known NixOS secrets path when env var is not injected
+        # (e.g. dashboard started before AIDER_WRAPPER_API_KEY_FILE was wired)
+        try:
+            api_key = Path("/run/secrets/aider_wrapper_api_key").read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    if not api_key:
         return {}
     return {"x-api-key": api_key}
 
