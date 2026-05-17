@@ -1,99 +1,205 @@
 """
-memory_superseder.py — Logical fact versioning and temporal supersession (Phase 55.1)
+memory_superseder.py — Unified Phase 55 temporal supersession service.
 
-Handles the logic of 'versioning' memories when new, contradicting information
-is received. Instead of deleting old data, it creates a chain of truth.
-
-Concepts:
-  - Logical Clock: Incremental version for specific facts.
-  - Supersession: Closing the validity window of an old fact.
-  - Lineage: Tracking the ID of the predecessor.
+This module is the single source of truth for both:
+- broker-facing lineage helpers used during memory writes, and
+- HTTP-facing supersession ledger/history endpoints.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
+
+from aiohttp import web
 
 logger = logging.getLogger("hybrid-coordinator")
 
-# ---------------------------------------------------------------------------
-# Module state
-# ---------------------------------------------------------------------------
-_postgres_client: Optional[Any] = None
+DDL_MEMORY_SUPERSESSIONS = """
+CREATE TABLE IF NOT EXISTS memory_supersessions (
+    supersession_id TEXT PRIMARY KEY,
+    fact_id         TEXT NOT NULL,
+    replacement     TEXT NOT NULL,
+    reason          TEXT NOT NULL,
+    old_valid_until TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_memory_supersessions_fact_id
+    ON memory_supersessions (fact_id);
+CREATE INDEX IF NOT EXISTS idx_memory_supersessions_created_at
+    ON memory_supersessions (created_at DESC);
+"""
 
-def init(postgres_client: Optional[Any] = None) -> None:
-    global _postgres_client
-    _postgres_client = postgres_client
-    logger.info("memory_superseder: initialized (Phase 55.1 Active)")
+
+@dataclass
+class SupersessionEvent:
+    supersession_id: str
+    fact_id: str
+    replacement: str
+    reason: str
+    old_valid_until: str
+    created_at: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "supersession_id": self.supersession_id,
+            "fact_id": self.fact_id,
+            "replacement": self.replacement,
+            "reason": self.reason,
+            "old_valid_until": self.old_valid_until,
+            "created_at": self.created_at,
+            "metadata": self.metadata,
+        }
 
 
 class MemorySuperseder:
-    """
-    Orchestrates memory versioning and conflict resolution.
-    """
+    """Unified supersession service for lineage decisions and ledger writes."""
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, postgres_client: Optional[Any] = None) -> None:
+        self._pg = postgres_client
+        self._schema_ready = False
+        self._events: List[SupersessionEvent] = []
 
     async def ensure_schema(self) -> None:
-        """Create supersession lineage table if it doesn't exist."""
-        if not _postgres_client:
+        if self._schema_ready or self._pg is None:
             return
-
-        ddl = """
-        CREATE TABLE IF NOT EXISTS memory_supersessions (
-            id SERIAL PRIMARY KEY,
-            predecessor_id TEXT NOT NULL,
-            successor_id TEXT NOT NULL,
-            memory_type TEXT NOT NULL,
-            superseded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            logical_clock FLOAT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_supersessions_successor ON memory_supersessions(successor_id);
-        CREATE INDEX IF NOT EXISTS idx_supersessions_predecessor ON memory_supersessions(predecessor_id);
-        """
-        try:
-            await _postgres_client.execute(ddl)
-            logger.info("memory_superseder: PostgreSQL schema verified")
-        except Exception as exc:
-            logger.warning("memory_superseder: schema init failed: %s", exc)
+        await self._pg.execute(DDL_MEMORY_SUPERSESSIONS)
+        self._schema_ready = True
+        logger.info("memory_superseder: PostgreSQL schema verified")
 
     def resolve_lineage(self, new_fact: str, existing_facts: List[Dict[str, Any]]) -> Optional[str]:
-        """
-        Identify if the new fact should supersede any existing ones.
-        Returns the memory_id of the fact to be superseded, or None.
-        """
         if not existing_facts:
             return None
-
-        # Sort by score/relevance
         sorted_existing = sorted(existing_facts, key=lambda x: x.get("score", 0.0), reverse=True)
-        
-        # In Phase 55.1, we only supersede the top most relevant fact
-        # if it logically contradicts the new one.
         top_fact = sorted_existing[0]
-        
-        # Lineage is established in the broker's check_contradiction logic.
-        # This module will later support more complex 'Merge' logic.
         return top_fact.get("memory_id") or top_fact.get("id")
 
     def prepare_superseded_metadata(self, predecessor_id: str) -> Dict[str, Any]:
-        """
-        Return metadata required to mark an entry as superseded.
-        """
         return {
             "supersedes": predecessor_id,
             "version_update": True,
-            "logical_clock": datetime.now(timezone.utc).timestamp()
+            "logical_clock": datetime.now(timezone.utc).timestamp(),
         }
 
-# Singleton accessor
-_instance: Optional[MemorySuperseder] = None
+    async def supersede(
+        self,
+        *,
+        fact_id: str,
+        replacement: str,
+        reason: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        fact_id = str(fact_id or "").strip()
+        replacement = str(replacement or "").strip()
+        reason = str(reason or "").strip()
+        if not fact_id:
+            raise ValueError("fact_id required")
+        if not replacement:
+            raise ValueError("replacement required")
+        if not reason:
+            raise ValueError("reason required")
+
+        now = datetime.now(tz=timezone.utc).isoformat()
+        event = SupersessionEvent(
+            supersession_id=str(uuid4()),
+            fact_id=fact_id,
+            replacement=replacement,
+            reason=reason,
+            old_valid_until=now,
+            created_at=now,
+            metadata=metadata or {},
+        )
+
+        await self.ensure_schema()
+        if self._pg is not None:
+            await self._pg.execute(
+                """
+                INSERT INTO memory_supersessions
+                    (supersession_id, fact_id, replacement, reason, old_valid_until, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                event.supersession_id,
+                event.fact_id,
+                event.replacement,
+                event.reason,
+                event.old_valid_until,
+                event.created_at,
+            )
+
+        self._events.append(event)
+        self._events = self._events[-200:]
+        return {
+            "superseded": True,
+            "fact_id": event.fact_id,
+            "old_valid_until": event.old_valid_until,
+            "supersession_id": event.supersession_id,
+            "ledger": "postgres" if self._pg is not None else "memory",
+        }
+
+    async def history(self, limit: int = 20) -> List[Dict[str, Any]]:
+        limit = max(1, min(int(limit or 20), 100))
+        if self._pg is not None:
+            await self.ensure_schema()
+            try:
+                rows = await self._pg.fetch_all(
+                    """
+                    SELECT supersession_id, fact_id, replacement, reason,
+                           old_valid_until::text AS old_valid_until,
+                           created_at::text AS created_at
+                    FROM memory_supersessions
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    limit,
+                )
+                return [dict(row) for row in rows]
+            except Exception as exc:
+                logger.warning("memory_supersession_history_pg_failed error=%s", exc)
+        return [event.to_dict() for event in reversed(self._events[-limit:])]
+
+
+_superseder = MemorySuperseder()
+
+
+def init(postgres_client: Optional[Any] = None) -> None:
+    global _superseder
+    _superseder = MemorySuperseder(postgres_client=postgres_client)
+    logger.info("memory_superseder: initialized (Phase 55.1 Active)")
+
 
 def get_superseder() -> MemorySuperseder:
-    global _instance
-    if _instance is None:
-        _instance = MemorySuperseder()
-    return _instance
+    return _superseder
+
+
+async def handle_memory_supersede(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+        result = await _superseder.supersede(
+            fact_id=data.get("fact_id"),
+            replacement=data.get("replacement") or data.get("replacement_text"),
+            reason=data.get("reason"),
+            metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else {},
+        )
+        return web.json_response(result)
+    except ValueError as exc:
+        return web.json_response({"error": "memory_supersede_invalid", "detail": str(exc)}, status=400)
+    except Exception as exc:
+        logger.exception("memory_supersede_failed")
+        return web.json_response({"error": "memory_supersede_failed", "detail": str(exc)}, status=500)
+
+
+async def handle_memory_supersede_history(request: web.Request) -> web.Response:
+    try:
+        limit = int(request.query.get("limit", "20"))
+        return web.json_response({"events": await _superseder.history(limit=limit)})
+    except Exception as exc:
+        return web.json_response({"error": "memory_supersede_history_failed", "detail": str(exc)}, status=500)
+
+
+def register_routes(http_app: web.Application) -> None:
+    http_app.router.add_post("/memory/supersede", handle_memory_supersede)
+    http_app.router.add_get("/memory/supersede/history", handle_memory_supersede_history)
