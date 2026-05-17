@@ -110,6 +110,9 @@ POST_FLIGHT_CONVERGE_START_DELAY_SECONDS="${POST_FLIGHT_CONVERGE_START_DELAY_SEC
 POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS="${POST_SWITCH_REPO_SERVICE_RESTART_TIMEOUT_SECONDS:-90}"
 POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS="${POST_SWITCH_REPO_CAPABILITY_VERIFY_TIMEOUT_SECONDS:-45}"
 POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT="${POST_SWITCH_REPO_CAPABILITY_RETRY_COUNT:-2}"
+ACTIVATION_MEMORY_RELIEF_ENABLED="${ACTIVATION_MEMORY_RELIEF_ENABLED:-true}"
+ACTIVATION_MEMORY_RELIEF_UNITS="${ACTIVATION_MEMORY_RELIEF_UNITS:-llama-cpp.service}"
+declare -a ACTIVATION_MEMORY_RELIEF_PAUSED_UNITS=()
 COMPLETION_PRINT_TEST_RESULTS="${COMPLETION_PRINT_TEST_RESULTS:-true}"
 COMPLETION_TEST_MODE="${COMPLETION_TEST_MODE:-summary}" # summary|full|off
 COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS="${COMPLETION_TEST_HEALTH_TIMEOUT_SECONDS:-45}"
@@ -231,6 +234,12 @@ Environment overrides:
   MIN_ACTIVATION_MEM_AVAILABLE_MB=1024
                             Warn in readiness analysis when available memory falls
                             below this threshold before live activation.
+  ACTIVATION_MEMORY_RELIEF_ENABLED=true
+                            Pause selected high-memory services before live switch
+                            and resume them afterward.
+  ACTIVATION_MEMORY_RELIEF_UNITS="llama-cpp.service"
+                            Space-separated unit list paused during live switch
+                            when memory relief is enabled.
   HOME_MANAGER_BACKUP_EXTENSION=backup-<timestamp>
                             Backup suffix used for Home Manager file collisions.
                             Default is timestamped per run to prevent clobbering
@@ -1008,6 +1017,8 @@ run_script_runtime_contract_check() {
     run_discovery_step
     run_pre_deploy_validation_loop
     prime_sudo_session
+    pause_activation_memory_relief_units
+    resume_activation_memory_relief_units
   )
   local missing=()
   local fn
@@ -1731,6 +1742,40 @@ cleanup_on_exit() {
   if [[ -n "${FLAKE_PROJECTION_DIR}" && -d "${FLAKE_PROJECTION_DIR}" ]]; then
     rm -rf "${FLAKE_PROJECTION_DIR}" >/dev/null 2>&1 || true
   fi
+  resume_activation_memory_relief_units || true
+}
+
+pause_activation_memory_relief_units() {
+  ACTIVATION_MEMORY_RELIEF_PAUSED_UNITS=()
+  [[ "${ACTIVATION_MEMORY_RELIEF_ENABLED}" == true ]] || {
+    log "Activation memory relief disabled; keeping high-memory services running."
+    return 0
+  }
+
+  local unit=""
+  for unit in ${ACTIVATION_MEMORY_RELIEF_UNITS}; do
+    [[ -n "${unit}" ]] || continue
+    if systemctl is-active --quiet "${unit}" 2>/dev/null; then
+      log "Activation memory relief: stopping ${unit} before live switch."
+      run_privileged systemctl stop "${unit}"
+      ACTIVATION_MEMORY_RELIEF_PAUSED_UNITS+=("${unit}")
+    else
+      log "Activation memory relief: ${unit} is not active; no stop needed."
+    fi
+  done
+}
+
+resume_activation_memory_relief_units() {
+  [[ ${#ACTIVATION_MEMORY_RELIEF_PAUSED_UNITS[@]} -gt 0 ]] || return 0
+
+  local unit=""
+  for unit in "${ACTIVATION_MEMORY_RELIEF_PAUSED_UNITS[@]}"; do
+    [[ -n "${unit}" ]] || continue
+    log "Activation memory relief: starting ${unit} after live switch."
+    run_privileged systemctl start "${unit}" || \
+      log "WARNING: failed to restart ${unit} after activation memory relief."
+  done
+  ACTIVATION_MEMORY_RELIEF_PAUSED_UNITS=()
 }
 
 on_unexpected_error() {
@@ -4382,8 +4427,10 @@ run_switch_mode_workflow() {
     log "Switching system configuration"
     # Free any blocked AI stack ports before rebuild (prevents systemd service failures)
     free_blocked_ai_ports
+    pause_activation_memory_relief_units
     run_timed_step "System Switch" run_privileged \
       nixos-rebuild switch --flake "${FLAKE_REF}#${NIXOS_TARGET}"
+    resume_activation_memory_relief_units
   else
     log "Skipping system switch (--skip-system-switch)"
   fi

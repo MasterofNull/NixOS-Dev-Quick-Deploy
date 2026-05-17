@@ -1,28 +1,36 @@
 # Handoff Memo - 2026-05-17
 
-**Status:** APPARMOR ACTIVATION RELIABILITY SLICE COMPLETE
-**Last Action:** Added deploy-readiness visibility for low activation memory headroom.
+**Status:** DEPLOY-TIME MEMORY RELIEF SLICE COMPLETE
+**Last Action:** Added configurable live-switch memory relief around activation.
 
 ## Findings
-- Intermittent `apparmor.service` reload failures are not profile-size driven.
-- AppArmor profiles are small and usually reload successfully.
-- Failed reloads report `Out of memory` and occurred while the host was under severe RAM pressure.
-- Current runtime snapshot during investigation: ~27 GiB total RAM, ~26 GiB used, very low available memory, swap active.
+- Prior AppArmor reload failures were consistent with host memory pressure, not oversized policy.
+- `llama-cpp.service` is the dominant live memory consumer during normal operation (~15 GiB), while the dashboard is materially smaller and worth keeping online.
+- The smallest useful default pause set is therefore `llama-cpp.service` only.
 
 ## Change made
-- Added `Activation Headroom` readiness analysis to `scripts/governance/analyze-clean-deploy-readiness.sh`.
-- New env override: `MIN_ACTIVATION_MEM_AVAILABLE_MB` (default `1024`).
-- Readiness now warns when `MemAvailable` is below the configured threshold and explicitly calls out AppArmor reload risk.
-- Documented the override in `nixos-quick-deploy.sh --help` output.
+- Added deploy-time memory relief controls to `nixos-quick-deploy.sh`:
+  - `ACTIVATION_MEMORY_RELIEF_ENABLED=true`
+  - `ACTIVATION_MEMORY_RELIEF_UNITS="llama-cpp.service"`
+- Live switch mode now:
+  1. frees blocked AI ports,
+  2. pauses configured active high-memory units,
+  3. runs `nixos-rebuild switch`,
+  4. resumes any units it actually paused.
+- Cleanup also restores paused units if activation exits early.
+- Added runtime-contract and roadmap-verifier coverage so the pause/resume path is guarded against accidental removal.
 
 ## Validation
-- `bash -n scripts/governance/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` passed.
-- Forced-threshold smoke run emitted the expected low-headroom warning.
+- `bash -n nixos-quick-deploy.sh scripts/testing/verify-flake-first-roadmap-completion.sh` passed.
+- `./nixos-quick-deploy.sh --self-check` passed.
+- `bash scripts/testing/verify-flake-first-roadmap-completion.sh` passed: `603 pass, 0 fail`.
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` run for repo-required validation.
 
 ## Related stable state from prior slices
 - Dashboard trace timeline remains live.
 - Phase 55 superseder/crystallizer schema warnings are resolved.
 - Identity kernel runtime permissions are repaired.
+- Readiness analysis now warns on low activation memory headroom before deploy.
 
 ## Next recommended slice
-If AppArmor reload failures recur despite operator awareness, investigate deploy-time memory relief strategies separately (for example pausing high-memory local inference workloads before live activation). Do not weaken AppArmor policy as a first response.
+Run one real live-switch deploy with the new relief path enabled, confirm the logs show `llama-cpp.service` pausing/resuming around activation, and compare whether AppArmor reloads complete cleanly under otherwise similar host pressure.
