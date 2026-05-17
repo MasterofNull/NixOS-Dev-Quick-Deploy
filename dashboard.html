@@ -175,6 +175,77 @@
             line-height: 1;
         }
 
+        /* KPI Ribbon — always-visible telemetry strip */
+        .kpi-ribbon {
+            display: flex;
+            align-items: center;
+            background: rgba(10, 14, 20, 0.97);
+            border-top: 1px solid rgba(0, 217, 255, 0.2);
+            border-bottom: 1px solid rgba(0, 217, 255, 0.45);
+            box-shadow: 0 3px 18px rgba(0, 217, 255, 0.08), 0 1px 0 rgba(0, 217, 255, 0.04) inset;
+            padding: 0.42rem 1.5rem;
+            margin-bottom: 1.25rem;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 0.7rem;
+            letter-spacing: 0.07em;
+            overflow-x: auto;
+            scrollbar-width: none;
+            position: relative;
+        }
+
+        .kpi-ribbon::-webkit-scrollbar { display: none; }
+
+        .kpi-ribbon::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 6px,
+                rgba(0, 217, 255, 0.006) 6px,
+                rgba(0, 217, 255, 0.006) 12px
+            );
+            pointer-events: none;
+        }
+
+        .kpi-cell {
+            display: flex;
+            align-items: baseline;
+            gap: 0.35rem;
+            padding: 0 0.9rem;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .kpi-cell:first-child { padding-left: 0; }
+
+        .kpi-divider {
+            width: 1px;
+            height: 12px;
+            background: rgba(30, 58, 95, 0.9);
+            flex-shrink: 0;
+            align-self: center;
+        }
+
+        .kpi-label {
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-size: 0.62rem;
+            letter-spacing: 0.12em;
+        }
+
+        .kpi-val {
+            color: var(--accent-cyan);
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+
+        .kpi-val.kpi-ok   { color: var(--status-online); }
+        .kpi-val.kpi-warn { color: var(--status-warning); }
+        .kpi-val.kpi-err  { color: var(--status-error); }
+        .kpi-val.kpi-muted { color: var(--text-muted); }
+
         .legacy-runtime-banner {
             display: flex;
             justify-content: space-between;
@@ -587,12 +658,18 @@
             transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
         }
 
-        .lens-btn:hover,
+        .lens-btn:hover {
+            background: rgba(0, 217, 255, 0.07);
+            border-color: rgba(0, 217, 255, 0.6);
+            color: var(--accent-cyan);
+        }
+
         .lens-btn.active {
-            background: rgba(0, 217, 255, 0.12);
+            background: rgba(0, 217, 255, 0.15);
             border-color: var(--border-glow);
             color: var(--accent-cyan);
-            box-shadow: 0 0 14px rgba(0, 217, 255, 0.12);
+            box-shadow: 0 0 18px rgba(0, 217, 255, 0.35), inset 0 0 10px rgba(0, 217, 255, 0.08);
+            text-shadow: 0 0 8px rgba(0, 217, 255, 0.7);
         }
 
         .dashboard-section.lens-hidden,
@@ -1971,50 +2048,105 @@
 
         /* First-time User Welcome Banner */
         .welcome-banner {
-            background: linear-gradient(
-                135deg,
-                var(--border-glow) 0%,
-                var(--accent-magenta) 100%
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-cyan);
+            box-shadow: 0 0 32px rgba(0, 217, 255, 0.12), inset 0 0 60px rgba(0, 217, 255, 0.02);
+            color: var(--accent-cyan);
+            padding: 1.5rem 2rem;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+            text-align: left;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .welcome-banner::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 3px,
+                rgba(0, 217, 255, 0.018) 3px,
+                rgba(0, 217, 255, 0.018) 4px
             );
-            color: var(--bg-primary);
-            padding: 2rem;
-            border-radius: 8px;
-            margin-bottom: 2rem;
-            text-align: center;
+            pointer-events: none;
+        }
+
+        .boot-log { margin-bottom: 1.25rem; }
+
+        .boot-line {
+            padding: 0.18rem 0;
+            font-size: 0.82rem;
+            color: var(--status-online);
+            letter-spacing: 0.04em;
+        }
+
+        .boot-ok {
+            color: var(--status-online);
+            margin-right: 0.5rem;
+            font-weight: 700;
+        }
+
+        .boot-prompt {
+            color: var(--accent-cyan);
+            margin-right: 0.5rem;
+            font-weight: 700;
+        }
+
+        .cursor-blink {
+            animation: cursorBlink 1s step-end infinite;
+            color: var(--accent-cyan);
+        }
+
+        @keyframes cursorBlink {
+            50% { opacity: 0; }
         }
 
         .welcome-banner h2 {
-            font-size: 1.8rem;
+            font-size: 0.9rem;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            color: var(--status-online);
             margin-bottom: 0.5rem;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.1em;
         }
 
         .welcome-banner p {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
             margin-bottom: 1rem;
-            opacity: 0.95;
+            opacity: 1;
         }
 
         .welcome-buttons {
             display: flex;
-            gap: 1rem;
-            justify-content: center;
+            gap: 0.75rem;
+            justify-content: flex-start;
             flex-wrap: wrap;
         }
 
         .welcome-btn {
-            padding: 0.75rem 1.5rem;
-            background: var(--bg-primary);
-            border: none;
-            border-radius: 4px;
+            padding: 0.45rem 1.25rem;
+            background: transparent;
+            border: 1px solid var(--accent-cyan);
+            border-radius: 2px;
             cursor: pointer;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 0.78rem;
             font-weight: 600;
-            transition: all 0.3s ease;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            transition: background 0.15s, box-shadow 0.15s;
         }
 
         .welcome-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            background: rgba(0, 217, 255, 0.1);
+            box-shadow: 0 0 16px rgba(0, 217, 255, 0.35);
+            transform: none;
         }
 
         @media (max-width: 1180px) {
@@ -3153,6 +3285,49 @@
             </div>
         </header>
 
+        <!-- KPI Ribbon — persistent heads-up telemetry strip -->
+        <div id="kpiRibbon" class="kpi-ribbon" aria-label="Key performance indicators">
+            <div class="kpi-cell">
+                <span class="kpi-label">STACK</span>
+                <span class="kpi-val" id="ribbonStack">INIT</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">LOCAL&nbsp;AI</span>
+                <span class="kpi-val" id="ribbonLocalPct">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">EMBED&nbsp;CACHE</span>
+                <span class="kpi-val" id="ribbonCachePct">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">EVAL</span>
+                <span class="kpi-val" id="ribbonEvalPct">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">HINTS</span>
+                <span class="kpi-val" id="ribbonHintPct">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">REDIS</span>
+                <span class="kpi-val" id="ribbonRedis">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">POSTGRES</span>
+                <span class="kpi-val" id="ribbonPg">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
+                <span class="kpi-label">QDRANT</span>
+                <span class="kpi-val" id="ribbonQdrant">--</span>
+            </div>
+        </div>
+
         <section class="command-deck" id="commandDeck" aria-label="Command deck">
             <div class="deck-panel">
                 <div class="deck-header">
@@ -3883,6 +4058,39 @@
                             <div class="metric">
                                 <div class="metric-label">Last Event</div>
                                 <div class="metric-value" id="telemetryLast" style="font-size: 0.85rem;">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cognitive Intelligence (Level 6) -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Cognitive Intelligence (Level 6)</h2>
+                        </div>
+                        <span class="card-badge" style="background-color: var(--accent-cyan)">Active</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Intent Confidence</div>
+                                <div class="metric-value" id="intentConfidence">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">RAG Hit Rate</div>
+                                <div class="metric-value" id="ragHitRate">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Memory Coherence</div>
+                                <div class="metric-value" id="memoryCoherence">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Query Trace Flow</div>
+                                <div class="metric-value" id="traceFlow">--</div>
                             </div>
                         </div>
                     </div>
@@ -7208,12 +7416,13 @@
                     fetchQaStatus(),
                     fetchSwitchboardProfiles(),
                     fetchTaskClassificationStats(),
-                    fetchVerifySelf()
+                    fetchVerifySelf(),
+                    fetchPrometheusMetrics()
                 ]);
                 const payloads = {};
                 const failedSources = [];
                 settled.forEach((result, index) => {
-                    const key = sourceNames[index];
+                    const key = sourceNames[index] || 'promMetrics';
                     if (result.status === 'fulfilled') {
                         payloads[key] = result.value;
                     } else {
@@ -7322,6 +7531,7 @@
                 updatePersistenceMetrics(persistence);
                 updateTelemetryMetrics(telemetry);
                 updateHybridMetrics(hybrid, tokenSavings);
+                updateCognitiveMetrics(payloads.promMetrics);
                 updateLearningMetrics(learning);
                 updateDiscoverySignals(keywordSignals);
                 updateFeedbackMetrics(feedback);
@@ -7332,6 +7542,7 @@
                     ...aiInternals,
                     _totalMetricsTracked: learningStats?.total_metrics_tracked ?? null,
                 });
+                updateKpiRibbon(aiInternals, aiMetrics);
                 updatePRSIQueue(prsiActions);
                 updateFirewallOperator(firewallOps);
                 updateHealthScore();
@@ -7575,6 +7786,14 @@
                 const response = await fetch(`${FASTAPI_BASE}/api/aistack/verify-self/results`, { cache: 'no-store' });
                 if (!response.ok) return null;
                 return await response.json();
+            } catch (_) { return null; }
+        }
+
+        async function fetchPrometheusMetrics() {
+            try {
+                const response = await fetch(`${HYBRID_BASE}/metrics`, { cache: 'no-store' });
+                if (!response.ok) return null;
+                return await response.text();
             } catch (_) { return null; }
         }
 
@@ -9256,6 +9475,65 @@
             document.getElementById('telemetryLast').textContent = formatTimestampWithStaleness(summary.last_event_at, 30);
         }
 
+        function parsePrometheusMetrics(text) {
+            const metrics = {};
+            if (!text) return metrics;
+            
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                if (line.startsWith('#') || !line.trim()) return;
+                
+                // Simplified parser for common prometheus line: name{labels} value
+                const match = line.match(/^([a-zA-Z_0-9]+)(?:\{([^}]*)\})?\s+([0-9.eE+-]+)/);
+                if (match) {
+                    const [full, name, labels, value] = match;
+                    if (!metrics[name]) metrics[name] = [];
+                    metrics[name].push({
+                        value: parseFloat(value),
+                        labels: (labels || '').split(',').reduce((acc, l) => {
+                            const [k, v] = l.split('=');
+                            if (k) acc[k.trim()] = (v || '').replace(/"/g, '').trim();
+                            return acc;
+                        }, {})
+                    });
+                }
+            });
+            return metrics;
+        }
+
+        function updateCognitiveMetrics(promText) {
+            const prom = parsePrometheusMetrics(promText);
+            
+            // Intent Confidence
+            const confs = prom['hybrid_intent_confidence_sum'] || [];
+            const counts = prom['hybrid_intent_confidence_count'] || [];
+            if (confs.length && counts.length) {
+                const avg = confs[0].value / counts[0].value;
+                document.getElementById('intentConfidence').textContent = avg.toFixed(3);
+                document.getElementById('intentConfidenceBar').style.width = `${(avg * 100).toFixed(0)}%`;
+            }
+
+            // RAG Hit Rate
+            const hits = prom['hybrid_rag_augmentation_hits_sum'] || [];
+            const ragTotal = prom['hybrid_rag_augmentation_hits_count'] || [];
+            if (hits.length && ragTotal.length) {
+                const avgHits = hits[0].value / ragTotal[0].value;
+                document.getElementById('ragHitRate').textContent = `${avgHits.toFixed(2)} hits/q`;
+            }
+
+            // Memory Coherence (using contradictions as inverse proxy)
+            const contradictions = prom['hybrid_memory_contradictions_detected_total'] || [];
+            const totalContradictions = contradictions.reduce((sum, m) => sum + m.value, 0);
+            document.getElementById('memoryCoherence').textContent = totalContradictions > 0 
+                ? `! ${totalContradictions} conflicts` 
+                : 'stable';
+
+            // Trace Flow
+            const traces = prom['hybrid_query_traces_committed_total'] || [];
+            const totalTraces = traces.reduce((sum, m) => sum + m.value, 0);
+            document.getElementById('traceFlow').textContent = displayCount(totalTraces, '0');
+        }
+
         function updateHybridMetrics(hybrid, tokenSavings) {
             if (!hybrid) return;
 
@@ -9400,6 +9678,50 @@
                     events: [],
                 }
             });
+        }
+
+        function _ribbonClass(val, okThresh, warnThresh) {
+            if (val === null || val === undefined) return 'kpi-muted';
+            return val >= okThresh ? 'kpi-ok' : val >= warnThresh ? 'kpi-warn' : 'kpi-err';
+        }
+
+        function updateKpiRibbon(aiInternals, aiMetrics) {
+            const cacheHit   = numericOrNull(aiInternals?.embedding_cache_hit_rate_pct);
+            const localPct   = numericOrNull(aiInternals?.llm_routing_local_pct);
+            const evalPct    = numericOrNull(aiInternals?.eval_latest_pct);
+            const hintPct    = numericOrNull(aiInternals?.hint_adoption_pct);
+            const pgOk       = aiMetrics?.database_metrics?.postgresql?.status === 'online';
+            const redisOk    = aiMetrics?.database_metrics?.redis?.status === 'online';
+            const qdrantCols = aiMetrics?.services?.qdrant?.metrics?.collection_count
+                            ?? aiMetrics?.services?.hybrid_coordinator?.health_check?.collections?.length
+                            ?? null;
+            const stackStatus = aiMetrics?.services?.hybrid_coordinator?.status
+                             ?? aiMetrics?.services?.hybrid?.status
+                             ?? null;
+
+            const set = (id, text, cls) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = text;
+                el.className = `kpi-val ${cls || ''}`.trim();
+            };
+
+            // Stack
+            if (stackStatus) {
+                const isOk = ['online','ok','healthy'].includes(String(stackStatus).toLowerCase());
+                set('ribbonStack', String(stackStatus).toUpperCase(), isOk ? 'kpi-ok' : 'kpi-warn');
+            }
+
+            // Pct metrics
+            if (localPct !== null) set('ribbonLocalPct', `${localPct.toFixed(1)}%`, _ribbonClass(localPct, 80, 50));
+            if (cacheHit !== null) set('ribbonCachePct', `${cacheHit.toFixed(1)}%`, _ribbonClass(cacheHit, 80, 50));
+            if (evalPct  !== null) set('ribbonEvalPct',  `${evalPct.toFixed(0)}%`,  _ribbonClass(evalPct, 70, 50));
+            if (hintPct  !== null) set('ribbonHintPct',  `${hintPct.toFixed(1)}%`,  _ribbonClass(hintPct, 30, 10));
+
+            // Infra probes
+            set('ribbonRedis',    redisOk  ? 'OK' : 'DOWN', redisOk  ? 'kpi-ok' : 'kpi-err');
+            set('ribbonPg',       pgOk     ? 'OK' : 'DOWN', pgOk     ? 'kpi-ok' : 'kpi-err');
+            if (qdrantCols !== null) set('ribbonQdrant', `${qdrantCols} col`, 'kpi-ok');
         }
 
         function updateAIInternals(data) {
@@ -10414,6 +10736,9 @@
             return `${protocol}//${host}:${port}`;
         })();
         const WS_BASE = FASTAPI_BASE.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+        const HYBRID_BASE = FASTAPI_BASE.includes(':8889') 
+            ? FASTAPI_BASE.replace(':8889', ':8003') 
+            : `${window.location.protocol}//${window.location.hostname}:8003`;
 
         function updateOperatorLinks() {
             const apiHealthLink = document.getElementById('apiHealthLink');
@@ -14896,11 +15221,15 @@
                 const welcomeBanner = document.createElement('div');
                 welcomeBanner.className = 'welcome-banner';
                 welcomeBanner.innerHTML = `
-                    <h2>Welcome to NixOS System Command Center</h2>
-                    <p>Your operational dashboard for AI stack management</p>
+                    <div class="boot-log">
+                        <div class="boot-line"><span class="boot-ok">[  OK  ]</span> NIXOS SYSTEM COMMAND CENTER &mdash; AI HARNESS ONLINE</div>
+                        <div class="boot-line"><span class="boot-ok">[  OK  ]</span> QWEN3-35B &middot; HYBRID COORDINATOR &middot; AIDB &middot; REDIS &middot; QDRANT</div>
+                        <div class="boot-line"><span class="boot-ok">[  OK  ]</span> OPERATOR SESSION AUTHENTICATED &mdash; ${new Date().toISOString().slice(0,19).replace('T',' ')} UTC</div>
+                        <div class="boot-line"><span class="boot-prompt">[ &gt;&gt;  ]</span> SELECT INITIALIZATION MODE<span class="cursor-blink">&nbsp;&#9608;</span></div>
+                    </div>
                     <div class="welcome-buttons">
-                        <button class="welcome-btn" onclick="OnboardingManager.showTour()">Take Tour</button>
-                        <button class="welcome-btn" onclick="OnboardingManager.skipTour()">Skip for Now</button>
+                        <button class="welcome-btn" onclick="OnboardingManager.showTour()">[ GUIDED TOUR ]</button>
+                        <button class="welcome-btn" onclick="OnboardingManager.skipTour()">[ SKIP &rarr; CONSOLE ]</button>
                     </div>
                 `;
 
