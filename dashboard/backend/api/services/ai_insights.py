@@ -119,7 +119,7 @@ class AIInsightsService:
         self._shutting_down = False
         self._seed_cache_from_persisted_report()
 
-    async def get_full_report(self, http_timeout: float = 8.0) -> Dict[str, Any]:
+    async def get_full_report(self, http_timeout: float = 2.0) -> Dict[str, Any]:
         """Get the complete aq-report data.
 
         Returns cached/persisted data immediately if aq-report is still running.
@@ -881,9 +881,15 @@ class AIInsightsService:
         report = await self.get_full_report()
         metrics_url = f"{HYBRID_URL.rstrip('/')}/metrics"
         try:
-            request = Request(metrics_url, headers={"Accept": "text/plain"})
-            with urlopen(request, timeout=10.0) as response:
-                metrics_text = response.read().decode("utf-8", errors="replace")
+            def _fetch_metrics() -> str:
+                request = Request(metrics_url, headers={"Accept": "text/plain"})
+                with urlopen(request, timeout=5.0) as response:
+                    return response.read().decode("utf-8", errors="replace")
+
+            metrics_text = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_metrics),
+                timeout=6.0,
+            )
         except Exception as exc:
             logger.warning("Failed to fetch hybrid metrics from %s: %s", metrics_url, exc)
             return {

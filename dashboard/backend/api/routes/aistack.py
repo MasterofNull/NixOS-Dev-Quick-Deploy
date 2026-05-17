@@ -3228,11 +3228,64 @@ _AQ_QA_CACHE_TTL_S: float = float(os.getenv("DASHBOARD_AQ_QA_CACHE_TTL_SECONDS",
 _VALID_QA_PHASES = frozenset({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all"})
 
 
+_AQ_QA_RUNNING: Dict[str, bool] = {}
+
+
+async def _run_aq_qa_background(phase: str, aq_qa_script: Path, env: Dict[str, str], timeout_s: int) -> None:
+    """Run aq-qa in background and populate cache when done."""
+    if _AQ_QA_RUNNING.get(phase):
+        return
+    _AQ_QA_RUNNING[phase] = True
+    now = time.time()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", str(aq_qa_script), phase, "--json",
+            cwd=str(_repo_root()),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        stdout_text = stdout_b.decode("utf-8", errors="replace").strip()
+        stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
+        qa_result: Dict[str, Any] = {}
+        for line in reversed(stdout_text.splitlines()):
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    qa_result = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+        payload: Dict[str, Any] = {
+            "phase": phase,
+            "exit_code": proc.returncode,
+            "success": proc.returncode == 0,
+            "qa_result": qa_result,
+            "passed": int(qa_result.get("passed", 0)),
+            "failed": int(qa_result.get("failed", 0)),
+            "skipped": int(qa_result.get("skipped", 0)),
+            "duration_s": int(qa_result.get("duration_s", 0)),
+            "tests": qa_result.get("tests", []),
+            "stderr": stderr_text[:500] if stderr_text else None,
+            "cached": False,
+            "cached_at": now,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        _AQ_QA_CACHE[phase] = {"payload": payload, "cached_at": now}
+    except Exception:
+        pass
+    finally:
+        _AQ_QA_RUNNING[phase] = False
+
+
 @router.get("/aq-qa/run/{phase}")
 async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     """
     Run aq-qa <phase> --json and return structured pass/fail results.
     Results are cached for 5 minutes to protect the inference stack.
+    If no cached result exists, kicks off a background run and returns a
+    pending placeholder immediately (avoids blocking the dashboard).
     Append ?force=1 to bypass the cache.
     """
     phase = phase.strip().lstrip("0") or "0"
@@ -3241,7 +3294,8 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
 
     now = time.time()
     cached = _AQ_QA_CACHE.get(phase)
-    if cached and (now - cached.get("cached_at", 0)) < _AQ_QA_CACHE_TTL_S:
+    # Use `is not None` — an empty cache entry dict is still a valid result
+    if cached is not None and (now - cached.get("cached_at", 0)) < _AQ_QA_CACHE_TTL_S:
         return {**cached["payload"], "cached": True, "cached_at": cached["cached_at"]}
 
     aq_qa_script = _script_path("aq-qa")
@@ -3258,52 +3312,24 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     }
     timeout_s = phase_timeouts.get(phase, 120)
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "bash", str(aq_qa_script), phase, "--json",
-            cwd=str(_repo_root()),
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail=f"aq-qa phase {phase} timed out after {timeout_s}s")
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"aq-qa execution failed: {exc}")
+    # No cached result — kick off background run and return pending immediately.
+    # This prevents the dashboard from blocking for 40+ seconds on cold start.
+    if not _AQ_QA_RUNNING.get(phase):
+        asyncio.create_task(_run_aq_qa_background(phase, aq_qa_script, env, timeout_s))
 
-    stdout_text = stdout_b.decode("utf-8", errors="replace").strip()
-    stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
-
-    # aq-qa --json writes a JSON object to stdout
-    qa_result: Dict[str, Any] = {}
-    for line in reversed(stdout_text.splitlines()):
-        line = line.strip()
-        if line.startswith("{"):
-            try:
-                qa_result = json.loads(line)
-                break
-            except json.JSONDecodeError:
-                continue
-
-    payload: Dict[str, Any] = {
+    return {
         "phase": phase,
-        "exit_code": proc.returncode,
-        "success": proc.returncode == 0,
-        "qa_result": qa_result,
-        "passed": int(qa_result.get("passed", 0)),
-        "failed": int(qa_result.get("failed", 0)),
-        "skipped": int(qa_result.get("skipped", 0)),
-        "duration_s": int(qa_result.get("duration_s", 0)),
-        "tests": qa_result.get("tests", []),
-        "stderr": stderr_text[:500] if stderr_text else None,
+        "pending": True,
+        "running": True,
         "cached": False,
-        "cached_at": now,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "duration_s": 0,
+        "tests": [],
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": f"aq-qa phase {phase} is running in background; refresh in ~60s for results",
     }
-
-    _AQ_QA_CACHE[phase] = {"payload": payload, "cached_at": now}
-    return payload
 
 
 @router.get("/switchboard/profiles")
