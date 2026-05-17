@@ -1598,6 +1598,73 @@ async def proxy_aidb_metrics() -> Response:
     return Response(content=metrics, media_type="text/plain")
 
 
+# Collection metadata: label, type (knowledge|memory|training|other), purpose
+_COLLECTION_META: Dict[str, Dict[str, str]] = {
+    "codebase-context":       {"label": "Codebase Context",     "type": "knowledge", "purpose": "Code patterns & project structure"},
+    "learning-feedback":      {"label": "Learning Feedback",    "type": "training",  "purpose": "User feedback & interaction quality"},
+    "agent-memory-procedural":{"label": "Procedural Memory",    "type": "memory",    "purpose": "How-to patterns & procedures"},
+    "best-practices":         {"label": "Best Practices",       "type": "knowledge", "purpose": "Engineering & architecture patterns"},
+    "agent-memory-episodic":  {"label": "Episodic Memory",      "type": "memory",    "purpose": "Past sessions & decisions"},
+    "error-solutions":        {"label": "Error Solutions",      "type": "knowledge", "purpose": "Diagnostic & fix patterns"},
+    "agent-memory-semantic":  {"label": "Semantic Memory",      "type": "memory",    "purpose": "Facts & world model"},
+    "interaction-history":    {"label": "Interaction History",  "type": "training",  "purpose": "Query-response pairs"},
+    "knowledge":              {"label": "Knowledge Base",       "type": "knowledge", "purpose": "General domain knowledge"},
+    "skills-patterns":        {"label": "Skills & Patterns",    "type": "knowledge", "purpose": "Agent capability registry"},
+}
+
+_OBSERVATORY_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_OBSERVATORY_CACHE_TTL = 45.0
+
+
+@router.get("/knowledge/observatory")
+async def knowledge_observatory() -> Dict[str, Any]:
+    """Return vector knowledge base stats + collection breakdown for Intelligence Observatory panel."""
+    now = time.time()
+    cached = _OBSERVATORY_CACHE.get("payload")
+    if cached is not None and (now - float(_OBSERVATORY_CACHE.get("ts", 0.0))) < _OBSERVATORY_CACHE_TTL:
+        return dict(cached)
+
+    collections_resp = await fetch_with_fallback(f"{SERVICES['qdrant']}/collections", {})
+    raw_collections = []
+    if isinstance(collections_resp, dict):
+        raw_collections = collections_resp.get("result", {}).get("collections", []) or []
+    collection_names = [c.get("name") for c in raw_collections if c.get("name")]
+
+    points_by_name = await _fetch_qdrant_collection_points(collection_names) if collection_names else {}
+
+    collections_out = []
+    total_points = 0
+    for name in sorted(collection_names):
+        pts = points_by_name.get(name, 0)
+        total_points += pts
+        meta = _COLLECTION_META.get(name, {
+            "label": name.replace("-", " ").title(),
+            "type": "other",
+            "purpose": "",
+        })
+        collections_out.append({
+            "name": name,
+            "label": meta["label"],
+            "type": meta["type"],
+            "purpose": meta["purpose"],
+            "points": pts,
+            "active": pts > 0,
+        })
+
+    collections_out.sort(key=lambda x: x["points"], reverse=True)
+
+    payload: Dict[str, Any] = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "total_points": total_points,
+        "total_collections": len(collections_out),
+        "active_collections": sum(1 for c in collections_out if c["active"]),
+        "collections": collections_out,
+    }
+    _OBSERVATORY_CACHE["ts"] = now
+    _OBSERVATORY_CACHE["payload"] = payload
+    return dict(payload)
+
+
 @router.get("/stats/learning")
 async def get_learning_stats() -> Dict[str, Any]:
     """Get continuous learning statistics from hybrid coordinator"""
