@@ -228,6 +228,9 @@ Environment overrides:
                             Skip rediscovery when host/profile facts were refreshed recently
   PRECHECK_SHADOW_WITH_SUDO_PROMPT=false
                             Allow password prompt for /etc/shadow prechecks
+  MIN_ACTIVATION_MEM_AVAILABLE_MB=1024
+                            Warn in readiness analysis when available memory falls
+                            below this threshold before live activation.
   HOME_MANAGER_BACKUP_EXTENSION=backup-<timestamp>
                             Backup suffix used for Home Manager file collisions.
                             Default is timestamped per run to prevent clobbering

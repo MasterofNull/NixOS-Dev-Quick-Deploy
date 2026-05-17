@@ -9,6 +9,7 @@ PROFILE="ai-dev"
 FLAKE_REF="path:${REPO_ROOT}"
 CHECK_UPDATE_LOCK=false
 NIX_EVAL_TIMEOUT_SECONDS="${NIX_EVAL_TIMEOUT_SECONDS:-60}"
+MIN_ACTIVATION_MEM_AVAILABLE_MB="${MIN_ACTIVATION_MEM_AVAILABLE_MB:-1024}"
 HOST_EXPLICIT=false
 
 FAIL_COUNT=0
@@ -230,6 +231,29 @@ check_update_lock_dependencies() {
   fi
 }
 
+check_activation_memory_headroom() {
+  local mem_available_kb mem_available_mb
+  if [[ ! -r /proc/meminfo ]]; then
+    warn "Could not inspect /proc/meminfo for activation memory headroom."
+    return 0
+  fi
+
+  mem_available_kb="$(
+    awk '/^MemAvailable:/ { print $2; exit }' /proc/meminfo 2>/dev/null || true
+  )"
+  if [[ ! "$mem_available_kb" =~ ^[0-9]+$ ]]; then
+    warn "Could not parse MemAvailable from /proc/meminfo."
+    return 0
+  fi
+
+  mem_available_mb=$((mem_available_kb / 1024))
+  if (( mem_available_mb < MIN_ACTIVATION_MEM_AVAILABLE_MB )); then
+    warn "Activation memory headroom is low (${mem_available_mb} MiB available; recommended >= ${MIN_ACTIVATION_MEM_AVAILABLE_MB} MiB). AppArmor reloads may fail under pressure."
+  else
+    pass "Activation memory headroom is sufficient (${mem_available_mb} MiB available)."
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
@@ -284,6 +308,9 @@ check_host_paths
 
 log_section "Account Safety"
 check_account_lock_state
+
+log_section "Activation Headroom"
+check_activation_memory_headroom
 
 log_section "Flake Evaluation Capability"
 check_eval_capability
