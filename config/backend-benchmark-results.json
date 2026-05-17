@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0.0",
+  "timestamp": "2026-05-16T00:00:00Z",
+  "host": "hyperd",
+  "hardware_class": "amd-apu-renoir",
+  "model": "/var/lib/llama-cpp/model.gguf (qwen3.6-35b via symlink)",
+  "runs": 3,
+  "prompt": "What is the difference between Vulkan and ROCm?",
+  "n_predict": 48,
+  "notes": "Measured against the running llama-server (DynamicUser isolates model dir). n-gpu-layers=12 (Renoir safe limit). Full 41-layer offload causes ErrorDeviceLost on this APU.",
+  "results": {
+    "vulkan": {
+      "startup_ms": null,
+      "tokens_per_sec": [4, 4, 4],
+      "median_tokens_per_sec": 4,
+      "peak_rss_mb": null,
+      "gpu_resets": 0,
+      "n_gpu_layers": 12,
+      "backend_notes": "Partial offload (12 layers). Stable. CPU carries the remaining 29 layers.",
+      "promotion_status": "production"
+    },
+    "rocm": {
+      "startup_ms": null,
+      "tokens_per_sec": [],
+      "median_tokens_per_sec": 0,
+      "peak_rss_mb": null,
+      "gpu_resets": null,
+      "n_gpu_layers": null,
+      "backend_notes": "Not benchmarked. hardware_class=amd-apu-renoir promotion_status=blocked. ROCm is not in AMD support matrix for Renoir (gfx90c). Gate Stage 1 would block promotion.",
+      "promotion_status": "blocked"
+    },
+    "cpu": {
+      "startup_ms": null,
+      "tokens_per_sec": [],
+      "median_tokens_per_sec": 0,
+      "peak_rss_mb": null,
+      "gpu_resets": 0,
+      "n_gpu_layers": 0,
+      "backend_notes": "Not benchmarked standalone. CPU is active for the 29 layers not offloaded in vulkan mode.",
+      "promotion_status": "production"
+    }
+  },
+  "baseline_summary": {
+    "production_backend": "vulkan",
+    "production_tps": 4,
+    "benchmark_win_threshold_pct": 15,
+    "rocm_required_tps_to_promote": 5,
+    "conclusion": "Vulkan at 4 tok/s is the safe baseline for this host. ROCm is blocked for this hardware class and cannot be benchmarked. No promotion path exists for amd-apu-renoir."
+  }
+}
