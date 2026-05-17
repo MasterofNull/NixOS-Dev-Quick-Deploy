@@ -1,26 +1,36 @@
 # Handoff Memo - 2026-05-17
 
-**Status:** DASHBOARD TRACE PATH RESTORED
-**Last Action:** Restored coordinator startup and dashboard trace delivery after rebuild.
+**Status:** COORDINATOR STABILIZATION SLICE COMPLETE
+**Last Action:** Unified Phase 55 supersession/crystallization modules and repaired coordinator-owned runtime paths.
 
-## What changed
-1. Restarted stale `command-center-dashboard-api.service` so the already-committed `/api/aistack/knowledge/observatory` route became live.
-2. Fixed `ai-stack/mcp-servers/hybrid-coordinator/server.py` by removing redundant function-local imports that shadowed module-level Phase 55 modules and caused `UnboundLocalError` at startup.
-3. Fixed `ai-stack/mcp-servers/hybrid-coordinator/http_server.py` to register Phase 55 HTTP routes from `extensions.*` modules instead of the similarly named core modules.
-4. Fixed `ai-stack/mcp-servers/hybrid-coordinator/trace_collector.py` to use `PostgresClient.fetch_all()`.
-5. Hardened `ai-stack/mcp-servers/shared/postgres_client.py` to rollback failed execute/fetch transactions so one non-fatal schema failure does not poison the shared connection.
+## Completed slices
+1. Restored dashboard observatory + query trace delivery.
+2. Unified `memory_superseder` so broker + HTTP routes share one schema/service.
+3. Unified `memory_crystallizer` so chat-history + file-session flows share one schema/service.
+4. Repaired identity-kernel runtime ownership and moved the default value constitution path onto a Nix-store source path readable by the coordinator.
+5. Made `/var/log/nixos-ai-stack` group-writable so coordinator gap-sync can atomically write `query-gaps.tmp`.
 
 ## Verified live state
-- `command-center-dashboard-api.service`: active
-- `ai-hybrid-coordinator.service`: active and healthy on `127.0.0.1:8003`
-- `GET /api/aistack/knowledge/observatory`: 200 OK
-- `GET /api/traces?limit=5`: 200 OK with trace rows
-- `GET /api/aistack/query/traces`: 200 OK with dashboard-visible trace rows
+- `ai-hybrid-coordinator.service`: active and healthy
+- `GET /api/aistack/query/traces`: 200 with live trace rows
+- `POST /memory/supersede`: 200 with PostgreSQL-backed ledger write
+- `GET /memory/supersede/history`: 200
+- `GET /memory/crystalline/status`: 200
+- Startup logs now show clean schema verification for superseder, crystallizer, and drift analyzer
+- Identity kernel now initializes successfully (`narrative engine ready`, `value constitution loaded`)
+- `/var/lib/ai-stack/identity` now owned by `ai-hybrid:ai-stack`
+- `/var/log/nixos-ai-stack` now mode `0770`, allowing coordinator temp-file writes
 
-## Important follow-up
-- Coordinator startup still logs a non-fatal Phase 55 schema mismatch around `memory_superseder` (`successor_id` column missing). The new rollback handling prevents it from breaking trace delivery, but the schema contract should be reconciled in a separate cleanup slice.
-- `nixos-rebuild switch` succeeded for the final activation, but one earlier attempt hit a transient `cache.nixos.org` DNS timeout and one prior activation reported `Failed to reload apparmor.service` while still starting the repaired coordinator successfully.
-- `scripts/governance/tier0-validation-gate.sh --pre-commit` reached the long-running `aq-qa 0` stage and was stopped after focused checks plus live runtime verification had already passed.
+## Validation completed
+- `pytest -q tests/test_memory_superseder.py tests/test_cognitive_intelligence_l5_l6.py` → 9 passed
+- `pytest -q tests/test_memory_crystallizer.py tests/test_memory_superseder.py tests/test_cognitive_intelligence_l5_l6.py` → 12 passed
+- Python compile checks passed for touched modules
+- `nix-instantiate --parse` passed for touched Nix modules
+- Tier 0 gate progressed through focused checks and roadmap verification, then was stopped at the long-running `aq-qa 0` stage after targeted runtime verification succeeded
 
-## Next step
-If desired, do a dedicated Phase 55 cleanup pass for the duplicated `memory_superseder` schema/model split before adding more dashboard intelligence features.
+## Remaining follow-up
+- `apparmor.service` reload has intermittently failed with `Out of memory` during some rebuild activations, though the most recent activation succeeded. This looks like transient host pressure rather than a deterministic config regression; keep it as a separate ops/performance investigation if it recurs.
+- The identity endpoint requires auth; `GET /identity/self` returning `unauthorized` without credentials is expected.
+
+## Next recommended slice
+Run a dedicated runtime hygiene pass for the remaining non-fatal warnings only if they recur under normal load, with AppArmor OOM as the next candidate. Otherwise, the dashboard/coordinator recovery path is stable enough to return to feature work.

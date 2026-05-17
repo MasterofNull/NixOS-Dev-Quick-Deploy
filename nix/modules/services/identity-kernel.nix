@@ -21,19 +21,36 @@ let
   ik  = ai.identityKernel;
 
   active = cfg.roles.aiStack.enable && mcp.enable && ik.enable;
+  aiGroup = "ai-stack";
+  hybridUser = "ai-hybrid";
+
+  repoSource =
+    if mcp.flakeRepoPath != null
+    then mcp.flakeRepoPath
+    else builtins.path {
+      path = mcp.repoPath;
+      name = "nixos-quick-deploy-repo";
+    };
 
   journalDir  = ik.journalPath;
   journalFile = "${journalDir}/journal.jsonl";
+  checkpointFile = "${journalDir}/checkpoint.json";
 
   constitutionFile =
     if ik.valueConstitutionFile != ""
     then ik.valueConstitutionFile
-    else "${mcp.repoPath}/config/identity-values.yaml";
+    else "${toString repoSource}/config/identity-values.yaml";
 in
 lib.mkIf active {
-  # Ensure the journal directory exists with correct permissions.
+  # Ensure the identity state is writable by the coordinator service even when
+  # older mutable files were created by the primary human operator.
   systemd.tmpfiles.rules = [
-    "d ${journalDir} 0750 ${cfg.primaryUser} users - -"
+    "d ${journalDir} 0750 ${hybridUser} ${aiGroup} - -"
+    "z ${journalDir} 0750 ${hybridUser} ${aiGroup} - -"
+    "f ${journalFile} 0660 ${hybridUser} ${aiGroup} - -"
+    "z ${journalFile} 0660 ${hybridUser} ${aiGroup} - -"
+    "f ${checkpointFile} 0660 ${hybridUser} ${aiGroup} - -"
+    "z ${checkpointFile} 0660 ${hybridUser} ${aiGroup} - -"
   ];
 
   # Inject identity kernel env vars into the hybrid coordinator service.
