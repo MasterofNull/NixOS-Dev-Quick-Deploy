@@ -58,17 +58,25 @@ class PostgresClient:
         if self._conn is None:
             await self.connect()
         assert self._conn is not None
-        await self._conn.execute(query, params)
-        await self._conn.commit()
+        try:
+            await self._conn.execute(query, params)
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
 
     async def fetch_all(self, query: str, *params) -> list[dict]:
         if self._conn is None:
             await self.connect()
         assert self._conn is not None
-        async with self._conn.cursor(row_factory=dict_row) as cursor:
-            await cursor.execute(query, params)
-            rows = await cursor.fetchall()
-        return list(rows)
+        try:
+            async with self._conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute(query, params)
+                rows = await cursor.fetchall()
+            return list(rows)
+        except Exception:
+            await self._conn.rollback()
+            raise
 
     async def close(self) -> None:
         if self._conn is not None:
