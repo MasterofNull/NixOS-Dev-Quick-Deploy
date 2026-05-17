@@ -4025,19 +4025,38 @@
                         <span class="card-badge">Prometheus</span>
                     </div>
                     <div class="collapsible-content">
+                        <!-- KPI Gauge Row — two arc gauges for star metrics -->
+                        <div style="display:flex;gap:1.5rem;justify-content:center;margin-bottom:1.25rem;flex-wrap:wrap;">
+                            <div style="text-align:center;">
+                                <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.25rem;">Embed Cache Hit</div>
+                                <div style="position:relative;width:88px;height:88px;margin:0 auto;">
+                                    <canvas id="gaugeCanvasCacheHit" width="88" height="88"></canvas>
+                                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-46%);text-align:center;pointer-events:none;">
+                                        <div class="metric-value" id="aiInternalsCacheHit" style="font-size:0.85rem;line-height:1;">--</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.25rem;">Local Routing</div>
+                                <div style="position:relative;width:88px;height:88px;margin:0 auto;">
+                                    <canvas id="gaugeCanvasLocalRouting" width="88" height="88"></canvas>
+                                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-46%);text-align:center;pointer-events:none;">
+                                        <div class="metric-value" id="aiInternalsLocalRouting" style="font-size:0.85rem;line-height:1;">--</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="text-align:center;display:flex;flex-direction:column;justify-content:center;gap:0.5rem;">
+                                <div>
+                                    <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;">Metrics Tracked</div>
+                                    <div class="metric-value" id="aiInternalsTotalMetrics" style="font-size:1.1rem;color:var(--accent-cyan);">--</div>
+                                </div>
+                                <div>
+                                    <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;">Tokens Compressed (1h)</div>
+                                    <div class="metric-value" id="aiInternalsTokensCompressed" style="font-size:0.9rem;">--</div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="metrics-grid">
-                            <div class="metric">
-                                <div class="metric-label">Embedding Cache Hit Rate</div>
-                                <div class="metric-value" id="aiInternalsCacheHit">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Tokens Compressed (1h)</div>
-                                <div class="metric-value" id="aiInternalsTokensCompressed">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Local Routing Split</div>
-                                <div class="metric-value" id="aiInternalsLocalRouting">--</div>
-                            </div>
                             <div class="metric">
                                 <div class="metric-label">Hint Adoption</div>
                                 <div class="metric-value" id="aiInternalsHintAdoption">--</div>
@@ -4053,6 +4072,10 @@
                             <div class="metric">
                                 <div class="metric-label">Open Query Gaps</div>
                                 <div class="metric-value" id="aiInternalsGapCount">--</div>
+                            </div>
+                            <div class="metric" id="aiReportStatusMetric" style="display:none;">
+                                <div class="metric-label">AI Report</div>
+                                <div class="metric-value" id="aiReportStatus" style="font-size:0.72rem;color:var(--status-warning);">⚠ offline</div>
                             </div>
                         </div>
                     </div>
@@ -7305,7 +7328,10 @@
                 updateConfigMetrics(config);
                 updateProofMetrics(proof);
                 updateHarnessOverview(dashboardData.aiMetrics);
-                updateAIInternals(aiInternals);
+                updateAIInternals({
+                    ...aiInternals,
+                    _totalMetricsTracked: learningStats?.total_metrics_tracked ?? null,
+                });
                 updatePRSIQueue(prsiActions);
                 updateFirewallOperator(firewallOps);
                 updateHealthScore();
@@ -7331,9 +7357,16 @@
         }
 
         async function fetchSystemMetrics() {
-            const response = await fetch(`${FASTAPI_BASE}/api/metrics/system`, { cache: 'no-store' });
-            if (!response.ok) throw new Error(`system metrics unavailable (${response.status})`);
-            return response.json();
+            try {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 12000);
+                try {
+                    const response = await fetch(`${FASTAPI_BASE}/api/metrics/system`, { cache: 'no-store', signal: ctrl.signal });
+                    clearTimeout(timer);
+                    if (!response.ok) return {};
+                    return await response.json();
+                } finally { clearTimeout(timer); }
+            } catch (_) { return {}; }
         }
 
         async function fetchServices() {
@@ -9329,6 +9362,46 @@
             document.getElementById('learningFinetune').textContent = hasNumeric(fineTuning.samples) ? displayCount(Number(fineTuning.samples), '0') : '--';
         }
 
+        // Arc gauge chart instances — keyed by canvas element id
+        const _aiGauges = {};
+
+        function drawArcGauge(canvasId, pct, colorOk, colorWarn) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas || typeof Chart === 'undefined') return;
+            const value = Math.max(0, Math.min(100, pct ?? 0));
+            const color = value >= 90 ? (colorOk || '#00d9ff')
+                        : value >= 70 ? (colorWarn || '#ffbe0b')
+                        : '#e63946';
+            const remainder = 100 - value;
+
+            if (_aiGauges[canvasId]) {
+                const ds = _aiGauges[canvasId].data.datasets[0];
+                ds.data = [value, remainder];
+                ds.backgroundColor[0] = color;
+                _aiGauges[canvasId].update('none');
+                return;
+            }
+            _aiGauges[canvasId] = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [value, remainder],
+                        backgroundColor: [color, 'rgba(255,255,255,0.05)'],
+                        borderWidth: 0,
+                        borderRadius: 3,
+                    }]
+                },
+                options: {
+                    cutout: '72%',
+                    rotation: -135,
+                    circumference: 270,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    animation: { duration: 900, easing: 'easeOutQuart' },
+                    events: [],
+                }
+            });
+        }
+
         function updateAIInternals(data) {
             const cacheHit = numericOrNull(data?.embedding_cache_hit_rate_pct);
             const localRouting = numericOrNull(data?.llm_routing_local_pct);
@@ -9337,13 +9410,32 @@
             const evalLatest = numericOrNull(data?.eval_latest_pct);
             const toolRows = numericOrNull(data?.tool_performance_rows);
             const gapCount = numericOrNull(data?.query_gap_count);
-            document.getElementById('aiInternalsCacheHit').textContent = displayPercent(cacheHit, 1, 'cache warming', 'awaiting cache telemetry');
-            document.getElementById('aiInternalsLocalRouting').textContent = displayPercent(localRouting, 1, 'routing idle', 'awaiting routing telemetry');
-            document.getElementById('aiInternalsTokensCompressed').textContent = displayCount(tokensCompressed, '0', 'awaiting compression telemetry');
-            document.getElementById('aiInternalsHintAdoption').textContent = displayPercent(hintAdoption, 1, '0%', 'awaiting hint telemetry');
-            document.getElementById('aiInternalsEvalLatest').textContent = displayPercent(evalLatest, 1, 'evaluation queued', 'awaiting evaluation result');
-            document.getElementById('aiInternalsToolRows').textContent = displayCount(toolRows, '0', 'awaiting tool telemetry');
-            document.getElementById('aiInternalsGapCount').textContent = displayCount(gapCount, 'queue clear', 'awaiting gap telemetry');
+            const totalMetrics = numericOrNull(data?.total_metrics_tracked ?? null);
+            const aqReportOnline = data?.availability?.aq_report === true;
+
+            // Arc gauges for star metrics
+            if (cacheHit !== null) drawArcGauge('gaugeCanvasCacheHit', cacheHit, '#00d9ff', '#ffbe0b');
+            if (localRouting !== null) drawArcGauge('gaugeCanvasLocalRouting', localRouting, '#00ff9d', '#ffbe0b');
+
+            document.getElementById('aiInternalsCacheHit').textContent = displayPercent(cacheHit, 1, '--', '--');
+            document.getElementById('aiInternalsLocalRouting').textContent = displayPercent(localRouting, 1, '--', '--');
+            document.getElementById('aiInternalsTokensCompressed').textContent = displayCount(tokensCompressed, '0', '--');
+
+            // Total metrics KPI — pull from learning stats if present in the data object
+            const totalEl = document.getElementById('aiInternalsTotalMetrics');
+            if (totalEl && data?._totalMetricsTracked != null) {
+                totalEl.textContent = Number(data._totalMetricsTracked).toLocaleString();
+            }
+
+            // aq_report offline indicator
+            const reportMetric = document.getElementById('aiReportStatusMetric');
+            if (reportMetric) reportMetric.style.display = !aqReportOnline ? '' : 'none';
+
+            const offlineSuffix = aqReportOnline ? '' : ' ⚠';
+            document.getElementById('aiInternalsHintAdoption').textContent = displayPercent(hintAdoption, 1, '0%', 'awaiting hint telemetry') + (hintAdoption === null && !aqReportOnline ? offlineSuffix : '');
+            document.getElementById('aiInternalsEvalLatest').textContent = displayPercent(evalLatest, 1, 'queued', 'awaiting result') + (evalLatest === null && !aqReportOnline ? offlineSuffix : '');
+            document.getElementById('aiInternalsToolRows').textContent = displayCount(toolRows, '0', 'awaiting tool telemetry') + (toolRows === null && !aqReportOnline ? offlineSuffix : '');
+            document.getElementById('aiInternalsGapCount').textContent = displayCount(gapCount, 'clear', 'awaiting gap telemetry') + (gapCount === null && !aqReportOnline ? offlineSuffix : '');
         }
 
         const HARNESS_ACTION_SCRIPT = {
@@ -10741,9 +10833,26 @@
             };
 
             try {
-                const response = await fetch(`${FASTAPI_BASE}/api/health/layered`, { cache: 'no-store' });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 15000); // 15s max
+                let data;
+                try {
+                    const response = await fetch(`${FASTAPI_BASE}/api/health/layered`, { cache: 'no-store', signal: ctrl.signal });
+                    clearTimeout(timer);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    data = await response.json();
+                } finally { clearTimeout(timer); }
+
+                // Backend returns pending:true while aq-qa runs in background
+                if (data.pending) {
+                    badge.textContent = '⟳ loading';
+                    badge.style.background = 'var(--status-warning)';
+                    grid.innerHTML = `<div style="grid-column:1/-1;padding:1rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">
+                        <div style="margin-bottom:0.4rem">⟳ OSI layer health check running…</div>
+                        <div style="font-size:0.7rem;opacity:0.6">${data.message || 'Refresh in ~60s'}</div>
+                    </div>`;
+                    return;
+                }
 
                 const layers = data.layers || {};
                 updateCommandDeckLayers(data);
