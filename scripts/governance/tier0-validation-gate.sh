@@ -108,7 +108,214 @@ gate_nix_syntax() {
   fi
 }
 
-# Gate 4: Repo structure validation
+# Gate 4: JSON syntax validation
+gate_json_syntax() {
+  log "Checking JSON syntax..."
+  local files=()
+  while IFS= read -r f; do
+    [[ "$f" == *.json ]] && [[ "$f" != package-lock.json ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No JSON changes detected"
+    return 0
+  fi
+
+  local failed=0
+  for f in "${files[@]}"; do
+    if ! python3 -c "import json; json.load(open('$f'))" 2>/dev/null; then
+      fail "JSON syntax error in $f"
+      failed=1
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    pass "JSON syntax valid (${#files[@]} files)"
+  fi
+  return $failed
+}
+
+# Gate 5: YAML syntax validation
+gate_yaml_syntax() {
+  log "Checking YAML syntax..."
+  local files=()
+  while IFS= read -r f; do
+    [[ "$f" == *.yaml || "$f" == *.yml ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No YAML changes detected"
+    return 0
+  fi
+
+  if ! python3 -c "import yaml" 2>/dev/null; then
+    log "SKIP: PyYAML not available — YAML syntax check skipped"
+    pass "YAML syntax (skipped — PyYAML not installed)"
+    return 0
+  fi
+
+  local failed=0
+  for f in "${files[@]}"; do
+    if ! python3 -c "
+import yaml, sys
+try:
+    list(yaml.safe_load_all(open('$f')))
+except yaml.YAMLError as e:
+    print(str(e), file=sys.stderr); sys.exit(1)
+" 2>/dev/null; then
+      fail "YAML syntax error in $f"
+      failed=1
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    pass "YAML syntax valid (${#files[@]} files)"
+  fi
+  return $failed
+}
+
+# Gate 6: TOML syntax validation
+gate_toml_syntax() {
+  log "Checking TOML syntax..."
+  local files=()
+  while IFS= read -r f; do
+    [[ "$f" == *.toml ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No TOML changes detected"
+    return 0
+  fi
+
+  if ! python3 -c "import tomllib" 2>/dev/null && ! python3 -c "import tomli" 2>/dev/null; then
+    log "SKIP: tomllib/tomli not available — TOML syntax check skipped"
+    pass "TOML syntax (skipped — no parser available)"
+    return 0
+  fi
+
+  local failed=0
+  for f in "${files[@]}"; do
+    if ! python3 -c "
+import sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+try:
+    tomllib.load(open('$f', 'rb'))
+except Exception as e:
+    print(str(e), file=sys.stderr); sys.exit(1)
+" 2>/dev/null; then
+      fail "TOML syntax error in $f"
+      failed=1
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    pass "TOML syntax valid (${#files[@]} files)"
+  fi
+  return $failed
+}
+
+# Gate 7: JavaScript syntax validation (.js files; inline HTML scripts handled by focused-ci)
+gate_js_syntax() {
+  log "Checking JavaScript syntax..."
+  local files=()
+  while IFS= read -r f; do
+    [[ "$f" == *.js ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No JS changes detected"
+    return 0
+  fi
+
+  if ! command -v node &>/dev/null; then
+    log "SKIP: node not in PATH — JS syntax check skipped"
+    pass "JS syntax (skipped — node not available)"
+    return 0
+  fi
+
+  local failed=0
+  for f in "${files[@]}"; do
+    if ! node --check "$f" 2>/dev/null; then
+      fail "JS syntax error in $f"
+      failed=1
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    pass "JS syntax valid (${#files[@]} files)"
+  fi
+  return $failed
+}
+
+# Gate 8: TypeScript syntax validation
+gate_ts_syntax() {
+  log "Checking TypeScript syntax..."
+  local files=()
+  while IFS= read -r f; do
+    [[ "$f" == *.ts ]] && [[ "$f" != *.d.ts ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No TS changes detected"
+    return 0
+  fi
+
+  if ! command -v tsc &>/dev/null; then
+    log "SKIP: tsc not in PATH — TypeScript syntax check skipped"
+    pass "TS syntax (skipped — tsc not available)"
+    return 0
+  fi
+
+  if tsc --noEmit --strict false --skipLibCheck --target ES2020 \
+       --moduleResolution node "${files[@]}" 2>/dev/null; then
+    pass "TS syntax valid (${#files[@]} files)"
+  else
+    fail "TypeScript syntax errors detected"
+    return 1
+  fi
+}
+
+# Gate 9: SQL syntax validation
+gate_sql_syntax() {
+  log "Checking SQL syntax..."
+  local files=()
+  while IFS= read -r f; do
+    [[ "$f" == *.sql ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No SQL changes detected"
+    return 0
+  fi
+
+  if ! python3 -c "import sqlparse" 2>/dev/null; then
+    log "SKIP: sqlparse not available — SQL syntax check skipped"
+    pass "SQL syntax (skipped — sqlparse not installed)"
+    return 0
+  fi
+
+  local failed=0
+  for f in "${files[@]}"; do
+    if ! python3 -c "
+import sqlparse, sys
+stmts = sqlparse.parse(open('$f').read())
+print(f'Parsed {len(stmts)} statement(s) OK')
+" 2>/dev/null; then
+      fail "SQL parse error in $f"
+      failed=1
+    fi
+  done
+
+  if [[ $failed -eq 0 ]]; then
+    pass "SQL syntax valid (${#files[@]} files)"
+  fi
+  return $failed
+}
+
+# Gate 10: Repo structure validation
 gate_repo_structure() {
   log "Checking repo structure..."
   if "${SCRIPT_DIR}/repo-structure-lint.sh" --staged 2>&1 | grep -q "PASS"; then
@@ -119,7 +326,7 @@ gate_repo_structure() {
   fi
 }
 
-# Gate 5: Script header standards
+# Gate 11: Script header standards
 gate_script_headers() {
   log "Checking script header standards..."
   if bash "${SCRIPT_DIR}/check-script-header-standards.sh" --all >/dev/null 2>&1; then
@@ -130,7 +337,7 @@ gate_script_headers() {
   fi
 }
 
-# Gate 6: Path-aware focused CI checks
+# Gate 12: Path-aware focused CI checks
 gate_focused_ci_checks() {
   log "Running focused CI-sensitive checks..."
   if bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
@@ -218,6 +425,12 @@ log ""
 gate_python_syntax || true
 gate_bash_syntax || true
 gate_nix_syntax || true
+gate_json_syntax || true
+gate_yaml_syntax || true
+gate_toml_syntax || true
+gate_js_syntax || true
+gate_ts_syntax || true
+gate_sql_syntax || true
 gate_repo_structure || true
 gate_script_headers || true
 gate_focused_ci_checks || true
