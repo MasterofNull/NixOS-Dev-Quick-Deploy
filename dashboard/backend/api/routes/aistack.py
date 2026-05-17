@@ -1624,6 +1624,8 @@ _COLLECTION_META: Dict[str, Dict[str, str]] = {
     "agent-memory-episodic":  {"label": "Episodic Memory",      "type": "memory",    "purpose": "Past sessions & decisions"},
     "error-solutions":        {"label": "Error Solutions",      "type": "knowledge", "purpose": "Diagnostic & fix patterns"},
     "agent-memory-semantic":  {"label": "Semantic Memory",      "type": "memory",    "purpose": "Facts & world model"},
+    "agent-memory-crystalline":{"label": "Crystalline Facts",  "type": "memory",    "purpose": "Distilled session wisdom"},
+    "agent-memory-institutional":{"label": "Institutional Knowledge", "type": "knowledge", "purpose": "Shared cross-agent discovery"},
     "interaction-history":    {"label": "Interaction History",  "type": "training",  "purpose": "Query-response pairs"},
     "knowledge":              {"label": "Knowledge Base",       "type": "knowledge", "purpose": "General domain knowledge"},
     "skills-patterns":        {"label": "Skills & Patterns",    "type": "knowledge", "purpose": "Agent capability registry"},
@@ -1987,6 +1989,44 @@ async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[st
         **result,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/ai/metrics/hybrid")
+async def proxy_hybrid_metrics() -> Response:
+    """Proxy Hybrid Coordinator Prometheus metrics with auth."""
+    metrics = await fetch_text_with_fallback(f"{SERVICES['hybrid']}/metrics", None)
+    if metrics is None:
+        # Try with headers if simple fetch failed
+        try:
+            session = await get_http_session()
+            async with session.get(f"{SERVICES['hybrid']}/metrics", headers=_hybrid_headers()) as resp:
+                if resp.status == 200:
+                    metrics = await resp.text()
+        except Exception:
+            pass
+            
+    if metrics is None:
+        raise HTTPException(status_code=503, detail="Hybrid metrics unavailable")
+    return Response(content=metrics, media_type="text/plain")
+
+
+@router.get("/ai/homeostasis/events")
+async def proxy_homeostasis_events() -> List[Dict[str, Any]]:
+    """Proxy coordinator /homeostasis/events."""
+    result = await fetch_with_fallback(f"{SERVICES['hybrid']}/homeostasis/events", [])
+    return result if isinstance(result, list) else []
+
+
+@router.get("/ai/health/rag")
+async def proxy_rag_health() -> Dict[str, Any]:
+    """Proxy coordinator /api/health/rag."""
+    return await fetch_with_fallback(f"{SERVICES['hybrid']}/api/health/rag", {"status": "offline"})
+
+
+@router.get("/ai/memory/status")
+async def proxy_memory_status() -> Dict[str, Any]:
+    """Proxy coordinator /memory/broker/status."""
+    return await fetch_with_fallback(f"{SERVICES['hybrid']}/memory/broker/status", {"status": "offline"})
 
 
 @router.get("/prsi/actions")
