@@ -34,9 +34,12 @@ _GRAPH_RUNS_FILE = Path(
 )
 _graph_runs_lock = asyncio.Lock()
 
+# Derive repo root: workflow/orchestration_graph_runner.py -> mcp-servers/hybrid-coordinator -> ai-stack -> repo root
+_repo_root = Path(__file__).parent.parent.parent.parent.parent
+
 _GRAPH_TEMPLATES_FILE = Path(
     os.getenv("ORCHESTRATION_GRAPH_TEMPLATES_FILE",
-               str(Path(__file__).parent.parent / "config" / "orchestration-graph-templates.json"))
+               str(_repo_root / "config" / "orchestration-graph-templates.json"))
 )
 
 
