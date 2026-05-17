@@ -1,36 +1,28 @@
 # Handoff Memo - 2026-05-17
 
-**Status:** COORDINATOR STABILIZATION SLICE COMPLETE
-**Last Action:** Unified Phase 55 supersession/crystallization modules and repaired coordinator-owned runtime paths.
+**Status:** APPARMOR ACTIVATION RELIABILITY SLICE COMPLETE
+**Last Action:** Added deploy-readiness visibility for low activation memory headroom.
 
-## Completed slices
-1. Restored dashboard observatory + query trace delivery.
-2. Unified `memory_superseder` so broker + HTTP routes share one schema/service.
-3. Unified `memory_crystallizer` so chat-history + file-session flows share one schema/service.
-4. Repaired identity-kernel runtime ownership and moved the default value constitution path onto a Nix-store source path readable by the coordinator.
-5. Made `/var/log/nixos-ai-stack` group-writable so coordinator gap-sync can atomically write `query-gaps.tmp`.
+## Findings
+- Intermittent `apparmor.service` reload failures are not profile-size driven.
+- AppArmor profiles are small and usually reload successfully.
+- Failed reloads report `Out of memory` and occurred while the host was under severe RAM pressure.
+- Current runtime snapshot during investigation: ~27 GiB total RAM, ~26 GiB used, very low available memory, swap active.
 
-## Verified live state
-- `ai-hybrid-coordinator.service`: active and healthy
-- `GET /api/aistack/query/traces`: 200 with live trace rows
-- `POST /memory/supersede`: 200 with PostgreSQL-backed ledger write
-- `GET /memory/supersede/history`: 200
-- `GET /memory/crystalline/status`: 200
-- Startup logs now show clean schema verification for superseder, crystallizer, and drift analyzer
-- Identity kernel now initializes successfully (`narrative engine ready`, `value constitution loaded`)
-- `/var/lib/ai-stack/identity` now owned by `ai-hybrid:ai-stack`
-- `/var/log/nixos-ai-stack` now mode `0770`, allowing coordinator temp-file writes
+## Change made
+- Added `Activation Headroom` readiness analysis to `scripts/governance/analyze-clean-deploy-readiness.sh`.
+- New env override: `MIN_ACTIVATION_MEM_AVAILABLE_MB` (default `1024`).
+- Readiness now warns when `MemAvailable` is below the configured threshold and explicitly calls out AppArmor reload risk.
+- Documented the override in `nixos-quick-deploy.sh --help` output.
 
-## Validation completed
-- `pytest -q tests/test_memory_superseder.py tests/test_cognitive_intelligence_l5_l6.py` → 9 passed
-- `pytest -q tests/test_memory_crystallizer.py tests/test_memory_superseder.py tests/test_cognitive_intelligence_l5_l6.py` → 12 passed
-- Python compile checks passed for touched modules
-- `nix-instantiate --parse` passed for touched Nix modules
-- Tier 0 gate progressed through focused checks and roadmap verification, then was stopped at the long-running `aq-qa 0` stage after targeted runtime verification succeeded
+## Validation
+- `bash -n scripts/governance/analyze-clean-deploy-readiness.sh nixos-quick-deploy.sh` passed.
+- Forced-threshold smoke run emitted the expected low-headroom warning.
 
-## Remaining follow-up
-- `apparmor.service` reload has intermittently failed with `Out of memory` during some rebuild activations, though the most recent activation succeeded. This looks like transient host pressure rather than a deterministic config regression; keep it as a separate ops/performance investigation if it recurs.
-- The identity endpoint requires auth; `GET /identity/self` returning `unauthorized` without credentials is expected.
+## Related stable state from prior slices
+- Dashboard trace timeline remains live.
+- Phase 55 superseder/crystallizer schema warnings are resolved.
+- Identity kernel runtime permissions are repaired.
 
 ## Next recommended slice
-Run a dedicated runtime hygiene pass for the remaining non-fatal warnings only if they recur under normal load, with AppArmor OOM as the next candidate. Otherwise, the dashboard/coordinator recovery path is stable enough to return to feature work.
+If AppArmor reload failures recur despite operator awareness, investigate deploy-time memory relief strategies separately (for example pausing high-memory local inference workloads before live activation). Do not weaken AppArmor policy as a first response.
