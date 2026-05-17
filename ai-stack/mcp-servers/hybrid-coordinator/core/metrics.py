@@ -283,6 +283,10 @@ HOMEOSTATIC_EVENTS_TOTAL = Counter(
     "Total homeostatic self-correction events triggered",
     ["action", "intent"],  # action: "profile_elevation", "emergency_crystallization"
 )
+INSTITUTIONAL_FACTS_PROMOTED = Counter(
+    "hybrid_institutional_facts_promoted_total",
+    "Total facts promoted to global institutional memory",
+)
 
 # Level 6: Cognitive/Semantic Layer
 INTENT_CLASSIFICATIONS = Counter(

@@ -106,6 +106,48 @@ def test_l5_memory_supersession():
     
     asyncio.run(run())
 
+def test_l5_institutional_promotion():
+    """L5: Ensure facts are promoted to institutional memory."""
+    async def run():
+        calls = []
+        
+        async def _store(**kwargs):
+            calls.append(kwargs)
+            return {"status": "stored", "memory_id": "mem-promo"}
+            
+        async def _recall(query, **kwargs):
+            return {"results": []}
+
+        from memory_superseder import MemorySuperseder
+        from consensus_manager import ConsensusManager, get_manager
+        
+        # We need a fresh ConsensusManager to avoid singleton issues in test
+        cm = ConsensusManager(confidence_threshold=0.9)
+        broker = MemoryBroker(_store, _recall, superseder=MemorySuperseder(), consensus_manager=cm)
+        
+        # In a real environment, consensus_manager.init(broker=broker) would be called.
+        # For this unit test, we'll mock the internal broker ref
+        import consensus_manager
+        consensus_manager._memory_broker = broker
+
+        # 1. Write a high-confidence fact
+        # Note: evaluate_for_promotion runs as a background task, so we'll call it directly
+        # or wait a bit. In this test we'll call it directly for determinism.
+        await cm.evaluate_for_promotion(
+            memory_type="semantic", 
+            content="Gemini discovered that nixos-rebuild is awesome",
+            metadata={"confidence": 0.95}
+        )
+        
+        # Verify promotion write occurred
+        # The first call is the original write, the second is the promotion
+        # But here we only called evaluate_for_promotion directly
+        assert len(calls) == 1
+        assert calls[0]["metadata"]["institutional"] is True
+        assert calls[0]["metadata"]["promotion_reason"] == "high_confidence_match"
+    
+    asyncio.run(run())
+
 def test_l6_homeostasis_remediation():
     """L6: Ensure HomeostasisManager triggers remediation on high drift."""
     async def run():

@@ -28,6 +28,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 import memory_superseder
+import consensus_manager
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -63,8 +64,10 @@ def init(store_fn: Callable, recall_fn: Callable) -> None:
     _broker = MemoryBroker(
         store_fn=store_fn, 
         recall_fn=recall_fn,
-        superseder=memory_superseder.get_superseder()
+        superseder=memory_superseder.get_superseder(),
+        consensus_manager=consensus_manager.get_manager()
     )
+    consensus_manager.init(broker=_broker)
     logger.info("memory_broker: initialized (store=%s recall=%s)", store_fn, recall_fn)
 
 
@@ -88,10 +91,11 @@ class MemoryBroker:
     overwriting them.
     """
 
-    def __init__(self, store_fn: Callable, recall_fn: Callable, superseder: Optional[Any] = None) -> None:
+    def __init__(self, store_fn: Callable, recall_fn: Callable, superseder: Optional[Any] = None, consensus_manager: Optional[Any] = None) -> None:
         self._store = store_fn
         self._recall = recall_fn
         self._superseder = superseder
+        self._consensus = consensus_manager
 
     # ------------------------------------------------------------------
     # Public API
@@ -109,6 +113,7 @@ class MemoryBroker:
         source: str = "coordinator",
         check_contradictions: bool = True,
         supersede: bool = True,
+        promote: bool = True,
     ) -> Dict[str, Any]:
         """
         Write a memory entry with automatic contradiction detection and supersession.
@@ -185,6 +190,17 @@ class MemoryBroker:
                     pass
 
             _record_broker_metrics("write", memory_type, status, latency)
+            
+            # Phase 57 — Global Consensus: Evaluate for Institutional Promotion
+            if result.get("status") in ["stored", "success"] and promote and self._consensus:
+                # Do not re-promote institutional facts to avoid infinite loops
+                if not metadata.get("institutional"):
+                    asyncio.create_task(self._consensus.evaluate_for_promotion(
+                        memory_type=memory_type,
+                        content=content,
+                        metadata=metadata
+                    ))
+
             return result
         except asyncio.TimeoutError:
             logger.warning("memory_broker.write timeout type=%s", memory_type)
