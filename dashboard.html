@@ -9,6 +9,7 @@
     // JS error visibility: renders a red banner for any uncaught error (SyntaxError, ReferenceError, etc.)
     window.onerror = function(msg, src, line, col, err) {
         var banner = document.getElementById('js-error-banner');
+        var messageEl = document.getElementById('js-error-message');
         if (!banner) {
             banner = document.createElement('div');
             banner.id = 'js-error-banner';
@@ -16,7 +17,13 @@
             document.body ? document.body.prepend(banner) : document.addEventListener('DOMContentLoaded', function(){ document.body.prepend(banner); });
         }
         var loc = src ? ' @ ' + src.split('/').pop() + ':' + line + ':' + col : '';
-        banner.textContent = '\u26a0 JS Error' + loc + '\n' + msg;
+        var fullMsg = loc + '\n' + msg;
+        if (messageEl) {
+            messageEl.textContent = fullMsg;
+            banner.style.display = 'block';
+        } else {
+            banner.textContent = '\u26a0 JS Error' + fullMsg;
+        }
         return false;
     };
     </script>
@@ -3324,7 +3331,14 @@
         window.mermaid = mermaid;
     </script>
 </head>
-<body>
+<body class="cyberpunk">
+    <!-- JS Error Notification Surface -->
+    <div id="js-error-banner" style="display: none; background: #ff0055; color: #fff; padding: 0.75rem 1.5rem; position: fixed; top: 0; left: 0; right: 0; z-index: 99999; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; border-bottom: 3px solid #fff; box-shadow: 0 10px 30px rgba(255, 0, 85, 0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto;">
+            <span><strong style="color: #000; background: #fff; padding: 0 0.3rem; margin-right: 0.5rem;">CRITICAL ERROR</strong> <span id="js-error-message">Initializing...</span></span>
+            <button onclick="document.getElementById('js-error-banner').style.display='none'" style="background: transparent; border: 1px solid #fff; color: #fff; cursor: pointer; padding: 0.2rem 0.6rem; font-family: inherit; font-size: 0.7rem; font-weight: bold;">DISMISS</button>
+        </div>
+    </div>
     <div class="container">
         <header>
             <h1>SYSTEM COMMAND CENTER</h1>
@@ -4219,6 +4233,59 @@
                             <div class="metric">
                                 <div class="metric-label">Memory Coherence</div>
                                 <div class="metric-value" id="memoryCoherence">--</div>
+                            </div>
+                        </div>
+                        <div class="progress-container" style="margin-top: 1rem; background: rgba(0, 217, 255, 0.1); height: 4px; border-radius: 2px;">
+                            <div class="progress-bar" id="intentConfidenceBar" style="width: 0%; height: 100%; background: var(--accent-cyan); border-radius: 2px; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Knowledge Base (Vector DB) -->
+            <div class="dashboard-section">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Knowledge Base</h2>
+                        </div>
+                        <span class="card-badge" id="knowledgeBaseBadge">Vector DB</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Total Documents</div>
+                                <div class="metric-value" id="kbTotalPoints">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Real Embeddings</div>
+                                <div class="metric-value" id="kbEmbeddingsPercent">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Context Relevance</div>
+                                <div class="metric-value" id="kbContextRelevance">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Quality Improvement</div>
+                                <div class="metric-value" id="kbQualityImprovement">--</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">Collection Presence</div>
+                            <div class="data-list">
+                                <div class="data-item">
+                                    <span>Codebase Context</span>
+                                    <span id="kbCodebaseContext" class="status-badge" style="font-size: 0.7rem;">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>Error Solutions</span>
+                                    <span id="kbErrorSolutions" class="status-badge" style="font-size: 0.7rem;">--</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>Best Practices</span>
+                                    <span id="kbBestPractices" class="status-badge" style="font-size: 0.7rem;">--</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -5717,6 +5784,7 @@
                                             <span class="data-meta">pending</span>
                                         </div>
                                     </div>
+                                    <div id="deploymentHistoryPagination" class="pagination-container" style="margin-top: 0.5rem; display: flex; justify-content: center; gap: 0.5rem;"></div>
                                 </div>
                                 <div>
                                     <div class="deployment-subtitle">Search Results</div>

@@ -148,6 +148,9 @@ import memory_broker               # 54.1 — unified memory layer
 import memory_superseder           # 55.1 — temporal memory supersession
 import drift_analyzer              # 55.3 — reasoning drift detection
 import memory_crystallizer         # 55.2 — crystalline session distillation
+from extensions import memory_superseder as memory_superseder_routes
+from extensions import drift_analyzer as drift_analyzer_routes
+from extensions import memory_crystallizer as memory_crystallizer_routes
 import intent_classifier           # 54.2 — semantic intent classification
 import rag_augmentor               # 54.3 — active RAG pipeline
 import trace_collector             # 54.5 — end-to-end query trace
@@ -791,25 +794,6 @@ def init(
     )
     # Phase 54.1 — MemoryBroker: unified typed memory interface
     memory_broker.init(store_fn=_store_memory, recall_fn=_recall_memory)
-
-    # Phase 55.2 — MemoryCrystallizer
-    import memory_crystallizer
-    memory_crystallizer.init(
-        broker=memory_broker.get_broker(),
-        llama_client=crystallizer_llm
-    )
-
-    # Phase 55.3 — DriftAnalyzer
-    import drift_analyzer
-    drift_analyzer.get_analyzer().set_embed_fn(_augment_query)
-
-    # Phase 56 — HomeostasisManager
-    import homeostasis_manager
-    homeostasis_manager.init(
-        drift_analyzer=drift_analyzer.get_analyzer(),
-        crystallizer=memory_crystallizer.get_crystallizer(),
-        route_handler=_route_search
-    )
 
     # Phase 54.3 — RagAugmentor: active RAG pipeline (uses aidb_client from journal init)
     _aidb_key_54 = _read_secret_file(os.getenv("AIDB_API_KEY_FILE", ""))
@@ -2564,9 +2548,9 @@ async def run_http_mode(port: int) -> None:
 
     # Phase 54: Agentic-First Architecture Elevation routes
     http_app.router.add_get("/memory/broker/status", memory_broker.handle_broker_status)
-    memory_superseder.register_routes(http_app)
-    drift_analyzer.register_routes(http_app)
-    memory_crystallizer.register_routes(http_app)
+    memory_superseder_routes.register_routes(http_app)
+    drift_analyzer_routes.register_routes(http_app)
+    memory_crystallizer_routes.register_routes(http_app)
     http_app.router.add_get("/control/intent/map", intent_classifier.handle_get_intent_map)
     http_app.router.add_post("/control/intent/reload", intent_classifier.handle_reload_intent_map)
     http_app.router.add_get("/api/health/rag", rag_augmentor.handle_rag_health)

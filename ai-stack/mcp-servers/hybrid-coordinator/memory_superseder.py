@@ -18,6 +18,17 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("hybrid-coordinator")
 
+# ---------------------------------------------------------------------------
+# Module state
+# ---------------------------------------------------------------------------
+_postgres_client: Optional[Any] = None
+
+def init(postgres_client: Optional[Any] = None) -> None:
+    global _postgres_client
+    _postgres_client = postgres_client
+    logger.info("memory_superseder: initialized (Phase 55.1 Active)")
+
+
 class MemorySuperseder:
     """
     Orchestrates memory versioning and conflict resolution.
@@ -25,6 +36,29 @@ class MemorySuperseder:
 
     def __init__(self) -> None:
         pass
+
+    async def ensure_schema(self) -> None:
+        """Create supersession lineage table if it doesn't exist."""
+        if not _postgres_client:
+            return
+
+        ddl = """
+        CREATE TABLE IF NOT EXISTS memory_supersessions (
+            id SERIAL PRIMARY KEY,
+            predecessor_id TEXT NOT NULL,
+            successor_id TEXT NOT NULL,
+            memory_type TEXT NOT NULL,
+            superseded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            logical_clock FLOAT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_supersessions_successor ON memory_supersessions(successor_id);
+        CREATE INDEX IF NOT EXISTS idx_supersessions_predecessor ON memory_supersessions(predecessor_id);
+        """
+        try:
+            await _postgres_client.execute(ddl)
+            logger.info("memory_superseder: PostgreSQL schema verified")
+        except Exception as exc:
+            logger.warning("memory_superseder: schema init failed: %s", exc)
 
     def resolve_lineage(self, new_fact: str, existing_facts: List[Dict[str, Any]]) -> Optional[str]:
         """

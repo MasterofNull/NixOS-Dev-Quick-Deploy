@@ -899,10 +899,12 @@ class HintsEngine:
         )
         # Repo Parity Database (Source G)
         parity_db_env = os.getenv("REPO_PARITY_DB_PATH", "")
+        # Derive repo root: knowledge/hints_engine.py -> mcp-servers/hybrid-coordinator -> ai-stack -> repo root
+        _repo_root = Path(__file__).parent.parent.parent.parent.parent
         self._repo_parity_db_path = (
             Path(parity_db_env)
             if parity_db_env
-            else Path("/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/data/parity/repo-parity-db.json")
+            else _repo_root / "data" / "parity" / "repo-parity-db.json"
         )
         self._div_repeat_window = self._parse_int_env("AI_HINT_DIVERSITY_REPEAT_WINDOW", 300, min_value=20)
         # Batch 6.1: Reduced from 45% to 25% for <30% concentration target
