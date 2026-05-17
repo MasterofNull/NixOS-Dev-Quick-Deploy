@@ -13,7 +13,16 @@
 #     [--runs N] \
 #     [--ctx-size N] \
 #     [--prompt TEXT] \
-#     [--quiet]
+#     [--quiet] \
+#     [--use-existing-server HOST:PORT]
+#
+# --use-existing-server HOST:PORT
+#   Skip server startup (and model file access) entirely; measure tps against
+#   the already-running server at HOST:PORT.  On DynamicUser-locked systems
+#   (e.g. NixOS llama-cpp.service) where the model file is inaccessible from
+#   the invoking shell, use: --use-existing-server 127.0.0.1:8080
+#   The backend label will be "existing-server" unless --backends is also set
+#   to a single label (e.g. --backends vulkan).
 #
 # Output:
 #   JSON file with per-backend results including median tok/s, startup ms,
@@ -41,19 +50,21 @@ PROMPT="Explain the difference between Vulkan and ROCm in two sentences."
 QUIET=0
 LLAMA_BIN="${LLAMA_BIN:-llama-server}"
 BASE_PORT="${BENCHMARK_BASE_PORT:-18080}"
+EXISTING_SERVER=""   # HOST:PORT of an already-running server (skips startup)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --backends)   BACKENDS="${2:?}"; shift ;;
-    --model)      MODEL_PATH="${2:?}"; shift ;;
-    --output)     OUTPUT_FILE="${2:?}"; shift ;;
-    --runs)       RUNS="${2:?}"; shift ;;
-    --ctx-size)   CTX_SIZE="${2:?}"; shift ;;
-    --prompt)     PROMPT="${2:?}"; shift ;;
-    --quiet)      QUIET=1 ;;
-    --llama-bin)  LLAMA_BIN="${2:?}"; shift ;;
+    --backends)            BACKENDS="${2:?}"; shift ;;
+    --model)               MODEL_PATH="${2:?}"; shift ;;
+    --output)              OUTPUT_FILE="${2:?}"; shift ;;
+    --runs)                RUNS="${2:?}"; shift ;;
+    --ctx-size)            CTX_SIZE="${2:?}"; shift ;;
+    --prompt)              PROMPT="${2:?}"; shift ;;
+    --quiet)               QUIET=1 ;;
+    --llama-bin)           LLAMA_BIN="${2:?}"; shift ;;
+    --use-existing-server) EXISTING_SERVER="${2:?}"; shift ;;
     --help|-h)
-      printf 'Usage: %s [--backends B] [--model PATH] [--output FILE] [--runs N] [--quiet]\n' "$0"
+      printf 'Usage: %s [--backends B] [--model PATH] [--output FILE] [--runs N] [--quiet] [--use-existing-server HOST:PORT]\n' "$0"
       exit 0 ;;
     *) printf '%s: unknown argument: %s\n' "$0" "$1" >&2; exit 2 ;;
   esac
@@ -61,32 +72,34 @@ while [[ $# -gt 0 ]]; do
 done
 
 log() {
-  [[ $QUIET -eq 1 ]] || printf '[benchmark-backends] %s\n' "$*"
+  [[ $QUIET -eq 1 ]] || printf '[benchmark-backends] %s\n' "$*" >&2
 }
 
 # ---------------------------------------------------------------------------
-# Resolve model path
+# Resolve model path (skipped when --use-existing-server is set)
 # ---------------------------------------------------------------------------
-if [[ -z "${MODEL_PATH}" ]]; then
-  # Resolution order:
-  # 1. BENCHMARK_MODEL_PATH (injected by NixOS module — resolves DynamicUser boundary)
-  # 2. LLAMA_CPP_MODEL_PATH (alias)
-  # 3. Symlink fallback (works if running as the service user)
-  MODEL_PATH="${BENCHMARK_MODEL_PATH:-${LLAMA_CPP_MODEL_PATH:-}}"
-fi
-if [[ -z "${MODEL_PATH}" ]]; then
-  MODEL_PATH="$(readlink -f /var/lib/llama-cpp/model.gguf 2>/dev/null || true)"
-fi
-if [[ -z "${MODEL_PATH}" ]]; then
-  log "No model path provided."
-  log "Set BENCHMARK_MODEL_PATH (injected by NixOS ai-stack module after rebuild),"
-  log "or pass --model PATH explicitly."
-  printf '{"error":"no_model","results":{}}\n' > "${OUTPUT_FILE}"
-  exit 1
-fi
-if [[ ! -f "${MODEL_PATH}" ]]; then
-  log "Model file not found: ${MODEL_PATH}"
-  exit 1
+if [[ -z "${EXISTING_SERVER}" ]]; then
+  if [[ -z "${MODEL_PATH}" ]]; then
+    # Resolution order:
+    # 1. BENCHMARK_MODEL_PATH (injected by NixOS module — resolves DynamicUser boundary)
+    # 2. LLAMA_CPP_MODEL_PATH (alias)
+    # 3. Symlink fallback (works if running as the service user)
+    MODEL_PATH="${BENCHMARK_MODEL_PATH:-${LLAMA_CPP_MODEL_PATH:-}}"
+  fi
+  if [[ -z "${MODEL_PATH}" ]]; then
+    MODEL_PATH="$(readlink -f /var/lib/llama-cpp/model.gguf 2>/dev/null || true)"
+  fi
+  if [[ -z "${MODEL_PATH}" ]]; then
+    log "No model path provided."
+    log "Set BENCHMARK_MODEL_PATH (injected by NixOS ai-stack module after rebuild),"
+    log "or pass --model PATH explicitly, or use --use-existing-server HOST:PORT."
+    printf '{"error":"no_model","results":{}}\n' > "${OUTPUT_FILE}"
+    exit 1
+  fi
+  if [[ ! -f "${MODEL_PATH}" ]]; then
+    log "Model file not found: ${MODEL_PATH}"
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -173,9 +186,12 @@ count_gpu_resets_since() {
   since_iso="$(date -u -d "@${since_epoch}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null \
     || date -u -r "${since_epoch}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null \
     || echo '2000-01-01 00:00:00')"
-  journalctl -k --since "${since_iso}" 2>/dev/null \
+  # grep -c exits 1 when count is 0; capture into variable to avoid triggering pipefail
+  local count
+  count="$(journalctl -k --since "${since_iso}" 2>/dev/null \
     | grep -cE 'amdgpu.*GPU reset|amdgpu.*ring.*timeout|ErrorDeviceLost' \
-    || echo "0"
+    2>/dev/null)" || count="0"
+  printf '%s' "${count}"
 }
 
 # ---------------------------------------------------------------------------
@@ -295,35 +311,117 @@ benchmark_backend() {
 }
 
 # ---------------------------------------------------------------------------
+# Benchmark against an already-running server (--use-existing-server mode)
+# No server startup; no model file access required.
+# ---------------------------------------------------------------------------
+benchmark_existing_server() {
+  local backend_label="$1"
+  local host_port="$2"
+  local url_base="http://${host_port}"
+
+  log "  benchmarking existing server=${host_port} label=${backend_label}"
+
+  # Verify the server is actually up
+  if ! curl -sf --max-time 5 "${url_base}/health" >/dev/null 2>&1; then
+    printf '{"backend":"%s","error":"server_not_reachable","startup_ms":null,"tokens_per_sec":[],"median_tokens_per_sec":0,"peak_rss_mb":null,"gpu_resets":null}' \
+      "${backend_label}"
+    return
+  fi
+
+  local start_epoch
+  start_epoch="$(date -u +%s)"
+  local tps_values=()
+
+  for run in $(seq 1 "${RUNS}"); do
+    local t_before t_after
+    t_before="$(date +%s%3N)"
+    local response
+    response="$(curl -sf --max-time 300 \
+      "${url_base}/completion" \
+      -H 'Content-Type: application/json' \
+      -d "{\"prompt\":\"${PROMPT}\",\"n_predict\":64,\"stream\":false}" 2>/dev/null || echo '{}')"
+    t_after="$(date +%s%3N)"
+    local elapsed_ms=$(( t_after - t_before ))
+    local n_predicted
+    n_predicted="$(printf '%s' "${response}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tokens_predicted', d.get('n_predicted', 0)))" 2>/dev/null || echo 0)"
+    local tps=0
+    if (( elapsed_ms > 0 && n_predicted > 0 )); then
+      tps=$(( n_predicted * 1000 / elapsed_ms ))
+    fi
+    tps_values+=("${tps}")
+    log "    run ${run}/${RUNS}: n_predicted=${n_predicted} elapsed=${elapsed_ms}ms tps=${tps}"
+  done
+
+  local resets
+  resets="$(count_gpu_resets_since "${start_epoch}")"
+
+  local -a sorted
+  mapfile -t sorted < <(printf '%d\n' "${tps_values[@]}" | sort -n)
+  local count="${#sorted[@]}"
+  local median
+  if (( count % 2 == 1 )); then
+    median="${sorted[$(( count / 2 ))]}"
+  else
+    median=$(( (sorted[$(( count / 2 - 1 ))] + sorted[$(( count / 2 ))]) / 2 ))
+  fi
+
+  local tps_json
+  tps_json="[$(printf '%d,' "${tps_values[@]}" | sed 's/,$//')]"
+
+  # startup_ms=0 and peak_rss_mb=null — server was already running
+  printf '{"backend":"%s","startup_ms":0,"note":"existing-server","tokens_per_sec":%s,"median_tokens_per_sec":%d,"peak_rss_mb":null,"gpu_resets":%s}' \
+    "${backend_label}" \
+    "${tps_json}" \
+    "${median}" \
+    "${resets}"
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 HOSTNAME_VALUE="${HOSTNAME:-$(hostname -s 2>/dev/null || echo unknown)}"
 
-if ! command -v "${LLAMA_BIN}" >/dev/null 2>&1; then
-  log "${LLAMA_BIN} not in PATH — cannot benchmark"
-  printf '{"error":"llama_server_not_found","results":{}}\n' > "${OUTPUT_FILE}"
-  exit 1
-fi
-
-IFS=',' read -ra BACKEND_LIST <<< "${BACKENDS}"
-
 declare -a RESULT_PARTS=()
 SUCCESS_COUNT=0
 
-for backend in "${BACKEND_LIST[@]}"; do
-  backend="${backend// /}"  # trim whitespace
-  [[ -z "${backend}" ]] && continue
-  log "Backend: ${backend}"
-  result="$(benchmark_backend "${backend}")"
+# --use-existing-server path: no server startup, no model file needed
+if [[ -n "${EXISTING_SERVER}" ]]; then
+  # If --backends was also given (e.g. --backends vulkan), use it as the label.
+  # Otherwise fall back to "existing-server".
+  existing_label="${BACKENDS:-existing-server}"
+  existing_label="${existing_label//,*/}"  # take first entry only
+  existing_label="${existing_label// /}"
+  log "existing-server mode: ${EXISTING_SERVER} label=${existing_label} runs=${RUNS}"
+  result="$(benchmark_existing_server "${existing_label}" "${EXISTING_SERVER}")"
   if [[ "${result}" != *'"error"'* ]]; then
     (( SUCCESS_COUNT++ )) || true
   fi
-  RESULT_PARTS+=("\"${backend}\":${result}")
-done
+  RESULT_PARTS+=("\"${existing_label}\":${result}")
+else
+  if ! command -v "${LLAMA_BIN}" >/dev/null 2>&1; then
+    log "${LLAMA_BIN} not in PATH — cannot benchmark"
+    printf '{"error":"llama_server_not_found","results":{}}\n' > "${OUTPUT_FILE}"
+    exit 1
+  fi
+
+  IFS=',' read -ra BACKEND_LIST <<< "${BACKENDS}"
+
+  for backend in "${BACKEND_LIST[@]}"; do
+    backend="${backend// /}"  # trim whitespace
+    [[ -z "${backend}" ]] && continue
+    log "Backend: ${backend}"
+    result="$(benchmark_backend "${backend}")"
+    if [[ "${result}" != *'"error"'* ]]; then
+      (( SUCCESS_COUNT++ )) || true
+    fi
+    RESULT_PARTS+=("\"${backend}\":${result}")
+  done
+fi
 
 RESULTS_JSON="$(printf '%s,' "${RESULT_PARTS[@]}" | sed 's/,$//')"
 
+MODEL_LABEL="${MODEL_PATH:-${EXISTING_SERVER}}"
 python3 -c "
 import json, sys
 results = json.loads('{' + sys.argv[1] + '}')
@@ -331,7 +429,7 @@ output = {
     'schema_version': '1.0.0',
     'timestamp': '${NOW_ISO}',
     'host': '${HOSTNAME_VALUE}',
-    'model': '${MODEL_PATH}',
+    'model': '${MODEL_LABEL}',
     'runs': ${RUNS},
     'results': results
 }
@@ -348,4 +446,5 @@ if [[ $SUCCESS_COUNT -eq 0 ]]; then
   exit 1
 fi
 
-log "Done: ${SUCCESS_COUNT}/${#BACKEND_LIST[@]} backends benchmarked"
+TOTAL_BACKENDS="${#RESULT_PARTS[@]}"
+log "Done: ${SUCCESS_COUNT}/${TOTAL_BACKENDS} backends benchmarked"
