@@ -2592,7 +2592,8 @@ async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
     """Return cached aq-report JSON snapshot for dashboard internals."""
     now = time.time()
     cached = _AQ_REPORT_CACHE.get("payload")
-    if cached and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
+    # Use `is not None` — empty dict {} is a valid cached result (aq-report timed out)
+    if cached is not None and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
         return cached
 
     # Resolve aq-report: prefer repo-relative path; fall back to PATH then NixOS profile
