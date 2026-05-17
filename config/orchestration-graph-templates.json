@@ -3,6 +3,42 @@
   "description": "Built-in multi-agent staged workflow graph templates.",
   "templates": [
     {
+      "id": "consensus-coding",
+      "name": "Team Coding: Parallel Edit → Consensus → Review",
+      "description": "Multi-agent team workflow: two implementation agents work in parallel, an arbiter resolves conflicts, and a reviewer validates the result.",
+      "category": "coding",
+      "tags": ["consensus", "multi-agent", "parallel-edit"],
+      "nodes": [
+        {
+          "id": "agent_a",
+          "lane": "implementation",
+          "safety_mode": "execute-mutating",
+          "prompt_template": "You are implementation agent A. Task: {task}. Proceed with the edit.",
+          "depends_on": []
+        },
+        {
+          "id": "agent_b",
+          "lane": "reasoning",
+          "safety_mode": "plan-readonly",
+          "prompt_template": "You are implementation agent B. Task: {task}. Propose the optimal solution.",
+          "depends_on": []
+        },
+        {
+          "id": "arbiter",
+          "type": "consensus",
+          "strategy": "majority_vote",
+          "depends_on": ["agent_a", "agent_b"]
+        },
+        {
+          "id": "reviewer",
+          "lane": "codex-review",
+          "safety_mode": "plan-readonly",
+          "prompt_template": "Evaluate the consensus solution for task: {task}\n\nConsensus result:\n{deps}",
+          "depends_on": ["arbiter"]
+        }
+      ]
+    },
+    {
       "id": "coding-staged",
       "name": "Coding: Plan → Edit → Review",
       "description": "Three-stage coding workflow: planner reads and plans, editor implements, reviewer validates.",
