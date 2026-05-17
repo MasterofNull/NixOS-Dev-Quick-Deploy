@@ -12,7 +12,7 @@
         if (!banner) {
             banner = document.createElement('div');
             banner.id = 'js-error-banner';
-            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0392b;color:#fff;font-family:monospace;font-size:13px;padding:10px 16px;border-bottom:2px solid #922b21;white-space:pre-wrap;word-break:break-all;';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#0a0e14;color:#ff006e;font-family:"JetBrains Mono",monospace;font-size:13px;padding:10px 16px;border-bottom:2px solid #ff006e;box-shadow:0 0 20px rgba(255,0,110,0.4);white-space:pre-wrap;word-break:break-all;';
             document.body ? document.body.prepend(banner) : document.addEventListener('DOMContentLoaded', function(){ document.body.prepend(banner); });
         }
         var loc = src ? ' @ ' + src.split('/').pop() + ':' + line + ':' + col : '';
@@ -42,6 +42,9 @@
             --status-warning: #ffbe0b;
             --status-error: #ff006e;
             --scanline: rgba(0, 217, 255, 0.03);
+            /* Aliases for legacy inline styles */
+            --accent-green: #00ff88;
+            --accent-red: #ff006e;
         }
 
         * {
@@ -90,6 +93,16 @@
             50% { opacity: 0.6; }
         }
 
+        /* Chromatic aberration glitch — fires rarely for a "live system" feel */
+        @keyframes glitch-glow {
+            0%, 88%  { filter: none; }
+            89%      { filter: drop-shadow(3px 0 var(--accent-magenta)) drop-shadow(-3px 0 var(--accent-cyan)); }
+            90%      { filter: drop-shadow(-2px 0 var(--accent-magenta)) drop-shadow(2px 0 var(--accent-cyan)); }
+            91%      { filter: none; }
+            95%      { filter: drop-shadow(1px 0 var(--accent-cyan)) drop-shadow(-1px 0 var(--accent-magenta)); }
+            96%      { filter: none; }
+        }
+
         .container {
             max-width: 2200px;
             margin: 0 auto;
@@ -115,7 +128,7 @@
             -webkit-text-fill-color: transparent;
             background-clip: text;
             margin-bottom: 0.5rem;
-            animation: glow 3s ease-in-out infinite;
+            animation: glow 3s ease-in-out infinite, glitch-glow 7s steps(1) infinite;
         }
 
         .header-meta {
@@ -154,10 +167,29 @@
             right: 0;
             background: var(--bg-card);
             border: 1px solid var(--border-glow);
-            border-radius: 8px;
+            border-radius: 4px;
             padding: 1.5rem;
             min-width: 200px;
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
+            box-shadow: 0 0 24px rgba(0, 217, 255, 0.2);
+            /* Reticle corners via background-image gradients */
+            background-image:
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    left  / 12px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    left  / 2px 12px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    right / 12px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    right / 2px 12px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom left  / 12px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom left  / 2px 12px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom right / 12px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom right / 2px 12px no-repeat;
+        }
+
+        .health-score-status {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 0.6rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-top: 0.4rem;
+            color: var(--status-online);
         }
 
         .health-score-label {
@@ -182,7 +214,8 @@
             background: rgba(10, 14, 20, 0.97);
             border-top: 1px solid rgba(0, 217, 255, 0.2);
             border-bottom: 1px solid rgba(0, 217, 255, 0.45);
-            box-shadow: 0 3px 18px rgba(0, 217, 255, 0.08), 0 1px 0 rgba(0, 217, 255, 0.04) inset;
+            border-left: 4px solid var(--accent-magenta);
+            box-shadow: 0 3px 18px rgba(0, 217, 255, 0.08), -5px 0 18px rgba(255, 0, 110, 0.25);
             padding: 0.42rem 1.5rem;
             margin-bottom: 1.25rem;
             font-family: 'JetBrains Mono', 'Courier New', monospace;
@@ -411,7 +444,12 @@
             border: 1px solid rgba(30, 58, 95, 0.95);
             border-left: 3px solid var(--accent-cyan);
             border-radius: 5px;
-            background: linear-gradient(180deg, rgba(26, 35, 50, 0.9), rgba(10, 14, 20, 0.92));
+            background:
+                linear-gradient(180deg, rgba(26, 35, 50, 0.9), rgba(10, 14, 20, 0.92));
+            background-image:
+                radial-gradient(var(--border-primary) 1px, transparent 1px),
+                linear-gradient(180deg, rgba(26, 35, 50, 0.9), rgba(10, 14, 20, 0.92));
+            background-size: 10px 10px, 100% 100%;
             padding: 0.75rem;
         }
 
@@ -426,14 +464,29 @@
 
         .deck-tile.warning {
             border-left-color: var(--status-warning);
+            box-shadow: inset 3px 0 12px rgba(255, 190, 11, 0.08);
+        }
+
+        .deck-tile.warning::after {
+            background: linear-gradient(90deg, transparent, rgba(255, 190, 11, 0.7), transparent);
         }
 
         .deck-tile.error {
             border-left-color: var(--status-error);
+            box-shadow: inset 3px 0 12px rgba(255, 0, 110, 0.1);
+        }
+
+        .deck-tile.error::after {
+            background: linear-gradient(90deg, transparent, rgba(255, 0, 110, 0.7), transparent);
         }
 
         .deck-tile.online {
             border-left-color: var(--status-online);
+            box-shadow: inset 3px 0 12px rgba(0, 255, 136, 0.06);
+        }
+
+        .deck-tile.online::after {
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.5), transparent);
         }
 
         .deck-label {
@@ -840,7 +893,8 @@
             height: 100%;
             background: linear-gradient(90deg,
                 transparent,
-                rgba(255, 255, 255, 0.3),
+                rgba(0, 217, 255, 0.45),
+                rgba(255, 0, 110, 0.2),
                 transparent
             );
             animation: shimmer 2s infinite;
@@ -3282,6 +3336,7 @@
             <div class="health-score">
                 <div class="health-score-label">System Health</div>
                 <div class="health-score-value" id="healthScore">--</div>
+                <div class="health-score-status" id="healthScoreStatus">STATUS: INIT</div>
             </div>
         </header>
 
@@ -10688,13 +10743,20 @@
             const healthElement = document.getElementById('healthScore');
             healthElement.textContent = `${score}%`;
 
-            // Color based on score
+            // Color + glitch + status label based on score
+            const statusEl = document.getElementById('healthScoreStatus');
             if (score >= 90) {
                 healthElement.style.color = 'var(--status-online)';
+                healthElement.style.animation = 'glitch-glow 7s steps(1) infinite';
+                if (statusEl) { statusEl.textContent = 'STATUS: NOMINAL'; statusEl.style.color = 'var(--status-online)'; }
             } else if (score >= 70) {
                 healthElement.style.color = 'var(--status-warning)';
+                healthElement.style.animation = 'glitch-glow 4s steps(1) infinite';
+                if (statusEl) { statusEl.textContent = 'STATUS: DEGRADED'; statusEl.style.color = 'var(--status-warning)'; }
             } else {
                 healthElement.style.color = 'var(--status-error)';
+                healthElement.style.animation = 'glitch-glow 2s steps(1) infinite';
+                if (statusEl) { statusEl.textContent = 'STATUS: CRITICAL'; statusEl.style.color = 'var(--status-error)'; }
             }
         }
 
