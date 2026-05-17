@@ -185,6 +185,7 @@ _switchboard_client_ref: Optional[Callable] = None
 _postgres_client_ref: Optional[Callable] = None
 _aidb_client_ref: Optional[Callable] = None
 _queue_depth_ref: Optional[Callable] = None
+_intent_classifier: Optional[Any] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
 
@@ -1029,6 +1030,7 @@ def init(
     postgres_client_ref: Callable,
     aidb_client_ref: Optional[Callable] = None,
     queue_depth_ref: Optional[Callable] = None,
+    intent_classifier: Optional[Any] = None,
     collections: Dict[str, Any],
 ) -> None:
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
@@ -1036,7 +1038,7 @@ def init(
     global _record_query_gap, _record_telemetry, _summarize
     global _context_compressor_ref, _llama_cpp_client_ref, _llama_cpp_reasoning_client_ref
     global _switchboard_client_ref, _postgres_client_ref, _aidb_client_ref
-    global _queue_depth_ref, _COLLECTIONS, _query_expander
+    global _queue_depth_ref, _intent_classifier, _COLLECTIONS, _query_expander
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
     _select_backend = select_backend_fn
@@ -1050,6 +1052,7 @@ def init(
     _postgres_client_ref = postgres_client_ref
     _aidb_client_ref = aidb_client_ref
     _queue_depth_ref = queue_depth_ref
+    _intent_classifier = intent_classifier
     _COLLECTIONS = collections
     _query_expander = QueryExpander(Config.LLAMA_CPP_URL)
 
@@ -1069,6 +1072,37 @@ async def route_search(
     query = sanitize_query(query)
     start = time.time()
     interaction_id = str(uuid4())
+    
+    # Phase 54.2 — Cognitive Intent Classification (Level 6)
+    # Start semantic classification in background
+    semantic_task = None
+    if _intent_classifier and hasattr(_intent_classifier, "classify_semantic"):
+        semantic_task = asyncio.create_task(_intent_classifier.classify_semantic(query))
+
+    # Initial keyword-based classification
+    intent_info = _intent_classifier.classify(query) if _intent_classifier else {"intent": "unknown", "confidence": 0.0}
+    
+    # Wait for semantic results (timeout 1s to not block routing)
+    cognitive_lift = 0.0
+    if semantic_task:
+        try:
+            semantic_scores = await asyncio.wait_for(semantic_task, timeout=1.0)
+            if semantic_scores:
+                best_semantic_intent = max(semantic_scores, key=lambda k: semantic_scores[k])
+                best_semantic_score = semantic_scores[best_semantic_intent]
+                
+                # Hybrid Logic: Semantic boost if confidence is high
+                if best_semantic_score > intent_info.get("confidence", 0.0):
+                    cognitive_lift = best_semantic_score - intent_info.get("confidence", 0.0)
+                    intent_info.update({
+                        "intent": best_semantic_intent,
+                        "confidence": round(best_semantic_score, 3),
+                        "cognitive_lift": round(cognitive_lift, 3),
+                        "classification_mode": "hybrid_semantic"
+                    })
+        except Exception:
+            pass
+
     limit = max(1, min(int(limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
     keyword_limit = max(0, min(int(keyword_limit), Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS))
     normalized_mode = (mode or "auto").lower()
@@ -1789,6 +1823,7 @@ async def route_search(
         "backend_reason_class": backend_reason_class,
         "response_max_tokens": response_max_tokens if generate_response else None,
         "task_complexity": task_complexity_summary,
+        "intent_classification": intent_info, # Phase 54.2 Metadata
         "local_inference_lane": local_inference_lane,
         "local_inference_lane_reason": local_inference_lane_reason,
         "retrieval_profile": retrieval_profile,

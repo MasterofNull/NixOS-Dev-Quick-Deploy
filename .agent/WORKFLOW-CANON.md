@@ -94,21 +94,21 @@ Contents: Objective, Scope Lock (in/out of scope), Workstreams, Step Plan, Valid
 
 ### Step 4: MEMORY CHECKPOINT
 
-**Purpose**: Store the plan before executing so work is resumable across sessions.
+**Purpose**: Store the plan and initialize collaboration locks so work is resumable.
 
 ```bash
 # Via MCP (preferred):
 mcp_server_store_memory key="<task-name>-plan" value="<condensed plan>"
 
-# Via shell:
-aq-memory store --key "<task-name>" --value "<plan summary>"
+# COLLABORATION: The Intent Lock (IL)
+# Write intended changes to .agent/collaboration/PENDING.json
 ```
 
 **What to store**:
 - Current slice objective (1–2 sentences)
 - Files being modified
 - Acceptance criteria
-- Next steps if interrupted
+- **Next Step** for the successor agent (crucial for handoff)
 
 **Rule**: If context exceeds half the model's window, checkpoint and compact before continuing.
 Use `mcp_server_recall_memory` or `aq-memory recall` at the start of the next session.
@@ -117,20 +117,20 @@ Use `mcp_server_recall_memory` or `aq-memory recall` at the start of the next se
 
 ### Step 5: EXECUTE (per slice)
 
-**Purpose**: Implement one slice at a time, with validation between slices.
+**Purpose**: Implement one slice at a time, with validation and heartbeat signaling.
 
 **Principles**:
 - **One slice = one commit**. Never batch 3 changes into one commit "for speed"
+- **Atomic Pulse (AP)**: Append success signal to `.agent/collaboration/PULSE.log` after every file write.
 - **Smallest change that moves the system forward**. Resist adding "while I'm here" changes
 - **Treat your own outputs as untrusted**. Read what you wrote, check it makes sense
-- **No hallucinated dependencies**: before `import X` or adding to requirements, confirm the
-  package exists in nixpkgs or pypi and is currently used or explicitly approved
 
 **Per-slice execution order**:
-1. Read the files you will modify (do not edit blind)
-2. Make the change
-3. Immediately run syntax validation (Step 6 security gate)
-4. If the change is incorrect, fix it before moving to the next file
+1. **Signaling**: Update `.agent/collaboration/PENDING.json` with the current target file.
+2. **Reading**: Read the files you will modify (do not edit blind).
+3. **Acting**: Make the change.
+4. **Heartbeat**: Log the success to `.agent/collaboration/PULSE.log`.
+5. **Validating**: Immediately run syntax validation (Step 6 security gate).
 
 ---
 
@@ -168,21 +168,18 @@ aq-qa 0                                     # harness health still green
 
 ### Step 7: COMMIT
 
-**Purpose**: Record atomic, auditable evidence of the change.
+**Purpose**: Record atomic, auditable evidence and prepare handoff for the next agent.
 
 ```bash
 git add <specific files — never git add -A>
 scripts/governance/tier0-validation-gate.sh --pre-commit   # final gate
 git commit -m "$(cat <<'EOF'
-type(scope): concise description of what changed and why
-
-- Bullet: specific change 1
-- Bullet: specific change 2
-- Validation: tier0 passed / N tests pass / aq-qa 0 clean
-
-Co-Authored-By: <active-agent-name> <noreply@harness.local>
+...
 EOF
 )"
+
+# COLLABORATION: The Handoff Memo (HM)
+# Update .agent/collaboration/HANDOFF.md with Status, Last Action, and Next Step.
 ```
 
 **Commit type prefixes**: `feat` `fix` `refactor` `docs` `test` `chore` `style` `perf`

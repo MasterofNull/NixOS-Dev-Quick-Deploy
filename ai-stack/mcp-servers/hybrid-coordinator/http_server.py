@@ -268,6 +268,7 @@ _get_process_memory: Optional[Callable] = None
 _snapshot_stats: Optional[Callable] = None
 _error_payload: Optional[Callable] = None
 _wait_for_model: Optional[Callable] = None
+_intent_classifier: Optional[Any] = None
 
 _multi_turn_manager: Optional[Any] = None
 _progressive_disclosure: Optional[Any] = None
@@ -627,6 +628,9 @@ def init(
     queue_depth_ref: Callable,
     queue_max_ref: Callable,
     embedding_cache_ref: Optional[Callable] = None,
+    postgres_client: Optional[Any] = None,
+    intent_classifier: Optional[Any] = None,
+    crystallizer_llm: Optional[Any] = None,
 ) -> None:
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
     global _augment_query, _route_search, _tree_search, _store_memory, _recall_memory
@@ -636,7 +640,7 @@ def init(
     global _multi_turn_manager, _progressive_disclosure, _feedback_api, _learning_pipeline
     global _COLLECTIONS, _HYBRID_STATS, _HARNESS_STATS, _CIRCUIT_BREAKERS, _SERVICE_NAME
     global _local_llm_healthy_ref, _local_llm_loading_ref, _queue_depth_ref, _queue_max_ref
-    global _embedding_cache_ref
+    global _embedding_cache_ref, _intent_classifier
     global _TOOL_SECURITY_AUDITOR
 
     _augment_query = augment_query_fn
@@ -669,6 +673,7 @@ def init(
     _queue_depth_ref = queue_depth_ref
     _queue_max_ref = queue_max_ref
     _embedding_cache_ref = embedding_cache_ref
+    _intent_classifier = intent_classifier
 
     session_builders.init(
         agent_hq=_AGENT_HQ,
@@ -787,6 +792,25 @@ def init(
     # Phase 54.1 — MemoryBroker: unified typed memory interface
     memory_broker.init(store_fn=_store_memory, recall_fn=_recall_memory)
 
+    # Phase 55.2 — MemoryCrystallizer
+    import memory_crystallizer
+    memory_crystallizer.init(
+        broker=memory_broker.get_broker(),
+        llama_client=crystallizer_llm
+    )
+
+    # Phase 55.3 — DriftAnalyzer
+    import drift_analyzer
+    drift_analyzer.get_analyzer().set_embed_fn(_augment_query)
+
+    # Phase 56 — HomeostasisManager
+    import homeostasis_manager
+    homeostasis_manager.init(
+        drift_analyzer=drift_analyzer.get_analyzer(),
+        crystallizer=memory_crystallizer.get_crystallizer(),
+        route_handler=_route_search
+    )
+
     # Phase 54.3 — RagAugmentor: active RAG pipeline (uses aidb_client from journal init)
     _aidb_key_54 = _read_secret_file(os.getenv("AIDB_API_KEY_FILE", ""))
     rag_augmentor.init(
@@ -796,8 +820,8 @@ def init(
 
     # Phase 54.5 / 54.6 — TraceCollector + EvalRunner (share postgres_client)
     # postgres_client may be None if DB is unavailable; modules degrade gracefully
-    trace_collector.init(postgres_client=None)  # wired after postgres_client init below
-    eval_runner.init(postgres_client=None)       # wired after postgres_client init below
+    trace_collector.init(postgres_client=postgres_client)
+    eval_runner.init(postgres_client=postgres_client)
 
     # Phase 16.4: Identity kernel
     identity_handlers.init()
@@ -2055,8 +2079,7 @@ async def run_http_mode(port: int) -> None:
             )
 
             # Phase 54.2 — classify intent before any routing decisions
-            _clf = intent_classifier.get_classifier()
-            _intent_result = _clf.classify(query)
+            _intent_result = _intent_classifier.classify(query) if _intent_classifier else intent_classifier.get_classifier().classify(query)
             _detected_intent = _intent_result.get("intent", "unknown")
             _intent_conf = _intent_result.get("confidence", 0.0)
             request_context["intent"] = _detected_intent
@@ -2180,12 +2203,47 @@ async def run_http_mode(port: int) -> None:
                 except Exception as _aff_exc:
                     logger.debug("affective pipeline skipped (non-fatal): %s", _aff_exc)
 
-            # Phase 54.2 — annotate result with detected intent
+            # Phase 54.2 — annotate result with detected intent (merged with semantic boost if available)
+            final_intent = result.get("intent_classification", {})
             result["intent_classification"] = {
-                "intent": _detected_intent,
-                "confidence": _intent_conf,
-                "profile": _intent_result.get("profile", "local"),
+                "intent": final_intent.get("intent", _detected_intent),
+                "confidence": final_intent.get("confidence", _intent_conf),
+                "profile": final_intent.get("profile", _intent_result.get("profile", "local")),
+                "cognitive_lift": final_intent.get("cognitive_lift", 0.0),
+                "classification_mode": final_intent.get("classification_mode", "keyword_fallback"),
+                "layers_active": final_intent.get("layers_active", ["L5:Session"])
             }
+
+            # Phase 55.3 — Reasoning Drift Detection (Layer 6)
+            import drift_analyzer
+            _resp_text = result.get("response", "")
+            if _resp_text and _detected_intent != "unknown":
+                _drift = await drift_analyzer.get_analyzer().compute_drift(_resp_text, _detected_intent)
+                result["intent_classification"]["drift"] = _drift
+                if not _drift.get("is_stable", True):
+                    logger.warning("reasoning_drift_detected intent=%s score=%.3f", _detected_intent, _drift["drift_score"])
+
+            # Phase 55.2 — Memory Crystallization (Layer 5)
+            import memory_crystallizer
+            _session_id = data.get("session_id") or request_context.get("session_id")
+            if _session_id and _multi_turn_manager:
+                _session = await _multi_turn_manager.load_session(_session_id)
+                if _session and _session.turn_count > 0 and _session.turn_count % 5 == 0:
+                    # Every 5 turns, crystallize the queries into facts
+                    # Construct a history from queries
+                    _history = [{"role": "user", "content": q} for q in _session.queries]
+                    asyncio.create_task(memory_crystallizer.get_crystallizer().crystallize_session(
+                        _history, metadata={"session_id": _session_id}
+                    ))
+
+            # Phase 56 — Homeostasis & Self-Correction (L6 Active Remediation)
+            import homeostasis_manager
+            _hm = homeostasis_manager.get_manager()
+            _stability = await _hm.evaluate_stability(result, session_id=_session_id)
+            if _stability.get("status") == "remediating":
+                result["homeostasis"] = _stability["remediation"]
+                logger.info("homeostasis: applied remediation for intent=%s", _detected_intent)
+
             # Phase 54.5 — commit trace span
             asyncio.create_task(_trace._commit(
                 int((time.perf_counter() - _trace._start) * 1000)

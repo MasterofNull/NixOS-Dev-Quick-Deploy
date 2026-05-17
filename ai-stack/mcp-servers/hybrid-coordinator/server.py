@@ -641,31 +641,37 @@ async def initialize_server():
     )
     logger.info("✓ Progressive disclosure API initialized")
 
-    # Initialize continuous learning pipeline
-    if os.getenv("CONTINUOUS_LEARNING_ENABLED", "true").lower() == "true":
-        from continuous_learning import ContinuousLearningPipeline
+    # Phase 54.5: Initialize PostgreSQL client for Observability Spine (Traces & Evals)
+    postgres_client = None
+    if os.getenv("POSTGRES_ENABLED", "true").lower() == "true":
         from shared.postgres_client import PostgresClient
-
         pg_password = (
             _read_secret(os.getenv("POSTGRES_PASSWORD_FILE", ""))
             or _read_secret("/run/secrets/postgres_password")
             or ""
         )
+        try:
+            postgres_client = PostgresClient(
+                host=_require_env("POSTGRES_HOST"),
+                port=int(_require_env("POSTGRES_PORT")),
+                database=_require_env("POSTGRES_DB"),
+                user=_require_env("POSTGRES_USER"),
+                password=pg_password,
+                sslmode=os.getenv("POSTGRES_SSLMODE"),
+                sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
+                sslcert=os.getenv("POSTGRES_SSLCERT"),
+                sslkey=os.getenv("POSTGRES_SSLKEY"),
+            )
+            await postgres_client.connect()
+            logger.info("✓ PostgreSQL client connected (Observability Spine active)")
+        except Exception as exc:
+            logger.warning("PostgreSQL connection failed (Traces/Evals will degrade): %s", exc)
 
-        # Initialize PostgreSQL client for learning pipeline
-        postgres_client = PostgresClient(
-            host=_require_env("POSTGRES_HOST"),
-            port=int(_require_env("POSTGRES_PORT")),
-            database=_require_env("POSTGRES_DB"),
-            user=_require_env("POSTGRES_USER"),
-            password=pg_password,
-            sslmode=os.getenv("POSTGRES_SSLMODE"),
-            sslrootcert=os.getenv("POSTGRES_SSLROOTCERT"),
-            sslcert=os.getenv("POSTGRES_SSLCERT"),
-            sslkey=os.getenv("POSTGRES_SSLKEY"),
-        )
-        await postgres_client.connect()
+    # Initialize continuous learning pipeline
+    if os.getenv("CONTINUOUS_LEARNING_ENABLED", "true").lower() == "true":
+        from continuous_learning import ContinuousLearningPipeline
 
+        # Use the global postgres_client
         learning_pipeline = ContinuousLearningPipeline(
             settings=HYBRID_SETTINGS,
             qdrant_client=qdrant_client,
@@ -823,6 +829,28 @@ async def initialize_server():
     asyncio.create_task(_drift_homeostasis_loop())
     logger.info("✓ Drift homeostasis loop started (interval=60s, threshold=%.2f)", 0.7)
 
+    # Phase 54.2 — instantiate IntentClassifier
+    import intent_classifier
+    global _intent_classifier
+    _intent_classifier = intent_classifier.get_classifier()
+
+    # Phase 55.1 / 55.2 / 55.3 — Agentic Self-Evolution
+    import memory_superseder
+    import memory_crystallizer
+    import drift_analyzer
+    from core.llm_client import LLMClient
+    
+    # Initialize Drift Analyzer with current embedding client
+    drift_analyzer.get_analyzer().set_embed_fn(embed_text)
+    
+    # Initialize Memory Crystallizer
+    # Uses a dedicated LLMClient for factual distillation
+    crystallizer_llm = LLMClient(provider="local", base_url=Config.SWITCHBOARD_URL)
+    memory_crystallizer.init(
+        broker=memory_broker.get_broker() if memory_broker._broker else None,
+        llama_client=crystallizer_llm
+    )
+
     # Phase 6.1 — wire extracted http_server module
     http_server.init(
         augment_query_fn=augment_query_with_context,
@@ -856,6 +884,9 @@ async def initialize_server():
         queue_max_ref=lambda: model_loader._MODEL_QUEUE_MAX,
         # Phase 21.3 — embedding cache reference for cache invalidation endpoint
         embedding_cache_ref=lambda: embedding_cache,
+        postgres_client=postgres_client,
+        intent_classifier=_intent_classifier,
+        crystallizer_llm=crystallizer_llm,
     )
 
     # Phase 6.1 — wire model_loader (health check + loading queue)
@@ -925,6 +956,7 @@ async def initialize_server():
         postgres_client_ref=lambda: postgres_client,
         aidb_client_ref=lambda: aidb_client,
         queue_depth_ref=lambda: model_loader._model_loading_queue_depth,
+        intent_classifier=_intent_classifier,
         collections=COLLECTIONS,
     )
 

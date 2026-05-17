@@ -32,6 +32,9 @@ from agent_registry import (
 from config import Config, OptimizationProposal, apply_proposal
 from memory_manager import coerce_memory_summary, normalize_memory_type, validate_memory_content
 
+# Phase 54.1: MemoryBroker integration
+import memory_broker
+
 logger = logging.getLogger("hybrid-coordinator")
 
 # ---------------------------------------------------------------------------
@@ -39,15 +42,8 @@ logger = logging.getLogger("hybrid-coordinator")
 # ---------------------------------------------------------------------------
 _store_memory: Optional[Callable] = None
 _recall_memory: Optional[Callable] = None
-_run_harness_eval: Optional[Callable] = None
-_build_scorecard: Optional[Callable] = None
-_HARNESS_STATS: Optional[Dict[str, Any]] = None
-_PERFORMANCE_PROFILER: Optional[Any] = None
-_multi_turn_manager: Optional[Any] = None
-_progressive_disclosure: Optional[Any] = None
-_error_payload: Optional[Callable] = None
-
-
+_memory_broker: Optional[memory_broker.MemoryBroker] = None
+...
 def init(
     *,
     store_memory_fn: Callable,
@@ -63,7 +59,7 @@ def init(
     """Inject runtime dependencies. Call once from http_server.py init()."""
     global _store_memory, _recall_memory, _run_harness_eval, _build_scorecard
     global _HARNESS_STATS, _PERFORMANCE_PROFILER, _multi_turn_manager
-    global _progressive_disclosure, _error_payload
+    global _progressive_disclosure, _error_payload, _memory_broker
     _store_memory = store_memory_fn
     _recall_memory = recall_memory_fn
     _run_harness_eval = run_harness_eval_fn
@@ -73,6 +69,10 @@ def init(
     _multi_turn_manager = multi_turn_manager
     _progressive_disclosure = progressive_disclosure
     _error_payload = error_payload_fn
+    try:
+        _memory_broker = memory_broker.get_broker()
+    except Exception:
+        logger.warning("memory_context_handlers: memory_broker not available")
 
 
 # ---------------------------------------------------------------------------
@@ -97,14 +97,25 @@ async def handle_memory_store(request: web.Request) -> web.Response:
         summary = coerce_memory_summary(data.get("summary"), data.get("content"))
         # Phase 12.3 — Reject poisoned/trivial payloads before any AIDB write
         validate_memory_content(summary, data.get("content"))
-        # Phase 1.3 — Profile memory store operation
+        
+        # Phase 54.1 — Use MemoryBroker (Level 5)
         _mem_store_start = time.time()
-        result = await _store_memory(
-            memory_type=memory_type,
-            summary=summary,
-            content=data.get("content"),
-            metadata=data.get("metadata"),
-        )
+        if _memory_broker:
+            result = await _memory_broker.write(
+                memory_type=memory_type,
+                content=summary,
+                context=data.get("metadata"),
+                ttl_seconds=data.get("ttl_seconds"),
+                source=data.get("source", "coordinator-api"),
+            )
+        else:
+            # Fallback to direct store
+            result = await _store_memory(
+                memory_type=memory_type,
+                summary=summary,
+                content=data.get("content"),
+                metadata=data.get("metadata"),
+            )
         _mem_store_duration_ms = (time.time() - _mem_store_start) * 1000
         _PERFORMANCE_PROFILER.record_metric("memory_store", _mem_store_duration_ms, {"memory_type": memory_type})
         async with _agent_lessons_lock:
@@ -125,14 +136,25 @@ async def handle_memory_recall(request: web.Request) -> web.Response:
         query = data.get("query") or data.get("prompt") or ""
         if not query:
             return web.json_response({"error": "query required"}, status=400)
-        # Phase 1.3 — Profile memory recall operation
+        
+        # Phase 54.1 — Use MemoryBroker (Level 5)
         _mem_recall_start = time.time()
-        result = await _recall_memory(
-            query=query,
-            memory_types=data.get("memory_types"),
-            limit=data.get("limit"),
-            retrieval_mode=data.get("retrieval_mode", "hybrid"),
-        )
+        if _memory_broker:
+            rows = await _memory_broker.read(
+                memory_type=normalize_memory_type(data.get("memory_type", "semantic")),
+                query=query,
+                top_k=int(data.get("limit", 5)),
+                include_expired=bool(data.get("include_expired", False)),
+            )
+            result = {"results": rows, "count": len(rows)}
+        else:
+            # Fallback to direct recall
+            result = await _recall_memory(
+                query=query,
+                memory_types=data.get("memory_types"),
+                limit=data.get("limit"),
+                retrieval_mode=data.get("retrieval_mode", "hybrid"),
+            )
         _mem_recall_duration_ms = (time.time() - _mem_recall_start) * 1000
         _PERFORMANCE_PROFILER.record_metric(
             "memory_recall", _mem_recall_duration_ms,

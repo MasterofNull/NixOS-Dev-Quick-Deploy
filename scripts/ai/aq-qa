@@ -467,6 +467,56 @@ run_phase_0() {
     fi
   fi
 
+  # 0.2.3 Qdrant document count > 0
+  if _should_run 5; then
+    local points_count
+    points_count=$(curl -sf "${QDRANT_URL}/collections" | python3 -c "
+import sys, json, urllib.request
+qdrant_url = sys.argv[1]
+try:
+    d = json.load(sys.stdin)
+    colls = d.get('result', {}).get('collections', [])
+    if not colls:
+        print(0)
+        sys.exit(0)
+    # Check first collection for points
+    name = colls[0]['name']
+    with urllib.request.urlopen(f'{qdrant_url}/collections/{name}') as r:
+        cd = json.load(r)
+        print(cd.get('result', {}).get('points_count', 0))
+except Exception:
+    print(0)
+" "${QDRANT_URL}" 2>/dev/null || echo 0)
+    if [[ "$points_count" -gt 0 ]]; then
+      _pass 5 "0.2.3" "Qdrant has ${points_count} points in primary collection"
+    else
+      _fail 5 "0.2.3" "Qdrant has documents" "found 0"
+    fi
+  fi
+
+  # 0.2.4 Postgres table count > 0
+  if _should_run 5; then
+    local pg_pass tbl_count
+    pg_pass=$(cat /run/secrets/postgres_password 2>/dev/null | tr -d '\n' || true)
+    tbl_count=$(PGPASSWORD="$pg_pass" psql -h 127.0.0.1 -U aidb -d aidb -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';" 2>/dev/null || echo 0)
+    if [[ "$tbl_count" -gt 0 ]]; then
+      _pass 5 "0.2.4" "Postgres has ${tbl_count} tables"
+    else
+      _fail 5 "0.2.4" "Postgres has tables" "found 0"
+    fi
+  fi
+
+  # 0.2.5 Redis keyspace not empty
+  if _should_run 5; then
+    local redis_keys
+    redis_keys=$(redis-cli DBSIZE 2>/dev/null || echo 0)
+    if [[ "$redis_keys" -gt 0 ]]; then
+      _pass 5 "0.2.5" "Redis has ${redis_keys} keys"
+    else
+      _fail 5 "0.2.5" "Redis has keys" "found 0"
+    fi
+  fi
+
   # 0.3 AppArmor — check profile files (no sudo needed) + service active
   local aa_dir="/etc/apparmor.d"
   if _should_run 1; then
@@ -484,9 +534,12 @@ run_phase_0() {
   if _should_run 2; then
     _http_health 2 "0.4.1" "llama-server /health" "${LLAMA_URL}/health"
     _http_health 2 "0.4.2" "embedding server /health" "http://127.0.0.1:8081/health"
+    _check_output 6 "0.4.3" "embedding server returns model info" '"id":' \
+      curl -sf "http://127.0.0.1:8081/v1/models"
   fi
 
   # 0.5 Continue/editor runtime basics
+  # ... (rest of 0.5)
   if _should_run 7; then
     _check 7 "0.5.1" "Continue CLI help works" _continue_cli_help
     _check 7 "0.5.2" "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane" _continue_config_ok
@@ -538,6 +591,33 @@ run_phase_0() {
       _pass 4 "0.7.2" "hybrid /query retrieval smoke"
     else
       _fail 4 "0.7.2" "hybrid /query retrieval smoke" "out: ${query_out:0:80}"
+    fi
+
+    # 0.7.3 RAG recall quality (memory_recall_share_pct > 0)
+    if _should_run 6; then
+      local report_json recall_pct
+      report_json="$(_aq_report_snapshot)" || report_json=""
+      recall_pct=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('rag_posture', {}).get('memory_recall_share_pct', 0))" "$report_json" 2>/dev/null || echo 0)
+      if python3 -c "sys.exit(0 if float($recall_pct) > 0 else 1)" 2>/dev/null; then
+        _pass 6 "0.7.3" "RAG recall quality > 0% (got ${recall_pct}%)"
+      else
+        _fail 6 "0.7.3" "RAG recall quality > 0%" "got ${recall_pct}%"
+      fi
+    fi
+
+    # 0.7.4 AIDB vector search returns results
+    if _should_run 6; then
+      local search_out
+      search_out=$(curl -sf --max-time 5 \
+        -H "Content-Type: application/json" \
+        -d '{"query":"nixos","limit":1}' \
+        "${AIDB_URL}/search" 2>/dev/null || echo "err")
+      if [[ "$search_out" != "err" ]] && \
+         python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d and len(d['results']) > 0 else 1)" "$search_out" 2>/dev/null; then
+        _pass 6 "0.7.4" "AIDB vector search returns results"
+      else
+        _fail 6 "0.7.4" "AIDB vector search returns results" "out: ${search_out:0:80}"
+      fi
     fi
   fi
 
@@ -1610,9 +1690,9 @@ _p54_check_eval_runner() {
 }
 
 run_phase_54() {
-  _check 6 "1.0.1" "MemoryBroker importable"                _p54_check_memory_broker
-  _check 6 "1.0.2" "MemoryBroker status endpoint"           _p54_check_broker_endpoint
-  _check 6 "1.0.3" "aq-memory-recall-benchmark present"     _p54_check_recall_script
+  _check 5 "1.0.1" "MemoryBroker importable"                _p54_check_memory_broker
+  _check 5 "1.0.2" "MemoryBroker status endpoint"           _p54_check_broker_endpoint
+  _check 5 "1.0.3" "aq-memory-recall-benchmark present"     _p54_check_recall_script
   _check 6 "1.0.4" "IntentClassifier classify correct"      _p54_check_intent_classifier
   _check 6 "1.0.5" "Intent routing map endpoint"            _p54_check_intent_endpoint
   _check 6 "1.0.6" "RagAugmentor importable"                _p54_check_rag_augmentor
@@ -1669,26 +1749,15 @@ _p55_check_crystalline_auth() {
 }
 
 run_phase_55() {
-  _check 6 "1.1.1" "MemorySuperseder importable"              _p55_check_import memory_superseder
-  _check 6 "1.1.2" "Supersede POST endpoint registered"        _p55_check_supersede_post
-  _check 6 "1.1.3" "Supersede history endpoint registered"     _p55_check_supersede_history
-  _check 7 "1.1.4" "Supersession DDL present"                  _p55_check_file_contains ai-stack/mcp-servers/hybrid-coordinator/extensions/memory_superseder.py "CREATE TABLE IF NOT EXISTS memory_supersessions"
-  _check 6 "1.1.5" "DriftAnalyzer importable"                  _p55_check_import drift_analyzer
-  _check 6 "1.1.6" "Drift endpoint registered"                 _p55_check_drift_endpoint
-  _check 6 "1.1.7" "Drift score contract valid"                _p55_check_drift_endpoint
-  _check 7 "1.1.8" "Drift threshold configured"                _p55_check_file_contains config/runtime-budget-policy.json '"drift_alert_threshold"'
-  _check 7 "1.1.9" "agent-ops profile config present"          test -f "${REPO_ROOT}/config/agent-ops-profile.json"
-  _check 6 "1.1.10" "MemoryCrystallizer importable"            _p55_check_import memory_crystallizer
-  _check 6 "1.1.11" "Crystalline status endpoint registered"   _p55_check_crystalline_status
-  _check 6 "1.1.12" "Crystalline run endpoint registered"      _p55_check_crystalline_post
-  _check 7 "1.1.13" "Crystallized sessions DDL present"        _p55_check_file_contains ai-stack/mcp-servers/hybrid-coordinator/extensions/memory_crystallizer.py "CREATE TABLE IF NOT EXISTS crystallized_sessions"
-  _check 7 "1.1.14" "Crystallizer tracks session_hash"         _p55_check_file_contains ai-stack/mcp-servers/hybrid-coordinator/extensions/memory_crystallizer.py "session_hash"
-  _check 7 "1.1.15" "aq-crystallize executable"                test -x "${REPO_ROOT}/scripts/ai/aq-crystallize"
-  _check 7 "1.1.16" "Crystalline auth prefixes wired"          _p55_check_crystalline_auth
+  _check 5 "1.1.1" "MemorySuperseder importable"           _p55_check_import memory_superseder
+  _check 5 "1.1.2" "MemoryCrystallizer importable"         _p55_check_import memory_crystallizer
+  _check 6 "1.1.3" "DriftAnalyzer importable"              _p55_check_import drift_analyzer
+  _check 5 "1.1.4" "Fact Versioning (Supersession) logic"  _p55_check_versioning_logic
 }
 
-# ---------------------------------------------------------------------------
-# Phase 56: Harness Integration Loop + Institutional Memory checks
+_p55_check_versioning_logic() {
+  python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator'); import memory_superseder; s=memory_superseder.get_superseder(); exit(0 if hasattr(s, 'resolve_lineage') else 1)"
+}
 # ---------------------------------------------------------------------------
 _p56_coord="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
 

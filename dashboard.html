@@ -4136,16 +4136,20 @@
                                 <div class="metric-value" id="intentConfidence">--</div>
                             </div>
                             <div class="metric">
-                                <div class="metric-label">RAG Hit Rate</div>
-                                <div class="metric-value" id="ragHitRate">--</div>
+                                <div class="metric-label">Reasoning Drift</div>
+                                <div class="metric-value" id="reasoningDrift">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Crystalline Facts</div>
+                                <div class="metric-value" id="crystallineFacts">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Self-Corrections</div>
+                                <div class="metric-value" id="homeostasisEvents">--</div>
                             </div>
                             <div class="metric">
                                 <div class="metric-label">Memory Coherence</div>
                                 <div class="metric-value" id="memoryCoherence">--</div>
-                            </div>
-                            <div class="metric">
-                                <div class="metric-label">Query Trace Flow</div>
-                                <div class="metric-value" id="traceFlow">--</div>
                             </div>
                         </div>
                     </div>
@@ -8538,6 +8542,10 @@
             const rail = document.getElementById('deckLayerRail');
             if (!rail) return;
             const layers = layerPayload?.layers || {};
+            const LAYER_NAMES = {
+                1: 'Services', 2: 'Data Link', 3: 'Network',
+                4: 'Transport', 5: 'Session', 6: 'Presentation', 7: 'Application'
+            };
             rail.innerHTML = [1, 2, 3, 4, 5, 6, 7].map((layerNum) => {
                 const checks = layers[String(layerNum)] || [];
                 const pass = checks.filter(c => c.status === 'PASS').length;
@@ -8545,8 +8553,18 @@
                 const skip = checks.filter(c => c.status === 'SKIP').length;
                 const state = fail > 0 ? 'error' : checks.length === 0 || (skip > 0 && pass === 0) ? 'warning' : 'online';
                 const score = checks.length ? `${pass}/${checks.length}` : '--';
-                const title = fail > 0 ? `${fail} fail` : skip > 0 ? `${skip} skip` : 'ok';
-                return `<a class="deck-layer ${state}" href="#section-osi-health" title="Layer ${layerNum}: ${title}">
+                
+                const name = LAYER_NAMES[layerNum] || `Layer ${layerNum}`;
+                let tooltip = `${name} (L${layerNum}): ${pass} passed, ${fail} failed, ${skip} skipped`;
+                if (checks.length > 0) {
+                    tooltip += '\n' + checks.slice(0, 15).map(c => {
+                        const icon = c.status === 'PASS' ? '✓' : c.status === 'FAIL' ? '✗' : '○';
+                        return `${icon} ${c.id.replace(/^0\./, '')}: ${c.description}`;
+                    }).join('\n');
+                    if (checks.length > 15) tooltip += `\n... and ${checks.length - 15} more`;
+                }
+
+                return `<a class="deck-layer ${state}" href="#section-osi-health" title="${tooltip.replace(/"/g, '&quot;')}">
                     <div class="deck-layer-id">L${layerNum}</div>
                     <div class="deck-layer-score">${score}</div>
                 </a>`;
@@ -9568,25 +9586,36 @@
                 document.getElementById('intentConfidenceBar').style.width = `${(avg * 100).toFixed(0)}%`;
             }
 
-            // RAG Hit Rate
-            const hits = prom['hybrid_rag_augmentation_hits_sum'] || [];
-            const ragTotal = prom['hybrid_rag_augmentation_hits_count'] || [];
-            if (hits.length && ragTotal.length) {
-                const avgHits = hits[0].value / ragTotal[0].value;
-                document.getElementById('ragHitRate').textContent = `${avgHits.toFixed(2)} hits/q`;
+            // Reasoning Drift (Phase 55.3)
+            const drifts = prom['hybrid_reasoning_drift_score_sum'] || [];
+            const driftCounts = prom['hybrid_reasoning_drift_score_count'] || [];
+            if (drifts.length && driftCounts.length) {
+                const avgDrift = drifts[0].value / driftCounts[0].value;
+                document.getElementById('reasoningDrift').textContent = avgDrift.toFixed(4);
+                document.getElementById('reasoningDrift').style.color = avgDrift > 0.4 ? 'var(--status-error)' : 'var(--accent-cyan)';
             }
 
-            // Memory Coherence (using contradictions as inverse proxy)
-            const contradictions = prom['hybrid_memory_contradictions_detected_total'] || [];
-            const totalContradictions = contradictions.reduce((sum, m) => sum + m.value, 0);
-            document.getElementById('memoryCoherence').textContent = totalContradictions > 0 
-                ? `! ${totalContradictions} conflicts` 
-                : 'stable';
+            // Crystalline Facts (Phase 55.2)
+            const crystal = prom['hybrid_crystallization_facts_extracted_total'] || [];
+            const totalCrystal = crystal.reduce((sum, m) => sum + m.value, 0);
+            document.getElementById('crystallineFacts').textContent = displayCount(totalCrystal, '0');
 
-            // Trace Flow
-            const traces = prom['hybrid_query_traces_committed_total'] || [];
-            const totalTraces = traces.reduce((sum, m) => sum + m.value, 0);
-            document.getElementById('traceFlow').textContent = displayCount(totalTraces, '0');
+            // Homeostatic Events (Phase 56)
+            const homeostasis = prom['hybrid_homeostatic_events_total'] || [];
+            const totalHomeostasis = homeostasis.reduce((sum, m) => sum + m.value, 0);
+            document.getElementById('homeostasisEvents').textContent = displayCount(totalHomeostasis, '0');
+            if (totalHomeostasis > 0) {
+                document.getElementById('homeostasisEvents').style.color = 'var(--status-warning)';
+            }
+
+            // Memory Coherence (using contradictions + supersessions)
+            const contradictions = prom['hybrid_memory_contradictions_detected_total'] || [];
+            const supersessions = prom['hybrid_memory_supersessions_total'] || [];
+            const totalIssues = contradictions.reduce((sum, m) => sum + m.value, 0) + supersessions.reduce((sum, m) => sum + m.value, 0);
+            
+            document.getElementById('memoryCoherence').textContent = totalIssues > 0 
+                ? `! ${totalIssues} syncs` 
+                : 'stable';
         }
 
         function updateHybridMetrics(hybrid, tokenSavings) {

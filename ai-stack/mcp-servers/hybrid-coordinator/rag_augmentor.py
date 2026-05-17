@@ -99,77 +99,92 @@ class RagAugmentor:
         self,
         query: str,
         intent: str = "unknown",
-        rag_project: str = "semantic",
+        rag_project: Optional[str] = None,
         top_k: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Retrieve top-k relevant docs from AIDB and return context text.
+        Retrieve relevant docs from one or more AIDB projects.
 
         Args:
             query: The user query
-            intent: Classified intent (used for project selection if rag_project not given)
-            rag_project: AIDB project to search (overrides intent-based selection)
-            top_k: Number of results (default: self._top_k)
+            intent: Classified intent (used for scaling/selection)
+            rag_project: Optional AIDB project(s). Can be comma-separated list.
+                         If None, uses intent-based default.
+            top_k: Number of results (overrides default)
 
         Returns:
-            {
-                "augmented": bool,
-                "hits": int,
-                "context_text": str,      # ready to inject into system prompt
-                "latency_ms": int,
-                "project": str,
-                "skipped": bool,
-            }
+            Standard augmentation result dict
         """
         k = top_k or self._top_k
-        project = rag_project
+        
+        # Phase 54.3 — Active RAG: Dynamic project selection
+        # projects can be a single string or a list/comma-separated string
+        project_raw = rag_project or "semantic"
+        projects = [p.strip() for p in project_raw.split(",") if p.strip()]
 
         if self._client is None:
             _augmentation_window.append(False)
-            return _skip_result("no_aidb_client", project)
+            return _skip_result("no_aidb_client", ",".join(projects))
 
         start = time.perf_counter()
         try:
-            result = await asyncio.wait_for(
-                self._search(query, project, k),
+            # Search all requested projects in parallel
+            search_tasks = [self._search(query, p, k) for p in projects]
+            results = await asyncio.wait_for(
+                asyncio.gather(*search_tasks),
                 timeout=RAG_TIMEOUT_S,
             )
             latency_ms = int((time.perf_counter() - start) * 1000)
 
-            hits = result.get("hits", [])
+            # Merge and rerank results (simple score-based sort)
+            all_hits = []
+            for res in results:
+                all_hits.extend(res.get("hits", []))
+            
+            all_hits.sort(key=lambda h: h.get("score", 0.0), reverse=True)
+            hits = all_hits[:k]
+
             if not hits:
                 _augmentation_window.append(False)
-                return {**_skip_result("no_hits", project), "latency_ms": latency_ms}
+                return {**_skip_result("no_hits", ",".join(projects)), "latency_ms": latency_ms}
 
             context_parts = []
-            for i, hit in enumerate(hits[:k], 1):
+            for i, hit in enumerate(hits, 1):
                 content = (hit.get("content") or hit.get("text") or "").strip()
+                p_origin = hit.get("project", "unknown")
                 if content:
-                    context_parts.append(f"[{i}] {content[:800]}")
+                    context_parts.append(f"[{i}] (Source: {p_origin}) {content[:800]}")
 
             context_text = "\n\n".join(context_parts)
             _augmentation_window.append(True)
 
             logger.debug(
-                "rag_augmentor.augment project=%s hits=%d latency_ms=%d",
-                project, len(hits), latency_ms,
+                "rag_augmentor.augment projects=%s hits=%d latency_ms=%d",
+                projects, len(hits), latency_ms,
             )
-            return {
+            res = {
                 "augmented": True,
                 "skipped": False,
                 "hits": len(hits),
                 "context_text": context_text,
                 "latency_ms": latency_ms,
-                "project": project,
+                "projects": projects,
+                "project": projects[0], # for backward compat
             }
+            _record_metrics(res)
+            return res
 
         except asyncio.TimeoutError:
             _augmentation_window.append(False)
-            return {**_skip_result("timeout", project), "latency_ms": int(RAG_TIMEOUT_S * 1000)}
+            res = {**_skip_result("timeout", project), "latency_ms": int(RAG_TIMEOUT_S * 1000)}
+            _record_metrics(res)
+            return res
         except Exception as exc:
             _augmentation_window.append(False)
             logger.debug("rag_augmentor.augment error project=%s: %s", project, exc)
-            return _skip_result("error", project)
+            res = _skip_result("error", project)
+            _record_metrics(res)
+            return res
 
     async def _search(self, query: str, project: str, top_k: int) -> Dict[str, Any]:
         """Call AIDB /vector/search."""
@@ -189,6 +204,22 @@ class RagAugmentor:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _record_metrics(result: Dict[str, Any]) -> None:
+    """Record RAG metrics to Prometheus."""
+    try:
+        from metrics import RAG_AUGMENTATIONS, RAG_AUGMENTATION_HITS, RAG_AUGMENTATION_LATENCY
+        status = "augmented" if result.get("augmented") else result.get("skip_reason", "skipped")
+        project = result.get("project", "unknown")
+        RAG_AUGMENTATIONS.labels(status=status, project=project).inc()
+        
+        if result.get("augmented"):
+            RAG_AUGMENTATION_HITS.labels(project=project).observe(result.get("hits", 0))
+            latency_ms = result.get("latency_ms", 0)
+            RAG_AUGMENTATION_LATENCY.labels(project=project).observe(latency_ms / 1000.0)
+    except (ImportError, Exception):
+        pass
+
 
 def _skip_result(reason: str, project: str) -> Dict[str, Any]:
     return {
