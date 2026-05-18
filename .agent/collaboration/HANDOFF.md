@@ -1,8 +1,8 @@
 # Handoff Memo — 2026-05-18
 
-**Status:** PHASE 58A COMPLETE + DOMAIN EXPANSION IN PROGRESS
-**Last Action:** Activated security-systems (26505303) and systems-software (89d9b2a4) capability domains. Both validation hooks (security-systems-health, systems-software-health) run in focused-CI and pass. Registry now has 10 capabilities.
-**Next Step:** Third domain expansion (embedded-hardware or data-analytics from master PRD). Then Codex final acceptance review of 58A.4–58A.7 when available.
+**Status:** ALL 6 DOMAINS PROPOSED + IMPLEMENTED SLICES COMPLETE
+**Last Action:** All 6 domains activated (proposed), 2 advanced to implemented (security-systems, systems-software). Intent routing wired (16 intents), 5 domain dev shells defined in flake.nix, shellcheck+trivy added to system profile.
+**Next Step:** nixos-rebuild switch to deploy system packages. Then validate remaining 4 dev shells. Then AIDB seeding for all 6 namespaces. Codex final acceptance review of 58A.4–58A.7 when available.
 **Context Bloat:** Low
 
 ## Domain Expansion — All 6 Domains Proposed
@@ -15,20 +15,23 @@ Gemini research: `.agents/delegation/outputs/gemini-20260518-121439-w2gzy1.log`
 
 | Domain | Commit | State | Validation hook |
 |---|---|---|---|
-| security-systems | `26505303` | proposed | security-systems-health ✓ |
-| systems-software | `89d9b2a4` | proposed | systems-software-health ✓ |
-| embedded-hardware | `df140d93` | proposed | embedded-hardware-health ✓ |
-| mobile-web | `6f4ca57d` | proposed | mobile-web-health ✓ |
-| scientific-research | `6f4ca57d` | proposed | scientific-research-health ✓ |
-| gis-systems | `6f4ca57d` | proposed | gis-systems-health ✓ |
+| security-systems | `490c73e4` | **implemented** | security-systems-health ✓ |
+| systems-software | `490c73e4` | **implemented** | systems-software-health ✓ (shellcheck confirmed in PATH) |
+| embedded-hardware | `490c73e4` | proposed | embedded-hardware-health ✓ |
+| mobile-web | `490c73e4` | proposed | mobile-web-health ✓ |
+| scientific-research | `490c73e4` | proposed | scientific-research-health ✓ |
+| gis-systems | `490c73e4` | proposed | gis-systems-health ✓ |
 
-Priority follow-on slices (to reach `implemented`):
-- security-systems.1: Semgrep/Bandit/Trivy in Nix profile
-- systems-software.1: shellcheck in Nix profile + nix-systems-patterns AIDB seeding
-- embedded-hardware.1: Verilator/GHDL/Yosys/OpenOCD/ARM cross-toolchain dev shell
-- mobile-web.1: Flutter/android-tools/nodejs/lighthouse/playwright dev shell
-- scientific-research.1: jupyter/snakemake/texlive/pandoc dev shell
-- gis-systems.1: gdal/postgis/geopandas/qgis/spatialite dev shell
+Intent routing: 16 intents (was 10). All 6 domain intents wired.
+Dev shells: 5 new shells in flake.nix (.#security, .#systems, .#embedded, .#mobile-web, .#scientific, .#gis)
+System packages: shellcheck + trivy added to ai-dev profile (active after nixos-rebuild switch)
+
+Remaining work:
+- nixos-rebuild switch: deploys shellcheck+trivy system-wide; validates dev shells
+- AIDB seeding: 6 namespaces to seed (security-findings, nix-systems-patterns, etc.)
+- Domains to advance: embedded-hardware→implemented (after nixos-rebuild validates .#embedded)
+- Codex final acceptance review of 58A.4–58A.7
+- Gemini rate limits: uses Code Assist OAuth path — no alternative model available; retry later
 
 ## Phase 58A — All slices complete
 
