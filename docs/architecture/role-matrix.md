@@ -118,8 +118,15 @@ Qwen's implementer eligibility contract must cite the implementer constraints ab
 
 ---
 
-## Open Items
+## Resolved Items (closed in 58A.3)
 
-1. **Sub-orchestrator delegation:** when Codex acts as orchestrator for its own sequences, it must still produce PENDING.json intent locks and HANDOFF.md memos. The form of these artifacts for non-Claude orchestrators needs a brief addendum in 58A.3.
+1. **Sub-orchestrator delegation:** when any model fills the orchestrator role (Codex, Claude, or other), it must produce:
+   - `.agent/collaboration/PENDING.json` — intent lock before complex multi-file operations
+   - `.agent/collaboration/HANDOFF.md` — memo at slice close
+   - `.agents/delegation/registry.jsonl` — entry for any sub-agent delegation
+   The form is the same regardless of which model is the orchestrator. There is no model-specific artifact format.
 
-2. **Role escalation time-bound:** what happens if an escalation (e.g., implementer surfaces out-of-scope finding) is not acknowledged? A time-bound or fallback rule needs to be stated before Phase 58A is complete.
+2. **Role escalation time-bound:** if an implementer surfaces an escalation (out-of-scope finding, blocking ambiguity, architecture question) and it is not acknowledged within the current session, the implementer must:
+   - Record the open question in `.agent/collaboration/PULSE.log`.
+   - Stop the affected slice and leave it in a clean partial state.
+   - Do not proceed past an unresolved blocking escalation by guessing or expanding scope.

@@ -63,15 +63,20 @@ Every task completion must include:
 
 ### 5. Sub-Agent Boundaries
 
-As Qwen:
-- ✅ DO: Implementation slices, test scaffolding, config/Nix changes, documentation
-- ❌ DON'T: Re-scope project goals, route other agents, finalize acceptance
+**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). Qwen fills the **implementer** role. Summary:
+
+As Qwen (implementer):
+- ✅ DO: Implementation slices, test scaffolding, config/Nix changes, documentation within assigned scope
+- ❌ DON'T: Re-scope project goals, route other agents, finalize acceptance, self-promote to reviewer
 
 Return to orchestrator (Codex/Claude) when:
-- Ambiguity detected
+- Ambiguity detected — pause and surface, do not guess scope
 - Architecture decision needed
 - Security/policy analysis required
 - Final acceptance decision needed
+- Out-of-scope finding during a slice — surface rather than expand
+
+**Escalation time-bound:** if an escalation is not acknowledged within the session, record the open question in `.agent/collaboration/PULSE.log` and stop the slice. Do not proceed past an unresolved blocking ambiguity.
 
 ## Quick Reference
 
