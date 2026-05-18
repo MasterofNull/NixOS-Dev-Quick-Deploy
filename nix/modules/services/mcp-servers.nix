@@ -1668,7 +1668,7 @@ in {
           PrivateNetwork = false;
           SystemCallFilter = ["@system-service" "~@privileged"];
           MemoryMax = "1G";
-          TimeoutStartSec = "3600";  # indexing can take ~10 min on large repos
+          TimeoutStartSec = "10800";  # 3h: 7700+ chunks × 1.0s/chunk = ~128 min; 3h gives headroom for slow embed
           StandardOutput = "journal";
           StandardError = "journal";
         };

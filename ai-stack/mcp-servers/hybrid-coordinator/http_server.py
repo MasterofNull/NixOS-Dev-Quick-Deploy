@@ -1741,8 +1741,17 @@ async def run_http_mode(port: int) -> None:
                     if is_probe:
                         skipped_probes += 1
                         continue
+                    outcome = entry.get("outcome", "")
+                    # Skip non-terminal entries (running / pending / started).
+                    # These are stale stubs from sessions that ended before the
+                    # delegate script wrote a final outcome — counting them as
+                    # failures would skew the rate against incomplete-but-harmless
+                    # background tasks.
+                    _TERMINAL_OUTCOMES = {"success", "error", "timeout", "failed"}
+                    if outcome not in _TERMINAL_OUTCOMES:
+                        continue
                     total += 1
-                    if entry.get("outcome") == "success":
+                    if outcome == "success":
                         ok += 1
         except OSError as exc:
             error_msg = str(exc)
