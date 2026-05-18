@@ -241,6 +241,60 @@
       "timeout_seconds": 15,
       "enabled": true,
       "require_tool": null
+    },
+    {
+      "id": "mobile-web-health",
+      "description": "mobile-web domain baseline artifact presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-MOBILE-WEB-PRD.md",
+        ".agent/MOBILE-WEB-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'mobile-web' in ids, 'mobile-web not in registry'; assert os.path.exists('.agent/PROJECT-MOBILE-WEB-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/MOBILE-WEB-INSTRUCTIONS.md'), 'instructions missing'; print('mobile-web domain: baseline artifacts present')"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
+    },
+    {
+      "id": "scientific-research-health",
+      "description": "scientific-research domain baseline artifact presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md",
+        ".agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'scientific-research' in ids, 'scientific-research not in registry'; assert os.path.exists('.agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md'), 'instructions missing'; print('scientific-research domain: baseline artifacts present')"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
+    },
+    {
+      "id": "gis-systems-health",
+      "description": "gis-systems domain baseline artifact presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-GIS-SYSTEMS-PRD.md",
+        ".agent/GIS-SYSTEMS-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'gis-systems' in ids, 'gis-systems not in registry'; assert os.path.exists('.agent/PROJECT-GIS-SYSTEMS-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/GIS-SYSTEMS-INSTRUCTIONS.md'), 'instructions missing'; print('gis-systems domain: baseline artifacts present')"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
     }
   ]
 }
