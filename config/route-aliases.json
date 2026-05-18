@@ -1,15 +1,17 @@
 {
   "$schema": "./schemas/route-aliases.schema.json",
-  "version": "1.0.0",
-  "description": "Route alias mapping configuration for Layer 1 Front-Door Routing. Maps OpenClaude-style route names to existing harness profiles.",
+  "version": "1.1.0",
+  "description": "Route alias mapping configuration for Layer 1 Front-Door Routing. Maps OpenClaude-style route names to existing harness profiles. Drift fixes: Phase 58A.2 D-1/D-2/D-3.",
   "aliases": {
     "default": "default",
     "Explore": "default",
     "Plan": "default",
     "Implementation": "local-tool-calling",
     "Reasoning": "local-tool-calling",
+    "LocalTool": "local-tool-calling",
     "ToolCalling": "local-tool-calling",
     "Continuation": "default",
+    "local": "default",
     "local-agent": "local-agent",
     "LocalAgent": "local-agent",
     "Agent": "local-agent",
@@ -19,6 +21,7 @@
     "RemoteGemini": "remote-gemini",
     "RemoteCoding": "remote-coding",
     "RemoteReasoning": "remote-reasoning",
+    "RemoteDefault": "remote-default",
     "RemoteToolCalling": "remote-tool-calling"
   },
   "validation": {
@@ -31,16 +34,24 @@
       "remote-free",
       "remote-coding",
       "remote-reasoning",
+      "remote-default",
       "remote-tool-calling"
-    ]
+    ],
+    "_notes": {
+      "Reasoning": "Routes to local-tool-calling (not remote-reasoning) for backward compat. Use RemoteReasoning for remote.",
+      "local": "Alias for default; added so intent-routing-map.json targets pass alias validation (D-1).",
+      "LocalTool": "Semantic alias for Reasoning/ToolCalling (D-2 clarification).",
+      "RemoteDefault": "Alias for remote-default profile (D-3 fix)."
+    }
   },
   "metadata": {
     "created": "2026-04-19",
+    "updated": "2026-05-18",
     "purpose": "Layer 1 front-door routing system for consistent request handling",
-    "phase": "Phase 0 Slice 0.1",
+    "phase": "Phase 0 Slice 0.1 / Phase 58A.2 drift cleanup",
     "related_docs": [
       "docs/architecture/front-door-routing.md",
-      ".agents/planning/high-value-improvements-plan-2026-04-19.md"
+      "docs/architecture/routing-profile-inventory.md"
     ]
   }
 }

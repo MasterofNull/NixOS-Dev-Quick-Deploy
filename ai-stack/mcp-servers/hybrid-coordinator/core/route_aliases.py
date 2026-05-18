@@ -131,15 +131,19 @@ class RouteAliasResolver:
             return False
 
     def _set_default_aliases(self) -> None:
-        """Set safe default aliases when config cannot be loaded."""
+        """Set safe default aliases when config cannot be loaded.
+        Keep in sync with config/route-aliases.json (Phase 58A.2 drift cleanup).
+        """
         self._aliases = {
             "default": "default",
             "explore": "default",
             "plan": "default",
             "implementation": "local-tool-calling",
-            "reasoning": "local-tool-calling",
+            "reasoning": "local-tool-calling",   # backward compat; routes to local-tool-calling
+            "localtool": "local-tool-calling",   # semantic alias (D-2)
             "toolcalling": "local-tool-calling",
             "continuation": "default",
+            "local": "default",                  # intent-routing-map target; alias for default (D-1)
             "local-agent": "local-agent",
             "localagent": "local-agent",
             "agent": "local-agent",
@@ -149,6 +153,7 @@ class RouteAliasResolver:
             "remotegemini": "remote-gemini",
             "remotecoding": "remote-coding",
             "remotereasoning": "remote-reasoning",
+            "remotedefault": "remote-default",   # D-3
             "remotetoolcalling": "remote-tool-calling",
         }
         self._allowed_profiles = {
@@ -160,6 +165,7 @@ class RouteAliasResolver:
             "remote-free",
             "remote-coding",
             "remote-reasoning",
+            "remote-default",                    # D-3
             "remote-tool-calling",
         }
 
