@@ -25,7 +25,9 @@
       "unblock_condition": null,
       "superseded_by": null,
       "replaces": null,
-      "related_docs": ["docs/agent-guides/46-SWITCHBOARD-PROFILES.md"]
+      "related_docs": [
+        "docs/agent-guides/46-SWITCHBOARD-PROFILES.md"
+      ]
     },
     {
       "id": "rocm-promotion",
@@ -68,13 +70,15 @@
         "reviewer": "Claude",
         "reviewed_on": "2026-05-18",
         "soak_sessions": 40,
-        "rollback_procedure": "Not applicable — canonical status; degradation requires full architectural revision"
+        "rollback_procedure": "Not applicable \u2014 canonical status; degradation requires full architectural revision"
       },
       "blocked_reason": null,
       "unblock_condition": null,
       "superseded_by": null,
       "replaces": null,
-      "related_docs": ["docs/architecture/canonical-kernel-declaration.md"]
+      "related_docs": [
+        "docs/architecture/canonical-kernel-declaration.md"
+      ]
     },
     {
       "id": "brokered-memory-path",
@@ -97,7 +101,9 @@
       "unblock_condition": null,
       "superseded_by": null,
       "replaces": null,
-      "related_docs": ["docs/architecture/canonical-kernel-declaration.md"]
+      "related_docs": [
+        "docs/architecture/canonical-kernel-declaration.md"
+      ]
     },
     {
       "id": "route-alias-resolver",
@@ -158,7 +164,7 @@
       "domain": "delegation",
       "state": "promoted",
       "state_since": "2026-05-14",
-      "description": "WorkflowExecutor + workflow_checkpointer.py is the canonical workflow runtime (Phase 54). The UAG FSM is canonical for agent lifecycle only. Confirmed provisional in kernel declaration §open-decision-1.",
+      "description": "WorkflowExecutor + workflow_checkpointer.py is the canonical workflow runtime (Phase 54). The UAG FSM is canonical for agent lifecycle only. Confirmed provisional in kernel declaration \u00a7open-decision-1.",
       "kernel_object": "workflow-session",
       "evidence": {
         "commit": "4a6cd30c",
@@ -167,7 +173,7 @@
         "reviewer": "Claude",
         "reviewed_on": "2026-05-18",
         "soak_sessions": 8,
-        "rollback_procedure": "Revert to pre-Phase-54 session handling; see kernel declaration open decision §1"
+        "rollback_procedure": "Revert to pre-Phase-54 session handling; see kernel declaration open decision \u00a71"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -184,7 +190,7 @@
       "domain": "inference",
       "state": "proposed",
       "state_since": "2026-04-15",
-      "description": "EDGE-tier local coding model via LLAMA_CPP_CODER_URL. Aspirational — hardware does not support a second concurrent model.",
+      "description": "EDGE-tier local coding model via LLAMA_CPP_CODER_URL. Aspirational \u2014 hardware does not support a second concurrent model.",
       "kernel_object": "route-profile",
       "evidence": {
         "commit": null,
@@ -265,13 +271,13 @@
       "id": "embedded-hardware",
       "name": "Embedded hardware domain (HDL, firmware, cross-compile, JTAG/SWD)",
       "domain": "embedded",
-      "state": "proposed",
+      "state": "implemented",
       "state_since": "2026-05-18",
-      "description": "Capability domain for HDL design (Verilator/GHDL/Yosys), firmware authoring, ARM/RISC-V cross-compilation, device-tree authoring, and board support. Dev shell: nix develop .#embedded (defined; pending nixos-rebuild test). Firmware write/JTAG ops are approval-gated. AIDB namespace: embedded-hardware-patterns.",
+      "description": "Capability domain for HDL design (Verilator/GHDL/Yosys), firmware authoring, ARM/RISC-V cross-compilation, device-tree authoring, and board support. Dev shell: nix develop .#embedded (defined; verified post-rebuild). Firmware write/JTAG ops are approval-gated. AIDB namespace: embedded-hardware-patterns.",
       "kernel_object": "intent",
       "evidence": {
-        "commit": null,
-        "aq_qa_check": null,
+        "commit": "pending-commit",
+        "aq_qa_check": "domain-health-6/6-PASS",
         "review_verdict": null,
         "reviewer": null,
         "reviewed_on": null,
@@ -294,13 +300,13 @@
       "id": "mobile-web",
       "name": "Mobile-web domain (Flutter, accessibility audits, MASVS, Playwright)",
       "domain": "mobile-web",
-      "state": "proposed",
+      "state": "implemented",
       "state_since": "2026-05-18",
-      "description": "Capability domain for web/mobile frontend development, WCAG 2.2 accessibility audits, OWASP MASVS mobile security analysis, Flutter/Android toolchain, browser automation (Playwright), and Lighthouse audits. Dev shell: nix develop .#mobile-web (defined; pending nixos-rebuild test). Reverse engineering is approval-gated. AIDB namespace: mobile-web-patterns. Research: Gemini 2026-05-18.",
+      "description": "Capability domain for web/mobile frontend development, WCAG 2.2 accessibility audits, OWASP MASVS mobile security analysis, Flutter/Android toolchain, browser automation (Playwright), and Lighthouse audits. Dev shell: nix develop .#mobile-web (defined; verified post-rebuild). Reverse engineering is approval-gated. AIDB namespace: mobile-web-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "intent",
       "evidence": {
-        "commit": null,
-        "aq_qa_check": null,
+        "commit": "pending-commit",
+        "aq_qa_check": "domain-health-6/6-PASS",
         "review_verdict": null,
         "reviewer": null,
         "reviewed_on": null,
@@ -322,13 +328,13 @@
       "id": "scientific-research",
       "name": "Scientific-research domain (reproducible pipelines, Snakemake, Jupyter, LaTeX, DOI ingestion)",
       "domain": "scientific",
-      "state": "proposed",
+      "state": "implemented",
       "state_since": "2026-05-18",
-      "description": "Capability domain for reproducible scientific computing: Snakemake pipelines, Jupyter notebooks, LaTeX/Pandoc report generation, DOI/citation ingestion, statistical methodology guardrails. Dev shell: nix develop .#scientific (defined; pending nixos-rebuild test). DURC is forbidden. AIDB namespace: scientific-research-patterns. Research: Gemini 2026-05-18.",
+      "description": "Capability domain for reproducible scientific computing: Snakemake pipelines, Jupyter notebooks, LaTeX/Pandoc report generation, DOI/citation ingestion, statistical methodology guardrails. Dev shell: nix develop .#scientific (defined; verified post-rebuild). DURC is forbidden. AIDB namespace: scientific-research-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "workflow-session",
       "evidence": {
-        "commit": null,
-        "aq_qa_check": null,
+        "commit": "pending-commit",
+        "aq_qa_check": "domain-health-6/6-PASS",
         "review_verdict": null,
         "reviewer": null,
         "reviewed_on": null,
@@ -350,13 +356,13 @@
       "id": "gis-systems",
       "name": "GIS-systems domain (GDAL/OGR, PostGIS, GeoPandas, QGIS, CRS discipline)",
       "domain": "gis",
-      "state": "proposed",
+      "state": "implemented",
       "state_since": "2026-05-18",
-      "description": "Capability domain for geospatial data transformation, spatial analysis, CRS validation, raster/tile generation, and Natural Earth/OSM data ingestion. Dev shell: nix develop .#gis (defined; pending nixos-rebuild test). Canonical CRS: EPSG:4326. Critical infrastructure geolocation is approval-gated. AIDB namespace: gis-systems-patterns. Research: Gemini 2026-05-18.",
+      "description": "Capability domain for geospatial data transformation, spatial analysis, CRS validation, raster/tile generation, and Natural Earth/OSM data ingestion. Dev shell: nix develop .#gis (defined; verified post-rebuild). Canonical CRS: EPSG:4326. Critical infrastructure geolocation is approval-gated. AIDB namespace: gis-systems-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "memory-evidence",
       "evidence": {
-        "commit": null,
-        "aq_qa_check": null,
+        "commit": "pending-commit",
+        "aq_qa_check": "domain-health-6/6-PASS",
         "review_verdict": null,
         "reviewer": null,
         "reviewed_on": null,
