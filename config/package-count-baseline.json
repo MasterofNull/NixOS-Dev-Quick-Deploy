@@ -1,12 +1,12 @@
 {
   "nixosTargets": {
-    "hyperd-ai-dev": 294,
+    "hyperd-ai-dev": 296,
     "hyperd-gaming": 262,
     "hyperd-minimal": 163,
-    "nixos-ai-dev": 304,
+    "nixos-ai-dev": 306,
     "nixos-gaming": 259,
     "nixos-minimal": 170,
-    "sbc-minimal-ai-dev": 265,
+    "sbc-minimal-ai-dev": 267,
     "sbc-minimal-gaming": 249,
     "sbc-minimal-minimal": 158
   },
@@ -18,13 +18,13 @@
     "pi-sbc-minimal": 65
   },
   "combinedTargets": {
-    "hyperd-ai-dev": 359,
+    "hyperd-ai-dev": 361,
     "hyperd-gaming": 327,
     "hyperd-minimal": 228,
-    "nixos-ai-dev": 369,
+    "nixos-ai-dev": 371,
     "nixos-gaming": 339,
     "nixos-minimal": 250,
-    "sbc-minimal-ai-dev": 330,
+    "sbc-minimal-ai-dev": 332,
     "sbc-minimal-gaming": 314,
     "sbc-minimal-minimal": 223
   },
@@ -33,8 +33,8 @@
     "homeTargetCount": 5,
     "systemPackages": {
       "min": 158,
-      "max": 304,
-      "avg": 236.00
+      "max": 306,
+      "avg": 236.67
     },
     "homePackages": {
       "min": 65,
@@ -43,8 +43,8 @@
     },
     "combinedPackages": {
       "min": 223,
-      "max": 369,
-      "avg": 304.33
+      "max": 371,
+      "avg": 305.00
     }
   }
 }

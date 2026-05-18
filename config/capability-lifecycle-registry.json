@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas/capability-lifecycle-registry.schema.json",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Canonical capability lifecycle registry. State machine defined in docs/architecture/capability-lifecycle.md.",
   "last_updated": "2026-05-18",
   "capabilities": [
@@ -208,12 +208,12 @@
       "id": "security-systems",
       "name": "Security systems domain (static analysis + findings knowledge)",
       "domain": "security",
-      "state": "proposed",
+      "state": "implemented",
       "state_since": "2026-05-18",
-      "description": "Unified security-analysis capability domain. Routes OWASP/policy queries to remote-reasoning; static scans (Semgrep, Bandit, Trivy) via local-tool-calling. Findings persisted to AIDB namespace security-findings.",
+      "description": "Unified security-analysis capability domain. Routes OWASP/policy queries to remote-reasoning; static scans (Semgrep, Bandit, Trivy) via local-tool-calling. Findings persisted to AIDB namespace security-findings. Dev shell: nix develop .#security. trivy in system profile post-rebuild.",
       "kernel_object": "memory-evidence",
       "evidence": {
-        "commit": null,
+        "commit": "pending-nixos-rebuild",
         "aq_qa_check": null,
         "review_verdict": null,
         "reviewer": null,
@@ -236,12 +236,12 @@
       "id": "systems-software",
       "name": "Systems-software domain (NixOS module authoring + Nix static analysis + shell tooling)",
       "domain": "systems",
-      "state": "proposed",
+      "state": "implemented",
       "state_since": "2026-05-18",
-      "description": "Capability domain for NixOS module development, Nix static analysis (statix/deadnix/alejandra), shell scripting, and deployment tooling. Prefers local-tool-calling profile. Findings/patterns persisted to AIDB namespace nix-systems-patterns.",
+      "description": "Capability domain for NixOS module development, Nix static analysis (statix/deadnix/alejandra), shell scripting, and deployment tooling. Dev shell: nix develop .#systems. shellcheck in system profile post-rebuild. Prefers local-tool-calling profile. AIDB namespace: nix-systems-patterns.",
       "kernel_object": "workflow-session",
       "evidence": {
-        "commit": null,
+        "commit": "pending-nixos-rebuild",
         "aq_qa_check": null,
         "review_verdict": null,
         "reviewer": null,
@@ -267,7 +267,7 @@
       "domain": "embedded",
       "state": "proposed",
       "state_since": "2026-05-18",
-      "description": "Capability domain for HDL design (Verilator/GHDL/Yosys), firmware authoring, ARM/RISC-V cross-compilation, device-tree authoring, and board support. Firmware write/JTAG ops are approval-gated. AIDB namespace: embedded-hardware-patterns.",
+      "description": "Capability domain for HDL design (Verilator/GHDL/Yosys), firmware authoring, ARM/RISC-V cross-compilation, device-tree authoring, and board support. Dev shell: nix develop .#embedded (defined; pending nixos-rebuild test). Firmware write/JTAG ops are approval-gated. AIDB namespace: embedded-hardware-patterns.",
       "kernel_object": "intent",
       "evidence": {
         "commit": null,
@@ -296,7 +296,7 @@
       "domain": "mobile-web",
       "state": "proposed",
       "state_since": "2026-05-18",
-      "description": "Capability domain for web/mobile frontend development, WCAG 2.2 accessibility audits, OWASP MASVS mobile security analysis, Flutter/Android toolchain, browser automation (Playwright), and Lighthouse audits. Reverse engineering is approval-gated. AIDB namespace: mobile-web-patterns. Research: Gemini 2026-05-18.",
+      "description": "Capability domain for web/mobile frontend development, WCAG 2.2 accessibility audits, OWASP MASVS mobile security analysis, Flutter/Android toolchain, browser automation (Playwright), and Lighthouse audits. Dev shell: nix develop .#mobile-web (defined; pending nixos-rebuild test). Reverse engineering is approval-gated. AIDB namespace: mobile-web-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "intent",
       "evidence": {
         "commit": null,
@@ -324,7 +324,7 @@
       "domain": "scientific",
       "state": "proposed",
       "state_since": "2026-05-18",
-      "description": "Capability domain for reproducible scientific computing: Snakemake pipelines, Jupyter notebooks, LaTeX/Pandoc report generation, DOI/citation ingestion, statistical methodology guardrails. DURC is forbidden. AIDB namespace: scientific-research-patterns. Research: Gemini 2026-05-18.",
+      "description": "Capability domain for reproducible scientific computing: Snakemake pipelines, Jupyter notebooks, LaTeX/Pandoc report generation, DOI/citation ingestion, statistical methodology guardrails. Dev shell: nix develop .#scientific (defined; pending nixos-rebuild test). DURC is forbidden. AIDB namespace: scientific-research-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "workflow-session",
       "evidence": {
         "commit": null,
@@ -352,7 +352,7 @@
       "domain": "gis",
       "state": "proposed",
       "state_since": "2026-05-18",
-      "description": "Capability domain for geospatial data transformation, spatial analysis, CRS validation, raster/tile generation, and Natural Earth/OSM data ingestion. Canonical CRS: EPSG:4326. Critical infrastructure geolocation is approval-gated. AIDB namespace: gis-systems-patterns. Research: Gemini 2026-05-18.",
+      "description": "Capability domain for geospatial data transformation, spatial analysis, CRS validation, raster/tile generation, and Natural Earth/OSM data ingestion. Dev shell: nix develop .#gis (defined; pending nixos-rebuild test). Canonical CRS: EPSG:4326. Critical infrastructure geolocation is approval-gated. AIDB namespace: gis-systems-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "memory-evidence",
       "evidence": {
         "commit": null,

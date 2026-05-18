@@ -300,6 +300,142 @@
               echo "BitNet benchmark shell ready: python3.12, cmake, clang, git, make, pkg-config, zlib"
             '';
           };
+
+          # ── Domain dev shells (Phase 58A capability expansion) ──────────────
+
+          # security-systems domain: static analysis + vulnerability scanning
+          security = pkgs'.mkShell {
+            packages = with pkgs'; [
+              semgrep
+              trivy
+              shellcheck
+              cppcheck
+              (python3.withPackages (ps: with ps; [
+                bandit
+                safety
+              ]))
+            ];
+            shellHook = ''
+              export SECURITY_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=security-findings
+              echo "security-systems shell: semgrep, trivy, shellcheck, cppcheck, bandit, safety"
+              echo "AIDB namespace: security-findings | Route: remote-reasoning (policy) / local-tool-calling (scans)"
+            '';
+          };
+
+          # systems-software domain: Nix static analysis + shell tooling
+          # Note: statix/deadnix/alejandra are also in default shell for convenience
+          systems = pkgs'.mkShell {
+            packages = with pkgs'; [
+              statix
+              deadnix
+              alejandra
+              shellcheck
+              nix-tree
+              nix-diff
+              nixpkgs-fmt
+            ];
+            shellHook = ''
+              export SYSTEMS_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=nix-systems-patterns
+              echo "systems-software shell: statix, deadnix, alejandra, shellcheck, nix-tree, nix-diff, nixpkgs-fmt"
+              echo "AIDB namespace: nix-systems-patterns | Route: local-tool-calling"
+              echo "Port SSOT: nix/modules/core/options.nix — never hardcode ports"
+            '';
+          };
+
+          # embedded-hardware domain: HDL, simulation, cross-compile, debug
+          embedded = pkgs'.mkShell {
+            packages = with pkgs'; [
+              verilator
+              ghdl-llvm
+              yosys
+              openocd
+              gcc-arm-embedded
+              dtc
+              qemu
+              gdb
+              minicom
+            ];
+            shellHook = ''
+              export EMBEDDED_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=embedded-hardware-patterns
+              echo "embedded-hardware shell: verilator, ghdl-llvm, yosys, openocd, gcc-arm-embedded, dtc, qemu, gdb, minicom"
+              echo "AIDB namespace: embedded-hardware-patterns"
+              echo "SAFETY: firmware flash/JTAG ops require explicit user confirmation before execution"
+            '';
+          };
+
+          # mobile-web domain: Flutter, web tooling, accessibility + security audits
+          mobile-web = pkgs'.mkShell {
+            packages = with pkgs'; [
+              flutter
+              android-tools
+              nodejs_22
+              nodePackages.lighthouse
+              chromium
+              playwright-driver
+            ];
+            shellHook = ''
+              export MOBILE_WEB_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=mobile-web-patterns
+              export CHROME_EXECUTABLE="${pkgs'.chromium}/bin/chromium"
+              export PLAYWRIGHT_BROWSERS_PATH="${pkgs'.playwright-driver.browsers}"
+              echo "mobile-web shell: flutter, android-tools, nodejs_22, lighthouse, chromium, playwright"
+              echo "AIDB namespace: mobile-web-patterns | iOS builds NOT supported (no macOS/Xcode)"
+            '';
+          };
+
+          # scientific-research domain: reproducible pipelines, notebooks, reports
+          scientific = pkgs'.mkShell {
+            packages = with pkgs'; [
+              (python3.withPackages (ps: with ps; [
+                numpy
+                scipy
+                matplotlib
+                pandas
+                jupyterlab
+                snakemake
+                biopython
+              ]))
+              pandoc
+              texlive.combined.scheme-small
+              R
+            ];
+            shellHook = ''
+              export SCIENTIFIC_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=scientific-research-patterns
+              echo "scientific-research shell: numpy/scipy/matplotlib/pandas/jupyterlab/snakemake, pandoc, texlive, R"
+              echo "AIDB namespace: scientific-research-patterns"
+              echo "REPRODUCIBILITY: always set random seeds; pin package versions; record data provenance"
+            '';
+          };
+
+          # gis-systems domain: GDAL/OGR, spatial analysis, CRS validation
+          gis = pkgs'.mkShell {
+            packages = with pkgs'; [
+              gdal
+              proj
+              (python3.withPackages (ps: with ps; [
+                geopandas
+                rasterio
+                shapely
+                pyproj
+                fiona
+              ]))
+              qgis
+              spatialite-tools
+              postgis
+            ];
+            shellHook = ''
+              export GIS_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=gis-systems-patterns
+              export CANONICAL_CRS="EPSG:4326"
+              echo "gis-systems shell: gdal, proj, geopandas/rasterio/shapely, qgis, spatialite-tools"
+              echo "AIDB namespace: gis-systems-patterns | Canonical CRS: EPSG:4326 (WGS84)"
+              echo "CRS DISCIPLINE: always validate CRS with 'ogrinfo -al -so <file>' before any spatial operation"
+            '';
+          };
         });
     };
 }
