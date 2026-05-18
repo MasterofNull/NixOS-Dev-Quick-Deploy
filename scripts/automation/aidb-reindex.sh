@@ -40,6 +40,35 @@ log "AIDB reachable"
 export REPO_ROOT AIDB_URL AIDB_API_KEY_FILE
 
 # ---------------------------------------------------------------------------
+# Write running marker so coordinator can warn agents about stale RAG
+# ---------------------------------------------------------------------------
+if [[ -n "$REINDEX_OUTPUT" ]]; then
+  mkdir -p "$(dirname "$REINDEX_OUTPUT")" 2>/dev/null || true
+  printf '{"status":"running","started_at":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$REINDEX_OUTPUT" 2>/dev/null || true
+fi
+
+# ---------------------------------------------------------------------------
+# Adaptive embed throttle: if embed server is slow (>800ms), increase delay
+# ---------------------------------------------------------------------------
+_EMBED_URL="${LLAMA_EMBED_URL:-http://127.0.0.1:8081}"
+_EMBED_PROBE_START=$(date +%s%3N)
+curl -sf --max-time 2 "${_EMBED_URL}/health" >/dev/null 2>&1 && _EMBED_OK=1 || _EMBED_OK=0
+_EMBED_PROBE_END=$(date +%s%3N)
+_EMBED_LATENCY_MS=$(( _EMBED_PROBE_END - _EMBED_PROBE_START ))
+if [[ $_EMBED_OK -eq 1 && $_EMBED_LATENCY_MS -gt 800 ]]; then
+  warn "embed server latency ${_EMBED_LATENCY_MS}ms — throttling ingest delay to 2.0s to protect active sessions"
+  INGEST_DELAY="2.0"
+elif [[ $_EMBED_OK -eq 0 ]]; then
+  warn "embed server not reachable — skipping re-index run"
+  [[ -n "$REINDEX_OUTPUT" ]] && printf '{"status":"skipped","reason":"embed_unavailable","timestamp":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$REINDEX_OUTPUT" 2>/dev/null || true
+  exit 0
+fi
+log "embed server ready (latency=${_EMBED_LATENCY_MS}ms, ingest_delay=${INGEST_DELAY}s)"
+
+# ---------------------------------------------------------------------------
 # Job 1 — logic pattern indexing
 # ---------------------------------------------------------------------------
 log "--- Job 1: logic-patterns indexing ---"

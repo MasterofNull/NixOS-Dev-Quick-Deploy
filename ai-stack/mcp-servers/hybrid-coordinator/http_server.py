@@ -325,6 +325,26 @@ _queue_depth_ref: Optional[Callable] = None          # lambda: _model_loading_qu
 _queue_max_ref: Optional[Callable] = None            # lambda: _MODEL_QUEUE_MAX
 _embedding_cache_ref: Optional[Callable] = None      # Phase 21.3 — lambda: embedding_cache
 _workflow_sessions_lock = asyncio.Lock()
+
+# ---------------------------------------------------------------------------
+# Team-load concurrency control (prevents Qwen CPU/RAM exhaustion)
+# ---------------------------------------------------------------------------
+# Cap simultaneous local LLM inference calls.  Agents get scheduling priority:
+# humans yield briefly when agents are waiting so agentic workflows are not
+# starved by interactive editor sessions under team orchestration load.
+_MAX_CONCURRENT_LLM: int = int(os.getenv("MAX_CONCURRENT_LLM", "2"))
+_llm_sem: asyncio.Semaphore = asyncio.Semaphore(_MAX_CONCURRENT_LLM)
+_agent_llm_waiters: int = 0  # agents currently queued for an LLM slot
+
+# Reindex status — path matches REINDEX_OUTPUT injected by the systemd unit.
+# aidb-reindex.sh writes {"status":"running"} at start and overwrites with the
+# final result on completion so agents can detect a stale RAG corpus.
+_REINDEX_STATUS_PATH: str = os.getenv(
+    "REINDEX_OUTPUT",
+    "/var/lib/ai-stack/hybrid/telemetry/aidb-reindex-latest.json",
+)
+_reindex_status_cache: Dict[str, Any] = {}
+_reindex_status_ts: float = 0.0
 # Phase 12.4: registry symbols imported from extracted modules
 from runtime_manager import (
     _runtime_registry_lock,
@@ -2045,6 +2065,26 @@ async def run_http_mode(port: int) -> None:
         except Exception as exc:
             return web.json_response({"error": "augment_query_failed", "detail": str(exc)}, status=500)
 
+    def _is_agent_query(d: Dict[str, Any]) -> bool:
+        """True when the caller is an automated agent, not an interactive human session."""
+        return str(d.get("agent_type") or "").lower() in {
+            "gemini", "codex", "claude", "local", "coordinator", "local-agent",
+        }
+
+    def _get_reindex_status() -> Dict[str, Any]:
+        """Return last-written reindex status with 5 s cache; empty dict on error."""
+        global _reindex_status_cache, _reindex_status_ts
+        now = time.monotonic()
+        if _reindex_status_cache and now - _reindex_status_ts < 5.0:
+            return _reindex_status_cache
+        try:
+            with open(_REINDEX_STATUS_PATH) as _rf:
+                _reindex_status_cache = json.load(_rf)
+            _reindex_status_ts = now
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+        return _reindex_status_cache
+
     async def handle_query(request):
         """HTTP endpoint for query routing."""
         try:
@@ -2108,9 +2148,34 @@ async def run_http_mode(port: int) -> None:
             )
             request_context["generate_response_effective"] = generate_response
 
-            result = await _execute_query_search(
-                query, data, prefer_local, request_context, generate_response,
-            )
+            # Agent priority + LLM concurrency gate:
+            # Agents register a waiter; non-agents yield briefly so agentic
+            # workflows are not starved under concurrent team load.
+            global _agent_llm_waiters
+            _query_is_agent = _is_agent_query(data)
+            if _query_is_agent:
+                _agent_llm_waiters += 1
+            elif _agent_llm_waiters > 0:
+                await asyncio.sleep(0.3)  # yield slot to waiting agents
+            try:
+                async with _llm_sem:
+                    result = await _execute_query_search(
+                        query, data, prefer_local, request_context, generate_response,
+                    )
+            finally:
+                if _query_is_agent:
+                    _agent_llm_waiters -= 1
+
+            # Warn agents when AIDB reindex is in progress (RAG corpus may be stale)
+            _ridx = _get_reindex_status()
+            if _ridx.get("status") == "running" and isinstance(result, dict):
+                result["reindex_in_progress"] = True
+                result["reindex_warning"] = (
+                    "AIDB reindex is in progress — RAG results may be incomplete. "
+                    f"Reindex started at {_ridx.get('started_at', 'unknown')}. "
+                    "Proceed with current results or retry after indexing completes."
+                )
+
             if result.get("_loading_error"):
                 # Attempt transparent remote fallback before surfacing 503.
                 # Local agents should never gate remote workflows.

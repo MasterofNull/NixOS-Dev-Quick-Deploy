@@ -1688,6 +1688,10 @@ in {
         timerConfig = {
           OnBootSec = cfg.deployment.aidbReindex.onBootDelaySec;
           OnUnitActiveSec = "${toString cfg.deployment.aidbReindex.intervalHours}h";
+          # Spread concurrent timer firings across a 10-minute window so that
+          # multiple system events (boot, rebuild, daily tick) don't all trigger
+          # an embed-intensive reindex at the exact same moment.
+          RandomizedDelaySec = "10min";
           Persistent = true;
           Unit = "ai-aidb-reindex.service";
         };
