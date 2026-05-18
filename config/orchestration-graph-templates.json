@@ -30,10 +30,10 @@
           "depends_on": ["agent_a", "agent_b"]
         },
         {
-          "id": "reviewer",
-          "lane": "codex-review",
+          "id": "expert_review",
+          "lane": "remote-reasoning",
           "safety_mode": "plan-readonly",
-          "prompt_template": "Evaluate the consensus solution for task: {task}\n\nConsensus result:\n{deps}",
+          "prompt_template": "You are the Lead Architect (Claude). Evaluate the consensus solution reached by the team for task: {task}\n\nTeam Consensus result:\n{deps}\n\nPerform a deep architectural audit and provide the final GO/NO-GO.",
           "depends_on": ["arbiter"]
         }
       ]

@@ -93,7 +93,7 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 git commit -m "..."
 # COLLABORATION: Update .agent/collaboration/HANDOFF.md
 ```
-Replace `<active-agent-name>` with the model generating the work (e.g. Gemini 2.5 Pro).
+Replace `<active-agent-name>` with the model generating the work (e.g. Claude 3.7 Sonnet, Gemini 2.0 Pro).
 Never commit without validation evidence. Never use `--no-verify`.
 
 ---
