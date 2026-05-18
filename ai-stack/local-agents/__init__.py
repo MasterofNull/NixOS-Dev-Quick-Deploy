@@ -43,11 +43,6 @@ from .agent_executor import (
 )
 from routing_contract import RoutingDecision
 
-from .task_router import (
-    AgentTarget,
-    TaskRouter,
-    get_router,
-)
 from .monitoring_agent import (
     HealthStatus,
     HealthCheck,
@@ -136,11 +131,8 @@ __all__ = [
     "TaskStatus",
     "LocalAgentExecutor",
     "get_executor",
-    # Task router
-    "AgentTarget",
+    # Canonical routing decision (from routing_contract)
     "RoutingDecision",
-    "TaskRouter",
-    "get_router",
     # Monitoring agent
     "HealthStatus",
     "HealthCheck",
