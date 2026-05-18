@@ -231,6 +231,35 @@
         "docs/architecture/domain-activation-template.md",
         "scripts/governance/tier0-validation-gate.sh"
       ]
+    },
+    {
+      "id": "systems-software",
+      "name": "Systems-software domain (NixOS module authoring + Nix static analysis + shell tooling)",
+      "domain": "systems",
+      "state": "proposed",
+      "state_since": "2026-05-18",
+      "description": "Capability domain for NixOS module development, Nix static analysis (statix/deadnix/alejandra), shell scripting, and deployment tooling. Prefers local-tool-calling profile. Findings/patterns persisted to AIDB namespace nix-systems-patterns.",
+      "kernel_object": "workflow-session",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": null,
+        "review_verdict": null,
+        "reviewer": null,
+        "reviewed_on": null,
+        "soak_sessions": 0,
+        "rollback_procedure": "Set state to blocked; disable systems-software-health check; remove systems-software intent class from intent-routing-map.json if added"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        ".agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md",
+        ".agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md",
+        "docs/architecture/domain-activation-template.md",
+        "scripts/governance/nix-static-analysis.sh",
+        "nix/modules/core/options.nix"
+      ]
     }
   ]
 }
