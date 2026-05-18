@@ -1082,6 +1082,13 @@ async def route_search(
     # Initial keyword-based classification
     intent_info = _intent_classifier.classify(query) if _intent_classifier else {"intent": "unknown", "confidence": 0.0}
     
+    # Phase 59 — Local Offloading Enforcement
+    # Automatically force local execution for simple operational and tool-based intents
+    if intent_info["intent"] in ["harness_operation", "tool_execution"] and mode == "auto":
+        intent_info["profile"] = "local-harness-ops"
+        intent_info["reason"] = "forced_local_offload"
+        logger.info("route_handler: local offloading enforced for intent=%s", intent_info["intent"])
+
     # Wait for semantic results (timeout 1s to not block routing)
     cognitive_lift = 0.0
     if semantic_task:
