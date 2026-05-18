@@ -25,7 +25,7 @@
       "rag_project": "semantic,best-practices"
     },
     "planning": {
-      "profile": "local",
+      "profile": "remote-reasoning",
       "min_confidence": 0.4,
       "fallback_profile": "local",
       "memory_recall": true,
@@ -46,7 +46,7 @@
       "rag_project": "logic-patterns,procedural"
     },
     "troubleshooting": {
-      "profile": "local",
+      "profile": "remote-reasoning",
       "min_confidence": 0.4,
       "fallback_profile": "remote",
       "memory_recall": true,

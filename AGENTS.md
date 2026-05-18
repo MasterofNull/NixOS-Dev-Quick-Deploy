@@ -29,6 +29,8 @@ To prevent state loss during rate limits or model switches, all agents MUST:
 3. **Handoff Memo**: Update `HANDOFF.md` when finishing a slice or hitting a limit.
 4. **Recovery**: On 429/400 errors, attempt a 1-turn emergency write to `RECOVERY.md`.
 
+*Applies to: Claude, Gemini, Codex, Qwen, and any future autonomous agents.*
+
 ## Security checklist (OWASP Agentic Top 10) continua...
 no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
 `bash -n` on shell, `py_compile` on Python; privilege minimization. Never use `--no-verify`.

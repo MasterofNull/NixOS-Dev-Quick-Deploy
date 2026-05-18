@@ -1,5 +1,5 @@
 # WORKFLOW-CANON — Canonical Agent Workflow
-**SSOT for all agents: Claude, Codex, Gemini, local Qwen, remote lanes**
+**SSOT for all agents: Claude, Gemini, Codex, local Qwen, remote lanes**
 Maintained by: hyperd | Updated: 2026-05-13
 
 > "The gap between models matters less than the gap between workflows."
