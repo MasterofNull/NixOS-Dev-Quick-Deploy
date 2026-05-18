@@ -75,6 +75,13 @@ Return to orchestrator (Codex/Claude) when:
 
 ## Quick Reference
 
+Before codebase exploration, follow `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`:
+- search: `agrep`, then `rg`
+- path discovery: `als`, then `fd`
+- bounded reads: `acat`, then native read tools or `sed -n`
+- if a preferred tool is unavailable, use one documented fallback and move on
+- do not retry the same failed call without changing the hypothesis
+
 | Task Type | Your Action | Route To Orchestrator For |
 |-----------|-------------|---------------------------|
 | Code patch | Implement + validate | Final acceptance |

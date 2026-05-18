@@ -1,3 +1,10 @@
+<!-- sync-agent-instructions: auto-generated section -->
+<!-- Last synced: 2026-05-18 16:54 UTC from CLAUDE.md -->
+
+## PROJECT-SPECIFIC RULES — NixOS-Dev-Quick-Deploy (READ FIRST)
+
+<!-- sync-agent-instructions: end -->
+
 # AI Agent Onboarding — NixOS-Dev-Quick-Deploy
 
 Project: NixOS AI harness (Qwen3-35B local · hybrid-coordinator · switchboard · AIDB)
@@ -38,6 +45,7 @@ no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
 - Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
+- Use the canonical low-friction tool order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
 - Commit format: `type(scope): msg\n\nCo-Authored-By: <agent-name> <noreply@harness.local>`
 

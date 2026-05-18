@@ -54,6 +54,13 @@ acat <file>                             # replaces cat; line numbers + capped ou
 asum <file>                             # structural overview (Py, JS, Go, Nix)
 ```
 
+**Agent tool contract**:
+- Canonical baseline and fallback order: `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`
+- Search: prefer `agrep`, fall back once to `rg`
+- Path discovery: prefer `als`, fall back once to `fd`
+- Bounded reads: prefer `acat`, then use a native read tool or `sed -n`
+- Never retry an unchanged failed tool call without a changed hypothesis
+
 **External research** (for implementation decisions, new integrations, security topics):
 - Web search for cutting-edge practices specific to the task
 - Check OWASP for security implications if adding auth, input handling, or external calls

@@ -1,38 +1,31 @@
 # Handoff Memo - 2026-05-18
 
-**Status:** COMPLETE — Gemini hardening and the confirmed follow-up defects are fixed for this slice.
-**Last Action:** Re-ran `ai-npm-security-monitor.service` successfully after `/tmp` recovery, then completed bounded phase-0 QA and the full pre-commit tier0 gate.
-**Next Step:** Deploy/restart the dashboard when convenient so the new shared QA single-flight runner takes effect in the live service; keep the unrelated `ai_service_health.py` timeout edit separate unless it is intentionally part of another slice.
+**Status:** IN PROGRESS — Agent tool-contract hardening complete; Phase 58A.0 resumed with a draft canonical-kernel declaration.
+**Last Action:** Finished the cross-agent tool contract alignment, then created `docs/architecture/canonical-kernel-declaration.md` and `.agents/plans/phase-58a-canonical-kernel-declaration.md` to move the original capability-expansion program forward again.
+**Next Step:** Review and refine the canonical-kernel declaration with the team, then proceed to `58A.1 — Canonical role matrix SSOT` using that declaration as the upstream authority.
 **Context Bloat:** Medium
 
-## Completed
-- `/tmp` recovered from 100% full to 1% used after removing approved stale `/tmp/tmp.*` homes.
-- `scripts/health/gemini-cli-health.sh` now copies only minimal Gemini startup state instead of multi-GiB chat history.
-- Repaired live audit defects:
-  - resurrected the stranded RAG test so pytest collects it,
-  - reconciled drift telemetry backend/frontend fields,
-  - removed fabricated consensus-history telemetry,
-  - prevented semantic-lift intent/profile desync,
-  - wired consensus arbiter embeddings during server startup,
-  - made synthesis fallback explicit,
-  - corrected misleading Claude authorship text.
-- Tightened Gemini policy in `.agent/GEMINI.md`, `.gemini/context.md`, and `nix/home/base.nix` around tracked files, schema checks, no placeholder telemetry, collected tests, runtime-path validation, and small reviewable slices.
-- Fixed `scripts/data/sync-agent-instructions` repo-root resolution so Gemini context regeneration works again.
-- Corrected `aq-qa` 0.7.4 to use AIDB's canonical `/vector/search` endpoint.
-- Guarded `aq-qa` 0.7.3 under `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1`, closing the remaining recursive phase-0 validation path.
+## Completed in this session
+1. Added a canonical low-friction agent tool contract.
+2. Aligned Claude, Gemini, Qwen, AGENTS, workflow canon, generated Gemini context, and runtime isolation defaults.
+3. Regenerated instruction projections through `scripts/data/sync-agent-instructions`.
+4. Rejoined the original Phase 58A path by drafting the canonical kernel declaration and linking it into the architecture review artifacts.
 
-## Validation completed
-- `/tmp`: 14G available, 1% used after cleanup.
-- `bash -n scripts/health/gemini-cli-health.sh` passed.
-- `py_compile` passed for touched Python files.
-- Focused tests passed: `13 passed`.
-- `pytest --collect-only` now shows the previously stranded RAG test as collected.
-- Direct probe confirmed consensus arbiter embedding injection works.
-- Bounded `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 aq-qa 0 --json` completed with `64 passed / 0 failed / 3 skipped`.
-- Direct `POST /vector/search` probe returned results from live AIDB.
-- `sudo -n systemctl start ai-npm-security-monitor.service` completed successfully after `/tmp` cleanup, clearing the historical failed-state marker.
-- `scripts/governance/tier0-validation-gate.sh --pre-commit` passed: `14 passed / 0 failed`.
+## Validation evidence
+- `python3 -m py_compile scripts/data/sync-agent-instructions` — PASS
+- `python3 scripts/data/sync-agent-instructions --dry-run --verbose` — PASS before sync
+- `python3 scripts/data/sync-agent-instructions --verbose` — PASS
+- `nix-instantiate --parse nix/modules/core/options.nix` — PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — BLOCKED by existing baseline QA failures (`63 passed · 2 failed · 2 skipped`)
 
-## Still observed
-- Multiple overlapping `aq-qa 0` processes were present. Orphaned stale background copies were terminated; the shared dashboard single-flight code is prepared but will only affect the live dashboard after deploy/restart.
-- The live dashboard must be restarted/deployed before the new shared QA single-flight path changes runtime behavior.
+## Current architecture artifacts
+- `.agent/PROJECT-CAPABILITY-EXPANSION-MASTER-PRD.md`
+- `.agent/PROJECT-CAPABILITY-EXPANSION-CODEX-PRD.md`
+- `.agents/plans/phase-58a-architecture-review-brief.md`
+- `.agents/plans/phase-58a-capability-expansion-team-plan.md`
+- `.agents/plans/phase-58a-canonical-kernel-declaration.md`
+- `docs/architecture/canonical-kernel-declaration.md`
+
+## Notes
+- The new tool contract is an enabling cleanup, not a replacement for the broader architecture effort.
+- The main line is now back on the intended sequence: kernel declaration → role matrix → routing/profile SSOT → instruction projections.

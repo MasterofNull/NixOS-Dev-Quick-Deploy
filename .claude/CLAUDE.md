@@ -47,6 +47,12 @@ scripts/governance/tier0-validation-gate.sh --pre-commit  # required before ever
 - executing workflows (aqd commands, shell scripts)
 - validation and testing (test runners, linters, build commands)
 
+Use the canonical low-friction order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`:
+- search: `agrep`, then `rg`
+- path discovery: `als`, then `fd`
+- bounded reads: `acat`, then native read tools or `sed -n`
+- do not retry an unchanged failed tool call without a changed hypothesis
+
 Use direct implementation only after:
 - problem scope is clear from tool output
 - validation plan is documented
