@@ -34,24 +34,28 @@
 
         :root {
             --bg-primary: #0a0e14;
-            --bg-secondary: #111822;
-            --bg-tertiary: #1a2332;
-            --bg-card: #141d2b;
-            --border-primary: #1e3a5f;
+            --bg-secondary: #0d121b;
+            --bg-tertiary: #111822;
+            --bg-card: #0d121b;
+            --border-primary: rgba(0, 217, 255, 0.2);
             --border-glow: #00d9ff;
-            --text-primary: #e6f1ff;
-            --text-secondary: #8892a6;
-            --text-muted: #4a5568;
+            --text-primary: #e6edf3;
+            --text-secondary: #91aebb;
+            --text-muted: #546e7a;
             --accent-cyan: #00d9ff;
             --accent-magenta: #ff006e;
-            --accent-yellow: #ffbe0b;
-            --status-online: #00ff88;
-            --status-warning: #ffbe0b;
-            --status-error: #ff006e;
+            --accent-yellow: #ffcc00;
+            --accent-gold: #ffcc00;
+            --status-online: #39ff14;
+            --status-warning: #ffcc00;
+            --status-error: #ff3131;
+            --status-offline: #546e7a;
             --scanline: rgba(0, 217, 255, 0.03);
             /* Aliases for legacy inline styles */
-            --accent-green: #00ff88;
-            --accent-red: #ff006e;
+            --accent-green: #39ff14;
+            --accent-red: #ff3131;
+            --font-main: 'JetBrains Mono', monospace;
+            --font-display: 'Orbitron', sans-serif;
         }
 
         * {
@@ -174,20 +178,20 @@
             right: 0;
             background: var(--bg-card);
             border: 1px solid var(--border-glow);
-            border-radius: 4px;
             padding: 1.5rem;
             min-width: 200px;
             box-shadow: 0 0 24px rgba(0, 217, 255, 0.2);
+            clip-path: polygon(0 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%);
             /* Reticle corners via background-image gradients */
             background-image:
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    left  / 12px 2px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    left  / 2px 12px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    right / 12px 2px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    right / 2px 12px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom left  / 12px 2px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom left  / 2px 12px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom right / 12px 2px no-repeat,
-                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom right / 2px 12px no-repeat;
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    left  / 15px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    left  / 2px 15px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    right / 15px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) top    right / 2px 15px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom left  / 15px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom left  / 2px 15px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom right / 15px 2px no-repeat,
+                linear-gradient(var(--accent-yellow), var(--accent-yellow)) bottom right / 2px 15px no-repeat;
         }
 
         .health-score-status {
@@ -334,10 +338,13 @@
 
         .operator-tile {
             background: linear-gradient(180deg, rgba(20, 29, 43, 0.96), rgba(10, 14, 20, 0.96));
+            background-image: radial-gradient(var(--border-primary) 1px, transparent 1px);
+            background-size: 8px 8px;
             border: 1px solid var(--border-primary);
             border-radius: 8px;
             padding: 1rem;
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
         }
 
         .operator-label {
@@ -448,25 +455,37 @@
             position: relative;
             overflow: hidden;
             min-height: 92px;
-            border: 1px solid rgba(30, 58, 95, 0.95);
+            border: 1px solid var(--border-primary);
             border-left: 3px solid var(--accent-cyan);
-            border-radius: 5px;
             background:
                 linear-gradient(180deg, rgba(26, 35, 50, 0.9), rgba(10, 14, 20, 0.92));
             background-image:
-                radial-gradient(var(--border-primary) 1px, transparent 1px),
+                radial-gradient(rgba(0, 217, 255, 0.1) 1px, transparent 1px),
                 linear-gradient(180deg, rgba(26, 35, 50, 0.9), rgba(10, 14, 20, 0.92));
-            background-size: 10px 10px, 100% 100%;
+            background-size: 8px 8px, 100% 100%;
             padding: 0.75rem;
+            clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
         }
 
         .deck-tile::after {
             content: '';
             position: absolute;
-            inset: auto 0 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.65), transparent);
-            opacity: 0.4;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background: var(--accent-cyan);
+            opacity: 0.2;
+            box-shadow: 0 0 6px var(--accent-cyan);
+            animation: scanning-laser 6s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes scanning-laser {
+            0% { top: 0%; opacity: 0; }
+            5% { opacity: 0.2; }
+            95% { opacity: 0.2; }
+            100% { top: 100%; opacity: 0; }
         }
 
         .deck-sparkline {
@@ -547,7 +566,26 @@
         }
 
         .deck-layer.online {
-            border-color: rgba(0, 255, 136, 0.55);
+            border-color: rgba(57, 255, 20, 0.45);
+            position: relative;
+        }
+
+        .deck-layer.online::after {
+            content: '';
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--status-online);
+            box-shadow: 0 0 6px var(--status-online);
+            animation: pulse-led 2s cubic-bezier(1,-0.01,0,1) infinite;
+        }
+
+        @keyframes pulse-led {
+            0%, 10% { opacity: 1; }
+            11%, 100% { opacity: 0.2; }
         }
 
         .deck-layer.warning {
@@ -777,11 +815,13 @@
         .card {
             background: var(--bg-card);
             border: 1px solid var(--border-primary);
-            border-radius: 4px;
             padding: 1.5rem;
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
+            background-image: radial-gradient(rgba(0, 217, 255, 0.05) 1px, transparent 1px);
+            background-size: 12px 12px;
+            clip-path: polygon(0 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%);
         }
 
         .card::before {
@@ -3574,7 +3614,7 @@
 
             <div class="dashboard-grid">
             <!-- System Overview -->
-            <div class="dashboard-section full-width">
+            <div class="dashboard-section full-width" data-lens="overview">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3745,7 +3785,7 @@
             </div>
 
             <!-- LLM Stack Status -->
-            <div class="dashboard-section" id="section-stack-health">
+            <div class="dashboard-section" id="section-stack-health" data-lens="overview,stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3802,7 +3842,7 @@
             </div>
 
             <!-- Agentic Readiness -->
-            <div class="dashboard-section" id="section-agentic-readiness">
+            <div class="dashboard-section" id="section-agentic-readiness" data-lens="overview,stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3824,7 +3864,7 @@
             </div>
 
             <!-- OSI Layer Health -->
-            <div class="dashboard-section" id="section-osi-health">
+            <div class="dashboard-section" id="section-osi-health" data-lens="overview">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3842,7 +3882,7 @@
             </div>
 
             <!-- System Map — Phase 52.4 -->
-            <div class="dashboard-section" id="section-system-map">
+            <div class="dashboard-section" id="section-system-map" data-lens="stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3873,7 +3913,7 @@
             </div>
 
             <!-- Logic Flow Diagram — Phase 52.5 -->
-            <div class="dashboard-section" id="section-logic-flow">
+            <div class="dashboard-section" id="section-logic-flow" data-lens="stack,intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3891,7 +3931,7 @@
             </div>
 
             <!-- Agent Ops — Phase 55 -->
-            <div class="dashboard-section" id="section-agent-ops">
+            <div class="dashboard-section" id="section-agent-ops" data-lens="operations">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -3990,7 +4030,7 @@
             </div>
 
             <!-- AIDB Health Monitoring (P1/P2 Features) -->
-            <div class="dashboard-section" id="section-ai-services">
+            <div class="dashboard-section" id="section-ai-services" data-lens="stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4064,8 +4104,9 @@
                 </div>
             </div>
 
-            <!-- Stack Health Aggregate -->
-            <div class="dashboard-section">
+            <!-- Stack Health (Aggregate) -->
+            <div class="dashboard-section" data-lens="overview">
+
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4096,7 +4137,7 @@
             </div>
 
             <!-- Knowledge Observatory -->
-            <div class="dashboard-section full-width" id="section-knowledge-obs">
+            <div class="dashboard-section full-width" id="section-knowledge-obs" data-lens="intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4148,7 +4189,7 @@
             </div>
 
             <!-- Query Trace Timeline — Intelligence lane -->
-            <div class="dashboard-section full-width" id="section-query-trace">
+            <div class="dashboard-section full-width" id="section-query-trace" data-lens="intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4166,7 +4207,7 @@
             </div>
 
             <!-- Telemetry Proof -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4199,7 +4240,7 @@
             </div>
 
             <!-- Cognitive Intelligence (Level 6) -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="overview,intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4243,7 +4284,7 @@
             </div>
 
             <!-- Knowledge Base (Vector DB) -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack,intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4301,7 +4342,7 @@
             </div>
 
             <!-- Hybrid Coordinator Metrics -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack,intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4426,7 +4467,7 @@
             </div>
 
             <!-- AI Internals -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4494,7 +4535,7 @@
             </div>
 
             <!-- QA Phase Matrix -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="overview">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4514,7 +4555,7 @@
             </div>
 
             <!-- Switchboard Profiles -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4529,8 +4570,9 @@
                 </div>
             </div>
 
-            <!-- Task Classifier Routing Stats -->
-            <div class="dashboard-section">
+            <!-- Task Classifier Routing -->
+            <div class="dashboard-section" data-lens="stack,intelligence">
+
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4560,7 +4602,7 @@
             </div>
 
             <!-- Verifier Self-Consistency -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="security,stack">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4589,7 +4631,7 @@
             </div>
 
             <!-- Continuous Improvement -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4630,7 +4672,7 @@
             </div>
 
             <!-- Orchestration Visibility -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack,operations">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4807,7 +4849,7 @@
             </div>
 
             <!-- Agent Evaluation Trends -->
-            <div class="dashboard-section" data-card-id="agent-trends" data-load-fn="loadAgentEvaluationTrends">
+            <div class="dashboard-section" data-lens="intelligence" data-card-id="agent-trends" data-load-fn="loadAgentEvaluationTrends">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4872,7 +4914,7 @@
             </div>
 
             <!-- Discovery Signals -->
-            <div class="dashboard-section" data-card-id="discovery-signals" data-load-fn="loadDiscoverySignals">
+            <div class="dashboard-section" data-lens="intelligence" data-card-id="discovery-signals" data-load-fn="loadDiscoverySignals">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4895,7 +4937,7 @@
             </div>
 
             <!-- Local Usage Proof -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack,intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4948,7 +4990,7 @@
             </div>
 
             <!-- Feedback Pipeline Health -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="stack,intelligence">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -4985,7 +5027,7 @@
             </div>
 
             <!-- Network & Firewall -->
-            <div class="dashboard-section" id="section-security">
+            <div class="dashboard-section" id="section-security" data-lens="security">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -5073,7 +5115,7 @@
             </div>
 
             <!-- Security Monitoring -->
-            <div class="dashboard-section">
+            <div class="dashboard-section" data-lens="security">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -5600,7 +5642,7 @@
                 </div>
             </div>
 
-            <div class="dashboard-section full-width" id="section-deployments" data-card-id="deployment-ops" data-load-fn="loadDeploymentOps">
+            <div class="dashboard-section full-width" id="section-deployments" data-lens="operations" data-card-id="deployment-ops" data-load-fn="loadDeploymentOps">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -5858,7 +5900,48 @@
                     </div>
                 </div>
             </div>
-            <div class="dashboard-section full-width" id="section-testing" data-card-id="testing-ops" data-load-fn="loadTestingOps">
+
+            <!-- System Issues & Remediations -->
+            <div class="dashboard-section full-width" id="section-remediations" data-lens="overview,operations" data-card-id="system-remediations" data-load-fn="loadRemediations">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">System Issues & Remediations</h2>
+                        </div>
+                        <span class="card-badge" id="remediationBadge">Pessimistic Loop</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <div class="metrics-grid">
+                            <div class="metric">
+                                <div class="metric-label">Active Gaps</div>
+                                <div class="metric-value" id="remediationGapCount">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Last Remediation</div>
+                                <div class="metric-value" id="remediationLastAction">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Success Rate</div>
+                                <div class="metric-value" id="remediationSuccessRate">--</div>
+                            </div>
+                            <div class="metric">
+                                <div class="metric-label">Loop Latency</div>
+                                <div class="metric-value" id="remediationLatency">--</div>
+                            </div>
+                        </div>
+                        <div class="data-list" id="remediationEventsList" style="margin-top: 1rem;">
+                            <div class="data-item">
+                                <span>Loading remediation history...</span>
+                                <span class="data-meta">pending</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-section full-width" id="section-testing" data-lens="operations" data-card-id="testing-ops" data-load-fn="loadTestingOps">
+
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -5964,8 +6047,9 @@
                 </div>
             </div>
 
-            <!-- Database Metrics -->
-            <div class="dashboard-section">
+            <!-- Database Health -->
+            <div class="dashboard-section" data-lens="stack">
+
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -6367,7 +6451,7 @@
             </div>
 
             <!-- Workflow DAG Visualization -->
-            <div class="dashboard-section" id="section-workflow-dag">
+            <div class="dashboard-section" id="section-workflow-dag" data-lens="operations">
                 <div class="card">
                     <div class="card-header">
                         <div class="collapsible-header" onclick="toggleCollapse(this)">
@@ -6679,7 +6763,7 @@
     <!-- ================================================================ -->
     <!-- Command Center Graph Workspace                                    -->
     <!-- ================================================================ -->
-    <div style="padding: 0 1.5rem 2rem; max-width: 1600px; margin: 0 auto;" id="section-graphs">
+    <div style="padding: 0 1.5rem 2rem; max-width: 1600px; margin: 0 auto;" id="section-graphs" data-lens="intelligence,stack">
         <h2 style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-primary);">Command Center 3D Graph Workspace</h2>
         <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem;">
 
@@ -6748,6 +6832,67 @@
         // Rolling metric history for Command Deck sparklines (60 points ≈ 5 min at 5s)
         const _SPARKLINE_MAX = 60;
         const _deckHistory = { cpu: [], mem: [], net: [], gpu: [] };
+
+        // Lens navigation
+        function switchLens(lensName) {
+            console.log(`Switching dashboard lens to: ${lensName}`);
+            
+            // 1. Update buttons
+            const buttons = document.querySelectorAll('.lens-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('data-lens') === lensName) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // 2. Filter sections
+            const sections = document.querySelectorAll('.dashboard-section, #section-graphs');
+            sections.forEach(section => {
+                const lensAttr = section.getAttribute('data-lens') || '';
+                const lensList = lensAttr.split(',').map(s => s.trim());
+                
+                if (lensName === 'all' || lensList.includes(lensName)) {
+                    section.classList.remove('lens-hidden');
+                } else {
+                    section.classList.add('lens-hidden');
+                }
+            });
+
+            // 3. Update summary text
+            const summary = document.getElementById('lensSummary');
+            if (summary) {
+                const summaries = {
+                    'overview': 'High-level system health and critical status indicators.',
+                    'stack': 'Core infrastructure, service topology, and database health.',
+                    'operations': 'Deployment pipelines, runtime management, and remediation history.',
+                    'intelligence': 'Cognitive metrics, semantic memory, and query tracing.',
+                    'security': 'Firewall status, audit logs, and hardening posture.',
+                    'all': 'Complete system detail and technical inventory.'
+                };
+                summary.textContent = summaries[lensName] || 'Focused monitoring lanes preserve every detail while reducing scan load.';
+            }
+
+            // Save preference
+            localStorage.setItem('dashboard-active-lens', lensName);
+        }
+
+        // Initialize lens navigation
+        document.addEventListener('DOMContentLoaded', () => {
+            const controls = document.querySelector('.lens-controls');
+            if (controls) {
+                controls.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.lens-btn');
+                    if (btn) {
+                        switchLens(btn.getAttribute('data-lens'));
+                    }
+                });
+            }
+            
+            const savedLens = localStorage.getItem('dashboard-active-lens') || 'overview';
+            switchLens(savedLens);
+        });
         const _evalHistory = []; // eval score % history across refresh cycles (max 40)
         function _pushDeckMetric(key, val) {
             if (!Number.isFinite(val)) return;
@@ -7375,6 +7520,7 @@
             loadAgentOps();
             setInterval(loadAgentOps, 30000);
             lazyLoadManager.registerCard('deployment-ops', 'loadDeploymentOps');
+            lazyLoadManager.registerCard('system-remediations', 'loadRemediations');
 
             // Connect WebSocket for real-time metrics (2-second updates)
             connectMetricsWebSocket();
@@ -7638,6 +7784,7 @@
                     'switchboardProfiles',
                     'taskClassStats',
                     'verifySelf',
+                    'promMetrics',
                     'knowledgeObservatory',
                     'queryTraces'
                 ];
@@ -12011,6 +12158,44 @@
                 loadFullInsightsReport(),
                 loadHintEffectiveness()
             ]);
+        }
+
+        async function loadRemediations() {
+            const list = document.getElementById('remediationEventsList');
+            if (!list) return;
+
+            try {
+                const response = await fetch(`${FASTAPI_BASE}/api/ai/remediation/latest`, { cache: 'no-store' });
+                if (!response.ok) throw new Error('remediation fetch failed');
+                const data = await response.json();
+
+                if (data.status === 'no_remediation_active') {
+                    document.getElementById('remediationGapCount').textContent = '0';
+                    document.getElementById('remediationLastAction').textContent = 'none';
+                    document.getElementById('remediationSuccessRate').textContent = '100%';
+                    document.getElementById('remediationLatency').textContent = 'N/A';
+                    list.innerHTML = '<div class="data-item"><span>System Stability</span><span class="data-meta status-online">no active issues</span></div>';
+                    return;
+                }
+
+                // Populate metrics
+                const gaps = data.gaps_detected || [];
+                document.getElementById('remediationGapCount').textContent = String(gaps.length);
+                document.getElementById('remediationLastAction').textContent = data.last_action_type || 'checked';
+                document.getElementById('remediationSuccessRate').textContent = `${(data.success_rate * 100).toFixed(0)}%`;
+                document.getElementById('remediationLatency').textContent = `${(data.total_latency_ms / 1000).toFixed(1)}s`;
+
+                // Render list
+                list.innerHTML = gaps.map(gap => `
+                    <div class="data-item">
+                        <span>${gap.topic || 'unknown gap'}</span>
+                        <span class="data-meta ${gap.resolved ? 'status-online' : 'status-warning'}">${gap.resolved ? 'resolved' : 'detected'}</span>
+                    </div>
+                `).join('') || '<div class="data-item"><span>Scan complete</span><span class="data-meta status-online">no gaps detected</span></div>';
+
+            } catch (err) {
+                list.innerHTML = `<div class="data-item"><span>Connectivity</span><span class="data-meta status-offline">${err.message}</span></div>`;
+            }
         }
 
         async function loadDeploymentOps() {
