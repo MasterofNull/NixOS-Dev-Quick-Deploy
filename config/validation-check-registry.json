@@ -201,6 +201,26 @@
       "timeout_seconds": 15,
       "enabled": true,
       "require_tool": null
+    },
+    {
+      "id": "systems-software-health",
+      "description": "systems-software domain baseline tooling and artifact presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md",
+        ".agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json",
+        "scripts/governance/nix-static-analysis.sh",
+        "nix/modules/core/options.nix"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,sys,os,stat; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'systems-software' in ids, 'systems-software not in registry'; assert os.path.exists('.agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md'), 'instructions missing'; gate='scripts/governance/nix-static-analysis.sh'; assert os.path.exists(gate), f'{gate} missing'; s=os.stat(gate); assert s.st_mode & stat.S_IXUSR, f'{gate} not executable'; opts='nix/modules/core/options.nix'; assert os.path.exists(opts), f'{opts} missing (port SSOT gone)'; print('systems-software domain: baseline artifacts and tooling present')"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
     }
   ]
 }
