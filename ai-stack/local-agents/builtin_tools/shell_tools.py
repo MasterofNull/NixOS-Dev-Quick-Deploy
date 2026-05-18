@@ -27,10 +27,26 @@ logger = logging.getLogger(__name__)
 
 
 # Whitelist of safe commands
+# Extended (2026-05-18) to include aq-* harness tools and common analysis tools
+# that agents legitimately need. run_shell_command is an alias registered below
+# to handle models that emit the wrong tool name.
 SAFE_COMMANDS = {
-    "ls", "pwd", "echo", "cat", "head", "tail", "wc", "grep",
+    # System inspection (read-only)
+    "ls", "pwd", "echo", "cat", "head", "tail", "wc", "grep", "rg",
     "find", "which", "whoami", "hostname", "date", "uptime",
-    "free", "df", "du", "ps", "top", "systemctl",
+    "free", "df", "du", "ps", "top", "systemctl", "journalctl",
+    # Git (read-only ops)
+    "git",
+    # Code analysis / validation
+    "bash", "python3", "python", "nix-instantiate", "nix",
+    "shellcheck", "statix", "deadnix",
+    # Harness tools
+    "agrep", "als", "acat", "asum",
+    "aq-qa", "aq-hints", "aq-report", "aq-session-start",
+    # JSON/YAML inspection
+    "jq", "yq",
+    # File utilities
+    "fd", "sort", "uniq", "cut", "awk", "sed", "tr",
 }
 
 
@@ -221,6 +237,31 @@ def register_shell_tools(registry: ToolRegistry):
     registry.register(ToolDefinition(
         name="run_command",
         description="Execute a safe shell command (whitelist: ls, pwd, grep, ps, systemctl, etc.)",
+        parameters={
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to execute",
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Timeout in seconds",
+                    "default": 10,
+                },
+            },
+            "required": ["command"],
+        },
+        category=ToolCategory.SHELL,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=run_command_handler,
+    ))
+
+    # run_shell_command — alias for run_command so models with either instilled tool name succeed.
+    # Some LLMs emit "run_shell_command" from training; registering both prevents wasted turns.
+    registry.register(ToolDefinition(
+        name="run_shell_command",
+        description="Alias for run_command. Execute a safe shell command (whitelist enforced).",
         parameters={
             "type": "object",
             "properties": {

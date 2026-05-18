@@ -18,7 +18,20 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy.
 **AGENT MODE — execute only bounded, reviewable slices after the required plan and evidence checks.**
-You have full access to both MCP tools and Agentic CLI tools (`aq-*`, `agrep`, `als`, etc.) via `run_shell_command`. Use them for orientation, research, and validation.
+**Tool surface (auto_edit mode — memorize this table):**
+
+| Action | Correct tool | NEVER use |
+|---|---|---|
+| Read a file | `read_file` | — |
+| Search file contents | `grep_search` | `run_shell_command`, `rg` directly |
+| List directory | `list_directory` | — |
+| Edit in-place | `replace` | — |
+| Write new file | `write_file` | — |
+| Shell/CLI commands | **NOT AVAILABLE** in auto_edit | `run_shell_command` ← does not exist |
+
+`run_shell_command` **does not exist** in Gemini CLI auto_edit mode. Any call to it wastes a turn and returns "Tool not found". Use `grep_search` for content search, `read_file` for reads, `replace` for edits. Validation must be done by reading/grepping file content — do not try to execute scripts.
+
+**Workspace boundary:** Gemini's file tools are scoped to the repo root (`/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`). Do not attempt paths under `/var/lib/`, `/run/`, or any path outside the repo. Delegation output logs (`.agents/delegation/outputs/*.log`) are gitignored — `read_file` will fail on them; use `grep_search` on the outputs directory if you need to scan them.
 Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
 
 ---
