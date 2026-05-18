@@ -5,17 +5,30 @@
 **Next Step:** Third domain expansion (embedded-hardware or data-analytics from master PRD). Then Codex final acceptance review of 58A.4–58A.7 when available.
 **Context Bloat:** Low
 
-## Domain Expansion — In Progress
+## Domain Expansion — All 6 Domains Proposed
+
+All 6 domains from master PRD activated. Registry at 14 capabilities.
+Gemini used as research synthesizer for mobile-web, scientific-research, gis-systems.
+Gemini research: `.agents/delegation/outputs/gemini-20260518-121439-w2gzy1.log`
+
+**New workflow contract: Gemini researches all PRDs and plans before Claude finalizes.**
 
 | Domain | Commit | State | Validation hook |
 |---|---|---|---|
 | security-systems | `26505303` | proposed | security-systems-health ✓ |
 | systems-software | `89d9b2a4` | proposed | systems-software-health ✓ |
-| embedded-hardware | — | not started | — |
+| embedded-hardware | `df140d93` | proposed | embedded-hardware-health ✓ |
+| mobile-web | `6f4ca57d` | proposed | mobile-web-health ✓ |
+| scientific-research | `6f4ca57d` | proposed | scientific-research-health ✓ |
+| gis-systems | `6f4ca57d` | proposed | gis-systems-health ✓ |
 
-Follow-on slices needed for each domain to reach `implemented`:
+Priority follow-on slices (to reach `implemented`):
 - security-systems.1: Semgrep/Bandit/Trivy in Nix profile
 - systems-software.1: shellcheck in Nix profile + nix-systems-patterns AIDB seeding
+- embedded-hardware.1: Verilator/GHDL/Yosys/OpenOCD/ARM cross-toolchain dev shell
+- mobile-web.1: Flutter/android-tools/nodejs/lighthouse/playwright dev shell
+- scientific-research.1: jupyter/snakemake/texlive/pandoc dev shell
+- gis-systems.1: gdal/postgis/geopandas/qgis/spatialite dev shell
 
 ## Phase 58A — All slices complete
 
