@@ -150,7 +150,7 @@ async def get_aggregate_health():
 # In-process TTL cache + background-runner state (same pattern as aistack.py fetchQaStatus fix)
 _layered_cache: Dict[str, Any] = {"result": None, "expires_at": 0.0}
 _layered_running: bool = False
-_LAYERED_CACHE_TTL = 300  # 5 min — aq-qa takes 60s+ so 30s TTL caused perpetual misses
+_LAYERED_CACHE_TTL = 900  # 15 min — aq-qa takes 300-600s on Renoir APU (includes aq-report Qwen inference)
 
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
@@ -176,12 +176,14 @@ async def _run_aq_qa_layered() -> Dict[str, Any]:
         stderr=asyncio.subprocess.PIPE,
         env=env,
     )
+    # aq-qa phase-0 runs aq-report internally which takes 120-180s on Renoir APU.
+    # 300s was still too short — bumped to 600s to survive the full aq-report sub-call.
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600.0)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.communicate()
-        raise RuntimeError("aq-qa timed out after 90s")
+        raise RuntimeError("aq-qa timed out after 600s")
 
     if stderr:
         logger.info("aq-qa stderr:\n%s", stderr.decode("utf-8", errors="replace"))
@@ -189,7 +191,21 @@ async def _run_aq_qa_layered() -> Dict[str, Any]:
     if proc.returncode not in (0, 1):  # 0=all pass, 1=some fail — both produce valid JSON
         raise RuntimeError(f"aq-qa exited {proc.returncode}")
 
-    data = json.loads(stdout.decode("utf-8"))
+    # Scan from end to find the last JSON object (mirrors aistack.py approach to
+    # tolerate any non-JSON progress lines that may prefix the final JSON blob).
+    stdout_text = stdout.decode("utf-8", errors="replace").strip()
+    data: Dict[str, Any] = {}
+    for line in reversed(stdout_text.splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                data = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                continue
+    if not data:
+        # Fall back to full parse (handles pretty-printed multi-line JSON)
+        data = json.loads(stdout_text)
 
     # Attach stderr for debugging service-context failures (stripped to 4 KB max)
     stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
