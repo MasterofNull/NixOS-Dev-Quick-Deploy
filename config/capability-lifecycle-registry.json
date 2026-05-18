@@ -1,0 +1,208 @@
+{
+  "$schema": "./schemas/capability-lifecycle-registry.schema.json",
+  "version": "1.0.0",
+  "description": "Canonical capability lifecycle registry. State machine defined in docs/architecture/capability-lifecycle.md.",
+  "last_updated": "2026-05-18",
+  "capabilities": [
+    {
+      "id": "local-inference-qwen3-35b",
+      "name": "Qwen3.6-35B local inference (llama.cpp)",
+      "domain": "inference",
+      "state": "default",
+      "state_since": "2026-04-01",
+      "description": "Primary local LLM inference via llama.cpp at port 8080 with 12 GPU layers on Renoir APU.",
+      "kernel_object": "route-profile",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": "0.1",
+        "review_verdict": "PASS",
+        "reviewer": "human",
+        "reviewed_on": "2026-05-01",
+        "soak_sessions": 50,
+        "rollback_procedure": "Revert n-gpu-layers option in nix/modules/roles/ai-stack.nix and nixos-rebuild switch"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": ["docs/agent-guides/46-SWITCHBOARD-PROFILES.md"]
+    },
+    {
+      "id": "rocm-promotion",
+      "name": "ROCm GPU acceleration for llama.cpp",
+      "domain": "inference",
+      "state": "blocked",
+      "state_since": "2026-05-16",
+      "description": "ROCm-accelerated llama.cpp for RDNA2/3 dGPU. Blocked on Renoir APU (no dGPU).",
+      "kernel_object": "route-profile",
+      "evidence": {
+        "commit": "bd608a3d",
+        "aq_qa_check": null,
+        "review_verdict": null,
+        "reviewer": null,
+        "reviewed_on": null,
+        "soak_sessions": 0,
+        "rollback_procedure": "Set accelerationClass to blocked in hardware-capability-matrix.json"
+      },
+      "blocked_reason": "Hardware class 'renoir-apu' is incompatible with ROCm; requires RDNA2/3 discrete GPU",
+      "unblock_condition": "Hardware upgrade to RDNA2+ dGPU and rocm-promotion-gate.sh 6-stage pass",
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        "config/hardware-capability-matrix.json",
+        "scripts/governance/rocm-promotion-gate.sh"
+      ]
+    },
+    {
+      "id": "hybrid-coordinator-control-plane",
+      "name": "hybrid-coordinator as canonical control plane",
+      "domain": "delegation",
+      "state": "default",
+      "state_since": "2026-04-15",
+      "description": "The hybrid-coordinator (port 8003) is the canonical orchestration/control-plane service.",
+      "kernel_object": "workflow-session",
+      "evidence": {
+        "commit": "cb5a58b7",
+        "aq_qa_check": "0.1",
+        "review_verdict": "PASS",
+        "reviewer": "Claude",
+        "reviewed_on": "2026-05-18",
+        "soak_sessions": 40,
+        "rollback_procedure": "Not applicable — canonical status; degradation requires full architectural revision"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": ["docs/architecture/canonical-kernel-declaration.md"]
+    },
+    {
+      "id": "brokered-memory-path",
+      "name": "MemoryBroker write path",
+      "domain": "memory",
+      "state": "promoted",
+      "state_since": "2026-05-14",
+      "description": "Memory writes for new work should flow through MemoryBroker (POST /memory/facts and equivalents) rather than direct AIDB writes.",
+      "kernel_object": "memory-evidence",
+      "evidence": {
+        "commit": "4a6cd30c",
+        "aq_qa_check": "54.x",
+        "review_verdict": "PASS",
+        "reviewer": "Claude",
+        "reviewed_on": "2026-05-14",
+        "soak_sessions": 5,
+        "rollback_procedure": "Use direct AIDB POST /documents if broker is unavailable; record exception in HANDOFF.md"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": ["docs/architecture/canonical-kernel-declaration.md"]
+    },
+    {
+      "id": "route-alias-resolver",
+      "name": "Front-door route alias resolver",
+      "domain": "routing",
+      "state": "default",
+      "state_since": "2026-04-19",
+      "description": "config/route-aliases.json + RouteAliasResolver: maps human-facing alias to canonical profile.",
+      "kernel_object": "intent",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": "0.1",
+        "review_verdict": "PASS",
+        "reviewer": "Claude",
+        "reviewed_on": "2026-05-18",
+        "soak_sessions": 30,
+        "rollback_procedure": "Revert config/route-aliases.json; fallback to _set_default_aliases() in RouteAliasResolver"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        "config/route-aliases.json",
+        "docs/architecture/front-door-routing.md",
+        "docs/architecture/routing-profile-inventory.md"
+      ]
+    },
+    {
+      "id": "intent-classifier-routing",
+      "name": "Intent classifier routing path (Phase 54)",
+      "domain": "routing",
+      "state": "validated",
+      "state_since": "2026-05-14",
+      "description": "IntentClassifier routes queries via config/intent-routing-map.json when no explicit route field is present.",
+      "kernel_object": "intent",
+      "evidence": {
+        "commit": "4a6cd30c",
+        "aq_qa_check": "54.x",
+        "review_verdict": "PASS",
+        "reviewer": "Claude",
+        "reviewed_on": "2026-05-14",
+        "soak_sessions": 3,
+        "rollback_procedure": "Disable IntentClassifier in http_server.py init; revert to alias-only routing"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        "config/intent-routing-map.json",
+        "docs/architecture/routing-profile-inventory.md"
+      ]
+    },
+    {
+      "id": "workflow-executor-dag",
+      "name": "WorkflowExecutor + workflow_checkpointer (canonical workflow runtime)",
+      "domain": "delegation",
+      "state": "promoted",
+      "state_since": "2026-05-14",
+      "description": "WorkflowExecutor + workflow_checkpointer.py is the canonical workflow runtime (Phase 54). The UAG FSM is canonical for agent lifecycle only. Confirmed provisional in kernel declaration §open-decision-1.",
+      "kernel_object": "workflow-session",
+      "evidence": {
+        "commit": "4a6cd30c",
+        "aq_qa_check": "54.x",
+        "review_verdict": "PASS",
+        "reviewer": "Claude",
+        "reviewed_on": "2026-05-18",
+        "soak_sessions": 8,
+        "rollback_procedure": "Revert to pre-Phase-54 session handling; see kernel declaration open decision §1"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        "docs/architecture/canonical-kernel-declaration.md",
+        "ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_checkpointer.py"
+      ]
+    },
+    {
+      "id": "edge-tier-local-coding",
+      "name": "Local coding model (EDGE tier, unprovisioned)",
+      "domain": "inference",
+      "state": "proposed",
+      "state_since": "2026-04-15",
+      "description": "EDGE-tier local coding model via LLAMA_CPP_CODER_URL. Aspirational — hardware does not support a second concurrent model.",
+      "kernel_object": "route-profile",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": null,
+        "review_verdict": null,
+        "reviewer": null,
+        "reviewed_on": null,
+        "soak_sessions": 0,
+        "rollback_procedure": "Remove local-coding profile from routing_contract.py"
+      },
+      "blocked_reason": "Hardware constraint: single llama.cpp instance; no second model URL configured",
+      "unblock_condition": "Provision LLAMA_CPP_CODER_URL with a second model instance or upgrade hardware",
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        "docs/architecture/routing-profile-inventory.md",
+        "config/hardware-capability-matrix.json"
+      ]
+    }
+  ]
+}
