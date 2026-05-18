@@ -89,6 +89,7 @@ Checkpoint before executing any slice. If context exceeds ~60% of model window, 
 - Validate deployment-sensitive paths under the runtime context, not only repo-root assumptions
 - Keep implementation slices small enough for Claude/Codex review before acceptance
 - One slice = one commit
+- **Review gate required** for any code/config/architecture/destructive/dual-use/external-account work — see `docs/architecture/gemini-review-gate.md` for full contract
 
 ### Step 6 — VALIDATE
 ```bash
