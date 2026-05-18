@@ -128,9 +128,14 @@ class TaskRouter:
         """
         prompt_lower = prompt.lower()
 
-        # Check for query patterns first (highest priority for local handling)
+        # Check for query patterns first (highest priority for local handling).
+        # Exception: if implementation keywords are also present (e.g. "how can I
+        # implement X", "how do I build Y"), defer to keyword scoring so the prompt
+        # routes to IMPLEMENTATION rather than being short-circuited as QUERY.
         for pattern in self.QUERY_PATTERNS:
             if re.search(pattern, prompt_lower):
+                if self._score_keywords(prompt_lower, self.IMPLEMENTATION_KEYWORDS) > 0:
+                    break  # fall through to keyword scoring below
                 return TaskCategory.QUERY, 0.9
 
         # Check keyword matches
