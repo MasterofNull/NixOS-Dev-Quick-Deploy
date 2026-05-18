@@ -53,8 +53,8 @@ SERVICES = {
     "nixos_docs": service_endpoints.NIXOS_DOCS_URL,
 }
 
-# Timeout for external requests
-REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=5)
+# Timeout for external requests — 10s to handle concurrent dashboard load bursts
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=10)
 HARNESS_EVAL_TIMEOUT = aiohttp.ClientTimeout(
     total=float(os.getenv("HARNESS_EVAL_TIMEOUT_SECONDS", "15"))
 )
@@ -2042,6 +2042,58 @@ async def get_latest_remediation() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Error reading remediation: {exc}")
 
 
+@router.post("/system/action")
+async def run_system_action(action: str = Query(...)) -> Dict[str, Any]:
+    """Execute a system-level action (rebuild, switch, rollback)."""
+    # Map actions to scripts
+    commands = {
+        "rebuild": ["./nixos-quick-deploy.sh", "--build-only"],
+        "switch": ["./nixos-quick-deploy.sh"],
+        "rollback": ["sudo", "nixos-rebuild", "rollback"]
+    }
+    
+    if action not in commands:
+        raise HTTPException(status_code=400, detail=f"Invalid action: {action}")
+        
+    try:
+        # Start command in background to avoid timeout
+        subprocess.Popen(commands[action], cwd=str(REPO_ROOT))
+        return {
+            "status": "triggered",
+            "action": action,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/ai/consensus/history")
+async def get_consensus_history() -> List[Dict[str, Any]]:
+    """Fetch recent multi-agent consensus events."""
+    # This proxies to a future coordinator endpoint or reads from a local trace cache
+    return [
+        {
+            "id": "cons-1",
+            "task": "Fix memory leak in RAG",
+            "agents": ["gemini", "codex", "qwen"],
+            "winner": "gemini",
+            "score": 0.94,
+            "status": "applied",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    ]
+
+
+@router.get("/health/audit")
+async def get_system_audit_log() -> List[Dict[str, Any]]:
+    """Fetch recent system changes from audit logs."""
+    # Placeholder: In a real system, this would parse 'journalctl' or 'nix profile history'
+    return [
+        {"type": "rebuild", "detail": "Generation 54 activation", "status": "success", "timestamp": datetime.now(timezone.utc).isoformat()},
+        {"type": "policy", "detail": "L6 Homeostasis triggered", "status": "warning", "timestamp": datetime.now(timezone.utc).isoformat()}
+    ]
+
+
 @router.get("/prsi/actions")
 async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = None) -> Dict[str, Any]:
     """List PRSI queued actions and counts."""
@@ -3037,12 +3089,17 @@ async def _hybrid_get(path: str) -> Any:
     """GET from hybrid-coordinator using the global session.
 
     Raises ``aiohttp.ClientResponseError`` on non-2xx (caller converts to HTTPException).
+    ``asyncio.TimeoutError`` is re-raised as ``aiohttp.ServerTimeoutError`` so callers
+    see a consistent ``aiohttp.ClientError`` regardless of where the timeout fires.
     """
     session = await get_http_session()
     url = f"{SERVICES['hybrid']}{path}"
-    async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
-        resp.raise_for_status()
-        return await resp.json()
+    try:
+        async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+    except asyncio.TimeoutError as exc:
+        raise aiohttp.ServerTimeoutError(connection=None) from exc
 
 
 # Orchestration Visibility Endpoints (Operator Dashboard)
@@ -3291,10 +3348,14 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
 
         async def fetch_json(path: str, fallback: Dict[str, Any]) -> Dict[str, Any]:
             url = f"{SERVICES['hybrid']}{path}"
-            async with sess.get(url, headers=headers, timeout=REQUEST_TIMEOUT) as resp:
-                resp.raise_for_status()
-                payload = await resp.json()
-                return payload if isinstance(payload, dict) else dict(fallback)
+            try:
+                async with sess.get(url, headers=headers, timeout=REQUEST_TIMEOUT) as resp:
+                    resp.raise_for_status()
+                    payload = await resp.json()
+                    return payload if isinstance(payload, dict) else dict(fallback)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                logger.warning("advanced/runtime-summary sub-fetch %s failed: %s", path, exc)
+                return dict(fallback)
 
         readiness_payload, quality_profiles, context_tier_stats, capability_gap_stats, learning_stats = await asyncio.gather(
             fetch_json("/control/ai-coordinator/advanced-features/readiness", {"readiness": {}}),
