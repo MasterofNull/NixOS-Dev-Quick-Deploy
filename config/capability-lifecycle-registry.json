@@ -260,6 +260,35 @@
         "scripts/governance/nix-static-analysis.sh",
         "nix/modules/core/options.nix"
       ]
+    },
+    {
+      "id": "embedded-hardware",
+      "name": "Embedded hardware domain (HDL, firmware, cross-compile, JTAG/SWD)",
+      "domain": "embedded",
+      "state": "proposed",
+      "state_since": "2026-05-18",
+      "description": "Capability domain for HDL design (Verilator/GHDL/Yosys), firmware authoring, ARM/RISC-V cross-compilation, device-tree authoring, and board support. Firmware write/JTAG ops are approval-gated. AIDB namespace: embedded-hardware-patterns.",
+      "kernel_object": "intent",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": null,
+        "review_verdict": null,
+        "reviewer": null,
+        "reviewed_on": null,
+        "soak_sessions": 0,
+        "rollback_procedure": "Set state to blocked; disable embedded-hardware-health check; remove embedded-hardware intent class from intent-routing-map.json if added; remove .#embedded dev shell from flake.nix if added"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        ".agent/PROJECT-EMBEDDED-HARDWARE-PRD.md",
+        ".agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md",
+        "docs/architecture/domain-activation-template.md",
+        "config/hardware-capability-matrix.json",
+        "scripts/governance/discover-system-facts.sh"
+      ]
     }
   ]
 }

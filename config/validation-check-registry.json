@@ -221,6 +221,26 @@
       "timeout_seconds": 15,
       "enabled": true,
       "require_tool": null
+    },
+    {
+      "id": "embedded-hardware-health",
+      "description": "embedded-hardware domain baseline artifact and hardware-matrix presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-EMBEDDED-HARDWARE-PRD.md",
+        ".agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json",
+        "config/hardware-capability-matrix.json",
+        "scripts/governance/discover-system-facts.sh"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,sys,os,stat; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'embedded-hardware' in ids, 'embedded-hardware not in registry'; assert os.path.exists('.agent/PROJECT-EMBEDDED-HARDWARE-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md'), 'instructions missing'; matrix='config/hardware-capability-matrix.json'; assert os.path.exists(matrix), f'{matrix} missing (hardware SSOT gone)'; disc='scripts/governance/discover-system-facts.sh'; assert os.path.exists(disc), f'{disc} missing'; s=os.stat(disc); assert s.st_mode & stat.S_IXUSR, f'{disc} not executable'; print('embedded-hardware domain: baseline artifacts and hardware-matrix present')"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
     }
   ]
 }
