@@ -537,21 +537,24 @@
 
         onBootDelaySec = lib.mkOption {
           type = lib.types.str;
-          default = "10min";
+          default = "30min";
           description = ''
             How long after boot to wait before the first AIDB re-index run.
-            Keeps startup I/O contention low while the rest of the AI stack boots.
+            30 min avoids conflicts with active team sessions immediately after
+            a nixos-rebuild switch (previously 10 min caused embed saturation
+            during post-deploy agent orchestration).
           '';
         };
 
         projectKnowledgeDelay = lib.mkOption {
           type = lib.types.str;
-          default = "0.3";
+          default = "1.0";
           description = ''
             Seconds between POST /documents calls in ingest-project-knowledge.py.
-            Throttles AIDB at ~200 RPM to stay well below the 60 RPM per-key limit
-            across multiple concurrent callers.  Lower = faster; raise if AIDB
-            returns 429s.
+            1.0 s (~60 RPM) balances corpus freshness with embed server headroom
+            under active team orchestration load.  Previously 0.3 s saturated
+            llama-embed during team sessions causing all_embedding_backends_failed.
+            Lower = faster; raise further if load avg stays elevated during reindex.
           '';
         };
       };
