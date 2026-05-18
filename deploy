@@ -14,8 +14,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_VERSION="1.0.0"
-DEPLOY_LIB_DIR="${SCRIPT_DIR}/lib/deploy"
-DEPLOY_CMD_DIR="${SCRIPT_DIR}/lib/deploy/commands"
+DEPLOY_LIB_DIR="${SCRIPT_DIR}/lib/l1-infra/deploy"
+DEPLOY_CMD_DIR="${SCRIPT_DIR}/lib/l1-infra/deploy/commands"
 DEPLOY_CONFIG="${DEPLOY_CONFIG:-${SCRIPT_DIR}/config/deploy.yaml}"
 
 # ============================================================================

@@ -2029,6 +2029,19 @@ async def proxy_memory_status() -> Dict[str, Any]:
     return await fetch_with_fallback(f"{SERVICES['hybrid']}/memory/broker/status", {"status": "offline"})
 
 
+@router.get("/ai/remediation/latest")
+async def get_latest_remediation() -> Dict[str, Any]:
+    """Fetch the latest auto-remediation result."""
+    path = Path("/var/lib/ai-stack/hybrid/remediation/hint-remediation/aq-auto-remediation-latest.json")
+    if not path.exists():
+        return {"status": "no_remediation_active", "timestamp": datetime.now(timezone.utc).isoformat()}
+    try:
+        data = json.loads(path.read_text())
+        return data
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error reading remediation: {exc}")
+
+
 @router.get("/prsi/actions")
 async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = None) -> Dict[str, Any]:
     """List PRSI queued actions and counts."""
