@@ -1,9 +1,21 @@
 # Handoff Memo — 2026-05-18
 
-**Status:** PHASE 58A COMPLETE — all 7 slices (58A.0–58A.7) plus routing drift cleanup done.
-**Last Action:** Completed 58A.4 through 58A.7 and routing D-1–D-5 cleanup without Codex.
-**Next Step:** Codex final acceptance review of 58A.4/58A.5/58A.6/58A.7 when available. Then broader capability-expansion work (new domains via domain-activation-template.md).
+**Status:** PHASE 58A COMPLETE + DOMAIN EXPANSION IN PROGRESS
+**Last Action:** Activated security-systems (26505303) and systems-software (89d9b2a4) capability domains. Both validation hooks (security-systems-health, systems-software-health) run in focused-CI and pass. Registry now has 10 capabilities.
+**Next Step:** Third domain expansion (embedded-hardware or data-analytics from master PRD). Then Codex final acceptance review of 58A.4–58A.7 when available.
 **Context Bloat:** Low
+
+## Domain Expansion — In Progress
+
+| Domain | Commit | State | Validation hook |
+|---|---|---|---|
+| security-systems | `26505303` | proposed | security-systems-health ✓ |
+| systems-software | `89d9b2a4` | proposed | systems-software-health ✓ |
+| embedded-hardware | — | not started | — |
+
+Follow-on slices needed for each domain to reach `implemented`:
+- security-systems.1: Semgrep/Bandit/Trivy in Nix profile
+- systems-software.1: shellcheck in Nix profile + nix-systems-patterns AIDB seeding
 
 ## Phase 58A — All slices complete
 
