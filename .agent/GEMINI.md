@@ -174,9 +174,12 @@ Single source of truth: `nix/modules/core/options.nix`
 
 ## Delegation + Role Defaults
 
-- **Orchestrator**: planning, reviewer gate, integration quality, final acceptance
-- **Architect**: architecture / risk / policy synthesis slices
-- **Implementer**: implementation / test slices, patch proposals
+**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). Summary projection below; role matrix governs in case of conflict.
+
+- **Orchestrator**: workflow/delegation/review authority — opens/closes sessions, assigns slices, accepts work, commits final integration; must not accept its own work without a separate reviewer pass
+- **Architect**: design/risk synthesis — drafts architecture docs, flags contradictions, writes PRDs; requires orchestrator review before commit
+- **Implementer**: bounded execution — edits within assigned slice, validates, proposes commit; may not self-promote to reviewer or orchestrator
+- **Reviewer**: acceptance gate — explicit pass/fail verdict against slice criteria; may not review its own work
 - Sub-agents execute only assigned slices — do not re-scope, do not route other agents,
   do not finalize acceptance
 

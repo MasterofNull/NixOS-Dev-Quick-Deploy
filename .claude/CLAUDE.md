@@ -68,11 +68,14 @@ Use direct implementation only after:
 
 ## Delegation + Role Defaults
 
+**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). All role text below is a summary projection; the role matrix governs in case of conflict.
+
 - Default mode: orchestrator/reviewer first, direct implementation second.
-- Role routing (roles, not fixed model IDs — the active model filling each role may vary):
-  - `orchestrator` role: planning, reviewer gate, integration quality, final acceptance
-  - `architect` role: architecture/risk/policy synthesis slices
-  - `implementer` role: implementation/test slices, patch proposals
+- Roles are defined by kernel responsibilities, not model identity:
+  - `orchestrator`: workflow/delegation/review authority — opens/closes sessions, assigns slices, accepts work, commits final integration
+  - `architect`: design/risk synthesis — drafts architecture docs, flags contradictions, writes PRDs; requires orchestrator review before commit
+  - `implementer`: bounded execution — edits within assigned slice, validates, proposes commit; may not self-promote to reviewer
+  - `reviewer`: acceptance gate — explicit pass/fail verdict against slice criteria; may not review its own work
 - Sub-agent non-orchestrator rule:
   - sub-agents execute only assigned slices
   - do not re-scope goals
@@ -128,3 +131,5 @@ Never hardcode these values in Python or shell — always read from injected env
 | Port options | `nix/modules/core/options.nix` |
 | AI stack wiring | `nix/modules/roles/ai-stack.nix` |
 | Switchboard profiles | `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` |
+| Role matrix SSOT | `docs/architecture/role-matrix.md` |
+| Kernel declaration | `docs/architecture/canonical-kernel-declaration.md` |
