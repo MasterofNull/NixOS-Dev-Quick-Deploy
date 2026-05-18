@@ -68,10 +68,29 @@ aq-session-start            # mandatory context hydration
 ## Key CLIs
 `aq-prime` · `aq-qa 0` · `aq-hints "<task>"` · `aq-report` · `aq-context-bootstrap`
 
+## Role and Architecture (Phase 58A — all agents read this)
+
+**Role SSOT → `docs/architecture/role-matrix.md`**
+**Kernel declaration → `docs/architecture/canonical-kernel-declaration.md`**
+**Routing/profile inventory → `docs/architecture/routing-profile-inventory.md`**
+**Capability lifecycle → `docs/architecture/capability-lifecycle.md`**
+**Domain activation template → `docs/architecture/domain-activation-template.md`**
+
+Codex default role: **orchestrator / implementer / reviewer** (final acceptance on most 58A+ slices).
+- As orchestrator: open/close sessions, assign slices, produce PENDING.json + HANDOFF.md + registry.jsonl entries, run tier0 gate before commit.
+- As implementer: bounded execution within assigned slice; validate before proposing commit.
+- As reviewer: explicit PASS/FAIL/REQUEST_REVISION verdict against slice acceptance criteria; no self-acceptance; see `docs/architecture/gemini-review-gate.md` for gate contract.
+- Sub-agent rule: do not re-scope, do not route other agents, do not finalize acceptance of own work.
+
+Gemini work requires review gate before integration — see `docs/architecture/gemini-review-gate.md`.
+Qwen task eligibility — see `docs/architecture/qwen-task-eligibility.md`.
+New domain activation — use `docs/architecture/domain-activation-template.md`.
+
 ## Routing Discipline
 - Keep local-agent and `continue-local` prompts compact; use memory/context offload early.
 - Do not impose local-model context limits on `remote-*` lanes. Remote lanes should use the narrowest matching profile, then spend context according to task value and workflow policy.
 - Profile matrix SSOT: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
+- Canonical profile inventory + drift findings: `docs/architecture/routing-profile-inventory.md`
 
 ## Port SSOT
 `nix/modules/core/options.nix` — never hardcode port values
