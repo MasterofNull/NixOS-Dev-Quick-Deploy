@@ -1,12 +1,13 @@
 {
-  "task": "58B.3-mobile-web-validation-and-review-gate",
+  "task": "58B.4-review-gate-before-validation",
   "agent": "Codex",
-  "goal_state": "Close the remaining mobile-web representative workflow gap, then collect review-gate PASS evidence before any implemented-to-validated lifecycle update.",
+  "goal_state": "Collect required review-gate PASS evidence for representative domain outputs before any implemented-to-validated lifecycle update.",
   "files": [
     ".agent/PROJECT-MOBILE-WEB-PRD.md",
     ".agents/plans/phase-58b-domain-validation-evidence.md",
     ".agents/plans/phase-58b-domain-validation-workflows.md",
+    "scripts/testing/mobile-web-masa-harness.py",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "next_step": "advance domains to candidate state"
+  "next_step": "All six domains now have representative workflow evidence, with mobile-web partial due fixture Lighthouse mode. Next: submit representative outputs through the required review gate; do not change lifecycle state until review PASS is recorded."
 }

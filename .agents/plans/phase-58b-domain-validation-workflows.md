@@ -41,7 +41,7 @@ Run workflows that may pull larger dev-shell closures or require longer runtime.
 | Domain | Representative workflow | Evidence target |
 |---|---|---|
 | scientific-research | Snakemake pipeline from CSV → deterministic result → PDF report | output files + reproducibility log |
-| mobile-web | Lighthouse JSON and MASVS-aligned static sample scan | JSON/log artifact |
+| mobile-web | MASA harness: Lighthouse-shaped JSON (real Lighthouse when available; deterministic fixture otherwise) + MASVS-aligned static sample scan | JSON/log artifact |
 
 ### Slice 58B.2c — review gate
 
@@ -57,4 +57,3 @@ Only after slices 58B.2a–c pass, update `config/capability-lifecycle-registry.
 - No external API keys or secrets in validation artifacts.
 - No lifecycle promotion without review evidence.
 - Keep validation artifacts small and reproducible.
-
