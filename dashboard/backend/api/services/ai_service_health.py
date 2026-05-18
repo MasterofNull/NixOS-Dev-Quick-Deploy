@@ -118,7 +118,7 @@ class AIServiceHealthMonitor:
         """Initialize async resources."""
         if self._session is None:
             self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=5)
+                timeout=aiohttp.ClientTimeout(total=10)
             )
 
     async def close(self):
