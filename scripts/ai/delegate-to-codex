@@ -186,7 +186,8 @@ cmd_delegate() {
 
     if [[ "$wait_mode" == "true" ]]; then
         info "Running in blocking mode..."
-        "${cmd[@]}" 2>&1 | tee "$output_file"
+        # < /dev/null: codex exec reads stdin by default; close it so it doesn't block
+        "${cmd[@]}" < /dev/null 2>&1 | tee "$output_file"
         local exit_code="${PIPESTATUS[0]}"
         if [[ "$exit_code" -eq 0 ]]; then
             update_registry "$REGISTRY" "$id" "status" "done"

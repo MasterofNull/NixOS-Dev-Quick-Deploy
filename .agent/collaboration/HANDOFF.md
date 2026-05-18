@@ -1,9 +1,20 @@
 # Handoff Memo — 2026-05-18
 
-**Status:** Phase 58A COMPLETE. All 6 capability domains at `implemented`. Codex acceptance review of all 6 domain PRDs complete after reconciliation. Six AIDB namespaces are now live-seeded and reproducibly wired into reindex.
-**Last Action:** Added deterministic domain AIDB seeding, fixed the ingestion default from `localhost` to `127.0.0.1`, seeded all six namespaces, and verified live document presence.
-**Next Step:** Complete the remaining `implemented → validated` evidence for each domain before any `candidate` promotion: run representative domain workflows and record review-gate evidence. Only after validation should soak sessions be counted toward `candidate` / `promoted` transitions.
+**Status:** Phase 58B.0 acceptance verdict: PASS. All six domain PRDs satisfy the requested acceptance checks.
+**Last Action:** Codex reviewer verified the six PRDs declare `Implemented`, do not reference `nodePackages.lighthouse`, do not recommend standalone `pkgs.postgis`, keep AIDB seeding framed as pending/follow-on, and do not describe live tools as `not yet provisioned`.
+**Next Step:** advance domains to candidate state
 **Context Bloat:** Medium
+
+## Phase 58B.0 reviewer verdict
+
+Verdict: **PASS**
+
+Acceptance evidence checked:
+- six PRDs have `**Status:** Implemented — Phase 58A capability expansion`
+- mobile-web PRD uses an on-demand Lighthouse npm hint and contains no `nodePackages.lighthouse`
+- GIS PRD explicitly says standalone `pkgs.postgis` is not used and references `postgresqlPackages.postgis` only for service configuration
+- PRDs state AIDB seeding remains pending or follow-on before validation/promotion
+- PRDs contain no `not yet provisioned` wording for live tools such as ShellCheck v0.11 or the embedded toolchain
 
 ## Codex acceptance review — domain PRDs
 
@@ -59,10 +70,17 @@ Required order:
   - `mobile-web-patterns`: 10 documents
   - `scientific-research-patterns`: 11 documents
   - `gis-systems-patterns`: 11 documents
+- Representative workflow evidence:
+  - `security-systems`: PASS — Bandit + local Semgrep rule on safe sample source
+  - `systems-software`: PASS — Nix parse + statix/deadnix + shellcheck fixture
+  - `embedded-hardware`: PASS — Verilator lint of tiny Verilog module
+  - `gis-systems`: PASS — GeoJSON CRS validation, EPSG:3857 transform, GDAL PNG generation
+  - `scientific-research`: PASS — Snakemake CSV → deterministic summary → Pandoc PDF, repeated with identical numerical output
+  - `mobile-web`: BLOCKED / follow-up — no local Lighthouse binary; `.#mobile-web` validation remains dependency-heavy/silent
 
 ## Outstanding operational work
 
-1. Run one representative workflow per domain and capture validation evidence.
+1. Add/select a deterministic mobile-web validation harness for Lighthouse JSON + MASVS-aligned static sample scan.
 2. Record review-gate evidence where required by each PRD.
 3. Move domains from `implemented` to `validated` only after representative workflow and review evidence exists.
 4. Then begin soak tracking for later `candidate` / `promoted` decisions.
@@ -78,3 +96,6 @@ Required order:
 - `scripts/data/seed-domain-knowledge.py`
 - `scripts/automation/aidb-reindex.sh` now includes capability-domain seeding
 - `scripts/data/ingest-project-knowledge.py` default AIDB URL now uses `127.0.0.1` to match the bound service and avoid `localhost` timeout ambiguity
+- `.agents/plans/phase-58b-domain-validation-workflows.md`
+- `.agents/plans/phase-58b-domain-validation-evidence.md`
+- `scripts/ai/aq-collaborate` retargeted from removed `ai-stack/agentic-patterns` to `lib/l4-coord/agents` and repaired `start`

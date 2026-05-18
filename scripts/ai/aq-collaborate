@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-COLLAB_DIR="$REPO_ROOT/ai-stack/agentic-patterns"
+COLLAB_DIR="$REPO_ROOT/lib/l4-coord/agents"
 
 # Color output
 RED='\033[0;31m'
@@ -108,12 +108,18 @@ cmd_start() {
     cd "$COLLAB_DIR"
     python3 -c "
 import asyncio
-from agent_communication_protocol import CommunicationProtocol
+from agent_communication_protocol import AgentCommunicationProtocol
 
 async def main():
-    protocol = CommunicationProtocol()
-    collaboration_id = f'collab_{len(protocol.active_collaborations) + 1}'
-    context = protocol.create_collaboration(collaboration_id, [])
+    protocol = AgentCommunicationProtocol()
+    collaboration_id = f'collab_{len(protocol.shared_contexts) + 1}'
+    context = protocol.create_shared_context(collaboration_id)
+    await protocol.update_shared_context(
+        collaboration_id,
+        'codex',
+        {'objective': '$objective', 'status': 'started'},
+        broadcast=False,
+    )
 
     print(f'✓ Collaboration started: {collaboration_id}')
     print(f'  Objective: $objective')
