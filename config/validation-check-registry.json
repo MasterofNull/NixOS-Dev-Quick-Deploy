@@ -138,6 +138,37 @@
       "timeout_seconds": 15
     },
     {
+      "id": "routing-profile-registry",
+      "description": "intent routing map profiles exist in canonical registry",
+      "trigger_paths": [
+        "config/intent-routing-map.json",
+        "ai-stack/mcp-servers/hybrid-coordinator/core/routing_contract.py",
+        "scripts/testing/test-routing-profile-registry.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-routing-profile-registry.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "dashboard-qa-singleflight",
+      "description": "dashboard aq-qa surfaces share one single-flight runner",
+      "trigger_paths": [
+        "dashboard/backend/api/routes/health.py",
+        "dashboard/backend/api/routes/aistack.py",
+        "dashboard/backend/api/services/qa_runner.py",
+        "scripts/testing/test-dashboard-qa-singleflight.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-dashboard-qa-singleflight.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
       "id": "dashboard-html-js-syntax",
       "description": "dashboard.html inline JS syntax validation",
       "trigger_paths": [

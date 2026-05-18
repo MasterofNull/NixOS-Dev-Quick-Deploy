@@ -374,6 +374,10 @@ gate_qa_phase0() {
   local flagship_help_timeout="${TIER0_AQ_QA_FLAGSHIP_HELP_TIMEOUT_SECONDS:-45}"
   local status=0
   output=$(
+    # Tier0 already runs focused CI-sensitive checks separately; skip the
+    # aq-report-backed subchecks here so phase-0 remains a bounded health gate
+    # instead of recursively launching another aq-qa/report loop.
+    AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 \
     AQ_QA_CONTINUE_LOCAL_MAX_TIME="${continue_local_timeout}" \
     AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS="${flagship_help_timeout}" \
     timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1

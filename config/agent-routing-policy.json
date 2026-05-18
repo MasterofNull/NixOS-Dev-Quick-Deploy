@@ -26,6 +26,13 @@
       "reasoning_mode": "tree-hybrid",
       "max_external_calls": 4
     },
+    "remote-reasoning": {
+      "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree", "domain"],
+      "deny_tools": ["reload-model"],
+      "reasoning_mode": "tree-hybrid",
+      "max_external_calls": 12,
+      "notes": "High-complexity reasoning profile (Claude). Priority for architecture and planning."
+    },
     "agent-intake": {
       "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree", "lifecycle", "agent", "registry", "domain"],
       "deny_tools": ["reload-model"],

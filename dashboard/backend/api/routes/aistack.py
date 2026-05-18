@@ -16,6 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from ..config import service_endpoints
+from ..services.qa_runner import run_phase_json
 from ..services.systemd_units import get_ai_runtime_units
 
 try:
@@ -2070,18 +2071,9 @@ async def run_system_action(action: str = Query(...)) -> Dict[str, Any]:
 @router.get("/ai/consensus/history")
 async def get_consensus_history() -> List[Dict[str, Any]]:
     """Fetch recent multi-agent consensus events."""
-    # This proxies to a future coordinator endpoint or reads from a local trace cache
-    return [
-        {
-            "id": "cons-1",
-            "task": "Fix memory leak in RAG",
-            "agents": ["gemini", "codex", "qwen"],
-            "winner": "gemini",
-            "score": 0.94,
-            "status": "applied",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-    ]
+    # No persisted consensus-history source exists yet. Return truthful empty
+    # state rather than rendering fabricated telemetry as if it were live data.
+    return []
 
 
 @router.get("/health/audit")
@@ -3473,29 +3465,12 @@ async def _run_aq_qa_background(phase: str, aq_qa_script: Path, env: Dict[str, s
     _AQ_QA_RUNNING[phase] = True
     now = time.time()
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "bash", str(aq_qa_script), phase, "--json",
-            cwd=str(_repo_root()),
-            env=env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-        stdout_text = stdout_b.decode("utf-8", errors="replace").strip()
-        stderr_text = stderr_b.decode("utf-8", errors="replace").strip()
-        qa_result: Dict[str, Any] = {}
-        for line in reversed(stdout_text.splitlines()):
-            line = line.strip()
-            if line.startswith("{"):
-                try:
-                    qa_result = json.loads(line)
-                    break
-                except json.JSONDecodeError:
-                    continue
+        qa_result = await run_phase_json(phase, timeout_s=timeout_s, cwd=_repo_root())
+        stderr_text = str(qa_result.get("_debug_stderr") or "")
         payload: Dict[str, Any] = {
             "phase": phase,
-            "exit_code": proc.returncode,
-            "success": proc.returncode == 0,
+            "exit_code": int(qa_result.get("_exit_code", 0)),
+            "success": int(qa_result.get("_exit_code", 0)) == 0,
             "qa_result": qa_result,
             "passed": int(qa_result.get("passed", 0)),
             "failed": int(qa_result.get("failed", 0)),

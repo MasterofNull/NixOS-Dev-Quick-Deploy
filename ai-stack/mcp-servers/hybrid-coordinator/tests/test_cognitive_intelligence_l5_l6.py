@@ -176,6 +176,9 @@ def test_l6_homeostasis_remediation():
         assert events[0]["score"] == 0.6
         
     asyncio.run(run())
+
+
+def test_l6_rag_multi_project_retrieval():
     """L6: Ensure RAG dynamically searches multiple projects based on intent."""
     async def run():
         # Mock AIDB client
@@ -242,4 +245,19 @@ def test_l6_intent_classifier_semantic_boost():
         cognitive_lift = semantic_scores["planning"] - kw_result["confidence"]
         assert cognitive_lift > 0
     
+    asyncio.run(run())
+
+
+def test_l6_intent_classifier_routes_harness_operations_locally():
+    """L6: Routine harness requests should resolve to an existing valid local lane."""
+    async def run():
+        clf = IntentClassifier()
+
+        result = clf.classify("run diagnostics and show system status")
+
+        assert result["intent"] == "harness_operation"
+        assert result["profile"] == "local-tool-calling"
+        assert result["fallback_profile"] == "local"
+        assert result["memory_recall"] is False
+
     asyncio.run(run())

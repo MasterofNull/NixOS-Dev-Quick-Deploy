@@ -48,7 +48,7 @@
     "troubleshooting": {
       "profile": "remote-reasoning",
       "min_confidence": 0.4,
-      "fallback_profile": "remote",
+      "fallback_profile": "remote-free",
       "memory_recall": true,
       "rag_project": "error-solutions,logic-patterns,semantic"
     },
@@ -65,6 +65,13 @@
       "fallback_profile": "local",
       "memory_recall": true,
       "rag_project": "semantic"
+    },
+    "harness_operation": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": false,
+      "rag_project": "procedural"
     }
   }
 }

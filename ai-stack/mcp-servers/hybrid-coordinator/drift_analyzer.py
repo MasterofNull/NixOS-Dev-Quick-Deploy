@@ -41,10 +41,15 @@ class DriftAnalyzer:
     Measures semantic divergence in model reasoning.
     """
 
-    def __init__(self, postgres_client: Optional[Any] = None, embed_fn: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        postgres_client: Optional[Any] = None,
+        embed_fn: Optional[Any] = None,
+        threshold: Optional[float] = None,
+    ) -> None:
         self._pg = postgres_client
         self._embed = embed_fn
-        self._threshold = _load_threshold()
+        self._threshold = float(threshold) if threshold is not None else _load_threshold()
         self._baseline_embeddings: Dict[str, np.ndarray] = {}
         self._recent_scores: List[float] = []
         self._schema_ready = False
@@ -122,7 +127,11 @@ class DriftAnalyzer:
         """
         window = max(2, min(int(window or 20), 200))
         if self._pg is None:
-            return {"drift_score": 0.0, "status": "no_db"}
+            return {
+                "drift_score": None,
+                "error": "postgres_unavailable",
+                "alert_triggered": False,
+            }
 
         rows = await self._pg.fetch_all(
             """
@@ -134,17 +143,36 @@ class DriftAnalyzer:
             window,
         )
         if len(rows) < 2:
-            return {"drift_score": 0.0, "window_size": len(rows)}
+            return {
+                "drift_score": 0.0,
+                "window_size": len(rows),
+                "threshold": self._threshold,
+                "alert_triggered": False,
+                "breakdown": {"intent_flip_rate": 0.0, "latency_trend": 0.0},
+            }
 
         # Simplified trend logic
         latencies = [float(r["total_ms"]) for r in rows]
         latency_trend = (latencies[0] - latencies[-1]) / max(latencies[-1], 1.0)
+        intents = [str(r.get("intent") or "") for r in rows]
+        intent_flips = sum(1 for prev, curr in zip(intents, intents[1:]) if prev != curr)
+        intent_flip_rate = intent_flips / max(len(intents) - 1, 1)
+        drift_score = round(abs(latency_trend), 3)
         
         return {
-            "drift_score": round(abs(latency_trend), 3),
+            "drift_score": drift_score,
             "window_size": len(rows),
-            "latency_trend": round(latency_trend, 3)
+            "threshold": self._threshold,
+            "alert_triggered": drift_score >= self._threshold,
+            "breakdown": {
+                "intent_flip_rate": round(intent_flip_rate, 3),
+                "latency_trend": round(latency_trend, 3),
+            },
         }
+
+    async def compute_drift(self, window: int = 20) -> Dict[str, Any]:
+        """Backward-compatible alias for historical callers/tests."""
+        return await self.compute_trend_drift(window=window)
 
 # Singleton accessor
 _analyzer = DriftAnalyzer()

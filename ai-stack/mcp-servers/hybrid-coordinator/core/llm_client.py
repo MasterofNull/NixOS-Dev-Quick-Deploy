@@ -505,7 +505,13 @@ class PromptBuilder:
         phase_id = phase.get("id", "unknown")
 
         # System prompt with git discipline enforcement
-        git_discipline = """
+        authorship = "Co-Authored-By: Claude <noreply@anthropic.com>"
+        if "local" in safety_mode or context.get("provider") == "local":
+            authorship = "Co-Authored-By: Qwen 35B <noreply@harness.local>"
+        elif context.get("provider") == "google" or "gemini" in str(context.get("model", "")):
+            authorship = "Co-Authored-By: Gemini 2.0 Pro <noreply@google.com>"
+
+        git_discipline = f"""
 
 REQUIRED WORKFLOW DISCIPLINE (for execute modes):
 You MUST follow this workflow for all implementation tasks:
@@ -516,7 +522,7 @@ You MUST follow this workflow for all implementation tasks:
 4. Validation: Run tests, check syntax, verify changes work as expected
 5. Git Commit: CRITICAL REQUIREMENT - You MUST commit your changes before completion:
    - Stage files: run_command("git add <modified-files>")
-   - Create commit: run_command('git commit -m "type(scope): description\\n\\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"')
+   - Create commit: run_command('git commit -m "type(scope): description\\n\\n{authorship}"')
    - Use conventional commit format (feat/fix/docs/chore/test)
    - Include Co-Authored-By trailer
 
