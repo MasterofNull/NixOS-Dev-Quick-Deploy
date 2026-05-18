@@ -1,5 +1,5 @@
 <!-- sync-agent-instructions: auto-generated section -->
-<!-- Last synced: 2026-05-18 16:54 UTC from CLAUDE.md -->
+<!-- Last synced: 2026-05-18 21:36 UTC from CLAUDE.md -->
 
 ## PROJECT-SPECIFIC RULES — NixOS-Dev-Quick-Deploy (READ FIRST)
 
@@ -108,3 +108,4 @@ Prefer 3-5 repo-only slices before `nixos-quick-deploy.sh`. Deploy earlier only 
 - `ai-stack/mcp-servers/hybrid-coordinator/` — MCP + UAG lifecycle
 - `nix/modules/roles/ai-stack.nix` — service wiring
 - `scripts/ai/` — harness CLIs
+- `.agent/CODEX.md` — Codex-specific instruction projection

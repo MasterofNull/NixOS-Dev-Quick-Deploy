@@ -33,4 +33,4 @@ Define the canonical state machine and evidence requirements for harness capabil
 
 ## Status
 
-COMPLETE — 2026-05-18 (Claude, pending Codex final acceptance)
+ACCEPTED — 2026-05-18 (Claude authored, Codex final acceptance complete)

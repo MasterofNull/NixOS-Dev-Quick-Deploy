@@ -67,7 +67,7 @@ def _pre_redact(text: str) -> Tuple[str, List[str]]:
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-AIDB_URL = os.getenv("AIDB_URL", "http://localhost:8002")
+AIDB_URL = os.getenv("AIDB_URL", "http://127.0.0.1:8002")
 AIDB_KEY_FILE = os.getenv(
     "AIDB_API_KEY_FILE",
     "/run/secrets/aidb_api_key",

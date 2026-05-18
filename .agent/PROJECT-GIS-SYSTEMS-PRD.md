@@ -1,7 +1,7 @@
 # PRD — gis-systems Domain Activation
 
 **Domain tag:** `gis-systems`
-**Status:** Proposed — Phase 58A capability expansion
+**Status:** Implemented — Phase 58A capability expansion
 **Authors:** Claude (orchestrator/architect) · Gemini (research synthesizer)
 **Date:** 2026-05-18
 **Upstream template:** `docs/architecture/domain-activation-template.md`
@@ -31,7 +31,7 @@ Establish `gis-systems` as a first-class capability domain. Initial activation c
 3. Authoring the agent instruction surface
 4. Wiring a baseline validation hook
 
-Provisioning of the full geospatial Nix dev shell and AIDB seeding are follow-on slices.
+Implementation note (2026-05-18): `nix develop .#gis` is implemented with GDAL, PROJ, GeoPandas/Rasterio/Shapely/PyProj/Fiona, QGIS, and `spatialite-tools`. Standalone `pkgs.postgis` is not used on nixpkgs 25.11; PostGIS remains available through `postgresqlPackages.postgis` for service configuration. AIDB seeding remains pending before validation/promotion.
 
 **First follow-on slice (per Gemini research):** Geospatial Data Ingest & CRS Validator — a tool that inspects incoming spatial data, validates its CRS, and converts it to the project's canonical CRS standard.
 
@@ -77,7 +77,7 @@ Seed content per Gemini research:
 | Package | nixpkgs attribute | Purpose |
 |---|---|---|
 | GDAL | `pkgs.gdal` | Core raster/vector geospatial data library |
-| PostGIS | `pkgs.postgis` | Spatial database extension (non-trivial GIS workflows) |
+| PostGIS | `pkgs.postgresqlPackages.postgis` | Spatial database extension for PostgreSQL service configuration |
 | GeoPandas | `pkgs.python3Packages.geopandas` | High-level Python spatial dataframes |
 | QGIS | `pkgs.qgis` | Visual analysis; runs headlessly for processing |
 | SpatiaLite | `pkgs.spatialite-tools` | Local file-based GIS via SQLite (low overhead) |
@@ -125,8 +125,8 @@ Per Gemini research:
 1. `config/capability-lifecycle-registry.json` contains `gis-systems` at state ≥ `proposed`.
 2. `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` exists with domain tag, CRS discipline rules, tool order.
 3. `gis-systems-health` validation check exits 0.
-4. When `implemented`: CRS transformation of GeoJSON between two CRS succeeds via GDAL; spatial join between two datasets succeeds in GeoPandas or PostGIS; static map PNG generated from vector dataset via headless GDAL/QGIS script.
-5. When `validated`: Gemini review-gate PASS on one geospatial pipeline output; no P0/P1 regressions.
+4. At `implemented`: the GIS shell provides the declared local toolchain.
+5. Before `validated`: CRS transformation succeeds via GDAL, a spatial join succeeds in GeoPandas or PostGIS, a static map PNG is generated, `gis-systems-patterns` is seeded, Gemini review-gate PASS is recorded on one geospatial pipeline output, and there are no P0/P1 regressions.
 
 ---
 

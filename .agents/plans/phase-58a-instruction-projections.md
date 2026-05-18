@@ -14,7 +14,6 @@ Ensure all agent instruction surfaces project role and routing constraints from 
 
 **Out of scope:**
 - Full instruction compilation pipeline (long-term target, not Phase 58A)
-- Codex first-class instruction surface (delegated slice, requires Codex availability)
 - New instruction text beyond pointer/summary projection
 
 ## Changes made
@@ -28,7 +27,7 @@ Ensure all agent instruction surfaces project role and routing constraints from 
 
 | Surface | Issue | Owner |
 |---|---|---|
-| Codex (`~/.aider.md`, Codex settings) | No harness-aware first-class instruction surface | Codex (when available) |
+| Codex | First-class instruction surface added at `.agent/CODEX.md` | Closed 2026-05-18 |
 | `.gemini/context.md` | Auto-generated; role text comes from GEMINI.md projection already done in 58A.1 | — |
 | `AGENTS.md` | No role text (uses workflow steps only); appropriate — no change needed | — |
 | `docs/AGENTS.md` (full policy) | Should reference role-matrix.md; not done this slice | Follow-up |
@@ -46,4 +45,5 @@ COMPLETE — 2026-05-18
 ### Evidence
 - `SESSION-RULES.md` Sub-Agent Boundaries updated with pointer and escalation time-bound.
 - `role-matrix.md` open items closed as "Resolved Items" with concrete delegation form and escalation time-bound rules.
+- `.agent/CODEX.md` added as the first-class Codex instruction surface.
 - No behavior-affecting runtime changes made.

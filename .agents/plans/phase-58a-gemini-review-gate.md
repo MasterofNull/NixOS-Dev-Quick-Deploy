@@ -19,7 +19,7 @@ Define a concrete, enforceable review gate for Gemini's work: enforcement point,
 
 ## Status
 
-COMPLETE — 2026-05-18 (Claude, pending Codex final acceptance)
+ACCEPTED — 2026-05-18 (Claude authored, Codex final acceptance complete)
 
 ### Evidence
 - `docs/architecture/gemini-review-gate.md` created with 8 trigger categories, enforcement point diagram, artifact form requirements, verdict table, approval-mode policy, no-self-acceptance rule.
@@ -27,5 +27,5 @@ COMPLETE — 2026-05-18 (Claude, pending Codex final acceptance)
 
 ## Notes
 
-- Codex final acceptance deferred (rate-limited). The contract is complete and internally consistent with role-matrix.md.
+- Codex final acceptance completed 2026-05-18: contract is consistent with `role-matrix.md`, states a concrete gate, and names a usable verdict protocol.
 - Gemini rate-limit policy (429 = transient, no config workaround) documented inline.

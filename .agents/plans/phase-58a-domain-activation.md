@@ -20,7 +20,7 @@ Define a standard pattern for activating new capability domains so future expans
 
 ## Status
 
-COMPLETE — 2026-05-18 (Claude, pending Codex final acceptance)
+ACCEPTED — 2026-05-18 (Claude authored, Codex final acceptance complete)
 
 ### Evidence
 - `docs/architecture/domain-activation-template.md` created with 6 required artifacts (PRD, lifecycle registry entry, instruction payload, validation hook, AIDB namespace, routing preference), domain tag schema, activation sequence (7 steps), rollback procedure, and example (safety-analysis domain).

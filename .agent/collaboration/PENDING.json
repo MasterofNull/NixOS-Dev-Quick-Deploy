@@ -1,7 +1,7 @@
 {
-  "task": "58B.0-codex-acceptance-verdict",
+  "task": "58B.2-domain-validation-workflows",
   "agent": "Codex",
-  "goal_state": "Codex issues formal PASS/FAIL acceptance verdict on all 6 domain PRDs after Phase 58B.0 reconciliation. If PASS: advance domains to candidate state and begin soak planning. If FAIL: document specific revision requests.",
+  "goal_state": "Run representative workflows and review-gate evidence for the six implemented capability domains before moving any domain to validated.",
   "files": [
     ".agent/PROJECT-SECURITY-SYSTEMS-PRD.md",
     ".agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md",
@@ -9,8 +9,7 @@
     ".agent/PROJECT-MOBILE-WEB-PRD.md",
     ".agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md",
     ".agent/PROJECT-GIS-SYSTEMS-PRD.md",
-    ".agents/plans/phase-58b-domain-prd-reconciliation.md",
-    "config/capability-lifecycle-registry.json"
+    ".agent/collaboration/HANDOFF.md"
   ],
-  "next_step": "Read the 6 PRDs and the 58B.0 plan. Verify each acceptance criterion. Issue PASS or REQUEST_REVISION verdict per docs/architecture/gemini-review-gate.md §5 verdict protocol. Record verdict in PULSE.log and HANDOFF.md."
+  "next_step": "AIDB namespace seeding is live and verified. Next: run one representative workflow per domain, capture evidence, then record Gemini/Claude/Codex review-gate PASS where required before changing lifecycle state from implemented to validated."
 }

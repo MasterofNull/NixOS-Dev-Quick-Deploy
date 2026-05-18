@@ -1,0 +1,68 @@
+{
+  "_comment": "Canonical local seed sources for Phase 58B capability-domain AIDB namespaces. Keep these sources local, reviewable, and safe to reindex periodically.",
+  "version": "1.0",
+  "domains": [
+    {
+      "domain": "security-systems",
+      "project": "security-findings",
+      "description": "Security policy, review-gate, and validation knowledge for static-analysis work.",
+      "paths": [
+        ".agent/PROJECT-SECURITY-SYSTEMS-PRD.md",
+        ".agent/SECURITY-SYSTEMS-INSTRUCTIONS.md",
+        "docs/architecture/gemini-review-gate.md",
+        "scripts/governance/tier0-validation-gate.sh"
+      ]
+    },
+    {
+      "domain": "systems-software",
+      "project": "nix-systems-patterns",
+      "description": "NixOS module, options, and shell-governance patterns for systems work.",
+      "paths": [
+        ".agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md",
+        ".agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md",
+        "nix/modules",
+        "scripts/governance/nix-static-analysis.sh"
+      ]
+    },
+    {
+      "domain": "embedded-hardware",
+      "project": "embedded-hardware-patterns",
+      "description": "Embedded workflow, firmware, HDL, and board-support guardrails.",
+      "paths": [
+        ".agent/PROJECT-EMBEDDED-HARDWARE-PRD.md",
+        ".agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md",
+        "docs/architecture/domain-activation-template.md"
+      ]
+    },
+    {
+      "domain": "mobile-web",
+      "project": "mobile-web-patterns",
+      "description": "Accessibility, mobile-security, browser-automation, and frontend workflow knowledge.",
+      "paths": [
+        ".agent/PROJECT-MOBILE-WEB-PRD.md",
+        ".agent/MOBILE-WEB-INSTRUCTIONS.md",
+        "docs/architecture/gemini-review-gate.md"
+      ]
+    },
+    {
+      "domain": "scientific-research",
+      "project": "scientific-research-patterns",
+      "description": "Reproducibility, provenance, and research-workflow guidance.",
+      "paths": [
+        ".agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md",
+        ".agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md",
+        "docs/architecture/gemini-review-gate.md"
+      ]
+    },
+    {
+      "domain": "gis-systems",
+      "project": "gis-systems-patterns",
+      "description": "CRS discipline, geospatial workflow, and review-gate guidance.",
+      "paths": [
+        ".agent/PROJECT-GIS-SYSTEMS-PRD.md",
+        ".agent/GIS-SYSTEMS-INSTRUCTIONS.md",
+        "docs/architecture/gemini-review-gate.md"
+      ]
+    }
+  ]
+}

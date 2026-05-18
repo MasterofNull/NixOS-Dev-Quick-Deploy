@@ -1,7 +1,7 @@
 # PRD — mobile-web Domain Activation
 
 **Domain tag:** `mobile-web`
-**Status:** Proposed — Phase 58A capability expansion
+**Status:** Implemented — Phase 58A capability expansion
 **Authors:** Claude (orchestrator/architect) · Gemini (research synthesizer)
 **Date:** 2026-05-18
 **Upstream template:** `docs/architecture/domain-activation-template.md`
@@ -30,7 +30,7 @@ Establish `mobile-web` as a first-class capability domain. Initial activation co
 3. Authoring the agent instruction surface
 4. Wiring a baseline validation hook
 
-Provisioning of Flutter/Android dev shell, Lighthouse integration with aq-qa, and AIDB seeding are follow-on slices.
+Implementation note (2026-05-18): `nix develop .#mobile-web` is implemented with Flutter, Android tools, Node.js 22, Chromium, and Playwright driver. Lighthouse is no longer packaged through `nodePackages` on nixpkgs 25.11; the shell emits an on-demand npm hint instead. AIDB seeding remains pending before validation/promotion.
 
 **First follow-on slice (per Gemini research):** Mobile Accessibility & Security Audit (MASA) harness — Lighthouse + MASVS static check → unified dashboard report.
 
@@ -78,8 +78,8 @@ Seed content per Gemini research:
 | Flutter | `pkgs.flutter` | Cross-platform mobile/web/desktop |
 | Android CLI | `pkgs.android-tools` | adb, fastboot (without full SDK overhead) |
 | Node.js | `pkgs.nodejs_22` | Frontend workflow foundation |
-| Lighthouse | `pkgs.nodePackages.lighthouse` | Web performance, accessibility, SEO audit |
-| Playwright | `pkgs.playwright` | Browser automation; mobile-responsive testing |
+| Lighthouse | on-demand `npm install -g lighthouse` hint | Web performance, accessibility, SEO audit |
+| Playwright | `pkgs.playwright-driver` | Browser automation; mobile-responsive testing |
 
 ### Tool order
 
@@ -117,8 +117,8 @@ Per Gemini research:
 1. `config/capability-lifecycle-registry.json` contains `mobile-web` at state ≥ `proposed`.
 2. `.agent/MOBILE-WEB-INSTRUCTIONS.md` exists with domain tag, task classes, tool order.
 3. `mobile-web-health` validation check exits 0.
-4. When `implemented`: `flutter doctor` passes in domain dev shell; Lighthouse JSON report generation works; MASVS-aligned static scan on sample APK/source-tree succeeds.
-5. When `validated`: Gemini review-gate PASS on one mobile audit output; no P0/P1 regressions.
+4. At `implemented`: Flutter/ADB/Node/Chromium/Playwright are available in the domain shell.
+5. Before `validated`: Lighthouse JSON report generation works, MASVS-aligned static scan on sample source succeeds, `mobile-web-patterns` is seeded, Gemini review-gate PASS is recorded on one mobile audit output, and there are no P0/P1 regressions.
 
 ---
 

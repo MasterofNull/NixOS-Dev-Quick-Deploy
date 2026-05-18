@@ -1,7 +1,7 @@
 # Project Context — NixOS-Dev-Quick-Deploy
 
 <!-- Phase 19.4.3 — <!-- sync-agent-instructions: auto-generated section --> -->
-<!-- Last synced: 2026-05-18 16:54 UTC from CLAUDE.md -->
+<!-- Last synced: 2026-05-18 21:36 UTC from CLAUDE.md -->
 <!-- Auto-loaded by Gemini CLI from .gemini/context.md -->
 
 ## What This Project Is

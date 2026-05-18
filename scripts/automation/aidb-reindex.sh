@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # aidb-reindex.sh — periodic AIDB knowledge re-indexer
 #
-# Runs two jobs in sequence:
+# Runs three jobs in sequence:
 #   1. aq-index-logic-patterns  — cross-cutting code patterns → logic-patterns project
 #   2. ingest-project-knowledge.py — chunked docs → nixos-dev-quick-deploy project
+#   3. seed-domain-knowledge.py — domain-local seed corpora → six capability namespaces
 #
 # Driven by ai-aidb-reindex.service / ai-aidb-reindex.timer.
 # Also safe to run manually: scripts/automation/aidb-reindex.sh
@@ -97,11 +98,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Job 3 — capability-domain namespace seeds
+# ---------------------------------------------------------------------------
+log "--- Job 3: capability-domain namespace seeds ---"
+DOMAIN_STATUS=0
+python3 "${REPO_ROOT}/scripts/data/seed-domain-knowledge.py" \
+  --delay "${INGEST_DELAY}" \
+  2>&1 || DOMAIN_STATUS=$?
+if [[ "$DOMAIN_STATUS" -eq 0 ]]; then
+  log "domain-knowledge: OK"
+else
+  warn "domain-knowledge: exited ${DOMAIN_STATUS} (partial ingest)"
+fi
+
+# ---------------------------------------------------------------------------
 # Write result JSON
 # ---------------------------------------------------------------------------
 END_TS=$(date +%s)
 DURATION=$(( END_TS - START_TS ))
-OVERALL=$( [[ "$LOGIC_STATUS" -eq 0 && "$KNOWLEDGE_STATUS" -eq 0 ]] && echo "ok" || echo "partial" )
+OVERALL=$( [[ "$LOGIC_STATUS" -eq 0 && "$KNOWLEDGE_STATUS" -eq 0 && "$DOMAIN_STATUS" -eq 0 ]] && echo "ok" || echo "partial" )
 
 if [[ -n "$REINDEX_OUTPUT" ]]; then
   mkdir -p "$(dirname "$REINDEX_OUTPUT")" 2>/dev/null || true
@@ -109,10 +124,11 @@ if [[ -n "$REINDEX_OUTPUT" ]]; then
   "status": "%s",
   "logic_patterns_exit": %d,
   "project_knowledge_exit": %d,
+  "domain_knowledge_exit": %d,
   "duration_s": %d,
   "timestamp": "%s"
 }\n' \
-    "$OVERALL" "$LOGIC_STATUS" "$KNOWLEDGE_STATUS" "$DURATION" \
+    "$OVERALL" "$LOGIC_STATUS" "$KNOWLEDGE_STATUS" "$DOMAIN_STATUS" "$DURATION" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "$REINDEX_OUTPUT" 2>/dev/null || true
   log "result written to ${REINDEX_OUTPUT}"

@@ -1,7 +1,7 @@
 # PRD — security-systems Domain Activation
 
 **Domain tag:** `security-systems`
-**Status:** Proposed — Phase 58A capability expansion
+**Status:** Implemented — Phase 58A capability expansion
 **Authors:** Claude (orchestrator/architect)
 **Date:** 2026-05-18
 **Upstream template:** `docs/architecture/domain-activation-template.md`
@@ -30,7 +30,7 @@ Establish `security-systems` as a first-class capability domain in the lifecycle
 3. **Authoring the agent instruction surface** (`.agent/SECURITY-SYSTEMS-INSTRUCTIONS.md`)
 4. **Wiring a baseline validation hook**
 
-Provisioning of heavy tooling (Semgrep Nix package, Bandit, Trivy, Ghidra) is a follow-on slice once the domain reaches `validated`.
+Implementation note (2026-05-18): the domain dev shell is now present at `nix develop .#security`; Semgrep, Bandit, Trivy, ShellCheck, and cppcheck are wired. AIDB namespace seeding remains pending before validation/promotion.
 
 ---
 
@@ -63,7 +63,7 @@ Both `remote-reasoning` and `local-tool-calling` are existing profiles in the ca
 
 Purpose: Store structured findings from static analysis, vulnerability scans, and OWASP audit results so future sessions inherit prior knowledge.
 
-Indexing: Add to `scripts/automation/aidb-reindex.sh` once domain reaches `implemented`. Initial seeding: tier0-validation-gate output, OWASP checklist cross-references.
+Indexing: Add to `scripts/automation/aidb-reindex.sh` during the seeding slice. Initial seeding: tier0-validation-gate output, OWASP checklist cross-references.
 
 ---
 
@@ -71,9 +71,9 @@ Indexing: Add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 
 | Tool class | Preference |
 |---|---|
-| `semgrep` | Primary static analysis (Python, Nix, shell, JS) — provisioned in follow-on slice |
-| `bandit` | Python-specific security lint — provisioned in follow-on slice |
-| `trivy` | Dependency / container vulnerability scan — provisioned in follow-on slice |
+| `semgrep` | Primary static analysis (Python, Nix, shell, JS) — available in `.#security` shell |
+| `bandit` | Python-specific security lint — available in `.#security` shell |
+| `trivy` | Dependency / container vulnerability scan — available in `.#security` shell and system profile |
 | `bash -n` | Always available; mandatory for all shell scripts (already in tier0) |
 | `py_compile` | Always available; mandatory for Python files (already in tier0) |
 | `scripts/governance/tier0-validation-gate.sh` | Baseline gate — invoke before any security-domain commit |
@@ -90,8 +90,8 @@ Forbidden: `--no-verify` flag on any commit, hardcoded secrets, eval of LLM outp
 2. `.agent/SECURITY-SYSTEMS-INSTRUCTIONS.md` exists with domain tag, task classes, tool preferences, AIDB namespace binding.
 3. `config/validation-check-registry.json` contains a `security-systems-health` check that exits 0 when baseline artifacts are present.
 4. `aq-qa 0` includes the `security-systems-health` check (behavioral tier) without regression.
-5. When domain reaches `implemented` (follow-on slice): at least one of Semgrep/Bandit/Trivy is wired in a Nix profile and the check tests actual tool invocation.
-6. When domain reaches `validated`: Gemini review-gate PASS verdict on findings workflow.
+5. At `implemented`: Semgrep/Bandit/Trivy are available through the domain shell and the health check tests actual tool invocation.
+6. Before `validated`: `security-findings` namespace seeded and Gemini review-gate PASS verdict recorded on one findings workflow.
 
 ---
 
