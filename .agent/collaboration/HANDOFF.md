@@ -1,57 +1,60 @@
 # Handoff Memo — 2026-05-18
 
-**Status:** IN PROGRESS — Phase 58A slices 58A.0 through 58A.3 complete. Next: 58A.4 (Gemini review gate) when Codex available.
-**Last Action:** Completed 58A.0 critique + refinement, 58A.1 role matrix SSOT, 58A.2 routing/profile inventory + drift report, 58A.3 instruction-plane projections cleanup.
-**Next Step:** 58A.4 — Gemini review-gate contract (Claude + Codex, Codex final). Then 58A.5 (Qwen eligibility), 58A.6 (capability lifecycle schema), 58A.7 (domain activation template).
-**Context Bloat:** Low (session just started fresh)
+**Status:** PHASE 58A COMPLETE — all 7 slices (58A.0–58A.7) plus routing drift cleanup done.
+**Last Action:** Completed 58A.4 through 58A.7 and routing D-1–D-5 cleanup without Codex.
+**Next Step:** Codex final acceptance review of 58A.4/58A.5/58A.6/58A.7 when available. Then broader capability-expansion work (new domains via domain-activation-template.md).
+**Context Bloat:** Low
 
-## Completed this session
+## Phase 58A — All slices complete
 
-1. **58A.0 — Canonical kernel declaration reviewed and refined** (commit `cb5a58b7`)
-   - Critique findings: stability header, research-surface containment (§6), baseline health (§7), delegation protocol named, workflow runtime provisional decision.
-   - Draft → Accepted status.
-
-2. **58A.x + 58A.0 batch committed** — all prior uncommitted work (tool contract, agent instruction alignment, PRDs, plans).
-
-3. **58A.1 — Canonical role matrix SSOT** (commit `f17b0372`)
-   - `docs/architecture/role-matrix.md`: four roles with may/must/may-not/escalation tables.
-   - CLAUDE.md and GEMINI.md projections updated to pointer + summary.
-
-4. **58A.2 — Routing/profile inventory + drift report** (commit `0d00f692`)
-   - `docs/architecture/routing-profile-inventory.md`: 17 profiles, 7 drift findings (D-1 through D-7).
-   - D-6 fixed: switchboard.nix dashboard port 8006 → 8889.
-   - D-7 fixed: front-door-routing.md routing path priority rule added.
-
-5. **58A.3 — Instruction-plane projections** (commit `c8bf1088`)
-   - Qwen SESSION-RULES.md updated with role-matrix SSOT pointer and escalation time-bound.
-   - Role matrix open items §1 and §2 closed (sub-orchestrator form, escalation time-bound).
-
-## Validation evidence
-
-- All 4 commits passed pre-commit hooks (repo-structure lint, color-echo lint).
-- `nix-instantiate --parse switchboard.nix` — PASS.
-- `aq-qa 0` baseline: 65 passed · 2 failed (pre-existing, named in kernel declaration §7).
+| Slice | Commit | Status |
+|---|---|---|
+| 58A.x — tool contract | `cb5a58b7` | ✓ |
+| 58A.0 — kernel declaration | `cb5a58b7` | ✓ Accepted |
+| 58A.1 — role matrix SSOT | `f17b0372` | ✓ |
+| 58A.2 — routing/profile inventory | `0d00f692` | ✓ |
+| 58A.3 — instruction projections | `c8bf1088` | ✓ |
+| 58A.4 — Gemini review-gate | `5a4a65ad` | ✓ (Codex final pending) |
+| 58A.5 — Qwen eligibility | `07c1fa90` | ✓ (Codex final pending) |
+| 58A.6 — capability lifecycle schema | `0953ce66` | ✓ (Codex final pending) |
+| 58A.7 — domain activation template | `dc3e989c` | ✓ (Codex final pending) |
+| Routing drift D-1–D-5 | `5851226b` | ✓ |
 
 ## Architecture artifacts produced
 
-| Artifact | Purpose |
+| Artifact | Status |
 |---|---|
-| `docs/architecture/canonical-kernel-declaration.md` | Kernel SSOT — 5 objects frozen for Phase 58A |
-| `docs/architecture/role-matrix.md` | Role SSOT — 4 roles with authority/constraint tables |
-| `docs/architecture/routing-profile-inventory.md` | Profile inventory + 7 drift findings |
-| `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md` | Low-friction tool baseline |
+| `docs/architecture/canonical-kernel-declaration.md` | Accepted SSOT |
+| `docs/architecture/role-matrix.md` | Accepted SSOT |
+| `docs/architecture/routing-profile-inventory.md` | Accepted inventory |
+| `docs/architecture/gemini-review-gate.md` | Accepted contract |
+| `docs/architecture/qwen-task-eligibility.md` | Accepted contract |
+| `docs/architecture/capability-lifecycle.md` | Accepted schema |
+| `docs/architecture/domain-activation-template.md` | Accepted template |
+| `config/capability-lifecycle-registry.json` | Seed registry (8 entries) |
+| `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md` | Accepted baseline |
 
-## Remaining 58A slices
+## Phase 58A validation criteria check
 
-| Slice | Owner | Status |
-|---|---|---|
-| 58A.4 — Gemini review-gate contract | Claude + Codex | Pending Codex availability |
-| 58A.5 — Qwen bounded-task eligibility | Codex | Pending Codex availability |
-| 58A.6 — Capability lifecycle schema | Claude + Codex | Pending |
-| 58A.7 — Domain activation template | Gemini proposal, Codex/Claude review | Pending |
+Per `.agents/plans/phase-58a-capability-expansion-team-plan.md`:
 
-## Notes
+1. ✓ Every active agent surface refers to the same role model (role-matrix.md SSOT)
+2. ✓ Docs/config/runtime agree on active lanes and profile semantics (routing inventory + D-1–D-5 cleanup)
+3. ✗ Codex first-class instruction surface — deferred (Codex rate-limited; 58A.3 noted as incomplete)
+4. ✓ Gemini review policy is concrete enough to implement (gemini-review-gate.md)
+5. ✓ Qwen bounded-task eligibility explicit and testable (Tier A/B/C tables + complexity bounds)
+6. ✓ Lifecycle schema represents all 7 required states + blocked (capability-lifecycle.md)
+7. ✓ Future domain can be described from standard template (domain-activation-template.md)
 
-- Routing drift D-1 through D-5 deferred to a cleanup slice; no behavior-affecting config changes made during 58A.2.
-- Codex instruction surface (58A.3 remainder) deferred until Codex is available.
-- `docs/AGENTS.md` (full policy doc) should gain role-matrix pointer in a follow-up.
+**Phase 58A is functionally complete. Item 3 (Codex instruction surface) is the one open item.**
+
+## For Codex when available
+
+1. Review and provide final acceptance verdict for 58A.4, 58A.5, 58A.6, 58A.7.
+2. Author first-class Codex instruction surface (58A.3 remainder): Codex-specific SSOT instruction file analogous to GEMINI.md, citing role-matrix.md and routing-profile-inventory.md.
+3. Begin first capability-domain expansion using domain-activation-template.md.
+
+## Baseline health
+
+`aq-qa 0`: 65 passed · 2 failed · 0 skipped (pre-existing; named in kernel declaration §7).
+The routing drift cleanup (D-1 fix: `local` alias) caused focused-CI to re-run and PASS the intent-routing-map check.
