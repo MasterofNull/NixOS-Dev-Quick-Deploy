@@ -49,15 +49,25 @@ Explicit remote aliases remain available when the task really needs them:
 
 Unknown aliases fall back to `default`.
 
+## Routing Path Priority Rule
+
+There are two routing paths into the coordinator. The priority rule is:
+
+1. **Explicit `route` field in request body** → alias path (`route_aliases.resolve_route_alias()` → canonical profile). The caller's stated intent takes precedence.
+2. **No `route` field** → intent classification path (`IntentClassifier` classifies query text → `config/intent-routing-map.json` lookup → canonical profile).
+
+The two paths must not conflict: if both would apply, the explicit `route` field wins. The intent classification path may target profiles (e.g. `local`) not present in route-aliases.json `allowed_profiles`; this is a known drift item (D-1 in `docs/architecture/routing-profile-inventory.md`) and will be resolved in a follow-up cleanup slice.
+
 ## Request Flow
 
 1. Caller submits a prompt to `/v1/orchestrate` or `local-orchestrator`.
-2. The requested route alias is normalized and resolved to a harness profile.
-3. The coordinator injects routing metadata into query context:
+2. If a `route` field is present, the alias is resolved to a canonical profile (alias path).
+3. If no `route` field, the intent classifier resolves a canonical profile (intent path).
+4. The coordinator injects routing metadata into query context:
    - `routed_profile`
    - `route_alias`
-4. The request is forwarded into the normal coordinator query path.
-5. Downstream routing, hints, memory recall, and switchboard policy still apply.
+5. The request is forwarded into the normal coordinator query path.
+6. Downstream routing, hints, memory recall, and switchboard policy still apply.
 
 The `/v1/orchestrate` handler lives in [http_server.py](/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/hybrid-coordinator/http_server.py:6381).
 
