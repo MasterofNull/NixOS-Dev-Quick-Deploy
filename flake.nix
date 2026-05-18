@@ -367,12 +367,12 @@
           };
 
           # mobile-web domain: Flutter, web tooling, accessibility + security audits
+          # Note: lighthouse is installed via npm in shellHook (removed from nodePackages in nixpkgs 25.11)
           mobile-web = pkgs'.mkShell {
             packages = with pkgs'; [
               flutter
               android-tools
               nodejs_22
-              nodePackages.lighthouse
               chromium
               playwright-driver
             ];
@@ -381,7 +381,11 @@
               export AIDB_NAMESPACE=mobile-web-patterns
               export CHROME_EXECUTABLE="${pkgs'.chromium}/bin/chromium"
               export PLAYWRIGHT_BROWSERS_PATH="${pkgs'.playwright-driver.browsers}"
-              echo "mobile-web shell: flutter, android-tools, nodejs_22, lighthouse, chromium, playwright"
+              # lighthouse removed from nixpkgs nodePackages in 25.11; install on demand:
+              if ! command -v lighthouse &>/dev/null; then
+                echo "  hint: npm install -g lighthouse  (to add Lighthouse audit)"
+              fi
+              echo "mobile-web shell: flutter, android-tools, nodejs_22, chromium, playwright"
               echo "AIDB namespace: mobile-web-patterns | iOS builds NOT supported (no macOS/Xcode)"
             '';
           };
@@ -412,6 +416,9 @@
           };
 
           # gis-systems domain: GDAL/OGR, spatial analysis, CRS validation
+          # Note: postgis is a PostgreSQL server extension, not a standalone CLI tool.
+          # For local dev spatial queries without a server, use spatialite-tools instead.
+          # PostGIS is available in nixpkgs as postgresqlPackages.postgis for service config.
           gis = pkgs'.mkShell {
             packages = with pkgs'; [
               gdal
@@ -425,7 +432,6 @@
               ]))
               qgis
               spatialite-tools
-              postgis
             ];
             shellHook = ''
               export GIS_DOMAIN_SHELL=1
@@ -434,6 +440,55 @@
               echo "gis-systems shell: gdal, proj, geopandas/rasterio/shapely, qgis, spatialite-tools"
               echo "AIDB namespace: gis-systems-patterns | Canonical CRS: EPSG:4326 (WGS84)"
               echo "CRS DISCIPLINE: always validate CRS with 'ogrinfo -al -so <file>' before any spatial operation"
+            '';
+          };
+          # ── Unified full-stack shell: all 6 domains in one env ──────────────
+          # Use this when you want all domain tools in PATH without manually
+          # entering per-domain shells. The harness (hybrid-coordinator) reads
+          # DOMAIN_SHELL=full and auto-selects tools based on intent classification.
+          # Usage: nix develop .#full
+          full = pkgs'.mkShell {
+            packages = with pkgs'; [
+              # Nix / systems
+              statix deadnix alejandra shellcheck nix-tree nix-diff nixpkgs-fmt
+              # Security
+              semgrep trivy cppcheck
+              (python3.withPackages (ps: with ps; [
+                bandit safety
+                # Scientific + GIS Python stack
+                numpy scipy matplotlib pandas jupyterlab snakemake biopython
+                geopandas rasterio shapely pyproj fiona
+              ]))
+              # Embedded / hardware
+              verilator ghdl-llvm yosys openocd gcc-arm-embedded dtc qemu gdb minicom
+              # Mobile / web
+              flutter android-tools nodejs_22 chromium playwright-driver
+              # Scientific / docs
+              pandoc texlive.combined.scheme-small R
+              # GIS / spatial
+              gdal proj qgis spatialite-tools
+            ];
+            shellHook = ''
+              export DOMAIN_SHELL=full
+              export FULL_STACK_SHELL=1
+              # Per-domain namespace hints (harness reads these to route to AIDB)
+              export DOMAIN_NAMESPACES="security-findings,nix-systems-patterns,embedded-hardware-patterns,mobile-web-patterns,scientific-research-patterns,gis-systems-patterns"
+              # Mobile
+              export CHROME_EXECUTABLE="${pkgs'.chromium}/bin/chromium"
+              export PLAYWRIGHT_BROWSERS_PATH="${pkgs'.playwright-driver.browsers}"
+              # GIS
+              export CANONICAL_CRS="EPSG:4326"
+              echo "=== AI Harness Full-Stack Domain Shell ==="
+              echo "All 6 domains active: security | systems | embedded | mobile-web | scientific | gis"
+              echo "Intent routing: hybrid-coordinator classifies task → selects AIDB namespace + profile"
+              echo "AIDB namespaces: \$DOMAIN_NAMESPACES"
+              echo "Embedded safety: firmware flash/JTAG requires user confirmation"
+              echo "GIS CRS: always validate with 'ogrinfo -al -so <file>' before transforms"
+              echo "Scientific: always set random seeds; record data provenance"
+              if ! command -v lighthouse &>/dev/null; then
+                echo "Lighthouse: npm install -g lighthouse (web accessibility auditing)"
+              fi
+              echo "==========================================="
             '';
           };
         });
