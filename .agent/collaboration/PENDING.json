@@ -1,15 +1,12 @@
 {
-  "task": "58B.2-domain-validation-workflows",
+  "task": "58B.3-mobile-web-validation-and-review-gate",
   "agent": "Codex",
-  "goal_state": "Run representative workflows and review-gate evidence for the six implemented capability domains before moving any domain to validated.",
+  "goal_state": "Close the remaining mobile-web representative workflow gap, then collect review-gate PASS evidence before any implemented-to-validated lifecycle update.",
   "files": [
-    ".agent/PROJECT-SECURITY-SYSTEMS-PRD.md",
-    ".agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md",
-    ".agent/PROJECT-EMBEDDED-HARDWARE-PRD.md",
     ".agent/PROJECT-MOBILE-WEB-PRD.md",
-    ".agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md",
-    ".agent/PROJECT-GIS-SYSTEMS-PRD.md",
+    ".agents/plans/phase-58b-domain-validation-evidence.md",
+    ".agents/plans/phase-58b-domain-validation-workflows.md",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "next_step": "AIDB namespace seeding is live and verified. Next: run one representative workflow per domain, capture evidence, then record Gemini/Claude/Codex review-gate PASS where required before changing lifecycle state from implemented to validated."
+  "next_step": "advance domains to candidate state"
 }
