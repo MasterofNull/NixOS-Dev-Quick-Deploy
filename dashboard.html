@@ -17474,8 +17474,11 @@
                 .nodeOpacity(0.96)
                 .graphData(data)
                 .onNodeClick((node) => {
-                    graph.centerAt(node.x, node.y, node.z, 650);
-                    graph.zoom(5, 650);
+                    graph.cameraPosition(
+                        { x: node.x, y: node.y, z: node.z + 150 },
+                        node,
+                        650
+                    );
                     renderGraphDetails(detailsId, graphNodeDetails(node));
                 });
 
