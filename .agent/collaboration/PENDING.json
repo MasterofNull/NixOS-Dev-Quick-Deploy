@@ -1,1 +1,16 @@
-{"task":"capability-domain-follow-on-slices","agent":"Claude","goal_state":"All 6 domains proposed (security-systems, systems-software, embedded-hardware, mobile-web, scientific-research, gis-systems). Registry at 14 capabilities. Next: implement follow-on slices for each domain to reach 'implemented' state. Priority: Nix dev shells per domain + AIDB seeding. Gemini is now canonical research synthesizer for all PRDs and plans. Codex final acceptance review of 58A.4-58A.7 remains open.","files":["config/capability-lifecycle-registry.json","config/validation-check-registry.json",".agent/collaboration/HANDOFF.md"],"next_step":"Begin follow-on slices. Delegate AIDB seeding research to Gemini. Author Nix dev shell definitions per domain. Priority order: security-systems.1 (Semgrep/Bandit/Trivy) and systems-software.1 (shellcheck + AIDB seeding)."}
+{
+  "task": "58B.0-codex-acceptance-verdict",
+  "agent": "Codex",
+  "goal_state": "Codex issues formal PASS/FAIL acceptance verdict on all 6 domain PRDs after Phase 58B.0 reconciliation. If PASS: advance domains to candidate state and begin soak planning. If FAIL: document specific revision requests.",
+  "files": [
+    ".agent/PROJECT-SECURITY-SYSTEMS-PRD.md",
+    ".agent/PROJECT-SYSTEMS-SOFTWARE-PRD.md",
+    ".agent/PROJECT-EMBEDDED-HARDWARE-PRD.md",
+    ".agent/PROJECT-MOBILE-WEB-PRD.md",
+    ".agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md",
+    ".agent/PROJECT-GIS-SYSTEMS-PRD.md",
+    ".agents/plans/phase-58b-domain-prd-reconciliation.md",
+    "config/capability-lifecycle-registry.json"
+  ],
+  "next_step": "Read the 6 PRDs and the 58B.0 plan. Verify each acceptance criterion. Issue PASS or REQUEST_REVISION verdict per docs/architecture/gemini-review-gate.md §5 verdict protocol. Record verdict in PULSE.log and HANDOFF.md."
+}
