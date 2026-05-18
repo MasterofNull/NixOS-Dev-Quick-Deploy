@@ -78,13 +78,23 @@ Return to orchestrator (Codex/Claude) when:
 
 **Escalation time-bound:** if an escalation is not acknowledged within the session, record the open question in `.agent/collaboration/PULSE.log` and stop the slice. Do not proceed past an unresolved blocking ambiguity.
 
+## Tool Availability (Qwen/Local agent whitelist)
+
+**Available tools:** `read_file`, `write_file`, `list_files`, `search_files`, `run_command` (whitelisted cmds only), `git_status`, `git_diff`, `git_add`, `validate_before_commit`
+
+**Banned — these will be blocked immediately:**
+- `run_shell_command` — not in whitelist; use `run_command` with a whitelisted command instead
+- `invoke_agent` — not available to implementer role; escalate to orchestrator instead
+
+**Whitelisted commands for `run_command`:** `bash -n`, `python3 -m py_compile`, `nix-instantiate --parse`, `git status`, `git diff`, `git add`, `git log`, `aq-qa`, `agrep`, `als`, `acat`
+
+If a tool call is blocked, record the blocked call in PULSE.log and switch to the nearest available alternative — do not retry the same blocked call.
+
 ## Quick Reference
 
 Before codebase exploration, follow `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`:
-- search: `agrep`, then `rg`
-- path discovery: `als`, then `fd`
-- bounded reads: `acat`, then native read tools or `sed -n`
-- if a preferred tool is unavailable, use one documented fallback and move on
+- search: `search_files` (local agent), then `agrep` via `run_command`
+- bounded reads: `read_file` with explicit path
 - do not retry the same failed call without changing the hypothesis
 
 | Task Type | Your Action | Route To Orchestrator For |

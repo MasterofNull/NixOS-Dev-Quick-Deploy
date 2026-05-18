@@ -13,11 +13,15 @@
 #   delegate-to-gemini --status <task-id>                 # check running/done/failed
 #
 # Approval modes (--mode flag):
-#   auto_edit  — auto-approve file edits; prompt for shell/network (DEFAULT — safe for coding)
-#   yolo       — approve all tool calls automatically (use for fully trusted tasks)
+#   yolo       — approve all tool calls automatically, incl. run_shell_command (DEFAULT)
+#   auto_edit  — auto-approve file edits only; run_shell_command NOT available in this mode
 #
-#   NOTE: 'plan' mode (read-only) is NOT supported by the current Gemini API tier —
-#   use 'auto_edit' for research tasks; Gemini will read but not write unless prompted.
+#   DEFAULT changed to yolo (2026-05-18): auto_edit restricts Gemini to read_file/grep_search/
+#   replace only — any prompt telling Gemini to run aq-* or shell commands wastes a turn
+#   with "Tool run_shell_command not found". Use --mode auto_edit explicitly when you want
+#   to prevent all shell execution (pure read+edit tasks only).
+#
+#   NOTE: 'plan' mode is NOT supported by the current Gemini API tier — returns HTTP 400.
 #
 # Options:
 #   --prompt TEXT      Task prompt to send to Gemini
@@ -222,7 +226,8 @@ ${prompt}"
     info "Output file:     $output_file"
 
     # Build command — use -p for headless (NOT 'gemini print ...')
-    local cmd=("$GEMINI_BIN" "-p" "$full_prompt" "--approval-mode" "$mode")
+    # NO_COLOR=1 + TERM=dumb suppress "256-color not detected" and ANSI noise in log files
+    local cmd=(env NO_COLOR=1 TERM=dumb "$GEMINI_BIN" "-p" "$full_prompt" "--approval-mode" "$mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
 
     # Register before launching so the task is findable even if we die
@@ -328,7 +333,10 @@ PYEOF
 
 PROMPT=""
 PROMPT_FILE=""
-MODE="auto_edit"
+# Default: yolo mode — provides run_shell_command + full tool surface.
+# auto_edit restricts to read_file/grep_search/replace only, causing run_shell_command errors.
+# Use --mode auto_edit explicitly only when you want to prevent shell execution.
+MODE="yolo"
 MODEL=""
 ROLE="implement"
 WAIT=false
