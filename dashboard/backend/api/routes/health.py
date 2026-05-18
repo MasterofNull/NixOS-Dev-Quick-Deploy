@@ -9,13 +9,13 @@ import logging
 import asyncio
 import json
 import os
-import shutil
 import time
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from api.services.ai_service_health import get_health_monitor
+from api.services.qa_runner import run_phase_json
 from api.config.service_endpoints import HYBRID_URL
 
 logger = logging.getLogger(__name__)
@@ -154,64 +154,8 @@ _LAYERED_CACHE_TTL = 900  # 15 min — aq-qa takes 300-600s on Renoir APU (inclu
 
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
-    """Run aq-qa 0 --json and return parsed JSON. Times out after 60s."""
-    # shutil.which uses the service PATH; fall back to NixOS profile symlink
-    # (/run/current-system/sw/bin/ is not in the systemd service PATH by default)
-    aq_qa_bin = (
-        shutil.which("aq-qa")
-        or (os.path.isfile("/run/current-system/sw/bin/aq-qa") and "/run/current-system/sw/bin/aq-qa")
-        or None
-    )
-    if not aq_qa_bin:
-        raise RuntimeError("aq-qa not found in PATH or /run/current-system/sw/bin")
-
-    # Prepend /run/current-system/sw/bin so aq-qa subprocesses (python3, curl,
-    # redis-cli) can be found — systemd service PATH is minimal by default.
-    env = dict(os.environ)
-    env["PATH"] = "/run/current-system/sw/bin:" + env.get("PATH", "")
-
-    proc = await asyncio.create_subprocess_exec(
-        aq_qa_bin, "0", "--json",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
-    )
-    # aq-qa phase-0 runs aq-report internally which takes 120-180s on Renoir APU.
-    # 300s was still too short — bumped to 600s to survive the full aq-report sub-call.
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600.0)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.communicate()
-        raise RuntimeError("aq-qa timed out after 600s")
-
-    if stderr:
-        logger.info("aq-qa stderr:\n%s", stderr.decode("utf-8", errors="replace"))
-
-    if proc.returncode not in (0, 1):  # 0=all pass, 1=some fail — both produce valid JSON
-        raise RuntimeError(f"aq-qa exited {proc.returncode}")
-
-    # Scan from end to find the last JSON object (mirrors aistack.py approach to
-    # tolerate any non-JSON progress lines that may prefix the final JSON blob).
-    stdout_text = stdout.decode("utf-8", errors="replace").strip()
-    data: Dict[str, Any] = {}
-    for line in reversed(stdout_text.splitlines()):
-        line = line.strip()
-        if line.startswith("{"):
-            try:
-                data = json.loads(line)
-                break
-            except json.JSONDecodeError:
-                continue
-    if not data:
-        # Fall back to full parse (handles pretty-printed multi-line JSON)
-        data = json.loads(stdout_text)
-
-    # Attach stderr for debugging service-context failures (stripped to 4 KB max)
-    stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
-    data["_debug_stderr"] = stderr_text[:4096] if stderr_text else None
-
-    return data
+    """Run aq-qa 0 through the shared single-flight service."""
+    return await run_phase_json("0", timeout_s=600.0)
 
 
 async def _run_aq_qa_layered_background() -> None:

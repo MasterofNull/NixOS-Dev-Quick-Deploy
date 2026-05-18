@@ -73,6 +73,11 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
         "delegate", "assign to", "ask gemini", "ask claude", "ask codex",
         "route to", "send to agent", "have qwen", "local agent",
     ],
+    "harness_operation": [
+        "aq-qa", "aq-report", "aq-hints", "harness health", "system status",
+        "check logs", "run diagnostics", "qa check", "system report",
+        "maintenance", "uptime", "services list",
+    ],
 }
 
 # Load path for routing map
@@ -116,6 +121,12 @@ SEMANTIC_PROTOTYPES: Dict[str, List[str]] = {
         "why am I getting a 404 error on this endpoint",
         "diagnose the connection timeout in the redis client",
     ],
+    "harness_operation": [
+        "is the ai stack healthy right now",
+        "run the full qa suite for phase 54",
+        "show me a report of tool call performance",
+        "diagnose why the coordinator is slow",
+    ],
 }
 
 _EMBEDDINGS_URL = os.getenv("LLAMA_CPP_EMBED_URL", "http://127.0.0.1:8081/embedding")
@@ -130,8 +141,12 @@ class IntentClassifier:
         self._map_mtime: float = 0.0
         self._prototype_embeddings: Dict[str, List[np.ndarray]] = {}
         self._load_routing_map()
-        # Non-blocking initialization of prototypes
-        asyncio.create_task(self._warm_prototypes())
+        # Non-blocking initialization of prototypes when constructed inside an
+        # event loop.  Synchronous callers can still use keyword routing safely.
+        try:
+            asyncio.get_running_loop().create_task(self._warm_prototypes())
+        except RuntimeError:
+            logger.debug("intent_classifier: semantic prototype warmup deferred; no running loop")
 
     async def _get_embedding(self, text: str) -> Optional[np.ndarray]:
         """Fetch embedding from local llama-cpp-embed server."""

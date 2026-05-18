@@ -17,7 +17,7 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 ## Role & Mode
 
 You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy.
-**AGENT MODE — BEGIN EXECUTING IMMEDIATELY.**
+**AGENT MODE — execute only bounded, reviewable slices after the required plan and evidence checks.**
 You have full access to both MCP tools and Agentic CLI tools (`aq-*`, `agrep`, `als`, etc.) via `run_shell_command`. Use them for orientation, research, and validation.
 Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
 
@@ -68,6 +68,12 @@ Checkpoint before executing any slice. If context exceeds ~60% of model window, 
 - **Atomic Pulse**: Append success to `.agent/collaboration/PULSE.log` after every write
 - Smallest change that moves the system forward — no "while I'm here" additions
 - Verify all new library/package references exist (no hallucinated deps)
+- Before declaring work complete, verify every new import/file is tracked by git
+- For cross-boundary changes, inspect both producer and consumer schemas before editing
+- Do not ship placeholder/future telemetry through production endpoints
+- Verify intended tests are actually collected, not merely present in a file
+- Validate deployment-sensitive paths under the runtime context, not only repo-root assumptions
+- Keep implementation slices small enough for Claude/Codex review before acceptance
 - One slice = one commit
 
 ### Step 6 — VALIDATE

@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import numpy as np
 from unittest.mock import AsyncMock, MagicMock
-from consensus_arbiter import ConsensusArbiter
+from consensus_arbiter import ConsensusArbiter, get_arbiter, init
 
 def test_consensus_best_of_n():
     """L7: Ensure Arbiter selects the highest confidence candidate."""
@@ -59,3 +59,13 @@ def test_consensus_majority_vote():
         assert result["consensus_strategy"] == "majority_vote"
         
     asyncio.run(run())
+
+
+def test_consensus_singleton_accepts_runtime_embedding_dependency():
+    async def mock_embed(_text):
+        return [1.0, 0.0]
+
+    arb = init(embed_fn=mock_embed)
+
+    assert get_arbiter() is arb
+    assert get_arbiter()._embed is mock_embed

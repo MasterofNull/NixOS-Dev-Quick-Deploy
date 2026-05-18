@@ -87,6 +87,7 @@ import interaction_tracker
 import memory_manager
 import memory_superseder
 import drift_analyzer
+import consensus_arbiter
 import memory_crystallizer
 import mcp_handlers
 import model_loader
@@ -732,6 +733,7 @@ async def initialize_server():
     # Drift Analyzer (L6) initialization
     drift_analyzer.init(postgres_client=postgres_client)
     drift_analyzer.get_analyzer().set_embed_fn(embed_text)
+    consensus_arbiter.init(embed_fn=embed_text)
 
     async def _store_crystallized_insight(insight: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         return await memory_manager.store_agent_memory(

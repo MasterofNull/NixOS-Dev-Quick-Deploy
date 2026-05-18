@@ -105,10 +105,26 @@ gemini_help_ok() {
 copied_state_help_ok() {
   local temp_home temp_state
   temp_home="$(mktemp -d)"
+  trap 'rm -rf "${temp_home}"' RETURN
   temp_state="${temp_home}/.gemini"
   mkdir -p "${temp_state}"
   if [[ -d "${GEMINI_DIR}" ]]; then
-    cp -a "${GEMINI_DIR}/." "${temp_state}/"
+    # Only copy the minimal state needed to exercise Gemini startup.  The
+    # history/tmp trees can grow to multiple GiB and are irrelevant to `--help`;
+    # copying them into tmpfs made this health check capable of exhausting /tmp.
+    local state_file
+    for state_file in \
+      google_accounts.json \
+      oauth_creds.json \
+      projects.json \
+      settings.json \
+      state.json \
+      trustedFolders.json
+    do
+      if [[ -f "${GEMINI_DIR}/${state_file}" ]]; then
+        cp -a "${GEMINI_DIR}/${state_file}" "${temp_state}/"
+      fi
+    done
   fi
   env \
     HOME="${temp_home}" \
@@ -118,7 +134,6 @@ copied_state_help_ok() {
     GEMINI_SANDBOX=false \
     timeout --foreground "${HELP_TIMEOUT_SECONDS}" "${GEMINI_BIN}" --help >/dev/null 2>&1
   local status=$?
-  rm -rf "${temp_home}"
   return "${status}"
 }
 

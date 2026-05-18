@@ -24,7 +24,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).parent.parent.parent
 CLAUDE_MD  = REPO_ROOT / "CLAUDE.md"
 # Authoritative repo copy of agent memory (git-tracked).
 # sync_memory_md() keeps this in sync with the live Claude Code location.
@@ -247,7 +247,8 @@ curl "$HINTS_URL?q=nixos+conflict"
 
 ## Using Gemini CLI Here
 
-Gemini is for **web lookups and large-context analysis only** (free tier, limited quota).
+Gemini may code, but only on **bounded, reviewable slices** with explicit integration proof.
+For large or ambiguous work, prefer research/review first and require Claude/Codex review before acceptance.
 Do NOT send full files unless the analysis task is >100KB.
 
 ```bash
@@ -260,6 +261,13 @@ gemini -p "@ai-stack/mcp-servers/ Summarize the MCP server architecture"
 # Bad: small targeted task (use direct file read instead)
 # gemini -p "@scripts/ai/aq-hints show me the first 20 lines"
 ```
+
+Before declaring implementation complete:
+- verify every new import/file is tracked by git
+- compare producer/consumer schemas for cross-boundary changes
+- avoid placeholder or future telemetry in production endpoints
+- confirm intended tests are collected by pytest
+- validate deployment-sensitive paths under runtime conditions
 """
     return _write_file(GEMINI_CONTEXT_MD, content, dry_run, verbose)
 

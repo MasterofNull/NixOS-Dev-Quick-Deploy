@@ -613,12 +613,16 @@ except Exception:
     # 0.7.3 RAG recall quality (memory_recall_share_pct > 0)
     if _should_run 6; then
       local report_json recall_pct
-      report_json="$(_aq_report_snapshot)" || report_json=""
-      recall_pct=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('rag_posture', {}).get('memory_recall_share_pct', 0))" "$report_json" 2>/dev/null || echo 0)
-      if python3 -c "sys.exit(0 if float($recall_pct) > 0 else 1)" 2>/dev/null; then
-        _pass 6 "0.7.3" "RAG recall quality > 0% (got ${recall_pct}%)"
+      if [[ "${AQ_QA_SKIP_REPORT_BACKED_CHECKS:-0}" == "1" ]]; then
+        _skip 6 "0.7.3" "RAG recall quality > 0%" "skipped to avoid aq-report recursion"
       else
-        _fail 6 "0.7.3" "RAG recall quality > 0%" "got ${recall_pct}%"
+        report_json="$(_aq_report_snapshot)" || report_json=""
+        recall_pct=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(d.get('rag_posture', {}).get('memory_recall_share_pct', 0))" "$report_json" 2>/dev/null || echo 0)
+        if python3 -c "import sys; sys.exit(0 if float($recall_pct) > 0 else 1)" 2>/dev/null; then
+          _pass 6 "0.7.3" "RAG recall quality > 0% (got ${recall_pct}%)"
+        else
+          _fail 6 "0.7.3" "RAG recall quality > 0%" "got ${recall_pct}%"
+        fi
       fi
     fi
 
@@ -628,7 +632,7 @@ except Exception:
       search_out=$(curl -sf --max-time 5 \
         -H "Content-Type: application/json" \
         -d '{"query":"nixos","limit":1}' \
-        "${AIDB_URL}/search" 2>/dev/null || echo "err")
+        "${AIDB_URL}/vector/search" 2>/dev/null || echo "err")
       if [[ "$search_out" != "err" ]] && \
          python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d and len(d['results']) > 0 else 1)" "$search_out" 2>/dev/null; then
         _pass 6 "0.7.4" "AIDB vector search returns results"

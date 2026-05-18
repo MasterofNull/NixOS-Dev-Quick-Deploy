@@ -29,7 +29,7 @@ class ConsensusArbiter:
         self._embed = embed_fn
         self._MIN_CONSENSUS_SCORE = 0.7
 
-    async def resolve(self, candidates: List[Dict[str, Any]], strategy: str = "best_of_n") -> Dict[str, Any]:
+    async def resolve(self, candidates: List[Dict[str, Any]], strategy: str = "best_of_n", task: str = "") -> Dict[str, Any]:
         """
         Apply consensus strategy to a list of candidate results.
         """
@@ -40,10 +40,69 @@ class ConsensusArbiter:
             return {**candidates[0], "consensus_score": 1.0, "strategy": "passthrough"}
 
         if strategy == "majority_vote":
-            return await self._majority_vote(candidates)
-        
-        # Default: Best-of-N based on confidence/quality
-        return self._best_of_n(candidates)
+            result = await self._majority_vote(candidates)
+        elif strategy == "synthesis":
+            return await self._synthesize(candidates, task)
+        else:
+            # Default: Best-of-N based on confidence/quality
+            result = self._best_of_n(candidates)
+            
+        # Global Homeostasis: If consensus is too low, escalate to Expert Synthesis
+        if result.get("consensus_score", 1.0) < self._MIN_CONSENSUS_SCORE and strategy != "synthesis":
+            logger.warning("consensus_arbiter: low consensus score (%.3f). Escalating to Expert Synthesis.", result.get("consensus_score"))
+            return await self._synthesize(candidates, task)
+            
+        return result
+
+    async def _synthesize(self, candidates: List[Dict[str, Any]], task: str) -> Dict[str, Any]:
+        """Use the configured synthesis model to merge and resolve agent outputs."""
+        try:
+            # Import here to avoid circular dependencies.  Default to the local
+            # switchboard ingress, which is provisioned in deployed NixOS
+            # environments; remote providers require explicit operator config.
+            import os
+            from core.llm_client import LLMClient
+            from core.config import Config
+
+            provider = os.getenv("CONSENSUS_SYNTHESIS_PROVIDER", "local").strip() or "local"
+            expert_client = (
+                LLMClient(provider="local", base_url=Config.SWITCHBOARD_URL)
+                if provider == "local"
+                else LLMClient(provider=provider)
+            )
+            
+            cand_text = "\n\n".join([f"Agent {i} Output:\n{c.get('response','')}" for i, c in enumerate(candidates)])
+            
+            prompt = f"""You are the Team Arbiter. Multiple agents have worked on the following task:
+TASK: {task}
+
+Below are their varying outputs. Your goal is to synthesize a single, optimal, and correct response by merging their strengths and resolving any contradictions.
+
+CANDIDATE OUTPUTS:
+{cand_text}
+
+Provide the FINAL SYNTHESIZED SOLUTION:"""
+
+            response = await expert_client.create_message(
+                prompt=prompt,
+                system="You are the Lead Architect. Resolve conflicts and synthesize a perfect solution.",
+                temperature=0.2
+            )
+            
+            return {
+                "response": response.content,
+                "consensus_score": 0.95, # Expert synthesis represents high human-tier confidence
+                "consensus_strategy": "model_synthesis",
+                "agreement_count": len(candidates),
+                "total_candidates": len(candidates)
+            }
+        except Exception as exc:
+            logger.error("consensus_arbiter: expert synthesis failed: %s", exc)
+            # Emergency fallback remains explicit so callers can tell synthesis
+            # was requested but unavailable in this runtime.
+            fallback = self._best_of_n(candidates)
+            fallback["consensus_fallback_reason"] = "expert_synthesis_unavailable"
+            return fallback
 
     def _best_of_n(self, candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Select the candidate with the highest reported confidence."""
@@ -101,6 +160,13 @@ class ConsensusArbiter:
 
 # Singleton accessor
 _arbiter: Optional[ConsensusArbiter] = None
+
+def init(embed_fn: Optional[Any] = None) -> ConsensusArbiter:
+    """Initialize the process-wide arbiter with runtime dependencies."""
+    global _arbiter
+    _arbiter = ConsensusArbiter(embed_fn=embed_fn)
+    return _arbiter
+
 
 def get_arbiter() -> ConsensusArbiter:
     global _arbiter

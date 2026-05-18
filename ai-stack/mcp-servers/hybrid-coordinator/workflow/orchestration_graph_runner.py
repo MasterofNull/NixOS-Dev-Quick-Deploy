@@ -207,7 +207,7 @@ async def _execute_node(run_id: str, nid: str, node: Dict[str, Any], base_task: 
             _save_graph_runs(data)
 
         arbiter = consensus_arbiter.get_arbiter()
-        result = await arbiter.resolve(candidates, strategy=strategy)
+        result = await arbiter.resolve(candidates, strategy=strategy, task=base_task)
         
         async with _graph_runs_lock:
             data = _load_graph_runs()

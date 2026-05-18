@@ -12214,7 +12214,7 @@
                     const bd = driftData.breakdown || {};
                     bdEl.innerHTML = [
                         bd.intent_flip_rate !== undefined ? `flip rate: ${(bd.intent_flip_rate * 100).toFixed(0)}%` : '',
-                        bd.latency_trend !== undefined ? `latency trend: ${bd.latency_trend > 0 ? '+' : ''}${bd.latency_trend.toFixed(0)} ms/q` : '',
+                        bd.latency_trend !== undefined ? `latency trend: ${bd.latency_trend > 0 ? '+' : ''}${(bd.latency_trend * 100).toFixed(0)}%` : '',
                         driftData.window_size ? `window: ${driftData.window_size} queries` : '',
                     ].filter(Boolean).join(' · ');
                 } else {
