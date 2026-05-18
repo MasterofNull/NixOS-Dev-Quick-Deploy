@@ -1,5 +1,5 @@
 """AI Stack specific API endpoints for learning stats, circuit breakers, and Ralph"""
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import logging
@@ -2784,11 +2784,41 @@ async def _prom_scalar(query: str) -> Optional[float]:
     return None
 
 
-async def _aq_report_snapshot(ttl_seconds: int = 30) -> Dict[str, Any]:
-    """Return cached aq-report JSON snapshot for dashboard internals."""
+async def _aq_report_snapshot(ttl_seconds: int = 300) -> Dict[str, Any]:
+    """Return cached aq-report JSON snapshot for dashboard internals.
+
+    TTL is 300 s — aq-report takes 120+ s on Renoir APU, running it every 30 s
+    causes a continuous aq-report storm and event-loop overload.  We prefer the
+    persisted snapshot written by the ai_insights background task, and only fall
+    back to spawning aq-report directly when that file is missing.
+    """
     now = time.time()
     cached = _AQ_REPORT_CACHE.get("payload")
-    # Use `is not None` — empty dict {} is a valid cached result (aq-report timed out)
+
+    # Return cached non-empty result immediately (hot path)
+    if cached and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
+        return cached
+
+    # Always check the persisted snapshot written by ai_insights background task —
+    # even when cache has an empty dict (stale failed run), because ai_insights may
+    # have since written a fresh result.
+    _persisted = Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+    try:
+        _env_path = os.getenv("DASHBOARD_AI_INSIGHTS_REPORT_PATH", "").strip()
+        if _env_path:
+            _persisted = Path(_env_path)
+        if _persisted.exists() and _persisted.stat().st_size > 4:
+            _text = _persisted.read_text(encoding="utf-8", errors="replace").strip()
+            if _text and _text.startswith("{"):
+                _data = json.loads(_text)
+                if isinstance(_data, dict) and _data:
+                    _AQ_REPORT_CACHE["ts"] = now
+                    _AQ_REPORT_CACHE["payload"] = _data
+                    return _data
+    except Exception:
+        pass
+
+    # Return stale cache (even empty dict) if TTL has not expired
     if cached is not None and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
         return cached
 
@@ -3089,8 +3119,8 @@ async def _hybrid_get(path: str) -> Any:
     """GET from hybrid-coordinator using the global session.
 
     Raises ``aiohttp.ClientResponseError`` on non-2xx (caller converts to HTTPException).
-    ``asyncio.TimeoutError`` is re-raised as ``aiohttp.ServerTimeoutError`` so callers
-    see a consistent ``aiohttp.ClientError`` regardless of where the timeout fires.
+    ``asyncio.TimeoutError`` is re-raised as HTTPException 504 so callers
+    see a consistent error regardless of where the timeout fires.
     """
     session = await get_http_session()
     url = f"{SERVICES['hybrid']}{path}"
@@ -3099,7 +3129,7 @@ async def _hybrid_get(path: str) -> Any:
             resp.raise_for_status()
             return await resp.json()
     except asyncio.TimeoutError as exc:
-        raise aiohttp.ServerTimeoutError(connection=None) from exc
+        raise HTTPException(status_code=504, detail=f"Coordinator timeout: {path}") from exc
 
 
 # Orchestration Visibility Endpoints (Operator Dashboard)

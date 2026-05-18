@@ -113,7 +113,7 @@ class AIInsightsService:
         self._persisted_report_path = _persisted_aq_report_path()
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_timestamp: Optional[datetime] = None
-        self._cache_ttl_seconds = 60  # 1 minute cache
+        self._cache_ttl_seconds = 300  # 5 minute cache — aq-report takes 120-180s, re-launching every 60s causes storm
         self._report_lock = asyncio.Lock()
         self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
         self._report_process: Optional[asyncio.subprocess.Process] = None
@@ -185,7 +185,7 @@ class AIInsightsService:
             )
             self._report_process = process
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
             except asyncio.TimeoutError as exc:
                 await self._terminate_report_process()
                 logger.error("aq-report execution timed out: %s", exc)

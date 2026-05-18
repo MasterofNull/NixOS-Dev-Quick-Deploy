@@ -145,7 +145,10 @@ async def security_headers_middleware(request: Request, call_next):
 async def runtime_controls_middleware(request: Request, call_next):
     """Apply rate limiting and audit logging to dashboard API traffic."""
     client_ip = getattr(request.client, "host", None) or "unknown"
-    if rate_limiter.enabled():
+    # Loopback clients (browser served from 127.0.0.1:8889) are exempt from the rate
+    # limiter — they represent the legitimate local dashboard, not external callers.
+    _is_loopback = client_ip in {"127.0.0.1", "::1", "localhost"}
+    if rate_limiter.enabled() and not _is_loopback:
         decision = rate_limiter.check(client_ip, request.url.path, request.method)
         if not decision["allowed"]:
             response = JSONResponse(
