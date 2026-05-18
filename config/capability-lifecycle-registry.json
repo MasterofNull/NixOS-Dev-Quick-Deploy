@@ -203,6 +203,34 @@
         "docs/architecture/routing-profile-inventory.md",
         "config/hardware-capability-matrix.json"
       ]
+    },
+    {
+      "id": "security-systems",
+      "name": "Security systems domain (static analysis + findings knowledge)",
+      "domain": "security",
+      "state": "proposed",
+      "state_since": "2026-05-18",
+      "description": "Unified security-analysis capability domain. Routes OWASP/policy queries to remote-reasoning; static scans (Semgrep, Bandit, Trivy) via local-tool-calling. Findings persisted to AIDB namespace security-findings.",
+      "kernel_object": "memory-evidence",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": null,
+        "review_verdict": null,
+        "reviewer": null,
+        "reviewed_on": null,
+        "soak_sessions": 0,
+        "rollback_procedure": "Set state to blocked; disable security-systems-health check; remove security-analysis intent class from intent-routing-map.json if added"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        ".agent/PROJECT-SECURITY-SYSTEMS-PRD.md",
+        ".agent/SECURITY-SYSTEMS-INSTRUCTIONS.md",
+        "docs/architecture/domain-activation-template.md",
+        "scripts/governance/tier0-validation-gate.sh"
+      ]
     }
   ]
 }

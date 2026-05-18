@@ -182,6 +182,25 @@
       "tier": "structural",
       "timeout_seconds": 15,
       "require_tool": "node"
+    },
+    {
+      "id": "security-systems-health",
+      "description": "security-systems domain baseline artifact presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-SECURITY-SYSTEMS-PRD.md",
+        ".agent/SECURITY-SYSTEMS-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json",
+        "scripts/governance/tier0-validation-gate.sh"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,sys,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'security-systems' in ids, 'security-systems not in registry'; assert os.path.exists('.agent/PROJECT-SECURITY-SYSTEMS-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/SECURITY-SYSTEMS-INSTRUCTIONS.md'), 'instructions missing'; assert os.path.exists('scripts/governance/tier0-validation-gate.sh'), 'tier0 gate missing'; print('security-systems domain: baseline artifacts present')"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
     }
   ]
 }
