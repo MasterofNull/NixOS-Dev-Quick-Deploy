@@ -1,7 +1,7 @@
 # PRD — scientific-research Domain Activation
 
 **Domain tag:** `scientific-research`
-**Status:** Proposed — Phase 58A capability expansion
+**Status:** Implemented — Phase 58A capability expansion
 **Authors:** Claude (orchestrator/architect) · Gemini (research synthesizer)
 **Date:** 2026-05-18
 **Upstream template:** `docs/architecture/domain-activation-template.md`
@@ -31,7 +31,7 @@ Establish `scientific-research` as a first-class capability domain. Initial acti
 3. Authoring the agent instruction surface
 4. Wiring a baseline validation hook
 
-Provisioning of Snakemake dev shell, DOI ingestion pipeline, and Reproducible Research Scaffold Generator are follow-on slices.
+Implementation note (2026-05-18): `nix develop .#scientific` is implemented with NumPy/SciPy/Pandas/Matplotlib/JupyterLab/Snakemake/Biopython, Pandoc, TeX Live, and R. DOI ingestion, scaffold generation, and AIDB seeding remain follow-on work before validation/promotion.
 
 **First follow-on slice (per Gemini research):** Reproducible Research Scaffold Generator — CLI tool to initialize a domain-compliant research directory with Snakemake, Jupyter, and a `.gitignore` tailored for large datasets.
 
@@ -124,8 +124,8 @@ Per Gemini research:
 1. `config/capability-lifecycle-registry.json` contains `scientific-research` at state ≥ `proposed`.
 2. `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` exists with domain tag, reproducibility rules, tool order.
 3. `scientific-research-health` validation check exits 0.
-4. When `implemented`: Snakemake pipeline executes → PDF report from raw CSV; DOI ingestion → validated BibTeX; two identical runs produce identical numerical outputs.
-5. When `validated`: Gemini review-gate PASS on reproducibility workflow; no P0/P1 regressions.
+4. At `implemented`: the scientific shell provides the declared reproducibility toolchain.
+5. Before `validated`: a Snakemake pipeline executes to PDF from raw CSV, DOI ingestion yields validated BibTeX, two identical runs produce identical numerical outputs, `scientific-research-patterns` is seeded, Gemini review-gate PASS is recorded on a reproducibility workflow, and there are no P0/P1 regressions.
 
 ---
 

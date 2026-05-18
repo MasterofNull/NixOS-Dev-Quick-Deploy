@@ -916,9 +916,10 @@ in {
   home.file.".config/VSCodium/User/argv.json".source = vscodiumArgvJSON;
 
   # Enforce the selected Cyberpunk theme in mutable settings.json.
-  # Must run after createVSCodiumSettings which creates the file; vscodeProfiles
-  # runs before writeBoundary so cannot be used as a predecessor here.
-  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter ["createVSCodiumSettings"] ''
+  # `vscodeProfiles` writes its generated settings late in activation, so this
+  # must run after it as a final convergence pass or the active color theme can
+  # disappear even though the preferred-theme keys remain present.
+  home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter ["vscodeProfiles"] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"

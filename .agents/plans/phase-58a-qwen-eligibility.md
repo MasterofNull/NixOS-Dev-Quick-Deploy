@@ -21,7 +21,7 @@ Define explicit, testable task-class eligibility for Qwen as implementer: which 
 
 ## Status
 
-COMPLETE — 2026-05-18 (Claude, pending Codex final acceptance)
+ACCEPTED — 2026-05-18 (Claude authored, Codex final acceptance complete)
 
 ### Evidence
 - `docs/architecture/qwen-task-eligibility.md` created with Tier A/B/C tables, complexity bounds table, escalation protocol, promotion path, hardware notes.
