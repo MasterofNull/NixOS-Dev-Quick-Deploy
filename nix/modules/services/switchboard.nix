@@ -55,7 +55,7 @@ let
     Code/file task → run: agrep "<keyword>" . --include="*.py"
     Key dirs: scripts/ai/ (aq-*), scripts/agent-tools/ (als/agrep/acat/asum), scripts/automation/ (prsi-orchestrator.py), ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
     PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
-    Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
+    Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8889
     Harness: aq-prime | aq-qa 0 | aq-report | aq-operational-perspective | aq-hints "<task>" | aq-context-bootstrap --task "<task>"
   '';
   # Compact card: ~50 tokens (~8 s prompt on Qwen3.6-35B w/ 12 GPU layers).
@@ -126,7 +126,7 @@ let
     NixOS modules: nix/modules/ | Dashboard: dashboard/backend/
 
     === PORTS ===
-    llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8006 grafana:3000 prom:9090 owui:3001
+    llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889 grafana:3000 prom:9090 owui:3001
 
     === CANONICAL WORKFLOW (full contract: .agent/WORKFLOW-CANON.md) ===
     Every non-trivial task: ORIENT(aq-prime+aq-hints+recall-memory) → RESEARCH(agrep/als/acat/asum+web-search) → PRD/PLAN(.agent/+.agents/plans/) → MEMORY-CHECKPOINT(store plan before coding) → EXECUTE(one-slice,read-before-edit) → VALIDATE(tier0-gate+security) → COMMIT(atomic+Co-Authored-By).
