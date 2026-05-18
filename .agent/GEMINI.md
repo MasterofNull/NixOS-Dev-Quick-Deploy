@@ -44,6 +44,20 @@ als -d 2                                # replaces ls/tree; hides noise
 acat <file>                             # replaces cat; line numbers + capped output
 asum <file>                             # structural overview (Py, JS, Go, Nix)
 ```
+**Search-before-read rule (mandatory):**
+- Do **not** guess repo paths and then call `read_file`.
+- Before opening a file you have not already confirmed, use `agrep`, `als`, or a targeted shell existence check to verify the exact path first.
+- If a read fails with `File not found`, do **not** retry nearby guesses. Search for the filename or concept, select the confirmed path, then read once.
+- Follow the canonical fallback order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`: `agrep → rg`, `als → fd`, `acat → native read/sed -n`.
+- If a preferred tool is unavailable, use one documented fallback and move on; do not spend multiple turns rediscovering the same missing tool.
+- For high-level harness architecture, start from the known entrypoints below instead of inventing document names:
+  - `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+  - `docs/architecture/front-door-routing.md`
+  - `.agent/MASTER-DEVELOPMENT-PROMPT.md`
+  - `.agent/PROJECT-AGENTIC-FIRST-ELEVATION-PRD.md`
+  - `.agents/plans/PROJECT-AI-HARNESS-EVOLUTION-PRD.md`
+  - `nix/modules/roles/ai-stack.nix`
+  - `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`
 **External** (for implementation decisions, security topics, new integrations):
 - Web search for cutting-edge practices specific to the task
 - Check OWASP if adding auth, input handling, or external calls
@@ -114,6 +128,8 @@ Never commit without validation evidence. Never use `--no-verify`.
 | Directory exploration | `als -d 1` (replaces ls/tree) |
 | File inspection | `acat <file>` (replaces cat/bat) |
 | Structural overview | `asum <file>` (new structural summary) |
+| Unconfirmed path from memory | verify with `agrep` / `als` before `read_file` |
+| `read_file` says missing | search the concept or filename once; do not guess adjacent paths |
 | Harness workflow / hints | `mcp_server_get_hints {q:"<task>"}` → `aq-hints` |
 | Knowledge search | `mcp_server_hybrid_search` → `mcp_server_query_aidb` |
 | Resuming work | `mcp_server_get_working_memory` → `mcp_server_recall_memory` |

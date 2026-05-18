@@ -1939,13 +1939,41 @@
                 "readonly-strict" = {
                   workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-runs";
                   allow_workspace_write = false;
-                  allowed_processes = ["rg" "cat" "ls" "jq" "sed"];
+                  allowed_processes = [
+                    "agrep"
+                    "als"
+                    "acat"
+                    "asum"
+                    "rg"
+                    "fd"
+                    "cat"
+                    "ls"
+                    "jq"
+                    "yq"
+                    "sed"
+                  ];
                   network_policy = "none";
                 };
                 "execute-guarded" = {
                   workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-runs";
                   allow_workspace_write = true;
-                  allowed_processes = ["rg" "cat" "ls" "jq" "sed" "bash" "python3" "node" "git"];
+                  allowed_processes = [
+                    "agrep"
+                    "als"
+                    "acat"
+                    "asum"
+                    "rg"
+                    "fd"
+                    "cat"
+                    "ls"
+                    "jq"
+                    "yq"
+                    "sed"
+                    "bash"
+                    "python3"
+                    "node"
+                    "git"
+                  ];
                   network_policy = "loopback";
                 };
               };
