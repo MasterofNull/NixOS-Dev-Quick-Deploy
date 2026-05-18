@@ -1,8 +1,8 @@
 # Handoff Memo — 2026-05-18
 
-**Status:** Phase 58B.0 acceptance verdict: PASS. All six domain PRDs satisfy the requested acceptance checks.
-**Last Action:** Codex reviewer verified the six PRDs declare `Implemented`, do not reference `nodePackages.lighthouse`, do not recommend standalone `pkgs.postgis`, keep AIDB seeding framed as pending/follow-on, and do not describe live tools as `not yet provisioned`.
-**Next Step:** advance domains to candidate state
+**Status:** Phase 58B validation evidence in progress. All six domain PRDs have Codex acceptance PASS; all six AIDB namespaces are seeded; all six domains now have representative workflow evidence, with mobile-web partial due fixture Lighthouse mode.
+**Last Action:** Added and ran `scripts/testing/mobile-web-masa-harness.py`; it produced Lighthouse-shaped JSON and MASVS static scan PASS without external installs. Real Lighthouse packaging remains a decision before validation if strict Lighthouse CLI evidence is required.
+**Next Step:** run/record review-gate PASS evidence before any `implemented → validated` lifecycle update. Do **not** advance domains to `candidate` yet.
 **Context Bloat:** Medium
 
 ## Phase 58B.0 reviewer verdict
@@ -76,12 +76,12 @@ Required order:
   - `embedded-hardware`: PASS — Verilator lint of tiny Verilog module
   - `gis-systems`: PASS — GeoJSON CRS validation, EPSG:3857 transform, GDAL PNG generation
   - `scientific-research`: PASS — Snakemake CSV → deterministic summary → Pandoc PDF, repeated with identical numerical output
-  - `mobile-web`: BLOCKED / follow-up — no local Lighthouse binary; `.#mobile-web` validation remains dependency-heavy/silent
+  - `mobile-web`: PASS / partial — deterministic MASA harness emitted Lighthouse-shaped JSON and MASVS static scan PASS; real Lighthouse binary still absent and `.#mobile-web` remains dependency-heavy/silent
 
 ## Outstanding operational work
 
-1. Add/select a deterministic mobile-web validation harness for Lighthouse JSON + MASVS-aligned static sample scan.
-2. Record review-gate evidence where required by each PRD.
+1. Record review-gate evidence where required by each PRD.
+2. Decide whether mobile-web fixture Lighthouse mode is sufficient for `validated`, or require a real Lighthouse binary before validation.
 3. Move domains from `implemented` to `validated` only after representative workflow and review evidence exists.
 4. Then begin soak tracking for later `candidate` / `promoted` decisions.
 
@@ -99,3 +99,4 @@ Required order:
 - `.agents/plans/phase-58b-domain-validation-workflows.md`
 - `.agents/plans/phase-58b-domain-validation-evidence.md`
 - `scripts/ai/aq-collaborate` retargeted from removed `ai-stack/agentic-patterns` to `lib/l4-coord/agents` and repaired `start`
+- `scripts/testing/mobile-web-masa-harness.py`

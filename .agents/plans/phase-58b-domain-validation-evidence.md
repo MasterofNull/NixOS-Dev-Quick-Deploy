@@ -13,7 +13,7 @@
 | embedded-hardware | `nix develop .#embedded` Verilator lint on tiny Verilog module | PASS | No hardware/JTAG/write operations |
 | gis-systems | `nix develop .#gis` GeoJSON CRS validation, EPSG:3857 transform, GDAL PNG generation | PASS | Initial matplotlib approach failed because GIS shell lacks matplotlib; GDAL-native map generation passed |
 | scientific-research | `nix develop .#scientific` Snakemake CSV → deterministic summary → Pandoc PDF, run twice | PASS | Initial pandas-in-Snakemake attempt failed; standard-library analysis path passed while preserving reproducibility criterion |
-| mobile-web | Lighthouse JSON + MASVS static sample scan | BLOCKED / follow-up | `.#mobile-web` validation is dependency-heavy and remained silent/running; no local `lighthouse` binary present |
+| mobile-web | `scripts/testing/mobile-web-masa-harness.py` Lighthouse-shaped JSON + MASVS static fixture scan | PASS / partial | Deterministic harness passes with fixture Lighthouse mode; real Lighthouse binary is still not locally present and `.#mobile-web` remains dependency-heavy |
 
 ## Live AIDB namespace evidence
 
@@ -34,16 +34,15 @@ Verified with live AIDB `GET /documents?project=<namespace>&limit=1000`:
 2. `scripts/data/ingest-project-knowledge.py` defaulted to `localhost:8002`; Codex changed it to `127.0.0.1:8002` to match service binding and avoid intermittent timeout ambiguity.
 3. GIS shell includes GeoPandas but not matplotlib; static map validation should use GDAL-native tools unless matplotlib is intentionally added.
 4. Scientific shell exposes pandas to `python3`, but the first Snakemake job using `python` failed to import pandas. The successful validation used `python3` and standard library; future templates should prefer explicit `python3` or shell-specific interpreter paths.
-5. Mobile-web validation needs a smaller deterministic harness:
-   - either package/provide Lighthouse in the dev shell,
-   - or add a repo-local audit fixture that produces Lighthouse-compatible JSON without network installs,
-   - then run MASVS-aligned static sample scan.
+5. Mobile-web now has a smaller deterministic harness: `scripts/testing/mobile-web-masa-harness.py`.
+   - It runs real Lighthouse when a URL and `lighthouse` binary are available.
+   - It falls back to deterministic fixture Lighthouse-shaped JSON when Lighthouse is absent.
+   - It runs MASVS-aligned static checks for storage, network, and hardcoded-secret risks.
+6. `nix develop .#mobile-web` remains dependency-heavy; the attempted shell run began copying Flutter/Playwright closures and stayed silent for several minutes.
 
 ## Lifecycle recommendation
 
 Do **not** promote domains yet.
 
-- Security, systems, embedded, GIS, and scientific have representative workflow evidence and can move toward review-gate evaluation.
-- Mobile-web remains pending representative Lighthouse/MASVS workflow evidence.
+- All six domains now have representative workflow evidence, with mobile-web marked **partial** because the harness used fixture Lighthouse mode instead of a real Lighthouse binary.
 - No domain should move from `implemented` to `validated` until the required review-gate PASS is recorded.
-

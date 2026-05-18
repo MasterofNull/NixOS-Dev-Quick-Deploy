@@ -2779,26 +2779,31 @@ async def _prom_scalar(query: str) -> Optional[float]:
 async def _aq_report_snapshot(ttl_seconds: int = 300) -> Dict[str, Any]:
     """Return cached aq-report JSON snapshot for dashboard internals.
 
-    TTL is 300 s — aq-report takes 120+ s on Renoir APU, running it every 30 s
-    causes a continuous aq-report storm and event-loop overload.  We prefer the
-    persisted snapshot written by the ai_insights background task, and only fall
-    back to spawning aq-report directly when that file is missing.
+    NEVER spawns aq-report inline — aq-report takes 60-180s on Renoir APU and
+    would block the /api/metrics endpoint.  The ai_insights background service
+    owns aq-report execution and writes the persisted snapshot; this function
+    only reads it.
+
+    Priority:
+      1. In-memory cache (hot path, TTL=300s)
+      2. Persisted snapshot file written by ai_insights service
+      3. Stale in-memory cache (returned rather than blocking)
+      4. Empty dict (no data yet; dashboard shows '--')
     """
     now = time.time()
     cached = _AQ_REPORT_CACHE.get("payload")
 
-    # Return cached non-empty result immediately (hot path)
+    # 1. Hot path: valid in-memory cache
     if cached and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
         return cached
 
-    # Always check the persisted snapshot written by ai_insights background task —
-    # even when cache has an empty dict (stale failed run), because ai_insights may
-    # have since written a fresh result.
-    _persisted = Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+    # 2. Persisted snapshot written by the ai_insights background service.
+    #    Re-read on every cache miss so we pick up fresh data without a restart.
+    _persisted = Path(
+        os.getenv("DASHBOARD_AI_INSIGHTS_REPORT_PATH", "").strip()
+        or "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json"
+    )
     try:
-        _env_path = os.getenv("DASHBOARD_AI_INSIGHTS_REPORT_PATH", "").strip()
-        if _env_path:
-            _persisted = Path(_env_path)
         if _persisted.exists() and _persisted.stat().st_size > 4:
             _text = _persisted.read_text(encoding="utf-8", errors="replace").strip()
             if _text and _text.startswith("{"):
@@ -2810,52 +2815,12 @@ async def _aq_report_snapshot(ttl_seconds: int = 300) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Return stale cache (even empty dict) if TTL has not expired
-    if cached is not None and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds:
+    # 3. Return stale cache rather than blocking on aq-report
+    if cached is not None and (now - float(_AQ_REPORT_CACHE.get("ts", 0.0))) < ttl_seconds * 4:
         return cached
 
-    # Resolve aq-report: prefer repo-relative path; fall back to PATH then NixOS profile
-    # (/run/current-system/sw/bin/ is not in the systemd service PATH by default)
-    report_script = _script_path("aq-report")
-    if not report_script.exists():
-        _which = (
-            shutil.which("aq-report")
-            or (os.path.isfile("/run/current-system/sw/bin/aq-report") and "/run/current-system/sw/bin/aq-report")
-            or None
-        )
-        report_script = Path(_which) if _which else report_script
-    if not report_script.exists():
-        payload = {}
-    else:
-        try:
-            # aq-report can take 30–60s on large repos; use a short timeout so that
-            # the /api/metrics endpoint stays responsive for the dashboard.
-            # Stale cached data (ttl_seconds=30) is returned on subsequent calls anyway.
-            proc = await asyncio.wait_for(
-                asyncio.to_thread(
-                    subprocess.run,
-                    [str(report_script), "--since=7d", "--format=json"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=8,
-                    cwd=str(_repo_root()),
-                ),
-                timeout=10.0,
-            )
-            if proc.returncode == 0:
-                payload = json.loads(proc.stdout or "{}")
-                if not isinstance(payload, dict):
-                    payload = {}
-            else:
-                logger.warning("aq-report exited %s: %s", proc.returncode, proc.stderr[:200])
-                payload = {}
-        except Exception:  # noqa: BLE001
-            payload = {}
-
-    _AQ_REPORT_CACHE["ts"] = now
-    _AQ_REPORT_CACHE["payload"] = payload
-    return payload
+    # 4. No data available yet — return empty; dashboard renders '--'
+    return {}
 
 
 @router.get("/metrics")
