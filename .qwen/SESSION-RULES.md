@@ -63,7 +63,7 @@ Every task completion must include:
 
 ### 5. Sub-Agent Boundaries
 
-**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). Qwen fills the **implementer** role. Summary:
+**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). **Eligibility SSOT → `docs/architecture/qwen-task-eligibility.md`** (Phase 58A.5). Qwen fills the **implementer** role. Summary:
 
 As Qwen (implementer):
 - ✅ DO: Implementation slices, test scaffolding, config/Nix changes, documentation within assigned scope
