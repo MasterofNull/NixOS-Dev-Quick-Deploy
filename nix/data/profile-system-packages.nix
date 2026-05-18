@@ -36,6 +36,13 @@
     "cmake"
     "clang"
     "zlib"
+
+    # ── Domain tooling (Phase 58A+ capability expansion) ─────────────────────
+    # systems-software domain: shell static analysis always available system-wide.
+    "shellcheck"
+    # security-systems domain: lightweight security linting always available.
+    # semgrep and bandit are in the security dev shell (too large for system profile).
+    "trivy"
   ];
 
   gaming = [

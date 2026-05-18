@@ -1,7 +1,7 @@
 {
   "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
-  "_version": "1.0",
-  "_updated": "2026-05-14",
+  "_version": "1.1",
+  "_updated": "2026-05-18",
   "intents": {
     "code_generation": {
       "profile": "local-tool-calling",
@@ -72,6 +72,48 @@
       "fallback_profile": "local",
       "memory_recall": false,
       "rag_project": "procedural"
+    },
+    "security_analysis": {
+      "profile": "remote-reasoning",
+      "min_confidence": 0.45,
+      "fallback_profile": "local-tool-calling",
+      "memory_recall": true,
+      "rag_project": "security-findings,best-practices,semantic"
+    },
+    "systems_software": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": true,
+      "rag_project": "nix-systems-patterns,logic-patterns,procedural"
+    },
+    "embedded_hardware": {
+      "profile": "remote-reasoning",
+      "min_confidence": 0.45,
+      "fallback_profile": "local-tool-calling",
+      "memory_recall": true,
+      "rag_project": "embedded-hardware-patterns,semantic"
+    },
+    "mobile_web": {
+      "profile": "remote-reasoning",
+      "min_confidence": 0.4,
+      "fallback_profile": "local-tool-calling",
+      "memory_recall": true,
+      "rag_project": "mobile-web-patterns,best-practices,semantic"
+    },
+    "scientific_research": {
+      "profile": "remote-reasoning",
+      "min_confidence": 0.4,
+      "fallback_profile": "local-tool-calling",
+      "memory_recall": true,
+      "rag_project": "scientific-research-patterns,semantic"
+    },
+    "gis_systems": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.4,
+      "fallback_profile": "local",
+      "memory_recall": true,
+      "rag_project": "gis-systems-patterns,semantic"
     }
   }
 }
