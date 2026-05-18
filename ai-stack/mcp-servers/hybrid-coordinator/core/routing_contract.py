@@ -154,11 +154,6 @@ def _build_profile_registry() -> Dict[str, ProfileEntry]:
             model_alias="llama-cpp-local",
             description="Direct llama.cpp inference, no switchboard",
         ),
-        "local-chat": ProfileEntry(
-            tier=RoutingTier.LOCAL,
-            model_alias="llama-cpp-local",
-            description="Chat-optimised local inference",
-        ),
         # Continue IDE lane — local model via switchboard ingress
         "continue-local": ProfileEntry(
             tier=RoutingTier.LOCAL,
@@ -171,15 +166,18 @@ def _build_profile_registry() -> Dict[str, ProfileEntry]:
             description="Local agent lane for direct harness execution",
         ),
         # ── edge tiers (local specialised models) ────────────────────────────
+        # aspirational — unprovisioned on current hardware (single llama.cpp instance, Renoir APU).
+        # Do not route to these until LLAMA_CPP_CODER_URL / LLAMA_CPP_REASONING_URL are configured.
+        # See docs/architecture/routing-profile-inventory.md D-4 and capability-lifecycle-registry.json.
         "local-coding": ProfileEntry(
             tier=RoutingTier.EDGE,
             model_alias="llama-cpp-coder",
-            description="Local coder model (LLAMA_CPP_CODER_URL)",
+            description="Local coder model (LLAMA_CPP_CODER_URL) — aspirational, unprovisioned",
         ),
         "local-reasoning": ProfileEntry(
             tier=RoutingTier.EDGE,
             model_alias="llama-cpp-reasoning",
-            description="Local reasoning model (LLAMA_CPP_REASONING_URL / DeepSeek-R1)",
+            description="Local reasoning model (LLAMA_CPP_REASONING_URL / DeepSeek-R1) — aspirational, unprovisioned",
         ),
         # ── remote-free tiers ────────────────────────────────────────────────
         "remote-free": ProfileEntry(
