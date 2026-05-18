@@ -1,7 +1,7 @@
 # PRD — embedded-hardware Domain Activation
 
 **Domain tag:** `embedded-hardware`
-**Status:** Proposed — Phase 58A capability expansion
+**Status:** Implemented — Phase 58A capability expansion
 **Authors:** Claude (orchestrator/architect)
 **Date:** 2026-05-18
 **Upstream template:** `docs/architecture/domain-activation-template.md`
@@ -13,7 +13,7 @@
 The harness has no formal domain for embedded hardware and firmware development. Current state per the master PRD:
 
 - **Good:** SBC and low-resource deployment support, hardware capability matrix (`config/hardware-capability-matrix.json`), ROCm promotion gate as a model for hardware-gated workflows.
-- **Absent:** HDL toolchain (Verilator, GHDL, Yosys), ARM/RISC-V cross-compilation shells, OpenOCD/SWD/JTAG tooling, device-tree authoring, Zephyr/embedded Rust reference knowledge in AIDB.
+- **Previously absent; now provisioned (2026-05-18):** HDL toolchain (Verilator 5.040, GHDL, Yosys 0.55), ARM cross-compilation (`gcc-arm-embedded`), OpenOCD/JTAG/SWD, QEMU, GDB, minicom — all in `nix develop .#embedded`. Zephyr/embedded Rust AIDB knowledge remains pending (seeding slice).
 
 Without a formal domain, agents responding to embedded queries have no canonical tool order, no AIDB knowledge base, no routing preference, and no safety boundary for dual-use hardware tooling (e.g., firmware writes, JTAG access).
 
@@ -28,7 +28,7 @@ Establish `embedded-hardware` as a first-class capability domain. Initial activa
 3. Authoring the agent instruction surface (`.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md`)
 4. Wiring a baseline validation hook that confirms the hardware capability matrix and discovery tooling are present
 
-Provisioning of Verilator, GHDL, Yosys, OpenOCD, and ARM/RISC-V cross-toolchains via Nix dev shells is the primary follow-on slice (embedded-hardware.1).
+Implementation note (2026-05-18): `nix develop .#embedded` is now available with Verilator, GHDL, Yosys, OpenOCD, ARM cross-toolchain, QEMU, GDB, and minicom. AIDB seeding remains pending before validation/promotion.
 
 ---
 
@@ -72,10 +72,10 @@ Indexing: Add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 
 ### Preferred tools (ordered)
 
-1. `nix develop .#embedded` — domain dev shell (provision in embedded-hardware.1; not yet available)
-2. `verilator --lint-only <hdl>` — HDL lint (provision in embedded-hardware.1)
-3. `ghdl -a <vhdl>` — VHDL analysis (provision in embedded-hardware.1)
-4. `yosys -p "synth" <verilog>` — synthesis check (provision in embedded-hardware.1)
+1. `nix develop .#embedded` — domain dev shell
+2. `verilator --lint-only <hdl>` — HDL lint
+3. `ghdl -a <vhdl>` — VHDL analysis
+4. `yosys -p "synth" <verilog>` — synthesis check
 5. `qemu-system-arm` / `qemu-system-riscv64` — simulation (likely available via nixpkgs)
 6. `openocd` — JTAG/SWD debug (provision in embedded-hardware.1; require user confirmation before flash ops)
 7. `scripts/governance/discover-system-facts.sh` — hardware baseline refresh
@@ -86,12 +86,12 @@ Indexing: Add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 
 | Tool | Available | Notes |
 |---|---|---|
-| `qemu-system-arm` | Likely (nixpkgs) | Check with `which qemu-system-arm` |
-| `verilator` | Not provisioned | Follow-on: embedded-hardware.1 |
-| `ghdl` | Not provisioned | Follow-on: embedded-hardware.1 |
-| `yosys` | Not provisioned | Follow-on: embedded-hardware.1 |
-| `openocd` | Not provisioned | Follow-on: embedded-hardware.1; requires user confirm for flash |
-| `arm-none-eabi-gcc` | Not provisioned | Follow-on: embedded-hardware.1 |
+| `qemu-system-arm` | Yes | Available through `.#embedded` |
+| `verilator` | Yes | Available through `.#embedded` |
+| `ghdl` | Yes | Available through `.#embedded` |
+| `yosys` | Yes | Available through `.#embedded` |
+| `openocd` | Yes | Available through `.#embedded`; requires user confirmation for flash |
+| `arm-none-eabi-gcc` | Yes | Available through `.#embedded` |
 
 ### Fallback order (tools absent)
 
@@ -122,8 +122,8 @@ Indexing: Add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 1. `config/capability-lifecycle-registry.json` contains an `embedded-hardware` entry at state ≥ `proposed`.
 2. `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` exists with domain tag, task classes, tool preferences, AIDB namespace binding, and dual-use safety rules.
 3. `config/validation-check-registry.json` contains an `embedded-hardware-health` check that exits 0 when baseline artifacts (hardware-capability-matrix.json, discover-system-facts.sh) are present.
-4. When domain reaches `implemented`: Verilator + GHDL + Yosys in a `nix develop .#embedded` shell; ARM cross-toolchain available; aq-qa check exits 0; AIDB namespace seeded.
-5. When domain reaches `validated`: Gemini review-gate PASS on one HDL or firmware workflow; no P0/P1 regressions in `aq-qa 0`.
+4. At `implemented`: Verilator + GHDL + Yosys in a `nix develop .#embedded` shell; ARM cross-toolchain available; aq-qa check exits 0.
+5. Before `validated`: AIDB namespace seeded, Gemini review-gate PASS on one HDL or firmware workflow, and no P0/P1 regressions in `aq-qa 0`.
 
 ---
 

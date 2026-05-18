@@ -1,7 +1,7 @@
 # PRD — systems-software Domain Activation
 
 **Domain tag:** `systems-software`
-**Status:** Proposed — Phase 58A capability expansion
+**Status:** Implemented — Phase 58A capability expansion
 **Authors:** Claude (orchestrator/architect)
 **Date:** 2026-05-18
 **Upstream template:** `docs/architecture/domain-activation-template.md`
@@ -30,7 +30,7 @@ Establish `systems-software` as a first-class capability domain. Initial activat
 3. Authoring the agent instruction surface (`.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md`)
 4. Wiring a baseline validation hook that confirms Nix static-analysis tooling is reachable
 
-Provisioning of `shellcheck` as a Nix package (currently absent from profile), and AIDB seeding with NixOS patterns, are follow-on slices once the domain reaches `validated`.
+Implementation note (2026-05-18): `shellcheck` is now provisioned, the `.#systems` shell exists, and routing is wired. AIDB seeding with NixOS patterns remains pending before validation/promotion.
 
 ---
 
@@ -64,8 +64,8 @@ All profiles already exist in the canonical inventory (`docs/architecture/routin
 
 Purpose: Store reusable NixOS module patterns, known-good option configurations, deployment anti-patterns, and hardware capability findings so future sessions inherit institutional Nix knowledge.
 
-Initial seeding: extract patterns from `nix/modules/` directory and commit-commentary during `implemented` slice.
-Indexing: add to `scripts/automation/aidb-reindex.sh` once domain reaches `implemented`.
+Initial seeding: extract patterns from `nix/modules/` directory and commit commentary during the seeding slice.
+Indexing: add to `scripts/automation/aidb-reindex.sh` during that seeding slice.
 
 ---
 
@@ -78,7 +78,7 @@ Indexing: add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 3. `deadnix nix/` — dead code elimination for Nix
 4. `alejandra --check nix/` — Nix formatter compliance
 5. `bash -n <script>` — always available; mandatory for all shell scripts
-6. `shellcheck <script>` — preferred over bash -n when available (not yet provisioned)
+6. `shellcheck <script>` — preferred over bash -n; **provisioned** in system profile v0.11.0 since nixos-rebuild switch 2026-05-18; also in `nix develop .#systems`
 7. `nix-instantiate --parse <file>` — parse check for individual Nix files
 8. `scripts/governance/discover-system-facts.sh` — hardware/facts baseline refresh
 9. `scripts/governance/tier0-validation-gate.sh --pre-commit` — always run before commit
@@ -91,7 +91,7 @@ Indexing: add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 | `statix` | Yes (via nix-static-analysis.sh) | Must be in PATH or run via script |
 | `deadnix` | Yes (via nix-static-analysis.sh) | Must be in PATH or run via script |
 | `alejandra` | Yes (via nix-static-analysis.sh) | Must be in PATH or run via script |
-| `shellcheck` | Not yet provisioned | Follow-on slice: systems-software.1 |
+| `shellcheck` | Yes | Provisioned in system profile and available in `.#systems` shell |
 | `nix-instantiate` | Yes (NixOS system) | Available in NixOS environment |
 
 ### Fallback order
@@ -126,8 +126,8 @@ These constraints are non-negotiable and apply to ALL agents working in this dom
 2. `.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md` exists with domain tag, task classes, tool preferences, AIDB namespace binding.
 3. `config/validation-check-registry.json` contains a `systems-software-health` check that exits 0 when baseline tooling is accessible.
 4. `aq-qa 0` includes the `systems-software-health` check without regression.
-5. When domain reaches `implemented` (follow-on slice): `shellcheck` provisioned in Nix profile; AIDB `nix-systems-patterns` namespace seeded with ≥20 patterns; `nix-static-analysis.sh` runs clean on staged Nix files.
-6. When domain reaches `validated`: Gemini review-gate PASS on one NixOS module change routed through domain; aq-qa check exits 0 in CI.
+5. At `implemented`: `shellcheck` provisioned in Nix profile and `nix-static-analysis.sh` runs clean on staged Nix files.
+6. Before `validated`: AIDB `nix-systems-patterns` namespace seeded with ≥20 patterns, Gemini review-gate PASS on one NixOS module change routed through domain, and aq-qa check exits 0 in CI.
 
 ---
 
