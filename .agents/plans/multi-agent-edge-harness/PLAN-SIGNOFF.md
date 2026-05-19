@@ -89,8 +89,45 @@ Files:
 - MOD: `dashboard/dashboard.html` (Model Lifecycle panel)
 - MOD: `nix/modules/roles/ai-stack.nix` (extend defaultModelCatalog schema)
 
-### Phase B — IPM Thermal-Aware Inference (GATED on Qwen sign-off)
-### Phase C — MLFQ Scheduler + A2A + OTel (AUTHORIZED, post-Phase-A)
+### Phase B — IPM Thermal-Aware Inference ✓ IMPLEMENTED (commit 1762acaa)
+- inference_param_manager.py, http_server.py, dashboard.html (THERMAL KPI)
+- All Qwen Q1–Q7 items closed (see QWEN-ITEMS-GEMINI-FINDINGS.md + QWEN-ITEMS-CODEX-FINDINGS.md)
+
+### Phase C — MLFQ Scheduler ✓ IMPLEMENTED (commit 1762acaa)
+- mlfq_scheduler.py, http_server.py scheduler lifecycle + /admin/v1/scheduler/status
+
+### Phase D — A2A Peer Mesh ✓ IMPLEMENTED (commit 6e1d8072)
+- openai_a2a_handlers.py: handle_a2a_tasks_send + POST /a2a/tasks/send (AM-C1)
+- Ed25519 agent card signing already present with 4-backend fallback (AM-G2)
+- cryptography added to hybridPython Nix env (activates after nixos-rebuild)
+
+### Phase E — OTel GenAI SemConv Migration ✓ IMPLEMENTED (commit 0e1be322)
+- trace_collector.py: gen_ai.* attributes, OTLP export, otel_attributes JSONB column
+
+### Phase F — Acceptance Test Harness ✓ IMPLEMENTED (commit 6e1d8072)
+- scripts/testing/maeah-acceptance-tests.sh: 10 normative gates + 3 bonus (AM-C5)
+
+### Phase G — NixOS Rebuild + Integration ⏳ REQUIRES USER ACTION
+**Cannot be done from Claude Code shell — requires terminal with sudo.**
+
+```bash
+# Run from terminal:
+sudo nixos-rebuild switch --flake .#hyperd
+
+# After rebuild, verify:
+bash scripts/testing/maeah-acceptance-tests.sh --verbose
+
+# Run full acceptance:
+aq-qa 0
+```
+
+What nixos-rebuild deploys:
+- inference_param_manager.py + mlfq_scheduler.py (Phase B+C) into nix store
+- http_server.py changes (hardware state API, scheduler lifecycle, tasks/send route)
+- cryptography Python package for Ed25519 signing
+- All coordinator Python source updates
+
+After rebuild, all aq-qa 0.4.1 gate failures should resolve once llama model finishes loading.
 
 ---
 
