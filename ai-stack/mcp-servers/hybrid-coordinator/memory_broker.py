@@ -35,7 +35,7 @@ logger = logging.getLogger("hybrid-coordinator")
 # ---------------------------------------------------------------------------
 # Valid memory types — matches Qdrant collection suffixes in memory_manager.py
 # ---------------------------------------------------------------------------
-MEMORY_TYPES = frozenset({"working", "episodic", "semantic", "procedural"})
+MEMORY_TYPES = frozenset({"working", "episodic", "semantic", "procedural", "error_solutions", "interaction_history"})
 
 # Contradiction signal pairs (heuristic; expands over time)
 _CONTRADICTION_ANTONYMS: List[tuple] = [
