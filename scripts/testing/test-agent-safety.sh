@@ -26,6 +26,17 @@ _fail() { echo "  [FAIL] $1" >&2; echo "         Expected: $2" >&2; echo "      
 # Run a python check and return stdout
 _py() { python3 -c "import sys; sys.path.insert(0,'${SCE_DIR}'); $1"; }
 
+_check_command_status() {
+  local command="$1"
+  python3 - "$SCE_DIR" "$command" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from safe_command_executor import check_command
+ok, reason = check_command(sys.argv[2])
+print("allowed" if ok else "blocked")
+PY
+}
+
 echo ""
 echo "======================================================"
 echo "  Agent Safety Smoke Tests — SafeCommandExecutor"
@@ -57,7 +68,7 @@ SAFE_CMDS=(
 )
 
 for cmd in "${SAFE_CMDS[@]}"; do
-  result=$(_py "from safe_command_executor import check_command; ok,reason=check_command('${cmd}'); print('allowed' if ok else 'blocked:'+reason)" 2>/dev/null)
+  result=$(_check_command_status "$cmd" 2>/dev/null || echo "error")
   if [[ "$result" == "allowed" ]]; then
     _pass "ALLOWED: ${cmd}"
   else
@@ -93,7 +104,7 @@ ADVERSARIAL_CMDS=(
 )
 
 for cmd in "${ADVERSARIAL_CMDS[@]}"; do
-  result=$(_py "from safe_command_executor import check_command; ok,reason=check_command('${cmd}'); print('allowed' if ok else 'blocked')" 2>/dev/null)
+  result=$(_check_command_status "$cmd" 2>/dev/null || echo "error")
   if [[ "$result" == "blocked" ]]; then
     _pass "BLOCKED: ${cmd}"
   else
@@ -113,9 +124,7 @@ INJECTION_CMDS=(
 )
 
 for cmd in "${INJECTION_CMDS[@]}"; do
-  # Escape single quotes for python
-  escaped_cmd="${cmd//\'/\'\'\'}"  
-  result=$(_py "from safe_command_executor import check_command; ok,reason=check_command('${escaped_cmd}'); print('allowed' if ok else 'blocked')" 2>/dev/null || echo "error")
+  result=$(_check_command_status "$cmd" 2>/dev/null || echo "error")
   if [[ "$result" == "blocked" ]]; then
     _pass "BLOCKED injection: ${cmd:0:50}"
   else

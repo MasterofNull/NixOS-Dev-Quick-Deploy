@@ -1,3 +1,11 @@
+# Handoff Memo — 2026-05-19 Phase 59.0
+
+**Status:** Phase 59.0 hardening complete. Full `aq-qa all` is green: **169 passed, 0 failed, 2 skipped**. Tier0 pre-commit gate is green: **14/14 PASS**.
+**Last Action (Codex):** Fixed retrieval acceptance contract drift by keeping `avg_collection_count` present and surfacing `metadata_missing` when old route_search audit rows lack producer metadata. Fixed `test-agent-safety.sh` command quoting/`set -e` behavior so adversarial curl checks complete and the safety smoke exits 0 when all rows pass.
+**Open Issues:** Route-search audit producer still should emit real `retrieval_collection_count`; current `avg_collection_count=0.0` indicates metadata missing, not measured breadth. RAG recall remains around 59.7%, so retrieval quality tuning is still the next substantive Phase 59 target.
+**Next Step:** Start Phase 59.1: emit real route_search retrieval metadata at the producer, then tune RAG/domain retrieval toward the 80%+ target with measured before/after evidence.
+**Context Bloat:** Medium
+
 # Handoff Memo — 2026-05-19 Phase 58B.9
 
 **Status:** Collaboration/routing/mobile-web hygiene complete. `aq-collaborate list` no longer fails on `postgres/ai_context`; it defaults to `aidb/aidb` and falls back to durable collaboration files when DB collaboration views are absent. Delegation registry stale rows reconciled with `scripts/ai/aq-delegation-registry`. Phase 58B routing audit added and passing. Mobile-web Lighthouse posture clarified: fixture mode is valid for promoted validation plumbing; real Lighthouse is required before any future mobile-web default transition.

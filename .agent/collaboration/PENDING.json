@@ -1,13 +1,14 @@
 {
-  "task": "59.0-observability-and-safety-gate-hardening",
+  "task": "59.1-route-search-metadata-and-rag-quality",
   "agent": "Codex",
-  "goal_state": "Close remaining QA-all failures before Phase 59 domain adoption/retrieval tuning.",
+  "goal_state": "Emit real route_search retrieval_collection_count metadata and improve measured RAG/domain retrieval quality.",
   "files": [
+    "ai-stack/mcp-servers/hybrid-coordinator/*",
     "scripts/ai/aq-report",
-    "scripts/testing/test-agent-safety.sh",
     "scripts/ai/aq-qa",
+    "scripts/testing/test-retrieval-breadth-history.py",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PENDING.json"
   ],
-  "next_step": "Fix aq-report retrieval acceptance metric drift (`avg_collection_count` missing) and agent safety smoke nonzero exit inconsistency before expanding Phase 59 work."
+  "next_step": "Find the route_search audit producer, emit retrieval_collection_count/retrieval_profile metadata, then use aq-report/aq-qa evidence to tune RAG recall from ~59.7% toward 80%+."
 }
