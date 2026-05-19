@@ -140,13 +140,40 @@ async def handle_memory_recall(request: web.Request) -> web.Response:
         # Phase 54.1 — Use MemoryBroker (Level 5)
         _mem_recall_start = time.time()
         if _memory_broker:
-            rows = await _memory_broker.read(
-                memory_type=normalize_memory_type(data.get("memory_type", "semantic")),
-                query=query,
-                top_k=int(data.get("limit", 5)),
-                include_expired=bool(data.get("include_expired", False)),
-            )
-            result = {"results": rows, "count": len(rows)}
+            limit = max(1, int(data.get("limit", 5)))
+            requested_raw = data.get("memory_types")
+            if isinstance(requested_raw, list) and requested_raw:
+                requested_types = [normalize_memory_type(item) for item in requested_raw]
+            elif data.get("memory_type"):
+                requested_types = [normalize_memory_type(data.get("memory_type"))]
+            else:
+                # Preserve the pre-broker contract: omitted/null memory_types means
+                # search all typed memory collections, not semantic-only.
+                requested_types = [
+                    "semantic",
+                    "procedural",
+                    "episodic",
+                    "error_solutions",
+                    "interaction_history",
+                ]
+
+            rows = []
+            seen_ids = set()
+            for memory_type in requested_types:
+                for row in await _memory_broker.read(
+                    memory_type=memory_type,
+                    query=query,
+                    top_k=limit,
+                    include_expired=bool(data.get("include_expired", False)),
+                ):
+                    row_id = row.get("memory_id") or row.get("id") or (row.get("content"), row.get("summary"))
+                    if row_id in seen_ids:
+                        continue
+                    seen_ids.add(row_id)
+                    rows.append(row)
+            rows.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+            rows = rows[:limit]
+            result = {"results": rows, "count": len(rows), "memory_types": requested_types}
         else:
             # Fallback to direct recall
             result = await _recall_memory(

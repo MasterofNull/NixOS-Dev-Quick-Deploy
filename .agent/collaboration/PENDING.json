@@ -21,6 +21,24 @@
       "tier0 14 passed 0 failed"
     ]
   },
+  "codex_phase59_2": {
+    "agent": "codex",
+    "completed_at": "2026-05-19T03:19:08.487368+00:00",
+    "files": [
+      "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_context_handlers.py",
+      "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py",
+      "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
+      "scripts/testing/test-memory-recall-broker-contract.py"
+    ],
+    "finding": "MemoryBroker /memory/recall path defaulted null memory_types to semantic-only and recall rows stripped metadata used by /api/memory/facts scope filtering.",
+    "status": "completed",
+    "task": "Phase 59.2 Memory recall contract diagnosis/fix",
+    "validation": [
+      "py_compile PASS",
+      "test-memory-recall-broker-contract PASS",
+      "tier0 14 passed 0 failed"
+    ]
+  },
   "files": [
     "ai-stack/mcp-servers/hybrid-coordinator/*",
     "scripts/ai/aq-report",

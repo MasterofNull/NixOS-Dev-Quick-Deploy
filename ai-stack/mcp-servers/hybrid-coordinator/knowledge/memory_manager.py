@@ -462,6 +462,10 @@ async def recall_agent_memory(
                 "sources": item.get("sources"),
                 "valid_from": vf,
                 "valid_until": vu,
+                # Preserve sanitized payload metadata for MemoryBroker consumers
+                # such as /api/memory/facts scope filtering and supersession.
+                "metadata": payload,
+                "context": payload,
             }
         )
         if len(memory_rows) >= limit_value:
