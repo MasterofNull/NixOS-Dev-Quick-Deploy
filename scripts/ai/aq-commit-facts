@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/config/service-endpoints.sh"
+HYBRID_COORDINATOR_URL="${HYBRID_COORDINATOR_URL:-${HYBRID_URL:-http://127.0.0.1:8003}}"
 
 SINCE="HEAD~1"
 DRY_RUN=0
@@ -56,7 +57,23 @@ DIFF SUMMARY:
 ${DIFF_CONTENT}"
 
 printf "  [*] Distilling architectural facts via local Qwen...\n"
-FACTS_JSON=$("${SCRIPT_DIR}/delegate-to-local" --mode direct --prompt "${PROMPT}" --wait 2>/dev/null | grep -o '\[.*\]' || echo "[]")
+FACTS_RAW=$("${SCRIPT_DIR}/delegate-to-local" --mode direct --prompt "${PROMPT}" --wait 2>/dev/null || true)
+FACTS_JSON=$(printf '%s\n' "${FACTS_RAW}" | python3 -c '
+import json, sys
+text = sys.stdin.read()
+decoder = json.JSONDecoder()
+for idx, char in enumerate(text):
+    if char != "[":
+        continue
+    try:
+        value, _ = decoder.raw_decode(text[idx:])
+    except json.JSONDecodeError:
+        continue
+    if isinstance(value, list):
+        print(json.dumps(value))
+        raise SystemExit(0)
+print("[]")
+')
 
 if [[ "${FACTS_JSON}" == "[]" ]]; then
     printf "No significant facts extracted.\n"
@@ -78,6 +95,7 @@ curl -sf -X POST "${HYBRID_COORDINATOR_URL}/api/memory/facts" \
     >/dev/null || printf "⚠️ Failed to store facts (coordinator unreachable)\n"
 
 # 4. Post Event (Phase 56.6)
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/audit-write.sh"
 audit_event_end "coordinator" "fact-extraction" "success" "0" "Stored $(echo "${FACTS_JSON}" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))") architectural facts" "decision"
 

@@ -168,3 +168,12 @@ Required order:
 ### Next recommended slice
 
 Use the now-measured telemetry baseline to tune RAG quality directly: compare low-recall query classes against selected retrieval profiles, then adjust collection/profile selection only where measured recall or breadth justifies it.
+
+## Tool friction fix — aq-commit-facts endpoint fallback (Codex, 2026-05-19)
+
+While storing Phase 59.1 commit facts, `aq-commit-facts` hit an unbound `HYBRID_COORDINATOR_URL` because `config/service-endpoints.sh` exports `HYBRID_URL`. Codex patched the script to default `HYBRID_COORDINATOR_URL` from `HYBRID_URL` and replaced brittle grep-based JSON extraction with JSONDecoder-based extraction.
+
+Validation:
+- `bash -n scripts/ai/aq-commit-facts` — PASS
+- `shellcheck scripts/ai/aq-commit-facts` — PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`14 passed · 0 failed`)
