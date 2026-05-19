@@ -177,3 +177,32 @@ Validation:
 - `bash -n scripts/ai/aq-commit-facts` — PASS
 - `shellcheck scripts/ai/aq-commit-facts` — PASS
 - `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`14 passed · 0 failed`)
+
+---
+
+## Phase 59.2 — Memory recall contract diagnosis/fix (Codex, 2026-05-19)
+
+### Finding
+
+`aq-memory-recall-benchmark --json` currently reports `1/20` probes passing on the live service. The dominant implementation issue found in repo code is contract drift introduced by MemoryBroker integration:
+
+- `/memory/recall` with omitted/null `memory_types` used to search all typed memory collections, but the broker path searched only `semantic`.
+- `recall_agent_memory` stripped payload metadata from returned rows, so `/api/memory/facts?scope=...` could not filter stored facts by scope.
+- `/api/memory/facts` looked only at `context`, not `metadata`, making it fragile across recall row shapes.
+
+### Completed repo fix
+
+- `knowledge/memory_context_handlers.py` now treats omitted/null `memory_types` as all typed memory collections and combines/dedupes top results.
+- `knowledge/memory_manager.py` now preserves sanitized payload metadata as both `metadata` and `context` in recall rows.
+- `http_server.py` now accepts either `context` or `metadata` for facts scope filtering.
+- Added `scripts/testing/test-memory-recall-broker-contract.py` for this contract.
+
+### Validation
+
+- `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_context_handlers.py ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py ai-stack/mcp-servers/hybrid-coordinator/http_server.py scripts/testing/test-memory-recall-broker-contract.py` — PASS
+- `python3 scripts/testing/test-memory-recall-broker-contract.py` — PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`14 passed · 0 failed`)
+
+### Deployment note
+
+The live benchmark will not reflect this repo fix until the hybrid coordinator service is rebuilt/restarted from this revision. After deployment, rerun `scripts/ai/aq-memory-recall-benchmark --json`; if recall remains below target, the next likely bottleneck is sparse memory corpus coverage, not handler contract drift.

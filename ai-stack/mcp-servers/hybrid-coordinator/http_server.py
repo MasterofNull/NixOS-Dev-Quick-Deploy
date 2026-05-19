@@ -1841,7 +1841,7 @@ async def run_http_mode(port: int) -> None:
         facts = []
         for item in (results if isinstance(results, list) else []):
             content = item.get("content") or item.get("text") or ""
-            ctx = item.get("context") or {}
+            ctx = item.get("context") or item.get("metadata") or {}
             if scope and ctx.get("scope", "") != scope:
                 continue
             facts.append({
