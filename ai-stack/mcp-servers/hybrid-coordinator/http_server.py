@@ -2112,7 +2112,10 @@ async def run_http_mode(port: int) -> None:
             )
 
             # Phase 54.2 — classify intent before any routing decisions
-            _intent_result = _intent_classifier.classify(query) if _intent_classifier else intent_classifier.get_classifier().classify(query)
+            # Use classify_async: keyword-first with semantic rescue for low-confidence
+            # queries (prevents ~47% intent_flip_rate from unknown accumulation).
+            _clf = _intent_classifier or intent_classifier.get_classifier()
+            _intent_result = await _clf.classify_async(query)
             _detected_intent = _intent_result.get("intent", "unknown")
             _intent_conf = _intent_result.get("confidence", 0.0)
             request_context["intent"] = _detected_intent

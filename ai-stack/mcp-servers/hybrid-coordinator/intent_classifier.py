@@ -78,6 +78,43 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
         "check logs", "run diagnostics", "qa check", "system report",
         "maintenance", "uptime", "services list",
     ],
+    # Phase 54.2+ — domain-specific intent signals (wired to routing map v1.1)
+    "troubleshooting": [
+        "crash", "error", "fail", "broken", "not working", "diagnose",
+        "why is", "fix this", "traceback", "exception", "timeout",
+        "hung", "dead", "issue with", "problem with", "keeps failing",
+        "unexpected", "wrong output", "won't start",
+    ],
+    "security_analysis": [
+        "security", "vulnerability", "cve", "exploit", "pentest", "harden",
+        "threat", "attack", "injection", "xss", "csrf", "privilege escalation",
+        "scan for", "trivy", "semgrep", "bandit", "secret leak", "auth bypass",
+    ],
+    "systems_software": [
+        "nix ", "nixos", "flake", "derivation", "nix module", "systemd unit",
+        "shell.nix", "nix overlay", "nix option", "attribute set", "nix expression",
+        "nixpkgs", "nix build", "statix", "deadnix", "alejandra", "nix-tree",
+    ],
+    "embedded_hardware": [
+        "verilog", "vhdl", "fpga", "rtl", "firmware", "microcontroller",
+        "embedded", "uart", "spi", "i2c", "jtag", "bare metal", "arm cortex",
+        "verilator", "ghdl", "yosys", "openocd", "device tree", "dtc",
+    ],
+    "mobile_web": [
+        "typescript", "react", "frontend", "web app", "pwa", "mobile app",
+        "lighthouse", "core web vitals", "javascript", "css", "html",
+        "webpack", "vite", "tsc", "service worker", "accessibility", "axe",
+    ],
+    "scientific_research": [
+        "numpy", "scipy", "pandas", "matplotlib", "jupyter", "snakemake",
+        "statistical", "experiment", "dataset", "regression", "hypothesis",
+        "machine learning", "data analysis", "reproducible", "random seed",
+    ],
+    "gis_systems": [
+        "gis", "geospatial", "gdal", "shapefile", "geojson", "coordinate",
+        "projection", "crs", "epsg", "raster", "vector", "spatial", "qgis",
+        "ogr", "postgis", "spatialite", "wgs84", "map layer", "geopandas",
+    ],
 }
 
 # Load path for routing map
@@ -120,12 +157,51 @@ SEMANTIC_PROTOTYPES: Dict[str, List[str]] = {
         "the service is crashing with a segmentation fault",
         "why am I getting a 404 error on this endpoint",
         "diagnose the connection timeout in the redis client",
+        "the coordinator keeps returning route_search_failed",
+        "my nix derivation fails with infinite recursion",
     ],
     "harness_operation": [
         "is the ai stack healthy right now",
         "run the full qa suite for phase 54",
         "show me a report of tool call performance",
         "diagnose why the coordinator is slow",
+    ],
+    # Phase 54.2+ domain-specific prototypes (matches routing map v1.1 intents)
+    "security_analysis": [
+        "scan this repository for critical CVEs using trivy and semgrep",
+        "review this python function for SQL injection and secret leakage",
+        "how do I harden this NixOS systemd service against privilege escalation",
+        "run bandit on the ai-stack python code and report findings",
+    ],
+    "systems_software": [
+        "write a NixOS module for this new systemd service with proper options and tmpfiles rules",
+        "why is my nix derivation failing with an infinite recursion error in nixpkgs.overlays",
+        "how do I add a flake input, pin it, and expose it as a dev shell",
+        "run statix and deadnix on the options.nix file and fix all warnings",
+    ],
+    "embedded_hardware": [
+        "lint this Verilog RTL counter module with verilator and fix any warnings",
+        "write a GHDL testbench for this VHDL adder and run a simulation",
+        "set up a cross-compilation toolchain for ARM Cortex-M4 in NixOS using gcc-arm-embedded",
+        "parse and validate this device tree source file with dtc",
+    ],
+    "mobile_web": [
+        "write a TypeScript React hook for fetching paginated API data with an AbortController timeout",
+        "analyze why this page scores poorly on Core Web Vitals and suggest LCP improvements",
+        "set up a PWA with offline-first service worker, TypeScript strict mode, and axe accessibility checks",
+        "compile this TypeScript in strict mode and report all type errors",
+    ],
+    "scientific_research": [
+        "run a reproducible scipy t-test with seed 42 and report effect size and 95% confidence interval",
+        "create a Snakemake workflow for processing this RNA-seq dataset deterministically",
+        "analyze this pandas dataframe for outliers using IQR and generate a matplotlib boxplot",
+        "write a statsmodels mixed-effects model for this longitudinal dataset",
+    ],
+    "gis_systems": [
+        "validate the CRS of this GeoJSON file and reproject from WGS84 to EPSG:3857 using ogr2ogr",
+        "process this shapefile with geopandas and calculate area statistics per polygon",
+        "convert this GeoTIFF raster to cloud-optimized format using gdal_translate",
+        "load this OSM pbf file with osmium-tool and extract all road features",
     ],
 }
 
@@ -187,10 +263,10 @@ class IntentClassifier:
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Classify query into an intent using hybrid scoring.
-        
-        NOTE: This synchronous call uses keyword fallback; 
-        async semantic classification is handled by the coordinator.
+        Classify query into an intent using keyword scoring only (sync, <1ms).
+
+        For low-confidence results (score < 0.3) prefer classify_async() which
+        adds semantic rescue via prototype embeddings.
         """
         self._maybe_reload_map()
         query_lower = query.lower()
@@ -211,20 +287,69 @@ class IntentClassifier:
             best_intent = "unknown"
 
         routing = self._get_routing(best_intent, best_score)
-        
-        # Metadata for Level 6 monitoring
+
         classification_metadata = {
             "intent": best_intent,
             "confidence": round(best_score, 3),
             "signals_matched": matched_signals.get(best_intent, []),
-            "cognitive_lift": 0.0, # Filled when semantic classification completes
-            "layers_active": ["L6:Semantic", "L5:Session"] if best_score > 0 else ["L5:Session"]
+            "cognitive_lift": 0.0,
+            "layers_active": ["L6:Semantic", "L5:Session"] if best_score > 0 else ["L5:Session"],
+            "classification_method": "keyword",
         }
 
-        return {
-            **classification_metadata,
-            **routing,
-        }
+        return {**classification_metadata, **routing}
+
+    async def classify_async(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]] = None,
+        semantic_rescue_threshold: float = 0.3,
+        semantic_min_confidence: float = 0.65,
+    ) -> Dict[str, Any]:
+        """
+        Hybrid classify: keywords first; semantic rescue when confidence is low.
+
+        If keyword confidence < semantic_rescue_threshold AND semantic prototypes
+        are warmed AND the best semantic score >= semantic_min_confidence, the
+        semantic winner overrides the keyword result.
+
+        This prevents 'unknown' accumulation for domain-specific queries that
+        lack keyword matches but have clear semantic similarity to prototypes.
+        """
+        result = self.classify(query, context)
+
+        if result.get("confidence", 0.0) >= semantic_rescue_threshold:
+            # Keyword classification is confident — skip embedding call
+            return result
+
+        if not self._prototype_embeddings:
+            # Prototypes not warmed yet — return keyword result
+            return result
+
+        try:
+            semantic_scores = await self.classify_semantic(query)
+        except Exception:
+            return result
+
+        if not semantic_scores:
+            return result
+
+        best_semantic_intent = max(semantic_scores, key=lambda k: semantic_scores[k])
+        best_semantic_score = semantic_scores[best_semantic_intent]
+
+        if best_semantic_score >= semantic_min_confidence:
+            routing = self._get_routing(best_semantic_intent, best_semantic_score)
+            result = {
+                "intent": best_semantic_intent,
+                "confidence": round(best_semantic_score, 3),
+                "signals_matched": [],
+                "cognitive_lift": round(best_semantic_score - result.get("confidence", 0.0), 3),
+                "layers_active": ["L6:Semantic", "L5:Session"],
+                "classification_method": "semantic_rescue",
+                **routing,
+            }
+
+        return result
 
     # ------------------------------------------------------------------
     # Routing map
