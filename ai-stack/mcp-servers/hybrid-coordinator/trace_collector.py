@@ -1,11 +1,33 @@
 """
-trace_collector.py — End-to-end query trace (Phase 54.5)
+trace_collector.py — End-to-end query trace (Phase 54.5 + Phase E OTel GenAI SemConv)
 
 Records a full span for every /query call:
     intent → profile → retrieval → LLM → memory_write → total_latency
 
-Writes to PostgreSQL query_traces table. Surfaced via GET /api/traces
-and the dashboard Intelligence lane.
+Writes to PostgreSQL query_traces table (additive otel_attributes JSONB column added
+in Phase E). Surfaced via GET /api/traces and the dashboard Intelligence lane.
+
+Phase E addition: OTel GenAI Semantic Conventions 2026
+  - TraceCollector.otel_span() returns gen_ai.* attribute dict (no external SDK needed)
+  - If OTEL_EXPORTER_OTLP_ENDPOINT env var is set, span is pushed via aiohttp in background
+  - Gracefully skips if OTLP endpoint is not configured
+  - Internal attribute names (gen_ai.maeah.*) are MAEAH-specific extensions; all standard
+    gen_ai.* names follow the OTel GenAI SemConv 2026 specification pin
+
+OTel GenAI SemConv attributes emitted (spec pin: OTel GenAI SemConv 2026-01):
+  gen_ai.system                 llama_cpp | anthropic | openai
+  gen_ai.operation.name         chat | text_completion | embeddings
+  gen_ai.request.model          model name from request
+  gen_ai.response.model         actual model used
+  gen_ai.usage.input_tokens     prompt token count
+  gen_ai.usage.output_tokens    completion token count
+  gen_ai.response.finish_reason stop | length | tool_calls | content_filter
+  gen_ai.maeah.intent           MAEAH intent class (extension)
+  gen_ai.maeah.profile          routing profile (extension)
+  gen_ai.maeah.retrieval_hits   RAG hit count (extension)
+  gen_ai.maeah.retrieval_ms     RAG latency ms (extension)
+  gen_ai.maeah.ttft_ms          LLM response latency (extension)
+  gen_ai.maeah.rag_skipped      RAG was bypassed (extension)
 
 Schema:
     query_traces(
@@ -21,6 +43,7 @@ Schema:
         tokens_out      INTEGER DEFAULT 0,
         llm_ms          INTEGER DEFAULT 0,
         total_ms        INTEGER DEFAULT 0,
+        otel_attributes JSONB,           -- Phase E: gen_ai.* span attrs
         trace_at        TIMESTAMPTZ NOT NULL DEFAULT now()
     )
 
@@ -30,17 +53,19 @@ Usage:
         tc.set_profile("local-tool-calling")
         tc.set_retrieval(hits=5, latency_ms=42, skipped=False)
         tc.set_llm("qwen3", tokens_in=1200, tokens_out=300, latency_ms=9800)
-        # on __aexit__ → writes row to DB
+        # on __aexit__ → writes row to DB + emits OTLP span if endpoint configured
 
-    # Standalone (no postgres):
+    # Inspect OTel attributes without DB:
     tc = TraceCollector(None)
     tc.set_intent("code_generation")
-    result = tc.to_dict()
+    span = tc.otel_span()   # returns gen_ai.* dict
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -62,11 +87,30 @@ CREATE TABLE IF NOT EXISTS query_traces (
     tokens_out      INTEGER DEFAULT 0,
     llm_ms          INTEGER DEFAULT 0,
     total_ms        INTEGER DEFAULT 0,
+    otel_attributes JSONB,
     trace_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_query_traces_intent   ON query_traces (intent);
 CREATE INDEX IF NOT EXISTS idx_query_traces_trace_at ON query_traces (trace_at DESC);
 """
+
+# Phase E: additive migration — adds otel_attributes column if not present
+_DDL_MIGRATE_OTEL = """
+ALTER TABLE query_traces ADD COLUMN IF NOT EXISTS otel_attributes JSONB;
+"""
+
+# OTel GenAI SemConv spec pin (Phase E — update when upgrading spec version)
+_OTEL_SEMCONV_VERSION = "2026-01"
+_OTEL_EXPORTER_URL = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+
+# Profile → gen_ai.system mapping
+_PROFILE_TO_SYSTEM: Dict[str, str] = {
+    "local-tool-calling": "llama_cpp",
+    "embedded-assist": "llama_cpp",
+    "remote": "openai",
+    "claude": "anthropic",
+    "gemini": "google",
+}
 
 # Module-level pg reference — injected via init()
 _pg: Optional[Any] = None
@@ -81,7 +125,7 @@ def init(postgres_client: Any) -> None:
 
 
 async def ensure_schema(postgres_client: Optional[Any] = None) -> None:
-    """Idempotently create query_traces table."""
+    """Idempotently create query_traces table and apply Phase E migration."""
     global _schema_ready
     if _schema_ready:
         return
@@ -90,8 +134,13 @@ async def ensure_schema(postgres_client: Optional[Any] = None) -> None:
         return
     try:
         await pg.execute(_DDL_TRACES)
+        # Phase E: add otel_attributes column to existing tables
+        try:
+            await pg.execute(_DDL_MIGRATE_OTEL)
+        except Exception:
+            pass  # column may already exist
         _schema_ready = True
-        logger.info("trace_collector: schema ready")
+        logger.info("trace_collector: schema ready (Phase E otel_attributes column)")
     except Exception as exc:
         logger.warning("trace_collector: schema setup failed: %s", exc)
 
@@ -115,6 +164,7 @@ class TraceCollector:
         self.tokens_in: int = 0
         self.tokens_out: int = 0
         self.llm_ms: int = 0
+        self.finish_reason: str = "stop"   # Phase E: OTel gen_ai.response.finish_reason
         self._start: float = time.perf_counter()
 
     async def __aenter__(self) -> "TraceCollector":
@@ -144,11 +194,44 @@ class TraceCollector:
         self.retrieval_ms = latency_ms
         self.rag_skipped = skipped
 
-    def set_llm(self, model: str, tokens_in: int = 0, tokens_out: int = 0, latency_ms: int = 0) -> None:
+    def set_llm(self, model: str, tokens_in: int = 0, tokens_out: int = 0, latency_ms: int = 0,
+                finish_reason: str = "stop") -> None:
         self.llm_model = model
         self.tokens_in = tokens_in
         self.tokens_out = tokens_out
         self.llm_ms = latency_ms
+        self.finish_reason = finish_reason
+
+    def otel_span(self, total_ms: Optional[int] = None) -> Dict[str, Any]:
+        """Return OTel GenAI SemConv 2026 span attributes.
+
+        Follows spec pin _OTEL_SEMCONV_VERSION. Standard gen_ai.* names are
+        from the spec; gen_ai.maeah.* names are MAEAH-specific extensions.
+        This dict can be serialised and emitted to any OTel collector.
+        """
+        if total_ms is None:
+            total_ms = int((time.perf_counter() - self._start) * 1000)
+        system = _PROFILE_TO_SYSTEM.get(self.profile, "llama_cpp")
+        return {
+            # Standard OTel GenAI SemConv 2026 attributes
+            "gen_ai.system": system,
+            "gen_ai.operation.name": "chat",
+            "gen_ai.request.model": self.llm_model or "unknown",
+            "gen_ai.response.model": self.llm_model or "unknown",
+            "gen_ai.usage.input_tokens": self.tokens_in,
+            "gen_ai.usage.output_tokens": self.tokens_out,
+            "gen_ai.response.finish_reason": self.finish_reason,
+            # MAEAH-specific extension attributes
+            "gen_ai.maeah.trace_id": self.trace_id,
+            "gen_ai.maeah.intent": self.intent,
+            "gen_ai.maeah.profile": self.profile,
+            "gen_ai.maeah.retrieval_hits": self.retrieval_hits,
+            "gen_ai.maeah.retrieval_ms": self.retrieval_ms,
+            "gen_ai.maeah.rag_skipped": self.rag_skipped,
+            "gen_ai.maeah.ttft_ms": self.llm_ms,
+            "gen_ai.maeah.total_ms": total_ms,
+            "gen_ai.maeah.semconv_version": _OTEL_SEMCONV_VERSION,
+        }
 
     def to_dict(self) -> Dict[str, Any]:
         total_ms = int((time.perf_counter() - self._start) * 1000)
@@ -165,6 +248,8 @@ class TraceCollector:
             "tokens_out": self.tokens_out,
             "llm_ms": self.llm_ms,
             "total_ms": total_ms,
+            "finish_reason": self.finish_reason,
+            "otel_attributes": self.otel_span(total_ms),
             "trace_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -173,44 +258,105 @@ class TraceCollector:
     # ------------------------------------------------------------------
 
     async def _commit(self, total_ms: int) -> None:
-        if self._pg is None:
-            return
-        try:
-            await self._pg.execute(
-                """
-                INSERT INTO query_traces
-                    (trace_id, query_text, intent, profile,
-                     retrieval_hits, retrieval_ms, rag_skipped,
-                     llm_model, tokens_in, tokens_out, llm_ms, total_ms, trace_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
-                """,
-                self.trace_id,
-                self.query_text,
-                self.intent,
-                self.profile,
-                self.retrieval_hits,
-                self.retrieval_ms,
-                self.rag_skipped,
-                self.llm_model,
-                self.tokens_in,
-                self.tokens_out,
-                self.llm_ms,
-                total_ms,
-            )
-            logger.debug(
-                "trace_collector.commit trace_id=%s intent=%s total_ms=%d",
-                self.trace_id, self.intent, total_ms,
-            )
-            
-            # Phase 54.5 — Observability Spine Metrics
+        otel_attrs = self.otel_span(total_ms)
+        if self._pg is not None:
             try:
-                from metrics import QUERY_TRACES_COMMITTED, QUERY_TRACE_TOTAL_LATENCY
-                QUERY_TRACES_COMMITTED.inc()
-                QUERY_TRACE_TOTAL_LATENCY.observe(total_ms / 1000.0)
-            except (ImportError, Exception):
-                pass
-        except Exception as exc:
-            logger.debug("trace_collector.commit error: %s", exc)
+                await self._pg.execute(
+                    """
+                    INSERT INTO query_traces
+                        (trace_id, query_text, intent, profile,
+                         retrieval_hits, retrieval_ms, rag_skipped,
+                         llm_model, tokens_in, tokens_out, llm_ms, total_ms,
+                         otel_attributes, trace_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                    """,
+                    self.trace_id,
+                    self.query_text,
+                    self.intent,
+                    self.profile,
+                    self.retrieval_hits,
+                    self.retrieval_ms,
+                    self.rag_skipped,
+                    self.llm_model,
+                    self.tokens_in,
+                    self.tokens_out,
+                    self.llm_ms,
+                    total_ms,
+                    json.dumps(otel_attrs),
+                )
+                logger.debug(
+                    "trace_collector.commit trace_id=%s intent=%s total_ms=%d",
+                    self.trace_id, self.intent, total_ms,
+                )
+            except Exception as exc:
+                logger.debug("trace_collector.commit error: %s", exc)
+
+        # Phase 54.5 — Observability Spine Metrics
+        try:
+            from metrics import QUERY_TRACES_COMMITTED, QUERY_TRACE_TOTAL_LATENCY
+            QUERY_TRACES_COMMITTED.inc()
+            QUERY_TRACE_TOTAL_LATENCY.observe(total_ms / 1000.0)
+        except (ImportError, Exception):
+            pass
+
+        # Phase E — emit OTLP span if endpoint configured (fire-and-forget)
+        if _OTEL_EXPORTER_URL:
+            import asyncio
+            asyncio.create_task(_emit_otlp_span(otel_attrs, self.trace_id))
+
+
+# ---------------------------------------------------------------------------
+# Phase E — OTLP HTTP/JSON span emitter
+# ---------------------------------------------------------------------------
+
+async def _emit_otlp_span(attrs: Dict[str, Any], trace_id: str) -> None:
+    """Fire-and-forget OTLP/HTTP span export. Silently skips on any error."""
+    if not _OTEL_EXPORTER_URL:
+        return
+    endpoint = _OTEL_EXPORTER_URL.rstrip("/") + "/v1/traces"
+    # Minimal OTLP JSON envelope (protobuf-JSON encoding)
+    payload = {
+        "resourceSpans": [{
+            "resource": {"attributes": [
+                {"key": "service.name", "value": {"stringValue": "maeah-coordinator"}},
+            ]},
+            "scopeSpans": [{
+                "scope": {"name": "trace_collector", "version": _OTEL_SEMCONV_VERSION},
+                "spans": [{
+                    "traceId": trace_id.replace("-", ""),
+                    "spanId": trace_id.replace("-", "")[:16],
+                    "name": f"gen_ai.{attrs.get('gen_ai.operation.name','chat')}",
+                    "kind": 3,  # CLIENT
+                    "startTimeUnixNano": str(int((time.time() - attrs.get("gen_ai.maeah.total_ms", 0) / 1000) * 1e9)),
+                    "endTimeUnixNano": str(int(time.time() * 1e9)),
+                    "attributes": [
+                        {"key": k, "value": _otlp_value(v)}
+                        for k, v in attrs.items()
+                    ],
+                    "status": {"code": 1},  # OK
+                }],
+            }],
+        }],
+    }
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=3.0)
+        ) as session:
+            await session.post(endpoint, json=payload)
+    except Exception:
+        pass  # OTLP export is best-effort, never block traces
+
+
+def _otlp_value(v: Any) -> Dict[str, Any]:
+    """Convert Python value to OTLP AnyValue JSON encoding."""
+    if isinstance(v, bool):
+        return {"boolValue": v}
+    if isinstance(v, int):
+        return {"intValue": v}
+    if isinstance(v, float):
+        return {"doubleValue": v}
+    return {"stringValue": str(v)}
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +394,8 @@ async def handle_get_traces(request) -> Any:
             f"""
             SELECT trace_id, query_text, intent, profile,
                    retrieval_hits, retrieval_ms, rag_skipped,
-                   llm_model, tokens_in, tokens_out, llm_ms, total_ms, trace_at
+                   llm_model, tokens_in, tokens_out, llm_ms, total_ms,
+                   otel_attributes, trace_at
             FROM query_traces
             {where_sql}
             ORDER BY trace_at DESC
@@ -258,6 +405,12 @@ async def handle_get_traces(request) -> Any:
         )
         traces = []
         for r in rows:
+            otel = r.get("otel_attributes")
+            if isinstance(otel, str):
+                try:
+                    otel = json.loads(otel)
+                except Exception:
+                    otel = None
             traces.append({
                 "trace_id": r["trace_id"],
                 "query_text": (r["query_text"] or "")[:120],
@@ -271,6 +424,7 @@ async def handle_get_traces(request) -> Any:
                 "tokens_out": r["tokens_out"],
                 "llm_ms": r["llm_ms"],
                 "total_ms": r["total_ms"],
+                "otel_attributes": otel,
                 "trace_at": r["trace_at"].isoformat() if r["trace_at"] else None,
             })
         return web.json_response({"traces": traces, "count": len(traces)})
