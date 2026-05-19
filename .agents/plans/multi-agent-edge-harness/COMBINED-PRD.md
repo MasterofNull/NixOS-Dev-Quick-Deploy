@@ -198,7 +198,7 @@ observable, recoverable control plane around constrained inference.
 | T4 | Q5_K_M | ~28GB | ~3.2 t/s | Quality-critical (needs ≥28GB free) |
 | T5 | Q8_0 | ~38GB | N/A | Does not fit on P14s — never use |
 
-- **n_gpu_layers policy** [QWEN-REVIEW]: 12 default (validated); dynamic 4–16 based on thermal + RAM_free
+- **n_gpu_layers policy** [VALIDATED Q2 2026-05-19]: 12 default; dynamic 4–**12** based on thermal + RAM_free. Hard ceiling = 12 (not 16) — Renoir iGPU causes ErrorDeviceLost on inputs >400 tokens at 16+ layers.
 - **MTP policy**: enable on code/structured when acceptance_rate >0.65; disable when thermal >T_warn
 - **Thermal thresholds** [QWEN-REVIEW]: T_optimal <70°C → T_warn 70–80°C → T_critical 80–85°C → T_shutdown >88°C
 
@@ -530,7 +530,7 @@ From Gemini PRD:
 - [x] **Q3** Thermal threshold values — **→ Claude (RESOLVED)**
   > Resolution: Accepting Gemini Phase B implementation as canonical: `optimal<70°C / warn≥70 / critical≥80 / shutdown≥88`. This is a 4-tier model, more conservative than the original 3-tier spec (T_warn=80, T_crit=85, T_emergency=88). The 70°C early-warn tier enables pre-emptive scheduler action before the 80°C enforcement gate fires, which is safer on the Renoir APU where thermal headroom is limited. The 80°C critical→L1 concurrency=1 + L2 suspend and 88°C full suspend thresholds remain unchanged.
 - [x] **Q4** MTP draft model as "linked sibling" in catalog — **AUTO-CLOSED** (`mtp_sibling` field implemented in Phase A model_registry.py)
-- [x] **Q5** UMBM memory budget: llama.cpp 18GB / KV cache 3GB / OS+services 6GB — **→ Gemini** (validate against facts.nix RAM=27GB)
+- [x] **Q5** UMBM memory budget — **AMENDED [Claude 2026-05-19]**: llama.cpp=22.5GB / KV cache=1.0GB (MoE active-only) / OS+services=3.0GB = 26.5GB. Original 18/3/6 split wrong (assumed dense model). T0/T1 quants don't fit 27GB; effective ladder is T2(marginal)→T3(default)→T4→T5.
 - [x] **Q6** MTP acceptance rate threshold (0.65 target realistic on Renoir?) — **→ Gemini** (approximate from llama.cpp MTP docs)
 - [x] **Q7** CPU-only fallback queue-buffer behavior (15–25s, 503+Retry-After) — **→ Codex** (design decision, AM-C1/C2 context)
 
