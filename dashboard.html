@@ -3456,6 +3456,11 @@
             </div>
             <div class="kpi-divider"></div>
             <div class="kpi-cell">
+                <span class="kpi-label">THERMAL</span>
+                <span class="kpi-val" id="ribbonThermal">--</span>
+            </div>
+            <div class="kpi-divider"></div>
+            <div class="kpi-cell">
                 <span class="kpi-label">EVENTS</span>
                 <span class="kpi-val" id="ribbonEvents">--</span>
             </div>
@@ -7961,7 +7966,8 @@
                     'verifySelf',
                     'promMetrics',
                     'knowledgeObservatory',
-                    'queryTraces'
+                    'queryTraces',
+                    'hardwareState'
                 ];
                 const settled = await Promise.allSettled([
                     fetchSystemMetrics(),
@@ -7986,7 +7992,8 @@
                     fetchVerifySelf(),
                     fetchPrometheusMetrics(),
                     fetchKnowledgeObservatory(),
-                    fetchQueryTraces()
+                    fetchQueryTraces(),
+                    fetchHardwareState()
                 ]);
                 const payloads = {};
                 const failedSources = [];
@@ -8090,6 +8097,7 @@
                 };
 
                 updateSystemMetricsFromAPI(systemMetrics);
+                updateHardwareKPI(payloads.hardwareState);
                 updateLLMStatus(llm);
                 updateAgenticReadiness(dashboardData.aiMetrics);
                 updateKnowledgeBase(dashboardData.aiMetrics);
@@ -9360,6 +9368,18 @@
             </div>`).join('');
         }
 
+        async function fetchHardwareState() {
+            try {
+                const response = await fetch(`${HYBRID_BASE}/api/hardware/state`, { cache: 'no-store' });
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (error) {
+                console.warn('Failed to fetch hardware state:', error);
+            }
+            return null;
+        }
+
         async function fetchAIMetrics() {
             try {
                 if (typeof FASTAPI_BASE !== 'undefined' && FASTAPI_BASE) {
@@ -10584,6 +10604,26 @@
             // Learning event stream — always available
             const totalEvents = learningStats?.total_metrics_tracked ?? learningStats?.activity?.total_events ?? null;
             if (totalEvents !== null) set('ribbonEvents', fmtK(totalEvents), totalEvents > 1000 ? 'kpi-ok' : 'kpi-warn');
+        }
+
+        function updateHardwareKPI(state) {
+            if (!state) return;
+            const el = document.getElementById('ribbonThermal');
+            if (!el) return;
+
+            const tier = state.thermal_tier || 'unknown';
+            const temp = state.temp_cpu_c || state.temp_gpu_c;
+            const text = temp !== undefined ? `${temp.toFixed(0)}°C` : tier.toUpperCase();
+            
+            let cls = 'kpi-muted';
+            if (tier === 'optimal') cls = 'kpi-ok';
+            else if (tier === 'warn') cls = 'kpi-warn';
+            else if (tier === 'critical') cls = 'kpi-err';
+            else if (tier === 'shutdown') cls = 'kpi-err';
+
+            el.textContent = text;
+            el.className = `kpi-val ${cls}`.trim();
+            el.title = `CPU: ${state.temp_cpu_c ?? '--'}°C, GPU: ${state.temp_gpu_c ?? '--'}°C, RAM: ${state.ram_used_pct?.toFixed(1) ?? '--'}%`;
         }
 
         function updateAIInternals(data) {
