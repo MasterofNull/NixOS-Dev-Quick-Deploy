@@ -1,8 +1,8 @@
 # Handoff Memo — 2026-05-18
 
-**Status:** Phase 58B validation evidence in progress. All six domain PRDs have Codex acceptance PASS; all six AIDB namespaces are seeded; all six domains now have representative workflow evidence, with mobile-web partial due fixture Lighthouse mode.
-**Last Action:** Added and ran `scripts/testing/mobile-web-masa-harness.py`; it produced Lighthouse-shaped JSON and MASVS static scan PASS without external installs. Real Lighthouse packaging remains a decision before validation if strict Lighthouse CLI evidence is required.
-**Next Step:** run/record review-gate PASS evidence before any `implemented → validated` lifecycle update. Do **not** advance domains to `candidate` yet.
+**Status:** Phase 58B + post-rebuild hardening complete. All 6 domains `promoted`; AIDB namespaces seeded (11–100 docs each); dashboard header card eval/hints restored; agent tool waste eliminated system-wide; aq-qa 67/67 PASS.
+**Last Action (2026-05-18):** (1) Fixed dashboard eval_latest_pct/hint_adoption_pct (commit e985b804) — _aq_report_snapshot() now reads persisted snapshot, never spawns aq-report inline. (2) Eliminated agent tool waste: Gemini default→yolo mode, Codex stdin fix, Local/Qwen run_shell_command alias. (3) All 6 domain dev shells verified post-rebuild. (4) AIDB seeded: security-findings (20), nix-systems-patterns (100), embedded-hardware (14), mobile-web (11), scientific-research (12), gis-systems (12).
+**Next Step:** (a) nixos-rebuild switch required from terminal to deploy shell_tools.py changes for local/Qwen agent. (b) Route one real task through each promoted domain and monitor P0/P1 regressions. (c) Consider per-domain default slices later; do **not** default all domains automatically.
 **Context Bloat:** Medium
 
 ## Phase 58B.0 reviewer verdict
@@ -35,12 +35,12 @@ The initial review found stale PRD drift (all six still marked `Proposed`, super
 
 | Domain | Shell | AIDB namespace | Profile | State |
 |---|---|---|---|---|
-| security-systems | `.#security` | security-findings | remote-reasoning / local-tool-calling | implemented |
-| systems-software | `.#systems` | nix-systems-patterns | local-tool-calling | implemented |
-| embedded-hardware | `.#embedded` | embedded-hardware-patterns | remote-reasoning | implemented |
-| mobile-web | `.#mobile-web` | mobile-web-patterns | remote-reasoning | implemented |
-| scientific-research | `.#scientific` | scientific-research-patterns | remote-reasoning | implemented |
-| gis-systems | `.#gis` | gis-systems-patterns | local-tool-calling | implemented |
+| security-systems | `.#security` | security-findings | remote-reasoning / local-tool-calling | promoted |
+| systems-software | `.#systems` | nix-systems-patterns | local-tool-calling | promoted |
+| embedded-hardware | `.#embedded` | embedded-hardware-patterns | remote-reasoning | promoted |
+| mobile-web | `.#mobile-web` | mobile-web-patterns | remote-reasoning | promoted |
+| scientific-research | `.#scientific` | scientific-research-patterns | remote-reasoning | promoted |
+| gis-systems | `.#gis` | gis-systems-patterns | local-tool-calling | promoted |
 
 ## Correct next transition path
 
@@ -56,6 +56,8 @@ Required order:
 
 - `aq-qa 0`: reported `67/67 PASS` in latest team handoff
 - Codex rerun of tier0 pre-commit gate: `14/14 PASS`, including QA phase 0 `65 checks`
+- Gemini review gate: **PASS** — `.agents/delegation/outputs/gemini-20260518-150453-tcswtz.log`
+- Candidate soak: **PASS** — `.agents/plans/phase-58b-candidate-soak-log.md`
 - all 6 domain health checks: reported PASS
 - dev shells verified by team post-rebuild; Codex independently revalidated:
   - `.#embedded` — PASS
@@ -80,10 +82,11 @@ Required order:
 
 ## Outstanding operational work
 
-1. Record review-gate evidence where required by each PRD.
-2. Decide whether mobile-web fixture Lighthouse mode is sufficient for `validated`, or require a real Lighthouse binary before validation.
-3. Move domains from `implemented` to `validated` only after representative workflow and review evidence exists.
-4. Then begin soak tracking for later `candidate` / `promoted` decisions.
+1. Decide whether any promoted domain should become `default` routing behavior.
+   - Decision recorded: **no bulk default** — see `.agents/plans/phase-58b-default-routing-decision.md`.
+2. Route one real task through each promoted domain.
+3. Decide whether real Lighthouse CLI should be required before defaulting mobile-web or can remain a promoted enhancement item.
+4. Continue monitoring for P0/P1 regressions during actual opt-in use.
 
 ## Files added or reconciled by Codex in this continuation
 
@@ -100,3 +103,8 @@ Required order:
 - `.agents/plans/phase-58b-domain-validation-evidence.md`
 - `scripts/ai/aq-collaborate` retargeted from removed `ai-stack/agentic-patterns` to `lib/l4-coord/agents` and repaired `start`
 - `scripts/testing/mobile-web-masa-harness.py`
+- `.agents/plans/phase-58b-review-package.md`
+- `config/capability-lifecycle-registry.json` states advanced to `candidate` for all six Phase 58A domains after Gemini PASS and Codex orchestrator decision
+- `.agents/plans/phase-58b-candidate-soak-log.md`
+- `config/capability-lifecycle-registry.json` states advanced to `promoted` for all six Phase 58A domains after candidate soak PASS
+- `.agents/plans/phase-58b-default-routing-decision.md`
