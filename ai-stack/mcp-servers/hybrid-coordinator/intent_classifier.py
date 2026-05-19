@@ -43,12 +43,12 @@ logger = logging.getLogger("hybrid-coordinator")
 # ---------------------------------------------------------------------------
 INTENT_SIGNALS: Dict[str, List[str]] = {
     "code_generation": [
-        "implement", "write code", "create function", "build", "add feature",
+        "implement ", "write code", "create function", "build", "add feature",
         "refactor", "fix bug", "debug", "write test", "add endpoint",
         "create module", "write script", "code that", "function that",
     ],
     "code_review": [
-        "review", "audit", "check code", "find bugs", "security review",
+        "review", "audit", "check code", "find bugs",
         "look at", "is this correct", "what's wrong", "code quality",
     ],
     "knowledge_lookup": [
@@ -86,7 +86,7 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
         "unexpected", "wrong output", "won't start",
     ],
     "security_analysis": [
-        "security", "vulnerability", "cve", "exploit", "pentest", "harden",
+        "security", "security review", "owasp", "vulnerability", "cve", "exploit", "pentest", "harden",
         "threat", "attack", "injection", "xss", "csrf", "privilege escalation",
         "scan for", "trivy", "semgrep", "bandit", "secret leak", "auth bypass",
     ],
@@ -107,7 +107,7 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
     ],
     "scientific_research": [
         "numpy", "scipy", "pandas", "matplotlib", "jupyter", "snakemake",
-        "statistical", "experiment", "dataset", "regression", "hypothesis",
+        "statistical", "experiment", "dataset", "linear regression", "statistical regression", "hypothesis",
         "machine learning", "data analysis", "reproducible", "random seed",
     ],
     "gis_systems": [
