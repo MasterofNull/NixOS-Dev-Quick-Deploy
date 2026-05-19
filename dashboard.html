@@ -4074,6 +4074,70 @@
                 </div>
             </div>
 
+            <!-- Model Lifecycle — Phase A MAEAH -->
+            <div class="dashboard-section full-width" id="section-model-lifecycle" data-lens="stack,operations">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Model Lifecycle</h2>
+                        </div>
+                        <span class="card-badge" id="modelLifecycleBadge">MAEAH Phase A</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Active model summary -->
+                        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+                            <div style="flex:1;min-width:200px;">
+                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem;">Active Model</div>
+                                <div style="font-size:1rem;font-weight:600;color:var(--text,#cdd6f4);" id="mlActiveModelName">--</div>
+                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);" id="mlActiveModelMeta">--</div>
+                            </div>
+                            <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:0.25rem;align-items:flex-end;">
+                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);">SLA Tier</div>
+                                <span id="mlActiveSwapSla" style="font-size:0.8rem;padding:0.15rem 0.5rem;border-radius:4px;background:var(--surface1,#313244);color:var(--text,#cdd6f4);">--</span>
+                            </div>
+                            <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:0.25rem;align-items:flex-end;">
+                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);">Last Swap</div>
+                                <span id="mlActiveSwapDuration" style="font-size:0.8rem;color:var(--text,#cdd6f4);">--</span>
+                            </div>
+                        </div>
+
+                        <!-- Swap status bar (shown during promotion) -->
+                        <div id="mlSwapStatusBar" style="display:none;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:var(--surface1,#313244);border-radius:6px;border-left:3px solid #89b4fa;">
+                            <div style="font-size:0.75rem;color:#89b4fa;font-weight:600;" id="mlSwapStatusText">Preparing swap...</div>
+                            <div style="margin-top:0.35rem;height:4px;background:var(--surface0,#1e1e2e);border-radius:2px;overflow:hidden;">
+                                <div id="mlSwapProgressBar" style="height:100%;width:0%;background:#89b4fa;border-radius:2px;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Model catalog table -->
+                        <div style="font-size:0.72rem;color:var(--subtext,#6c7086);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem;">Model Catalog</div>
+                        <div style="overflow-x:auto;">
+                            <table style="width:100%;border-collapse:collapse;font-size:0.78rem;" id="mlCatalogTable">
+                                <thead>
+                                    <tr style="border-bottom:1px solid var(--surface1,#313244);color:var(--subtext,#6c7086);">
+                                        <th style="text-align:left;padding:0.4rem 0.5rem;">Model</th>
+                                        <th style="text-align:left;padding:0.4rem 0.5rem;">Params</th>
+                                        <th style="text-align:center;padding:0.4rem 0.5rem;">RAM</th>
+                                        <th style="text-align:center;padding:0.4rem 0.5rem;">Tier</th>
+                                        <th style="text-align:center;padding:0.4rem 0.5rem;">State</th>
+                                        <th style="text-align:right;padding:0.4rem 0.5rem;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mlCatalogBody">
+                                    <tr><td colspan="6" style="text-align:center;padding:1.5rem;color:var(--subtext,#6c7086);">Loading catalog...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Per-model download progress (injected dynamically) -->
+                        <div id="mlDownloadProgressSection" style="margin-top:0.75rem;"></div>
+
+                        <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--subtext,#6c7086);" id="mlLastRefresh">--</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- AIDB Health Monitoring (P1/P2 Features) -->
             <div class="dashboard-section" id="section-ai-services" data-lens="stack">
                 <div class="card">
@@ -7626,6 +7690,8 @@
             loadLogicFlow();
             loadAgentOps();
             setInterval(loadAgentOps, 30000);
+            loadModelLifecycle();
+            setInterval(loadModelLifecycle, 20000);
             lazyLoadManager.registerCard('deployment-ops', 'loadDeploymentOps');
             lazyLoadManager.registerCard('system-remediations', 'loadRemediations');
             lazyLoadManager.registerCard('system-audit', 'loadAuditLog');
@@ -12176,6 +12242,223 @@
                 container.innerHTML = `<pre style="font-size:0.75rem;color:var(--text,#cdd6f4);white-space:pre-wrap;margin:0">${flowchart}</pre>`;
             }
             if (badge) { badge.textContent = 'ok'; badge.style.background = 'var(--status-ok,#a6e3a1)'; }
+        }
+
+        // ── Model Lifecycle — MAEAH Phase A ────────────────────────────────────
+        const _ML_STATE_COLORS = {
+            available: '#6c7086', downloading: '#89b4fa', downloaded: '#89dceb',
+            verified: '#a6e3a1', warming: '#f9e2af', candidate: '#fab387',
+            active: '#a6e3a1', retiring: '#f9e2af', archived: '#6c7086', failed: '#f38ba8'
+        };
+        const _ML_STATE_LABELS = {
+            available: 'Available', downloading: 'Downloading', downloaded: 'Downloaded',
+            verified: 'Verified', warming: 'Warming', candidate: 'Candidate',
+            active: 'Active', retiring: 'Retiring', archived: 'Archived', failed: 'Failed'
+        };
+        // Track active SSE connections to close on next refresh
+        let _mlDownloadStreams = {};
+        let _mlSwapStream = null;
+
+        async function loadModelLifecycle() {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 8000);
+            let data;
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/models`, { signal: ctrl.signal, cache: 'no-store' });
+                data = await resp.json();
+            } catch (e) {
+                document.getElementById('mlLastRefresh').textContent = `Load failed: ${e.message}`;
+                return;
+            } finally {
+                clearTimeout(timer);
+            }
+            _renderModelCatalog(data.models || []);
+            _refreshActiveModelHeader(data.models || []);
+            document.getElementById('mlLastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        }
+
+        function _refreshActiveModelHeader(models) {
+            const active = models.find(m => m.state === 'active');
+            if (!active) {
+                document.getElementById('mlActiveModelName').textContent = 'None';
+                document.getElementById('mlActiveModelMeta').textContent = '--';
+                document.getElementById('mlActiveSwapSla').textContent = '--';
+                document.getElementById('mlActiveSwapDuration').textContent = '--';
+                return;
+            }
+            document.getElementById('mlActiveModelName').textContent = active.name || active.id;
+            document.getElementById('mlActiveModelMeta').textContent =
+                `${active.params || ''}  •  ${active.ram_estimate_gb || '?'} GB  •  ctx ${(active.context_size||0)/1024|0}K`;
+            const sla = active.swap_sla_tier || '--';
+            document.getElementById('mlActiveSwapSla').textContent = sla === 'gpu_fast' ? '<5s GPU' : '<30s CPU';
+            document.getElementById('mlActiveSwapDuration').textContent =
+                active.swap_duration_s != null ? `${active.swap_duration_s}s` : '--';
+        }
+
+        function _renderModelCatalog(models) {
+            const tbody = document.getElementById('mlCatalogBody');
+            if (!models.length) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;color:var(--subtext,#6c7086);">No models in catalog</td></tr>';
+                return;
+            }
+            tbody.innerHTML = models.map(m => {
+                const stateColor = _ML_STATE_COLORS[m.state] || '#6c7086';
+                const stateLabel = _ML_STATE_LABELS[m.state] || m.state;
+                const isActive = m.state === 'active';
+                const isVerified = m.state === 'verified';
+                const isDownloading = m.state === 'downloading';
+                const isAvailable = m.state === 'available' || m.state === 'failed';
+                const isArchived = m.state === 'archived';
+                const pct = m.download_progress || 0;
+
+                let actions = '';
+                if (isAvailable) {
+                    actions = `<button onclick="mlDownload('${m.id}')" style="${_mlBtnStyle('#89b4fa')}">Download</button>`;
+                } else if (isDownloading) {
+                    actions = `<button onclick="mlCancel('${m.id}')" style="${_mlBtnStyle('#f38ba8')}">Cancel</button>`;
+                } else if (isVerified) {
+                    actions = `<button onclick="mlPromote('${m.id}')" style="${_mlBtnStyle('#a6e3a1')}">Hot-Swap</button>`;
+                } else if (isArchived) {
+                    actions = `<button onclick="mlRollback('${m.id}')" style="${_mlBtnStyle('#fab387')}">Rollback</button>`;
+                }
+
+                const progressBar = isDownloading ? `<div style="margin-top:3px;height:3px;background:var(--surface0,#1e1e2e);border-radius:2px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:#89b4fa;border-radius:2px;"></div></div>` : '';
+
+                return `<tr style="border-bottom:1px solid var(--surface1,#313244);${isActive?'background:rgba(166,227,161,0.06)':''}">
+                    <td style="padding:0.45rem 0.5rem;">
+                        <div style="font-weight:${isActive?'600':'400'};color:var(--text,#cdd6f4);">${m.name||m.id}</div>
+                        <div style="font-size:0.68rem;color:var(--subtext,#6c7086);">${m.id} · ${m.quant_tier||'T2'}</div>
+                        ${progressBar}
+                    </td>
+                    <td style="padding:0.45rem 0.5rem;color:var(--subtext,#6c7086);">${m.params||'--'}</td>
+                    <td style="padding:0.45rem 0.5rem;text-align:center;color:var(--text,#cdd6f4);">${m.ram_estimate_gb||'?'} GB</td>
+                    <td style="padding:0.45rem 0.5rem;text-align:center;color:var(--subtext,#6c7086);">${m.quant_tier||'T2'}</td>
+                    <td style="padding:0.45rem 0.5rem;text-align:center;">
+                        <span style="font-size:0.72rem;padding:0.15rem 0.45rem;border-radius:3px;background:${stateColor}22;color:${stateColor};font-weight:600;">${stateLabel}</span>
+                        ${isDownloading ? `<div style="font-size:0.68rem;color:#89b4fa;">${pct.toFixed(1)}%</div>` : ''}
+                    </td>
+                    <td style="padding:0.45rem 0.5rem;text-align:right;">${actions}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function _mlBtnStyle(color) {
+            return `font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:4px;border:1px solid ${color}44;background:${color}18;color:${color};cursor:pointer;`;
+        }
+
+        async function mlDownload(modelId) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 5000);
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/models/${modelId}/download`, {
+                    method: 'POST', signal: ctrl.signal
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    _mlStartProgressStream(modelId);
+                    loadModelLifecycle();
+                } else {
+                    alert(`Download failed: ${data.detail||JSON.stringify(data)}`);
+                }
+            } catch (e) {
+                alert(`Error: ${e.message}`);
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        function _mlStartProgressStream(modelId) {
+            if (_mlDownloadStreams[modelId]) {
+                _mlDownloadStreams[modelId].close();
+            }
+            const es = new EventSource(`${FASTAPI_BASE}/api/models/${modelId}/download/stream`);
+            _mlDownloadStreams[modelId] = es;
+
+            es.addEventListener('progress', e => {
+                const d = JSON.parse(e.data);
+                // Update the progress bar in the catalog table
+                const row = document.querySelector(`#mlCatalogBody tr[data-model-id="${modelId}"]`);
+                // Re-render on next refresh cycle; progress updates trigger via polling
+                loadModelLifecycle();
+            });
+            es.addEventListener('done', e => {
+                es.close();
+                delete _mlDownloadStreams[modelId];
+                loadModelLifecycle();
+            });
+            es.onerror = () => {
+                es.close();
+                delete _mlDownloadStreams[modelId];
+            };
+        }
+
+        async function mlPromote(modelId) {
+            if (!confirm(`Hot-swap to ${modelId}? This will briefly restart llama.cpp.`)) return;
+            const swapBar = document.getElementById('mlSwapStatusBar');
+            const swapText = document.getElementById('mlSwapStatusText');
+            const swapProg = document.getElementById('mlSwapProgressBar');
+            swapBar.style.display = 'block';
+            swapText.textContent = `Preparing swap to ${modelId}...`;
+            swapProg.style.width = '10%';
+
+            if (_mlSwapStream) { _mlSwapStream.close(); }
+            const es = new EventSource(`${FASTAPI_BASE}/api/models/${modelId}/promote/stream`);
+            _mlSwapStream = es;
+
+            es.addEventListener('phase', e => {
+                const d = JSON.parse(e.data);
+                swapText.textContent = `Phase: ${d.phase}`;
+                swapProg.style.width = d.phase === 'symlink_update' ? '60%' : '30%';
+            });
+            es.addEventListener('done', e => {
+                const d = JSON.parse(e.data);
+                es.close();
+                _mlSwapStream = null;
+                swapProg.style.width = '100%';
+                swapBar.style.borderLeftColor = d.success ? '#a6e3a1' : '#f38ba8';
+                swapText.textContent = d.success
+                    ? `Swap complete in ${d.duration_s}s (SLA ${d.sla_met?'MET':'MISSED'})`
+                    : `Swap failed: ${d.message}`;
+                setTimeout(() => { swapBar.style.display = 'none'; }, 6000);
+                loadModelLifecycle();
+            });
+            es.addEventListener('error', e => {
+                const d = JSON.parse(e.data || '{}');
+                es.close();
+                _mlSwapStream = null;
+                swapBar.style.borderLeftColor = '#f38ba8';
+                swapText.textContent = `Error: ${d.message || 'unknown'}`;
+                setTimeout(() => { swapBar.style.display = 'none'; }, 8000);
+            });
+            es.onerror = () => {
+                es.close();
+                _mlSwapStream = null;
+                swapBar.style.display = 'none';
+                loadModelLifecycle();
+            };
+        }
+
+        async function mlCancel(modelId) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 5000);
+            try {
+                await fetch(`${FASTAPI_BASE}/api/models/${modelId}/cancel`, { method: 'POST', signal: ctrl.signal });
+                loadModelLifecycle();
+            } catch (e) { /* ignore */ } finally { clearTimeout(timer); }
+        }
+
+        async function mlRollback(modelId) {
+            if (!confirm(`Roll back to ${modelId}?`)) return;
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 40000);
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/models/${modelId}/rollback`, {
+                    method: 'POST', signal: ctrl.signal
+                });
+                const d = await resp.json();
+                alert(d.success ? `Rollback complete in ${d.duration_s}s` : `Rollback failed: ${d.message}`);
+                loadModelLifecycle();
+            } catch (e) { alert(`Error: ${e.message}`); } finally { clearTimeout(timer); }
         }
 
         // ── Agent Ops — Phase 55 ─────────────────────────────────────────────
