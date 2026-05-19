@@ -294,7 +294,7 @@ class FeedbackPayload(BaseModel):
 
 
 class MemoryStorePayload(BaseModel):
-    memory_type: str = Field(..., pattern="^(episodic|semantic|procedural)$")
+    memory_type: str = Field(..., pattern="^(episodic|semantic|procedural|error_solutions|interaction_history)$")
     summary: str = Field(..., min_length=1)
     content: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
