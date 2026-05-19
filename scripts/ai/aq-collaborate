@@ -65,8 +65,8 @@ Examples:
 Environment Variables:
   POSTGRES_HOST          PostgreSQL host (default: 127.0.0.1)
   POSTGRES_PORT          PostgreSQL port (default: 5432)
-  POSTGRES_USER          PostgreSQL user (default: postgres)
-  POSTGRES_DB            PostgreSQL database (default: ai_context)
+  POSTGRES_USER          PostgreSQL user (default: aidb)
+  POSTGRES_DB            PostgreSQL database (default: aidb)
   POSTGRES_PASSWORD      PostgreSQL password
   POSTGRES_PASSWORD_FILE PostgreSQL password file
   LLAMA_CHAT_URL         Local LLM URL (default: http://127.0.0.1:8080)
@@ -92,6 +92,46 @@ get_postgres_password() {
     fi
 }
 
+postgres_user() {
+    printf '%s' "${POSTGRES_USER:-aidb}"
+}
+
+postgres_db() {
+    printf '%s' "${POSTGRES_DB:-aidb}"
+}
+
+export_postgres_password() {
+    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export PGPASSWORD="$POSTGRES_PASSWORD"
+}
+
+psql_collab() {
+    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
+         -p "${POSTGRES_PORT:-5432}" \
+         -U "$(postgres_user)" \
+         -d "$(postgres_db)" \
+         "$@"
+}
+
+relation_exists() {
+    local relation="$1"
+    local exists
+    exists="$(psql_collab -Atc "SELECT to_regclass('${relation}')" 2>/dev/null || true)"
+    [[ "$exists" == "$relation" ]]
+}
+
+function_exists() {
+    local signature="$1"
+    local exists
+    exists="$(psql_collab -Atc "SELECT to_regprocedure('${signature}')" 2>/dev/null || true)"
+    [[ -n "$exists" ]]
+}
+
+safe_collab_id() {
+    local value="$1"
+    [[ "$value" =~ ^[A-Za-z0-9_.:-]+$ ]]
+}
+
 cmd_start() {
     if [ $# -lt 1 ]; then
         echo -e "${RED}Error: objective required${NC}"
@@ -103,7 +143,7 @@ cmd_start() {
 
     echo -e "${BLUE}Starting collaboration: $objective${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
+    export_postgres_password
 
     cd "$COLLAB_DIR"
     python3 -c "
@@ -318,14 +358,19 @@ cmd_list() {
 
     echo -e "${BLUE}Collaborations (status=$status):${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
-    export PGPASSWORD="$POSTGRES_PASSWORD"
+    export_postgres_password
 
-    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
-         -p "${POSTGRES_PORT:-5432}" \
-         -U "${POSTGRES_USER:-postgres}" \
-         -d "${POSTGRES_DB:-ai_context}" \
-         -c "SELECT * FROM active_collaborations_summary ORDER BY started_at DESC LIMIT 20"
+    if ! relation_exists "public.active_collaborations_summary"; then
+        echo -e "${YELLOW}No collaboration database view found in $(postgres_user)@$(postgres_db).${NC}"
+        echo "Durable collaboration state is available in:"
+        echo "  .agent/collaboration/PENDING.json"
+        echo "  .agent/collaboration/HANDOFF.md"
+        echo "  .agent/collaboration/PULSE.log"
+        echo "  .agents/delegation/registry.jsonl"
+        return 0
+    fi
+
+    psql_collab -c "SELECT * FROM active_collaborations_summary ORDER BY started_at DESC LIMIT 20"
 }
 
 cmd_stats() {
@@ -339,14 +384,18 @@ cmd_stats() {
 
     echo -e "${BLUE}Collaboration Statistics: $collab_id${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
-    export PGPASSWORD="$POSTGRES_PASSWORD"
+    export_postgres_password
 
-    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
-         -p "${POSTGRES_PORT:-5432}" \
-         -U "${POSTGRES_USER:-postgres}" \
-         -d "${POSTGRES_DB:-ai_context}" \
-         -c "SELECT * FROM get_collaboration_stats('$collab_id')"
+    if ! safe_collab_id "$collab_id"; then
+        echo -e "${RED}Error: unsafe collaboration id${NC}"
+        exit 1
+    fi
+    if ! function_exists "public.get_collaboration_stats(text)"; then
+        echo -e "${YELLOW}No collaboration stats function found in $(postgres_user)@$(postgres_db).${NC}"
+        return 0
+    fi
+
+    psql_collab -v collab_id="$collab_id" -c "SELECT * FROM get_collaboration_stats(:'collab_id')"
 }
 
 cmd_messages() {
@@ -360,14 +409,18 @@ cmd_messages() {
 
     echo -e "${BLUE}Collaboration Messages: $collab_id${NC}"
 
-    export POSTGRES_PASSWORD="$(get_postgres_password)"
-    export PGPASSWORD="$POSTGRES_PASSWORD"
+    export_postgres_password
 
-    psql -h "${POSTGRES_HOST:-127.0.0.1}" \
-         -p "${POSTGRES_PORT:-5432}" \
-         -U "${POSTGRES_USER:-postgres}" \
-         -d "${POSTGRES_DB:-ai_context}" \
-         -c "SELECT sender_id, recipient_id, message_type, sent_at FROM collaboration_messages WHERE collaboration_id = '$collab_id' ORDER BY sent_at DESC LIMIT 50"
+    if ! safe_collab_id "$collab_id"; then
+        echo -e "${RED}Error: unsafe collaboration id${NC}"
+        exit 1
+    fi
+    if ! relation_exists "public.collaboration_messages"; then
+        echo -e "${YELLOW}No collaboration messages table found in $(postgres_user)@$(postgres_db).${NC}"
+        return 0
+    fi
+
+    psql_collab -v collab_id="$collab_id" -c "SELECT sender_id, recipient_id, message_type, sent_at FROM collaboration_messages WHERE collaboration_id = :'collab_id' ORDER BY sent_at DESC LIMIT 50"
 }
 
 # Main command dispatch

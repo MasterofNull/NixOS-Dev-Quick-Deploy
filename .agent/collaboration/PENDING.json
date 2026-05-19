@@ -1,13 +1,13 @@
 {
-  "task": "58B.9-collaboration-and-routing-hygiene",
+  "task": "59.0-observability-and-safety-gate-hardening",
   "agent": "Codex",
-  "goal_state": "Clear post-rebuild collaboration/tooling hygiene before deeper default routing work.",
+  "goal_state": "Close remaining QA-all failures before Phase 59 domain adoption/retrieval tuning.",
   "files": [
-    "scripts/ai/aq-collaborate",
-    ".agents/delegation/registry.jsonl",
-    "docs/agent-guides/47-AGENT-TOOL-CONTRACT.md",
+    "scripts/ai/aq-report",
+    "scripts/testing/test-agent-safety.sh",
+    "scripts/ai/aq-qa",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PENDING.json"
   ],
-  "next_step": "Fix aq-collaborate Postgres auth failure and stale delegation running-state hygiene; then audit routing for the five promoted-but-not-default domains."
+  "next_step": "Fix aq-report retrieval acceptance metric drift (`avg_collection_count` missing) and agent safety smoke nonzero exit inconsistency before expanding Phase 59 work."
 }

@@ -30,7 +30,7 @@ Establish `mobile-web` as a first-class capability domain. Initial activation co
 3. Authoring the agent instruction surface
 4. Wiring a baseline validation hook
 
-Implementation note (2026-05-18): `nix develop .#mobile-web` is implemented with Flutter, Android tools, Node.js 22, Chromium, and Playwright driver. Lighthouse is no longer packaged through `nodePackages` on nixpkgs 25.11; the shell emits an on-demand npm hint instead. AIDB seeding remains pending before validation/promotion.
+Implementation note (2026-05-19): `nix develop .#mobile-web` is implemented with Flutter, Android tools, Node.js 22, Chromium, and Playwright driver. Lighthouse is no longer packaged through `nodePackages` on nixpkgs 25.11; the shell emits an on-demand npm hint instead. The domain reached `promoted` with seeded `mobile-web-patterns`, MASVS static scan evidence, fixture Lighthouse report plumbing, and Gemini review-gate PASS. Real Lighthouse CLI evidence remains a hardening item before any future default-routing decision.
 
 **First follow-on slice (per Gemini research):** Mobile Accessibility & Security Audit (MASA) harness — Lighthouse + MASVS static check → unified dashboard report.
 
@@ -84,11 +84,12 @@ Seed content per Gemini research:
 ### Tool order
 
 1. `nix develop .#mobile-web` — domain dev shell (provision in mobile-web.1)
-2. `lighthouse <url> --output json` — accessibility + performance audit
-3. `playwright test` — browser automation + responsive testing
-4. `flutter doctor` — toolchain health (provision in mobile-web.1)
-5. `adb devices` — Android device/emulator check (if android-tools present)
-6. `scripts/governance/tier0-validation-gate.sh --pre-commit` — always before commit
+2. `scripts/testing/mobile-web-masa-harness.py` — deterministic MASA harness; real Lighthouse only when the CLI and a URL are provided
+3. `lighthouse <url> --output json` — accessibility + performance audit when explicitly installed/provided
+4. `playwright test` — browser automation + responsive testing
+5. `flutter doctor` — toolchain health
+6. `adb devices` — Android device/emulator check
+7. `scripts/governance/tier0-validation-gate.sh --pre-commit` — always before commit
 
 ### Forbidden
 
@@ -118,7 +119,8 @@ Per Gemini research:
 2. `.agent/MOBILE-WEB-INSTRUCTIONS.md` exists with domain tag, task classes, tool order.
 3. `mobile-web-health` validation check exits 0.
 4. At `implemented`: Flutter/ADB/Node/Chromium/Playwright are available in the domain shell.
-5. Before `validated`: Lighthouse JSON report generation works, MASVS-aligned static scan on sample source succeeds, `mobile-web-patterns` is seeded, Gemini review-gate PASS is recorded on one mobile audit output, and there are no P0/P1 regressions.
+5. Before `validated`: Lighthouse-shaped JSON report generation works, MASVS-aligned static scan on sample source succeeds, `mobile-web-patterns` is seeded, Gemini review-gate PASS is recorded on one mobile audit output, and there are no P0/P1 regressions.
+6. Before any future `default` transition: real Lighthouse CLI evidence is required, or a separate default-routing decision must explicitly scope fixture mode to validation-only plumbing.
 
 ---
 

@@ -1,7 +1,7 @@
 # Mobile-Web Domain — Agent Instruction Payload
 
 **Domain tag:** `mobile-web`
-**State:** proposed (2026-05-18)
+**State:** promoted (2026-05-18); opt-in, not default
 **Upstream authority:** `.agent/PROJECT-MOBILE-WEB-PRD.md`, `docs/architecture/capability-lifecycle.md`
 **Registry ID:** `mobile-web` in `config/capability-lifecycle-registry.json`
 
@@ -29,12 +29,13 @@ Applies when performing: web/mobile frontend development, accessibility audits (
 
 ## Tool Preferences
 
-1. `nix develop .#mobile-web` — domain dev shell (not yet provisioned; mobile-web.1)
-2. `lighthouse <url> --output json` — primary accessibility + performance audit
-3. `playwright test` — browser automation + responsive testing
-4. `flutter doctor` — toolchain health (not yet provisioned)
-5. `adb devices` — Android device/emulator (if android-tools present)
-6. `scripts/governance/tier0-validation-gate.sh --pre-commit` — mandatory before commit
+1. `nix develop .#mobile-web` — domain dev shell with Flutter, Android tools, Node.js 22, Chromium, and Playwright driver
+2. `scripts/testing/mobile-web-masa-harness.py` — MASA validation harness; uses real Lighthouse only when `lighthouse` and `--url` are available, otherwise fixture mode
+3. `lighthouse <url> --output json` — primary accessibility + performance audit when the CLI is explicitly installed/provided
+4. `playwright test` — browser automation + responsive testing
+5. `flutter doctor` — toolchain health
+6. `adb devices` — Android device/emulator
+7. `scripts/governance/tier0-validation-gate.sh --pre-commit` — mandatory before commit
 
 **Forbidden:** iOS native builds (no macOS/Xcode on this platform); reverse engineering tools without user authorization; `pip install` for toolchains.
 

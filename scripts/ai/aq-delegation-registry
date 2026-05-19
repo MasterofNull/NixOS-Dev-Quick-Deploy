@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Inspect and reconcile the durable multi-agent delegation registry."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+from datetime import datetime, timezone
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_REGISTRY = ROOT / ".agents" / "delegation" / "registry.jsonl"
+
+
+def _pid_alive(pid: object) -> bool:
+    if pid in (None, "", "null"):
+        return False
+    try:
+        value = int(pid)
+    except (TypeError, ValueError):
+        return False
+    try:
+        os.kill(value, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _load(path: Path) -> tuple[list[str], list[dict]]:
+    comments: list[str] = []
+    entries: list[dict] = []
+    if not path.exists():
+        return comments, entries
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            comments.append(raw)
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            comments.append(raw)
+    return comments, entries
+
+
+def _write(path: Path, comments: list[str], entries: list[dict]) -> None:
+    lines = list(comments)
+    lines.extend(json.dumps(e, separators=(",", ":"), ensure_ascii=False) for e in entries)
+    path.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def reconcile(path: Path, dry_run: bool) -> int:
+    comments, entries = _load(path)
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    changed = 0
+    for entry in entries:
+        if entry.get("status") != "running":
+            continue
+        pid = entry.get("pid")
+        if _pid_alive(pid):
+            continue
+        entry["status"] = "stale"
+        entry["stale_since"] = now
+        entry["stale_reason"] = "registry said running, but pid is missing or no longer alive"
+        changed += 1
+    if changed and not dry_run:
+        _write(path, comments, entries)
+    print(json.dumps({"registry": str(path), "stale_marked": changed, "dry_run": dry_run}, indent=2))
+    return 0
+
+
+def list_entries(path: Path, status: str | None) -> int:
+    _, entries = _load(path)
+    for entry in entries:
+        if status and entry.get("status") != status:
+            continue
+        print(f"{entry.get('id','?'):<32} {entry.get('status','?'):<8} {entry.get('agent','?'):<12} {entry.get('role','?'):<10} {str(entry.get('pid')):<8} {entry.get('description','')[:72]}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("reconcile", help="mark dead running entries as stale")
+    r.add_argument("--dry-run", action="store_true")
+    l = sub.add_parser("list", help="list registry entries")
+    l.add_argument("--status")
+    args = parser.parse_args()
+    if args.cmd == "reconcile":
+        return reconcile(args.registry, args.dry_run)
+    if args.cmd == "list":
+        return list_entries(args.registry, args.status)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

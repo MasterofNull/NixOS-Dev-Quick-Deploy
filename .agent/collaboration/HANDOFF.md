@@ -1,3 +1,11 @@
+# Handoff Memo — 2026-05-19 Phase 58B.9
+
+**Status:** Collaboration/routing/mobile-web hygiene complete. `aq-collaborate list` no longer fails on `postgres/ai_context`; it defaults to `aidb/aidb` and falls back to durable collaboration files when DB collaboration views are absent. Delegation registry stale rows reconciled with `scripts/ai/aq-delegation-registry`. Phase 58B routing audit added and passing. Mobile-web Lighthouse posture clarified: fixture mode is valid for promoted validation plumbing; real Lighthouse is required before any future mobile-web default transition.
+**Last Action (Codex):** Fixed explicit security routing precedence, narrowed over-broad `implement`/scientific regression signals, added `scripts/testing/phase58b-routing-audit.py`, updated mobile-web PRD/instructions, and marked dead `running` delegation rows as `stale`.
+**Open Issues:** `aq-qa all` still has two broader hardening failures reported by team/Codex context: `1.5.3` retrieval acceptance metrics missing `avg_collection_count`, and `5.8.2` agent safety smoke nonzero exit despite visible PASS rows. Gemini strategy attempts still exited without final output and were marked stale/failed.
+**Next Step:** Start Phase 59.0 by fixing observability contract drift and safety-smoke exit inconsistency before deeper RAG/domain adoption work.
+**Context Bloat:** Medium
+
 # Handoff Memo — 2026-05-19
 
 **Status:** Post-rebuild resume complete. Harness health verified (`aq-qa 0`: 67/67 PASS). Phase 58B real-use adoption evidence recorded in `.agents/plans/phase-58b-real-use-adoption-log.md`. Systems-software is currently the only `default` Phase 58B domain; the other five remain `promoted` opt-in.
