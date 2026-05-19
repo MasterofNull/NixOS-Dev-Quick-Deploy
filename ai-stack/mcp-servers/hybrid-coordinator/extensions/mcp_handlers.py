@@ -442,13 +442,13 @@ TOOL_DEFINITIONS: List[Tool] = [
     ),
     Tool(
         name="store_agent_memory",
-        description="Store episodic, semantic, or procedural memory items",
+        description="Store episodic, semantic, procedural, error_solutions, or interaction_history memory items",
         inputSchema={
             "type": "object",
             "properties": {
                 "memory_type": {
                     "type": "string",
-                    "enum": ["episodic", "semantic", "procedural"],
+                    "enum": ["episodic", "semantic", "procedural", "error_solutions", "interaction_history"],
                 },
                 "summary": {"type": "string"},
                 "content": {"type": "string"},

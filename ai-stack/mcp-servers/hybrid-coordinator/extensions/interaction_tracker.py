@@ -329,7 +329,7 @@ async def track_interaction(
         )
         if Config.AI_MEMORY_ENABLED and _store_memory is not None:
             await _store_memory(
-                "episodic",
+                "interaction_history",
                 summary=f"{agent_type} interaction: {query[:120]}",
                 content=response[:600],
                 metadata={
@@ -624,7 +624,7 @@ async def record_learning_feedback(
         )
         if Config.AI_MEMORY_ENABLED and _store_memory:
             await _store_memory(
-                "semantic",
+                "error_solutions",
                 summary=f"User correction for query: {query[:120]}",
                 content=correction,
                 metadata={"query": query, "interaction_id": interaction_id, "tags": resolved_tags},
