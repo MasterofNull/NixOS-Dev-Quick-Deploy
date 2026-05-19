@@ -108,7 +108,7 @@ def _log(
         AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
         with open(AUDIT_LOG, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
-    except OSError:
+    except Exception:  # noqa: BLE001 — best-effort audit; never raises per docstring
         pass
 
 

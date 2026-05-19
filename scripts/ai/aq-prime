@@ -155,6 +155,7 @@ def check_harness_health() -> dict[str, Any]:
     import time
     harness_url = _resolve_harness_url()
     capabilities: list[Any] | None = None
+    collections: list[Any] | None = None
 
     for attempt in range(3):
         try:
@@ -171,11 +172,15 @@ def check_harness_health() -> dict[str, Any]:
                     raw_capabilities = data.get("capabilities")
                     if isinstance(raw_capabilities, list):
                         capabilities = raw_capabilities
+                    raw_collections = data.get("collections")
+                    if isinstance(raw_collections, list):
+                        collections = raw_collections
                 except json.JSONDecodeError:
                     pass
                 return {
                     "status": "online",
                     "capabilities": capabilities,
+                    "collections": collections,
                     "url": harness_url,
                 }
         except subprocess.TimeoutExpired:
@@ -183,26 +188,37 @@ def check_harness_health() -> dict[str, Any]:
         if attempt < 2:
             time.sleep(1)
 
-    return {"status": "offline", "capabilities": capabilities, "url": harness_url}
+    return {"status": "offline", "capabilities": capabilities, "collections": collections, "url": harness_url}
 
 def map_health_to_layers(harness_data: dict[str, Any]) -> dict[int, str]:
-    """Map live harness health status to OSI layers."""
+    """Map live harness health status to OSI layers.
+
+    Symbols:
+      ✓  = confirmed healthy from live signal
+      ~  = not assessed (no probe available; absence ≠ failure)
+      -  = confirmed offline/unhealthy
+    """
     is_online = harness_data.get("status") == "online"
-    caps = harness_data.get("capabilities") or []
+    collections = harness_data.get("collections") or []
 
-    # Default all to UNKNOWN (-)
-    health_map = {i: "-" for i in range(1, 8)}
+    # Default L1/L2/L7 to NOT-ASSESSED (~) — no probe covers them via /health.
+    # Use - only when a probe explicitly confirms failure.
+    health_map = {i: "~" for i in range(1, 8)}
 
-    # Simple logic: if coordinator is up, layers 3, 4, 6 are generally reachable
     if is_online:
-        health_map[3] = "✓" # Connectivity (API responds)
-        health_map[4] = "✓" # Coordination (Coordinator responds)
+        health_map[3] = "✓"  # Connectivity  — coordinator API responds
+        health_map[4] = "✓"  # Coordination  — coordinator routes queries
+        health_map[5] = "✓"  # State         — implied by coordinator being up
 
-        if any("aidb" in str(c).lower() for i, c in enumerate(caps)):
-            health_map[6] = "✓" # Cognitive (AIDB found)
-
-        # Layer 5 (State) is usually a dependency for the API to be "online"
-        health_map[5] = "✓"
+        # L6 Cognitive: /health returns "collections" list when AIDB is wired.
+        # Previously checked "capabilities" (wrong key) — always empty → always [-].
+        if collections:
+            health_map[6] = "✓"  # Cognitive — AIDB collections present
+    else:
+        # Coordinator offline: L3/L4/L5 are confirmed down.
+        health_map[3] = "-"
+        health_map[4] = "-"
+        health_map[5] = "-"
 
     return health_map
 
