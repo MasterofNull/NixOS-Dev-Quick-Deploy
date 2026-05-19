@@ -6,10 +6,16 @@ owns the OpenAI-compatible proxy surface, A2A-style JSON-RPC task handling,
 and .well-known descriptors while relying on injected workflow/session helpers.
 """
 
+import base64
 import json
 import logging
+import os
+import shutil
+import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlsplit, urlunsplit
 
@@ -33,6 +39,15 @@ _ai_coordinator_extract_task_from_openai_messages: Optional[Callable[[Any], str]
 _ai_coordinator_route_by_complexity: Optional[Callable[..., Dict[str, Any]]] = None
 _switchboard_url: str = ""
 _service_version: str = "1.0.0"
+_a2a_signing_key_path: Optional[Path] = None
+
+
+class A2ARequestError(Exception):
+    def __init__(self, code: int, message: str, *, http_status: int = 400):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.http_status = http_status
 
 
 def init(
@@ -76,6 +91,7 @@ def init(
     _ai_coordinator_route_by_complexity = ai_coordinator_route_by_complexity_fn
     _switchboard_url = switchboard_url
     _service_version = service_version
+    _ensure_a2a_signing_key()
 
 
 async def _active_lesson_refs(limit: int = 2) -> List[Dict[str, Any]]:
@@ -263,6 +279,7 @@ def _normalize_a2a_method(value: Any) -> str:
     text = str(value or "").strip()
     method_aliases = {
         "SendMessage": "message/send",
+        "tasks/send": "message/send",
         "GetTask": "tasks/get",
         "ListTasks": "tasks/list",
         "CancelTask": "tasks/cancel",
@@ -558,6 +575,243 @@ def _session_to_a2a_task(
     return task
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _canonical_agent_card_payload(card: Dict[str, Any]) -> bytes:
+    unsigned = {k: v for k, v in card.items() if k != "proof"}
+    return json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _a2a_default_signing_key_path() -> Path:
+    configured = os.getenv("A2A_SIGNING_KEY_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    run_secret = Path("/run/secrets/a2a_signing_key")
+    if run_secret.exists() or os.access(str(run_secret.parent), os.W_OK):
+        return run_secret
+    return Path("/var/lib/ai-stack/hybrid/a2a_signing.key")
+
+
+def _run_signing_command(args: List[str], **kwargs: Any) -> subprocess.CompletedProcess:
+    if not any(key in kwargs for key in ("stdout", "stderr", "capture_output")):
+        kwargs["capture_output"] = True
+    return subprocess.run(args, check=True, **kwargs)
+
+
+def _generate_openssl_ed25519_key(path: Path) -> bool:
+    if not shutil.which("openssl"):
+        return False
+    _run_signing_command(["openssl", "genpkey", "-algorithm", "Ed25519", "-out", str(path)])
+    return True
+
+
+def _generate_pynacl_ed25519_key(path: Path) -> bool:
+    try:
+        from nacl.signing import SigningKey
+    except Exception:
+        return False
+    signing_key = SigningKey.generate()
+    path.write_bytes(signing_key.encode())
+    return True
+
+
+def _generate_cryptography_ed25519_key(path: Path) -> bool:
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    except Exception:
+        return False
+    private_key = Ed25519PrivateKey.generate()
+    path.write_bytes(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    return True
+
+
+def _generate_ssh_ed25519_key(path: Path) -> bool:
+    if not shutil.which("ssh-keygen"):
+        return False
+    _run_signing_command(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(path)])
+    return True
+
+
+def _ensure_a2a_signing_key() -> Optional[Path]:
+    global _a2a_signing_key_path
+    path = _a2a_default_signing_key_path()
+    if path.exists():
+        _a2a_signing_key_path = path
+        return path
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not (
+            _generate_pynacl_ed25519_key(path)
+            or _generate_cryptography_ed25519_key(path)
+            or _generate_openssl_ed25519_key(path)
+            or _generate_ssh_ed25519_key(path)
+        ):
+            logger.warning("A2A signing key unavailable: install PyNaCl, cryptography, openssl, or ssh-keygen")
+            return None
+        path.chmod(0o600)
+        _a2a_signing_key_path = path
+        logger.info("A2A signing key initialized at %s", path)
+        return path
+    except Exception as exc:
+        logger.warning("A2A signing key initialization failed at %s: %s", path, exc)
+        return None
+
+
+def _openssl_public_key_b64url(path: Path) -> str:
+    proc = _run_signing_command(
+        ["openssl", "pkey", "-in", str(path), "-pubout", "-outform", "DER"]
+    )
+    der = proc.stdout
+    raw = der[-32:] if len(der) >= 32 else der
+    return _b64url(raw)
+
+
+def _pynacl_public_key_b64url(path: Path) -> Optional[str]:
+    try:
+        from nacl.signing import SigningKey
+    except Exception:
+        return None
+    seed = path.read_bytes()
+    if len(seed) != 32:
+        return None
+    return _b64url(SigningKey(seed).verify_key.encode())
+
+
+def _cryptography_public_key_b64url(path: Path) -> Optional[str]:
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    except Exception:
+        return None
+    try:
+        key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+    except Exception:
+        return None
+    if not isinstance(key, Ed25519PrivateKey):
+        return None
+    public_key = key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return _b64url(public_key)
+
+
+def _ssh_public_key_b64url(path: Path) -> str:
+    pub_path = path.with_name(path.name + ".pub")
+    if not pub_path.exists():
+        with pub_path.open("wb") as fh:
+            _run_signing_command(["ssh-keygen", "-y", "-f", str(path)], stdout=fh)
+    return _b64url(pub_path.read_bytes())
+
+
+def _sign_with_pynacl(path: Path, payload: bytes) -> Optional[bytes]:
+    try:
+        from nacl.signing import SigningKey
+    except Exception:
+        return None
+    try:
+        seed = path.read_bytes()
+        if len(seed) != 32:
+            return None
+        return SigningKey(seed).sign(payload).signature
+    except Exception as exc:
+        logger.debug("A2A PyNaCl signing unavailable for %s: %s", path, exc)
+        return None
+
+
+def _sign_with_cryptography(path: Path, payload: bytes) -> Optional[bytes]:
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    except Exception:
+        return None
+    try:
+        key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+        if not isinstance(key, Ed25519PrivateKey):
+            return None
+        return key.sign(payload)
+    except Exception as exc:
+        logger.debug("A2A cryptography signing unavailable for %s: %s", path, exc)
+        return None
+
+
+def _sign_with_openssl(path: Path, payload: bytes) -> Optional[bytes]:
+    if not shutil.which("openssl"):
+        return None
+    try:
+        proc = _run_signing_command(
+            ["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", str(path)],
+            input=payload,
+        )
+        return proc.stdout
+    except Exception as exc:
+        logger.debug("A2A openssl signing unavailable for %s: %s", path, exc)
+        return None
+
+
+def _sign_with_ssh_keygen(path: Path, payload: bytes) -> Optional[bytes]:
+    if not shutil.which("ssh-keygen"):
+        return None
+    try:
+        with tempfile.TemporaryDirectory(prefix="a2a-sign-") as tmpdir:
+            payload_path = Path(tmpdir) / "agent-card.canon"
+            payload_path.write_bytes(payload)
+            _run_signing_command(
+                ["ssh-keygen", "-Y", "sign", "-q", "-n", "a2a-agent-card", "-f", str(path), str(payload_path)]
+            )
+            sig_path = payload_path.with_name(payload_path.name + ".sig")
+            return sig_path.read_bytes()
+    except Exception as exc:
+        logger.debug("A2A ssh-keygen signing unavailable for %s: %s", path, exc)
+        return None
+
+
+def _a2a_verification_method(path: Path) -> str:
+    try:
+        public_key = _pynacl_public_key_b64url(path) or _cryptography_public_key_b64url(path)
+        if public_key:
+            return f"did:web:hybrid-coordinator#ed25519-{public_key}"
+        if path.with_name(path.name + ".pub").exists() or str(path.read_text(errors="ignore")).startswith("-----BEGIN OPENSSH"):
+            return f"did:web:hybrid-coordinator#ssh-ed25519-{_ssh_public_key_b64url(path)}"
+        if shutil.which("openssl"):
+            return f"did:web:hybrid-coordinator#ed25519-{_openssl_public_key_b64url(path)}"
+    except Exception as exc:
+        logger.debug("A2A verification method derivation failed for %s: %s", path, exc)
+    return "did:web:hybrid-coordinator#ed25519"
+
+
+def _add_a2a_agent_card_proof(card: Dict[str, Any]) -> Dict[str, Any]:
+    key_path = _ensure_a2a_signing_key()
+    if not key_path:
+        return card
+    payload = _canonical_agent_card_payload(card)
+    signature = (
+        _sign_with_pynacl(key_path, payload)
+        or _sign_with_cryptography(key_path, payload)
+        or _sign_with_openssl(key_path, payload)
+        or _sign_with_ssh_keygen(key_path, payload)
+    )
+    if not signature:
+        logger.warning("A2A agent card proof omitted: no Ed25519 signing backend succeeded")
+        return card
+    signed = dict(card)
+    signed["proof"] = {
+        "type": "Ed25519Signature2020",
+        "verificationMethod": _a2a_verification_method(key_path),
+        "signature": _b64url(signature),
+    }
+    return signed
+
+
 def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
     parsed = urlsplit(base_url.rstrip("/"))
     hostname = parsed.hostname or ""
@@ -568,7 +822,7 @@ def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
         origin = urlunsplit((parsed.scheme or "http", host, "", "", "")).rstrip("/")
     else:
         origin = base_url.rstrip("/")
-    return {
+    card = {
         "protocolVersion": "0.3.0",
         "name": "NixOS Dev Quick Deploy Hybrid Coordinator",
         "description": (
@@ -618,8 +872,10 @@ def _build_a2a_agent_card(base_url: str) -> Dict[str, Any]:
         "endpoints": {
             "rpc": f"{origin}/",
             "taskEvents": f"{origin}/a2a/tasks/{{taskId}}/events",
+            "taskSend": f"{origin}/a2a/tasks/send",
         },
     }
+    return _add_a2a_agent_card_proof(card)
 
 
 def _jsonrpc_success(request_id: Any, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -770,6 +1026,107 @@ async def handle_a2a_task_events(request: web.Request) -> web.StreamResponse:
     )
     await response.write_eof()
     return response
+
+
+async def _send_a2a_message(params: Dict[str, Any], base_url: str) -> Dict[str, Any]:
+    message = params.get("message")
+    text = _extract_a2a_text(message)
+    if not text:
+        text = str(params.get("text", "") or "").strip()
+    if not text:
+        raise A2ARequestError(-32602, "message text required")
+
+    task_id = str(
+        params.get("taskId")
+        or params.get("id")
+        or (message.get("taskId") if isinstance(message, dict) else "")
+        or ""
+    ).strip()
+    context_id = str(
+        params.get("contextId")
+        or (message.get("contextId") if isinstance(message, dict) else "")
+        or ""
+    ).strip()
+    lesson_refs = await _active_lesson_refs(limit=2)
+    if task_id:
+        async with _workflow_sessions_lock:
+            sessions = await _load_workflow_sessions()
+            session = sessions.get(task_id)
+            if not session:
+                raise A2ARequestError(-32001, "task not found", http_status=404)
+            _ensure_session_runtime_fields(session)
+            now = time.time()
+            session["updated_at"] = now
+            session["status"] = "working"
+            session["trajectory"].append(
+                {
+                    "ts": now,
+                    "event_type": "message_send",
+                    "phase_id": f"phase-{int(session.get('current_phase_index', 0) or 0)}",
+                    "detail": text,
+                    "risk_class": "safe",
+                }
+            )
+            if context_id:
+                session["context_id"] = context_id
+            sessions[task_id] = session
+            await _save_workflow_sessions(sessions)
+    else:
+        blueprints_data = _load_and_validate_workflow_blueprints()
+        blueprint_id = str(params.get("blueprint_id", "") or "").strip()
+        selected_blueprint = (
+            blueprints_data.get("blueprint_by_id", {}).get(blueprint_id)
+            if blueprint_id
+            else None
+        )
+        start_data = {
+            "query": text,
+            "prompt": text,
+            "blueprint_id": blueprint_id,
+            "safety_mode": str(params.get("safetyMode") or params.get("safety_mode") or "plan-readonly"),
+            "token_limit": params.get("tokenLimit"),
+            "tool_call_limit": params.get("toolCallLimit"),
+            "intent_contract": params.get("intent_contract"),
+            "isolation_profile": params.get("isolationProfile"),
+            "workspace_root": params.get("workspaceRoot"),
+            "network_policy": params.get("networkPolicy"),
+            "agent": "a2a",
+            "role": "orchestrator",
+        }
+        orchestration = _coerce_orchestration_context(start_data)
+        session = _build_workflow_run_session(
+            query=text,
+            data=start_data,
+            selected_blueprint=selected_blueprint,
+            orchestration=orchestration,
+            lesson_refs=lesson_refs,
+        )
+        if context_id:
+            session["context_id"] = context_id
+        task_id = session["session_id"]
+        async with _workflow_sessions_lock:
+            sessions = await _load_workflow_sessions()
+            sessions[task_id] = session
+            await _save_workflow_sessions(sessions)
+
+    task = _session_to_a2a_task(session, base_url)
+    result = {
+        "task": task,
+        "message": {
+            "role": "ROLE_AGENT",
+            "parts": _a2a_text_parts(
+                f"Accepted task '{session.get('objective', '')}'. Track status via tasks/get or the task event stream."
+            ),
+            "messageId": f"{task_id}:accepted",
+            "taskId": task_id,
+        },
+        "stream": {
+            "url": f"{base_url.rstrip('/')}/a2a/tasks/{task_id}/events",
+        },
+    }
+    if lesson_refs:
+        result["active_lesson_refs"] = lesson_refs
+    return result
 
 
 async def handle_a2a_rpc(request: web.Request) -> web.Response:
@@ -934,103 +1291,11 @@ async def handle_a2a_rpc(request: web.Request) -> web.Response:
             return web.json_response(_jsonrpc_success(request_id, _session_to_a2a_task(session, base_url)))
 
         if method in {"message/send", "message/stream"}:
-            message = params.get("message")
-            text = _extract_a2a_text(message)
-            if not text:
-                text = str(params.get("text", "") or "").strip()
-            if not text:
-                return web.json_response(_jsonrpc_error(request_id, -32602, "message text required"))
-
-            task_id = str(
-                params.get("taskId")
-                or params.get("id")
-                or (message.get("taskId") if isinstance(message, dict) else "")
-                or ""
-            ).strip()
-            context_id = str(
-                params.get("contextId")
-                or (message.get("contextId") if isinstance(message, dict) else "")
-                or ""
-            ).strip()
-            lesson_refs = await _active_lesson_refs(limit=2)
-            if task_id:
-                async with _workflow_sessions_lock:
-                    sessions = await _load_workflow_sessions()
-                    session = sessions.get(task_id)
-                    if not session:
-                        return web.json_response(_jsonrpc_error(request_id, -32001, "task not found"))
-                    _ensure_session_runtime_fields(session)
-                    now = time.time()
-                    session["updated_at"] = now
-                    session["status"] = "working"
-                    session["trajectory"].append(
-                        {
-                            "ts": now,
-                            "event_type": "message_send",
-                            "phase_id": f"phase-{int(session.get('current_phase_index', 0) or 0)}",
-                            "detail": text,
-                            "risk_class": "safe",
-                        }
-                    )
-                    if context_id:
-                        session["context_id"] = context_id
-                    sessions[task_id] = session
-                    await _save_workflow_sessions(sessions)
-            else:
-                blueprints_data = _load_and_validate_workflow_blueprints()
-                blueprint_id = str(params.get("blueprint_id", "") or "").strip()
-                selected_blueprint = (
-                    blueprints_data.get("blueprint_by_id", {}).get(blueprint_id)
-                    if blueprint_id
-                    else None
-                )
-                start_data = {
-                    "query": text,
-                    "prompt": text,
-                    "blueprint_id": blueprint_id,
-                    "safety_mode": str(params.get("safetyMode") or params.get("safety_mode") or "plan-readonly"),
-                    "token_limit": params.get("tokenLimit"),
-                    "tool_call_limit": params.get("toolCallLimit"),
-                    "intent_contract": params.get("intent_contract"),
-                    "isolation_profile": params.get("isolationProfile"),
-                    "workspace_root": params.get("workspaceRoot"),
-                    "network_policy": params.get("networkPolicy"),
-                    "agent": "a2a",
-                    "role": "orchestrator",
-                }
-                orchestration = _coerce_orchestration_context(start_data)
-                session = _build_workflow_run_session(
-                    query=text,
-                    data=start_data,
-                    selected_blueprint=selected_blueprint,
-                    orchestration=orchestration,
-                    lesson_refs=lesson_refs,
-                )
-                if context_id:
-                    session["context_id"] = context_id
-                task_id = session["session_id"]
-                async with _workflow_sessions_lock:
-                    sessions = await _load_workflow_sessions()
-                    sessions[task_id] = session
-                    await _save_workflow_sessions(sessions)
-
-            task = _session_to_a2a_task(session, base_url)
-            result = {
-                "task": task,
-                "message": {
-                    "role": "ROLE_AGENT",
-                    "parts": _a2a_text_parts(
-                        f"Accepted task '{session.get('objective', '')}'. Track status via tasks/get or the task event stream."
-                    ),
-                    "messageId": f"{task_id}:accepted",
-                    "taskId": task_id,
-                },
-                "stream": {
-                    "url": f"{base_url.rstrip('/')}/a2a/tasks/{task_id}/events",
-                },
-            }
-            if lesson_refs:
-                result["active_lesson_refs"] = lesson_refs
+            try:
+                result = await _send_a2a_message(params, base_url)
+            except A2ARequestError as exc:
+                return web.json_response(_jsonrpc_error(request_id, exc.code, exc.message))
+            task = result["task"]
             if method == "message/stream":
                 stream_response = web.StreamResponse(
                     status=200,
@@ -1080,6 +1345,49 @@ async def handle_a2a_rpc(request: web.Request) -> web.Response:
         )
 
 
+async def handle_a2a_tasks_send(request: web.Request) -> web.Response:
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "parse error"}, status=400)
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "json object body required"}, status=400)
+
+    task_id = payload.get("id")
+    if task_id is not None and not isinstance(task_id, str):
+        return web.json_response({"error": "id must be a string"}, status=400)
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        return web.json_response({"error": "message object required"}, status=400)
+
+    role = str(message.get("role") or "").strip().lower()
+    if role and role != "user":
+        return web.json_response({"error": "message.role must be user"}, status=400)
+    if not _extract_a2a_text(message):
+        return web.json_response({"error": "message.parts[0].text required"}, status=400)
+
+    params = dict(payload)
+    if task_id:
+        params["taskId"] = task_id
+    base_url = f"{request.scheme}://{request.host}"
+    try:
+        result = await _send_a2a_message(params, base_url)
+    except A2ARequestError as exc:
+        return web.json_response({"error": exc.message}, status=exc.http_status)
+    except Exception as exc:
+        logger.error("handle_a2a_tasks_send error=%s", exc)
+        return web.json_response({"error": "internal error", "detail": str(exc)[:240]}, status=500)
+
+    task = result.get("task", {})
+    return web.json_response(
+        {
+            "id": str(task.get("id") or task_id or ""),
+            "status": task.get("status", {"state": "TASK_STATE_WORKING"}),
+            "artifacts": task.get("artifacts", []),
+        }
+    )
+
+
 async def handle_openai_models(_request: web.Request) -> web.Response:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -1123,4 +1431,5 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_post("/v1/completions", handle_openai_completions)
     http_app.router.add_post("/", handle_a2a_rpc)
     http_app.router.add_post("/a2a", handle_a2a_rpc)
+    http_app.router.add_post("/a2a/tasks/send", handle_a2a_tasks_send)
     http_app.router.add_get("/a2a/tasks/{session_id}/events", handle_a2a_task_events)

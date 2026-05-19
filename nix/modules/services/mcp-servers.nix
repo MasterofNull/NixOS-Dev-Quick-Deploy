@@ -291,6 +291,7 @@ let
       sqlalchemy
       beautifulsoup4
       trio
+      cryptography # Phase D: Ed25519 A2A agent card signing (AM-G2)
     ]));
 
   ralphPython = pkgs.python3.withPackages (ps:
