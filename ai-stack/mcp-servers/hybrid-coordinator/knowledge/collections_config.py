@@ -170,6 +170,8 @@ MEMORY_COLLECTIONS: Dict[str, str] = {
     "episodic": "agent-memory-episodic",
     "semantic": "agent-memory-semantic",
     "procedural": "agent-memory-procedural",
+    "error_solutions": "error-solutions",
+    "interaction_history": "interaction-history",
 }
 
 REPAIRABLE_DIMENSION_MISMATCH_COLLECTIONS = set(MEMORY_COLLECTIONS.values()) | {

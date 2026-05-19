@@ -45,6 +45,9 @@ LEGACY_MEMORY_TYPE_ALIASES = {
     "fact": "semantic",
     "decision": "procedural",
     "context": "episodic",
+    "error": "error_solutions",
+    "error_solution": "error_solutions",
+    "interaction": "interaction_history",
 }
 
 # Injected from server.py
@@ -255,7 +258,7 @@ async def store_agent_memory(
 
     collection = _memory_collections.get(normalized_type)
     if not collection:
-        raise ValueError("memory_type must be episodic|semantic|procedural")
+        raise ValueError("memory_type must be episodic|semantic|procedural|error_solutions|interaction_history")
 
     sanitized_content = _sanitize_memory_text(
         content or normalized_summary,
