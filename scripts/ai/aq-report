@@ -55,6 +55,9 @@ AUDIT_FALLBACK_PATH = Path(
 AQ_REPORT_LATEST_JSON = Path(
     os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
 )
+HYBRID_TELEMETRY_PATH = Path(
+    os.getenv("HYBRID_TELEMETRY_PATH", "/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl")
+)
 # Phase 19.3.4 — hint adoption log (written by aider-wrapper alongside tool-audit.jsonl)
 HINT_AUDIT_PATH = Path(
     os.getenv("HINT_AUDIT_LOG_PATH", str(TOOL_AUDIT_PATH.parent / "hint-audit.jsonl"))
@@ -1019,16 +1022,96 @@ def _delegation_feedback_path() -> Optional[Path]:
     return None
 
 
+def _route_search_metadata_from_telemetry(event: dict) -> Optional[dict]:
+    """Normalize route_search telemetry into aq-report audit metadata."""
+    if not isinstance(event, dict):
+        return None
+    if str(event.get("event_type", "")).strip().lower() != "route_search":
+        return None
+    raw_profile = event.get("retrieval_profile")
+    if isinstance(raw_profile, dict):
+        profile_name = str(raw_profile.get("profile", "") or "").strip()
+        collection_count = raw_profile.get("collection_count")
+        collections = raw_profile.get("collections")
+        keyword_pool = raw_profile.get("keyword_pool")
+    else:
+        profile_name = str(raw_profile or "").strip()
+        collection_count = event.get("retrieval_collection_count")
+        collections = event.get("retrieval_collections")
+        keyword_pool = event.get("retrieval_keyword_pool")
+    metadata: Dict[str, Any] = {
+        "source": "hybrid_telemetry",
+        "retrieval_profile": profile_name,
+    }
+    if isinstance(collection_count, int):
+        metadata["retrieval_collection_count"] = collection_count
+    if isinstance(collections, list):
+        metadata["retrieval_collections"] = [str(item) for item in collections]
+    if isinstance(keyword_pool, int):
+        metadata["retrieval_keyword_pool"] = keyword_pool
+    for key in ("route", "backend", "generate_response"):
+        if key in event:
+            metadata[key] = event.get(key)
+    return metadata
+
+
+def read_route_search_telemetry(since: datetime) -> List[dict]:
+    """Read hybrid route_search telemetry as audit-like entries.
+
+    The HTTP tool-audit stream can lag a deployed rebuild or contain legacy
+    security-wrapper rows without retrieval metadata. The hybrid telemetry event
+    stream is the authoritative producer for collection fan-out details, so fold
+    it into aq-report explicitly.
+    """
+    path = HYBRID_TELEMETRY_PATH
+    try:
+        if not path.exists():
+            return []
+    except PermissionError:
+        return []
+    entries: List[dict] = []
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                metadata = _route_search_metadata_from_telemetry(event)
+                if metadata is None:
+                    continue
+                ts_raw = event.get("timestamp", "")
+                try:
+                    ts = datetime.fromisoformat(str(ts_raw).rstrip("Z")).replace(tzinfo=timezone.utc)
+                except (ValueError, AttributeError):
+                    continue
+                if ts < since:
+                    continue
+                entries.append({
+                    "timestamp": ts.isoformat().replace("+00:00", "Z"),
+                    "service": "hybrid-coordinator-telemetry",
+                    "tool_name": "route_search",
+                    "outcome": "success",
+                    "latency_ms": event.get("duration_ms"),
+                    "metadata": metadata,
+                })
+    except OSError:
+        return []
+    entries.sort(key=lambda item: _entry_ts_utc(item) or datetime.min.replace(tzinfo=timezone.utc))
+    return entries
+
+
 def read_tool_audit(since: datetime) -> List[dict]:
     """Read tool_audit.jsonl entries newer than `since`.
 
-    Merge the primary and sidecar log when both exist so aq-report reflects the
-    freshest audit stream instead of whichever compatibility path happens to
-    exist first.
+    Merge the primary/sidecar audit logs with hybrid route_search telemetry so
+    routing quality metrics retain retrieval metadata even when compatibility
+    audit producers are stale or stripped down.
     """
     paths = _tool_audit_paths()
-    if not paths:
-        return []
     entries: List[dict] = []
     seen: set[str] = set()
     for path in paths:
@@ -1044,7 +1127,7 @@ def read_tool_audit(since: datetime) -> List[dict]:
                         continue
                     ts_raw = entry.get("timestamp", "")
                     try:
-                        ts = datetime.fromisoformat(ts_raw.rstrip("Z")).replace(tzinfo=timezone.utc)
+                        ts = datetime.fromisoformat(str(ts_raw).rstrip("Z")).replace(tzinfo=timezone.utc)
                     except (ValueError, AttributeError):
                         continue
                     if ts < since:
@@ -1059,6 +1142,15 @@ def read_tool_audit(since: datetime) -> List[dict]:
                     entries.append(entry)
         except OSError:
             continue
+    for entry in read_route_search_telemetry(since):
+        try:
+            dedupe_key = json.dumps(entry, sort_keys=True, default=str)
+        except TypeError:
+            dedupe_key = f"{entry.get('timestamp')}:{entry.get('service')}:{entry.get('tool_name')}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        entries.append(entry)
     entries.sort(key=lambda item: _entry_ts_utc(item) or datetime.min.replace(tzinfo=timezone.utc))
     return entries
 
@@ -3275,7 +3367,7 @@ def route_provider_fallback_health(entries: List[dict]) -> Dict[str, Any]:
 
 
 def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
-    """Summarize route_search retrieval breadth from audit metadata."""
+    """Summarize route_search retrieval breadth from audit/telemetry metadata."""
     route_events = [
         e for e in entries
         if str(e.get("tool_name", "")).strip().lower() == "route_search"
@@ -3284,21 +3376,32 @@ def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
         return {
             "available": True,
             "route_calls": 0,
+            "measured_route_calls": 0,
             "diagnosis": "historical",
             "actions": [],
         }
+
     total_count = 0
     with_count = 0
     profile_counts: Dict[str, int] = {}
+    source_counts: Dict[str, int] = {}
     for entry in route_events:
         metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
-        retrieval_profile = str(metadata.get("retrieval_profile", "") or "").strip().lower()
+        retrieval_profile_raw = metadata.get("retrieval_profile", "")
+        if isinstance(retrieval_profile_raw, dict):
+            retrieval_profile = str(retrieval_profile_raw.get("profile", "") or "").strip().lower()
+            collection_count = retrieval_profile_raw.get("collection_count")
+        else:
+            retrieval_profile = str(retrieval_profile_raw or "").strip().lower()
+            collection_count = metadata.get("retrieval_collection_count")
         if retrieval_profile:
             profile_counts[retrieval_profile] = profile_counts.get(retrieval_profile, 0) + 1
-        collection_count = metadata.get("retrieval_collection_count")
+        source = str(metadata.get("source") or entry.get("service") or "unknown").strip().lower()
+        source_counts[source] = source_counts.get(source, 0) + 1
         if isinstance(collection_count, int):
             total_count += collection_count
             with_count += 1
+
     # Older audit rows did not include retrieval_collection_count. Keep the
     # acceptance metric present so consumers can distinguish "no broad fan-out"
     # from "producer metadata missing" without treating the JSON contract as
@@ -3306,13 +3409,12 @@ def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
     avg_collection_count = round(total_count / with_count, 2) if with_count else 0.0
     metadata_coverage_pct = round(100 * with_count / len(route_events), 1) if route_events else None
     top_profiles = sorted(profile_counts.items(), key=lambda item: (-item[1], item[0]))[:3]
+    telemetry_events = source_counts.get("hybrid_telemetry", 0)
     diagnosis = "healthy"
     actions: List[str] = []
-    if len(route_events) == 0:
-        diagnosis = "historical"
-    elif with_count == 0:
+    if with_count == 0:
         diagnosis = "metadata_missing"
-        actions.append("update route_search audit producer to emit retrieval_collection_count")
+        actions.append("update route_search audit producer to emit retrieval_collection_count or verify hybrid telemetry path")
     elif avg_collection_count is not None and float(avg_collection_count) > 4.0:
         diagnosis = "broad_scanning"
         actions.append("narrow route_search collection selection by query class and continuation context")
@@ -3321,10 +3423,13 @@ def route_retrieval_breadth(entries: List[dict]) -> Dict[str, Any]:
     return {
         "available": True,
         "route_calls": len(route_events),
+        "measured_route_calls": with_count,
         "with_count": with_count,
         "metadata_coverage_pct": metadata_coverage_pct,
         "avg_collection_count": avg_collection_count,
         "top_profiles": top_profiles,
+        "telemetry_route_calls": telemetry_events,
+        "source_counts": sorted(source_counts.items(), key=lambda item: (-item[1], item[0]))[:5],
         "diagnosis": diagnosis,
         "actions": actions,
     }
