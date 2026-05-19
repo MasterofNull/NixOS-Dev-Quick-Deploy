@@ -112,6 +112,11 @@ from lesson_effectiveness_tracker import (
     get_recent_lesson_events as _get_recent_lesson_events,
 )
 from route_handler import get_route_search_metrics as _get_route_search_metrics
+from mlfq_scheduler import (
+    MLFQAdmissionError,
+    WorkloadDescriptor,
+    get_scheduler,
+)
 # browser_research, web_research, research_workflows: imported by their own handler
 # modules (extracted Phase 11); http_server.py delegates via register_routes()
 from delegation_feedback import build_recovered_artifact, classify_delegated_response, record_delegation_feedback
@@ -143,6 +148,7 @@ import trading_handlers          # Phase 24: multi-agent trading framework (agen
 import auto_tool_select_handlers  # Phase 24: autonomous tool auto-selection for all agents
 import context_summary_handlers   # Phase 25-007: agent context summarization + working memory
 import intake_gateway              # Phase 26: Unified Agent Orchestration Gateway (UAG)
+from inference_param_manager import get_ipm  # Phase B: Thermal + hardware state monitor
 # Phase 54: Agentic-First Architecture Elevation
 import memory_broker               # 54.1 — unified memory layer
 import memory_superseder           # 55.1 — temporal memory supersession
@@ -1683,6 +1689,12 @@ async def run_http_mode(port: int) -> None:
             payload["active_lesson_refs"] = lesson_refs
         return web.json_response(payload)
 
+    async def handle_hardware_state(request):
+        """GET /api/hardware/state — return current thermal and RAM metrics."""
+        from dataclasses import asdict
+        state = await get_ipm().hardware_state()
+        return web.json_response(asdict(state))
+
     async def handle_delegate_stats(request):
         """GET /stats/delegate — delegation success rate from audit log.
 
@@ -2073,6 +2085,9 @@ async def run_http_mode(port: int) -> None:
             return web.json_response(result)
         except Exception as exc:
             return web.json_response({"error": "augment_query_failed", "detail": str(exc)}, status=500)
+
+    async def handle_scheduler_status(request):
+        return web.json_response(await get_scheduler().status())
 
     def _is_agent_query(d: Dict[str, Any]) -> bool:
         """True when the caller is an automated agent, not an interactive human session."""
@@ -2502,6 +2517,16 @@ async def run_http_mode(port: int) -> None:
     http_app = web.Application(
         middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
     )
+    scheduler = get_scheduler()
+
+    async def _scheduler_startup(_app):
+        await scheduler.start()
+
+    async def _scheduler_cleanup(_app):
+        await scheduler.stop()
+
+    http_app.on_startup.append(_scheduler_startup)
+    http_app.on_cleanup.append(_scheduler_cleanup)
 
     # Phase 2.4: Initialize YAML workflow system
     if YAML_WORKFLOWS_AVAILABLE:
@@ -2577,6 +2602,7 @@ async def run_http_mode(port: int) -> None:
     openai_a2a_handlers.register_routes(http_app)
     ops_handlers.register_routes(http_app)
     http_app.router.add_get("/status", handle_status)
+    http_app.router.add_get("/api/hardware/state", handle_hardware_state)
     http_app.router.add_get("/stats/delegate", handle_delegate_stats)
     # Phase 56.4/56.5/56.6 — Commit facts, Agent Ops status, Event Bus
     http_app.router.add_post("/api/memory/facts", handle_memory_facts_post)
@@ -2585,7 +2611,9 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/api/agent-events", handle_agent_events_post)
     http_app.router.add_get("/api/agent-events", handle_agent_events_get)
     http_app.router.add_post("/augment_query", handle_augment_query)
+    http_app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
     http_app.router.add_post("/query", handle_query_http)
+    http_app.router.add_post("/api/query", handle_query_http)
     http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2
     http_app.router.add_post("/search/tree", handle_tree_search)
     memory_context_handlers.register_routes(http_app)
@@ -2685,6 +2713,9 @@ async def run_http_mode(port: int) -> None:
             logger.info("YAML workflow routes registered")
         except Exception as e:
             logger.error(f"Failed to register YAML workflow routes: {e}")
+
+    # Start IPM Phase B polling
+    await get_ipm().start()
 
     runner = web.AppRunner(
         http_app,
