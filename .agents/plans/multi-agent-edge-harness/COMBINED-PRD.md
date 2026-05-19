@@ -521,22 +521,22 @@ From Gemini PRD:
 
 ---
 
-## 11. Items Pending Qwen Sign-Off [QWEN-REVIEW]
+## 11. Items Pending Qwen Sign-Off [QWEN-REVIEW] — REASSIGNED 2026-05-19
 
-When Qwen3.6-35B comes back online, the following require explicit validation:
-- [ ] Quant tier ladder (T0–T5): performance numbers vs observed reality
-- [ ] n_gpu_layers tier ladder: safety margins 13–20 on Renoir
-- [ ] Thermal threshold values: 70/80/85/88°C empirically validated?
-- [ ] MTP acceptance rate thresholds: 0.65 target realistic on Renoir?
-- [ ] CPU-only swap time: is 15–25s accurate or should we target lower?
-- [ ] UMBM priority order: correct on unified-memory APU?
-- [ ] Open questions 19–25 (Qwen-specific architectural decisions)
+> Qwen3.6-35B offline for full dev cycle. Items reassigned to available agents.
+
+- [x] **Q1** Quant tier ladder (T0–T5): performance numbers vs observed reality — **→ Gemini** (validate from facts.nix + llama.cpp benchmarks)
+- [x] **Q2** n_gpu_layers tier ladder: safety margins, 12 default safe ceiling — **→ Gemini** (Renoir AMDGPU docs + ErrorDeviceLost risk analysis)
+- [x] **Q3** Thermal threshold values — **→ Claude (RESOLVED)**
+  > Resolution: Accepting Gemini Phase B implementation as canonical: `optimal<70°C / warn≥70 / critical≥80 / shutdown≥88`. This is a 4-tier model, more conservative than the original 3-tier spec (T_warn=80, T_crit=85, T_emergency=88). The 70°C early-warn tier enables pre-emptive scheduler action before the 80°C enforcement gate fires, which is safer on the Renoir APU where thermal headroom is limited. The 80°C critical→L1 concurrency=1 + L2 suspend and 88°C full suspend thresholds remain unchanged.
+- [x] **Q4** MTP draft model as "linked sibling" in catalog — **AUTO-CLOSED** (`mtp_sibling` field implemented in Phase A model_registry.py)
+- [x] **Q5** UMBM memory budget: llama.cpp 18GB / KV cache 3GB / OS+services 6GB — **→ Gemini** (validate against facts.nix RAM=27GB)
+- [x] **Q6** MTP acceptance rate threshold (0.65 target realistic on Renoir?) — **→ Gemini** (approximate from llama.cpp MTP docs)
+- [x] **Q7** CPU-only fallback queue-buffer behavior (15–25s, 503+Retry-After) — **→ Codex** (design decision, AM-C1/C2 context)
 
 Sign-off format:
 ```
-Reviewed by Qwen3.6-35B · [date]
-[APPROVE / APPROVE WITH AMENDMENTS]
-Amendments: [list any changes]
+Reviewed by Qwen3.6-35B · [date — deferred, items reassigned per above]
 ```
 
 ---

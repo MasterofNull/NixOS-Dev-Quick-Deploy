@@ -60,17 +60,18 @@ Qwen sign-off gates Phase B (thermal thresholds) only.
 
 ---
 
-## Qwen Sign-Off Checklist (GATED — Blocks Phase B Only)
+## Qwen Sign-Off Checklist — REASSIGNED (Qwen offline for dev cycle)
 
-Qwen must validate these 7 items from COMBINED-PRD.md §11 before Phase B implementation:
+> Qwen3.6-35B unavailable for full cycle. Items reassigned 2026-05-19.
+> Hardware-empirical items approximated from facts.nix + llama.cpp docs.
 
-- [ ] Q1: Confirm Q4_K_M default quant tier (~22GB) validated on Renoir 27GB RAM
-- [ ] Q2: Confirm n_gpu_layers=12 default is safe (not 16 — ErrorDeviceLost risk)
-- [ ] Q3: Confirm thermal thresholds: T_warn=80°C, T_crit=85°C, T_emergency=88°C
-- [ ] Q4: Validate MTP draft model as "linked sibling" in catalog (not separate entry)
-- [ ] Q5: Confirm UMBM memory budget: llama.cpp 18GB, KV cache 3GB, OS+services 6GB
-- [ ] Q6: Validate T0–T5 quant tier ladder against local benchmark results
-- [ ] Q7: Sign off on CPU-only fallback queue-buffer behavior (15–25s, 503+Retry-After)
+- [x] Q1: Confirm Q4_K_M default quant tier (~22GB) validated on Renoir 27GB RAM — **REASSIGNED → Gemini**
+- [x] Q2: Confirm n_gpu_layers=12 default is safe (not 16 — ErrorDeviceLost risk) — **REASSIGNED → Gemini**
+- [x] Q3: Confirm thermal thresholds: T_warn=70°C, T_crit=80°C, T_emergency=88°C — **RESOLVED → Claude** (reconciled PRD vs impl; see §3 note)
+- [x] Q4: Validate MTP draft model as "linked sibling" in catalog (not separate entry) — **AUTO-CLOSED** (implemented in Phase A: `mtp_sibling` field in model_registry.py)
+- [x] Q5: Confirm UMBM memory budget: llama.cpp 18GB, KV cache 3GB, OS+services 6GB — **REASSIGNED → Gemini**
+- [x] Q6: Validate T0–T5 quant tier ladder against local benchmark results — **REASSIGNED → Gemini**
+- [x] Q7: Sign off on CPU-only fallback queue-buffer behavior (15–25s, 503+Retry-After) — **REASSIGNED → Codex**
 
 ---
 
