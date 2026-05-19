@@ -53,6 +53,8 @@ for ((i=0; i<${#args[@]}; i++)); do
 done
 
 PHASE="${PHASE#phase}"   # strip optional "phase" prefix
+# Parsed for CLI compatibility; privileged checks are still explicit/bounded.
+(( USE_SUDO == 0 || USE_SUDO == 1 ))
 
 AQ_QA_FIXTURE_LLAMA_DIAG="${AQ_QA_FIXTURE_LLAMA_DIAG:-}"
 AQ_QA_FIXTURE_APPARMOR_DIAG="${AQ_QA_FIXTURE_APPARMOR_DIAG:-}"
@@ -207,7 +209,8 @@ _http_health() {
 }
 
 _continue_config_ok() {
-  local cfg="$(_primary_home)/.continue/config.json"
+  local cfg
+  cfg="$(_primary_home)/.continue/config.json"
   [[ -f "$cfg" ]] || return 1
   python3 - "$cfg" "${SWITCHBOARD_URL}" <<'PY'
 import json, sys
@@ -541,7 +544,8 @@ except Exception:
       _pass 1 "0.3.1" "AppArmor profiles on disk ($aa_dir/ai-llama-cpp, ai-mcp-base)"
     else
       local found
-      found=$(ls "$aa_dir"/ai-* 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ' || echo "none")
+      found=$(find "$aa_dir" -maxdepth 1 -type f -name 'ai-*' -printf '%f ' 2>/dev/null || true)
+      found="${found:-none}"
       _fail 1 "0.3.1" "AppArmor profiles on disk" "found: $found"
     fi
     _check 1 "0.3.2" "AppArmor service active" systemctl is-active apparmor
@@ -1022,7 +1026,7 @@ for p in profiles:
   # 0.9.4 Runtime safety contract policy (Phase 39)
   local safety_policy_file="${RUNTIME_SAFETY_POLICY_FILE:-${REPO_ROOT}/config/runtime-safety-policy.json}"
   if [[ -r "$safety_policy_file" ]]; then
-    local policy_ver policy_modes_ok
+    local policy_ver
     policy_ver=$(python3 -c "
 import json, sys
 d = json.load(open('$safety_policy_file'))

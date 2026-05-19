@@ -45,13 +45,15 @@ This table documents what tool names each agent lane actually exposes. Calling a
 | Agent | Available tools | Banned (will fail) | Shell access |
 |---|---|---|---|
 | **Claude** (this session) | Read, Edit, Write, Bash, Glob, Grep, WebFetch, Agent, TodoWrite | — | Full via Bash tool |
-| **Gemini** (auto_edit) | `read_file`, `write_file`, `replace`, `grep_search`, `list_directory`, `update_topic` | `run_shell_command` ← DNE | None — no shell tool |
+| **Gemini** (`delegate-to-gemini` default `yolo`) | file tools plus approved shell/tool calls | use `auto_edit` only for no-shell tasks | Via approved Gemini CLI shell tools |
+| **Gemini** (`auto_edit`) | `read_file`, `write_file`, `replace`, `grep_search`, `list_directory`, `update_topic` | `run_shell_command` ← DNE | None — no shell tool |
 | **Codex** | `read_file`, `write_file`, `replace`, `grep_search`, `list_directory`, `run_shell_command` | — | Via `run_shell_command` |
-| **Local/Qwen** | `read_file`, `write_file`, `list_files`, `search_files`, `run_command` (whitelist) | `run_shell_command`, `invoke_agent` | Via whitelisted `run_command` |
+| **Local/Qwen** | `read_file`, `write_file`, `list_files`, `search_files`, `run_command` (whitelist), `run_shell_command` alias | `invoke_agent` | Via whitelisted `run_command` / `run_shell_command` alias |
 
 ### Gemini-specific rules
 
-- `run_shell_command` **does not exist** in Gemini CLI auto_edit mode. It returns "Tool not found". Never attempt it.
+- `delegate-to-gemini` defaults to `yolo` mode because many implementation/review prompts require shell validation.
+- `run_shell_command` **does not exist** in Gemini CLI `auto_edit` mode. It returns "Tool not found". Use `auto_edit` only for pure read/edit tasks that require no shell validation.
 - Ripgrep is not available as a binary in the Gemini environment. Use `grep_search` (the tool) instead of trying to call `rg` via shell.
 - File scope is the repo root only. Paths under `/var/lib/`, `/run/`, or system paths will fail with "outside workspace".
 - `.agents/delegation/outputs/*.log` files are gitignored — `read_file` will fail. Use `grep_search` to scan them.
@@ -59,7 +61,7 @@ This table documents what tool names each agent lane actually exposes. Calling a
 
 ### Local/Qwen-specific rules
 
-- `run_shell_command` is blocked by the executor whitelist. Use `run_command` with a whitelisted command.
+- `run_shell_command` is a compatibility alias for `run_command`; both still enforce the same command whitelist.
 - `invoke_agent` is blocked — implementer role may not route other agents. Escalate to orchestrator.
 - Whitelisted `run_command` targets: `bash -n`, `python3 -m py_compile`, `nix-instantiate --parse`, `git status/diff/add/log`, `aq-qa`, `agrep`, `als`, `acat`.
 

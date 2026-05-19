@@ -1,13 +1,13 @@
 {
-  "task": "58B.4-review-gate-before-validation",
+  "task": "58B.9-collaboration-and-routing-hygiene",
   "agent": "Codex",
-  "goal_state": "Collect required review-gate PASS evidence for representative domain outputs before any implemented-to-validated lifecycle update.",
+  "goal_state": "Clear post-rebuild collaboration/tooling hygiene before deeper default routing work.",
   "files": [
-    ".agent/PROJECT-MOBILE-WEB-PRD.md",
-    ".agents/plans/phase-58b-domain-validation-evidence.md",
-    ".agents/plans/phase-58b-domain-validation-workflows.md",
-    "scripts/testing/mobile-web-masa-harness.py",
-    ".agent/collaboration/HANDOFF.md"
+    "scripts/ai/aq-collaborate",
+    ".agents/delegation/registry.jsonl",
+    "docs/agent-guides/47-AGENT-TOOL-CONTRACT.md",
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/PENDING.json"
   ],
-  "next_step": "All six domains now have representative workflow evidence, with mobile-web partial due fixture Lighthouse mode. Next: submit representative outputs through the required review gate; do not change lifecycle state until review PASS is recorded."
+  "next_step": "Fix aq-collaborate Postgres auth failure and stale delegation running-state hygiene; then audit routing for the five promoted-but-not-default domains."
 }

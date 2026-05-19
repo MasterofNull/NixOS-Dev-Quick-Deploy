@@ -1,3 +1,11 @@
+# Handoff Memo — 2026-05-19
+
+**Status:** Post-rebuild resume complete. Harness health verified (`aq-qa 0`: 67/67 PASS). Phase 58B real-use adoption evidence recorded in `.agents/plans/phase-58b-real-use-adoption-log.md`. Systems-software is currently the only `default` Phase 58B domain; the other five remain `promoted` opt-in.
+**Last Action (Codex):** Checked aq-prime/session/memory, inspected delegation registry and collaboration files, verified endpoints, ran one bounded adoption task per Phase 58B domain, fixed systems-software shellcheck findings in `scripts/ai/aq-qa`, and hardened agent tool-use docs/config around Gemini yolo mode and Local/Qwen `run_shell_command` alias.
+**Open Issues:** `aq-collaborate list` is blocked by Postgres auth for `postgres`; some older delegation registry rows still show stale `running` state; Gemini strategy check-in `gemini-20260518-192021-a3ldf1` exited without final output and is marked failed/incomplete; mobile-web still uses fixture Lighthouse mode.
+**Next Step:** Fix collaboration/delegation registry hygiene first, then run a routing audit for the five promoted-but-not-default domains and decide whether mobile-web should gain real Lighthouse CLI support or keep fixture mode as validation-only.
+**Context Bloat:** Medium
+
 # Handoff Memo — 2026-05-18
 
 **Status:** Phase 58B + post-rebuild hardening complete. All 6 domains `promoted`; AIDB namespaces seeded (11–100 docs each); dashboard header card eval/hints restored; agent tool waste eliminated system-wide; aq-qa 67/67 PASS.

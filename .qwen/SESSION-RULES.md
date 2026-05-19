@@ -80,13 +80,12 @@ Return to orchestrator (Codex/Claude) when:
 
 ## Tool Availability (Qwen/Local agent whitelist)
 
-**Available tools:** `read_file`, `write_file`, `list_files`, `search_files`, `run_command` (whitelisted cmds only), `git_status`, `git_diff`, `git_add`, `validate_before_commit`
+**Available tools:** `read_file`, `write_file`, `list_files`, `search_files`, `run_command` / `run_shell_command` (same whitelist), `git_status`, `git_diff`, `git_add`, `validate_before_commit`
 
 **Banned — these will be blocked immediately:**
-- `run_shell_command` — not in whitelist; use `run_command` with a whitelisted command instead
 - `invoke_agent` — not available to implementer role; escalate to orchestrator instead
 
-**Whitelisted commands for `run_command`:** `bash -n`, `python3 -m py_compile`, `nix-instantiate --parse`, `git status`, `git diff`, `git add`, `git log`, `aq-qa`, `agrep`, `als`, `acat`
+**Whitelisted commands for `run_command` / `run_shell_command`:** `bash -n`, `python3 -m py_compile`, `nix-instantiate --parse`, `git status`, `git diff`, `git add`, `git log`, `aq-qa`, `agrep`, `als`, `acat`
 
 If a tool call is blocked, record the blocked call in PULSE.log and switch to the nearest available alternative — do not retry the same blocked call.
 

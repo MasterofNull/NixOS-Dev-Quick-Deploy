@@ -3,6 +3,7 @@
 **Date:** 2026-05-18  
 **Owner:** Codex  
 **Scope:** Representative workflow evidence for `implemented → validated` readiness.
+**Review gate:** Gemini PASS — `.agents/delegation/outputs/gemini-20260518-150453-tcswtz.log`
 
 ## Summary
 
@@ -42,7 +43,8 @@ Verified with live AIDB `GET /documents?project=<namespace>&limit=1000`:
 
 ## Lifecycle recommendation
 
-Do **not** promote domains yet.
+Domains passed validation, advanced to **candidate**, completed candidate soak, and are now **promoted** for opt-in recommended use.
 
 - All six domains now have representative workflow evidence, with mobile-web marked **partial** because the harness used fixture Lighthouse mode instead of a real Lighthouse binary.
-- No domain should move from `implemented` to `validated` until the required review-gate PASS is recorded.
+- Gemini review-gate PASS is recorded in `.agents/delegation/outputs/gemini-20260518-150453-tcswtz.log`.
+- Promoted does not mean default. Do **not** set default routing behavior without a separate per-domain routing/default decision.

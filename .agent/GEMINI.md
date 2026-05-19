@@ -18,7 +18,9 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy.
 **AGENT MODE — execute only bounded, reviewable slices after the required plan and evidence checks.**
-**Tool surface (auto_edit mode — memorize this table):**
+**Tool surface note:** `delegate-to-gemini` defaults to `yolo` mode for implementation/review tasks that need shell validation. The restricted `auto_edit` surface below applies only when the orchestrator explicitly uses `--mode auto_edit`.
+
+**Tool surface (`auto_edit` mode — memorize this table):**
 
 | Action | Correct tool | NEVER use |
 |---|---|---|
