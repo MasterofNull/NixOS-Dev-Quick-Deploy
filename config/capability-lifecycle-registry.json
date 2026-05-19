@@ -2,7 +2,7 @@
   "$schema": "./schemas/capability-lifecycle-registry.schema.json",
   "version": "1.1.0",
   "description": "Canonical capability lifecycle registry. State machine defined in docs/architecture/capability-lifecycle.md.",
-  "last_updated": "2026-05-18",
+  "last_updated": "2026-05-19T00:13:23Z",
   "capabilities": [
     {
       "id": "local-inference-qwen3-35b",
@@ -214,7 +214,7 @@
       "id": "security-systems",
       "name": "Security systems domain (static analysis + findings knowledge)",
       "domain": "security",
-      "state": "validated",
+      "state": "promoted",
       "state_since": "2026-05-18",
       "description": "Unified security-analysis capability domain. Routes OWASP/policy queries to remote-reasoning; static scans (Semgrep, Bandit, Trivy) via local-tool-calling. Findings persisted to AIDB namespace security-findings. Dev shell: nix develop .#security. trivy in system profile post-rebuild.",
       "kernel_object": "memory-evidence",
@@ -224,10 +224,15 @@
         "review_verdict": "PASS",
         "reviewer": "Gemini",
         "reviewed_on": "2026-05-18",
-        "soak_sessions": 0,
+        "soak_sessions": 1,
         "rollback_procedure": "Set state to blocked; disable security-systems-health check; remove security-analysis intent class from intent-routing-map.json if added",
         "validation_summary": "Bandit + local Semgrep fixture; security-findings seeded (19 docs)",
-        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        "candidate_decision": "Codex orchestrator opt-in after Gemini PASS review; available for opt-in routing, not default or promoted",
+        "candidate_decided_on": "2026-05-18",
+        "soak_log": ".agents/plans/phase-58b-candidate-soak-log.md",
+        "promotion_decision": "Codex orchestrator PASS after candidate soak; promoted for opt-in recommended use, not default",
+        "promoted_on": "2026-05-18"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -240,14 +245,22 @@
         "scripts/governance/tier0-validation-gate.sh",
         ".agents/plans/phase-58b-domain-validation-evidence.md",
         ".agents/plans/phase-58b-review-package.md",
-        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        ".agents/plans/phase-58b-candidate-soak-log.md"
+      ],
+      "soak_sessions": [
+        {
+          "date": "2026-05-19T00:13:23Z",
+          "task": "trivy CRITICAL scan + semgrep Python pattern check",
+          "result": "PASS"
+        }
       ]
     },
     {
       "id": "systems-software",
       "name": "Systems-software domain (NixOS module authoring + Nix static analysis + shell tooling)",
       "domain": "systems",
-      "state": "validated",
+      "state": "promoted",
       "state_since": "2026-05-18",
       "description": "Capability domain for NixOS module development, Nix static analysis (statix/deadnix/alejandra), shell scripting, and deployment tooling. Dev shell: nix develop .#systems. shellcheck in system profile post-rebuild. Prefers local-tool-calling profile. AIDB namespace: nix-systems-patterns.",
       "kernel_object": "workflow-session",
@@ -257,10 +270,15 @@
         "review_verdict": "PASS",
         "reviewer": "Gemini",
         "reviewed_on": "2026-05-18",
-        "soak_sessions": 0,
+        "soak_sessions": 1,
         "rollback_procedure": "Set state to blocked; disable systems-software-health check; remove systems-software intent class from intent-routing-map.json if added",
         "validation_summary": "Nix parse + statix/deadnix + shellcheck fixture; nix-systems-patterns seeded (347 docs)",
-        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        "candidate_decision": "Codex orchestrator opt-in after Gemini PASS review; available for opt-in routing, not default or promoted",
+        "candidate_decided_on": "2026-05-18",
+        "soak_log": ".agents/plans/phase-58b-candidate-soak-log.md",
+        "promotion_decision": "Codex orchestrator PASS after candidate soak; promoted for opt-in recommended use, not default",
+        "promoted_on": "2026-05-18"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -274,14 +292,22 @@
         "nix/modules/core/options.nix",
         ".agents/plans/phase-58b-domain-validation-evidence.md",
         ".agents/plans/phase-58b-review-package.md",
-        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        ".agents/plans/phase-58b-candidate-soak-log.md"
+      ],
+      "soak_sessions": [
+        {
+          "date": "2026-05-19T00:13:23Z",
+          "task": "shellcheck delegate-to-gemini + statix options.nix",
+          "result": "PASS"
+        }
       ]
     },
     {
       "id": "embedded-hardware",
       "name": "Embedded hardware domain (HDL, firmware, cross-compile, JTAG/SWD)",
       "domain": "embedded",
-      "state": "validated",
+      "state": "promoted",
       "state_since": "2026-05-18",
       "description": "Capability domain for HDL design (Verilator/GHDL/Yosys), firmware authoring, ARM/RISC-V cross-compilation, device-tree authoring, and board support. Dev shell: nix develop .#embedded (defined; verified post-rebuild). Firmware write/JTAG ops are approval-gated. AIDB namespace: embedded-hardware-patterns.",
       "kernel_object": "intent",
@@ -291,10 +317,15 @@
         "review_verdict": "PASS",
         "reviewer": "Gemini",
         "reviewed_on": "2026-05-18",
-        "soak_sessions": 0,
+        "soak_sessions": 1,
         "rollback_procedure": "Set state to blocked; disable embedded-hardware-health check; remove embedded-hardware intent class from intent-routing-map.json if added; remove .#embedded dev shell from flake.nix if added",
         "validation_summary": "Verilator HDL lint fixture; embedded-hardware-patterns seeded (13 docs)",
-        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        "candidate_decision": "Codex orchestrator opt-in after Gemini PASS review; available for opt-in routing, not default or promoted",
+        "candidate_decided_on": "2026-05-18",
+        "soak_log": ".agents/plans/phase-58b-candidate-soak-log.md",
+        "promotion_decision": "Codex orchestrator PASS after candidate soak; promoted for opt-in recommended use, not default",
+        "promoted_on": "2026-05-18"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -308,14 +339,22 @@
         "scripts/governance/discover-system-facts.sh",
         ".agents/plans/phase-58b-domain-validation-evidence.md",
         ".agents/plans/phase-58b-review-package.md",
-        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        ".agents/plans/phase-58b-candidate-soak-log.md"
+      ],
+      "soak_sessions": [
+        {
+          "date": "2026-05-19T00:13:23Z",
+          "task": "verilator lint counter.v + ghdl parse adder.vhd",
+          "result": "PASS"
+        }
       ]
     },
     {
       "id": "mobile-web",
       "name": "Mobile-web domain (Flutter, accessibility audits, MASVS, Playwright)",
       "domain": "mobile-web",
-      "state": "validated",
+      "state": "promoted",
       "state_since": "2026-05-18",
       "description": "Capability domain for web/mobile frontend development, WCAG 2.2 accessibility audits, OWASP MASVS mobile security analysis, Flutter/Android toolchain, browser automation (Playwright), and Lighthouse audits. Dev shell: nix develop .#mobile-web (defined; verified post-rebuild). Reverse engineering is approval-gated. AIDB namespace: mobile-web-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "intent",
@@ -325,10 +364,15 @@
         "review_verdict": "PASS",
         "reviewer": "Gemini",
         "reviewed_on": "2026-05-18",
-        "soak_sessions": 0,
+        "soak_sessions": 1,
         "rollback_procedure": "Set state to blocked; disable mobile-web-health check; remove mobile-web intent class from intent-routing-map.json if added; remove .#mobile-web dev shell from flake.nix if added",
         "validation_summary": "MASA fixture Lighthouse-shaped JSON + MASVS static scan; mobile-web-patterns seeded (10 docs); real Lighthouse still follow-up",
-        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        "candidate_decision": "Codex orchestrator opt-in after Gemini PASS review; available for opt-in routing, not default or promoted",
+        "candidate_decided_on": "2026-05-18",
+        "soak_log": ".agents/plans/phase-58b-candidate-soak-log.md",
+        "promotion_decision": "Codex orchestrator PASS after candidate soak; promoted for opt-in recommended use, not default",
+        "promoted_on": "2026-05-18"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -341,14 +385,22 @@
         ".agents/delegation/outputs/gemini-20260518-121439-w2gzy1.log",
         ".agents/plans/phase-58b-domain-validation-evidence.md",
         ".agents/plans/phase-58b-review-package.md",
-        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        ".agents/plans/phase-58b-candidate-soak-log.md"
+      ],
+      "soak_sessions": [
+        {
+          "date": "2026-05-19T00:13:23Z",
+          "task": "tsc strict-mode check (shell startup heavy, partial)",
+          "result": "PARTIAL"
+        }
       ]
     },
     {
       "id": "scientific-research",
       "name": "Scientific-research domain (reproducible pipelines, Snakemake, Jupyter, LaTeX, DOI ingestion)",
       "domain": "scientific",
-      "state": "validated",
+      "state": "promoted",
       "state_since": "2026-05-18",
       "description": "Capability domain for reproducible scientific computing: Snakemake pipelines, Jupyter notebooks, LaTeX/Pandoc report generation, DOI/citation ingestion, statistical methodology guardrails. Dev shell: nix develop .#scientific (defined; verified post-rebuild). DURC is forbidden. AIDB namespace: scientific-research-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "workflow-session",
@@ -358,10 +410,15 @@
         "review_verdict": "PASS",
         "reviewer": "Gemini",
         "reviewed_on": "2026-05-18",
-        "soak_sessions": 0,
+        "soak_sessions": 1,
         "rollback_procedure": "Set state to blocked; disable scientific-research-health check; remove scientific-research intent class from intent-routing-map.json if added; remove .#scientific dev shell from flake.nix if added",
         "validation_summary": "Snakemake CSV to deterministic summary and Pandoc PDF, repeated; scientific-research-patterns seeded (11 docs)",
-        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        "candidate_decision": "Codex orchestrator opt-in after Gemini PASS review; available for opt-in routing, not default or promoted",
+        "candidate_decided_on": "2026-05-18",
+        "soak_log": ".agents/plans/phase-58b-candidate-soak-log.md",
+        "promotion_decision": "Codex orchestrator PASS after candidate soak; promoted for opt-in recommended use, not default",
+        "promoted_on": "2026-05-18"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -374,14 +431,22 @@
         ".agents/delegation/outputs/gemini-20260518-121439-w2gzy1.log",
         ".agents/plans/phase-58b-domain-validation-evidence.md",
         ".agents/plans/phase-58b-review-package.md",
-        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        ".agents/plans/phase-58b-candidate-soak-log.md"
+      ],
+      "soak_sessions": [
+        {
+          "date": "2026-05-19T00:13:23Z",
+          "task": "numpy/scipy deterministic analysis seed=42",
+          "result": "PASS"
+        }
       ]
     },
     {
       "id": "gis-systems",
       "name": "GIS-systems domain (GDAL/OGR, PostGIS, GeoPandas, QGIS, CRS discipline)",
       "domain": "gis",
-      "state": "validated",
+      "state": "promoted",
       "state_since": "2026-05-18",
       "description": "Capability domain for geospatial data transformation, spatial analysis, CRS validation, raster/tile generation, and Natural Earth/OSM data ingestion. Dev shell: nix develop .#gis (defined; verified post-rebuild). Canonical CRS: EPSG:4326. Critical infrastructure geolocation is approval-gated. AIDB namespace: gis-systems-patterns. Research: Gemini 2026-05-18.",
       "kernel_object": "memory-evidence",
@@ -391,10 +456,15 @@
         "review_verdict": "PASS",
         "reviewer": "Gemini",
         "reviewed_on": "2026-05-18",
-        "soak_sessions": 0,
+        "soak_sessions": 1,
         "rollback_procedure": "Set state to blocked; disable gis-systems-health check; remove gis-systems intent class from intent-routing-map.json if added; remove .#gis dev shell from flake.nix if added",
         "validation_summary": "GeoJSON CRS validation, EPSG:3857 transform, GDAL PNG generation; gis-systems-patterns seeded (11 docs)",
-        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        "review_artifact": ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        "candidate_decision": "Codex orchestrator opt-in after Gemini PASS review; available for opt-in routing, not default or promoted",
+        "candidate_decided_on": "2026-05-18",
+        "soak_log": ".agents/plans/phase-58b-candidate-soak-log.md",
+        "promotion_decision": "Codex orchestrator PASS after candidate soak; promoted for opt-in recommended use, not default",
+        "promoted_on": "2026-05-18"
       },
       "blocked_reason": null,
       "unblock_condition": null,
@@ -407,7 +477,15 @@
         ".agents/delegation/outputs/gemini-20260518-121439-w2gzy1.log",
         ".agents/plans/phase-58b-domain-validation-evidence.md",
         ".agents/plans/phase-58b-review-package.md",
-        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log"
+        ".agents/delegation/outputs/gemini-20260518-150453-tcswtz.log",
+        ".agents/plans/phase-58b-candidate-soak-log.md"
+      ],
+      "soak_sessions": [
+        {
+          "date": "2026-05-19T00:13:23Z",
+          "task": "GDAL CRS validate + ogr2ogr WGS84\u2192EPSG:3857",
+          "result": "PASS"
+        }
       ]
     }
   ]
