@@ -1,7 +1,26 @@
 {
-  "task": "59.1-route-search-metadata-and-rag-quality",
   "agent": "Codex",
-  "goal_state": "Emit real route_search retrieval_collection_count metadata and improve measured RAG/domain retrieval quality.",
+  "codex_phase59_1": {
+    "agent": "codex",
+    "completed_at": "2026-05-19T03:05:43.069413+00:00",
+    "files": [
+      "scripts/ai/aq-report",
+      "scripts/testing/test-aq-report-route-telemetry.py",
+      ".agent/collaboration/HANDOFF.md"
+    ],
+    "intent": "Update aq-report to consume hybrid route_search telemetry as authoritative retrieval metadata, add tests, validate aq-qa/tier0, then commit.",
+    "status": "completed",
+    "task": "Phase 59.1 route_search telemetry-backed retrieval breadth reporting",
+    "timestamp": "2026-05-19T02:58:49.237365+00:00",
+    "validation": [
+      "py_compile PASS",
+      "targeted tests PASS",
+      "aq-report PASS",
+      "aq-qa 1 PASS",
+      "aq-qa all 169 passed 0 failed 2 skipped",
+      "tier0 14 passed 0 failed"
+    ]
+  },
   "files": [
     "ai-stack/mcp-servers/hybrid-coordinator/*",
     "scripts/ai/aq-report",
@@ -10,5 +29,7 @@
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PENDING.json"
   ],
-  "next_step": "Find the route_search audit producer, emit retrieval_collection_count/retrieval_profile metadata, then use aq-report/aq-qa evidence to tune RAG recall from ~59.7% toward 80%+."
+  "goal_state": "Emit real route_search retrieval_collection_count metadata and improve measured RAG/domain retrieval quality.",
+  "next_step": "Find the route_search audit producer, emit retrieval_collection_count/retrieval_profile metadata, then use aq-report/aq-qa evidence to tune RAG recall from ~59.7% toward 80%+.",
+  "task": "59.1-route-search-metadata-and-rag-quality"
 }

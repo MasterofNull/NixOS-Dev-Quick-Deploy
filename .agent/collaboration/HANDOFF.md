@@ -132,3 +132,39 @@ Required order:
 - `.agents/plans/phase-58b-candidate-soak-log.md`
 - `config/capability-lifecycle-registry.json` states advanced to `promoted` for all six Phase 58A domains after candidate soak PASS
 - `.agents/plans/phase-58b-default-routing-decision.md`
+
+---
+
+## Phase 59.1 — route_search telemetry-backed retrieval breadth (Codex, 2026-05-19)
+
+### Completed
+
+- `scripts/ai/aq-report` now folds `HYBRID_TELEMETRY_PATH` (`/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl` by default) route_search events into audit analysis as audit-like entries.
+- Retrieval breadth reporting now distinguishes total route calls from measured route calls and reports source coverage:
+  - `measured_route_calls`
+  - `telemetry_route_calls`
+  - `source_counts`
+- Added `scripts/testing/test-aq-report-route-telemetry.py` to prove legacy metadata-less audit rows no longer mask telemetry-backed collection-count evidence.
+
+### Live evidence
+
+`aq-report --since=24h --format=json` now reports measured retrieval breadth from telemetry:
+
+- recent `route_retrieval_breadth.avg_collection_count`: `1.07`
+- recent `measured_route_calls`: `326`
+- recent `telemetry_route_calls`: `326`
+- diagnosis: `healthy`
+
+### Validation
+
+- `python3 -m py_compile scripts/ai/aq-report scripts/testing/test-aq-report-route-telemetry.py scripts/testing/test-retrieval-breadth-history.py` — PASS
+- `python3 scripts/testing/test-aq-report-route-telemetry.py` — PASS
+- `python3 scripts/testing/test-retrieval-breadth-history.py` — PASS
+- `aq-report --since=24h --format=json` — PASS
+- `aq-qa 1` — PASS (`11 passed · 0 failed`)
+- `aq-qa all` — PASS (`169 passed · 0 failed · 2 skipped`)
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`14 passed · 0 failed`)
+
+### Next recommended slice
+
+Use the now-measured telemetry baseline to tune RAG quality directly: compare low-recall query classes against selected retrieval profiles, then adjust collection/profile selection only where measured recall or breadth justifies it.
