@@ -161,7 +161,7 @@ def _scan_masvs(paths: list[Path]) -> list[Finding]:
             "MASVS-NETWORK-INSECURE-HTTP",
             "medium",
             "MASVS-NETWORK",
-            re.compile(r'http://(?!127\.0\.0\.1|localhost)', re.I),
+            re.compile(r'http://(?!(127\.0\.0\.1|localhost|schemas\.android\.com)\b)', re.I),
             "Non-local HTTP URL detected.",
         ),
     ]

@@ -314,4 +314,4 @@ def register_shell_tools(registry: ToolRegistry):
         handler=check_service_handler,
     ))
 
-    logger.info("Registered 3 shell command tools")
+    logger.info("Registered 4 shell command tools")
