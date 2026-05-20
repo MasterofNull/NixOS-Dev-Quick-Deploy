@@ -45,6 +45,26 @@ chat_models:
     recommended_gpu_layers: 12
     notes: "Current default. Best quality; ~90-120s/response on CPU-only inference."
 
+
+  qwen3.6-35b-mtp-q5:
+    name: "Qwen3.6 35B A3B MTP (Q5_K_S)"
+    file: "Qwen3.6-35B-A3B-UD-Q5_K_S.gguf"
+    type: chat
+    params: "35B (3B active MoE) + MTP draft heads"
+    context: 262144
+    ram_q4: "~24.5 GB"
+    model_family: qwen3
+    think_mode: true
+    no_think_prefix: "/no_think"
+    tool_calling: true
+    stop_sequences:
+      - "<|im_end|>"
+      - "<|endoftext|>"
+    chat_template: jinja
+    recommended_gpu_layers: 12
+    mtp_args: "--spec-type draft-mtp --spec-draft-n-max 2"
+    notes: "Higher-quality Q5_K_S with MTP speculative decoding. ~24.5GB RAM; use --spec-type draft-mtp --spec-draft-n-max 2."
+
   qwen3-8b:
     name: "Qwen3 8B Instruct"
     file: "Qwen3-8B-Instruct-Q4_K_M.gguf"

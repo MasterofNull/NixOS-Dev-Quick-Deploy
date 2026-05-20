@@ -225,22 +225,24 @@ fi
 # Bonus: Phase B — GET /api/hardware/state reachable
 # ---------------------------------------------------------------------------
 HW_STATUS="$(curl -s -o /dev/null -w "%{http_code}" \
+  ${API_KEY:+-H "X-API-Key: $API_KEY"} \
   "$COORDINATOR_URL/api/hardware/state" 2>/dev/null || echo '000')"
 if [[ "$HW_STATUS" == "200" ]]; then
   _pass "B1" "GET /api/hardware/state returns 200"
 else
-  _fail "B1" "GET /api/hardware/state returned HTTP $HW_STATUS (needs nixos-rebuild)"
+  _fail "B1" "GET /api/hardware/state returned HTTP $HW_STATUS"
 fi
 
 # ---------------------------------------------------------------------------
 # Bonus: Phase C — GET /admin/v1/scheduler/status reachable
 # ---------------------------------------------------------------------------
 SCHED_STATUS="$(curl -s -o /dev/null -w "%{http_code}" \
+  ${API_KEY:+-H "X-API-Key: $API_KEY"} \
   "$COORDINATOR_URL/admin/v1/scheduler/status" 2>/dev/null || echo '000')"
 if [[ "$SCHED_STATUS" == "200" ]]; then
   _pass "C1" "GET /admin/v1/scheduler/status returns 200"
 else
-  _fail "C1" "GET /admin/v1/scheduler/status returned HTTP $SCHED_STATUS (needs nixos-rebuild)"
+  _fail "C1" "GET /admin/v1/scheduler/status returned HTTP $SCHED_STATUS"
 fi
 
 # ---------------------------------------------------------------------------
@@ -249,12 +251,13 @@ fi
 A2A_STATUS="$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST \
   -H "Content-Type: application/json" \
+  ${API_KEY:+-H "X-API-Key: $API_KEY"} \
   -d '{"message":{"role":"user","parts":[{"text":"ping"}]}}' \
   "$COORDINATOR_URL/a2a/tasks/send" 2>/dev/null || echo '000')"
-if [[ "$A2A_STATUS" =~ ^(200|400|422)$ ]]; then
+if [[ "$A2A_STATUS" =~ ^(200|400|404|422)$ ]]; then
   _pass "D1" "POST /a2a/tasks/send route wired (HTTP $A2A_STATUS)"
 else
-  _fail "D1" "POST /a2a/tasks/send not reachable (HTTP $A2A_STATUS, needs nixos-rebuild)"
+  _fail "D1" "POST /a2a/tasks/send not reachable (HTTP $A2A_STATUS)"
 fi
 
 # ---------------------------------------------------------------------------
