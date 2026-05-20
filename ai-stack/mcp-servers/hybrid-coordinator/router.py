@@ -32,7 +32,7 @@ from aiohttp import web
 from opentelemetry import trace
 
 from config import Config
-from core.auth_middleware import create_api_key_middleware
+from middleware.auth import create_api_key_middleware
 from metrics import REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 
