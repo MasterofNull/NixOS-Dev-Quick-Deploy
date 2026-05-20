@@ -351,3 +351,32 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8889/admin/v1
 ```
 
 Expected: `/v1/responses` returns Responses-shaped JSON once switchboard/llama are healthy; admin GET is reachable; mutating admin without auth is rejected.
+
+---
+
+## MAEAH AM-C3 schema/OpenAPI contract artifacts (Codex, 2026-05-20)
+
+### Completed
+
+- Added `config/schemas/maeah/model-entry.schema.json`.
+  - Captures durable lifecycle states: `available`, `downloading`, `downloaded`, `verified`, `warming`, `candidate`, `active`, `retiring`, `archived`, `failed`.
+  - Captures llama args, SLA tier, download/progress fields, user-defined marker, and audit log shape.
+- Added `config/schemas/maeah/lifecycle-event.schema.json`.
+  - Defines replay/audit event envelope `maeah.lifecycle-event.v1`.
+- Added `docs/api/maeah-openapi.yaml`.
+  - Documents `/v1/responses`, A2A canonical routes, `/admin/v1/models/*`, and `/admin/v1/scheduler/status`.
+  - Marks `/v1/responses` as a compatibility shim via `X-OpenAI-Responses-Compat`.
+  - Documents `X-API-Key` and `X-Dashboard-Internal` security schemes.
+- Added `scripts/testing/test-maeah-contract-artifacts.py` to keep these artifacts present and internally consistent.
+
+### Validation
+
+- JSON schema syntax — PASS
+- OpenAPI YAML syntax — PASS
+- `python3 scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `python3 -m py_compile scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `git diff --check` — PASS
+
+### Next recommended contract work
+
+Use these schemas as the source for generated/runtime type checks. Expand OpenAPI once hardware state, scheduler queue detail, trace browsing, and `/v1/responses` native behavior stabilize.
