@@ -1,19 +1,18 @@
 {
   "agent": "Codex",
-  "task": "MAEAH OpenAPI model mutation contract slice",
-  "intent": "Bring the MAEAH OpenAPI artifact into parity with edgeai user-defined model add/delete commands and enforce that contract statically.",
+  "task": "MAEAH admin mutation auth contract slice",
+  "intent": "Strengthen static API surface checks so every model lifecycle mutation route, including add/delete, is covered by the admin auth boundary.",
   "files": [
-    "docs/api/maeah-openapi.yaml",
-    "scripts/testing/test-maeah-contract-artifacts.py",
+    "scripts/testing/test-maeah-api-surface-contract.py",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
   "status": "repo_static_validation_complete_live_deferred",
-  "next_step": "OpenAPI now covers add/delete model mutations; continue using `edgeai contracts check --json` until live services recover.",
-  "timestamp": "2026-05-20T03:38:35.389281+00:00",
+  "next_step": "Admin mutation auth route coverage is now static-gated; rerun live auth smoke after dashboard/coordinator recover.",
+  "timestamp": "2026-05-20T03:40:09.653163+00:00",
   "validation": [
-    "python3 -m py_compile scripts/testing/test-maeah-contract-artifacts.py PASS",
-    "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
+    "python3 -m py_compile scripts/testing/test-maeah-api-surface-contract.py PASS",
+    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
     "scripts/ai/edgeai contracts check --json PASS",
     "git diff --check PASS",
     "TIER0_AQ_QA_TIMEOUT_SECONDS=8 scripts/governance/tier0-validation-gate.sh --pre-commit PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down"
