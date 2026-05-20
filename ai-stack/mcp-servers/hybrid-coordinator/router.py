@@ -138,6 +138,12 @@ def _make_rate_limit_config() -> RateLimiterConfig:
 # ---------------------------------------------------------------------------
 
 
+def _register_query_routes(app: web.Application) -> None:
+    """R2.4: Register QueryService routes (/query, /api/query, /augment_query)."""
+    from query import query_service as _qs
+    _qs.register_routes(app)
+
+
 def _register_memory_routes(app: web.Application) -> None:
     """R2.3: Register MemoryService routes (/api/memory/facts, /memory/journal, supersede, crystallizer)."""
     from memory import memory_service as _ms
@@ -206,7 +212,7 @@ def create_app(
     _register_memory_routes(app)
 
     # R2.4: QueryService (/query, /api/query, /augment_query)
-    # _register_query_routes(app)
+    _register_query_routes(app)
 
     # R2.5: OrchestrationService (/v1/orchestrate, /search/tree, /workflow/graph/run)
     # _register_orchestration_routes(app)
