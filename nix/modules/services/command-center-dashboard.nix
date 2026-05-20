@@ -71,6 +71,8 @@ in
           # llama-cpp model hot-swap (restart service to load new model)
           { command = "${pkgs.systemd}/bin/systemctl restart llama-cpp"; options = [ "NOPASSWD" ]; }
           { command = "${pkgs.systemd}/bin/systemctl is-active llama-cpp"; options = [ "NOPASSWD" ]; }
+          # llama-cpp model symlink update (swap active model without rebuild)
+          { command = "${pkgs.coreutils}/bin/ln -sf /var/lib/llama-cpp/models/* /var/lib/llama-cpp/models/active.gguf"; options = [ "NOPASSWD" ]; }
         ];
       }
     ];
