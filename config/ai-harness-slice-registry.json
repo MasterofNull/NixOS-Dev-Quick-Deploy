@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": "1.0.0",
   "description": "Canonical slice registry for the NixOS AI harness. Each slice declares owner paths, runtime surfaces, validation evidence, discoverability surfaces, and governance constraints.",
   "score_dimensions": [

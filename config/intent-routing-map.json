@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
   "_version": "1.1",
   "_updated": "2026-05-18",

@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": 1,
   "description": "Task-class-specific delegation prompt contracts for token efficiency",
   "default": {
@@ -14,7 +19,11 @@
       "system_prefix_tokens": 50,
       "template_id": "delegation_simple",
       "format": "direct",
-      "examples": ["what is X", "how do I Y", "explain Z briefly"]
+      "examples": [
+        "what is X",
+        "how do I Y",
+        "explain Z briefly"
+      ]
     },
     "code_completion": {
       "description": "Small code snippets, function implementations",
@@ -22,7 +31,11 @@
       "system_prefix_tokens": 80,
       "template_id": "delegation_code",
       "format": "code_block",
-      "examples": ["implement function", "write a method that", "add error handling"]
+      "examples": [
+        "implement function",
+        "write a method that",
+        "add error handling"
+      ]
     },
     "code_review": {
       "description": "Code review with findings",
@@ -62,13 +75,52 @@
   },
   "classification_hints": {
     "keywords": {
-      "simple_query": ["what is", "how do i", "explain", "briefly", "quick"],
-      "code_completion": ["implement", "write", "create function", "add method"],
-      "code_review": ["review", "check", "audit", "findings"],
-      "debugging": ["error", "bug", "fix", "debug", "traceback", "exception"],
-      "reasoning": ["analyze", "compare", "evaluate", "trade-offs", "design"],
-      "architecture": ["architecture", "design", "structure", "system"],
-      "documentation": ["document", "readme", "api docs", "comments"]
+      "simple_query": [
+        "what is",
+        "how do i",
+        "explain",
+        "briefly",
+        "quick"
+      ],
+      "code_completion": [
+        "implement",
+        "write",
+        "create function",
+        "add method"
+      ],
+      "code_review": [
+        "review",
+        "check",
+        "audit",
+        "findings"
+      ],
+      "debugging": [
+        "error",
+        "bug",
+        "fix",
+        "debug",
+        "traceback",
+        "exception"
+      ],
+      "reasoning": [
+        "analyze",
+        "compare",
+        "evaluate",
+        "trade-offs",
+        "design"
+      ],
+      "architecture": [
+        "architecture",
+        "design",
+        "structure",
+        "system"
+      ],
+      "documentation": [
+        "document",
+        "readme",
+        "api docs",
+        "comments"
+      ]
     },
     "default_class": "reasoning"
   },

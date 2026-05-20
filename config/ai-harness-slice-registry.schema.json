@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nixos-dev-quick-deploy.local/schemas/ai-harness-slice-registry.schema.json",
   "title": "AI Harness Slice Registry",
@@ -47,10 +52,18 @@
         "governed"
       ],
       "properties": {
-        "defined": { "$ref": "#/$defs/maturityLevel" },
-        "validated": { "$ref": "#/$defs/maturityLevel" },
-        "observable": { "$ref": "#/$defs/maturityLevel" },
-        "governed": { "$ref": "#/$defs/maturityLevel" }
+        "defined": {
+          "$ref": "#/$defs/maturityLevel"
+        },
+        "validated": {
+          "$ref": "#/$defs/maturityLevel"
+        },
+        "observable": {
+          "$ref": "#/$defs/maturityLevel"
+        },
+        "governed": {
+          "$ref": "#/$defs/maturityLevel"
+        }
       }
     },
     "runtime_verification_policy": {
@@ -93,14 +106,30 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "primary_paths": { "$ref": "#/$defs/stringList" },
-        "entrypoints": { "$ref": "#/$defs/stringList" },
-        "config_paths": { "$ref": "#/$defs/stringList" },
-        "policy_paths": { "$ref": "#/$defs/stringList" },
-        "runtime_paths": { "$ref": "#/$defs/stringList" },
-        "storage_paths": { "$ref": "#/$defs/stringList" },
-        "test_paths": { "$ref": "#/$defs/stringList" },
-        "docs": { "$ref": "#/$defs/stringList" }
+        "primary_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "entrypoints": {
+          "$ref": "#/$defs/stringList"
+        },
+        "config_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "policy_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "runtime_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "storage_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "test_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "docs": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "contract": {
@@ -114,43 +143,81 @@
         "rollback_commands"
       ],
       "properties": {
-        "inputs": { "$ref": "#/$defs/stringList" },
-        "outputs": { "$ref": "#/$defs/stringList" },
-        "invariants": { "$ref": "#/$defs/stringList" },
-        "failure_modes": { "$ref": "#/$defs/stringList" },
-        "rollback_commands": { "$ref": "#/$defs/stringList" }
+        "inputs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "outputs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "invariants": {
+          "$ref": "#/$defs/stringList"
+        },
+        "failure_modes": {
+          "$ref": "#/$defs/stringList"
+        },
+        "rollback_commands": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "controlPlane": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "config_paths": { "$ref": "#/$defs/stringList" },
-        "policy_paths": { "$ref": "#/$defs/stringList" },
-        "service_units": { "$ref": "#/$defs/stringList" },
-        "upstream_dependencies": { "$ref": "#/$defs/stringList" },
-        "downstream_consumers": { "$ref": "#/$defs/stringList" }
+        "config_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "policy_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "service_units": {
+          "$ref": "#/$defs/stringList"
+        },
+        "upstream_dependencies": {
+          "$ref": "#/$defs/stringList"
+        },
+        "downstream_consumers": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "dataPlane": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "runtime_paths": { "$ref": "#/$defs/stringList" },
-        "storage_paths": { "$ref": "#/$defs/stringList" },
-        "api_endpoints": { "$ref": "#/$defs/stringList" },
-        "mcp_tools": { "$ref": "#/$defs/stringList" }
+        "runtime_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "storage_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "api_endpoints": {
+          "$ref": "#/$defs/stringList"
+        },
+        "mcp_tools": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "observability": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "health_checks": { "$ref": "#/$defs/stringList" },
-        "dashboards": { "$ref": "#/$defs/stringList" },
-        "alerts": { "$ref": "#/$defs/stringList" },
-        "metrics_signals": { "$ref": "#/$defs/stringList" },
-        "log_sources": { "$ref": "#/$defs/stringList" }
+        "health_checks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "dashboards": {
+          "$ref": "#/$defs/stringList"
+        },
+        "alerts": {
+          "$ref": "#/$defs/stringList"
+        },
+        "metrics_signals": {
+          "$ref": "#/$defs/stringList"
+        },
+        "log_sources": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "qualityGate": {
@@ -162,9 +229,15 @@
         "acceptance_signals"
       ],
       "properties": {
-        "validation_commands": { "$ref": "#/$defs/stringList" },
-        "test_paths": { "$ref": "#/$defs/stringList" },
-        "acceptance_signals": { "$ref": "#/$defs/stringList" }
+        "validation_commands": {
+          "$ref": "#/$defs/stringList"
+        },
+        "test_paths": {
+          "$ref": "#/$defs/stringList"
+        },
+        "acceptance_signals": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "discoverability": {
@@ -174,9 +247,15 @@
         "docs"
       ],
       "properties": {
-        "docs": { "$ref": "#/$defs/stringList" },
-        "cli_entrypoints": { "$ref": "#/$defs/stringList" },
-        "dashboard_routes": { "$ref": "#/$defs/stringList" }
+        "docs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "cli_entrypoints": {
+          "$ref": "#/$defs/stringList"
+        },
+        "dashboard_routes": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "governance": {
@@ -196,9 +275,15 @@
             "high"
           ]
         },
-        "secret_surfaces": { "$ref": "#/$defs/stringList" },
-        "review_commands": { "$ref": "#/$defs/stringList" },
-        "notes": { "$ref": "#/$defs/stringList" }
+        "secret_surfaces": {
+          "$ref": "#/$defs/stringList"
+        },
+        "review_commands": {
+          "$ref": "#/$defs/stringList"
+        },
+        "notes": {
+          "$ref": "#/$defs/stringList"
+        }
       }
     },
     "runtimeProbe": {
@@ -382,21 +467,39 @@
         },
         "owner_surface": {
           "allOf": [
-            { "$ref": "#/$defs/pathSurface" }
+            {
+              "$ref": "#/$defs/pathSurface"
+            }
           ],
           "required": [
             "primary_paths",
             "entrypoints"
           ]
         },
-        "contract": { "$ref": "#/$defs/contract" },
-        "control_plane": { "$ref": "#/$defs/controlPlane" },
-        "data_plane": { "$ref": "#/$defs/dataPlane" },
-        "observability": { "$ref": "#/$defs/observability" },
-        "quality_gate": { "$ref": "#/$defs/qualityGate" },
-        "discoverability": { "$ref": "#/$defs/discoverability" },
-        "governance": { "$ref": "#/$defs/governance" },
-        "runtime_verification": { "$ref": "#/$defs/runtimeVerification" }
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "control_plane": {
+          "$ref": "#/$defs/controlPlane"
+        },
+        "data_plane": {
+          "$ref": "#/$defs/dataPlane"
+        },
+        "observability": {
+          "$ref": "#/$defs/observability"
+        },
+        "quality_gate": {
+          "$ref": "#/$defs/qualityGate"
+        },
+        "discoverability": {
+          "$ref": "#/$defs/discoverability"
+        },
+        "governance": {
+          "$ref": "#/$defs/governance"
+        },
+        "runtime_verification": {
+          "$ref": "#/$defs/runtimeVerification"
+        }
       }
     }
   }

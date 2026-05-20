@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "./schemas/route-aliases.schema.json",
   "version": "1.1.0",
   "description": "Route alias mapping configuration for Layer 1 Front-Door Routing. Maps OpenClaude-style route names to existing harness profiles. Drift fixes: Phase 58A.2 D-1/D-2/D-3.",

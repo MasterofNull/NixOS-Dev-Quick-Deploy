@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "default_profile_by_mode": {
     "plan-readonly": "readonly-strict",
     "execute-mutating": "execute-guarded"

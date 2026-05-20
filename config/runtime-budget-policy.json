@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "drift_alert_threshold": 0.7,
   "version": "1.0",
   "description": "Runtime budget and cost guardrails for agent sessions and workflow runs.",
@@ -31,7 +36,10 @@
   },
   "enforcement": {
     "enabled": true,
-    "scope": ["session", "workflow_run"],
+    "scope": [
+      "session",
+      "workflow_run"
+    ],
     "emit_telemetry": true
   }
 }

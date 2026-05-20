@@ -1,32 +1,59 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": 1,
   "description": "Provider fallback policy for automatic recovery and cost-aware routing",
   "fallback_triggers": {
     "rate_limited": {
       "enabled": true,
-      "http_codes": [429],
-      "fallback_order": ["local-hybrid", "local-llama", "queue"],
+      "http_codes": [
+        429
+      ],
+      "fallback_order": [
+        "local-hybrid",
+        "local-llama",
+        "queue"
+      ],
       "cooldown_seconds": 300,
       "max_retry_attempts": 2
     },
     "provider_error": {
       "enabled": true,
-      "http_codes": [500, 502, 503, 504],
-      "fallback_order": ["local-hybrid", "retry"],
+      "http_codes": [
+        500,
+        502,
+        503,
+        504
+      ],
+      "fallback_order": [
+        "local-hybrid",
+        "retry"
+      ],
       "cooldown_seconds": 60,
       "max_retry_attempts": 3
     },
     "auth_failure": {
       "enabled": true,
-      "http_codes": [401, 403],
-      "fallback_order": ["alert", "local-hybrid"],
+      "http_codes": [
+        401,
+        403
+      ],
+      "fallback_order": [
+        "alert",
+        "local-hybrid"
+      ],
       "cooldown_seconds": 0,
       "max_retry_attempts": 0
     },
     "timeout": {
       "enabled": true,
       "threshold_seconds": 30,
-      "fallback_order": ["local-hybrid"],
+      "fallback_order": [
+        "local-hybrid"
+      ],
       "cooldown_seconds": 120,
       "max_retry_attempts": 1
     }
@@ -37,18 +64,26 @@
     "degraded_threshold_pct": 20,
     "unhealthy_threshold_pct": 50,
     "recovery_checks": 3,
-    "metrics": ["success_rate", "avg_latency_ms", "rate_limit_count"]
+    "metrics": [
+      "success_rate",
+      "avg_latency_ms",
+      "rate_limit_count"
+    ]
   },
   "selection_scoring": {
     "weights": {
       "health_score": 0.35,
-      "latency_score": 0.20,
-      "cost_score": 0.20,
+      "latency_score": 0.2,
+      "cost_score": 0.2,
       "success_rate": 0.15,
-      "capability_match": 0.10
+      "capability_match": 0.1
     },
     "prefer_local_for": {
-      "task_types": ["code_completion", "simple_query", "cached_patterns"],
+      "task_types": [
+        "code_completion",
+        "simple_query",
+        "cached_patterns"
+      ],
       "min_confidence": 0.7
     }
   },
@@ -73,16 +108,34 @@
       }
     ],
     "provider_costs": {
-      "local-hybrid": {"input_per_1k": 0.0, "output_per_1k": 0.0},
-      "local-llama": {"input_per_1k": 0.0, "output_per_1k": 0.0},
-      "openai-gpt4": {"input_per_1k": 0.03, "output_per_1k": 0.06},
-      "anthropic-claude": {"input_per_1k": 0.015, "output_per_1k": 0.075},
-      "gemini-pro": {"input_per_1k": 0.00125, "output_per_1k": 0.005}
+      "local-hybrid": {
+        "input_per_1k": 0.0,
+        "output_per_1k": 0.0
+      },
+      "local-llama": {
+        "input_per_1k": 0.0,
+        "output_per_1k": 0.0
+      },
+      "openai-gpt4": {
+        "input_per_1k": 0.03,
+        "output_per_1k": 0.06
+      },
+      "anthropic-claude": {
+        "input_per_1k": 0.015,
+        "output_per_1k": 0.075
+      },
+      "gemini-pro": {
+        "input_per_1k": 0.00125,
+        "output_per_1k": 0.005
+      }
     }
   },
   "alerts": {
     "rate_limit_threshold": 5,
     "error_rate_threshold_pct": 25,
-    "channels": ["log", "status_endpoint"]
+    "channels": [
+      "log",
+      "status_endpoint"
+    ]
   }
 }

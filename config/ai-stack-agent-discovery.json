@@ -1,13 +1,16 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
   "description": "AI Stack agent-agnostic tool discovery manifest",
-
   "discovery": {
     "manifest_path": "/opt/nixos-quick-deploy/config/ai-stack-agent-discovery.json",
     "environment_prefix": "AI_STACK_"
   },
-
   "tools": {
     "cli": {
       "aq-session-zero": {
@@ -19,7 +22,13 @@
         "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
         "description": "Main workflow CLI wrapper for AI stack operations",
         "usage": "aqd [command] [options]",
-        "subcommands": ["workflows", "skill", "mcp", "policy", "parity"]
+        "subcommands": [
+          "workflows",
+          "skill",
+          "mcp",
+          "policy",
+          "parity"
+        ]
       },
       "aq-hints": {
         "path": "/opt/nixos-quick-deploy/scripts/ai/aq-hints",
@@ -38,19 +47,28 @@
       },
       "project-init": {
         "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
-        "args": ["workflows", "project-init"],
+        "args": [
+          "workflows",
+          "project-init"
+        ],
         "description": "Initialize new AI-enabled projects",
         "usage": "project-init --target DIR --name NAME --goal GOAL"
       },
       "workflow-primer": {
         "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
-        "args": ["workflows", "primer"],
+        "args": [
+          "workflows",
+          "primer"
+        ],
         "description": "Read-only session priming workflow",
         "usage": "workflow-primer --target DIR [--objective TEXT]"
       },
       "workflow-brownfield": {
         "path": "/opt/nixos-quick-deploy/scripts/ai/aqd",
-        "args": ["workflows", "brownfield"],
+        "args": [
+          "workflows",
+          "brownfield"
+        ],
         "description": "Existing project improvement workflow",
         "usage": "workflow-brownfield --target DIR --objective TEXT"
       },
@@ -131,7 +149,6 @@
       }
     }
   },
-
   "environment_variables": {
     "AI_STACK_ROOT": {
       "value": "/opt/nixos-quick-deploy",
@@ -166,7 +183,6 @@
       "description": "LLM inference API base URL"
     }
   },
-
   "agent_integrations": {
     "claude": {
       "config_path": "~/.claude/settings.json",
@@ -204,7 +220,6 @@
       "notes": "Uses project-local MCP server configuration for full harness integration"
     }
   },
-
   "primary_contact": {
     "human_frontdoor": "local-orchestrator",
     "bootstrap": [
@@ -231,7 +246,6 @@
       "RemoteGemini": "remote-gemini"
     }
   },
-
   "quick_start": {
     "shell": "source /etc/profile.d/aq-path.sh && ai_stack_tools",
     "check_health": "curl -sf http://127.0.0.1:8003/health",

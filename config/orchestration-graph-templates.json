@@ -1,13 +1,22 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": "1.0",
   "description": "Built-in multi-agent staged workflow graph templates.",
   "templates": [
     {
       "id": "consensus-coding",
-      "name": "Team Coding: Parallel Edit → Consensus → Review",
+      "name": "Team Coding: Parallel Edit \u2192 Consensus \u2192 Review",
       "description": "Multi-agent team workflow: two implementation agents work in parallel, an arbiter resolves conflicts, and a reviewer validates the result.",
       "category": "coding",
-      "tags": ["consensus", "multi-agent", "parallel-edit"],
+      "tags": [
+        "consensus",
+        "multi-agent",
+        "parallel-edit"
+      ],
       "nodes": [
         {
           "id": "agent_a",
@@ -27,29 +36,38 @@
           "id": "arbiter",
           "type": "consensus",
           "strategy": "majority_vote",
-          "depends_on": ["agent_a", "agent_b"]
+          "depends_on": [
+            "agent_a",
+            "agent_b"
+          ]
         },
         {
           "id": "expert_review",
           "lane": "remote-reasoning",
           "safety_mode": "plan-readonly",
           "prompt_template": "You are the Lead Architect (Claude). Evaluate the consensus solution reached by the team for task: {task}\n\nTeam Consensus result:\n{deps}\n\nPerform a deep architectural audit and provide the final GO/NO-GO.",
-          "depends_on": ["arbiter"]
+          "depends_on": [
+            "arbiter"
+          ]
         }
       ]
     },
     {
       "id": "coding-staged",
-      "name": "Coding: Plan → Edit → Review",
+      "name": "Coding: Plan \u2192 Edit \u2192 Review",
       "description": "Three-stage coding workflow: planner reads and plans, editor implements, reviewer validates.",
       "category": "coding",
-      "tags": ["coding", "plan-first", "review-gate"],
+      "tags": [
+        "coding",
+        "plan-first",
+        "review-gate"
+      ],
       "nodes": [
         {
           "id": "planner",
           "lane": "implementation",
           "safety_mode": "plan-readonly",
-          "prompt_template": "You are the planning agent. Read the codebase and produce a detailed plan to: {task}. Output a numbered action list only — no code yet.",
+          "prompt_template": "You are the planning agent. Read the codebase and produce a detailed plan to: {task}. Output a numbered action list only \u2014 no code yet.",
           "depends_on": []
         },
         {
@@ -57,23 +75,31 @@
           "lane": "implementation",
           "safety_mode": "execute-mutating",
           "prompt_template": "You are the editing agent. Implement the following plan for task: {task}\n\nPlan from planner:\n{deps}",
-          "depends_on": ["planner"]
+          "depends_on": [
+            "planner"
+          ]
         },
         {
           "id": "reviewer",
           "lane": "codex-review",
           "safety_mode": "plan-readonly",
           "prompt_template": "You are the review agent. Evaluate the implementation for task: {task}\n\nImplementation:\n{deps}\n\nReturn: PASS or FAIL with specific findings.",
-          "depends_on": ["editor"]
+          "depends_on": [
+            "editor"
+          ]
         }
       ]
     },
     {
       "id": "research-staged",
-      "name": "Research: Search → Analyze → Summarize",
+      "name": "Research: Search \u2192 Analyze \u2192 Summarize",
       "description": "Three-stage research workflow: searcher gathers data, analyst extracts insights, summarizer produces the final report.",
       "category": "research",
-      "tags": ["research", "analysis", "summarization"],
+      "tags": [
+        "research",
+        "analysis",
+        "summarization"
+      ],
       "nodes": [
         {
           "id": "searcher",
@@ -87,23 +113,31 @@
           "lane": "reasoning",
           "safety_mode": "plan-readonly",
           "prompt_template": "You are the analysis agent. Analyze the following research findings about: {task}\n\nFindings:\n{deps}\n\nExtract key patterns, risks, and insights.",
-          "depends_on": ["searcher"]
+          "depends_on": [
+            "searcher"
+          ]
         },
         {
           "id": "summarizer",
           "lane": "implementation",
           "safety_mode": "plan-readonly",
           "prompt_template": "You are the summarization agent. Write a concise executive summary for: {task}\n\nAnalysis:\n{deps}",
-          "depends_on": ["analyst"]
+          "depends_on": [
+            "analyst"
+          ]
         }
       ]
     },
     {
       "id": "security-audit",
-      "name": "Security: Scan → Assess → Report",
+      "name": "Security: Scan \u2192 Assess \u2192 Report",
       "description": "Security audit workflow: scanner finds issues, assessor rates severity, reporter produces remediation plan.",
       "category": "security",
-      "tags": ["security", "audit", "remediation"],
+      "tags": [
+        "security",
+        "audit",
+        "remediation"
+      ],
       "nodes": [
         {
           "id": "scanner",
@@ -117,23 +151,31 @@
           "lane": "reasoning",
           "safety_mode": "plan-readonly",
           "prompt_template": "You are the risk assessor. Rate severity and exploitability of each finding for: {task}\n\nFindings:\n{deps}\n\nOutput: HIGH/MEDIUM/LOW for each.",
-          "depends_on": ["scanner"]
+          "depends_on": [
+            "scanner"
+          ]
         },
         {
           "id": "reporter",
           "lane": "implementation",
           "safety_mode": "execute-mutating",
           "prompt_template": "You are the remediation planner. Write a prioritized fix plan for: {task}\n\nAssessment:\n{deps}",
-          "depends_on": ["assessor"]
+          "depends_on": [
+            "assessor"
+          ]
         }
       ]
     },
     {
       "id": "deploy-verify",
-      "name": "Deploy: Stage → Verify → Promote",
+      "name": "Deploy: Stage \u2192 Verify \u2192 Promote",
       "description": "Staged deployment workflow: stager prepares the deploy, verifier runs smoke checks, promoter finalizes.",
       "category": "operations",
-      "tags": ["deploy", "rollout", "verification"],
+      "tags": [
+        "deploy",
+        "rollout",
+        "verification"
+      ],
       "nodes": [
         {
           "id": "stager",
@@ -147,14 +189,18 @@
           "lane": "codex-review",
           "safety_mode": "plan-readonly",
           "prompt_template": "You are the verification agent. Review the staging plan for: {task}\n\nPlan:\n{deps}\n\nOutput: GO or NO-GO with specific blockers.",
-          "depends_on": ["stager"]
+          "depends_on": [
+            "stager"
+          ]
         },
         {
           "id": "promoter",
           "lane": "implementation",
           "safety_mode": "execute-mutating",
           "prompt_template": "You are the promotion agent. Execute the verified deploy for: {task}\n\nApproved plan:\n{deps}",
-          "depends_on": ["verifier"]
+          "depends_on": [
+            "verifier"
+          ]
         }
       ]
     }

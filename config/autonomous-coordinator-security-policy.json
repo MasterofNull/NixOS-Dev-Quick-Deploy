@@ -1,9 +1,13 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Security policy for autonomous agent operations",
   "version": "1.0.0",
   "updated": "2026-03-15",
-
   "modes": {
     "autonomous": {
       "description": "Restricted mode for long-running autonomous workflows",
@@ -43,11 +47,20 @@
           "enabled": true,
           "allowlist": [
             "git",
-            "grep", "find", "ls", "cat", "head", "tail",
-            "python3", "bash", "node",
+            "grep",
+            "find",
+            "ls",
+            "cat",
+            "head",
+            "tail",
+            "python3",
+            "bash",
+            "node",
             "systemctl status",
             "journalctl",
-            "aq-hints", "aq-qa", "aq-report",
+            "aq-hints",
+            "aq-qa",
+            "aq-report",
             "ralph-orchestrator"
           ],
           "blocklist": [
@@ -89,7 +102,6 @@
         "read_operations": "auto"
       }
     },
-
     "interactive": {
       "description": "Full mode for interactive human-supervised sessions",
       "enabled": true,
@@ -106,17 +118,23 @@
         },
         "file_operations": {
           "enabled": true,
-          "allowed_paths": ["*"],
+          "allowed_paths": [
+            "*"
+          ],
           "blocked_paths": []
         },
         "shell_commands": {
           "enabled": true,
-          "allowlist": ["*"],
+          "allowlist": [
+            "*"
+          ],
           "blocklist": []
         },
         "network": {
           "enabled": true,
-          "allowed_hosts": ["*"],
+          "allowed_hosts": [
+            "*"
+          ],
           "blocked_ports": []
         }
       },
@@ -129,7 +147,6 @@
       }
     }
   },
-
   "tool_policies": {
     "blocklist_in_autonomous_mode": [
       "mouse_move",
@@ -166,7 +183,6 @@
       "delegate_task"
     ]
   },
-
   "circuit_breakers": {
     "max_consecutive_failures": 3,
     "max_tool_calls_per_hour": 500,
@@ -174,7 +190,6 @@
     "max_file_changes_per_batch": 20,
     "halt_on_security_violation": true
   },
-
   "audit": {
     "log_all_tool_calls": true,
     "log_all_file_changes": true,
