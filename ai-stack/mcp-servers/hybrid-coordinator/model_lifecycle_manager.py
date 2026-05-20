@@ -53,7 +53,10 @@ else:
 ACTIVE_SYMLINK = MODEL_DIR / "active.gguf"
 
 # SLA budgets in seconds
-SLA_BUDGETS = {"gpu_fast": 5.0, "cpu_fallback": 30.0}
+# cpu_fallback covers Renoir APU service restart + full model load.
+# Small models (2-5GB): ~20-60s. Large models (20GB+): ~3-5 minutes.
+# We use 360s to cover the worst case (22GB + mlock on cold storage).
+SLA_BUDGETS = {"gpu_fast": 5.0, "cpu_fallback": 360.0}
 
 # Download chunk size
 CHUNK_SIZE = 1 * 1024 * 1024  # 1 MB
@@ -72,12 +75,36 @@ def _sha256_file(path: Path) -> str:
 
 
 def _atomic_symlink(target: Path, link: Path) -> None:
-    """Atomically replace a symlink using a temp link + os.replace."""
+    """Atomically replace a symlink.
+
+    Tries direct os.symlink first; falls back to `sudo -n ln -sf` when the
+    model dir is owned by another user (e.g. llama:llama on NixOS).
+    The sudo NOPASSWD rule for `systemctl restart llama-cpp` is deployed by the
+    dashboard nix module — a companion rule for `ln -sf` on the models dir
+    should be added to the same module for full automation.
+    """
     tmp_link = link.with_suffix(".swap.tmp")
-    if tmp_link.exists() or tmp_link.is_symlink():
-        tmp_link.unlink()
-    os.symlink(target, tmp_link)
-    os.replace(tmp_link, link)
+    try:
+        if tmp_link.exists() or tmp_link.is_symlink():
+            tmp_link.unlink()
+        os.symlink(target, tmp_link)
+        os.replace(tmp_link, link)
+        return
+    except PermissionError:
+        pass  # fall through to sudo approach
+
+    # Privileged fallback: sudo -n ln -sf <target> <link>
+    import subprocess
+    result = subprocess.run(
+        ["sudo", "-n", "ln", "-sf", str(target), str(link)],
+        capture_output=True, timeout=10,
+    )
+    if result.returncode != 0:
+        raise PermissionError(
+            f"Cannot update symlink {link} → {target}. "
+            f"sudo ln failed: {result.stderr.decode().strip()}. "
+            f"Run manually: sudo ln -sf {target} {link}"
+        )
 
 
 async def _poll_llama_health(timeout_s: float) -> bool:
