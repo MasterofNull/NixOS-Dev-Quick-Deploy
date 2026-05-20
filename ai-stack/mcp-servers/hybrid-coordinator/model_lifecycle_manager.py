@@ -30,7 +30,10 @@ from typing import AsyncIterator, Callable, Dict, Optional
 
 import aiohttp
 
-from .model_registry import MODEL_DIR, ModelRegistry, ModelState, get_registry
+try:
+    from .model_registry import MODEL_DIR, ModelRegistry, ModelState, get_registry
+except ImportError:
+    from model_registry import MODEL_DIR, ModelRegistry, ModelState, get_registry  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
