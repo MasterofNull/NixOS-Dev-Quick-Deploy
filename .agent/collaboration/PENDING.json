@@ -1,24 +1,20 @@
 {
   "agent": "Codex",
-  "task": "MAEAH live runbook static contract test slice",
-  "intent": "Make the MAEAH live validation runbook enforceable with a repo-only static test and include it in edgeai contracts check/focused CI.",
+  "task": "MAEAH OpenAPI model mutation contract slice",
+  "intent": "Bring the MAEAH OpenAPI artifact into parity with edgeai user-defined model add/delete commands and enforce that contract statically.",
   "files": [
-    "scripts/testing/test-maeah-live-runbook-contract.py",
-    "scripts/ai/edgeai",
-    "config/validation-check-registry.json",
+    "docs/api/maeah-openapi.yaml",
+    "scripts/testing/test-maeah-contract-artifacts.py",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
   "status": "repo_static_validation_complete_live_deferred",
-  "next_step": "Run `edgeai contracts check --json` during outage; after services recover execute LIVE-VALIDATION-RUNBOOK phases 0-4.",
-  "timestamp": "2026-05-20T03:36:10.745516+00:00",
+  "next_step": "OpenAPI now covers add/delete model mutations; continue using `edgeai contracts check --json` until live services recover.",
+  "timestamp": "2026-05-20T03:38:35.389281+00:00",
   "validation": [
-    "python3 -m py_compile scripts/testing/test-maeah-live-runbook-contract.py PASS",
-    "python3 scripts/testing/test-maeah-live-runbook-contract.py PASS",
-    "bash -n scripts/ai/edgeai PASS",
+    "python3 -m py_compile scripts/testing/test-maeah-contract-artifacts.py PASS",
+    "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
     "scripts/ai/edgeai contracts check --json PASS",
-    "scripts/testing/test-edgeai-cli-contract.sh PASS",
-    "jq empty config/validation-check-registry.json PASS",
     "git diff --check PASS",
     "TIER0_AQ_QA_TIMEOUT_SECONDS=8 scripts/governance/tier0-validation-gate.sh --pre-commit PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down"
   ]

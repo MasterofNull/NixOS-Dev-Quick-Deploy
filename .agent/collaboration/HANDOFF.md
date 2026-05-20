@@ -603,3 +603,28 @@ Run `.agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md` after ll
 ### Deferred live validation
 
 No live service calls were made. Continue using `edgeai contracts check --json` until llama.cpp/local model recover, then run the live validation runbook.
+
+
+---
+
+## MAEAH OpenAPI model mutation contract parity (Codex, 2026-05-20)
+
+### Completed
+
+- Updated `docs/api/maeah-openapi.yaml` to document user-defined model mutation parity:
+  - `POST /admin/v1/models` request/response schema via `UserModelCreateRequest`.
+  - `DELETE /admin/v1/models/{model_id}` for user-defined, non-active catalog entries.
+  - explicit protection language for built-in and active models.
+- Tightened `scripts/testing/test-maeah-contract-artifacts.py` so add/delete operations and response status contracts stay present.
+
+### Validation
+
+- `python3 -m py_compile scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `python3 scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `scripts/ai/edgeai contracts check --json` — PASS
+- `git diff --check` — PASS
+- Bounded Tier 0 — PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down.
+
+### Deferred live validation
+
+After service recovery, validate `edgeai models add/delete` against the live dashboard admin API using the live validation runbook.

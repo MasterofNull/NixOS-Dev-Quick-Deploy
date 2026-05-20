@@ -31,12 +31,28 @@ def main() -> int:
 
     openapi = OPENAPI.read_text(encoding="utf-8")
     require(openapi, 'openapi: "3.1.0"', "MAEAH OpenAPI must be 3.1")
-    for path in ("/v1/responses", "/admin/v1/models", "/admin/v1/models/{model_id}/promote", "/.well-known/agent.json", "/a2a/tasks/send"):
+    for path in (
+        "/v1/responses",
+        "/admin/v1/models",
+        "/admin/v1/models/{model_id}",
+        "/admin/v1/models/{model_id}/download",
+        "/admin/v1/models/{model_id}/promote",
+        "/admin/v1/models/{model_id}/rollback",
+        "/admin/v1/models/{model_id}/reset",
+        "/.well-known/agent.json",
+        "/a2a/tasks/send",
+    ):
         require(openapi, path, f"OpenAPI missing {path}")
+    for operation in ("addAdminModel", "deleteAdminModel", "downloadAdminModel", "promoteAdminModel", "rollbackAdminModel", "resetAdminFailedModel"):
+        require(openapi, operation, f"OpenAPI missing operation {operation}")
     require(openapi, "X-Dashboard-Internal", "OpenAPI missing dashboard internal auth scheme")
     require(openapi, "X-OpenAI-Responses-Compat", "OpenAPI missing Responses compatibility header")
     require(openapi, "model-entry.schema.json", "OpenAPI should reference model-entry schema")
     require(openapi, "lifecycle-event.schema.json", "OpenAPI should reference lifecycle-event schema")
+    require(openapi, "UserModelCreateRequest", "OpenAPI missing user model create schema")
+    require(openapi, "Built-in and active models are protected", "OpenAPI delete contract must document model protections")
+    require(openapi, "status: { const: added }", "OpenAPI add model response must expose added status")
+    require(openapi, "status: { const: deleted }", "OpenAPI delete model response must expose deleted status")
 
     print("PASS: MAEAH contract artifacts are present and internally consistent")
     return 0
