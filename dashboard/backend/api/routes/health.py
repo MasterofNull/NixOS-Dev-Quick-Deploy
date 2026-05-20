@@ -151,6 +151,7 @@ async def get_aggregate_health():
 _layered_cache: Dict[str, Any] = {"result": None, "expires_at": 0.0}
 _layered_running: bool = False
 _LAYERED_CACHE_TTL = 900  # 15 min — aq-qa takes 300-600s on Renoir APU (includes aq-report Qwen inference)
+_LAYERED_BACKGROUND_ENABLED = os.getenv("DASHBOARD_AQ_QA_BACKGROUND", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
@@ -204,7 +205,21 @@ async def get_layered_health():
         result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
         return result
 
-    # Cold cache — kick off background run if not already running
+    # Cold cache — return a cheap pending response by default. aq-qa phase 0 is
+    # heavy on this host and includes report-backed checks unless explicitly
+    # disabled by the caller. Frequent dashboard polling must not spawn it.
+    if not _LAYERED_BACKGROUND_ENABLED:
+        return {
+            "phase": "0",
+            "pending": True,
+            "running": False,
+            "cached": False,
+            "passed": 0, "failed": 0, "skipped": 0, "duration_s": 0,
+            "layers": {},
+            "message": "No cached OSI layer health result. Run aq-qa manually or set DASHBOARD_AQ_QA_BACKGROUND=1 to allow dashboard background refresh.",
+        }
+
+    # Cold cache — kick off background run if explicitly enabled and not already running
     if not _layered_running:
         _layered_running = True
         asyncio.create_task(_run_aq_qa_layered_background())

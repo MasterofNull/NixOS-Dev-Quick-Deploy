@@ -1,30 +1,27 @@
 {
   "agent": "Codex",
-  "task": "MAEAH live responses compatibility completion",
-  "intent": "Finish deferred live validation by making /v1/responses normalize local streamed chat output and documenting current live gate status.",
+  "task": "MAEAH current dev cycle stabilization before next slices",
+  "intent": "Fix degraded qa/service/memory surfaces encountered after local model recovery before resuming feature slices; avoid skips/workarounds by repairing real failed gates where confirmed.",
   "files": [
-    "ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py",
-    "scripts/ai/edgeai",
     ".agent/collaboration/PENDING.json",
-    ".agent/collaboration/HANDOFF.md"
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/PULSE.log",
+    "scripts/ai/aq-qa",
+    "scripts/ai/aq-memory-recall-benchmark",
+    "nix/modules/roles/ai-stack.nix",
+    "ai-stack/prompts/registry.yaml"
   ],
-  "status": "live_validation_current_with_known_memory_aqqa_gap",
-  "next_step": "MAEAH Phase A-D live acceptance is passing and /v1/responses returns normalized JSON. Remaining non-MAEAH follow-up: aq-qa 0 emits no payload under timeout and memory recall benchmark is below gate (3/20).",
-  "timestamp": "2026-05-20T08:16:27.177510+00:00",
-  "validation": [
-    "edgeai contracts check --json PASS",
-    "edgeai doctor --json PASS",
-    "edgeai models list --json PASS count=7 active=qwen3.6-35b-mtp-q5",
-    "edgeai a2a card validate --json PASS",
-    "edgeai mcp tools list --json PASS count=25",
-    "edgeai traces tail --last 1 --json PASS",
-    "direct /v1/responses PASS HTTP 200 normalized response output_text=pong",
-    "EDGEAI_CHAT_TIMEOUT_SECONDS=300 EDGEAI_CHAT_RETRY_AFTER_SECONDS=5 scripts/ai/edgeai chat --json 'Say pong' PASS output_text=Pong",
-    "scripts/testing/maeah-live-auth-smoke.sh --run PASS after rerun: unauthenticated add 403, internal add 200, internal delete 200",
-    "bash scripts/testing/maeah-acceptance-tests.sh --verbose PASS 13/13",
-    "scripts/ai/aq-memory-recall-benchmark --json FAIL pass_rate=0.15 (3/20, min 0.85)",
-    "aq-qa 0 --json INCONCLUSIVE produced no payload before 300s timeout/nonzero path",
-    "bash -n scripts/ai/edgeai PASS",
-    "scripts/testing/test-edgeai-cli-contract.sh PASS"
+  "status": "investigating_degraded_systems",
+  "timestamp": "2026-05-20T15:34:23.284462+00:00",
+  "known_blockers": [
+    "ai-aidb-reindex.service failed",
+    "ai-prompt-eval.service failed",
+    "aq-qa phase 0 layer failures in safety/DAG/query",
+    "memory recall benchmark pass_rate below gate"
+  ],
+  "guardrails": [
+    "do not lower thresholds or skip failing checks as a fix",
+    "do not commit unrelated registry date churn unless tied to prompt-eval repair",
+    "review existing uncommitted edgeai change before including"
   ]
 }

@@ -159,18 +159,37 @@ async def handle_memory_recall(request: web.Request) -> web.Response:
 
             rows = []
             seen_ids = set()
-            for memory_type in requested_types:
-                for row in await _memory_broker.read(
-                    memory_type=memory_type,
-                    query=query,
-                    top_k=limit,
-                    include_expired=bool(data.get("include_expired", False)),
-                ):
+
+            async def _add_rows(candidates):
+                for row in candidates:
                     row_id = row.get("memory_id") or row.get("id") or (row.get("content"), row.get("summary"))
                     if row_id in seen_ids:
                         continue
                     seen_ids.add(row_id)
                     rows.append(row)
+
+            # Omitted/null memory_types means "search all typed collections". Run that
+            # fan-out concurrently through the broker so HTTP recall has one bounded
+            # latency budget instead of N serial 5s broker reads. This keeps the
+            # Phase 54.1 recall gate meaningful instead of timing out before the
+            # underlying stores can answer.
+            if not isinstance(requested_raw, list) and not data.get("memory_type") and hasattr(_memory_broker, "read_all_types"):
+                grouped = await _memory_broker.read_all_types(
+                    query=query,
+                    top_k=limit,
+                    include_expired=bool(data.get("include_expired", False)),
+                )
+                for memory_type in requested_types:
+                    await _add_rows(grouped.get(memory_type, []))
+            else:
+                for memory_type in requested_types:
+                    await _add_rows(await _memory_broker.read(
+                        memory_type=memory_type,
+                        query=query,
+                        top_k=limit,
+                        include_expired=bool(data.get("include_expired", False)),
+                    ))
+
             rows.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
             rows = rows[:limit]
             result = {"results": rows, "count": len(rows), "memory_types": requested_types}
