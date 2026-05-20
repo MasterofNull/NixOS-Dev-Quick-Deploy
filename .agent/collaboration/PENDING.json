@@ -1,19 +1,20 @@
 {
   "agent": "Codex",
   "files": [
-    "scripts/ai/edgeai",
-    "scripts/testing/test-edgeai-cli-contract.sh",
+    "config/validation-check-registry.json",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Extend edgeai CLI with chat command backed by normalized /v1/responses compatibility endpoint and offline JSON error behavior.",
-  "live_validation_deferred": "Run edgeai chat against /v1/responses once llama/local-agent are back.",
-  "next_step": "After live recovery, validate edgeai chat text output and JSON output against real /v1/responses responses.",
+  "intent": "Wire MAEAH API/schema/model-registry/edgeai contract checks into the path-aware validation registry so future contract-sensitive edits run focused checks automatically.",
+  "next_step": "After local services recover, run live edgeai and MAEAH acceptance smoke; keep these checks as focused static gates for future repo changes.",
   "status": "repo_static_validation_complete",
-  "task": "MAEAH edgeai chat command repo-only slice",
-  "timestamp": "2026-05-20T03:01:09.124727+00:00",
+  "task": "MAEAH focused CI registry promotion for contract checks",
+  "timestamp": "2026-05-20T03:02:45.242180+00:00",
   "validation": [
-    "bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "jq empty config/validation-check-registry.json PASS",
+    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
+    "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
+    "python3 scripts/testing/test-maeah-model-registry-schema.py PASS",
     "scripts/testing/test-edgeai-cli-contract.sh PASS",
     "git diff --check PASS"
   ]
