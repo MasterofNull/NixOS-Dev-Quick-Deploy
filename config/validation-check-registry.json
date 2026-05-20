@@ -296,6 +296,69 @@
       "timeout_seconds": 15,
       "enabled": true,
       "require_tool": null
+    },
+    {
+      "id": "maeah-api-surface-contract",
+      "description": "MAEAH API surface contract regression",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py",
+        "dashboard/backend/api/main.py",
+        "dashboard/backend/api/routes/models.py",
+        "docs/api/maeah-openapi.yaml",
+        "scripts/testing/test-maeah-api-surface-contract.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-maeah-api-surface-contract.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "maeah-contract-artifacts",
+      "description": "MAEAH JSON Schema/OpenAPI contract artifacts",
+      "trigger_paths": [
+        "config/schemas/maeah/model-entry.schema.json",
+        "config/schemas/maeah/lifecycle-event.schema.json",
+        "docs/api/maeah-openapi.yaml",
+        "scripts/testing/test-maeah-contract-artifacts.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-maeah-contract-artifacts.py"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "maeah-model-registry-schema",
+      "description": "MAEAH model registry schema alignment",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/model_registry.py",
+        "config/schemas/maeah/model-entry.schema.json",
+        "scripts/testing/test-maeah-model-registry-schema.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-maeah-model-registry-schema.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
+      "id": "edgeai-cli-contract",
+      "description": "edgeai CLI contract and offline JSON behavior",
+      "trigger_paths": [
+        "scripts/ai/edgeai",
+        "scripts/testing/test-edgeai-cli-contract.sh",
+        "nix/modules/roles/ai-stack.nix"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/test-edgeai-cli-contract.sh"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
     }
   ]
 }

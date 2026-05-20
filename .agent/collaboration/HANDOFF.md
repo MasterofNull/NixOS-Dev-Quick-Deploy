@@ -469,3 +469,27 @@ When services recover:
 edgeai chat --json "Say pong"
 edgeai chat --model local "Say pong"
 ```
+
+---
+
+## MAEAH focused CI registry promotion (Codex, 2026-05-20)
+
+### Completed
+
+Added path-aware focused CI entries in `config/validation-check-registry.json` for:
+
+- `maeah-api-surface-contract`
+- `maeah-contract-artifacts`
+- `maeah-model-registry-schema`
+- `edgeai-cli-contract`
+
+These keep the repo-only MAEAH parity checks attached to the files they protect instead of relying on manual recall.
+
+### Validation
+
+- `jq empty config/validation-check-registry.json` — PASS
+- `python3 scripts/testing/test-maeah-api-surface-contract.py` — PASS
+- `python3 scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `python3 scripts/testing/test-maeah-model-registry-schema.py` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `git diff --check` — PASS
