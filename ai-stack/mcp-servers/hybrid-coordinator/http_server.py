@@ -2457,6 +2457,13 @@ async def run_http_mode(port: int) -> None:
             logger.exception("handle_journal_stats error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
+    # R2.5: Inject OrchestrationService closure refs before create_app() wires routes.
+    from workflow import orchestration_service as _orchestration_service
+    _orchestration_service.configure(
+        handle_orchestrate_fn=handle_orchestrate,
+        handle_tree_search_fn=handle_tree_search,
+    )
+
     # R2.4: Inject QueryService closure refs before create_app() wires routes.
     from query import query_service as _query_service
     _query_service.configure(
@@ -2564,8 +2571,9 @@ async def run_http_mode(port: int) -> None:
     # http_app.router.add_post("/query", handle_query_http)            # _fallback_handle_query_http
     # http_app.router.add_post("/api/query", handle_query_http)        # _fallback_handle_query_http
     http_app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
-    http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2
-    http_app.router.add_post("/search/tree", handle_tree_search)
+    # R2.5: /v1/orchestrate, /search/tree now owned by orchestration_service (router.py).
+    # http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # _fallback_handle_orchestrate
+    # http_app.router.add_post("/search/tree", handle_tree_search)     # _fallback_handle_tree_search
     memory_context_handlers.register_routes(http_app)
     hints_handlers.register_routes(http_app)
     workflow_session_handlers.register_routes(http_app)
@@ -2575,7 +2583,8 @@ async def run_http_mode(port: int) -> None:
     # Batch 3.2 — PRSI Action Execution endpoints
     prsi_handlers.register_routes(http_app)
     runtime_control_handlers.register_routes(http_app)
-    orchestration_graph_runner.register_routes(http_app)  # Phase 49: multi-agent graph runner
+    # R2.5: orchestration_graph_runner routes now owned by orchestration_service (router.py).
+    # orchestration_graph_runner.register_routes(http_app)  # _fallback Phase 49: multi-agent graph runner
 
     # Phase 5 — Model Optimization + Advanced Features endpoints
     model_opt_handlers.register_routes(http_app)
