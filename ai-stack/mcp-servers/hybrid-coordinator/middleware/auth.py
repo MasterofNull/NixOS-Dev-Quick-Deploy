@@ -117,6 +117,7 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
 def create_api_key_middleware():
     """Return the aiohttp middleware that enforces API key authentication."""
 
+    @web.middleware
     async def api_key_middleware(request: web.Request, handler):
         if request.path in PUBLIC_PATHS:
             return await handler(request)
