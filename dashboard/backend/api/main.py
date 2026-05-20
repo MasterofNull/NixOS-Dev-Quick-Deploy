@@ -214,6 +214,9 @@ app.include_router(testing.router, prefix="/api/testing", tags=["testing"])
 from .routes import topology as topology_mod  # noqa: E402
 app.include_router(topology_mod.router, prefix="/api", tags=["topology"])
 app.include_router(models_mod.router, prefix="/api", tags=["models"])
+# MAEAH AM-C1: canonical admin namespace aliases for model lifecycle.
+# Dashboard-internal `/api/models/*` remains as a compatibility alias.
+app.include_router(models_mod.router, prefix="/admin/v1", tags=["admin-models"])
 
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────

@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HTTP_SERVER = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server.py"
-OPENAI_A2A_HANDLERS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "openai_a2a_handlers.py"
+OPENAI_A2A_HANDLERS = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions" / "openai_a2a_handlers.py"
 
 
 def assert_contains(source: str, needle: str, message: str) -> None:

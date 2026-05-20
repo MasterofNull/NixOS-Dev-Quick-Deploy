@@ -1422,6 +1422,82 @@ async def handle_openai_completions(request: web.Request) -> web.Response:
         return _internal_error(exc)
 
 
+async def handle_openai_responses(request: web.Request) -> web.Response:
+    """Minimal OpenAI Responses API compatibility shim.
+
+    The switchboard currently exposes chat/completions. Accept the Responses
+    API's common `input` shape and route it through chat/completions while
+    preserving the coordinator's profile routing headers. This is intentionally
+    a compatibility subset, not a claim of full Responses API parity.
+    """
+    try:
+        data = await request.json()
+        if not isinstance(data, dict):
+            return web.json_response({"error": "json object body required"}, status=400)
+        input_value = data.get("input", data.get("messages"))
+        messages: List[Dict[str, Any]] = []
+        if isinstance(input_value, str):
+            messages = [{"role": "user", "content": input_value}]
+        elif isinstance(input_value, list):
+            for item in input_value:
+                if isinstance(item, dict):
+                    role = str(item.get("role") or "user")
+                    content = item.get("content")
+                    if isinstance(content, list):
+                        text_parts = []
+                        for part in content:
+                            if isinstance(part, dict):
+                                text_parts.append(str(part.get("text") or part.get("input_text") or ""))
+                            else:
+                                text_parts.append(str(part))
+                        content = "\n".join(p for p in text_parts if p)
+                    messages.append({"role": role, "content": str(content or "")})
+                else:
+                    messages.append({"role": "user", "content": str(item)})
+        elif input_value is not None:
+            messages = [{"role": "user", "content": str(input_value)}]
+        if not messages:
+            return web.json_response({"error": "input or messages required"}, status=400)
+
+        chat_payload = dict(data)
+        chat_payload.pop("input", None)
+        chat_payload["messages"] = messages
+        upstream = await _proxy_openai_request_via_coordinator(request, chat_payload, path="chat/completions")
+
+        # If upstream failed or returned non-JSON, preserve it exactly.
+        if upstream.status >= 400:
+            return upstream
+        try:
+            upstream_data = json.loads(upstream.body.decode("utf-8"))
+        except Exception:
+            return upstream
+        choice = ((upstream_data.get("choices") or [{}])[0] or {}) if isinstance(upstream_data, dict) else {}
+        message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+        text = str(message.get("content") or choice.get("text") or "")
+        response_payload = {
+            "id": upstream_data.get("id", f"resp_{int(time.time() * 1000)}"),
+            "object": "response",
+            "created_at": upstream_data.get("created", int(time.time())),
+            "model": upstream_data.get("model") or data.get("model"),
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": text}],
+            }],
+            "output_text": text,
+            "usage": upstream_data.get("usage"),
+        }
+        response = web.json_response(response_payload)
+        for header in ("X-AI-Profile", "X-Coordinator-Task-Archetype", "X-Coordinator-Model-Class", "X-Coordinator-Complexity"):
+            if header in upstream.headers:
+                response.headers[header] = upstream.headers[header]
+        response.headers["X-OpenAI-Responses-Compat"] = "chat-completions-shim"
+        return response
+    except Exception as exc:
+        return _internal_error(exc)
+
+
 def register_routes(http_app: web.Application) -> None:
     http_app.router.add_get("/.well-known/mcp.json", handle_well_known_mcp)
     http_app.router.add_get("/.well-known/agent.json", handle_well_known_a2a)
@@ -1429,6 +1505,7 @@ def register_routes(http_app: web.Application) -> None:
     http_app.router.add_get("/v1/models", handle_openai_models)
     http_app.router.add_post("/v1/chat/completions", handle_openai_chat_completions)
     http_app.router.add_post("/v1/completions", handle_openai_completions)
+    http_app.router.add_post("/v1/responses", handle_openai_responses)
     http_app.router.add_post("/", handle_a2a_rpc)
     http_app.router.add_post("/a2a", handle_a2a_rpc)
     http_app.router.add_post("/a2a/tasks/send", handle_a2a_tasks_send)

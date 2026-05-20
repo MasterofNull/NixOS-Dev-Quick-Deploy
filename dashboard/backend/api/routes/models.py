@@ -11,8 +11,10 @@ Endpoints:
   POST /api/models/{id}/cancel          — cancel in-progress download
   GET  /api/models/active               — currently active model entry
 
-Security (Codex AM-C2): endpoints require X-API-Key matching
-HYBRID_COORDINATOR_API_KEY env var, OR must originate from loopback.
+Security (Codex AM-C2): dashboard-internal /api/models endpoints allow loopback
+for same-node UI use. Canonical /admin/v1/models mutating operations require
+X-Dashboard-Internal: 1 or X-API-Key matching HYBRID_COORDINATOR_API_KEY even
+from loopback.
 """
 from __future__ import annotations
 
@@ -56,13 +58,30 @@ except ImportError as _ie:
 _API_KEY = os.getenv("HYBRID_COORDINATOR_API_KEY", "")
 
 def _check_auth(request: Request) -> None:
-    """Allow loopback or valid X-API-Key. Raises 403 otherwise."""
+    """Authorize model lifecycle access.
+
+    `/api/models/*` remains dashboard-internal and loopback-friendly for the
+    existing single-node UI. Canonical `/admin/v1/models/*` mutating calls are
+    stricter per MAEAH AM-C2: loopback alone is not sufficient.
+    """
     client_host = (request.client.host if request.client else "") or ""
+    provided = request.headers.get("X-API-Key", "")
+    internal = request.headers.get("X-Dashboard-Internal", "") == "1"
+    is_admin = str(request.url.path).startswith("/admin/v1/")
+    is_mutating = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
+
+    if is_admin and is_mutating:
+        if internal:
+            return
+        if _API_KEY and provided == _API_KEY:
+            return
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin lifecycle operation requires API key")
+
     if client_host in ("127.0.0.1", "::1", "localhost"):
         return
-    provided = request.headers.get("X-API-Key", "")
-    if _API_KEY and provided != _API_KEY:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="unauthorized")
+    if _API_KEY and provided == _API_KEY:
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="unauthorized")
 
 
 # ── SSE helper ────────────────────────────────────────────────────────────────

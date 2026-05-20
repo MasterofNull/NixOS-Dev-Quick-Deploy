@@ -312,3 +312,42 @@ bash scripts/testing/maeah-acceptance-tests.sh --verbose
 ```
 
 Do not use these static-only results as runtime promotion evidence.
+
+---
+
+## MAEAH AM-C1 / AM-C2 API surface normalization (Codex, 2026-05-20)
+
+### Context
+
+The main local agent and llama server remain down/under maintenance, so this slice avoided live inference-dependent checks.
+
+### Completed
+
+- Added `POST /v1/responses` compatibility shim in `extensions/openai_a2a_handlers.py`.
+  - Accepts common Responses API `input` shapes.
+  - Routes through current `/v1/chat/completions` switchboard surface until native Responses support exists.
+  - Emits `X-OpenAI-Responses-Compat: chat-completions-shim` to avoid overstating parity.
+- Added canonical `/admin/v1/models/*` dashboard route aliases while preserving `/api/models/*` compatibility aliases.
+- Tightened `/admin/v1/models/*` mutating auth so loopback alone is not enough; requires `X-Dashboard-Internal: 1` or a valid `X-API-Key`.
+- Updated A2A static contract test to inspect the real extracted implementation file.
+- Added `scripts/testing/test-maeah-api-surface-contract.py` for AM-C1/AM-C2 regression coverage.
+
+### Validation completed without live llama/local-agent
+
+- `python3 -m py_compile` on changed Python/test files — PASS
+- `python3 scripts/testing/test-maeah-api-surface-contract.py` — PASS
+- `python3 scripts/testing/test-a2a-compat.py` — PASS
+- `git diff --check` — PASS
+- `scripts/governance/repo-structure-lint.sh` — PASS
+
+### Deferred live validation
+
+When the stack is back:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8003/v1/responses -H 'Content-Type: application/json' -d '{"model":"local","input":"ping"}'
+curl -sS http://127.0.0.1:8889/admin/v1/models
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8889/admin/v1/models/nonexistent/promote
+```
+
+Expected: `/v1/responses` returns Responses-shaped JSON once switchboard/llama are healthy; admin GET is reachable; mutating admin without auth is rejected.
