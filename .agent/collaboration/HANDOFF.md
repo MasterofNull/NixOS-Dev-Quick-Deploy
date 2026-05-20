@@ -628,3 +628,29 @@ No live service calls were made. Continue using `edgeai contracts check --json` 
 ### Deferred live validation
 
 After service recovery, validate `edgeai models add/delete` against the live dashboard admin API using the live validation runbook.
+
+
+---
+
+## MAEAH admin mutation auth static contract (Codex, 2026-05-20)
+
+### Completed
+
+- Strengthened `scripts/testing/test-maeah-api-surface-contract.py` with route-level checks for model lifecycle mutation handlers.
+- Static coverage now verifies `_check_auth(request)` is present on:
+  - download, promote, rollback, cancel, reset,
+  - user-defined model add,
+  - user-defined model delete.
+- The test also asserts the add/delete route decorators exist.
+
+### Validation
+
+- `python3 -m py_compile scripts/testing/test-maeah-api-surface-contract.py` — PASS
+- `python3 scripts/testing/test-maeah-api-surface-contract.py` — PASS
+- `scripts/ai/edgeai contracts check --json` — PASS
+- `git diff --check` — PASS
+- Bounded Tier 0 — PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down.
+
+### Deferred live validation
+
+After dashboard/coordinator recovery, run live negative/positive auth checks for `/admin/v1/models` mutations with and without `X-Dashboard-Internal` or `X-API-Key`.

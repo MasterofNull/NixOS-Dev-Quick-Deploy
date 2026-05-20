@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,16 @@ COMBINED_PRD = ROOT / ".agents" / "plans" / "multi-agent-edge-harness" / "COMBIN
 def require(source: str, needle: str, message: str) -> None:
     if needle not in source:
         raise AssertionError(message)
+
+
+def require_route_auth(routes: str, decorator: str, function_name: str) -> None:
+    pattern = rf"@router\.{decorator}\([^\n]+\)\nasync def {function_name}\([^)]*\):(?P<body>.*?)(?=\n@router\.|\ndef _stub_catalog|\Z)"
+    match = re.search(pattern, routes, flags=re.S)
+    if not match:
+        raise AssertionError(f"missing route function for {decorator} {function_name}")
+    body = match.group("body")
+    if "_check_auth(request)" not in body:
+        raise AssertionError(f"{function_name} must call _check_auth(request)")
 
 
 def main() -> int:
@@ -34,6 +45,20 @@ def main() -> int:
     require(routes, 'request.method.upper() not in {"GET", "HEAD", "OPTIONS"}', "mutating admin auth boundary missing")
     require(routes, 'X-Dashboard-Internal', "admin lifecycle auth should allow explicit dashboard-internal header")
     require(routes, 'admin lifecycle operation requires API key', "admin mutating routes must reject loopback-only access")
+
+    for decorator, function_name in (
+        ("post", "start_download"),
+        ("post", "promote_model"),
+        ("post", "rollback_model"),
+        ("post", "cancel_download"),
+        ("post", "reset_failed_model"),
+        ("post", "add_model"),
+        ("delete", "delete_model"),
+    ):
+        require_route_auth(routes, decorator, function_name)
+
+    require(routes, '@router.post("/models")', "missing user-defined model add route")
+    require(routes, '@router.delete("/models/{model_id}")', "missing user-defined model delete route")
 
     require(prd, 'POST /v1/responses', "PRD must document /v1/responses")
     require(prd, '/admin/v1/models', "PRD must document /admin/v1 model lifecycle")
