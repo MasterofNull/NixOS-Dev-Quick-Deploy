@@ -550,3 +550,29 @@ edgeai chat --json "Say pong"
 ### Note
 
 The command intentionally excludes `test-edgeai-cli-contract.sh` internally to avoid recursive self-invocation. The wrapper test still validates the contracts command separately.
+
+
+---
+
+## MAEAH live validation runbook (Codex, 2026-05-20)
+
+### Completed
+
+- Added `.agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md`.
+- Captured the post-recovery runtime validation sequence:
+  - repo-static contract gate,
+  - surface health,
+  - `/v1/responses` smoke,
+  - user-defined model add/delete smoke,
+  - full MAEAH acceptance and memory recall benchmark.
+- Documented promotion criteria and failure handling so the team does not treat repo-static evidence as runtime readiness.
+
+### Validation
+
+- `python3 -m json.tool .agent/collaboration/PENDING.json` — PASS
+- `git diff --check .agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md .agent/collaboration/PENDING.json` — PASS
+- Manual runbook review — PASS: static-first, live checks explicitly deferred until service recovery.
+
+### Deferred live validation
+
+Run `.agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md` after llama.cpp/local model services recover.
