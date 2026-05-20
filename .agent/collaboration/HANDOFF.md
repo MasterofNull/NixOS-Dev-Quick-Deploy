@@ -654,3 +654,58 @@ After service recovery, validate `edgeai models add/delete` against the live das
 ### Deferred live validation
 
 After dashboard/coordinator recovery, run live negative/positive auth checks for `/admin/v1/models` mutations with and without `X-Dashboard-Internal` or `X-API-Key`.
+
+
+---
+
+## MAEAH live validation attempt and repo fixes (Codex, 2026-05-20)
+
+### Live evidence
+
+- Static contracts: PASS via `edgeai contracts check --json`.
+- llama health: PASS (`GET :8080/health` returned `{"status":"ok"}`).
+- `edgeai doctor --json`: PASS for coordinator, agent card, dashboard.
+- Model catalog: PASS, 7 models listed; active model is `qwen3.6-35b`.
+- A2A card validation: PASS after fixing `edgeai` stdin handling.
+- MCP tool catalog: PASS after `edgeai` learned to load `/run/secrets/hybrid_coordinator_api_key` when env key is absent.
+- Traces tail: PASS.
+
+### Remaining live blockers
+
+- `/v1/responses` and direct llama `/v1/chat/completions` generation timed out. llama health is up, but generation is not returning within 30–60s; llama logs show repeated task cancellation/wait timeout messages.
+- `scripts/testing/maeah-live-auth-smoke.sh --run` is PARTIAL:
+  - unauthenticated admin add rejected with HTTP 403 — PASS,
+  - internal add/delete returned HTTP 500 because running dashboard service lacks `MODEL_REGISTRY_PATH` and tries to write under `/home/hyperd/.local/...` while `ProtectHome=read-only`.
+- `maeah-acceptance-tests.sh --verbose`: PARTIAL, 8 PASS / 5 FAIL.
+- `aq-memory-recall-benchmark --json` and `aq-qa 0` produced no payload before timeouts in this live attempt.
+
+### Repo fixes completed in this slice
+
+- Fixed `edgeai a2a card validate --json` by passing fetched card JSON as an argument instead of conflicting heredoc/stdin redirections.
+- Added `EDGEAI_API_KEY_FILE` fallback to `edgeai`, defaulting to `/run/secrets/hybrid_coordinator_api_key`.
+- Added command-center dashboard service environment for model lifecycle persistence:
+  - `MODEL_REGISTRY_PATH=${cc.dataDir}/model-registry.json`,
+  - `MODEL_STAGING_DIR=${cc.dataDir}/model-downloads`,
+  - `MODEL_DIR=/var/lib/llama-cpp/models`,
+  - `LLAMA_CPP_HEALTH_URL=http://127.0.0.1:<llama-port>/health`.
+- Added tmpfiles rule for `${cc.dataDir}/model-downloads`.
+
+### Validation
+
+- `bash -n scripts/ai/edgeai scripts/testing/maeah-live-auth-smoke.sh` — PASS
+- `scripts/testing/maeah-live-auth-smoke.sh --plan-json` — PASS
+- `scripts/ai/edgeai contracts check --json` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `nix-instantiate --parse nix/modules/services/command-center-dashboard.nix` — PASS
+- `git diff --check` — PASS
+
+### Next action
+
+Rebuild/switch or otherwise activate the dashboard service env patch, restart `command-center-dashboard-api.service`, then rerun:
+
+```bash
+scripts/testing/maeah-live-auth-smoke.sh --run
+scripts/ai/edgeai chat --json "Say pong"
+bash scripts/testing/maeah-acceptance-tests.sh --verbose
+aq-qa 0
+```

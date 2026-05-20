@@ -95,12 +95,21 @@ edgeai models list --json | jq '.models[] | select(.id == "local-smoke")'
 edgeai models delete local-smoke
 ```
 
+Admin auth smoke:
+
+```bash
+scripts/testing/maeah-live-auth-smoke.sh --plan
+scripts/testing/maeah-live-auth-smoke.sh --run
+```
+
 Expected result:
 
 - add returns `status: added`,
 - list shows `user_defined: true`,
 - delete returns `status: deleted`,
-- built-in and active models remain protected from deletion.
+- built-in and active models remain protected from deletion,
+- unauthenticated `/admin/v1/models` mutations are rejected,
+- `X-Dashboard-Internal: 1` or an authorized API key can perform the disposable add/delete smoke.
 
 Do **not** run `download`, `promote`, or `rollback` during this smoke unless the model path, expected disk usage, and operator intent are confirmed.
 

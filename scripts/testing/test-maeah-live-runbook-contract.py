@@ -44,6 +44,8 @@ def main() -> None:
         "edgeai chat --json",
         "edgeai models add",
         "edgeai models delete local-smoke",
+        "scripts/testing/maeah-live-auth-smoke.sh --plan",
+        "scripts/testing/maeah-live-auth-smoke.sh --run",
         "bash scripts/testing/maeah-acceptance-tests.sh --verbose",
         "scripts/ai/aq-memory-recall-benchmark --json",
         "scripts/governance/tier0-validation-gate.sh --pre-commit",
@@ -64,6 +66,7 @@ def main() -> None:
     require(phase_numbers == [0, 1, 2, 3, 4], f"unexpected runbook phase order: {phase_numbers}")
 
     require("Do **not** run `download`, `promote`, or `rollback`" in text, "runbook must warn against destructive/heavy model lifecycle actions")
+    require("unauthenticated `/admin/v1/models` mutations are rejected" in text, "runbook must include admin mutation auth smoke expectations")
     require("Do not promote MAEAH readiness on repo-static evidence alone." in text, "runbook must block repo-static-only readiness promotion")
 
     print("PASS: MAEAH live validation runbook contract")
