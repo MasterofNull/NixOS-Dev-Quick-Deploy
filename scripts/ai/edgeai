@@ -215,12 +215,34 @@ import json, sys
 print(json.dumps({"model": sys.argv[1], "input": sys.argv[2]}))
 PY
 )"
-  local out
-  # LLM inference can take 90-300s on local hardware — override the default 5s timeout.
+  local out status tmp attempt
+  # LLM inference can take 90-300s on local hardware. Do not use curl -f here:
+  # local admission control returns structured 503 JSON that callers need to see.
   local chat_timeout="${EDGEAI_CHAT_TIMEOUT_SECONDS:-300}"
-  if ! out="$(TIMEOUT="$chat_timeout" curl_json POST "$COORDINATOR_URL/v1/responses" "$body" 2>/dev/null)"; then
-    _emit_error_json chat "responses endpoint unavailable at $COORDINATOR_URL"; return 1
-  fi
+  tmp="$(mktemp)"
+  trap 'rm -f "${tmp:-}"' RETURN
+  for attempt in 1 2 3; do
+    local -a args=(curl -sS --max-time "$chat_timeout" -o "$tmp" -w '%{http_code}' -X POST -H 'Accept: application/json')
+    if [[ -n "$API_KEY" ]]; then
+      args+=(-H "X-API-Key: $API_KEY")
+    fi
+    args+=(-H 'Content-Type: application/json' -H 'X-Dashboard-Internal: 1' -d "$body" "$COORDINATOR_URL/v1/responses")
+    status="$("${args[@]}" 2>/dev/null || printf '000')"
+    out="$(cat "$tmp" 2>/dev/null || true)"
+    if [[ "$status" =~ ^2 ]]; then
+      break
+    fi
+    if [[ "$out" == *'local_slot_busy'* && "$attempt" != 3 ]]; then
+      sleep "${EDGEAI_CHAT_RETRY_AFTER_SECONDS:-30}"
+      continue
+    fi
+    if [[ -n "$out" ]]; then
+      printf '%s\n' "$out"
+    else
+      _emit_error_json chat "responses endpoint unavailable at $COORDINATOR_URL (http_status=$status)"
+    fi
+    return 1
+  done
   if [[ "$json" -eq 1 ]]; then
     printf '%s\n' "$out"
   else

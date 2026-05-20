@@ -765,3 +765,25 @@ bash scripts/testing/maeah-acceptance-tests.sh --verbose
 aq-qa 0
 scripts/ai/aq-memory-recall-benchmark --json
 ```
+
+
+### Final live validation update after coordinator restart
+
+- `edgeai doctor --json` — PASS.
+- `edgeai models list --json` — PASS; active model is `qwen3.6-35b-mtp-q5`.
+- `edgeai a2a card validate --json` — PASS.
+- `edgeai mcp tools list --json` — PASS (`count=25`).
+- `edgeai traces tail --last 1 --json` — PASS.
+- Direct `POST /v1/responses` — PASS, HTTP 200 normalized Responses JSON with `output_text` (`pong`/`Pong`).
+- `EDGEAI_CHAT_TIMEOUT_SECONDS=300 EDGEAI_CHAT_RETRY_AFTER_SECONDS=5 scripts/ai/edgeai chat --json "Say pong"` — PASS after CLI hardening.
+- `scripts/testing/maeah-live-auth-smoke.sh --run` — PASS on rerun: unauthenticated add `403`, internal add `200`, internal delete `200`.
+- `bash scripts/testing/maeah-acceptance-tests.sh --verbose` — PASS, 13/13.
+
+Remaining follow-up outside MAEAH Phase A-D readiness:
+
+- `scripts/ai/aq-memory-recall-benchmark --json` — FAIL, pass rate `0.15` (`3/20`, minimum `0.85`).
+- `aq-qa 0 --json` — inconclusive; produced no payload before the 300s timeout/nonzero path in this session.
+
+Repo fix added after live testing:
+
+- Hardened `edgeai chat` to avoid `curl -f` for `/v1/responses`, preserve structured non-2xx JSON bodies, retry `local_slot_busy`, and use long local inference timeouts.
