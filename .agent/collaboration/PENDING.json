@@ -1,46 +1,33 @@
 {
   "agent": "Codex",
-  "task": "Resume current dev cycle after system rebuild: stabilization + Phase 59 memory/RAG gates + R2 route extraction validation",
-  "intent": "Keep implementation aligned with MAEAH/Phase 59 PRDs and handoff; fix real degraded memory/dashboard surfaces before continuing feature slices; do not commit prompt registry date churn unless tied to prompt-eval repair.",
+  "task": "Coordinator R2 Strangler Fig refactor readiness review",
+  "intent": "Verify R2.2-R2.5 extracted route ownership and import readiness before live deployment; prevent duplicate or missing route regressions while deferring runtime acceptance until rebuild/switch.",
   "files": [
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PULSE.log",
-    "dashboard/backend/api/routes/aistack.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py",
-    "scripts/testing/test-memory-recall-broker-contract.py",
-    "config/memory-recall-benchmark-seeds.json",
-    "scripts/data/seed-memory-recall-benchmark.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/router.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/query/query_service.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/query/__init__.py"
+    "scripts/testing/test-coordinator-strangler-route-ownership.py"
   ],
-  "status": "validated_ready_for_commit",
-  "timestamp": "2026-05-20T21:39:58.265501+00:00",
+  "status": "validating_refactor_readiness_contract",
+  "timestamp": "2026-05-20T21:45:13.821281+00:00",
   "plan_references": [
     ".agents/plans/multi-agent-edge-harness/COMBINED-PRD.md",
     ".agents/plans/multi-agent-edge-harness/PLAN-SIGNOFF.md",
-    ".agent/collaboration/HANDOFF.md Phase 59.1/59.2",
-    ".agents/plans/phase-58b-default-routing-decision.md"
+    ".agent/collaboration/HANDOFF.md Phase 59/R2 notes"
   ],
   "completed": [
-    "Confirmed live core services healthy and phase 0 has no failures",
-    "Verified Scarlet VSCodium theme is configured as Activate SCARLET protocol (beta)",
-    "Seeded aq-report snapshot explicitly; phase 0 improved to 66 passed / 0 failed / 1 skipped",
-    "Diagnosed MemoryBroker ISO temporal metadata as a real recall regression",
-    "Patched memory_manager temporal coercion and added regression coverage",
-    "Seeded deterministic memory recall corpus; aq-memory-recall-benchmark now passes 20/20"
+    "Inspected R2.2 StatusService, R2.3 MemoryService, R2.4 QueryService, R2.5 OrchestrationService ownership",
+    "Confirmed service-like router import/route smoke passes under hybrid coordinator runtime python and PYTHONPATH",
+    "Added static route ownership contract test to prevent active duplicate registrations in http_server.py and missing router service registration"
   ],
   "remaining": [
-    "Commit this validated slice without unrelated prompt registry churn",
-    "Deploy/rebuild later so systemd coordinator picks up temporal coercion code and route extraction updates",
-    "Resume measured RAG quality tuning from Phase 59.1 baseline"
+    "Run tier0 pre-commit gate",
+    "Commit readiness test slice",
+    "After next rebuild/switch, run live route gates for /stats/delegate, /query, /v1/orchestrate, /workflow/graph/run, and aq-qa all"
   ],
   "guardrails": [
-    "no threshold lowering or skip conversion as a fix",
-    "no bulk defaulting promoted domains; systems-software remains the only default Phase 58B domain",
-    "do not use dashboard polling to spawn aq-qa/aq-report; run explicit operator commands",
-    "Gemini-authored code still requires Codex/Claude review before integration"
+    "do not claim live refactor acceptance before NixOS rebuild/switch deploys the current repo revision",
+    "do not bulk-default Phase 58B promoted domains",
+    "no route ownership changes without matching contract coverage"
   ]
 }

@@ -885,3 +885,44 @@ aq-qa 0 --json
 ### Next recommended slice
 
 Resume measured RAG quality tuning from the Phase 59.1 baseline. Do not bulk-default other Phase 58B domains; systems-software remains the only default domain per `.agents/plans/phase-58b-default-routing-decision.md`.
+
+---
+
+## R2 Strangler Fig refactor readiness review (Codex, 2026-05-20)
+
+**Status:** Repo-level readiness check complete; live acceptance still deferred until rebuild/switch deploys current commits.
+
+### Completed
+
+- Reviewed R2.2-R2.5 route ownership:
+  - R2.2 `core/status_service.py`: `/status`, `/api/hardware/state`, `/stats/delegate`
+  - R2.3 `memory/memory_service.py`: `/api/memory/facts`, `/memory/journal*`, supersede/crystallizer delegation
+  - R2.4 `query/query_service.py`: `/query`, `/api/query`, `/augment_query`
+  - R2.5 `workflow/orchestration_service.py`: `/v1/orchestrate`, `/search/tree`, `/workflow/graph/*`
+- Confirmed service-like router import/route smoke using the hybrid-coordinator runtime Python and service-style `PYTHONPATH`.
+- Added `scripts/testing/test-coordinator-strangler-route-ownership.py` to statically enforce that moved routes are owned by extracted services and are no longer actively registered in `http_server.py`.
+
+### Validation
+
+- `python3 -m py_compile scripts/testing/test-coordinator-strangler-route-ownership.py` — PASS
+- `python3 scripts/testing/test-coordinator-strangler-route-ownership.py` — PASS
+- `python3 -m py_compile` on `router.py`, `status_service.py`, `memory_service.py`, `query_service.py`, `orchestration_service.py` — PASS
+- service-like router import/route smoke — PASS (`29` method routes)
+- `git diff --check` — PASS
+
+### Deferred live gates after rebuild/switch
+
+Run after current repo revision is deployed into the systemd Nix store:
+
+```bash
+curl -fsS http://127.0.0.1:8003/stats/delegate | python3 -m json.tool
+curl -fsS -X POST http://127.0.0.1:8003/query -H 'Content-Type: application/json' -d '{"query":"route smoke","generate_response":false}' | python3 -m json.tool
+curl -fsS -X POST http://127.0.0.1:8003/v1/orchestrate -H 'Content-Type: application/json' -d '{"task":"route smoke","mode":"Explore"}' | python3 -m json.tool
+curl -fsS -X POST http://127.0.0.1:8003/workflow/graph/run -H 'Content-Type: application/json' -d '{"template_id":"sequential"}' | python3 -m json.tool
+scripts/data/seed-memory-recall-benchmark.py --json
+scripts/ai/aq-memory-recall-benchmark --json
+aq-qa all
+scripts/governance/tier0-validation-gate.sh --pre-commit
+```
+
+Do not use repo-level readiness as runtime promotion evidence until those live gates pass.
