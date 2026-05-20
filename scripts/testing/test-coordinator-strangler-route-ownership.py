@@ -23,6 +23,9 @@ STATUS_SERVICE = HC / "core" / "status_service.py"
 MEMORY_SERVICE = HC / "memory" / "memory_service.py"
 QUERY_SERVICE = HC / "query" / "query_service.py"
 ORCH_SERVICE = HC / "workflow" / "orchestration_service.py"
+INSIGHTS_SERVICE = HC / "telemetry" / "insights_service.py"
+CONTROL_SERVICE = HC / "control" / "control_service.py"
+AGENT_SERVICE = HC / "agent" / "agent_service.py"
 
 MOVED_ROUTES = {
     # R2.2 StatusService
@@ -40,6 +43,14 @@ MOVED_ROUTES = {
     # R2.5 OrchestrationService
     "/v1/orchestrate": ORCH_SERVICE,
     "/search/tree": ORCH_SERVICE,
+    # R2.6 InsightsService / ControlService / AgentService
+    "/api/traces": INSIGHTS_SERVICE,
+    "/eval/run": INSIGHTS_SERVICE,
+    "/eval/trend": INSIGHTS_SERVICE,
+    "/admin/v1/scheduler/status": CONTROL_SERVICE,
+    "/control/model-fleet/status": CONTROL_SERVICE,
+    "/api/agent-ops/status": AGENT_SERVICE,
+    "/api/agent-events": AGENT_SERVICE,
 }
 
 ROUTER_REGISTRATIONS = [
@@ -47,7 +58,15 @@ ROUTER_REGISTRATIONS = [
     "_register_memory_routes(app)",
     "_register_query_routes(app)",
     "_register_orchestration_routes(app)",
+    "_register_insights_routes(app)",
+    "_register_control_routes(app)",
+    "_register_agent_routes(app)",
 ]
+
+DELEGATED_REGISTRATIONS = {
+    AGENT_SERVICE: ["_a2a.register_routes(app)"],
+    CONTROL_SERVICE: ["_rch.register_routes(app)"],
+}
 
 CONFIGURE_BEFORE_CREATE_APP = [
     ("_orchestration_service.configure", "_create_router_app"),
@@ -87,6 +106,9 @@ def main() -> int:
             raise AssertionError(f"{owner}: missing active registration for {route}")
         if route in http_routes:
             raise AssertionError(f"{HTTP_SERVER}: still actively registers moved route {route}")
+
+    for owner, snippets in DELEGATED_REGISTRATIONS.items():
+        assert_contains_all(owner.read_text(encoding="utf-8"), snippets, owner)
 
     router_text = ROUTER.read_text(encoding="utf-8")
     assert_contains_all(router_text, ROUTER_REGISTRATIONS, ROUTER)
