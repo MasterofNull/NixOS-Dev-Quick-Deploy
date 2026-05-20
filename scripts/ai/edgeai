@@ -237,6 +237,7 @@ checks = [
     ["python3", "scripts/testing/test-maeah-api-surface-contract.py"],
     ["python3", "scripts/testing/test-maeah-contract-artifacts.py"],
     ["python3", "scripts/testing/test-maeah-model-registry-schema.py"],
+    ["python3", "scripts/testing/test-maeah-live-runbook-contract.py"],
 ]
 results = []
 for argv in checks:
