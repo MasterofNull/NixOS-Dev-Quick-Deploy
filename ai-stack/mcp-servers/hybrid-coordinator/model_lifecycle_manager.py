@@ -40,6 +40,16 @@ logger = logging.getLogger(__name__)
 # HuggingFace base URL — no hardcoded tokens; reads HF_TOKEN env var
 HF_BASE_URL = "https://huggingface.co"
 LLAMA_HEALTH_URL = os.getenv("LLAMA_CPP_HEALTH_URL", "http://127.0.0.1:8080/health")
+# Download staging dir — writable by the process user; defaults alongside MODEL_DIR.
+# Set MODEL_STAGING_DIR env var to redirect downloads when MODEL_DIR isn't writable.
+# Default staging: prefer writable user dir if MODEL_DIR isn't writable by current user.
+_STAGING_DIR = os.getenv("MODEL_STAGING_DIR")
+if _STAGING_DIR:
+    MODEL_STAGING_DIR = Path(_STAGING_DIR)
+elif os.access(MODEL_DIR, os.W_OK):
+    MODEL_STAGING_DIR = MODEL_DIR
+else:
+    MODEL_STAGING_DIR = Path.home() / ".local" / "share" / "nixos-ai-stack" / "model-downloads"
 ACTIVE_SYMLINK = MODEL_DIR / "active.gguf"
 
 # SLA budgets in seconds
@@ -157,15 +167,15 @@ class ModelLifecycleManager:
         repo = entry["repo"]
         filename = entry["file"]
         url = _hf_url(repo, filename)
-        dest = MODEL_DIR / filename
-        tmp = MODEL_DIR / f".dl-{model_id}.tmp"
+        dest = MODEL_STAGING_DIR / filename
+        tmp = MODEL_STAGING_DIR / f".dl-{model_id}.tmp"
 
         headers: Dict[str, str] = {}
         hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
         if hf_token:
             headers["Authorization"] = f"Bearer {hf_token}"
 
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        MODEL_STAGING_DIR.mkdir(parents=True, exist_ok=True)
         try:
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=7200, connect=30)
@@ -275,9 +285,21 @@ class ModelLifecycleManager:
                     pass
             await self._registry.transition(prev_id, ModelState.RETIRING)
 
-        # 3. Update symlink atomically
+        # 3. Update symlink atomically — may fail if MODEL_DIR not writable by current user.
+        # On NixOS the llama-cpp service owns the dir; symlink update requires nixos-rebuild
+        # or a privileged helper. We continue with CANDIDATE state and surface a warning.
+        symlink_ok = False
+        symlink_warn: Optional[str] = None
         try:
             await asyncio.to_thread(_atomic_symlink, Path(local_path), ACTIVE_SYMLINK)
+            symlink_ok = True
+        except PermissionError as exc:
+            symlink_warn = (
+                f"Cannot update active.gguf symlink (permission denied). "
+                f"Run: sudo ln -sf {local_path} {ACTIVE_SYMLINK} "
+                f"then sudo systemctl restart llama-cpp to apply."
+            )
+            logger.warning("model_lifecycle: %s", symlink_warn)
         except Exception as exc:
             logger.error("model_lifecycle: symlink update failed: %s", exc)
             await self._registry.transition(model_id, ModelState.FAILED, error=f"symlink: {exc}")
@@ -319,13 +341,16 @@ class ModelLifecycleManager:
                 "model_lifecycle: promoted %s in %.1fs (SLA %s, budget %.0fs)",
                 model_id, duration_s, "MET" if sla_met else "MISSED", sla_budget
             )
-            return {
+            result = {
                 "success": True,
                 "duration_s": round(duration_s, 2),
                 "sla_tier": sla_tier,
                 "sla_met": sla_met,
                 "message": f"promoted in {duration_s:.1f}s",
             }
+            if symlink_warn:
+                result["warning"] = symlink_warn
+            return result
         else:
             # 6b. Rollback path
             logger.error("model_lifecycle: health check failed after %.1fs — rolling back", duration_s)
