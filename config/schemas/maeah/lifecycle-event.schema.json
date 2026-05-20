@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/maeah/lifecycle-event.schema.json",
+  "title": "MAEAH LifecycleEvent",
+  "description": "Durable model lifecycle event envelope for audit, dashboard, and replay.",
+  "type": "object",
+  "required": ["schema_version", "event", "model_id", "state", "timestamp"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "maeah.lifecycle-event.v1"},
+    "event": {"type": "string", "minLength": 1},
+    "model_id": {"type": "string", "minLength": 1},
+    "state": {
+      "type": "string",
+      "enum": ["available", "downloading", "downloaded", "verified", "warming", "candidate", "active", "retiring", "archived", "failed"]
+    },
+    "previous_state": {"type": ["string", "null"]},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "swap_sla_tier": {"type": ["string", "null"], "enum": ["gpu_fast", "cpu_fallback", null]},
+    "duration_s": {"type": ["number", "null"], "minimum": 0},
+    "sla_met": {"type": ["boolean", "null"]},
+    "error": {"type": ["string", "null"]},
+    "metadata": {"type": "object", "additionalProperties": true}
+  }
+}

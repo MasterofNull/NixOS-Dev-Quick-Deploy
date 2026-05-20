@@ -1,0 +1,194 @@
+openapi: "3.1.0"
+info:
+  title: "MAEAH Edge Harness API"
+  version: "0.1.0"
+  description: >
+    Contract-first API surface for the Multi-Agent Edge AI Harness. This file is
+    the canonical OpenAPI sketch for AM-C1/AM-C3 and intentionally documents
+    compatibility aliases separately from canonical admin routes.
+servers:
+  - url: "http://127.0.0.1:8003"
+    description: "Hybrid coordinator"
+  - url: "http://127.0.0.1:8889"
+    description: "Command-center dashboard/admin API"
+paths:
+  /v1/responses:
+    post:
+      operationId: createResponse
+      summary: "OpenAI Responses API compatibility shim"
+      description: "Compatibility subset routed through chat completions until native Responses support exists. Responses include X-OpenAI-Responses-Compat."
+      tags: [openai-compat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponseCreateRequest"
+      responses:
+        "200":
+          description: "Responses-shaped result"
+          headers:
+            X-OpenAI-Responses-Compat:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseObject"
+        "400": { description: "Invalid request" }
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      summary: "OpenAI chat completions compatibility endpoint"
+      tags: [openai-compat]
+      responses:
+        "200": { description: "Chat completion response" }
+  /.well-known/agent.json:
+    get:
+      operationId: getAgentCard
+      summary: "Canonical A2A Agent Card"
+      tags: [a2a]
+      responses:
+        "200": { description: "Signed or loopback-trusted Agent Card" }
+  /a2a/tasks/send:
+    post:
+      operationId: sendA2aTask
+      summary: "Submit REST-shaped A2A task"
+      tags: [a2a]
+      responses:
+        "200": { description: "Task accepted/result projected" }
+  /a2a/tasks/{task_id}/events:
+    get:
+      operationId: streamA2aTaskEvents
+      summary: "SSE task status/artifact events"
+      tags: [a2a]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "text/event-stream" }
+  /admin/v1/models:
+    get:
+      operationId: listAdminModels
+      summary: "Canonical model lifecycle catalog"
+      tags: [admin, models]
+      responses:
+        "200":
+          description: "Model catalog"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [models, count]
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModelEntry"
+                  count: { type: integer, minimum: 0 }
+    post:
+      operationId: addAdminModel
+      summary: "Add user-defined model"
+      description: "Mutating admin operation; requires X-Dashboard-Internal: 1 or X-API-Key."
+      tags: [admin, models]
+      security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      responses:
+        "200": { description: "Model added" }
+        "403": { description: "Unauthorized" }
+  /admin/v1/models/{model_id}/download:
+    post:
+      operationId: downloadAdminModel
+      summary: "Start or resume model download"
+      tags: [admin, models]
+      security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ModelId"
+      responses:
+        "200": { description: "Download started" }
+  /admin/v1/models/{model_id}/promote:
+    post:
+      operationId: promoteAdminModel
+      summary: "Promote verified model to active"
+      tags: [admin, models]
+      security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ModelId"
+      responses:
+        "200": { description: "Promotion completed" }
+        "502": { description: "Promotion failed and rollback attempted" }
+  /admin/v1/models/{model_id}/rollback:
+    post:
+      operationId: rollbackAdminModel
+      summary: "Rollback to archived model"
+      tags: [admin, models]
+      security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ModelId"
+      responses:
+        "200": { description: "Rollback completed" }
+  /admin/v1/models/{model_id}/reset:
+    post:
+      operationId: resetAdminFailedModel
+      summary: "Reset failed model with local file back to verified"
+      tags: [admin, models]
+      security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ModelId"
+      responses:
+        "200": { description: "Reset completed" }
+  /admin/v1/scheduler/status:
+    get:
+      operationId: getSchedulerStatus
+      summary: "MLFQ scheduler queue and thermal admission state"
+      tags: [admin, scheduler]
+      responses:
+        "200": { description: "Scheduler status" }
+components:
+  parameters:
+    ModelId:
+      name: model_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    DashboardInternal:
+      type: apiKey
+      in: header
+      name: X-Dashboard-Internal
+  schemas:
+    ResponseCreateRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        model: { type: string }
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items: {}
+        messages:
+          type: array
+          items: {}
+    ResponseObject:
+      type: object
+      required: [id, object, status, output]
+      properties:
+        id: { type: string }
+        object: { const: response }
+        created_at: { type: integer }
+        model: { type: [string, "null"] }
+        status: { type: string }
+        output:
+          type: array
+          items: {}
+        output_text: { type: string }
+        usage: { type: [object, "null"] }
+    ModelEntry:
+      $ref: "../../config/schemas/maeah/model-entry.schema.json"
+    LifecycleEvent:
+      $ref: "../../config/schemas/maeah/lifecycle-event.schema.json"

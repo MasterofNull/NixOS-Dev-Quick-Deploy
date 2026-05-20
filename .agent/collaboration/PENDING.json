@@ -1,25 +1,23 @@
 {
   "agent": "Codex",
   "files": [
-    "ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py",
-    "dashboard/backend/api/main.py",
-    "dashboard/backend/api/routes/models.py",
-    "scripts/testing/test-a2a-compat.py",
-    "scripts/testing/test-maeah-api-surface-contract.py",
+    "config/schemas/maeah/model-entry.schema.json",
+    "config/schemas/maeah/lifecycle-event.schema.json",
+    "docs/api/maeah-openapi.yaml",
+    "scripts/testing/test-maeah-contract-artifacts.py",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Normalize MAEAH API surface for research parity: add /v1/responses compatibility shim, canonical /admin/v1 model lifecycle aliases, and stricter mutating admin auth while preserving /api compatibility.",
-  "live_validation_deferred": "main local agent and llama server are currently down/being worked on; exercise HTTP routes after service recovery",
-  "next_step": "After live stack recovery, smoke POST /v1/responses, /admin/v1/models, and mutating /admin/v1 auth behavior; then proceed to OpenAPI/JSON Schema contract publication.",
-  "status": "repo_static_validation_complete_live_validation_deferred",
-  "task": "MAEAH AM-C1 API surface normalization and AM-C2 admin auth boundary",
-  "timestamp": "2026-05-20T02:52:22.142255+00:00",
+  "intent": "Publish machine-readable MAEAH contract artifacts so implementation contracts are not prose-only: ModelEntry JSON Schema, LifecycleEvent JSON Schema, and OpenAPI 3.1 API surface sketch.",
+  "next_step": "Generate or enforce runtime model/API types from these contract artifacts; expand OpenAPI to cover traces, hardware state, and scheduler queues as implementations stabilize.",
+  "status": "repo_static_validation_complete",
+  "task": "MAEAH AM-C3 versioned schema and OpenAPI contract artifacts",
+  "timestamp": "2026-05-20T02:54:38.727059+00:00",
   "validation": [
-    "python3 -m py_compile changed Python/test files PASS",
-    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
-    "python3 scripts/testing/test-a2a-compat.py PASS",
-    "git diff --check PASS",
-    "repo-structure-lint PASS"
+    "JSON schema syntax PASS",
+    "OpenAPI YAML syntax PASS",
+    "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
+    "python3 -m py_compile scripts/testing/test-maeah-contract-artifacts.py PASS",
+    "git diff --check PASS"
   ]
 }

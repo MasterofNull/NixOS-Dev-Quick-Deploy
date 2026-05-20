@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/maeah/model-entry.schema.json",
+  "title": "MAEAH ModelEntry",
+  "description": "Canonical model lifecycle catalog entry for the Multi-Agent Edge AI Harness.",
+  "type": "object",
+  "required": ["id", "name", "repo", "file", "state", "version", "swap_sla_tier", "audit_log"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {"type": "string", "minLength": 1, "pattern": "^[a-zA-Z0-9_.-]+$"},
+    "name": {"type": "string", "minLength": 1},
+    "repo": {"type": "string", "minLength": 1},
+    "file": {"type": "string", "minLength": 1, "pattern": "\\.gguf$"},
+    "sha256": {"type": ["string", "null"], "pattern": "^[a-fA-F0-9]{64}$"},
+    "params": {"type": "string"},
+    "context_size": {"type": "integer", "minimum": 1},
+    "ram_estimate_gb": {"type": "number", "minimum": 0},
+    "quant_tier": {"type": "string"},
+    "type": {"type": "string"},
+    "hardware_targets": {"type": "array", "items": {"type": "string"}},
+    "mtp_sibling": {"type": ["string", "null"]},
+    "swap_sla_tier": {"type": "string", "enum": ["gpu_fast", "cpu_fallback"]},
+    "recommended": {"type": "boolean"},
+    "description": {"type": "string"},
+    "llama_args": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "ctx_size": {"type": "integer", "minimum": 1},
+        "n_gpu_layers": {"type": "integer", "minimum": 0},
+        "parallel": {"type": "integer", "minimum": 1},
+        "batch_size": {"type": "integer", "minimum": 1},
+        "ubatch_size": {"type": "integer", "minimum": 1},
+        "threads": {"type": "integer", "minimum": 1},
+        "threads_batch": {"type": "integer", "minimum": 1},
+        "mlock": {"type": "boolean"},
+        "jinja": {"type": "boolean"},
+        "spec_type": {"type": "string"},
+        "spec_draft_n_max": {"type": "integer", "minimum": 1}
+      }
+    },
+    "state": {
+      "type": "string",
+      "enum": ["available", "downloading", "downloaded", "verified", "warming", "candidate", "active", "retiring", "archived", "failed"]
+    },
+    "version": {"type": "integer", "minimum": 1},
+    "local_path": {"type": ["string", "null"]},
+    "staged_path": {"type": ["string", "null"]},
+    "download_bytes": {"type": "integer", "minimum": 0},
+    "download_total": {"type": "integer", "minimum": 0},
+    "download_progress": {"type": "number", "minimum": 0, "maximum": 100},
+    "error": {"type": ["string", "null"]},
+    "swap_duration_s": {"type": ["number", "null"], "minimum": 0},
+    "user_defined": {"type": "boolean"},
+    "audit_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ts", "event"],
+        "additionalProperties": true,
+        "properties": {
+          "ts": {"type": "number"},
+          "event": {"type": "string", "minLength": 1},
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "note": {"type": "string"}
+        }
+      }
+    }
+  }
+}
