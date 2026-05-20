@@ -3416,6 +3416,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 _AQ_QA_CACHE: Dict[str, Any] = {}
 _AQ_QA_CACHE_TTL_S: float = float(os.getenv("DASHBOARD_AQ_QA_CACHE_TTL_SECONDS", "300"))
+_AQ_QA_BACKGROUND_ENABLED: bool = os.getenv("DASHBOARD_AQ_QA_BACKGROUND", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 _VALID_QA_PHASES = frozenset({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all"})
 
@@ -3459,8 +3460,9 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     """
     Run aq-qa <phase> --json and return structured pass/fail results.
     Results are cached for 5 minutes to protect the inference stack.
-    If no cached result exists, kicks off a background run and returns a
-    pending placeholder immediately (avoids blocking the dashboard).
+    If no cached result exists, returns a pending placeholder by default.
+    Background execution is opt-in via DASHBOARD_AQ_QA_BACKGROUND=1 because
+    aq-qa phase 0 can fan out into report-backed checks on local-model hosts.
     Append ?force=1 to bypass the cache.
     """
     phase = phase.strip().lstrip("0") or "0"
@@ -3486,6 +3488,24 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
         "8": 120, "9": 90, "10": 90, "all": 900,
     }
     timeout_s = phase_timeouts.get(phase, 120)
+
+    if not _AQ_QA_BACKGROUND_ENABLED:
+        return {
+            "phase": phase,
+            "pending": True,
+            "running": False,
+            "cached": False,
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "duration_s": 0,
+            "tests": [],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": (
+                f"No cached aq-qa phase {phase} result. Run aq-qa manually or set "
+                "DASHBOARD_AQ_QA_BACKGROUND=1 to allow dashboard background refresh."
+            ),
+        }
 
     # No cached result — kick off background run and return pending immediately.
     # This prevents the dashboard from blocking for 40+ seconds on cold start.

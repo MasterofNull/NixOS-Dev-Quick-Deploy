@@ -25,7 +25,7 @@ import json
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
@@ -77,6 +77,39 @@ class MemoryLatencyMetrics:
     retry_failures: int = 0
 
 _memory_metrics = MemoryLatencyMetrics()
+
+
+def _coerce_temporal_epoch(value: Any, *, default: int = 0) -> int:
+    """Normalize memory temporal fields to epoch seconds.
+
+    MemoryBroker writes ISO-8601 timestamps, while older direct memory writes
+    used integer epochs. Recall filtering must accept both shapes; otherwise
+    broker-written memories can become unretrievable or raise type errors during
+    `valid_from` / `valid_until` comparisons.
+    """
+    if value in (None, "", False):
+        return default
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return default
+        try:
+            return int(float(stripped))
+        except ValueError:
+            pass
+        try:
+            parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return int(parsed.timestamp())
+        except ValueError:
+            logger.debug("Ignoring unparsable memory temporal field: %r", value)
+            return default
+    return default
 
 
 def normalize_memory_type(memory_type: str) -> str:
@@ -269,8 +302,8 @@ async def store_agent_memory(
     
     # Phase 13.1: Temporal Facts (valid_from/valid_until)
     now_ts = int(datetime.now().timestamp())
-    valid_from = sanitized_metadata.pop("valid_from", now_ts)
-    valid_until = sanitized_metadata.pop("valid_until", 0) # 0 means forever
+    valid_from = _coerce_temporal_epoch(sanitized_metadata.pop("valid_from", now_ts), default=now_ts)
+    valid_until = _coerce_temporal_epoch(sanitized_metadata.pop("valid_until", 0), default=0) # 0 means forever
     
     memory_id = str(uuid4())
     payload = {
@@ -444,8 +477,8 @@ async def recall_agent_memory(
         payload = item.get("payload") or {}
         
         # Phase 13.1: Temporal filtering
-        vf = payload.get("valid_from", 0)
-        vu = payload.get("valid_until", 0)
+        vf = _coerce_temporal_epoch(payload.get("valid_from", 0), default=0)
+        vu = _coerce_temporal_epoch(payload.get("valid_until", 0), default=0)
         
         if vf > 0 and now_ts < vf:
             continue # Not yet valid

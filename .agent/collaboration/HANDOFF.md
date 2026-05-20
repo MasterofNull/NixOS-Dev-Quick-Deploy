@@ -832,3 +832,56 @@ Current validation snapshot:
 Caution:
 - `ai-stack/prompts/registry.yaml` has unrelated prompt-eval date churn from earlier failed service runs; review before including in any commit.
 - Full `aq-qa 0` should be run deliberately with bounded settings, not from dashboard/editor polling.
+
+---
+
+## Phase 59.2 continuation — memory recall live gate + dashboard anti-storm (Codex, 2026-05-20)
+
+**Status:** Complete and validated; ready for commit/deploy.
+
+### Plan references checked
+
+- `.agents/plans/multi-agent-edge-harness/COMBINED-PRD.md`
+- `.agents/plans/multi-agent-edge-harness/PLAN-SIGNOFF.md`
+- `.agent/collaboration/HANDOFF.md` Phase 59.1/59.2 notes
+- `.agents/plans/phase-58b-default-routing-decision.md`
+
+### Completed
+
+- Confirmed live harness state after rebuild: no failed systemd units; llama, embedding, AIDB, hybrid coordinator, dashboard, Redis, Qdrant, and Postgres are active/healthy.
+- Explicitly refreshed `/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json`; `aq-qa 0` improved to `66 passed / 0 failed / 1 skipped`.
+- Verified the remaining skip is not a system failure: `0.8.1` delegate 24h success rate is unavailable until the live coordinator is rebuilt with the newer `/stats/delegate` extraction.
+- Diagnosed a real MemoryBroker recall regression: broker writes ISO-8601 `valid_from`/`valid_until`, while `memory_manager.recall_agent_memory()` compared temporal fields as integer epochs.
+- Patched `knowledge/memory_manager.py` to coerce integer, float, numeric string, and ISO-8601 temporal fields before store/recall filtering.
+- Extended `scripts/testing/test-memory-recall-broker-contract.py` with ISO temporal regression coverage.
+- Added reproducible Phase 54.1 memory recall seed data and seeding tool:
+  - `config/memory-recall-benchmark-seeds.json`
+  - `scripts/data/seed-memory-recall-benchmark.py`
+- Seeded live memory corpus through `/memory/store`; `scripts/ai/aq-memory-recall-benchmark --json` now passes `20/20`, gate `true`.
+- Kept unrelated `ai-stack/prompts/registry.yaml` date churn out of the slice.
+
+### Validation
+
+- `python3 -m py_compile dashboard/backend/api/routes/aistack.py ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py scripts/testing/test-memory-recall-broker-contract.py scripts/data/seed-memory-recall-benchmark.py` — PASS
+- `python3 scripts/testing/test-memory-recall-broker-contract.py` — PASS
+- `python3 -m json.tool config/memory-recall-benchmark-seeds.json` — PASS
+- `scripts/data/seed-memory-recall-benchmark.py --json` — PASS (`20/20 ok`)
+- `scripts/ai/aq-memory-recall-benchmark --json` — PASS (`20 passed · 0 failed · gate true`)
+- `aq-qa 0 --json` — PASS (`66 passed · 0 failed · 1 skipped`)
+- `git diff --check` — PASS
+- `jq empty .agent/collaboration/PENDING.json` — PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`15 passed · 0 failed`)
+
+### Deployment note
+
+The live memory corpus is repaired now, but the code-level temporal coercion fix will not be active in the systemd coordinator until the next NixOS rebuild/switch deploys this repo revision. After that rebuild, rerun:
+
+```bash
+scripts/data/seed-memory-recall-benchmark.py --json
+scripts/ai/aq-memory-recall-benchmark --json
+aq-qa 0 --json
+```
+
+### Next recommended slice
+
+Resume measured RAG quality tuning from the Phase 59.1 baseline. Do not bulk-default other Phase 58B domains; systems-software remains the only default domain per `.agents/plans/phase-58b-default-routing-decision.md`.
