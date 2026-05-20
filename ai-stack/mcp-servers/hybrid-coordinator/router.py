@@ -138,6 +138,12 @@ def _make_rate_limit_config() -> RateLimiterConfig:
 # ---------------------------------------------------------------------------
 
 
+def _register_orchestration_routes(app: web.Application) -> None:
+    """R2.5: Register OrchestrationService routes (/v1/orchestrate, /search/tree, /workflow/graph/*)."""
+    from workflow import orchestration_service as _os
+    _os.register_routes(app)
+
+
 def _register_query_routes(app: web.Application) -> None:
     """R2.4: Register QueryService routes (/query, /api/query, /augment_query)."""
     from query import query_service as _qs
@@ -215,7 +221,7 @@ def create_app(
     _register_query_routes(app)
 
     # R2.5: OrchestrationService (/v1/orchestrate, /search/tree, /workflow/graph/run)
-    # _register_orchestration_routes(app)
+    _register_orchestration_routes(app)
 
     # R2.6: InsightsService + ControlService + AgentService
     # _register_insights_routes(app)
