@@ -1,27 +1,25 @@
 {
   "agent": "Codex",
   "files": [
-    "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/model_lifecycle_manager.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/model_registry.py",
-    "dashboard.html",
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py",
+    "dashboard/backend/api/main.py",
     "dashboard/backend/api/routes/models.py",
-    "nix/modules/services/command-center-dashboard.nix",
-    "scripts/testing/maeah-acceptance-tests.sh",
+    "scripts/testing/test-a2a-compat.py",
+    "scripts/testing/test-maeah-api-surface-contract.py",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Carry forward post-rebuild dev cycle by preserving current model lifecycle/dashboard slice, validating static contracts, and committing repo-only work while llama/local-agent live checks are down.",
-  "live_validation_deferred": "main local agent and llama server are currently down/being worked on; rerun aq-qa 0, aq-memory-recall-benchmark, and maeah-acceptance-tests after service recovery",
-  "next_step": "When local agent/llama are back, rerun live gates and address any runtime failures before promoting further MAEAH slices.",
+  "intent": "Normalize MAEAH API surface for research parity: add /v1/responses compatibility shim, canonical /admin/v1 model lifecycle aliases, and stricter mutating admin auth while preserving /api compatibility.",
+  "live_validation_deferred": "main local agent and llama server are currently down/being worked on; exercise HTTP routes after service recovery",
+  "next_step": "After live stack recovery, smoke POST /v1/responses, /admin/v1/models, and mutating /admin/v1 auth behavior; then proceed to OpenAPI/JSON Schema contract publication.",
   "status": "repo_static_validation_complete_live_validation_deferred",
-  "task": "MAEAH model lifecycle dashboard custom catalog and resume hardening",
-  "timestamp": "2026-05-20T02:45:46.620690+00:00",
+  "task": "MAEAH AM-C1 API surface normalization and AM-C2 admin auth boundary",
+  "timestamp": "2026-05-20T02:52:22.142255+00:00",
   "validation": [
-    "python3 -m py_compile changed Python files PASS",
-    "bash -n scripts/testing/maeah-acceptance-tests.sh PASS",
+    "python3 -m py_compile changed Python/test files PASS",
+    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
+    "python3 scripts/testing/test-a2a-compat.py PASS",
     "git diff --check PASS",
-    "nix-instantiate --parse nix/modules/services/command-center-dashboard.nix PASS",
-    "model lifecycle/catalog static smoke PASS"
+    "repo-structure-lint PASS"
   ]
 }
