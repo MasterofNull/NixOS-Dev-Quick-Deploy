@@ -723,3 +723,45 @@ After `bed4a303`:
   - internal add returned HTTP 409 — acceptable because the disposable smoke entry already exists in current registry state,
   - internal delete returned HTTP 500 — expected until the dashboard service env patch is activated; current running unit still writes registry state under read-only `$HOME`.
 - `ai-stack/switchboard/switchboard.py` has an unrelated uncommitted change. Codex did not author or commit it; review separately because it may relate to empty/local response behavior.
+
+
+---
+
+## MAEAH live responses compatibility completion (Codex, 2026-05-20)
+
+### Live status before coordinator restart
+
+- `edgeai contracts check --json` — PASS.
+- `edgeai doctor --json` — PASS.
+- `edgeai models list --json` — PASS; active model is `qwen3.6-35b-mtp-q5`.
+- `edgeai a2a card validate --json` — PASS.
+- `edgeai mcp tools list --json` — PASS (`count=25`).
+- `edgeai traces tail --last 1 --json` — PASS.
+- `scripts/testing/maeah-live-auth-smoke.sh --run` — PASS for auth behavior after rerun: unauthenticated add `403`, internal add `200`, internal delete `200`.
+- `bash scripts/testing/maeah-acceptance-tests.sh --verbose` — PASS, 13/13.
+- Direct `/v1/responses` against the running coordinator returns HTTP 200 and generated `Pong`, but as SSE chat-completion chunks rather than normalized Responses JSON.
+
+### Repo fix completed
+
+- Updated `handle_openai_responses` to accumulate SSE chat-completion chunks into a synthetic non-streaming Responses-compatible JSON object.
+- Updated `edgeai chat` to use `EDGEAI_CHAT_TIMEOUT_SECONDS` with a 300s default for local model inference.
+
+### Validation
+
+- `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py` — PASS
+- `bash -n scripts/ai/edgeai` — PASS
+- `python3 scripts/testing/test-maeah-api-surface-contract.py` — PASS
+- `scripts/ai/edgeai contracts check --json` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `git diff --cached --check` — PASS
+
+### Next action
+
+Restart `ai-hybrid-coordinator.service`, then rerun:
+
+```bash
+EDGEAI_CHAT_TIMEOUT_SECONDS=300 scripts/ai/edgeai chat --json "Say pong"
+bash scripts/testing/maeah-acceptance-tests.sh --verbose
+aq-qa 0
+scripts/ai/aq-memory-recall-benchmark --json
+```
