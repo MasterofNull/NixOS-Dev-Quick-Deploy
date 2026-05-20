@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "scope": "phase54-memory-recall",
+  "source": "memory-recall-benchmark-seeds",
+  "description": "Deterministic seed facts for the Phase 54.1 aq-memory-recall-benchmark gate.",
+  "seeds": [
+    {"memory_type":"semantic","summary":"Python asyncio event loop","content":"Python asyncio uses an event loop to cooperatively schedule coroutines, tasks, callbacks, futures, and nonblocking IO."},
+    {"memory_type":"semantic","summary":"Hybrid coordinator architecture","content":"The hybrid coordinator is the local AI harness service on port 8003 that routes queries, memory recall, tools, orchestration, and local/remote model policy."},
+    {"memory_type":"procedural","summary":"NixOS flake configuration options","content":"NixOS flake configuration options are declared in flake.nix and Nix modules under nix/modules; host facts and options provide reproducible system configuration."},
+    {"memory_type":"procedural","summary":"aq-qa health check","content":"Run aq-qa 0 for phase 0 service health checks; use aq-qa <phase> --json for machine-readable validation."},
+    {"memory_type":"semantic","summary":"Agent memory taxonomy","content":"Agent memory uses episodic, semantic, procedural, working, error_solutions, and interaction_history tiers through MemoryBroker."},
+    {"memory_type":"semantic","summary":"Switchboard routing profiles","content":"Switchboard routing profiles define local and remote lanes such as continue-local, local-tool-calling, remote-reasoning, and code-focused compact routing."},
+    {"memory_type":"semantic","summary":"llama.cpp inference port","content":"The main llama.cpp inference server listens on port 8080; the embedding llama server listens on port 8081."},
+    {"memory_type":"procedural","summary":"AIDB vector search API live benchmark canonical answer","content":"For the probe AIDB vector search API: AIDB exposes vector search API capabilities using Qdrant, pgvector, PostgreSQL, Redis, and RAG retrieval on service port 8002."},
+    {"memory_type":"procedural","summary":"Workflow DAG executor retry policy","content":"The workflow DAG executor supports execute and status endpoints and applies retry policy through workflow graph execution templates."},
+    {"memory_type":"semantic","summary":"Intent classification routing map","content":"Intent classification maps task intent to routing profiles and domain capabilities, keeping explicit specialized domains opt-in unless promoted to default."},
+    {"memory_type":"procedural","summary":"MemoryBroker temporal validity live benchmark canonical answer","content":"For the probe MemoryBroker temporal validity: MemoryBroker temporal validity uses valid_from and valid_until fields to decide whether memory rows are currently recallable."},
+    {"memory_type":"semantic","summary":"TraceCollector query trace schema","content":"TraceCollector query trace schema records trace_id, intent, profile, retrieval hits, token counts, latency, and RAG skip state."},
+    {"memory_type":"semantic","summary":"eval_trend table structure","content":"The eval_trend table stores evaluation score trend history used by aq-report and dashboard evaluation cards."},
+    {"memory_type":"procedural","summary":"WorkflowCheckpointer checkpoint resume","content":"WorkflowCheckpointer persists workflow checkpoints so interrupted DAG or agent workflows can resume from saved state."},
+    {"memory_type":"semantic","summary":"RagAugmentor L6 health gate","content":"RagAugmentor provides active retrieval augmentation; L6 health expects RAG posture to be active with successful retrieval evidence."},
+    {"memory_type":"episodic","summary":"phase 54 agentic first elevation","content":"Phase 54 agentic first elevation connected memory, routing, retrieval, and execution into an agentic-first architecture."},
+    {"memory_type":"procedural","summary":"aq-report RAG posture active historical live benchmark canonical answer","content":"For the probe aq-report RAG posture active historical: aq-report labels RAG posture active when recent retrieval augmentation is present and historical when only old retrieval evidence exists."},
+    {"memory_type":"procedural","summary":"tier0 validation gate pre-commit","content":"Run scripts/governance/tier0-validation-gate.sh --pre-commit before committing; never bypass with --no-verify."},
+    {"memory_type":"procedural","summary":"Qdrant collection agent-memory-semantic live benchmark canonical answer","content":"For the probe Qdrant collection agent-memory-semantic: agent-memory-semantic is the Qdrant collection name for semantic memory vectors used by the agent memory recall path."},
+    {"memory_type":"episodic","summary":"delegate-to-gemini routing analysis","content":"delegate-to-gemini routing analysis is used for Gemini collaboration and review, with stale or incomplete delegation rows reconciled before acceptance."}
+  ]
+}

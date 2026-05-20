@@ -103,9 +103,39 @@ async def check_memory_rows_preserve_metadata() -> None:
     assert_true(row["context"]["scope"] == "scripts", "expected context alias for facts endpoint")
 
 
+async def check_iso_temporal_fields_are_recallable() -> None:
+    memory_manager.Config.AI_MEMORY_ENABLED = True
+    memory_manager._memory_collections = {"semantic": "agent-memory-semantic"}
+    memory_manager._record_telemetry = lambda *args, **kwargs: None
+
+    async def fake_hybrid_search(**kwargs):
+        return {
+            "combined_results": [
+                {
+                    "id": "row2",
+                    "score": 0.91,
+                    "payload": {
+                        "memory_id": "row2",
+                        "memory_type": "semantic",
+                        "summary": "MemoryBroker temporal validity fact",
+                        "content": "MemoryBroker accepts ISO valid_from timestamps and recall coerces them to epoch seconds.",
+                        "valid_from": "2020-01-01T00:00:00+00:00",
+                        "valid_until": None,
+                    },
+                }
+            ]
+        }
+
+    memory_manager._hybrid_search = fake_hybrid_search
+    result = await memory_manager.recall_agent_memory("MemoryBroker temporal validity", memory_types=["semantic"], limit=1)
+    assert_true(len(result["results"]) == 1, "expected ISO valid_from row to survive temporal filtering")
+    assert_true(isinstance(result["results"][0]["valid_from"], int), "expected valid_from to be normalized to epoch seconds")
+
+
 async def main_async() -> int:
     await check_recall_handler_searches_all_types()
     await check_memory_rows_preserve_metadata()
+    await check_iso_temporal_fields_are_recallable()
     print("PASS: MemoryBroker recall contract preserves all-type search and metadata")
     return 0
 
