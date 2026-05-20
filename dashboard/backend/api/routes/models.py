@@ -36,7 +36,7 @@ router = APIRouter()
 # The dashboard backend runs from a separate venv, so we inject the path.
 
 def _coordinator_path() -> Path:
-    return Path(__file__).resolve().parents[5] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+    return Path(__file__).resolve().parents[4] / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
 
 
 _coord_path = str(_coordinator_path())
