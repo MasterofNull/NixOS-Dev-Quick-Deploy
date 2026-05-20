@@ -60,7 +60,6 @@ from metrics import (
 )
 from shared.tool_security_auditor import ToolSecurityAuditor
 from shared.tool_audit import write_audit_entry as _write_audit_entry
-from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 from ai_coordinator import (
     build_messages as _ai_coordinator_build_messages,
     coerce_orchestration_context as _ai_coordinator_coerce_orchestration_context,
@@ -703,6 +702,14 @@ def init(
     _queue_max_ref = queue_max_ref
     _embedding_cache_ref = embedding_cache_ref
     _intent_classifier = intent_classifier
+
+    # R2.2: inject runtime refs into StatusService
+    from core import status_service as _status_service
+    _status_service.configure(
+        local_llm_healthy_ref=local_llm_healthy_ref,
+        queue_depth_ref=queue_depth_ref,
+        queue_max_ref=queue_max_ref,
+    )
 
     session_builders.init(
         agent_hq=_AGENT_HQ,
@@ -1540,76 +1547,34 @@ async def run_http_mode(port: int) -> None:
     access_logger.propagate = False
 
     # ------------------------------------------------------------------
-    # Middleware
+    # R2.2: Middleware now owned by router.py (create_app).
+    # The closures below are kept as R2.2 FALLBACK — remove after nixos-rebuild
+    # confirms StatusService routes are healthy.
     # ------------------------------------------------------------------
 
-    @web.middleware
-    async def tracing_middleware(request, handler):
-        tracer = trace.get_tracer(_SERVICE_NAME)
-        span_name = f"{request.method} {request.path}"
-        with tracer.start_as_current_span(
-            span_name,
-            attributes={"http.method": request.method, "http.target": request.path},
-        ) as span:
-            response = await handler(request)
-            span.set_attribute("http.status_code", response.status)
-            return response
+    # R2.2 fallback — tracing_middleware (moved to router._make_tracing_middleware):
+    # @web.middleware
+    # async def tracing_middleware(request, handler): ...
 
-    @web.middleware
-    async def request_id_middleware(request, handler):
-        from structlog.contextvars import bind_contextvars, clear_contextvars
-        import time
-        request_id = request.headers.get("X-Request-ID") or uuid4().hex
-        request["request_id"] = request_id
-        bind_contextvars(request_id=request_id)
-        start = time.perf_counter()
-        response = None
-        try:
-            response = await handler(request)
-            return response
-        except Exception:  # noqa: BLE001
-            REQUEST_ERRORS.labels(request.path, request.method).inc()
-            raise
-        finally:
-            duration = time.perf_counter() - start
-            status = str(response.status) if response else "500"
-            REQUEST_LATENCY.labels(request.path, request.method).observe(duration)
-            REQUEST_COUNT.labels(request.path, status).inc()
-            _audit_http_request(request, int(status), duration * 1000.0)
-            if response:
-                response.headers["X-Request-ID"] = request_id
-            clear_contextvars()
+    # R2.2 fallback — request_id_middleware (moved to router._make_request_id_middleware):
+    # @web.middleware
+    # async def request_id_middleware(request, handler): ...
 
-    @web.middleware
-    async def api_key_middleware(request, handler):
-        # Public endpoints that don't require authentication
-        public_paths = (
-            "/health",
-            "/metrics",
-            "/.well-known/mcp.json",
-            "/.well-known/agent.json",
-            "/.well-known/agent-card.json",
-            "/health/detailed",
-            "/health/aggregate",
-        )
-        if request.path in public_paths:
-            return await handler(request)
-        if _is_loopback_agent_request(request):
-            return await handler(request)
-        if not Config.API_KEY:
-            return await handler(request)
-        token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
-        if token.startswith("Bearer "):
-            token = token.split(" ", 1)[1]
-        if token != Config.API_KEY:
-            return web.json_response({"error": "unauthorized"}, status=401)
-        return await handler(request)
+    # R2.2 fallback — api_key_middleware (moved to core.auth_middleware.create_api_key_middleware):
+    # @web.middleware
+    # async def api_key_middleware(request, handler): ...
 
     # ------------------------------------------------------------------
     # Route handlers
     # ------------------------------------------------------------------
 
-    async def handle_status(request):
+    # R2.2 fallback — handle_status (moved to core.status_service):
+    # async def handle_status(request): ...
+
+    # R2.2: handle_status moved to core.status_service — see FALLBACK comment above.
+    # (original closure preserved in git history; remove this comment after nixos-rebuild)
+
+    async def _fallback_handle_status(request):  # noqa: F841  R2.2 fallback
         """Phase 2.4.2 — Model loading status endpoint."""
         import time as _time
         try:
@@ -1689,13 +1654,13 @@ async def run_http_mode(port: int) -> None:
             payload["active_lesson_refs"] = lesson_refs
         return web.json_response(payload)
 
-    async def handle_hardware_state(request):
+    async def _fallback_handle_hardware_state(request):  # noqa: F841  R2.2 fallback
         """GET /api/hardware/state — return current thermal and RAM metrics."""
         from dataclasses import asdict
         state = await get_ipm().hardware_state()
         return web.json_response(asdict(state))
 
-    async def handle_delegate_stats(request):
+    async def _fallback_handle_delegate_stats(request):  # noqa: F841  R2.2 fallback
         """GET /stats/delegate — delegation success rate from audit log.
 
         Reads the ai-audit-sidecar JSONL log under the coordinator's own
@@ -2491,33 +2456,10 @@ async def run_http_mode(port: int) -> None:
             logger.exception("handle_journal_stats error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
-    # Initialize rate limiter with endpoint-specific limits
-    rate_limiter_config = RateLimiterConfig(
-        enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
-        default_rpm=int(os.getenv("RATE_LIMIT_DEFAULT_RPM", "100")),
-        default_rph=int(os.getenv("RATE_LIMIT_DEFAULT_RPH", "3000")),
-        burst_multiplier=float(os.getenv("RATE_LIMIT_BURST_MULTIPLIER", "1.5")),
-        endpoint_limits={
-            "/": int(os.getenv("RATE_LIMIT_ROOT_RPM", "300")),
-            "/query": int(os.getenv("RATE_LIMIT_QUERY_RPM", "30")),
-            "/search/tree": int(os.getenv("RATE_LIMIT_TREE_RPM", "20")),
-            "/hints": int(os.getenv("RATE_LIMIT_HINTS_RPM", "60")),
-            "/harness/eval": int(os.getenv("RATE_LIMIT_EVAL_RPM", "20")),
-            "/workflow": int(os.getenv("RATE_LIMIT_WORKFLOW_RPM", "30")),
-            "/a2a": int(os.getenv("RATE_LIMIT_A2A_RPM", "300")),
-        },
-        exempt_paths={"/health", "/metrics", "/health/detailed", "/health/aggregate"},
-    )
-    _rate_limiter, rate_limit_middleware = create_rate_limiter_middleware(rate_limiter_config)
-    logger.info(
-        "rate_limiter_initialized enabled=%s default_rpm=%s",
-        rate_limiter_config.enabled,
-        rate_limiter_config.default_rpm,
-    )
-
-    http_app = web.Application(
-        middlewares=[tracing_middleware, request_id_middleware, rate_limit_middleware, api_key_middleware]
-    )
+    # R2.2: middleware + StatusService routes owned by router.py.
+    # Rate limiter config is now in router._make_rate_limit_config().
+    from router import create_app as _create_router_app
+    http_app = _create_router_app(audit_request_fn=_audit_http_request)
     scheduler = get_scheduler()
 
     async def _scheduler_startup(_app):
@@ -2602,9 +2544,7 @@ async def run_http_mode(port: int) -> None:
 
     openai_a2a_handlers.register_routes(http_app)
     ops_handlers.register_routes(http_app)
-    http_app.router.add_get("/status", handle_status)
-    http_app.router.add_get("/api/hardware/state", handle_hardware_state)
-    http_app.router.add_get("/stats/delegate", handle_delegate_stats)
+    # R2.2: /status, /api/hardware/state, /stats/delegate now registered by router.py
     # Phase 56.4/56.5/56.6 — Commit facts, Agent Ops status, Event Bus
     http_app.router.add_post("/api/memory/facts", handle_memory_facts_post)
     http_app.router.add_get("/api/memory/facts", handle_memory_facts_get)
