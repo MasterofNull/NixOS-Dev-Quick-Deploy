@@ -3,20 +3,18 @@
   "files": [
     "scripts/ai/edgeai",
     "scripts/testing/test-edgeai-cli-contract.sh",
-    "nix/modules/roles/ai-stack.nix",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Add initial edgeai CLI facade over normalized MAEAH APIs with graceful offline JSON behavior while llama/local-agent are down.",
-  "live_validation_deferred": "Run edgeai doctor, models list, a2a card validate, mcp tools list, traces tail against live services once llama/local-agent are back.",
-  "next_step": "After live recovery, smoke every edgeai command and then expand edgeai chat/model mutating flows against real APIs.",
+  "intent": "Extend edgeai CLI with chat command backed by normalized /v1/responses compatibility endpoint and offline JSON error behavior.",
+  "live_validation_deferred": "Run edgeai chat against /v1/responses once llama/local-agent are back.",
+  "next_step": "After live recovery, validate edgeai chat text output and JSON output against real /v1/responses responses.",
   "status": "repo_static_validation_complete",
-  "task": "MAEAH edgeai CLI facade repo-only slice",
-  "timestamp": "2026-05-20T03:00:11.167368+00:00",
+  "task": "MAEAH edgeai chat command repo-only slice",
+  "timestamp": "2026-05-20T03:01:09.124727+00:00",
   "validation": [
     "bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh PASS",
     "scripts/testing/test-edgeai-cli-contract.sh PASS",
-    "nix-instantiate --parse nix/modules/roles/ai-stack.nix PASS",
     "git diff --check PASS"
   ]
 }
