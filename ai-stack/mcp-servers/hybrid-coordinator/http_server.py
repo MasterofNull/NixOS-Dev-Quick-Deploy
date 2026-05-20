@@ -1750,7 +1750,8 @@ async def run_http_mode(port: int) -> None:
         })
 
     # Phase 56.4 — Commit Fact Ingest
-    async def handle_memory_facts_post(request):
+    # R2.3: handle_memory_facts_post/get + handle_journal_* moved to memory.memory_service
+    async def _fallback_handle_memory_facts_post(request):  # noqa: F841  R2.3 fallback
         """POST /api/memory/facts — store structured facts from aq-commit-facts.
 
         Writes each fact to MemoryBroker semantic store with valid_from=now().
@@ -1794,7 +1795,7 @@ async def run_http_mode(port: int) -> None:
 
         return web.json_response({"stored": stored, "timestamp": ts})
 
-    async def handle_memory_facts_get(request):
+    async def _fallback_handle_memory_facts_get(request):  # noqa: F841  R2.3 fallback
         """GET /api/memory/facts — retrieve stored facts (used by aq-session-start).
 
         Query params: scope=<str> (filter by scope), limit=<int> (default 10)
@@ -2428,7 +2429,7 @@ async def run_http_mode(port: int) -> None:
             return web.json_response({"error": str(exc)}, status=500)
 
     # Phase 15.3: Journal read endpoints
-    async def handle_journal_entries(request: web.Request) -> web.Response:
+    async def _fallback_handle_journal_entries(request: web.Request) -> web.Response:  # noqa: F841  R2.3 fallback
         try:
             params = request.rel_url.query
             entries = await _journal.get_entries(
@@ -2445,7 +2446,7 @@ async def run_http_mode(port: int) -> None:
             logger.exception("handle_journal_entries error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
-    async def handle_journal_stats(request: web.Request) -> web.Response:
+    async def _fallback_handle_journal_stats(request: web.Request) -> web.Response:  # noqa: F841  R2.3 fallback
         try:
             params = request.rel_url.query
             stats = await _journal.get_stats(
@@ -2545,9 +2546,8 @@ async def run_http_mode(port: int) -> None:
     openai_a2a_handlers.register_routes(http_app)
     ops_handlers.register_routes(http_app)
     # R2.2: /status, /api/hardware/state, /stats/delegate now registered by router.py
-    # Phase 56.4/56.5/56.6 — Commit facts, Agent Ops status, Event Bus
-    http_app.router.add_post("/api/memory/facts", handle_memory_facts_post)
-    http_app.router.add_get("/api/memory/facts", handle_memory_facts_get)
+    # R2.3: /api/memory/facts, /memory/journal* now registered by router.py (MemoryService)
+    # Phase 56.5/56.6 — Agent Ops status, Event Bus
     http_app.router.add_get("/api/agent-ops/status", handle_agent_ops_status)
     http_app.router.add_post("/api/agent-events", handle_agent_events_post)
     http_app.router.add_get("/api/agent-events", handle_agent_events_get)
@@ -2581,10 +2581,9 @@ async def run_http_mode(port: int) -> None:
 
     evidence_safety_handlers.register_routes(http_app)
 
-    # Phase 15.1 + 15.3: Fleet status + journal endpoints
+    # Phase 15.1: Fleet status
     http_app.router.add_get("/control/model-fleet/status", handle_fleet_status)
-    http_app.router.add_get("/memory/journal", handle_journal_entries)
-    http_app.router.add_get("/memory/journal/stats", handle_journal_stats)
+    # R2.3: /memory/journal* now registered by router.py (MemoryService)
     # Phase 16.4: Identity kernel
     identity_handlers.register_routes(http_app)
     affective_handlers.register_routes(http_app)  # Phase 19: values signals
@@ -2594,9 +2593,8 @@ async def run_http_mode(port: int) -> None:
 
     # Phase 54: Agentic-First Architecture Elevation routes
     http_app.router.add_get("/memory/broker/status", memory_broker.handle_broker_status)
-    memory_superseder_routes.register_routes(http_app)
+    # R2.3: superseder + crystallizer now registered by router.py (MemoryService)
     drift_analyzer_routes.register_routes(http_app)
-    memory_crystallizer_routes.register_routes(http_app)
     http_app.router.add_get("/control/intent/map", intent_classifier.handle_get_intent_map)
     http_app.router.add_post("/control/intent/reload", intent_classifier.handle_reload_intent_map)
     http_app.router.add_get("/api/health/rag", rag_augmentor.handle_rag_health)
