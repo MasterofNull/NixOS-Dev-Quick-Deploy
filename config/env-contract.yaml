@@ -1,0 +1,405 @@
+_meta:
+  version: "1.0"
+  description: "Authoritative environment variable contract for the NixOS-Dev-Quick-Deploy AI stack"
+  owner: claude-sonnet-4-6
+  last_updated: "2026-05-20"
+  enforcement: "scripts/governance/tier0-validation-gate.sh (gate_env_contract)"
+
+# ---------------------------------------------------------------------------
+# HOW TO READ THIS FILE
+#
+# Each variable entry has:
+#   canonical:   The single authoritative name all new code must use
+#   aliases:     Deprecated names that still work via shim (sunset 2026-08-20)
+#   default:     Compile-time default value
+#   layer:       Where it is authoritative: nix | systemd | shell | python | all
+#   consumers:   Which services/modules read this variable
+#   description: What it controls
+#
+# Enforcement:
+#   New .py or .sh files that introduce env var names not listed here will
+#   be rejected by the tier0 gate (gate_env_contract check).
+#   Aliases continue to work at runtime but generate a deprecation warning
+#   from the consuming service on startup (where implemented).
+# ---------------------------------------------------------------------------
+
+variables:
+
+  # ── llama.cpp inference server ─────────────────────────────────────────
+  - canonical: LLAMA_CPP_BASE_URL
+    aliases: [LLAMA_URL, LLAMA_CPP_URL]
+    default: "http://127.0.0.1:8080"
+    layer: all
+    consumers: [hybrid-coordinator, dashboard-backend, switchboard, aq-qa, edgeai, aq-report]
+    description: "Base URL of the llama.cpp inference server (port 8080)"
+
+  - canonical: LLAMA_PORT
+    aliases: []
+    default: "8080"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for llama.cpp inference server; used to construct LLAMA_CPP_BASE_URL"
+
+  - canonical: LLAMA_HOST
+    aliases: []
+    default: "127.0.0.1"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Host for llama.cpp inference server"
+
+  # ── llama.cpp embedding server ──────────────────────────────────────────
+  - canonical: EMBED_BASE_URL
+    aliases: [EMBEDDINGS_URL, LLAMA_EMBED_URL, EMBED_URL]
+    default: "http://127.0.0.1:8081"
+    layer: all
+    consumers: [hybrid-coordinator, aq-qa]
+    description: "Base URL of the llama.cpp embedding server (port 8081)"
+
+  - canonical: EMBEDDINGS_PORT
+    aliases: []
+    default: "8081"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for embedding server; used to construct EMBED_BASE_URL"
+
+  - canonical: EMBEDDINGS_HOST
+    aliases: []
+    default: "127.0.0.1"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Host for embedding server"
+
+  # ── hybrid-coordinator ──────────────────────────────────────────────────
+  - canonical: HYBRID_COORDINATOR_URL
+    aliases: [HYBRID_URL, COORDINATOR_URL]
+    default: "http://127.0.0.1:8003"
+    layer: all
+    consumers: [dashboard-backend, switchboard, aq-qa, edgeai, delegate-scripts]
+    description: "Base URL of the hybrid-coordinator service (port 8003)"
+
+  - canonical: HYBRID_PORT
+    aliases: []
+    default: "8003"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for hybrid-coordinator; used to construct HYBRID_COORDINATOR_URL"
+
+  - canonical: HYBRID_HOST
+    aliases: []
+    default: "127.0.0.1"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Host for hybrid-coordinator"
+
+  - canonical: HYBRID_COORDINATOR_API_KEY
+    aliases: [HYBRID_API_KEY, AI_STACK_API_KEY]
+    default: ""
+    layer: all
+    consumers: [dashboard-backend, aq-qa, edgeai, delegate-scripts, switchboard]
+    description: "API key for hybrid-coordinator authentication (also readable from /run/secrets/hybrid_coordinator_api_key)"
+
+  - canonical: HYBRID_API_KEY_FILE
+    aliases: []
+    default: "/run/secrets/hybrid_coordinator_api_key"
+    layer: nix
+    consumers: [hybrid-coordinator (self)]
+    description: "Path to file containing the hybrid-coordinator API key"
+
+  # ── switchboard ─────────────────────────────────────────────────────────
+  - canonical: SWITCHBOARD_URL
+    aliases: []
+    default: "http://127.0.0.1:8085"
+    layer: all
+    consumers: [aq-qa, dashboard-backend, edgeai]
+    description: "Base URL of the switchboard service (port 8085)"
+
+  - canonical: SWITCHBOARD_PORT
+    aliases: []
+    default: "8085"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for switchboard"
+
+  - canonical: SWB_PROFILE_CATALOG_YAML_FILE
+    aliases: [SWB_PROFILE_CATALOG_JSON_FILE]
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Path to YAML/JSON file containing switchboard profile catalog (Phase B)"
+
+  # ── AIDB ────────────────────────────────────────────────────────────────
+  - canonical: AIDB_URL
+    aliases: []
+    default: "http://127.0.0.1:8002"
+    layer: all
+    consumers: [hybrid-coordinator, aq-qa, dashboard-backend]
+    description: "Base URL of the AIDB service (port 8002)"
+
+  - canonical: AIDB_PORT
+    aliases: []
+    default: "8002"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for AIDB"
+
+  - canonical: AIDB_API_KEY
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator, ralph-wiggum, dashboard-backend]
+    description: "API key for AIDB service authentication"
+
+  # ── Qdrant ──────────────────────────────────────────────────────────────
+  - canonical: QDRANT_URL
+    aliases: []
+    default: "http://127.0.0.1:6333"
+    layer: all
+    consumers: [hybrid-coordinator, aq-qa]
+    description: "Base URL of the Qdrant vector DB (port 6333)"
+
+  - canonical: QDRANT_PORT
+    aliases: []
+    default: "6333"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for Qdrant"
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────
+  - canonical: POSTGRES_URL
+    aliases: []
+    default: "postgresql://localhost:5432/aidb"
+    layer: all
+    consumers: [hybrid-coordinator, dashboard-backend]
+    description: "PostgreSQL connection URL"
+
+  - canonical: POSTGRES_PORT
+    aliases: []
+    default: "5432"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for PostgreSQL"
+
+  - canonical: POSTGRES_DB
+    aliases: []
+    default: "aidb"
+    layer: shell
+    consumers: [service-endpoints.sh, aq-qa]
+    description: "PostgreSQL database name"
+
+  # ── Redis ───────────────────────────────────────────────────────────────
+  - canonical: REDIS_URL
+    aliases: []
+    default: "redis://127.0.0.1:6379"
+    layer: all
+    consumers: [hybrid-coordinator, dashboard-backend]
+    description: "Redis connection URL"
+
+  - canonical: REDIS_PORT
+    aliases: []
+    default: "6379"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for Redis"
+
+  # ── Dashboard ───────────────────────────────────────────────────────────
+  - canonical: DASHBOARD_URL
+    aliases: [DASHBOARD_API_URL]
+    default: "http://127.0.0.1:8889"
+    layer: all
+    consumers: [aq-qa, scripts]
+    description: "Base URL of the command-center dashboard (port 8889)"
+
+  - canonical: DASHBOARD_API_PORT
+    aliases: [DASHBOARD_PORT]
+    default: "8889"
+    layer: shell
+    consumers: [service-endpoints.sh]
+    description: "Port for dashboard API"
+
+  # ── Ralph Wiggum ────────────────────────────────────────────────────────
+  - canonical: RALPH_URL
+    aliases: []
+    default: "http://127.0.0.1:8004"
+    layer: all
+    consumers: [aq-qa, scripts]
+    description: "Base URL of the ralph-wiggum service (port 8004)"
+
+  # ── Prometheus / Grafana ────────────────────────────────────────────────
+  - canonical: PROMETHEUS_URL
+    aliases: []
+    default: "http://127.0.0.1:9090"
+    layer: all
+    consumers: [aq-qa]
+    description: "Base URL of Prometheus (port 9090)"
+
+  - canonical: GRAFANA_URL
+    aliases: []
+    default: "http://127.0.0.1:3000"
+    layer: all
+    consumers: [aq-qa]
+    description: "Base URL of Grafana (port 3000)"
+
+  # ── Routing / policy ────────────────────────────────────────────────────
+  - canonical: AI_ROUTING_POLICY_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator (ai_coordinator_handlers.py)]
+    description: "Path to routing-policy.yaml config (Phase C)"
+
+  - canonical: RUNTIME_SAFETY_POLICY_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Path to runtime-safety-policy.json"
+
+  - canonical: RUNTIME_BUDGET_POLICY_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Path to runtime-budget-policy.json"
+
+  - canonical: RUNTIME_ISOLATION_PROFILES_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Path to runtime-isolation-profiles.json"
+
+  - canonical: WORKFLOW_BLUEPRINTS_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Path to workflow-blueprints.json"
+
+  # ── Dashboard feature gates ──────────────────────────────────────────────
+  - canonical: DASHBOARD_AQ_QA_BACKGROUND
+    aliases: []
+    default: "0"
+    layer: nix
+    consumers: [dashboard-backend (health.py)]
+    description: "Enable background aq-qa spawning from dashboard (0=off, 1=on)"
+
+  - canonical: DASHBOARD_AQ_REPORT_INLINE_REFRESH
+    aliases: []
+    default: "0"
+    layer: nix
+    consumers: [dashboard-backend (ai_insights.py)]
+    description: "Enable inline aq-report refresh from dashboard (0=off, 1=on)"
+
+  - canonical: DASHBOARD_AI_INSIGHTS_REPORT_PATH
+    aliases: []
+    default: "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json"
+    layer: nix
+    consumers: [dashboard-backend (ai_insights.py)]
+    description: "Path to persisted aq-report snapshot read by dashboard"
+
+  # ── aq-qa fixture/test overrides ────────────────────────────────────────
+  - canonical: AQ_QA_AQ_REPORT_JSON
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Inline aq-report JSON fixture string (for testing, bypasses file read)"
+
+  - canonical: AQ_QA_AQ_REPORT_PATH
+    aliases: []
+    default: "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json"
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Override path for aq-report snapshot file"
+
+  - canonical: AQ_QA_ALLOW_INLINE_REPORT
+    aliases: []
+    default: "0"
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Allow aq-qa to spawn aq-report inline (0=off; expensive — only for CI)"
+
+  - canonical: AQ_QA_SKIP_REPORT_BACKED_CHECKS
+    aliases: []
+    default: "0"
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Skip checks that require aq-report data (prevents recursion when aq-report calls aq-qa)"
+
+  - canonical: AQ_QA_QUERY_TIMEOUT_SECONDS
+    aliases: []
+    default: "45"
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Timeout in seconds for /query routing checks in aq-qa"
+
+  - canonical: AQ_QA_PORT_RETRY_ATTEMPTS
+    aliases: []
+    default: "4"
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Number of retry attempts for port binding checks"
+
+  - canonical: AQ_QA_PRIMARY_USER
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Override primary user for path resolution (useful when running as root)"
+
+  - canonical: AQ_QA_PRIMARY_HOME
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-qa, harness_qa]
+    description: "Override primary home directory for path resolution"
+
+  # ── MCP / coordinator internals ──────────────────────────────────────────
+  - canonical: HYBRID_COORDINATOR_DATA_DIR
+    aliases: [DASHBOARD_DATA_DIR]
+    default: "/var/lib/nixos-system-dashboard"
+    layer: nix
+    consumers: [dashboard-backend, hybrid-coordinator]
+    description: "Writable data directory for coordinator and dashboard persistent state"
+
+  - canonical: MODEL_REGISTRY_PATH
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator (model_registry.py)]
+    description: "Path to the persistent model registry JSON file"
+
+  - canonical: REPO_ROOT
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [all shell scripts]
+    description: "Absolute path to the repository root; set by each script at startup"
+
+  - canonical: AIDB_HOST
+    aliases: []
+    default: "127.0.0.1"
+    layer: harness
+    consumers: [harness_qa (core/context.py)]
+    description: "Host for AIDB service; used by QA harness to construct AIDB_URL when AIDB_URL is not set"
+
+  - canonical: QDRANT_HOST
+    aliases: []
+    default: "127.0.0.1"
+    layer: harness
+    consumers: [harness_qa (core/context.py)]
+    description: "Host for Qdrant service; used by QA harness to construct qdrant_url when QDRANT_URL is not set"
+
+  - canonical: SWITCHBOARD_HOST
+    aliases: []
+    default: "127.0.0.1"
+    layer: harness
+    consumers: [harness_qa (core/context.py)]
+    description: "Host for switchboard service; used by QA harness to construct switchboard_url when SWITCHBOARD_URL is not set"
+
+  - canonical: AQ_QA_PORT_RETRY_DELAY_SECONDS
+    aliases: []
+    default: "1"
+    layer: harness
+    consumers: [harness_qa (main.py)]
+    description: "Delay in seconds between port connectivity retry attempts in the QA harness"

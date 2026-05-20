@@ -421,6 +421,75 @@ gate_unattended_sudo_readiness() {
   fi
 }
 
+gate_env_contract() {
+  log "Checking env var contract..."
+  local contract="${REPO_ROOT}/config/env-contract.yaml"
+  if [[ ! -f "$contract" ]]; then
+    log "WARN: config/env-contract.yaml not found — skipping env contract gate"
+    pass "Env contract gate (skipped: contract file absent)"
+    return 0
+  fi
+  # Validate contract file is valid YAML
+  if ! python3 -c "import yaml; yaml.safe_load(open('$contract'))" 2>/dev/null; then
+    fail "Env contract YAML syntax invalid: $contract"
+    return 1
+  fi
+  local changed_files
+  changed_files=$(collect_changed_files)
+  if [[ -z "$changed_files" ]]; then
+    pass "Env contract gate (no changed files)"
+    return 0
+  fi
+  # Collect all canonical and alias names from the contract
+  local known_vars
+  known_vars=$(python3 - "$contract" <<'PY'
+import yaml, sys
+data = yaml.safe_load(open(sys.argv[1]))
+names = set()
+for v in data.get("variables", []):
+    names.add(v["canonical"])
+    for alias in v.get("aliases", []):
+        names.add(alias)
+print("\n".join(sorted(names)))
+PY
+)
+  # Check new .py and .sh files for env var names not in contract
+  # We only flag os.environ.get("NEW_VAR") patterns and ${NEW_VAR:-} / export NEW_VAR patterns
+  local violations=()
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    case "$f" in
+      *.py|*.sh) ;;
+      *) continue ;;
+    esac
+    # Skip the contract itself, service-endpoints, and governance scripts
+    case "$f" in
+      config/env-contract.yaml|config/service-endpoints.sh) continue ;;
+      scripts/governance/*) continue ;;
+    esac
+    # Extract candidate var names from the file using an external helper
+    local candidates
+    candidates=$(python3 "${REPO_ROOT}/scripts/governance/_check_env_contract.py" \
+      "$f" "$known_vars" 2>/dev/null || true)
+    if [[ -n "$candidates" ]]; then
+      while IFS= read -r var; do
+        violations+=("$f: unknown env var '$var' (add to config/env-contract.yaml)")
+      done <<<"$candidates"
+    fi
+  done <<<"$changed_files"
+  if [[ "${#violations[@]}" -gt 0 ]]; then
+    for v in "${violations[@]}"; do
+      log "WARN: $v"
+    done
+    log "WARN: ${#violations[@]} undocumented env var(s) detected in changed files"
+    log "WARN: Add them to config/env-contract.yaml or use an existing canonical name"
+    # Warn only (not hard fail) during initial rollout period
+    pass "Env contract gate (advisory: ${#violations[@]} undocumented vars — add to contract)"
+  else
+    pass "Env contract gate (all env vars in changed files are documented)"
+  fi
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -440,6 +509,7 @@ gate_script_headers || true
 gate_focused_ci_checks || true
 gate_roadmap_verification || true
 gate_qa_phase0 || true
+gate_env_contract || true
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then

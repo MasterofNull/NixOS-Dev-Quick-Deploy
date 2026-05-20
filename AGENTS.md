@@ -95,6 +95,13 @@ New domain activation — use `docs/architecture/domain-activation-template.md`.
 ## Port SSOT
 `nix/modules/core/options.nix` — never hardcode port values
 
+## Env Var SSOT
+`config/env-contract.yaml` — authoritative list of all environment variable names, canonical names, deprecated aliases, defaults, and which service consumes each. Rules:
+- New `.py` or `.sh` files must not introduce env var names absent from the contract
+- Always use the **canonical** name for new code; aliases are sunset stubs only
+- tier0 gate `gate_env_contract` warns on undocumented vars in changed files
+- When adding a new env var, add it to `config/env-contract.yaml` in the same commit
+
 ## Batch deploy cadence
 Prefer 3-5 repo-only slices before `nixos-quick-deploy.sh`. Deploy earlier only for runtime activation blockers.
 
