@@ -220,7 +220,7 @@ PY
   # local admission control returns structured 503 JSON that callers need to see.
   local chat_timeout="${EDGEAI_CHAT_TIMEOUT_SECONDS:-300}"
   tmp="$(mktemp)"
-  trap 'rm -f "${tmp:-}"' RETURN
+  trap 'rm -f "${tmp:-}"; trap - RETURN' RETURN
   for attempt in 1 2 3; do
     local -a args=(curl -sS --max-time "$chat_timeout" -o "$tmp" -w '%{http_code}' -X POST -H 'Accept: application/json')
     if [[ -n "$API_KEY" ]]; then
