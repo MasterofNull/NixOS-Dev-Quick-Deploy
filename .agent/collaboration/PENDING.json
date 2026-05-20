@@ -1,23 +1,20 @@
 {
   "agent": "Codex",
-  "task": "MAEAH edgeai user-defined model CLI slice",
-  "intent": "Add repo-only CLI contract support for user-defined model add/delete operations while llama/local services are down.",
+  "task": "MAEAH edgeai static contracts command slice",
+  "intent": "Add an edgeai CLI command that runs repo-local MAEAH static contract checks without requiring llama/local services.",
   "files": [
     "scripts/ai/edgeai",
     "scripts/testing/test-edgeai-cli-contract.sh",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "status": "repo_static_validation_complete_live_deferred",
-  "next_step": "When local services recover, run edgeai models add/delete against /admin/v1/models with a disposable user-defined model, then run live edgeai and MAEAH acceptance smoke.",
-  "timestamp": "2026-05-20T03:17:22.235879+00:00",
+  "status": "repo_static_validation_complete_live_not_required",
+  "next_step": "Use `edgeai contracts check --json` as the local parity gate while llama/local-agent are down; continue live smoke after service recovery.",
+  "timestamp": "2026-05-20T03:21:52.066853+00:00",
   "validation": [
     "bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "scripts/ai/edgeai contracts check --json PASS",
     "scripts/testing/test-edgeai-cli-contract.sh PASS",
-    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
-    "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
-    "python3 scripts/testing/test-maeah-model-registry-schema.py PASS",
-    "bash scripts/governance/check-script-header-standards.sh --all PASS",
     "git diff --check PASS",
     "TIER0_AQ_QA_TIMEOUT_SECONDS=8 scripts/governance/tier0-validation-gate.sh --pre-commit PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down"
   ]

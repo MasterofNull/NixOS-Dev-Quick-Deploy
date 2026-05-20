@@ -528,3 +528,25 @@ edgeai models delete local-smoke
 edgeai doctor --json
 edgeai chat --json "Say pong"
 ```
+
+
+---
+
+## MAEAH `edgeai contracts check` CLI slice (Codex, 2026-05-20)
+
+### Completed
+
+- Added `edgeai contracts check [--json]` for repo-local MAEAH static contract validation.
+- The command runs the normalized API surface, schema/OpenAPI artifact, and model registry schema checks without contacting llama/local-agent services.
+- Updated `scripts/testing/test-edgeai-cli-contract.sh` so the CLI contract covers the new command.
+
+### Validation
+
+- `bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `scripts/ai/edgeai contracts check --json` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `git diff --check` — PASS
+
+### Note
+
+The command intentionally excludes `test-edgeai-cli-contract.sh` internally to avoid recursive self-invocation. The wrapper test still validates the contracts command separately.
