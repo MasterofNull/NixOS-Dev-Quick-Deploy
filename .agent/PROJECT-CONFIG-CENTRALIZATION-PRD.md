@@ -275,3 +275,26 @@ Tier0 gate validates: schema presence, no orphaned files (files not referenced b
 - Removing the deprecated aliases (Phase D+30 days, after no remaining references)
 - Config hot-reload for coordinator (routing policy can be SIGHUP'd; other config requires restart)
 - GraphQL/JSON schema for full config validation (post Phase E)
+
+---
+
+## Appendix G — Gemini Co-Audit Supplementary Findings (2026-05-20)
+
+Two additional issues found by Gemini's concurrent audit not captured in §2:
+
+### G.1 EMBEDDINGS_PORT Discrepancy
+
+`nix/modules/core/options.nix` defines the embed port twice:
+- Line 1277: `default = 8081` (llama-cpp-embed, correct)
+- Line 3182: `default = 8001` (a secondary embed option, likely stale from a previous service refactor)
+
+`config/service-endpoints.sh` uses `8081` (correct). The `8001` default at line 3182 is a latent bug — any code that reads that specific option path would misconfigure the embed URL. **Add to Phase A audit**: trace what Nix option is at `options.nix:3182` and remove or correct it.
+
+### G.2 `prefer_local` Default Conflict Between Endpoint Handlers
+
+| File | Default | Rationale |
+|------|---------|-----------|
+| `http_server.py:905` | `True` | `/query` endpoint is local-first (retrieval) |
+| `ai_coordinator_handlers.py:719` | `False` | `/orchestrate` endpoint prefers remote (Phase 14.2: "remote free-tier ~10x faster") |
+
+This is architecturally intentional (two different endpoints with different policies) but not documented in any config file. A caller hitting `/query` without `prefer_local` gets local; a caller hitting `/orchestrate` without `prefer_local` gets remote. **Add to Phase C**: document this asymmetry explicitly in `config/routing-policy.yaml` and add a comment block at both handler sites referencing the policy file.
