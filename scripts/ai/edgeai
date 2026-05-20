@@ -216,7 +216,9 @@ print(json.dumps({"model": sys.argv[1], "input": sys.argv[2]}))
 PY
 )"
   local out
-  if ! out="$(curl_json POST "$COORDINATOR_URL/v1/responses" "$body" 2>/dev/null)"; then
+  # LLM inference can take 90-300s on local hardware — override the default 5s timeout.
+  local chat_timeout="${EDGEAI_CHAT_TIMEOUT_SECONDS:-300}"
+  if ! out="$(TIMEOUT="$chat_timeout" curl_json POST "$COORDINATOR_URL/v1/responses" "$body" 2>/dev/null)"; then
     _emit_error_json chat "responses endpoint unavailable at $COORDINATOR_URL"; return 1
   fi
   if [[ "$json" -eq 1 ]]; then

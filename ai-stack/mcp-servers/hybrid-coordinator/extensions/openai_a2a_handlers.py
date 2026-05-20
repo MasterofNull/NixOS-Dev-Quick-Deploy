@@ -1464,13 +1464,49 @@ async def handle_openai_responses(request: web.Request) -> web.Response:
         chat_payload["messages"] = messages
         upstream = await _proxy_openai_request_via_coordinator(request, chat_payload, path="chat/completions")
 
-        # If upstream failed or returned non-JSON, preserve it exactly.
+        # If upstream failed, preserve it exactly.
         if upstream.status >= 400:
             return upstream
-        try:
-            upstream_data = json.loads(upstream.body.decode("utf-8"))
-        except Exception:
-            return upstream
+
+        # The switchboard may force streaming for local profiles (N-2 contract).
+        # If we get SSE back, accumulate chunks into a synthetic non-streaming response.
+        upstream_ct = upstream.content_type or ""
+        if "text/event-stream" in upstream_ct or "event-stream" in upstream_ct:
+            raw = upstream.body.decode("utf-8", errors="replace")
+            content_parts: List[str] = []
+            first_chunk: Dict[str, Any] = {}
+            for line in raw.splitlines():
+                if not line.startswith("data: "):
+                    continue
+                chunk_str = line[6:].strip()
+                if chunk_str in ("[DONE]", ""):
+                    continue
+                try:
+                    chunk = json.loads(chunk_str)
+                    if not first_chunk:
+                        first_chunk = chunk
+                    delta = ((chunk.get("choices") or [{}])[0] or {}).get("delta", {})
+                    if delta.get("content"):
+                        content_parts.append(delta["content"])
+                except Exception:
+                    continue
+            upstream_data: Dict[str, Any] = {
+                "id": first_chunk.get("id", f"chatcmpl-{int(time.time() * 1000)}"),
+                "object": "chat.completion",
+                "created": first_chunk.get("created", int(time.time())),
+                "model": first_chunk.get("model"),
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "".join(content_parts)},
+                    "finish_reason": "stop",
+                }],
+                "usage": None,
+            }
+        else:
+            try:
+                upstream_data = json.loads(upstream.body.decode("utf-8"))
+            except Exception:
+                return upstream
         choice = ((upstream_data.get("choices") or [{}])[0] or {}) if isinstance(upstream_data, dict) else {}
         message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
         text = str(message.get("content") or choice.get("text") or "")

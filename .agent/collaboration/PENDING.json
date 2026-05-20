@@ -1,41 +1,23 @@
 {
   "agent": "Codex",
-  "task": "MAEAH live admin auth smoke script slice",
-  "intent": "Add a post-recovery live auth smoke script with offline-testable plan output for admin model mutations.",
+  "task": "MAEAH live responses compatibility completion",
+  "intent": "Finish deferred live validation by making /v1/responses normalize local streamed chat output and documenting current live gate status.",
   "files": [
-    "scripts/testing/maeah-live-auth-smoke.sh",
-    ".agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md",
-    "scripts/testing/test-maeah-live-runbook-contract.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py",
     "scripts/ai/edgeai",
-    "config/validation-check-registry.json",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "status": "live_partial_validation_after_repo_fix_commit",
-  "next_step": "Do not mark MAEAH runtime-ready yet. Activate dashboard service env patch with rebuild/switch or equivalent service update, resolve llama generation timeout, preserve/review the unrelated switchboard.py change, then rerun live runbook.",
-  "timestamp": "2026-05-20T04:01:48.904511+00:00",
+  "status": "repo_static_validation_complete_restart_required",
+  "next_step": "Restart ai-hybrid-coordinator.service to activate /v1/responses SSE normalization, then rerun edgeai chat and the live runbook gates.",
+  "timestamp": "2026-05-20T07:54:32.723878+00:00",
   "validation": [
+    "python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py PASS",
+    "bash -n scripts/ai/edgeai PASS",
+    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
     "scripts/ai/edgeai contracts check --json PASS",
-    "curl http://127.0.0.1:8080/health PASS {status: ok}",
-    "scripts/ai/edgeai doctor --json PASS coordinator/dashboard/agent-card healthy",
-    "scripts/ai/edgeai models list --json PASS count=7 active=qwen3.6-35b",
-    "scripts/ai/edgeai a2a card validate --json PASS after CLI stdin fix",
-    "scripts/ai/edgeai mcp tools list --json PASS after API key file fallback",
-    "scripts/ai/edgeai traces tail --last 1 --json PASS",
-    "scripts/ai/edgeai chat --json FAIL responses endpoint timed out/unavailable; direct llama chat completion also timed out after 30s",
-    "scripts/testing/maeah-live-auth-smoke.sh --run PARTIAL unauthenticated admin add rejected 403 PASS; internal add/delete returned 500 due MODEL_REGISTRY_PATH missing in running service env",
-    "bash scripts/testing/maeah-acceptance-tests.sh --verbose PARTIAL 8 PASS / 5 FAIL",
-    "scripts/ai/aq-memory-recall-benchmark --json TIMEOUT/no payload within 120s",
-    "aq-qa 0 TIMEOUT/no payload within 180s",
-    "bash -n scripts/ai/edgeai scripts/testing/maeah-live-auth-smoke.sh PASS",
-    "nix-instantiate --parse nix/modules/services/command-center-dashboard.nix PASS",
-    "git diff --check PASS"
-  ],
-  "post_commit_live_recheck": [
-    "edgeai a2a card validate --json PASS",
-    "edgeai mcp tools list --json PASS count=25",
-    "edgeai chat --json FAIL responses endpoint unavailable; direct llama generation timed out earlier",
-    "maeah-live-auth-smoke --run PARTIAL unauthenticated add 403 PASS, internal add 409 acceptable existing smoke entry, internal delete 500 because running dashboard unit still lacks MODEL_REGISTRY_PATH env",
-    "uncommitted ai-stack/switchboard/switchboard.py change detected and intentionally not committed by Codex"
+    "scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "git diff --cached --check PASS",
+    "live runbook before restart: static contracts PASS; doctor PASS; catalog PASS active=qwen3.6-35b-mtp-q5; A2A PASS; MCP catalog PASS; traces PASS; MAEAH acceptance PASS 13/13; edgeai chat still requires coordinator restart for SSE normalization"
   ]
 }
