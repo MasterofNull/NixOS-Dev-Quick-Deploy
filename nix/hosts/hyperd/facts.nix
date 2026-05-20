@@ -46,7 +46,8 @@
                                                               llamaCpp.extraArgs = [
                                                                 # Qwen3.6-35B on this CPU needs up to 5 minutes for large prompts.
                                                                 "--timeout" "600"
-                                                                "--parallel" "4"
+                                                                # 27GB RAM: 22.1GB model + KV cache leaves no room for >1 parallel slot.
+                                                                "--parallel" "1"
                                                                 "--batch-size" "512"
                                                                 "--ubatch-size" "256"
                                                                 "--threads" "8"

@@ -1,21 +1,24 @@
 {
   "agent": "Codex",
+  "task": "MAEAH edgeai user-defined model CLI slice",
+  "intent": "Add repo-only CLI contract support for user-defined model add/delete operations while llama/local services are down.",
   "files": [
-    "config/validation-check-registry.json",
+    "scripts/ai/edgeai",
+    "scripts/testing/test-edgeai-cli-contract.sh",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Wire MAEAH API/schema/model-registry/edgeai contract checks into the path-aware validation registry so future contract-sensitive edits run focused checks automatically.",
-  "next_step": "After local services recover, run live edgeai and MAEAH acceptance smoke; keep these checks as focused static gates for future repo changes.",
-  "status": "repo_static_validation_complete",
-  "task": "MAEAH focused CI registry promotion for contract checks",
-  "timestamp": "2026-05-20T03:02:45.242180+00:00",
+  "status": "repo_static_validation_complete_live_deferred",
+  "next_step": "When local services recover, run edgeai models add/delete against /admin/v1/models with a disposable user-defined model, then run live edgeai and MAEAH acceptance smoke.",
+  "timestamp": "2026-05-20T03:17:22.235879+00:00",
   "validation": [
-    "jq empty config/validation-check-registry.json PASS",
+    "bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "scripts/testing/test-edgeai-cli-contract.sh PASS",
     "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
     "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
     "python3 scripts/testing/test-maeah-model-registry-schema.py PASS",
-    "scripts/testing/test-edgeai-cli-contract.sh PASS",
-    "git diff --check PASS"
+    "bash scripts/governance/check-script-header-standards.sh --all PASS",
+    "git diff --check PASS",
+    "TIER0_AQ_QA_TIMEOUT_SECONDS=8 scripts/governance/tier0-validation-gate.sh --pre-commit PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down"
   ]
 }

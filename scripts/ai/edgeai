@@ -17,6 +17,8 @@ Usage:
   edgeai --version
   edgeai doctor [--json]
   edgeai models list [--json]
+  edgeai models add --id ID --name NAME --repo REPO --file FILE [options]
+  edgeai models delete <model-id>
   edgeai models download <model-id>
   edgeai models promote <model-id>
   edgeai models rollback <model-id>
@@ -93,6 +95,56 @@ else:
 PY
 }
 
+_models_usage() {
+  cat >&2 <<'EOF'
+usage: edgeai models list [--json]
+       edgeai models add --id ID --name NAME --repo REPO --file FILE [--params TEXT] [--context-size N] [--ram-gb N] [--quant-tier TIER] [--type TYPE] [--hardware-targets CSV] [--sha256 HEX] [--description TEXT]
+       edgeai models add --from-json PATH
+       edgeai models delete <model-id>
+       edgeai models download|promote|rollback|reset <model-id>
+EOF
+}
+
+_build_model_add_body() {
+  python3 - "$@" <<'PY'
+import json, sys
+args = sys.argv[1:]
+body = {}
+from_json = None
+i = 0
+while i < len(args):
+    key = args[i]
+    if key == "--from-json":
+        if i + 1 >= len(args):
+            raise SystemExit("missing value for --from-json")
+        from_json = args[i + 1]; i += 2; continue
+    if key not in {"--id", "--name", "--repo", "--file", "--params", "--context-size", "--ram-gb", "--quant-tier", "--type", "--hardware-targets", "--sha256", "--description"}:
+        raise SystemExit(f"unknown add option: {key}")
+    if i + 1 >= len(args):
+        raise SystemExit(f"missing value for {key}")
+    val = args[i + 1]
+    field = key[2:].replace("-", "_")
+    if field == "context_size":
+        val = int(val)
+    elif field == "ram_gb":
+        field = "ram_estimate_gb"
+        val = float(val)
+    elif field == "hardware_targets":
+        val = [x.strip() for x in val.split(",") if x.strip()]
+    body[field] = val
+    i += 2
+if from_json:
+    if body:
+        raise SystemExit("--from-json cannot be combined with field flags")
+    with open(from_json, "r", encoding="utf-8") as f:
+        body = json.load(f)
+missing = [k for k in ("id", "name", "repo", "file") if not str(body.get(k, "")).strip()]
+if missing:
+    raise SystemExit("missing required add fields: " + ", ".join(missing))
+print(json.dumps(body, sort_keys=True))
+PY
+}
+
 cmd_models() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -107,11 +159,34 @@ cmd_models() {
         _emit_error_json models "model catalog unavailable at $DASHBOARD_URL"; return 1
       fi
       ;;
+    add)
+      local body out
+      if ! body="$(_build_model_add_body "$@")"; then return 2; fi
+      if out="$(curl_json POST "$DASHBOARD_URL/admin/v1/models" "$body" 2>/dev/null)"; then
+        printf '%s\n' "$out" | print_json_or_cat
+      else
+        _emit_error_json models "model add endpoint unavailable at $DASHBOARD_URL"; return 1
+      fi
+      ;;
+    delete)
+      local model_id="${1:-}"; [[ -n "$model_id" ]] || { echo "model id required" >&2; return 2; }
+      local out
+      if out="$(curl_json DELETE "$DASHBOARD_URL/admin/v1/models/${model_id}" '{}' 2>/dev/null)"; then
+        printf '%s\n' "$out" | print_json_or_cat
+      else
+        _emit_error_json models "model delete endpoint unavailable at $DASHBOARD_URL"; return 1
+      fi
+      ;;
     download|promote|rollback|reset)
       local model_id="${1:-}"; [[ -n "$model_id" ]] || { echo "model id required" >&2; return 2; }
-      curl_json POST "$DASHBOARD_URL/admin/v1/models/${model_id}/${sub}" '{}' | print_json_or_cat
+      local out
+      if out="$(curl_json POST "$DASHBOARD_URL/admin/v1/models/${model_id}/${sub}" '{}' 2>/dev/null)"; then
+        printf '%s\n' "$out" | print_json_or_cat
+      else
+        _emit_error_json models "model ${sub} endpoint unavailable at $DASHBOARD_URL"; return 1
+      fi
       ;;
-    *) echo "usage: edgeai models list|download|promote|rollback|reset" >&2; return 2 ;;
+    *) _models_usage; return 2 ;;
   esac
 }
 
