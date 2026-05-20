@@ -346,6 +346,21 @@
       "timeout_seconds": 30
     },
     {
+      "id": "maeah-live-runbook-contract",
+      "description": "MAEAH live validation runbook static contract",
+      "trigger_paths": [
+        ".agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md",
+        "scripts/ai/edgeai",
+        "scripts/testing/test-maeah-live-runbook-contract.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-maeah-live-runbook-contract.py"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 30
+    },
+    {
       "id": "edgeai-cli-contract",
       "description": "edgeai CLI contract and offline JSON behavior",
       "trigger_paths": [

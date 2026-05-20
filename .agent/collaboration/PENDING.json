@@ -1,18 +1,25 @@
 {
   "agent": "Codex",
-  "task": "MAEAH post-recovery live validation runbook slice",
-  "intent": "Document the exact live validation sequence to run after llama.cpp/local model services recover, building on repo-only MAEAH slices completed while services were down.",
+  "task": "MAEAH live runbook static contract test slice",
+  "intent": "Make the MAEAH live validation runbook enforceable with a repo-only static test and include it in edgeai contracts check/focused CI.",
   "files": [
-    ".agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md",
+    "scripts/testing/test-maeah-live-runbook-contract.py",
+    "scripts/ai/edgeai",
+    "config/validation-check-registry.json",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "status": "repo_doc_validation_complete_live_deferred",
-  "next_step": "When llama.cpp/local model services recover, execute LIVE-VALIDATION-RUNBOOK.md phases 0-4 and update HANDOFF/PENDING with runtime evidence.",
-  "timestamp": "2026-05-20T03:23:10.395955+00:00",
+  "status": "repo_static_validation_complete_live_deferred",
+  "next_step": "Run `edgeai contracts check --json` during outage; after services recover execute LIVE-VALIDATION-RUNBOOK phases 0-4.",
+  "timestamp": "2026-05-20T03:36:10.745516+00:00",
   "validation": [
-    "python3 -m json.tool .agent/collaboration/PENDING.json PASS",
-    "git diff --check .agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md .agent/collaboration/PENDING.json PASS",
-    "manual runbook review PASS: commands are sequenced static-first, live checks deferred until service recovery"
+    "python3 -m py_compile scripts/testing/test-maeah-live-runbook-contract.py PASS",
+    "python3 scripts/testing/test-maeah-live-runbook-contract.py PASS",
+    "bash -n scripts/ai/edgeai PASS",
+    "scripts/ai/edgeai contracts check --json PASS",
+    "scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "jq empty config/validation-check-registry.json PASS",
+    "git diff --check PASS",
+    "TIER0_AQ_QA_TIMEOUT_SECONDS=8 scripts/governance/tier0-validation-gate.sh --pre-commit PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down"
   ]
 }

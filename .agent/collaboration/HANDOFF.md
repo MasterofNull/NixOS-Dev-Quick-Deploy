@@ -576,3 +576,30 @@ The command intentionally excludes `test-edgeai-cli-contract.sh` internally to a
 ### Deferred live validation
 
 Run `.agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md` after llama.cpp/local model services recover.
+
+
+---
+
+## MAEAH live runbook static contract test (Codex, 2026-05-20)
+
+### Completed
+
+- Added `scripts/testing/test-maeah-live-runbook-contract.py`.
+- The test verifies `.agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md` keeps required phases, safety warnings, promotion criteria, and current `edgeai` command references.
+- Wired the new test into `edgeai contracts check --json`.
+- Registered `maeah-live-runbook-contract` in `config/validation-check-registry.json` for focused static validation.
+
+### Validation
+
+- `python3 -m py_compile scripts/testing/test-maeah-live-runbook-contract.py` — PASS
+- `python3 scripts/testing/test-maeah-live-runbook-contract.py` — PASS
+- `bash -n scripts/ai/edgeai` — PASS
+- `scripts/ai/edgeai contracts check --json` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `jq empty config/validation-check-registry.json` — PASS
+- `git diff --check` — PASS
+- Bounded Tier 0 — PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down.
+
+### Deferred live validation
+
+No live service calls were made. Continue using `edgeai contracts check --json` until llama.cpp/local model recover, then run the live validation runbook.
