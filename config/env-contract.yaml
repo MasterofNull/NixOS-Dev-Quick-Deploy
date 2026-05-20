@@ -403,3 +403,38 @@ variables:
     layer: harness
     consumers: [harness_qa (main.py)]
     description: "Delay in seconds between port connectivity retry attempts in the QA harness"
+
+  - canonical: SWB_PROFILE_CATALOG_YAML_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard (switchboard.py)]
+    description: "Path to YAML profile catalog file; loaded at switchboard startup; takes precedence over SWB_PROFILE_CATALOG_JSON_FILE"
+
+  - canonical: AI_ROUTING_POLICY_FILE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator (extensions/ai_coordinator_handlers.py)]
+    description: "Path to YAML routing policy file; configures auto_prefer_local threshold and delegate timeouts"
+
+  - canonical: HYBRID_COORDINATOR_URL
+    aliases: [HYBRID_URL, COORDINATOR_URL]
+    default: "http://127.0.0.1:8003"
+    layer: all
+    consumers: [switchboard, dashboard-backend, shell scripts]
+    description: "Base URL of the hybrid-coordinator service"
+
+  - canonical: LLAMA_CPP_BASE_URL
+    aliases: [LLAMA_URL, LLAMA_CPP_URL]
+    default: "http://127.0.0.1:8080"
+    layer: all
+    consumers: [switchboard, hybrid-coordinator, dashboard-backend, shell scripts]
+    description: "Base URL of the llama.cpp inference service"
+
+  - canonical: EMBED_BASE_URL
+    aliases: [EMBEDDINGS_URL, LLAMA_EMBED_URL]
+    default: "http://127.0.0.1:8081"
+    layer: all
+    consumers: [hybrid-coordinator, dashboard-backend, shell scripts]
+    description: "Base URL of the llama.cpp embeddings service"

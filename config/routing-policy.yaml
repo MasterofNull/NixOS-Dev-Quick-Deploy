@@ -1,0 +1,47 @@
+_meta:
+  version: "1.0"
+  description: "AI coordinator routing policy — replaces hardcoded heuristics in ai_coordinator_handlers.py"
+  owner: claude-sonnet-4-6
+  last_updated: "2026-05-20"
+  env_var: "AI_ROUTING_POLICY_FILE"
+
+auto_prefer_local:
+  # If a request has no explicit profile and no tools and timeout_s <= max_timeout_s,
+  # automatically prefer local routing. Set to 0.0 to disable auto-prefer-local.
+  max_timeout_s: 10.0
+  # Default prefer_local when caller does not specify it in the request body.
+  default_prefer_local: false
+
+delegate:
+  # Total delegation wall-clock timeout (seconds). Overridable per-request via timeout_s field.
+  default_timeout_s: 240
+  # Slack subtracted from delegate timeout to compute local-agent deadline.
+  # local_agent_timeout = max(1, timeout_s - min(slack_s, timeout_s * 0.125))
+  slack_s: 30
+
+slot_busy:
+  # When local slot is busy, advance to this profile for the queued request.
+  advance_profile: "embedded-assist"
+
+local_profiles:
+  # Profiles that route to the local llama.cpp backend.
+  # Used for X-AI-Route header injection and retryable-local logic.
+  primary:
+    - "default"
+    - "continue-local"
+    - "embedded-assist"
+    - "local-tool-calling"
+  extended:
+    - "local-agent"
+    - "embedding-local"
+    - "coordinator-internal"
+
+remote_profiles:
+  # Profiles that force remote routing.
+  primary:
+    - "remote-default"
+    - "remote-gemini"
+    - "remote-free"
+    - "remote-coding"
+    - "remote-reasoning"
+    - "remote-tool-calling"

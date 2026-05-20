@@ -32,26 +32,7 @@ except Exception:
 _hints_cache: dict = {}
 _HINTS_CACHE_TTL = 30.0
 
-
 # ---------------------------------------------------------------------------
-# Data model
-# ---------------------------------------------------------------------------
-
-@dataclass
-class Hint:
-    """A ranked, actionable workflow hint surfaced to any agent or human."""
-
-    id: str
-    type: str  # "prompt_template" | "gap_topic" | "workflow_rule" | "tool_warning" | "runtime_signal" | "prompt_coaching"
-    title: str
-    score: float  # composite 0.0-1.0
-    snippet: str  # actionable text: template excerpt, rule, etc.
-    reason: str  # why this hint was surfaced
-    tags: List[str] = field(default_factory=list)
-    agent_hints: Dict[str, str] = field(default_factory=dict)
-    # Per-agent delivery format overrides; keys: human/claude/codex/qwen/aider/continue
-
-
 # ---------------------------------------------------------------------------
 # Static workflow rules derived from CLAUDE.md
 # ---------------------------------------------------------------------------
@@ -815,6 +796,39 @@ def _detect_file_type(query: str, context: str) -> Optional[str]:
 
     return None
 
+
+# ---------------------------------------------------------------------------
+# Re-exports from decomposed sub-modules (Phase R3)
+# Placed after inline definitions so imports win (last-writer-wins in Python).
+# Downstream callers that import these names directly from hints_engine will
+# get the canonical versions from the sub-modules.
+# ---------------------------------------------------------------------------
+from .models import Hint as Hint  # noqa: F811,E402
+from .token_manager import (  # noqa: F811,E402
+    TokenBudgetContext as TokenBudgetContext,
+    _TOKEN_RE as _TOKEN_RE,
+    _COMMAND_RE as _COMMAND_RE,
+    _tokenize as _tokenize,
+    _estimate_tokens as _estimate_tokens,
+    _compress_snippet as _compress_snippet,
+    get_token_budget_context as get_token_budget_context,
+    calculate_context_aware_budget as calculate_context_aware_budget,
+    _budget_rationale as _budget_rationale,
+)
+from .static_rules import (  # noqa: F811,E402
+    _STATIC_RULES as _STATIC_RULES,
+    _AGENT_STRENGTHS as _AGENT_STRENGTHS,
+    _PROMPT_COACHING_FIELDS as _PROMPT_COACHING_FIELDS,
+    FILE_TYPE_TAG_MAP as FILE_TYPE_TAG_MAP,
+    FILE_TYPE_BOOST_MULTIPLIER as FILE_TYPE_BOOST_MULTIPLIER,
+)
+from .gap_analyzer import (  # noqa: F811,E402
+    _CURATED_STALE_GAP_PATTERNS as _CURATED_STALE_GAP_PATTERNS,
+    _normalize_gap_text as _normalize_gap_text,
+    _is_synthetic_gap as _is_synthetic_gap,
+    _is_curated_stale_gap as _is_curated_stale_gap,
+    _longest_common_substring_len as _longest_common_substring_len,
+)
 
 # ---------------------------------------------------------------------------
 # Engine

@@ -39,7 +39,8 @@ REMOTE_MODEL_PREFIXES = (
     "custom/",
 )
 
-HYBRID_URL = os.environ.get("HYBRID_URL", "").rstrip("/")
+HYBRID_COORDINATOR_URL = os.environ.get("HYBRID_COORDINATOR_URL", os.environ.get("HYBRID_URL", "")).rstrip("/")
+HYBRID_URL = HYBRID_COORDINATOR_URL  # deprecated alias — use HYBRID_COORDINATOR_URL
 HINTS_INJECT = os.environ.get("HINTS_INJECT", "1").strip() not in ("0", "false", "no")
 HINTS_LIMIT = int(os.environ.get("HINTS_LIMIT", "2"))
 
@@ -358,27 +359,61 @@ DEFAULT_PROFILE_CATALOG = {
 
 def _load_profile_catalog() -> dict:
     catalog = DEFAULT_PROFILE_CATALOG.copy()
-    catalog_file = os.environ.get("SWB_PROFILE_CATALOG_JSON_FILE", "").strip()
     loaded = {}
-    if catalog_file:
+
+    yaml_file = os.environ.get("SWB_PROFILE_CATALOG_YAML_FILE", "").strip()
+    if yaml_file:
         try:
-            with open(catalog_file, "r", encoding="utf-8") as handle:
-                loaded = json.load(handle)
-        except (OSError, json.JSONDecodeError) as exc:
-            print(f"warning: failed to load switchboard profile catalog file: {exc}", file=sys.stderr)
+            import yaml
+            with open(yaml_file, "r", encoding="utf-8") as handle:
+                doc = yaml.safe_load(handle)
+            if isinstance(doc, dict) and isinstance(doc.get("profiles"), dict):
+                loaded = doc["profiles"]
+            elif isinstance(doc, dict):
+                loaded = doc
+        except (OSError, Exception) as exc:
+            print(f"warning: failed to load switchboard profile catalog YAML: {exc}", file=sys.stderr)
     else:
-        raw_catalog = os.environ.get("SWB_PROFILE_CATALOG_JSON", "{}") or "{}"
-        try:
-            loaded = json.loads(raw_catalog)
-        except json.JSONDecodeError as exc:
-            print(f"warning: invalid SWB_PROFILE_CATALOG_JSON, falling back to empty catalog: {exc}", file=sys.stderr)
+        catalog_file = os.environ.get("SWB_PROFILE_CATALOG_JSON_FILE", "").strip()
+        if catalog_file:
+            try:
+                with open(catalog_file, "r", encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+            except (OSError, json.JSONDecodeError) as exc:
+                print(f"warning: failed to load switchboard profile catalog file: {exc}", file=sys.stderr)
+        else:
+            raw_catalog = os.environ.get("SWB_PROFILE_CATALOG_JSON", "{}") or "{}"
+            try:
+                loaded = json.loads(raw_catalog)
+            except json.JSONDecodeError as exc:
+                print(f"warning: invalid SWB_PROFILE_CATALOG_JSON, falling back to empty catalog: {exc}", file=sys.stderr)
 
     if isinstance(loaded, dict):
         for name, value in loaded.items():
+            if name.startswith("_"):
+                continue  # skip _meta and other YAML metadata keys
             if name in catalog and isinstance(catalog[name], dict) and isinstance(value, dict):
-                catalog[name].update(value)
+                # Merge: null values in YAML preserve Python defaults (env-var-resolved fields)
+                catalog[name].update({k: v for k, v in value.items() if v is not None})
             else:
                 catalog[name] = value
+
+    # Startup validation: warn if token budget exceeds context window headroom
+    budget_ctx = LLAMA_CTX_SIZE - 600
+    for pname, psettings in catalog.items():
+        if not isinstance(psettings, dict):
+            continue
+        if psettings.get("embeddingsOnly") or psettings.get("forceProvider") == "remote":
+            continue
+        max_in = psettings.get("maxInputTokens") or 0
+        max_out = psettings.get("maxOutputTokens") or 0
+        if isinstance(max_in, int) and isinstance(max_out, int) and max_in + max_out > budget_ctx:
+            print(
+                f"warning: profile '{pname}' token budget ({max_in}+{max_out}={max_in+max_out}) "
+                f"exceeds LLAMA_CTX_SIZE-600={budget_ctx}; consider reducing maxInputTokens or maxOutputTokens",
+                file=sys.stderr,
+            )
+
     return catalog
 
 PROFILE_CATALOG = _load_profile_catalog()

@@ -1,0 +1,167 @@
+_meta:
+  version: "1.0"
+  description: "Switchboard profile catalog — externalized token budgets and routing settings"
+  owner: claude-sonnet-4-6
+  last_updated: "2026-05-20"
+  note: |
+    null values inherit the Python default (including env-var-resolved values like modelAlias).
+    advertisedContextWindow: null resolves to LLAMA_CTX_SIZE at runtime.
+    maxInputTokens/maxMessages: null resolves from SWB_* env vars at runtime.
+    ctxSize_min is advisory metadata used for startup budget validation.
+
+profiles:
+  default:
+    forceProvider: null
+    injectHints: true
+    modelAlias: null
+    advertisedContextWindow: null  # LLAMA_CTX_SIZE
+    maxInputTokens: 1500
+    maxMessages: 12
+    maxOutputTokens: 768
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: 3000
+
+  continue-local:
+    forceProvider: "local"
+    injectHints: false
+    modelAlias: null
+    advertisedContextWindow: null  # LLAMA_CTX_SIZE
+    maxInputTokens: null  # SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS (default 4000)
+    maxMessages: null     # SWB_CONTINUE_LOCAL_MAX_MESSAGES (default 12)
+    maxOutputTokens: 768
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: 5000
+
+  local-agent:
+    forceProvider: "local"
+    injectHints: true
+    modelAlias: null
+    advertisedContextWindow: null  # LLAMA_CTX_SIZE
+    maxInputTokens: 8000
+    maxMessages: 16
+    maxOutputTokens: 4096
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: 13000
+
+  remote-default:
+    forceProvider: "remote"
+    injectHints: false
+    modelAlias: null
+    advertisedContextWindow: null
+    maxInputTokens: 3500
+    maxMessages: 16
+    maxOutputTokens: 1024
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: null
+
+  remote-gemini:
+    forceProvider: "remote"
+    injectHints: false
+    modelAlias: null  # SWB_REMOTE_MODEL_ALIAS_GEMINI (or SWB_REMOTE_MODEL_ALIAS_FREE)
+    advertisedContextWindow: null
+    maxInputTokens: 3500
+    maxMessages: 16
+    maxOutputTokens: 1400
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: null
+
+  remote-free:
+    forceProvider: "remote"
+    injectHints: false
+    modelAlias: null  # SWB_REMOTE_MODEL_ALIAS_FREE
+    advertisedContextWindow: null
+    maxInputTokens: 3500
+    maxMessages: 16
+    maxOutputTokens: 1200
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: null
+
+  remote-coding:
+    forceProvider: "remote"
+    injectHints: false
+    modelAlias: null  # SWB_REMOTE_MODEL_ALIAS_CODING
+    advertisedContextWindow: null
+    maxInputTokens: 5000
+    maxMessages: 20
+    maxOutputTokens: 1800
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: null
+
+  remote-reasoning:
+    forceProvider: "remote"
+    injectHints: false
+    modelAlias: null  # SWB_REMOTE_MODEL_ALIAS_REASONING
+    advertisedContextWindow: null
+    maxInputTokens: 6000
+    maxMessages: 20
+    maxOutputTokens: 1800
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: null
+
+  remote-tool-calling:
+    forceProvider: "remote"
+    injectHints: false
+    modelAlias: null  # SWB_REMOTE_MODEL_ALIAS_TOOL_CALLING
+    advertisedContextWindow: null
+    maxInputTokens: 3500
+    maxMessages: 16
+    maxOutputTokens: 900
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: null
+
+  local-tool-calling:
+    forceProvider: "local"
+    injectHints: false
+    modelAlias: null
+    advertisedContextWindow: null  # LLAMA_CTX_SIZE
+    maxInputTokens: 2400
+    maxMessages: 12
+    maxOutputTokens: 768
+    embeddingsOnly: false
+    toolExecution: "built-in"
+    ctxSize_min: 3500
+
+  embedding-local:
+    forceProvider: "local"
+    injectHints: false
+    modelAlias: null
+    advertisedContextWindow: 512
+    maxInputTokens: 512
+    maxMessages: 8
+    maxOutputTokens: 256
+    embeddingsOnly: true
+    toolExecution: null
+    ctxSize_min: 1000
+
+  embedded-assist:
+    forceProvider: "local"
+    injectHints: false
+    modelAlias: null
+    advertisedContextWindow: null  # LLAMA_CTX_SIZE
+    maxInputTokens: 1800
+    maxMessages: 10
+    maxOutputTokens: 512
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: 2800
+
+  coordinator-internal:
+    forceProvider: "local"
+    injectHints: false
+    modelAlias: null
+    advertisedContextWindow: null  # LLAMA_CTX_SIZE
+    maxInputTokens: 8000
+    maxMessages: 20
+    maxOutputTokens: 4096
+    embeddingsOnly: false
+    toolExecution: null
+    ctxSize_min: 13000
