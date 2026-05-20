@@ -1,20 +1,34 @@
 {
   "agent": "Codex",
-  "task": "MAEAH admin mutation auth contract slice",
-  "intent": "Strengthen static API surface checks so every model lifecycle mutation route, including add/delete, is covered by the admin auth boundary.",
+  "task": "MAEAH live admin auth smoke script slice",
+  "intent": "Add a post-recovery live auth smoke script with offline-testable plan output for admin model mutations.",
   "files": [
-    "scripts/testing/test-maeah-api-surface-contract.py",
+    "scripts/testing/maeah-live-auth-smoke.sh",
+    ".agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md",
+    "scripts/testing/test-maeah-live-runbook-contract.py",
+    "scripts/ai/edgeai",
+    "config/validation-check-registry.json",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "status": "repo_static_validation_complete_live_deferred",
-  "next_step": "Admin mutation auth route coverage is now static-gated; rerun live auth smoke after dashboard/coordinator recover.",
-  "timestamp": "2026-05-20T03:40:09.653163+00:00",
+  "status": "live_partial_validation_repo_fixes_ready",
+  "next_step": "Apply/rebuild the command-center dashboard service env patch, then rerun MAEAH live validation. Generation remains blocked by llama.cpp completion timeouts despite /health passing.",
+  "timestamp": "2026-05-20T04:00:24.472030+00:00",
   "validation": [
-    "python3 -m py_compile scripts/testing/test-maeah-api-surface-contract.py PASS",
-    "python3 scripts/testing/test-maeah-api-surface-contract.py PASS",
     "scripts/ai/edgeai contracts check --json PASS",
-    "git diff --check PASS",
-    "TIER0_AQ_QA_TIMEOUT_SECONDS=8 scripts/governance/tier0-validation-gate.sh --pre-commit PARTIAL: 13 PASS, QA phase 0 timed out because llama/local-agent are intentionally down"
+    "curl http://127.0.0.1:8080/health PASS {status: ok}",
+    "scripts/ai/edgeai doctor --json PASS coordinator/dashboard/agent-card healthy",
+    "scripts/ai/edgeai models list --json PASS count=7 active=qwen3.6-35b",
+    "scripts/ai/edgeai a2a card validate --json PASS after CLI stdin fix",
+    "scripts/ai/edgeai mcp tools list --json PASS after API key file fallback",
+    "scripts/ai/edgeai traces tail --last 1 --json PASS",
+    "scripts/ai/edgeai chat --json FAIL responses endpoint timed out/unavailable; direct llama chat completion also timed out after 30s",
+    "scripts/testing/maeah-live-auth-smoke.sh --run PARTIAL unauthenticated admin add rejected 403 PASS; internal add/delete returned 500 due MODEL_REGISTRY_PATH missing in running service env",
+    "bash scripts/testing/maeah-acceptance-tests.sh --verbose PARTIAL 8 PASS / 5 FAIL",
+    "scripts/ai/aq-memory-recall-benchmark --json TIMEOUT/no payload within 120s",
+    "aq-qa 0 TIMEOUT/no payload within 180s",
+    "bash -n scripts/ai/edgeai scripts/testing/maeah-live-auth-smoke.sh PASS",
+    "nix-instantiate --parse nix/modules/services/command-center-dashboard.nix PASS",
+    "git diff --check PASS"
   ]
 }

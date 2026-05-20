@@ -7,6 +7,10 @@ VERSION="0.1.0"
 COORDINATOR_URL="${EDGEAI_COORDINATOR_URL:-${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}}"
 DASHBOARD_URL="${EDGEAI_DASHBOARD_URL:-${DASHBOARD_URL:-http://127.0.0.1:8889}}"
 API_KEY="${EDGEAI_API_KEY:-${HYBRID_COORDINATOR_API_KEY:-}}"
+API_KEY_FILE="${EDGEAI_API_KEY_FILE:-${HYBRID_API_KEY_FILE:-/run/secrets/hybrid_coordinator_api_key}}"
+if [[ -z "$API_KEY" && -r "$API_KEY_FILE" ]]; then
+  API_KEY="$(tr -d '[:space:]' < "$API_KEY_FILE")"
+fi
 TIMEOUT="${EDGEAI_TIMEOUT_SECONDS:-5}"
 
 usage() {
@@ -33,6 +37,7 @@ Environment:
   EDGEAI_COORDINATOR_URL   default http://127.0.0.1:8003
   EDGEAI_DASHBOARD_URL     default http://127.0.0.1:8889
   EDGEAI_API_KEY           admin API key; falls back to HYBRID_COORDINATOR_API_KEY
+  EDGEAI_API_KEY_FILE      default /run/secrets/hybrid_coordinator_api_key
   EDGEAI_TIMEOUT_SECONDS   default 5
 EOF
 }
@@ -238,6 +243,7 @@ checks = [
     ["python3", "scripts/testing/test-maeah-contract-artifacts.py"],
     ["python3", "scripts/testing/test-maeah-model-registry-schema.py"],
     ["python3", "scripts/testing/test-maeah-live-runbook-contract.py"],
+    ["bash", "scripts/testing/maeah-live-auth-smoke.sh", "--plan-json"],
 ]
 results = []
 for argv in checks:
@@ -272,15 +278,18 @@ cmd_a2a() {
   if ! out="$(curl_json GET "$COORDINATOR_URL/.well-known/agent.json" 2>/dev/null)"; then
     _emit_error_json a2a "agent card unavailable at $COORDINATOR_URL"; return 1
   fi
-  python3 - "$json" <<'PY' <<<"$out"
+  python3 - "$json" "$out" <<'PY'
 import json, sys
 json_mode = sys.argv[1] == "1"
 try:
-    card = json.load(sys.stdin)
+    card = json.loads(sys.argv[2])
 except Exception as exc:
     result = {"ok": False, "error": f"invalid json: {exc}"}
 else:
-    missing = [k for k in ("name", "protocolVersion", "capabilities", "url") if k not in card]
+    missing = [k for k in ("name", "protocolVersion", "capabilities") if k not in card]
+    endpoint_present = bool(card.get("url") or card.get("endpoint"))
+    if not endpoint_present:
+        missing.append("url|endpoint")
     result = {"ok": not missing, "missing": missing, "signed": bool(card.get("proof")), "name": card.get("name"), "protocolVersion": card.get("protocolVersion")}
 if json_mode:
     print(json.dumps(result, sort_keys=True))

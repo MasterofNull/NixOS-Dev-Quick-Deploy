@@ -81,6 +81,7 @@ in
       "d ${cc.dataDir} 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/cache 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
+      "d ${cc.dataDir}/model-downloads 0750 ${svcUser} ${svcGroup} -"
       # Dashboard needs the sudo timestamp hierarchy present, but sudo itself
       # expects /run/sudo/ts to remain root-owned.
       "d /run/sudo 0711 root root -"
@@ -143,6 +144,10 @@ in
         DASHBOARD_OPERATOR_AUDIT_LOG_PATH = "${cc.dataDir}/telemetry/operator-audit.jsonl";
         DASHBOARD_DATA_DIR = "${cc.dataDir}";
         DASHBOARD_CONTEXT_DB_PATH = "${cc.dataDir}/telemetry/deployments-context.db";
+        MODEL_REGISTRY_PATH = "${cc.dataDir}/model-registry.json";
+        MODEL_STAGING_DIR = "${cc.dataDir}/model-downloads";
+        MODEL_DIR = "/var/lib/llama-cpp/models";
+        LLAMA_CPP_HEALTH_URL = "http://127.0.0.1:${toString cfg.aiStack.llamaCpp.port}/health";
         XDG_CACHE_HOME = "${cc.dataDir}/cache";
         AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
         HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";

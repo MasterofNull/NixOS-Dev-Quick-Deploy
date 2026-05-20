@@ -361,6 +361,21 @@
       "timeout_seconds": 30
     },
     {
+      "id": "maeah-live-auth-smoke-plan",
+      "description": "MAEAH live admin auth smoke offline plan contract",
+      "trigger_paths": [
+        "scripts/testing/maeah-live-auth-smoke.sh",
+        ".agents/plans/multi-agent-edge-harness/LIVE-VALIDATION-RUNBOOK.md"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/maeah-live-auth-smoke.sh",
+        "--plan-json"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 15
+    },
+    {
       "id": "edgeai-cli-contract",
       "description": "edgeai CLI contract and offline JSON behavior",
       "trigger_paths": [
