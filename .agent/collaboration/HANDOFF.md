@@ -926,3 +926,36 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 ```
 
 Do not use repo-level readiness as runtime promotion evidence until those live gates pass.
+
+---
+
+## R2.6 check-in and route ownership review (Codex, 2026-05-20)
+
+**Status:** Repo-level review complete; live acceptance still deferred until rebuild/switch.
+
+### Collaboration check-in
+
+- `aq-collaborate list` reported no active collaboration DB rows; durable collaboration state is file-backed.
+- Recent delegation registry rows are older May 18 done/stale/failed records; no current active external-agent task was found.
+- Recent git showed `06c4911f refactor(coordinator): R2.6 extract InsightsService/ControlService/AgentService` landed after the earlier route-ownership test commit.
+- Current baseline therefore includes R2.6; review continued against that baseline rather than assuming R2.5-only state.
+
+### Completed
+
+- Reviewed R2.6 extracted services:
+  - `telemetry/insights_service.py`: `/api/traces`, `/eval/run`, `/eval/trend`
+  - `control/control_service.py`: `/admin/v1/scheduler/status`, `/control/model-fleet/status`, delegated runtime/budget/fleet/reasoning routes
+  - `agent/agent_service.py`: `/api/agent-ops/status`, `/api/agent-events`, delegated A2A/OpenAI-compatible routes
+- Expanded `scripts/testing/test-coordinator-strangler-route-ownership.py` to cover R2.6 ownership and delegated route registration markers.
+- Confirmed service-like `router.create_app()` smoke passes using the hybrid-coordinator runtime Python and service-style `PYTHONPATH`.
+
+### Validation
+
+- `python3 -m py_compile` on the R2.6 services, router, http_server, and ownership test — PASS
+- `python3 scripts/testing/test-coordinator-strangler-route-ownership.py` — PASS
+- service-like R2.6 router route smoke — PASS (`85` method routes)
+- `git diff --check` — PASS
+
+### Deferred live gates after rebuild/switch
+
+Run live endpoint checks for R2.2-R2.6 route families after the current repo revision is deployed into the systemd Nix store. Do not claim runtime acceptance from repo-level tests alone.

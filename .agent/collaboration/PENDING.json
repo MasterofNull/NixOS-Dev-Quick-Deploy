@@ -1,29 +1,30 @@
 {
   "agent": "Codex",
-  "task": "Coordinator R2 Strangler Fig refactor readiness review",
-  "intent": "Verify R2.2-R2.5 extracted route ownership and import readiness before live deployment; prevent duplicate or missing route regressions while deferring runtime acceptance until rebuild/switch.",
+  "task": "Coordinator R2.6 Strangler Fig refactor review after agent check-in",
+  "intent": "After checking durable collaboration/delegation state and latest commits, validate R2.6 extracted route ownership against current branch state before live deployment.",
   "files": [
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PULSE.log",
     "scripts/testing/test-coordinator-strangler-route-ownership.py"
   ],
-  "status": "validating_refactor_readiness_contract",
-  "timestamp": "2026-05-20T21:45:13.821281+00:00",
+  "status": "validated_pending_commit",
+  "timestamp": "2026-05-20T21:49:27.066827+00:00",
   "plan_references": [
     ".agents/plans/multi-agent-edge-harness/COMBINED-PRD.md",
     ".agents/plans/multi-agent-edge-harness/PLAN-SIGNOFF.md",
     ".agent/collaboration/HANDOFF.md Phase 59/R2 notes"
   ],
   "completed": [
-    "Inspected R2.2 StatusService, R2.3 MemoryService, R2.4 QueryService, R2.5 OrchestrationService ownership",
-    "Confirmed service-like router import/route smoke passes under hybrid coordinator runtime python and PYTHONPATH",
-    "Added static route ownership contract test to prevent active duplicate registrations in http_server.py and missing router service registration"
+    "Checked aq-collaborate, PULSE, PENDING, delegation registry, recent git commits, and dirty tree before proceeding",
+    "Identified 06c4911f R2.6 as current branch baseline rather than assuming R2.5-only state",
+    "Expanded Strangler Fig route ownership contract to cover R2.6 InsightsService, ControlService, and AgentService routes",
+    "Confirmed R2.6 service-like router import/route smoke passes under hybrid coordinator runtime python and PYTHONPATH"
   ],
   "remaining": [
     "Run tier0 pre-commit gate",
-    "Commit readiness test slice",
-    "After next rebuild/switch, run live route gates for /stats/delegate, /query, /v1/orchestrate, /workflow/graph/run, and aq-qa all"
+    "Commit R2.6 ownership test update",
+    "After rebuild/switch, run live R2.2-R2.6 endpoint gates before runtime acceptance"
   ],
   "guardrails": [
     "do not claim live refactor acceptance before NixOS rebuild/switch deploys the current repo revision",
