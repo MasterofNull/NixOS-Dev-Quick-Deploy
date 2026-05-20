@@ -121,11 +121,271 @@ variables:
     description: "Port for switchboard"
 
   - canonical: SWB_PROFILE_CATALOG_YAML_FILE
-    aliases: [SWB_PROFILE_CATALOG_JSON_FILE]
+    aliases: [SWB_PROFILE_CATALOG_JSON_FILE, SWB_PROFILE_CATALOG_JSON]
     default: ""
     layer: nix
     consumers: [switchboard]
-    description: "Path to YAML/JSON file containing switchboard profile catalog (Phase B)"
+    description: "Path to YAML/JSON file containing switchboard profile catalog; SWB_PROFILE_CATALOG_JSON is inline JSON fallback"
+
+  # ── switchboard tunables (Phase B+) ──────────────────────────────────────
+  - canonical: SWB_LOCAL_TOOL_CALL_LIMIT
+    aliases: []
+    default: "8"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum tool calls per local-model request before forcing a response"
+
+  - canonical: SWB_CONNECT_TIMEOUT_S
+    aliases: []
+    default: "10"
+    layer: nix
+    consumers: [switchboard]
+    description: "HTTP connect timeout in seconds for both local and remote model backends"
+
+  - canonical: SWB_WRITE_TIMEOUT_S
+    aliases: []
+    default: "60"
+    layer: nix
+    consumers: [switchboard]
+    description: "HTTP write timeout in seconds when streaming request body to model backend"
+
+  - canonical: SWB_POOL_TIMEOUT_S
+    aliases: []
+    default: "30"
+    layer: nix
+    consumers: [switchboard]
+    description: "Connection pool acquisition timeout in seconds"
+
+  - canonical: SWB_LOCAL_READ_TIMEOUT_S
+    aliases: []
+    default: "900"
+    layer: nix
+    consumers: [switchboard]
+    description: "HTTP read timeout in seconds for local model responses (Qwen long inference)"
+
+  - canonical: SWB_REMOTE_READ_TIMEOUT_S
+    aliases: []
+    default: "300"
+    layer: nix
+    consumers: [switchboard]
+    description: "HTTP read timeout in seconds for remote model responses"
+
+  - canonical: SWB_STREAM_READ_TIMEOUT_S
+    aliases: []
+    default: "1800"
+    layer: nix
+    consumers: [switchboard]
+    description: "HTTP read timeout in seconds for streamed responses"
+
+  - canonical: SWB_LOCAL_CONCURRENCY
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum concurrent in-flight requests to local model (Qwen RAM guard)"
+
+  - canonical: SWB_REMOTE_CONCURRENCY
+    aliases: []
+    default: "4"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum concurrent in-flight requests to remote model backend"
+
+  - canonical: SWB_PROFILE_CARDS_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable profile card metadata injection into responses; 0 to disable"
+
+  - canonical: SWB_SEMANTIC_PRUNE_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable semantic candidate pruning in profile selection; 0 to disable"
+
+  - canonical: SWB_SEMANTIC_TOP_K
+    aliases: []
+    default: "8"
+    layer: nix
+    consumers: [switchboard]
+    description: "Number of top semantic candidates to retain after embedding-based pruning"
+
+  - canonical: SWB_SEMANTIC_MAX_CANDIDATES
+    aliases: []
+    default: "24"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum candidate profiles to score before semantic pruning"
+
+  - canonical: SWB_SEMANTIC_EMBED_TIMEOUT_S
+    aliases: []
+    default: "4"
+    layer: nix
+    consumers: [switchboard]
+    description: "Timeout in seconds for embedding API calls during semantic profile selection"
+
+  - canonical: SWB_REASONING_MODE
+    aliases: []
+    default: "hybrid"
+    layer: nix
+    consumers: [switchboard]
+    description: "Profile selection reasoning mode: hybrid | lexical | semantic"
+
+  - canonical: SWB_LEXICAL_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable lexical keyword scoring in profile selection; 0 to disable"
+
+  - canonical: SWB_DECOMPOSE_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable query decomposition before profile matching; 0 to disable"
+
+  - canonical: SWB_ANSWERABILITY_GATE_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable answerability gate (minimum score filter before delegation); 0 to disable"
+
+  - canonical: SWB_ANSWERABILITY_MIN_SCORE
+    aliases: []
+    default: "0.28"
+    layer: nix
+    consumers: [switchboard]
+    description: "Minimum answerability score required to pass the gate (0.0–1.0)"
+
+  - canonical: SWB_LOOP_DETECT_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable conversation loop detection; 0 to disable"
+
+  - canonical: SWB_LOOP_DETECT_WINDOW
+    aliases: []
+    default: "3"
+    layer: nix
+    consumers: [switchboard]
+    description: "Number of recent turns to inspect for repetition in loop detection"
+
+  - canonical: SWB_LOOP_DETECT_THRESHOLD
+    aliases: []
+    default: "0.72"
+    layer: nix
+    consumers: [switchboard]
+    description: "Cosine similarity threshold above which two turns are considered repeated (loop)"
+
+  - canonical: SWB_LOOP_DETECT_LOG_PATH
+    aliases: []
+    default: "/var/log/nixos-ai-stack/loop-events.jsonl"
+    layer: nix
+    consumers: [switchboard]
+    description: "Path to JSONL file where loop-detection events are appended"
+
+  - canonical: SWB_REMOTE_MODEL_ALIASES_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable alias resolution for remote model profiles; 0 to use profile model IDs as-is"
+
+  - canonical: SWB_REMOTE_MODEL_ALIAS_GEMINI
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Remote model alias for Gemini-role profiles (e.g. gemini-2.5-pro)"
+
+  - canonical: SWB_REMOTE_MODEL_ALIAS_FREE
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Remote model alias for free-tier profiles"
+
+  - canonical: SWB_REMOTE_MODEL_ALIAS_CODING
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Remote model alias for coding-specialized profiles"
+
+  - canonical: SWB_REMOTE_MODEL_ALIAS_REASONING
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Remote model alias for reasoning/thinking profiles"
+
+  - canonical: SWB_REMOTE_MODEL_ALIAS_TOOL_CALLING
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Remote model alias for tool-calling profiles"
+
+  - canonical: SWB_REMOTE_DAILY_TOKEN_CAP
+    aliases: []
+    default: "0"
+    layer: nix
+    consumers: [switchboard]
+    description: "Daily remote token budget cap; 0 = unlimited; trips REMOTE_BUDGET_FALLBACK_LOCAL when exceeded"
+
+  - canonical: SWB_REMOTE_BUDGET_FALLBACK_LOCAL
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Fall back to local model when remote daily token cap is hit; 0 to reject instead"
+
+  - canonical: SWB_REMOTE_BUDGET_STATE_PATH
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [switchboard]
+    description: "Path to JSON file persisting daily remote token usage across restarts"
+
+  - canonical: SWB_HINTS_TIMEOUT_S
+    aliases: []
+    default: "3.0"
+    layer: nix
+    consumers: [switchboard]
+    description: "Timeout in seconds for hybrid-coordinator hints API calls during request enrichment"
+
+  - canonical: SWB_LOCAL_BUSY_WARN_S
+    aliases: []
+    default: "30"
+    layer: nix
+    consumers: [switchboard]
+    description: "Log a warning when a request waits longer than this many seconds for a local concurrency slot"
+
+  - canonical: SWB_STARTUP_PREFIX_WARM_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable KV-cache prefix warming on startup; 0 to skip"
+
+  - canonical: SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS
+    aliases: []
+    default: "4000"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum input tokens passed to local model in Continue IDE adapter context"
+
+  - canonical: SWB_CONTINUE_LOCAL_MAX_MESSAGES
+    aliases: []
+    default: "12"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum conversation messages passed to local model in Continue IDE adapter context"
 
   # ── AIDB ────────────────────────────────────────────────────────────────
   - canonical: AIDB_URL
