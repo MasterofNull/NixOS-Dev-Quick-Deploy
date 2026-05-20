@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 # After nixos-rebuild these point to the system paths owned by ai-hybrid / llama.
 _DEFAULT_REGISTRY = os.getenv(
     "MODEL_REGISTRY_PATH",
+    # Fall back to DASHBOARD_DATA_DIR (set by the NixOS dashboard systemd unit)
+    # so the service can write to a permitted path before nixos-rebuild deploys
+    # the explicit MODEL_REGISTRY_PATH env var.
+    os.path.join(
+        os.getenv("DASHBOARD_DATA_DIR", ""),
+        "model-registry.json"
+    ) if os.getenv("DASHBOARD_DATA_DIR") else
     str(Path.home() / ".local/share/nixos-ai-stack/model-registry.json")
 )
 _DEFAULT_MODEL_DIR = os.getenv(
