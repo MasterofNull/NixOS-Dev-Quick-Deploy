@@ -82,7 +82,7 @@ import capability_discovery
 import collections_config
 import embedder
 import harness_eval
-import http_server
+import http_server_impl as http_server  # R2.9: shim deleted, import impl directly
 import interaction_tracker
 import memory_manager
 import memory_superseder
