@@ -196,6 +196,51 @@ def _default_entry(base: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _reconcile_disk_state(models: Dict[str, Dict[str, Any]]) -> None:
+    """Promote registry entries whose files already exist on disk.
+
+    Called during first load when no persisted registry exists.
+    - available + file on disk → verified (local_path set)
+    - matches active.gguf symlink target → active (promoted_at set)
+    Entries already in a non-available state are left unchanged.
+    """
+    try:
+        active_target: Optional[str] = None
+        active_sym = MODEL_DIR / "active.gguf"
+        if active_sym.is_symlink():
+            active_target = str(active_sym.resolve())
+    except Exception:
+        active_target = None
+
+    now = time.time()
+    for entry in models.values():
+        if entry.get("state") != ModelState.AVAILABLE.value:
+            continue
+        fname = entry.get("file")
+        if not fname:
+            continue
+        candidate = MODEL_DIR / fname
+        if not candidate.exists():
+            continue
+        local_path = str(candidate)
+        entry["local_path"] = local_path
+        entry["updated_at"] = now
+        if active_target and local_path == active_target:
+            entry["state"] = ModelState.ACTIVE.value
+            entry["promoted_at"] = entry.get("promoted_at") or now
+            entry["audit_log"].append({
+                "ts": now, "event": "auto_discovered_active",
+                "note": "file matched active.gguf symlink on startup"
+            })
+        else:
+            entry["state"] = ModelState.VERIFIED.value
+            entry["audit_log"].append({
+                "ts": now, "event": "auto_discovered_verified",
+                "note": "file found on disk during registry init"
+            })
+
+
+
 class ModelRegistry:
     """Thread-safe model catalog with durable JSON persistence."""
 
@@ -233,6 +278,8 @@ class ModelRegistry:
             if key not in merged:
                 merged[key] = entry
 
+        # Auto-discover existing files on disk and promote state accordingly.
+        _reconcile_disk_state(merged)
         self._models = merged
         self._loaded = True
 

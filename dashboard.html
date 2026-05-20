@@ -3622,6 +3622,26 @@
         </section>
 
             <div class="dashboard-grid">
+
+
+            <!-- Model Lifecycle — Phase A MAEAH -->
+            <div class="dashboard-section full-width" id="section-model-lifecycle" data-lens="overview,stack,operations">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="collapsible-header" onclick="toggleCollapse(this)">
+                            <span class="collapsible-arrow">▼</span>
+                            <h2 class="card-title">Model Lifecycle</h2>
+                        </div>
+                        <span class="card-badge" id="modelLifecycleBadge">MAEAH Phase A</span>
+                    </div>
+                    <div class="collapsible-content">
+                        <!-- Active model summary -->
+                        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+                            <div style="flex:1;min-width:200px;">
+                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem;">Active Model</div>
+                                <div style="font-size:1rem;font-weight:600;color:var(--text,#cdd6f4);" id="mlActiveModelName">--</div>
+                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);" id="mlActiveModelMeta">--</div>
+                            </div>
             <!-- System Overview -->
             <div class="dashboard-section full-width" data-lens="overview">
                 <div class="card">
@@ -4077,27 +4097,7 @@
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Model Lifecycle — Phase A MAEAH -->
-            <div class="dashboard-section full-width" id="section-model-lifecycle" data-lens="stack,operations">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="collapsible-header" onclick="toggleCollapse(this)">
-                            <span class="collapsible-arrow">▼</span>
-                            <h2 class="card-title">Model Lifecycle</h2>
-                        </div>
-                        <span class="card-badge" id="modelLifecycleBadge">MAEAH Phase A</span>
-                    </div>
-                    <div class="collapsible-content">
-                        <!-- Active model summary -->
-                        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
-                            <div style="flex:1;min-width:200px;">
-                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.25rem;">Active Model</div>
-                                <div style="font-size:1rem;font-weight:600;color:var(--text,#cdd6f4);" id="mlActiveModelName">--</div>
-                                <div style="font-size:0.72rem;color:var(--subtext,#6c7086);" id="mlActiveModelMeta">--</div>
-                            </div>
-                            <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:0.25rem;align-items:flex-end;">
+            </div>                            <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:0.25rem;align-items:flex-end;">
                                 <div style="font-size:0.72rem;color:var(--subtext,#6c7086);">SLA Tier</div>
                                 <span id="mlActiveSwapSla" style="font-size:0.8rem;padding:0.15rem 0.5rem;border-radius:4px;background:var(--surface1,#313244);color:var(--text,#cdd6f4);">--</span>
                             </div>
