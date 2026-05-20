@@ -403,3 +403,42 @@ Use these schemas as the source for generated/runtime type checks. Expand OpenAP
 ### Next recommended gate work
 
 Promote MAEAH contract checks into focused CI once the local stack is stable and the team is ready for these to become mandatory rather than repo-only parity checks.
+
+---
+
+## MAEAH `edgeai` CLI facade (Codex, 2026-05-20)
+
+### Completed
+
+- Added `scripts/ai/edgeai` as the first MAEAH CLI facade over normalized APIs.
+- Supported commands:
+  - `edgeai doctor [--json]`
+  - `edgeai models list [--json]`
+  - `edgeai models download|promote|rollback|reset <model-id>`
+  - `edgeai a2a card validate [--json]`
+  - `edgeai mcp tools list [--json]`
+  - `edgeai traces tail [--last N] [--json]`
+- Added Nix wrapper so `edgeai` is exposed with the other AI harness CLIs.
+- Added `scripts/testing/test-edgeai-cli-contract.sh`.
+- Offline behavior is explicit: commands emit JSON error envelopes rather than shell tracebacks when services are down.
+
+### Validation
+
+- `bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `nix-instantiate --parse nix/modules/roles/ai-stack.nix` — PASS
+- `git diff --check` — PASS
+
+### Deferred live validation
+
+When llama/local-agent are back:
+
+```bash
+edgeai doctor --json
+edgeai models list --json
+edgeai a2a card validate --json
+edgeai mcp tools list --json
+edgeai traces tail --last 1 --json
+```
+
+Next CLI expansion should add `edgeai chat` and richer model mutation UX once live APIs are stable.

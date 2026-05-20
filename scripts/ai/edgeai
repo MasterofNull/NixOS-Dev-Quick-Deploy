@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# edgeai — MAEAH CLI facade over the normalized edge harness APIs.
+# Repo-local v0 focuses on stable JSON API surfaces and graceful offline output.
+set -euo pipefail
+
+VERSION="0.1.0"
+COORDINATOR_URL="${EDGEAI_COORDINATOR_URL:-${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}}"
+DASHBOARD_URL="${EDGEAI_DASHBOARD_URL:-${DASHBOARD_URL:-http://127.0.0.1:8889}}"
+API_KEY="${EDGEAI_API_KEY:-${HYBRID_COORDINATOR_API_KEY:-}}"
+TIMEOUT="${EDGEAI_TIMEOUT_SECONDS:-5}"
+
+usage() {
+  cat <<'EOF'
+edgeai — Multi-Agent Edge AI Harness CLI
+
+Usage:
+  edgeai --version
+  edgeai doctor [--json]
+  edgeai models list [--json]
+  edgeai models download <model-id>
+  edgeai models promote <model-id>
+  edgeai models rollback <model-id>
+  edgeai models reset <model-id>
+  edgeai a2a card validate [--json]
+  edgeai mcp tools list [--json]
+  edgeai traces tail [--last N] [--json]
+
+Environment:
+  EDGEAI_COORDINATOR_URL   default http://127.0.0.1:8003
+  EDGEAI_DASHBOARD_URL     default http://127.0.0.1:8889
+  EDGEAI_API_KEY           admin API key; falls back to HYBRID_COORDINATOR_API_KEY
+  EDGEAI_TIMEOUT_SECONDS   default 5
+EOF
+}
+
+json_escape() {
+  python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'
+}
+
+_emit_error_json() {
+  local component="$1" detail="$2"
+  python3 - "$component" "$detail" <<'PY'
+import json, sys
+print(json.dumps({"ok": False, "component": sys.argv[1], "error": sys.argv[2]}, sort_keys=True))
+PY
+}
+
+curl_json() {
+  local method="$1" url="$2" body="${3:-}"
+  local -a args=(curl -fsS --max-time "$TIMEOUT" -X "$method" -H 'Accept: application/json')
+  if [[ -n "$API_KEY" ]]; then
+    args+=(-H "X-API-Key: $API_KEY")
+  fi
+  if [[ "$method" != "GET" ]]; then
+    args+=(-H 'Content-Type: application/json')
+    args+=(-H 'X-Dashboard-Internal: 1')
+    args+=(-d "${body:-{}}")
+  fi
+  args+=("$url")
+  "${args[@]}"
+}
+
+print_json_or_cat() {
+  if command -v jq >/dev/null 2>&1; then jq .; else cat; fi
+}
+
+cmd_doctor() {
+  local json=0
+  [[ "${1:-}" == "--json" ]] && json=1
+  python3 - "$COORDINATOR_URL" "$DASHBOARD_URL" "$TIMEOUT" "$json" <<'PY'
+import json, sys, urllib.request, urllib.error
+coord, dash, timeout, json_mode = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4] == "1"
+checks = []
+def probe(name, url):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            checks.append({"name": name, "url": url, "ok": 200 <= r.status < 500, "status": r.status})
+    except Exception as exc:
+        checks.append({"name": name, "url": url, "ok": False, "error": str(exc)[:180]})
+probe("coordinator_health", coord.rstrip("/") + "/health")
+probe("agent_card", coord.rstrip("/") + "/.well-known/agent.json")
+probe("dashboard_health", dash.rstrip("/") + "/api/health")
+result = {"ok": all(c.get("ok") for c in checks), "checks": checks}
+if json_mode:
+    print(json.dumps(result, sort_keys=True))
+else:
+    for c in checks:
+        status = "OK" if c.get("ok") else "FAIL"
+        detail = c.get("status", c.get("error", ""))
+        print(f"{status:4} {c['name']} {detail}")
+    raise SystemExit(0 if result["ok"] else 1)
+PY
+}
+
+cmd_models() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    list)
+      local json=0; [[ "${1:-}" == "--json" ]] && json=1
+      local out
+      if out="$(curl_json GET "$DASHBOARD_URL/admin/v1/models" 2>/dev/null)"; then
+        if [[ "$json" -eq 1 ]]; then printf '%s\n' "$out"; else printf '%s\n' "$out" | print_json_or_cat; fi
+      elif out="$(curl_json GET "$DASHBOARD_URL/api/models" 2>/dev/null)"; then
+        if [[ "$json" -eq 1 ]]; then printf '%s\n' "$out"; else printf '%s\n' "$out" | print_json_or_cat; fi
+      else
+        _emit_error_json models "model catalog unavailable at $DASHBOARD_URL"; return 1
+      fi
+      ;;
+    download|promote|rollback|reset)
+      local model_id="${1:-}"; [[ -n "$model_id" ]] || { echo "model id required" >&2; return 2; }
+      curl_json POST "$DASHBOARD_URL/admin/v1/models/${model_id}/${sub}" '{}' | print_json_or_cat
+      ;;
+    *) echo "usage: edgeai models list|download|promote|rollback|reset" >&2; return 2 ;;
+  esac
+}
+
+cmd_a2a() {
+  [[ "${1:-}" == "card" && "${2:-}" == "validate" ]] || { echo "usage: edgeai a2a card validate [--json]" >&2; return 2; }
+  local json=0; [[ "${3:-}" == "--json" ]] && json=1
+  local out
+  if ! out="$(curl_json GET "$COORDINATOR_URL/.well-known/agent.json" 2>/dev/null)"; then
+    _emit_error_json a2a "agent card unavailable at $COORDINATOR_URL"; return 1
+  fi
+  python3 - "$json" <<'PY' <<<"$out"
+import json, sys
+json_mode = sys.argv[1] == "1"
+try:
+    card = json.load(sys.stdin)
+except Exception as exc:
+    result = {"ok": False, "error": f"invalid json: {exc}"}
+else:
+    missing = [k for k in ("name", "protocolVersion", "capabilities", "url") if k not in card]
+    result = {"ok": not missing, "missing": missing, "signed": bool(card.get("proof")), "name": card.get("name"), "protocolVersion": card.get("protocolVersion")}
+if json_mode:
+    print(json.dumps(result, sort_keys=True))
+else:
+    print("OK" if result.get("ok") else "FAIL", json.dumps(result, sort_keys=True))
+raise SystemExit(0 if result.get("ok") else 1)
+PY
+}
+
+cmd_mcp() {
+  [[ "${1:-}" == "tools" && "${2:-}" == "list" ]] || { echo "usage: edgeai mcp tools list [--json]" >&2; return 2; }
+  local json=0; [[ "${3:-}" == "--json" ]] && json=1
+  local out
+  if out="$(curl_json GET "$COORDINATOR_URL/tools/catalog" 2>/dev/null)"; then
+    if [[ "$json" -eq 1 ]]; then printf '%s\n' "$out"; else printf '%s\n' "$out" | print_json_or_cat; fi
+  else
+    _emit_error_json mcp "tool catalog unavailable at $COORDINATOR_URL"; return 1
+  fi
+}
+
+cmd_traces() {
+  [[ "${1:-}" == "tail" ]] || { echo "usage: edgeai traces tail [--last N] [--json]" >&2; return 2; }
+  shift || true
+  local last=1 json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --last) last="${2:-1}"; shift 2 ;;
+      --json) json=1; shift ;;
+      *) echo "unknown traces option: $1" >&2; return 2 ;;
+    esac
+  done
+  local out
+  if out="$(curl_json GET "$COORDINATOR_URL/api/traces?limit=$last" 2>/dev/null)"; then
+    if [[ "$json" -eq 1 ]]; then printf '%s\n' "$out"; else printf '%s\n' "$out" | print_json_or_cat; fi
+  else
+    _emit_error_json traces "trace endpoint unavailable at $COORDINATOR_URL"; return 1
+  fi
+}
+
+main() {
+  case "${1:-}" in
+    --version) echo "edgeai $VERSION" ;;
+    -h|--help|help|"") usage ;;
+    doctor) shift; cmd_doctor "$@" ;;
+    models) shift; cmd_models "$@" ;;
+    a2a) shift; cmd_a2a "$@" ;;
+    mcp) shift; cmd_mcp "$@" ;;
+    traces) shift; cmd_traces "$@" ;;
+    *) echo "unknown command: $1" >&2; usage >&2; return 2 ;;
+  esac
+}
+
+main "$@"
