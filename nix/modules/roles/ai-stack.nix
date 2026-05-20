@@ -231,6 +231,9 @@ let
       (pkgs.writeShellScriptBin "aqd" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aqd" "$@"
       '')
+      (pkgs.writeShellScriptBin "edgeai" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/edgeai" "$@"
+      '')
       (pkgs.writeShellScriptBin "aq-hints" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints" "$@"
       '')

@@ -1,19 +1,22 @@
 {
   "agent": "Codex",
   "files": [
-    "scripts/testing/test-maeah-model-registry-schema.py",
+    "scripts/ai/edgeai",
+    "scripts/testing/test-edgeai-cli-contract.sh",
+    "nix/modules/roles/ai-stack.nix",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Add a static regression gate that validates model_registry built-in/default entries against the MAEAH ModelEntry contract subset.",
-  "next_step": "Wire this test into focused CI or tier0 once MAEAH contract checks graduate from repo-only smoke to mandatory gate.",
+  "intent": "Add initial edgeai CLI facade over normalized MAEAH APIs with graceful offline JSON behavior while llama/local-agent are down.",
+  "live_validation_deferred": "Run edgeai doctor, models list, a2a card validate, mcp tools list, traces tail against live services once llama/local-agent are back.",
+  "next_step": "After live recovery, smoke every edgeai command and then expand edgeai chat/model mutating flows against real APIs.",
   "status": "repo_static_validation_complete",
-  "task": "MAEAH ModelEntry schema implementation alignment gate",
-  "timestamp": "2026-05-20T02:55:29.592749+00:00",
+  "task": "MAEAH edgeai CLI facade repo-only slice",
+  "timestamp": "2026-05-20T03:00:11.167368+00:00",
   "validation": [
-    "python3 -m py_compile scripts/testing/test-maeah-model-registry-schema.py PASS",
-    "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
-    "python3 scripts/testing/test-maeah-model-registry-schema.py PASS",
+    "bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "scripts/testing/test-edgeai-cli-contract.sh PASS",
+    "nix-instantiate --parse nix/modules/roles/ai-stack.nix PASS",
     "git diff --check PASS"
   ]
 }
