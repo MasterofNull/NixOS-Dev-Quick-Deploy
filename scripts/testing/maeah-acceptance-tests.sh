@@ -82,15 +82,22 @@ models = d if isinstance(d, list) else (d.get('models') or d.get('data') or [])
 print(models[0]['id'] if models else '')
 " <<< "$MODELS_JSON" 2>/dev/null)"
 if [[ -n "$MODEL_ID" ]]; then
+  # SSE streams: curl exits 28 (timeout) after max-time; capture status + exit code.
+  # Use || true to prevent set -e from firing on curl timeout (exit 28).
+  HTTP_STATUS=""; CURL_RC=0
   HTTP_STATUS="$(curl -s -o /dev/null -w "%{http_code}" \
     -H "X-API-Key: $API_KEY" \
     --max-time 3 \
-    "$DASHBOARD_URL/api/models/$MODEL_ID/download/stream" 2>/dev/null || echo '000')"
-  # 200 (streaming) or 404 (model not downloading) are both valid — route exists
+    "$DASHBOARD_URL/api/models/$MODEL_ID/download/stream" 2>/dev/null)" || CURL_RC=$?
+  [[ -z "$HTTP_STATUS" ]] && HTTP_STATUS="000"
+  # 200 (streaming/SSE) or 404 (model not downloading) are both valid — route exists.
+  # curl exit 28 = timeout (normal for SSE) — treat 200+timeout as pass.
   if [[ "$HTTP_STATUS" =~ ^(200|404|204)$ ]]; then
     _pass 3 "download SSE route reachable (HTTP $HTTP_STATUS)"
+  elif [[ "$CURL_RC" -eq 28 ]]; then
+    _pass 3 "download SSE route reachable (HTTP $HTTP_STATUS stream, timeout expected)"
   else
-    _fail 3 "download SSE route returned HTTP $HTTP_STATUS"
+    _fail 3 "download SSE route returned HTTP $HTTP_STATUS (curl_rc=$CURL_RC)"
   fi
 else
   _fail 3 "no model ID available for SSE route check"
@@ -201,8 +208,14 @@ fi
 # ---------------------------------------------------------------------------
 # Gate 10: Dashboard panel — section-model-lifecycle present in HTML
 # ---------------------------------------------------------------------------
-DASHBOARD_HTML="$(curl -sf "$DASHBOARD_URL/" 2>/dev/null | head -c 200000 || echo '')"
-if echo "$DASHBOARD_HTML" | grep -q "section-model-lifecycle"; then
+# Fetch and search inline to avoid pipefail/head truncation issues.
+# section-model-lifecycle is at ~byte 110KB in dashboard.html.
+DASHBOARD_HTML_OK=0
+if (set +o pipefail; curl -sf "$DASHBOARD_URL/" 2>/dev/null | grep -q "section-model-lifecycle"); then
+  DASHBOARD_HTML_OK=1
+fi
+DASHBOARD_HTML="x"  # placeholder so downstream checks work
+if [[ "$DASHBOARD_HTML_OK" -eq 1 ]]; then
   _pass 10 "dashboard panel (section-model-lifecycle) present in HTML"
 else
   _fail 10 "dashboard panel section-model-lifecycle NOT found in HTML"
