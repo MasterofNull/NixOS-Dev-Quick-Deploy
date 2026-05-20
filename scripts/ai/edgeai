@@ -24,6 +24,7 @@ Usage:
   edgeai models rollback <model-id>
   edgeai models reset <model-id>
   edgeai chat [--model MODEL] [--json] <prompt...>
+  edgeai contracts check [--json]
   edgeai a2a card validate [--json]
   edgeai mcp tools list [--json]
   edgeai traces tail [--last N] [--json]
@@ -220,6 +221,49 @@ PY
   fi
 }
 
+
+cmd_contracts() {
+  [[ "${1:-}" == "check" ]] || { echo "usage: edgeai contracts check [--json]" >&2; return 2; }
+  shift || true
+  local json=0
+  [[ "${1:-}" == "--json" ]] && json=1
+  local root
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  python3 - "$root" "$json" <<'PY'
+import json, subprocess, sys, time
+root = sys.argv[1]
+json_mode = sys.argv[2] == "1"
+checks = [
+    ["python3", "scripts/testing/test-maeah-api-surface-contract.py"],
+    ["python3", "scripts/testing/test-maeah-contract-artifacts.py"],
+    ["python3", "scripts/testing/test-maeah-model-registry-schema.py"],
+]
+results = []
+for argv in checks:
+    started = time.time()
+    proc = subprocess.run(argv, cwd=root, text=True, capture_output=True)
+    results.append({
+        "command": " ".join(argv),
+        "ok": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "duration_s": round(time.time() - started, 3),
+        "stdout": proc.stdout.strip()[-2000:],
+        "stderr": proc.stderr.strip()[-2000:],
+    })
+summary = {"ok": all(r["ok"] for r in results), "checks": results}
+if json_mode:
+    print(json.dumps(summary, sort_keys=True))
+else:
+    for r in results:
+        print(("PASS" if r["ok"] else "FAIL") + " " + r["command"])
+        if not r["ok"]:
+            detail = r["stderr"] or r["stdout"]
+            if detail:
+                print(detail)
+raise SystemExit(0 if summary["ok"] else 1)
+PY
+}
+
 cmd_a2a() {
   [[ "${1:-}" == "card" && "${2:-}" == "validate" ]] || { echo "usage: edgeai a2a card validate [--json]" >&2; return 2; }
   local json=0; [[ "${3:-}" == "--json" ]] && json=1
@@ -282,6 +326,7 @@ main() {
     doctor) shift; cmd_doctor "$@" ;;
     models) shift; cmd_models "$@" ;;
     chat) shift; cmd_chat "$@" ;;
+    contracts) shift; cmd_contracts "$@" ;;
     a2a) shift; cmd_a2a "$@" ;;
     mcp) shift; cmd_mcp "$@" ;;
     traces) shift; cmd_traces "$@" ;;
