@@ -477,6 +477,17 @@ let
       type = "moe";
       recommended = false;
     };
+    "qwen3.6-35b-mtp" = {
+      name = "Qwen3.6 35B A3B MTP Instruct";
+      repo = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
+      file = "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
+      sha256 = null;
+      params = "35B (3B active MoE) + MTP heads";
+      contextSize = 262144;
+      ramEstimate = "~22.5 GB Q4_K_XL";
+      type = "moe";
+      recommended = false;
+    };
     "phi4-mini" = {
       name = "Phi-4 Mini Instruct";
       repo = "unsloth/phi-4-mini-instruct-GGUF";
