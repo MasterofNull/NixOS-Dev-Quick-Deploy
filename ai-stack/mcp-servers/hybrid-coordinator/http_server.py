@@ -2457,6 +2457,14 @@ async def run_http_mode(port: int) -> None:
             logger.exception("handle_journal_stats error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
+    # R2.4: Inject QueryService closure refs before create_app() wires routes.
+    from query import query_service as _query_service
+    _query_service.configure(
+        handle_query_fn=handle_query,
+        handle_query_http_fn=handle_query_http,
+        handle_augment_query_fn=handle_augment_query,
+    )
+
     # R2.2: middleware + StatusService routes owned by router.py.
     # Rate limiter config is now in router._make_rate_limit_config().
     from router import create_app as _create_router_app
@@ -2551,10 +2559,11 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_get("/api/agent-ops/status", handle_agent_ops_status)
     http_app.router.add_post("/api/agent-events", handle_agent_events_post)
     http_app.router.add_get("/api/agent-events", handle_agent_events_get)
-    http_app.router.add_post("/augment_query", handle_augment_query)
+    # R2.4: /augment_query, /query, /api/query now owned by query_service (router.py).
+    # http_app.router.add_post("/augment_query", handle_augment_query)  # _fallback_handle_augment_query
+    # http_app.router.add_post("/query", handle_query_http)            # _fallback_handle_query_http
+    # http_app.router.add_post("/api/query", handle_query_http)        # _fallback_handle_query_http
     http_app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
-    http_app.router.add_post("/query", handle_query_http)
-    http_app.router.add_post("/api/query", handle_query_http)
     http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # Phase 0 Slice 0.2
     http_app.router.add_post("/search/tree", handle_tree_search)
     memory_context_handlers.register_routes(http_app)
