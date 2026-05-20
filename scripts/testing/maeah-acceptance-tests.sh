@@ -148,10 +148,10 @@ CPU_FALLBACK_OK="$(python3 -c "
 import sys
 sys.path.insert(0, 'ai-stack/mcp-servers/hybrid-coordinator')
 try:
-    from model_lifecycle_manager import ModelLifecycleManager
-    # Verify _restart_llama_service exists and accepts override
+    import model_lifecycle_manager as mlm
+    # Verify the restart/promote path persists llama.cpp args including GPU layers.
     import inspect
-    src = inspect.getsource(ModelLifecycleManager._restart_llama_service)
+    src = inspect.getsource(mlm._llama_args_to_cli) + inspect.getsource(mlm.ModelLifecycleManager.promote_model)
     ok = 'n_gpu_layers' in src or 'gpu_layers' in src or 'n-gpu-layers' in src
     print('OK' if ok else 'MISSING_GPU_LAYERS_PARAM')
 except Exception as e:

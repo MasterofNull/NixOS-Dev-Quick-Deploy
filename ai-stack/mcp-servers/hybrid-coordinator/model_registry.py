@@ -61,7 +61,7 @@ class ModelState(str, Enum):
             ModelState.ACTIVE:       {ModelState.RETIRING},
             ModelState.RETIRING:     {ModelState.ARCHIVED, ModelState.ACTIVE},  # rollback path
             ModelState.ARCHIVED:     set(),
-            ModelState.FAILED:       {ModelState.AVAILABLE, ModelState.DOWNLOADING},
+            ModelState.FAILED:       {ModelState.AVAILABLE, ModelState.DOWNLOADING, ModelState.VERIFIED},
         }
         return target in _ALLOWED.get(self, set())
 
@@ -96,7 +96,7 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
             "threads": 8,
             "threads_batch": 8,
         },
-        "name": "Qwen3.6 35B A3B MTP",
+        "name": "Qwen3.6 35B A3B MTP (Q4_K_XL)",
         "repo": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
         "file": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
         "sha256": None,
@@ -109,7 +109,38 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
         "mtp_sibling": None,
         "swap_sla_tier": "cpu_fallback",
         "recommended": True,
-        "description": "Primary Renoir APU model with MTP speculation",
+        "description": "Primary Renoir APU model with MTP speculation (Q4_K_XL quant)",
+    },
+    {
+        "id": "qwen3.6-35b-mtp-q5",
+        "llama_args": {
+            "ctx_size": 16384,
+            "n_gpu_layers": 12,
+            "spec_type": "draft-mtp",
+            "spec_draft_n_max": 2,
+            "parallel": 1,
+            "flash_attn": "off",
+            "mlock": True,
+            "jinja": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
+        "name": "Qwen3.6 35B A3B MTP (Q5_K_S)",
+        "repo": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+        "file": "Qwen3.6-35B-A3B-UD-Q5_K_S.gguf",
+        "sha256": None,
+        "params": "35B (3B active MoE) + MTP heads",
+        "context_size": 262144,
+        "ram_estimate_gb": 24.5,
+        "quant_tier": "T4",
+        "type": "moe",
+        "hardware_targets": ["igpu_rdna2", "dgpu_rdna2"],
+        "mtp_sibling": None,
+        "swap_sla_tier": "cpu_fallback",
+        "recommended": False,
+        "description": "Higher-quality MTP model (Q5_K_S) — needs ~24.5GB RAM",
     },
     {
         "id": "qwen3.6-35b",
@@ -480,6 +511,95 @@ class ModelRegistry:
                 self._models[model_id]["updated_at"] = time.time()
             await asyncio.to_thread(self._save_sync)
             return dict(self._models[model_id])
+
+
+    async def add_model(self, model_def: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a user-defined model to the registry and persist.
+
+        model_def must include: id, repo, file, name.
+        Optional: params, context_size, ram_estimate_gb, quant_tier, type,
+                  hardware_targets, swap_sla_tier, llama_args, description.
+        Raises ValueError if id already exists.
+        """
+        await self.ensure_loaded()
+        async with self._lock:
+            model_id = str(model_def.get("id", "")).strip()
+            if not model_id:
+                raise ValueError("model_def must include a non-empty 'id'")
+            for req in ("repo", "file", "name"):
+                if not str(model_def.get(req, "")).strip():
+                    raise ValueError(f"model_def missing required field: {req!r}")
+            if model_id in self._models:
+                raise ValueError(f"Model {model_id!r} already exists; delete it first or use a different id")
+
+            # Normalize repo: strip HuggingFace base URL if user pasted full URL
+            _HF_PREFIXES = (
+                "https://huggingface.co/",
+                "http://huggingface.co/",
+                "https://www.huggingface.co/",
+            )
+            repo_raw = str(model_def["repo"]).strip()
+            for _pfx in _HF_PREFIXES:
+                if repo_raw.startswith(_pfx):
+                    repo_raw = repo_raw[len(_pfx):]
+                    # Strip trailing query strings (e.g. ?show_file_info=...)
+                    repo_raw = repo_raw.split("?")[0].rstrip("/")
+                    break
+
+            now = time.time()
+            entry: Dict[str, Any] = {
+                "id": model_id,
+                "name": str(model_def["name"]).strip(),
+                "repo": repo_raw,
+                "file": str(model_def["file"]).strip(),
+                "sha256": model_def.get("sha256"),
+                "params": model_def.get("params", "unknown"),
+                "context_size": int(model_def.get("context_size") or 4096),
+                "ram_estimate_gb": float(model_def.get("ram_estimate_gb") or 0.0),
+                "quant_tier": model_def.get("quant_tier", "T2"),
+                "type": model_def.get("type", "dense"),
+                "hardware_targets": model_def.get("hardware_targets", ["cpu_only"]),
+                "mtp_sibling": model_def.get("mtp_sibling"),
+                "swap_sla_tier": model_def.get("swap_sla_tier", "cpu_fallback"),
+                "recommended": bool(model_def.get("recommended", False)),
+                "description": model_def.get("description", "User-added model"),
+                "llama_args": model_def.get("llama_args", {}),
+                "user_defined": True,
+                # Runtime fields
+                "state": ModelState.AVAILABLE.value,
+                "version": 1,
+                "local_path": None,
+                "staged_path": None,
+                "download_bytes": 0,
+                "download_total": 0,
+                "download_progress": 0.0,
+                "error": None,
+                "swap_started_at": None,
+                "swap_finished_at": None,
+                "swap_duration_s": None,
+                "promoted_at": None,
+                "created_at": now,
+                "updated_at": now,
+                "audit_log": [{"ts": now, "event": "user_added", "note": "added via dashboard"}],
+            }
+            self._models[model_id] = entry
+            await asyncio.to_thread(self._save_sync)
+            return dict(entry)
+
+    async def delete_model(self, model_id: str) -> bool:
+        """Remove a user-defined model from the registry. Returns True if removed."""
+        await self.ensure_loaded()
+        async with self._lock:
+            entry = self._models.get(model_id)
+            if entry is None:
+                return False
+            if entry.get("state") == ModelState.ACTIVE.value:
+                raise ValueError("Cannot delete the active model")
+            if not entry.get("user_defined"):
+                raise ValueError("Cannot delete built-in catalog models via the API")
+            del self._models[model_id]
+            await asyncio.to_thread(self._save_sync)
+            return True
 
     async def save(self) -> None:
         async with self._lock:

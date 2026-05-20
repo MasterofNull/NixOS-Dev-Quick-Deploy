@@ -68,6 +68,9 @@ in
           { command = "${pkgs.crowdsec}/bin/cscli"; options = [ "NOPASSWD" ]; }
           # iptables fallback (read-only listing)
           { command = "${pkgs.iptables}/bin/iptables -L *"; options = [ "NOPASSWD" ]; }
+          # llama-cpp model hot-swap (restart service to load new model)
+          { command = "${pkgs.systemd}/bin/systemctl restart llama-cpp"; options = [ "NOPASSWD" ]; }
+          { command = "${pkgs.systemd}/bin/systemctl is-active llama-cpp"; options = [ "NOPASSWD" ]; }
         ];
       }
     ];

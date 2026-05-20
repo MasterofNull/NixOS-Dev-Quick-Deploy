@@ -323,6 +323,56 @@ async def cancel_download(model_id: str, request: Request):
     return {"cancelled": cancelled, "model_id": model_id}
 
 
+@router.post("/models/{model_id}/reset")
+async def reset_failed_model(model_id: str, request: Request):
+    """Reset a FAILED model back to VERIFIED so it can be retried."""
+    _check_auth(request)
+    if not _LIFECYCLE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="lifecycle modules unavailable")
+    manager = get_lifecycle_manager()
+    try:
+        result = await manager.reset_failed(model_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Model {model_id!r} not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return result
+
+
+@router.post("/models")
+async def add_model(request: Request):
+    """Add a user-defined model to the catalog."""
+    _check_auth(request)
+    if not _LIFECYCLE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="lifecycle modules unavailable")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    registry = get_registry()
+    try:
+        entry = await registry.add_model(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"status": "added", "model": entry}
+
+
+@router.delete("/models/{model_id}")
+async def delete_model(model_id: str, request: Request):
+    """Remove a user-defined model from the catalog."""
+    _check_auth(request)
+    if not _LIFECYCLE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="lifecycle modules unavailable")
+    registry = get_registry()
+    try:
+        removed = await registry.delete_model(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Model {model_id!r} not found")
+    return {"status": "deleted", "model_id": model_id}
+
+
 # ── Stub catalog (fallback when coordinator not importable) ───────────────────
 
 def _stub_catalog():

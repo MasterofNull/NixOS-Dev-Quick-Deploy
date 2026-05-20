@@ -4138,6 +4138,67 @@
                         <!-- Per-model download progress (injected dynamically) -->
                         <div id="mlDownloadProgressSection" style="margin-top:0.75rem;"></div>
 
+
+                        <!-- Add Model Form -->
+                        <div style="margin-top:1rem;border-top:1px solid var(--surface1,#313244);padding-top:0.75rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                                <span style="font-size:0.72rem;color:var(--subtext,#6c7086);text-transform:uppercase;letter-spacing:0.08em;">Add Custom Model</span>
+                                <button onclick="mlToggleAddForm()" id="mlAddModelBtn" style="font-size:0.72rem;padding:0.2rem 0.7rem;border-radius:4px;border:1px solid #89b4fa44;background:#89b4fa18;color:#89b4fa;cursor:pointer;">+ Add Model</button>
+                            </div>
+                            <div id="mlAddModelForm" style="display:none;background:var(--surface0,#1e1e2e);border-radius:6px;padding:0.75rem;border:1px solid var(--surface1,#313244);">
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">HuggingFace Repo *</label>
+                                        <input id="mlNewRepo" placeholder="org/repo-GGUF" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;" oninput="mlAutoFillId()">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">Filename (.gguf) *</label>
+                                        <input id="mlNewFile" placeholder="model-Q4_K_M.gguf" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;" oninput="mlAutoFillId()">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">Display Name *</label>
+                                        <input id="mlNewName" placeholder="My Model 7B" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">ID (auto)</label>
+                                        <input id="mlNewId" placeholder="my-model-7b" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">Params</label>
+                                        <input id="mlNewParams" placeholder="7B" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">RAM Estimate (GB)</label>
+                                        <input id="mlNewRam" type="number" step="0.1" placeholder="4.5" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">Context Size (tokens)</label>
+                                        <input id="mlNewCtx" type="number" placeholder="32768" value="32768" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;">
+                                    </div>
+                                    <div>
+                                        <label style="font-size:0.68rem;color:var(--subtext,#6c7086);display:block;margin-bottom:0.2rem;">GPU Layers</label>
+                                        <input id="mlNewGpuLayers" type="number" placeholder="12" value="12" style="width:100%;box-sizing:border-box;background:var(--surface1,#313244);border:1px solid #45475a;border-radius:4px;padding:0.3rem 0.5rem;color:var(--text,#cdd6f4);font-size:0.78rem;">
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;">
+                                    <label style="font-size:0.72rem;color:var(--subtext,#6c7086);display:flex;align-items:center;gap:0.3rem;cursor:pointer;">
+                                        <input type="checkbox" id="mlNewMtp"> MTP speculation
+                                    </label>
+                                    <label style="font-size:0.72rem;color:var(--subtext,#6c7086);display:flex;align-items:center;gap:0.3rem;cursor:pointer;">
+                                        <input type="checkbox" id="mlNewMlock" checked> mlock
+                                    </label>
+                                    <label style="font-size:0.72rem;color:var(--subtext,#6c7086);display:flex;align-items:center;gap:0.3rem;cursor:pointer;">
+                                        <input type="checkbox" id="mlNewJinja" checked> jinja chat template
+                                    </label>
+                                </div>
+                                <div id="mlAddModelStatus" style="font-size:0.72rem;margin-bottom:0.4rem;display:none;"></div>
+                                <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+                                    <button onclick="mlToggleAddForm()" style="font-size:0.72rem;padding:0.25rem 0.7rem;border-radius:4px;border:1px solid #45475a;background:transparent;color:var(--subtext,#6c7086);cursor:pointer;">Cancel</button>
+                                    <button onclick="mlSubmitNewModel()" style="font-size:0.72rem;padding:0.25rem 0.7rem;border-radius:4px;border:1px solid #a6e3a144;background:#a6e3a118;color:#a6e3a1;cursor:pointer;font-weight:600;">Add to Catalog</button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--subtext,#6c7086);" id="mlLastRefresh">--</div>
                     </div>
                 </div>
@@ -12351,6 +12412,7 @@
                 const isArchived = m.state === 'archived';
                 const pct = m.download_progress || 0;
 
+                const isFailed = m.state === 'failed';
                 let actions = '';
                 if (isAvailable) {
                     actions = `<button onclick="mlDownload('${m.id}')" style="${_mlBtnStyle('#89b4fa')}">Download</button>`;
@@ -12360,6 +12422,15 @@
                     actions = `<button onclick="mlPromote('${m.id}')" style="${_mlBtnStyle('#a6e3a1')}">Hot-Swap</button>`;
                 } else if (isArchived) {
                     actions = `<button onclick="mlRollback('${m.id}')" style="${_mlBtnStyle('#fab387')}">Rollback</button>`;
+                } else if (isFailed) {
+                    if (m.local_path) {
+                        actions = `<button onclick="mlResetFailed('${m.id}')" style="${_mlBtnStyle('#cba6f7')}" title="Reset to verified and retry">↺ Retry</button>`;
+                    } else {
+                        actions = `<button onclick="mlDownload('${m.id}')" style="${_mlBtnStyle('#89b4fa')}">Re-download</button>`;
+                    }
+                }
+                if (m.user_defined && !isActive && !isDownloading) {
+                    actions += ` <button onclick="mlDeleteModel('${m.id}')" style="${_mlBtnStyle('#f38ba8')}" title="Remove from catalog">✕</button>`;
                 }
 
                 const progressBar = isDownloading ? `<div style="margin-top:3px;height:3px;background:var(--surface0,#1e1e2e);border-radius:2px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:#89b4fa;border-radius:2px;"></div></div>` : '';
@@ -12499,6 +12570,98 @@
                 alert(d.success ? `Rollback complete in ${d.duration_s}s` : `Rollback failed: ${d.message}`);
                 loadModelLifecycle();
             } catch (e) { alert(`Error: ${e.message}`); } finally { clearTimeout(timer); }
+        }
+
+        // ── Model Lifecycle — Add / Delete helpers ───────────────────────────
+        function mlToggleAddForm() {
+            const form = document.getElementById('mlAddModelForm');
+            const btn  = document.getElementById('mlAddModelBtn');
+            const visible = form.style.display !== 'none';
+            form.style.display = visible ? 'none' : 'block';
+            btn.textContent = visible ? '+ Add Model' : '✕ Close';
+        }
+
+        function mlAutoFillId() {
+            const repo  = document.getElementById('mlNewRepo').value.trim();
+            const file  = document.getElementById('mlNewFile').value.trim();
+            const idEl  = document.getElementById('mlNewId');
+            if (!idEl.dataset.manuallyEdited) {
+                const base = file.replace(/\.gguf$/i, '').toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                if (base) idEl.value = base;
+            }
+        }
+
+        async function mlSubmitNewModel() {
+            const statusEl = document.getElementById('mlAddModelStatus');
+            const mtp = document.getElementById('mlNewMtp').checked;
+            const llama_args = {
+                ctx_size:      parseInt(document.getElementById('mlNewCtx').value)       || 32768,
+                n_gpu_layers:  parseInt(document.getElementById('mlNewGpuLayers').value) || 12,
+                parallel:      mtp ? 1 : 4,
+                batch_size:    512, ubatch_size: 256, threads: 8, threads_batch: 8,
+                mlock:         document.getElementById('mlNewMlock').checked,
+                jinja:         document.getElementById('mlNewJinja').checked,
+            };
+            if (mtp) { llama_args.spec_type = 'draft-mtp'; llama_args.spec_draft_n_max = 2; }
+            const body = {
+                id:             document.getElementById('mlNewId').value.trim(),
+                repo:           document.getElementById('mlNewRepo').value.trim(),
+                file:           document.getElementById('mlNewFile').value.trim(),
+                name:           document.getElementById('mlNewName').value.trim(),
+                params:         document.getElementById('mlNewParams').value.trim(),
+                ram_estimate_gb: parseFloat(document.getElementById('mlNewRam').value) || 0,
+                context_size:   parseInt(document.getElementById('mlNewCtx').value)    || 32768,
+                llama_args,
+            };
+            if (!body.repo || !body.file || !body.name) {
+                statusEl.style.display = 'block'; statusEl.style.color = '#f38ba8';
+                statusEl.textContent = 'Repo, filename, and display name are required.';
+                return;
+            }
+            statusEl.style.display = 'block'; statusEl.style.color = '#89b4fa';
+            statusEl.textContent = 'Adding model…';
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/models`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const d = await resp.json();
+                if (resp.ok) {
+                    statusEl.style.color = '#a6e3a1';
+                    statusEl.textContent = `Added: ${d.model.name}`;
+                    setTimeout(() => { mlToggleAddForm(); loadModelLifecycle(); }, 1200);
+                } else {
+                    statusEl.style.color = '#f38ba8';
+                    statusEl.textContent = `Error: ${d.detail || 'unknown'}`;
+                }
+            } catch (e) {
+                statusEl.style.color = '#f38ba8';
+                statusEl.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        async function mlDeleteModel(modelId) {
+            if (!confirm(`Remove "${modelId}" from catalog? This cannot be undone.`)) return;
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/models/${modelId}`, { method: 'DELETE' });
+                const d = await resp.json();
+                if (resp.ok) loadModelLifecycle();
+                else alert(`Delete failed: ${d.detail || 'unknown'}`);
+            } catch (e) { alert(`Error: ${e.message}`); }
+        }
+
+        async function mlResetFailed(modelId) {
+            try {
+                const resp = await fetch(`${FASTAPI_BASE}/api/models/${modelId}/reset`, { method: 'POST' });
+                const d = await resp.json();
+                if (resp.ok) {
+                    loadModelLifecycle();
+                } else {
+                    alert(`Reset failed: ${d.detail || 'unknown'}`);
+                }
+            } catch (e) { alert(`Error: ${e.message}`); }
         }
 
         // ── Agent Ops — Phase 55 ─────────────────────────────────────────────

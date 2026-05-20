@@ -2153,6 +2153,7 @@ async def run_http_mode(port: int) -> None:
                 hits=_rag_result.get("hits", 0),
                 latency_ms=_rag_result.get("latency_ms", 0),
                 skipped=_rag_result.get("skipped", True),
+                collection_count=_rag_result.get("collection_count", 0),
             )
             if _rag_result.get("augmented") and _rag_result.get("context_text"):
                 request_context["rag_context"] = _rag_result["context_text"]
