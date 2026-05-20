@@ -114,6 +114,14 @@ for rel in "${targets[@]}"; do
   if is_waived "${rel}"; then
     continue
   fi
+  # Skip Python package modules: __init__.py files and modules inside packages
+  # (directories containing __init__.py) don't need shebangs — PEP 8 convention.
+  if [[ "${rel}" == *.py ]]; then
+    base_py="$(basename "${rel}")"
+    if [[ "${base_py}" == "__init__.py" ]] || [[ -f "$(dirname "${path}")/__init__.py" ]]; then
+      continue
+    fi
+  fi
   mapfile -t head < <(sed -n '1,8p' "${path}")
 
   first="${head[0]:-}"

@@ -17,6 +17,11 @@ while IFS= read -r path; do
   [[ "${stem}" == *"_"* ]] || continue
   # Skip private module convention: _foo.py / _foo.sh files are internal helpers, not shims
   [[ "${stem}" == _* ]] && continue
+  # Skip Python package modules: files inside directories that contain __init__.py are
+  # package modules (snake_case is PEP 8 convention), not shims
+  if [[ "${ext}" == "py" ]] && [[ -f "$(dirname "${path}")/__init__.py" ]]; then
+    continue
+  fi
 
   kebab_stem="${stem//_/-}"
   kebab_path="${dir}/${kebab_stem}.${ext}"
