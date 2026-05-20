@@ -817,7 +817,7 @@ async def initialize_server():
     async def _drift_homeostasis_loop() -> None:
         """Every 60s: check drift score; auto-activate agent-ops profile when threshold exceeded."""
         import drift_analyzer as _da
-        import http_server as _hs
+        from agent import agent_service as _agent_svc
         _threshold = 0.7
         try:
             import json as _json
@@ -832,7 +832,7 @@ async def initialize_server():
                 _analyzer = _da.get_analyzer()
                 _result = await _analyzer.compute_drift(window=20)
                 _score = _result.get("drift_score")
-                _state = _hs._agent_ops_state  # type: ignore[attr-defined]
+                _state = _agent_svc._agent_ops_state  # R2.8: module-level dict in agent_service
                 if _score is not None:
                     if float(_score) >= _threshold and not _state.get("alert_active"):
                         _state["drift_score"] = _score
