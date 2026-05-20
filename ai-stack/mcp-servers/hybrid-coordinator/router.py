@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Optional
+from typing import Callable, List, Optional
 from uuid import uuid4
 
 from aiohttp import web
@@ -65,12 +65,19 @@ def _make_tracing_middleware() -> web.middleware:  # type: ignore[type-arg]
     return tracing_middleware
 
 
-def _make_request_id_middleware() -> web.middleware:  # type: ignore[type-arg]
+def _make_request_id_middleware(
+    audit_request_fn: Optional[Callable] = None,
+) -> web.middleware:  # type: ignore[type-arg]
     """
     Request-ID + latency/error metrics middleware.
 
     Assigns X-Request-ID (from header or generated), records Prometheus
     latency/count/error metrics, and mirrors the ID back in the response header.
+
+    Args:
+        audit_request_fn: Optional audit hook (signature: fn(request, status_int, latency_ms)).
+            Injected from http_server.py during the Strangler Fig migration; will be
+            replaced by a standalone audit module in R2.7.
     """
     import time as _time
 
@@ -94,6 +101,11 @@ def _make_request_id_middleware() -> web.middleware:  # type: ignore[type-arg]
             status = str(response.status) if response is not None else "500"
             REQUEST_LATENCY.labels(request.path, request.method).observe(duration)
             REQUEST_COUNT.labels(request.path, status).inc()
+            if audit_request_fn is not None:
+                try:
+                    audit_request_fn(request, int(status), duration * 1000.0)
+                except Exception:  # noqa: BLE001
+                    pass  # audit must not crash the request pipeline
             if response is not None:
                 response.headers["X-Request-ID"] = request_id
             clear_contextvars()
@@ -126,8 +138,15 @@ def _make_rate_limit_config() -> RateLimiterConfig:
 # ---------------------------------------------------------------------------
 
 
+def _register_status_routes(app: web.Application) -> None:
+    """R2.2: Register StatusService routes (/status, /api/hardware/state, /stats/delegate)."""
+    from core import status_service as _ss
+    _ss.register_routes(app)
+
+
 def create_app(
     extra_middlewares: Optional[List] = None,
+    audit_request_fn: Optional[Callable] = None,
 ) -> web.Application:
     """
     Create the aiohttp Application with the standard middleware stack.
@@ -159,7 +178,7 @@ def create_app(
 
     middlewares: List = [
         _make_tracing_middleware(),
-        _make_request_id_middleware(),
+        _make_request_id_middleware(audit_request_fn=audit_request_fn),
         rate_limit_middleware,
         create_api_key_middleware(),
     ]
@@ -175,7 +194,7 @@ def create_app(
     # -----------------------------------------------------------------------
 
     # R2.2: StatusService (/status, /api/hardware/state, /stats/delegate)
-    # _register_status_routes(app)
+    _register_status_routes(app)
 
     # R2.3: MemoryService (/api/memory/facts, /memory/journal, /memory/supersede)
     # _register_memory_routes(app)
