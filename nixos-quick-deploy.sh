@@ -3238,6 +3238,7 @@ declare -A MODEL_CATALOG_CHAT=(
   # Large tier (20GB+) - Workstations 32GB+ RAM, servers
   ["qwen2.5-coder-32b"]="Qwen/Qwen2.5-Coder-32B-Instruct-GGUF|qwen2.5-coder-32b-instruct-q4_k_m.gguf|~20 GB|32B / 131K ctx|Qwen 2.5 Coder 32B [LARGE/CODING] — 32GB+ RAM, production coding"
   ["qwen3.6-35b"]="unsloth/Qwen3.6-35B-A3B-GGUF|Qwen3.6-35B-A3B-UD-Q4_K_M.gguf|~22 GB|35B (3B active MoE) / 262K ctx|Qwen3.6 35B A3B [LARGE/MoE] — 32GB+ RAM, 262K context reasoning"
+  ["qwen3.6-35b-mtp"]="unsloth/Qwen3.6-35B-A3B-MTP-GGUF|Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf|~22.5 GB|35B (3B active MoE) + MTP heads / 262K ctx|Qwen3.6 35B A3B MTP [LARGE/MoE/FAST] — 32GB+ RAM, 1.5-2x faster via speculative decoding"
   ["deepseek-r1-distill-32b"]="bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF|DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf|~20 GB|32B / 32K ctx|DeepSeek R1 32B [LARGE/REASONING] — 32GB+ RAM, best reasoning <34B"
   ["llama-3.3-70b-iq2"]="bartowski/Llama-3.3-70B-Instruct-GGUF|Llama-3.3-70B-Instruct-IQ2_M.gguf|~24 GB|70B / 131K ctx|Llama 3.3 70B [LARGE] — 32GB+ RAM CPU-only, highest quality"
 )
@@ -3429,7 +3430,7 @@ prompt_model_selection() {
   log "┌─ LARGE tier (32GB+ RAM) ──────────────────────────────────────────────┐"
   log "│  For: High-end workstations, servers with 32GB+ RAM                   │"
   log "└────────────────────────────────────────────────────────────────────────┘"
-  for key in "qwen2.5-coder-32b" "qwen3.6-35b" "deepseek-r1-distill-32b" "llama-3.3-70b-iq2"; do
+  for key in "qwen2.5-coder-32b" "qwen3.6-35b" "qwen3.6-35b-mtp" "deepseek-r1-distill-32b" "llama-3.3-70b-iq2"; do
     local info="${MODEL_CATALOG_CHAT[$key]}"
     local repo="${info%%|*}"; info="${info#*|}"
     local file="${info%%|*}"; info="${info#*|}"

@@ -1,53 +1,33 @@
 {
   "agent": "Codex",
-  "codex_phase59_1": {
-    "agent": "codex",
-    "completed_at": "2026-05-19T03:05:43.069413+00:00",
-    "files": [
-      "scripts/ai/aq-report",
-      "scripts/testing/test-aq-report-route-telemetry.py",
-      ".agent/collaboration/HANDOFF.md"
-    ],
-    "intent": "Update aq-report to consume hybrid route_search telemetry as authoritative retrieval metadata, add tests, validate aq-qa/tier0, then commit.",
-    "status": "completed",
-    "task": "Phase 59.1 route_search telemetry-backed retrieval breadth reporting",
-    "timestamp": "2026-05-19T02:58:49.237365+00:00",
-    "validation": [
-      "py_compile PASS",
-      "targeted tests PASS",
-      "aq-report PASS",
-      "aq-qa 1 PASS",
-      "aq-qa all 169 passed 0 failed 2 skipped",
-      "tier0 14 passed 0 failed"
-    ]
-  },
-  "codex_phase59_2": {
-    "agent": "codex",
-    "completed_at": "2026-05-19T03:19:08.487368+00:00",
-    "files": [
-      "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_context_handlers.py",
-      "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py",
-      "ai-stack/mcp-servers/hybrid-coordinator/http_server.py",
-      "scripts/testing/test-memory-recall-broker-contract.py"
-    ],
-    "finding": "MemoryBroker /memory/recall path defaulted null memory_types to semantic-only and recall rows stripped metadata used by /api/memory/facts scope filtering.",
-    "status": "completed",
-    "task": "Phase 59.2 Memory recall contract diagnosis/fix",
-    "validation": [
-      "py_compile PASS",
-      "test-memory-recall-broker-contract PASS",
-      "tier0 14 passed 0 failed"
-    ]
-  },
+  "task": "MAEAH Q7 signoff plus Phase D A2A signing/tasks-send and Phase F acceptance harness",
+  "status": "implementation_complete_validation_blocked",
+  "timestamp": "2026-05-19T20:44:30Z",
+  "intent": "Add Ed25519-signed A2A Agent Cards, register POST /a2a/tasks/send, write Q7 CPU fallback queue-buffer findings, and add scripts/testing/maeah-acceptance-tests.sh.",
   "files": [
-    "ai-stack/mcp-servers/hybrid-coordinator/*",
-    "scripts/ai/aq-report",
-    "scripts/ai/aq-qa",
-    "scripts/testing/test-retrieval-breadth-history.py",
-    ".agent/collaboration/HANDOFF.md",
-    ".agent/collaboration/PENDING.json"
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py",
+    "scripts/testing/maeah-acceptance-tests.sh",
+    ".agents/plans/multi-agent-edge-harness/QWEN-ITEMS-CODEX-FINDINGS.md",
+    ".agent/PROJECT-MAEAH-EDGE-HARNESS-PRD.md",
+    ".agent/collaboration/PENDING.json",
+    ".agent/collaboration/PULSE.log",
+    ".agent/collaboration/HANDOFF.md"
   ],
-  "goal_state": "Emit real route_search retrieval_collection_count metadata and improve measured RAG/domain retrieval quality.",
-  "next_step": "Find the route_search audit producer, emit retrieval_collection_count/retrieval_profile metadata, then use aq-report/aq-qa evidence to tune RAG recall from ~59.7% toward 80%+.",
-  "task": "59.1-route-search-metadata-and-rag-quality"
+  "acceptance": [
+    "Agent Card canonical JSON is signed without proof field and includes proof when a signing backend is available",
+    "A2A signing key path honors A2A_SIGNING_KEY_PATH with /run/secrets and /var/lib fallbacks",
+    "POST /a2a/tasks/send accepts canonical REST-shaped A2A task payload and reuses existing session/UAG path",
+    "Q7 findings confirm 503 + Retry-After + queue_position with SLA cap amendment",
+    "MAEAH acceptance script provides PASS/FAIL output for all 10 gates and exits nonzero on failures"
+  ],
+  "validation": [
+    "python3 -m py_compile openai_a2a_handlers.py PASS",
+    "bash -n scripts/testing/maeah-acceptance-tests.sh PASS",
+    "A2A proof smoke with temp A2A_SIGNING_KEY_PATH PASS",
+    "git diff --check PASS",
+    "jq empty .agent/collaboration/PENDING.json PASS",
+    "tier0-validation-gate --pre-commit BLOCKED: aq-qa phase 0 failed; direct aq-qa 0 shows failed checks 0.1.2 llama-cpp-model-fetch.service failed and 0.4.1 llama-server /health empty status"
+  ],
+  "blocked_at": "2026-05-19T20:44:30Z",
+  "next_step": "Resolve existing live AI stack QA failures, then rerun scripts/governance/tier0-validation-gate.sh --pre-commit before commit."
 }

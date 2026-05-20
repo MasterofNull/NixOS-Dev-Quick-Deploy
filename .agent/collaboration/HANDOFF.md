@@ -1,3 +1,19 @@
+# Handoff Memo - 2026-05-19 Staff Engineer Edge Harness PRD
+
+## MAEAH A2A/signoff/acceptance slice — Codex, 2026-05-19
+
+**Status:** Implementation complete; final tier0 validation blocked by live QA phase 0 failures unrelated to the edited files.
+**Last Action (Codex):** Added Ed25519 Agent Card proof generation to `openai_a2a_handlers.py`, registered canonical `POST /a2a/tasks/send`, wrote the Q7 CPU-only fallback queue-buffer sign-off, and added `scripts/testing/maeah-acceptance-tests.sh` for the ten AM-C5 gates.
+**Validation:** `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/extensions/openai_a2a_handlers.py` PASS; `bash -n scripts/testing/maeah-acceptance-tests.sh` PASS; A2A proof smoke with temp `A2A_SIGNING_KEY_PATH` PASS; `git diff --check` PASS; `jq empty .agent/collaboration/PENDING.json` PASS. `scripts/governance/tier0-validation-gate.sh --pre-commit` BLOCKED at QA phase 0. Direct `scripts/ai/aq-qa 0` evidence: 65 passed, 2 failed; failures are `0.1.2 no AI units in failed state` due `llama-cpp-model-fetch.service` failed, and `0.4.1 llama-server /health` empty status at `http://127.0.0.1:8080/health`.
+**Next Step:** Fix or clear the live llama/model-fetch health failures, rerun tier0, then stage only the MAEAH A2A/signoff/acceptance files for commit.
+**Context Bloat:** Low
+
+**Status:** Complete. Staff Engineer PRD created at `.agents/plans/multi-agent-edge-harness/PRD-STAFF-ENG-CODEX.md`.
+**Last Action (Codex):** Wrote the greenfield PRD from the Senior Staff Software Engineer lens, covering API contracts, data models, OpenAI-compatible/A2A/MCP/Admin APIs, model lifecycle state machine, hot-swap/rollback behavior, OTel integration, security boundaries, comparison hooks, and test strategy.
+**Validation:** `jq empty .agent/collaboration/PENDING.json` PASS; mandatory section search PASS; generated PRD ASCII scan PASS. `scripts/governance/tier0-validation-gate.sh --pre-commit` BLOCKED by existing `aq-qa 0` failure: `0.4.1 llama-server /health` returned empty status for `http://127.0.0.1:8080/health` while the rest of phase 0 passed.
+**Next Step:** Aggregate CTO, VP Eng, Staff Eng, and Edge AI PRDs into `.agents/plans/multi-agent-edge-harness/COMBINED-PRD.md` after the remaining role PRDs are available.
+**Context Bloat:** Low
+
 # Handoff Memo — 2026-05-19 Phase 59.0
 
 **Status:** Phase 59.0 hardening complete. Full `aq-qa all` is green: **169 passed, 0 failed, 2 skipped**. Tier0 pre-commit gate is green: **14/14 PASS**.
@@ -206,3 +222,54 @@ Validation:
 ### Deployment note
 
 The live benchmark will not reflect this repo fix until the hybrid coordinator service is rebuilt/restarted from this revision. After deployment, rerun `scripts/ai/aq-memory-recall-benchmark --json`; if recall remains below target, the next likely bottleneck is sparse memory corpus coverage, not handler contract drift.
+
+---
+
+## Multi-Agent Edge Harness Combined PRD Sign-Off (Codex, 2026-05-19)
+
+### Completed
+
+- Reviewed `.agents/plans/multi-agent-edge-harness/COMBINED-PRD.md` against `.agents/plans/multi-agent-edge-harness/PRD-STAFF-ENG-CODEX.md`.
+- Wrote `.agents/plans/multi-agent-edge-harness/SIGNOFF-CODEX.md`.
+- Verdict: `APPROVE WITH AMENDMENTS`.
+
+### Required amendments captured
+
+- Normalize API contracts: `/v1/responses`, `/admin/v1/*`, and canonical A2A discovery/task endpoints.
+- Correct security wording: loopback does not imply unauthenticated admin/lifecycle/tool access; signed or quarantined Agent Cards are required for networked mesh peers.
+- Replace "typed Python dataclass schemas" with versioned JSON Schema/OpenAPI contracts and runtime-language types.
+- Preserve explicit model lifecycle states including `downloaded`, `verified`, `warming`, `candidate`, and `failed`.
+- Carry forward the concrete Staff Engineer test matrix as normative acceptance criteria.
+
+### Validation
+
+- `jq empty .agent/collaboration/PENDING.json` — PASS
+- Required sign-off sections present — PASS
+
+---
+
+## Phase C — MLFQ Scheduler Implementation (Codex, 2026-05-19)
+
+### Completed
+
+- Added `ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py` with typed `WorkloadDescriptor` and `TaskHandle` dataclasses.
+- Implemented three-level asyncio-native MLFQ queues, token admission, thermal-tier admission gates, zombie reaping, task cancellation, AIMD backpressure events, and a singleton `get_scheduler()`.
+- Wired `http_server.py` so `/query` and `/api/query` submit query work through the scheduler.
+- Added `GET /admin/v1/scheduler/status`.
+- Added scheduler startup and cleanup hooks for aiohttp.
+
+### Validation
+
+- `python3 -c "import ast; ast.parse(open('ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py').read()); print('OK')"` — PASS
+- `python3 -c "import ast; ast.parse(open('ai-stack/mcp-servers/hybrid-coordinator/http_server.py').read()); print('OK')"` — PASS
+- `python3 -m py_compile ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py ai-stack/mcp-servers/hybrid-coordinator/http_server.py` — PASS
+- Scheduler smoke test with L0 execution and critical-tier L2 rejection — PASS
+- `git diff --check` — PASS
+- `jq empty .agent/collaboration/PENDING.json` — PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — BLOCKED by live `llama-server /health` returning 503 `Loading model` at `http://127.0.0.1:8080/health`.
+
+### Commit Status
+
+No commit was created because the repo validation gate explicitly failed and reported `Do NOT commit or deploy until all gates pass`. Rerun tier0 after llama-cpp finishes warming, then stage only the Phase C hunks plus `mlfq_scheduler.py` and commit with:
+
+`feat(maeah): Phase C MLFQ scheduler with thermal coupling stub`

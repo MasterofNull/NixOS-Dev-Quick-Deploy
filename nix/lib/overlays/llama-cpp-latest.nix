@@ -72,8 +72,12 @@ in
     # Note: We do NOT enable GGML_BACKEND_DL - static backend linking ensures
     # GGML_USE_VULKAN is defined and the Vulkan backend auto-registers in the
     # ggml_backend_registry constructor.
+    # LLAMA_BUILD_UI=OFF: b9222+ tries to download the web UI at build time;
+    # that fails in the Nix sandbox (no network), breaking xxd.cmake on an empty
+    # file. Disable the embedded UI — the server still works without it.
     cmakeFlags =
       stripConflicts (oldAttrs.cmakeFlags or [])
+      ++ [ "-DLLAMA_BUILD_UI=OFF" ]
       ++ prev.lib.optionals (enableRocm && rocmGpuTargets != []) [
         "-DGPU_TARGETS=${prev.lib.concatStringsSep ";" rocmGpuTargets}"
       ];
