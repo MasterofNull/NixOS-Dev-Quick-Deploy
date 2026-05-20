@@ -18,10 +18,21 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import os
 logger = logging.getLogger(__name__)
 
-REGISTRY_PATH = Path("/var/lib/ai-stack/hybrid/model-registry.json")
-MODEL_DIR = Path("/var/lib/llama-cpp/models")
+# Paths — override via env vars so dashboard (running as hyperd) can use writable locations.
+# After nixos-rebuild these point to the system paths owned by ai-hybrid / llama.
+_DEFAULT_REGISTRY = os.getenv(
+    "MODEL_REGISTRY_PATH",
+    str(Path.home() / ".local/share/nixos-ai-stack/model-registry.json")
+)
+_DEFAULT_MODEL_DIR = os.getenv(
+    "MODEL_DIR",
+    "/var/lib/llama-cpp/models"
+)
+REGISTRY_PATH = Path(_DEFAULT_REGISTRY)
+MODEL_DIR = Path(_DEFAULT_MODEL_DIR)
 
 # Registry schema version — bump when structure changes
 REGISTRY_VERSION = 2
