@@ -1,3 +1,8 @@
+_meta:
+  version: "1.0"
+  owner: claude-sonnet-4-6
+  last_updated: "2026-05-20"
+
 # Notification Channels Configuration
 # Part of Phase 1 (Monitoring & Observability) implementation
 # Phase 4.5: All notification infrastructure is always enabled and integrated

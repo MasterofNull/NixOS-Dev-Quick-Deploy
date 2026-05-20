@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "./schemas/reasoning-profiles.schema.json",
   "version": "1.0.0",
   "description": "Tiered inference profiles for the hybrid coordinator to optimize CPU usage and response time",

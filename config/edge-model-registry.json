@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": 1,
   "models": [
     {
@@ -13,8 +18,16 @@
       },
       "runtime": "openai_compatible",
       "backend": "llama.cpp",
-      "tasks": ["chat", "code", "planning"],
-      "ai_profiles": ["cpu_slim", "cpu_full", "local_default"],
+      "tasks": [
+        "chat",
+        "code",
+        "planning"
+      ],
+      "ai_profiles": [
+        "cpu_slim",
+        "cpu_full",
+        "local_default"
+      ],
       "storage_path": "/var/lib/llama-cpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
       "huggingface_repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
       "huggingface_file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
@@ -32,8 +45,14 @@
       },
       "runtime": "openai_compatible",
       "backend": "llama.cpp",
-      "tasks": ["chat", "planning"],
-      "ai_profiles": ["cpu_slim", "cpu_full"],
+      "tasks": [
+        "chat",
+        "planning"
+      ],
+      "ai_profiles": [
+        "cpu_slim",
+        "cpu_full"
+      ],
       "storage_path": "~/.local/share/ai-models/edge-chat-3b-q4",
       "endpoint_hint": "${LLAMA_URL}"
     },
@@ -49,8 +68,14 @@
       },
       "runtime": "openai_compatible",
       "backend": "llama.cpp",
-      "tasks": ["code", "refactor", "review"],
-      "ai_profiles": ["cpu_full"],
+      "tasks": [
+        "code",
+        "refactor",
+        "review"
+      ],
+      "ai_profiles": [
+        "cpu_full"
+      ],
       "storage_path": "~/.local/share/ai-models/edge-code-7b-q5",
       "endpoint_hint": "${LLAMA_URL}"
     }

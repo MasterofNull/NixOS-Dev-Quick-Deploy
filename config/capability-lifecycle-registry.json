@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "./schemas/capability-lifecycle-registry.schema.json",
   "version": "1.1.0",
   "description": "Canonical capability lifecycle registry. State machine defined in docs/architecture/capability-lifecycle.md.",

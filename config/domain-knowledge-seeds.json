@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "_comment": "Canonical local seed sources for Phase 58B capability-domain AIDB namespaces. Keep these sources local, reviewable, and safe to reindex periodically.",
   "version": "1.0",
   "domains": [

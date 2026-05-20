@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": 1,
   "workflows": [
     {
@@ -113,21 +118,34 @@
           "url": "https://www.calflora.org/entry/wgh.html#srch=t&place=Mendocino+County",
           "fetch_mode": "http",
           "fallback_fetch_mode": "browser",
-          "selectors": ["main", "article", "#content", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
           "purpose": "Calflora What Grows Here filtered by Mendocino County."
         },
         {
           "name": "mendocino-coast-botanical",
           "url": "https://www.gardenbythesea.org/",
           "fetch_mode": "http",
-          "selectors": ["main", "article", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            ".content"
+          ],
           "purpose": "Mendocino Coast Botanical Gardens native plant information."
         },
         {
           "name": "jepson-mendocino",
           "url": "https://ucjeps.berkeley.edu/eflora/eflora_display.php?tid=99999",
           "fetch_mode": "http",
-          "selectors": ["main", "article", "#content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content"
+          ],
           "purpose": "UC Jepson Flora Project reference for California plants."
         }
       ]
@@ -154,14 +172,23 @@
           "name": "nixos-manual",
           "url": "https://nixos.org/manual/nixos/stable/",
           "fetch_mode": "http",
-          "selectors": ["main", "article", ".content", "#content"],
+          "selectors": [
+            "main",
+            "article",
+            ".content",
+            "#content"
+          ],
           "purpose": "Official NixOS documentation."
         },
         {
           "name": "nix-dev-manual",
           "url": "https://nix.dev/",
           "fetch_mode": "http",
-          "selectors": ["main", "article", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            ".content"
+          ],
           "purpose": "Community Nix learning resources."
         },
         {
@@ -169,7 +196,12 @@
           "url": "https://nix-community.github.io/home-manager/options.xhtml",
           "fetch_mode": "http",
           "fallback_fetch_mode": "browser",
-          "selectors": ["main", "article", "#content", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
           "purpose": "Home Manager options reference."
         }
       ]
@@ -196,28 +228,47 @@
           "name": "cisa-kev-catalog",
           "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
           "fetch_mode": "http",
-          "selectors": ["main", "article", "#content", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
           "purpose": "CISA catalog of vulnerabilities known to be exploited in the wild."
         },
         {
           "name": "nvd-search",
           "url": "https://nvd.nist.gov/vuln/search",
           "fetch_mode": "http",
-          "selectors": ["main", "article", "#content", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
           "purpose": "NIST National Vulnerability Database search."
         },
         {
           "name": "github-advisories",
           "url": "https://github.com/advisories",
           "fetch_mode": "http",
-          "selectors": ["main", "article", "#content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content"
+          ],
           "purpose": "GitHub Security Advisories database."
         },
         {
           "name": "osv-vulns",
           "url": "https://osv.dev/list",
           "fetch_mode": "http",
-          "selectors": ["main", "article", "#content", ".content"],
+          "selectors": [
+            "main",
+            "article",
+            "#content",
+            ".content"
+          ],
           "purpose": "OSV vulnerability list for ecosystem/package-level advisories."
         },
         {
@@ -225,7 +276,12 @@
           "url": "https://discourse.nixos.org/c/announcements/security",
           "fetch_mode": "http",
           "fallback_fetch_mode": "browser",
-          "selectors": ["main", "article", "#main-outlet", ".topic-list"],
+          "selectors": [
+            "main",
+            "article",
+            "#main-outlet",
+            ".topic-list"
+          ],
           "purpose": "NixOS-specific security announcements relevant to this stack."
         }
       ]

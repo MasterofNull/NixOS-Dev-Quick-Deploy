@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": "1.0.0",
   "defaults": {
     "ecosystem_hints": [
@@ -15,46 +20,105 @@
   "matchers": [
     {
       "id": "workflow-registry",
-      "capability_types": ["workflow"],
-      "ecosystem_hints": ["workflow", "harness"],
-      "source_hints": ["config/workflow-blueprints.json", "scripts/ai/aqd"],
+      "capability_types": [
+        "workflow"
+      ],
+      "ecosystem_hints": [
+        "workflow",
+        "harness"
+      ],
+      "source_hints": [
+        "config/workflow-blueprints.json",
+        "scripts/ai/aqd"
+      ],
       "missing_origin": "workflow_registry"
     },
     {
       "id": "skill-registry",
-      "capability_types": ["skill"],
-      "ecosystem_hints": ["skill", "agent-skill"],
-      "source_hints": ["docs/AGENTS.md"],
+      "capability_types": [
+        "skill"
+      ],
+      "ecosystem_hints": [
+        "skill",
+        "agent-skill"
+      ],
+      "source_hints": [
+        "docs/AGENTS.md"
+      ],
       "missing_origin": "skill_registry"
     },
     {
       "id": "repo-harness",
-      "capability_prefixes": ["aq-"],
-      "ecosystem_hints": ["repo-script", "harness"],
-      "package_hints": ["scripts/ai", "repo-local wrapper, not OS package"],
-      "source_hints": ["scripts/ai", "config/service-endpoints.sh"],
+      "capability_prefixes": [
+        "aq-"
+      ],
+      "ecosystem_hints": [
+        "repo-script",
+        "harness"
+      ],
+      "package_hints": [
+        "scripts/ai",
+        "repo-local wrapper, not OS package"
+      ],
+      "source_hints": [
+        "scripts/ai",
+        "config/service-endpoints.sh"
+      ],
       "missing_origin": "repo_harness"
     },
     {
       "id": "mcp-harness",
       "match_mode": "any",
-      "capability_prefixes": ["mcp"],
-      "context_applications": ["mcp"],
-      "ecosystem_hints": ["mcp", "ai-stack-harness"],
-      "package_hints": ["scripts/ai/mcp-server", ".agent/skills/mcp-builder/SKILL.md"],
-      "source_hints": ["scripts/ai", "docs/operations"],
+      "capability_prefixes": [
+        "mcp"
+      ],
+      "context_applications": [
+        "mcp"
+      ],
+      "ecosystem_hints": [
+        "mcp",
+        "ai-stack-harness"
+      ],
+      "package_hints": [
+        "scripts/ai/mcp-server",
+        ".agent/skills/mcp-builder/SKILL.md"
+      ],
+      "source_hints": [
+        "scripts/ai",
+        "docs/operations"
+      ],
       "missing_origin": "mcp_harness"
     },
     {
       "id": "nix-stack",
       "match_mode": "any",
-      "context_languages": ["nix"],
-      "context_applications": ["nixos"],
-      "preferred_fix_layers": ["declarative_nix"],
-      "capability_ids": ["nix", "nixos-rebuild"],
-      "ecosystem_hints": ["nix", "nixos", "os"],
-      "package_hints": ["nixpkgs", "environment.systemPackages"],
-      "source_hints": ["nix/modules/core/options.nix", "nix/modules/roles/ai-stack.nix", "templates/configuration.nix"],
+      "context_languages": [
+        "nix"
+      ],
+      "context_applications": [
+        "nixos"
+      ],
+      "preferred_fix_layers": [
+        "declarative_nix"
+      ],
+      "capability_ids": [
+        "nix",
+        "nixos-rebuild"
+      ],
+      "ecosystem_hints": [
+        "nix",
+        "nixos",
+        "os"
+      ],
+      "package_hints": [
+        "nixpkgs",
+        "environment.systemPackages"
+      ],
+      "source_hints": [
+        "nix/modules/core/options.nix",
+        "nix/modules/roles/ai-stack.nix",
+        "templates/configuration.nix"
+      ],
       "missing_origin": "nixos_or_os_packages",
       "card_overlays": {
         "nix-module-change": {
@@ -87,11 +151,26 @@
     {
       "id": "python-stack",
       "match_mode": "any",
-      "context_languages": ["python"],
-      "capability_ids": ["python3", "pip", "uv"],
-      "ecosystem_hints": ["python"],
-      "package_hints": ["python3", "uv", "pip"],
-      "source_hints": ["scripts/ai", "docs/operations"],
+      "context_languages": [
+        "python"
+      ],
+      "capability_ids": [
+        "python3",
+        "pip",
+        "uv"
+      ],
+      "ecosystem_hints": [
+        "python"
+      ],
+      "package_hints": [
+        "python3",
+        "uv",
+        "pip"
+      ],
+      "source_hints": [
+        "scripts/ai",
+        "docs/operations"
+      ],
       "card_overlays": {
         "feature-development": {
           "rules": [
@@ -110,11 +189,28 @@
     {
       "id": "shell-stack",
       "match_mode": "any",
-      "context_languages": ["bash", "shell", "zsh"],
-      "capability_ids": ["bash", "zsh", "sh"],
-      "ecosystem_hints": ["shell", "cli"],
-      "package_hints": ["bash", "coreutils"],
-      "source_hints": ["scripts/ai", "config/service-endpoints.sh"],
+      "context_languages": [
+        "bash",
+        "shell",
+        "zsh"
+      ],
+      "capability_ids": [
+        "bash",
+        "zsh",
+        "sh"
+      ],
+      "ecosystem_hints": [
+        "shell",
+        "cli"
+      ],
+      "package_hints": [
+        "bash",
+        "coreutils"
+      ],
+      "source_hints": [
+        "scripts/ai",
+        "config/service-endpoints.sh"
+      ],
       "card_overlays": {
         "task-execution": {
           "rules": [
@@ -133,11 +229,25 @@
     {
       "id": "rust-stack",
       "match_mode": "any",
-      "context_languages": ["rust"],
-      "capability_ids": ["rustc", "cargo"],
-      "ecosystem_hints": ["rust", "cli"],
-      "package_hints": ["rustc", "cargo"],
-      "source_hints": ["Cargo.toml", "flake.nix"],
+      "context_languages": [
+        "rust"
+      ],
+      "capability_ids": [
+        "rustc",
+        "cargo"
+      ],
+      "ecosystem_hints": [
+        "rust",
+        "cli"
+      ],
+      "package_hints": [
+        "rustc",
+        "cargo"
+      ],
+      "source_hints": [
+        "Cargo.toml",
+        "flake.nix"
+      ],
       "card_overlays": {
         "feature-development": {
           "rules": [
@@ -163,11 +273,30 @@
     {
       "id": "cpp-stack",
       "match_mode": "any",
-      "context_languages": ["cpp", "c++"],
-      "capability_ids": ["clang", "clang++", "g++", "cmake", "ninja"],
-      "ecosystem_hints": ["cpp", "native-build"],
-      "package_hints": ["clang", "cmake", "ninja"],
-      "source_hints": ["CMakeLists.txt", "flake.nix"],
+      "context_languages": [
+        "cpp",
+        "c++"
+      ],
+      "capability_ids": [
+        "clang",
+        "clang++",
+        "g++",
+        "cmake",
+        "ninja"
+      ],
+      "ecosystem_hints": [
+        "cpp",
+        "native-build"
+      ],
+      "package_hints": [
+        "clang",
+        "cmake",
+        "ninja"
+      ],
+      "source_hints": [
+        "CMakeLists.txt",
+        "flake.nix"
+      ],
       "card_overlays": {
         "feature-development": {
           "rules": [
@@ -185,10 +314,21 @@
     },
     {
       "id": "external-cli",
-      "preferred_fix_layers": ["native_or_fallback_installer"],
-      "ecosystem_hints": ["os", "external-cli"],
-      "package_hints": ["nixpkgs if available", "installer fallback only if declarative path is unavailable"],
-      "source_hints": ["config/npm-packages.sh", "docs/development/SYSTEM-UPGRADE-ROADMAP.md"],
+      "preferred_fix_layers": [
+        "native_or_fallback_installer"
+      ],
+      "ecosystem_hints": [
+        "os",
+        "external-cli"
+      ],
+      "package_hints": [
+        "nixpkgs if available",
+        "installer fallback only if declarative path is unavailable"
+      ],
+      "source_hints": [
+        "config/npm-packages.sh",
+        "docs/development/SYSTEM-UPGRADE-ROADMAP.md"
+      ],
       "missing_origin": "os_or_user_environment"
     }
   ]

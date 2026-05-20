@@ -1,9 +1,13 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
-  "description": "Hardware capability matrix for AI acceleration backend promotion. SSOT for backend eligibility, fallback chains, and ROCm promotion criteria. Never hardcode backend selection in scripts — look up from this file.",
+  "description": "Hardware capability matrix for AI acceleration backend promotion. SSOT for backend eligibility, fallback chains, and ROCm promotion criteria. Never hardcode backend selection in scripts \u2014 look up from this file.",
   "last_updated": "2026-05-16",
-
   "backend_definitions": {
     "vulkan": {
       "description": "Vulkan compute via Mesa RADV (AMD) or ANV (Intel). Best-effort partial offload for APUs; full offload for discrete GPUs.",
@@ -37,7 +41,6 @@
       "fallback_to": null
     }
   },
-
   "promotion_pipeline": {
     "description": "Stages a backend must pass before it can be set as default_backend for a hardware class.",
     "stages": [
@@ -67,24 +70,37 @@
       }
     ],
     "status_transitions": {
-      "blocked":       ["blocked"],
-      "unknown":       ["experimental", "blocked"],
-      "experimental":  ["candidate", "blocked"],
-      "candidate":     ["production", "blocked"],
-      "production":    ["production", "blocked"]
+      "blocked": [
+        "blocked"
+      ],
+      "unknown": [
+        "experimental",
+        "blocked"
+      ],
+      "experimental": [
+        "candidate",
+        "blocked"
+      ],
+      "candidate": [
+        "production",
+        "blocked"
+      ],
+      "production": [
+        "production",
+        "blocked"
+      ]
     },
     "status_descriptions": {
-      "blocked":      "Definitively unsafe on this hardware class. Do not promote.",
-      "unknown":      "Not yet evaluated. No evidence for or against.",
+      "blocked": "Definitively unsafe on this hardware class. Do not promote.",
+      "unknown": "Not yet evaluated. No evidence for or against.",
       "experimental": "Stages 1-2 pass; cold_start and hang_check not yet run.",
-      "candidate":    "Stages 1-4 pass; in soak period; benchmark not yet run or threshold not met.",
-      "production":   "All 6 stages pass; safe to use as default_backend."
+      "candidate": "Stages 1-4 pass; in soak period; benchmark not yet run or threshold not met.",
+      "production": "All 6 stages pass; safe to use as default_backend."
     }
   },
-
   "hardware_classes": {
     "amd-apu-renoir": {
-      "description": "AMD Renoir APU — Ryzen 4000/5000 series (gfx902). Shared VRAM with system RAM. ThinkPad P14s Gen 2a, Ryzen 5000 APU laptops.",
+      "description": "AMD Renoir APU \u2014 Ryzen 4000/5000 series (gfx902). Shared VRAM with system RAM. ThinkPad P14s Gen 2a, Ryzen 5000 APU laptops.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "cpu_vendor": "amd",
@@ -101,10 +117,10 @@
       "max_gpu_layers": 12,
       "benchmark_win_threshold_pct": 15,
       "soak_hours": 24,
-      "notes": "Vulkan partial offload (12 layers) is the validated stable path. Full 41-layer Vulkan offload also causes ErrorDeviceLost — set --n-gpu-layers 12 explicitly."
+      "notes": "Vulkan partial offload (12 layers) is the validated stable path. Full 41-layer Vulkan offload also causes ErrorDeviceLost \u2014 set --n-gpu-layers 12 explicitly."
     },
     "amd-apu-cezanne": {
-      "description": "AMD Cezanne APU — Ryzen 5000 desktop APU (gfx90c). Radeon Vega integrated graphics.",
+      "description": "AMD Cezanne APU \u2014 Ryzen 5000 desktop APU (gfx90c). Radeon Vega integrated graphics.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "cpu_vendor": "amd",
@@ -122,7 +138,7 @@
       "soak_hours": 24
     },
     "amd-apu-rembrandt": {
-      "description": "AMD Rembrandt APU — Ryzen 6000 series (gfx1035). RDNA2 iGPU.",
+      "description": "AMD Rembrandt APU \u2014 Ryzen 6000 series (gfx1035). RDNA2 iGPU.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "cpu_vendor": "amd",
@@ -141,7 +157,7 @@
       "notes": "Rembrandt RDNA2 iGPU has partial ROCm community support via gfx1035 override. Requires validation before candidate promotion."
     },
     "amd-apu-phoenix": {
-      "description": "AMD Phoenix APU — Ryzen 7040/8040 series (gfx1103). RDNA3 iGPU with up to 12 GB dedicated VRAM on some SKUs.",
+      "description": "AMD Phoenix APU \u2014 Ryzen 7040/8040 series (gfx1103). RDNA3 iGPU with up to 12 GB dedicated VRAM on some SKUs.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "cpu_vendor": "amd",
@@ -160,7 +176,7 @@
       "notes": "Phoenix RDNA3 iGPU has growing ROCm 6.x community support via gfx1103. Higher shared VRAM budget than Renoir. Requires cold_start + hang_check before candidate promotion."
     },
     "amd-apu-hawkpoint": {
-      "description": "AMD Hawk Point APU — Ryzen 8040 series refresh (gfx1103 variant). RDNA3 iGPU.",
+      "description": "AMD Hawk Point APU \u2014 Ryzen 8040 series refresh (gfx1103 variant). RDNA3 iGPU.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "cpu_vendor": "amd",
@@ -179,12 +195,15 @@
       "notes": "Hawk Point is a Phoenix die refresh with same gfx1103 target. Treat identically to phoenix for ROCm purposes."
     },
     "amd-apu-strix": {
-      "description": "AMD Strix Point / Strix Halo APU — Ryzen AI 300 series (gfx1201/gfx1200). RDNA3.5 iGPU with up to 96 GB shared VRAM on Strix Halo.",
+      "description": "AMD Strix Point / Strix Halo APU \u2014 Ryzen AI 300 series (gfx1201/gfx1200). RDNA3.5 iGPU with up to 96 GB shared VRAM on Strix Halo.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "cpu_vendor": "amd",
         "is_mobile": true,
-        "rocm_target_prefixes": ["gfx1200", "gfx1201"]
+        "rocm_target_prefixes": [
+          "gfx1200",
+          "gfx1201"
+        ]
       },
       "default_backend": "vulkan",
       "fallback_backend": "cpu",
@@ -195,14 +214,18 @@
       "max_gpu_layers": 64,
       "benchmark_win_threshold_pct": 10,
       "soak_hours": 48,
-      "notes": "Strix/Strix Halo RDNA3.5 — very new hardware. ROCm support emerging in 6.2+. High VRAM budget on Strix Halo makes full offload plausible. Needs cold_start validation first."
+      "notes": "Strix/Strix Halo RDNA3.5 \u2014 very new hardware. ROCm support emerging in 6.2+. High VRAM budget on Strix Halo makes full offload plausible. Needs cold_start validation first."
     },
     "amd-rdna1-dgpu": {
-      "description": "AMD RDNA1 discrete GPU — RX 5000 series (gfx1010/1011/1012). Navi10/12/14.",
+      "description": "AMD RDNA1 discrete GPU \u2014 RX 5000 series (gfx1010/1011/1012). Navi10/12/14.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "is_mobile": false,
-        "rocm_target_prefixes": ["gfx1010", "gfx1011", "gfx1012"]
+        "rocm_target_prefixes": [
+          "gfx1010",
+          "gfx1011",
+          "gfx1012"
+        ]
       },
       "default_backend": "vulkan",
       "fallback_backend": "cpu",
@@ -216,11 +239,16 @@
       "notes": "RDNA1 has limited official ROCm support (ROCm 4.5+ with GFX override). Community reports mixed results. Requires cold_start + hang_check before promotion."
     },
     "amd-rdna2-dgpu": {
-      "description": "AMD RDNA2 discrete GPU — RX 6000 series (gfx1030/1031/1032/1034). Navi21/22/23/24.",
+      "description": "AMD RDNA2 discrete GPU \u2014 RX 6000 series (gfx1030/1031/1032/1034). Navi21/22/23/24.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "is_mobile": false,
-        "rocm_target_prefixes": ["gfx1030", "gfx1031", "gfx1032", "gfx1034"]
+        "rocm_target_prefixes": [
+          "gfx1030",
+          "gfx1031",
+          "gfx1032",
+          "gfx1034"
+        ]
       },
       "default_backend": "vulkan",
       "fallback_backend": "cpu",
@@ -234,11 +262,15 @@
       "notes": "RDNA2 dGPUs are in the official ROCm 5.x/6.x support matrix. Promote to production after passing all 6 stages on a specific host."
     },
     "amd-rdna3-dgpu": {
-      "description": "AMD RDNA3 discrete GPU — RX 7000 series (gfx1100/1101/1102). Navi31/32/33.",
+      "description": "AMD RDNA3 discrete GPU \u2014 RX 7000 series (gfx1100/1101/1102). Navi31/32/33.",
       "detection_hints": {
         "gpu_vendor": "amd",
         "is_mobile": false,
-        "rocm_target_prefixes": ["gfx1100", "gfx1101", "gfx1102"]
+        "rocm_target_prefixes": [
+          "gfx1100",
+          "gfx1101",
+          "gfx1102"
+        ]
       },
       "default_backend": "vulkan",
       "fallback_backend": "cpu",
@@ -252,10 +284,15 @@
       "notes": "RDNA3 supported in ROCm 5.5+. gfx1100 is the primary validated target."
     },
     "amd-cdna-instinct": {
-      "description": "AMD CDNA Instinct MI-series — gfx908/gfx90a/gfx940. Data-center compute GPUs.",
+      "description": "AMD CDNA Instinct MI-series \u2014 gfx908/gfx90a/gfx940. Data-center compute GPUs.",
       "detection_hints": {
         "gpu_vendor": "amd",
-        "rocm_target_prefixes": ["gfx908", "gfx90a", "gfx940", "gfx941"]
+        "rocm_target_prefixes": [
+          "gfx908",
+          "gfx90a",
+          "gfx940",
+          "gfx941"
+        ]
       },
       "default_backend": "rocm",
       "fallback_backend": "vulkan",
@@ -284,7 +321,7 @@
       "soak_hours": 0
     },
     "intel-integrated": {
-      "description": "Intel integrated GPU — HD/Iris/UHD/Xe. Vulkan via ANV driver.",
+      "description": "Intel integrated GPU \u2014 HD/Iris/UHD/Xe. Vulkan via ANV driver.",
       "detection_hints": {
         "gpu_vendor": "intel"
       },
@@ -314,7 +351,7 @@
       "soak_hours": 0
     },
     "apple-silicon": {
-      "description": "Apple M-series — AGX GPU. Metal backend via llama.cpp GGML Metal.",
+      "description": "Apple M-series \u2014 AGX GPU. Metal backend via llama.cpp GGML Metal.",
       "detection_hints": {
         "gpu_vendor": "apple",
         "cpu_vendor": "apple"
@@ -345,22 +382,29 @@
       "soak_hours": 0
     }
   },
-
   "rocm_compatibility_matrix": {
-    "_note": "Entries reflect AMD official support matrix as of ROCm 6.x. 'promotion_eligible: false' means this target should never be promoted to ROCm default — blocked at Stage 1.",
-
+    "_note": "Entries reflect AMD official support matrix as of ROCm 6.x. 'promotion_eligible: false' means this target should never be promoted to ROCm default \u2014 blocked at Stage 1.",
     "gfx900": {
       "family": "Vega10",
-      "devices": ["Radeon RX Vega 56/64", "Radeon Pro WX 9100", "Radeon Instinct MI25"],
-      "supported_rocm_versions": ["4.x", "5.x"],
+      "devices": [
+        "Radeon RX Vega 56/64",
+        "Radeon Pro WX 9100",
+        "Radeon Instinct MI25"
+      ],
+      "supported_rocm_versions": [
+        "4.x",
+        "5.x"
+      ],
       "validated_gfx_override": "9.0.0",
       "promotion_eligible": false,
       "last_verified": "2026-05-16",
-      "notes": "Legacy Vega10 — limited ROCm 5.x support, not in 6.x matrix. Vulkan preferred."
+      "notes": "Legacy Vega10 \u2014 limited ROCm 5.x support, not in 6.x matrix. Vulkan preferred."
     },
     "gfx902": {
       "family": "Raven APU",
-      "devices": ["Ryzen 2000/3000 series APU (Raven/Picasso)"],
+      "devices": [
+        "Ryzen 2000/3000 series APU (Raven/Picasso)"
+      ],
       "supported_rocm_versions": [],
       "validated_gfx_override": "9.0.2",
       "promotion_eligible": false,
@@ -369,7 +413,9 @@
     },
     "gfx90c": {
       "family": "Renoir/Cezanne APU",
-      "devices": ["Ryzen 4000/5000 APU (Renoir/Cezanne)"],
+      "devices": [
+        "Ryzen 4000/5000 APU (Renoir/Cezanne)"
+      ],
       "supported_rocm_versions": [],
       "validated_gfx_override": "9.0.6",
       "promotion_eligible": false,
@@ -378,8 +424,16 @@
     },
     "gfx906": {
       "family": "Vega20",
-      "devices": ["Radeon VII", "Radeon Pro VII", "Instinct MI50/MI60"],
-      "supported_rocm_versions": ["4.x", "5.x", "6.x"],
+      "devices": [
+        "Radeon VII",
+        "Radeon Pro VII",
+        "Instinct MI50/MI60"
+      ],
+      "supported_rocm_versions": [
+        "4.x",
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": "9.0.6",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -387,8 +441,14 @@
     },
     "gfx908": {
       "family": "Arcturus",
-      "devices": ["Instinct MI100"],
-      "supported_rocm_versions": ["4.x", "5.x", "6.x"],
+      "devices": [
+        "Instinct MI100"
+      ],
+      "supported_rocm_versions": [
+        "4.x",
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": null,
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -396,8 +456,13 @@
     },
     "gfx90a": {
       "family": "Aldebaran",
-      "devices": ["Instinct MI200 series (MI210, MI250, MI250X)"],
-      "supported_rocm_versions": ["5.x", "6.x"],
+      "devices": [
+        "Instinct MI200 series (MI210, MI250, MI250X)"
+      ],
+      "supported_rocm_versions": [
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": null,
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -405,8 +470,15 @@
     },
     "gfx1010": {
       "family": "Navi10 / RDNA1",
-      "devices": ["Radeon RX 5700 XT", "Radeon RX 5700", "Radeon RX 5600 XT"],
-      "supported_rocm_versions": ["4.5", "5.x"],
+      "devices": [
+        "Radeon RX 5700 XT",
+        "Radeon RX 5700",
+        "Radeon RX 5600 XT"
+      ],
+      "supported_rocm_versions": [
+        "4.5",
+        "5.x"
+      ],
       "validated_gfx_override": "10.1.0",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -414,8 +486,15 @@
     },
     "gfx1030": {
       "family": "Navi21 / RDNA2",
-      "devices": ["Radeon RX 6800 XT", "Radeon RX 6900 XT", "Radeon RX 6800"],
-      "supported_rocm_versions": ["5.x", "6.x"],
+      "devices": [
+        "Radeon RX 6800 XT",
+        "Radeon RX 6900 XT",
+        "Radeon RX 6800"
+      ],
+      "supported_rocm_versions": [
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": null,
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -423,34 +502,54 @@
     },
     "gfx1031": {
       "family": "Navi22 / RDNA2",
-      "devices": ["Radeon RX 6700 XT", "Radeon RX 6700"],
-      "supported_rocm_versions": ["5.x", "6.x"],
+      "devices": [
+        "Radeon RX 6700 XT",
+        "Radeon RX 6700"
+      ],
+      "supported_rocm_versions": [
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": "10.3.1",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
-      "notes": "RDNA2 — supported with GFX override in most cases."
+      "notes": "RDNA2 \u2014 supported with GFX override in most cases."
     },
     "gfx1032": {
       "family": "Navi23 / RDNA2",
-      "devices": ["Radeon RX 6600 XT", "Radeon RX 6600"],
-      "supported_rocm_versions": ["5.x", "6.x"],
+      "devices": [
+        "Radeon RX 6600 XT",
+        "Radeon RX 6600"
+      ],
+      "supported_rocm_versions": [
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": "10.3.2",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
-      "notes": "RDNA2 mainstream — supported with GFX override."
+      "notes": "RDNA2 mainstream \u2014 supported with GFX override."
     },
     "gfx1034": {
       "family": "Navi24 / RDNA2",
-      "devices": ["Radeon RX 6500 XT", "Radeon RX 6400"],
-      "supported_rocm_versions": ["5.x", "6.x"],
+      "devices": [
+        "Radeon RX 6500 XT",
+        "Radeon RX 6400"
+      ],
+      "supported_rocm_versions": [
+        "5.x",
+        "6.x"
+      ],
       "validated_gfx_override": "10.3.4",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
-      "notes": "RDNA2 budget — limited VRAM (4 GB). Promotion requires benchmark confirming headroom."
+      "notes": "RDNA2 budget \u2014 limited VRAM (4 GB). Promotion requires benchmark confirming headroom."
     },
     "gfx1035": {
       "family": "Rembrandt APU / RDNA2 iGPU",
-      "devices": ["Ryzen 6000 series APU (Rembrandt)"],
+      "devices": [
+        "Ryzen 6000 series APU (Rembrandt)"
+      ],
       "supported_rocm_versions": [],
       "validated_gfx_override": "10.3.5",
       "promotion_eligible": false,
@@ -459,7 +558,9 @@
     },
     "gfx1036": {
       "family": "Raphael APU / RDNA2 iGPU",
-      "devices": ["Ryzen 7000 series desktop APU (Raphael)"],
+      "devices": [
+        "Ryzen 7000 series desktop APU (Raphael)"
+      ],
       "supported_rocm_versions": [],
       "validated_gfx_override": "10.3.6",
       "promotion_eligible": false,
@@ -468,8 +569,13 @@
     },
     "gfx1103": {
       "family": "Phoenix / Hawk Point APU / RDNA3 iGPU",
-      "devices": ["Ryzen 7040 series (Phoenix)", "Ryzen 8040 series (Hawk Point)"],
-      "supported_rocm_versions": ["6.x"],
+      "devices": [
+        "Ryzen 7040 series (Phoenix)",
+        "Ryzen 8040 series (Hawk Point)"
+      ],
+      "supported_rocm_versions": [
+        "6.x"
+      ],
       "validated_gfx_override": "11.0.3",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -477,8 +583,13 @@
     },
     "gfx1200": {
       "family": "Strix Point APU / RDNA3.5 iGPU",
-      "devices": ["Ryzen AI 9 365", "Ryzen AI 9 HX 370"],
-      "supported_rocm_versions": ["6.2+"],
+      "devices": [
+        "Ryzen AI 9 365",
+        "Ryzen AI 9 HX 370"
+      ],
+      "supported_rocm_versions": [
+        "6.2+"
+      ],
       "validated_gfx_override": "12.0.0",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -486,17 +597,29 @@
     },
     "gfx1201": {
       "family": "Strix Halo APU / RDNA3.5 iGPU",
-      "devices": ["Ryzen AI MAX 395 (Strix Halo)", "Ryzen AI MAX+ 395"],
-      "supported_rocm_versions": ["6.2+"],
+      "devices": [
+        "Ryzen AI MAX 395 (Strix Halo)",
+        "Ryzen AI MAX+ 395"
+      ],
+      "supported_rocm_versions": [
+        "6.2+"
+      ],
       "validated_gfx_override": "12.0.1",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
-      "notes": "Strix Halo with up to 96 GB shared VRAM — full model offload plausible. ROCm 6.2+ required. High-value target for future promotion."
+      "notes": "Strix Halo with up to 96 GB shared VRAM \u2014 full model offload plausible. ROCm 6.2+ required. High-value target for future promotion."
     },
     "gfx1100": {
       "family": "Navi31 / RDNA3",
-      "devices": ["Radeon RX 7900 XTX", "Radeon RX 7900 XT", "Radeon RX 7900 GRE"],
-      "supported_rocm_versions": ["5.5", "6.x"],
+      "devices": [
+        "Radeon RX 7900 XTX",
+        "Radeon RX 7900 XT",
+        "Radeon RX 7900 GRE"
+      ],
+      "supported_rocm_versions": [
+        "5.5",
+        "6.x"
+      ],
       "validated_gfx_override": null,
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -504,8 +627,13 @@
     },
     "gfx1101": {
       "family": "Navi32 / RDNA3",
-      "devices": ["Radeon RX 7800 XT", "Radeon RX 7700 XT"],
-      "supported_rocm_versions": ["6.x"],
+      "devices": [
+        "Radeon RX 7800 XT",
+        "Radeon RX 7700 XT"
+      ],
+      "supported_rocm_versions": [
+        "6.x"
+      ],
       "validated_gfx_override": "11.0.1",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
@@ -513,15 +641,19 @@
     },
     "gfx1102": {
       "family": "Navi33 / RDNA3",
-      "devices": ["Radeon RX 7600", "Radeon RX 7600 XT"],
-      "supported_rocm_versions": ["6.x"],
+      "devices": [
+        "Radeon RX 7600",
+        "Radeon RX 7600 XT"
+      ],
+      "supported_rocm_versions": [
+        "6.x"
+      ],
       "validated_gfx_override": "11.0.2",
       "promotion_eligible": true,
       "last_verified": "2026-05-16",
       "notes": "RDNA3 budget. ROCm 6.x with GFX override."
     }
   },
-
   "class_detection_order": [
     "Check detection_hints.rocm_target_prefix against active rocm_gpu_target",
     "Then check detection_hints.nixos_hardware_module_prefix against nixosHardwareModule",

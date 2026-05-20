@@ -1,4 +1,9 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": 1,
   "default": {
     "allow": true,
@@ -9,57 +14,128 @@
   },
   "profiles": {
     "continue-local": {
-      "allow_tools": ["hints", "query", "workflow", "review", "memory"],
-      "deny_tools": ["reload-model"],
+      "allow_tools": [
+        "hints",
+        "query",
+        "workflow",
+        "review",
+        "memory"
+      ],
+      "deny_tools": [
+        "reload-model"
+      ],
       "reasoning_mode": "hybrid",
       "max_external_calls": 1
     },
     "embedded-assist": {
-      "allow_tools": ["hints", "memory", "query", "workflow"],
-      "deny_tools": ["reload-model", "proposals/apply"],
+      "allow_tools": [
+        "hints",
+        "memory",
+        "query",
+        "workflow"
+      ],
+      "deny_tools": [
+        "reload-model",
+        "proposals/apply"
+      ],
       "reasoning_mode": "semantic-first",
       "max_external_calls": 0
     },
     "remote-default": {
-      "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree"],
+      "allow_tools": [
+        "hints",
+        "query",
+        "workflow",
+        "review",
+        "memory",
+        "tree"
+      ],
       "deny_tools": [],
       "reasoning_mode": "tree-hybrid",
       "max_external_calls": 4
     },
     "remote-reasoning": {
-      "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree", "domain"],
-      "deny_tools": ["reload-model"],
+      "allow_tools": [
+        "hints",
+        "query",
+        "workflow",
+        "review",
+        "memory",
+        "tree",
+        "domain"
+      ],
+      "deny_tools": [
+        "reload-model"
+      ],
       "reasoning_mode": "tree-hybrid",
       "max_external_calls": 12,
       "notes": "High-complexity reasoning profile (Claude). Priority for architecture and planning."
     },
     "agent-intake": {
-      "allow_tools": ["hints", "query", "workflow", "review", "memory", "tree", "lifecycle", "agent", "registry", "domain"],
-      "deny_tools": ["reload-model"],
+      "allow_tools": [
+        "hints",
+        "query",
+        "workflow",
+        "review",
+        "memory",
+        "tree",
+        "lifecycle",
+        "agent",
+        "registry",
+        "domain"
+      ],
+      "deny_tools": [
+        "reload-model"
+      ],
       "reasoning_mode": "tree-hybrid",
       "max_external_calls": 6,
-      "notes": "Full lifecycle gateway profile — all orchestration tools allowed. Used by agent_intake entry point."
+      "notes": "Full lifecycle gateway profile \u2014 all orchestration tools allowed. Used by agent_intake entry point."
     },
     "lifecycle-delegate": {
-      "allow_tools": ["hints", "query", "workflow", "review", "memory", "lifecycle"],
-      "deny_tools": ["reload-model", "proposals/apply"],
+      "allow_tools": [
+        "hints",
+        "query",
+        "workflow",
+        "review",
+        "memory",
+        "lifecycle"
+      ],
+      "deny_tools": [
+        "reload-model",
+        "proposals/apply"
+      ],
       "reasoning_mode": "hybrid",
       "max_external_calls": 4,
-      "notes": "Sub-agent delegation profile — validate + delegate but no model management. Context is pruned before injection."
+      "notes": "Sub-agent delegation profile \u2014 validate + delegate but no model management. Context is pruned before injection."
     }
   },
   "task_overrides": [
     {
-      "contains": ["boot", "shutdown", "systemd"],
+      "contains": [
+        "boot",
+        "shutdown",
+        "systemd"
+      ],
       "reasoning_mode": "tree-hybrid",
       "max_retrieval_results": 12,
-      "require_tools": ["hints", "tree"]
+      "require_tools": [
+        "hints",
+        "tree"
+      ]
     },
     {
-      "contains": ["security", "secret", "token", "key"],
+      "contains": [
+        "security",
+        "secret",
+        "token",
+        "key"
+      ],
       "reasoning_mode": "lexical-first",
       "max_external_calls": 0,
-      "deny_tools": ["reload-model", "proposals/apply"]
+      "deny_tools": [
+        "reload-model",
+        "proposals/apply"
+      ]
     }
   ]
 }

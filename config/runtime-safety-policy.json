@@ -1,42 +1,107 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": "1.1",
   "_comment": "Phase 39: meaningful mode differentiation + per-mode tool enforcement",
   "modes": {
     "plan-readonly": {
-      "allowed_risk_classes": ["safe"],
-      "requires_approval": ["review-required"],
-      "blocked": ["blocked", "mutating", "destructive"],
+      "allowed_risk_classes": [
+        "safe"
+      ],
+      "requires_approval": [
+        "review-required"
+      ],
+      "blocked": [
+        "blocked",
+        "mutating",
+        "destructive"
+      ],
       "tool_blocklist": [
-        "write_file", "edit_file", "create_file", "delete_file", "move_file",
-        "run_command", "bash", "shell", "execute", "apply_patch",
-        "git_commit", "git_push", "git_reset", "git_checkout",
-        "db_write", "db_delete", "db_update",
-        "http_post", "http_put", "http_delete", "http_patch"
+        "write_file",
+        "edit_file",
+        "create_file",
+        "delete_file",
+        "move_file",
+        "run_command",
+        "bash",
+        "shell",
+        "execute",
+        "apply_patch",
+        "git_commit",
+        "git_push",
+        "git_reset",
+        "git_checkout",
+        "db_write",
+        "db_delete",
+        "db_update",
+        "http_post",
+        "http_put",
+        "http_delete",
+        "http_patch"
       ],
       "tool_allowlist_mode": "blocklist",
       "description": "Read-only planning mode. Mutating, destructive, and write tools are blocked. Only safe risk-class events allowed."
     },
     "execute-mutating": {
-      "allowed_risk_classes": ["safe", "review-required"],
-      "requires_approval": ["destructive", "high-risk"],
-      "blocked": ["blocked"],
+      "allowed_risk_classes": [
+        "safe",
+        "review-required"
+      ],
+      "requires_approval": [
+        "destructive",
+        "high-risk"
+      ],
+      "blocked": [
+        "blocked"
+      ],
       "tool_blocklist": [
-        "delete_file", "git_push", "git_reset",
-        "db_delete", "drop_table", "truncate_table"
+        "delete_file",
+        "git_push",
+        "git_reset",
+        "db_delete",
+        "drop_table",
+        "truncate_table"
       ],
       "tool_allowlist_mode": "blocklist",
       "description": "Guarded execution mode. Safe and review-required risk classes allowed; destructive/high-risk require explicit approval. Irreversible operations (delete, push, reset) remain blocked."
     },
     "strict": {
-      "allowed_risk_classes": ["safe"],
+      "allowed_risk_classes": [
+        "safe"
+      ],
       "requires_approval": [],
-      "blocked": ["blocked", "mutating", "destructive", "review-required", "high-risk"],
+      "blocked": [
+        "blocked",
+        "mutating",
+        "destructive",
+        "review-required",
+        "high-risk"
+      ],
       "tool_blocklist": [
-        "write_file", "edit_file", "create_file", "delete_file", "move_file",
-        "run_command", "bash", "shell", "execute", "apply_patch",
-        "git_commit", "git_push", "git_reset", "git_checkout",
-        "db_write", "db_delete", "db_update",
-        "http_post", "http_put", "http_delete", "http_patch"
+        "write_file",
+        "edit_file",
+        "create_file",
+        "delete_file",
+        "move_file",
+        "run_command",
+        "bash",
+        "shell",
+        "execute",
+        "apply_patch",
+        "git_commit",
+        "git_push",
+        "git_reset",
+        "git_checkout",
+        "db_write",
+        "db_delete",
+        "db_update",
+        "http_post",
+        "http_put",
+        "http_delete",
+        "http_patch"
       ],
       "tool_allowlist_mode": "blocklist",
       "description": "Strict audit mode. Only safe risk-class events; no approval path for anything beyond safe."
