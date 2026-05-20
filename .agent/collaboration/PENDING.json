@@ -1,23 +1,19 @@
 {
   "agent": "Codex",
   "files": [
-    "config/schemas/maeah/model-entry.schema.json",
-    "config/schemas/maeah/lifecycle-event.schema.json",
-    "docs/api/maeah-openapi.yaml",
-    "scripts/testing/test-maeah-contract-artifacts.py",
+    "scripts/testing/test-maeah-model-registry-schema.py",
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "intent": "Publish machine-readable MAEAH contract artifacts so implementation contracts are not prose-only: ModelEntry JSON Schema, LifecycleEvent JSON Schema, and OpenAPI 3.1 API surface sketch.",
-  "next_step": "Generate or enforce runtime model/API types from these contract artifacts; expand OpenAPI to cover traces, hardware state, and scheduler queues as implementations stabilize.",
+  "intent": "Add a static regression gate that validates model_registry built-in/default entries against the MAEAH ModelEntry contract subset.",
+  "next_step": "Wire this test into focused CI or tier0 once MAEAH contract checks graduate from repo-only smoke to mandatory gate.",
   "status": "repo_static_validation_complete",
-  "task": "MAEAH AM-C3 versioned schema and OpenAPI contract artifacts",
-  "timestamp": "2026-05-20T02:54:38.727059+00:00",
+  "task": "MAEAH ModelEntry schema implementation alignment gate",
+  "timestamp": "2026-05-20T02:55:29.592749+00:00",
   "validation": [
-    "JSON schema syntax PASS",
-    "OpenAPI YAML syntax PASS",
+    "python3 -m py_compile scripts/testing/test-maeah-model-registry-schema.py PASS",
     "python3 scripts/testing/test-maeah-contract-artifacts.py PASS",
-    "python3 -m py_compile scripts/testing/test-maeah-contract-artifacts.py PASS",
+    "python3 scripts/testing/test-maeah-model-registry-schema.py PASS",
     "git diff --check PASS"
   ]
 }

@@ -380,3 +380,26 @@ Expected: `/v1/responses` returns Responses-shaped JSON once switchboard/llama a
 ### Next recommended contract work
 
 Use these schemas as the source for generated/runtime type checks. Expand OpenAPI once hardware state, scheduler queue detail, trace browsing, and `/v1/responses` native behavior stabilize.
+
+---
+
+## MAEAH ModelEntry schema implementation alignment gate (Codex, 2026-05-20)
+
+### Completed
+
+- Added `scripts/testing/test-maeah-model-registry-schema.py`.
+- The test checks that:
+  - `ModelState` enum exactly matches the `model-entry.schema.json` lifecycle state enum.
+  - every built-in catalog entry normalized through `_default_entry()` has required schema fields.
+  - SLA tier, version, GGUF filename, audit log, and key llama args are structurally valid.
+
+### Validation
+
+- `python3 -m py_compile scripts/testing/test-maeah-model-registry-schema.py` — PASS
+- `python3 scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `python3 scripts/testing/test-maeah-model-registry-schema.py` — PASS (`7` built-ins checked)
+- `git diff --check` — PASS
+
+### Next recommended gate work
+
+Promote MAEAH contract checks into focused CI once the local stack is stable and the team is ready for these to become mandatory rather than repo-only parity checks.
