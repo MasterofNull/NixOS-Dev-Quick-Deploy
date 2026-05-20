@@ -21,6 +21,7 @@ Usage:
   edgeai models promote <model-id>
   edgeai models rollback <model-id>
   edgeai models reset <model-id>
+  edgeai chat [--model MODEL] [--json] <prompt...>
   edgeai a2a card validate [--json]
   edgeai mcp tools list [--json]
   edgeai traces tail [--last N] [--json]
@@ -114,6 +115,36 @@ cmd_models() {
   esac
 }
 
+cmd_chat() {
+  local model="${EDGEAI_DEFAULT_MODEL:-local}" json=0
+  local -a prompt_parts=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --model) model="${2:-}"; shift 2 ;;
+      --json) json=1; shift ;;
+      --) shift; prompt_parts+=("$@"); break ;;
+      *) prompt_parts+=("$1"); shift ;;
+    esac
+  done
+  local prompt="${prompt_parts[*]:-}"
+  [[ -n "$prompt" ]] || { echo "prompt required" >&2; return 2; }
+  local body
+  body="$(python3 - "$model" "$prompt" <<'PY'
+import json, sys
+print(json.dumps({"model": sys.argv[1], "input": sys.argv[2]}))
+PY
+)"
+  local out
+  if ! out="$(curl_json POST "$COORDINATOR_URL/v1/responses" "$body" 2>/dev/null)"; then
+    _emit_error_json chat "responses endpoint unavailable at $COORDINATOR_URL"; return 1
+  fi
+  if [[ "$json" -eq 1 ]]; then
+    printf '%s\n' "$out"
+  else
+    printf '%s\n' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("output_text") or json.dumps(d, indent=2))'
+  fi
+}
+
 cmd_a2a() {
   [[ "${1:-}" == "card" && "${2:-}" == "validate" ]] || { echo "usage: edgeai a2a card validate [--json]" >&2; return 2; }
   local json=0; [[ "${3:-}" == "--json" ]] && json=1
@@ -175,6 +206,7 @@ main() {
     -h|--help|help|"") usage ;;
     doctor) shift; cmd_doctor "$@" ;;
     models) shift; cmd_models "$@" ;;
+    chat) shift; cmd_chat "$@" ;;
     a2a) shift; cmd_a2a "$@" ;;
     mcp) shift; cmd_mcp "$@" ;;
     traces) shift; cmd_traces "$@" ;;

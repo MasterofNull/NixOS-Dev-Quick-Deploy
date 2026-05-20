@@ -442,3 +442,30 @@ edgeai traces tail --last 1 --json
 ```
 
 Next CLI expansion should add `edgeai chat` and richer model mutation UX once live APIs are stable.
+
+---
+
+## MAEAH `edgeai chat` command (Codex, 2026-05-20)
+
+### Completed
+
+- Extended `scripts/ai/edgeai` with:
+  - `edgeai chat [--model MODEL] [--json] <prompt...>`
+- The command calls normalized `POST /v1/responses` and prints `output_text` by default.
+- Offline behavior remains structured JSON error output for scriptability while llama/local-agent are down.
+- Updated `scripts/testing/test-edgeai-cli-contract.sh` to cover help text and offline chat JSON behavior.
+
+### Validation
+
+- `bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `git diff --check` — PASS
+
+### Deferred live validation
+
+When services recover:
+
+```bash
+edgeai chat --json "Say pong"
+edgeai chat --model local "Say pong"
+```
