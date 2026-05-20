@@ -1161,6 +1161,7 @@ in {
                 (lib.escapeShellArg "AI_SEMANTIC_CACHE_WARM_QUERIES=${lib.concatStringsSep "|" ai.aiHarness.runtime.cachePrewarm.startupQueries}")
                 "RUNTIME_SAFETY_POLICY_FILE=${runtimeSafetyPolicyJson}"
                 "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
+                "AI_ROUTING_POLICY_FILE=${repoSource}/config/routing-policy.yaml"
                 "WORKFLOW_BLUEPRINTS_FILE=${repoSource}/config/workflow-blueprints.json"
                 "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
                 "PARITY_SCORECARD_FILE=${parityScorecardJson}"

@@ -46,12 +46,25 @@ REDIS_PORT = _parse_port("REDIS_PORT", 6379)
 RALPH_PORT = _parse_port("RALPH_PORT", 8004)
 AIDER_WRAPPER_PORT = _parse_port("AI_AIDER_WRAPPER_PORT", 8090)
 
-# Full service URLs (overridable)
+# Full service URLs (overridable) — canonical names per config/env-contract.yaml
 AIDB_URL = os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:{AIDB_PORT}")
-HYBRID_URL = os.getenv("HYBRID_URL", f"http://{SERVICE_HOST}:{HYBRID_COORDINATOR_PORT}")
+HYBRID_COORDINATOR_URL = os.getenv(
+    "HYBRID_COORDINATOR_URL",
+    os.getenv("HYBRID_URL", f"http://{SERVICE_HOST}:{HYBRID_COORDINATOR_PORT}"),
+)
+HYBRID_URL = HYBRID_COORDINATOR_URL  # deprecated alias — sunset 2026-08; use HYBRID_COORDINATOR_URL
 QDRANT_URL = os.getenv("QDRANT_URL", f"http://{SERVICE_HOST}:{QDRANT_PORT}")
-LLAMA_URL = os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:{LLAMA_CPP_PORT}")
-EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", f"http://{SERVICE_HOST}:{EMBEDDINGS_PORT}")
+LLAMA_CPP_BASE_URL = os.getenv(
+    "LLAMA_CPP_BASE_URL",
+    os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:{LLAMA_CPP_PORT}"),
+)
+LLAMA_URL = LLAMA_CPP_BASE_URL  # deprecated alias — sunset 2026-08; use LLAMA_CPP_BASE_URL
+EMBED_BASE_URL = os.getenv(
+    "EMBED_BASE_URL",
+    os.getenv("EMBEDDINGS_URL", os.getenv("LLAMA_EMBED_URL", f"http://{SERVICE_HOST}:{EMBEDDINGS_PORT}")),
+)
+EMBEDDINGS_URL = EMBED_BASE_URL  # deprecated alias — sunset 2026-08; use EMBED_BASE_URL
+LLAMA_EMBED_URL = EMBED_BASE_URL  # deprecated alias — sunset 2026-08; use EMBED_BASE_URL
 SWITCHBOARD_URL = os.getenv("SWITCHBOARD_URL", f"http://{SERVICE_HOST}:{SWITCHBOARD_PORT}")
 OPEN_WEBUI_URL = os.getenv("OPEN_WEBUI_URL", f"http://{SERVICE_HOST}:{OPEN_WEBUI_PORT}")
 GRAFANA_URL = os.getenv("GRAFANA_URL", f"http://{SERVICE_HOST}:{GRAFANA_PORT}")

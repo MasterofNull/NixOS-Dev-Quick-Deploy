@@ -74,10 +74,10 @@ _EDGES = [
 ]
 
 _SERVICE_URL_MAP = {
-    "llama-cpp":          service_endpoints.LLAMA_URL,
-    "llama-embed":        getattr(service_endpoints, "LLAMA_EMBED_URL", f"http://127.0.0.1:8081"),
+    "llama-cpp":          service_endpoints.LLAMA_CPP_BASE_URL,
+    "llama-embed":        service_endpoints.EMBED_BASE_URL,
     "aidb":               service_endpoints.AIDB_URL,
-    "hybrid-coordinator": service_endpoints.HYBRID_URL,
+    "hybrid-coordinator": service_endpoints.HYBRID_COORDINATOR_URL,
     "ralph-wiggum":       service_endpoints.RALPH_URL,
     "switchboard":        service_endpoints.SWITCHBOARD_URL,
     "dashboard":          f"http://127.0.0.1:{os.environ.get('DASHBOARD_API_PORT', '8889')}",

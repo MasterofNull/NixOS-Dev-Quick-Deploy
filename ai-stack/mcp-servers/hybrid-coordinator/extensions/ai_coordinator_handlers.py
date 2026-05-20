@@ -126,6 +126,62 @@ from skill_usage_tracker import (
 logger = logging.getLogger("hybrid-coordinator")
 
 # ---------------------------------------------------------------------------
+# Routing policy — loaded from AI_ROUTING_POLICY_FILE or inline defaults
+# ---------------------------------------------------------------------------
+
+def _load_routing_policy() -> dict:
+    """Load routing policy from AI_ROUTING_POLICY_FILE (YAML). Falls back to defaults."""
+    defaults = {
+        "auto_prefer_local": {"max_timeout_s": 10.0, "default_prefer_local": False},
+        "delegate": {"default_timeout_s": 240, "slack_s": 30},
+        "slot_busy": {"advance_profile": "embedded-assist"},
+        "local_profiles": {
+            "primary": ["default", "continue-local", "embedded-assist", "local-tool-calling"],
+            "extended": ["local-agent", "embedding-local", "coordinator-internal"],
+        },
+        "remote_profiles": {
+            "primary": [
+                "remote-default", "remote-gemini", "remote-free",
+                "remote-coding", "remote-reasoning", "remote-tool-calling",
+            ],
+        },
+    }
+    policy_file = os.environ.get("AI_ROUTING_POLICY_FILE", "").strip()
+    if not policy_file:
+        return defaults
+    try:
+        import yaml
+        with open(policy_file, "r", encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        if isinstance(doc, dict):
+            # Deep merge: policy_file values override defaults
+            for section, value in doc.items():
+                if section.startswith("_"):
+                    continue
+                if section in defaults and isinstance(defaults[section], dict) and isinstance(value, dict):
+                    defaults[section].update(value)
+                else:
+                    defaults[section] = value
+    except (OSError, Exception) as exc:
+        logger.warning("routing policy file load failed (%s); using defaults", exc)
+    return defaults
+
+
+_ROUTING_POLICY = _load_routing_policy()
+_AUTO_PREFER_LOCAL_MAX_TIMEOUT_S: float = float(
+    _ROUTING_POLICY.get("auto_prefer_local", {}).get("max_timeout_s", 10.0)
+)
+_DEFAULT_PREFER_LOCAL: bool = bool(
+    _ROUTING_POLICY.get("auto_prefer_local", {}).get("default_prefer_local", False)
+)
+_DELEGATE_DEFAULT_TIMEOUT_S: float = float(
+    _ROUTING_POLICY.get("delegate", {}).get("default_timeout_s", 240)
+)
+_DELEGATE_SLACK_S: float = float(
+    _ROUTING_POLICY.get("delegate", {}).get("slack_s", 30)
+)
+
+# ---------------------------------------------------------------------------
 # Module-level state (promoted / moved from http_server.py)
 # ---------------------------------------------------------------------------
 
@@ -713,12 +769,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         requested_profile = str(data.get("profile") or "").strip().lower()
         if requested_profile:
             requested_profile = _ai_coordinator_infer_profile(task, requested_profile=requested_profile)
-        timeout_s = float(data.get("timeout_s") or float(os.getenv("AI_DELEGATE_TIMEOUT_S", "240")))  # Phase 12.1: increased from 180 for llama.cpp 90-120s inference
-        # Phase 14.2: default prefer_local=False — remote free-tier agents are ~10x faster
-        # than local llama.cpp (90-120s). Local is only used when explicitly requested.
-        prefer_local = bool(data.get("prefer_local", False))
+        timeout_s = float(data.get("timeout_s") or float(os.getenv("AI_DELEGATE_TIMEOUT_S", str(_DELEGATE_DEFAULT_TIMEOUT_S))))
+        # prefer_local default and auto-prefer threshold come from routing-policy.yaml
+        prefer_local = bool(data.get("prefer_local", _DEFAULT_PREFER_LOCAL))
         tools_present = isinstance(data.get("tools"), list) and len(data.get("tools") or []) > 0
-        auto_prefer_local = not requested_profile and not tools_present and timeout_s <= 10.0
+        auto_prefer_local = not requested_profile and not tools_present and timeout_s <= _AUTO_PREFER_LOCAL_MAX_TIMEOUT_S
         routing_prefer_local = prefer_local or auto_prefer_local
 
         # Phase 14.2: Support legacy agent_type field by mapping to profile
@@ -956,7 +1011,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             messages, prompt_optimization = _optimize_delegated_messages(messages, selected_profile)
             payload["messages"] = messages
 
-        delegate_timeout_slack_s = float(os.getenv("AI_DELEGATE_TIMEOUT_SLACK_S", "30"))
+        delegate_timeout_slack_s = float(os.getenv("AI_DELEGATE_TIMEOUT_SLACK_S", str(_DELEGATE_SLACK_S)))
         local_agent_timeout_s = max(1.0, timeout_s - min(delegate_timeout_slack_s, max(1.0, timeout_s * 0.125)))
         finalization_applied = False
         finalization_status_code = None
