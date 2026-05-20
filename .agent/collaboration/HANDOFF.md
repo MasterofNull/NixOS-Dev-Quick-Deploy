@@ -493,3 +493,38 @@ These keep the repo-only MAEAH parity checks attached to the files they protect 
 - `python3 scripts/testing/test-maeah-model-registry-schema.py` — PASS
 - `scripts/testing/test-edgeai-cli-contract.sh` — PASS
 - `git diff --check` — PASS
+
+
+---
+
+## MAEAH `edgeai models add/delete` CLI slice (Codex, 2026-05-20)
+
+### Completed
+
+- Extended `scripts/ai/edgeai` with user-defined model catalog operations:
+  - `edgeai models add --id ID --name NAME --repo REPO --file FILE [options]`
+  - `edgeai models add --from-json PATH`
+  - `edgeai models delete <model-id>`
+- Normalized offline mutation behavior for model lifecycle commands so failed dashboard calls emit JSON error envelopes instead of raw curl output.
+- Updated `scripts/testing/test-edgeai-cli-contract.sh` to cover help text and offline JSON behavior for add/delete/download.
+
+### Validation
+
+- `bash -n scripts/ai/edgeai scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `scripts/testing/test-edgeai-cli-contract.sh` — PASS
+- `python3 scripts/testing/test-maeah-api-surface-contract.py` — PASS
+- `python3 scripts/testing/test-maeah-contract-artifacts.py` — PASS
+- `python3 scripts/testing/test-maeah-model-registry-schema.py` — PASS
+- `bash scripts/governance/check-script-header-standards.sh --all` — PASS
+- `git diff --check` — PASS
+
+### Deferred live validation
+
+Local llama/local-agent services were reported down, so no live dashboard/coordinator calls were executed. When services recover, validate with a disposable user model:
+
+```bash
+edgeai models add --id local-smoke --name "Local Smoke" --repo org/repo --file model.gguf
+edgeai models delete local-smoke
+edgeai doctor --json
+edgeai chat --json "Say pong"
+```
