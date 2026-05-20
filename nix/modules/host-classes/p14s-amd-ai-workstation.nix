@@ -28,6 +28,9 @@ in
 
       llamaCpp = {
         activeModel = lib.mkDefault "gemma4-e4b";
+        # Mobile 27GB RAM target: leave memory reclaimable so the editor and
+        # desktop are not OOM-killed when the dashboard or QA tooling runs.
+        ctxSize = lib.mkDefault 8192;
         extraArgs = lib.mkDefault [
           "--timeout" "600"
           "--parallel" "1"
@@ -36,7 +39,6 @@ in
           "--threads" "8"
           "--threads-batch" "8"
           "--flash-attn" "on"
-          "--mlock"
         ];
       };
 
@@ -44,7 +46,7 @@ in
         enable = lib.mkDefault true;
         activeModel = lib.mkDefault "bge-m3";
         extraArgs = lib.mkDefault [
-          "--threads" "8"
+          "--threads" "4"
           "--batch-size" "2048"
           "--flash-attn" "on"
         ];

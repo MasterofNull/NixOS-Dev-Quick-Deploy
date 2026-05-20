@@ -25,6 +25,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 async def exercise_shared_refresh(insights_service) -> None:
     service = insights_service.AIInsightsService()
+    service._inline_refresh_enabled = True  # test the subprocess path explicitly
     service._cache = None
     service._cache_timestamp = None
     calls = {"n": 0}
@@ -90,6 +91,7 @@ async def exercise_stale_fallback(insights_service) -> None:
 
 async def exercise_expired_cache_still_falls_back(insights_service) -> None:
     service = insights_service.AIInsightsService()
+    service._inline_refresh_enabled = True  # test the subprocess fallback path explicitly
     service._cache = {"generated_at": "2026-04-01T10:58:00Z", "tool_performance": {}, "stale": "old"}
     service._cache_timestamp = insights_service.datetime.now(insights_service.timezone.utc) - timedelta(hours=2)
 

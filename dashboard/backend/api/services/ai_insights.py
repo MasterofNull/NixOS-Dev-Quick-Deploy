@@ -114,6 +114,7 @@ class AIInsightsService:
         self._cache: Optional[Dict[str, Any]] = None
         self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl_seconds = 300  # 5 minute cache — aq-report takes 120-180s, re-launching every 60s causes storm
+        self._inline_refresh_enabled = os.getenv("DASHBOARD_AQ_REPORT_INLINE_REFRESH", "0").strip().lower() in {"1", "true", "yes", "on"}
         self._report_lock = asyncio.Lock()
         self._report_task: Optional[asyncio.Task[Dict[str, Any]]] = None
         self._report_process: Optional[asyncio.subprocess.Process] = None
@@ -131,6 +132,18 @@ class AIInsightsService:
         """
         if self._is_cache_valid():
             return self._cache
+
+        # Dashboard routes are frequently polled. On mobile/local-model hosts,
+        # spawning aq-report from request handlers competes with llama.cpp,
+        # AIDB, Qdrant, and the editor, and can trigger OOM pressure. Treat
+        # aq-report as a scheduled/background artifact by default; operators can
+        # explicitly re-enable inline refresh with DASHBOARD_AQ_REPORT_INLINE_REFRESH=1.
+        if not self._inline_refresh_enabled:
+            persisted = self._load_persisted_report()
+            if persisted is not None:
+                self._update_cache(persisted, timestamp=datetime.now(timezone.utc), persist=False)
+                return persisted
+            return {}
 
         try:
             task = await self._get_or_start_report_task()
