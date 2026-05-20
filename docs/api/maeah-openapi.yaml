@@ -93,9 +93,49 @@ paths:
       description: "Mutating admin operation; requires X-Dashboard-Internal: 1 or X-API-Key."
       tags: [admin, models]
       security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserModelCreateRequest"
       responses:
-        "200": { description: "Model added" }
+        "200":
+          description: "Model added"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, model]
+                properties:
+                  status: { const: added }
+                  model:
+                    $ref: "#/components/schemas/ModelEntry"
         "403": { description: "Unauthorized" }
+        "409": { description: "Duplicate or invalid model definition" }
+  /admin/v1/models/{model_id}:
+    delete:
+      operationId: deleteAdminModel
+      summary: "Delete user-defined model"
+      description: "Deletes user-defined, non-active model catalog entries only. Built-in and active models are protected."
+      tags: [admin, models]
+      security: [{ ApiKeyAuth: [] }, { DashboardInternal: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ModelId"
+      responses:
+        "200":
+          description: "Model deleted"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, model_id]
+                properties:
+                  status: { const: deleted }
+                  model_id: { type: string }
+        "403": { description: "Unauthorized" }
+        "404": { description: "Model not found" }
+        "409": { description: "Built-in or active model cannot be deleted" }
   /admin/v1/models/{model_id}/download:
     post:
       operationId: downloadAdminModel
@@ -188,6 +228,33 @@ components:
           items: {}
         output_text: { type: string }
         usage: { type: [object, "null"] }
+    UserModelCreateRequest:
+      type: object
+      additionalProperties: true
+      required: [id, name, repo, file]
+      properties:
+        id: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        repo:
+          type: string
+          description: "Hugging Face repo id or full huggingface.co URL."
+        file: { type: string, minLength: 1 }
+        sha256: { type: [string, "null"] }
+        params: { type: string }
+        context_size: { type: integer, minimum: 1 }
+        ram_estimate_gb: { type: number, minimum: 0 }
+        quant_tier: { type: string }
+        type: { type: string }
+        hardware_targets:
+          type: array
+          items: { type: string }
+        swap_sla_tier:
+          type: string
+          enum: [gpu_fast, cpu_fallback]
+        description: { type: string }
+        llama_args:
+          type: object
+          additionalProperties: true
     ModelEntry:
       $ref: "../../config/schemas/maeah/model-entry.schema.json"
     LifecycleEvent:
