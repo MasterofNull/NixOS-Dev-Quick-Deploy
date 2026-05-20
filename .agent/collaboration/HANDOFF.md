@@ -709,3 +709,17 @@ scripts/ai/edgeai chat --json "Say pong"
 bash scripts/testing/maeah-acceptance-tests.sh --verbose
 aq-qa 0
 ```
+
+
+### Post-commit live recheck update
+
+After `bed4a303`:
+
+- `edgeai a2a card validate --json` — PASS.
+- `edgeai mcp tools list --json` — PASS (`count=25`).
+- `edgeai chat --json "Say pong"` — FAIL: responses endpoint still unavailable/timing out through coordinator/local generation path.
+- `scripts/testing/maeah-live-auth-smoke.sh --run` — PARTIAL:
+  - unauthenticated add rejected with HTTP 403 — PASS,
+  - internal add returned HTTP 409 — acceptable because the disposable smoke entry already exists in current registry state,
+  - internal delete returned HTTP 500 — expected until the dashboard service env patch is activated; current running unit still writes registry state under read-only `$HOME`.
+- `ai-stack/switchboard/switchboard.py` has an unrelated uncommitted change. Codex did not author or commit it; review separately because it may relate to empty/local response behavior.
