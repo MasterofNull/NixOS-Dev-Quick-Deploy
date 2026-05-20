@@ -159,6 +159,7 @@ class TraceCollector:
         self.profile: str = "unknown"
         self.retrieval_hits: int = 0
         self.retrieval_ms: int = 0
+        self.retrieval_collection_count: int = 0
         self.rag_skipped: bool = True
         self.llm_model: str = ""
         self.tokens_in: int = 0
@@ -189,10 +190,11 @@ class TraceCollector:
     def set_profile(self, profile: str) -> None:
         self.profile = profile
 
-    def set_retrieval(self, hits: int, latency_ms: int, skipped: bool = False) -> None:
+    def set_retrieval(self, hits: int, latency_ms: int, skipped: bool = False, collection_count: int = 0) -> None:
         self.retrieval_hits = hits
         self.retrieval_ms = latency_ms
         self.rag_skipped = skipped
+        self.retrieval_collection_count = collection_count
 
     def set_llm(self, model: str, tokens_in: int = 0, tokens_out: int = 0, latency_ms: int = 0,
                 finish_reason: str = "stop") -> None:
@@ -227,6 +229,7 @@ class TraceCollector:
             "gen_ai.maeah.profile": self.profile,
             "gen_ai.maeah.retrieval_hits": self.retrieval_hits,
             "gen_ai.maeah.retrieval_ms": self.retrieval_ms,
+            "gen_ai.maeah.retrieval_collection_count": self.retrieval_collection_count,
             "gen_ai.maeah.rag_skipped": self.rag_skipped,
             "gen_ai.maeah.ttft_ms": self.llm_ms,
             "gen_ai.maeah.total_ms": total_ms,

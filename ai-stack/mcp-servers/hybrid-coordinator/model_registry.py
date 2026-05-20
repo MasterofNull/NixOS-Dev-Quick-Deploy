@@ -81,6 +81,21 @@ QUANT_TIERS = {
 _BUILTIN_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "qwen3.6-35b-mtp",
+        # llama-server flags that are SPECIFIC to this model (merged with base service args)
+        "llama_args": {
+            "ctx_size": 16384,
+            "n_gpu_layers": 12,
+            "spec_type": "draft-mtp",
+            "spec_draft_n_max": 2,
+            "parallel": 1,
+            "flash_attn": "off",
+            "mlock": True,
+            "jinja": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
         "name": "Qwen3.6 35B A3B MTP",
         "repo": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
         "file": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
@@ -98,6 +113,18 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "qwen3.6-35b",
+        "llama_args": {
+            "ctx_size": 16384,
+            "n_gpu_layers": 12,
+            "parallel": 1,
+            "flash_attn": "off",
+            "mlock": True,
+            "jinja": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
         "name": "Qwen3.6 35B A3B",
         "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
         "file": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -115,6 +142,17 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "qwen3-8b",
+        "llama_args": {
+            "ctx_size": 8192,
+            "n_gpu_layers": 12,
+            "parallel": 2,
+            "mlock": True,
+            "jinja": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
         "name": "Qwen3 8B Instruct",
         "repo": "unsloth/Qwen3-8B-Instruct-GGUF",
         "file": "Qwen3-8B-Instruct-Q4_K_M.gguf",
@@ -132,6 +170,17 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "qwen3-4b",
+        "llama_args": {
+            "ctx_size": 32768,
+            "n_gpu_layers": 12,
+            "parallel": 4,
+            "mlock": True,
+            "jinja": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
         "name": "Qwen3 4B Instruct 2507",
         "repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
         "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
@@ -149,6 +198,16 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "phi4-mini",
+        "llama_args": {
+            "ctx_size": 32768,
+            "n_gpu_layers": 12,
+            "parallel": 4,
+            "mlock": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
         "name": "Phi-4 Mini Instruct",
         "repo": "unsloth/phi-4-mini-instruct-GGUF",
         "file": "phi-4-mini-instruct-Q4_K_M.gguf",
@@ -166,6 +225,16 @@ _BUILTIN_CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "gemma4-e4b",
+        "llama_args": {
+            "ctx_size": 16384,
+            "n_gpu_layers": 12,
+            "parallel": 2,
+            "mlock": True,
+            "batch_size": 512,
+            "ubatch_size": 256,
+            "threads": 8,
+            "threads_batch": 8,
+        },
         "name": "Gemma 4 E4B Instruct",
         "repo": "bartowski/google_gemma-4-E4B-it-GGUF",
         "file": "google_gemma-4-E4B-it-Q4_K_M.gguf",
@@ -275,12 +344,23 @@ class ModelRegistry:
         else:
             stored = {}
 
-        # Merge builtin catalog; stored entries win on overlap.
+        # Merge builtin catalog; stored entries win on overlap for runtime fields,
+        # but static metadata fields (llama_args, hardware_targets, etc.) are always
+        # refreshed from the builtin catalog so new catalog additions take effect
+        # without clearing the registry file.
+        _STATIC_FIELDS = {"llama_args", "hardware_targets", "swap_sla_tier", "mtp_sibling",
+                          "context_size", "ram_estimate_gb", "quant_tier", "type",
+                          "recommended", "description", "params", "repo", "file"}
         merged: Dict[str, Dict[str, Any]] = {}
         for base in _BUILTIN_CATALOG:
             key = base["id"]
             if key in stored:
-                merged[key] = stored[key]
+                entry = dict(stored[key])
+                # Always refresh static metadata from builtin catalog
+                for field in _STATIC_FIELDS:
+                    if field in base:
+                        entry[field] = base[field]
+                merged[key] = entry
             else:
                 merged[key] = _default_entry(base)
 

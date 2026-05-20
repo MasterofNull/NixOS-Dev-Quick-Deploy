@@ -124,6 +124,35 @@ async def get_model(model_id: str, request: Request):
     return entry
 
 
+@router.get("/models/{model_id}/llama-args")
+async def get_model_llama_args(model_id: str, request: Request):
+    """Return the llama-server CLI args for a model + a ready-to-run restart script."""
+    _check_auth(request)
+    if not _LIFECYCLE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="lifecycle modules unavailable")
+
+    from model_lifecycle_manager import _llama_args_to_cli, ACTIVE_SYMLINK
+    registry = get_registry()
+    entry = await registry.get_model(model_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Model {model_id!r} not found")
+
+    llama_args = entry.get("llama_args", {})
+    local_path = entry.get("local_path") or f"/var/lib/llama-cpp/models/{entry.get('file','')}"
+    cli = _llama_args_to_cli(model_id, local_path, llama_args)
+
+    return {
+        "model_id": model_id,
+        "llama_args": llama_args,
+        "llama_cli": cli,
+        "apply_commands": [
+            f"sudo ln -sf {local_path} {ACTIVE_SYMLINK}",
+            "sudo systemctl restart llama-cpp",
+        ],
+        "args_file": str(Path.home() / ".local/share/nixos-ai-stack/llama-active-args.env"),
+    }
+
+
 @router.post("/models/{model_id}/download")
 async def start_download(model_id: str, request: Request):
     _check_auth(request)
