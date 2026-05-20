@@ -35,30 +35,29 @@
     };
     secureboot.enable = false;
     aiStack = {
-                                                              # NOTE: Using non-MTP model while MTP download completes.
-                                                              # Switch back to "qwen3.6-35b-mtp" and add MTP extraArgs after
-                                                              # Qwen3.6-35B-A3B-UD-Q5_K_S.gguf (or Q4_K_XL) finishes downloading.
-                                                              llamaCpp.activeModel = "qwen3.6-35b";
+                                                              # Q5_K_S MTP model (manually placed from ~/Downloads after browser download).
+                                                              # MTP draft heads enable speculative decoding (~1.5–2× throughput gain).
+                                                              llamaCpp.activeModel = "qwen3.6-35b-mtp-q5";
                                                               # useSymlink: llama-server loads from a stable symlink path.
-                                                              # After this rebuild, future model swaps need NO rebuild:
-                                                              #   sudo aq-model-switch <key>
+                                                              # Future model swaps need NO rebuild: sudo aq-model-switch <key>
                                                               llamaCpp.useSymlink = true;
                                                               llamaCpp.extraArgs = [
                                                                 # Qwen3.6-35B on this CPU needs up to 5 minutes for large prompts.
                                                                 "--timeout" "600"
-                                                                # 27GB RAM: 22.1GB model + KV cache leaves no room for >1 parallel slot.
+                                                                # 27GB RAM: 24.5GB model (Q5_K_S) + KV cache = tight; 1 parallel slot only.
                                                                 "--parallel" "1"
                                                                 "--batch-size" "512"
                                                                 "--ubatch-size" "256"
                                                                 "--threads" "8"
                                                                 "--threads-batch" "8"
-                                                                # Full 41-layer Vulkan offload overruns this Renoir iGPU and ends in
-                                                                # ErrorDeviceLost during model load. Keep a smaller partial offload so
-                                                                # Qwen remains the active harness model without crashing startup.
+                                                                # Renoir iGPU: 12 layers avoids ErrorDeviceLost at startup.
                                                                 "--n-gpu-layers" "12"
                                                                 "--flash-attn" "off"
                                                                 "--mlock"
                                                                 "--jinja"
+                                                                # MTP speculative decoding — draft heads bundled in this GGUF.
+                                                                "--spec-type" "draft-mtp"
+                                                                "--spec-draft-n-max" "2"
                                                               ];
                                                               embeddingServer = {
                                                                 activeModel = "bge-m3";
