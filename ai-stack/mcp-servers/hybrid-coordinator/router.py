@@ -138,6 +138,12 @@ def _make_rate_limit_config() -> RateLimiterConfig:
 # ---------------------------------------------------------------------------
 
 
+def _register_memory_routes(app: web.Application) -> None:
+    """R2.3: Register MemoryService routes (/api/memory/facts, /memory/journal, supersede, crystallizer)."""
+    from memory import memory_service as _ms
+    _ms.register_routes(app)
+
+
 def _register_status_routes(app: web.Application) -> None:
     """R2.2: Register StatusService routes (/status, /api/hardware/state, /stats/delegate)."""
     from core import status_service as _ss
@@ -197,7 +203,7 @@ def create_app(
     _register_status_routes(app)
 
     # R2.3: MemoryService (/api/memory/facts, /memory/journal, /memory/supersede)
-    # _register_memory_routes(app)
+    _register_memory_routes(app)
 
     # R2.4: QueryService (/query, /api/query, /augment_query)
     # _register_query_routes(app)
