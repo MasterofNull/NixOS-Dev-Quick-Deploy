@@ -138,6 +138,24 @@ def _make_rate_limit_config() -> RateLimiterConfig:
 # ---------------------------------------------------------------------------
 
 
+def _register_insights_routes(app: web.Application) -> None:
+    """R2.6: Register InsightsService routes (/api/traces, /eval/run, /eval/trend)."""
+    from telemetry import insights_service as _is
+    _is.register_routes(app)
+
+
+def _register_control_routes(app: web.Application) -> None:
+    """R2.6: Register ControlService routes (/admin/v1/*, /control/*)."""
+    from control import control_service as _cs
+    _cs.register_routes(app)
+
+
+def _register_agent_routes(app: web.Application) -> None:
+    """R2.6: Register AgentService routes (/api/agent-*, /a2a/*)."""
+    from agent import agent_service as _as
+    _as.register_routes(app)
+
+
 def _register_orchestration_routes(app: web.Application) -> None:
     """R2.5: Register OrchestrationService routes (/v1/orchestrate, /search/tree, /workflow/graph/*)."""
     from workflow import orchestration_service as _os
@@ -224,8 +242,8 @@ def create_app(
     _register_orchestration_routes(app)
 
     # R2.6: InsightsService + ControlService + AgentService
-    # _register_insights_routes(app)
-    # _register_control_routes(app)
-    # _register_agent_routes(app)
+    _register_insights_routes(app)
+    _register_control_routes(app)
+    _register_agent_routes(app)
 
     return app

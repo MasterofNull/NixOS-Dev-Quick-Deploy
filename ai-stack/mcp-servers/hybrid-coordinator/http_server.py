@@ -2558,19 +2558,21 @@ async def run_http_mode(port: int) -> None:
     # Phase 4.2 + Phase 1.3 + review/acceptance — extracted to orchestration_handlers.py
     # -------------------------------------------------------------------------
 
-    openai_a2a_handlers.register_routes(http_app)
+    # R2.6: /a2a/* now owned by agent_service (router.py).
+    # openai_a2a_handlers.register_routes(http_app)  # _fallback
     ops_handlers.register_routes(http_app)
     # R2.2: /status, /api/hardware/state, /stats/delegate now registered by router.py
     # R2.3: /api/memory/facts, /memory/journal* now registered by router.py (MemoryService)
-    # Phase 56.5/56.6 — Agent Ops status, Event Bus
-    http_app.router.add_get("/api/agent-ops/status", handle_agent_ops_status)
-    http_app.router.add_post("/api/agent-events", handle_agent_events_post)
-    http_app.router.add_get("/api/agent-events", handle_agent_events_get)
+    # R2.6: /api/agent-ops/status, /api/agent-events now owned by agent_service (router.py).
+    # http_app.router.add_get("/api/agent-ops/status", handle_agent_ops_status)   # _fallback
+    # http_app.router.add_post("/api/agent-events", handle_agent_events_post)     # _fallback
+    # http_app.router.add_get("/api/agent-events", handle_agent_events_get)       # _fallback
     # R2.4: /augment_query, /query, /api/query now owned by query_service (router.py).
     # http_app.router.add_post("/augment_query", handle_augment_query)  # _fallback_handle_augment_query
     # http_app.router.add_post("/query", handle_query_http)            # _fallback_handle_query_http
     # http_app.router.add_post("/api/query", handle_query_http)        # _fallback_handle_query_http
-    http_app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
+    # R2.6: /admin/v1/scheduler/status now owned by control_service (router.py).
+    # http_app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)  # _fallback
     # R2.5: /v1/orchestrate, /search/tree now owned by orchestration_service (router.py).
     # http_app.router.add_post("/v1/orchestrate", handle_orchestrate)  # _fallback_handle_orchestrate
     # http_app.router.add_post("/search/tree", handle_tree_search)     # _fallback_handle_tree_search
@@ -2582,7 +2584,8 @@ async def run_http_mode(port: int) -> None:
     llm_router_handlers.register_routes(http_app)
     # Batch 3.2 — PRSI Action Execution endpoints
     prsi_handlers.register_routes(http_app)
-    runtime_control_handlers.register_routes(http_app)
+    # R2.6: /control/* now owned by control_service (router.py).
+    # runtime_control_handlers.register_routes(http_app)  # _fallback
     # R2.5: orchestration_graph_runner routes now owned by orchestration_service (router.py).
     # orchestration_graph_runner.register_routes(http_app)  # _fallback Phase 49: multi-agent graph runner
 
@@ -2599,8 +2602,8 @@ async def run_http_mode(port: int) -> None:
 
     evidence_safety_handlers.register_routes(http_app)
 
-    # Phase 15.1: Fleet status
-    http_app.router.add_get("/control/model-fleet/status", handle_fleet_status)
+    # R2.6: /control/model-fleet/status now owned by control_service (router.py).
+    # http_app.router.add_get("/control/model-fleet/status", handle_fleet_status)  # _fallback
     # R2.3: /memory/journal* now registered by router.py (MemoryService)
     # Phase 16.4: Identity kernel
     identity_handlers.register_routes(http_app)
@@ -2617,9 +2620,10 @@ async def run_http_mode(port: int) -> None:
     http_app.router.add_post("/control/intent/reload", intent_classifier.handle_reload_intent_map)
     http_app.router.add_get("/api/health/rag", rag_augmentor.handle_rag_health)
     http_app.router.add_get("/homeostasis/events", lambda r: web.json_response(homeostasis_manager.get_manager().get_recent_events()))
-    http_app.router.add_get("/api/traces", trace_collector.handle_get_traces)
-    http_app.router.add_post("/eval/run", eval_runner.handle_eval_run)
-    http_app.router.add_get("/eval/trend", eval_runner.handle_eval_trend)
+    # R2.6: /api/traces, /eval/run, /eval/trend now owned by insights_service (router.py).
+    # http_app.router.add_get("/api/traces", trace_collector.handle_get_traces)  # _fallback
+    # http_app.router.add_post("/eval/run", eval_runner.handle_eval_run)         # _fallback
+    # http_app.router.add_get("/eval/trend", eval_runner.handle_eval_trend)      # _fallback
 
     # Phase 26: Unified Agent Orchestration Gateway
     _lifecycle_dir = Path(
