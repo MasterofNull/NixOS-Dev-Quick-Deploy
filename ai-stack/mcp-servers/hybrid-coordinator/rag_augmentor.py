@@ -146,7 +146,7 @@ class RagAugmentor:
 
             if not hits:
                 _augmentation_window.append(False)
-                return {**_skip_result("no_hits", ",".join(projects)), "latency_ms": latency_ms}
+                return {**_skip_result("no_hits", ",".join(projects), len(projects)), "latency_ms": latency_ms}
 
             context_parts = []
             for i, hit in enumerate(hits, 1):
@@ -169,6 +169,7 @@ class RagAugmentor:
                 "context_text": context_text,
                 "latency_ms": latency_ms,
                 "projects": projects,
+                "collection_count": len(projects),
                 "project": projects[0], # for backward compat
             }
             _record_metrics(res)
@@ -221,7 +222,7 @@ def _record_metrics(result: Dict[str, Any]) -> None:
         pass
 
 
-def _skip_result(reason: str, project: str) -> Dict[str, Any]:
+def _skip_result(reason: str, project: str, collection_count: int = 0) -> Dict[str, Any]:
     return {
         "augmented": False,
         "skipped": True,
@@ -229,6 +230,7 @@ def _skip_result(reason: str, project: str) -> Dict[str, Any]:
         "context_text": "",
         "latency_ms": 0,
         "project": project,
+        "collection_count": collection_count,
         "skip_reason": reason,
     }
 
