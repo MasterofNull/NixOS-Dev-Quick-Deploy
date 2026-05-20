@@ -200,20 +200,27 @@ class ModelLifecycleManager:
                 pass
 
     async def start_download(self, model_id: str) -> None:
-        """Begin background download for model_id. Idempotent if already downloading."""
+        """Begin background download for model_id. Resumes if a partial .tmp exists."""
         entry = await self._registry.get_model(model_id)
         if entry is None:
             raise KeyError(f"Model {model_id!r} not in registry")
 
         state = ModelState(entry["state"])
-        if state == ModelState.DOWNLOADING:
-            return  # already running
 
-        # Allow re-download from FAILED or AVAILABLE
-        if state not in (ModelState.AVAILABLE, ModelState.FAILED):
+        # If already downloading and task is alive — idempotent.
+        if state == ModelState.DOWNLOADING and model_id in self._download_tasks:
+            return
+
+        # Orphaned download (server restart) or explicit re-download from FAILED/AVAILABLE.
+        if state == ModelState.DOWNLOADING:
+            # Orphaned: no active task but stuck in downloading state.
+            # Fall through and restart — partial .tmp will be resumed automatically.
+            pass
+        elif state in (ModelState.AVAILABLE, ModelState.FAILED):
+            await self._registry.transition(model_id, ModelState.DOWNLOADING)
+        else:
             raise ValueError(f"Cannot download model in state {state.value}")
 
-        await self._registry.transition(model_id, ModelState.DOWNLOADING)
         task = asyncio.create_task(self._download_task(model_id, entry))
         self._download_tasks[model_id] = task
         task.add_done_callback(lambda t: self._download_tasks.pop(model_id, None))
@@ -231,6 +238,13 @@ class ModelLifecycleManager:
             headers["Authorization"] = f"Bearer {hf_token}"
 
         MODEL_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Resume support: if .tmp exists, start from current byte offset
+        resume_offset = tmp.stat().st_size if tmp.exists() else 0
+        if resume_offset > 0:
+            headers["Range"] = f"bytes={resume_offset}-"
+            logger.info("model_lifecycle: resuming %s from byte %d", model_id, resume_offset)
+
         try:
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=7200, connect=30)
@@ -238,20 +252,29 @@ class ModelLifecycleManager:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status == 404:
                         raise RuntimeError(f"Model file not found on HuggingFace: {url}")
-                    resp.raise_for_status()
-                    total = int(resp.headers.get("Content-Length", 0))
-                    done = 0
-                    with open(tmp, "wb") as fh:
-                        async for chunk in resp.content.iter_chunked(CHUNK_SIZE):
-                            fh.write(chunk)
-                            done += len(chunk)
-                            pct = (done / total * 100) if total else 0.0
-                            self._notify_progress(model_id, done, total, pct)
-                            await self._registry.update_fields(model_id, {
-                                "download_bytes": done,
-                                "download_total": total,
-                                "download_progress": round(pct, 1),
-                            })
+                    if resp.status == 416:
+                        # Range not satisfiable — file already complete, proceed to rename
+                        done = resume_offset
+                        total = resume_offset
+                    else:
+                        resp.raise_for_status()
+                        content_length = int(resp.headers.get("Content-Length", 0))
+                        total = (resume_offset + content_length) if resume_offset and resp.status == 206 else content_length
+                        done = resume_offset
+                        file_mode = "ab" if resume_offset > 0 and resp.status == 206 else "wb"
+                        if file_mode == "wb":
+                            done = 0  # server ignored Range, restarting
+                        with open(tmp, file_mode) as fh:
+                            async for chunk in resp.content.iter_chunked(CHUNK_SIZE):
+                                fh.write(chunk)
+                                done += len(chunk)
+                                pct = (done / total * 100) if total else 0.0
+                                self._notify_progress(model_id, done, total, pct)
+                                await self._registry.update_fields(model_id, {
+                                    "download_bytes": done,
+                                    "download_total": total,
+                                    "download_progress": round(pct, 1),
+                                })
 
             # Move completed file
             await asyncio.to_thread(lambda: tmp.rename(dest))
@@ -262,13 +285,15 @@ class ModelLifecycleManager:
             # Auto-verify
             await self.verify_model(model_id)
 
+        except asyncio.CancelledError:
+            # Download was cancelled — keep .tmp for future resume; do NOT delete it
+            logger.info("model_lifecycle: download cancelled for %s (partial saved for resume)", model_id)
+            await self._registry.transition(
+                model_id, ModelState.FAILED, error="cancelled"
+            )
         except Exception as exc:
+            # Keep .tmp for resume on transient errors (network failure, etc.)
             logger.error("model_lifecycle: download failed %s: %s", model_id, exc)
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
             await self._registry.transition(
                 model_id, ModelState.FAILED, error=str(exc)[:400]
             )
@@ -470,12 +495,46 @@ class ModelLifecycleManager:
 
         return await self.promote_model(model_id)
 
+    # ── Reset failed → verified ───────────────────────────────────────────────
+
+    async def reset_failed(self, model_id: str) -> Dict:
+        """Reset a FAILED model back to VERIFIED so it can be retried.
+
+        Only allowed when local_path exists and is readable.
+        """
+        entry = await self._registry.get_model(model_id)
+        if entry is None:
+            raise KeyError(model_id)
+
+        state = ModelState(entry["state"])
+        if state != ModelState.FAILED:
+            raise ValueError(f"reset_failed only works on FAILED models (current: {state.value})")
+
+        local_path = entry.get("local_path")
+        if not local_path or not Path(local_path).exists():
+            raise ValueError(
+                f"Cannot reset — model file missing: {local_path}. "
+                "The model must be re-downloaded."
+            )
+
+        # Walk back through the state machine minimally
+        await self._registry.transition(model_id, ModelState.VERIFIED,
+                                        update={"error": None})
+        logger.info("model_lifecycle: reset %s failed→verified", model_id)
+        return {"success": True, "model_id": model_id, "state": "verified"}
+
     # ── Cancel ───────────────────────────────────────────────────────────────
 
     async def cancel_download(self, model_id: str) -> bool:
         task = self._download_tasks.get(model_id)
         if task and not task.done():
             task.cancel()
+            return True
+        # Orphaned download (task lost on server restart) — force state back to FAILED
+        # so the model can be retried. The partial .tmp is preserved for resume.
+        entry = await self._registry.get_model(model_id)
+        if entry and ModelState(entry["state"]) == ModelState.DOWNLOADING:
+            await self._registry.transition(model_id, ModelState.FAILED, error="cancelled")
             return True
         return False
 

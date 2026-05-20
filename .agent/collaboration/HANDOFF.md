@@ -273,3 +273,42 @@ The live benchmark will not reflect this repo fix until the hybrid coordinator s
 No commit was created because the repo validation gate explicitly failed and reported `Do NOT commit or deploy until all gates pass`. Rerun tier0 after llama-cpp finishes warming, then stage only the Phase C hunks plus `mlfq_scheduler.py` and commit with:
 
 `feat(maeah): Phase C MLFQ scheduler with thermal coupling stub`
+
+---
+
+## MAEAH model lifecycle/dashboard continuation (Codex, 2026-05-20)
+
+### Context
+
+The system rebuild/switch completed, but the main local agent and llama server are currently down and being worked on. Live gates that depend on llama/local-agent were intentionally deferred.
+
+### Completed repo-only continuation
+
+- Preserved and validated the active model lifecycle/dashboard slice:
+  - resumable model downloads with partial `.tmp` preservation
+  - failed-model reset back to `verified` when local file exists
+  - user-defined model add/delete API support
+  - dashboard add-model form and failed-model retry/delete actions
+  - Qwen3.6 MTP Q4/Q5 catalog refinements
+  - sudoers entries for dashboard-triggered llama-cpp restart/status
+  - MAEAH acceptance Gate 7 corrected to inspect the current module-level restart/llama-args implementation instead of a stale class method path
+
+### Validation completed without live llama/local-agent
+
+- `python3 -m py_compile` on changed Python files — PASS
+- `bash -n scripts/testing/maeah-acceptance-tests.sh` — PASS
+- `git diff --check` — PASS
+- `nix-instantiate --parse nix/modules/services/command-center-dashboard.nix` — PASS
+- model lifecycle/catalog static smoke — PASS
+
+### Deferred live validation
+
+Rerun when llama/local-agent are back:
+
+```bash
+aq-qa 0
+scripts/ai/aq-memory-recall-benchmark --json
+bash scripts/testing/maeah-acceptance-tests.sh --verbose
+```
+
+Do not use these static-only results as runtime promotion evidence.
