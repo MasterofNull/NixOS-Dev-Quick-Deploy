@@ -1426,9 +1426,10 @@ def _rewrite_model(payload: dict, profile: str) -> dict:
     return payload
 
 def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str) -> dict:
+    # Disable thinking for all local targets by default — thinking tokens are
+    # filtered from the OpenAI response content field, producing empty responses
+    # unless the caller explicitly opts in via chat_template_kwargs.
     if not isinstance(payload, dict) or target_type != "local":
-        return payload
-    if profile not in ("continue-local", "embedded-assist", "local-agent"):
         return payload
     kwargs = payload.get("chat_template_kwargs")
     if not isinstance(kwargs, dict):
