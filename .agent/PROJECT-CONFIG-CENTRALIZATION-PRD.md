@@ -298,3 +298,195 @@ Two additional issues found by Gemini's concurrent audit not captured in §2:
 | `ai_coordinator_handlers.py:719` | `False` | `/orchestrate` endpoint prefers remote (Phase 14.2: "remote free-tier ~10x faster") |
 
 This is architecturally intentional (two different endpoints with different policies) but not documented in any config file. A caller hitting `/query` without `prefer_local` gets local; a caller hitting `/orchestrate` without `prefer_local` gets remote. **Add to Phase C**: document this asymmetry explicitly in `config/routing-policy.yaml` and add a comment block at both handler sites referencing the policy file.
+
+---
+
+## §9 — Rewrite Target R1: aq-qa → Python Test Framework
+
+### Current State (Why It Cannot Stand)
+
+`scripts/ai/aq-qa` is 2,090 lines of bash with **72 embedded Python blocks** (`python3 -c`, `python3 -`, heredoc `<<'PY'`). It cannot be:
+- Parallelized (sequential bash, no async)
+- Partially run without understanding global state (`PASS`, `FAIL`, `SKIP` counters, `RESULTS` array)
+- Debugged with standard tooling (mixing bash `set -euo pipefail` with Python subprocess exit codes)
+- Extended safely (every new check must fit the bash control flow)
+- Imported or composed (it's a script, not a module)
+
+72 embedded Python blocks means 72 context switches where the reader must mentally re-enter Python scope, understand a different error model, and re-exit. This is not a test suite. It is accumulated scripting debt.
+
+### Proposed Architecture: `scripts/testing/harness_qa/`
+
+```
+scripts/testing/harness_qa/
+├── __main__.py          # entry point: python3 -m harness_qa [phase] [--json] [--level N]
+├── runner.py            # CheckRunner: collects results, formats output, exit code
+├── checks/
+│   ├── phase0_smoke.py  # systemd, ports, inference ping, editor, routing, RAG
+│   ├── phase1_infra.py  # JSON/YAML/TOML/JS syntax, roadmap, repo structure
+│   ├── phase2_coordinator.py  # coordinator API surface, auth, routing
+│   ├── phase3_knowledge.py    # memory, hints, RAG, AIDB vector search
+│   ├── phase4_safety.py       # safety gate, runtime policy, trust roots
+│   ├── phase5_agent.py        # lifecycle, DAG executor, fleet control
+│   └── phase_maeah.py         # MAEAH acceptance gates (bonus + normative)
+├── base.py              # Check dataclass, CheckResult, @check decorator
+└── external.py          # curl/ss/git wrappers — isolated, mockable
+```
+
+**Base interface:**
+```python
+@dataclass
+class CheckResult:
+    id: str            # "0.7.3"
+    description: str
+    status: Literal["pass", "fail", "skip"]
+    reason: str = ""
+    layer: int = 4
+    duration_ms: float = 0.0
+
+def check(id: str, desc: str, layer: int = 4):
+    """Decorator. Function returns bool or raises CheckSkip/CheckFail."""
+```
+
+**Output**: structured JSON (same schema as current), human-readable color terminal (same visual as current). Exit code = number of failures (capped at 100).
+
+**Migration path**: `scripts/ai/aq-qa` becomes a thin wrapper that calls `python3 -m harness_qa "$@"` — zero disruption to `tier0-validation-gate.sh` or any existing caller.
+
+### Acceptance Criteria (R1)
+
+| Gate | Condition |
+|------|-----------|
+| R1-AC1 | All 65 current checks present and passing in Python framework |
+| R1-AC2 | `aq-qa 0` produces identical output format (pass/fail counts, check IDs) |
+| R1-AC3 | `python3 -m harness_qa 0 --json` produces valid JSON |
+| R1-AC4 | Each check module independently importable and unit-testable |
+| R1-AC5 | New checks can be added with one decorated function, zero bash |
+
+---
+
+## §10 — Rewrite Target R2: Coordinator HTTP Dispatch Reconception
+
+### Current State (Why It Cannot Stand)
+
+`http_server.py` (2,735 lines) is the integration nexus of the coordinator. It:
+- Imports from 25+ coordinator modules at module load time
+- Registers 27 routes, all from imported handlers (0 defined locally)
+- Owns auth middleware, rate limiter, health aggregation, metrics emission, and startup sequencing
+- Is imported directly by `server.py` (`import http_server`) creating tight coupling
+- Has accumulated every phase's wiring since Phase 1 — there is no removal, only addition
+
+The coordinator's total surface is **56,000+ lines** across 30+ Python files. This is not the problem — a large, complex system can have many files. The problem is that **all 56,000 lines treat `http_server.py` as their shared integration surface**. There is no service boundary enforcement. Any module can import any other module. The domain split (core/workflow/knowledge/extensions) is cosmetic — flat shim files still re-export everything.
+
+At the current growth rate (Phase 59 + Phase 60 + ...), this reaches unmaintainable territory within 6 months.
+
+### Proposed Architecture: Thin Router + Injected Domain Services
+
+```
+ai-stack/mcp-servers/hybrid-coordinator/
+├── server.py                    # entry point only: parses args, calls router.start()
+├── router.py                    # ~200 lines: aiohttp app, route registration, middleware
+├── middleware/
+│   ├── auth.py                  # API key + loopback auth — one place, one policy
+│   ├── rate_limiter.py          # rate limiting (already partially extracted)
+│   └── observability.py        # OTel span injection, request logging
+├── services/                   # Domain services — each is a self-contained class
+│   ├── query_service.py        # /query, /api/query — retrieval + synthesis
+│   ├── orchestration_service.py # /v1/orchestrate, /v1/responses, A2A
+│   ├── memory_service.py       # /memory/*, /api/memory/*
+│   ├── knowledge_service.py    # /hints/*, /api/logic/*, topology
+│   ├── workflow_service.py     # /workflow/*, DAG, checkpoints
+│   ├── model_service.py        # /api/models/*, model lifecycle
+│   ├── ops_service.py          # /control/*, /admin/*, /eval/*, /api/health/*
+│   └── agent_service.py        # /agent/*, /runtime/*, /control/fleet/*
+├── core/                       # (keep as-is — domain objects are fine)
+├── knowledge/                  # (keep, but hints_engine.py decomposed — see §11)
+├── extensions/                 # (keep, handler functions become service methods)
+└── shared/                     # (keep as-is)
+```
+
+**Service injection contract** (in `router.py`):
+```python
+class CoordinatorRouter:
+    def __init__(self, services: ServiceContainer):
+        self.app = web.Application(middlewares=[auth_mw, rate_mw, otel_mw])
+        services.query.register_routes(self.app.router)
+        services.orchestration.register_routes(self.app.router)
+        # ... each service owns its own routes
+```
+
+**Key principles:**
+1. `router.py` never contains business logic — only wiring
+2. Each service has `register_routes(router)` — owns its URL namespace
+3. Services communicate through injected interfaces, not direct imports
+4. Auth is one middleware, not scattered inline checks across 10 handlers
+5. The flat shim files (`*.py` that re-export from subdirs) are removed — imports go direct to the canonical location
+
+**Migration strategy**: Strangler Fig pattern — new `router.py` registers BOTH old `http_server.py` handlers AND new service handlers during transition. Old handlers are migrated service-by-service. `http_server.py` shrinks as services are extracted. At completion, `http_server.py` is deleted.
+
+### Acceptance Criteria (R2)
+
+| Gate | Condition |
+|------|-----------|
+| R2-AC1 | All 27 existing routes present and tested in new service structure |
+| R2-AC2 | `http_server.py` reduced to ≤100 lines (compatibility shim only) during transition |
+| R2-AC3 | Auth middleware consolidated to `middleware/auth.py` — grep for inline auth checks = 0 |
+| R2-AC4 | Each domain service independently unit-testable without starting the full server |
+| R2-AC5 | `router.py` ≤200 lines, zero business logic |
+| R2-AC6 | aq-qa phase 0: 0 failed after migration |
+| R2-AC7 | No circular imports — `python3 -c "import router"` completes in <2s |
+
+---
+
+## §11 — Rewrite Target R3: hints_engine.py Decomposition
+
+### Current State
+
+`hints_engine.py` is 3,458 lines — larger than `http_server.py` itself. It contains **six distinct concerns** bundled in one file (Gemini independent audit, 2026-05-20):
+
+| Concern | Should Be | Est. Lines |
+|---------|-----------|-----------|
+| `Hint` dataclass + text utilities (tokenize, compress, estimate) | `knowledge/models.py` | ~120 |
+| `TokenBudgetContext` — context-aware token budget calculation | `knowledge/token_manager.py` | ~450 |
+| Static workflow rule matching (CLAUDE.md-derived keyword rules) | `knowledge/static_rules.py` | ~350 |
+| Gap detection — synthetic gap identification, curated stale gap, file type detection | `knowledge/gap_analyzer.py` | ~550 |
+| Qdrant/Redis/PostgreSQL query logic interleaved with scoring | _(absorbed into hints_engine.py orchestrator)_ | — |
+| `HintsEngine` class — retrieval orchestration, ranking, progressive disclosure | `knowledge/hints_engine.py` | ~900 |
+
+### Proposed Decomposition
+
+```
+ai-stack/mcp-servers/hybrid-coordinator/knowledge/
+├── models.py        # Hint dataclass, TokenBudgetContext data types
+├── token_manager.py # Token estimation, calculate_context_aware_budget, _budget_rationale
+├── static_rules.py  # Hardcoded keyword/rule matching (CLAUDE.md-derived rules, no I/O)
+├── gap_analyzer.py  # _is_synthetic_gap, _normalize_gap_text, gap fingerprinting
+└── hints_engine.py  # HintsEngine orchestrator + DB/vector queries (~900 lines)
+```
+
+Each file has one job. `hints_engine.py` becomes the orchestrator that imports from its four focused siblings. External services (Qdrant, Redis, PostgreSQL) remain in `hints_engine.py` — splitting storage from retrieval would produce an anemic data layer with circular dependencies.
+
+### Acceptance Criteria (R3)
+
+| Gate | Condition |
+|------|-----------|
+| R3-AC1 | `hints_engine.py` ≤900 lines |
+| R3-AC2 | `models.py` ≤200 lines; `token_manager.py` ≤500 lines; `static_rules.py` ≤400 lines; `gap_analyzer.py` ≤600 lines |
+| R3-AC3 | Each new module independently importable (`python3 -m py_compile`) |
+| R3-AC4 | `aq-qa 0` hint-related checks (0.9.x) pass unchanged |
+| R3-AC5 | `TokenBudgetContext` accessible via `from knowledge.models import TokenBudgetContext` |
+| R3-AC6 | `static_rules.py` has zero imports from `hints_engine.py` (no circular deps) |
+
+---
+
+## §12 — Revised Non-Goals
+
+The following are still non-goals:
+- Changing any external API contract, endpoint path, or auth mechanism
+- Rewriting domain objects (MemoryBroker, RAGAugmentor, WorkflowCheckpointer, IntentClassifier)
+- Changing the NixOS declarative infrastructure
+- Rewriting the switchboard profile concept (Phase B is sufficient)
+- Rewriting the data layer (PostgreSQL, Qdrant, Redis)
+
+The following are now **GOALS** (updated from §4):
+- Rewriting `aq-qa` as a Python framework (R1)
+- Reconceiving the coordinator HTTP dispatch layer as a thin router with injected services (R2)
+- Decomposing `hints_engine.py` into focused single-responsibility modules (R3)
