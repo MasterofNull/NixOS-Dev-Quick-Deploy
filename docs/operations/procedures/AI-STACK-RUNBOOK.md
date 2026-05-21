@@ -221,7 +221,28 @@ RATE_LIMIT_DEFAULT_RPM=200 systemctl restart ai-hybrid-coordinator
 
 ---
 
-### 8. COSMIC Desktop Issues
+### 8. Learning Export Permission Drift
+
+**Symptoms:**
+- Post-deploy capability verification fails on `/learning/export`.
+- Hybrid coordinator logs show permission denied for
+  `/var/lib/ai-stack/hybrid/fine-tuning/dataset_export.jsonl`.
+
+**Expected ownership:**
+```bash
+ls -ld /var/lib/ai-stack/hybrid/fine-tuning
+ls -l /var/lib/ai-stack/hybrid/fine-tuning
+# directory and dataset files should be owned by ai-hybrid:ai-stack
+```
+
+**Fix:**
+The declarative fix is in `nix/modules/services/mcp-servers.nix` tmpfiles rules.
+Re-run the normal system switch so tmpfiles applies the `z` ownership repair rule.
+Avoid one-off `chown` as the only fix; it will drift again after external writes.
+
+---
+
+### 9. COSMIC Desktop Issues
 
 **Symptoms:**
 - cosmic-greeter shows blank screen
