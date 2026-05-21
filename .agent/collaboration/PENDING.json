@@ -1,32 +1,36 @@
 {
   "agent": "Codex",
-  "task": "Phase 62 safety rails and nsjail sandbox hardening",
-  "intent": "Complete and harden the in-progress safety-rails/nsjail slice with fail-closed sandbox semantics, static QA coverage, env-contract entries, and local shell sandbox regression tests.",
-  "status": "completed",
-  "timestamp": "2026-05-21T03:40:12.375699+00:00",
+  "task": "Phase 63 GraphRAG knowledge graph index/search",
+  "intent": "Harden and validate the knowledge-graph indexer plus GraphRAG search route with safe dry-run defaults, bounded ingest volume, and regression tests.",
+  "status": "validated_focus_pending_tier0",
+  "timestamp": "2026-05-21T03:48:54.395170+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md",
-    "config/safety-rails.yaml",
+    "scripts/ai/aq-index-knowledge-graph",
+    "ai-stack/mcp-servers/hybrid-coordinator/knowledge/graph_search.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/router.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/server.py",
     "config/env-contract.yaml",
-    "ai-stack/local-agents/builtin_tools/shell_tools.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/workflow/evidence_safety_handlers.py",
-    "nix/modules/services/mcp-servers.nix",
-    "scripts/testing/harness_qa/phases/phase0.py",
-    "scripts/testing/test-local-shell-sandbox.py"
+    "scripts/testing/test-aq-index-knowledge-graph.py",
+    "scripts/testing/test-knowledge-graph-search.py"
   ],
   "validation": [
-    "py_compile shell_tools/evidence_safety_handlers/phase0/test-local-shell-sandbox \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-local-shell-sandbox.py \u2014 PASS",
-    "YAML parse safety-rails.yaml and env-contract.yaml \u2014 PASS",
-    "scripts/testing/verify-flake-first-roadmap-completion.sh \u2014 PASS (609 pass, 0 fail)",
-    "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (77 passed, 0 failed, 3 skipped)",
+    "py_compile graph_search/router/server/aq-index/test files \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-aq-index-knowledge-graph.py \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-knowledge-graph-search.py \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/ai/aq-index-knowledge-graph --skip-llm --repo-root . --max-triples 5 \u2014 PASS",
     "git diff --check \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (16 passed, 0 failed)"
+    "AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 ... scripts/ai/aq-qa 0 \u2014 PASS (81 passed, 0 failed, 4 skipped)",
+    "nix flake metadata --no-write-lock-file \u2014 PASS"
+  ],
+  "guardrails": [
+    "indexer is dry-run by default; --ingest required for AIDB writes",
+    "--max-triples caps dry-run and ingest volume",
+    "GraphRAG endpoint clamps depth/top_k/query length and returns 400 for malformed numeric parameters"
   ],
   "notes": [
-    "Hardened shell tool so injection patterns are rejected before shell execution.",
-    "When NSJAIL_REQUIRED=1, nsjail unavailability/failure now fails closed instead of falling back to host subprocess.",
-    "Added Phase 62 aq-qa static checks for nsjail, safety rails, service env wiring, and evidence safety rail loading."
+    "flake.lock updated for impermanence input; impermanence input follows root nixpkgs",
+    "Continue/editor failure was transient; direct tier0-env rerun passed"
   ]
 }

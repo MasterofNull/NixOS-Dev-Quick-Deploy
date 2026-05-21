@@ -410,6 +410,13 @@ variables:
     description: "API key for AIDB service authentication"
 
   # ── Qdrant ──────────────────────────────────────────────────────────────
+  - canonical: AIDB_API_KEY_FILE
+    aliases: []
+    default: "/run/secrets/aidb_api_key"
+    layer: all
+    consumers: [aq-index-knowledge-graph]
+    description: "Path to the AIDB API key used by the knowledge graph indexer when --ingest is enabled"
+
   - canonical: QDRANT_URL
     aliases: []
     default: "http://127.0.0.1:6333"
