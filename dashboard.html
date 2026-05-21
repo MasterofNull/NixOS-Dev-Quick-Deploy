@@ -269,6 +269,7 @@
     <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
     <div class="kpi"><span class="kpi-l">Ops/7d:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
     <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span></div>
+    <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">--</span></div>
   </div>
   <div class="lens-tabs">
     <button class="tab on" onclick="setLens('overview')"    id="tab-overview">Overview</button>
@@ -416,6 +417,15 @@
         <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
       </div>
     </div>
+
+    <!-- Hardware State -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Hardware State</span>
+        <span class="card-badge badge-info" id="hwStateBadge">--</span>
+      </div>
+      <div id="hwStateDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -433,7 +443,7 @@
         <tbody id="routeBody"><tr><td colspan="3" style="color:var(--fg3)">Loading...</td></tr></tbody>
       </table>
     </div>
-    <div class="card">
+    <div class="card" id="section-model-lifecycle">
       <div class="card-hd"><span class="card-title">Model Lifecycle</span><span class="card-badge badge-info" id="mlBadge">--</span></div>
       <div id="modelList"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
@@ -504,6 +514,14 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">Homeostasis &amp; Remediation</span><span class="card-badge badge-ok" id="homeostasisBadge">--</span></div>
       <div id="homeostasisDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">MLFQ Scheduler</span><span class="card-badge badge-info" id="schedulerBadge">--</span></div>
+      <div id="schedulerDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Context Lifecycle (CLM)</span><span class="card-badge badge-info" id="clmBadge">--</span></div>
+      <div id="clmDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
