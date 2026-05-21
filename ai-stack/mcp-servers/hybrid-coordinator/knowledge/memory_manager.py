@@ -403,6 +403,7 @@ async def recall_agent_memory(
     memory_types: Optional[List[str]] = None,
     limit: Optional[int] = None,
     retrieval_mode: str = "hybrid",
+    valid_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Recall memories using hybrid/tree retrieval with latency tracking (Batch 2.1)."""
     start_time = time.time()
@@ -472,6 +473,7 @@ async def recall_agent_memory(
 
     memory_rows = []
     now_ts = int(time.time())
+    filter_ts = int(valid_at.timestamp()) if isinstance(valid_at, datetime) else now_ts
     
     for item in raw_results:
         payload = item.get("payload") or {}
@@ -480,9 +482,9 @@ async def recall_agent_memory(
         vf = _coerce_temporal_epoch(payload.get("valid_from", 0), default=0)
         vu = _coerce_temporal_epoch(payload.get("valid_until", 0), default=0)
         
-        if vf > 0 and now_ts < vf:
+        if vf > 0 and filter_ts < vf:
             continue # Not yet valid
-        if vu > 0 and now_ts > vu:
+        if vu > 0 and filter_ts >= vu:
             continue # Expired
             
         memory_rows.append(

@@ -133,17 +133,6 @@ class MemoryBroker:
                             "memory_broker.superseding: old_id=%s content=%r -> new_content=%r",
                             superseded_id, entry.get("content"), content
                         )
-                        # Phase 60.2: record supersession in ledger + in-process cache
-                        # so read-time filter excludes the old fact without Qdrant mutation.
-                        if superseded_id:
-                            try:
-                                await self._superseder.supersede(
-                                    fact_id=superseded_id,
-                                    replacement=content[:500],
-                                    reason="contradiction_detected",
-                                )
-                            except Exception as _sup_exc:
-                                logger.warning("memory_broker.supersede_record_failed exc=%s", _sup_exc)
                         break # Only supersede the most relevant match
                     else:
                         logger.warning(
@@ -197,6 +186,19 @@ class MemoryBroker:
                 memory_type, len(content), result.get("memory_id", "?"), superseded_id
             )
             status = "superseded" if superseded_id else "success"
+
+            # Phase 60.2: record supersession only after the replacement write
+            # succeeds. Recording before store completion can hide the old fact
+            # without a durable replacement if Qdrant write/dedup/timeout fails.
+            if superseded_id and self._superseder and result.get("status") in ["stored", "success"]:
+                try:
+                    await self._superseder.supersede(
+                        fact_id=superseded_id,
+                        replacement=content[:500],
+                        reason="contradiction_detected",
+                    )
+                except Exception as _sup_exc:
+                    logger.warning("memory_broker.supersede_record_failed exc=%s", _sup_exc)
             
             if superseded_id:
                 try:
@@ -255,6 +257,7 @@ class MemoryBroker:
                     memory_types=[memory_type],
                     limit=top_k * 2,   # extra for filtering
                     retrieval_mode="hybrid",
+                    valid_at=valid_at,
                 ),
                 timeout=5.0,
             )
@@ -293,7 +296,7 @@ class MemoryBroker:
                 if self._superseder is None:
                     return False
                 fid = r.get("memory_id") or r.get("id")
-                return bool(fid) and self._superseder.is_superseded(str(fid))
+                return bool(fid) and self._superseder.is_superseded(str(fid), valid_at=valid_at)
 
             rows = [
                 r for r in rows
@@ -401,7 +404,19 @@ def _is_valid_at(row: Dict[str, Any], point_in_time: datetime) -> bool:
             return False
         return True
     except (ValueError, TypeError):
-        return True  # parse error → include rather than silently drop
+        try:
+            vf = meta.get("valid_from")
+            vu = meta.get("valid_until")
+            point_ts = int(point_in_time.timestamp())
+            valid_from_ts = int(float(vf)) if vf not in (None, "", False) else None
+            valid_until_ts = int(float(vu)) if vu not in (None, "", False, 0, "0") else None
+            if valid_from_ts is not None and point_ts < valid_from_ts:
+                return False
+            if valid_until_ts is not None and point_ts >= valid_until_ts:
+                return False
+            return True
+        except (ValueError, TypeError):
+            return True  # parse error → include rather than silently drop
 
 
 # ---------------------------------------------------------------------------
