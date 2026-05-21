@@ -268,6 +268,7 @@
     <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">--</span></div>
     <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
     <div class="kpi"><span class="kpi-l">Tok Saved:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
+    <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span></div>
   </div>
   <div class="lens-tabs">
     <button class="tab on" onclick="setLens('overview')"    id="tab-overview">Overview</button>
@@ -472,6 +473,10 @@
       <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok" id="agenticBadge">--</span></div>
       <div id="agenticDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Agent Eval Trends</span><span class="card-badge badge-info" id="agentEvalBadge">--</span></div>
+      <div id="agentEvalDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -533,6 +538,14 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">AI Harness Overview</span><span class="card-badge badge-ok" id="harnessOvBadge">--</span></div>
       <div id="harnessDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Model Optimization</span><span class="card-badge badge-info" id="modelOptBadge">--</span></div>
+      <div id="modelOptDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Learning Pipeline</span><span class="card-badge badge-ok" id="learnPipelineBadge">active</span></div>
+      <div id="learnPipelineDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
