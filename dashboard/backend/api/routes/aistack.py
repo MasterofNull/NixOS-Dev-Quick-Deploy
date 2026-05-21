@@ -1,5 +1,5 @@
 """AI Stack specific API endpoints for learning stats, circuit breakers, and Ralph"""
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import logging
@@ -2057,6 +2057,130 @@ async def get_harness_overview() -> Dict[str, Any]:
     }
 
 
+@router.get("/harness")
+async def get_harness_legacy_alias() -> Dict[str, Any]:
+    """Compatibility alias for older dashboard clients expecting /api/aistack/harness."""
+    return await get_harness_overview()
+
+
+def _hybrid_dual_auth_headers() -> Dict[str, str]:
+    """Return both accepted hybrid auth header forms for dashboard proxy routes."""
+    api_key = _load_hybrid_api_key()
+    if not api_key:
+        return {}
+    return {"X-API-Key": api_key, "Authorization": f"Bearer {api_key}"}
+
+
+def _append_query(url: str, request: Request) -> str:
+    query = str(request.url.query or "")
+    return f"{url}?{query}" if query else url
+
+
+@router.get("/agent-ops/status")
+async def proxy_agent_ops_status() -> Dict[str, Any]:
+    """Compatibility proxy for coordinator /api/agent-ops/status."""
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/api/agent-ops/status",
+        {"available": False, "drift_score": None, "alert_active": False},
+        headers=_hybrid_dual_auth_headers(),
+    )
+
+
+@router.get("/memory/facts")
+async def proxy_memory_facts(request: Request) -> Dict[str, Any]:
+    """Compatibility proxy for coordinator /api/memory/facts, preserving filters."""
+    return await fetch_with_fallback(
+        _append_query(f"{SERVICES['hybrid']}/api/memory/facts", request),
+        {"available": False, "facts": []},
+        headers=_hybrid_dual_auth_headers(),
+    )
+
+
+@router.get("/memory/supersede/history")
+async def proxy_memory_supersede_history(request: Request) -> Dict[str, Any]:
+    """Compatibility proxy for coordinator /memory/supersede/history."""
+    return await fetch_with_fallback(
+        _append_query(f"{SERVICES['hybrid']}/memory/supersede/history", request),
+        {"available": False, "events": []},
+        headers=_hybrid_dual_auth_headers(),
+    )
+
+
+@router.get("/memory/stats")
+async def proxy_memory_stats() -> Dict[str, Any]:
+    """Small dashboard aggregate for memory broker, crystallizer, and supersession state."""
+    broker, crystal, supersede = await asyncio.gather(
+        fetch_with_fallback(
+            f"{SERVICES['hybrid']}/memory/broker/status",
+            {"available": False},
+            headers=_hybrid_dual_auth_headers(),
+        ),
+        fetch_with_fallback(
+            f"{SERVICES['hybrid']}/memory/crystalline/status",
+            {"available": False, "sessions_processed": 0, "insights_stored": 0},
+            headers=_hybrid_dual_auth_headers(),
+        ),
+        fetch_with_fallback(
+            f"{SERVICES['hybrid']}/memory/supersede/history?limit=5",
+            {"available": False, "events": []},
+            headers=_hybrid_dual_auth_headers(),
+        ),
+    )
+    memory_types = broker.get("memory_types", []) if isinstance(broker, dict) else []
+    events = supersede.get("events", []) if isinstance(supersede, dict) else []
+    return {
+        "available": bool(isinstance(broker, dict) and broker.get("initialized")),
+        "initialized": bool(isinstance(broker, dict) and broker.get("initialized")),
+        "memory_types": memory_types,
+        "memory_type_count": len(memory_types),
+        "contradiction_pairs": broker.get("contradiction_pairs") if isinstance(broker, dict) else None,
+        "sessions_processed": crystal.get("sessions_processed", 0) if isinstance(crystal, dict) else 0,
+        "insights_stored": crystal.get("insights_stored", 0) if isinstance(crystal, dict) else 0,
+        "supersession_events": len(events),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/hints/stats")
+async def proxy_hints_stats() -> Dict[str, Any]:
+    """Compatibility hints stats for older command-center cards."""
+    hints = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/hints?q=dashboard",
+        {"available": False, "hints": []},
+        headers=_hybrid_dual_auth_headers(),
+    )
+    hint_rows = hints.get("hints", []) if isinstance(hints, dict) else []
+    return {
+        "available": isinstance(hints, dict),
+        "hint_count": len(hint_rows),
+        "top_hints": hint_rows[:5],
+        "generated_at": hints.get("generated_at") if isinstance(hints, dict) else None,
+    }
+
+
+@router.get("/hints/report")
+async def proxy_hints_report() -> Dict[str, Any]:
+    """Compatibility report endpoint backed by the persisted aq-report snapshot."""
+    report = await _aq_report_snapshot()
+    return {
+        "available": bool(report),
+        "hints": report.get("hints", {}) if isinstance(report, dict) else {},
+        "agent_lessons": report.get("agent_lessons", {}) if isinstance(report, dict) else {},
+        "retrieval_acceptance": report.get("retrieval_acceptance", {}) if isinstance(report, dict) else {},
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/lesson-registry")
+async def proxy_lesson_registry() -> Dict[str, Any]:
+    """Compatibility proxy for coordinator /control/ai-coordinator/lessons."""
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/control/ai-coordinator/lessons",
+        {"available": False, "agent_lessons": {"entries": [], "counts": {}}},
+        headers=_hybrid_dual_auth_headers(),
+    )
+
+
 @router.post("/harness/maintenance/run")
 async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[str, Any]:
     """Run allowlisted harness maintenance actions from dashboard."""
@@ -2181,6 +2305,54 @@ async def proxy_clm_status() -> Dict[str, Any]:
     return await fetch_with_fallback(
         f"{SERVICES['hybrid']}/context/lifecycle/status",
         {"tiers": {}, "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/memory/broker/status")
+async def proxy_memory_broker_status() -> Dict[str, Any]:
+    """Proxy coordinator /memory/broker/status — memory types + contradiction pairs."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/memory/broker/status",
+        {"initialized": False, "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/memory/crystalline/status")
+async def proxy_memory_crystalline_status() -> Dict[str, Any]:
+    """Proxy coordinator /memory/crystalline/status — crystallization run stats."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/memory/crystalline/status",
+        {"sessions_processed": 0, "insights_stored": 0, "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/affective/state")
+async def proxy_affective_state() -> Dict[str, Any]:
+    """Proxy coordinator /affective/state — agent affective/emotional signal state."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/affective/state",
+        {"enabled": False, "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/parity/scorecard")
+async def proxy_parity_scorecard() -> Dict[str, Any]:
+    """Proxy coordinator /parity/scorecard — runtime parity track status."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/parity/scorecard",
+        {"scorecard": {}, "available": False},
         headers=headers,
     )
 

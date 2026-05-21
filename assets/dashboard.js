@@ -578,6 +578,13 @@ async function loadRouting() {
   } else if (recentD.length) {
     rows = recentD.slice(0,10).map(r =>
       `<tr><td>${r.task_type||'--'}</td><td>${r.route||r.backend||'--'}</td><td>${relTime(r.timestamp)}</td></tr>`).join('');
+  } else {
+    // Synthesize summary rows from aggregate analytics when no per-intent breakdown available
+    const remoteN = (cur.query_ok_n ?? w7d.query_ok_n ?? 0) - localN;
+    if (localN > 0)
+      rows += `<tr><td>all intents</td><td>local (llama.cpp)</td><td>${localN.toLocaleString()}</td></tr>`;
+    if (remoteN > 0)
+      rows += `<tr><td>offloaded</td><td>remote</td><td>${remoteN.toLocaleString()}</td></tr>`;
   }
   tbody.innerHTML = rows || '<tr><td colspan="3" style="color:var(--fg3)">No routing data yet</td></tr>';
 }
@@ -1019,6 +1026,7 @@ async function loadIntelligence() {
     loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
     loadPerfHotspots(), loadOrchestrationSessions(), loadRAGHealth(),
     loadRoutingConfig(), loadHomeostasis(), loadSchedulerStatus(), loadCLMStatus(),
+    loadMemoryBroker(), loadAffectiveState(),
   ]);
 }
 
@@ -1101,9 +1109,9 @@ async function loadHardening() {
     sc.innerHTML = [
       '<div style="font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem">Scorecard</div>',
       fwRow('Prompt Cache',      infe.prompt_cache_policy_enabled ? 'enabled' : 'disabled', infe.prompt_cache_policy_enabled ? 'ok' : 'warn'),
-      fwRow('Spec Decoding',     infe.speculative_decoding_enabled ? 'enabled' : 'disabled', infe.speculative_decoding_enabled ? 'ok' : 'info'),
+      fwRow('Spec Decoding',     infe.speculative_decoding_enabled ? `enabled (${infe.speculative_decoding_mode||'draft'})` : 'disabled (MTP)', infe.speculative_decoding_enabled ? 'ok' : 'info'),
       fwRow('Ctx Compression',   infe.context_compression_enabled ? 'enabled' : 'disabled', infe.context_compression_enabled ? 'ok' : 'warn'),
-      fwRow('Discovery Cache%',  disc.invoked ? pctD((disc.cache_hits / disc.invoked) * 100) : '--'),
+      fwRow('Discovery Cache%',  disc.cache_hit_rate != null ? pctD(disc.cache_hit_rate * 100) : '--'),
       fwRow('Discovery Errors',  disc.errors ?? 0, disc.errors > 0 ? 'err' : 'ok'),
       fwRow('Acceptance Rate',   acc.total > 0 ? pctD(acc.pass_rate * 100) : 'no runs', acc.ok === true ? 'ok' : acc.ok === false ? 'err' : 'info'),
     ].join('');
@@ -1463,7 +1471,7 @@ async function loadOperations() {
   await Promise.allSettled([
     loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(),
     loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
-    loadRalph(), loadTrainingData(),
+    loadRalph(), loadTrainingData(), loadParityScorecard(),
   ]);
 }
 
@@ -1621,6 +1629,78 @@ async function loadCLMStatus() {
     thresholds.hot_idle_secs  ? fwRow('Hot Idle TTL',  `${thresholds.hot_idle_secs}s`,  'info') : '',
     thresholds.warm_idle_secs ? fwRow('Warm Idle TTL', `${thresholds.warm_idle_secs}s`, 'info') : '',
   ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: MEMORY BROKER + CRYSTALLIZATION ───────────────────────────
+async function loadMemoryBroker() {
+  const [broker, crystal] = await Promise.all([
+    apiFetch('/memory/broker/status'),
+    apiFetch('/memory/crystalline/status'),
+  ]);
+  const el = document.getElementById('memoryBrokerDetails');
+  const badge = document.getElementById('memoryBrokerBadge');
+  if (!el) return;
+  const brokerOk = broker && broker.initialized;
+  if (badge) { badge.textContent = brokerOk ? 'online' : 'offline'; badge.className = `card-badge ${brokerOk ? 'badge-ok' : 'badge-warn'}`; }
+  const types = (broker && broker.memory_types) || [];
+  const contradictions = broker ? (broker.contradiction_pairs ?? 0) : 0;
+  const sessionsProcessed = crystal ? (crystal.sessions_processed ?? 0) : '--';
+  const insightsStored    = crystal ? (crystal.insights_stored    ?? 0) : '--';
+  const lastRun = crystal && crystal.last_run ? relTime(crystal.last_run) : 'never';
+  el.innerHTML = [
+    fwRow('Status',              brokerOk ? 'initialized' : 'offline', brokerOk ? 'ok' : 'err'),
+    fwRow('Memory Types',        types.length ? types.join(', ') : '--', 'info'),
+    fwRow('Contradiction Pairs', contradictions, contradictions > 10 ? 'warn' : 'ok'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.45rem 0 .2rem;text-transform:uppercase">Crystallization</div>',
+    fwRow('Sessions Processed',  sessionsProcessed, sessionsProcessed > 0 ? 'ok' : 'info'),
+    fwRow('Insights Stored',     insightsStored,    insightsStored > 0    ? 'ok' : 'info'),
+    fwRow('Last Run',            lastRun, 'info'),
+  ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: AFFECTIVE STATE ───────────────────────────────────────────
+async function loadAffectiveState() {
+  const d  = await apiFetch('/affective/state');
+  const el = document.getElementById('affectiveDetails');
+  const badge = document.getElementById('affectiveBadge');
+  if (!el) return;
+  if (!d || d.available === false || !d.enabled) {
+    el.innerHTML = fwRow('Status', 'not enabled', 'info');
+    if (badge) { badge.textContent = 'off'; badge.className = 'card-badge badge-info'; }
+    return;
+  }
+  const s = d.state || {};
+  const dominant = s.dominant_signal || 'neutral';
+  const domColor = dominant === 'neutral' ? 'ok' : dominant === 'positive' ? 'ok' : 'warn';
+  if (badge) { badge.textContent = dominant; badge.className = `card-badge ${domColor === 'ok' ? 'badge-ok' : 'badge-warn'}`; }
+  el.innerHTML = [
+    fwRow('Dominant Signal',   dominant,                    domColor),
+    fwRow('Empathy Signal',    s.empathy_signal     != null ? s.empathy_signal.toFixed(3)     : '--', 'info'),
+    fwRow('Reciprocity Debt',  s.reciprocity_debt   != null ? s.reciprocity_debt.toFixed(3)   : '--', s.reciprocity_debt > 0.5 ? 'warn' : 'ok'),
+    fwRow('Aesthetic Gap',     s.aesthetic_gap      != null ? s.aesthetic_gap.toFixed(3)      : '--', 'info'),
+    fwRow('Compassion Level',  s.compassion_level   != null ? s.compassion_level.toFixed(3)   : '--', 'info'),
+    s.timestamp ? fwRow('Updated', relTime(s.timestamp), 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: PARITY SCORECARD ────────────────────────────────────────────
+async function loadParityScorecard() {
+  const d  = await apiFetch('/parity/scorecard');
+  const el = document.getElementById('parityDetails');
+  const badge = document.getElementById('parityBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const sc = d.scorecard || {};
+  const tracks = sc.tracks || [];
+  const totalScore = sc.total_score ?? null;
+  const pass = tracks.filter(t => t.status === 'complete').length;
+  const partial = tracks.filter(t => t.status === 'partial').length;
+  const fail = tracks.filter(t => t.status === 'failing').length;
+  const color = fail > 0 ? 'err' : partial > 0 ? 'warn' : 'ok';
+  if (badge) { badge.textContent = totalScore != null ? `${(totalScore*100).toFixed(0)}%` : `${pass}/${tracks.length}`; badge.className = `card-badge badge-${color === 'ok' ? 'ok' : color === 'warn' ? 'warn' : 'err'}`; }
+  el.innerHTML = tracks.length
+    ? tracks.map(t => fwRow(t.id.replace(/_/g,' '), t.status, t.status==='complete'?'ok':t.status==='partial'?'warn':'err')).join('')
+    : fwRow('Status', 'No tracks', 'info');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
