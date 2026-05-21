@@ -133,6 +133,17 @@ class MemoryBroker:
                             "memory_broker.superseding: old_id=%s content=%r -> new_content=%r",
                             superseded_id, entry.get("content"), content
                         )
+                        # Phase 60.2: record supersession in ledger + in-process cache
+                        # so read-time filter excludes the old fact without Qdrant mutation.
+                        if superseded_id:
+                            try:
+                                await self._superseder.supersede(
+                                    fact_id=superseded_id,
+                                    replacement=content[:500],
+                                    reason="contradiction_detected",
+                                )
+                            except Exception as _sup_exc:
+                                logger.warning("memory_broker.supersede_record_failed exc=%s", _sup_exc)
                         break # Only supersede the most relevant match
                     else:
                         logger.warning(
@@ -267,18 +278,28 @@ class MemoryBroker:
         elif not include_expired:
             rows = [r for r in rows if not _is_expired(r)]
             
-        # 2. Supersession Filter (Phase 55.1)
+        # 2. Supersession Filter (Phase 55.1 + Phase 60.2)
         if not include_superseded:
-            # Map of ID -> Row for quick lookup
-            row_map = { (r.get("memory_id") or r.get("id")): r for r in rows if (r.get("memory_id") or r.get("id")) }
-            superseded_ids = set()
+            # a) Metadata-link filter: entries whose ID appears as "supersedes" in another result
+            superseded_by_link: set = set()
             for r in rows:
                 meta = r.get("metadata") or {}
                 sid = meta.get("supersedes")
                 if sid:
-                    superseded_ids.add(sid)
-            
-            rows = [r for r in rows if (r.get("memory_id") or r.get("id")) not in superseded_ids]
+                    superseded_by_link.add(sid)
+
+            # b) Ledger cache filter (Phase 60.2): entries recorded via superseder.supersede()
+            def _ledger_superseded(r: dict) -> bool:
+                if self._superseder is None:
+                    return False
+                fid = r.get("memory_id") or r.get("id")
+                return bool(fid) and self._superseder.is_superseded(str(fid))
+
+            rows = [
+                r for r in rows
+                if (r.get("memory_id") or r.get("id")) not in superseded_by_link
+                and not _ledger_superseded(r)
+            ]
 
         return rows[:top_k]
 

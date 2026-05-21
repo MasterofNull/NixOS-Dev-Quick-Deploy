@@ -6394,6 +6394,30 @@
                             <div id="sysHealthRecommendations" style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);"></div>
                         </div>
 
+                        <!-- RAG Quality (Phase 60.5 — RAGAS metrics) -->
+                        <div style="margin-bottom: 1.5rem;" id="section-rag-quality">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">RAG Quality — RAGAS Metrics</div>
+                            <div class="status-grid" id="ragQualityGrid">
+                                <div class="status-item">
+                                    <span class="status-label">Answer Relevance</span>
+                                    <span class="status-value" id="ragAnswerRelevance">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Context Precision</span>
+                                    <span class="status-value" id="ragContextPrecision">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Faithfulness</span>
+                                    <span class="status-value" id="ragFaithfulness">--</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Sample Count</span>
+                                    <span class="status-value" id="ragSampleCount">--</span>
+                                </div>
+                            </div>
+                            <div id="ragQualityNote" style="margin-top:0.4rem;font-size:0.75rem;color:var(--text-muted);"></div>
+                        </div>
+
                         <!-- Tool Performance Analytics -->
                         <div style="margin-bottom: 1.5rem;">
                             <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.1em;">Tool Performance Analytics</div>
@@ -12804,8 +12828,42 @@
                 loadImprovementReadinessInsights(),
                 loadAgentLessonsInsights(),
                 loadFullInsightsReport(),
-                loadHintEffectiveness()
+                loadHintEffectiveness(),
+                loadRagQuality()  // Phase 60.5 — RAGAS metrics
             ]);
+        }
+
+        // Phase 60.5 — RAG Quality card (RAGAS metrics from /eval/trend)
+        async function loadRagQuality() {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 5000);
+            try {
+                const resp = await fetch('/eval/trend?limit=1', { signal: ctrl.signal, cache: 'no-store' });
+                clearTimeout(timer);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const m = data.ragas_metrics || {};
+
+                function fmtPct(v) {
+                    return v != null ? `${(v * 100).toFixed(1)}%` : '--';
+                }
+
+                const arEl = document.getElementById('ragAnswerRelevance');
+                const cpEl = document.getElementById('ragContextPrecision');
+                const faEl = document.getElementById('ragFaithfulness');
+                const scEl = document.getElementById('ragSampleCount');
+                const noteEl = document.getElementById('ragQualityNote');
+
+                if (arEl) arEl.textContent = fmtPct(m.answer_relevance_avg);
+                if (cpEl) cpEl.textContent = fmtPct(m.context_precision_avg);
+                if (faEl) faEl.textContent = m.faithfulness_enabled ? fmtPct(m.faithfulness_avg) : 'off';
+                if (scEl) scEl.textContent = m.sample_count != null ? String(m.sample_count) : '--';
+                if (noteEl) noteEl.textContent = m.faithfulness_enabled
+                    ? 'Faithfulness: Qwen async 10% sample'
+                    : 'Faithfulness: disabled (set RAGAS_FAITHFULNESS_ENABLED=true to enable)';
+            } catch (e) {
+                clearTimeout(timer);
+            }
         }
 
         async function loadRemediations() {
