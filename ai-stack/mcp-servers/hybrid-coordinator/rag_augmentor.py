@@ -89,7 +89,7 @@ class RagAugmentor:
         self,
         aidb_client: Optional[Any] = None,
         aidb_api_key: str = "",
-        top_k: int = 3,
+        top_k: int = 5,
     ) -> None:
         self._client = aidb_client
         self._key = aidb_api_key
