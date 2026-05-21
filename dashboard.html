@@ -1,225 +1,197 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="google" content="notranslate">
   <title>AI Command Center</title>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" defer></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap');
     :root {
-      --bg: #080c12; --bg2: #0d1220; --bg3: rgba(13,18,32,0.96);
-      --fg: #e2eaf4; --fg2: #8aa4bb; --fg3: #4a6278;
-      --cyan: #00d9ff; --cyan-g: rgba(0,217,255,0.18);
-      --mag: #d400ff; --mag-g: rgba(212,0,255,0.18);
-      --grn: #39ff14; --grn-g: rgba(57,255,20,0.15);
-      --yel: #f9e2af; --red: #ff3644; --red-g: rgba(255,54,68,0.2);
-      --border: rgba(0,217,255,0.15);
-      --font: 'JetBrains Mono', monospace; --hud: 'Orbitron', sans-serif;
-      --r: 3px;
+      --bg:#080c12; --bg2:#0d1220; --bg3:rgba(13,18,32,.96);
+      --fg:#e2eaf4; --fg2:#8aa4bb; --fg3:#4a6278;
+      --cyan:#00d9ff; --cyan-g:rgba(0,217,255,.18);
+      --mag:#d400ff;  --mag-g:rgba(212,0,255,.18);
+      --grn:#39ff14;  --grn-g:rgba(57,255,20,.12);
+      --yel:#f9e2af;  --red:#ff3644; --red-g:rgba(255,54,68,.18);
+      --border:rgba(0,217,255,.14);
+      --font:'JetBrains Mono',monospace; --hud:'Orbitron',sans-serif;
+      --r:3px;
     }
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; }
-    body { font-family: var(--font); background: var(--bg); color: var(--fg); overflow-x: hidden;
-      background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 28px 28px; }
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    html,body{height:100%}
+    body{font-family:var(--font);background:var(--bg);color:var(--fg);overflow-x:hidden;
+      background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:28px 28px}
 
     /* ── HEADER ── */
-    .hdr { position: sticky; top: 0; z-index: 900; background: var(--bg2);
-      border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); padding: 0 1.5rem; }
-    .hdr-top { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 0; flex-wrap: wrap; }
-    .hdr-title { font-family: var(--hud); font-size: 1.4rem; letter-spacing: 0.2em; text-transform: uppercase;
-      background: linear-gradient(90deg, var(--cyan), var(--mag));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      filter: drop-shadow(0 0 8px var(--cyan-g)); white-space: nowrap; }
-    .hdr-meta { display: flex; align-items: center; gap: 0.75rem; font-size: 0.62rem; color: var(--fg3);
-      text-transform: uppercase; letter-spacing: 0.1em; flex-wrap: wrap; }
-    .hdr-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--grn);
-      box-shadow: 0 0 6px var(--grn); animation: pulse 2s ease infinite; flex-shrink: 0; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-    .score-block { display: flex; align-items: baseline; gap: 0.3rem; margin-left: auto; }
-    .score-num { font-family: var(--hud); font-size: 2.4rem; font-weight: 900; color: var(--cyan);
-      text-shadow: 0 0 16px var(--cyan-g); line-height: 1; }
-    .score-label { font-size: 0.58rem; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.15em; }
-    .ctrl-btn { background: none; border: 1px solid var(--border); color: var(--fg3);
-      font-family: var(--font); font-size: 0.6rem; padding: 0.25rem 0.6rem; cursor: pointer;
-      text-transform: uppercase; letter-spacing: 0.1em; border-radius: var(--r); transition: 0.2s; }
-    .ctrl-btn:hover { border-color: var(--cyan); color: var(--cyan); }
-
+    .hdr{position:sticky;top:0;z-index:900;background:var(--bg2);border-bottom:1px solid var(--border);backdrop-filter:blur(14px);padding:0 1.5rem}
+    .hdr-top{display:flex;align-items:center;gap:.75rem;padding:.8rem 0;flex-wrap:wrap}
+    .hdr-dot{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 6px var(--grn);animation:pulse 2s ease infinite;flex-shrink:0}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    .hdr-title{font-family:var(--hud);font-size:1.3rem;letter-spacing:.18em;text-transform:uppercase;
+      background:linear-gradient(90deg,var(--cyan),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      filter:drop-shadow(0 0 8px var(--cyan-g));white-space:nowrap}
+    .hdr-meta{display:flex;align-items:center;gap:.6rem;font-size:.6rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em;flex-wrap:wrap}
+    .score-block{display:flex;align-items:baseline;gap:.25rem;margin-left:auto}
+    .score-num{font-family:var(--hud);font-size:2.2rem;font-weight:900;color:var(--cyan);text-shadow:0 0 14px var(--cyan-g);line-height:1}
+    .score-label{font-size:.55rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.12em}
+    .ctrl-btn{background:none;border:1px solid var(--border);color:var(--fg3);font-family:var(--font);font-size:.6rem;
+      padding:.2rem .55rem;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;border-radius:var(--r);transition:.15s}
+    .ctrl-btn:hover{border-color:var(--cyan);color:var(--cyan)}
     /* KPI ribbon */
-    .kpi-ribbon { display: flex; gap: 1.5rem; overflow-x: auto; scrollbar-width: none;
-      padding: 0.5rem 0; border-top: 1px solid rgba(255,255,255,0.04); }
-    .kpi { display: flex; align-items: baseline; gap: 0.4rem; white-space: nowrap; flex-shrink: 0; }
-    .kpi-l { font-size: 0.58rem; color: var(--fg3); text-transform: uppercase; }
-    .kpi-v { font-size: 0.82rem; font-weight: 700; color: var(--cyan); }
-
+    .kpi-ribbon{display:flex;gap:1.2rem;overflow-x:auto;scrollbar-width:none;padding:.45rem 0;border-top:1px solid rgba(255,255,255,.04)}
+    .kpi{display:flex;align-items:baseline;gap:.35rem;white-space:nowrap;flex-shrink:0}
+    .kpi-l{font-size:.57rem;color:var(--fg3);text-transform:uppercase}
+    .kpi-v{font-size:.8rem;font-weight:700;color:var(--cyan)}
     /* Lens tabs */
-    .lens-tabs { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: none;
-      padding: 0.5rem 0 0; border-top: 1px solid rgba(255,255,255,0.04); }
-    .tab { background: none; border: none; border-bottom: 2px solid transparent;
-      color: var(--fg3); font-family: var(--font); font-size: 0.65rem; padding: 0.4rem 0.8rem 0.6rem;
-      cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; transition: 0.15s; white-space: nowrap; }
-    .tab.on { color: var(--cyan); border-bottom-color: var(--cyan); }
+    .lens-tabs{display:flex;gap:0;overflow-x:auto;scrollbar-width:none;border-top:1px solid rgba(255,255,255,.04)}
+    .tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--fg3);font-family:var(--font);
+      font-size:.62rem;padding:.4rem .75rem .55rem;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;transition:.12s;white-space:nowrap}
+    .tab.on{color:var(--cyan);border-bottom-color:var(--cyan)}
+    .tab:hover{color:var(--fg2)}
 
-    /* ── RAG QUALITY STRIP (always visible, aq-qa contract) ── */
-    #section-rag-quality { display: flex; gap: 0.75rem; padding: 0.5rem 1.5rem;
-      background: rgba(0,217,255,0.03); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-    .rag-kpi { display: flex; align-items: baseline; gap: 0.4rem; }
-    .rag-kpi .rl { font-size: 0.58rem; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.08em; }
-    .rag-kpi .rv { font-size: 0.8rem; font-weight: 700; color: var(--mag); }
+    /* ── RAG STRIP ── */
+    #section-rag-quality{display:flex;gap:.75rem;padding:.45rem 1.5rem;
+      background:rgba(212,0,255,.04);border-bottom:1px solid rgba(212,0,255,.12);flex-wrap:wrap}
+    .rag-kpi{display:flex;align-items:baseline;gap:.35rem}
+    .rag-kpi .rl{font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em}
+    .rag-kpi .rv{font-size:.78rem;font-weight:700;color:var(--mag)}
 
-    /* ── MAIN PANELS ── */
-    .panel { display: none; padding: 1.5rem; }
-    .panel.on { display: block; }
-    .panel-grid { display: grid; gap: 1rem; }
-    .g2 { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-    .g3 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-    .g4 { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
-    .full { grid-column: 1 / -1; }
+    /* ── PANELS ── */
+    .panel{display:none;padding:1.25rem}
+    .panel.on{display:block}
+    .panel-grid{display:grid;gap:.9rem}
+    .g2{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+    .g3{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+    .g4{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+    .full{grid-column:1/-1}
 
     /* ── CARD ── */
-    .card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r);
-      padding: 1rem; position: relative; transition: border-color 0.2s;
-      clip-path: polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%); }
-    .card:hover { border-color: rgba(0,217,255,0.35); }
-    .card-hd { display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .card-title { font-family: var(--hud); font-size: 0.7rem; color: var(--mag); letter-spacing: 0.12em; text-transform: uppercase; }
-    .card-badge { font-size: 0.58rem; padding: 0.1rem 0.4rem; border-radius: 2px; text-transform: uppercase; }
-    .badge-ok { color: var(--grn); border: 1px solid var(--grn); }
-    .badge-err { color: var(--red); border: 1px solid var(--red); }
-    .badge-warn { color: var(--yel); border: 1px solid var(--yel); }
-    .badge-info { color: var(--cyan); border: 1px solid var(--border); }
+    .card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:.9rem;
+      position:relative;transition:border-color .2s;
+      clip-path:polygon(0 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%)}
+    .card:hover{border-color:rgba(0,217,255,.3)}
+    .card-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:.65rem;
+      padding-bottom:.4rem;border-bottom:1px solid rgba(255,255,255,.05)}
+    .card-title{font-family:var(--hud);font-size:.68rem;color:var(--mag);letter-spacing:.1em;text-transform:uppercase}
+    .card-badge{font-size:.56rem;padding:.1rem .35rem;border-radius:2px;text-transform:uppercase}
+    .badge-ok{color:var(--grn);border:1px solid var(--grn)}
+    .badge-err{color:var(--red);border:1px solid var(--red)}
+    .badge-warn{color:var(--yel);border:1px solid var(--yel)}
+    .badge-info{color:var(--cyan);border:1px solid var(--border)}
 
-    /* BIG STAT tiles */
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.75rem; }
-    .stat { background: linear-gradient(160deg, rgba(26,35,50,0.9), rgba(8,12,18,0.95));
-      border: 1px solid var(--border); border-left: 2px solid var(--cyan);
-      padding: 0.75rem; border-radius: var(--r); position: relative; overflow: hidden; }
-    .stat::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 1px;
-      background: var(--cyan); opacity: 0; animation: scan 4s linear infinite; }
-    @keyframes scan { 0% { top: 0; opacity: 0; } 5% { opacity: 0.25; } 95% { opacity: 0.25; } 100% { top: 100%; opacity: 0; } }
-    .stat-l { font-size: 0.6rem; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem; }
-    .stat-v { font-family: var(--hud); font-size: 1.8rem; font-weight: 900; color: var(--fg); line-height: 1; }
-    .stat-d { font-size: 0.6rem; color: var(--fg2); margin-top: 0.3rem; line-height: 1.4; }
-    .stat.ok .stat-v { color: var(--grn); }
-    .stat.warn .stat-v { color: var(--yel); }
-    .stat.err .stat-v { color: var(--red); }
-    .stat.cy .stat-v { color: var(--cyan); }
+    /* STAT TILES */
+    .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.65rem}
+    .stat{background:linear-gradient(160deg,rgba(26,35,50,.9),rgba(8,12,18,.95));
+      border:1px solid var(--border);border-left:2px solid var(--cyan);padding:.7rem;border-radius:var(--r);
+      position:relative;overflow:hidden;transition:.2s}
+    .stat::after{content:'';position:absolute;top:0;left:0;width:100%;height:1px;
+      background:var(--cyan);opacity:0;animation:scan 5s linear infinite}
+    @keyframes scan{0%{top:0;opacity:0}5%{opacity:.2}95%{opacity:.2}100%{top:100%;opacity:0}}
+    .stat-l{font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem}
+    .stat-v{font-family:var(--hud);font-size:1.7rem;font-weight:900;color:var(--fg);line-height:1}
+    .stat-d{font-size:.57rem;color:var(--fg2);margin-top:.25rem;line-height:1.35}
+    .stat.cy .stat-v{color:var(--cyan)}.stat.ok .stat-v{color:var(--grn)}.stat.warn .stat-v{color:var(--yel)}.stat.err .stat-v{color:var(--red)}
+    .spark{width:100%;height:24px;margin-top:.35rem}
+    .spark path{fill:none;stroke:var(--cyan);stroke-width:1.2;opacity:.7}
 
-    /* Sparkline */
-    .spark { width: 100%; height: 28px; margin-top: 0.4rem; }
-    .spark path { fill: none; stroke: var(--cyan); stroke-width: 1.2; opacity: 0.7; }
+    /* SERVICES */
+    .svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.4rem}
+    .svc{display:flex;align-items:center;gap:.45rem;padding:.35rem .55rem;
+      background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r)}
+    .svc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+    .svc-name{font-size:.6rem;color:var(--fg2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .svc-port{font-size:.55rem;color:var(--fg3)}
 
-    /* Service grid */
-    .svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.5rem; }
-    .svc { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem;
-      background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--r); }
-    .svc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .svc-name { font-size: 0.62rem; color: var(--fg2); flex: 1; }
-    .svc-port { font-size: 0.58rem; color: var(--fg3); }
+    /* LAYER RAIL */
+    .layer-rail{display:grid;grid-template-columns:repeat(8,1fr);gap:.4rem}
+    .layer{border:1px solid var(--border);padding:.45rem;text-align:center;border-radius:var(--r);cursor:pointer;transition:.15s}
+    .layer:hover{border-color:var(--cyan)}.layer.ok{background:var(--grn-g);border-color:rgba(57,255,20,.25)}
+    .layer.err{background:var(--red-g);border-color:rgba(255,54,68,.25)}
+    .layer-id{font-family:var(--hud);font-size:.62rem;color:var(--cyan)}
+    .layer-name{font-size:.52rem;color:var(--fg3);text-transform:uppercase;margin-top:.1rem}
+    .layer-score{font-size:.65rem;font-weight:700;margin-top:.18rem}
 
-    /* Layer rail */
-    .layer-rail { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.5rem; }
-    .layer { border: 1px solid var(--border); padding: 0.5rem; text-align: center;
-      border-radius: var(--r); cursor: pointer; transition: 0.2s; }
-    .layer:hover { border-color: var(--cyan); }
-    .layer-id { font-family: var(--hud); font-size: 0.65rem; color: var(--cyan); }
-    .layer-name { font-size: 0.55rem; color: var(--fg3); text-transform: uppercase; margin-top: 0.15rem; }
-    .layer-score { font-size: 0.7rem; font-weight: 700; margin-top: 0.2rem; }
-    .layer.ok { background: var(--grn-g); border-color: rgba(57,255,20,0.3); }
-    .layer.err { background: var(--red-g); border-color: rgba(255,54,68,0.3); }
+    /* CHECK LIST */
+    .check-list{display:flex;flex-direction:column;gap:.25rem;max-height:240px;overflow-y:auto}
+    .check-item{display:flex;align-items:center;gap:.45rem;padding:.28rem .45rem;border-radius:var(--r);font-size:.6rem}
+    .check-item.pass{background:rgba(57,255,20,.04)}.check-item.fail{background:var(--red-g)}.check-item.skip{background:rgba(249,226,175,.04)}
+    .ci-status{font-size:.56rem;font-weight:700;width:30px;text-align:center;flex-shrink:0}
+    .ci-id{color:var(--fg3);min-width:55px;flex-shrink:0}.ci-desc{color:var(--fg2);flex:1}
 
-    /* Check list */
-    .check-list { display: flex; flex-direction: column; gap: 0.3rem; max-height: 280px; overflow-y: auto; }
-    .check-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.5rem;
-      border-radius: var(--r); font-size: 0.62rem; }
-    .check-item.pass { background: rgba(57,255,20,0.05); }
-    .check-item.fail { background: var(--red-g); }
-    .check-item.skip { background: rgba(249,226,175,0.05); }
-    .ci-status { font-size: 0.58rem; font-weight: 700; width: 32px; text-align: center; flex-shrink: 0; }
-    .ci-id { color: var(--fg3); min-width: 60px; }
-    .ci-desc { color: var(--fg2); flex: 1; }
+    /* FW ROWS */
+    .fw-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:.6rem}
+    .fk{color:var(--fg3)}.fv{color:var(--fg)}
+    .fv.ok{color:var(--grn)}.fv.warn{color:var(--yel)}.fv.err{color:var(--red)}.fv.info{color:var(--cyan)}.fv.cy{color:var(--cyan)}
 
-    /* Profile pills */
-    .profile-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-    .profile { font-size: 0.6rem; padding: 0.2rem 0.5rem; border: 1px solid var(--border);
-      border-radius: 20px; color: var(--fg2); }
-    .profile.active { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-g); }
+    /* ROUTE TABLE */
+    .route-table{width:100%;border-collapse:collapse;font-size:.6rem}
+    .route-table th{color:var(--fg3);font-weight:400;text-align:left;padding:.28rem .45rem;border-bottom:1px solid var(--border);text-transform:uppercase}
+    .route-table td{padding:.28rem .45rem;color:var(--fg2);border-bottom:1px solid rgba(255,255,255,.025)}
 
-    /* Routing table */
-    .route-table { width: 100%; border-collapse: collapse; font-size: 0.62rem; }
-    .route-table th { color: var(--fg3); font-weight: 400; text-align: left; padding: 0.3rem 0.5rem;
-      border-bottom: 1px solid var(--border); text-transform: uppercase; }
-    .route-table td { padding: 0.3rem 0.5rem; color: var(--fg2); border-bottom: 1px solid rgba(255,255,255,0.03); }
-    .route-table td:last-child { color: var(--cyan); text-align: right; }
+    /* MODEL LIFECYCLE */
+    .model-row{display:flex;align-items:center;gap:.6rem;padding:.4rem;
+      border-bottom:1px solid rgba(255,255,255,.04);font-size:.6rem}
+    .model-row:last-child{border-bottom:none}
+    .model-state{font-size:.55rem;padding:.08rem .35rem;border-radius:2px;text-transform:uppercase;flex-shrink:0}
+    .ms-active{color:var(--grn);border:1px solid var(--grn)}.ms-ok{color:var(--cyan);border:1px solid var(--border)}
+    .ms-dl{color:var(--yel);border:1px solid var(--yel)}.ms-av{color:var(--fg3);border:1px solid var(--border)}
+    .model-name{flex:1;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .model-size{color:var(--fg3);flex-shrink:0}.model-actions{display:flex;gap:.3rem;flex-shrink:0}
+    .act-btn{background:none;border:1px solid var(--border);color:var(--fg3);font-family:var(--font);font-size:.55rem;
+      padding:.1rem .35rem;cursor:pointer;border-radius:2px;transition:.1s}
+    .act-btn:hover{border-color:var(--cyan);color:var(--cyan)}.act-btn.err:hover{border-color:var(--red);color:var(--red)}
 
-    /* Model lifecycle */
-    .model-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem;
-      border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.62rem; }
-    .model-row:last-child { border-bottom: none; }
-    .model-state { font-size: 0.58rem; padding: 0.1rem 0.4rem; border-radius: 2px; text-transform: uppercase; }
-    .ms-active { color: var(--grn); border: 1px solid var(--grn); }
-    .ms-available { color: var(--cyan); border: 1px solid var(--border); }
-    .ms-downloading { color: var(--yel); border: 1px solid var(--yel); }
-    .model-name { flex: 1; color: var(--fg); }
-    .model-size { color: var(--fg3); }
+    /* PROFILE CARDS */
+    .profile-card{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r);padding:.5rem}
+    .profile-name{font-size:.65rem;color:var(--cyan);font-weight:600;margin-bottom:.2rem}
+    .profile-meta{font-size:.56rem;color:var(--fg3)}
 
-    /* Firewall / Security */
-    .fw-stat { display: flex; justify-content: space-between; padding: 0.35rem 0;
-      border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.62rem; }
-    .fw-stat .fk { color: var(--fg3); }
-    .fw-stat .fv { color: var(--fg); }
-    .fw-stat .fv.ok { color: var(--grn); }
-    .fw-stat .fv.warn { color: var(--yel); }
-    .fw-stat .fv.err { color: var(--red); }
+    /* D3 canvas */
+    .d3-panel{width:100%;height:calc(100vh - 220px);min-height:480px;background:var(--bg2);
+      border:1px solid var(--border);border-radius:var(--r);position:relative;overflow:hidden}
+    .d3-hud{position:absolute;top:.6rem;right:.6rem;font-size:.58rem;color:var(--cyan);
+      letter-spacing:.12em;background:rgba(0,0,0,.65);padding:.2rem .65rem;
+      border-right:2px solid var(--cyan);pointer-events:none;z-index:10}
+    .node-label{font-size:9px;fill:var(--fg);pointer-events:none}
+    .link-line{stroke:rgba(0,217,255,.12);stroke-width:1}
 
-    /* D3 canvas panels */
-    .d3-panel { width: 100%; height: calc(100vh - 200px); min-height: 500px; background: var(--bg2);
-      border: 1px solid var(--border); border-radius: var(--r); position: relative; overflow: hidden; }
-    .d3-hud { position: absolute; top: 0.75rem; right: 0.75rem; font-size: 0.6rem; color: var(--cyan);
-      letter-spacing: 0.15em; background: rgba(0,0,0,0.6); padding: 0.25rem 0.75rem;
-      border-right: 2px solid var(--cyan); pointer-events: none; }
-    .node-label { font-size: 9px; fill: var(--fg); pointer-events: none; }
-    .link-line { stroke: rgba(0,217,255,0.12); stroke-width: 1; }
-    .link-line.mag { stroke: rgba(212,0,255,0.15); }
+    /* LOG PANEL */
+    .log-panel{height:calc(100vh - 220px);min-height:400px;overflow-y:auto;
+      font-size:.68rem;color:#39ff14;background:#000;padding:1rem;
+      border:1px solid #111;border-radius:var(--r)}
+    .log-line{margin-bottom:.28rem;border-left:2px solid #39ff14;padding-left:.55rem}
+    .log-ts{color:#4a6278;margin-right:.45rem}.log-type{color:var(--cyan);margin-right:.4rem;font-weight:700}
 
-    /* Log panel */
-    .log-panel { height: calc(100vh - 200px); min-height: 400px; overflow-y: auto;
-      font-size: 0.7rem; color: #39ff14; background: #000; padding: 1rem;
-      border: 1px solid #111; border-radius: var(--r); }
-    .log-line { margin-bottom: 0.3rem; border-left: 2px solid #39ff14; padding-left: 0.6rem; }
-    .log-ts { color: #4a6278; margin-right: 0.5rem; }
-    .log-type { color: var(--cyan); margin-right: 0.5rem; font-weight: 700; }
+    /* CONTROL DRAWER */
+    .drawer{position:fixed;right:-440px;top:0;width:min(440px,100vw);height:100%;
+      background:#0b0f1a;border-left:2px solid var(--cyan);z-index:1000;padding:1.75rem;
+      transition:right .32s ease;box-shadow:-30px 0 60px #000;overflow-y:auto}
+    .drawer.open{right:0}
+    .drawer-title{font-family:var(--hud);color:var(--cyan);font-size:.95rem;letter-spacing:.12em;margin-bottom:1.25rem}
+    .drawer-close{background:none;border:none;color:var(--fg3);font-size:1.3rem;cursor:pointer;float:right;margin-top:-.2rem}
+    .drawer-btn{width:100%;padding:.65rem;margin-top:.6rem;background:transparent;
+      border:1px solid var(--mag);color:var(--mag);font-family:var(--hud);font-size:.65rem;
+      text-transform:uppercase;letter-spacing:.1em;cursor:pointer;border-radius:var(--r);transition:.15s}
+    .drawer-btn:hover{background:var(--mag-g)}
+    .drawer-section{margin-top:1.25rem}
+    .drawer-section-title{font-size:.62rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.12em;
+      margin-bottom:.6rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
+    .drawer-kv{display:flex;justify-content:space-between;font-size:.6rem;color:var(--fg3);margin-top:.3rem}
+    .drawer-kv span:last-child{color:var(--grn)}
 
-    /* Control drawer */
-    .drawer { position: fixed; right: -440px; top: 0; width: min(440px, 100vw); height: 100%;
-      background: #0b0f1a; border-left: 2px solid var(--cyan); z-index: 1000; padding: 2rem;
-      transition: right 0.35s ease; box-shadow: -30px 0 60px #000; overflow-y: auto; }
-    .drawer.open { right: 0; }
-    .drawer-title { font-family: var(--hud); color: var(--cyan); font-size: 1rem;
-      letter-spacing: 0.15em; margin-bottom: 1.5rem; }
-    .drawer-close { background: none; border: none; color: var(--fg3); font-size: 1.4rem;
-      cursor: pointer; float: right; }
-    .drawer-btn { width: 100%; padding: 0.75rem; margin-top: 0.75rem;
-      background: transparent; border: 1px solid var(--mag); color: var(--mag);
-      font-family: var(--hud); font-size: 0.7rem; text-transform: uppercase;
-      letter-spacing: 0.12em; cursor: pointer; border-radius: var(--r); transition: 0.2s; }
-    .drawer-btn:hover { background: var(--mag-g); }
-    .drawer-section { margin-top: 1.5rem; }
-    .drawer-section-title { font-size: 0.65rem; color: var(--fg3); text-transform: uppercase;
-      letter-spacing: 0.15em; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
-
-    /* Error banner */
-    #err-banner { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
-      background: var(--red); color: #fff; padding: 0.6rem 1.5rem; font-size: 0.75rem; }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-    /* Responsive */
-    @media (max-width: 600px) { .layer-rail { grid-template-columns: repeat(4, 1fr); } }
+    /* MISC */
+    .mini-btn{background:none;border:1px solid var(--border);color:var(--cyan);font-family:var(--font);
+      font-size:.58rem;padding:.1rem .4rem;cursor:pointer;border-radius:2px}
+    #err-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9999;
+      background:var(--red);color:#fff;padding:.5rem 1.25rem;font-size:.72rem}
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+    @media(max-width:600px){.layer-rail{grid-template-columns:repeat(4,1fr)}}
   </style>
 </head>
 <body>
@@ -233,7 +205,7 @@
     <div class="hdr-meta">
       <span id="hostname">local-node</span>
       <span id="lastUpdate">--:--:--</span>
-      <span id="runtimeMode">discovering runtime</span>
+      <span id="runtimeMode">live stack</span>
     </div>
     <div class="score-block">
       <div class="score-num" id="healthScore">--</div>
@@ -241,31 +213,29 @@
     </div>
     <button class="ctrl-btn" onclick="toggleDrawer()">[CONTROLS]</button>
   </div>
-
   <div class="kpi-ribbon">
     <div class="kpi"><span class="kpi-l">Local AI:</span><span class="kpi-v" id="kpiLocalPct">--%</span></div>
     <div class="kpi"><span class="kpi-l">Cache Hit:</span><span class="kpi-v" id="kpiCacheHit">--%</span></div>
-    <div class="kpi"><span class="kpi-l">Eval Score:</span><span class="kpi-v" id="kpiEval">--%</span></div>
+    <div class="kpi"><span class="kpi-l">Eval:</span><span class="kpi-v" id="kpiEval">--%</span></div>
+    <div class="kpi"><span class="kpi-l">Hint Adopt:</span><span class="kpi-v" id="kpiHintPct">--%</span></div>
     <div class="kpi"><span class="kpi-l">Redis:</span><span class="kpi-v" id="kpiRedis">--</span></div>
     <div class="kpi"><span class="kpi-l">PG:</span><span class="kpi-v" id="kpiPg">--</span></div>
     <div class="kpi"><span class="kpi-l">Qdrant:</span><span class="kpi-v" id="kpiQdrant">--</span></div>
     <div class="kpi"><span class="kpi-l">Vectors:</span><span class="kpi-v" id="kpiVectors">--</span></div>
-    <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">--</span></div>
-    <div class="kpi"><span class="kpi-l">Events:</span><span class="kpi-v" id="kpiEvents">--</span></div>
+    <div class="kpi"><span class="kpi-l">Coord:</span><span class="kpi-v" id="kpiCoord">--</span></div>
   </div>
-
   <div class="lens-tabs">
-    <button class="tab on" onclick="setLens('overview')" id="tab-overview">Overview</button>
-    <button class="tab" onclick="setLens('intelligence')" id="tab-intelligence">Intelligence</button>
-    <button class="tab" onclick="setLens('security')" id="tab-security">Security</button>
-    <button class="tab" onclick="setLens('operations')" id="tab-operations">Operations</button>
-    <button class="tab" onclick="setLens('map')" id="tab-map">Neural Map</button>
-    <button class="tab" onclick="setLens('logic')" id="tab-logic">Logic DAG</button>
-    <button class="tab" onclick="setLens('logs')" id="tab-logs">Logs</button>
+    <button class="tab on" onclick="setLens('overview')"    id="tab-overview">Overview</button>
+    <button class="tab"    onclick="setLens('intelligence')" id="tab-intelligence">Intelligence</button>
+    <button class="tab"    onclick="setLens('security')"    id="tab-security">Security</button>
+    <button class="tab"    onclick="setLens('operations')"  id="tab-operations">Operations</button>
+    <button class="tab"    onclick="setLens('map')"         id="tab-map">Neural Map</button>
+    <button class="tab"    onclick="setLens('logic')"       id="tab-logic">Logic DAG</button>
+    <button class="tab"    onclick="setLens('logs')"        id="tab-logs">Logs</button>
   </div>
 </header>
 
-<!-- ── RAG QUALITY STRIP — always visible, required by aq-qa 60.7.3 ── -->
+<!-- ── RAG QUALITY STRIP — aq-qa 60.7.3 contract ── -->
 <div id="section-rag-quality">
   <div class="rag-kpi"><span class="rl">Ans Relevance:</span><span class="rv" id="ragAnswerRelevance">--</span></div>
   <div class="rag-kpi"><span class="rl">Ctx Precision:</span><span class="rv" id="ragContextPrecision">--</span></div>
@@ -273,23 +243,54 @@
   <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">--</span></div>
 </div>
 
-<!-- ── OVERVIEW PANEL ── -->
+<!-- ── OVERVIEW ── -->
 <div class="panel on" id="panel-overview">
-  <div class="panel-grid g4" style="margin-bottom:1rem;">
-    <div class="stat cy" id="statCpu"><div class="stat-l">CPU</div><div class="stat-v" id="vCpu">--</div><div class="stat-d">host processor</div><svg class="spark" id="spCpu" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0,24 Q50,20 100,18 T200,16"/></svg></div>
-    <div class="stat cy" id="statGpu"><div class="stat-l">GPU Busy</div><div class="stat-v" id="vGpu">--</div><div class="stat-d">inference accel</div><svg class="spark" id="spGpu" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0,20 Q50,16 100,12 T200,14"/></svg></div>
-    <div class="stat cy"><div class="stat-l">Memory</div><div class="stat-v" id="vMem">--</div><div class="stat-d">system RAM</div><svg class="spark" id="spMem" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0,22 Q50,18 100,20 T200,18"/></svg></div>
-    <div class="stat cy"><div class="stat-l">Disk</div><div class="stat-v" id="vDisk">--</div><div class="stat-d">root filesystem</div></div>
-    <div class="stat cy"><div class="stat-l">Network</div><div class="stat-v" id="vNet">--</div><div class="stat-d">throughput</div><svg class="spark" id="spNet" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0,14 Q50,10 100,16 T200,12"/></svg></div>
-    <div class="stat cy"><div class="stat-l">Stack Health</div><div class="stat-v" id="vStack">--</div><div class="stat-d">aggregate score</div></div>
-    <div class="stat cy"><div class="stat-l">Inferences</div><div class="stat-v" id="vInferences">--</div><div class="stat-d">total requests</div></div>
-    <div class="stat cy"><div class="stat-l">Uptime</div><div class="stat-v" id="vUptime">--</div><div class="stat-d">system uptime</div></div>
+  <!-- System stat tiles -->
+  <div class="stat-grid" style="margin-bottom:.9rem">
+    <div class="stat cy" id="statCpu">
+      <div class="stat-l">CPU</div><div class="stat-v" id="vCpu">--</div>
+      <div class="stat-d" id="cpuModel">host processor</div>
+      <svg class="spark" id="spCpu" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
+    </div>
+    <div class="stat cy" id="statGpu">
+      <div class="stat-l">GPU Busy</div><div class="stat-v" id="vGpu">--</div>
+      <div class="stat-d" id="gpuVram">inference</div>
+      <svg class="spark" id="spGpu" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
+    </div>
+    <div class="stat cy">
+      <div class="stat-l">Memory</div><div class="stat-v" id="vMem">--</div>
+      <div class="stat-d"><span id="memUsed">--</span> / <span id="memTotal">--</span></div>
+      <svg class="spark" id="spMem" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
+    </div>
+    <div class="stat cy">
+      <div class="stat-l">Disk</div><div class="stat-v" id="vDisk">--</div>
+      <div class="stat-d"><span id="dskFree">--</span> free of <span id="dskTotal">--</span></div>
+    </div>
+    <div class="stat cy">
+      <div class="stat-l">Network I/O</div><div class="stat-v" id="vNet">--</div>
+      <div class="stat-d"><span id="vConnections">--</span> connections</div>
+      <svg class="spark" id="spNet" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
+    </div>
+    <div class="stat cy">
+      <div class="stat-l">CPU Temp</div><div class="stat-v" id="cpuTemp" style="font-size:1.1rem">--</div>
+      <div class="stat-d"><span id="cpuCores">--</span> cores</div>
+    </div>
+    <div class="stat cy">
+      <div class="stat-l">Eval Score</div><div class="stat-v" id="vStack">--</div>
+      <div class="stat-d">harness gate</div>
+    </div>
+    <div class="stat cy">
+      <div class="stat-l">GPU Name</div><div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">--</div>
+    </div>
   </div>
 
   <div class="panel-grid g2">
-    <!-- AI Services -->
+    <!-- Services -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">AI Stack Services</span><span class="card-badge badge-info" id="svcCount">0/0</span></div>
+      <div class="card-hd">
+        <span class="card-title">AI Stack Services</span>
+        <span class="card-badge badge-info" id="svcCount">0/0</span>
+      </div>
       <div class="svc-grid" id="svcGrid">
         <div class="svc"><div class="svc-dot" style="background:var(--fg3)"></div><span class="svc-name">loading...</span></div>
       </div>
@@ -297,8 +298,12 @@
 
     <!-- OSI Layer Health -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">OSI Layer Health</span><span class="card-badge badge-info" id="osiScore">--/--</span></div>
-      <div class="layer-rail" id="layerRail">
+      <div class="card-hd">
+        <span class="card-title">OSI Layer Health</span>
+        <span class="card-badge badge-info" id="osiBadge">--</span>
+      </div>
+      <div style="font-size:.58rem;color:var(--fg3);margin-bottom:.5rem">passed / total  ·  <span id="osiScore">--</span>  ·  click layer to drill</div>
+      <div class="layer-rail">
         <div class="layer" onclick="drillLayer('0')"><div class="layer-id">L0</div><div class="layer-name">HW/OS</div><div class="layer-score" id="ls0">--</div></div>
         <div class="layer" onclick="drillLayer('1')"><div class="layer-id">L1</div><div class="layer-name">Data</div><div class="layer-score" id="ls1">--</div></div>
         <div class="layer" onclick="drillLayer('2')"><div class="layer-id">L2</div><div class="layer-name">Model</div><div class="layer-score" id="ls2">--</div></div>
@@ -308,742 +313,198 @@
         <div class="layer" onclick="drillLayer('6')"><div class="layer-id">L6</div><div class="layer-name">Sec</div><div class="layer-score" id="ls6">--</div></div>
         <div class="layer" onclick="drillLayer('7')"><div class="layer-id">L7</div><div class="layer-name">UX</div><div class="layer-score" id="ls7">--</div></div>
       </div>
-      <div style="margin-top:0.75rem; font-size:0.6rem; color:var(--fg3);">Click layer to drill checks →</div>
-      <div class="check-list" id="checkList" style="margin-top:0.5rem;"></div>
+      <div class="check-list" id="checkList" style="margin-top:.6rem"></div>
     </div>
 
-    <!-- System remediations -->
+    <!-- Issues & Remediations -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">Issues & Remediations</span><span class="card-badge badge-ok" id="remedBadge">0 open</span></div>
-      <div class="check-list" id="remediationList"><div style="color:var(--fg3); font-size:0.62rem; padding:0.5rem;">Loading...</div></div>
+      <div class="card-hd">
+        <span class="card-title">Issues &amp; Remediations</span>
+        <span class="card-badge badge-ok" id="remedBadge">0 issues</span>
+      </div>
+      <div class="check-list" id="remediationList">
+        <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
+      </div>
     </div>
 
-    <!-- Audit / System Overview -->
+    <!-- Audit Log -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">System Audit Log</span><span class="card-badge badge-info" id="auditBadge">live</span></div>
-      <div class="check-list" id="auditList"><div style="color:var(--fg3); font-size:0.62rem; padding:0.5rem;">Loading...</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- ── INTELLIGENCE PANEL ── -->
-<div class="panel" id="panel-intelligence">
-  <div class="panel-grid g2" style="margin-bottom:1rem;">
-    <!-- Hybrid Coordinator Metrics -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Hybrid Coordinator</span><span class="card-badge badge-ok" id="coordStatus">--</span></div>
-      <div id="coordMetrics"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
-    </div>
-
-    <!-- Task Routing / Classification -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Task Routing</span><span class="card-badge badge-info">classifier</span></div>
-      <table class="route-table" id="routeTable">
-        <thead><tr><th>Intent</th><th>Backend</th><th>Count</th></tr></thead>
-        <tbody id="routeBody"><tr><td colspan="3" style="color:var(--fg3);">Loading...</td></tr></tbody>
-      </table>
-    </div>
-
-    <!-- Model Lifecycle -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Model Lifecycle</span><span class="card-badge badge-info" id="mlBadge">--</span></div>
-      <div id="modelList"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
-    </div>
-
-    <!-- Switchboard Profiles -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Switchboard Profiles</span><span class="card-badge badge-ok" id="swBadge">--</span></div>
-      <div class="profile-list" id="profileList"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
-    </div>
-
-    <!-- AIDB Health -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">AIDB Health</span><span class="card-badge badge-info" id="aidbBadge">--</span></div>
-      <div id="aidbDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
-    </div>
-
-    <!-- Continuous Learning / Crystallizer -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Learning & Memory</span><span class="card-badge badge-ok">active</span></div>
-      <div id="learningDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
-    </div>
-
-    <!-- Drift / Traces -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Drift Analysis</span><span class="card-badge badge-ok" id="driftBadge">stable</span></div>
-      <div id="driftDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
-    </div>
-
-    <!-- Eval Trends -->
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Eval Trends</span><span class="card-badge badge-info">ragas</span></div>
-      <div id="evalDetails">
-        <div class="fw-stat"><span class="fk">Answer Relevance</span><span class="fv ok" id="evalAR">--</span></div>
-        <div class="fw-stat"><span class="fk">Context Precision</span><span class="fv ok" id="evalCP">--</span></div>
-        <div class="fw-stat"><span class="fk">Faithfulness</span><span class="fv ok" id="evalFaith">--</span></div>
-        <div class="fw-stat"><span class="fk">Sample Count</span><span class="fv" id="evalSamples">--</span></div>
-        <div class="fw-stat"><span class="fk">Overall Eval%</span><span class="fv cy" id="evalOverall">--</span></div>
+      <div class="card-hd">
+        <span class="card-title">Operator Audit Log</span>
+        <span class="card-badge badge-info">live</span>
+      </div>
+      <div class="check-list" id="auditList">
+        <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Full-width: Agentic Readiness + Knowledge Observatory -->
+<!-- ── INTELLIGENCE ── -->
+<div class="panel" id="panel-intelligence">
   <div class="panel-grid g2">
     <div class="card">
-      <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok" id="agenticBadge">--</span></div>
-      <div id="agenticDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div class="card-hd"><span class="card-title">Hybrid Coordinator</span><span class="card-badge badge-ok" id="coordStatus">--</span></div>
+      <div id="coordMetrics"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Task Routing</span><span class="card-badge badge-info">classifier</span></div>
+      <div style="font-size:.6rem;color:var(--fg3);margin-bottom:.4rem">Total: <span id="routeTotal">--</span> &nbsp;·&nbsp; Local: <span id="routeLocalP">--</span></div>
+      <table class="route-table"><thead><tr><th>Intent / Type</th><th>Backend</th><th>Count</th></tr></thead>
+        <tbody id="routeBody"><tr><td colspan="3" style="color:var(--fg3)">Loading...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Model Lifecycle</span><span class="card-badge badge-info" id="mlBadge">--</span></div>
+      <div id="modelList"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Switchboard Profiles</span><span class="card-badge badge-ok" id="swBadge">--</span></div>
+      <div id="profileList" style="display:flex;flex-direction:column;gap:.5rem"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">AIDB Health</span><span class="card-badge badge-info" id="aidbBadge">--</span></div>
+      <div id="aidbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Learning &amp; Memory</span><span class="card-badge badge-ok">active</span></div>
+      <div id="learningDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Drift Analysis</span><span class="card-badge badge-ok" id="driftBadge">--</span></div>
+      <div id="driftDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Eval Trends (RAGAS)</span><span class="card-badge badge-info">quality</span></div>
+      <div class="fw-row"><span class="fk">Answer Relevance</span><span class="fv ok" id="evalAR">--</span></div>
+      <div class="fw-row"><span class="fk">Context Precision</span><span class="fv ok" id="evalCP">--</span></div>
+      <div class="fw-row"><span class="fk">Faithfulness</span><span class="fv ok" id="evalFaith">--</span></div>
+      <div class="fw-row"><span class="fk">Sample Count</span><span class="fv" id="evalSamples">--</span></div>
+      <div class="fw-row"><span class="fk">Eval Runs</span><span class="fv" id="evalRunCount">--</span></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Verifier Self-Consistency</span><span class="card-badge badge-ok">auto</span></div>
+      <div id="verifierDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-title">Knowledge Observatory</span><span class="card-badge badge-info">intel</span></div>
-      <div id="knowledgeDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div id="knowledgeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok" id="agenticBadge">--</span></div>
+      <div id="agenticDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
 
-<!-- ── SECURITY PANEL ── -->
+<!-- ── SECURITY ── -->
 <div class="panel" id="panel-security">
   <div class="panel-grid g2">
     <div class="card">
       <div class="card-hd"><span class="card-title">Firewall Status</span><span class="card-badge badge-ok" id="fwBadge">--</span></div>
-      <div id="fwDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div id="fwDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-title">Security Monitor</span><span class="card-badge badge-ok">scanning</span></div>
-      <div id="secMonitor"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div id="secMonitor"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-title">Circuit Breakers</span><span class="card-badge badge-ok" id="cbBadge">--</span></div>
-      <div id="cbDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div id="cbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
-      <div class="card-hd"><span class="card-title">Production Hardening</span><span class="card-badge badge-info">progress</span></div>
-      <div id="hardeningDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div class="card-hd"><span class="card-title">AI Harness &amp; Hardening</span><span class="card-badge badge-info" id="harnessBadge">--</span></div>
+      <div id="hardeningDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
 
-<!-- ── OPERATIONS PANEL ── -->
+<!-- ── OPERATIONS ── -->
 <div class="panel" id="panel-operations">
   <div class="panel-grid g2">
-    <!-- QA Phase 0 Status -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">QA Phase 0 Status</span><span class="card-badge" id="qaBadge">--</span></div>
-      <div class="fw-stat"><span class="fk">Passed</span><span class="fv ok" id="qaPassed">--</span></div>
-      <div class="fw-stat"><span class="fk">Failed</span><span class="fv err" id="qaFailed">--</span></div>
-      <div class="fw-stat"><span class="fk">Skipped</span><span class="fv warn" id="qaSkipped">--</span></div>
-      <div class="fw-stat"><span class="fk">Status</span><span class="fv" id="qaStatus">pending</span></div>
+      <div class="card-hd"><span class="card-title">QA Phase 0 Status</span><span class="card-badge badge-info" id="qaBadge">--</span></div>
+      <div class="fw-row"><span class="fk">Passed</span><span class="fv ok" id="qaPassed">--</span></div>
+      <div class="fw-row"><span class="fk">Failed</span><span class="fv err" id="qaFailed">--</span></div>
+      <div class="fw-row"><span class="fk">Skipped</span><span class="fv warn" id="qaSkipped">--</span></div>
+      <div class="fw-row"><span class="fk">Duration</span><span class="fv" id="qaDuration">--</span></div>
+      <div class="fw-row"><span class="fk">Result</span><span class="fv" id="qaStatus">pending</span></div>
+      <div style="margin-top:.65rem"><button class="mini-btn" onclick="loadQA()">Refresh QA</button></div>
     </div>
-
-    <!-- Runtime Inventory -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">Runtime Inventory</span><span class="card-badge badge-info" id="runtimeBadge">--</span></div>
-      <div id="runtimeDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div class="card-hd"><span class="card-title">Runtime Summary</span><span class="card-badge badge-info">coord</span></div>
+      <div id="runtimeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
-
-    <!-- Deployments -->
     <div class="card full">
-      <div class="card-hd"><span class="card-title">Deployment Operations</span><span class="card-badge badge-ok" id="deployBadge">--</span></div>
-      <div id="deployDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div class="card-hd"><span class="card-title">Deployment Operations</span><span class="card-badge badge-info" id="deployBadge">--</span></div>
+      <div id="deployDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
-
-    <!-- PRSI Queue -->
     <div class="card">
       <div class="card-hd"><span class="card-title">PRSI Orchestrator Queue</span><span class="card-badge badge-info" id="prsiBadge">--</span></div>
-      <div class="check-list" id="prsiList"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div class="check-list" id="prsiList"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
-
-    <!-- AI Harness Ops -->
     <div class="card">
-      <div class="card-hd"><span class="card-title">AI Harness Operations</span><span class="card-badge badge-ok" id="harnessBadge">--</span></div>
-      <div id="harnessDetails"><div style="color:var(--fg3); font-size:0.62rem;">Loading...</div></div>
+      <div class="card-hd"><span class="card-title">AI Harness Overview</span><span class="card-badge badge-ok" id="harnessOvBadge">--</span></div>
+      <div id="harnessDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
 
-<!-- ── NEURAL MAP PANEL ── -->
+<!-- ── NEURAL MAP ── -->
 <div class="panel" id="panel-map">
   <div class="d3-panel" id="topoCanvas">
     <div class="d3-hud" id="topoHud">OSI_MAPPING: READY</div>
   </div>
 </div>
 
-<!-- ── LOGIC DAG PANEL ── -->
+<!-- ── LOGIC DAG ── -->
 <div class="panel" id="panel-logic">
-  <div class="d3-panel" id="logicCanvas">
+  <div class="d3-panel" id="logicCanvas" style="overflow:auto">
     <div class="d3-hud" id="logicHud">REQUEST_FLOW: READY</div>
   </div>
 </div>
 
-<!-- ── LOGS PANEL ── -->
+<!-- ── LOGS ── -->
 <div class="panel" id="panel-logs">
   <div class="log-panel" id="logPanel">
-    <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-type">INIT</span>Awaiting log stream...</div>
+    <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-type">[INIT]</span>Awaiting log stream...</div>
   </div>
 </div>
 
 <!-- ── CONTROL DRAWER ── -->
 <div class="drawer" id="drawer">
-  <div><button class="drawer-close" onclick="toggleDrawer()">×</button><div class="drawer-title">CONTROLS</div></div>
-  <div class="drawer-section">
-    <div class="drawer-section-title">System Actions</div>
-    <button class="drawer-btn" onclick="forceSync()">Force System Sync (aq-qa 0)</button>
-    <button class="drawer-btn" onclick="refreshAll()">Refresh All Data</button>
+  <div>
+    <button class="drawer-close" onclick="toggleDrawer()">×</button>
+    <div class="drawer-title">CONTROLS</div>
   </div>
   <div class="drawer-section">
-    <div class="drawer-section-title">Connection</div>
-    <div style="font-size:0.62rem; color:var(--fg3);">Dashboard API: <span id="drawerApi" style="color:var(--grn);">:8889</span></div>
-    <div style="font-size:0.62rem; color:var(--fg3); margin-top:0.4rem;">Coordinator: <span id="drawerCoord" style="color:var(--grn);">:8003</span></div>
+    <div class="drawer-section-title">System Actions</div>
+    <button class="drawer-btn" onclick="forceSync()">Force Sync (aq-qa 0)</button>
+    <button class="drawer-btn" onclick="refreshAll()">Refresh All Data</button>
+    <button class="drawer-btn" onclick="forceLayerRefresh()">Re-run Layer Health</button>
+  </div>
+  <div class="drawer-section">
+    <div class="drawer-section-title">Endpoints</div>
+    <div class="drawer-kv"><span>Dashboard API</span><span>:8889</span></div>
+    <div class="drawer-kv"><span>Coordinator</span><span>:8003</span></div>
+    <div class="drawer-kv"><span>Switchboard</span><span>:8085</span></div>
+    <div class="drawer-kv"><span>AIDB</span><span>:8002</span></div>
+    <div class="drawer-kv"><span>llama.cpp</span><span>:8080</span></div>
   </div>
   <div class="drawer-section">
     <div class="drawer-section-title">Legend</div>
-    <div style="font-size:0.6rem; color:var(--fg3); line-height:1.8;">
-      <div><span style="color:var(--grn);">■</span> Online / Pass</div>
-      <div><span style="color:var(--yel);">■</span> Degraded / Warn</div>
-      <div><span style="color:var(--red);">■</span> Offline / Fail</div>
-      <div><span style="color:var(--cyan);">■</span> Active / Info</div>
+    <div style="font-size:.58rem;color:var(--fg3);line-height:1.9">
+      <div><span style="color:var(--grn)">■</span> Online / Pass / Active</div>
+      <div><span style="color:var(--yel)">■</span> Degraded / Warn / Pending</div>
+      <div><span style="color:var(--red)">■</span> Offline / Fail / Critical</div>
+      <div><span style="color:var(--cyan)">■</span> Info / Neutral</div>
     </div>
   </div>
 </div>
 
+<script src="/assets/dashboard.js"></script>
 <script>
-// ── CONFIG ── //
-const BASE = '';
-const TIMEOUT = 8000;
-const SLOW_TIMEOUT = 20000;
-const histCpu = [], histGpu = [], histMem = [], histNet = [];
-
-// ── CORE FETCH ── //
-async function apiFetch(path, opts = {}, ms = TIMEOUT) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const r = await fetch(`${BASE}/api${path}`, { ...opts, signal: ctrl.signal, cache: 'no-store' });
-    return r.ok ? await r.json() : null;
-  } catch (e) { return null; }
-  finally { clearTimeout(timer); }
-}
-
-// ── LENS ── //
-let activeLens = 'overview';
-const lazyLoaded = new Set();
-function setLens(id) {
-  activeLens = id;
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
-  document.getElementById('panel-' + id).classList.add('on');
-  document.getElementById('tab-' + id).classList.add('on');
-  if (!lazyLoaded.has(id)) { lazyLoaded.add(id); loadLens(id); }
-}
-function loadLens(id) {
-  if (id === 'map') initTopo();
-  else if (id === 'logic') initLogic();
-  else if (id === 'logs') loadLogs();
-  else if (id === 'intelligence') loadIntelligence();
-  else if (id === 'security') loadSecurity();
-  else if (id === 'operations') loadOperations();
-}
-
-// ── DRAWER ── //
-function toggleDrawer() { document.getElementById('drawer').classList.toggle('open'); }
-
-// ── SPARKLINES ── //
-function pushHist(arr, v) { arr.push(v); if (arr.length > 40) arr.shift(); return arr; }
-function sparkPath(arr, w = 200, h = 28) {
-  if (!arr.length) return '';
-  const max = Math.max(...arr, 1), min = Math.min(...arr);
-  const pts = arr.map((v, i) => {
-    const x = (i / (arr.length - 1 || 1)) * w;
-    const y = h - ((v - min) / (max - min || 1)) * (h - 4) - 2;
-    return `${x},${y}`;
-  });
-  return 'M' + pts.join(' L');
-}
-function updateSpark(svgId, arr) {
-  const el = document.getElementById(svgId);
-  if (!el) return;
-  const path = el.querySelector('path');
-  if (path) path.setAttribute('d', sparkPath(arr, 200, 28));
-}
-
-// ── TEXT HELPERS ── //
-const pct = v => v != null ? `${Math.round(v)}%` : '--';
-const pctF = v => v != null ? `${(v * 100).toFixed(1)}%` : '--';
-const num = v => v != null ? `${v}` : '--';
-const colorClass = (v, warn = 70, err = 90) => v > err ? 'err' : v > warn ? 'warn' : 'ok';
-
-function fwRow(k, v, cls = '') {
-  return `<div class="fw-stat"><span class="fk">${k}</span><span class="fv ${cls}">${v}</span></div>`;
-}
-
-// ── KPI + SYSTEM METRICS (fast, 30s refresh) ── //
-async function loadKPIs() {
-  const [metrics, sys, svc] = await Promise.all([
-    apiFetch('/metrics'),
-    apiFetch('/metrics/system'),
-    apiFetch('/services'),
-  ]);
-
-  // KPI ribbon
-  if (metrics) {
-    setText('kpiLocalPct', pct(metrics.llm_routing_local_pct));
-    setText('kpiCacheHit', pct(metrics.embedding_cache_hit_rate_pct));
-    setText('kpiEval', pct(metrics.eval_latest_pct));
-    setText('kpiRedis', metrics.redis_status || '--');
-    setText('kpiPg', metrics.postgres_status || '--');
-    setText('kpiQdrant', metrics.qdrant_status || '--');
-    setText('kpiVectors', num(metrics.total_vectors));
-    setText('kpiThermal', metrics.thermal_tier || '--');
-    setText('kpiEvents', num(metrics.event_count));
-
-    // System stat tiles
-    const cpu = metrics.cpu_usage_pct;
-    const gpu = metrics.gpu_busy_pct;
-    const mem = metrics.memory_usage_pct;
-    const disk = metrics.disk_usage_pct;
-    const net = metrics.network_mbps;
-    if (cpu != null) { setText('vCpu', pct(cpu)); colorStat('statCpu', cpu); pushHist(histCpu, cpu); updateSpark('spCpu', histCpu); }
-    if (gpu != null) { setText('vGpu', pct(gpu)); colorStat('statGpu', gpu); pushHist(histGpu, gpu); updateSpark('spGpu', histGpu); }
-    if (mem != null) { setText('vMem', pct(mem)); pushHist(histMem, mem); updateSpark('spMem', histMem); }
-    if (disk != null) { setText('vDisk', pct(disk)); }
-    if (net != null) { setText('vNet', `${net}M`); pushHist(histNet, net); updateSpark('spNet', histNet); }
-    if (metrics.stack_health_pct != null) setText('vStack', pct(metrics.stack_health_pct));
-    if (metrics.inference_count != null) setText('vInferences', metrics.inference_count);
-    if (metrics.uptime_hours != null) setText('vUptime', `${metrics.uptime_hours}h`);
-  }
-
-  if (sys) {
-    if (!metrics) {
-      if (sys.cpu_usage_pct != null) { setText('vCpu', pct(sys.cpu_usage_pct)); }
-      if (sys.memory_usage_pct != null) { setText('vMem', pct(sys.memory_usage_pct)); }
-    }
-    setText('hostname', sys.hostname || 'local-node');
-    setText('runtimeMode', sys.runtime_mode || 'live stack');
-  }
-
-  // Services grid
-  if (svc) {
-    const services = Array.isArray(svc) ? svc : (svc.services || []);
-    const up = services.filter(s => s.status === 'running' || s.status === 'up' || s.healthy === true).length;
-    setText('svcCount', `${up}/${services.length}`);
-    const grid = document.getElementById('svcGrid');
-    if (grid && services.length) {
-      grid.innerHTML = services.map(s => {
-        const ok = s.status === 'running' || s.status === 'up' || s.healthy;
-        const col = ok ? 'var(--grn)' : (s.status === 'degraded' ? 'var(--yel)' : 'var(--red)');
-        return `<div class="svc"><div class="svc-dot" style="background:${col}; box-shadow:0 0 4px ${col};"></div>
-          <span class="svc-name">${s.name || s.service}</span>
-          <span class="svc-port">${s.port ? ':' + s.port : ''}</span></div>`;
-      }).join('');
-    }
-  }
-
-  setText('lastUpdate', new Date().toLocaleTimeString());
-}
-
-function colorStat(id, v) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.remove('ok', 'warn', 'err', 'cy');
-  el.classList.add(v > 90 ? 'err' : v > 70 ? 'warn' : 'cy');
-}
-
-// ── HEALTH SCORE + OSI LAYERS ── //
-async function loadHealth() {
-  const data = await apiFetch('/health/layered', {}, SLOW_TIMEOUT);
-  if (!data) return;
-  const passed = data.passed || 0;
-  const total = (data.passed || 0) + (data.failed || 0);
-  const score = total ? Math.round((passed / total) * 100) : 0;
-  setText('healthScore', score);
-  setText('osiScore', `${passed}/${total}`);
-
-  const layers = data.layers || {};
-  for (let i = 0; i <= 7; i++) {
-    const checks = layers[String(i)] || [];
-    const lp = checks.filter(c => c.status === 'PASS').length;
-    const el = document.getElementById('ls' + i);
-    const tile = el ? el.closest('.layer') : null;
-    if (el) { el.innerText = `${lp}/${checks.length}`; el.style.color = lp === checks.length ? 'var(--grn)' : lp === 0 ? 'var(--red)' : 'var(--yel)'; }
-    if (tile) { tile.classList.remove('ok', 'err'); tile.classList.add(lp === checks.length ? 'ok' : 'err'); }
-  }
-  window._layerData = layers;
-}
-
-function drillLayer(id) {
-  const checks = (window._layerData || {})[id] || [];
-  const list = document.getElementById('checkList');
-  if (!list) return;
-  list.innerHTML = checks.length
-    ? checks.map(c => {
-        const cls = c.status === 'PASS' ? 'pass' : c.status === 'SKIP' ? 'skip' : 'fail';
-        const col = cls === 'pass' ? 'var(--grn)' : cls === 'skip' ? 'var(--yel)' : 'var(--red)';
-        return `<div class="check-item ${cls}"><span class="ci-status" style="color:${col};">${c.status}</span>
-          <span class="ci-id">${c.id}</span><span class="ci-desc">${c.description || ''}</span></div>`;
-      }).join('')
-    : '<div style="color:var(--fg3); font-size:0.62rem; padding:0.5rem;">No checks for this layer.</div>';
-}
-
-// ── RAG QUALITY (always loads) ── //
-async function loadRagQuality() {
-  const d = await apiFetch('/eval/trend');
-  const r = d && d.ragas_metrics;
-  const p = v => v != null ? (v * 100).toFixed(1) + '%' : '--';
-  setText('ragAnswerRelevance', p(r && r.answer_relevance_avg));
-  setText('ragContextPrecision', p(r && r.context_precision_avg));
-  setText('ragFaithfulness', p(r && r.faithfulness_avg));
-  setText('ragSampleCount', r && r.sample_count != null ? r.sample_count : '--');
-  // Mirror to intelligence panel
-  setText('evalAR', p(r && r.answer_relevance_avg));
-  setText('evalCP', p(r && r.context_precision_avg));
-  setText('evalFaith', p(r && r.faithfulness_avg));
-  setText('evalSamples', r && r.sample_count != null ? r.sample_count : '--');
-}
-
-// ── INTELLIGENCE LENS ── //
-async function loadIntelligence() {
-  await Promise.allSettled([
-    loadCoordMetrics(), loadRouting(), loadModels(),
-    loadSwitchboard(), loadAIDB(), loadLearning(), loadDrift(),
-    loadAgentic(), loadKnowledge()
-  ]);
-}
-
-async function loadCoordMetrics() {
-  const d = await apiFetch('/ai/metrics/hybrid');
-  const el = document.getElementById('coordMetrics');
-  if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Offline', 'err'); return; }
-  setText('coordStatus', d.status || 'ok');
-  el.innerHTML = [
-    fwRow('Queries Routed', num(d.queries_routed)),
-    fwRow('Local%', pct(d.local_pct)),
-    fwRow('Avg Latency', d.avg_latency_ms ? `${d.avg_latency_ms}ms` : '--'),
-    fwRow('Queue Depth', num(d.queue_depth)),
-    fwRow('Thermal Tier', d.thermal_tier || '--'),
-  ].join('');
-}
-
-async function loadRouting() {
-  const d = await apiFetch('/aistack/task-classification/stats');
-  const tbody = document.getElementById('routeBody');
-  if (!tbody) return;
-  if (!d) { tbody.innerHTML = '<tr><td colspan="3" style="color:var(--fg3);">Unavailable</td></tr>'; return; }
-  const intents = d.intent_counts || d.stats || {};
-  const rows = Object.entries(intents).map(([k, v]) =>
-    `<tr><td>${k}</td><td>${v.backend || '--'}</td><td>${v.count || v}</td></tr>`).join('');
-  tbody.innerHTML = rows || '<tr><td colspan="3" style="color:var(--fg3);">No data</td></tr>';
-}
-
-async function loadModels() {
-  const d = await apiFetch('/models');
-  const el = document.getElementById('modelList');
-  if (!el) return;
-  if (!d) { el.innerHTML = '<div style="color:var(--fg3); font-size:0.62rem;">Unavailable</div>'; return; }
-  const models = Array.isArray(d) ? d : (d.models || []);
-  setText('mlBadge', `${models.length} models`);
-  el.innerHTML = models.map(m => {
-    const sc = m.state === 'active' ? 'ms-active' : m.state === 'downloading' ? 'ms-downloading' : 'ms-available';
-    return `<div class="model-row">
-      <span class="model-state ${sc}">${m.state || 'available'}</span>
-      <span class="model-name">${m.name || m.id}</span>
-      <span class="model-size">${m.size_gb ? m.size_gb + 'GB' : ''}</span>
-    </div>`;
-  }).join('') || '<div style="color:var(--fg3); font-size:0.62rem; padding:0.5rem;">No models</div>';
-}
-
-async function loadSwitchboard() {
-  const d = await apiFetch('/aistack/switchboard/profiles');
-  const el = document.getElementById('profileList');
-  if (!el) return;
-  const profiles = Array.isArray(d) ? d : (d && d.profiles ? d.profiles : []);
-  setText('swBadge', `${profiles.length} profiles`);
-  el.innerHTML = profiles.map(p =>
-    `<span class="profile ${p.active ? 'active' : ''}">${p.name || p}</span>`).join('')
-    || '<div style="color:var(--fg3); font-size:0.62rem;">Unavailable</div>';
-}
-
-async function loadAIDB() {
-  const d = await apiFetch('/aidb/health/detailed');
-  const el = document.getElementById('aidbDetails');
-  if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Offline', 'err'); setText('aidbBadge', 'offline'); return; }
-  setText('aidbBadge', d.status || '--');
-  el.innerHTML = [
-    fwRow('Status', d.status, d.status === 'healthy' ? 'ok' : 'warn'),
-    fwRow('Collections', num(d.collections)),
-    fwRow('Total Vectors', num(d.total_vectors)),
-    fwRow('Index Size', d.index_size || '--'),
-  ].join('');
-}
-
-async function loadLearning() {
-  const d = await apiFetch('/stats/learning');
-  const el = document.getElementById('learningDetails');
-  if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  el.innerHTML = [
-    fwRow('Lessons', num(d.lesson_count)),
-    fwRow('Promoted', num(d.promoted_count)),
-    fwRow('Facts Stored', num(d.facts_count)),
-    fwRow('Crystallized', d.last_crystallized || '--'),
-  ].join('');
-}
-
-async function loadDrift() {
-  const d = await apiFetch('/traces/drift');
-  const el = document.getElementById('driftDetails');
-  if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  const stable = (d.drift_score || 0) < 0.4;
-  setText('driftBadge', stable ? 'stable' : 'drift detected');
-  el.innerHTML = [
-    fwRow('Drift Score', d.drift_score != null ? d.drift_score.toFixed(3) : '--', stable ? 'ok' : 'err'),
-    fwRow('Intent Flip Rate', d.intent_flip_rate != null ? d.intent_flip_rate.toFixed(3) : '--'),
-    fwRow('Latency Trend', d.latency_degradation != null ? `${d.latency_degradation > 0 ? '+' : ''}${d.latency_degradation.toFixed(1)}ms` : '--'),
-    fwRow('Alert Threshold', d.alert_threshold || '0.4'),
-  ].join('');
-}
-
-async function loadAgentic() {
-  const d = await apiFetch('/aistack/model-optimization/readiness');
-  const el = document.getElementById('agenticDetails');
-  if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  setText('agenticBadge', d.readiness_pct ? pct(d.readiness_pct) : '--');
-  el.innerHTML = Object.entries(d).filter(([k]) => k !== 'readiness_pct').map(([k, v]) =>
-    fwRow(k.replace(/_/g, ' '), typeof v === 'boolean' ? (v ? '✓ Yes' : '✗ No') : v, v === true ? 'ok' : v === false ? 'err' : '')).join('');
-}
-
-async function loadKnowledge() {
-  const d = await apiFetch('/aistack/knowledge/observatory', {}, SLOW_TIMEOUT);
-  const el = document.getElementById('knowledgeDetails');
-  if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  el.innerHTML = [
-    fwRow('Collections', num(d.collection_count)),
-    fwRow('Total Docs', num(d.total_documents)),
-    fwRow('Top Collection', d.top_collection || '--'),
-    fwRow('Avg Score', d.avg_relevance_score != null ? d.avg_relevance_score.toFixed(3) : '--'),
-  ].join('');
-}
-
-// ── SECURITY LENS ── //
-async function loadSecurity() {
-  const [fw, cb, harness] = await Promise.all([
-    apiFetch('/firewall/status'),
-    apiFetch('/stats/circuit-breakers'),
-    apiFetch('/harness/overview'),
-  ]);
-
-  const fwEl = document.getElementById('fwDetails');
-  if (fwEl && fw) {
-    setText('fwBadge', fw.status);
-    fwEl.innerHTML = [
-      fwRow('Status', fw.status, fw.enabled ? 'ok' : 'err'),
-      fwRow('Active Rules', num(fw.rule_count)),
-      fwRow('CrowdSec', fw.crowdsec_active ? 'active' : 'inactive', fw.crowdsec_active ? 'ok' : 'warn'),
-      fwRow('Blocked IPs', num(fw.blocked_count)),
-      fwRow('Last Event', fw.last_event || '--'),
-    ].join('');
-  }
-
-  const cbEl = document.getElementById('cbDetails');
-  if (cbEl && cb) {
-    const breakers = cb.breakers || [];
-    const open = breakers.filter(b => b.state === 'open').length;
-    setText('cbBadge', `${open} open`);
-    cbEl.innerHTML = breakers.map(b =>
-      fwRow(b.name, b.state, b.state === 'closed' ? 'ok' : b.state === 'half-open' ? 'warn' : 'err')).join('')
-      || fwRow('Status', 'No breakers configured', 'warn');
-  }
-
-  const secEl = document.getElementById('secMonitor');
-  if (secEl) {
-    const d = await apiFetch('/security/status');
-    secEl.innerHTML = d ? [
-      fwRow('Audit Events', num(d.audit_count)),
-      fwRow('Failed Auths', num(d.failed_auth_count), d.failed_auth_count > 0 ? 'warn' : 'ok'),
-      fwRow('Last Scan', d.last_scan || '--'),
-      fwRow('Threats Detected', num(d.threat_count), d.threat_count > 0 ? 'err' : 'ok'),
-    ].join('') : fwRow('Status', 'Unavailable', 'warn');
-  }
-
-  const hdEl = document.getElementById('hardeningDetails');
-  if (hdEl && harness) {
-    setText('harnessBadge', harness.status || '--');
-    hdEl.innerHTML = Object.entries(harness).slice(0, 6).map(([k, v]) =>
-      fwRow(k.replace(/_/g, ' '), typeof v === 'boolean' ? (v ? '✓' : '✗') : v, v === true ? 'ok' : '')).join('');
-  }
-}
-
-// ── OPERATIONS LENS ── //
-async function loadOperations() {
-  const [qa, actions, prsi] = await Promise.all([
-    apiFetch('/aistack/aq-qa/run/0', {}, SLOW_TIMEOUT),
-    apiFetch('/actions/'),
-    apiFetch('/prsi/actions'),
-  ]);
-
-  if (qa) {
-    const badge = document.getElementById('qaBadge');
-    if (qa.pending) {
-      setText('qaStatus', 'pending...');
-      if (badge) { badge.textContent = 'pending'; badge.className = 'card-badge badge-warn'; }
-    } else {
-      setText('qaPassed', qa.passed || 0);
-      setText('qaFailed', qa.failed || 0);
-      setText('qaSkipped', qa.skipped || 0);
-      setText('qaStatus', qa.failed === 0 ? 'ALL PASS' : `${qa.failed} FAIL`);
-      if (badge) { badge.textContent = qa.failed === 0 ? 'PASS' : 'FAIL'; badge.className = `card-badge ${qa.failed === 0 ? 'badge-ok' : 'badge-err'}`; }
-    }
-  }
-
-  const prsiEl = document.getElementById('prsiList');
-  if (prsiEl) {
-    const items = Array.isArray(prsi) ? prsi : (prsi && prsi.actions ? prsi.actions : []);
-    setText('prsiBadge', `${items.length} queued`);
-    prsiEl.innerHTML = items.slice(0, 10).map(a =>
-      `<div class="check-item"><span class="ci-id">${a.id || a.type || '--'}</span><span class="ci-desc">${a.label || a.description || ''}</span></div>`
-    ).join('') || '<div style="color:var(--fg3); font-size:0.62rem; padding:0.5rem;">Queue empty</div>';
-  }
-
-  const harnessEl = document.getElementById('harnessDetails');
-  if (harnessEl) {
-    const h = await apiFetch('/harness/overview');
-    harnessEl.innerHTML = h ? Object.entries(h).slice(0, 6).map(([k, v]) =>
-      fwRow(k.replace(/_/g, ' '), typeof v === 'object' ? JSON.stringify(v) : v)).join('')
-      : fwRow('Status', 'Unavailable', 'warn');
-    setText('harnessBadge', h ? h.status || 'ok' : '--');
-  }
-
-  const deployEl = document.getElementById('deployDetails');
-  if (deployEl) {
-    const d = await apiFetch('/deployments/history');
-    const items = Array.isArray(d) ? d : [];
-    setText('deployBadge', `${items.length} recent`);
-    deployEl.innerHTML = items.length ? `<table class="route-table" style="width:100%;"><thead><tr><th>ID</th><th>Status</th><th>Time</th></tr></thead><tbody>${
-      items.slice(0, 8).map(i => `<tr><td>${i.id || '--'}</td><td style="color:${i.status === 'success' ? 'var(--grn)' : 'var(--red)'};">${i.status}</td><td>${i.timestamp ? new Date(i.timestamp).toLocaleString() : '--'}</td></tr>`).join('')
-    }</tbody></table>` : '<div style="color:var(--fg3); font-size:0.62rem;">No deployments</div>';
-  }
-}
-
-// ── D3 TOPOLOGY ── //
-async function initTopo() {
-  const data = await apiFetch('/topology');
-  const c = document.getElementById('topoCanvas');
-  if (!data || !window.d3 || !c) { document.getElementById('topoHud').textContent = 'DATA_UNAVAILABLE'; return; }
-  c.querySelector('svg') && c.querySelector('svg').remove();
-  const w = c.clientWidth, h = c.clientHeight;
-  const svg = d3.select('#topoCanvas').append('svg').attr('width', '100%').attr('height', '100%');
-  const g = svg.append('g');
-  svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
-  const sim = d3.forceSimulation(data.nodes)
-    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
-    .force('charge', d3.forceManyBody().strength(-280))
-    .force('center', d3.forceCenter(w / 2, h / 2));
-  const link = g.append('g').selectAll('line').data(data.edges).enter().append('line').attr('class', 'link-line');
-  const node = g.append('g').selectAll('g').data(data.nodes).enter().append('g')
-    .call(d3.drag().on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-      .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
-  node.append('circle').attr('r', d => d.type === 'service' ? 10 : d.type === 'directory' ? 7 : 5)
-    .attr('fill', d => d.type === 'service' ? 'var(--cyan)' : d.type === 'directory' ? 'var(--mag)' : 'var(--fg3)')
-    .attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
-  node.append('text').attr('class', 'node-label').attr('dx', 13).attr('dy', '.35em').text(d => d.label || d.id);
-  sim.on('tick', () => {
-    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-    node.attr('transform', d => `translate(${d.x},${d.y})`);
-  });
-  document.getElementById('topoHud').textContent = `OSI_NODES: ${data.nodes.length} | EDGES: ${data.edges.length}`;
-}
-
-// ── D3 LOGIC DAG ── //
-async function initLogic() {
-  const data = await apiFetch('/topology/flow');
-  const c = document.getElementById('logicCanvas');
-  if (!data || !window.d3 || !c) { document.getElementById('logicHud').textContent = 'DATA_UNAVAILABLE'; return; }
-  c.querySelector('svg') && c.querySelector('svg').remove();
-  const w = c.clientWidth, h = c.clientHeight;
-  const svg = d3.select('#logicCanvas').append('svg').attr('width', '100%').attr('height', '100%');
-  const g = svg.append('g');
-  svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
-  // Add arrow marker
-  svg.append('defs').append('marker').attr('id', 'arrow').attr('viewBox', '0 -5 10 10')
-    .attr('refX', 18).attr('refY', 0).attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
-    .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', 'var(--mag)').attr('opacity', 0.5);
-  const sim = d3.forceSimulation(data.nodes)
-    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(130))
-    .force('charge', d3.forceManyBody().strength(-350))
-    .force('center', d3.forceCenter(w / 2, h / 2));
-  const link = g.append('g').selectAll('line').data(data.edges).enter().append('line')
-    .attr('class', 'link-line mag').attr('marker-end', 'url(#arrow)');
-  const node = g.append('g').selectAll('g').data(data.nodes).enter().append('g')
-    .call(d3.drag().on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-      .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
-  node.append('circle').attr('r', d => d.type === 'blueprint' ? 14 : 7)
-    .attr('fill', d => d.type === 'blueprint' ? 'rgba(212,0,255,0.3)' : 'rgba(0,217,255,0.2)')
-    .attr('stroke', d => d.type === 'blueprint' ? 'var(--mag)' : 'var(--cyan)').attr('stroke-width', 1.5);
-  node.append('text').attr('class', 'node-label').attr('dx', 17).attr('dy', '.35em').text(d => d.label || d.id);
-  sim.on('tick', () => {
-    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-    node.attr('transform', d => `translate(${d.x},${d.y})`);
-  });
-  document.getElementById('logicHud').textContent = `FLOW_NODES: ${data.nodes.length} | LINKS: ${data.edges.length}`;
-}
-
-// ── LOGS ── //
-async function loadLogs() {
-  const el = document.getElementById('logPanel');
-  if (!el) return;
-  el.innerHTML = '<div class="log-line"><span class="log-ts">...</span>Fetching logs...</div>';
-  const events = await apiFetch('/ai/homeostasis/events');
-  if (!events || !events.length) { el.innerHTML = '<div class="log-line">No events.</div>'; return; }
-  el.innerHTML = events.slice(-200).reverse().map(e => {
-    const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleTimeString() : '--';
-    const type = e.type || e.level || 'INFO';
-    const msg = e.message || e.event || JSON.stringify(e);
-    return `<div class="log-line"><span class="log-ts">${ts}</span><span class="log-type">[${type}]</span>${msg}</div>`;
-  }).join('');
-}
-
-// ── ACTIONS ── //
-async function forceSync() {
-  await apiFetch('/actions/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: 'run-aq-qa-0' }) });
-  alert('Sync triggered. Refreshing...');
-  location.reload();
-}
-
-async function refreshAll() {
-  lazyLoaded.clear();
-  lazyLoaded.add('overview');
-  await Promise.allSettled([loadKPIs(), loadHealth(), loadRagQuality()]);
-  loadLens(activeLens);
-}
-
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
-}
-
-// ── INIT ── //
-window.addEventListener('error', e => {
-  const b = document.getElementById('err-banner');
-  if (b) { b.textContent = `JS Error: ${e.message} (${e.filename}:${e.lineno})`; b.style.display = 'block'; }
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-  // Fast loads on page open
-  Promise.allSettled([loadKPIs(), loadRagQuality()]);
-  // Health is slow — run in background
-  loadHealth();
-  // Periodic refresh
-  setInterval(loadKPIs, 30000);
-  setInterval(loadRagQuality, 60000);
-  setInterval(loadHealth, 90000);
-  // Lens refresh when visible
-  setInterval(() => { if (activeLens !== 'overview') loadLens(activeLens); }, 60000);
-});
+// aq-qa 60.7.3: section-rag-quality ragAnswerRelevance ragContextPrecision ragFaithfulness loadRagQuality
 </script>
 </body>
 </html>
