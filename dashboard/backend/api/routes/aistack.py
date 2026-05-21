@@ -2357,6 +2357,43 @@ async def proxy_parity_scorecard() -> Dict[str, Any]:
     )
 
 
+@router.get("/traces/summary")
+async def proxy_traces_summary() -> Dict[str, Any]:
+    """Aggregate coordinator traces into an intent/backend breakdown summary."""
+    raw = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/api/traces",
+        {"traces": [], "count": 0, "available": False},
+        headers=_hybrid_dual_auth_headers(),
+    )
+    raw = raw if isinstance(raw, dict) else {"traces": [], "count": 0, "available": False}
+    traces = raw.get("traces", [])
+    if not traces:
+        return {"count": 0, "intent_breakdown": {}, "backend_breakdown": {}, "available": bool(traces is not None)}
+    intent_breakdown: Dict[str, int] = {}
+    backend_breakdown: Dict[str, int] = {}
+    for t in traces:
+        intent = t.get("intent") or "unknown"
+        backend = t.get("backend") or "local"
+        intent_breakdown[intent] = intent_breakdown.get(intent, 0) + 1
+        backend_breakdown[backend] = backend_breakdown.get(backend, 0) + 1
+    return {
+        "count": raw.get("count", len(traces)),
+        "intent_breakdown": dict(sorted(intent_breakdown.items(), key=lambda x: -x[1])),
+        "backend_breakdown": backend_breakdown,
+        "available": True,
+    }
+
+
+@router.get("/hints/active")
+async def proxy_hints_active() -> Dict[str, Any]:
+    """Proxy coordinator /hints — active hint registry."""
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/hints",
+        {"hints": [], "available": False},
+        headers=_hybrid_dual_auth_headers(),
+    )
+
+
 @router.get("/ai/remediation/latest")
 async def get_latest_remediation() -> Dict[str, Any]:
     """Fetch the latest auto-remediation result."""
