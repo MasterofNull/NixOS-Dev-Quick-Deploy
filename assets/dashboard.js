@@ -1032,6 +1032,7 @@ async function loadIntelligence() {
     loadPerfHotspots(), loadOrchestrationSessions(), loadRAGHealth(),
     loadRoutingConfig(), loadHomeostasis(), loadSchedulerStatus(), loadCLMStatus(),
     loadMemoryBroker(), loadAffectiveState(), loadHintsRegistry(),
+    loadAICoordinator(), loadReasoningProfiles(),
   ]);
 }
 
@@ -1477,6 +1478,7 @@ async function loadOperations() {
     loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(),
     loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
     loadRalph(), loadTrainingData(), loadParityScorecard(),
+    loadFleetSummary(), loadBudgetPolicy(),
   ]);
 }
 
@@ -1722,6 +1724,97 @@ async function loadParityScorecard() {
   el.innerHTML = tracks.length
     ? tracks.map(t => fwRow(t.id.replace(/_/g,' '), t.status, t.status==='complete'?'ok':t.status==='partial'?'warn':'err')).join('')
     : fwRow('Status', 'No tracks', 'info');
+}
+
+// ─── INTELLIGENCE: AI COORDINATOR ────────────────────────────────────────────
+async function loadAICoordinator() {
+  const d  = await apiFetch('/coordinator/ai-status');
+  const el = document.getElementById('aiCoordDetails');
+  const badge = document.getElementById('aiCoordBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const ok = d.status === 'ok';
+  if (badge) { badge.textContent = d.status || '--'; badge.className = `card-badge ${ok ? 'badge-ok' : 'badge-warn'}`; }
+  const aliases = d.remote_aliases || {};
+  const aliasCount = Object.keys(aliases).length;
+  const skills = (d.shared_skill_registry || {}).total ?? '--';
+  el.innerHTML = [
+    fwRow('Status',          d.status || '--',            ok ? 'ok' : 'warn'),
+    fwRow('Switchboard',     d.switchboard_url ? 'connected' : '--', d.switchboard_url ? 'ok' : 'warn'),
+    fwRow('Remote Aliases',  aliasCount > 0 ? `${aliasCount} configured` : '--', aliasCount > 0 ? 'ok' : 'info'),
+    fwRow('Skill Registry',  skills !== '--' ? `${skills} skills` : '--',         skills > 0 ? 'ok' : 'info'),
+    ...Object.entries(aliases).map(([name, model]) =>
+      fwRow(`  ∟ ${name}`, model.split('/').slice(-1)[0] || model, 'info')
+    ),
+  ].join('');
+}
+
+// ─── INTELLIGENCE: REASONING PROFILES ────────────────────────────────────────
+async function loadReasoningProfiles() {
+  const d  = await apiFetch('/reasoning/profiles');
+  const el = document.getElementById('reasoningProfilesDetails');
+  const badge = document.getElementById('reasoningProfilesBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const profiles = d.profiles || d.data || [];
+  if (badge) { badge.textContent = `${profiles.length} profiles`; badge.className = 'card-badge badge-info'; }
+  if (!profiles.length) { el.innerHTML = fwRow('Profiles', 'none', 'info'); return; }
+  el.innerHTML = profiles.slice(0, 8).map(p => {
+    const active = p.active || p.is_active;
+    const name   = p.name || p.id || '--';
+    const style  = p.reasoning_style || p.style || '--';
+    return `<div class="fw-row" style="align-items:flex-start">
+      <span class="fk" style="color:${active ? 'var(--grn)' : 'var(--fg2)'}">${name}</span>
+      <span class="fv info" style="text-align:right;max-width:55%">${style}</span>
+    </div>`;
+  }).join('');
+}
+
+// ─── OPERATIONS: FLEET RUNTIMES ───────────────────────────────────────────────
+async function loadFleetSummary() {
+  const d  = await apiFetch('/fleet/summary');
+  const el = document.getElementById('fleetDetails');
+  const badge = document.getElementById('fleetBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const total = d.total_runtimes ?? '--';
+  const byStatus  = d.by_status  || {};
+  const byProfile = d.by_profile || {};
+  const ready  = byStatus.ready  ?? 0;
+  const active = byStatus.active ?? 0;
+  const color  = total > 0 ? 'ok' : 'warn';
+  if (badge) { badge.textContent = `${total} runtimes`; badge.className = `card-badge badge-${color}`; }
+  el.innerHTML = [
+    fwRow('Total Runtimes',  total,  color),
+    fwRow('Ready',           ready,  ready > 0 ? 'ok' : 'info'),
+    fwRow('Active',          active, active > 0 ? 'ok' : 'info'),
+    ...Object.entries(byProfile).slice(0, 8).map(([prof, cnt]) =>
+      fwRow(`  ∟ ${prof}`, cnt, 'info')
+    ),
+  ].join('');
+}
+
+// ─── OPERATIONS: BUDGET POLICY ────────────────────────────────────────────────
+async function loadBudgetPolicy() {
+  const d  = await apiFetch('/budget/policy');
+  const el = document.getElementById('budgetDetails');
+  const badge = document.getElementById('budgetBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const policy = d.policy || {};
+  const def    = policy.default || {};
+  const enf    = policy.enforcement || {};
+  const enfEnabled = enf.enabled ?? false;
+  if (badge) { badge.textContent = enfEnabled ? 'enforced' : 'passive'; badge.className = `card-badge ${enfEnabled ? 'badge-ok' : 'badge-warn'}`; }
+  el.innerHTML = [
+    fwRow('Enforcement',     enfEnabled ? 'active' : 'disabled',          enfEnabled ? 'ok' : 'warn'),
+    fwRow('Token Limit',     def.token_limit     ? `${def.token_limit.toLocaleString()}` : '--',  'info'),
+    fwRow('Tool Call Limit', def.tool_call_limit ?? '--',                   'info'),
+    fwRow('Time Limit',      def.time_limit_seconds ? `${def.time_limit_seconds}s` : '--',        'info'),
+    fwRow('Warn Threshold',  def.warn_threshold_pct ? `${def.warn_threshold_pct}%` : '--',        'info'),
+    fwRow('Fail Safe',       def.fail_safe || '--',                         def.fail_safe === 'abort' ? 'warn' : 'info'),
+    fwRow('Scope',           (enf.scope || []).join(', ') || '--',          'info'),
+  ].join('');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
