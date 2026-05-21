@@ -2030,6 +2030,12 @@ async def proxy_memory_status() -> Dict[str, Any]:
     return await fetch_with_fallback(f"{SERVICES['hybrid']}/memory/broker/status", {"status": "offline"})
 
 
+@router.get("/eval/trend")
+async def proxy_eval_trend() -> Dict[str, Any]:
+    """Proxy coordinator /eval/trend for RAGAS quality metrics (Phase 60.5)."""
+    return await fetch_with_fallback(f"{SERVICES['hybrid']}/eval/trend", {"available": False})
+
+
 @router.get("/ai/remediation/latest")
 async def get_latest_remediation() -> Dict[str, Any]:
     """Fetch the latest auto-remediation result."""
