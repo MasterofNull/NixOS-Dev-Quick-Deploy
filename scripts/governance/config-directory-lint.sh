@@ -37,6 +37,10 @@ while IFS= read -r f; do
     if [[ "${first_char}" == "[" ]]; then
       continue
     fi
+    # Skip machine-generated files that are overwritten by tooling
+    case "${fname}" in
+      package-count-baseline.json) continue ;;
+    esac
     if ! python3 -c "import json,sys; d=json.load(open('${f}')); sys.exit(0 if '_meta' in d else 1)" 2>/dev/null; then
       echo "[config-lint] WARN ${fname}: missing _meta header"
       warnings=$((warnings + 1))

@@ -1,4 +1,10 @@
 {
+  "_meta": {
+    "version": "1.0",
+    "description": "Deterministic seed facts for the Phase 54.1 aq-memory-recall-benchmark gate",
+    "owner": "claude-sonnet-4-6",
+    "last_updated": "2026-05-20"
+  },
   "version": 1,
   "scope": "phase54-memory-recall",
   "source": "memory-recall-benchmark-seeds",
