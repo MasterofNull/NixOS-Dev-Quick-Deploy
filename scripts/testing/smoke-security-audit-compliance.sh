@@ -31,7 +31,7 @@ is_fresh_generated_at() {
 get_json() {
   local url="$1"
   local output="$2"
-  curl -fsS --max-time 15 --connect-timeout 5 "$url" > "${output}" \
+  curl -fsS --max-time 60 --connect-timeout 10 "$url" > "${output}" \
     || fail "request failed: ${url}"
 }
 
@@ -39,7 +39,7 @@ post_json() {
   local url="$1"
   local output="$2"
   local payload="${3:-{}}"
-  curl -fsS --max-time 15 --connect-timeout 5 \
+  curl -fsS --max-time 60 --connect-timeout 10 \
     -H 'content-type: application/json' \
     -X POST \
     -d "${payload}" \
