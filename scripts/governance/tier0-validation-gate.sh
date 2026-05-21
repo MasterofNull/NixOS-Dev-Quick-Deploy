@@ -501,6 +501,16 @@ PY
   fi
 }
 
+gate_cross_surface_contract() {
+  log "Checking cross-surface docs/dashboard contract..."
+  if python3 "${SCRIPT_DIR}/check-cross-surface-contract.py" --mode="${MODE}" >/dev/null 2>&1; then
+    pass "Cross-surface docs/dashboard contract satisfied"
+  else
+    fail "Cross-surface docs/dashboard contract failed"
+    return 1
+  fi
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -522,6 +532,7 @@ gate_focused_ci_checks || true
 gate_roadmap_verification || true
 gate_qa_phase0 || true
 gate_env_contract || true
+gate_cross_surface_contract || true
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then

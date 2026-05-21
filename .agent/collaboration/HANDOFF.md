@@ -1331,3 +1331,27 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - `dashboard/backend/api/routes/aistack.py`
 - `dashboard/backend/api/routes/models.py`
 
+
+---
+
+# Handoff Memo — 2026-05-21 Cross-Surface Docs/Dashboard Contract Gate (Codex)
+
+**Status:** Committed as `test(governance): enforce cross-surface visibility contract` and validated.
+
+**Why:** The user clarified that module, feature, service, and system rewrites must update connected docs and the AI Command Center/dashboard so tests, measured metrics, and operational state remain visible.
+
+**Changes:**
+1. Added `docs/architecture/cross-surface-change-contract.md` as the architecture/runbook surface.
+2. Added `scripts/governance/check-cross-surface-contract.py` to require docs/handoff/planning or dashboard surfaces when staged runtime/service/module paths change.
+3. Wired the check into `scripts/governance/tier0-validation-gate.sh`.
+4. Linked the enforcement from `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md`.
+
+**Validation:**
+- Positive docs case — PASS.
+- Positive dashboard case — PASS.
+- Runtime-only negative case — FAIL as expected.
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`17 passed, 0 failed`).
+- Post-switch `aq-qa 0 --json` — PASS (`82 passed, 0 failed, 3 skipped`).
+
+**Known repo drift intentionally not included:** `nix/hosts/hyperd/facts.nix` has whitespace-only indentation drift from the deploy hardware facts refresh. No semantic Nix change observed.
+**Context Bloat:** Low

@@ -56,6 +56,8 @@ Every accepted module, feature, service, route, or agent capability change in th
 
 This contract exists to prevent hidden capability drift: system behavior, validation evidence, and operator visibility must evolve together.
 
+Enforcement surface: `scripts/governance/check-cross-surface-contract.py` and `docs/architecture/cross-surface-change-contract.md`.
+
 ## Phase 1 — Security and governance contracts
 
 **Implements:** PA-2, PA-3, PA-4, PA-9.
