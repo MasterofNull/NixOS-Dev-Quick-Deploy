@@ -546,10 +546,11 @@ async function loadCoordinator() {
 
 // ─── INTELLIGENCE: TASK ROUTING ───────────────────────────────────────────────
 async function loadRouting() {
-  // Use routing analytics for real numbers; fall back to task-classification for recent decisions
-  const [analytics, cls] = await Promise.all([
+  // Use traces summary for per-intent breakdown; analytics for totals
+  const [analytics, cls, traceSummary] = await Promise.all([
     apiFetch('/insights/routing/analytics'),
     apiFetch('/aistack/task-classification/stats'),
+    apiFetch('/traces/summary'),
   ]);
   const tbody = document.getElementById('routeBody');
   if (!tbody) return;
@@ -563,13 +564,17 @@ async function loadRouting() {
   setText('routeTotal',  totalOk.toLocaleString());
   setText('routeLocalP', localPct != null ? pctD(localPct) : `${localN}`);
 
-  // Show top retrieval profiles if available, else recent decisions
+  // Show per-intent breakdown from traces (most accurate), then profiles, then fallbacks
+  const traceIntents = (traceSummary && traceSummary.intent_breakdown) || {};
   const profiles = w7d.top_profiles || cur.top_profiles || [];
   const recentD  = (cls || {}).recent_decisions || [];
   const clsTypes = (cls || {}).by_task_type || {};
 
   let rows = '';
-  if (profiles.length) {
+  if (Object.entries(traceIntents).length) {
+    rows = Object.entries(traceIntents).slice(0, 10).map(([intent, count]) =>
+      `<tr><td>${intent.replace(/_/g,' ')}</td><td>local</td><td>${count.toLocaleString()}</td></tr>`).join('');
+  } else if (profiles.length) {
     rows = profiles.slice(0,8).map(([name, count]) =>
       `<tr><td>${name}</td><td>local</td><td>${count.toLocaleString()}</td></tr>`).join('');
   } else if (Object.entries(clsTypes).length) {
@@ -1026,7 +1031,7 @@ async function loadIntelligence() {
     loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
     loadPerfHotspots(), loadOrchestrationSessions(), loadRAGHealth(),
     loadRoutingConfig(), loadHomeostasis(), loadSchedulerStatus(), loadCLMStatus(),
-    loadMemoryBroker(), loadAffectiveState(),
+    loadMemoryBroker(), loadAffectiveState(), loadHintsRegistry(),
   ]);
 }
 
@@ -1629,6 +1634,22 @@ async function loadCLMStatus() {
     thresholds.hot_idle_secs  ? fwRow('Hot Idle TTL',  `${thresholds.hot_idle_secs}s`,  'info') : '',
     thresholds.warm_idle_secs ? fwRow('Warm Idle TTL', `${thresholds.warm_idle_secs}s`, 'info') : '',
   ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: HINTS REGISTRY ────────────────────────────────────────────
+async function loadHintsRegistry() {
+  const d  = await apiFetch('/hints/active');
+  const el = document.getElementById('hintsRegistryDetails');
+  const badge = document.getElementById('hintsRegistryBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const hints = d.hints || [];
+  if (badge) { badge.textContent = `${hints.length} hints`; badge.className = 'card-badge badge-ok'; }
+  el.innerHTML = hints.length
+    ? hints.slice(0, 8).map(h =>
+        `<div class="fw-row"><span class="fk" style="max-width:10rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.title || h.id}</span><span class="fv info">${h.type || 'hint'} · ${h.score != null ? (h.score*100).toFixed(0)+'%' : ''}</span></div>`
+      ).join('')
+    : fwRow('Hints', 'No active hints', 'info');
 }
 
 // ─── INTELLIGENCE: MEMORY BROKER + CRYSTALLIZATION ───────────────────────────
