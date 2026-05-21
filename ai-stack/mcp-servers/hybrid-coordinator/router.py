@@ -246,4 +246,13 @@ def create_app(
     _register_control_routes(app)
     _register_agent_routes(app)
 
+    # Phase 61: ContextLifecycleManager (/context/lifecycle/*)
+    _register_clm_routes(app)
+
     return app
+
+
+def _register_clm_routes(app: web.Application) -> None:
+    """Phase 61: Register CLM routes (/context/lifecycle/status, /context/lifecycle/evict/{id})."""
+    from knowledge import context_lifecycle_manager as _clm
+    _clm.register_routes(app)

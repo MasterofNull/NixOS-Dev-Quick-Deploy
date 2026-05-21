@@ -1,0 +1,38 @@
+# clm-compaction-prompt.yaml — CLM Warm→Cold compaction prompt template (AM-C2)
+# Phase 61 — ContextLifecycleManager
+#
+# This is a FIXED FORMAT CONTRACT, not a reasoning style profile.
+# Do NOT swap this for ablation-reasoning-profiles.json entries.
+# Load path: AI_CLM_COMPACTION_PROMPT_FILE env var (default: this file).
+#
+# Template variables: {session_id}, {context}
+# Output constraints: max_tokens=512, temperature=0.1, stream=false
+# Expected output: ≤400 tokens covering the 4 required sections below.
+
+version: "1.0"
+owner: "context-lifecycle-manager"
+
+template: |
+  You are a context archiver producing a compact episodic memory record.
+  Output ONLY the structured summary below — no preamble, no explanation.
+
+  Session: {session_id}
+  Raw context: {context}
+
+  Required output format (≤400 tokens total):
+
+  TOPIC: <1-sentence description of the session's primary subject>
+
+  FACTS:
+  - <key fact 1>
+  - <key fact 2>
+  - <key fact 3 (max 5 total)>
+
+  CONSTRAINTS:
+  - <active constraint or requirement 1>
+  - <active constraint or requirement 2 (max 3 total)>
+
+  OPEN_QUESTIONS:
+  - <unresolved question 1 (max 2 total)>
+
+  STATUS: <one of: completed | in_progress | blocked | unknown>

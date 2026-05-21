@@ -760,6 +760,20 @@ async def initialize_server():
         route_handler=None # wired later
     )
 
+    # Phase 61 — Context Lifecycle Manager (CLM: Hot→Warm→Cold)
+    try:
+        from knowledge import context_lifecycle_manager as _clm61
+        redis_url_clm = getattr(Config, "REDIS_URL", "redis://localhost:6379")
+        llm_url_clm = getattr(Config, "LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080")
+        await _clm61.init(
+            redis_url=redis_url_clm,
+            llm_url=llm_url_clm,
+            store_fn=memory_manager.store_agent_memory,
+        )
+        logger.info("✓ ContextLifecycleManager initialized (hot→warm→cold)")
+    except Exception as _clm_exc:
+        logger.warning("⚠ ContextLifecycleManager init failed (non-fatal): %s", _clm_exc)
+
     if postgres_client is not None:
         try:
             await _tc54.ensure_schema(postgres_client)
