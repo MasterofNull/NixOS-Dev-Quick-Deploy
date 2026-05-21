@@ -1372,3 +1372,28 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Repo drift not included:** `nix/hosts/hyperd/facts.nix` remains whitespace-only deploy drift.
 **Context Bloat:** Low
+
+---
+
+# Handoff Memo — 2026-05-21 S2 Tool Registry Security Metadata (Codex)
+
+**Status:** Committed as `feat(security): expose tool registry sandbox metadata` and validated.
+
+**Change:**
+1. Added effective sandbox/security metadata defaults to local-agent `ToolDefinition` without changing the llama.cpp function-call schema.
+2. Added registry summary metrics for metadata completeness, sandbox profile distribution, and network policy distribution.
+3. Added `scripts/testing/test-tool-registry-security-metadata.py` to validate enabled local-agent tools against `config/runtime-isolation-profiles.json`.
+4. Exposed `policies.tool_registry_security` from Command Center `/harness/overview` and added dashboard rows for metadata completeness/profile coverage.
+5. Updated local-agent tool reference docs and parity plan S2 status.
+
+**Validation:**
+- `py_compile` changed Python files — PASS.
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-tool-registry-security-metadata.py` — PASS (`13 local-agent tools`).
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py` — PASS.
+- `node --check assets/dashboard.js` — PASS.
+- `git diff --check` — PASS.
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`17 passed, 0 failed`).
+
+**Runtime note:** Dashboard backend route becomes live after the next system switch/restart of `command-center-dashboard-api.service`.
+**Repo drift not included:** `nix/hosts/hyperd/facts.nix` remains whitespace-only deploy drift.
+**Context Bloat:** Low

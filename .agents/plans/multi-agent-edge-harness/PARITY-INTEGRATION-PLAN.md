@@ -126,15 +126,16 @@ Recent committed work changed the Phase 1/62 status:
 - `MAEAH-SECURITY-CONTRACT-GATES.md` and `scripts/testing/test-security-contract-gates.py` pin the static security/governance contract.
 - `config/safety-rails.yaml`, `evidence_safety_handlers.py`, local shell sandbox tests, and nsjail environment wiring provide the first runtime safety-rail layer.
 - `docs/architecture/cross-surface-change-contract.md` and tier0 now require connected docs/handoff/planning or dashboard visibility for runtime/service/module changes.
+- Local-agent `ToolDefinition` now has effective sandbox/security metadata defaults plus `scripts/testing/test-tool-registry-security-metadata.py`; the Command Center harness overview exposes `policies.tool_registry_security`.
 
-Remaining work is not the same as the completed static gate: tool registry lint, runtime MCP authorization/profile enforcement, bounded delegation envelopes, and dashboard-visible security/audit metrics still need implementation slices.
+Remaining work is not the same as the completed static gate: runtime MCP authorization/profile enforcement, bounded delegation envelopes, and deeper security/audit metrics still need implementation slices.
 
 ## Slice queue after refactor lands
 
 | Slice | Owner suggestion | Files expected | Validation |
 |---|---|---|---|
 | S1 security contract gates | Codex + Claude review | `MAEAH-SECURITY-CONTRACT-GATES.md`, acceptance criteria corrections | DONE: `scripts/testing/test-security-contract-gates.py` + tier0 history |
-| S2 sandbox policy schema | Codex + Claude review | docs/config schema + governance lint tests | PARTIAL: nsjail/safety rails present; registry lint/runtime profile enforcement remains |
+| S2 sandbox policy schema | Codex + Claude review | docs/config schema + governance lint tests | PARTIAL: nsjail/safety rails + local-agent registry metadata lint/dashboard summary present; runtime MCP auth/profile enforcement remains |
 | S3 identity/delegation review gate | Gemini design + Codex/Claude review | A2A/agent card docs, review gate contract | static contract tests |
 | S4 bitemporal retrieval traceability pack | Codex + memory/local model | memory envelope docs, retrieval plan schema, eval fixtures | memory/RAG benchmark additions |
 | S5 observability path view | Claude/Codex | trace docs, aq-report plan | trace schema tests |

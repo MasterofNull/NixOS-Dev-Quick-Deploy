@@ -66,6 +66,43 @@ class ToolCategory(Enum):
     AI_COORD = "ai_coordination"
 
 
+DEFAULT_SECURITY_METADATA: Dict[str, Any] = {
+    "sandbox_profile": "readonly-strict",
+    "resource_roots": ["/var/lib/nixos-ai-stack/mutable/program/agent-runs"],
+    "timeout_seconds": 30,
+    "output_cap_bytes": 65536,
+    "artifact_retention": "none",
+    "secret_policy": "deny",
+    "network_policy": "none",
+}
+
+POLICY_SECURITY_DEFAULTS: Dict[SafetyPolicy, Dict[str, Any]] = {
+    SafetyPolicy.READ_ONLY: {
+        "sandbox_profile": "readonly-strict",
+        "network_policy": "none",
+    },
+    SafetyPolicy.WRITE_SAFE: {
+        "sandbox_profile": "execute-guarded",
+        "network_policy": "loopback",
+    },
+    SafetyPolicy.WRITE_DATA: {
+        "sandbox_profile": "execute-guarded",
+        "network_policy": "loopback",
+    },
+    SafetyPolicy.SYSTEM_MODIFY: {
+        "sandbox_profile": "worktree-guarded",
+        "network_policy": "loopback",
+        "artifact_retention": "audit",
+    },
+    SafetyPolicy.DESTRUCTIVE: {
+        "sandbox_profile": "worktree-guarded",
+        "network_policy": "loopback",
+        "artifact_retention": "audit",
+        "secret_policy": "deny-and-confirm",
+    },
+}
+
+
 @dataclass
 class ToolDefinition:
     """
@@ -93,10 +130,43 @@ class ToolDefinition:
     version: str = "1.0.0"
     enabled: bool = True
 
+    # Security metadata required by the MAEAH Phase 1/62 tool contract.
+    # Legacy tool declarations may omit these; __post_init__ assigns conservative
+    # effective defaults so registry lint can validate a complete policy view.
+    sandbox_profile: str = ""
+    resource_roots: List[str] = field(default_factory=list)
+    timeout_seconds: int = 0
+    output_cap_bytes: int = 0
+    artifact_retention: str = ""
+    secret_policy: str = ""
+    network_policy: str = ""
+
     def __post_init__(self):
         # Auto-set requires_proposal for risky policies
         if self.safety_policy in (SafetyPolicy.SYSTEM_MODIFY, SafetyPolicy.DESTRUCTIVE):
             self.requires_proposal = True
+        self._apply_security_defaults()
+
+    def _apply_security_defaults(self) -> None:
+        """Populate effective sandbox/security metadata for registry linting."""
+        defaults = {
+            **DEFAULT_SECURITY_METADATA,
+            **POLICY_SECURITY_DEFAULTS.get(self.safety_policy, {}),
+        }
+        if not self.sandbox_profile:
+            self.sandbox_profile = str(defaults["sandbox_profile"])
+        if not self.resource_roots:
+            self.resource_roots = list(defaults["resource_roots"])
+        if not self.timeout_seconds:
+            self.timeout_seconds = int(defaults["timeout_seconds"])
+        if not self.output_cap_bytes:
+            self.output_cap_bytes = int(defaults["output_cap_bytes"])
+        if not self.artifact_retention:
+            self.artifact_retention = str(defaults["artifact_retention"])
+        if not self.secret_policy:
+            self.secret_policy = str(defaults["secret_policy"])
+        if not self.network_policy:
+            self.network_policy = str(defaults["network_policy"])
 
     def to_json_schema(self) -> Dict[str, Any]:
         """
@@ -124,6 +194,13 @@ class ToolDefinition:
             "max_calls_per_hour": self.max_calls_per_hour,
             "version": self.version,
             "enabled": self.enabled,
+            "sandbox_profile": self.sandbox_profile,
+            "resource_roots": self.resource_roots,
+            "timeout_seconds": self.timeout_seconds,
+            "output_cap_bytes": self.output_cap_bytes,
+            "artifact_retention": self.artifact_retention,
+            "secret_policy": self.secret_policy,
+            "network_policy": self.network_policy,
         }
 
 
@@ -549,9 +626,39 @@ class ToolRegistry:
             "enabled_tools": enabled_tools,
             "tools_by_category": tools_by_category,
             "tools_by_policy": tools_by_policy,
+            "security_metadata": self.get_security_metadata_summary(),
             "total_calls": len(self.call_history),
             "successful_calls": len([c for c in self.call_history if c.status == "completed"]),
             "failed_calls": len([c for c in self.call_history if c.status == "failed"]),
+        }
+
+    def get_security_metadata_summary(self) -> Dict[str, Any]:
+        """Summarize effective sandbox/security metadata for dashboard use."""
+        enabled_tools = [t for t in self.tools.values() if t.enabled]
+        missing = [
+            t.name
+            for t in enabled_tools
+            if not all([
+                t.sandbox_profile,
+                t.resource_roots,
+                t.timeout_seconds,
+                t.output_cap_bytes,
+                t.artifact_retention,
+                t.secret_policy,
+                t.network_policy,
+            ])
+        ]
+        profiles: Dict[str, int] = {}
+        network_policies: Dict[str, int] = {}
+        for tool in enabled_tools:
+            profiles[tool.sandbox_profile] = profiles.get(tool.sandbox_profile, 0) + 1
+            network_policies[tool.network_policy] = network_policies.get(tool.network_policy, 0) + 1
+        return {
+            "complete": not missing,
+            "missing_count": len(missing),
+            "missing_tools": missing[:20],
+            "sandbox_profiles": profiles,
+            "network_policies": network_policies,
         }
 
 

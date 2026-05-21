@@ -1900,6 +1900,47 @@ async def get_harness_scorecard() -> Dict[str, Any]:
     }
 
 
+def _local_tool_registry_security_summary() -> Dict[str, Any]:
+    """Return effective local-agent tool registry security metadata summary."""
+    repo_root = _repo_root()
+    local_agents = repo_root / "ai-stack" / "local-agents"
+    builtins = local_agents / "builtin_tools"
+    try:
+        import importlib
+        import sys
+        import tempfile
+
+        for path in (str(local_agents), str(builtins)):
+            if path not in sys.path:
+                sys.path.insert(0, path)
+
+        tool_registry = importlib.import_module("tool_registry")
+        shell_tools = importlib.import_module("shell_tools")
+        file_operations = importlib.import_module("file_operations")
+        git_tools = importlib.import_module("git_tools")
+
+        db_path = Path(tempfile.gettempdir()) / "nixos-ai-dashboard-tool-registry.db"
+        registry = tool_registry.ToolRegistry(db_path=db_path)
+        shell_tools.register_shell_tools(registry)
+        file_operations.register_file_tools(registry)
+        git_tools.register_git_tools(registry)
+        stats = registry.get_statistics()
+        security = stats.get("security_metadata", {})
+        return {
+            "available": True,
+            "total_tools": stats.get("total_tools", 0),
+            "enabled_tools": stats.get("enabled_tools", 0),
+            **security,
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "reason": str(exc)[:200],
+            "complete": False,
+            "missing_count": None,
+        }
+
+
 @router.get("/harness/overview")
 async def get_harness_overview() -> Dict[str, Any]:
     """Aggregate AI harness operations, policies, and maintenance script status."""
@@ -1925,6 +1966,7 @@ async def get_harness_overview() -> Dict[str, Any]:
     script_status = [_safe_script_status(name) for name in scripts]
     operational_count = sum(1 for item in script_status if item["exists"] and item["executable"])
     improvement = await _fetch_improvement_pass_stats(hours=24)
+    tool_registry_security = _local_tool_registry_security_summary()
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1942,6 +1984,7 @@ async def get_harness_overview() -> Dict[str, Any]:
         "policies": {
             "tool_execution_policy": aidb_health.get("tool_execution_policy", {}),
             "outbound_http_policy": aidb_health.get("outbound_http_policy", {}),
+            "tool_registry_security": tool_registry_security,
         },
         "maintenance": {
             "scripts": script_status,
