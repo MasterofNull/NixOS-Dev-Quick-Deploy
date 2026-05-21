@@ -82,6 +82,11 @@ in
       "d ${cc.dataDir}/cache 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/model-downloads 0750 ${svcUser} ${svcGroup} -"
+      # Repair existing llama.cpp directory modes so the dashboard can show
+      # model inventory through the llama supplementary group without write
+      # access to model files.
+      "z /var/lib/llama-cpp 0750 llama llama -"
+      "z /var/lib/llama-cpp/models 0750 llama llama -"
       # Dashboard needs the sudo timestamp hierarchy present, but sudo itself
       # expects /run/sudo/ts to remain root-owned.
       "d /run/sudo 0711 root root -"
@@ -105,6 +110,7 @@ in
         Type = "simple";
         User = svcUser;
         Group = svcGroup;
+        SupplementaryGroups = [ "llama" "ai-stack" ];
         Restart = "on-failure";
         RestartSec = "5s";
         WorkingDirectory = dashboardBackendRoot;

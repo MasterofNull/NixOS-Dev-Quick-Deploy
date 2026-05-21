@@ -1443,3 +1443,10 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Guardrail: added `scripts/testing/test-model-symlink-verification.sh` and registered it in focused CI for `nixos-quick-deploy.sh` / `nix/modules/roles/ai-stack.nix` changes.
 - Validation target: bash syntax, Nix parse, model-symlink regression, focused CI, tier0 pre-commit.
 - Note: do not stage unrelated dashboard/collaboration/facts drift unless explicitly taking ownership.
+
+## 2026-05-21 Codex handoff — dashboard model inventory permission repair
+
+- Context: after the model symlink deploy, dashboard API restarted cleanly after killing an orphan user-owned uvicorn process on :8889 and regenerating an empty aq-report snapshot.
+- Follow-up degradation: `/api/models` and harness model inventory logged permission errors traversing `/var/lib/llama-cpp/models` because the systemd service lacked llama supplementary groups and the existing `/var/lib/llama-cpp` directory mode was `0700`.
+- Slice: make `command-center-dashboard-api.service` run with `SupplementaryGroups = [ "llama" "ai-stack" ]` and add tmpfiles `z` repairs for `/var/lib/llama-cpp` and `/var/lib/llama-cpp/models` at `0750 llama llama`.
+- Validation target: Nix parse, tier0 pre-commit, deploy with `--skip-home-switch`, then `/api/models` and `/api/harness/overview` without model-inventory permission warnings.
