@@ -1334,7 +1334,7 @@ async function loadHarnessOv() {
     // Inference optimization config (professional AI dashboard standard — always show)
     `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05);font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em">Inference Config</div>`,
     fwRow('Prompt Cache',  inf.prompt_cache_policy_enabled ? 'enabled' : 'disabled', inf.prompt_cache_policy_enabled ? 'ok' : 'warn'),
-    fwRow('Spec Decode',   inf.speculative_decoding_enabled ? `enabled (${inf.speculative_decoding_mode || 'draft'})` : 'disabled', inf.speculative_decoding_enabled ? 'ok' : 'info'),
+    fwRow('Spec Decode',   inf.speculative_decoding_enabled ? `enabled (${inf.speculative_decoding_mode || 'draft'})` : 'disabled (MTP)', inf.speculative_decoding_enabled ? 'ok' : 'info'),
     fwRow('Ctx Compress',  inf.context_compression_enabled ? 'enabled' : 'disabled', inf.context_compression_enabled ? 'ok' : 'warn'),
   ].filter(Boolean).join('');
   if (fails.length) {
