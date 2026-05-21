@@ -975,3 +975,99 @@ Do not use repo-level readiness as runtime promotion evidence until those live g
 ### Deferred live gates after rebuild/switch
 
 Run live endpoint checks for R2.2-R2.6 route families after the current repo revision is deployed into the systemd Nix store. Do not claim runtime acceptance from repo-level tests alone.
+
+
+---
+
+## External parity integration supplement (Codex, 2026-05-21)
+
+**Status:** Docs/plans integrated and validated; runtime implementation deferred until coordinator refactor stabilization.
+
+### Completed
+
+- Checked collaboration state and active agent processes before assuming status.
+- Spawned four read-only reviewers and incorporated all findings:
+  - architecture/runtime;
+  - security/governance;
+  - memory/RAG/eval;
+  - edge/ops.
+- Added current-cycle planning artifacts:
+  - `.agents/plans/multi-agent-edge-harness/EXTERNAL-PARITY-AMENDMENTS.md`
+  - `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md`
+  - `.agents/plans/multi-agent-edge-harness/MAEAH-SECURITY-CONTRACT-GATES.md`
+  - `.agents/plans/multi-agent-edge-harness/AGENT-PARITY-REVIEW.md`
+- Added v0.3 supplement references to:
+  - `COMBINED-PRD.md`
+  - `PLAN-SIGNOFF.md`
+  - `SYSTEM-COMPARISON-PLAN.md`
+- Corrected `PHASE-A-ACCEPTANCE-CRITERIA.md` Gate 9: loopback no longer counts as authorization for mutating admin/lifecycle operations.
+
+### Highest-value accepted additions
+
+1. Bitemporal memory and retrieval traceability.
+2. Tool sandbox ladder and MCP governance profiles.
+3. Agent identity/delegation lifecycle and non-self security review gates.
+4. RAG quality/eval gates and trace-debug bundles.
+5. Scheduler pressure-state machine, deployment gates, chaos matrix, and persistence/impermanence map.
+
+### Validation
+
+- `git diff --check` — PASS
+- parity docs contract smoke — PASS
+
+### Guardrails for next agents
+
+- Claude/Gemini have active work; do not overwrite dirty implementation files without check-in.
+- Current dirty non-Codex implementation files include at least: `ai-stack/mcp-servers/hybrid-coordinator/drift_analyzer.py`, `scripts/testing/smoke-security-audit-compliance.sh`, and `scripts/testing/validate-runtime-declarative.sh`.
+- Runtime implementation of parity slices waits for coordinator refactor live gates.
+
+
+---
+
+## Phase 60 parity continuation and bitemporal memory fix (Codex, 2026-05-21)
+
+**Status:** Completed and committed. Runtime activation of memory code requires rebuild/switch because coordinator runs from the Nix store.
+
+### Collaboration check-in
+
+- Checked `aq-collaborate`, `PENDING.json`, `HANDOFF.md`, `PULSE.log`, active processes, recent commits, host memory pressure, and service health.
+- Refactor line is past R2.9. Current active line is Phase 60 memory/RAG/eval.
+- Spawned two read-only collaborators:
+  - implementation reviewer for Phase 60 memory/supersession risk;
+  - planning reviewer for MAEAH parity/Phase 60–63 alignment.
+
+### Completed
+
+- Committed parity supplement docs:
+  - `487c42e3 docs(plan): add MAEAH external parity supplement`
+- Committed bitemporal memory correctness fix:
+  - `68af538d fix(memory): preserve bitemporal supersession semantics`
+- Committed validation smoke maintenance:
+  - `4196da07 test(runtime): update refactor validation smokes`
+
+### Memory fix details
+
+- `valid_at` filtering now handles both ISO and epoch temporal metadata.
+- Historical recall can filter against the requested `valid_at` instead of always filtering against current time.
+- Supersession ledger is recorded after replacement storage succeeds, preventing old facts from being hidden without a durable replacement.
+- Supersession cache is time-aware, so a fact superseded today can still appear for a `valid_at` before the supersession.
+
+### Validation
+
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile ...` — PASS
+- bitemporal temporal/supersession smoke — PASS
+- `pytest -q ai-stack/mcp-servers/hybrid-coordinator/tests/test_memory_superseder.py scripts/testing/test-memory-recall-broker-contract.py` — PASS (`3 passed`)
+- `scripts/ai/aq-memory-recall-benchmark --json` — PASS (`20/20`)
+- `aq-qa 0 --json` — PASS (`66 passed / 0 failed / 3 skipped`)
+- `scripts/testing/validate-runtime-declarative.sh` — PASS
+- `scripts/testing/smoke-security-audit-compliance.sh` — PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS
+
+### Next recommended slice
+
+Proceed with the **bitemporal retrieval traceability pack** before sandbox/governance implementation:
+
+1. canonical memory envelope doc/schema;
+2. `event_time` / `valid_until` behavior tests;
+3. retrieval trace fields for memory IDs, supersession state, source/provenance;
+4. stale/poisoned/superseded recall fixtures.
