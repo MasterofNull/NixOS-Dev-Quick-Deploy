@@ -157,6 +157,16 @@ async function loadKPIs() {
     const hc = sv.hybrid_coordinator || sv.hybrid || {};
     setText('kpiCoord', hc.status || '--');
     setColor('kpiCoord', statusColor(hc.status));
+    // DB latencies in ribbon
+    const dbm = aiM.database_metrics || {};
+    const pgLat = (dbm.postgresql || {}).latency_ms;
+    const rdLat = (dbm.redis || {}).latency_ms;
+    if (pgLat != null) { setText('kpiPgLat', `${pgLat.toFixed(0)}ms`); setColor('kpiPgLat', pgLat > 500 ? 'err' : pgLat > 200 ? 'warn' : 'ok'); }
+    if (rdLat != null) { setText('kpiRedisLat', `${rdLat.toFixed(1)}ms`); setColor('kpiRedisLat', rdLat > 50 ? 'warn' : 'ok'); }
+    // Token savings
+    const eff = aiM.effectiveness || {};
+    const tokSaved = eff.estimated_tokens_saved;
+    if (tokSaved != null) setText('kpiTokSaved', tokSaved > 1000 ? `${(tokSaved/1000).toFixed(0)}k` : String(tokSaved));
   }
   setText('lastUpdate', new Date().toLocaleTimeString());
 }
@@ -200,18 +210,37 @@ async function loadSystem() {
     pushHist(histNet, connCount); updateSpark('spNet', histNet);
     setText('vConnections', net.active_connections ?? '--');
     setText('cpuModel',  cpu.model ? cpu.model.replace(/\s+/g, ' ').trim() : '--');
-    const tempRaw = cpu.temperature;
-    setText('cpuTemp', tempRaw ? `${tempRaw}°C` : '--');
-    if (tempRaw) colorStatTile('statTemp', parseFloat(tempRaw), 75, 90);
+    const tempStr = cpu.temperature || '';
+    const tempRaw = parseFloat(tempStr) || null;
+    setText('cpuTemp', tempStr || '--');
+    if (tempRaw) colorStatTile('statTemp', tempRaw, 75, 90);
     setText('cpuCores',  cpu.count ?? '--');
     setText('gpuName',   gpu.name ? gpu.name.split(']').pop().trim() : '--');
-    setText('gpuVram',   gpu.vram_used_mb && gpu.vram_total_mb ? `${gpu.vram_used_mb}/${gpu.vram_total_mb}MB` : '--');
+    setText('gpuVram',   gpu.vram_used_mb && gpu.vram_total_mb ? `${gpu.vram_used_mb}/${gpu.vram_total_mb} MB` : '--');
     setText('memUsed',   mem.used  ? bytes(mem.used)  : '--');
     setText('memTotal',  mem.total ? bytes(mem.total) : '--');
     setText('dskFree',   dsk.free  ? bytes(dsk.free)  : '--');
     setText('dskTotal',  dsk.total ? bytes(dsk.total) : '--');
-    if (cpu.arch) setText('hostname', `${cpu.arch} · ${cpu.count ?? '?'} cores`);
-    renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw: parseFloat(tempRaw) || null });
+    // Uptime
+    if (sys.uptime != null) {
+      const u = sys.uptime, h = Math.floor(u / 3600), m = Math.floor((u % 3600) / 60);
+      setText('vUptime', `${h}h ${m}m`);
+      setText('kpiUptime', `${h}h`);
+    }
+    // Load average
+    const la = sys.load_average || {};
+    if (la.one != null) {
+      setText('vLoad1', la.one.toFixed(2));
+      setText('vLoad5', la.five != null ? la.five.toFixed(2) : '--');
+      setText('vLoad15', la.fifteen != null ? la.fifteen.toFixed(2) : '--');
+      const cores = cpu.count || 1;
+      const loadPct = (la.one / cores) * 100;
+      const loadEl = document.getElementById('statLoad');
+      if (loadEl) { loadEl.classList.remove('load-warn','load-err'); if (loadPct > 100) loadEl.classList.add('load-err'); else if (loadPct > 75) loadEl.classList.add('load-warn'); }
+    }
+    if (sys.hostname) setText('hostname', sys.hostname);
+    else if (cpu.arch) setText('hostname', `${cpu.arch} · ${cpu.count ?? '?'} cores`);
+    renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw });
   }
   if (metrics) {
     setText('kpiLocalPct', pct(metrics.llm_routing_local_pct));
@@ -281,22 +310,65 @@ async function loadServices() {
   const aiSvcs   = (aiM && aiM.services) ? aiM.services : {};
 
   const up = services.filter(s => s.status === 'running').length;
+  const degraded = services.filter(s => s.status === 'degraded').length;
   setText('svcCount', `${up}/${services.length}`);
+  const svcBadge = document.getElementById('svcCount');
+  if (svcBadge) svcBadge.className = `card-badge ${up === services.length ? 'badge-ok' : degraded > 0 ? 'badge-warn' : 'badge-err'}`;
 
-  // Enrich with port from ai/metrics.services if available
+  // Build port map from ai/metrics.services (keyed by service name like 'aidb', 'hybrid_coordinator')
   const portMap = {};
-  Object.entries(aiSvcs).forEach(([, v]) => { if (v && v.port) portMap[v.service || ''] = v.port; });
+  Object.entries(aiSvcs).forEach(([k, v]) => { if (v && v.port) { portMap[k] = v.port; portMap[v.service || ''] = v.port; } });
+  // Known port mappings by id
+  const knownPorts = { 'ai-aidb': 8002, 'ai-hybrid-coordinator': 8003, 'ai-switchboard': 8085, 'llama-cpp': 8080, 'llama-embed': 8081, 'command-center-dashboard-api': 8889 };
+  const cleanName = id => id.replace(/^ai-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   grid.innerHTML = services.map(s => {
     const ok  = s.status === 'running';
     const col = ok ? 'var(--grn)' : (s.status === 'degraded' ? 'var(--yel)' : 'var(--red)');
-    const port = portMap[s.id] ? `:${portMap[s.id]}` : '';
+    const port = portMap[s.id] || knownPorts[s.id] || '';
     return `<div class="svc">
       <div class="svc-dot" style="background:${col}; box-shadow:0 0 4px ${col}"></div>
-      <span class="svc-name">${s.name || s.id}</span>
-      <span class="svc-port">${port}</span>
+      <span class="svc-name">${cleanName(s.id)}</span>
+      <span class="svc-port">${port ? `:${port}` : ''}</span>
     </div>`;
   }).join('') || '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No services</div>';
+}
+
+// ─── OVERVIEW: DATABASE METRICS ───────────────────────────────────────────────
+async function loadDatabase() {
+  const aiM = window._aiMetrics || await apiFetch('/ai/metrics');
+  const el  = document.getElementById('dbDetails');
+  if (!el) return;
+  const dbm = (aiM && aiM.database_metrics) || {};
+  const pg  = dbm.postgresql || {};
+  const rd  = dbm.redis      || {};
+  const qd  = dbm.qdrant     || {};
+  if (!Object.keys(dbm).length) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+
+  const allOk = [pg, rd, qd].every(d => ['online','healthy','ok'].includes((d.status || '').toLowerCase()));
+  const badge = document.getElementById('dbBadge');
+  if (badge) { badge.textContent = allOk ? 'all healthy' : 'degraded'; badge.className = `card-badge ${allOk ? 'badge-ok' : 'badge-warn'}`; }
+
+  const latColor = ms => ms == null ? '' : ms > 500 ? 'err' : ms > 100 ? 'warn' : 'ok';
+  el.innerHTML = `
+    <div class="db-section">
+      <div class="db-name">PostgreSQL <span class="db-pill ${statusColor(pg.status)}">${pg.status || '--'}</span></div>
+      ${fwRow('Latency',  pg.latency_ms != null ? `${pg.latency_ms.toFixed(0)}ms` : '--', latColor(pg.latency_ms))}
+      ${fwRow('Conns',    pg.active_connections != null ? `${pg.active_connections} active · ${pg.idle_connections ?? 0} idle` : '--')}
+      ${fwRow('DB Size',  pg.database_size_bytes ? bytes(pg.database_size_bytes) : '--')}
+    </div>
+    <div class="db-section">
+      <div class="db-name">Redis <span class="db-pill ${statusColor(rd.status)}">${rd.status || '--'}</span></div>
+      ${fwRow('Latency',  rd.latency_ms != null ? `${rd.latency_ms.toFixed(1)}ms` : '--', latColor(rd.latency_ms))}
+      ${fwRow('Keys',     rd.keys != null ? rd.keys.toLocaleString() : '--')}
+      ${fwRow('Memory',   rd.memory_human || (rd.memory_bytes ? bytes(rd.memory_bytes) : '--'))}
+      ${fwRow('Clients',  rd.connected_clients ?? '--')}
+    </div>
+    <div class="db-section">
+      <div class="db-name">Qdrant <span class="db-pill ${statusColor(qd.status)}">${qd.status || '--'}</span></div>
+      ${fwRow('Collections', qd.collection_count ?? '--')}
+      ${fwRow('Vectors',     qd.total_vectors != null ? qd.total_vectors.toLocaleString() : '--')}
+    </div>`;
 }
 
 // ─── OVERVIEW: OSI HEALTH ─────────────────────────────────────────────────────
@@ -351,9 +423,15 @@ async function loadRemediations() {
   const d = await apiFetch('/ai/remediation/latest');
   const el = document.getElementById('remediationList');
   if (!el) return;
-  const items = Array.isArray(d) ? d : (d && d.issues ? d.issues : []);
+  // Schema: {status, timestamp} when no active remediation; or {issues:[...]} when active
+  const items = Array.isArray(d) ? d : (d && Array.isArray(d.issues) ? d.issues : []);
+  const statusMsg = d && d.status ? d.status.replace(/_/g, ' ') : null;
   const badge = document.getElementById('remedBadge');
   if (badge) { badge.textContent = `${items.length} issue${items.length !== 1 ? 's' : ''}`; badge.className = `card-badge ${items.length ? 'badge-warn' : 'badge-ok'}`; }
+  if (!items.length && statusMsg) {
+    el.innerHTML = `<div style="color:var(--grn);font-size:.62rem;padding:.4rem">${statusMsg}</div>`;
+    return;
+  }
   el.innerHTML = items.slice(0, 12).map(i =>
     `<div class="check-item ${i.severity === 'critical' ? 'fail' : 'skip'}">
       <span class="ci-status" style="color:${i.severity === 'critical' ? 'var(--red)' : 'var(--yel)'}">${(i.severity || 'warn').toUpperCase()}</span>
@@ -364,17 +442,28 @@ async function loadRemediations() {
 }
 
 async function loadAuditLog() {
-  const d = await apiFetch('/audit/operator/events');
+  const d  = await apiFetch('/audit/operator/events');
   const el = document.getElementById('auditList');
   if (!el) return;
   const events = Array.isArray(d) ? d : (d && d.events ? d.events : []);
-  el.innerHTML = events.slice(0, 12).map(e =>
-    `<div class="check-item pass">
-      <span class="ci-status" style="color:var(--fg3)">${relTime(e.timestamp || e.created_at)}</span>
-      <span class="ci-id">${e.action || e.type || '--'}</span>
-      <span class="ci-desc">${e.description || e.message || ''}</span>
-    </div>`
-  ).join('') || '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No recent audit events.</div>';
+  // Verify chain integrity: each event should have prev_hash pointing to previous hash
+  const chainOk = events.length > 1 ? events.slice(1).every((e, i) => e.prev_hash === events[i].hash) : true;
+  const chainBadge = chainOk
+    ? `<span style="color:var(--grn);font-size:.55rem">✓ chain intact</span>`
+    : `<span style="color:var(--yel);font-size:.55rem">⚠ chain gap</span>`;
+  const header = events.length ? `<div style="font-size:.56rem;color:var(--fg3);margin-bottom:.3rem;display:flex;gap:.6rem">
+    <span>${events.length} events</span>${chainBadge}
+    ${d.path ? `<span style="overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${d.path}">${d.path.split('/').pop()}</span>` : ''}
+  </div>` : '';
+  el.innerHTML = header + (events.slice(0, 10).map(e => {
+    const cat = e.category || '';
+    const catColor = cat === 'mutation' ? 'var(--yel)' : cat === 'disabled' ? 'var(--fg3)' : 'var(--fg3)';
+    return `<div class="check-item pass">
+      <span class="ci-status" style="color:${catColor};width:44px">${relTime(e.ts || e.timestamp || e.created_at)}</span>
+      <span class="ci-id">${e.method ? `${e.method} ` : ''}${e.path || e.action || '--'}</span>
+      <span class="ci-desc" style="color:${e.status_code >= 400 ? 'var(--red)' : 'var(--fg3)'}">${e.status_code || e.message || ''}</span>
+    </div>`;
+  }).join('') || '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No recent audit events.</div>');
 }
 
 // ─── INTELLIGENCE: COORDINATOR ────────────────────────────────────────────────
@@ -506,19 +595,45 @@ async function loadAIDB() {
 
 // ─── INTELLIGENCE: LEARNING ───────────────────────────────────────────────────
 async function loadLearning() {
-  const d = await apiFetch('/stats/learning');
+  const d  = await apiFetch('/stats/learning');
   const el = document.getElementById('learningDetails');
+  const al = document.getElementById('learningActivity');
+  const badge = document.getElementById('learningBadge');
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  const bp = d.backpressure || {};
+  const bp  = d.backpressure || {};
+  const act = d.activity || {};
+  const paused = bp.paused || d.learning_paused;
+  if (badge) { badge.textContent = paused ? 'paused' : 'active'; badge.className = `card-badge ${paused ? 'badge-warn' : 'badge-ok'}`; }
+
   el.innerHTML = [
-    fwRow('Patterns Learned',    d.total_patterns_learned ?? 0),
-    fwRow('Metrics Tracked',     d.total_metrics_tracked  != null ? d.total_metrics_tracked.toLocaleString() : '--'),
-    fwRow('Finetune Dataset',    d.finetuning_dataset_size ?? '--'),
-    fwRow('Optim Proposals',     (d.optimization_proposals || {}).total ?? 0),
-    fwRow('Backpressure Paused', bp.paused ? 'YES' : 'no', bp.paused ? 'warn' : 'ok'),
-    fwRow('Unprocessed MB',      bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)}MB` : '--'),
+    fwRow('Patterns Learned',  d.total_patterns_learned ?? 0),
+    fwRow('Events Tracked',    (act.total_events ?? d.total_metrics_tracked) != null ? (act.total_events ?? d.total_metrics_tracked).toLocaleString() : '--'),
+    fwRow('Finetune Records',  act.finetune_records ?? d.finetuning_dataset_size ?? '--'),
+    fwRow('Avg Feedback',      act.average_feedback_score != null ? act.average_feedback_score.toFixed(3) : '--', act.average_feedback_score > 0.5 ? 'ok' : act.average_feedback_score > 0.2 ? 'warn' : 'err'),
+    fwRow('Backpressure',      paused ? 'PAUSED' : 'nominal', paused ? 'warn' : 'ok'),
+    fwRow('Unprocessed',       bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)} MB` : '0 MB'),
   ].join('');
+
+  // Activity pills: event counts per pipeline
+  if (al && act.total_events) {
+    const pills = [
+      { k: 'AIDB', v: act.aidb_events },
+      { k: 'Hybrid', v: act.hybrid_events },
+      { k: 'RALPH', v: act.ralph_events },
+      { k: 'Feedback', v: act.hint_feedback_events },
+      { k: 'Gaps', v: act.query_gap_events },
+      { k: 'High-val', v: act.high_value_events },
+    ].filter(p => p.v != null);
+    al.innerHTML = `<div class="act-pills">${pills.map(p =>
+      `<div class="act-pill">${p.k}&nbsp;<span>${p.v.toLocaleString()}</span></div>`
+    ).join('')}</div>`;
+    if (act.latest_feedback_at) {
+      al.innerHTML += `<div style="font-size:.56rem;color:var(--fg3);margin-top:.3rem">Last feedback: ${relTime(act.latest_feedback_at)}</div>`;
+    }
+  } else if (al) {
+    al.innerHTML = '';
+  }
 }
 
 // ─── INTELLIGENCE: DRIFT ─────────────────────────────────────────────────────
@@ -555,15 +670,42 @@ async function loadVerifier() {
 // ─── INTELLIGENCE: KNOWLEDGE / AGENTIC ────────────────────────────────────────
 async function loadKnowledge() {
   const d = await apiFetch('/aistack/knowledge/observatory', {}, T_SLOW);
-  const el = document.getElementById('knowledgeDetails');
+  const el  = document.getElementById('knowledgeDetails');
+  const cl  = document.getElementById('collectionList');
+  const badge = document.getElementById('knowledgeBadge');
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+
+  const totalPts  = d.total_points ?? d.total_documents ?? 0;
+  const totalColl = d.total_collections ?? d.collection_count ?? 0;
+  if (badge) { badge.textContent = `${totalPts.toLocaleString()} vectors`; badge.className = 'card-badge badge-ok'; }
+
   el.innerHTML = [
-    fwRow('Collections',    d.collection_count ?? '--'),
-    fwRow('Total Docs',     d.total_documents   != null ? d.total_documents.toLocaleString() : '--'),
-    fwRow('Top Collection', d.top_collection    || '--'),
-    fwRow('Avg Relevance',  d.avg_relevance_score != null ? d.avg_relevance_score.toFixed(3) : '--'),
+    fwRow('Collections',    totalColl),
+    fwRow('Total Vectors',  totalPts.toLocaleString()),
+    fwRow('Active',         d.active_collections ?? '--'),
   ].join('');
+
+  // Collections breakdown table
+  const colls = Array.isArray(d.collections) ? d.collections : [];
+  if (cl && colls.length) {
+    const maxPts = Math.max(...colls.map(c => c.points || 0), 1);
+    const typeClass = t => t === 'memory' ? 'coll-type-mem' : t === 'training' ? 'coll-type-train' : 'coll-type-know';
+    cl.innerHTML = `<table class="coll-table">
+      <thead><tr><th>Collection</th><th>Type</th><th>Vectors</th><th></th></tr></thead>
+      <tbody>${colls.map(c => {
+        const pct = Math.round(((c.points || 0) / maxPts) * 100);
+        return `<tr>
+          <td style="color:var(--fg)">${c.label || c.name}</td>
+          <td class="${typeClass(c.type)}">${c.type || '--'}</td>
+          <td style="color:var(--fg2)">${(c.points || 0).toLocaleString()}</td>
+          <td><div class="coll-bar-wrap"><div class="coll-bar" style="width:${pct}%"></div></div></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } else if (cl) {
+    cl.innerHTML = '';
+  }
 }
 
 async function loadAgentic() {
@@ -615,11 +757,16 @@ async function loadSecMon() {
   const sec = sys.security || {};
   const fw  = sec.firewall || {};
   const mac = sec.mandatory_access_control || {};
+  // Actual schema: fw.active (bool), fw.provider (str), mac.apparmor_active (bool)
+  const fwActive  = fw.active ?? fw.enabled;
+  const aaActive  = mac.apparmor_active;
+  const net       = sys.network || {};
   el.innerHTML = [
-    fwRow('Firewall Backend', fw.backend || '--', 'info'),
-    fwRow('Firewall Active',  fw.enabled !== undefined ? (fw.enabled ? 'yes' : 'no') : '--', fw.enabled ? 'ok' : 'warn'),
-    fwRow('MAC Enabled',      mac.enabled !== undefined ? (mac.enabled ? 'yes' : 'no') : '--', mac.enabled ? 'ok' : 'warn'),
-    fwRow('MAC Mode',         mac.mode || '--'),
+    fwRow('Firewall Provider', fw.provider || fw.backend || '--', 'info'),
+    fwRow('Firewall Active',   fwActive != null ? (fwActive ? 'yes' : 'no') : '--', fwActive ? 'ok' : 'warn'),
+    fwRow('AppArmor',          aaActive != null ? (aaActive ? 'active' : 'inactive') : '--', aaActive ? 'ok' : 'warn'),
+    fwRow('Active Conns',      net.active_connections ?? '--', net.active_connections > 1000 ? 'warn' : 'ok'),
+    fwRow('Interface',         net.interface || '--', 'info'),
   ].join('');
 }
 
@@ -639,19 +786,37 @@ async function loadCircuitBreakers() {
 async function loadHardening() {
   const d  = await apiFetch('/harness/overview');
   const el = document.getElementById('hardeningDetails');
+  const sc = document.getElementById('harnessScorecard');
+  const badge = document.getElementById('harnessBadge');
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  const h  = d.harness  || {};
-  const s  = h.stats    || {};
-  const pl = d.policies || {};
+  const h    = d.harness || {};
+  const s    = h.stats || {};
+  const pl   = d.policies || {};
+  const card = h.scorecard || {};
+  const infe = card.inference_optimizations || {};
+  const disc = card.discovery || {};
+  const acc  = card.acceptance || {};
+  if (badge) { badge.textContent = d.status || '--'; badge.className = `card-badge ${statusColor(d.status) === 'ok' ? 'badge-ok' : 'badge-warn'}`; }
   el.innerHTML = [
-    fwRow('Harness Status', d.status || '--', statusColor(d.status)),
-    fwRow('Total Runs',     s.total_runs  ?? 0),
-    fwRow('Passed',         s.passed      ?? 0, s.passed > 0 ? 'ok' : 'info'),
-    fwRow('Failed',         s.failed      ?? 0, s.failed > 0 ? 'err' : 'ok'),
-    fwRow('Scorecards',     s.scorecards_generated ?? '--'),
-    fwRow('Safety Mode',    pl.safety_mode || '--', 'info'),
+    fwRow('Status',       d.status || '--', statusColor(d.status)),
+    fwRow('Scorecards',   s.scorecards_generated ?? '--', s.scorecards_generated > 0 ? 'ok' : 'info'),
+    fwRow('Safety Mode',  pl.safety_mode || '--', 'info'),
+    fwRow('Lesson Refs',  (s.active_lesson_refs || []).length),
   ].join('');
+
+  // Scorecard — inference optimizations + discovery rates
+  if (sc) {
+    sc.innerHTML = [
+      '<div style="font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.3rem">Scorecard</div>',
+      fwRow('Prompt Cache',      infe.prompt_cache_policy_enabled ? 'enabled' : 'disabled', infe.prompt_cache_policy_enabled ? 'ok' : 'warn'),
+      fwRow('Spec Decoding',     infe.speculative_decoding_enabled ? 'enabled' : 'disabled', infe.speculative_decoding_enabled ? 'ok' : 'info'),
+      fwRow('Ctx Compression',   infe.context_compression_enabled ? 'enabled' : 'disabled', infe.context_compression_enabled ? 'ok' : 'warn'),
+      fwRow('Discovery Cache%',  disc.invoked ? pctD((disc.cache_hits / disc.invoked) * 100) : '--'),
+      fwRow('Discovery Errors',  disc.errors ?? 0, disc.errors > 0 ? 'err' : 'ok'),
+      fwRow('Acceptance Rate',   acc.total > 0 ? pctD(acc.pass_rate * 100) : 'no runs', acc.ok === true ? 'ok' : acc.ok === false ? 'err' : 'info'),
+    ].join('');
+  }
 }
 
 async function loadSecurity() {
@@ -723,8 +888,31 @@ async function loadRuntimeDetails() {
   ).join('');
 }
 
+async function loadHarnessOv() {
+  const d  = await apiFetch('/harness/overview');
+  const el = document.getElementById('harnessDetails');
+  const badge = document.getElementById('harnessOvBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const s = (d.harness || {}).stats || {};
+  const card = (d.harness || {}).scorecard || {};
+  if (badge) { badge.textContent = d.status || '--'; badge.className = `card-badge ${statusColor(d.status) === 'ok' ? 'badge-ok' : 'badge-warn'}`; }
+  const fails = (card.failures || {}).recent_failed_cases || [];
+  el.innerHTML = [
+    fwRow('Total Runs',   s.total_runs ?? 0),
+    fwRow('Passed',       s.passed ?? 0, (s.passed || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Failed',       s.failed ?? 0, (s.failed || 0) > 0 ? 'err' : 'ok'),
+    fwRow('Scorecards',   s.scorecards_generated ?? '--'),
+    fwRow('Last Run',     s.last_run_at ? relTime(s.last_run_at) : 'never'),
+    fwRow('Analysis',     card.failures && card.failures.analysis_ready ? 'ready' : 'no data', 'info'),
+  ].join('');
+  if (fails.length) {
+    el.innerHTML += `<div style="margin-top:.4rem;font-size:.57rem;color:var(--red)">Recent failures: ${fails.slice(0,3).join(', ')}</div>`;
+  }
+}
+
 async function loadOperations() {
-  await Promise.allSettled([loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails()]);
+  await Promise.allSettled([loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(), loadHarnessOv()]);
 }
 
 // ─── NEURAL MAP (D3) ──────────────────────────────────────────────────────────
@@ -819,7 +1007,7 @@ async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add('overview');
   window._aiMetrics = null;
-  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadOSI(), loadRemediations(), loadAuditLog()]);
+  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog()]);
   loadLens(activeLens);
 }
 
@@ -832,13 +1020,14 @@ window.addEventListener('error', e => {
 document.addEventListener('DOMContentLoaded', () => {
   // Immediate: fast data
   Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices()]);
-  // Deferred: slow OSI health + audit
-  setTimeout(() => { loadOSI(); loadRemediations(); loadAuditLog(); }, 300);
+  // Deferred: DB metrics + slow OSI health + audit
+  setTimeout(() => { loadDatabase(); loadOSI(); loadRemediations(); loadAuditLog(); }, 400);
   // Periodic refresh
   setInterval(loadKPIs,       30_000);
   setInterval(loadRagQuality, 60_000);
   setInterval(loadSystem,     30_000);
   setInterval(loadServices,   30_000);
+  setInterval(loadDatabase,   60_000);
   setInterval(() => { if (activeLens !== 'overview') loadLens(activeLens); }, 60_000);
 });
 
