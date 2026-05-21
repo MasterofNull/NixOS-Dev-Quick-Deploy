@@ -1416,3 +1416,22 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Activation needed:** another system switch is required for tmpfiles to repair live ownership.
 **Context Bloat:** Low
+
+---
+
+# Handoff Memo — 2026-05-21 Dashboard Tool Registry Summary Hotfix (Codex)
+
+**Status:** Validated; pending commit at memo write.
+
+**Issue:** After deployment, `/api/harness/overview` was live but `policies.tool_registry_security` reported unavailable. Root cause: the dashboard helper imported local-agent registry modules inside the systemd service process, and registry initialization touched `.agent/proposals` relative to the read-only Nix store checkout.
+
+**Fix:** Reworked the dashboard helper to derive the local-agent built-in registry security summary from AST/static config instead of importing tool modules. This preserves operator visibility without side effects in the dashboard service.
+
+**Validation:**
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile dashboard/backend/api/routes/aistack.py` — PASS.
+- `node --check assets/dashboard.js` — PASS.
+- `git diff --check` — PASS.
+- Static smoke confirmed the helper no longer imports `tool_registry`.
+
+**Activation needed:** restart `command-center-dashboard-api.service` or run next deploy so the route uses the hotfix.
+**Context Bloat:** Low

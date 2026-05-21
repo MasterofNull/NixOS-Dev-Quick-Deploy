@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import logging
+import ast
 import asyncio
 import aiohttp
 import json
@@ -1901,36 +1902,67 @@ async def get_harness_scorecard() -> Dict[str, Any]:
 
 
 def _local_tool_registry_security_summary() -> Dict[str, Any]:
-    """Return effective local-agent tool registry security metadata summary."""
+    """Return local-agent tool registry security metadata summary.
+
+    This avoids importing tool modules in the dashboard service process because
+    local-agent registry construction initializes proposal/audit side effects
+    that can target a read-only Nix store checkout under systemd.
+    """
     repo_root = _repo_root()
-    local_agents = repo_root / "ai-stack" / "local-agents"
-    builtins = local_agents / "builtin_tools"
     try:
-        import importlib
-        import sys
-        import tempfile
-
-        for path in (str(local_agents), str(builtins)):
-            if path not in sys.path:
-                sys.path.insert(0, path)
-
-        tool_registry = importlib.import_module("tool_registry")
-        shell_tools = importlib.import_module("shell_tools")
-        file_operations = importlib.import_module("file_operations")
-        git_tools = importlib.import_module("git_tools")
-
-        db_path = Path(tempfile.gettempdir()) / "nixos-ai-dashboard-tool-registry.db"
-        registry = tool_registry.ToolRegistry(db_path=db_path)
-        shell_tools.register_shell_tools(registry)
-        file_operations.register_file_tools(registry)
-        git_tools.register_git_tools(registry)
-        stats = registry.get_statistics()
-        security = stats.get("security_metadata", {})
+        profiles_path = repo_root / "config" / "runtime-isolation-profiles.json"
+        profiles = json.loads(profiles_path.read_text()).get("profiles", {})
+        known_profiles = set(profiles)
+        policy_defaults = {
+            "READ_ONLY": ("readonly-strict", "none"),
+            "WRITE_SAFE": ("execute-guarded", "loopback"),
+            "WRITE_DATA": ("execute-guarded", "loopback"),
+            "SYSTEM_MODIFY": ("worktree-guarded", "loopback"),
+            "DESTRUCTIVE": ("worktree-guarded", "loopback"),
+        }
+        tool_files = [
+            repo_root / "ai-stack" / "local-agents" / "builtin_tools" / "shell_tools.py",
+            repo_root / "ai-stack" / "local-agents" / "builtin_tools" / "file_operations.py",
+            repo_root / "ai-stack" / "local-agents" / "builtin_tools" / "git_tools.py",
+        ]
+        total = 0
+        sandbox_profiles: Dict[str, int] = {}
+        network_policies: Dict[str, int] = {}
+        missing: List[str] = []
+        for path in tool_files:
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                if not (
+                    (isinstance(func, ast.Name) and func.id == "ToolDefinition")
+                    or (isinstance(func, ast.Attribute) and func.attr == "ToolDefinition")
+                ):
+                    continue
+                total += 1
+                name = f"{path.stem}:{total}"
+                policy = "READ_ONLY"
+                for kw in node.keywords:
+                    if kw.arg == "name" and isinstance(kw.value, ast.Constant):
+                        name = str(kw.value.value)
+                    if kw.arg == "safety_policy" and isinstance(kw.value, ast.Attribute):
+                        policy = kw.value.attr
+                profile, network = policy_defaults.get(policy, ("readonly-strict", "none"))
+                sandbox_profiles[profile] = sandbox_profiles.get(profile, 0) + 1
+                network_policies[network] = network_policies.get(network, 0) + 1
+                if profile not in known_profiles:
+                    missing.append(name)
         return {
             "available": True,
-            "total_tools": stats.get("total_tools", 0),
-            "enabled_tools": stats.get("enabled_tools", 0),
-            **security,
+            "source": "static_builtin_registry_ast",
+            "total_tools": total,
+            "enabled_tools": total,
+            "complete": not missing,
+            "missing_count": len(missing),
+            "missing_tools": missing[:20],
+            "sandbox_profiles": sandbox_profiles,
+            "network_policies": network_policies,
         }
     except Exception as exc:
         return {
