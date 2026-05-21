@@ -1,3 +1,19 @@
+# Handoff Memo — 2026-05-21 VP-Eng PRD Review (Gemini)
+
+**Status:** Phase 60 Ecosystem Integration PRD Reviewed and Amended. Gemini VP-Eng sign-off complete.
+**Key Findings:**
+1. **Packaging Correction (AM-G5):** `python312Packages.wasmtime` is confirmed MISSING from NixOS 25.11 (Xantusia). Phase 62 amended to require local packaging in `nix/pkgs/` or a pivot to `nsjail` for process isolation.
+2. **Security Acceleration (AM-G2):** Moved Safety Rails (Slice 62.4) to Phase 60.6.5. This provides immediate YAML-based protection against exfiltration/injection via the thin router before the WASM sandbox is operational.
+3. **Metrics Strategy (AM-G1):** Defined a "Hybrid Evaluation" strategy for RAGAS. Embed-based relevance for 100% of queries (low latency); Qwen-based Faithfulness for 10% sampled queries.
+4. **Stability & Priority (AM-G3):** Summarization/Compaction tasks (61.3) MUST use `MLFQ_PRIORITY_LOW` to prevent CPU/GPU contention with interactive sessions on Renoir APU.
+5. **State Alignment (AM-G4):** 3-tier Context Lifecycle (Hot/Warm/Cold) mapped as sub-states of the existing `Active` state in `ModelState` FSM.
+6. **Schema Robustness (AM-G6):** Bitemporal migration (60.1) MUST include `DEFAULT NOW()` for `event_time` to ensure backward compatibility.
+
+**Next Steps:**
+- Codex (Staff-Eng) to answer Q5-Q8.
+- Qwen (Edge-AI) to answer Q9-Q10.
+- Once all sign-offs complete, proceed with Phase 60.1 (AIDB Migration).
+
 # Handoff Memo — 2026-05-20 System Stabilization Sweep (Claude)
 
 **Status:** System sweep complete. All gates green. Codex cleared to resume dev cycles.
