@@ -267,7 +267,7 @@
     <div class="kpi"><span class="kpi-l">PG Lat:</span><span class="kpi-v" id="kpiPgLat">--</span></div>
     <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">--</span></div>
     <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
-    <div class="kpi"><span class="kpi-l">Tok Saved:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
+    <div class="kpi"><span class="kpi-l">Ops/7d:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
     <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span></div>
   </div>
   <div class="lens-tabs">
@@ -329,9 +329,17 @@
       <div class="stat-l">CPU Temp</div><div class="stat-v" id="cpuTemp" style="font-size:1.1rem">--</div>
       <div class="stat-d"><span id="cpuCores">--</span> cores</div>
     </div>
-    <div class="stat cy">
+    <div class="stat cy" id="statEval">
       <div class="stat-l">Eval Score</div><div class="stat-v" id="vStack">--</div>
       <div class="stat-d">harness gate</div>
+    </div>
+    <div class="stat cy" id="statLatP95">
+      <div class="stat-l">p95 Latency</div><div class="stat-v" id="vLatP95">--</div>
+      <div class="stat-d">backend calls · <span id="vCacheHit">--</span> cache</div>
+    </div>
+    <div class="stat cy" id="statOpsDay">
+      <div class="stat-l">Ops / Day</div><div class="stat-v" id="vOpsDay">--</div>
+      <div class="stat-d">7d avg · <span id="vBackendN">--</span> LLM</div>
     </div>
     <div class="stat cy">
       <div class="stat-l">GPU Name</div><div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">--</div>
@@ -477,6 +485,10 @@
       <div class="card-hd"><span class="card-title">Agent Eval Trends</span><span class="card-badge badge-info" id="agentEvalBadge">--</span></div>
       <div id="agentEvalDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Performance Hotspots</span><span class="card-badge badge-ok" id="perfHotspotBadge">--</span></div>
+      <div id="perfHotspotDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -507,6 +519,10 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">Agent Pool</span><span class="card-badge badge-info" id="agentPoolBadge">--</span></div>
       <div id="agentPoolDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Security Compliance</span><span class="card-badge badge-info" id="secComplianceBadge">--</span></div>
+      <div id="secComplianceDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>

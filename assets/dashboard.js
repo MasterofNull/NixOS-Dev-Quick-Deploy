@@ -115,10 +115,11 @@ function toggleDrawer() { document.getElementById('drawer').classList.toggle('op
 
 // ─── KPI RIBBON ──────────────────────────────────────────────────────────────
 async function loadKPIs() {
-  const [metrics, aiM, hs] = await Promise.all([
+  const [metrics, aiM, hs, analytics] = await Promise.all([
     apiFetch('/metrics'),
     apiFetch('/ai/metrics'),
     apiFetch('/metrics/health-score'),
+    apiFetch('/insights/routing/analytics'),
   ]);
   window._aiMetrics = aiM;
 
@@ -181,10 +182,17 @@ async function loadKPIs() {
     const rdLat = (dbm.redis || {}).latency_ms;
     if (pgLat != null) { setText('kpiPgLat', `${pgLat.toFixed(0)}ms`); setColor('kpiPgLat', pgLat > 500 ? 'err' : pgLat > 200 ? 'warn' : 'ok'); }
     if (rdLat != null) { setText('kpiRedisLat', `${rdLat.toFixed(1)}ms`); setColor('kpiRedisLat', rdLat > 50 ? 'warn' : 'ok'); }
-    // Token savings
-    const eff = aiM.effectiveness || {};
-    const tokSaved = eff.estimated_tokens_saved;
-    if (tokSaved != null) setText('kpiTokSaved', tokSaved > 1000 ? `${(tokSaved/1000).toFixed(0)}k` : String(tokSaved));
+  }
+  // Ops/7d from routing analytics (more useful than empty token-savings counter)
+  if (analytics) {
+    const w7d = ((analytics.windows && analytics.windows.windows) || {})['7d'] || {};
+    const cur  = analytics.current || {};
+    const totalOps = w7d.query_ok_n ?? cur.query_ok_n;
+    if (totalOps != null) {
+      const label = totalOps >= 1000 ? `${(totalOps/1000).toFixed(1)}k` : String(totalOps);
+      setText('kpiTokSaved', label);
+    }
+    // KPI ribbon p95 latency from hotspots is fetched separately in loadSystem()
   }
   setText('lastUpdate', new Date().toLocaleTimeString());
 }
@@ -208,9 +216,10 @@ async function loadRagQuality() {
 
 // ─── OVERVIEW: SYSTEM STATS ───────────────────────────────────────────────────
 async function loadSystem() {
-  const [sys, metrics] = await Promise.all([
+  const [sys, metrics, hotspots] = await Promise.all([
     apiFetch('/metrics/system'),
     apiFetch('/metrics'),
+    apiFetch('/insights/performance/hotspots'),
   ]);
   if (sys) {
     const cpu = sys.cpu || {}, mem = sys.memory || {}, dsk = sys.disk || {};
@@ -271,6 +280,14 @@ async function loadSystem() {
       setText('vStack', pct(evalPct));
       colorStatTile('statEval', evalPct, 70, 50);  // inverted: low score = bad
     }
+  }
+  if (hotspots) {
+    const rl = hotspots.route_latency || {};
+    const cache = hotspots.cache || {};
+    const p95 = rl.backend_valid_p95_ms;
+    const cacheHit = cache.hit_pct;
+    if (p95 != null) { setText('vLatP95', `${p95.toFixed(0)}ms`); colorStatTile('statLatP95', p95, 500, 2000); }
+    if (cacheHit != null) setText('vCacheHit', `${cacheHit.toFixed(0)}%`);
   }
 }
 
@@ -490,45 +507,79 @@ async function loadAuditLog() {
 
 // ─── INTELLIGENCE: COORDINATOR ────────────────────────────────────────────────
 async function loadCoordinator() {
-  const [aiM, rts] = await Promise.all([
+  const [aiM, rts, analytics] = await Promise.all([
     window._aiMetrics ? Promise.resolve(window._aiMetrics) : apiFetch('/ai/metrics'),
     apiFetch('/aistack/advanced/runtime-summary'),
+    apiFetch('/insights/routing/analytics'),
   ]);
   const el = document.getElementById('coordMetrics');
   if (!el) return;
-  const sv  = (aiM && aiM.services) || {};
-  const hc  = sv.hybrid_coordinator || sv.hybrid || {};
-  const eff = (aiM && aiM.effectiveness) || {};
-  const sum = (rts && rts.summary) || {};
+  const sv   = (aiM && aiM.services) || {};
+  const hc   = sv.hybrid_coordinator || sv.hybrid || {};
+  const eff  = (aiM && aiM.effectiveness) || {};
+  const sum  = (rts && rts.summary) || {};
+  // Use routing analytics for accurate local% and ops counts (eff counters may be 0)
+  const cur  = (analytics && analytics.current) || {};
+  const w7d  = ((analytics && analytics.windows && analytics.windows.windows) || {})['7d'] || {};
+  const localPct   = cur.local_pct ?? w7d.local_pct ?? eff.local_query_percentage;
+  const totalOps   = w7d.query_ok_n ?? cur.query_ok_n ?? 0;
+  const backendN   = w7d.local_n   ?? cur.local_n   ?? 0;
+  const vectors    = (aiM && aiM.knowledge_base && aiM.knowledge_base.total_points) ?? eff.knowledge_base_vectors;
   setText('coordStatus', hc.status || '--');
+  // Populate Overview Ops/Day tile from the analytics already fetched here
+  if (totalOps) {
+    const opsDay = Math.round(totalOps / 7);
+    setText('vOpsDay', opsDay >= 1000 ? `${(opsDay/1000).toFixed(1)}k` : String(opsDay));
+    setText('vBackendN', backendN ? Math.round(backendN / 7).toLocaleString() : '0');
+  }
   el.innerHTML = [
-    fwRow('Status',       hc.status  || '--'),
-    fwRow('Port',         hc.port    ? `:${hc.port}` : '--', 'info'),
-    fwRow('Local Query%', eff.local_query_percentage != null ? pctD(eff.local_query_percentage) : '--'),
-    fwRow('Tokens Saved', eff.estimated_tokens_saved != null ? eff.estimated_tokens_saved.toLocaleString() : '--'),
-    fwRow('Vectors',      eff.knowledge_base_vectors  != null ? eff.knowledge_base_vectors.toLocaleString() : '--'),
-    fwRow('Offloading',   fmtImplStatus((sum.offloading || {}).status), statusColor((sum.offloading || {}).status)),
-    fwRow('Context Eff.', fmtImplStatus((sum.context_efficiency || {}).status), statusColor((sum.context_efficiency || {}).status)),
-    fwRow('Cap Gaps',     (sum.capability_gap || {}).gaps_detected ?? '--', (sum.capability_gap || {}).gaps_detected > 0 ? 'warn' : 'ok'),
+    fwRow('Status',        hc.status || '--',                               statusColor(hc.status)),
+    fwRow('Port',          hc.port ? `:${hc.port}` : '--',                  'info'),
+    fwRow('Local %',       localPct != null ? pctD(localPct) : '--',        localPct >= 80 ? 'ok' : localPct >= 40 ? 'warn' : 'err'),
+    fwRow('Ops (7d)',      totalOps ? totalOps.toLocaleString() : '--'),
+    fwRow('Backend Calls', backendN ? backendN.toLocaleString() : '--',     'info'),
+    fwRow('Vectors',       vectors  != null ? vectors.toLocaleString() : '--'),
+    fwRow('Offloading',    fmtImplStatus((sum.offloading || {}).status),    statusColor((sum.offloading || {}).status)),
+    fwRow('Cap Gaps',      (sum.capability_gap || {}).gaps_detected ?? '--', (sum.capability_gap || {}).gaps_detected > 0 ? 'warn' : 'ok'),
   ].join('');
 }
 
 // ─── INTELLIGENCE: TASK ROUTING ───────────────────────────────────────────────
 async function loadRouting() {
-  const d = await apiFetch('/aistack/task-classification/stats');
+  // Use routing analytics for real numbers; fall back to task-classification for recent decisions
+  const [analytics, cls] = await Promise.all([
+    apiFetch('/insights/routing/analytics'),
+    apiFetch('/aistack/task-classification/stats'),
+  ]);
   const tbody = document.getElementById('routeBody');
   if (!tbody) return;
-  if (!d) { tbody.innerHTML = '<tr><td colspan="3" style="color:var(--fg3)">Unavailable</td></tr>'; return; }
-  setText('routeTotal',  d.total_classified ?? 0);
-  setText('routeLocalP', d.local_pct != null ? pctD(d.local_pct) : '--');
-  const types = d.by_task_type || {};
-  const recent = d.recent_decisions || [];
-  const rows = Object.entries(types).length
-    ? Object.entries(types).map(([k, v]) =>
-        `<tr><td>${k}</td><td>${typeof v === 'object' ? (v.backend || '--') : '--'}</td><td>${typeof v === 'object' ? (v.count ?? v) : v}</td></tr>`)
-    : recent.slice(0, 10).map(r =>
-        `<tr><td>${r.task_type || '--'}</td><td>${r.route || r.backend || '--'}</td><td>${relTime(r.timestamp)}</td></tr>`);
-  tbody.innerHTML = rows.join('') || '<tr><td colspan="3" style="color:var(--fg3)">No classifications yet</td></tr>';
+
+  const cur = (analytics || {}).current || {};
+  const w7d = ((analytics || {}).windows || {}).windows?.['7d'] || {};
+  const localN = cur.local_n ?? w7d.local_n ?? (cls || {}).local_count ?? 0;
+  const localPct = cur.local_pct ?? w7d.local_pct ?? (cls || {}).local_pct;
+  const totalOk = cur.query_ok_n ?? localN;
+
+  setText('routeTotal',  totalOk.toLocaleString());
+  setText('routeLocalP', localPct != null ? pctD(localPct) : `${localN}`);
+
+  // Show top retrieval profiles if available, else recent decisions
+  const profiles = w7d.top_profiles || cur.top_profiles || [];
+  const recentD  = (cls || {}).recent_decisions || [];
+  const clsTypes = (cls || {}).by_task_type || {};
+
+  let rows = '';
+  if (profiles.length) {
+    rows = profiles.slice(0,8).map(([name, count]) =>
+      `<tr><td>${name}</td><td>local</td><td>${count.toLocaleString()}</td></tr>`).join('');
+  } else if (Object.entries(clsTypes).length) {
+    rows = Object.entries(clsTypes).map(([k, v]) =>
+      `<tr><td>${k}</td><td>${typeof v==='object'?(v.backend||'--'):'--'}</td><td>${typeof v==='object'?(v.count??v):v}</td></tr>`).join('');
+  } else if (recentD.length) {
+    rows = recentD.slice(0,10).map(r =>
+      `<tr><td>${r.task_type||'--'}</td><td>${r.route||r.backend||'--'}</td><td>${relTime(r.timestamp)}</td></tr>`).join('');
+  }
+  tbody.innerHTML = rows || '<tr><td colspan="3" style="color:var(--fg3)">No routing data yet</td></tr>';
 }
 
 // ─── INTELLIGENCE: MODELS ─────────────────────────────────────────────────────
@@ -731,20 +782,104 @@ async function loadKnowledge() {
 }
 
 async function loadAgentic() {
-  const d = await apiFetch('/aistack/model-optimization/readiness');
+  // Agentic Readiness: combine memory status + verify-self for richer info
+  const [mem, vs] = await Promise.all([
+    apiFetch('/ai/memory/status'),
+    apiFetch('/verify-self/results'),
+  ]);
   const el = document.getElementById('agenticDetails');
+  const badge = document.getElementById('agenticBadge');
+  if (!el) return;
+  const memInit = (mem || {}).initialized;
+  const memTypes = (mem || {}).memory_types || [];
+  const contradictions = (mem || {}).contradiction_pairs ?? 0;
+  const vsOk = (vs || {}).consistent;
+  const vsChecks = (vs || {}).total_checks ?? 0;
+
+  if (badge) {
+    const ok = memInit && vsOk !== false;
+    badge.textContent = ok ? 'ready' : 'warn';
+    badge.className = `card-badge ${ok ? 'badge-ok' : 'badge-warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Memory Init',    memInit ? 'yes' : 'no', memInit ? 'ok' : 'warn'),
+    fwRow('Memory Types',   memTypes.length || '--', memTypes.length >= 5 ? 'ok' : 'warn'),
+    fwRow('Contradictions', contradictions, contradictions > 10 ? 'warn' : 'ok'),
+    fwRow('Self-Verify',    vsOk ? 'pass' : vsOk === false ? 'FAIL' : '--', vsOk ? 'ok' : 'err'),
+    fwRow('Verify Checks',  vsChecks || '--'),
+    memTypes.length ? fwRow('Types', memTypes.slice(0,4).join(', ') + (memTypes.length>4?'…':''), 'info') : '',
+  ].join('');
+}
+
+// ─── INTELLIGENCE: PERFORMANCE HOTSPOTS ──────────────────────────────────────
+async function loadPerfHotspots() {
+  const d  = await apiFetch('/insights/performance/hotspots');
+  const el = document.getElementById('perfHotspotDetails');
+  const badge = document.getElementById('perfHotspotBadge');
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  const rd = d.readiness || {};
-  const items = Object.entries(rd).map(([k, v]) => {
-    const st = typeof v === 'object' ? v.status : v;
-    return fwRow(k.replace(/_/g, ' '), st, statusColor(st));
-  });
-  el.innerHTML = items.join('') || fwRow('Status', 'No data');
-  const next = d.next_steps || [];
-  if (next.length) {
-    el.innerHTML += `<div style="margin-top:.5rem;font-size:.58rem;color:var(--fg3)">Next: ${next.slice(0,2).join(', ')}</div>`;
+
+  const rl = d.route_latency || {};
+  const cache = d.cache || {};
+  const rag = d.rag_posture || {};
+  const hotspots = d.hotspots || [];
+  const watching = hotspots.filter(h => h.status === 'watch').length;
+
+  if (badge) {
+    badge.textContent = watching > 0 ? `${watching} watch` : 'healthy';
+    badge.className = `card-badge ${watching > 0 ? 'badge-warn' : 'badge-ok'}`;
   }
+
+  // Latency section
+  const p50 = rl.backend_valid_p50_ms; const p95 = rl.backend_valid_p95_ms;
+  const cacheHit = cache.hit_pct; const totalCalls = rl.total_calls;
+
+  el.innerHTML = [
+    fwRow('p50 Latency',     p50 != null ? `${p50.toFixed(0)}ms` : '--', p50 > 500 ? 'warn' : 'ok'),
+    fwRow('p95 Latency',     p95 != null ? `${p95.toFixed(0)}ms` : '--', p95 > 1000 ? 'warn' : p95 > 2000 ? 'err' : 'ok'),
+    fwRow('Cache Hit Rate',  cacheHit != null ? `${cacheHit.toFixed(0)}%` : '--', cacheHit >= 60 ? 'ok' : 'warn'),
+    fwRow('Total Calls (7d)',totalCalls != null ? totalCalls.toLocaleString() : '--'),
+    fwRow('Memory Recall %', rag.memory_recall_share_pct != null ? `${rag.memory_recall_share_pct.toFixed(0)}%` : '--', 'info'),
+    fwRow('Recall Miss',     rag.memory_recall_miss_pct != null ? `${rag.memory_recall_miss_pct.toFixed(0)}%` : '--', rag.memory_recall_miss_pct > 5 ? 'warn' : 'ok'),
+    fwRow('Error Rate',      rl.client_error_count != null && totalCalls ? `${((rl.client_error_count/totalCalls)*100).toFixed(1)}%` : '--',
+                             rl.client_error_count > 500 ? 'warn' : 'ok'),
+  ].join('');
+
+  // Top bottlenecks mini-list
+  const bottlenecks = (d.top_bottlenecks || []).filter(b => b.status === 'watch').slice(0,3);
+  if (bottlenecks.length) {
+    el.innerHTML += `<div style="margin-top:.4rem;border-top:1px solid rgba(255,255,255,.05);padding-top:.35rem">` +
+      bottlenecks.map(b => fwRow('  '+b.label.replace(/^\w+:/,''), `p95=${b.p95_ms.toFixed(0)}ms`, 'warn')).join('') +
+      `</div>`;
+  }
+}
+
+// ─── SECURITY: COMPLIANCE CONTROLS ───────────────────────────────────────────
+async function loadSecCompliance() {
+  const d  = await apiFetch('/insights/security/compliance');
+  const el = document.getElementById('secComplianceDetails');
+  const badge = document.getElementById('secComplianceBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+
+  const controls = d.controls || {};
+  const rl = d.rate_limiting || {};
+  const audit = d.audit || {};
+  const allPassed = Object.values(controls).every(v => v === true);
+  const passCount = Object.values(controls).filter(v => v === true).length;
+
+  if (badge) {
+    badge.textContent = `${passCount}/${Object.keys(controls).length}`;
+    badge.className = `card-badge ${allPassed ? 'badge-ok' : 'badge-warn'}`;
+  }
+
+  el.innerHTML = [
+    ...Object.entries(controls).map(([k, v]) =>
+      fwRow(k.replace(/_/g,' '), v ? 'pass' : 'FAIL', v ? 'ok' : 'err')),
+    fwRow('Rate Limit',   rl.enabled ? `${rl.default_rpm} RPM` : 'disabled', rl.enabled ? 'ok' : 'warn'),
+    fwRow('Audit Events', audit.total_events != null ? audit.total_events.toLocaleString() : '--', 'info'),
+    fwRow('Audit Sealed', audit.tamper_evident ? 'yes' : 'no', audit.tamper_evident ? 'ok' : 'warn'),
+  ].join('');
 }
 
 // ─── INTELLIGENCE: AGENT EVAL TRENDS ─────────────────────────────────────────
@@ -771,6 +906,7 @@ async function loadIntelligence() {
     loadCoordinator(), loadRouting(), loadModels(), loadSwitchboard(),
     loadAIDB(), loadLearning(), loadDrift(), loadVerifier(),
     loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
+    loadPerfHotspots(),
   ]);
 }
 
@@ -915,7 +1051,7 @@ async function loadAgentPool() {
 }
 
 async function loadSecurity() {
-  await Promise.allSettled([loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(), loadSecDrift(), loadAgentPool()]);
+  await Promise.allSettled([loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(), loadSecDrift(), loadAgentPool(), loadSecCompliance()]);
 }
 
 // ─── OPERATIONS ───────────────────────────────────────────────────────────────
@@ -1004,18 +1140,27 @@ async function loadHarnessOv() {
   const badge = document.getElementById('harnessOvBadge');
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  const s = (d.harness || {}).stats || {};
+  const s    = (d.harness || {}).stats || {};
   const card = (d.harness || {}).scorecard || {};
+  const inf  = card.inference_optimizations || {};
+  const disc = card.discovery || {};
   if (badge) { badge.textContent = d.status || '--'; badge.className = `card-badge ${statusColor(d.status) === 'ok' ? 'badge-ok' : 'badge-warn'}`; }
   const fails = (card.failures || {}).recent_failed_cases || [];
   el.innerHTML = [
     fwRow('Total Runs',   s.total_runs ?? 0),
-    fwRow('Passed',       s.passed ?? 0, (s.passed || 0) > 0 ? 'ok' : 'info'),
-    fwRow('Failed',       s.failed ?? 0, (s.failed || 0) > 0 ? 'err' : 'ok'),
+    fwRow('Passed',       s.passed ?? 0,          (s.passed || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Failed',       s.failed ?? 0,           (s.failed || 0) > 0 ? 'err' : 'ok'),
     fwRow('Scorecards',   s.scorecards_generated ?? '--'),
     fwRow('Last Run',     s.last_run_at ? relTime(s.last_run_at) : 'never'),
-    fwRow('Analysis',     card.failures && card.failures.analysis_ready ? 'ready' : 'no data', 'info'),
-  ].join('');
+    // Discovery metrics from scorecard
+    disc.invoked != null ? fwRow('Discovery', `${disc.invoked} invoked · ${disc.skipped ?? 0} skip`, 'info') : '',
+    disc.cache_hit_rate != null ? fwRow('Disc Cache', `${(disc.cache_hit_rate*100).toFixed(0)}%`, disc.cache_hit_rate > 0 ? 'ok' : 'warn') : '',
+    // Inference optimization config (professional AI dashboard standard — always show)
+    `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05);font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em">Inference Config</div>`,
+    fwRow('Prompt Cache',  inf.prompt_cache_policy_enabled ? 'enabled' : 'disabled', inf.prompt_cache_policy_enabled ? 'ok' : 'warn'),
+    fwRow('Spec Decode',   inf.speculative_decoding_enabled ? `enabled (${inf.speculative_decoding_mode || 'draft'})` : 'disabled', inf.speculative_decoding_enabled ? 'ok' : 'info'),
+    fwRow('Ctx Compress',  inf.context_compression_enabled ? 'enabled' : 'disabled', inf.context_compression_enabled ? 'ok' : 'warn'),
+  ].filter(Boolean).join('');
   if (fails.length) {
     el.innerHTML += `<div style="margin-top:.4rem;font-size:.57rem;color:var(--red)">Recent failures: ${fails.slice(0,3).join(', ')}</div>`;
   }
@@ -1049,18 +1194,45 @@ async function loadLearnPipeline() {
   const badge = document.getElementById('learnPipelineBadge');
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
-  const bp = d.backpressure || {};
+  const bp  = d.backpressure || {};
+  const act = d.activity || {};
   const paused = bp.paused || d.learning_paused;
-  const files = bp.file_sizes || {};
-  const totalMb = Object.values(files).reduce((s, b) => s + b, 0) / 1048576;
+  const files  = bp.file_sizes || {};
+  const totalBytes = Object.values(files).reduce((s, b) => s + b, 0);
+  const totalMb    = totalBytes / 1048576;
   if (badge) { badge.textContent = paused ? 'paused' : 'active'; badge.className = `card-badge ${paused ? 'badge-warn' : 'badge-ok'}`; }
-  el.innerHTML = [
-    fwRow('Finetune Records', d.finetuning_dataset_size ?? '--', d.finetuning_dataset_size > 0 ? 'ok' : 'info'),
-    fwRow('Total Metrics',    d.total_metrics_tracked != null ? d.total_metrics_tracked.toLocaleString() : '--'),
-    fwRow('Pipeline Files',   `${totalMb.toFixed(0)} MB total`),
-    fwRow('Backpressure',     paused ? 'PAUSED' : `${(bp.unprocessed_mb || 0).toFixed(1)} MB`, paused ? 'warn' : 'ok'),
-    ...Object.entries(files).map(([f, b]) => fwRow('  ' + f.replace('-events.jsonl',''), `${(b/1048576).toFixed(1)} MB`)),
+
+  // KPI rows
+  const kpis = [
+    fwRow('Total Events',     act.total_events != null ? act.total_events.toLocaleString() : '--'),
+    fwRow('Finetune Records', d.finetuning_dataset_size ?? '--', (d.finetuning_dataset_size || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Avg Feedback',     act.average_feedback_score != null ? act.average_feedback_score.toFixed(3) : '--',
+                              act.average_feedback_score > 0.5 ? 'ok' : act.average_feedback_score > 0.2 ? 'warn' : 'err'),
+    fwRow('Backpressure',     paused ? 'PAUSED' : 'nominal', paused ? 'warn' : 'ok'),
   ].join('');
+
+  // Pipeline ingestion bars — visual volume indicator
+  const maxBytes = Math.max(...Object.values(files), 1);
+  const pipeNames = { 'hybrid-events': 'Hybrid', 'aidb-events': 'AIDB', 'ralph-events': 'RALPH', 'hint-feedback': 'Feedback', 'query-gaps': 'Gaps' };
+  const bars = Object.entries(files).map(([fname, bytes]) => {
+    const mb  = (bytes / 1048576).toFixed(0);
+    const pct = Math.round((bytes / maxBytes) * 100);
+    const key = Object.keys(pipeNames).find(k => fname.includes(k));
+    const label = key ? pipeNames[key] : fname.replace('-events.jsonl','').replace('.jsonl','');
+    return `<div style="display:flex;align-items:center;gap:.4rem;margin:.18rem 0">
+      <span style="min-width:4.2rem;font-size:.57rem;color:var(--fg2)">${label}</span>
+      <div style="flex:1;background:rgba(255,255,255,.06);border-radius:2px;height:6px">
+        <div style="width:${pct}%;height:6px;border-radius:2px;background:var(--cyan);opacity:.7"></div>
+      </div>
+      <span style="min-width:2.8rem;text-align:right;font-size:.57rem;color:var(--fg3)">${mb}MB</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = kpis +
+    `<div style="margin-top:.4rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05)">
+      <div style="font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem">
+        Pipeline Ingestion · ${totalMb.toFixed(0)}MB total
+      </div>${bars}</div>`;
 }
 
 async function loadOperations() {
