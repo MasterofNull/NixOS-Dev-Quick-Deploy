@@ -26,6 +26,30 @@ from config import Config
 # The header name used for API key authentication.
 API_KEY_HEADER = "X-API-Key"
 
+# Optional profile request header. The server validates this against the
+# authenticated request mode and records the effective profile in request state.
+AUTH_PROFILE_HEADER = "X-Harness-Auth-Profile"
+AUTH_CONTEXT_KEY = "auth_context"
+
+AUTH_PROFILE_POLICY = {
+    "public": {
+        "default_profile": "readonly-strict",
+        "allowed_profiles": ["readonly-strict"],
+    },
+    "loopback-agent": {
+        "default_profile": "execute-guarded",
+        "allowed_profiles": ["readonly-strict", "execute-guarded"],
+    },
+    "api-key": {
+        "default_profile": "execute-guarded",
+        "allowed_profiles": ["readonly-strict", "execute-guarded", "worktree-guarded"],
+    },
+    "no-api-key-configured": {
+        "default_profile": "execute-guarded",
+        "allowed_profiles": ["readonly-strict", "execute-guarded"],
+    },
+}
+
 # Endpoints always accessible without authentication (health, metrics, discovery).
 PUBLIC_PATHS = frozenset({
     "/health",
@@ -109,6 +133,86 @@ def _is_loopback_agent_request(req: web.Request) -> bool:
     return any(req.path.startswith(pfx) for pfx in LOOPBACK_AGENT_PREFIXES)
 
 
+def _is_loopback_agent_path(path: str) -> bool:
+    """Return True when a path is eligible for local-agent loopback access."""
+    return any(path.startswith(pfx) for pfx in LOOPBACK_AGENT_PREFIXES)
+
+
+def _extract_token(headers) -> str:
+    token = headers.get(API_KEY_HEADER) or headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        token = token.split(" ", 1)[1]
+    return str(token).strip()
+
+
+def _auth_context(mode: str, profile: str, authenticated: bool, reason: str) -> dict:
+    return {
+        "mode": mode,
+        "profile": profile,
+        "authenticated": authenticated,
+        "reason": reason,
+    }
+
+
+def _profile_for_mode(mode: str, requested_profile: str = "") -> tuple[str, str]:
+    policy = AUTH_PROFILE_POLICY.get(mode, AUTH_PROFILE_POLICY["public"])
+    allowed = set(policy.get("allowed_profiles", []))
+    profile = (requested_profile or "").strip() or str(policy.get("default_profile", "readonly-strict"))
+    if profile not in allowed:
+        return "", f"profile '{profile}' is not allowed for auth mode '{mode}'"
+    return profile, ""
+
+
+def resolve_auth_context(path: str, remote: str, headers, configured_api_key: str) -> tuple[dict, int]:
+    """Resolve request auth mode and effective runtime profile.
+
+    Returns ``(context, status)`` where status is 0 when the request may
+    continue, 401 for authentication failure, and 403 for invalid profile
+    requests. This pure helper keeps the runtime middleware testable without
+    constructing aiohttp request transports.
+    """
+    requested_profile = str(headers.get(AUTH_PROFILE_HEADER, "")).strip()
+
+    if path in PUBLIC_PATHS:
+        profile, error = _profile_for_mode("public", requested_profile)
+        if error:
+            return {"error": error}, 403
+        return _auth_context("public", profile, False, "public_path"), 0
+
+    if remote in {"127.0.0.1", "::1", "localhost"} and _is_loopback_agent_path(path):
+        profile, error = _profile_for_mode("loopback-agent", requested_profile)
+        if error:
+            return {"error": error}, 403
+        return _auth_context("loopback-agent", profile, True, "loopback_agent_prefix"), 0
+
+    if not configured_api_key:
+        profile, error = _profile_for_mode("no-api-key-configured", requested_profile)
+        if error:
+            return {"error": error}, 403
+        return _auth_context("no-api-key-configured", profile, True, "api_key_not_configured"), 0
+
+    token = _extract_token(headers)
+    if token != configured_api_key:
+        return {"error": "unauthorized", "mode": "api-key"}, 401
+
+    profile, error = _profile_for_mode("api-key", requested_profile)
+    if error:
+        return {"error": error}, 403
+    return _auth_context("api-key", profile, True, "api_key_valid"), 0
+
+
+def auth_profile_policy_summary() -> dict:
+    """Return operator-facing policy metadata for dashboard/report surfaces."""
+    return {
+        "available": True,
+        "profile_header": AUTH_PROFILE_HEADER,
+        "context_key": AUTH_CONTEXT_KEY,
+        "modes": AUTH_PROFILE_POLICY,
+        "public_paths": sorted(PUBLIC_PATHS),
+        "loopback_prefix_count": len(LOOPBACK_AGENT_PREFIXES),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Middleware factory
 # ---------------------------------------------------------------------------
@@ -119,20 +223,19 @@ def create_api_key_middleware():
 
     @web.middleware
     async def api_key_middleware(request: web.Request, handler):
-        if request.path in PUBLIC_PATHS:
-            return await handler(request)
-        if _is_loopback_agent_request(request):
-            return await handler(request)
-        if not Config.API_KEY:
-            return await handler(request)
-        token = (
-            request.headers.get(API_KEY_HEADER)
-            or request.headers.get("Authorization", "")
+        context, status = resolve_auth_context(
+            request.path,
+            (request.remote or "").strip(),
+            request.headers,
+            Config.API_KEY,
         )
-        if token.startswith("Bearer "):
-            token = token.split(" ", 1)[1]
-        if token != Config.API_KEY:
-            return web.json_response({"error": "unauthorized"}, status=401)
-        return await handler(request)
+        if status:
+            return web.json_response(context, status=status)
+        request[AUTH_CONTEXT_KEY] = context
+        response = await handler(request)
+        if isinstance(response, web.StreamResponse):
+            response.headers.setdefault("X-Harness-Auth-Mode", context.get("mode", ""))
+            response.headers.setdefault("X-Harness-Auth-Profile", context.get("profile", ""))
+        return response
 
     return api_key_middleware

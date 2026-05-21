@@ -1,21 +1,17 @@
 {
   "agent": "Codex",
-  "task": "Dashboard visual QA tooling and next parity slice handoff",
-  "intent": "Proceed with parity integration after model/dashboard repairs; reconcile local visual QA tooling and prepare next runtime MCP auth/profile enforcement slice.",
-  "status": "active",
+  "task": "S2 runtime MCP auth/profile enforcement baseline",
+  "intent": "Commit and deploy the runtime auth/profile middleware baseline, then verify dashboard policy visibility and continue deeper MCP tool-boundary enforcement.",
+  "status": "validated_pending_commit",
   "timestamp": "2026-05-21T19:45:00+00:00",
   "files": [
-    "scripts/ai/aq-screenshot",
-    "nix/home/base.nix",
-    "config/env-contract.yaml",
+    "ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py",
+    "dashboard/backend/api/routes/aistack.py",
+    "docs/architecture/runtime-auth-profile-enforcement.md",
+    "scripts/testing/test-hybrid-auth-profile-policy.py",
     "config/validation-check-registry.json",
-    ".agent/skills/webapp-testing/SKILL.md",
-    ".agent/skills/webapp-testing/examples/dashboard_smoke.py",
-    "scripts/testing/test-aq-screenshot-contract.sh",
     ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
-    ".agent/collaboration/HANDOFF.md",
-    ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md",
-    ".agent/collaboration/SUPPORT_BROADCAST.md"
+    ".agent/collaboration/HANDOFF.md"
   ],
   "evidence": [
     "/learning/export HTTP 500: permission denied /var/lib/ai-stack/hybrid/fine-tuning/dataset_export.jsonl",
@@ -26,16 +22,14 @@
     "Do not include whitespace-only facts.nix drift."
   ],
   "validation": [
-    "bash -n scripts/ai/aq-screenshot \u2014 PASS",
-    "scripts/ai/aq-screenshot --help \u2014 PASS without Playwright import",
-    "nix-instantiate --parse nix/home/base.nix \u2014 PASS",
-    "python/yaml parse config/env-contract.yaml \u2014 PASS",
-    "scripts/testing/test-aq-screenshot-contract.sh \u2014 PASS"
+    "python3 -m py_compile auth.py aistack.py test-hybrid-auth-profile-policy.py \u2014 PASS",
+    "scripts/testing/test-hybrid-auth-profile-policy.py \u2014 PASS",
+    "scripts/governance/run-focused-ci-checks.sh --pre-deploy \u2014 PASS"
   ],
   "next": [
-    "Commit dashboard visual QA tooling slice after tier0 passes.",
-    "Keep facts.nix whitespace drift out of commits unless regenerated with semantic changes.",
-    "Next implementation slice: S2 runtime MCP auth/profile enforcement, using safety-rails.yaml and existing /run/secrets mounts; expose auth/profile metrics through dashboard/handoff per cross-surface contract."
+    "Commit S2 runtime auth/profile baseline after tier0 passes.",
+    "Deploy/restart hybrid coordinator and dashboard API so auth context headers and Command Center policy visibility are live.",
+    "Next S2 follow-up: enforce auth/profile decisions at the concrete MCP tool-dispatch boundary, not just HTTP middleware."
   ],
   "support_orchestrator": {
     "status": "active_monitoring",

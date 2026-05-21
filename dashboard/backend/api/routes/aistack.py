@@ -1901,6 +1901,34 @@ async def get_harness_scorecard() -> Dict[str, Any]:
     }
 
 
+def _runtime_auth_profile_summary() -> Dict[str, Any]:
+    """Return runtime auth/profile policy summary for operator visibility."""
+    return {
+        "available": True,
+        "source": "hybrid-coordinator.middleware.auth",
+        "profile_header": "X-Harness-Auth-Profile",
+        "context_key": "auth_context",
+        "modes": {
+            "public": {
+                "default_profile": "readonly-strict",
+                "allowed_profiles": ["readonly-strict"],
+            },
+            "loopback-agent": {
+                "default_profile": "execute-guarded",
+                "allowed_profiles": ["readonly-strict", "execute-guarded"],
+            },
+            "api-key": {
+                "default_profile": "execute-guarded",
+                "allowed_profiles": ["readonly-strict", "execute-guarded", "worktree-guarded"],
+            },
+            "no-api-key-configured": {
+                "default_profile": "execute-guarded",
+                "allowed_profiles": ["readonly-strict", "execute-guarded"],
+            },
+        },
+    }
+
+
 def _local_tool_registry_security_summary() -> Dict[str, Any]:
     """Return local-agent tool registry security metadata summary.
 
@@ -2017,6 +2045,7 @@ async def get_harness_overview() -> Dict[str, Any]:
             "tool_execution_policy": aidb_health.get("tool_execution_policy", {}),
             "outbound_http_policy": aidb_health.get("outbound_http_policy", {}),
             "tool_registry_security": tool_registry_security,
+            "runtime_auth_profiles": _runtime_auth_profile_summary(),
         },
         "maintenance": {
             "scripts": script_status,
