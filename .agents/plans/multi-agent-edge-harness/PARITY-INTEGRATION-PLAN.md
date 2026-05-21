@@ -15,9 +15,9 @@ The coordinator refactor line is past R2.9 and current commits have moved into P
 | PA Item | Description | Maps to PRD Phase | Status |
 |---------|-------------|-------------------|--------|
 | PA-1 | Bitemporal memory schema + supersession tests | Phase 60.1–60.4 | 60.1 DONE (9844d3e0); 60.2 follow-on dirty/pending validation |
-| PA-2 | Tool sandbox policy schema + registry lint | Phase 62 (nsjail, AM-C3) | Pending Phase 62 |
-| PA-3 | Agent identity/delegation review gate | Phase 62 safety rails (`config/safety-rails.yaml`) | Pending Phase 62 |
-| PA-4 | MCP/A2A governance profile | Ed25519 Agent Cards (MAEAH Phase D) + Phase 62 | Partial (A2A done) |
+| PA-2 | Tool sandbox policy schema + registry lint | Phase 62 (nsjail, AM-C3) | PARTIAL: static contract + nsjail/safety rails committed; full registry lint/runtime profile enforcement remains |
+| PA-3 | Agent identity/delegation review gate | Phase 62 safety rails (`config/safety-rails.yaml`) | PARTIAL: review-gate contract pinned; delegation envelope runtime enforcement remains |
+| PA-4 | MCP/A2A governance profile | Ed25519 Agent Cards (MAEAH Phase D) + Phase 62 | PARTIAL: A2A done + static security contract pinned; MCP runtime auth/profile enforcement remains |
 | PA-5 | Memory poisoning + retrieval benchmark additions | Phase 60.3–60.7 (RAGAS metrics) | Pending Phase 60.5–60.6 |
 | PA-6 | Trace schema: prompt version, route, tool sequence | Phase 60 (prompt_version_id) + Phase 63 path view | Pending |
 | PA-7 | Semantic task descriptor + scheduler pressure tests | Phase 61 CLM + MLFQ pressure integration | Pending Phase 61 |
@@ -119,12 +119,22 @@ Only open after Phases 1–4 are stable and accepted:
 - NATS/gRPC mesh and chaos testing for multi-node deployments.
 - Federated learning, PQC identity, audio-native agents, neuromorphic/embodied/cryptoeconomic tracks.
 
+## Current reconciliation — 2026-05-21
+
+Recent committed work changed the Phase 1/62 status:
+
+- `MAEAH-SECURITY-CONTRACT-GATES.md` and `scripts/testing/test-security-contract-gates.py` pin the static security/governance contract.
+- `config/safety-rails.yaml`, `evidence_safety_handlers.py`, local shell sandbox tests, and nsjail environment wiring provide the first runtime safety-rail layer.
+- `docs/architecture/cross-surface-change-contract.md` and tier0 now require connected docs/handoff/planning or dashboard visibility for runtime/service/module changes.
+
+Remaining work is not the same as the completed static gate: tool registry lint, runtime MCP authorization/profile enforcement, bounded delegation envelopes, and dashboard-visible security/audit metrics still need implementation slices.
+
 ## Slice queue after refactor lands
 
 | Slice | Owner suggestion | Files expected | Validation |
 |---|---|---|---|
-| S1 security contract gates | Codex + Claude review | `MAEAH-SECURITY-CONTRACT-GATES.md`, acceptance criteria corrections | doc lint, diff check |
-| S2 sandbox policy schema | Codex + Claude review | docs/config schema + governance lint tests | schema unit tests, governance lint |
+| S1 security contract gates | Codex + Claude review | `MAEAH-SECURITY-CONTRACT-GATES.md`, acceptance criteria corrections | DONE: `scripts/testing/test-security-contract-gates.py` + tier0 history |
+| S2 sandbox policy schema | Codex + Claude review | docs/config schema + governance lint tests | PARTIAL: nsjail/safety rails present; registry lint/runtime profile enforcement remains |
 | S3 identity/delegation review gate | Gemini design + Codex/Claude review | A2A/agent card docs, review gate contract | static contract tests |
 | S4 bitemporal retrieval traceability pack | Codex + memory/local model | memory envelope docs, retrieval plan schema, eval fixtures | memory/RAG benchmark additions |
 | S5 observability path view | Claude/Codex | trace docs, aq-report plan | trace schema tests |

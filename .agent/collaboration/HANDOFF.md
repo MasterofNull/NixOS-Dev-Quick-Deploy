@@ -1355,3 +1355,20 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Known repo drift intentionally not included:** `nix/hosts/hyperd/facts.nix` has whitespace-only indentation drift from the deploy hardware facts refresh. No semantic Nix change observed.
 **Context Bloat:** Low
+
+---
+
+# Handoff Memo — 2026-05-21 Parity Plan Status Reconciliation (Codex)
+
+**Status:** Validated; pending commit at memo write.
+
+**Why:** Active plan status still showed Phase 1/62 security-governance work as pending even though static security gates, nsjail/safety rails, and cross-surface governance are now committed.
+
+**Change:** Updated `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md` to mark PA-2/PA-3/PA-4 as bounded partials and S1 as done, without claiming remaining runtime registry lint, MCP auth/profile enforcement, or delegation envelope work is complete.
+
+**Validation:**
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py` — PASS.
+- Plan diff reviewed for status-only reconciliation.
+
+**Repo drift not included:** `nix/hosts/hyperd/facts.nix` remains whitespace-only deploy drift.
+**Context Bloat:** Low
