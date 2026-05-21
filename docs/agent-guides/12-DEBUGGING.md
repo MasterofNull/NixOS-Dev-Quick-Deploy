@@ -328,5 +328,4 @@ LLAMA_CPP_LOG_LEVEL=debug
 ## Next Steps
 
 - [Service Status](02-SERVICE-STATUS.md) - Health monitoring
-- [Container Management](11-CONTAINER-MGMT.md) - Container operations
 - [Error Logging](32-ERROR-LOGGING.md) - Store errors for learning

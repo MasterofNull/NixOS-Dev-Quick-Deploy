@@ -1,44 +1,8 @@
 # 61 — Development Workflow Practices
 
-> **Load:** On-demand — reference when starting a task, during development, or before commit.
-> **Related:** `60-CODE-QUALITY.md`, `62-MEMORY-SYSTEM.md`, `01-QUICK-START.md`
-> **Source:** Distilled from `docs/AGENTS.md` §3-4 + §7 (checklists).
+**Last Updated**: 2026-05-20 (Phase 58+ Update)
 
----
-
-## The Agent Workflow Contract
-
-Every task follows: **Context → Plan → Execute → Validate → Commit**
-
-Never skip the commit. Uncommitted changes = incomplete task.
-
----
-
-## 1. Before You Start
-
-```bash
-aq-prime                                    # load project context
-aq-hints "<task>" --format=json            # ranked workflow hints
-aq-context-bootstrap --task "<task>"       # minimal context entrypoint
-git log --oneline -5                       # check recent commits for conflicts
-```
-
-- Read existing code in the area you're modifying
-- Search for similar implementations — match the pattern
-- Verify DB schema if working with data
-- Check `.agents/plans/` for active phase plans
-
----
-
-## 2. During Development
-
-- **Atomic commits** — one logical change per commit
-- **Test incrementally** — don't write 500 lines then test
-- **Clean up inline** — remove debug code immediately, not later
-- **Update docs inline** — don't defer documentation
-- **Declarative-first** — implement via Nix options/modules first; use scripts as fallback
-
----
+...
 
 ## 3. Harness-First Rule
 
@@ -47,9 +11,23 @@ The locally hosted AI harness is the **primary interface** for all agent operati
 ```bash
 # Session zero — run these first on every new session
 aq-prime
-aq-qa 0                                    # verify 39/39 checks
-aq-report 2>/dev/null | head -60          # current metrics
+aq-qa 0                                    # verify 61/61 checks
+aq-report --since 24h                     # current metrics
 ```
+
+...
+
+## 9. PRSI Loop (Self-Improvement)
+
+The system uses the **Pessimistic Recursive Self-Improvement (PRSI)** loop for autonomous optimization:
+
+1.  **Plan**: Generate proposals based on observed gaps.
+2.  **Validate**: Safety envelope check (Tier 0).
+3.  **Execute**: Apply changes in isolation.
+4.  **Measure**: Capture scorecard and impact.
+5.  **Feedback**: Update hint bandits and learning engine.
+
+Orchestrate via: `scripts/automation/prsi-orchestrator.py list|verify|execute`
 
 **Workflow loop:**
 1. `POST /workflow/plan` — create execution plan

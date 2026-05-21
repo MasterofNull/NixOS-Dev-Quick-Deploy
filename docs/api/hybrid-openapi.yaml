@@ -1,6 +1,6 @@
 openapi: "3.0.3"
 info:
-  title: Hybrid Coordinator API
+  title: Hybrid Coordinator API (Phase 58+)
   description: |
     The Hybrid Coordinator orchestrates AI workflow operations including:
     - RAG-based context retrieval
@@ -9,14 +9,12 @@ info:
     - Workflow planning and execution
     - Learning feedback loops
     - Progressive capability discovery
-  version: "2.0.0"
+  version: "3.0.0"
   contact:
     name: AI Stack Maintainers
 servers:
   - url: http://localhost:8003
-    description: Default local development
-  - url: http://localhost:8092
-    description: Legacy port (deprecated)
+    description: Canonical orchestration API (Phase 58+)
 
 tags:
   - name: Health

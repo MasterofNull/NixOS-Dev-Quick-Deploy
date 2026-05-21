@@ -1,31 +1,30 @@
 {
   "agent": "Codex",
-  "task": "Phase 60 stale/poisoned/superseded recall fixture pack",
-  "intent": "Add deterministic regression fixtures for stale temporal recall, historical supersession reads, and poisoned memory rejection without touching active Phase 61 CLM/refactor files.",
-  "status": "validated",
-  "timestamp": "2026-05-21T03:03:44.038162+00:00",
+  "task": "Phase 1 security governance contract gates",
+  "intent": "Add non-runtime MAEAH security contract gates that pin safety policy, isolation policy, and review-gate requirements before implementing sandbox/runtime changes.",
+  "status": "blocked_by_concurrent_docs_refactor",
+  "timestamp": "2026-05-21T03:15:19.746989+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md",
-    ".agent/collaboration/PULSE.log",
-    "scripts/testing/test-memory-recall-broker-contract.py"
+    ".agents/plans/multi-agent-edge-harness/MAEAH-SECURITY-CONTRACT-GATES.md",
+    "scripts/testing/test-security-contract-gates.py"
   ],
-  "plan_references": [
-    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
-    ".agents/plans/PHASE-60-ECOSYSTEM-INTEGRATION-PRD.md"
+  "blocker": {
+    "summary": "tier0 roadmap verifier fails because concurrent docs archival moved docs/DASHBOARD-COLLECTORS-GUIDE.md to docs/archive/legacy-2025/DASHBOARD-COLLECTORS-GUIDE.md while scripts/testing/verify-flake-first-roadmap-completion.sh still checks the root path",
+    "not_caused_by": "security contract test slice",
+    "safe_next_action": "owner of progressive-disclosure/docs archival slice should either restore a canonical root dashboard collectors guide or update roadmap verification in the same docs-refactor commit"
+  },
+  "validation": [
+    "PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/testing/test-security-contract-gates.py \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS",
+    "git diff --check --cached for staged Codex files before unstage \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (75 passed, 0 failed, 2 skipped)",
+    "tier0-validation-gate.sh --pre-commit \u2014 BLOCKED by concurrent docs/refactor roadmap path mismatch; earlier transient QA phase 0 failure reran green directly"
   ],
   "guardrails": [
-    "did not edit active Phase 61 CLM/refactor files: router.py, context_lifecycle_manager.py, config/clm-compaction-prompt.yaml, mlfq_scheduler.py, server.py, phase0.py",
-    "scope is tests/fixtures only",
-    "focused memory tests plus aq-qa/tier0 passed before commit"
-  ],
-  "validation": [
-    "PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/testing/test-memory-recall-broker-contract.py \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-memory-recall-broker-contract.py \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 pytest -q ai-stack/mcp-servers/hybrid-coordinator/tests/test_cognitive_intelligence_l5_l6.py scripts/testing/test-memory-recall-broker-contract.py \u2014 PASS (8 passed)",
-    "git diff --check \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/ai/aq-memory-recall-benchmark --json \u2014 PASS (20/20)",
-    "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (71 passed, 0 failed, 2 skipped)",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS"
+    "Codex files intentionally unstaged to avoid accidental inclusion in the concurrent docs commit",
+    "did not edit concurrent progressive-disclosure/docs archival files",
+    "do not commit this slice until tier0 is green after docs-refactor ownership is resolved"
   ]
 }

@@ -1,6 +1,7 @@
 # AI Agent Onboarding Guide
 
-**Version:** 1.0.0
+**Version:** 2.0.0 (Phase 58+)
+**Last Updated:** 2026-05-20
 **Purpose:** Universal agent training for professional software development
 **Audience:** AI agents, LLMs, and autonomous coding systems
 
@@ -11,7 +12,7 @@
 - `docs/AGENTS.md` - Mirror for quick reference
 - `docs/agent-guides/00-SYSTEM-OVERVIEW.md` - System map
 - `docs/agent-guides/01-QUICK-START.md` - Task-ready checklist
-- `ai-stack/agents/skills/AGENTS.md` - Skill usage and sync rules
+- `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md` - Discovery strategy
 
 ## Default Multi-Agent Workflow (Always Apply)
 
@@ -1204,7 +1205,7 @@ Production-ready work that requires no cleanup cycles, integrates smoothly, and 
 
 ---
 
-**Version:** 1.0.0
-**Last Updated:** 2025-12-03
+**Version:** 2.0.0
+**Last Updated:** 2026-05-20
 **License:** MIT (or customize)
 **Maintainer:** [Your Name/Team]

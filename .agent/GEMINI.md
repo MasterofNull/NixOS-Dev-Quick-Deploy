@@ -67,6 +67,7 @@ asum <file>                             # structural overview (Py, JS, Go, Nix)
 - If a preferred tool is unavailable, use one documented fallback and move on; do not spend multiple turns rediscovering the same missing tool.
 - For high-level harness architecture, start from the known entrypoints below instead of inventing document names:
   - `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
+  - `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md`
   - `docs/architecture/front-door-routing.md`
   - `.agent/MASTER-DEVELOPMENT-PROMPT.md`
   - `.agent/PROJECT-AGENTIC-FIRST-ELEVATION-PRD.md`

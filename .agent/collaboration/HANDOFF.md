@@ -1,3 +1,26 @@
+# Handoff Memo — 2026-05-20 Progressive Disclosure Documentation (Gemini)
+
+**Status:** Overhaul complete. Progressive disclosure documentation is now up to date with Phase 58+.
+**Canonical Guide:** `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md` (Version 2.0.0)
+**Key Changes:**
+1. **Retired legacy documentation**: Moved `docs/PROGRESSIVE-DISCLOSURE-GUIDE.md` and `docs/operations/agent-context-progressive-disclosure.md` to `docs/archive/legacy-sequence/` and replaced originals with retirement notices.
+2. **Updated Canonical Guide**: Rewrote `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md` to include:
+    - Phase 58+ system state (ports 8002/8003).
+    - Modern toolset (`aq-prime`, `aq-hints`, `aq-context-bootstrap`, `aq-context-card`).
+    - Current 7 domains from `config/progressive-disclosure-domains.json`.
+    - `aq-qa --layer <N>` integration for layered health checks.
+3. **Linkage Integration**:
+    - Updated `README.md` to point to the new canonical guide.
+    - Updated `docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md` redirect list.
+    - Updated `.agent/GEMINI.md` to include the guide as a high-level architecture entrypoint.
+**Validation:**
+- Verified all 7 domains match `config/progressive-disclosure-domains.json`.
+- Verified ports 8002/8003 match `nix/modules/core/options.nix`.
+- Verified all internal markdown links are functional.
+**Next Steps:**
+- Ensure future PRDs continue to reference `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md` for discovery patterns.
+- Monitor `aq-prime` usage for any reported gaps in the updated guide.
+
 # Handoff Memo — 2026-05-21 VP-Eng PRD Review (Gemini)
 
 **Status:** Phase 60 Ecosystem Integration PRD Reviewed and Amended. Gemini VP-Eng sign-off complete.
@@ -1134,4 +1157,48 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 **Coordination note:** Active dirty files from another slice remain present and were intentionally not edited/staged by Codex: `ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py`, `router.py`, `server.py`, `ai-stack/mcp-servers/hybrid-coordinator/knowledge/context_lifecycle_manager.py`, `config/clm-compaction-prompt.yaml`, and `scripts/testing/harness_qa/phases/phase0.py`.
 
 **Next step:** Continue Phase 60/61 integration after checking current dirty state and owner of the CLM/runtime refactor slice.
+**Context Bloat:** Low
+
+
+---
+
+# Handoff Memo — 2026-05-21 Phase 1 Security Contract Gates (Codex)
+
+**Status:** Focused slice complete; full commit pending final gate/stage.
+**Scope:** Non-runtime Phase 1 parity controls for safety policy, isolation policy, and agent review-gate drift.
+
+**Changes:**
+1. Added `.agents/plans/multi-agent-edge-harness/MAEAH-SECURITY-CONTRACT-GATES.md` to pin the minimum fail-closed contract for runtime safety, isolation profiles, Gemini/Qwen review gates, and PA-2/PA-3/PA-4 parity mapping.
+2. Added `scripts/testing/test-security-contract-gates.py` to statically validate those contract surfaces without changing coordinator runtime behavior.
+
+**Focused validation:**
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/testing/test-security-contract-gates.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py` — PASS
+- `git diff --check -- .agent/collaboration/PENDING.json .agents/plans/multi-agent-edge-harness/MAEAH-SECURITY-CONTRACT-GATES.md scripts/testing/test-security-contract-gates.py` — PASS
+
+**Coordination note:** A concurrent progressive-disclosure docs slice is dirty in the working tree and was not touched/staged by Codex. Files observed: `.agent/GEMINI.md`, `README.md`, `docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README.md`, `docs/PROGRESSIVE-DISCLOSURE-GUIDE.md`, `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md`, `docs/operations/agent-context-progressive-disclosure.md`, archive files, and related PRD/plan docs.
+
+**Next step:** Run final tier0 if the concurrent docs tree is stable, then stage/commit only the security contract files.
+**Context Bloat:** Low
+
+
+---
+
+# Handoff Memo — 2026-05-21 Phase 1 Security Contract Gates Blocker (Codex)
+
+**Status:** Focused implementation complete, but not committed. Codex files were unstaged to avoid accidental inclusion in the concurrent docs-refactor commit.
+
+**Codex changes ready:**
+1. `.agents/plans/multi-agent-edge-harness/MAEAH-SECURITY-CONTRACT-GATES.md` — preserves the existing normative security contract and appends a Phase 1 static regression gate section.
+2. `scripts/testing/test-security-contract-gates.py` — static test for runtime safety policy, isolation profiles, Gemini/Qwen review-gate contract, and PA-2/PA-3/PA-4 parity mapping.
+
+**Focused validation:**
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/testing/test-security-contract-gates.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`75 passed, 0 failed, 2 skipped`)
+
+**Blocker:** `scripts/governance/tier0-validation-gate.sh --pre-commit` is blocked by the concurrent docs archival slice, not by Codex's security contract test. The roadmap verifier still checks `docs/DASHBOARD-COLLECTORS-GUIDE.md`, while the staged docs refactor has moved it to `docs/archive/legacy-2025/DASHBOARD-COLLECTORS-GUIDE.md`.
+
+**Required next action:** The docs-refactor owner should either restore a canonical root dashboard collectors guide or update `scripts/testing/verify-flake-first-roadmap-completion.sh` in the same docs-refactor commit. After that, rerun tier0 and commit the Codex security contract slice.
+
 **Context Bloat:** Low

@@ -1186,14 +1186,15 @@ def _check_clm(ctx: RunContext) -> list[CheckResult]:
         else:
             results.append(failed(4, "61.3", "MLFQ CLM pressure", "apply_clm_pressure() not found in mlfq_scheduler.py"))
 
-    # 61.4 — live CLM status endpoint (skip if coordinator not rebuilt yet)
-    data = http_json(f"{ctx.hybrid_coordinator_url}/context/lifecycle/status", timeout=4)
+    # 61.4 — live CLM status endpoint (requires API key)
+    headers = {"X-API-Key": ctx.api_key} if ctx.api_key else {}
+    data = http_json(f"{ctx.hybrid_coordinator_url}/context/lifecycle/status", timeout=4, headers=headers)
     if data is None:
         results.append(skipped(4, "61.4", "GET /context/lifecycle/status", "coordinator unreachable or pre-rebuild build"))
     elif "tiers" in data and "pressure_pct" in data:
         results.append(passed(4, "61.4", f"GET /context/lifecycle/status OK (pressure={data.get('pressure_pct')}%)"))
     else:
-        results.append(skipped(4, "61.4", "GET /context/lifecycle/status", f"unexpected response keys: {list(data.keys())[:5]}"))
+        results.append(failed(4, "61.4", "GET /context/lifecycle/status", f"unexpected response: {list(data.keys())[:5]}"))
 
     return results
 

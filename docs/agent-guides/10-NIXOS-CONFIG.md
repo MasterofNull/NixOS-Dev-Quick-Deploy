@@ -1,149 +1,91 @@
 # NixOS Configuration Management
 
-**Purpose**: Modify system and home-manager configurations safely
+**Purpose**: Modify system and AI stack configurations safely using declarative Nix modules.
 
 ---
 
 ## Quick Reference
 
-**Source of truth**: `templates/` directory in nixos-quick-deploy repo
+**Source of truth**: `nix/modules/` directory
 
-- **System config**: `templates/configuration.nix`
-- **Home config**: `templates/home.nix`
+- **Core Options (Ports/Tiers)**: `nix/modules/core/options.nix`
+- **AI Stack Services**: `nix/modules/services/`
+- **User Home Config**: `nix/home/`
 
-**Deployment script**: `./nixos-quick-deploy.sh`
+**Deployment Tool**: `./deploy` (wrapper for `nixos-rebuild`)
 
 ---
 
 ## Workflow
 
-### 1. Modify Templates
+### 1. Identify the Target Module
+
+- To change **ports or hardware settings**, edit `nix/modules/core/options.nix`.
+- To tune **AI models**, edit `nix/modules/services/llama-cpp.nix`.
+- To modify **User environment**, edit `nix/home/default.nix`.
+
+### 2. Apply Changes
 
 ```bash
-# Edit system config
-vim templates/configuration.nix
+# Rebuild and switch (standard)
+sudo nixos-rebuild switch --flake .
 
-# Edit home config
-vim templates/home.nix
-```
-
-### 2. Deploy Changes
-
-```bash
-# Deploy both (recommended)
-./nixos-quick-deploy.sh
-
-# Deploy with system switch only (skip Home Manager switch)
-./nixos-quick-deploy.sh --skip-home-switch
-
-# Deploy with Home Manager switch only (skip system switch)
-./nixos-quick-deploy.sh --skip-system-switch
+# Build only (dry-run)
+nixos-rebuild build --flake .
 ```
 
 ### 3. Verify Changes
 
 ```bash
-# Check current generation
+# Check generation
 nixos-rebuild list-generations
 
-# Check home-manager generation
-home-manager generations
-```
-
-### 4. Rollback if Needed
-
-```bash
-# System rollback
-sudo nixos-rebuild switch --rollback
-
-# Home Manager rollback (activate prior generation manually)
-home-manager generations
+# Verify specific option value
+aq-qa 0                                      # Confirm services are healthy
 ```
 
 ---
 
 ## Common Tasks
 
-### Add System Package
+### Change a Service Port
 
+Edit `nix/modules/core/options.nix` in the `ports` submodule:
 ```nix
-# templates/configuration.nix
-environment.systemPackages = with pkgs; [
-  # ... existing packages
-  docker
-  git
-  vim
-];
-```
-
-### Enable Service
-
-```nix
-# templates/configuration.nix
-services.docker.enable = true;
-services.postgresql.enable = true;
-```
-
-### Add User Package
-
-```nix
-# templates/home.nix
-home.packages = with pkgs; [
-  # ... existing packages
-  firefox
-  vscode
-];
-```
-
-### Configure Service
-
-```nix
-# templates/configuration.nix
-services.postgresql = {
-  enable = true;
-  package = pkgs.postgresql_16;
-  dataDir = "/var/lib/postgresql/16";
+ports = {
+  mcpHybrid = lib.mkOption {
+    default = 8003; # Change this value
+  };
 };
+```
+
+### Switch AI Model
+
+Edit `nix/modules/services/llama-cpp.nix` or the host's `default.nix`:
+```nix
+mySystem.aiStack.llamaCpp.activeModel = "gemma4-e4b";
+```
+
+### Enable a New Service
+
+Edit the relevant role or `nix/hosts/<hostname>/default.nix`:
+```nix
+mySystem.aiStack.embeddingServer.enable = true;
 ```
 
 ---
 
 ## Best Practices
 
-1. **Always edit templates first** - They are source of truth
-2. **Test in VM if unsure** - Use `nixos-rebuild build-vm`
-3. **Commit before deploy** - Git history allows easy rollback
-4. **Deploy with backup** - Script automatically creates backups
-5. **Verify after deploy** - Check services started correctly
-
----
-
-## Troubleshooting
-
-### Build Fails
-
-```bash
-# Check syntax
-nix-instantiate --parse templates/configuration.nix
-
-# View detailed errors
-./nixos-quick-deploy.sh 2>&1 | tee deployment.log
-```
-
-### Service Not Starting
-
-```bash
-# Check service status
-systemctl status SERVICE_NAME
-
-# View logs
-journalctl -u SERVICE_NAME -n 50
-```
+1. **Declarative First**: Never use `systemctl` to permanently change service state; use Nix modules.
+2. **Single Source of Truth**: Always use `nix/modules/core/options.nix` for ports to avoid drift.
+3. **Traceability**: Commit changes to git before applying so you have a clear audit trail.
+4. **Validation**: Run `aq-qa 0` after every rebuild to ensure the stack is still functional.
 
 ---
 
 ## Next Steps
 
-- [Container Management](11-CONTAINER-MGMT.md)
 - [Debugging Guide](12-DEBUGGING.md)
 - [Service Status](02-SERVICE-STATUS.md)
+- [System Overview](00-SYSTEM-OVERVIEW.md)

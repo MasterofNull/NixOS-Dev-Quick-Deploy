@@ -84,7 +84,7 @@ grep -r "print\|console.log\|debugger" .                      # debug output
 grep -r "TODO\|FIXME\|HACK" .                                  # leftover todos
 git status                                                      # unintended changes
 grep -r "password\|api_key\|secret" . --exclude-dir=.git       # secrets leak
-scripts/governance/tier0-validation-gate.sh --pre-commit       # mandatory gate
+scripts/governance/tier0-validation-gate.sh --pre-commit       # mandatory gate (61 checks)
 ```
 
 - [ ] No debug print statements

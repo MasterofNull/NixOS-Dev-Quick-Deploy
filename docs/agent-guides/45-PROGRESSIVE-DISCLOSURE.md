@@ -1,170 +1,127 @@
 # Progressive Disclosure System
 
-**Version:** 1.0.0
-**Status:** Active
-**Last Updated:** 2026-03-14
+**Version:** 2.0.0
+**Status:** Active (Phase 58+)
+**Last Updated:** 2026-05-20
+**Owner:** AI Stack Maintainers
 
 ## Overview
 
-The Progressive Disclosure system provides domain-aware, token-efficient context loading for AI agents. Instead of loading all available tools, hints, and skills for every query, it detects the work domain and loads only relevant context at the appropriate disclosure level.
+The Progressive Disclosure system provides domain-aware, token-efficient context loading for AI agents. Instead of loading all available tools, hints, and skills for every query, it detects the work domain and loads only relevant context at the appropriate disclosure level. This approach achieves up to a **90% reduction in discovery overhead** while ensuring agents have the necessary signal for complex tasks.
+
+## Core Philosophy
+
+1.  **Start Minimal**: Provide only the baseline repository contract and basic system info.
+2.  **Expand on Demand**: Escalate to higher disclosure levels only when a concrete gap is identified.
+3.  **Domain-Centric**: Load specialized tools and rules only for the relevant work domain (e.g., NixOS, Security).
+4.  **Token Budgeting**: Enforce strict token limits for each disclosure level to prevent context bloat.
 
 ## Work Domains
+
+The system recognizes 7 primary domains based on query triggers:
 
 | Domain | Triggers | Description |
 |--------|----------|-------------|
 | `nixos-dev` | nix, nixos, flake, module, systemd | NixOS system configuration and modules |
-| `web-dev` | react, vue, api, frontend, typescript | Web application development |
+| `web-dev` | react, api, frontend, typescript | Web application development and APIs |
 | `ai-harness` | mcp, agent, rag, workflow, hints | AI infrastructure and agent development |
-| `data-engineering` | scrape, data, csv, visualization | Data scraping and analysis |
-| `devops` | deploy, docker, ci, monitoring | DevOps and infrastructure |
-| `security` | cve, vulnerability, harden, audit | Security and hardening |
-| `documentation` | doc, readme, guide, tutorial | Documentation writing |
+| `data-engineering` | scrape, data, csv, parse | Data scraping, ETL, and analysis |
+| `devops` | deploy, ci, docker, monitoring | System operations and infrastructure |
+| `security` | cve, vulnerability, harden, audit | Security hardening and audits |
+| `documentation` | doc, readme, guide, tutorial | Technical writing and documentation |
 
 ## Disclosure Levels
 
 | Level | Token Budget | Use Case |
 |-------|--------------|----------|
-| `minimal` | ~500 | Quick lookups, simple tasks |
-| `standard` | ~1500 | Implementation tasks |
-| `full` | ~4000 | Complex multi-step tasks |
+| `minimal` | ~500 | Quick lookups, simple inquiries, baseline orientation |
+| `standard` | ~1500 | Implementation tasks, standard feature development |
+| `full` | ~4000 | Architecture redesign, complex debugging, security audits |
 
-## Usage
+## Primary Operator Tools (`aq-*`)
 
-### In Hints Engine
+The system is controlled and queried via the following CLI tools:
 
-Domain context is automatically included in hint responses:
+| Tool | Purpose | Typical Usage |
+|------|---------|---------------|
+| `aq-prime` | **Onboarding Entrypoint**. Primes the agent with context. | `aq-prime` |
+| `aq-hints` | **Workflow Guidance**. Retrieves ranked hints for a task. | `aq-hints "task description"` |
+| `aq-context-bootstrap` | **Task Classification**. Suggests domain and level. | `aq-context-bootstrap --task "..."` |
+| `aq-context-card` | **Layered Context**. Generates specific context "cards". | `aq-context-card --card repo-baseline` |
+| `aq-qa --layer <N>` | **Layered Validation**. Checks health at specific layers. | `aq-qa --layer 0` (Core Services) |
 
-```json
-{
-  "hints": [...],
-  "domain_context": {
-    "available": true,
-    "primary_domain": {
-      "id": "nixos-dev",
-      "name": "NixOS Development",
-      "level": "standard",
-      "context": "NixOS declarative system. Prefer module changes over scripts.",
-      "tools": ["nix-build", "nixos-rebuild", "nix-shell"],
-      "skills": ["nixos-deployment"],
-      "token_estimate": 45
-    },
-    "compact_injection": "[NixOS Development] NixOS declarative system... | Tools: nix-build, nixos-rebuild | Skills: nixos-deployment"
-  }
-}
-```
+## Usage Patterns
 
-### Direct API Usage
-
-```python
-from progressive_disclosure import get_domain_loader, get_domain_context
-
-# Get context for a query
-contexts = get_domain_context("Help me configure a NixOS module for postgresql")
-
-# Access domain loader directly
-loader = get_domain_loader()
-domains = loader.list_domains()
-matches = loader.detect_domains("Build a React component")
-```
-
-### In Status Endpoint
-
-The `/control/ai-coordinator/status` endpoint includes domain disclosure info:
-
+### 1. Initial Onboarding (Step 1 of Canonical Workflow)
+For any new task, the agent should start with minimal disclosure:
 ```bash
+aq-prime                                # Load baseline context
+aq-hints "Configure a NixOS module"     # Get domain-specific workflow hints
+```
+
+### 2. Task Classification & Escalation
+If the task is complex, use bootstrap to determine the correct level:
+```bash
+aq-context-bootstrap --task "Audit the AppArmor policy for the coordinator"
+# System suggests: Domain: security | Level: standard or full
+```
+
+### 3. Direct Capability Discovery
+Agents can discover available system capabilities via the Discovery API (Port 8003):
+```bash
+# List standard capabilities
+curl -sS http://127.0.0.1:8003/discovery/capabilities?level=standard
+
+# Check system status and domain disclosure
 curl -sS http://127.0.0.1:8003/control/ai-coordinator/status | jq '.domain_disclosure'
 ```
 
+### 4. Layered Health Checks (Phase 58+)
+Progressive disclosure extends to system validation. Use `aq-qa` with layers to focus on specific subsystems:
+- **Layer 0**: Core Services (llama, redis, postgres)
+- **Layer 1**: Data Stores (qdrant, aidb)
+- **Layer 2**: Orchestration (coordinator, ralph)
+- **Layer 3**: Agent Runtime (switchboard, terminal)
+
 ## Configuration
 
-The domain configuration is stored in `config/progressive-disclosure-domains.json`:
+Domain mapping and disclosure content are managed in `config/progressive-disclosure-domains.json`.
 
 ```json
 {
   "domains": {
     "nixos-dev": {
-      "name": "NixOS Development",
-      "triggers": ["nix", "nixos", "flake", ...],
       "disclosure": {
-        "minimal": {
-          "context": "...",
-          "tools": [...],
-          "hints": [...]
-        },
-        "standard": {
-          "extends": "minimal",
-          "tools": [...],
-          "mcp_endpoints": [...],
-          "skills": [...]
-        },
-        "full": {
-          "extends": "standard",
-          "research_packs": [...],
-          "memory_recall": [...]
-        }
+        "minimal": { "tools": ["nix-build", "nixos-rebuild"], "hints": ["Keep changes declarative"] },
+        "standard": { "extends": "minimal", "skills": ["nixos-deployment"] }
       }
     }
   }
 }
 ```
 
-## Level Inheritance
-
-Disclosure levels inherit from lower levels via `extends`:
-- `minimal` → Base context
-- `standard` → `minimal` + more tools, MCP endpoints, skills
-- `full` → `standard` + research packs, memory recall keywords
-
-## Auto-Detection
-
-The disclosure level is auto-detected based on query complexity:
-
-| Indicator | Level |
-|-----------|-------|
-| Simple lookups | `minimal` |
-| "implement", "create", "build" | `standard` |
-| "complex", "architecture", "security" | `full` |
-
-## Token Efficiency
-
-The system optimizes token usage by:
-
-1. **Domain detection** - Only load context for matched domains
-2. **Level escalation** - Start minimal, escalate as needed
-3. **Compact injection** - One-line context strings for hints
-4. **Capped lists** - Tools/skills capped at 5/3 items in responses
-
 ## Integration Points
 
-| Component | Integration |
-|-----------|-------------|
-| Hints Engine | `domain_context` field in hint responses |
-| Status Endpoint | `domain_disclosure` summary |
-| MCP Handlers | Domain-aware tool suggestions |
-| Memory Recall | Domain-specific recall keywords |
+| Component | Integration Detail |
+|-----------|--------------------|
+| **Hybrid Coordinator** | Main logic for domain detection and context assembly. |
+| **AIDB** | Source for capability schemas and tool discovery. |
+| **Hints Engine** | Injects `domain_context` into all ranked workflow responses. |
+| **Dashboard** | Visualizes "Layered Health" status and token savings. |
 
-## Environment Variables
+## Files & Resources
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PROGRESSIVE_DISCLOSURE_CONFIG` | `config/progressive-disclosure-domains.json` | Config file path |
-
-## Files
-
-| Path | Purpose |
-|------|---------|
-| `config/progressive-disclosure-domains.json` | Domain configuration |
-| `ai-stack/mcp-servers/hybrid-coordinator/progressive_disclosure.py` | Loader implementation |
-| `ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py` | Hints integration |
+- **Config**: `config/progressive-disclosure-domains.json`
+- **Logic**: `ai-stack/mcp-servers/hybrid-coordinator/knowledge/progressive_disclosure.py`
+- **Endpoints**: `ai-stack/mcp-servers/hybrid-coordinator/server.py`
+- **CLI Sources**: `scripts/ai/aq-prime`, `scripts/ai/aq-hints`, etc.
 
 ## Validation
 
 ```bash
-# Test domain detection
-curl -sS -X POST http://127.0.0.1:8003/hints \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Configure NixOS module for nginx"}' | jq '.domain_context'
+# Verify domain detection for a query
+aq-hints "Build a React frontend for the dashboard" --format=json | jq '.domain_context'
 
-# Check available domains
-curl -sS http://127.0.0.1:8003/control/ai-coordinator/status | jq '.domain_disclosure'
+# Verify layered health (Phase 58 baseline)
+aq-qa 0
 ```
