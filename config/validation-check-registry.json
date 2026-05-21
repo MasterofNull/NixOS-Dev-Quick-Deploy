@@ -203,6 +203,23 @@
       "require_tool": "node"
     },
     {
+      "id": "aq-screenshot-contract",
+      "description": "aq-screenshot local browser automation contract",
+      "trigger_paths": [
+        "scripts/ai/aq-screenshot",
+        "nix/home/base.nix",
+        ".agent/skills/webapp-testing/SKILL.md",
+        ".agent/skills/webapp-testing/examples/dashboard_smoke.py",
+        "scripts/testing/test-aq-screenshot-contract.sh",
+        "config/env-contract.yaml"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/test-aq-screenshot-contract.sh"
+      ],
+      "timeout_seconds": 30
+    },
+    {
       "id": "security-systems-health",
       "description": "security-systems domain baseline artifact presence check",
       "trigger_paths": [

@@ -69,6 +69,21 @@ variables:
     consumers: [service-endpoints.sh]
     description: "Host for embedding server"
 
+  # ── local browser automation ───────────────────────────────────────────
+  - canonical: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+    aliases: []
+    default: "1"
+    layer: shell
+    consumers: [home-manager, aq-screenshot]
+    description: "Prevent Playwright from downloading browsers at runtime; use declaratively installed system Chromium instead"
+
+  - canonical: CHROMIUM_PATH
+    aliases: []
+    default: "${pkgs.chromium}/bin/chromium"
+    layer: shell
+    consumers: [home-manager, aq-screenshot]
+    description: "Chromium executable path used by local Playwright automation and screenshot capture"
+
   # ── hybrid-coordinator ──────────────────────────────────────────────────
   - canonical: HYBRID_COORDINATOR_URL
     aliases: [HYBRID_URL, COORDINATOR_URL]

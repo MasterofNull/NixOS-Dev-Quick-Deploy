@@ -127,6 +127,7 @@ Recent committed work changed the Phase 1/62 status:
 - `config/safety-rails.yaml`, `evidence_safety_handlers.py`, local shell sandbox tests, and nsjail environment wiring provide the first runtime safety-rail layer.
 - `docs/architecture/cross-surface-change-contract.md` and tier0 now require connected docs/handoff/planning or dashboard visibility for runtime/service/module changes.
 - Local-agent `ToolDefinition` now has effective sandbox/security metadata defaults plus `scripts/testing/test-tool-registry-security-metadata.py`; the Command Center harness overview exposes `policies.tool_registry_security`.
+- Dashboard visual QA tooling now has a local `scripts/ai/aq-screenshot` entrypoint, Home Manager Playwright/system-Chromium no-download contract, and `scripts/testing/test-aq-screenshot-contract.sh` guardrail for operator-visibility validation.
 
 Remaining work is not the same as the completed static gate: runtime MCP authorization/profile enforcement, bounded delegation envelopes, and deeper security/audit metrics still need implementation slices.
 

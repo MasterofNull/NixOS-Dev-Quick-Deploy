@@ -1,15 +1,21 @@
 {
   "agent": "Codex",
-  "task": "Fix post-switch learning export permission drift",
-  "intent": "Add declarative tmpfiles ownership repair for hybrid fine-tuning outputs after post-flight /learning/export failed with EACCES.",
-  "status": "validated_pending_commit",
-  "timestamp": "2026-05-21T15:58:11.501073+00:00",
+  "task": "Dashboard visual QA tooling and next parity slice handoff",
+  "intent": "Proceed with parity integration after model/dashboard repairs; reconcile local visual QA tooling and prepare next runtime MCP auth/profile enforcement slice.",
+  "status": "active",
+  "timestamp": "2026-05-21T19:45:00+00:00",
   "files": [
-    ".agent/collaboration/PENDING.json",
-    "nix/modules/services/mcp-servers.nix",
-    "scripts/testing/check-dryrun-failure-modes.sh",
-    "docs/operations/procedures/AI-STACK-RUNBOOK.md",
-    ".agent/collaboration/HANDOFF.md"
+    "scripts/ai/aq-screenshot",
+    "nix/home/base.nix",
+    "config/env-contract.yaml",
+    "config/validation-check-registry.json",
+    ".agent/skills/webapp-testing/SKILL.md",
+    ".agent/skills/webapp-testing/examples/dashboard_smoke.py",
+    "scripts/testing/test-aq-screenshot-contract.sh",
+    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md",
+    ".agent/collaboration/SUPPORT_BROADCAST.md"
   ],
   "evidence": [
     "/learning/export HTTP 500: permission denied /var/lib/ai-stack/hybrid/fine-tuning/dataset_export.jsonl",
@@ -20,14 +26,26 @@
     "Do not include whitespace-only facts.nix drift."
   ],
   "validation": [
-    "nix-instantiate --parse nix/modules/services/mcp-servers.nix \u2014 PASS",
-    "bash -n scripts/testing/check-dryrun-failure-modes.sh \u2014 PASS",
-    "git diff --check \u2014 PASS",
-    "tmpfiles/runbook grep evidence confirms fine-tuning ownership rules \u2014 PASS",
-    "tool registry metadata test and dashboard JS syntax still pass",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (17 passed, 0 failed)"
+    "bash -n scripts/ai/aq-screenshot \u2014 PASS",
+    "scripts/ai/aq-screenshot --help \u2014 PASS without Playwright import",
+    "nix-instantiate --parse nix/home/base.nix \u2014 PASS",
+    "python/yaml parse config/env-contract.yaml \u2014 PASS",
+    "scripts/testing/test-aq-screenshot-contract.sh \u2014 PASS"
   ],
   "next": [
-    "Run tier0, commit fix, redeploy/switch so tmpfiles applies ownership repair, then re-run post-flight learning export."
-  ]
+    "Commit dashboard visual QA tooling slice after tier0 passes.",
+    "Keep facts.nix whitespace drift out of commits unless regenerated with semantic changes.",
+    "Next implementation slice: S2 runtime MCP auth/profile enforcement, using safety-rails.yaml and existing /run/secrets mounts; expose auth/profile metrics through dashboard/handoff per cross-surface contract."
+  ],
+  "support_orchestrator": {
+    "status": "active_monitoring",
+    "review_verdict": "APPROVED for S2 security metadata commit 59346a1. Tier0 passes. Current permission fix for /learning/export follows declarative standards.",
+    "tool_guidance": "For S2 MCP Auth: use `aq-hints`; structure middleware via `mcp_Harness_MCP_workflow_plan`. For Local Delegation: Maximize offloading of 'light and bounded' tasks (linting, syntax checks, patterns) to local Qwen models. Verify hardware tier in `nix/lib/hardware-tier.nix` before scheduling heavy inference. Local Qwen 35B is current baseline for reviewed implementation tasks.",
+    "questions_for_agents": [
+      "Codex: Do you require pre-warmed configuration data or log traces before beginning the S2 MCP Auth middleware?",
+      "Claude: Do you need a capability gap analysis on the trace schemas before starting S5 Observability?",
+      "Codex/Claude: Which 'light' implementation tasks can we immediately pivot to the local Qwen model to preserve remote usage windows?"
+    ],
+    "reference": ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md"
+  }
 }
