@@ -84,12 +84,19 @@ async def check_memory_rows_preserve_metadata() -> None:
                 {
                     "id": "row1",
                     "score": 0.88,
+                    "sources": ["qdrant", "lexical"],
                     "payload": {
                         "memory_id": "row1",
                         "memory_type": "semantic",
                         "summary": "aq-report fact",
                         "content": "aq-report uses hybrid telemetry for route_search breadth",
                         "scope": "scripts",
+                        "source": "contract-test",
+                        "source_agent": "codex",
+                        "event_time": "2026-05-20T00:00:00+00:00",
+                        "ingestion_time": "2026-05-21T00:00:00+00:00",
+                        "supersedes": "row0",
+                        "schema_version": "memory.v1",
                         "valid_until": 0,
                     },
                 }
@@ -101,6 +108,49 @@ async def check_memory_rows_preserve_metadata() -> None:
     row = result["results"][0]
     assert_true(row["metadata"]["scope"] == "scripts", "expected payload metadata to be preserved")
     assert_true(row["context"]["scope"] == "scripts", "expected context alias for facts endpoint")
+    assert_true(row["source"] == "contract-test", "expected source to be promoted to trace field")
+    assert_true(row["source_agent"] == "codex", "expected source_agent to be promoted to trace field")
+    assert_true(row["event_time"].startswith("2026-05-20"), "expected event_time trace field")
+    assert_true(row["ingestion_time"].startswith("2026-05-21"), "expected ingestion_time trace field")
+    assert_true(row["supersedes"] == "row0", "expected supersession trace field")
+    assert_true(row["schema_version"] == "memory.v1", "expected schema version trace field")
+
+
+async def check_retrieval_plan_contract() -> None:
+    memory_manager.Config.AI_MEMORY_ENABLED = True
+    memory_manager._memory_collections = {"semantic": "agent-memory-semantic"}
+    telemetry = []
+    memory_manager._record_telemetry = lambda event, payload: telemetry.append((event, payload))
+
+    async def fake_hybrid_search(**kwargs):
+        return {
+            "combined_results": [
+                {
+                    "id": "row-plan",
+                    "score": 0.77,
+                    "payload": {
+                        "memory_id": "row-plan",
+                        "memory_type": "semantic",
+                        "summary": "retrieval plan fact",
+                        "content": "retrieval plans expose collections, filters, candidates, and final_k",
+                        "valid_from": "2020-01-01T00:00:00+00:00",
+                        "valid_until": None,
+                    },
+                }
+            ]
+        }
+
+    memory_manager._hybrid_search = fake_hybrid_search
+    result = await memory_manager.recall_agent_memory("retrieval plan", memory_types=["semantic"], limit=1)
+    plan = result["retrieval_plan"]
+    assert_true(plan["schema_version"] == "retrieval_plan.v1", "expected retrieval plan schema")
+    assert_true(plan["memory_types"] == ["semantic"], "expected requested memory types")
+    assert_true(plan["collections"] == ["agent-memory-semantic"], "expected concrete collection names")
+    assert_true(plan["strategies"] == ["hybrid"], "expected hybrid strategy")
+    assert_true(plan["filters"]["exclude_expired"] is True, "expected default expiry filter")
+    assert_true(plan["candidate_count"] == 1 and plan["final_count"] == 1, "expected candidate/final counts")
+    assert_true(plan["final_k"] == 1, "expected final_k")
+    assert_true(telemetry[-1][1]["retrieval_plan"]["schema_version"] == "retrieval_plan.v1", "expected telemetry retrieval plan")
 
 
 async def check_iso_temporal_fields_are_recallable() -> None:
@@ -135,6 +185,7 @@ async def check_iso_temporal_fields_are_recallable() -> None:
 async def main_async() -> int:
     await check_recall_handler_searches_all_types()
     await check_memory_rows_preserve_metadata()
+    await check_retrieval_plan_contract()
     await check_iso_temporal_fields_are_recallable()
     print("PASS: MemoryBroker recall contract preserves all-type search and metadata")
     return 0

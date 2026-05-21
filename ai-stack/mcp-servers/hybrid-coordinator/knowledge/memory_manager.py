@@ -419,6 +419,22 @@ async def recall_agent_memory(
     limit_value = max(1, int(limit or Config.AI_MEMORY_MAX_RECALL_ITEMS))
     use_tree = retrieval_mode == "tree" and Config.AI_TREE_SEARCH_ENABLED
     sanitized_query = _sanitize_memory_text(query, field_name="query", max_chars=512)
+    mode = "tree" if use_tree else "hybrid"
+    valid_at_iso = valid_at.isoformat() if isinstance(valid_at, datetime) else None
+    retrieval_plan: Dict[str, Any] = {
+        "schema_version": "retrieval_plan.v1",
+        "query": sanitized_query,
+        "memory_types": requested_types,
+        "collections": collections,
+        "strategies": [mode],
+        "filters": {
+            "valid_at": valid_at_iso,
+            "exclude_expired": valid_at_iso is None,
+            "exclude_superseded": True,
+        },
+        "candidate_limit": limit_value,
+        "final_k": limit_value,
+    }
 
     if use_tree:
         search_result = await _tree_search(
@@ -438,6 +454,7 @@ async def recall_agent_memory(
         )
 
     raw_results = search_result.get("combined_results", [])
+    retrieval_plan["candidate_count"] = len(raw_results)
 
     # Batch 9.1: Reflection loop for RAG quality improvement
     reflection_metadata = None
@@ -470,6 +487,11 @@ async def recall_agent_memory(
             max_retries=2,
         )
         raw_results = final_results
+        retrieval_plan["strategies"].append("reflection")
+        retrieval_plan["reflection_applied"] = True
+        retrieval_plan["candidate_count_after_reflection"] = len(raw_results)
+    else:
+        retrieval_plan["reflection_applied"] = False
 
     memory_rows = []
     now_ts = int(time.time())
@@ -495,8 +517,15 @@ async def recall_agent_memory(
                 "content": payload.get("content"),
                 "score": item.get("score"),
                 "sources": item.get("sources"),
+                "source": payload.get("source"),
+                "source_agent": payload.get("source_agent") or payload.get("agent_id"),
+                "event_time": payload.get("event_time"),
+                "ingestion_time": payload.get("ingestion_time"),
                 "valid_from": vf,
                 "valid_until": vu,
+                "supersedes": payload.get("supersedes"),
+                "superseded_by": payload.get("superseded_by"),
+                "schema_version": payload.get("schema_version") or payload.get("memory_schema_version"),
                 # Preserve sanitized payload metadata for MemoryBroker consumers
                 # such as /api/memory/facts scope filtering and supersession.
                 "metadata": payload,
@@ -517,6 +546,7 @@ async def recall_agent_memory(
             "results": len(memory_rows),
             "mode": "tree" if use_tree else "hybrid",
             "memory_types": requested_types,
+            "retrieval_plan": retrieval_plan,
             "reflection_applied": reflection_metadata is not None,
             "reflection_retries": reflection_metadata.get("retry_count", 0) if reflection_metadata else 0,
             "latency_ms": round(elapsed_ms, 1),
@@ -526,8 +556,9 @@ async def recall_agent_memory(
     result = {
         "status": "ok",
         "query": sanitized_query,
-        "mode": "tree" if use_tree else "hybrid",
+        "mode": mode,
         "results": memory_rows,
+        "retrieval_plan": {**retrieval_plan, "final_count": len(memory_rows)},
         "latency_ms": round(elapsed_ms, 1),
     }
 
