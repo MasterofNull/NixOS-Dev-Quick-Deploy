@@ -2120,6 +2120,42 @@ async def proxy_traces_drift() -> Dict[str, Any]:
     )
 
 
+@router.get("/hardware/state")
+async def proxy_hardware_state() -> Dict[str, Any]:
+    """Proxy coordinator /api/hardware/state — thermal + RAM + GPU layer telemetry."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/api/hardware/state",
+        {"thermal_tier": "unknown", "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/scheduler/status")
+async def proxy_scheduler_status() -> Dict[str, Any]:
+    """Proxy coordinator /admin/v1/scheduler/status — MLFQ queue depths + thermal gating."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/admin/v1/scheduler/status",
+        {"thermal_tier": "unknown", "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/context/lifecycle/status")
+async def proxy_clm_status() -> Dict[str, Any]:
+    """Proxy coordinator /context/lifecycle/status — CLM Hot/Warm/Cold tier distribution."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/context/lifecycle/status",
+        {"tiers": {}, "available": False},
+        headers=headers,
+    )
+
+
 @router.get("/ai/remediation/latest")
 async def get_latest_remediation() -> Dict[str, Any]:
     """Fetch the latest auto-remediation result."""

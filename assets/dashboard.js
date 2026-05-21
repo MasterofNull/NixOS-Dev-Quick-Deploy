@@ -1018,7 +1018,7 @@ async function loadIntelligence() {
     loadAIDB(), loadLearning(), loadDrift(), loadVerifier(),
     loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
     loadPerfHotspots(), loadOrchestrationSessions(), loadRAGHealth(),
-    loadRoutingConfig(), loadHomeostasis(),
+    loadRoutingConfig(), loadHomeostasis(), loadSchedulerStatus(), loadCLMStatus(),
   ]);
 }
 
@@ -1541,6 +1541,88 @@ async function loadLogs() {
   }).join('');
 }
 
+// ─── OVERVIEW: HARDWARE THERMAL STATE ────────────────────────────────────────
+async function loadHardwareState() {
+  const d  = await apiFetch('/hardware/state');
+  const el = document.getElementById('hwStateDetails');
+  const badge = document.getElementById('hwStateBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const tier = d.thermal_tier || 'unknown';
+  const tierColor = tier === 'optimal' ? 'ok' : tier === 'warm' ? 'warn' : tier === 'critical' || tier === 'shutdown' ? 'err' : 'info';
+  if (badge) { badge.textContent = tier; badge.className = `card-badge ${tierColor === 'ok' ? 'badge-ok' : tierColor === 'warn' ? 'badge-warn' : 'badge-err'}`; }
+  // Also update the KPI thermal badge if present
+  setText('kpiThermal', tier);
+  const kpiTh = document.getElementById('kpiThermal');
+  if (kpiTh) kpiTh.className = `kpi-v ${tierColor}`;
+  el.innerHTML = [
+    fwRow('Thermal Tier',   tier,                                            tierColor),
+    fwRow('CPU Temp',       d.temp_cpu_c != null ? `${d.temp_cpu_c.toFixed(1)}°C` : '--',
+                            d.temp_cpu_c >= 85 ? 'err' : d.temp_cpu_c >= 75 ? 'warn' : 'ok'),
+    fwRow('GPU Temp',       d.temp_gpu_c != null ? `${d.temp_gpu_c.toFixed(1)}°C` : '--',
+                            d.temp_gpu_c >= 85 ? 'err' : d.temp_gpu_c >= 70 ? 'warn' : 'ok'),
+    fwRow('RAM Used',       d.ram_used_pct != null ? `${d.ram_used_pct.toFixed(1)}%` : '--',
+                            d.ram_used_pct >= 90 ? 'err' : d.ram_used_pct >= 75 ? 'warn' : 'ok'),
+    fwRow('RAM Free',       d.ram_free_gb != null ? `${d.ram_free_gb.toFixed(1)} GB` : '--'),
+    fwRow('GPU Layers',     d.n_gpu_layers_current ?? '--', 'info'),
+    d.mtp_acceptance_rate != null ? fwRow('MTP Accept', `${(d.mtp_acceptance_rate*100).toFixed(1)}%`) : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: MLFQ SCHEDULER STATUS ─────────────────────────────────────
+async function loadSchedulerStatus() {
+  const d  = await apiFetch('/scheduler/status');
+  const el = document.getElementById('schedulerDetails');
+  const badge = document.getElementById('schedulerBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const tier   = d.thermal_tier || 'unknown';
+  const queues = d.queue_depths || {};
+  const limits = d.concurrency_limits || {};
+  const cfgLim = d.configured_concurrency_limits || {};
+  const budget = d.token_budget || {};
+  const totalQ = Object.values(queues).reduce((s, v) => s + v, 0);
+  const tierColor = tier === 'optimal' ? 'ok' : tier === 'warm' ? 'warn' : 'err';
+  if (badge) { badge.textContent = tier; badge.className = `card-badge ${tierColor === 'ok' ? 'badge-ok' : tierColor === 'warn' ? 'badge-warn' : 'badge-err'}`; }
+  el.innerHTML = [
+    fwRow('Thermal Gate',    tier, tierColor),
+    fwRow('Running',         d.running_count ?? 0),
+    fwRow('Zombies',         d.zombie_count ?? 0, (d.zombie_count || 0) > 0 ? 'warn' : 'ok'),
+    fwRow('Queue (L0/1/2)',  `${queues.L0||0} / ${queues.L1||0} / ${queues.L2||0}`, totalQ > 0 ? 'info' : 'ok'),
+    // Concurrency: show current vs configured (thermal gating may reduce L1)
+    fwRow('Concur L0',       `${limits.L0??'--'} / ${cfgLim.L0??'--'}`, 'info'),
+    fwRow('Concur L1',       `${limits.L1??'--'} / ${cfgLim.L1??'--'}`, limits.L1 < cfgLim.L1 ? 'warn' : 'ok'),
+    fwRow('Concur L2',       `${limits.L2??'--'} / ${cfgLim.L2??'--'}`, 'info'),
+    budget.L0 ? fwRow('Token Budget', `${((budget.L0+budget.L1+budget.L2)/1e6).toFixed(2)}M total`, 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: CONTEXT LIFECYCLE MANAGER ─────────────────────────────────
+async function loadCLMStatus() {
+  const d  = await apiFetch('/context/lifecycle/status');
+  const el = document.getElementById('clmDetails');
+  const badge = document.getElementById('clmBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const tiers    = d.tiers || {};
+  const pressure = d.pressure_pct || 0;
+  const suspended= d.compaction_suspended;
+  const tierColor= pressure >= 85 ? 'err' : pressure >= 60 ? 'warn' : 'ok';
+  if (badge) { badge.textContent = suspended ? 'suspended' : 'active'; badge.className = `card-badge ${suspended ? 'badge-warn' : 'badge-ok'}`; }
+  const thresholds = d.thresholds || {};
+  el.innerHTML = [
+    fwRow('Hot Sessions',     tiers.hot  ?? 0, (tiers.hot  || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Warm Sessions',    tiers.warm ?? 0, 'info'),
+    fwRow('Cold Sessions',    tiers.cold ?? 0, 'info'),
+    fwRow('Session Count',    d.session_count ?? 0),
+    fwRow('Hot Redis',        d.hot_redis_mb != null ? `${d.hot_redis_mb.toFixed(1)} MB / ${d.hot_max_mb||256} MB` : '--'),
+    fwRow('Pressure',         `${pressure.toFixed(1)}%`, tierColor),
+    fwRow('Compaction',       suspended ? 'SUSPENDED (thermal)' : 'active', suspended ? 'warn' : 'ok'),
+    thresholds.hot_idle_secs  ? fwRow('Hot Idle TTL',  `${thresholds.hot_idle_secs}s`,  'info') : '',
+    thresholds.warm_idle_secs ? fwRow('Warm Idle TTL', `${thresholds.warm_idle_secs}s`, 'info') : '',
+  ].filter(Boolean).join('');
+}
+
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
 async function forceSync() {
   try {
@@ -1559,7 +1641,7 @@ async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add('overview');
   window._aiMetrics = null;
-  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog()]);
+  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState()]);
   loadLens(activeLens);
 }
 
@@ -1570,16 +1652,17 @@ window.addEventListener('error', e => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Immediate: fast data
-  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices()]);
+  // Immediate: fast data (hardware state included — thermal is real-time critical)
+  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState()]);
   // Deferred: DB metrics + slow OSI health + audit
   setTimeout(() => { loadDatabase(); loadOSI(); loadRemediations(); loadAuditLog(); }, 400);
   // Periodic refresh
-  setInterval(loadKPIs,       30_000);
-  setInterval(loadRagQuality, 60_000);
-  setInterval(loadSystem,     30_000);
-  setInterval(loadServices,   30_000);
-  setInterval(loadDatabase,   60_000);
+  setInterval(loadKPIs,          30_000);
+  setInterval(loadRagQuality,    60_000);
+  setInterval(loadSystem,        30_000);
+  setInterval(loadServices,      30_000);
+  setInterval(loadDatabase,      60_000);
+  setInterval(loadHardwareState, 30_000);  // thermal tier changes fast
   setInterval(() => { if (activeLens !== 'overview') loadLens(activeLens); }, 60_000);
 });
 
