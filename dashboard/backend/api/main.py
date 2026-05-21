@@ -6,7 +6,7 @@ Main application entry point with WebSocket support
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import asyncio
@@ -278,6 +278,12 @@ if _ASSETS_PATH.is_dir():
     logger.info("Assets directory mounted from %s", _ASSETS_PATH)
 else:
     logger.warning("Assets directory not found at %s", _ASSETS_PATH)
+
+@app.get("/favicon.ico")
+async def favicon() -> Response:
+    """Avoid noisy browser 404s when no dashboard favicon asset is packaged."""
+    return Response(status_code=204)
+
 
 @app.get("/")
 async def root():

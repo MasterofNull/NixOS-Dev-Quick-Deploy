@@ -1472,3 +1472,12 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Live validation passed: `POST /query` with `X-Harness-Auth-Profile: readonly-strict` returns auth headers `loopback-agent` / `readonly-strict`; disallowed loopback `worktree-guarded` returns `403`.
 - Command Center exposes `policies.runtime_auth_profiles` from `/api/harness/overview`.
 - `latest-aq-report.json` parses after deploy despite deploy summary briefly falling back to text.
+
+## 2026-05-21 Codex handoff — dashboard managed-service compatibility repair
+
+- Context: after system and Home Manager switches, dashboard browser smoke showed 404s from visibility cards and the managed `command-center-dashboard-api.service` could not restart cleanly because a stray user-owned uvicorn process was bound to `0.0.0.0:8889`.
+- Teammate baseline: commit `80580ef9` landed Phase 2 dashboard cards plus compatibility/proxy routes for memory broker, affective state, parity scorecard, hints, lessons, and agent ops.
+- Slice: removed the stray uvicorn process, restarted the managed systemd dashboard on `127.0.0.1:8889`, added `/favicon.ico` 204 handling to remove browser noise, and added `scripts/testing/test-dashboard-compat-routes.py` to keep compatibility routes registered.
+- Live validation: `/favicon.ico`, `/api/aistack/harness`, hints stats/report, lesson registry, agent-ops status, memory facts/stats/crystalline/supersede, affective state, and parity scorecard all return non-404 under the managed service.
+- Visual validation: `scripts/ai/aq-screenshot http://127.0.0.1:8889 /tmp/aq-dashboard-postfix.png --wait 1500` saved a 1600x1302 PNG with no JS console error output; recent dashboard journal had no 404 entries after repair.
+- Validation target before commit: py_compile main/aistack, node check dashboard.js, dashboard compat route test, QA singleflight test, tier0 pre-commit.

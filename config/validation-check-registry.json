@@ -218,6 +218,21 @@
       "require_tool": "node"
     },
     {
+      "id": "dashboard-compat-routes",
+      "description": "dashboard compatibility routes for visibility cards",
+      "trigger_paths": [
+        "dashboard/backend/api/main.py",
+        "dashboard/backend/api/routes/aistack.py",
+        "scripts/testing/test-dashboard-compat-routes.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-dashboard-compat-routes.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
       "id": "aq-screenshot-contract",
       "description": "aq-screenshot local browser automation contract",
       "trigger_paths": [
