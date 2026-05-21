@@ -600,6 +600,8 @@ in {
         faiss
         dask
         gradio
+        # Playwright for browser automation — uses system chromium (no download needed)
+        playwright
       ]))
 
     # Continue CLI — AI-powered coding assistant for the terminal
@@ -814,6 +816,9 @@ in {
     LESS = "-FRX";
     # npm global prefix for AI CLI tools (Continue, pi, etc.)
     NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.npm-global";
+    # Playwright — use nix-installed chromium; never download browsers at runtime
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    CHROMIUM_PATH = "${pkgs.chromium}/bin/chromium";
   };
 
   home.sessionPath = [

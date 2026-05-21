@@ -10,6 +10,7 @@ To test local web applications, write native Python Playwright scripts.
 
 **Helper Scripts Available**:
 - `scripts/with_server.py` - Manages server lifecycle (supports multiple servers)
+- Repository command `scripts/ai/aq-screenshot` captures screenshots of running local webapps with system Chromium and Playwright without downloading browsers at runtime. Run `scripts/ai/aq-screenshot --help` before use.
 
 **Always run scripts with `--help` first** to see usage. DO NOT read the source until you try running the script first and find that a customized solution is abslutely necessary. These scripts can be very large and thus pollute your context window. They exist to be called directly as black-box scripts rather than ingested into your context window.
 

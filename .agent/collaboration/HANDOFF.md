@@ -1450,3 +1450,10 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Follow-up degradation: `/api/models` and harness model inventory logged permission errors traversing `/var/lib/llama-cpp/models` because the systemd service lacked llama supplementary groups and the existing `/var/lib/llama-cpp` directory mode was `0700`.
 - Slice: make `command-center-dashboard-api.service` run with `SupplementaryGroups = [ "llama" "ai-stack" ]` and add tmpfiles `z` repairs for `/var/lib/llama-cpp` and `/var/lib/llama-cpp/models` at `0750 llama llama`.
 - Validation target: Nix parse, tier0 pre-commit, deploy with `--skip-home-switch`, then `/api/models` and `/api/harness/overview` without model-inventory permission warnings.
+
+## 2026-05-21 Codex handoff — dashboard visual QA tooling
+
+- Context: support artifacts requested local/light tool delegation and visual validation support while preserving remote model budget. Recent dashboard commits expanded operator visibility, so screenshot/visual smoke tooling is now part of the validation surface.
+- Slice: harden `scripts/ai/aq-screenshot`, wire Home Manager Playwright/system-Chromium environment, document the command in the `webapp-testing` skill, and add a static contract test so `--help` and no-download browser policy remain valid even before Home Manager is switched.
+- Validation target: bash syntax, Nix parse, YAML/JSON parse, `scripts/testing/test-aq-screenshot-contract.sh`, tier0 pre-commit.
+- Runtime note: actual screenshot capture requires the Home Manager switch to provide Python Playwright in the user profile; this slice intentionally avoids downloading Playwright browsers at runtime.
