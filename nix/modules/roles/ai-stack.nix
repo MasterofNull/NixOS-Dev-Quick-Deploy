@@ -1009,7 +1009,18 @@ in {
               set -euo pipefail
               model="${llama.model}"
               model_dir="$(dirname "$model")"
+              if [ "$(basename "$model")" = "active.gguf" ] && [ -n "${hfFile}" ]; then
+                # The runtime server may load through the stable active.gguf
+                # symlink, but fetch/metadata must validate the concrete
+                # catalog file. Otherwise the fetch service sees the symlink
+                # itself, treats its missing active.gguf.source-meta as drift,
+                # and starts a multi-GB replacement download on every deploy.
+                model="$model_dir/${hfFile}"
+              fi
               model_meta="${llama.model}.source-meta"
+              if [ "$(basename "$model")" != "active.gguf" ]; then
+                model_meta="''${model}.source-meta"
+              fi
               desired_ref="${hfRepo}:${hfFile}:${hfSha256}"
 
               # Ensure model directory exists with correct ownership.
@@ -1046,6 +1057,16 @@ in {
                   ''
                   else ""
                 }
+
+                # If sha is not pinned, retain an existing manually placed
+                # concrete catalog file and stamp metadata by repo/file ref.
+                if [ -z "$current_ref" ] && [ -z "${hfSha256}" ] && [ "$(basename "$model")" = "${hfFile}" ]; then
+                  echo "$desired_ref" > "$model_meta"
+                  chown llama:llama "$model_meta"
+                  chmod 0640 "$model_meta"
+                  echo "llama-cpp: model filename matches requested source; metadata recorded"
+                  exit 0
+                fi
 
                 echo "llama-cpp: existing model differs from requested source; downloading verified replacement before swap"
                 rm -f "$model_meta"

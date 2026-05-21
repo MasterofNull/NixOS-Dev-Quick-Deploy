@@ -1435,3 +1435,11 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Activation needed:** restart `command-center-dashboard-api.service` or run next deploy so the route uses the hotfix.
 **Context Bloat:** Low
+
+## 2026-05-21 Codex handoff — model symlink verification drift
+
+- Context: deploy/model preflight and `llama-cpp-model-fetch` were treating `/var/lib/llama-cpp/models/active.gguf` as the symlink itself. On this host the link points to a 24G Qwen catalog file, but `stat -c%s active.gguf` reports the symlink path length, which can incorrectly trigger a heavy replacement fetch.
+- Slice: update deploy verification to dereference model symlinks (`stat -L`, `du -L`) and update chat model fetch to validate/stamp the concrete catalog file when runtime still uses the stable `active.gguf` symlink.
+- Guardrail: added `scripts/testing/test-model-symlink-verification.sh` and registered it in focused CI for `nixos-quick-deploy.sh` / `nix/modules/roles/ai-stack.nix` changes.
+- Validation target: bash syntax, Nix parse, model-symlink regression, focused CI, tier0 pre-commit.
+- Note: do not stage unrelated dashboard/collaboration/facts drift unless explicitly taking ownership.

@@ -112,6 +112,20 @@
       "timeout_seconds": 60
     },
     {
+      "id": "model-symlink-verification",
+      "description": "Model fetch/deploy active.gguf symlink verification",
+      "trigger_paths": [
+        "nixos-quick-deploy.sh",
+        "nix/modules/roles/ai-stack.nix",
+        "scripts/testing/test-model-symlink-verification.sh"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/test-model-symlink-verification.sh"
+      ],
+      "timeout_seconds": 30
+    },
+    {
       "id": "cognitive-intelligence-regressions",
       "description": "L5/L6 cognitive intelligence regressions (Memory/Intent)",
       "trigger_paths": [
