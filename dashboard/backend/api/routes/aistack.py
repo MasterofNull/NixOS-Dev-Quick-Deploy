@@ -2394,6 +2394,54 @@ async def proxy_hints_active() -> Dict[str, Any]:
     )
 
 
+@router.get("/coordinator/ai-status")
+async def proxy_coordinator_ai_status() -> Dict[str, Any]:
+    """Proxy coordinator /control/ai-coordinator/status — remote aliases + skill registry."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/control/ai-coordinator/status",
+        {"status": "unknown", "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/fleet/summary")
+async def proxy_fleet_summary() -> Dict[str, Any]:
+    """Proxy coordinator /control/fleet/summary — runtime count by status and profile."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/control/fleet/summary",
+        {"total_runtimes": 0, "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/budget/policy")
+async def proxy_budget_policy() -> Dict[str, Any]:
+    """Proxy coordinator /control/budget/policy — token/tool/time guardrail policy."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/control/budget/policy",
+        {"policy": {}, "available": False},
+        headers=headers,
+    )
+
+
+@router.get("/reasoning/profiles")
+async def proxy_reasoning_profiles() -> Dict[str, Any]:
+    """Proxy coordinator /control/reasoning/profiles — ablation reasoning profile list."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/control/reasoning/profiles",
+        {"profiles": [], "available": False},
+        headers=headers,
+    )
+
+
 @router.get("/ai/remediation/latest")
 async def get_latest_remediation() -> Dict[str, Any]:
     """Fetch the latest auto-remediation result."""
