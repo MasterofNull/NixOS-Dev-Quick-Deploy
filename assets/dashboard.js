@@ -798,18 +798,17 @@ async function loadHardening() {
   const s    = h.stats || {};
   const pl   = d.policies || {};
   const card = h.scorecard || {};
-  const trs  = pl.tool_registry_security || {};
+  const tep  = pl.tool_execution_policy || {};
   const infe = card.inference_optimizations || {};
   const disc = card.discovery || {};
   const acc  = card.acceptance || {};
   if (badge) { badge.textContent = d.status || '--'; badge.className = `card-badge ${statusColor(d.status) === 'ok' ? 'badge-ok' : 'badge-warn'}`; }
   el.innerHTML = [
-    fwRow('Status',       d.status || '--', statusColor(d.status)),
-    fwRow('Scorecards',   s.scorecards_generated ?? '--', s.scorecards_generated > 0 ? 'ok' : 'info'),
-    fwRow('Safety Mode',  pl.safety_mode || '--', 'info'),
-    fwRow('Tool Metadata', trs.available ? (trs.complete ? 'complete' : `${trs.missing_count ?? '?'} missing`) : 'unavailable', trs.available && trs.complete ? 'ok' : 'warn'),
-    fwRow('Tool Profiles', trs.enabled_tools != null ? `${Object.keys(trs.sandbox_profiles || {}).length}/${trs.enabled_tools}` : '--', trs.complete ? 'ok' : 'info'),
-    fwRow('Lesson Refs',  (s.active_lesson_refs || []).length),
+    fwRow('Status',        d.status || '--', statusColor(d.status)),
+    fwRow('Scorecards',    s.scorecards_generated ?? '--', (s.scorecards_generated || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Med Risk Tools',tep.allow_medium_risk_tools ? 'allowed' : 'blocked', tep.allow_medium_risk_tools ? 'warn' : 'ok'),
+    fwRow('High Risk Tools',tep.allow_high_risk_tools  ? 'ALLOWED' : 'blocked', tep.allow_high_risk_tools  ? 'err'  : 'ok'),
+    fwRow('Lesson Refs',   (s.active_lesson_refs || []).length, (s.active_lesson_refs || []).length > 0 ? 'ok' : 'info'),
   ].join('');
 
   // Scorecard — inference optimizations + discovery rates
