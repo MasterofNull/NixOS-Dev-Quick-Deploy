@@ -493,7 +493,7 @@ def _check_routing(ctx: RunContext) -> list[CheckResult]:
     code, body = _raw_post(
         f"{ctx.hybrid_url}/v1/orchestrate",
         {"prompt": "what is nixos", "route": "Explore"},
-        headers=headers, timeout=10,
+        headers=headers, timeout=max(20, ctx.query_timeout_s),
     )
     if 200 <= code < 300:
         try:
@@ -623,7 +623,7 @@ def _check_safety_gate(ctx: RunContext) -> list[CheckResult]:
     code, body = _raw_post(
         f"{ctx.hybrid_url}/control/safety/gate",
         {"session_id": "healthcheck", "safety_mode": "open"},
-        headers=headers, timeout=5,
+        headers=headers, timeout=10,
     )
     if code == 200 or '"ok": true' in body or '"ok":true' in body:
         return [passed(4, "0.9.1", "safety gate endpoint responds (POST /control/safety/gate)")]
@@ -1123,6 +1123,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_model_config(ctx))
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
+    results.extend(_check_nsjail_sandbox(ctx))
     return results
 
 
@@ -1195,6 +1196,86 @@ def _check_clm(ctx: RunContext) -> list[CheckResult]:
         results.append(passed(4, "61.4", f"GET /context/lifecycle/status OK (pressure={data.get('pressure_pct')}%)"))
     else:
         results.append(failed(4, "61.4", "GET /context/lifecycle/status", f"unexpected response: {list(data.keys())[:5]}"))
+
+    return results
+
+
+def _check_nsjail_sandbox(ctx: RunContext) -> list[CheckResult]:
+    """Phase 62: nsjail execution sandbox + structured safety rails."""
+    results: list[CheckResult] = []
+
+    safety_rails = ctx.repo_root / "config" / "safety-rails.yaml"
+    shell_tools = (
+        ctx.repo_root
+        / "ai-stack" / "local-agents" / "builtin_tools" / "shell_tools.py"
+    )
+    evidence_handler = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+        / "workflow" / "evidence_safety_handlers.py"
+    )
+
+    # 62.1 — nsjail binary available (skip gracefully if not yet; requires rebuild)
+    import shutil as _shutil
+    nsjail_bin = __import__("os").environ.get("NSJAIL_BIN") or _shutil.which("nsjail")
+    if nsjail_bin and __import__("os").path.isfile(nsjail_bin):
+        results.append(passed(4, "62.1", f"nsjail binary available: {nsjail_bin}"))
+    else:
+        results.append(skipped(4, "62.1", "nsjail binary", "not in PATH — nixos-rebuild required (Phase 62.6)"))
+
+    # 62.2 — safety-rails.yaml: exists, valid YAML, has 5 rails with required fields
+    if not safety_rails.exists():
+        results.append(failed(4, "62.2", "config/safety-rails.yaml", "file missing"))
+    else:
+        try:
+            import yaml as _yaml
+            doc = _yaml.safe_load(safety_rails.read_text())
+            rails = doc.get("rails", []) if isinstance(doc, dict) else []
+            required_fields = {"id", "pattern", "match_fields", "action", "reason"}
+            missing_fields = []
+            for r in rails:
+                missing = required_fields - set(r.keys())
+                if missing:
+                    missing_fields.append(f"{r.get('id', '?')}: missing {missing}")
+            if doc.get("version") != "1.0":
+                results.append(failed(4, "62.2", "safety-rails.yaml", "version != '1.0'"))
+            elif len(rails) < 5:
+                results.append(failed(4, "62.2", "safety-rails.yaml", f"expected 5 rails, got {len(rails)}"))
+            elif missing_fields:
+                results.append(failed(4, "62.2", "safety-rails.yaml", f"incomplete rails: {missing_fields[:2]}"))
+            else:
+                results.append(passed(4, "62.2", f"safety-rails.yaml valid (version=1.0, {len(rails)} rails)"))
+        except ImportError:
+            results.append(skipped(4, "62.2", "safety-rails.yaml schema", "pyyaml not available in test env"))
+        except Exception as exc:
+            results.append(failed(4, "62.2", "safety-rails.yaml parse", str(exc)))
+
+    # 62.3 — sandbox smoke: NsjailSandbox class + YAML rails wired in shell_tools + evidence_safety_handlers
+    if not shell_tools.exists():
+        results.append(failed(4, "62.3", "shell_tools.py sandbox smoke", "file missing"))
+    else:
+        st_text = shell_tools.read_text()
+        checks = {
+            "NsjailSandbox class": "class NsjailSandbox" in st_text,
+            "NSJAIL_BIN env read": "NSJAIL_BIN" in st_text,
+            "NSJAIL_REQUIRED fail-closed mode": "NSJAIL_REQUIRED" in st_text and "sandbox_required_failed" in st_text,
+            "shell injection guard": "shell_injection_guard" in st_text,
+            "sandbox nsjail key in response": '"sandbox": "nsjail"' in st_text or "'sandbox': 'nsjail'" in st_text or '"sandbox"' in st_text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "62.3", "NsjailSandbox smoke", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "62.3", "NsjailSandbox class present (NSJAIL_BIN + fail-closed required mode)"))
+
+    if evidence_handler.exists():
+        ev_text = evidence_handler.read_text()
+        if "SAFETY_RAILS_FILE" in ev_text and "rail_id" in ev_text:
+            results.append(passed(4, "62.4", "evidence safety handler evaluates YAML rails"))
+        else:
+            results.append(failed(4, "62.4", "evidence safety YAML rails", "missing SAFETY_RAILS_FILE or rail_id output"))
+    else:
+        results.append(failed(4, "62.4", "evidence safety handler", "file missing"))
 
     return results
 

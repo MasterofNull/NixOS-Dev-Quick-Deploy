@@ -1226,3 +1226,29 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 **Next recommended slice:** Continue `PARITY-INTEGRATION-PLAN.md` Phase 1 with sandbox policy schema + registry lint. Keep it bounded and test-first; do not implement nsjail/WASM runtime execution until the policy schema and lint gate are stable.
 
 **Context Bloat:** Low
+
+
+---
+
+# Handoff Memo — 2026-05-21 Phase 62 Safety Rails / Nsjail Hardening (Codex)
+
+**Status:** Focused validation complete; tier0 pending at time of memo creation.
+
+**Changes prepared:**
+1. `config/safety-rails.yaml` defines YAML rails for shell injection, path traversal, credential exfiltration, recursive delegation approval, and budget warnings.
+2. `evidence_safety_handlers.py` loads `SAFETY_RAILS_FILE` and emits `rail_id` for matched violations.
+3. `shell_tools.py` rejects shell-control metacharacters before execution and fails closed when `NSJAIL_REQUIRED=1` and nsjail is unavailable or fails.
+4. `mcp-servers.nix` exposes `NSJAIL_BIN`; `config/env-contract.yaml` documents `NSJAIL_BIN`, `NSJAIL_REQUIRED`, and `SAFETY_RAILS_FILE`.
+5. `aq-qa` phase 0 now includes Phase 62 checks for nsjail/safety rails wiring.
+6. `scripts/testing/test-local-shell-sandbox.py` covers injection rejection and required-nsjail fail-closed behavior.
+
+**Focused validation:**
+- `py_compile` for changed Python files — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-local-shell-sandbox.py` — PASS
+- YAML parse for `config/safety-rails.yaml` and `config/env-contract.yaml` — PASS
+- `scripts/testing/verify-flake-first-roadmap-completion.sh` — PASS (`609 pass, 0 fail`)
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`77 passed, 0 failed, 3 skipped`)
+- `git diff --check` — PASS
+
+**Next:** Run tier0 and commit if green.
+**Context Bloat:** Low

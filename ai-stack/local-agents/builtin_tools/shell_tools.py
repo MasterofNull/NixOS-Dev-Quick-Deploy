@@ -13,6 +13,9 @@ Part of Phase 11 Batch 11.1: Tool Calling Infrastructure
 import asyncio
 import json
 import logging
+import os
+import re
+import shutil
 import subprocess
 from typing import Dict
 
@@ -30,6 +33,49 @@ logger = logging.getLogger(__name__)
 # Extended (2026-05-18) to include aq-* harness tools and common analysis tools
 # that agents legitimately need. run_shell_command is an alias registered below
 # to handle models that emit the wrong tool name.
+class NsjailSandbox:
+    """Linux namespace sandbox for SAFE_COMMANDS execution (Phase 62.2, AM-G6).
+
+    Uses nsjail to run commands in a minimal read-only Linux namespace:
+    - No network (iface_no_lo)
+    - No /proc access (disable_proc)
+    - Read-only bind of /nix/store and /run/current-system
+    - Writable /tmp (tmpfs, 16 MiB)
+
+    If nsjail is configured as required, startup failures fail closed instead of
+    silently downgrading to host subprocess execution.
+    """
+
+    def __init__(self) -> None:
+        bin_path = os.environ.get("NSJAIL_BIN") or shutil.which("nsjail")
+        self.available: bool = bool(bin_path and os.path.isfile(bin_path))
+        self.bin: str = bin_path or ""
+        self.required: bool = os.environ.get("NSJAIL_REQUIRED", "0").strip().lower() in {"1", "true", "yes"}
+
+    def build_argv(self, command: str, timeout_seconds: int) -> list:
+        """Build nsjail argv wrapping the given shell command string."""
+        return [
+            self.bin,
+            "--mode", "once",
+            "--time_limit", str(timeout_seconds),
+            "--max_cpus", "1",
+            "--rlimit_nofile", "64",
+            "--disable_proc",
+            "--iface_no_lo",
+            "--bindmount_ro", "/nix/store",
+            "--bindmount_ro", "/run/current-system",
+            "--tmpfs", "/tmp:size=16m",
+            "--cwd", "/tmp",
+            "--",
+            "/run/current-system/sw/bin/sh", "-c", command,
+        ]
+
+
+_nsjail = NsjailSandbox()
+
+_SHELL_CONTROL_PATTERN = re.compile(r"(?:;|&&|\|\||`|\$\(|\$\{|\n|\r)")
+
+
 SAFE_COMMANDS = {
     # System inspection (read-only)
     "ls", "pwd", "echo", "cat", "head", "tail", "wc", "grep", "rg",
@@ -77,6 +123,13 @@ async def run_command_handler(
 
     base_cmd = cmd_parts[0]
 
+    if _SHELL_CONTROL_PATTERN.search(command):
+        return {
+            "success": False,
+            "error": "Command rejected: shell control/metacharacter sequences are not allowed",
+            "safety_reason": "shell_injection_guard",
+        }
+
     # Check if command is safe
     if base_cmd not in SAFE_COMMANDS:
         return {
@@ -85,7 +138,46 @@ async def run_command_handler(
         }
 
     try:
-        # Run command with timeout
+        if _nsjail.available:
+            try:
+                nsjail_argv = _nsjail.build_argv(command, timeout_seconds)
+                result = subprocess.run(
+                    nsjail_argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds + 2,
+                )
+                return {
+                    "success": result.returncode == 0,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "returncode": result.returncode,
+                    "sandbox": "nsjail",
+                }
+            except Exception as nsjail_exc:
+                logger.warning(
+                    "NsjailSandbox: isolation failure: %s",
+                    nsjail_exc,
+                )
+                if _nsjail.required:
+                    return {
+                        "success": False,
+                        "error": f"Sandbox required but nsjail failed: {nsjail_exc}",
+                        "sandbox": "nsjail",
+                        "safety_reason": "sandbox_required_failed",
+                    }
+
+        if _nsjail.required and not _nsjail.available:
+            return {
+                "success": False,
+                "error": "Sandbox required but nsjail is unavailable",
+                "sandbox": "unavailable",
+                "safety_reason": "sandbox_required_unavailable",
+            }
+
+        # Plain subprocess compatibility path. This is only used when nsjail is
+        # not configured as required; the shell injection guard above still
+        # applies before reaching this path.
         result = subprocess.run(
             command,
             shell=True,

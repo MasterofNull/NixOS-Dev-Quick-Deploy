@@ -1,29 +1,31 @@
 {
   "agent": "Codex",
-  "task": "Phase 1 security governance contract gates + docs refactor unblock",
-  "intent": "Record completed Phase 1 static security contract gate and documentation/governance unblock now that tier0 is green and commit 53c724e0 landed.",
-  "status": "completed",
-  "timestamp": "2026-05-21T03:24:14.851271+00:00",
-  "commits": [
-    "53c724e0 fix(qa+governance): Phase 61 aq-qa auth fix, allowlist cleanup, doc metadata"
-  ],
+  "task": "Phase 62 safety rails and nsjail sandbox hardening",
+  "intent": "Complete and harden the in-progress safety-rails/nsjail slice with fail-closed sandbox semantics, static QA coverage, env-contract entries, and local shell sandbox regression tests.",
+  "status": "validated_focus_pending_tier0",
+  "timestamp": "2026-05-21T03:31:23.733791+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
-    ".agent/collaboration/HANDOFF.md"
-  ],
-  "completed_changes": [
-    "progressive-disclosure and agent-guide documentation refresh",
-    "legacy documentation archival and repo-structure allowlist cleanup",
-    "roadmap verifier updated for archived dashboard collectors guide",
-    "aq-qa CLM status auth fix",
-    "MAEAH security contract static regression gate documented and tested"
+    ".agent/collaboration/HANDOFF.md",
+    "config/safety-rails.yaml",
+    "config/env-contract.yaml",
+    "ai-stack/local-agents/builtin_tools/shell_tools.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/workflow/evidence_safety_handlers.py",
+    "nix/modules/services/mcp-servers.nix",
+    "scripts/testing/harness_qa/phases/phase0.py",
+    "scripts/testing/test-local-shell-sandbox.py"
   ],
   "validation": [
+    "py_compile shell_tools/evidence_safety_handlers/phase0/test-local-shell-sandbox \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-local-shell-sandbox.py \u2014 PASS",
+    "YAML parse safety-rails.yaml and env-contract.yaml \u2014 PASS",
     "scripts/testing/verify-flake-first-roadmap-completion.sh \u2014 PASS (609 pass, 0 fail)",
-    "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (75 passed, 0 failed, 2 skipped)",
-    "AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 ... scripts/ai/aq-qa 0 \u2014 PASS (74 passed, 0 failed, 3 skipped)",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (16 passed, 0 failed)",
-    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS"
+    "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (77 passed, 0 failed, 3 skipped)",
+    "git diff --check \u2014 PASS"
   ],
-  "next_recommended_slice": "Continue Parity Integration Plan Phase 1 with the next runtime-adjacent but bounded deliverable: sandbox policy schema + registry lint, using the static contract gate as the non-regression baseline."
+  "notes": [
+    "Hardened shell tool so injection patterns are rejected before shell execution.",
+    "When NSJAIL_REQUIRED=1, nsjail unavailability/failure now fails closed instead of falling back to host subprocess.",
+    "Added Phase 62 aq-qa static checks for nsjail, safety rails, service env wiring, and evidence safety rail loading."
+  ]
 }
