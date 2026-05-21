@@ -61,6 +61,21 @@ ls -la /var/lib/llama-cpp/models/
 | ROCm GPU error | Check `HSA_OVERRIDE_GFX_VERSION` in service env; try `rocm-smi` |
 | AppArmor denial | Check `dmesg | grep DENIED`; verify `/etc/apparmor.d/` profile |
 
+**Symlink verification drift:**
+If `/var/lib/llama-cpp/models/active.gguf` is a symlink, always inspect the
+resolved target before assuming the model is missing or too small:
+
+```bash
+readlink -f /var/lib/llama-cpp/models/active.gguf
+stat -Lc%s /var/lib/llama-cpp/models/active.gguf
+du -hL /var/lib/llama-cpp/models/active.gguf
+```
+
+A small `stat -c%s active.gguf` value measures the symlink path length, not the
+model. The deploy preflight and `llama-cpp-model-fetch` unit must validate the
+concrete catalog file and stamp `*.source-meta` for existing unpinned catalog
+models instead of starting a replacement multi-GB download.
+
 **Recovery:**
 ```bash
 # Full restart sequence

@@ -4185,14 +4185,14 @@ verify_or_download_ai_models() {
   _model_sz() {
     local path="$1"
     local sz
-    sz="$(stat -c%s "$path" 2>/dev/null)" && { echo "$sz"; return; }
-    sz="$(sudo -n stat -c%s "$path" 2>/dev/null)" && { echo "$sz"; return; }
+    sz="$(stat -Lc%s "$path" 2>/dev/null)" && { echo "$sz"; return; }
+    sz="$(sudo -n stat -Lc%s "$path" 2>/dev/null)" && { echo "$sz"; return; }
     echo 0
   }
   _model_du() {
     local path="$1"
-    du -h "$path" 2>/dev/null | cut -f1 \
-      || sudo -n du -h "$path" 2>/dev/null | cut -f1 \
+    du -hL "$path" 2>/dev/null | cut -f1 \
+      || sudo -n du -hL "$path" 2>/dev/null | cut -f1 \
       || echo "?"
   }
 
@@ -4288,7 +4288,7 @@ verify_or_download_ai_models() {
           local current_size=0
           local speed_mb=""
           if [[ -f "$chat_model_path" ]]; then
-            current_size=$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)
+            current_size=$(stat -Lc%s "$chat_model_path" 2>/dev/null || echo 0)
             local size_mb=$((current_size / 1048576))
             if [[ $prev_chat_size -gt 0 ]]; then
               local delta=$((current_size - prev_chat_size))
@@ -4310,10 +4310,10 @@ verify_or_download_ai_models() {
         # Service completed — verify model file appeared
         if [[ -f "$chat_model_path" ]]; then
           local sz
-          sz="$(stat -c%s "$chat_model_path" 2>/dev/null || echo 0)"
+          sz="$(stat -Lc%s "$chat_model_path" 2>/dev/null || echo 0)"
           if [[ "$sz" -gt 10485760 ]]; then
             waiting_chat=false
-            log "Model download: chat model downloaded successfully ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+            log "Model download: chat model downloaded successfully ($(du -hL "$chat_model_path" 2>/dev/null | cut -f1))"
           else
             log_warn "Model download: chat model file too small ($sz bytes) — download may have failed"
             waiting_chat=false
@@ -4335,7 +4335,7 @@ verify_or_download_ai_models() {
           local current_size=0
           local speed_mb=""
           if [[ -f "$embed_model_path" ]]; then
-            current_size=$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)
+            current_size=$(stat -Lc%s "$embed_model_path" 2>/dev/null || echo 0)
             local size_mb=$((current_size / 1048576))
             if [[ $prev_embed_size -gt 0 ]]; then
               local delta=$((current_size - prev_embed_size))
@@ -4357,10 +4357,10 @@ verify_or_download_ai_models() {
       elif [[ "$embed_state" == "inactive" || "$embed_state" == "dead" ]]; then
         if [[ -f "$embed_model_path" ]]; then
           local sz
-          sz="$(stat -c%s "$embed_model_path" 2>/dev/null || echo 0)"
+          sz="$(stat -Lc%s "$embed_model_path" 2>/dev/null || echo 0)"
           if [[ "$sz" -gt 10485760 ]]; then
             waiting_embed=false
-            log "Model download: embedding model downloaded successfully ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+            log "Model download: embedding model downloaded successfully ($(du -hL "$embed_model_path" 2>/dev/null | cut -f1))"
           else
             log_warn "Model download: embedding model file too small ($sz bytes)"
             waiting_embed=false
@@ -4390,12 +4390,12 @@ verify_or_download_ai_models() {
 
   # Final verification
   if [[ -f "$chat_model_path" ]]; then
-    log "Model download: chat model ready at $chat_model_path ($(du -h "$chat_model_path" 2>/dev/null | cut -f1))"
+    log "Model download: chat model ready at $chat_model_path ($(du -hL "$chat_model_path" 2>/dev/null | cut -f1))"
   elif [[ "$chat_model_present" != true ]]; then
     log_warn "Model download: chat model file still missing after download attempt"
   fi
   if [[ -f "$embed_model_path" ]]; then
-    log "Model download: embedding model ready at $embed_model_path ($(du -h "$embed_model_path" 2>/dev/null | cut -f1))"
+    log "Model download: embedding model ready at $embed_model_path ($(du -hL "$embed_model_path" 2>/dev/null | cut -f1))"
   elif [[ "$embed_model_present" != true ]]; then
     log_warn "Model download: embedding model file still missing after download attempt"
   fi
