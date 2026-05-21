@@ -2846,6 +2846,27 @@
           description = "Maximum AIDB vector distance for experience-replay retrieval (0=exact, 1=any).";
         };
       };
+
+      # Phase 63.4: NixOS impermanence — declarative /persist paths for AI stack state.
+      # Requires: (1) a /persist filesystem mounted at boot, (2) nixos-rebuild switch.
+      # Set enable = true in the host's facts.nix or profile AFTER setting up /persist.
+      impermanence = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Enable NixOS impermanence for AI stack state paths.
+            Declares environment.persistence."/persist" for /var/lib/ai-stack,
+            /var/lib/nixos-system-dashboard, and /home/<primaryUser>/.config/Continue.
+            REQUIRES a /persist filesystem to be mounted before activation.
+          '';
+        };
+        persistPath = lib.mkOption {
+          type = lib.types.str;
+          default = "/persist";
+          description = "Mount path of the persistent filesystem.";
+        };
+      };
     };
 
     # ---------------------------------------------------------------------------
@@ -3280,26 +3301,6 @@
         description = "Profile-scoped system package names merged with base packages and deduplicated.";
       };
 
-      # Phase 63.4: NixOS impermanence — declarative /persist paths for AI stack state.
-      # Requires: (1) a /persist filesystem mounted at boot, (2) nixos-rebuild switch.
-      # Set enable = true in the host's facts.nix or profile AFTER setting up /persist.
-      aiStack.impermanence = {
-        enable = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = ''
-            Enable NixOS impermanence for AI stack state paths.
-            Declares environment.persistence."/persist" for /var/lib/ai-stack,
-            /var/lib/nixos-system-dashboard, and /home/<primaryUser>/.config/Continue.
-            REQUIRES a /persist filesystem to be mounted before activation.
-          '';
-        };
-        persistPath = lib.mkOption {
-          type = lib.types.str;
-          default = "/persist";
-          description = "Mount path of the persistent filesystem.";
-        };
-      };
     };
   };
 }
