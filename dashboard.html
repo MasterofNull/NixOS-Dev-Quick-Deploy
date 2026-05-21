@@ -193,6 +193,26 @@
     ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
     @media(max-width:600px){.layer-rail{grid-template-columns:repeat(4,1fr)}}
 
+    /* ── COLLECTION TABLE ── */
+    .coll-table{width:100%;border-collapse:collapse;font-size:.58rem;margin-top:.3rem}
+    .coll-table th{color:var(--fg3);font-weight:400;padding:.2rem .35rem;border-bottom:1px solid var(--border);text-transform:uppercase;text-align:left}
+    .coll-table td{padding:.22rem .35rem;color:var(--fg2);border-bottom:1px solid rgba(255,255,255,.02)}
+    .coll-table tr:last-child td{border-bottom:none}
+    .coll-bar-wrap{width:70px;height:5px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
+    .coll-bar{height:5px;background:var(--cyan);border-radius:2px;transition:width .3s}
+    .coll-type-mem{color:var(--mag)}.coll-type-know{color:var(--cyan)}.coll-type-train{color:var(--grn)}
+    /* ── DB METRIC PILLS ── */
+    .db-section{margin-bottom:.55rem;padding-bottom:.45rem;border-bottom:1px solid rgba(255,255,255,.04)}
+    .db-section:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+    .db-name{font-size:.6rem;color:var(--mag);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem;display:flex;align-items:center;gap:.4rem}
+    .db-pill{font-size:.52rem;padding:.06rem .3rem;border-radius:2px;border:1px solid var(--border);color:var(--fg3)}
+    .db-pill.ok{color:var(--grn);border-color:rgba(57,255,20,.3)}.db-pill.err{color:var(--red);border-color:rgba(255,54,68,.3)}
+    /* ── LOAD TILE COLORING ── */
+    .stat.load-warn .stat-v{color:var(--yel)}.stat.load-err .stat-v{color:var(--red)}
+    /* ── ACTIVITY PILLS ── */
+    .act-pills{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.3rem}
+    .act-pill{font-size:.56rem;padding:.1rem .4rem;border-radius:2px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--fg3)}
+    .act-pill span{color:var(--fg)}
     /* ── DYNAMIC STATUS COLORING ── */
     .stat.warn{border-left-color:var(--yel);background:linear-gradient(160deg,rgba(249,226,175,.06),rgba(8,12,18,.95))}
     .stat.err{border-left-color:var(--red);background:linear-gradient(160deg,rgba(255,54,68,.08),rgba(8,12,18,.95))}
@@ -244,6 +264,10 @@
     <div class="kpi"><span class="kpi-l">Qdrant:</span><span class="kpi-v" id="kpiQdrant">--</span></div>
     <div class="kpi"><span class="kpi-l">Vectors:</span><span class="kpi-v" id="kpiVectors">--</span></div>
     <div class="kpi"><span class="kpi-l">Coord:</span><span class="kpi-v" id="kpiCoord">--</span></div>
+    <div class="kpi"><span class="kpi-l">PG Lat:</span><span class="kpi-v" id="kpiPgLat">--</span></div>
+    <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">--</span></div>
+    <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
+    <div class="kpi"><span class="kpi-l">Tok Saved:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
   </div>
   <div class="lens-tabs">
     <button class="tab on" onclick="setLens('overview')"    id="tab-overview">Overview</button>
@@ -311,6 +335,14 @@
     <div class="stat cy">
       <div class="stat-l">GPU Name</div><div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">--</div>
     </div>
+    <div class="stat cy" id="statUptime">
+      <div class="stat-l">Uptime</div><div class="stat-v" id="vUptime" style="font-size:.82rem;padding-top:.2rem">--</div>
+      <div class="stat-d">system up</div>
+    </div>
+    <div class="stat cy" id="statLoad">
+      <div class="stat-l">Load Avg (1m)</div><div class="stat-v" id="vLoad1" style="font-size:1.4rem">--</div>
+      <div class="stat-d"><span id="vLoad5">--</span> · <span id="vLoad15">--</span>&nbsp;&nbsp;5m / 15m</div>
+    </div>
   </div>
 
   <div class="panel-grid g2">
@@ -323,6 +355,15 @@
       <div class="svc-grid" id="svcGrid">
         <div class="svc"><div class="svc-dot" style="background:var(--fg3)"></div><span class="svc-name">loading...</span></div>
       </div>
+    </div>
+
+    <!-- Database Metrics -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Database Health</span>
+        <span class="card-badge badge-info" id="dbBadge">--</span>
+      </div>
+      <div id="dbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
 
     <!-- OSI Layer Health -->
@@ -396,8 +437,12 @@
       <div id="aidbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
-      <div class="card-hd"><span class="card-title">Learning &amp; Memory</span><span class="card-badge badge-ok">active</span></div>
+      <div class="card-hd">
+        <span class="card-title">Learning &amp; Memory</span>
+        <span class="card-badge badge-ok" id="learningBadge">active</span>
+      </div>
       <div id="learningDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+      <div id="learningActivity" style="margin-top:.5rem"></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-title">Drift Analysis</span><span class="card-badge badge-ok" id="driftBadge">--</span></div>
@@ -416,8 +461,12 @@
       <div id="verifierDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
-      <div class="card-hd"><span class="card-title">Knowledge Observatory</span><span class="card-badge badge-info">intel</span></div>
+      <div class="card-hd">
+        <span class="card-title">Knowledge Observatory</span>
+        <span class="card-badge badge-info" id="knowledgeBadge">--</span>
+      </div>
       <div id="knowledgeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+      <div id="collectionList" style="margin-top:.5rem"></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok" id="agenticBadge">--</span></div>
@@ -444,6 +493,7 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">AI Harness &amp; Hardening</span><span class="card-badge badge-info" id="harnessBadge">--</span></div>
       <div id="hardeningDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+      <div id="harnessScorecard" style="margin-top:.6rem;padding-top:.5rem;border-top:1px solid rgba(255,255,255,.05)"></div>
     </div>
   </div>
 </div>
