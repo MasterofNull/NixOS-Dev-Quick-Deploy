@@ -337,7 +337,18 @@ gate_script_headers() {
   fi
 }
 
-# Gate 12: Path-aware focused CI checks
+# Gate 12: Config directory governance
+gate_config_dir_lint() {
+  log "Checking config directory governance..."
+  if bash "${SCRIPT_DIR}/config-directory-lint.sh" >/dev/null 2>&1; then
+    pass "Config directory governance valid"
+  else
+    fail "Config directory governance failed"
+    return 1
+  fi
+}
+
+# Gate 13: Path-aware focused CI checks
 gate_focused_ci_checks() {
   log "Running focused CI-sensitive checks..."
   if bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
@@ -506,6 +517,7 @@ gate_ts_syntax || true
 gate_sql_syntax || true
 gate_repo_structure || true
 gate_script_headers || true
+gate_config_dir_lint || true
 gate_focused_ci_checks || true
 gate_roadmap_verification || true
 gate_qa_phase0 || true
