@@ -698,3 +698,23 @@ variables:
     layer: all
     consumers: [hybrid-coordinator, dashboard-backend, shell scripts]
     description: "Base URL of the llama.cpp embeddings service"
+  - canonical: NSJAIL_BIN
+    aliases: []
+    default: "nsjail"
+    layer: all
+    consumers: [hybrid-coordinator, local-agents]
+    description: "Path to nsjail binary used by local shell tool sandboxing"
+
+  - canonical: NSJAIL_REQUIRED
+    aliases: []
+    default: "0"
+    layer: all
+    consumers: [local-agents]
+    description: "When true, local shell command execution fails closed if nsjail is unavailable or fails to start"
+
+  - canonical: SAFETY_RAILS_FILE
+    aliases: []
+    default: "config/safety-rails.yaml"
+    layer: all
+    consumers: [hybrid-coordinator]
+    description: "Path to YAML safety rails evaluated by evidence safety handlers"

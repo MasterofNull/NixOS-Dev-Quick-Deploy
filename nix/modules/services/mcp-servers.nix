@@ -1000,6 +1000,7 @@ in {
         after = hybridDeps;
         requires = hybridDeps;
         wants = ["network-online.target"];
+        path = [ pkgs.nsjail ]; # Phase 62.1: nsjail execution sandbox
         serviceConfig =
           commonServiceConfig
           // {
@@ -1263,6 +1264,8 @@ in {
                 "AI_DISTILL_MIN_WORDS=50"
                 "AI_DISTILL_PROJECT=session-knowledge"
                 "AI_HEAVY_SYNTHESIS_TOKENS_THRESHOLD=800"
+                # Phase 62.1: nsjail sandbox path (shell_tools.py reads NSJAIL_BIN)
+                "NSJAIL_BIN=${pkgs.nsjail}/bin/nsjail"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"

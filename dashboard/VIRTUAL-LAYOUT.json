@@ -1,0 +1,38 @@
+{
+  "project": "Command Center Dashboard Revamp",
+  "version": "1.0-virtual",
+  "architecture": "Layered Component Model (LCM)",
+  "layers": {
+    "L0": { "name": "Hardware & Kernel", "cards": ["CPU-GPU-Load", "VRAM-Pressure", "System-Uptime"] },
+    "L1": { "name": "Persistence", "cards": ["Qdrant-Health", "Postgres-Pool", "Redis-Cache"] },
+    "L2": { "name": "Inference", "cards": ["Llama-Status", "Model-Swap-Control", "Inference-Latency"] },
+    "L3": { "name": "Orchestration", "cards": ["Coordinator-Load", "Ralph-Loop", "Workflow-DAG"] },
+    "L4": { "name": "Connectivity", "cards": ["Switchboard-Routing", "Alias-Inventory", "Network-IO"] },
+    "L5": { "name": "Logic & Skills", "cards": ["Skill-Registry", "Tool-Capability", "Contract-Status"] },
+    "L6": { "name": "Security & Audit", "cards": ["AppArmor-Status", "Access-Log", "Secret-Wiring"] },
+    "L7": { "name": "User Experience", "cards": ["Handoff-Quality", "Session-History", "Vibe-Check"] }
+  },
+  "ui_components": {
+    "Header": {
+      "id": "unified-glass-hud",
+      "features": ["GlobalHealthLarge", "HeartbeatPulse", "KPIRibbonScroll", "LayerRailNav"]
+    },
+    "Sidebar": {
+      "id": "system-variable-panel",
+      "controls": [
+        { "id": "accel-mode", "type": "toggle-group", "options": ["Auto", "CUDA", "Vulkan", "CPU"] },
+        { "id": "inference-tier", "type": "segmented-control", "options": ["Standard", "Reasoning", "Ultra"] },
+        { "id": "safety-strictness", "type": "slider", "range": ["Audit", "Permissive", "Strict"] }
+      ]
+    },
+    "MainGrid": {
+      "id": "functional-unit-deck",
+      "density": "ultra-high",
+      "visuals": ["SVG-Sparklines", "Mini-Circular-Gauges", "Status-LEDs"]
+    }
+  },
+  "data_simulation": {
+    "update_frequency": "1000ms",
+    "streams": ["/ws/metrics", "/api/aistack/routing/summary", "/api/health/aggregate"]
+  }
+}

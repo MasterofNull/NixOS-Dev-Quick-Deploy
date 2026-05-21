@@ -1,0 +1,51 @@
+# Safety Rails v1.0 — Colang-inspired rule DSL (Phase 62.4, AM-C3)
+# Evaluated per-request before tool dispatch in evidence_safety_handlers.py.
+# Each rule matches against request fields listed in match_fields.
+# Actions: block (hard deny), require_approval (human gate), warn (allow + log)
+# Rules evaluated in order; most restrictive action wins (block > require_approval > warn).
+version: "1.0"
+rails:
+  - id: no-shell-injection
+    description: "Block shell metacharacter injection in tool calls"
+    pattern: "(?:;[ \\t]*[a-zA-Z]|&&|\\|\\||`|\\$\\(|\\$\\{[^}])"
+    match_fields:
+      - command
+      - operation
+    action: block
+    reason: "Shell metacharacter injection attempt detected"
+
+  - id: no-path-traversal
+    description: "Block path traversal sequences that escape the working directory"
+    pattern: "(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$)"
+    match_fields:
+      - command
+      - operation
+      - path
+    action: block
+    reason: "Path traversal attempt detected"
+
+  - id: no-credential-exfil
+    description: "Block commands that read or exfiltrate credential files"
+    pattern: "(?:/etc/shadow|/etc/passwd|(?:^|[/\\\\])id_rsa(?:$|\\s|['\"])|(?:^|[/\\\\])id_ed25519(?:$|\\s|['\"])|(?:^|[/\\\\])\\.env(?:$|\\s|['\"])|secrets\\.ya?ml|api[_-]?key)"
+    match_fields:
+      - command
+      - operation
+    action: block
+    reason: "Credential exfiltration pattern detected"
+
+  - id: no-recursive-delegation
+    description: "Prevent agents from recursively delegating to other agents without approval"
+    pattern: "delegate-to-(?:local|gemini|codex|claude)"
+    match_fields:
+      - command
+    action: require_approval
+    reason: "Recursive agent delegation requires human approval"
+
+  - id: budget-ceiling
+    description: "Warn when operation may consume significant compute budget"
+    pattern: "(?:nixos-rebuild|nix build|nix flake update|nix develop)"
+    match_fields:
+      - command
+      - operation
+    action: warn
+    reason: "Build operations may consume significant compute budget"

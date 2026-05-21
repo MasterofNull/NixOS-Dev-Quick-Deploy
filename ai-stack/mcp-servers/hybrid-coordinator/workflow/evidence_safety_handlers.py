@@ -19,8 +19,15 @@ Extracted from http_server.py (Phase 12.4 decomposition).
 """
 
 import logging
+import os
+import re
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+try:
+    import yaml as _yaml
+except ImportError:
+    _yaml = None  # type: ignore[assignment]
 
 from aiohttp import web
 try:
@@ -35,6 +42,34 @@ logger = logging.getLogger("hybrid-coordinator")
 # ---------------------------------------------------------------------------
 
 _evidence_store: Dict[str, List[Dict[str, Any]]] = {}
+
+
+# ---------------------------------------------------------------------------
+# YAML safety rails (Phase 62.3, AM-C3)
+# ---------------------------------------------------------------------------
+
+def _load_safety_rails() -> List[Dict[str, Any]]:
+    """Load structured safety rails from config/safety-rails.yaml.
+
+    Returns an empty list if the file is absent, unreadable, or yaml is unavailable.
+    The CWD at service start is the repo root, matching the pattern used by
+    workflow/runtime_manager.py for other config files.
+    """
+    if _yaml is None:
+        return []
+    rails_path = os.environ.get("SAFETY_RAILS_FILE", "config/safety-rails.yaml")
+    try:
+        with open(rails_path, "r") as fh:
+            doc = _yaml.safe_load(fh)
+        return doc.get("rails", []) if isinstance(doc, dict) else []
+    except FileNotFoundError:
+        return []
+    except Exception as exc:
+        logger.warning("safety-rails.yaml load error: %s", exc)
+        return []
+
+
+_safety_rails: List[Dict[str, Any]] = _load_safety_rails()
 
 _safety_hooks: List[Dict[str, Any]] = [
     {"pattern": "rm -rf /", "action": "block", "reason": "System wipe attempt"},
@@ -142,6 +177,32 @@ async def handle_safety_check(request: web.Request) -> web.Response:
                     "action": hook["action"],
                     "reason": hook["reason"],
                 })
+
+        # Phase 62.3: evaluate structured YAML safety rails
+        request_fields = {
+            "command": data.get("command", ""),
+            "operation": data.get("operation", ""),
+            "path": data.get("path", ""),
+        }
+        for rail in _safety_rails:
+            pattern = rail.get("pattern", "")
+            if not pattern:
+                continue
+            match_fields = rail.get("match_fields", ["command", "operation"])
+            try:
+                compiled = re.compile(pattern, re.IGNORECASE)
+                for field in match_fields:
+                    field_val = request_fields.get(field, "")
+                    if field_val and compiled.search(field_val):
+                        violations.append({
+                            "pattern": pattern,
+                            "action": rail.get("action", "warn"),
+                            "reason": rail.get("reason", rail.get("id", "safety-rail")),
+                            "rail_id": rail.get("id"),
+                        })
+                        break
+            except re.error:
+                pass
 
         if not violations:
             return web.json_response({
