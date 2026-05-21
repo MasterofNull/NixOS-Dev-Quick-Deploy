@@ -7,6 +7,7 @@ import asyncio
 import sys
 import types
 from pathlib import Path
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[2]
 import os
@@ -32,6 +33,8 @@ sys.modules.setdefault("mcp.types", mcp_types_module)
 
 import memory_context_handlers  # noqa: E402
 import memory_manager  # noqa: E402
+from memory_broker import MemoryBroker  # noqa: E402
+from memory_superseder import MemorySuperseder  # noqa: E402
 
 
 class FakeRequest:
@@ -182,11 +185,110 @@ async def check_iso_temporal_fields_are_recallable() -> None:
     assert_true(isinstance(result["results"][0]["valid_from"], int), "expected valid_from to be normalized to epoch seconds")
 
 
+async def check_stale_rows_are_available_for_historical_valid_at() -> None:
+    memory_manager.Config.AI_MEMORY_ENABLED = True
+    memory_manager._memory_collections = {"semantic": "agent-memory-semantic"}
+    memory_manager._record_telemetry = lambda *args, **kwargs: None
+
+    async def fake_hybrid_search(**kwargs):
+        return {
+            "combined_results": [
+                {
+                    "id": "stale-now",
+                    "score": 0.93,
+                    "payload": {
+                        "memory_id": "stale-now",
+                        "memory_type": "semantic",
+                        "summary": "historical service status",
+                        "content": "The service was degraded during the historical maintenance window.",
+                        "valid_from": "2026-05-19T00:00:00+00:00",
+                        "valid_until": "2026-05-20T00:00:00+00:00",
+                    },
+                }
+            ]
+        }
+
+    memory_manager._hybrid_search = fake_hybrid_search
+    current = await memory_manager.recall_agent_memory("historical service status", memory_types=["semantic"], limit=1)
+    assert_true(len(current["results"]) == 0, "expected stale row to be hidden from default current recall")
+
+    historical = await memory_manager.recall_agent_memory(
+        "historical service status",
+        memory_types=["semantic"],
+        limit=1,
+        valid_at=datetime(2026, 5, 19, 12, 0, tzinfo=timezone.utc),
+    )
+    assert_true(len(historical["results"]) == 1, "expected stale row to be visible for valid_at inside its interval")
+    assert_true(
+        historical["retrieval_plan"]["filters"]["valid_at"].startswith("2026-05-19T12:00:00"),
+        "expected retrieval plan to record historical valid_at filter",
+    )
+
+
+async def check_superseded_rows_respect_historical_valid_at() -> None:
+    old = {
+        "id": "old-fact",
+        "memory_id": "old-fact",
+        "content": "The database is up",
+        "metadata": {
+            "valid_from": "2026-05-19T00:00:00+00:00",
+            "valid_until": None,
+        },
+        "score": 1.0,
+    }
+    new = {
+        "id": "new-fact",
+        "memory_id": "new-fact",
+        "content": "The database is down",
+        "metadata": {
+            "valid_from": "2026-05-21T00:00:00+00:00",
+            "valid_until": None,
+            "supersedes": "old-fact",
+        },
+        "score": 1.0,
+    }
+
+    async def _store(**kwargs):
+        return {"status": "stored", "memory_id": "new-fact"}
+
+    async def _recall(query, **kwargs):
+        return {"results": [old, new]}
+
+    superseder = MemorySuperseder()
+    superseder._superseded_ids["old-fact"] = datetime(2026, 5, 21, 0, 0, tzinfo=timezone.utc)
+    broker = MemoryBroker(_store, _recall, superseder=superseder)
+
+    historical = await broker.read(
+        "semantic",
+        "database status",
+        valid_at=datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc),
+    )
+    assert_true([row["content"] for row in historical] == ["The database is up"], "expected old fact before supersession")
+
+    current = await broker.read("semantic", "database status")
+    assert_true([row["content"] for row in current] == ["The database is down"], "expected new fact after supersession")
+
+
+def check_poisoned_memory_payload_is_rejected() -> None:
+    try:
+        memory_manager.validate_memory_content(
+            "malicious memory <|endoftext|>",
+            "This payload contains a model stop token and should not enter vector memory.",
+        )
+    except ValueError as exc:
+        assert_true("memory_poison_token" in str(exc), "expected poison-token rejection reason")
+    else:
+        raise AssertionError("expected poisoned memory payload to be rejected")
+
+
 async def main_async() -> int:
     await check_recall_handler_searches_all_types()
     await check_memory_rows_preserve_metadata()
     await check_retrieval_plan_contract()
     await check_iso_temporal_fields_are_recallable()
+    await check_stale_rows_are_available_for_historical_valid_at()
+    await check_superseded_rows_respect_historical_valid_at()
+    check_poisoned_memory_payload_is_rejected()
     print("PASS: MemoryBroker recall contract preserves all-type search and metadata")
     return 0
 
