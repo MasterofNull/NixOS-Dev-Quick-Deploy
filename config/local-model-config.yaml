@@ -1,0 +1,94 @@
+_meta:
+  version: "1.0"
+  owner: "ai-stack"
+  last_updated: "2026-05-21"
+  description: >
+    Canonical SSOT for all local llama.cpp inference parameters.
+    Facts.nix is the authoritative NixOS deployment config; this file is
+    the human-readable + validator-readable mirror used by smoke tests,
+    aq-qa checks, and coordinator tuning decisions.
+    Update this file when changing facts.nix llamaCpp settings.
+
+# ---------------------------------------------------------------------------
+# Active model
+# ---------------------------------------------------------------------------
+active_model:
+  catalog_key: qwen3.6-35b-mtp-q5
+  file: Qwen3.6-35B-A3B-UD-Q5_K_S.gguf
+  architecture: qwen3-moe
+  quant: Q5_K_S
+  mtp_enabled: true
+  mtp_draft_heads_bundled: true   # Draft heads in same GGUF — no separate draft model
+  param_count_b: 35               # Activated params ~3.6B (MoE), full 35B for routing
+  context_size_native: 262144     # Model native context; capped by ctxSize below
+
+# ---------------------------------------------------------------------------
+# Inference parameters (mirror of facts.nix llamaCpp block)
+# ---------------------------------------------------------------------------
+inference:
+  ctx_size: 8192           # Reduced from native 262K — RAM constraint on 27 GB Renoir
+  n_gpu_layers: 12         # Renoir iGPU: >12 layers causes ErrorDeviceLost at startup
+  parallel: 1              # 1 slot only — 24.5 GB model leaves ~2.5 GB KV headroom
+  batch_size: 512
+  ubatch_size: 256
+  threads: 8               # Ryzen 7 PRO 6850U — 8 cores, all for inference
+  threads_batch: 8
+  flash_attn: false        # Disabled — Renoir iGPU Flash Attention unstable
+  timeout_s: 600           # Qwen3.6-35B on CPU path needs up to 5 min for large prompts
+  spec_type: draft-mtp     # MTP speculative decoding (bundled draft heads)
+  spec_draft_n_max: 2      # Draft tokens per step; bump to 3-4 if acceptance_rate > 65%
+  jinja: true              # Required for Qwen3 chat template
+
+# ---------------------------------------------------------------------------
+# Chat / completion defaults
+# ---------------------------------------------------------------------------
+chat:
+  enable_thinking: false   # CRITICAL: Qwen3 emits reasoning_content (thinking tokens).
+                           # Without this, OpenAI 'content' field is empty.
+                           # Applied via: chat_template_kwargs: {"enable_thinking": false}
+                           # in every request through local_agent_runtime.py and switchboard.
+  temperature: 0.7
+  max_tokens: 4096
+  top_p: 0.95
+  repeat_penalty: 1.0
+
+# ---------------------------------------------------------------------------
+# Embedding server
+# ---------------------------------------------------------------------------
+embedding:
+  catalog_key: bge-m3
+  n_gpu_layers: 12         # Matches chat model — shared VRAM budget
+  threads: 4               # Reduced vs chat model; embed runs concurrent to chat
+  port: 8081               # From nix/modules/core/options.nix (never hardcode)
+
+# ---------------------------------------------------------------------------
+# RAM budget (AM-Q1 constraint — 27 GB Renoir APU)
+# ---------------------------------------------------------------------------
+ram_budget:
+  total_gb: 27.0
+  model_gb: 22.5           # Q5_K_S model weight
+  os_desktop_gb: 1.0       # NixOS + VSCodium + browser headroom
+  gpu_kv_cache_gb: 3.0     # GPU VRAM shared with system RAM
+  free_headroom_gb: 0.5    # Available for Redis, coordinator, AIDB, etc.
+  redis_hot_tier_max_mb: 256  # AM-Q1: 512 MB is unsafe (consumes full headroom)
+
+# ---------------------------------------------------------------------------
+# Performance targets (gates for smoke-local-model.sh + aq-qa)
+# ---------------------------------------------------------------------------
+performance_targets:
+  health_timeout_s: 5           # llama-server /health must respond within 5s
+  ttft_cold_max_s: 30           # Time to first token — cold start (CPU prefill path)
+  ttft_warm_max_s: 10           # Time to first token — warm (GPU prefill path)
+  tokens_per_sec_min: 0.5       # Minimum acceptable (CPU fallback, large prompt)
+  mtp_acceptance_rate_min: 0.0  # >0 confirms draft heads are active; >0.5 is good
+  embed_latency_max_ms: 500     # Single embed call (400-token input)
+  rag_augment_max_ms: 1500      # Full RAG augment cycle (embed + Qdrant search + merge)
+
+# ---------------------------------------------------------------------------
+# Coordinator integration
+# ---------------------------------------------------------------------------
+coordinator:
+  base_url_env: LLAMA_CPP_BASE_URL   # Canonical env var (env-contract.yaml)
+  embed_url_env: EMBED_BASE_URL      # Canonical env var
+  thinking_mode_disabled: true       # Enforced in local_agent_runtime.py + switchboard
+  switchboard_profile: continue-local

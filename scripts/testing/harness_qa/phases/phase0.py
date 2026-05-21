@@ -1042,6 +1042,43 @@ def _check_topology_api(ctx: RunContext) -> list[CheckResult]:
     return [failed(4, "0.9.20", "topology API routes", f"missing: {', '.join(missing)}")]
 
 
+def _check_local_model_config(ctx: RunContext) -> list[CheckResult]:
+    """Phase 60.0: local model config YAML + smoke test script present and valid."""
+    results: list[CheckResult] = []
+    config = ctx.repo_root / "config" / "local-model-config.yaml"
+    smoke = ctx.repo_root / "scripts" / "testing" / "smoke-local-model.sh"
+
+    # 60.0.1 — config YAML valid
+    if not config.exists():
+        results.append(failed(4, "60.0.1", "local-model-config.yaml", "file missing"))
+    else:
+        try:
+            import yaml as _yaml
+            d = _yaml.safe_load(config.read_text())
+            required = {"_meta", "active_model", "inference", "chat", "performance_targets"}
+            missing = required - set(d.keys())
+            if missing:
+                results.append(failed(4, "60.0.1", "local-model-config.yaml schema", f"missing keys: {missing}"))
+            elif not d.get("chat", {}).get("enable_thinking") is False:
+                results.append(failed(4, "60.0.1", "local-model-config.yaml thinking guard", "chat.enable_thinking must be false"))
+            else:
+                results.append(passed(4, "60.0.1", "local-model-config.yaml valid (schema + thinking guard)"))
+        except Exception as exc:
+            results.append(failed(4, "60.0.1", "local-model-config.yaml parse", str(exc)))
+
+    # 60.0.2 — smoke test script present and has bash shebang
+    if not smoke.exists():
+        results.append(failed(4, "60.0.2", "smoke-local-model.sh", "file missing"))
+    else:
+        text = smoke.read_text()
+        if "smoke-local-model" in text and "enable_thinking" in text and "mtp" in text.lower():
+            results.append(passed(4, "60.0.2", "smoke-local-model.sh present (thinking guard + MTP gates)"))
+        else:
+            results.append(failed(4, "60.0.2", "smoke-local-model.sh", "missing expected gates"))
+
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -1083,4 +1120,5 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_logic_indexer(ctx))
     results.extend(_check_aqd_logic(ctx))
     results.extend(_check_topology_api(ctx))
+    results.extend(_check_local_model_config(ctx))
     return results
