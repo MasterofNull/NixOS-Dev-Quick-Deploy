@@ -42,6 +42,38 @@ To prevent state loss during rate limits or model switches, all agents MUST:
 no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
 `bash -n` on shell, `py_compile` on Python; privilege minimization. Never use `--no-verify`.
 
+## Project Philosophy — You Cannot Manage What You Cannot Measure
+
+**This is the governing design principle for all features, phases, and dev cycles.**
+
+> *"Our whole system intent of a managed system lays within this dashboard.
+> We cannot manage that which we cannot measure/monitor."*
+
+This means:
+
+1. **Every new subsystem ships with observable telemetry.** If a component doesn't expose metrics,
+   status, or health to the dashboard, it is not complete — regardless of whether the feature itself works.
+
+2. **Blank dashboard fields are bugs, not cosmetic issues.** A `--` on the dashboard means a gap
+   in operational visibility. Treat it with the same priority as a functional defect.
+
+3. **Dashboard parity is a delivery gate.** Before a phase is marked complete, confirm that every
+   new service, route, or capability is wired to at least one visible dashboard indicator
+   (KPI ribbon, stat tile, card badge, or detail row).
+
+4. **Instrument before you optimize.** Do not tune what you haven't measured. Add the metric first,
+   establish a baseline, then improve.
+
+5. **Measurement drives automation.** Drift, thermal, memory pressure, eval regression — all
+   automated responses depend on visible, quantified signals. Dark subsystems cannot be automated.
+
+**Practical checklist for every PR/phase:**
+- [ ] New API endpoint → `apiFetch()` wired to a card or badge in relevant tab
+- [ ] New background service → health/status visible in OSI layer or AI Services card
+- [ ] New metric collected → shown in KPI ribbon, stat tile, or detail row
+- [ ] New configuration option → reflected in Inference Config or equivalent panel
+- [ ] All previously `--` fields that now have data → updated in same PR
+
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
 - Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
