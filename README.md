@@ -301,12 +301,11 @@ The system supports orchestrator/sub-agent patterns:
 |--------|------|---------|
 | **hybrid-coordinator** | 8003 | Context augmentation, continuous learning, query routing |
 | **aidb** | 8002 | Knowledge base, tool discovery, document lifecycle |
-| **embeddings-service** | 8001 | Sentence transformer API |
+| **llama-embed** | 8081 | Sentence transformer API |
 | **ralph-wiggum** | 8004 | Autonomous loop orchestration |
-| **aider-wrapper** | — | IDE integration for git-aware editing |
+| **aider-wrapper** | 8090 | IDE integration for git-aware editing |
 | **health-monitor** | — | Service health tracking |
 | **nixos** | — | NixOS option search, module queries |
-| **container-engine** | — | OCI/Podman integration |
 
 ### MCP Bridge
 
@@ -442,22 +441,22 @@ mySystem = {
 ```nix
 mySystem.aiStack = {
   enable = true;
-  acceleration = "cuda";        # auto, vulkan, cuda, rocm, cpu
+  acceleration = "vulkan";       # auto, vulkan, cuda, rocm, cpu
 
   llamaCpp = {
     port = 8080;
-    huggingFaceRepo = "Qwen/Qwen3-4B-Instruct-GGUF";
-    gpuLayers = 99;
+    activeModel = "qwen3.6-35b";
   };
 
   embeddingServer = {
-    port = 8001;
-    huggingFaceRepo = "Qwen/Qwen3-Embedding-4B-GGUF";
+    enable = true;
+    port = 8081;
+    activeModel = "bge-m3";
   };
 
   switchboard = {
+    enable = true;
     port = 8085;
-    remoteUrl = "https://openrouter.ai/api";  # optional
   };
 
   mcpServers = {
@@ -539,6 +538,7 @@ repo/
 
 ### Agent Guides
 - [Agent Quick Start](./docs/agent-guides/01-QUICK-START.md)
+- [Progressive Disclosure Guide](./docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md)
 - [Hybrid Workflow Model](./docs/agent-guides/40-HYBRID-WORKFLOW.md)
 - [Continuous Learning](./docs/agent-guides/22-CONTINUOUS-LEARNING.md)
 
@@ -574,6 +574,13 @@ aq-qa 0 --json
 | Overview | Host telemetry | AI stack status |
 |----------|----------------|-----------------|
 | ![Command center hero](./assets/readme/command-center-hero.png) | ![Command center overview](./assets/readme/command-center-overview.png) | ![Command center services](./assets/readme/command-center-services.png) |
+
+---
+
+## License
+
+[MIT](./LICENSE)
+/assets/readme/command-center-services.png) |
 
 ---
 

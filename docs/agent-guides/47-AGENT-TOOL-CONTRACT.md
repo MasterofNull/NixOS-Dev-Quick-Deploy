@@ -23,6 +23,7 @@ The default coding/research baseline should expose:
 - `rg`, `fd`
 - `jq`, `yq`
 - `bash`, `python3`, `git`
+- **Harness Tools**: `aq-prime`, `aq-hints`, `aq-qa`, `aq-memory`
 
 Readonly lanes may expose only non-mutating tools from that set. Execute lanes may add mutation-capable orchestration tools, but should keep the same discovery/read preferences.
 

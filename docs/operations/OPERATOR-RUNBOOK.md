@@ -2,7 +2,7 @@
 
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-03-06
+Last Updated: 2026-05-20 (Phase 58+ Update)
 
 ## Table of Contents
 
@@ -23,9 +23,10 @@ operations: restart, secret rotation, backup/restore, monitoring, and escalation
 
 ```bash
 # Core AI services
-systemctl restart llama-cpp llama-cpp-embed ai-aidb ai-hybrid-coordinator
+systemctl restart llama-cpp llama-cpp-embed ai-aidb ai-hybrid-coordinator ai-switchboard
 
 # Verify service health
+aq-qa 0                                      # Layer 0 (61 checks)
 scripts/testing/check-mcp-health.sh
 curl -sf http://127.0.0.1:8003/health | jq .
 ```
@@ -40,7 +41,6 @@ test -r /run/secrets/postgres_password
 
 # Re-run auth and security smoke checks after rotation
 scripts/testing/check-api-auth-hardening.sh
-scripts/testing/test-prompt-injection-resilience.sh
 ```
 
 Detailed credential handling procedures:
@@ -60,7 +60,7 @@ Recommended quick verification:
 ```bash
 scripts/testing/check-api-auth-hardening.sh
 test -r /run/secrets/hybrid_coordinator_api_key
-KEY="$(tr -d '\n' < /run/secrets/hybrid_coordinator_api_key)"
+KEY="$(sudo cat /run/secrets/hybrid_coordinator_api_key)"
 curl -sf -H "X-API-Key: ${KEY}" http://127.0.0.1:8003/stats | jq .
 ```
 
@@ -80,15 +80,17 @@ scripts/deploy/install-backup-timers.sh
 ## Monitoring and Health Checks
 
 ```bash
-# MCP/runtime health
-scripts/testing/check-mcp-health.sh
-scripts/testing/check-prsi-phase7-program.sh
+# Layered health (Phase 58+)
+aq-qa 0                                      # Layer 0: Core Services (llama, redis, postgres)
+aq-qa 1                                      # Layer 1: Data Stores (qdrant, aidb)
+aq-qa 2                                      # Layer 2: Orchestration (coordinator, ralph)
+aq-qa 3                                      # Layer 3: Agent Runtime (switchboard, terminal)
 
 # Weekly performance summary
-scripts/ai/aq-report --since=7d --format=text
+aq-report --since=7d --format=text
 
 # Metrics endpoint
-KEY="$(tr -d '\n' < /run/secrets/hybrid_coordinator_api_key)"
+KEY="$(sudo cat /run/secrets/hybrid_coordinator_api_key)"
 curl -sf -H "X-API-Key: ${KEY}" http://127.0.0.1:8003/metrics | rg 'circuit|cache|latency'
 ```
 

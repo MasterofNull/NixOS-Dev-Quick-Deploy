@@ -200,7 +200,7 @@ check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'manage-secrets\.sh
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'arcee-ai/trinity-large-preview:free|qwen/qwen3-coder:free|nvidia/nemotron-3-super-120b-a12b:free' 'Secrets guide documents concrete OpenRouter alias examples'
 check_pattern "docs/development/SECRETS-MANAGEMENT-GUIDE.md" 'What "Missing" Actually Means|Provider or subscription limits are the actual hard limits' 'Secrets guide explains missing secrets and token-discipline intent clearly'
 check_pattern "nix/hosts/nixos/deploy-options.nix" 'arcee-ai/trinity-large-preview:free|qwen/qwen3-coder:free|nvidia/nemotron-3-super-120b-a12b:free' 'Host deploy options document current OpenRouter alias examples'
-check_pattern "docs/DASHBOARD-COLLECTORS-GUIDE.md" 'collect-ai-metrics\.sh|aq-report --since=7d --format=text' 'Dashboard collectors guide documents supported AI routing visibility commands'
+check_pattern "docs/archive/legacy-2025/DASHBOARD-COLLECTORS-GUIDE.md" 'collect-ai-metrics\.sh|aq-report --since=7d --format=text' 'Archived dashboard collectors guide preserves supported AI routing visibility commands'
 check_pattern "docs/QUICK-DASHBOARD-REFERENCE.md" 'collect-ai-metrics\.sh|ai_metrics\.json|aq-report --since=7d --format=text' 'Quick dashboard reference documents supported AI metrics and routing summary paths'
 check_absent_pattern "docs/QUICK-DASHBOARD-REFERENCE.md" 'Running perfectly|PID 161811|PID 162629' 'Quick dashboard reference avoids stale fixed runtime claims'
 check_absent_pattern "docs/DASHBOARD-UPDATE-OPTIMIZATION.md" 'PID 161811|PID 162629|\$\{TMPDIR:-/tmp\}/run-dashboard-collector' 'Dashboard optimization guide avoids retired temp collector entrypoints and stale PIDs'

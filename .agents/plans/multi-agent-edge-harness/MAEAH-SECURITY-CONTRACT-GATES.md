@@ -120,3 +120,30 @@ Acceptance criteria:
 - Gemini-authored implementation requires Claude or Codex review before integration/commit.
 - Plans include a short threat model before non-loopback mesh or remote MCP is enabled.
 - Open findings are classified as blocking, accepted risk, or deferred with owner/date.
+
+---
+
+## Phase 1 Static Regression Gate — Codex 2026-05-21
+
+This section adds a repository-local regression check without narrowing or replacing the normative rules above.
+
+`tools/sandbox`, runtime authorization middleware, nsjail/WASM execution, and signed delegation token verification remain later Phase 62+ implementation slices. Until those land, the Phase 1 static gate pins the currently enforceable surfaces so they cannot silently drift while implementation proceeds.
+
+Static gate command:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py
+```
+
+The test validates:
+
+1. `config/runtime-safety-policy.json` keeps `plan-readonly`, `execute-mutating`, and `strict` fail-closed enough for current workflow sessions.
+2. `config/runtime-isolation-profiles.json` keeps read-only execution non-mutating/non-networked and constrains mutating execution to the declared mutable agent workspace with loopback-only network.
+3. `docs/architecture/gemini-review-gate.md` keeps the required review package, verdict protocol, and no-self-acceptance language for Gemini/Qwen integration.
+4. `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md` keeps PA-2, PA-3, and PA-4 mapped into Phase 1 security/governance controls.
+
+Expected result:
+
+```text
+PASS: security contract gates are pinned
+```

@@ -147,13 +147,12 @@ Python files run from the nix store. `systemctl restart` does **NOT** pick up ne
 ## What Is No Longer Current
 
 - K3s, pod, PVC, or container-orchestrated guidance
-- AIDB on port 8091 (now 8002)
+- Legacy ports 8091/8092 (now 8002/8003)
 - Dashboard on port 8888 (now 8889)
 - MindsDB, Hugging Face TGI
 - CLI-bridge on port 8089 (decommissioned 2026-05-12, commit 7dc4c950)
 - OpenRouter / qwen:free (zero credits as of 2026-05)
 - "Hybrid coordinator routes between local and remote" — switchboard does this
-
 ---
 
 ## Next Step

@@ -1,10 +1,13 @@
 # AI Agent Progressive Disclosure System
 
-Status: Redirect
+Status: Redirect (Phase 58+ Update)
 
-This filename is retained because older agent docs still point here, but the nginx/TLS gateway examples on the original page no longer match the active local runtime.
+This filename is retained for backward compatibility with older agent documentation and system hints.
 
-Use these current docs instead:
+The canonical documentation has moved to:
+- [Progressive Disclosure Guide](agent-guides/45-PROGRESSIVE-DISCLOSURE.md)
+
+Related active documentation:
 - `README.md`
 - `docs/agent-guides/01-QUICK-START.md`
 - `docs/agent-guides/20-LOCAL-LLM-USAGE.md`

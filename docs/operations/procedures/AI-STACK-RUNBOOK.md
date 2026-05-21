@@ -290,4 +290,4 @@ scripts/ai/aq-prompt-eval --id quick-check
 - [Architecture Overview](../../architecture/AI-STACK-ARCHITECTURE.md)
 - [API Reference](../../api/hybrid-openapi.yaml)
 - [COSMIC Keyboard Shortcuts](../reference/COSMIC-KEYBOARD-SHORTCUTS.md)
-- [Security Audit](../../SECURITY-AUDIT-DEC-2025.md)
+- [Security Policy](../../architecture/AI-STACK-ARCHITECTURE.md)

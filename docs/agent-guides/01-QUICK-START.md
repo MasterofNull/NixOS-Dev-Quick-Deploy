@@ -60,7 +60,7 @@ asum <file>              # Agentic Sum: AI-optimized file summarization
 ## Required Verification Before Commit
 
 ```bash
-aq-qa 0                                              # 29-check service health
+aq-qa 0                                              # 61-check service health
 scripts/testing/check-mcp-health.sh                  # MCP server reachability
 scripts/governance/quick-deploy-lint.sh --mode fast  # repo lint
 scripts/governance/tier0-validation-gate.sh --pre-commit

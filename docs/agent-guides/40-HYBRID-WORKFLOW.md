@@ -81,7 +81,7 @@ When recording phase completion, pass **only structured key outputs** in `contex
 lifecycle_advance(session_id, context_updates={
     "codebase_summary": "FastAPI app, 1700-line http_server.py, 25 phases complete",
     "existing_plans": ["phase-25-system-hardening-brainstem.md"],
-    "health_status": "39/39 aq-qa checks passing"
+    "health_status": "61/61 aq-qa checks passing"
 })
 
 # WRONG — raw tool output inflates context for all future phases
@@ -111,7 +111,7 @@ Domain is **auto-classified** from prompt keywords. Override with `domain=` para
 No team member has a hardcoded model name. Agents are discovered dynamically from:
 - `SWITCHBOARD_REMOTE_ALIAS_*` env vars (set by Nix)
 - Local switchboard profiles at `:8085`
-- CLI bridge availability at `:8089` (Claude/Codex OAuth if active)
+- Dynamic registration in `agent_capability_registry.py`
 
 ---
 

@@ -101,7 +101,7 @@ x-ai-profile: local-agent
 PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
 PRSI cmds: python3 scripts/automation/prsi-orchestrator.py [sync|list|verify|approve|execute]
 Health: aq-qa 0 | aq-report | journalctl -u ai-*.service -n 30
-Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
+Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8889
 ```
 
 > Note: until the next `nixos-rebuild switch`, `local-agent` falls back to the `default`

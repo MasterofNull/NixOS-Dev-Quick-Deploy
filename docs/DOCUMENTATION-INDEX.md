@@ -16,17 +16,19 @@ This index points to the current operator-facing documentation set for the host-
 
 ## Agent Guides
 
-- `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
-- `docs/agent-guides/01-QUICK-START.md`
-- `docs/agent-guides/02-SERVICE-STATUS.md`
-- `docs/agent-guides/20-LOCAL-LLM-USAGE.md`
+- [System Overview](agent-guides/00-SYSTEM-OVERVIEW.md)
+- [Quick Start](agent-guides/01-QUICK-START.md)
+- [Local LLM Usage](agent-guides/20-LOCAL-LLM-USAGE.md)
+- [Memory System](agent-guides/62-MEMORY-SYSTEM.md)
+- [Agent Tool Contract](agent-guides/47-AGENT-TOOL-CONTRACT.md)
 
-## Deployment and Validation
+## Architecture
 
-- `DEPLOYMENT.md`
-- `docs/testing/TESTING-REFERENCE.md`
-- `docs/operations/OPERATOR-RUNBOOK.md`
+- [System Architecture](architecture/AI-STACK-ARCHITECTURE.md)
+- [Relational Graph](architecture/RELATIONAL-GRAPH.md)
+- [Request Routing Flow](architecture/REQUEST-ROUTING-FLOW.md)
 
 ## Historical or Redirected Docs
 
 Some older filenames remain in place as redirects so existing links do not break. If a doc says it is retired or redirected, follow the replacement links on that page instead of using it as an operator runbook.
+directed, follow the replacement links on that page instead of using it as an operator runbook.

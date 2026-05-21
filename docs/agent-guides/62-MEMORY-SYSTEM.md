@@ -230,7 +230,22 @@ High-value lesson to share across agents?
 
 ---
 
-## 7. Memory Hygiene (Monthly)
+## 7. Health & Validation
+
+Ensure the memory systems are reachable and correctly indexed:
+
+```bash
+# Verify Data Store Health (Layer 1)
+aq-qa 1
+
+# Check Qdrant collections status
+curl -sS http://127.0.0.1:6333/collections | jq
+
+# Re-index AIDB (Manual trigger)
+sudo systemctl start ai-aidb-reindex
+```
+
+## 8. Memory Hygiene (Monthly)
 
 ```bash
 aq-memory list --stale --project ai-stack           # find outdated facts
