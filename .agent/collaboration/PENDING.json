@@ -2,8 +2,8 @@
   "agent": "Codex",
   "task": "Phase 62 safety rails and nsjail sandbox hardening",
   "intent": "Complete and harden the in-progress safety-rails/nsjail slice with fail-closed sandbox semantics, static QA coverage, env-contract entries, and local shell sandbox regression tests.",
-  "status": "validated_focus_pending_tier0",
-  "timestamp": "2026-05-21T03:31:23.733791+00:00",
+  "status": "completed",
+  "timestamp": "2026-05-21T03:40:12.375699+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
     ".agent/collaboration/HANDOFF.md",
@@ -21,7 +21,8 @@
     "YAML parse safety-rails.yaml and env-contract.yaml \u2014 PASS",
     "scripts/testing/verify-flake-first-roadmap-completion.sh \u2014 PASS (609 pass, 0 fail)",
     "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (77 passed, 0 failed, 3 skipped)",
-    "git diff --check \u2014 PASS"
+    "git diff --check \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (16 passed, 0 failed)"
   ],
   "notes": [
     "Hardened shell tool so injection patterns are rejected before shell execution.",
