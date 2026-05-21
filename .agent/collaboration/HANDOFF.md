@@ -1270,3 +1270,28 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Uncommitted external work intentionally left untouched:** `dashboard-v2.html` and `dashboard/VIRTUAL-LAYOUT.json`.
 **Context Bloat:** Low
+
+
+---
+
+# Handoff Memo — 2026-05-21 Phase 63 GraphRAG Knowledge Graph (Codex)
+
+**Status:** Focused validation complete; tier0 pending at memo creation.
+
+**Changes prepared:**
+1. `scripts/ai/aq-index-knowledge-graph` extracts knowledge triples from docs/config and is dry-run by default; `--ingest` is required for AIDB writes.
+2. Indexer supports `--max-triples` to cap dry-run and ingest volume.
+3. `knowledge/graph_search.py` provides bounded GraphRAG vector+BFS search over the `knowledge-graph` project.
+4. Router/server register and initialize `/api/knowledge/graph/search`.
+5. `config/env-contract.yaml` documents `AIDB_API_KEY_FILE` for explicit ingest credentials.
+6. Regression tests cover safe CLI defaults and GraphRAG input clamping/hop expansion.
+
+**Focused validation:**
+- `py_compile` for graph/index/test files — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-aq-index-knowledge-graph.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-knowledge-graph-search.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/ai/aq-index-knowledge-graph --skip-llm --repo-root . --max-triples 5` — PASS
+- `git diff --check` — PASS
+
+**Next:** Run tier0 and commit if green.
+**Context Bloat:** Low
