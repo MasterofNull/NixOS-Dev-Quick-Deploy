@@ -116,5 +116,27 @@ in
       ENABLE_HDR_WSI = lib.mkForce "0";
       DXVK_HDR = lib.mkForce "0";
     };
+
+    # Phase 63.5 — AI stack state paths under /persist (impermanence).
+    # Only active when mySystem.aiStack.impermanence.enable = true AND
+    # the impermanence NixOS module is available in the flake inputs.
+    # /persist must be a mounted filesystem before nixos-rebuild switch.
+    environment.persistence = lib.mkIf cfg.aiStack.impermanence.enable {
+      "${cfg.aiStack.impermanence.persistPath}" = {
+        hideMounts = true;
+        directories = [
+          "/var/lib/ai-stack"
+          "/var/lib/nixos-system-dashboard"
+          "/var/lib/qdrant"
+          "/var/lib/redis-ai"
+        ];
+        users.${cfg.primaryUser} = {
+          directories = [
+            ".config/Continue"
+            ".local/share/nixos-system-dashboard"
+          ];
+        };
+      };
+    };
   };
 }

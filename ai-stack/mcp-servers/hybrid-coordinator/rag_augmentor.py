@@ -187,6 +187,62 @@ class RagAugmentor:
             _record_metrics(res)
             return res
 
+    async def graph_augment(
+        self,
+        query: str,
+        intent: str = "unknown",
+        top_k: int = 5,
+        depth: int = 2,
+    ) -> Dict[str, Any]:
+        """Phase 63.3 — GraphRAG augmentation path.
+
+        Runs BFS-2 graph hop search via graph_search.graph_search() for intents
+        that benefit from structured knowledge: knowledge_lookup + systems_software.
+        Returns the same shape as augment() for easy merging.
+        """
+        _GRAPH_INTENTS = {"knowledge_lookup", "systems_software"}
+        if intent not in _GRAPH_INTENTS:
+            return _skip_result("intent_not_graph", "knowledge-graph")
+
+        try:
+            from knowledge import graph_search as _gs
+            result = await asyncio.wait_for(
+                _gs.graph_search(query, depth=depth, top_k=top_k),
+                timeout=RAG_TIMEOUT_S * 4,  # graph search gets more time
+            )
+        except Exception as exc:
+            logger.debug("rag_augmentor.graph_augment error: %s", exc)
+            return _skip_result("graph_search_error", "knowledge-graph")
+
+        graph_results = result.get("results", [])
+        if not graph_results:
+            return _skip_result("no_graph_hits", "knowledge-graph")
+
+        context_parts = []
+        for i, r in enumerate(graph_results[:top_k], 1):
+            content = (r.get("content") or r.get("text") or "").strip()
+            meta = r.get("metadata", {})
+            subj = meta.get("subject", "")
+            pred = meta.get("predicate", "")
+            obj = meta.get("object", "")
+            if content:
+                context_parts.append(f"[G{i}] {content[:600]}")
+            elif subj and pred and obj:
+                context_parts.append(f"[G{i}] {subj} {pred} {obj}")
+
+        return {
+            "augmented": bool(context_parts),
+            "skipped": not bool(context_parts),
+            "hits": len(graph_results),
+            "context_text": "\n\n".join(context_parts),
+            "latency_ms": result.get("latency_ms", 0),
+            "project": "knowledge-graph",
+            "collection_count": 1,
+            "entity_count": result.get("entity_count", 0),
+            "hop_depth": result.get("hop_depth", 0),
+            "source": "graph_augment",
+        }
+
     async def _search(self, query: str, project: str, top_k: int) -> Dict[str, Any]:
         """Call AIDB /vector/search."""
         headers = {"Content-Type": "application/json"}

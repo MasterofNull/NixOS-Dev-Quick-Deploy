@@ -774,6 +774,14 @@ async def initialize_server():
     except Exception as _clm_exc:
         logger.warning("⚠ ContextLifecycleManager init failed (non-fatal): %s", _clm_exc)
 
+    # Phase 63 — GraphRAG knowledge search
+    try:
+        from knowledge import graph_search as _gs63
+        _gs63.init(aidb_client, aidb_api_key=Config.get("AIDB_API_KEY", ""))
+        logger.info("✓ GraphRAG graph_search initialized (knowledge-graph project)")
+    except Exception as _gs_exc:
+        logger.warning("⚠ graph_search init failed (non-fatal): %s", _gs_exc)
+
     if postgres_client is not None:
         try:
             await _tc54.ensure_schema(postgres_client)

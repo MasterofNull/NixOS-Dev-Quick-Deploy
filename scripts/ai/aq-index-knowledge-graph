@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+"""
+aq-index-knowledge-graph — extract knowledge graph triples and index into AIDB.
+
+Scans docs/ and config/ using Qwen3.6-35B to emit (subject, predicate, object)
+triples; stores each as an AIDB document in the 'knowledge-graph' project.
+
+Re-runs are idempotent: each triple is keyed by source_file + subject + predicate + object.
+
+Usage:
+    aq-index-knowledge-graph [--ingest] [--verbose] [--skip-llm] [--repo-root PATH]
+
+    Default     Scan and extract but do NOT upload to AIDB
+    --ingest    Upload extracted triples to AIDB
+    --skip-llm   Use regex-only extraction (no Qwen call); useful offline
+    --max-triples N  Cap extracted triples before printing or ingesting (default: 1000)
+    --verbose    Print each triple as it is extracted
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterator, List, Optional
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = Path(os.getenv("REPO_ROOT", str(SCRIPT_DIR.parent.parent)))
+
+AIDB_URL = os.getenv("AIDB_URL", "http://127.0.0.1:8002")
+AIDB_KEY_FILE = os.getenv("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key")
+AIDB_PROJECT = "knowledge-graph"
+
+LLAMA_URL = os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080")
+
+SCAN_DIRS = [
+    REPO_ROOT / "docs",
+    REPO_ROOT / "config",
+]
+SCAN_EXTENSIONS = {".md", ".nix", ".yaml", ".yml", ".json"}
+MAX_CHUNK_CHARS = 1200   # ≈ 300-350 tokens; keep prompt within context budget
+MAX_FILE_SIZE = 40_000   # skip very large files
+
+EXTRACTION_PROMPT = """\
+Extract knowledge graph triples from the following text.
+Output one triple per line in the format: SUBJECT | PREDICATE | OBJECT
+Only output triples where all three parts are clear and specific.
+Do not explain or add any other text.
+
+Text:
+{chunk}
+
+Triples:"""
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Triple:
+    subject: str
+    predicate: str
+    object: str
+    source_file: str
+    source_chunk: int
+    tags: List[str] = field(default_factory=list)
+
+    @property
+    def key(self) -> str:
+        return f"{self.source_file}::{self.subject}::{self.predicate}::{self.object}"
+
+    @property
+    def text(self) -> str:
+        return f"{self.subject} {self.predicate} {self.object}"
+
+    @property
+    def title(self) -> str:
+        return f"{self.subject} — {self.predicate} — {self.object}"
+
+
+# ---------------------------------------------------------------------------
+# Regex-based extraction (offline fallback)
+# ---------------------------------------------------------------------------
+
+# Patterns that commonly yield useful triples in NixOS / AI-stack docs
+_REGEX_PATTERNS = [
+    # "X is/are Y" — type declarations
+    re.compile(r'\b([A-Z][a-zA-Z0-9-_]+)\s+(?:is|are)\s+(a|an|the)\s+([a-zA-Z0-9 _-]{3,40})', re.MULTILINE),
+    # "X depends on Y"
+    re.compile(r'\b([a-zA-Z][a-zA-Z0-9_-]+)\s+(depends on|requires|uses|extends|wraps|calls)\s+([a-zA-Z][a-zA-Z0-9._/-]{2,40})', re.IGNORECASE | re.MULTILINE),
+    # "X → Y" (mermaid / flow arrows)
+    re.compile(r'\b([a-zA-Z][a-zA-Z0-9_-]+)\s*[-→>]+\s*([a-zA-Z][a-zA-Z0-9_-]+)', re.MULTILINE),
+    # Nix option: "mySystem.X.Y = Z" → (mySystem.X, Y, Z)
+    re.compile(r'\b(mySystem\.[a-zA-Z.]+)\s*=\s*([^\n;]{3,60})', re.MULTILINE),
+]
+
+
+def _extract_regex(text: str, source_file: str, chunk_idx: int) -> Iterator[Triple]:
+    for pat in _REGEX_PATTERNS:
+        for m in pat.finditer(text):
+            groups = [g.strip() for g in m.groups() if g]
+            if len(groups) >= 2:
+                subj = groups[0][:80]
+                pred = groups[1][:60] if len(groups) >= 3 else "relates-to"
+                obj = groups[-1][:80]
+                if subj and obj and subj.lower() != obj.lower():
+                    yield Triple(
+                        subject=subj, predicate=pred, object=obj,
+                        source_file=source_file, source_chunk=chunk_idx,
+                        tags=["regex-extracted"],
+                    )
+
+
+# ---------------------------------------------------------------------------
+# Qwen-based extraction
+# ---------------------------------------------------------------------------
+
+
+def _call_qwen(chunk: str) -> Optional[str]:
+    """Call Qwen3.6-35B via llama.cpp to extract triples. Returns raw response text."""
+    payload = json.dumps({
+        "model": "local",
+        "messages": [
+            {"role": "user", "content": EXTRACTION_PROMPT.format(chunk=chunk)},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.1,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode()
+    req = urllib.request.Request(
+        f"{LLAMA_URL}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception as exc:
+        sys.stderr.write(f"  [qwen] extraction call failed: {exc}\n")
+        return None
+
+
+def _parse_qwen_triples(response: str, source_file: str, chunk_idx: int) -> Iterator[Triple]:
+    """Parse 'SUBJECT | PREDICATE | OBJECT' lines from Qwen response."""
+    for line in response.splitlines():
+        line = line.strip()
+        if "|" not in line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 3:
+            continue
+        subj, pred, obj = parts[0][:80], parts[1][:60], parts[2][:80]
+        if subj and pred and obj and subj.lower() != obj.lower():
+            yield Triple(
+                subject=subj, predicate=pred, object=obj,
+                source_file=source_file, source_chunk=chunk_idx,
+                tags=["qwen-extracted"],
+            )
+
+
+# ---------------------------------------------------------------------------
+# File scanning
+# ---------------------------------------------------------------------------
+
+
+def _chunk_text(text: str) -> List[str]:
+    """Split text into overlapping chunks of MAX_CHUNK_CHARS."""
+    chunks: List[str] = []
+    overlap = MAX_CHUNK_CHARS // 4
+    step = MAX_CHUNK_CHARS - overlap
+    for i in range(0, len(text), step):
+        chunks.append(text[i:i + MAX_CHUNK_CHARS])
+    return chunks or [""]
+
+
+def scan_repo(root: Path, skip_llm: bool, verbose: bool) -> List[Triple]:
+    """Scan configured directories and extract triples from each file."""
+    seen_keys: set = set()
+    all_triples: List[Triple] = []
+
+    for scan_dir in SCAN_DIRS:
+        if not scan_dir.exists():
+            continue
+        for path in sorted(scan_dir.rglob("*")):
+            if path.suffix not in SCAN_EXTENSIONS or not path.is_file():
+                continue
+            if path.stat().st_size > MAX_FILE_SIZE:
+                continue
+            try:
+                text = path.read_text(errors="replace")
+            except OSError:
+                continue
+            rel = str(path.relative_to(root))
+            chunks = _chunk_text(text)
+            for ci, chunk in enumerate(chunks):
+                if skip_llm:
+                    triples = list(_extract_regex(chunk, rel, ci))
+                else:
+                    raw = _call_qwen(chunk)
+                    if raw:
+                        triples = list(_parse_qwen_triples(raw, rel, ci))
+                    else:
+                        triples = list(_extract_regex(chunk, rel, ci))
+
+                for t in triples:
+                    if t.key not in seen_keys:
+                        seen_keys.add(t.key)
+                        all_triples.append(t)
+                        if verbose:
+                            print(f"  [{rel}:{ci}] {t.subject} | {t.predicate} | {t.object}")
+
+                if not skip_llm:
+                    time.sleep(0.1)  # gentle pacing
+
+    return all_triples
+
+
+# ---------------------------------------------------------------------------
+# AIDB upload
+# ---------------------------------------------------------------------------
+
+
+def _aidb_key() -> str:
+    try:
+        return Path(AIDB_KEY_FILE).read_text().strip()
+    except OSError:
+        return os.getenv("AIDB_API_KEY", "")
+
+
+def _ingest(triple: Triple, key: str) -> bool:
+    payload = json.dumps({
+        "content": triple.text,
+        "project": AIDB_PROJECT,
+        "relative_path": triple.key,
+        "title": triple.title,
+        "metadata": {
+            "subject": triple.subject,
+            "predicate": triple.predicate,
+            "object": triple.object,
+            "source_file": triple.source_file,
+            "source_chunk": triple.source_chunk,
+            "tags": triple.tags,
+        },
+    }).encode()
+    req = urllib.request.Request(
+        f"{AIDB_URL}/documents",
+        data=payload,
+        headers={"Content-Type": "application/json", "X-API-Key": key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status in (200, 201)
+    except Exception as exc:
+        sys.stderr.write(f"  ERR {triple.title[:60]}: {exc}\n")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--ingest", action="store_true", help="upload extracted triples to AIDB; default is dry-run")
+    p.add_argument("--skip-llm", action="store_true", help="use regex-only extraction")
+    p.add_argument("--verbose", action="store_true")
+    p.add_argument("--repo-root", default=str(REPO_ROOT))
+    p.add_argument("--max-triples", type=int, default=1000, help="cap extracted triples before dry-run output or ingest")
+    args = p.parse_args()
+
+    root = Path(args.repo_root).resolve()
+    print(f"[kg-index] scanning repo: {root}")
+    if args.skip_llm:
+        print("[kg-index] mode: regex-only (--skip-llm)")
+    else:
+        print(f"[kg-index] mode: Qwen3.6-35B extraction ({LLAMA_URL})")
+
+    triples = scan_repo(root, skip_llm=args.skip_llm, verbose=args.verbose)
+    if len(triples) > args.max_triples:
+        print(f"[kg-index] capping triples {len(triples)} -> {args.max_triples}")
+        triples = triples[:args.max_triples]
+    print(f"[kg-index] extracted {len(triples)} unique triples")
+
+    if not args.ingest:
+        for t in triples[:20]:
+            print(f"  {t.subject:30s} | {t.predicate:20s} | {t.object}")
+        if len(triples) > 20:
+            print(f"  ... and {len(triples) - 20} more")
+        print("[kg-index] dry-run only; pass --ingest to upload to AIDB")
+        return 0
+
+    key = _aidb_key()
+    if not key:
+        sys.stderr.write("[kg-index] ERROR: AIDB API key not found\n")
+        return 1
+
+    ok_count = 0
+    for triple in triples:
+        if _ingest(triple, key):
+            ok_count += 1
+        time.sleep(0.05)
+
+    print(f"[kg-index] ingested {ok_count}/{len(triples)} triples into AIDB project '{AIDB_PROJECT}'")
+    return 0 if ok_count > 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
