@@ -94,6 +94,9 @@ _GC_STALE_DAYS = int(os.getenv("AI_VECTOR_GC_STALE_DAYS", "180"))
 
 # Embedding character limit (prevents HTTP 400 from embed server on large documents)
 _EMBED_MAX_CHARS: int = int(os.getenv('EMBED_MAX_CHARS', '6000'))
+_QDRANT_VECTORIZE_MAX_CONCURRENCY: int = int(os.getenv("AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY", "2"))
+_QDRANT_VECTORIZE_MAX_QUEUE: int = int(os.getenv("AIDB_QDRANT_VECTORIZE_MAX_QUEUE", "16"))
+_QDRANT_VECTORIZE_TIMEOUT_S: float = float(os.getenv("AIDB_QDRANT_VECTORIZE_TIMEOUT_S", "45"))
 
 
 def _apply_relevance_decay(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -768,7 +771,7 @@ class VectorStore:
                     sa.text(
                         """
                         UPDATE document_embeddings
-                        SET metadata = metadata || jsonb_build_object('last_accessed_at', :ts::text)
+                        SET metadata = metadata || jsonb_build_object('last_accessed_at', :ts)
                         WHERE id = ANY(:ids)
                         """
                     ),
@@ -1739,15 +1742,12 @@ class MonitoringServer:
             )
             # Fire-and-forget background vectorization into Qdrant knowledge collection.
             # Allows the hybrid-coordinator to retrieve imported documents via semantic search.
-            asyncio.create_task(
-                self.mcp_server._vectorize_doc_to_qdrant(
-                    title=doc.get("title", ""),
-                    content=doc.get("content", ""),
-                    project=doc.get("project", "default"),
-                    relative_path=doc.get("relative_path", ""),
-                    source_trust_level=source_trust_level,
-                ),
-                name="vectorize_doc",
+            self.mcp_server.schedule_qdrant_vectorization(
+                title=doc.get("title", ""),
+                content=doc.get("content", ""),
+                project=doc.get("project", "default"),
+                relative_path=doc.get("relative_path", ""),
+                source_trust_level=source_trust_level,
             )
             return {"status": "ok", "message": "Document imported successfully"}
 
@@ -2163,6 +2163,11 @@ class MCPServer:
         )
         self._server_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
+        self._qdrant_vectorize_semaphore = asyncio.Semaphore(max(1, _QDRANT_VECTORIZE_MAX_CONCURRENCY))
+        self._qdrant_vectorize_pending = 0
+        self._qdrant_vectorize_completed = 0
+        self._qdrant_vectorize_failed = 0
+        self._qdrant_vectorize_skipped = 0
         self._vector_store = VectorStore(settings, self._engine)
         self._rag_pipeline = RAGPipeline(
             search_vectors=self.search_vectors,
@@ -2588,6 +2593,7 @@ class MCPServer:
             "medium_risk_tool_keywords": list(MEDIUM_RISK_TOOL_KEYWORDS),
         }
         status["outbound_http_policy"] = _ssrf_policy_config()
+        status["background_vectorization"] = self.qdrant_vectorization_status()
 
         # Circuit breaker states
         status["circuit_breakers"] = {
@@ -2821,6 +2827,68 @@ class MCPServer:
             LOGGER.warning("embedding_llama_cpp_fallback_failed: %s", exc)
             errors.append(f"llama:{exc}")
         raise RuntimeError(f"all_embedding_backends_failed ({'; '.join(errors)})")
+
+    def qdrant_vectorization_status(self) -> Dict[str, Any]:
+        """Return operator-visible background Qdrant vectorization pressure."""
+        return {
+            "pending": self._qdrant_vectorize_pending,
+            "completed": self._qdrant_vectorize_completed,
+            "failed": self._qdrant_vectorize_failed,
+            "skipped": self._qdrant_vectorize_skipped,
+            "max_concurrency": max(1, _QDRANT_VECTORIZE_MAX_CONCURRENCY),
+            "max_queue": max(0, _QDRANT_VECTORIZE_MAX_QUEUE),
+            "timeout_s": _QDRANT_VECTORIZE_TIMEOUT_S,
+        }
+
+    def schedule_qdrant_vectorization(
+        self,
+        *,
+        title: str,
+        content: str,
+        project: str,
+        relative_path: str,
+        source_trust_level: str = "unknown",
+    ) -> bool:
+        """Schedule bounded background vectorization without starving foreground search."""
+        max_queue = max(0, _QDRANT_VECTORIZE_MAX_QUEUE)
+        if _QDRANT_VECTORIZE_MAX_CONCURRENCY <= 0 or max_queue <= 0:
+            self._qdrant_vectorize_skipped += 1
+            LOGGER.info("qdrant_vectorize_skipped disabled title=%s", title)
+            return False
+        if self._qdrant_vectorize_pending >= max_queue:
+            self._qdrant_vectorize_skipped += 1
+            LOGGER.warning(
+                "qdrant_vectorize_skipped queue_full pending=%d max_queue=%d title=%s",
+                self._qdrant_vectorize_pending,
+                max_queue,
+                title,
+            )
+            return False
+
+        self._qdrant_vectorize_pending += 1
+
+        async def _runner() -> None:
+            try:
+                async with self._qdrant_vectorize_semaphore:
+                    await asyncio.wait_for(
+                        self._vectorize_doc_to_qdrant(
+                            title=title,
+                            content=content,
+                            project=project,
+                            relative_path=relative_path,
+                            source_trust_level=source_trust_level,
+                        ),
+                        timeout=max(1.0, _QDRANT_VECTORIZE_TIMEOUT_S),
+                    )
+                self._qdrant_vectorize_completed += 1
+            except Exception as exc:  # noqa: BLE001
+                self._qdrant_vectorize_failed += 1
+                LOGGER.warning("qdrant_vectorize_failed title=%s error=%s", title, exc)
+            finally:
+                self._qdrant_vectorize_pending = max(0, self._qdrant_vectorize_pending - 1)
+
+        asyncio.create_task(_runner(), name="vectorize_doc")
+        return True
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         tracer = trace.get_tracer(SERVICE_NAME)

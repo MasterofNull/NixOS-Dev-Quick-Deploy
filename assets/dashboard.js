@@ -121,21 +121,42 @@ async function loadKPIs() {
   window._aiMetrics = aiM;
 
   if (metrics) {
-    setText('kpiLocalPct', pct(metrics.llm_routing_local_pct));
-    setText('kpiCacheHit', pct(metrics.embedding_cache_hit_rate_pct));
-    setText('kpiEval',     pct(metrics.eval_latest_pct));
-    setText('kpiHintPct',  pct(metrics.hint_adoption_pct));
+    const localPct = metrics.llm_routing_local_pct;
+    const evalPct  = metrics.eval_latest_pct;
+    const cacheHit = metrics.embedding_cache_hit_rate_pct;
+    const hintPct  = metrics.hint_adoption_pct;
+    setText('kpiLocalPct', pct(localPct));
+    setText('kpiCacheHit', pct(cacheHit));
+    setText('kpiEval',     pct(evalPct));
+    setText('kpiHintPct',  pct(hintPct));
+    // KPI ribbon coloring — lower values are concerning here (inverted thresholds)
+    if (localPct != null) setColor('kpiLocalPct', localPct < 20 ? 'err' : localPct < 50 ? 'warn' : 'ok');
+    if (evalPct  != null) setColor('kpiEval',     evalPct  < 50 ? 'err' : evalPct  < 70 ? 'warn' : 'ok');
+    if (cacheHit != null) setColor('kpiCacheHit', cacheHit < 20 ? 'warn' : 'ok');
+    // Color header health score
+    const scoreEl = document.getElementById('healthScore');
+    if (scoreEl && evalPct != null) {
+      scoreEl.classList.remove('warn', 'err');
+      if (evalPct < 50) scoreEl.classList.add('err');
+      else if (evalPct < 70) scoreEl.classList.add('warn');
+    }
   }
   if (aiM) {
     const ip = aiM.infra_probes || {};
     const kb = aiM.knowledge_base || {};
     const sv = aiM.services || {};
-    setText('kpiRedis',    ip.redis_ping_ok    === true ? 'OK' : ip.redis_ping_ok === false ? 'ERR' : '--');
-    setText('kpiPg',       ip.postgres_query_ok === true ? 'OK' : ip.postgres_query_ok === false ? 'ERR' : '--');
-    setText('kpiQdrant',   (sv.qdrant || {}).status  || '--');
+    const redisOk = ip.redis_ping_ok; const pgOk = ip.postgres_query_ok;
+    setText('kpiRedis',    redisOk === true ? 'OK' : redisOk === false ? 'ERR' : '--');
+    setText('kpiPg',       pgOk    === true ? 'OK' : pgOk    === false ? 'ERR' : '--');
+    setColor('kpiRedis',   redisOk === true ? 'ok' : redisOk === false ? 'err' : 'info');
+    setColor('kpiPg',      pgOk    === true ? 'ok' : pgOk    === false ? 'err' : 'info');
+    const qdStatus = (sv.qdrant || {}).status || '';
+    setText('kpiQdrant', qdStatus || '--');
+    setColor('kpiQdrant', statusColor(qdStatus));
     setText('kpiVectors',  kb.total_points != null ? kb.total_points.toLocaleString() : '--');
     const hc = sv.hybrid_coordinator || sv.hybrid || {};
-    setText('kpiCoord',    hc.status || '--');
+    setText('kpiCoord', hc.status || '--');
+    setColor('kpiCoord', statusColor(hc.status));
   }
   setText('lastUpdate', new Date().toLocaleTimeString());
 }
@@ -169,15 +190,19 @@ async function loadSystem() {
     const cpuPct = cpu.usage_percent; const memPct = mem.percent; const dskPct = dsk.percent;
     const gpuPct = gpu.busy_percent;
 
-    if (cpuPct != null) { setText('vCpu', pctD(cpuPct)); pushHist(histCpu, cpuPct); updateSpark('spCpu', histCpu); colorStatTile('statCpu', cpuPct); }
-    if (gpuPct != null) { setText('vGpu', pctD(gpuPct)); pushHist(histGpu, gpuPct); updateSpark('spGpu', histGpu); colorStatTile('statGpu', gpuPct); }
-    if (memPct != null) { setText('vMem', pctD(memPct)); pushHist(histMem, memPct); updateSpark('spMem', histMem); }
-    if (dskPct != null)  setText('vDisk', pctD(dskPct));
+    if (cpuPct != null) { setText('vCpu', pctD(cpuPct)); pushHist(histCpu, cpuPct); updateSpark('spCpu', histCpu); colorStatTile('statCpu', cpuPct, 75, 90, 'spCpu'); }
+    if (gpuPct != null) { setText('vGpu', pctD(gpuPct)); pushHist(histGpu, gpuPct); updateSpark('spGpu', histGpu); colorStatTile('statGpu', gpuPct, 80, 95, 'spGpu'); }
+    if (memPct != null) { setText('vMem', pctD(memPct)); pushHist(histMem, memPct); updateSpark('spMem', histMem); colorStatTile('statMem', memPct, 80, 92, 'spMem'); }
+    if (dskPct != null) { setText('vDisk', pctD(dskPct)); colorStatTile('statDisk', dskPct, 82, 94); }
+    const connCount = net.active_connections ?? 0;
     const netMB = net.bytes_sent != null ? ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + 'MB' : '--';
     setText('vNet', netMB);
+    pushHist(histNet, connCount); updateSpark('spNet', histNet);
     setText('vConnections', net.active_connections ?? '--');
     setText('cpuModel',  cpu.model ? cpu.model.replace(/\s+/g, ' ').trim() : '--');
-    setText('cpuTemp',   cpu.temperature || '--');
+    const tempRaw = cpu.temperature;
+    setText('cpuTemp', tempRaw ? `${tempRaw}°C` : '--');
+    if (tempRaw) colorStatTile('statTemp', parseFloat(tempRaw), 75, 90);
     setText('cpuCores',  cpu.count ?? '--');
     setText('gpuName',   gpu.name ? gpu.name.split(']').pop().trim() : '--');
     setText('gpuVram',   gpu.vram_used_mb && gpu.vram_total_mb ? `${gpu.vram_used_mb}/${gpu.vram_total_mb}MB` : '--');
@@ -185,21 +210,63 @@ async function loadSystem() {
     setText('memTotal',  mem.total ? bytes(mem.total) : '--');
     setText('dskFree',   dsk.free  ? bytes(dsk.free)  : '--');
     setText('dskTotal',  dsk.total ? bytes(dsk.total) : '--');
-    // hostname from CPU arch or use system api
     if (cpu.arch) setText('hostname', `${cpu.arch} · ${cpu.count ?? '?'} cores`);
+    renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw: parseFloat(tempRaw) || null });
   }
   if (metrics) {
     setText('kpiLocalPct', pct(metrics.llm_routing_local_pct));
     const evalPct = metrics.eval_latest_pct;
-    if (evalPct != null) { setText('vStack', pct(evalPct)); }
+    if (evalPct != null) {
+      setText('vStack', pct(evalPct));
+      colorStatTile('statEval', evalPct, 70, 50);  // inverted: low score = bad
+    }
   }
 }
 
-function colorStatTile(id, v) {
+// ─── ALERT RENDERER ──────────────────────────────────────────────────────────
+function renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw }) {
+  const el = document.getElementById('alertItems');
+  if (!el) return;
+  const alerts = [];
+  const check = (label, val, w, e) => {
+    if (val == null) return;
+    if (val >= e) alerts.push({ cls: 'err', sev: 'ERR',  label, val: `${val.toFixed(1)}%` });
+    else if (val >= w) alerts.push({ cls: 'warn', sev: 'WARN', label, val: `${val.toFixed(1)}%` });
+  };
+  check('CPU',  cpuPct, 75, 90);
+  check('GPU',  gpuPct, 80, 95);
+  check('MEM',  memPct, 80, 92);
+  check('DISK', dskPct, 82, 94);
+  if (tempRaw != null) {
+    if (tempRaw >= 90) alerts.push({ cls: 'err',  sev: 'ERR',  label: 'TEMP', val: `${tempRaw}°C` });
+    else if (tempRaw >= 75) alerts.push({ cls: 'warn', sev: 'WARN', label: 'TEMP', val: `${tempRaw}°C` });
+  }
+  if (!alerts.length) {
+    el.innerHTML = '<span style="color:var(--fg3);font-size:.6rem">Nominal</span>';
+    return;
+  }
+  el.innerHTML = alerts.map(a =>
+    `<div class="deck-alert ${a.cls}">
+      <span class="deck-alert-sev" style="color:${a.cls === 'err' ? 'var(--red)' : 'var(--yel)'}">${a.sev}</span>
+      <span class="deck-alert-msg">${a.label}</span>
+      <span class="deck-alert-meta">${a.val}</span>
+    </div>`
+  ).join('');
+}
+
+// ─── DYNAMIC COLORING HELPERS ────────────────────────────────────────────────
+function deckClass(v, w, e) { return v >= e ? 'err' : v >= w ? 'warn' : 'ok'; }
+
+function colorStatTile(id, v, warnT = 70, errT = 90, sparkId = null) {
   const el = document.getElementById(id);
   if (!el) return;
+  const cls = deckClass(v, warnT, errT);
   el.classList.remove('ok', 'warn', 'err', 'cy');
-  el.classList.add(v > 90 ? 'err' : v > 70 ? 'warn' : 'cy');
+  el.classList.add(cls === 'ok' ? 'cy' : cls);   // keep 'cy' for nominal
+  if (sparkId) {
+    const sp = document.getElementById(sparkId);
+    if (sp) { sp.classList.remove('warn', 'err'); if (cls !== 'ok') sp.classList.add(cls); }
+  }
 }
 
 // ─── OVERVIEW: AI SERVICES ────────────────────────────────────────────────────
@@ -416,6 +483,8 @@ async function loadAIDB() {
   const el = document.getElementById('aidbDetails');
   if (!el) return;
   const kb = (aiM && aiM.knowledge_base) || {};
+  const aidbSvc = (aiM && aiM.services && aiM.services.aidb) || {};
+  const bgv = (aidbSvc.health_check && aidbSvc.health_check.background_vectorization) || {};
   const lv = (det && det.liveness) || {};
   const rd = (det && det.readiness) || {};
   setText('aidbBadge', lv.status || '--');
@@ -425,6 +494,9 @@ async function loadAIDB() {
     fwRow('Startup',   det ? (det.startup_complete ? 'yes' : 'no') : '--', det && det.startup_complete ? 'ok' : 'warn'),
     fwRow('Vectors',   kb.total_points != null ? kb.total_points.toLocaleString() : '--'),
     fwRow('Real Embeddings', kb.real_embeddings_percent != null ? pctD(kb.real_embeddings_percent) : '--'),
+    fwRow('Vectorize Pending', bgv.pending ?? '--', bgv.pending > 0 ? 'warn' : ''),
+    fwRow('Vectorize Done/Fail', bgv.completed != null ? `${bgv.completed}/${bgv.failed ?? 0}` : '--', bgv.failed > 0 ? 'warn' : ''),
+    fwRow('Vectorize Skipped', bgv.skipped ?? '--', bgv.skipped > 0 ? 'warn' : ''),
   ];
   if (kb.collections) {
     Object.entries(kb.collections).forEach(([k, v]) => rows.push(fwRow(`  ${k}`, v)));

@@ -417,6 +417,27 @@ variables:
     consumers: [aq-index-knowledge-graph]
     description: "Path to the AIDB API key used by the knowledge graph indexer when --ingest is enabled"
 
+  - canonical: AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY
+    aliases: []
+    default: "2"
+    layer: nix
+    consumers: [aidb]
+    description: "Maximum concurrent background Qdrant vectorization tasks launched by AIDB imports"
+
+  - canonical: AIDB_QDRANT_VECTORIZE_MAX_QUEUE
+    aliases: []
+    default: "16"
+    layer: nix
+    consumers: [aidb]
+    description: "Maximum pending background Qdrant vectorization tasks before AIDB skips new fire-and-forget import vectorization"
+
+  - canonical: AIDB_QDRANT_VECTORIZE_TIMEOUT_S
+    aliases: []
+    default: "45"
+    layer: nix
+    consumers: [aidb]
+    description: "Per-document timeout in seconds for AIDB background Qdrant vectorization"
+
   - canonical: QDRANT_URL
     aliases: []
     default: "http://127.0.0.1:6333"

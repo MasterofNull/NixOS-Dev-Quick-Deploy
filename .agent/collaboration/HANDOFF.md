@@ -1295,3 +1295,39 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Next:** Run tier0 and commit if green.
 **Context Bloat:** Low
+
+---
+
+# Handoff Memo — 2026-05-21 AIDB Vectorization Backpressure + Visibility (Codex)
+
+**Status:** Repo validation complete; deploy/switch still required for the AIDB code path to become live.
+
+**Issue found:** `ai-aidb-reindex.service` had been running for ~10h and was ingesting thousands of repo chunks. Each import launched unbounded fire-and-forget Qdrant vectorization in the currently deployed AIDB, starving foreground `/vector/search` and causing `aq-qa 0` failure `0.7.4`.
+
+**Runtime stabilization performed:**
+- Restarted hung `llama-cpp-embed.service`.
+- Force-restarted `ai-aidb.service` after stale workers blocked clean stop.
+- Stopped `ai-aidb-reindex.service`; timer remains active, next trigger is 2026-05-22 04:55:47 PDT.
+- Direct AIDB `/vector/search` recovered after stopping reindex.
+
+**Code/docs/dashboard changes prepared:**
+1. AIDB background Qdrant vectorization is bounded by concurrency, queue, and timeout env vars.
+2. AIDB `/health` now exposes `background_vectorization` counters for pending/completed/failed/skipped work.
+3. Command Center AIDB Health card displays those vectorization counters.
+4. Env contract, Nix service env, AIDB README, and parity plan were updated so docs/dashboard visibility are part of the change contract.
+5. Fixed AIDB `last_accessed_at` metadata update SQL syntax for pgvector result access tracking.
+
+**Validation:**
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`82 passed, 0 failed, 3 skipped`)
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`16 passed, 0 failed`)
+- `py_compile` changed Python routes/server — PASS
+- `node --check assets/dashboard.js` — PASS
+- `nix-instantiate --parse nix/modules/services/mcp-servers.nix` — PASS
+- `git diff --check` — PASS
+
+**Important:** Do not restart the reindex job until this patch is deployed, or it can recreate the same foreground search starvation on the old AIDB code.
+
+**Unowned dirty files observed and intentionally not classified as Codex-owned:**
+- `dashboard/backend/api/routes/aistack.py`
+- `dashboard/backend/api/routes/models.py`
+
