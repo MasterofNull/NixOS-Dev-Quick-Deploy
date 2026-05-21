@@ -1397,3 +1397,22 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 **Runtime note:** Dashboard backend route becomes live after the next system switch/restart of `command-center-dashboard-api.service`.
 **Repo drift not included:** `nix/hosts/hyperd/facts.nix` remains whitespace-only deploy drift.
 **Context Bloat:** Low
+
+---
+
+# Handoff Memo — 2026-05-21 Hybrid Learning Export Permission Fix (Codex)
+
+**Status:** Validated; pending commit at memo write.
+
+**Issue:** Post-switch repo-backed capability verification failed because `/learning/export` could not write `/var/lib/ai-stack/hybrid/fine-tuning/dataset_export.jsonl`. Live state showed `fine-tuning` and dataset files owned by `hyperd:users`, while `ai-hybrid-coordinator.service` runs as `ai-hybrid:ai-stack`.
+
+**Fix:** Added declarative tmpfiles rules for `hybrid/fine-tuning` directory and dataset files, including a `z` ownership repair rule for existing drift. Added dry-run failure-mode checks and runbook guidance.
+
+**Focused validation:**
+- `nix-instantiate --parse nix/modules/services/mcp-servers.nix` — PASS.
+- `bash -n scripts/testing/check-dryrun-failure-modes.sh` — PASS.
+- `git diff --check` — PASS.
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`17 passed, 0 failed`).
+
+**Activation needed:** another system switch is required for tmpfiles to repair live ownership.
+**Context Bloat:** Low

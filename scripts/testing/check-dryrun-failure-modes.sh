@@ -110,6 +110,10 @@ echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/security/npm"))' >/dev/null
   || die "systemd.tmpfiles.rules missing /security/npm directory declaration"
 echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/hybrid"))' >/dev/null \
   || die "systemd.tmpfiles.rules missing /hybrid directory declaration"
+echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/hybrid/fine-tuning 0750"))' >/dev/null \
+  || die "systemd.tmpfiles.rules missing writable hybrid fine-tuning directory declaration"
+echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/hybrid/fine-tuning/dataset_export.jsonl 0660"))' >/dev/null \
+  || die "systemd.tmpfiles.rules missing writable hybrid fine-tuning export file"
 echo "${tmpfiles_json}" | jq -e 'any(.[]; contains("/hybrid/telemetry/aidb-reindex-latest.json 0660"))' >/dev/null \
   || die "systemd.tmpfiles.rules missing writable aidb reindex summary file"
 

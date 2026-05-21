@@ -1,42 +1,33 @@
 {
   "agent": "Codex",
-  "task": "S2 tool registry security metadata lint and dashboard visibility",
-  "intent": "Add effective sandbox/security metadata to local-agent tool definitions, validate built-in registry declarations, and expose registry security posture through Command Center harness overview.",
-  "status": "committed",
-  "timestamp": "2026-05-21T15:38:38.594840+00:00",
+  "task": "Fix post-switch learning export permission drift",
+  "intent": "Add declarative tmpfiles ownership repair for hybrid fine-tuning outputs after post-flight /learning/export failed with EACCES.",
+  "status": "validated_pending_commit",
+  "timestamp": "2026-05-21T15:58:11.501073+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
-    "ai-stack/local-agents/tool_registry.py",
-    "scripts/testing/test-tool-registry-security-metadata.py",
-    "dashboard/backend/api/routes/aistack.py",
-    "assets/dashboard.js",
-    "docs/development/local-agent-tool-reference.md",
-    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
+    "nix/modules/services/mcp-servers.nix",
+    "scripts/testing/check-dryrun-failure-modes.sh",
+    "docs/operations/procedures/AI-STACK-RUNBOOK.md",
     ".agent/collaboration/HANDOFF.md"
   ],
-  "guardrails": [
-    "Preserve existing tool call schema compatibility for llama.cpp prompts.",
-    "Use effective defaults where legacy declarations omit metadata; validate effective registry state.",
-    "Expose summary metrics in dashboard to satisfy cross-surface visibility."
+  "evidence": [
+    "/learning/export HTTP 500: permission denied /var/lib/ai-stack/hybrid/fine-tuning/dataset_export.jsonl",
+    "live directory owned hyperd:users while ai-hybrid-coordinator runs as ai-hybrid:ai-stack"
   ],
-  "validation_pending": [
-    "py_compile changed Python",
-    "new registry metadata test",
-    "node --check dashboard JS",
-    "tier0 pre-commit"
+  "guardrails": [
+    "Use declarative tmpfiles z/f ownership repair, not one-off chown.",
+    "Do not include whitespace-only facts.nix drift."
   ],
   "validation": [
-    "py_compile tool_registry.py, aistack.py, test-tool-registry-security-metadata.py \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-tool-registry-security-metadata.py \u2014 PASS (13 tools)",
-    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS",
-    "node --check assets/dashboard.js \u2014 PASS",
+    "nix-instantiate --parse nix/modules/services/mcp-servers.nix \u2014 PASS",
+    "bash -n scripts/testing/check-dryrun-failure-modes.sh \u2014 PASS",
     "git diff --check \u2014 PASS",
+    "tmpfiles/runbook grep evidence confirms fine-tuning ownership rules \u2014 PASS",
+    "tool registry metadata test and dashboard JS syntax still pass",
     "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (17 passed, 0 failed)"
   ],
   "next": [
-    "Deploy/switch or restart command-center-dashboard-api.service when ready to activate dashboard backend route changes.",
-    "Continue S2 remaining runtime MCP auth/profile enforcement or move to S5 observability path view.",
-    "Keep nix/hosts/hyperd/facts.nix whitespace-only drift out of semantic commits unless explicitly accepted."
-  ],
-  "commit": "feat(security): expose tool registry sandbox metadata (current HEAD)"
+    "Run tier0, commit fix, redeploy/switch so tmpfiles applies ownership repair, then re-run post-flight learning export."
+  ]
 }
