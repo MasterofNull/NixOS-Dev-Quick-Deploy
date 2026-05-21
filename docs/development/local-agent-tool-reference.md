@@ -7,6 +7,33 @@
 
 ---
 
+## Security Metadata Contract
+
+Every effective `ToolDefinition` includes sandbox and audit metadata in addition
+to its function schema:
+
+- `sandbox_profile` — one of `config/runtime-isolation-profiles.json`
+  (`readonly-strict`, `execute-guarded`, or `worktree-guarded`).
+- `resource_roots` — declared filesystem roots the tool is expected to touch.
+- `timeout_seconds` and `output_cap_bytes` — bounded execution/output limits.
+- `artifact_retention` — whether outputs are discarded or retained for audit.
+- `secret_policy` — secret handling posture; defaults deny secret access.
+- `network_policy` — currently `none` or `loopback`.
+
+Legacy local-agent tool declarations get conservative effective defaults from
+`ai-stack/local-agents/tool_registry.py`. New tools may override those fields,
+but registry lint must still pass:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-tool-registry-security-metadata.py
+```
+
+The AI Command Center `/harness/overview` payload exposes
+`policies.tool_registry_security` so operators can see whether enabled tools have
+complete sandbox/security metadata.
+
+---
+
 ## Tool Categories
 
 - [File Operations](#file-operations) (5 tools)

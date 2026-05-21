@@ -1,28 +1,42 @@
 {
   "agent": "Codex",
-  "task": "Reconcile parity plan status after security/safety commits",
-  "intent": "Update PARITY-INTEGRATION-PLAN.md to reflect completed static security contract and Phase 62 safety/nsjail work while preserving remaining runtime implementation items.",
-  "status": "validated_pending_commit",
-  "timestamp": "2026-05-21T14:28:08.341680+00:00",
+  "task": "S2 tool registry security metadata lint and dashboard visibility",
+  "intent": "Add effective sandbox/security metadata to local-agent tool definitions, validate built-in registry declarations, and expose registry security posture through Command Center harness overview.",
+  "status": "committed",
+  "timestamp": "2026-05-21T15:38:38.594840+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
+    "ai-stack/local-agents/tool_registry.py",
+    "scripts/testing/test-tool-registry-security-metadata.py",
+    "dashboard/backend/api/routes/aistack.py",
+    "assets/dashboard.js",
+    "docs/development/local-agent-tool-reference.md",
     ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
     ".agent/collaboration/HANDOFF.md"
   ],
   "guardrails": [
-    "Do not mark runtime sandbox/delegation/MCP enforcement complete unless backed by implemented code/tests.",
-    "Do not modify unstaged whitespace-only facts.nix drift."
+    "Preserve existing tool call schema compatibility for llama.cpp prompts.",
+    "Use effective defaults where legacy declarations omit metadata; validate effective registry state.",
+    "Expose summary metrics in dashboard to satisfy cross-surface visibility."
   ],
   "validation_pending": [
-    "security contract static test",
-    "tier0 pre-commit if committed"
+    "py_compile changed Python",
+    "new registry metadata test",
+    "node --check dashboard JS",
+    "tier0 pre-commit"
   ],
   "validation": [
+    "py_compile tool_registry.py, aistack.py, test-tool-registry-security-metadata.py \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-tool-registry-security-metadata.py \u2014 PASS (13 tools)",
     "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS",
-    "Parity plan diff reviewed: statuses changed only from Pending to bounded PARTIAL/DONE where backed by committed artifacts"
+    "node --check assets/dashboard.js \u2014 PASS",
+    "git diff --check \u2014 PASS",
+    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (17 passed, 0 failed)"
   ],
   "next": [
-    "Commit parity plan status reconciliation.",
-    "Next implementation candidate: remaining S2 registry lint/runtime profile enforcement or S5 observability path view, depending on active agent ownership."
-  ]
+    "Deploy/switch or restart command-center-dashboard-api.service when ready to activate dashboard backend route changes.",
+    "Continue S2 remaining runtime MCP auth/profile enforcement or move to S5 observability path view.",
+    "Keep nix/hosts/hyperd/facts.nix whitespace-only drift out of semantic commits unless explicitly accepted."
+  ],
+  "commit": "feat(security): expose tool registry sandbox metadata (current HEAD)"
 }

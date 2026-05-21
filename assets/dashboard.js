@@ -215,7 +215,11 @@ async function loadSystem() {
     setText('cpuTemp', tempStr || '--');
     if (tempRaw) colorStatTile('statTemp', tempRaw, 75, 90);
     setText('cpuCores',  cpu.count ?? '--');
-    setText('gpuName',   gpu.name ? gpu.name.split(']').pop().trim() : '--');
+    const gpuMatches = gpu.name ? gpu.name.match(/\[([^\]]+)\]/g) : null;
+    const gpuDisplay = gpuMatches && gpuMatches.length > 1
+      ? gpuMatches[gpuMatches.length - 1].slice(1, -1)
+      : (gpu.name || '--').split(']').pop().replace(/\(rev[^)]+\)/, '').trim();
+    setText('gpuName', gpuDisplay || '--');
     setText('gpuVram',   gpu.vram_used_mb && gpu.vram_total_mb ? `${gpu.vram_used_mb}/${gpu.vram_total_mb} MB` : '--');
     setText('memUsed',   mem.used  ? bytes(mem.used)  : '--');
     setText('memTotal',  mem.total ? bytes(mem.total) : '--');
@@ -794,6 +798,7 @@ async function loadHardening() {
   const s    = h.stats || {};
   const pl   = d.policies || {};
   const card = h.scorecard || {};
+  const trs  = pl.tool_registry_security || {};
   const infe = card.inference_optimizations || {};
   const disc = card.discovery || {};
   const acc  = card.acceptance || {};
@@ -802,6 +807,8 @@ async function loadHardening() {
     fwRow('Status',       d.status || '--', statusColor(d.status)),
     fwRow('Scorecards',   s.scorecards_generated ?? '--', s.scorecards_generated > 0 ? 'ok' : 'info'),
     fwRow('Safety Mode',  pl.safety_mode || '--', 'info'),
+    fwRow('Tool Metadata', trs.available ? (trs.complete ? 'complete' : `${trs.missing_count ?? '?'} missing`) : 'unavailable', trs.available && trs.complete ? 'ok' : 'warn'),
+    fwRow('Tool Profiles', trs.enabled_tools != null ? `${Object.keys(trs.sandbox_profiles || {}).length}/${trs.enabled_tools}` : '--', trs.complete ? 'ok' : 'info'),
     fwRow('Lesson Refs',  (s.active_lesson_refs || []).length),
   ].join('');
 
