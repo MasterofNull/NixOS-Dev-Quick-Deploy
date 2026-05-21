@@ -110,6 +110,7 @@ class MemoryBroker:
         ttl_seconds: Optional[int] = None,
         valid_from: Optional[datetime] = None,
         valid_until: Optional[datetime] = None,
+        event_time: Optional[datetime] = None,  # Phase 60.1: when the real-world event occurred
         source: str = "coordinator",
         check_contradictions: bool = True,
         supersede: bool = True,
@@ -154,6 +155,10 @@ class MemoryBroker:
             "memory_type": memory_type,
             "valid_from": valid_from.isoformat(),
             "valid_until": valid_until.isoformat() if valid_until else None,
+            # Phase 60.1: bitemporal — event_time = when the real-world event occurred
+            # ingestion_time is implicit (now). event_time defaults to ingestion_time.
+            "event_time": (event_time or now).isoformat(),
+            "ingestion_time": now.isoformat(),
             "source": source,
             "broker_write": True,
         }
@@ -219,6 +224,7 @@ class MemoryBroker:
         top_k: int = 5,
         include_expired: bool = False,
         include_superseded: bool = False,
+        valid_at: Optional[datetime] = None,  # Phase 60.1: time-travel — return facts valid at this instant
     ) -> List[Dict[str, Any]]:
         """
         Retrieve memory entries relevant to query.
@@ -254,8 +260,11 @@ class MemoryBroker:
 
         rows = raw.get("results", []) if isinstance(raw, dict) else []
         
-        # 1. Temporal Filter
-        if not include_expired:
+        # 1. Temporal Filter (Phase 60.1: supports valid_at time-travel)
+        if valid_at is not None:
+            # Time-travel: return only facts valid at the specified instant
+            rows = [r for r in rows if _is_valid_at(r, valid_at)]
+        elif not include_expired:
             rows = [r for r in rows if not _is_expired(r)]
             
         # 2. Supersession Filter (Phase 55.1)
@@ -351,6 +360,27 @@ def _is_expired(row: Dict[str, Any]) -> bool:
         return datetime.now(timezone.utc) > valid_until
     except (ValueError, TypeError):
         return False
+
+
+def _is_valid_at(row: Dict[str, Any], point_in_time: datetime) -> bool:
+    """Phase 60.1: Return True if the fact was valid at `point_in_time`.
+
+    A fact is valid at T when:
+      valid_from <= T  AND  (valid_until IS NULL OR valid_until > T)
+    """
+    meta = row.get("metadata") or {}
+    try:
+        vf = meta.get("valid_from")
+        vu = meta.get("valid_until")
+        valid_from = datetime.fromisoformat(vf) if vf else None
+        valid_until = datetime.fromisoformat(vu) if vu else None
+        if valid_from and point_in_time < valid_from:
+            return False
+        if valid_until and point_in_time >= valid_until:
+            return False
+        return True
+    except (ValueError, TypeError):
+        return True  # parse error → include rather than silently drop
 
 
 # ---------------------------------------------------------------------------

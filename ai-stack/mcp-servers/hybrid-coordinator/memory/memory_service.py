@@ -35,7 +35,8 @@ async def handle_memory_facts_post(request: web.Request) -> web.Response:
     """POST /api/memory/facts — store structured facts from aq-commit-facts.
 
     Writes each fact to MemoryBroker semantic store with valid_from=now().
-    Body: {"facts": [{"fact":str, "scope":str, "confidence":float, "source":str}]}
+    Body: {"facts": [{"fact":str, "scope":str, "confidence":float, "source":str,
+                      "event_time":str (ISO 8601, optional — Phase 60.1 bitemporal)}]}
     """
     try:
         data = await request.json()
@@ -55,10 +56,23 @@ async def handle_memory_facts_post(request: web.Request) -> web.Response:
         fact_text = str(f.get("fact") or "").strip()[:500]
         if not fact_text:
             continue
+        # Phase 60.1: parse optional event_time for bitemporal writes
+        from datetime import datetime, timezone as _tz
+        event_time_dt = None
+        event_time_raw = f.get("event_time")
+        if event_time_raw:
+            try:
+                event_time_dt = datetime.fromisoformat(str(event_time_raw))
+                if event_time_dt.tzinfo is None:
+                    event_time_dt = event_time_dt.replace(tzinfo=_tz.utc)
+            except (ValueError, TypeError):
+                pass
+
         try:
             result = await mb.write(
                 memory_type="semantic",
                 content=fact_text,
+                event_time=event_time_dt,
                 context={
                     "scope":      str(f.get("scope") or "other")[:64],
                     "confidence": float(f.get("confidence") or 0.8),
@@ -79,13 +93,27 @@ async def handle_memory_facts_post(request: web.Request) -> web.Response:
 async def handle_memory_facts_get(request: web.Request) -> web.Response:
     """GET /api/memory/facts — retrieve stored facts (used by aq-session-start).
 
-    Query params: scope=<str> (filter by scope), limit=<int> (default 10)
+    Query params:
+      scope=<str>       — filter by scope
+      limit=<int>       — default 10, max 50
+      valid_at=<iso8601> — Phase 60.1: time-travel; return facts valid at this instant
     """
+    from datetime import datetime, timezone as _tz
     scope = request.rel_url.query.get("scope", "")
     try:
         limit = max(1, min(int(request.rel_url.query.get("limit", "10")), 50))
     except (ValueError, TypeError):
         limit = 10
+
+    valid_at = None
+    valid_at_str = request.rel_url.query.get("valid_at", "")
+    if valid_at_str:
+        try:
+            valid_at = datetime.fromisoformat(valid_at_str)
+            if valid_at.tzinfo is None:
+                valid_at = valid_at.replace(tzinfo=_tz.utc)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "invalid valid_at format; use ISO 8601"}, status=400)
 
     mb = memory_broker.get_broker()
     try:
@@ -93,6 +121,7 @@ async def handle_memory_facts_get(request: web.Request) -> web.Response:
             memory_type="semantic",
             query=scope or "procedural constraints",
             top_k=limit,
+            valid_at=valid_at,
         )
     except Exception as _exc:
         return web.json_response({"facts": [], "error": str(_exc)})
@@ -104,10 +133,14 @@ async def handle_memory_facts_get(request: web.Request) -> web.Response:
         if scope and ctx.get("scope", "") != scope:
             continue
         facts.append({
-            "fact":       content[:500],
-            "scope":      ctx.get("scope", ""),
-            "confidence": ctx.get("confidence", 0.8),
-            "source":     ctx.get("source", ""),
+            "fact":         content[:500],
+            "scope":        ctx.get("scope", ""),
+            "confidence":   ctx.get("confidence", 0.8),
+            "source":       ctx.get("source", ""),
+            "event_time":   ctx.get("event_time"),      # Phase 60.1: bitemporal
+            "ingestion_time": ctx.get("ingestion_time"),
+            "valid_from":   ctx.get("valid_from"),
+            "valid_until":  ctx.get("valid_until"),
         })
     return web.json_response({"facts": facts[:limit]})
 
