@@ -108,12 +108,22 @@ async def list_models(request: Request):
     _check_auth(request)
     if not _LIFECYCLE_AVAILABLE:
         return _stub_catalog()
-    registry = get_registry()
-    models = await registry.list_models()
-    # Enrich with disk presence
+    try:
+        registry = get_registry()
+        models = await registry.list_models()
+    except PermissionError as e:
+        logger.warning("models route: permission denied scanning model dir: %s", e)
+        return _stub_catalog()
+    except Exception as e:
+        logger.error("models route: unexpected error listing models: %s", e)
+        return _stub_catalog()
+    # Enrich with disk presence — guard against PermissionError on restricted model dirs
     for m in models:
         local = m.get("local_path")
-        m["file_exists"] = bool(local and Path(local).exists())
+        try:
+            m["file_exists"] = bool(local and Path(local).exists())
+        except PermissionError:
+            m["file_exists"] = None
     return {"models": models, "count": len(models)}
 
 

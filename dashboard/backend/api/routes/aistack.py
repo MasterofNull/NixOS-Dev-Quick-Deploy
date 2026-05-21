@@ -2036,6 +2036,15 @@ async def proxy_eval_trend() -> Dict[str, Any]:
     return await fetch_with_fallback(f"{SERVICES['hybrid']}/eval/trend", {"available": False})
 
 
+@router.get("/traces/drift")
+async def proxy_traces_drift() -> Dict[str, Any]:
+    """Proxy coordinator /traces/drift for drift analysis (Phase 55)."""
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/traces/drift",
+        {"drift_score": None, "intent_flip_rate": None, "latency_degradation": None, "available": False},
+    )
+
+
 @router.get("/ai/remediation/latest")
 async def get_latest_remediation() -> Dict[str, Any]:
     """Fetch the latest auto-remediation result."""
