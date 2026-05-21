@@ -120,18 +120,18 @@ gates model quality before any higher-level feature work.
 
 ---
 
-### Phase 62 — Wasmtime Execution Sandbox + Dialogue Safety Rails
-**Goal:** Replace filesystem-only tool isolation with WASM process boundary; add structured safety rails.
+### Phase 62 — nsjail Execution Sandbox + Dialogue Safety Rails
+**Goal:** Replace filesystem-only tool isolation with Linux namespace sandboxing via `nsjail`; add structured safety rails. AM-C3 supersedes the original Wasmtime/WASI direction.
 **Depends on:** Phase 61 (context management stabilized first)
-**Rebuild required:** Yes (Wasmtime NixOS package)
+**Rebuild required:** Yes (`pkgs.nsjail` NixOS package)
 
 | Slice | Task | Owner | Gate |
 |-------|------|-------|------|
-| 62.1 | Add `wasmtime` to `hybridPython` nixpkgs deps in `nix/modules/services/mcp-servers.nix` | Claude | nixos-rebuild; `python3 -c "import wasmtime"` |
-| 62.2 | `WasmSandbox` wrapper in `runtime_manager.py`: wrap `run_command_handler` calls in Wasmtime WASI runtime for SAFE_COMMANDS that produce output (read-only); fall back to subprocess for write ops | Codex | `py_compile`; sandbox smoke: `ls` via WASI |
+| 62.1 | Add `pkgs.nsjail` to `nix/modules/services/mcp-servers.nix` / runtime environment | Claude | nixos-rebuild; `command -v nsjail` |
+| 62.2 | `NsjailSandbox` wrapper in `runtime_manager.py`: wrap `run_command_handler` calls with Linux namespace policy for SAFE_COMMANDS; fall back only on explicit policy | Codex | `py_compile`; sandbox smoke: read-only `ls` via nsjail |
 | 62.3 | Structured safety rails in `evidence_safety_handlers.py`: Colang-inspired rule DSL in `config/safety-rails.yaml`; rules evaluated per-request before tool dispatch | Codex | `bash -n`; `python3 -c "import yaml; yaml.safe_load(...)"` |
 | 62.4 | `config/safety-rails.yaml`: 5 baseline rails (no-shell-injection, no-path-traversal, no-credential-exfil, no-recursive-delegation, budget-ceiling) | Claude | tier0 config-lint PASS |
-| 62.5 | aq-qa checks 6.2.1–6.2.3: Wasmtime import, safety-rails.yaml schema, sandbox smoke | Claude | `aq-qa 6` 12/12 pass |
+| 62.5 | aq-qa checks 6.2.1–6.2.3: nsjail availability, safety-rails.yaml schema, sandbox smoke | Claude | `aq-qa 6` 12/12 pass |
 | 62.6 | nixos-rebuild | User (terminal) | aq-qa 0 green |
 
 **Commit scope:** `nix/modules/services/mcp-servers.nix`, `runtime_manager.py`, `evidence_safety_handlers.py`, `config/safety-rails.yaml`
@@ -184,7 +184,7 @@ Target (Phase 60-63):
 
 - [ ] Every new Python dependency added to `hybridPython` in `nix/modules/services/mcp-servers.nix`
 - [ ] No bare `pip install` — all packages via nixpkgs or `buildPythonPackage`
-- [ ] Wasmtime: `python312Packages.wasmtime` available in nixpkgs 24.11+
+- [ ] nsjail: `pkgs.nsjail` available in nixpkgs and compatible with service hardening profile
 - [ ] pgvectorscale: NOT in nixpkgs — use Qdrant (already deployed) for Phase 60/61; revisit in Phase 64
 - [ ] Impermanence: `nix-community/impermanence` NixOS module via flake input in `flake.nix`
 - [ ] All state paths declared in tmpfiles rules AND in `/persist` binds — no implicit persistent paths
@@ -198,7 +198,7 @@ Target (Phase 60-63):
 |-------|---------|---------|-----------------|
 | 60 | Bitemporal memory + RAGAS eval | Yes (60.8) | 8 slices |
 | 61 | AgentRM context lifecycle | Yes (61.7) | 7 slices |
-| 62 | Wasmtime sandbox + safety rails | Yes (62.6) | 6 slices |
+| 62 | nsjail sandbox + safety rails | Yes (62.6) | 6 slices |
 | 63 | GraphRAG + NixOS impermanence | Yes (63.7) | 7 slices |
 
 Batch 60+63 rebuilds when possible (they don't overlap). Phase 61 and 62 have independent
@@ -247,7 +247,7 @@ rebuild cycles. Suggested order: 60 → 63.4-63.5 (Nix-only, same rebuild) → 6
 | Section 7 — RAGAS | explodinggradients/ragas | Phase 60 |
 | Section 7 — Langfuse | langfuse/langfuse | Phase 60 (prompt_version_id) |
 | Section 7 — DeepEval | confident-ai/deepeval | Phase 60 |
-| Section 4 — E2B / Wasmtime | e2b-dev/E2B, wasmtime | Phase 62 |
+| Section 4 — E2B / nsjail/Wasmtime comparison | e2b-dev/E2B, nsjail, wasmtime | Phase 62 |
 | Section 4 — NeMo-Guardrails | NVIDIA/NeMo-Guardrails | Phase 62 |
 | Section 6 — GraphRAG | microsoft/graphrag | Phase 63 |
 | Section 14 — Impermanence | nix-community/impermanence | Phase 63 |

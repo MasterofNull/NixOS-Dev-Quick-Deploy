@@ -143,3 +143,18 @@ After rebuild, all aq-qa 0.4.1 gate failures should resolve once llama model fin
 ---
 
 *All four agents authorized to proceed. Phase A implementation begins immediately.*
+
+---
+
+## v0.3 External Parity Supplement Sign-Off Status
+
+The team review for external parity additions completed on 2026-05-21. The supplement does not revoke the v0.2 implementation authorization; it adds gates and future slices that must be respected before expanding autonomous, remote, or distributed capability.
+
+Accepted planning supplements:
+
+- `EXTERNAL-PARITY-AMENDMENTS.md`
+- `PARITY-INTEGRATION-PLAN.md`
+- `MAEAH-SECURITY-CONTRACT-GATES.md`
+- `AGENT-PARITY-REVIEW.md`
+
+Implementation sequencing constraint: finish coordinator refactor stabilization and live gates before runtime code changes for these supplements. Documentation/security-gate corrections may proceed independently.
