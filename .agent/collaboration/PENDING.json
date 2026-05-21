@@ -1,34 +1,27 @@
 {
-  "agent": "Codex",
-  "task": "Coordinator R2.6 Strangler Fig refactor review after agent check-in",
-  "intent": "After checking durable collaboration/delegation state and latest commits, validate R2.6 extracted route ownership against current branch state before live deployment.",
+  "agent": "Claude",
+  "task": "Phase 59.1 \u2014 RAG recall improvement + drift metric cleanup",
+  "intent": "Exclude empty-query warmup traces from drift window; increase RAG top_k 3\u21925",
   "files": [
-    ".agent/collaboration/PENDING.json",
-    ".agent/collaboration/HANDOFF.md",
-    ".agent/collaboration/PULSE.log",
-    "scripts/testing/test-coordinator-strangler-route-ownership.py"
+    "ai-stack/mcp-servers/hybrid-coordinator/drift_analyzer.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/rag_augmentor.py"
   ],
-  "status": "validated_pending_commit",
-  "timestamp": "2026-05-20T21:49:27.066827+00:00",
+  "status": "committed_pending_rebuild",
+  "timestamp": "2026-05-21T00:30:00+00:00",
   "plan_references": [
-    ".agents/plans/multi-agent-edge-harness/COMBINED-PRD.md",
-    ".agents/plans/multi-agent-edge-harness/PLAN-SIGNOFF.md",
-    ".agent/collaboration/HANDOFF.md Phase 59/R2 notes"
+    ".agent/collaboration/HANDOFF.md Phase 59.1 notes"
   ],
   "completed": [
-    "Checked aq-collaborate, PULSE, PENDING, delegation registry, recent git commits, and dirty tree before proceeding",
-    "Identified 06c4911f R2.6 as current branch baseline rather than assuming R2.5-only state",
-    "Expanded Strangler Fig route ownership contract to cover R2.6 InsightsService, ControlService, and AgentService routes",
-    "Confirmed R2.6 service-like router import/route smoke passes under hybrid coordinator runtime python and PYTHONPATH"
+    "drift_analyzer.py: filter query IS NOT NULL AND query != \"\" to exclude warmup traces from intent_flip_rate",
+    "rag_augmentor.py: default top_k 3 \u2192 5 for broader recall window",
+    "py_compile gates passed for both files"
   ],
   "remaining": [
-    "Run tier0 pre-commit gate",
-    "Commit R2.6 ownership test update",
-    "After rebuild/switch, run live R2.2-R2.6 endpoint gates before runtime acceptance"
+    "nixos-rebuild switch to deploy coordinator changes",
+    "verify drift intent_flip_rate drops from 0.632 post-rebuild"
   ],
   "guardrails": [
-    "do not claim live refactor acceptance before NixOS rebuild/switch deploys the current repo revision",
-    "do not bulk-default Phase 58B promoted domains",
+    "do not spawn aq-report inline from async handlers",
     "no route ownership changes without matching contract coverage"
   ]
 }
