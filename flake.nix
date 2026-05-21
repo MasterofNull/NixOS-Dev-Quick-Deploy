@@ -21,6 +21,13 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Phase 63.4: NixOS impermanence — declarative /persist state paths for AI stack.
+    # Enabled per-host via mySystem.aiStack.impermanence.enable = true (default: false).
+    # Requires a /persist filesystem to be mounted before nixos-rebuild activates.
+    impermanence = {
+      url = "github:nix-community/impermanence";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixified-ai = {
       url = "github:nixified-ai/flake";
     };
@@ -160,6 +167,11 @@
                   hasLanzabooteInput
                   && inputs.lanzaboote ? nixosModules
                   && inputs.lanzaboote.nixosModules ? lanzaboote;
+                hasImpermanenceInput = builtins.hasAttr "impermanence" inputs;
+                hasImpermanenceModule =
+                  hasImpermanenceInput
+                  && inputs.impermanence ? nixosModules
+                  && inputs.impermanence.nixosModules ? impermanence;
                 wantsDisko = (config.mySystem.disk.layout or "none") != "none";
                 wantsSecureboot = config.mySystem.secureboot.enable or false;
               in
@@ -170,7 +182,8 @@
                 imports =
                   lib.optional moduleExists nixosHardwareModules.${moduleName}
                   ++ lib.optional hasDiskoModule inputs.disko.nixosModules.disko
-                  ++ lib.optional hasLanzabooteModule inputs.lanzaboote.nixosModules.lanzaboote;
+                  ++ lib.optional hasLanzabooteModule inputs.lanzaboote.nixosModules.lanzaboote
+                  ++ lib.optional hasImpermanenceModule inputs.impermanence.nixosModules.impermanence;
                 warnings =
                   lib.optional (moduleName != null && !hasNixosHardwareInput)
                     "nixos-hardware module '${moduleName}' requested but flake input 'nixos-hardware' is not configured."

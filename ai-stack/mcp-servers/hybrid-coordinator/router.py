@@ -249,6 +249,9 @@ def create_app(
     # Phase 61: ContextLifecycleManager (/context/lifecycle/*)
     _register_clm_routes(app)
 
+    # Phase 63: GraphRAG knowledge search (/api/knowledge/graph/search)
+    _register_graph_search_routes(app)
+
     return app
 
 
@@ -256,3 +259,13 @@ def _register_clm_routes(app: web.Application) -> None:
     """Phase 61: Register CLM routes (/context/lifecycle/status, /context/lifecycle/evict/{id})."""
     from knowledge import context_lifecycle_manager as _clm
     _clm.register_routes(app)
+
+
+def _register_graph_search_routes(app: web.Application) -> None:
+    """Phase 63: Register GraphRAG search route (/api/knowledge/graph/search)."""
+    try:
+        from knowledge import graph_search as _gs
+        _gs.register_routes(app)
+    except Exception as exc:
+        import logging
+        logging.getLogger("hybrid-coordinator").warning("GraphRAG route registration skipped: %s", exc)

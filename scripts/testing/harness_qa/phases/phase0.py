@@ -1124,6 +1124,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))
+    results.extend(_check_graphrag(ctx))
     return results
 
 
@@ -1196,6 +1197,108 @@ def _check_clm(ctx: RunContext) -> list[CheckResult]:
         results.append(passed(4, "61.4", f"GET /context/lifecycle/status OK (pressure={data.get('pressure_pct')}%)"))
     else:
         results.append(failed(4, "61.4", "GET /context/lifecycle/status", f"unexpected response: {list(data.keys())[:5]}"))
+
+    return results
+
+
+def _check_graphrag(ctx: RunContext) -> list[CheckResult]:
+    """Phase 63: GraphRAG knowledge extraction + NixOS impermanence."""
+    results: list[CheckResult] = []
+
+    kg_indexer = ctx.repo_root / "scripts" / "ai" / "aq-index-knowledge-graph"
+    graph_search = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+        / "knowledge" / "graph_search.py"
+    )
+    rag_aug = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+        / "rag_augmentor.py"
+    )
+    host_class = (
+        ctx.repo_root
+        / "nix" / "modules" / "host-classes" / "p14s-amd-ai-workstation.nix"
+    )
+
+    # 63.1 — aq-index-knowledge-graph: script exists + dry-run exits 0
+    if not kg_indexer.exists():
+        results.append(failed(4, "63.1", "aq-index-knowledge-graph", "script missing"))
+    else:
+        import subprocess as _sp
+        try:
+            r = _sp.run(
+                ["python3", str(kg_indexer), "--skip-llm", "--repo-root", str(ctx.repo_root)],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r.returncode == 0 and "extracted" in r.stdout:
+                triple_count = 0
+                for token in r.stdout.split():
+                    try:
+                        triple_count = int(token)
+                        break
+                    except ValueError:
+                        pass
+                results.append(passed(4, "63.1", f"aq-index-knowledge-graph --skip-llm exits 0 ({triple_count} triples)"))
+            else:
+                results.append(failed(4, "63.1", "aq-index-knowledge-graph --skip-llm", r.stdout[:60] + r.stderr[:60]))
+        except Exception as exc:
+            results.append(failed(4, "63.1", "aq-index-knowledge-graph", str(exc)[:80]))
+
+    # 63.2 — graph_search.py: BFS-2 handler + register_routes present
+    if not graph_search.exists():
+        results.append(failed(4, "63.2", "graph_search.py", "file missing"))
+    else:
+        text = graph_search.read_text()
+        checks = {
+            "graph_search() function": "async def graph_search" in text,
+            "BFS-2 depth param": "depth" in text and "hop" in text,
+            "register_routes": "register_routes" in text,
+            "/api/knowledge/graph/search route": "/api/knowledge/graph/search" in text,
+            "entity extraction": "_extract_entities" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "63.2", "graph_search.py", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "63.2", "graph_search.py BFS-2 handler (entity extraction + register_routes)"))
+
+    # 63.3 — rag_augmentor.py: graph_augment() method for knowledge_lookup / systems_software
+    if not rag_aug.exists():
+        results.append(failed(4, "63.3", "rag_augmentor.py graph_augment", "file missing"))
+    else:
+        text = rag_aug.read_text()
+        checks = {
+            "graph_augment method": "async def graph_augment" in text,
+            "knowledge_lookup intent gate": "knowledge_lookup" in text,
+            "systems_software intent gate": "systems_software" in text,
+            "graph_search import": "graph_search" in text,
+            "hop_depth in result": "hop_depth" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "63.3", "rag_augmentor graph_augment", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "63.3", "rag_augmentor.graph_augment() (knowledge_lookup + systems_software gates)"))
+
+    # 63.4 — NixOS impermanence: option declared + host-class wired
+    if not host_class.exists():
+        results.append(failed(4, "63.4", "impermanence host-class config", "p14s-amd-ai-workstation.nix missing"))
+    else:
+        text = host_class.read_text()
+        checks = {
+            "environment.persistence block": "environment.persistence" in text,
+            "/var/lib/ai-stack in persist": "/var/lib/ai-stack" in text,
+            "/var/lib/nixos-system-dashboard in persist": "/var/lib/nixos-system-dashboard" in text,
+            "impermanence.enable guard": "impermanence.enable" in text,
+            "hideMounts": "hideMounts" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "63.4", "impermanence host-class", f"missing: {', '.join(missing)}"))
+        else:
+            # /persist not required to exist here — it's a nixos-rebuild gate
+            results.append(passed(4, "63.4", "impermanence declared in host-class (enable-flag guarded, /persist optional)"))
 
     return results
 
