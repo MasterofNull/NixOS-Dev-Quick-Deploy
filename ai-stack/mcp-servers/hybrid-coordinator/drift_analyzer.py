@@ -137,7 +137,7 @@ class DriftAnalyzer:
             """
             SELECT intent, retrieval_hits, total_ms
             FROM query_traces
-            WHERE query IS NOT NULL AND query != ''
+            WHERE query_text IS NOT NULL AND query_text != ''
             ORDER BY trace_at DESC
             LIMIT %s
             """,
