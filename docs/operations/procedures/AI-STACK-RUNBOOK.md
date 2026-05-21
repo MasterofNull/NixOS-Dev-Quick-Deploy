@@ -76,6 +76,13 @@ model. The deploy preflight and `llama-cpp-model-fetch` unit must validate the
 concrete catalog file and stamp `*.source-meta` for existing unpinned catalog
 models instead of starting a replacement multi-GB download.
 
+Dashboard model inventory should not require write access to the model store,
+but the `command-center-dashboard-api` unit does need the `llama` supplementary
+group and executable directory mode on `/var/lib/llama-cpp` and its `models`
+subdirectory. If `/api/models` logs permission errors, check the deployed
+service `SupplementaryGroups` and tmpfiles mode repair rules before changing
+application code.
+
 **Recovery:**
 ```bash
 # Full restart sequence
