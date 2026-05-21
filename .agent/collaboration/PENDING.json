@@ -1,27 +1,55 @@
 {
-  "agent": "Claude",
-  "task": "Phase 59.1 \u2014 RAG recall improvement + drift metric cleanup",
-  "intent": "Exclude empty-query warmup traces from drift window; increase RAG top_k 3\u21925",
+  "agent": "Codex",
+  "task": "Phase 60 parity continuation + bitemporal memory validation/fix",
+  "intent": "Fix confirmed bitemporal recall/supersession edge cases found during collaborator review, while keeping parity docs and implementation changes clearly separated.",
   "files": [
-    "ai-stack/mcp-servers/hybrid-coordinator/drift_analyzer.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/rag_augmentor.py"
+    "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/memory_broker.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/memory_superseder.py",
+    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
+    ".agents/plans/multi-agent-edge-harness/EXTERNAL-PARITY-AMENDMENTS.md",
+    ".agents/plans/multi-agent-edge-harness/PHASE-A-ACCEPTANCE-CRITERIA.md",
+    ".agents/plans/PHASE-60-ECOSYSTEM-INTEGRATION-PRD.md"
   ],
-  "status": "committed_pending_rebuild",
-  "timestamp": "2026-05-21T00:30:00+00:00",
+  "status": "completed_committed",
+  "timestamp": "2026-05-21T02:43:02.158474+00:00",
   "plan_references": [
     ".agent/collaboration/HANDOFF.md Phase 59.1 notes"
   ],
   "completed": [
-    "drift_analyzer.py: filter query IS NOT NULL AND query != \"\" to exclude warmup traces from intent_flip_rate",
-    "rag_augmentor.py: default top_k 3 \u2192 5 for broader recall window",
-    "py_compile gates passed for both files"
+    "Rechecked collaboration state, recent commits, active processes, host memory pressure, and service health",
+    "Confirmed refactor line moved past R2.9; latest active line is Phase 60 memory/RAG/eval",
+    "Ran aq-session-start and aq-hints for current context",
+    "Spawned read-only collaborators for Phase 60 implementation risk and parity-plan alignment",
+    "Patched parity docs per collaborator review: current dirty-state caveat, v0.3 loopback-auth correction, memory field naming, Phase 62 nsjail normalization",
+    "Validated and committed MAEAH external parity supplement docs",
+    "Fixed Phase 60.2 bitemporal supersession semantics: epoch valid_at support, historical recall filter target, post-store supersession recording, and time-aware supersession cache checks",
+    "Validated and committed memory correctness fix",
+    "Validated and committed runtime smoke script maintenance updates"
   ],
   "remaining": [
-    "nixos-rebuild switch to deploy coordinator changes",
-    "verify drift intent_flip_rate drops from 0.632 post-rebuild"
+    "Current live coordinator uses Nix store code and may need rebuild/switch to activate 68af538d memory changes",
+    "Next recommended implementation slice: bitemporal retrieval traceability pack tests/fixtures before sandbox/governance implementation",
+    "Monitor local model memory pressure; llama-server remains the dominant RSS consumer"
   ],
   "guardrails": [
-    "do not spawn aq-report inline from async handlers",
-    "no route ownership changes without matching contract coverage"
+    "keep docs-only parity commit separable from implementation commit",
+    "do not widen runtime surface beyond Phase 60.2 memory correctness",
+    "run focused memory tests and aq-qa before handoff"
+  ],
+  "validation": [
+    "PYTHONDONTWRITEBYTECODE=1 py_compile memory_manager.py memory_broker.py memory_superseder.py drift_analyzer.py \u2014 PASS",
+    "bitemporal temporal/supersession smoke \u2014 PASS",
+    "pytest -q test_memory_superseder.py test-memory-recall-broker-contract.py \u2014 PASS (3 passed)",
+    "aq-memory-recall-benchmark --json \u2014 PASS (20/20)",
+    "aq-qa 0 --json \u2014 PASS (66 passed / 0 failed / 3 skipped)",
+    "validate-runtime-declarative.sh \u2014 PASS",
+    "smoke-security-audit-compliance.sh \u2014 PASS",
+    "tier0-validation-gate.sh --pre-commit \u2014 PASS"
+  ],
+  "commits": [
+    "487c42e3 docs(plan): add MAEAH external parity supplement",
+    "68af538d fix(memory): preserve bitemporal supersession semantics",
+    "4196da07 test(runtime): update refactor validation smokes"
   ]
 }
