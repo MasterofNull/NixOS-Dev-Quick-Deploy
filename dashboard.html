@@ -489,6 +489,22 @@
       <div class="card-hd"><span class="card-title">Performance Hotspots</span><span class="card-badge badge-ok" id="perfHotspotBadge">--</span></div>
       <div id="perfHotspotDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Orchestration Sessions</span><span class="card-badge badge-info" id="orchSessionBadge">--</span></div>
+      <div id="orchSessionDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">RAG Pipeline Health</span><span class="card-badge badge-ok" id="ragHealthBadge">--</span></div>
+      <div id="ragHealthDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Routing Frontdoor</span><span class="card-badge badge-info" id="routingConfigBadge">--</span></div>
+      <div id="routingConfigDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Homeostasis &amp; Remediation</span><span class="card-badge badge-ok" id="homeostasisBadge">--</span></div>
+      <div id="homeostasisDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -523,6 +539,14 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">Security Compliance</span><span class="card-badge badge-info" id="secComplianceBadge">--</span></div>
       <div id="secComplianceDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Vulnerability Audit</span><span class="card-badge badge-ok" id="vulnAuditBadge">--</span></div>
+      <div id="vulnAuditDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Audit Log Summary</span><span class="card-badge badge-info" id="auditSummaryBadge">--</span></div>
+      <div id="auditSummaryDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
@@ -562,6 +586,26 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">Learning Pipeline</span><span class="card-badge badge-ok" id="learnPipelineBadge">active</span></div>
       <div id="learnPipelineDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">RALPH Task Tracker</span><span class="card-badge badge-info" id="ralphBadge">--</span></div>
+      <div id="ralphDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Training Data Capture</span><span class="card-badge badge-info" id="trainingDataBadge">--</span></div>
+      <div id="trainingDataDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">System Controls</span><span class="card-badge badge-info">actions</span></div>
+      <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.3rem">
+        <button class="mini-btn" onclick="loadQA()" style="text-align:left">Run QA Phase 0</button>
+        <button class="mini-btn" onclick="ctrlAction('/actions/restart-all','POST',null,'Restart all AI stack services?')" style="text-align:left">Restart AI Stack</button>
+        <button class="mini-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)" style="text-align:left">Execute PRSI Queue</button>
+        <button class="mini-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)" style="text-align:left">Sync PRSI State</button>
+        <button class="mini-btn" onclick="forceLayerRefresh()" style="text-align:left">Refresh OSI Health</button>
+        <button class="mini-btn" onclick="refreshAll()" style="text-align:left">Refresh All Panels</button>
+      </div>
+      <div id="ctrlResult" style="margin-top:.4rem;font-size:.6rem;font-family:var(--hud)"></div>
     </div>
   </div>
 </div>

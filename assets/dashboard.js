@@ -901,12 +901,124 @@ async function loadAgentEvalTrends() {
   }).join('') || fwRow('Status', 'No agent data yet');
 }
 
+// ─── INTELLIGENCE: ORCHESTRATION SESSIONS ────────────────────────────────────
+async function loadOrchestrationSessions() {
+  const d  = await apiFetch('/orchestration/sessions');
+  const el = document.getElementById('orchSessionDetails');
+  const badge = document.getElementById('orchSessionBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const sessions = d.sessions || [];
+  const active   = sessions.filter(s => s.status === 'in_progress').length;
+  const completed= sessions.filter(s => s.status === 'completed').length;
+  const failed   = sessions.filter(s => s.status === 'failed').length;
+  if (badge) { badge.textContent = `${active} active`; badge.className = `card-badge ${active > 200 ? 'badge-warn' : 'badge-ok'}`; }
+  // Token/tool burn across active sessions
+  const asl  = sessions.filter(s => s.status === 'in_progress').slice(0, 50);
+  const tokU = asl.reduce((s, x) => s + (x.usage?.tokens_used || 0), 0);
+  const tokB = asl.reduce((s, x) => s + (x.budget?.token_limit || 0), 0);
+  const toolU= asl.reduce((s, x) => s + (x.usage?.tool_calls_used || 0), 0);
+  el.innerHTML = [
+    fwRow('Total Sessions', sessions.length.toLocaleString()),
+    fwRow('Active',     active.toLocaleString(),    active > 200 ? 'warn' : 'ok'),
+    fwRow('Completed',  completed.toLocaleString(), completed > 0 ? 'ok' : 'info'),
+    fwRow('Failed',     failed.toLocaleString(),    failed > 0 ? 'err' : 'ok'),
+    tokB  ? fwRow('Token Burn', `${tokU.toLocaleString()} / ${tokB.toLocaleString()}`, 'info') : '',
+    toolU ? fwRow('Tool Calls', toolU.toLocaleString()) : '',
+  ].filter(Boolean).join('');
+  // Non-ping sessions sample
+  const real = sessions.filter(s => s.objective && s.objective !== 'ping').slice(0, 4);
+  if (real.length) {
+    el.innerHTML += `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05)">` +
+      real.map(s => fwRow((s.objective || '--').slice(0, 26), s.status, s.status === 'completed' ? 'ok' : s.status === 'failed' ? 'err' : 'info')).join('') + `</div>`;
+  }
+}
+
+// ─── INTELLIGENCE: RAG PIPELINE HEALTH ───────────────────────────────────────
+async function loadRAGHealth() {
+  const [rag, perf] = await Promise.all([
+    apiFetch('/ai/health/rag'),
+    apiFetch('/insights/performance/hotspots'),
+  ]);
+  const el = document.getElementById('ragHealthDetails');
+  const badge = document.getElementById('ragHealthBadge');
+  if (!el) return;
+  const st = (rag || {}).status || 'unknown';
+  const aug= (rag || {}).augmented; const tot = (rag || {}).total;
+  const posture = (rag || {}).posture || '--';
+  const winSz   = (rag || {}).window_size;
+  if (badge) { badge.textContent = st; badge.className = `card-badge ${st === 'healthy' ? 'badge-ok' : st === 'degraded' ? 'badge-warn' : 'badge-err'}`; }
+  const augPct = (tot && aug != null) ? Math.round((aug / tot) * 100) : null;
+  el.innerHTML = [
+    fwRow('Status',    st,     st === 'healthy' ? 'ok' : 'warn'),
+    fwRow('Posture',   posture, posture === 'active' ? 'ok' : 'warn'),
+    fwRow('Augmented', augPct != null ? `${aug}/${tot} (${augPct}%)` : '--', augPct != null && augPct >= 80 ? 'ok' : 'warn'),
+    winSz ? fwRow('Window', `last ${winSz} queries`) : '',
+  ].filter(Boolean).join('');
+  if (perf) {
+    const rp = perf.rag_posture || {};
+    el.innerHTML += [
+      rp.memory_recall_share_pct != null ? fwRow('Memory Recall %', `${rp.memory_recall_share_pct.toFixed(0)}%`, 'info') : '',
+      rp.memory_recall_miss_pct  != null ? fwRow('Recall Miss %', `${rp.memory_recall_miss_pct.toFixed(0)}%`, rp.memory_recall_miss_pct > 5 ? 'warn' : 'ok') : '',
+    ].filter(Boolean).join('');
+  }
+}
+
+// ─── INTELLIGENCE: ROUTING FRONTDOOR CONFIG ──────────────────────────────────
+async function loadRoutingConfig() {
+  const d  = await apiFetch('/aistack/routing/summary');
+  const el = document.getElementById('routingConfigDetails');
+  const badge = document.getElementById('routingConfigBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const fd = d.frontdoor || {};
+  const aliases = fd.aliases || {};
+  const uniqueTargets = [...new Set(Object.values(aliases))];
+  if (badge) { badge.textContent = `${uniqueTargets.length} targets`; badge.className = 'card-badge badge-ok'; }
+  el.innerHTML = [
+    fwRow('Alias Count',   Object.keys(aliases).length),
+    fwRow('Targets',       uniqueTargets.length),
+    ...uniqueTargets.map(t => fwRow('→ ' + t, `${Object.values(aliases).filter(v => v === t).length} aliases`, 'info')),
+  ].join('');
+}
+
+// ─── INTELLIGENCE: HOMEOSTASIS & REMEDIATION ─────────────────────────────────
+async function loadHomeostasis() {
+  const [events, rem] = await Promise.all([
+    apiFetch('/ai/homeostasis/events'),
+    apiFetch('/ai/remediation/latest'),
+  ]);
+  const el = document.getElementById('homeostasisDetails');
+  const badge = document.getElementById('homeostasisBadge');
+  if (!el) return;
+  const remSt   = (rem || {}).status || 'unknown';
+  const isActive= remSt === 'active' || remSt === 'in_progress';
+  if (badge) { badge.textContent = isActive ? 'active' : 'nominal'; badge.className = `card-badge ${isActive ? 'badge-warn' : 'badge-ok'}`; }
+  const evts = Array.isArray(events) ? events : [];
+  el.innerHTML = [
+    fwRow('Remediation',  remSt.replace(/_/g,' '), remSt === 'no_remediation_active' ? 'ok' : isActive ? 'warn' : 'info'),
+    fwRow('Events Logged', evts.length, evts.length > 50 ? 'warn' : 'ok'),
+    evts.length ? fwRow('Last Event', relTime(evts[evts.length-1]?.timestamp ? new Date((evts[evts.length-1].timestamp)*1000).toISOString() : null)) : '',
+  ].filter(Boolean).join('');
+  if (evts.length) {
+    el.innerHTML += `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05)">` +
+      evts.slice(-4).reverse().map(e => {
+        const ts = e.timestamp ? new Date(e.timestamp*1000).toLocaleTimeString() : '--';
+        const msg = (e.message || e.event || e.type || '').toString().slice(0,38);
+        return `<div style="font-size:.56rem;color:var(--fg2);margin:.1rem 0">${ts} ${msg}</div>`;
+      }).join('') + `</div>`;
+  } else {
+    el.innerHTML += fwRow('Loop State', 'nominal · no events', 'ok');
+  }
+}
+
 async function loadIntelligence() {
   await Promise.allSettled([
     loadCoordinator(), loadRouting(), loadModels(), loadSwitchboard(),
     loadAIDB(), loadLearning(), loadDrift(), loadVerifier(),
     loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
-    loadPerfHotspots(),
+    loadPerfHotspots(), loadOrchestrationSessions(), loadRAGHealth(),
+    loadRoutingConfig(), loadHomeostasis(),
   ]);
 }
 
@@ -1050,8 +1162,64 @@ async function loadAgentPool() {
   }).join('');
 }
 
+// ─── SECURITY: VULNERABILITY AUDIT ───────────────────────────────────────────
+async function loadVulnAudit() {
+  const d  = await apiFetch('/security/audit');
+  const el = document.getElementById('vulnAuditDetails');
+  const badge = document.getElementById('vulnAuditBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const s   = d.summary || {};
+  const pip = s.pip || {};
+  const npm = s.npm || {};
+  const sr  = s.secrets_rotation || {};
+  const dop = s.dashboard_operator || {};
+  const vulnTotal = (pip.vulnerabilities_total || 0) + (npm.high || 0) + (npm.critical || 0);
+  if (badge) { badge.textContent = vulnTotal > 0 ? `${vulnTotal} issues` : '0 vulns'; badge.className = `card-badge ${vulnTotal > 0 ? 'badge-err' : 'badge-ok'}`; }
+  el.innerHTML = [
+    fwRow('Scan Date',    d.generated_at ? relTime(d.generated_at) : '--', 'info'),
+    fwRow('pip Vulns',    pip.vulnerabilities_total ?? '--', (pip.vulnerabilities_total || 0) > 0 ? 'err' : 'ok'),
+    fwRow('pip Files',    pip.files_scanned ?? '--', 'info'),
+    fwRow('npm High',     npm.high ?? '--',           (npm.high || 0) > 0 ? 'err' : 'ok'),
+    fwRow('npm Critical', npm.critical ?? '--',       (npm.critical || 0) > 0 ? 'err' : 'ok'),
+    sr.status      ? fwRow('Secrets',    sr.status,    sr.status === 'current' ? 'ok' : 'warn') : '',
+    dop.status     ? fwRow('Dashboard Op', dop.status, dop.status === 'ok' ? 'ok' : 'warn') : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── SECURITY: AUDIT SUMMARY ─────────────────────────────────────────────────
+async function loadAuditSummary() {
+  const d  = await apiFetch('/audit/operator/summary');
+  const el = document.getElementById('auditSummaryDetails');
+  const badge = document.getElementById('auditSummaryBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const topPaths = d.top_paths || [];
+  const methods  = d.methods  || {};
+  const statuses = d.statuses || {};
+  const okRate   = statuses['200'] && d.total_events ? Math.round((statuses['200'] / d.total_events) * 100) : null;
+  if (badge) { badge.textContent = d.total_events ? `${d.total_events.toLocaleString()} events` : '--'; badge.className = 'card-badge badge-ok'; }
+  el.innerHTML = [
+    fwRow('Total Events',  d.total_events != null ? d.total_events.toLocaleString() : '--'),
+    fwRow('Tamper-Evident', d.tamper_evident ? 'yes' : 'no', d.tamper_evident ? 'ok' : 'warn'),
+    okRate != null ? fwRow('Success Rate', `${okRate}%`, okRate >= 95 ? 'ok' : 'warn') : '',
+    fwRow('Last Event', relTime(d.last_event_at)),
+    Object.keys(methods).length ? fwRow('Methods', Object.entries(methods).map(([k,v]) => `${k}:${v}`).join(' '), 'info') : '',
+  ].filter(Boolean).join('');
+  if (topPaths.length) {
+    el.innerHTML += `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05)">` +
+      `<div style="font-size:.56rem;color:var(--fg3);text-transform:uppercase;margin-bottom:.2rem">Top Paths</div>` +
+      topPaths.slice(0, 5).map(([path, cnt]) => fwRow(path.replace('/api','').slice(0,28), cnt, 'info')).join('') +
+      `</div>`;
+  }
+}
+
 async function loadSecurity() {
-  await Promise.allSettled([loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(), loadSecDrift(), loadAgentPool(), loadSecCompliance()]);
+  await Promise.allSettled([
+    loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(),
+    loadSecDrift(), loadAgentPool(), loadSecCompliance(),
+    loadVulnAudit(), loadAuditSummary(),
+  ]);
 }
 
 // ─── OPERATIONS ───────────────────────────────────────────────────────────────
@@ -1235,8 +1403,68 @@ async function loadLearnPipeline() {
       </div>${bars}</div>`;
 }
 
+// ─── OPERATIONS: RALPH TASK TRACKER ──────────────────────────────────────────
+async function loadRalph() {
+  const d  = await apiFetch('/ralph/stats');
+  const el = document.getElementById('ralphDetails');
+  const badge = document.getElementById('ralphBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const total = (d.active_tasks || 0) + (d.completed_tasks || 0) + (d.failed_tasks || 0);
+  const sRate = total > 0 && d.completed_tasks ? Math.round((d.completed_tasks / total) * 100) : null;
+  if (badge) { badge.textContent = d.active_tasks ? `${d.active_tasks} active` : 'idle'; badge.className = `card-badge ${d.active_tasks > 0 ? 'badge-ok' : 'badge-info'}`; }
+  el.innerHTML = [
+    fwRow('Active Tasks',  d.active_tasks   ?? 0, (d.active_tasks || 0) > 0   ? 'ok'  : 'info'),
+    fwRow('Completed',     d.completed_tasks ?? 0, (d.completed_tasks || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Failed',        d.failed_tasks   ?? 0, (d.failed_tasks || 0) > 0   ? 'err' : 'ok'),
+    fwRow('Iterations',    d.total_iterations ?? 0),
+    sRate != null ? fwRow('Success Rate', `${sRate}%`, sRate >= 80 ? 'ok' : 'warn') : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: TRAINING DATA CAPTURE ───────────────────────────────────────
+async function loadTrainingData() {
+  const d  = await apiFetch('/model-optimization/training-data/stats');
+  const el = document.getElementById('trainingDataDetails');
+  const badge = document.getElementById('trainingDataBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const cap  = d.capture_stats || {};
+  const totFiles = (d.files || 0) + (d.synthetic_files || 0);
+  const totBytes = (d.total_size_bytes || 0) + (d.synthetic_size_bytes || 0);
+  if (badge) { badge.textContent = `${totFiles} files`; badge.className = `card-badge ${totFiles > 0 ? 'badge-ok' : 'badge-info'}`; }
+  el.innerHTML = [
+    fwRow('Captured',      cap.captured  ?? 0, (cap.captured || 0) > 0 ? 'ok' : 'info'),
+    fwRow('Pending',       cap.pending   ?? 0, (cap.pending  || 0) > 10 ? 'warn' : 'ok'),
+    fwRow('PII Filtered',  cap.filtered_pii ?? 0, (cap.filtered_pii || 0) > 0 ? 'warn' : 'ok'),
+    fwRow('Low Quality',   cap.filtered_low_quality ?? 0, 'info'),
+    fwRow('Train Files',   d.files         ?? 0),
+    fwRow('Synth Files',   d.synthetic_files ?? 0, 'info'),
+    totBytes > 0 ? fwRow('Total Size', `${(totBytes/1024).toFixed(0)} KB`) : fwRow('Total Size', '0 KB', 'info'),
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: SYSTEM CONTROLS ─────────────────────────────────────────────
+async function ctrlAction(endpoint, method, body, confirmMsg) {
+  if (confirmMsg && !confirm(confirmMsg)) return;
+  const opts = { method: method || 'POST', headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await apiFetch(endpoint, opts);
+  const el = document.getElementById('ctrlResult');
+  if (el) {
+    el.textContent = r ? (r.status || r.message || 'done') : 'error';
+    el.style.color = r ? 'var(--grn)' : 'var(--red)';
+    setTimeout(() => { if (el) el.textContent = ''; }, 4000);
+  }
+  return r;
+}
+
 async function loadOperations() {
-  await Promise.allSettled([loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(), loadHarnessOv(), loadModelOptimization(), loadLearnPipeline()]);
+  await Promise.allSettled([
+    loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(),
+    loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
+    loadRalph(), loadTrainingData(),
+  ]);
 }
 
 // ─── NEURAL MAP (D3) ──────────────────────────────────────────────────────────
