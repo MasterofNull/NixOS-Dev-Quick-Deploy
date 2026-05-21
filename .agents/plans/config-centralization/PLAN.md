@@ -1,8 +1,51 @@
 # Config Centralization, Routing Standardization & Targeted Rewrites — Master Plan
 
 **PRD:** `.agent/PROJECT-CONFIG-CENTRALIZATION-PRD.md`
-**Status:** READY TO EXECUTE
+**Status:** ✓ COMPLETE — all phases A–E + R1–R3 + R2.1–R2.9 shipped (2026-05-21)
+**Next cycle:** `.agents/plans/PHASE-60-ECOSYSTEM-INTEGRATION-PRD.md` (Phase 60–63)
 **Date:** 2026-05-20 (redrawn with rewrite phases after Gemini + Claude joint audit)
+
+---
+
+## Phase 60–63 Execution Sequence (Next Cycle)
+
+**PRD:** `.agents/plans/PHASE-60-ECOSYSTEM-INTEGRATION-PRD.md` (v0.2, all amendments complete)
+**Status:** READY — 4/5 sign-off items complete; implementation can begin on Phase 60.1
+
+```
+Wave 1 (no rebuild needed):
+  60.1-60.2: AIDB bitemporal schema migration + MemoryBroker event_time kwarg
+  60.3: memory_superseder valid_until (replaces delete)
+  62.4: config/safety-rails.yaml + evidence_safety_handlers rails (AM-G2 early ship)
+
+Wave 2 (rebuild required after 60.1-60.3 + 62.4):
+  60.5-60.6: RAGAS eval metrics (embed 100%, Qwen async 10%)
+  60.7: aq-qa checks 6.0.1-6.0.5
+
+Wave 3 (Phase 61 — rebuild required):
+  61.1-61.3: ContextLifecycleManager (Hot/Warm/Cold, Redis 256MB cap, MLFQ_PRIORITY_LOW)
+  61.4-61.5: CLM API routes + MLFQ pressure integration
+  63.4-63.5: NixOS impermanence module (batch with Phase 61 rebuild)
+
+Wave 4 (Phase 62 — rebuild required):
+  62.1-62.3: nsjail sandbox (NOT Wasmtime — absent from nixpkgs 25.11)
+  62.5: aq-qa checks 6.2.1-6.2.3
+
+Wave 5 (Phase 63 — rebuild required):
+  63.1-63.3: GraphRAG entity extraction + knowledge graph search + rag_augmentor graph path
+  63.6: aq-qa checks 6.3.1-6.3.4
+```
+
+**Key amendments to remember (from PRD Sections 10-12):**
+- AM-G1/C1: RAGAS faithfulness is async 10% sample; `RAGAS_FAITHFULNESS_ENABLED=false` default
+- AM-G2: Safety rails to Phase 60 (not waiting for 62)
+- AM-G5/C3: nsjail replaces Wasmtime; Wasmtime not in nixpkgs 25.11
+- AM-Q1: Redis Hot-tier cap = 256 MB (not 512 MB — OOM risk at 27 GB budget)
+- AM-Q2: Faithfulness scoring ALWAYS needs feature flag on Renoir APU
+- AM-C2: CLM uses `config/clm-compaction-prompt.yaml`, not ablation profiles
+- AM-C5: `eval_results` needs `metrics JSONB` column; `memory_broker` dedup must pass newer event_time
+
+---
 
 ---
 
