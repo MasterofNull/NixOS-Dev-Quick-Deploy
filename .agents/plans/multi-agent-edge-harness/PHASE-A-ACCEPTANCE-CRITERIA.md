@@ -55,10 +55,15 @@
 - [ ] Registry survives process restart (load from JSON on startup)
 - [ ] `audit_log` capped at 50 entries (oldest trimmed)
 
-## Gate 9 — Auth (AM-C2)
-- [ ] Requests from loopback (127.0.0.1) are accepted without X-API-Key
-- [ ] Requests from non-loopback without X-API-Key return HTTP 403
-- [ ] Requests from non-loopback with valid X-API-Key return 200
+## Gate 9 — Auth (AM-C2, superseded by MAEAH v0.3 security review)
+
+> v0.3 superseding correction: earlier Phase A wording accepted loopback mutation without `X-API-Key`. That is no longer valid. Loopback limits exposure but is not an authorization principal; existing implementation/tests may require follow-up hardening to satisfy this corrected gate.
+
+- [ ] Safe read-only health/status endpoints may be accepted from loopback without X-API-Key
+- [ ] Mutating admin/lifecycle operations from loopback without explicit auth return HTTP 401/403
+- [ ] Mutating admin/lifecycle operations from non-loopback without explicit auth return HTTP 401/403 or are unreachable by network policy
+- [ ] Mutating admin/lifecycle operations with valid auth return the expected 2xx/accepted response
+- [ ] Dashboard-internal privilege is backed by API key, Unix socket peer credentials, signed local service token, or equivalent non-forgeable local proof; a standalone spoofable header is not sufficient
 
 ## Gate 10 — Dashboard Panel
 - [ ] `section-model-lifecycle` panel visible in dashboard at http://127.0.0.1:8889
@@ -94,6 +99,8 @@ curl -s -X POST $BASE/api/models/qwen3-4b/download
 curl -s "$BASE/api/models/qwen3-4b/download/stream" | head -5
 
 # Gate 9 — auth check
+# Read-only loopback status may be public, but mutation must require explicit auth.
+curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/models/qwen3-4b/download"  # expect 401/403 without auth
 curl -s -o /dev/null -w "%{http_code}" http://1.2.3.4:8889/api/models  # should be unreachable externally
 ```
 

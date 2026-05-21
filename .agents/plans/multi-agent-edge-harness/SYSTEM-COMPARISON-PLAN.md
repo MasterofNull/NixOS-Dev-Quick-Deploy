@@ -543,3 +543,21 @@ All amendments are embedded **inline** in their affected sections above using `>
 
 *Plan v0.2 · Claude Sonnet 4.6 · CTO / Chief Architect · 2026-05-19*
 *APPROVED — Gemini + Codex signed off · Phase A implemented · amendments embedded*
+
+---
+
+## v0.3 External Parity Integration Track
+
+The external parity catalog/search-log synthesis adds a post-refactor integration track. It does not replace the implemented Phase A–F work. It adds enforceable contracts before the harness expands autonomy, remote tool use, or distributed mesh behavior.
+
+Order after refactor stabilization:
+
+1. Security contract gates.
+2. Sandbox policy schema.
+3. Identity/delegation review gate.
+4. Bitemporal retrieval traceability pack.
+5. Observability path view.
+6. Deployment/pressure/chaos gates.
+7. Persistence/impermanence map.
+
+See `PARITY-INTEGRATION-PLAN.md` for slice details.

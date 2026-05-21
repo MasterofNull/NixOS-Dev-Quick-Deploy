@@ -2,7 +2,7 @@
 > Synthesised from 4 agent PRDs · 2026-05-19
 > Authors: Claude Sonnet 4.6 (CTO), Gemini (VP Eng), Codex/gpt-5.5 (Staff Eng), Qwen3.6-35B proxy (Edge AI)
 > Status: **APPROVED v0.2** — Gemini + Codex sign-off 2026-05-19 · Qwen gates Phase B only
-> Version: 0.2 (amendments from sign-off round incorporated inline — see §11)
+> Version: 0.2 + v0.3 external parity supplement (see §12)
 
 ---
 
@@ -395,7 +395,7 @@ edgeai scheduler status                # queue depths, thermal, quant tier
 | CPU-only swap >30s = client timeout | High | Queue buffer; 503 with Retry-After + queue position; client retry guidance | Codex/Qwen |
 | Zombie agent cascade | High | MLFQ zombie reaping; circuit breaker (AIMD); admission control | All |
 | KV cache disk flush too slow | Medium | NVMe preferred; async flush with timeout; proceed if timeout (context lost, agent notified) | Qwen |
-| Rogue Agent Card on mesh | Medium | Signed cards (A2A v2 target); local allowlist in v1 | Gemini |
+| Rogue Agent Card on mesh | Medium | Day-1 signed remote cards, trust store, expiry/replay checks, quarantine reason codes; local loopback remains separately policy-scoped | Gemini + parity security review |
 | OTel SemConv breaking changes | Medium | Abstract behind TelemetryService interface; pin spec commit | Codex |
 | MTP draft model stale after swap | Medium | Draft model version locked to base in catalog; mismatch → MTP disabled | Qwen |
 | AMV-L utility scoring overhead | Low | O(1) per item update; <1ms overhead per request | CTO |
@@ -595,3 +595,24 @@ Reviewed by Qwen3.6-35B · [date — deferred, items reassigned per above]
 *Combined PRD v0.2 · 2026-05-19 · Claude Sonnet 4.6 (CTO / Chief Architect)*
 *Status: APPROVED — Gemini (VP Eng) + Codex (Staff Eng) signed off 2026-05-19*
 *Qwen sign-off pending: gates Phase B (thermal thresholds) only — see §11 Qwen checklist above*
+
+---
+
+## 12. External Parity Supplement Record (v0.3 planning addendum)
+
+The external parity review package is now part of the current MAEAH improvement cycle as a planning supplement, not an immediate runtime refactor. Authoritative files:
+
+- `EXTERNAL-PARITY-AMENDMENTS.md` — adopted/deferred findings from the external parity catalog and search log.
+- `PARITY-INTEGRATION-PLAN.md` — staged implementation order after coordinator refactor stabilization.
+- `MAEAH-SECURITY-CONTRACT-GATES.md` — normative security gates for auth, identity, delegation, sandboxing, MCP taint, model supply chain, memory provenance, audit, and review.
+- `AGENT-PARITY-REVIEW.md` — architecture, security, memory/RAG/eval, and edge/ops reviewer synthesis.
+
+Near-term additions accepted into planning scope:
+
+1. Bitemporal memory and retrieval traceability.
+2. Tool sandbox ladder and MCP governance profiles.
+3. Agent identity/delegation lifecycle and non-self review gates.
+4. RAG quality/eval gates and trace-debug bundles.
+5. Scheduler pressure-state machine and edge persistence/deployment gates.
+
+Explicitly deferred unless promoted by a dedicated PRD: SurrealDB replacement, NATS/gRPC mesh, OpenHands resolver execution, multimodal RAG, audio-native agents, federated learning, PQC identity, neuromorphic/embodied/cryptoeconomic tracks.
