@@ -1,30 +1,29 @@
 {
   "agent": "Codex",
-  "task": "Phase 1 security governance contract gates",
-  "intent": "Add non-runtime MAEAH security contract gates that pin safety policy, isolation policy, and review-gate requirements before implementing sandbox/runtime changes.",
-  "status": "blocked_by_concurrent_docs_refactor",
-  "timestamp": "2026-05-21T03:15:19.746989+00:00",
+  "task": "Phase 1 security governance contract gates + docs refactor unblock",
+  "intent": "Record completed Phase 1 static security contract gate and documentation/governance unblock now that tier0 is green and commit 53c724e0 landed.",
+  "status": "completed",
+  "timestamp": "2026-05-21T03:24:14.851271+00:00",
+  "commits": [
+    "53c724e0 fix(qa+governance): Phase 61 aq-qa auth fix, allowlist cleanup, doc metadata"
+  ],
   "files": [
     ".agent/collaboration/PENDING.json",
-    ".agent/collaboration/HANDOFF.md",
-    ".agents/plans/multi-agent-edge-harness/MAEAH-SECURITY-CONTRACT-GATES.md",
-    "scripts/testing/test-security-contract-gates.py"
+    ".agent/collaboration/HANDOFF.md"
   ],
-  "blocker": {
-    "summary": "tier0 roadmap verifier fails because concurrent docs archival moved docs/DASHBOARD-COLLECTORS-GUIDE.md to docs/archive/legacy-2025/DASHBOARD-COLLECTORS-GUIDE.md while scripts/testing/verify-flake-first-roadmap-completion.sh still checks the root path",
-    "not_caused_by": "security contract test slice",
-    "safe_next_action": "owner of progressive-disclosure/docs archival slice should either restore a canonical root dashboard collectors guide or update roadmap verification in the same docs-refactor commit"
-  },
+  "completed_changes": [
+    "progressive-disclosure and agent-guide documentation refresh",
+    "legacy documentation archival and repo-structure allowlist cleanup",
+    "roadmap verifier updated for archived dashboard collectors guide",
+    "aq-qa CLM status auth fix",
+    "MAEAH security contract static regression gate documented and tested"
+  ],
   "validation": [
-    "PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/testing/test-security-contract-gates.py \u2014 PASS",
-    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS",
-    "git diff --check --cached for staged Codex files before unstage \u2014 PASS",
+    "scripts/testing/verify-flake-first-roadmap-completion.sh \u2014 PASS (609 pass, 0 fail)",
     "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (75 passed, 0 failed, 2 skipped)",
-    "tier0-validation-gate.sh --pre-commit \u2014 BLOCKED by concurrent docs/refactor roadmap path mismatch; earlier transient QA phase 0 failure reran green directly"
+    "AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 ... scripts/ai/aq-qa 0 \u2014 PASS (74 passed, 0 failed, 3 skipped)",
+    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (16 passed, 0 failed)",
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS"
   ],
-  "guardrails": [
-    "Codex files intentionally unstaged to avoid accidental inclusion in the concurrent docs commit",
-    "did not edit concurrent progressive-disclosure/docs archival files",
-    "do not commit this slice until tier0 is green after docs-refactor ownership is resolved"
-  ]
+  "next_recommended_slice": "Continue Parity Integration Plan Phase 1 with the next runtime-adjacent but bounded deliverable: sandbox policy schema + registry lint, using the static contract gate as the non-regression baseline."
 }

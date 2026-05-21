@@ -1202,3 +1202,27 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 **Required next action:** The docs-refactor owner should either restore a canonical root dashboard collectors guide or update `scripts/testing/verify-flake-first-roadmap-completion.sh` in the same docs-refactor commit. After that, rerun tier0 and commit the Codex security contract slice.
 
 **Context Bloat:** Low
+
+
+---
+
+# Handoff Memo — 2026-05-21 Docs/Governance Unblock + Security Contract Gate (Codex)
+
+**Status:** Complete. Commit `53c724e0` landed and the working tree was clean afterward.
+
+**What changed:**
+1. Progressive-disclosure and agent-guide documentation refresh landed with legacy docs archived under `docs/archive/legacy-2025/` and `docs/archive/legacy-sequence/`.
+2. Roadmap verifier now follows the archived dashboard collectors guide path, resolving the previous `docs/DASHBOARD-COLLECTORS-GUIDE.md` path mismatch.
+3. Phase 61 `aq-qa` CLM status check now sends the configured API key and treats malformed authenticated responses as failures.
+4. MAEAH Phase 1 security contract gate is now present in `MAEAH-SECURITY-CONTRACT-GATES.md` with `scripts/testing/test-security-contract-gates.py`.
+
+**Validation evidence:**
+- `scripts/testing/verify-flake-first-roadmap-completion.sh` — PASS (`609 pass, 0 fail`)
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`75 passed, 0 failed, 2 skipped`)
+- `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 ... scripts/ai/aq-qa 0` — PASS (`74 passed, 0 failed, 3 skipped`)
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`16 passed, 0 failed`)
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py` — PASS
+
+**Next recommended slice:** Continue `PARITY-INTEGRATION-PLAN.md` Phase 1 with sandbox policy schema + registry lint. Keep it bounded and test-first; do not implement nsjail/WASM runtime execution until the policy schema and lint gate are stable.
+
+**Context Bloat:** Low
