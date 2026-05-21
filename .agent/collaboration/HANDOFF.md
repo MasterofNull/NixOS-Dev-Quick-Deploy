@@ -1464,3 +1464,11 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Slice: hybrid auth middleware now resolves an explicit `auth_context` for public, loopback-agent, API-key, and no-key compatibility modes; validates optional `X-Harness-Auth-Profile`; emits response headers; and exposes the policy in Command Center harness overview.
 - Docs: `docs/architecture/runtime-auth-profile-enforcement.md` records request modes, profile allowlists, response headers, and dashboard visibility.
 - Validation target: `scripts/testing/test-hybrid-auth-profile-policy.py`, Python compile, focused CI, tier0 pre-commit, and live `/api/harness/overview` after service restart/deploy.
+
+### Deployment update — S2 runtime auth/profile baseline
+
+- Deployed with `SKIP_MODEL_SELECTION=true ./nixos-quick-deploy.sh --skip-home-switch`.
+- Required MCP health passed `13/13`; optional services passed `17/17`; no failed systemd units.
+- Live validation passed: `POST /query` with `X-Harness-Auth-Profile: readonly-strict` returns auth headers `loopback-agent` / `readonly-strict`; disallowed loopback `worktree-guarded` returns `403`.
+- Command Center exposes `policies.runtime_auth_profiles` from `/api/harness/overview`.
+- `latest-aq-report.json` parses after deploy despite deploy summary briefly falling back to text.
