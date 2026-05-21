@@ -829,10 +829,13 @@ def init(
     # Phase 54.1 — MemoryBroker: unified typed memory interface
     memory_broker.init(store_fn=_store_memory, recall_fn=_recall_memory)
 
-    # Phase 54.3 — RagAugmentor: active RAG pipeline (uses aidb_client from journal init)
+    # Phase 54.3 — RagAugmentor: active RAG pipeline
+    # Build a dedicated httpx client — journal stores only URL strings, has no _aidb_client attr.
     _aidb_key_54 = _read_secret_file(os.getenv("AIDB_API_KEY_FILE", ""))
+    _aidb_url_54 = os.getenv("AIDB_URL", "http://127.0.0.1:8002").rstrip("/")
+    _rag_aidb_client = httpx.AsyncClient(base_url=_aidb_url_54, timeout=10.0) if _aidb_url_54 else None
     rag_augmentor.init(
-        aidb_client=_journal._aidb_client if hasattr(_journal, "_aidb_client") else None,
+        aidb_client=_rag_aidb_client,
         aidb_api_key=_aidb_key_54,
     )
 

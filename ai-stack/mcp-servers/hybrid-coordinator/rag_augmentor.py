@@ -137,16 +137,25 @@ class RagAugmentor:
             latency_ms = int((time.perf_counter() - start) * 1000)
 
             # Merge and rerank results (simple score-based sort)
+            # AIDB /vector/search returns {"results": [...]} not {"hits": [...]}
             all_hits = []
             for res in results:
-                all_hits.extend(res.get("hits", []))
+                all_hits.extend(res.get("results", res.get("hits", [])))
             
             all_hits.sort(key=lambda h: h.get("score", 0.0), reverse=True)
             hits = all_hits[:k]
 
             if not hits:
-                _augmentation_window.append(False)
-                return {**_skip_result("no_hits", ",".join(projects), len(projects)), "latency_ms": latency_ms}
+                # Fallback: retry without project filter to pick up any indexed data
+                fallback_results = await asyncio.wait_for(
+                    self._search(query, None, k),
+                    timeout=max(RAG_TIMEOUT_S, (RAG_TIMEOUT_S * 2 - (time.perf_counter() - start))),
+                )
+                all_hits = fallback_results.get("results", [])
+                hits = all_hits[:k]
+                if not hits:
+                    _augmentation_window.append(False)
+                    return {**_skip_result("no_hits", ",".join(projects), len(projects)), "latency_ms": latency_ms}
 
             context_parts = []
             for i, hit in enumerate(hits, 1):
@@ -158,6 +167,7 @@ class RagAugmentor:
             context_text = "\n\n".join(context_parts)
             _augmentation_window.append(True)
 
+            proj_label = ",".join(projects)
             logger.debug(
                 "rag_augmentor.augment projects=%s hits=%d latency_ms=%d",
                 projects, len(hits), latency_ms,
@@ -170,20 +180,22 @@ class RagAugmentor:
                 "latency_ms": latency_ms,
                 "projects": projects,
                 "collection_count": len(projects),
-                "project": projects[0], # for backward compat
+                "project": projects[0] if projects else "unfiltered",
             }
             _record_metrics(res)
             return res
 
         except asyncio.TimeoutError:
             _augmentation_window.append(False)
-            res = {**_skip_result("timeout", project), "latency_ms": int(RAG_TIMEOUT_S * 1000)}
+            proj_label = ",".join(projects)
+            res = {**_skip_result("timeout", proj_label), "latency_ms": int(RAG_TIMEOUT_S * 1000)}
             _record_metrics(res)
             return res
         except Exception as exc:
             _augmentation_window.append(False)
-            logger.debug("rag_augmentor.augment error project=%s: %s", project, exc)
-            res = _skip_result("error", project)
+            proj_label = ",".join(projects)
+            logger.debug("rag_augmentor.augment error projects=%s: %s", proj_label, exc)
+            res = _skip_result("error", proj_label)
             _record_metrics(res)
             return res
 
@@ -243,15 +255,17 @@ class RagAugmentor:
             "source": "graph_augment",
         }
 
-    async def _search(self, query: str, project: str, top_k: int) -> Dict[str, Any]:
-        """Call AIDB /vector/search."""
+    async def _search(self, query: str, project: Optional[str], top_k: int) -> Dict[str, Any]:
+        """Call AIDB /vector/search. project=None performs unfiltered search."""
         headers = {"Content-Type": "application/json"}
         if self._key:
             headers["X-API-Key"] = self._key
-
+        payload: Dict[str, Any] = {"query": query, "limit": top_k}
+        if project:
+            payload["project"] = project
         resp = await self._client.post(
             "/vector/search",
-            json={"query": query, "project": project, "limit": top_k},
+            json=payload,
             headers=headers,
         )
         resp.raise_for_status()

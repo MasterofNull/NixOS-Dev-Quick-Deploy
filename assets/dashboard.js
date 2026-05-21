@@ -115,11 +115,28 @@ function toggleDrawer() { document.getElementById('drawer').classList.toggle('op
 
 // ─── KPI RIBBON ──────────────────────────────────────────────────────────────
 async function loadKPIs() {
-  const [metrics, aiM] = await Promise.all([
+  const [metrics, aiM, hs] = await Promise.all([
     apiFetch('/metrics'),
     apiFetch('/ai/metrics'),
+    apiFetch('/metrics/health-score'),
   ]);
   window._aiMetrics = aiM;
+
+  // Populate header health score immediately (before OSI layer health completes)
+  if (hs && hs.score != null) {
+    const scoreEl = document.getElementById('healthScore');
+    if (scoreEl && scoreEl.textContent === '--') {
+      scoreEl.textContent = hs.score;
+      scoreEl.classList.remove('warn', 'err');
+      if (hs.score < 50) scoreEl.classList.add('err');
+      else if (hs.score < 80) scoreEl.classList.add('warn');
+    }
+    const hsKpi = document.getElementById('kpiHealthScore');
+    if (hsKpi) {
+      hsKpi.textContent = hs.score;
+      hsKpi.className = 'kpi-v ' + (hs.score < 50 ? 'err' : hs.score < 80 ? 'warn' : 'ok');
+    }
+  }
 
   if (metrics) {
     const localPct = metrics.llm_routing_local_pct;
@@ -134,7 +151,7 @@ async function loadKPIs() {
     if (localPct != null) setColor('kpiLocalPct', localPct < 20 ? 'err' : localPct < 50 ? 'warn' : 'ok');
     if (evalPct  != null) setColor('kpiEval',     evalPct  < 50 ? 'err' : evalPct  < 70 ? 'warn' : 'ok');
     if (cacheHit != null) setColor('kpiCacheHit', cacheHit < 20 ? 'warn' : 'ok');
-    // Color header health score
+    // Color header health score from OSI eval pct too (overrides if available)
     const scoreEl = document.getElementById('healthScore');
     if (scoreEl && evalPct != null) {
       scoreEl.classList.remove('warn', 'err');
@@ -730,11 +747,30 @@ async function loadAgentic() {
   }
 }
 
+// ─── INTELLIGENCE: AGENT EVAL TRENDS ─────────────────────────────────────────
+async function loadAgentEvalTrends() {
+  const d  = await apiFetch('/orchestration/evaluations/trends');
+  const el = document.getElementById('agentEvalDetails');
+  const badge = document.getElementById('agentEvalBadge');
+  if (!el) return;
+  if (!d || !d.trends) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const trends = d.trends || [];
+  if (badge) { badge.textContent = `${d.agent_count || trends.length} agents`; badge.className = 'card-badge badge-ok'; }
+  el.innerHTML = trends.map(t => {
+    const revScore = t.average_review_score != null ? (t.average_review_score * 100).toFixed(0) + '%' : '--';
+    const rtScore  = t.average_runtime_score != null ? (t.average_runtime_score * 100).toFixed(0) + '%' : '--';
+    const col = t.average_review_score >= 0.7 ? 'ok' : t.average_review_score >= 0.4 ? 'warn' : 'err';
+    return [
+      fwRow(t.agent, `rev ${revScore} · rt ${rtScore}`, col),
+    ].join('');
+  }).join('') || fwRow('Status', 'No agent data yet');
+}
+
 async function loadIntelligence() {
   await Promise.allSettled([
     loadCoordinator(), loadRouting(), loadModels(), loadSwitchboard(),
     loadAIDB(), loadLearning(), loadDrift(), loadVerifier(),
-    loadKnowledge(), loadAgentic(), loadRagQuality(),
+    loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
   ]);
 }
 
@@ -985,8 +1021,50 @@ async function loadHarnessOv() {
   }
 }
 
+// ─── OPERATIONS: MODEL OPTIMIZATION ──────────────────────────────────────────
+async function loadModelOptimization() {
+  const d  = await apiFetch('/model-optimization/readiness');
+  const el = document.getElementById('modelOptDetails');
+  const badge = document.getElementById('modelOptBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const rd = d.readiness || {};
+  const statusMap = { operational: 'ok', infrastructure_ready: 'ok', runtime_integrated: 'warn', pending: 'warn' };
+  const rows = Object.entries(rd).map(([k, v]) => {
+    const st = typeof v === 'object' ? (v.status || '') : String(v);
+    const col = statusMap[st] || 'info';
+    const extra = typeof v === 'object' && (v.captured_count != null || v.jobs != null || v.generated_files != null)
+      ? ` (${v.captured_count ?? v.jobs ?? v.generated_files ?? 0})` : '';
+    return fwRow(k.replace(/_/g, ' '), st + extra, col);
+  });
+  el.innerHTML = rows.join('') || fwRow('Status', 'No data');
+  const allOp = Object.values(rd).every(v => (typeof v === 'object' ? v.status : v) === 'operational');
+  if (badge) { badge.textContent = allOp ? 'ready' : 'partial'; badge.className = `card-badge ${allOp ? 'badge-ok' : 'badge-warn'}`; }
+}
+
+// ─── OPERATIONS: LEARNING PIPELINE ───────────────────────────────────────────
+async function loadLearnPipeline() {
+  const d  = await apiFetch('/stats/learning');
+  const el = document.getElementById('learnPipelineDetails');
+  const badge = document.getElementById('learnPipelineBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const bp = d.backpressure || {};
+  const paused = bp.paused || d.learning_paused;
+  const files = bp.file_sizes || {};
+  const totalMb = Object.values(files).reduce((s, b) => s + b, 0) / 1048576;
+  if (badge) { badge.textContent = paused ? 'paused' : 'active'; badge.className = `card-badge ${paused ? 'badge-warn' : 'badge-ok'}`; }
+  el.innerHTML = [
+    fwRow('Finetune Records', d.finetuning_dataset_size ?? '--', d.finetuning_dataset_size > 0 ? 'ok' : 'info'),
+    fwRow('Total Metrics',    d.total_metrics_tracked != null ? d.total_metrics_tracked.toLocaleString() : '--'),
+    fwRow('Pipeline Files',   `${totalMb.toFixed(0)} MB total`),
+    fwRow('Backpressure',     paused ? 'PAUSED' : `${(bp.unprocessed_mb || 0).toFixed(1)} MB`, paused ? 'warn' : 'ok'),
+    ...Object.entries(files).map(([f, b]) => fwRow('  ' + f.replace('-events.jsonl',''), `${(b/1048576).toFixed(1)} MB`)),
+  ].join('');
+}
+
 async function loadOperations() {
-  await Promise.allSettled([loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(), loadHarnessOv()]);
+  await Promise.allSettled([loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(), loadHarnessOv(), loadModelOptimization(), loadLearnPipeline()]);
 }
 
 // ─── NEURAL MAP (D3) ──────────────────────────────────────────────────────────

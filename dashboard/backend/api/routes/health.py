@@ -151,7 +151,7 @@ async def get_aggregate_health():
 _layered_cache: Dict[str, Any] = {"result": None, "expires_at": 0.0}
 _layered_running: bool = False
 _LAYERED_CACHE_TTL = 900  # 15 min — aq-qa takes 300-600s on Renoir APU (includes aq-report Qwen inference)
-_LAYERED_BACKGROUND_ENABLED = os.getenv("DASHBOARD_AQ_QA_BACKGROUND", "0").strip().lower() in {"1", "true", "yes", "on"}
+_LAYERED_BACKGROUND_ENABLED = os.getenv("DASHBOARD_AQ_QA_BACKGROUND", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
