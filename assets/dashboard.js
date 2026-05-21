@@ -67,6 +67,7 @@ function fwRow(k, v, cls = '') {
   const c = cls || statusColor(v);
   return `<div class="fw-row"><span class="fk">${k}</span><span class="fv ${c}">${v ?? '--'}</span></div>`;
 }
+const fmtImplStatus = s => s === 'implementation_exists' ? 'ready' : (s || '--');
 function cardBadge(text, cls = 'badge-info') {
   return `<span class="card-badge ${cls}">${text}</span>`;
 }
@@ -489,9 +490,9 @@ async function loadCoordinator() {
     fwRow('Local Query%', eff.local_query_percentage != null ? pctD(eff.local_query_percentage) : '--'),
     fwRow('Tokens Saved', eff.estimated_tokens_saved != null ? eff.estimated_tokens_saved.toLocaleString() : '--'),
     fwRow('Vectors',      eff.knowledge_base_vectors  != null ? eff.knowledge_base_vectors.toLocaleString() : '--'),
-    fwRow('Offloading',   (sum.offloading || {}).status || '--'),
-    fwRow('Context Eff.', (sum.context_efficiency || {}).status || '--'),
-    fwRow('Cap Gaps',     (sum.capability_gap || {}).gaps_detected ?? '--'),
+    fwRow('Offloading',   fmtImplStatus((sum.offloading || {}).status), statusColor((sum.offloading || {}).status)),
+    fwRow('Context Eff.', fmtImplStatus((sum.context_efficiency || {}).status), statusColor((sum.context_efficiency || {}).status)),
+    fwRow('Cap Gaps',     (sum.capability_gap || {}).gaps_detected ?? '--', (sum.capability_gap || {}).gaps_detected > 0 ? 'warn' : 'ok'),
   ].join('');
 }
 
@@ -825,8 +826,60 @@ async function loadHardening() {
   }
 }
 
+// ─── SECURITY: BEHAVIORAL DRIFT MONITOR ─────────────────────────────────────
+async function loadSecDrift() {
+  const d  = await apiFetch('/traces/drift');
+  const el = document.getElementById('secDriftDetails');
+  const badge = document.getElementById('secDriftBadge');
+  if (!el) return;
+  if (!d || !d.available) {
+    el.innerHTML = fwRow('Status', 'no trace data yet', 'info');
+    if (badge) { badge.textContent = 'idle'; badge.className = 'card-badge badge-info'; }
+    return;
+  }
+  const score = d.drift_score;
+  const scoreColor = score == null ? '' : score > 0.7 ? 'err' : score > 0.4 ? 'warn' : 'ok';
+  if (badge) {
+    badge.textContent = score != null ? (score > 0.7 ? 'ALERT' : score > 0.4 ? 'WATCH' : 'OK') : '--';
+    badge.className   = `card-badge ${score != null && score > 0.4 ? 'badge-warn' : 'badge-ok'}`;
+  }
+  el.innerHTML = [
+    fwRow('Drift Score',    score != null ? score.toFixed(3) : '--', scoreColor),
+    fwRow('Intent Flip%',   d.intent_flip_rate  != null ? pctD(d.intent_flip_rate * 100) : '--',
+          d.intent_flip_rate  != null && d.intent_flip_rate  > 0.1 ? 'warn' : 'ok'),
+    fwRow('Lat Degrad',     d.latency_degradation != null ? `${d.latency_degradation.toFixed(1)}ms` : '--',
+          d.latency_degradation != null && d.latency_degradation > 200 ? 'err' : d.latency_degradation > 50 ? 'warn' : 'ok'),
+    fwRow('Trace Count',    d.trace_count ?? '--', 'info'),
+  ].join('');
+}
+
+// ─── SECURITY: AGENT POOL SECURITY ──────────────────────────────────────────
+async function loadAgentPool() {
+  const d  = await apiFetch('/aistack/advanced/runtime-summary');
+  const el = document.getElementById('agentPoolDetails');
+  const badge = document.getElementById('agentPoolBadge');
+  if (!el) return;
+  const profiles = ((d || {}).raw || {}).quality_profiles || {};
+  const agents = profiles.profiles || [];
+  if (!agents.length) {
+    el.innerHTML = fwRow('Status', 'no pool data', 'info');
+    if (badge) { badge.textContent = '0'; badge.className = 'card-badge badge-warn'; }
+    return;
+  }
+  const avail = agents.filter(a => a.status === 'available').length;
+  if (badge) {
+    badge.textContent = `${avail}/${agents.length}`;
+    badge.className   = `card-badge ${avail === agents.length ? 'badge-ok' : 'badge-warn'}`;
+  }
+  el.innerHTML = agents.map(a => {
+    const score = a.composite_score != null ? (a.composite_score * 100).toFixed(0) : '--';
+    const shortName = a.name && a.name.length > 18 ? a.name.slice(0, 17) + '…' : (a.name || '--');
+    return fwRow(shortName, `${a.status} · ${score}%`, statusColor(a.status));
+  }).join('');
+}
+
 async function loadSecurity() {
-  await Promise.allSettled([loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening()]);
+  await Promise.allSettled([loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(), loadSecDrift(), loadAgentPool()]);
 }
 
 // ─── OPERATIONS ───────────────────────────────────────────────────────────────
@@ -889,9 +942,24 @@ async function loadRuntimeDetails() {
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
   const s = d.summary || {};
-  el.innerHTML = Object.entries(s).map(([k, v]) =>
-    fwRow(k.replace(/_/g, ' '), typeof v === 'object' ? (v.status || JSON.stringify(v).slice(0, 40)) : v, statusColor(typeof v === 'object' ? v.status : v))
-  ).join('');
+  const off = s.offloading          || {};
+  const ce  = s.context_efficiency  || {};
+  const cg  = s.capability_gap      || {};
+  const lrn = s.learning            || {};
+  const rows = [
+    fwRow('Offloading',    fmtImplStatus(off.status), 'ok'),
+    fwRow('· profiles',    `${off.benchmarked_profiles ?? 0}/${off.quality_profiles ?? 0}`, 'info'),
+    fwRow('· fallback',    off.local_fallback_mode || '--', 'info'),
+    fwRow('Ctx Eff.',      fmtImplStatus(ce.status), 'ok'),
+    fwRow('· A/B variants',ce.ab_variants ?? '--', 'info'),
+    fwRow('· tokens saved',ce.tokens_saved != null ? ce.tokens_saved.toLocaleString() : '--'),
+    fwRow('Cap Gaps',      fmtImplStatus(cg.status), 'ok'),
+    fwRow('· detected',    cg.gaps_detected ?? 0, cg.gaps_detected > 0 ? 'warn' : 'ok'),
+    fwRow('Learning',      fmtImplStatus(lrn.status), 'ok'),
+    fwRow('· signals',     lrn.signals_recorded ?? 0),
+    fwRow('· recommends',  lrn.recommendation_count ?? 0, lrn.recommendation_count > 0 ? 'ok' : ''),
+  ];
+  el.innerHTML = rows.join('');
 }
 
 async function loadHarnessOv() {
