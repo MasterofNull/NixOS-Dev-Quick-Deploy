@@ -2,7 +2,7 @@
   "agent": "Codex",
   "task": "S2 runtime MCP auth/profile enforcement baseline",
   "intent": "Commit and deploy the runtime auth/profile middleware baseline, then verify dashboard policy visibility and continue deeper MCP tool-boundary enforcement.",
-  "status": "validated_pending_commit",
+  "status": "validated_deployed",
   "timestamp": "2026-05-21T19:45:00+00:00",
   "files": [
     "ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py",
@@ -22,14 +22,17 @@
     "Do not include whitespace-only facts.nix drift."
   ],
   "validation": [
-    "python3 -m py_compile auth.py aistack.py test-hybrid-auth-profile-policy.py \u2014 PASS",
-    "scripts/testing/test-hybrid-auth-profile-policy.py \u2014 PASS",
-    "scripts/governance/run-focused-ci-checks.sh --pre-deploy \u2014 PASS"
+    "tier0 pre-commit \u2014 PASS (17 passed, 0 failed)",
+    "nixos-quick-deploy.sh --skip-home-switch \u2014 PASS; MCP health 13/13 required and 17/17 optional",
+    "live POST /query with X-Harness-Auth-Profile: readonly-strict \u2014 200 with X-Harness-Auth-Mode=loopback-agent and X-Harness-Auth-Profile=readonly-strict",
+    "live POST /query with disallowed loopback worktree-guarded profile \u2014 403",
+    "live /api/harness/overview exposes policies.runtime_auth_profiles",
+    "latest-aq-report.json parses after deploy"
   ],
   "next": [
-    "Commit S2 runtime auth/profile baseline after tier0 passes.",
-    "Deploy/restart hybrid coordinator and dashboard API so auth context headers and Command Center policy visibility are live.",
-    "Next S2 follow-up: enforce auth/profile decisions at the concrete MCP tool-dispatch boundary, not just HTTP middleware."
+    "S2 follow-up: enforce auth/profile context at concrete MCP/tool dispatch boundaries and audit denied tool/profile decisions.",
+    "Add dashboard metrics for auth/profile denial counts once audit rows are emitted.",
+    "Home Manager switch remains pending for Playwright availability in the default user Python environment."
   ],
   "support_orchestrator": {
     "status": "active_monitoring",
