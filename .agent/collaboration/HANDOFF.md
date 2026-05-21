@@ -1108,3 +1108,30 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 - Rebuild/switch is still required before the live coordinator serves the newest Phase 60 code from the Nix store.
 - Next implementation options: stale/poisoned/superseded recall fixture pack, or trace-debug export/replay bundle.
+
+
+---
+
+# Handoff Memo — 2026-05-21 Phase 60 Recall Regression Fixtures (Codex)
+
+**Status:** Complete and validated.
+**Scope:** Added deterministic regression coverage for bitemporal/staleness recall behavior and poisoned-memory rejection in `scripts/testing/test-memory-recall-broker-contract.py`.
+
+**Changes:**
+1. Current recall now has a fixture proving stale rows are hidden by default while historical `valid_at` queries can retrieve rows valid during that interval.
+2. Supersession logic now has a fixture proving historical reads before the supersession timestamp return the old fact, while current reads return the superseding fact.
+3. Memory ingestion validation now has a fixture proving model stop-token payloads are rejected before entering vector memory.
+
+**Validation:**
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile scripts/testing/test-memory-recall-broker-contract.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-memory-recall-broker-contract.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 pytest -q ai-stack/mcp-servers/hybrid-coordinator/tests/test_cognitive_intelligence_l5_l6.py scripts/testing/test-memory-recall-broker-contract.py` — PASS (`8 passed`)
+- `git diff --check` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 scripts/ai/aq-memory-recall-benchmark --json` — PASS (`20/20`)
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`71 passed, 0 failed, 2 skipped`)
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS
+
+**Coordination note:** Active dirty files from another slice remain present and were intentionally not edited/staged by Codex: `ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py`, `router.py`, `server.py`, `ai-stack/mcp-servers/hybrid-coordinator/knowledge/context_lifecycle_manager.py`, `config/clm-compaction-prompt.yaml`, and `scripts/testing/harness_qa/phases/phase0.py`.
+
+**Next step:** Continue Phase 60/61 integration after checking current dirty state and owner of the CLM/runtime refactor slice.
+**Context Bloat:** Low
