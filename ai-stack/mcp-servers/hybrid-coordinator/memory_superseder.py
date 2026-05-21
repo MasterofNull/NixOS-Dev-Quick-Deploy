@@ -65,7 +65,7 @@ class MemorySuperseder:
         self._events: List[SupersessionEvent] = []
         # Phase 60.2: in-process superseded-ID cache for O(1) read-time filtering.
         # Populated by supersede(); consulted by is_superseded().
-        self._superseded_ids: set = set()
+        self._superseded_ids: Dict[str, datetime] = {}
 
     async def ensure_schema(self) -> None:
         if self._schema_ready or self._pg is None:
@@ -137,7 +137,7 @@ class MemorySuperseder:
         self._events = self._events[-200:]
         # Phase 60.2: stamp into cache so read-time filter can exclude this ID
         # without needing a Qdrant payload mutation.
-        self._superseded_ids.add(fact_id)
+        self._superseded_ids[fact_id] = datetime.fromisoformat(event.created_at)
         return {
             "superseded": True,
             "fact_id": event.fact_id,
@@ -146,9 +146,20 @@ class MemorySuperseder:
             "ledger": "postgres" if self._pg is not None else "memory",
         }
 
-    def is_superseded(self, fact_id: str) -> bool:
-        """Return True if this fact_id has been superseded in the current process lifetime."""
-        return fact_id in self._superseded_ids
+    def is_superseded(self, fact_id: str, *, valid_at: Optional[datetime] = None) -> bool:
+        """Return True if fact_id is superseded at `valid_at` or now.
+
+        Historical bitemporal reads must still be able to see a fact that was
+        superseded after the requested valid_at point.
+        """
+        superseded_at = self._superseded_ids.get(fact_id)
+        if superseded_at is None:
+            return False
+        if valid_at is None:
+            return True
+        if valid_at.tzinfo is None:
+            valid_at = valid_at.replace(tzinfo=timezone.utc)
+        return valid_at >= superseded_at
 
     async def history(self, limit: int = 20) -> List[Dict[str, Any]]:
         limit = max(1, min(int(limit or 20), 100))
