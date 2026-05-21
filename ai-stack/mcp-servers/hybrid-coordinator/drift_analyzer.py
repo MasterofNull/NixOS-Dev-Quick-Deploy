@@ -156,10 +156,18 @@ class DriftAnalyzer:
         latencies = [float(r["total_ms"]) for r in rows]
         latency_trend = (latencies[0] - latencies[-1]) / max(latencies[-1], 1.0)
         intents = [str(r.get("intent") or "") for r in rows]
-        intent_flips = sum(1 for prev, curr in zip(intents, intents[1:]) if prev != curr)
+
+        # Skip transitions involving 'unknown' — classifier uncertainty is not semantic drift.
+        # A post-rebuild speedup (negative latency_trend) is improvement, not degradation;
+        # only count slowdowns toward the drift score.
+        intent_flips = sum(
+            1 for prev, curr in zip(intents, intents[1:])
+            if prev != curr and "unknown" not in (prev, curr)
+        )
         intent_flip_rate = intent_flips / max(len(intents) - 1, 1)
-        drift_score = round(abs(latency_trend), 3)
-        
+        latency_degradation = max(0.0, latency_trend)  # speedups don't signal drift
+        drift_score = round(max(intent_flip_rate, latency_degradation), 3)
+
         return {
             "drift_score": drift_score,
             "window_size": len(rows),
@@ -168,6 +176,7 @@ class DriftAnalyzer:
             "breakdown": {
                 "intent_flip_rate": round(intent_flip_rate, 3),
                 "latency_trend": round(latency_trend, 3),
+                "latency_degradation": round(latency_degradation, 3),
             },
         }
 
