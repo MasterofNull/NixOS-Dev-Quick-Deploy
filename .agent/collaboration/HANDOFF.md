@@ -1481,3 +1481,10 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Live validation: `/favicon.ico`, `/api/aistack/harness`, hints stats/report, lesson registry, agent-ops status, memory facts/stats/crystalline/supersede, affective state, and parity scorecard all return non-404 under the managed service.
 - Visual validation: `scripts/ai/aq-screenshot http://127.0.0.1:8889 /tmp/aq-dashboard-postfix.png --wait 1500` saved a 1600x1302 PNG with no JS console error output; recent dashboard journal had no 404 entries after repair.
 - Validation target before commit: py_compile main/aistack, node check dashboard.js, dashboard compat route test, QA singleflight test, tier0 pre-commit.
+
+## 2026-05-21 Codex handoff — dashboard hints and trace summary visibility
+
+- Context: after the managed-service repair, an additional dashboard visibility slice was present in the worktree for per-intent trace summaries and an active hints registry card.
+- Slice: validated and tightened `/api/traces/summary` and `/api/hints/active` dashboard proxies, added both to the compatibility route guard, and kept canonical plus `/api/aistack/*` legacy namespaces live.
+- Live validation: `/api/traces/summary`, `/api/hints/active`, `/api/aistack/traces/summary`, and `/api/aistack/hints/active` returned 200 after restarting the managed dashboard service.
+- Visual validation: `scripts/ai/aq-screenshot http://127.0.0.1:8889 /tmp/aq-dashboard-hints-registry.png --wait 1500` saved a fresh dashboard PNG; no 404s appeared after the restart window.
