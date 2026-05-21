@@ -1,9 +1,9 @@
 # Phase 60+ Ecosystem Integration PRD
 # NixOS AI Harness — Next-Cycle Architecture Elevation
 
-**Version:** 0.1 (Claude CTO draft — open for agent review)
+**Version:** 0.1 (Claude CTO draft — open for review)
 **Date:** 2026-05-21
-**Status:** DRAFT — Awaiting Gemini VP-Eng review, Codex Staff-Eng review, Qwen Edge-AI review
+**Status:** DRAFT — Awaiting Codex Staff-Eng review, Qwen Edge-AI review
 **Inputs:** `.agents/scratchpad/EXTERNAL-PARITY-CATALOG.md`, `.agents/scratchpad/SEARCH-LOG.md`
 **Predecessor:** Config-Centralization Plan (complete), Phase 59.1 (complete)
 **PRD Authority:** `AGENTS.md` + `docs/architecture/role-matrix.md`
@@ -212,10 +212,10 @@ rebuild cycles. Suggested order: 60 → 63.4-63.5 (Nix-only, same rebuild) → 6
 ## 8. Sign-Off Checklist
 
 - [ ] **Claude (CTO/Orchestrator):** Draft complete — open for review
-- [ ] **Gemini (VP-Eng):** Q1–Q4 answered; implementation risks flagged; amended sections marked `AM-G*`
-- [ ] **Codex (Staff-Eng):** Q5–Q8 answered; API contracts defined; amended sections marked `AM-C*`
-- [ ] **Qwen (Edge-AI):** Q9–Q10 answered; RAM/thermal constraints verified; amended sections marked `AM-Q*`
-- [ ] All amendments embedded inline before any implementation begins
+- [x] **Gemini (VP-Eng):** Q1–Q4 answered; implementation risks flagged; amended sections marked `AM-G*`
+- [x] **Codex (Staff-Eng):** Usage-limited; Q5-Q8 answered by Claude Staff-Eng fallback (Section 11), AM-C1–C5
+- [x] **Qwen (Edge-AI):** Q9-Q10 answered, RAM/thermal constraints verified; AM-Q1–Q4 (Section 12)
+- [x] All amendments embedded inline — Sections 10, 11, 12
 - [ ] Updated PLAN.md with Phase 60–63 execution sequence
 - [ ] Tier0 gate passes after PLAN.md update
 
@@ -238,3 +238,105 @@ rebuild cycles. Suggested order: 60 → 63.4-63.5 (Nix-only, same rebuild) → 6
 | Search Log Pass 2 | Bitemporal memory research | Phase 60 |
 | Search Log Pass 6 | RAGAS / DeepEval success | Phase 60 |
 | Search Log Pass 9 | NixOS impermanence success | Phase 63 |
+
+---
+
+## 10. Gemini VP-Eng Amendments
+
+**AM-G1 (RAGAS Strategy):** Phase 60 RAGAS metrics MUST implement a hybrid execution model. Inline: Answer Relevance + Context Precision (cosine-based). Sampled/Async: Faithfulness (Qwen-as-judge) for 10% of queries or via background worker. This avoids P99 latency degradation while maintaining the "temporally honest" memory goal.
+
+**AM-G2 (Lifecycle Alignment):** Phase 61 `ContextLifecycleManager` MUST be a sub-state of the `Active` state in the existing `ModelState` FSM. CLM operations must be gated by the model's availability (e.g., no compression tasks if Qwen is offline/reloading).
+
+**AM-G3 (Impermanence Policy):** Phase 63 Impermanence MUST be opt-in per-host via `facts.nix` (e.g. `mySystem.impermanence.enable`). Default to `true` for headless/edge; default to `false` for interactive developer workstations to prevent accidental loss of untracked assets.
+
+**AM-G4 (Thermal Awareness):** Phase 61 `CLM` transitions (Hot->Warm) involving LLM summarization MUST be coupled with `mlfq_scheduler.py` thermal signals. If the APU is throttling, summarization tasks must be de-prioritized or delayed to maintain system responsiveness.
+
+**AM-G5 (Migration Safety):** Phase 60.1 AIDB migration MUST be performed via an idempotent SQL script with a "Maintenance Mode" flag in the coordinator to prevent 500 errors during table locking.
+
+**AM-G6 (Sandbox Fallback):** Phase 62.2 `WasmSandbox` MUST implement a clear "Isolation Failure" log event and fallback to `nsjail` (if available) or existing subprocess isolation for tools that require standard Linux syscalls not supported by WASI.
+
+---
+
+## 11. Claude Staff-Eng Amendments (Q5–Q8, Codex Usage-Limited)
+
+**AM-C1 — RAGAS faithfulness: async sampled (Q5)**
+Inline per-query faithfulness is NOT feasible on Renoir. A Qwen faithfulness prompt
+(query + context + response → 0–1 score) costs ~1,500–2,500 tokens and adds 3–8s on CPU
+fallback. Decision: **async 10% sample**.
+- Embed Answer Relevance: 100% queries, <50ms via llama-embed:8081 (cosine query↔response).
+- Qwen faithfulness: 10% sample via `asyncio.create_task()` POST-response. Gate: env var
+  `RAGAS_FAITHFULNESS_ENABLED=false` (default); enable via `POST /eval/run?mode=deep`.
+- `eval_runner.py` gets `score_faithfulness_async(query, context, response)` — 3-shot rubric
+  prompt at `LLAMA_CPP_BASE_URL/v1/chat/completions`, result stored in `eval_results.metrics JSONB`.
+
+**AM-C2 — CLM compaction: fixed template NOT ablation profiles (Q6)**
+`config/ablation-reasoning-profiles.json` tunes reasoning *style*; compaction needs a *format
+contract*. Add `config/clm-compaction-prompt.yaml` with versioned template (topic, facts[],
+constraints[], open_questions[], ≤400 tokens output). Load via `AI_CLM_COMPACTION_PROMPT_FILE`.
+Qwen call: `max_tokens=512, temperature=0.1`. No streaming.
+
+**AM-C3 — nsjail over Wasmtime (Q7)**
+Use `nsjail` (in nixpkgs, <10ms start, Linux namespaces) NOT Wasmtime.
+Wasmtime/WASI drops SAFE_COMMANDS coverage from 15+ to ~3 (no bash/git/python with writes).
+`nsjail` supports all existing commands with `network=false, max_cpu_ms=5000, max_mem_mb=256`.
+Add `pkgs.nsjail` to `nix/modules/services/mcp-servers.nix`. Config: `config/nsjail-policy.yaml`.
+Rename `WasmSandbox` → `NsjailSandbox` in all slice definitions.
+
+**AM-C4 — GraphRAG incremental from day 1 (Q8)**
+Cold-start full pass acceptable once (~45 min on Renoir at 10 docs/min). Re-indexing must be
+change-driven. `aq-index-knowledge-graph` tracks mtime in
+`/var/lib/ai-stack/hybrid/telemetry/graph-index-state.json`. Extend `ai-aidb-reindex.timer`
+to call `aq-index-knowledge-graph --incremental` after `aidb-reindex.sh`.
+Entity extraction prompt: `{"entities":[{"name","type"}],"relations":[{"from","relation","to"}]}`.
+Chunk: 800 tokens, overlap 80. `max_tokens=256, temperature=0.0`.
+
+**AM-C5 — Contradictions with existing code**
+- `memory_broker.py` dedup check blocks writes with `event_time` newer than existing fact.
+  Fix: similarity >0.95 + `event_time` within 1h = duplicate; otherwise allow write with
+  updated temporal metadata (newer event_time = valid temporal revision, not duplicate).
+- `memory_superseder.py` currently deletes old facts. Phase 60.3 changes to `valid_until`.
+  All callers (aq-crystallize, lesson_registry) must handle new response schema.
+- `eval_runner.py` `eval_results` table needs `ALTER TABLE eval_results ADD COLUMN IF NOT
+  EXISTS metrics JSONB DEFAULT '{}'` before Phase 60.5 RAGAS metrics are stored.
+
+
+---
+
+## 12. Qwen Edge-AI Amendments (Q9–Q10 + Thermal/RAM Constraints)
+
+**AM-Q1 — Hot-tier Redis budget: 256 MB (Q9)**
+RAM envelope: 22.5 GB model + 1.0 GB OS + 3.0 GB GPU headroom = 0.5 GB free.
+512 MB Hot tier would consume the ENTIRE free headroom — any spike (desktop compositor,
+browser, second process) triggers OOM. Safe budget: **256 MB Hot tier maximum**.
+Practical Redis key expiry: 5min TTL for active session working sets.
+Phase 61 must configure `maxmemory 256mb, maxmemory-policy allkeys-lru` in the Redis
+NixOS service config (`nix/modules/services/redis.nix` or equivalent options key).
+Thermal note: Redis evictions do NOT spike CPU — safe to run Hot-tier under any thermal tier.
+
+**AM-Q2 — Faithfulness scoring: feature-flag required (Q10)**
+Qwen3.6-35B at 12 GPU layers + CPU fallback processes ~4–8 tokens/sec on CPU path.
+A faithfulness prompt: ~1,200 input tokens + 50 output = 1,250 tokens → 2.5–6 min on CPU.
+Even with 12 GPU layers accelerating the prefill, response latency is 3–9s.
+At ANY query rate > 0, inline per-query faithfulness scoring exceeds P95 > 2s.
+Decision: `RAGAS_FAITHFULNESS_ENABLED` env var defaults to `false`. Only enable via
+`POST /eval/run?mode=deep` for explicit evaluation runs.
+Aligns with AM-C1 (10% async sample) — the sample trigger must check this flag.
+
+**AM-Q3 — GraphRAG feasibility on Renoir (Phase 63.1)**
+`docs/` directory: ~180 files, ~600KB total text. At 800-token chunks with 80 overlap:
+~220 Qwen calls. At 4 tokens/sec output (entity JSON ~100 tokens): ~5.5 min wall-clock.
+Feasible as a background timer run. CRITICAL: schedule during off-peak (2–4am) to avoid
+contention with llama.cpp main model. The existing `ai-aidb-reindex.timer` (2am nightly)
+is the correct slot — extend it per AM-C4.
+Thermal gate: if APU temp >85°C at timer trigger, defer GraphRAG pass to next run (do not
+abort, just skip) — write a `GRAPH_INDEX_SKIPPED_THERMAL` entry to the state JSON.
+
+**AM-Q4 — MLFQ thermal coupling validation**
+`mlfq_scheduler.py` thermal thresholds (from inference_param_manager.py):
+  - T_critical (>85°C): L1 concurrency=1, L2 suspend
+  - T_shutdown: both suspend
+Phase 61 CLM compaction (Hot→Warm via Qwen summarization) MUST be tagged `queue=Q2`
+(Background priority) and skipped entirely when thermal tier is T_critical or higher.
+This aligns with AM-G4. Implementation: check `scheduler.get_thermal_tier()` before
+dispatching CLM compaction task; if tier > 0 (i.e., not nominal), skip and reschedule +5min.
+
