@@ -1252,3 +1252,21 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 
 **Next:** Run tier0 and commit if green.
 **Context Bloat:** Low
+
+
+---
+
+# Handoff Memo — 2026-05-21 Phase 62 Safety Rails / Nsjail Commit (Codex)
+
+**Status:** Complete and validated.
+
+**Final validation:**
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-local-shell-sandbox.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`78 passed, 0 failed, 3 skipped`)
+- `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 ... scripts/ai/aq-qa 0` — PASS (`77 passed, 0 failed, 4 skipped`)
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS (`16 passed, 0 failed`)
+
+**Operational note:** QA phase 0 showed transient coordinator endpoint timeouts under load during one tier0 run. Direct rerun and final tier0 were green after increasing front-door/safety-gate smoke timeouts to tolerate current route-search latency.
+
+**Uncommitted external work intentionally left untouched:** `dashboard-v2.html` and `dashboard/VIRTUAL-LAYOUT.json`.
+**Context Bloat:** Low
