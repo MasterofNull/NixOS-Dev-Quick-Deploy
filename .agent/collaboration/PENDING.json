@@ -1,40 +1,28 @@
 {
   "agent": "Codex",
-  "task": "Enforce cross-surface docs/dashboard contract in tier0",
-  "intent": "Add a governance check so runtime/module/service changes cannot be accepted without connected documentation, Command Center/dashboard visibility, or an explicit handoff/plan surface update.",
-  "status": "committed",
-  "timestamp": "2026-05-21T14:26:21.601987+00:00",
+  "task": "Reconcile parity plan status after security/safety commits",
+  "intent": "Update PARITY-INTEGRATION-PLAN.md to reflect completed static security contract and Phase 62 safety/nsjail work while preserving remaining runtime implementation items.",
+  "status": "validated_pending_commit",
+  "timestamp": "2026-05-21T14:28:08.341680+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
-    "scripts/governance/check-cross-surface-contract.py",
-    "scripts/governance/tier0-validation-gate.sh",
-    "docs/architecture/cross-surface-change-contract.md",
     ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
     ".agent/collaboration/HANDOFF.md"
   ],
   "guardrails": [
-    "Do not touch active Claude refactor surfaces unless required.",
-    "Do not commit whitespace-only deploy facts drift as semantic work.",
-    "Keep the gate path-based and explainable to minimize false positives."
+    "Do not mark runtime sandbox/delegation/MCP enforcement complete unless backed by implemented code/tests.",
+    "Do not modify unstaged whitespace-only facts.nix drift."
   ],
   "validation_pending": [
-    "unit-style dry runs for compliant/noncompliant file sets",
-    "tier0 pre-commit",
-    "aq-qa 0"
+    "security contract static test",
+    "tier0 pre-commit if committed"
   ],
   "validation": [
-    "python3 -m py_compile scripts/governance/check-cross-surface-contract.py \u2014 PASS",
-    "bash -n scripts/governance/tier0-validation-gate.sh \u2014 PASS",
-    "check-cross-surface explicit positive docs case \u2014 PASS",
-    "check-cross-surface explicit positive dashboard case \u2014 PASS",
-    "check-cross-surface explicit negative runtime-only case \u2014 FAIL as expected",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (17 passed, 0 failed)",
-    "Post-switch aq-qa 0 --json \u2014 PASS (82 passed, 0 failed, 3 skipped)"
+    "PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-security-contract-gates.py \u2014 PASS",
+    "Parity plan diff reviewed: statuses changed only from Pending to bounded PARTIAL/DONE where backed by committed artifacts"
   ],
   "next": [
-    "Keep nix/hosts/hyperd/facts.nix whitespace-only deploy drift out of semantic commits unless explicitly accepted.",
-    "Resume parity slices from Phase 1 security/governance contracts after checking active agent ownership.",
-    "For future runtime/service/module slices, include docs/handoff/planning or dashboard visibility before tier0."
-  ],
-  "commit": "test(governance): enforce cross-surface visibility contract (current HEAD after amend)"
+    "Commit parity plan status reconciliation.",
+    "Next implementation candidate: remaining S2 registry lint/runtime profile enforcement or S5 observability path view, depending on active agent ownership."
+  ]
 }
