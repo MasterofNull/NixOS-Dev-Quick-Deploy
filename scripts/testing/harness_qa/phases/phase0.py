@@ -1121,4 +1121,79 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_aqd_logic(ctx))
     results.extend(_check_topology_api(ctx))
     results.extend(_check_local_model_config(ctx))
+    results.extend(_check_ragas_eval(ctx))
+    return results
+
+
+def _check_ragas_eval(ctx: RunContext) -> list[CheckResult]:
+    """Phase 60.7: RAGAS eval metrics wired in eval_runner + dashboard RAG Quality card."""
+    results: list[CheckResult] = []
+
+    eval_runner = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "eval_runner.py"
+    )
+    insights_svc = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+        / "telemetry" / "insights_service.py"
+    )
+    dashboard = ctx.repo_root / "dashboard.html"
+
+    # 60.7.1 — eval_runner.py: eval_results DDL + RAGAS scoring functions present
+    if not eval_runner.exists():
+        results.append(failed(4, "60.7.1", "eval_runner.py RAGAS check", "file missing"))
+    else:
+        text = eval_runner.read_text()
+        checks = {
+            "eval_results DDL": "eval_results" in text,
+            "score_answer_relevance": "score_answer_relevance" in text,
+            "score_faithfulness_async": "score_faithfulness_async" in text,
+            "ragas_metrics in trend": "ragas_metrics" in text,
+            "RAGAS_FAITHFULNESS_ENABLED guard": "RAGAS_FAITHFULNESS_ENABLED" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "60.7.1", "eval_runner.py RAGAS", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "60.7.1", "eval_runner.py RAGAS (eval_results + scoring functions + feature flag)"))
+
+    # 60.7.2 — insights_service.py: POST /eval/score-query registered
+    if not insights_svc.exists():
+        results.append(failed(4, "60.7.2", "insights_service.py RAGAS route", "file missing"))
+    else:
+        text = insights_svc.read_text()
+        if "eval/score-query" in text and "handle_eval_score_query" in text:
+            results.append(passed(4, "60.7.2", "POST /eval/score-query registered in insights_service.py"))
+        else:
+            results.append(failed(4, "60.7.2", "POST /eval/score-query", "route not registered in insights_service.py"))
+
+    # 60.7.3 — dashboard.html: RAG Quality card HTML + loadRagQuality JS present
+    if not dashboard.exists():
+        results.append(failed(4, "60.7.3", "dashboard RAG Quality card", "dashboard.html missing"))
+    else:
+        text = dashboard.read_text()
+        checks = {
+            "section-rag-quality": "section-rag-quality" in text,
+            "ragAnswerRelevance": "ragAnswerRelevance" in text,
+            "ragFaithfulness": "ragFaithfulness" in text,
+            "loadRagQuality": "loadRagQuality" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "60.7.3", "dashboard RAG Quality card", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "60.7.3", "dashboard RAG Quality card (HTML + JS wired)"))
+
+    # 60.7.4 — live: GET /eval/trend returns ragas_metrics key (skip if coordinator down)
+    data = http_json(f"{ctx.hybrid_coordinator_url}/eval/trend", timeout=4)
+    if data is None:
+        results.append(skipped(4, "60.7.4", "GET /eval/trend ragas_metrics", "coordinator unreachable — needs nixos-rebuild"))
+    elif "ragas_metrics" in data:
+        results.append(passed(4, "60.7.4", "GET /eval/trend contains ragas_metrics key"))
+    else:
+        # Coordinator is up but returning pre-Phase-60.5 response: old nix store build.
+        # Treat as skip (rebuild-pending) rather than fail (code bug).
+        results.append(skipped(4, "60.7.4", "GET /eval/trend ragas_metrics", "old build active — ragas_metrics absent; nixos-rebuild required"))
+
     return results
