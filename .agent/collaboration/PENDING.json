@@ -1,46 +1,40 @@
 {
   "agent": "Codex",
-  "task": "Resume parity dev cycle; stabilize degraded gates; add documentation/dashboard visibility requirement",
-  "intent": "Classify current dirty dashboard backend edits, restore aq-qa/tier0 health, and codify that feature/module/service changes must update connected documentation and command-center visibility for tests and metrics.",
-  "status": "validated_repo_pending_deploy",
-  "timestamp": "2026-05-21T14:03:51.634710+00:00",
+  "task": "Enforce cross-surface docs/dashboard contract in tier0",
+  "intent": "Add a governance check so runtime/module/service changes cannot be accepted without connected documentation, Command Center/dashboard visibility, or an explicit handoff/plan surface update.",
+  "status": "committed",
+  "timestamp": "2026-05-21T14:26:21.601987+00:00",
   "files": [
     ".agent/collaboration/PENDING.json",
-    ".agent/collaboration/HANDOFF.md",
+    "scripts/governance/check-cross-surface-contract.py",
+    "scripts/governance/tier0-validation-gate.sh",
+    "docs/architecture/cross-surface-change-contract.md",
     ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
-    "ai-stack/mcp-servers/aidb/server.py",
-    "ai-stack/mcp-servers/aidb/README.md",
-    "assets/dashboard.js",
-    "config/env-contract.yaml",
-    "nix/modules/services/mcp-servers.nix",
-    "dashboard.html"
-  ],
-  "observed_dirty_files": [
-    "dashboard/backend/api/routes/aistack.py",
-    "dashboard/backend/api/routes/models.py"
+    ".agent/collaboration/HANDOFF.md"
   ],
   "guardrails": [
-    "Do not overwrite other agent dashboard backend edits without classifying ownership.",
-    "Fix degraded services before adding new feature slices.",
-    "No module/service/feature change is complete without connected docs, dashboard visibility, and measurable validation when applicable."
+    "Do not touch active Claude refactor surfaces unless required.",
+    "Do not commit whitespace-only deploy facts drift as semantic work.",
+    "Keep the gate path-based and explainable to minimize false positives."
+  ],
+  "validation_pending": [
+    "unit-style dry runs for compliant/noncompliant file sets",
+    "tier0 pre-commit",
+    "aq-qa 0"
   ],
   "validation": [
-    "Stopped runaway ai-aidb-reindex.service; direct /vector/search recovered with 1 result",
-    "PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json \u2014 PASS (82 passed, 0 failed, 3 skipped)",
-    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (16 passed, 0 failed)",
-    "py_compile AIDB/dashboard backend routes \u2014 PASS",
-    "node --check assets/dashboard.js \u2014 PASS",
-    "nix-instantiate --parse nix/modules/services/mcp-servers.nix \u2014 PASS",
-    "git diff --check \u2014 PASS"
-  ],
-  "runtime_actions": [
-    "Restarted llama-cpp-embed.service after embedding endpoint hung",
-    "Force-restarted ai-aidb.service after stale embedding/vectorization workers blocked clean stop",
-    "Stopped ai-aidb-reindex.service to end foreground vector-search starvation; timer remains active for next scheduled run"
+    "python3 -m py_compile scripts/governance/check-cross-surface-contract.py \u2014 PASS",
+    "bash -n scripts/governance/tier0-validation-gate.sh \u2014 PASS",
+    "check-cross-surface explicit positive docs case \u2014 PASS",
+    "check-cross-surface explicit positive dashboard case \u2014 PASS",
+    "check-cross-surface explicit negative runtime-only case \u2014 FAIL as expected",
+    "PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit \u2014 PASS (17 passed, 0 failed)",
+    "Post-switch aq-qa 0 --json \u2014 PASS (82 passed, 0 failed, 3 skipped)"
   ],
   "next": [
-    "Deploy/switch required for bounded AIDB background vectorization and health/dashboard counters to become live",
-    "Classify pre-existing dirty dashboard backend route edits before separate integration",
-    "Do not restart ai-aidb-reindex until the bounded vectorization fix is deployed"
-  ]
+    "Keep nix/hosts/hyperd/facts.nix whitespace-only deploy drift out of semantic commits unless explicitly accepted.",
+    "Resume parity slices from Phase 1 security/governance contracts after checking active agent ownership.",
+    "For future runtime/service/module slices, include docs/handoff/planning or dashboard visibility before tier0."
+  ],
+  "commit": "test(governance): enforce cross-surface visibility contract (current HEAD after amend)"
 }
