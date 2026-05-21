@@ -30,7 +30,7 @@ need_pattern() {
 
 need_file "${ROOT}/nix/modules/core/options.nix"
 need_file "${ROOT}/nix/modules/services/mcp-servers.nix"
-need_file "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
+need_file "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py"
 need_file "${ROOT}/config/runtime-safety-policy.json"
 need_file "${ROOT}/config/runtime-isolation-profiles.json"
 need_file "${ROOT}/config/workflow-blueprints.json"
@@ -140,7 +140,7 @@ need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_m
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/agent_registry.py" "WORKFLOW_BLUEPRINTS_FILE"
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_manager.py" "RUNTIME_SCHEDULER_POLICY_FILE"
 need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/workflow/runtime_manager.py" "PARITY_SCORECARD_FILE"
-need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py" "_audit_planned_tools"
+need_pattern "${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py" "_audit_planned_tools"
 need_pattern "${ROOT}/ai-stack/mcp-servers/aider-wrapper/server.py" "AI_AIDER_SMALL_SCOPE_SUBTREE_ONLY"
 need_pattern "${ROOT}/ai-stack/mcp-servers/aider-wrapper/server.py" "_is_analysis_only_task"
 need_pattern "${ROOT}/ai-stack/mcp-servers/aider-wrapper/server.py" "_hint_token_overlap"
