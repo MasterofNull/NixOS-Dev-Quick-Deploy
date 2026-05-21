@@ -64,6 +64,23 @@ Renoir APU (27 GB RAM, 12 iGPU layers).
 
 ## 3. Phase Definitions
 
+### Phase 60.0 — Local Model Config Canonicalization + Testing Suite
+**Goal:** Single YAML SSOT for all llama.cpp tunable params; verified smoke test suite that
+gates model quality before any higher-level feature work.
+**Depends on:** nothing (runs first, no rebuild required)
+**Rebuild required:** No
+
+| Slice | Task | Owner | Gate |
+|-------|------|-------|------|
+| 60.0.1 | Create `config/local-model-config.yaml` — capture all live llama.cpp params (ctxSize, n_gpu_layers, MTP config, batch sizes, thread counts, RAM budget, performance targets); include `_meta` header per governance policy | Claude | `python3 -c "import yaml; yaml.safe_load(open('config/local-model-config.yaml'))"` + tier0 config-lint PASS |
+| 60.0.2 | Create `scripts/testing/smoke-local-model.sh` — validates: llama-server /health, TTFT < 10s (cold start allowance), tokens/sec > 0.5, response non-empty, `enable_thinking` absent from response content field (thinking mode guard), MTP acceptance rate from /metrics, embed server /health + latency < 500ms | Claude | `bash -n`; `bash scripts/testing/smoke-local-model.sh` exits 0 |
+| 60.0.3 | Add aq-qa checks `6.x.1`–`6.x.4`: (1) local-model-config.yaml schema valid + params match live systemctl env, (2) smoke-local-model.sh exits 0, (3) MTP acceptance rate > 0 (draft heads active), (4) embed server responds < 500ms | Claude | `aq-qa 0` unchanged; new checks pass when run explicitly |
+| 60.0.4 | Commit + add to tier0 focused-ci trigger paths (smoke-local-model.sh, local-model-config.yaml) | Claude | tier0 16/16 PASS |
+
+**Commit scope:** `config/local-model-config.yaml`, `scripts/testing/smoke-local-model.sh`, updated aq-qa
+
+---
+
 ### Phase 60 — Bitemporal Memory + RAGAS Evaluation
 **Goal:** Make memory recalls temporally honest; give RAG quality a real number.
 **Depends on:** Phase 59 complete (done)

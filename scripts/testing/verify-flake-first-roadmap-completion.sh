@@ -703,6 +703,12 @@ check_pattern "scripts/ai/aq-report" 'delegated_prompt_failure_windows' 'aq-repo
 check_pattern "scripts/testing/test-workflow-review-gate.py" 'top_reviewers|accepted_blueprints|rejected_blueprints|accepted_patch_reviews|patch_reviews_by_reviewed_agent' 'Workflow review-gate test covers reviewer, blueprint, and patch-review aggregates'
 check_pattern "nixos-quick-deploy.sh" 'Workflow reviews|Workflow review mix|Workflow acceptance' 'quick deploy summary surfaces workflow review and acceptance context'
 check_pattern "nixos-quick-deploy.sh" 'Delegated failure trend' 'quick deploy summary surfaces delegated prompt-failure trend'
+check_pattern "config/local-model-config.yaml" 'active_model' 'Local model config YAML present with active_model key'
+check_pattern "config/local-model-config.yaml" 'enable_thinking' 'Local model config documents thinking-mode guard'
+check_pattern "scripts/testing/smoke-local-model.sh" 'enable_thinking' 'Smoke test enforces thinking-mode guard'
+check_pattern "scripts/testing/smoke-local-model.sh" 'mtp' 'Smoke test validates MTP speculative decoding'
+check_pattern "scripts/testing/harness_qa/phases/phase0.py" '60.0.1' 'aq-qa check 60.0.1 wired for local-model-config.yaml'
+check_pattern "scripts/testing/harness_qa/phases/phase0.py" '60.0.2' 'aq-qa check 60.0.2 wired for smoke-local-model.sh'
 
 printf '\n[verify] Summary: %d pass, %d fail\n' "$pass_count" "$fail_count"
 if (( fail_count > 0 )); then
