@@ -172,6 +172,21 @@
       "timeout_seconds": 30
     },
     {
+      "id": "hybrid-auth-profile-policy",
+      "description": "Hybrid runtime auth/profile policy regression",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py",
+        "dashboard/backend/api/routes/aistack.py",
+        "docs/architecture/runtime-auth-profile-enforcement.md",
+        "scripts/testing/test-hybrid-auth-profile-policy.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-hybrid-auth-profile-policy.py"
+      ],
+      "timeout_seconds": 30
+    },
+    {
       "id": "dashboard-qa-singleflight",
       "description": "dashboard aq-qa surfaces share one single-flight runner",
       "trigger_paths": [

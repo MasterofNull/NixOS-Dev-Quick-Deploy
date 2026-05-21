@@ -1457,3 +1457,10 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Slice: harden `scripts/ai/aq-screenshot`, wire Home Manager Playwright/system-Chromium environment, document the command in the `webapp-testing` skill, and add a static contract test so `--help` and no-download browser policy remain valid even before Home Manager is switched.
 - Validation target: bash syntax, Nix parse, YAML/JSON parse, `scripts/testing/test-aq-screenshot-contract.sh`, tier0 pre-commit.
 - Runtime note: actual screenshot capture requires the Home Manager switch to provide Python Playwright in the user profile; this slice intentionally avoids downloading Playwright browsers at runtime.
+
+## 2026-05-21 Codex handoff — S2 runtime auth/profile baseline
+
+- Context: parity plan S2 called for runtime MCP auth/profile enforcement beyond static safety contract gates.
+- Slice: hybrid auth middleware now resolves an explicit `auth_context` for public, loopback-agent, API-key, and no-key compatibility modes; validates optional `X-Harness-Auth-Profile`; emits response headers; and exposes the policy in Command Center harness overview.
+- Docs: `docs/architecture/runtime-auth-profile-enforcement.md` records request modes, profile allowlists, response headers, and dashboard visibility.
+- Validation target: `scripts/testing/test-hybrid-auth-profile-policy.py`, Python compile, focused CI, tier0 pre-commit, and live `/api/harness/overview` after service restart/deploy.
