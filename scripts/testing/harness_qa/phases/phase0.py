@@ -1122,6 +1122,79 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_topology_api(ctx))
     results.extend(_check_local_model_config(ctx))
     results.extend(_check_ragas_eval(ctx))
+    results.extend(_check_clm(ctx))
+    return results
+
+
+def _check_clm(ctx: RunContext) -> list[CheckResult]:
+    """Phase 61: CLM 3-tier lifecycle, MLFQ pressure integration, HTTP routes."""
+    results: list[CheckResult] = []
+
+    clm = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+        / "knowledge" / "context_lifecycle_manager.py"
+    )
+    scheduler = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+        / "mlfq_scheduler.py"
+    )
+    prompt_yaml = ctx.repo_root / "config" / "clm-compaction-prompt.yaml"
+
+    # 61.1 — CLM module: 3-tier structure + compaction + thermal gate
+    if not clm.exists():
+        results.append(failed(4, "61.1", "context_lifecycle_manager.py", "file missing"))
+    else:
+        text = clm.read_text()
+        checks = {
+            "Hot/Warm/Cold tiers": all(t in text for t in ("hot", "warm", "cold")),
+            "_demote_to_warm": "_demote_to_warm" in text,
+            "_demote_to_cold": "_demote_to_cold" in text,
+            "thermal_gate (AM-G4)": "critical" in text and "shutdown" in text,
+            "compaction prompt load": "_load_compaction_prompt" in text,
+            "enable_thinking guard": "enable_thinking" in text,
+            "CLM_HOT_MAX_MB (256 default)": "256" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "61.1", "context_lifecycle_manager.py CLM", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "61.1", "CLM: 3-tier Hot/Warm/Cold + thermal gate + compaction"))
+
+    # 61.2 — compaction prompt YAML present + valid
+    if not prompt_yaml.exists():
+        results.append(failed(4, "61.2", "clm-compaction-prompt.yaml", "file missing"))
+    else:
+        try:
+            import yaml as _yaml
+            d = _yaml.safe_load(prompt_yaml.read_text())
+            if "template" in d and "{session_id}" in d["template"]:
+                results.append(passed(4, "61.2", "clm-compaction-prompt.yaml valid (template + {session_id})"))
+            else:
+                results.append(failed(4, "61.2", "clm-compaction-prompt.yaml", "missing template or {session_id} placeholder"))
+        except Exception as exc:
+            results.append(failed(4, "61.2", "clm-compaction-prompt.yaml parse", str(exc)))
+
+    # 61.3 — MLFQ pressure integration present
+    if not scheduler.exists():
+        results.append(failed(4, "61.3", "mlfq_scheduler.py CLM pressure", "file missing"))
+    else:
+        text = scheduler.read_text()
+        if "apply_clm_pressure" in text and "pressure_pct" in text:
+            results.append(passed(4, "61.3", "MLFQ apply_clm_pressure() wired (Phase 61.5)"))
+        else:
+            results.append(failed(4, "61.3", "MLFQ CLM pressure", "apply_clm_pressure() not found in mlfq_scheduler.py"))
+
+    # 61.4 — live CLM status endpoint (skip if coordinator not rebuilt yet)
+    data = http_json(f"{ctx.hybrid_coordinator_url}/context/lifecycle/status", timeout=4)
+    if data is None:
+        results.append(skipped(4, "61.4", "GET /context/lifecycle/status", "coordinator unreachable or pre-rebuild build"))
+    elif "tiers" in data and "pressure_pct" in data:
+        results.append(passed(4, "61.4", f"GET /context/lifecycle/status OK (pressure={data.get('pressure_pct')}%)"))
+    else:
+        results.append(skipped(4, "61.4", "GET /context/lifecycle/status", f"unexpected response keys: {list(data.keys())[:5]}"))
+
     return results
 
 

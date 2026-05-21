@@ -288,6 +288,35 @@ class MLFQScheduler:
         if previous != normalized:
             logger.info("mlfq_scheduler: thermal tier changed %s -> %s", previous, normalized)
 
+    def apply_clm_pressure(self, pressure_pct: float) -> None:
+        """
+        Phase 61.5 — CLM Hot-tier pressure feedback.
+
+        If CLM Hot-tier memory exceeds 80% of the 256MB budget, reduce Q0
+        (Interactive) concurrency by 1 (floor: 1). When pressure drops below
+        60%, restore Q0 toward the base limit (+1, ceiling: base).
+
+        Designed for gentle, non-AIMD adjustment — hot-tier memory pressure
+        is not an error condition, just a soft backpressure signal.
+        """
+        base = self._base_concurrency.get(0, 8)
+        current = self._concurrency.get(0, base)
+        if pressure_pct >= 80.0:
+            new_limit = max(1, current - 1)
+            if new_limit != current:
+                self._concurrency[0] = new_limit
+                logger.info(
+                    "mlfq_scheduler: CLM pressure=%.1f%% -> Q0 concurrency %d->%d",
+                    pressure_pct, current, new_limit,
+                )
+        elif pressure_pct < 60.0 and current < base:
+            new_limit = min(base, current + 1)
+            self._concurrency[0] = new_limit
+            logger.debug(
+                "mlfq_scheduler: CLM pressure=%.1f%% -> Q0 restored %d->%d",
+                pressure_pct, current, new_limit,
+            )
+
     def _admit_snapshot(self, desc: WorkloadDescriptor, level: int) -> bool:
         if desc.token_budget <= 0:
             return False
