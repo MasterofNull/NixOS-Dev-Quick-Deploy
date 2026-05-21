@@ -1071,3 +1071,40 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 2. `event_time` / `valid_until` behavior tests;
 3. retrieval trace fields for memory IDs, supersession state, source/provenance;
 4. stale/poisoned/superseded recall fixtures.
+
+
+---
+
+## Phase 60 bitemporal retrieval traceability pack (Codex, 2026-05-21)
+
+**Status:** Validated; commit pending at time of this handoff entry.
+
+### Completed
+
+- Added `retrieval_plan.v1` to `recall_agent_memory()` results.
+- Added the same retrieval plan to `agent_memory_recall` telemetry payloads.
+- Promoted per-row trace fields from raw payload into stable result fields:
+  - `source`
+  - `source_agent`
+  - `event_time`
+  - `ingestion_time`
+  - `supersedes`
+  - `superseded_by`
+  - `schema_version`
+- Extended `scripts/testing/test-memory-recall-broker-contract.py` with retrieval-plan and provenance/supersession trace assertions.
+- Investigated a transient Phase 60.7 RAGAS gate issue. Current behavior: `aq-qa 0` passes and classifies live `/eval/trend` `ragas_metrics` absence as old-build/rebuild-pending SKIP.
+
+### Validation
+
+- `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile ...` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/testing/test-memory-recall-broker-contract.py` — PASS
+- `PYTHONDONTWRITEBYTECODE=1 pytest -q ai-stack/mcp-servers/hybrid-coordinator/tests/test_cognitive_intelligence_l5_l6.py scripts/testing/test-memory-recall-broker-contract.py` — PASS (`8 passed`)
+- `scripts/ai/aq-memory-recall-benchmark --json` — PASS (`20/20`)
+- `PYTHONDONTWRITEBYTECODE=1 aq-qa 0 --json` — PASS (`70 passed / 0 failed / 3 skipped`)
+- `PYTHONDONTWRITEBYTECODE=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS
+- `git diff --check` — PASS
+
+### Next
+
+- Rebuild/switch is still required before the live coordinator serves the newest Phase 60 code from the Nix store.
+- Next implementation options: stale/poisoned/superseded recall fixture pack, or trace-debug export/replay bundle.

@@ -1,55 +1,46 @@
 {
   "agent": "Codex",
-  "task": "Phase 60 parity continuation + bitemporal memory validation/fix",
-  "intent": "Fix confirmed bitemporal recall/supersession edge cases found during collaborator review, while keeping parity docs and implementation changes clearly separated.",
+  "task": "Phase 60 bitemporal retrieval traceability pack",
+  "intent": "Add a minimal retrieval_plan contract and memory-row provenance/supersession trace fields, with focused tests, before moving to sandbox/governance slices.",
+  "status": "completed_committed",
+  "timestamp": "2026-05-21T02:54:25.632006+00:00",
   "files": [
+    ".agent/collaboration/PENDING.json",
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/PULSE.log",
     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/memory_manager.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/memory_broker.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/memory_superseder.py",
+    "scripts/testing/test-memory-recall-broker-contract.py"
+  ],
+  "plan_references": [
     ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
     ".agents/plans/multi-agent-edge-harness/EXTERNAL-PARITY-AMENDMENTS.md",
-    ".agents/plans/multi-agent-edge-harness/PHASE-A-ACCEPTANCE-CRITERIA.md",
     ".agents/plans/PHASE-60-ECOSYSTEM-INTEGRATION-PRD.md"
   ],
-  "status": "completed_committed",
-  "timestamp": "2026-05-21T02:43:02.158474+00:00",
-  "plan_references": [
-    ".agent/collaboration/HANDOFF.md Phase 59.1 notes"
+  "guardrails": [
+    "keep scope to retrieval traceability; no sandbox/governance implementation yet",
+    "preserve existing recall API shape while adding fields",
+    "validate focused tests, aq-memory-recall-benchmark, aq-qa 0, and tier0 before commit"
   ],
   "completed": [
-    "Rechecked collaboration state, recent commits, active processes, host memory pressure, and service health",
-    "Confirmed refactor line moved past R2.9; latest active line is Phase 60 memory/RAG/eval",
-    "Ran aq-session-start and aq-hints for current context",
-    "Spawned read-only collaborators for Phase 60 implementation risk and parity-plan alignment",
-    "Patched parity docs per collaborator review: current dirty-state caveat, v0.3 loopback-auth correction, memory field naming, Phase 62 nsjail normalization",
-    "Validated and committed MAEAH external parity supplement docs",
-    "Fixed Phase 60.2 bitemporal supersession semantics: epoch valid_at support, historical recall filter target, post-store supersession recording, and time-aware supersession cache checks",
-    "Validated and committed memory correctness fix",
-    "Validated and committed runtime smoke script maintenance updates"
-  ],
-  "remaining": [
-    "Current live coordinator uses Nix store code and may need rebuild/switch to activate 68af538d memory changes",
-    "Next recommended implementation slice: bitemporal retrieval traceability pack tests/fixtures before sandbox/governance implementation",
-    "Monitor local model memory pressure; llama-server remains the dominant RSS consumer"
-  ],
-  "guardrails": [
-    "keep docs-only parity commit separable from implementation commit",
-    "do not widen runtime surface beyond Phase 60.2 memory correctness",
-    "run focused memory tests and aq-qa before handoff"
+    "Added retrieval_plan.v1 to recall_agent_memory results and agent_memory_recall telemetry",
+    "Promoted memory row trace fields: source, source_agent, event_time, ingestion_time, supersedes, superseded_by, schema_version",
+    "Extended test-memory-recall-broker-contract.py for retrieval plan and provenance/supersession trace fields",
+    "Investigated transient aq-qa/tier0 RAGAS gate degradation; rerun classified live /eval/trend ragas_metrics as rebuild-pending SKIP and tier0 passed"
   ],
   "validation": [
-    "PYTHONDONTWRITEBYTECODE=1 py_compile memory_manager.py memory_broker.py memory_superseder.py drift_analyzer.py \u2014 PASS",
-    "bitemporal temporal/supersession smoke \u2014 PASS",
-    "pytest -q test_memory_superseder.py test-memory-recall-broker-contract.py \u2014 PASS (3 passed)",
+    "PYTHONDONTWRITEBYTECODE=1 py_compile memory_manager.py and test-memory-recall-broker-contract.py \u2014 PASS",
+    "python3 scripts/testing/test-memory-recall-broker-contract.py \u2014 PASS",
+    "pytest -q test_cognitive_intelligence_l5_l6.py test-memory-recall-broker-contract.py \u2014 PASS (8 passed)",
     "aq-memory-recall-benchmark --json \u2014 PASS (20/20)",
-    "aq-qa 0 --json \u2014 PASS (66 passed / 0 failed / 3 skipped)",
-    "validate-runtime-declarative.sh \u2014 PASS",
-    "smoke-security-audit-compliance.sh \u2014 PASS",
-    "tier0-validation-gate.sh --pre-commit \u2014 PASS"
+    "aq-qa 0 --json \u2014 PASS (70 passed / 0 failed / 3 skipped; live ragas_metrics old-build check is SKIP)",
+    "tier0-validation-gate.sh --pre-commit \u2014 PASS",
+    "git diff --check \u2014 PASS"
+  ],
+  "remaining": [
+    "NixOS rebuild/switch required to activate Phase 60 runtime changes in live coordinator",
+    "Next slice: stale/poisoned/superseded recall fixture pack or trace-debug export/replay bundle"
   ],
   "commits": [
-    "487c42e3 docs(plan): add MAEAH external parity supplement",
-    "68af538d fix(memory): preserve bitemporal supersession semantics",
-    "4196da07 test(runtime): update refactor validation smokes"
+    "68dc1b51 feat(memory): add bitemporal retrieval trace plan"
   ]
 }
