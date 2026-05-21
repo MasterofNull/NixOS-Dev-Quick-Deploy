@@ -19,6 +19,8 @@ EXPECTED = {
     "/api/aistack/lesson-registry",
     "/api/aistack/agent-ops/status",
     "/api/aistack/memory/stats",
+    "/api/traces/summary",
+    "/api/hints/active",
     "/api/memory/facts",
     "/api/memory/crystalline/status",
     "/api/memory/supersede/history",
