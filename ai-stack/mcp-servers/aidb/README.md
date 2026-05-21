@@ -102,6 +102,11 @@ QDRANT_URL=http://qdrant:6333
 
 # llama.cpp
 LLAMA_CPP_BASE_URL=http://llama-cpp:8080
+
+# Background Qdrant vectorization backpressure
+AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY=2
+AIDB_QDRANT_VECTORIZE_MAX_QUEUE=16
+AIDB_QDRANT_VECTORIZE_TIMEOUT_S=45
 ```
 
 **Optional TLS (internal services):**
@@ -137,6 +142,12 @@ Override with `AIDB_CONFIG` if you want to mount a custom config.
 GET /health
 # Returns: {"status": "healthy", "services": {...}}
 ```
+
+`/health` includes `background_vectorization` so the Command Center can show
+pending/completed/failed/skipped Qdrant vectorization work. These counters are
+operator-facing backpressure signals: import-triggered fire-and-forget
+vectorization must not starve foreground `/vector/search` or overload the local
+embedding server.
 
 ### Document Management
 ```bash

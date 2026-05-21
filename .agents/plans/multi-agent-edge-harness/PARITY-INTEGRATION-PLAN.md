@@ -45,6 +45,17 @@ Required before runtime implementation of parity amendments:
 - dirty tree ownership is clear;
 - no active Claude/Gemini file ownership conflict.
 
+
+## Cross-surface change contract
+
+Every accepted module, feature, service, route, or agent capability change in this cycle must update the surfaces that make the change understandable and operable. A slice is not complete unless one of these outcomes is recorded in its validation evidence:
+
+1. **Connected documentation updated** — PRD/plan/runbook/architecture docs that describe the changed system piece are updated in the same slice.
+2. **Command Center visibility updated** — new or changed tests, measured metrics, health states, validation gates, drift signals, or agent/service operational states are exposed through the AI Command Center dashboard or its backend API when they are relevant to an operator.
+3. **Explicit non-applicability recorded** — if a docs or dashboard update is not appropriate, the handoff must say why.
+
+This contract exists to prevent hidden capability drift: system behavior, validation evidence, and operator visibility must evolve together.
+
 ## Phase 1 — Security and governance contracts
 
 **Implements:** PA-2, PA-3, PA-4, PA-9.

@@ -192,6 +192,27 @@
     ::-webkit-scrollbar-track{background:transparent}
     ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
     @media(max-width:600px){.layer-rail{grid-template-columns:repeat(4,1fr)}}
+
+    /* ── DYNAMIC STATUS COLORING ── */
+    .stat.warn{border-left-color:var(--yel);background:linear-gradient(160deg,rgba(249,226,175,.06),rgba(8,12,18,.95))}
+    .stat.err{border-left-color:var(--red);background:linear-gradient(160deg,rgba(255,54,68,.08),rgba(8,12,18,.95))}
+    .stat.err::after{opacity:.4;animation-duration:1.5s}
+    .spark.warn path{stroke:var(--yel)}
+    .spark.err path{stroke:var(--red)}
+    .kpi-v.ok{color:var(--grn)}.kpi-v.warn{color:var(--yel)}.kpi-v.err{color:var(--red)}
+    /* Alert list */
+    .alert-bar{display:flex;flex-wrap:wrap;gap:.4rem;padding:.5rem 1.5rem;
+      border-bottom:1px solid var(--border);min-height:2rem;align-items:center}
+    .alert-bar-label{font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.1em;flex-shrink:0}
+    .deck-alert{display:flex;align-items:center;gap:.4rem;padding:.2rem .55rem;border-radius:2px;
+      font-size:.6rem;border-left:2px solid var(--yel);background:rgba(249,226,175,.06)}
+    .deck-alert.err{border-left-color:var(--red);background:var(--red-g)}
+    .deck-alert.ok{border-left-color:var(--grn);background:rgba(57,255,20,.04)}
+    .deck-alert-sev{font-weight:700;font-size:.56rem;width:36px;flex-shrink:0}
+    .deck-alert-msg{color:var(--fg2)}.deck-alert-meta{color:var(--fg3);font-size:.55rem;margin-left:auto}
+    /* Score coloring */
+    .score-num.warn{color:var(--yel);text-shadow:0 0 14px rgba(249,226,175,.4)}
+    .score-num.err{color:var(--red);text-shadow:0 0 14px rgba(255,54,68,.4)}
   </style>
 </head>
 <body>
@@ -243,6 +264,14 @@
   <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">--</span></div>
 </div>
 
+
+<!-- ── LIVE ALERT BAR ── -->
+<div class="alert-bar" id="alertBar">
+  <span class="alert-bar-label">Alerts:</span>
+  <span id="alertItems" style="display:flex;flex-wrap:wrap;gap:.4rem;flex:1">
+    <span style="color:var(--fg3);font-size:.6rem">Nominal</span>
+  </span>
+</div>
 <!-- ── OVERVIEW ── -->
 <div class="panel on" id="panel-overview">
   <!-- System stat tiles -->
@@ -257,21 +286,21 @@
       <div class="stat-d" id="gpuVram">inference</div>
       <svg class="spark" id="spGpu" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
     </div>
-    <div class="stat cy">
+    <div class="stat cy" id="statMem">
       <div class="stat-l">Memory</div><div class="stat-v" id="vMem">--</div>
       <div class="stat-d"><span id="memUsed">--</span> / <span id="memTotal">--</span></div>
       <svg class="spark" id="spMem" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
     </div>
-    <div class="stat cy">
+    <div class="stat cy" id="statDisk">
       <div class="stat-l">Disk</div><div class="stat-v" id="vDisk">--</div>
       <div class="stat-d"><span id="dskFree">--</span> free of <span id="dskTotal">--</span></div>
     </div>
-    <div class="stat cy">
+    <div class="stat cy" id="statNet">
       <div class="stat-l">Network I/O</div><div class="stat-v" id="vNet">--</div>
       <div class="stat-d"><span id="vConnections">--</span> connections</div>
       <svg class="spark" id="spNet" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
     </div>
-    <div class="stat cy">
+    <div class="stat cy" id="statTemp">
       <div class="stat-l">CPU Temp</div><div class="stat-v" id="cpuTemp" style="font-size:1.1rem">--</div>
       <div class="stat-d"><span id="cpuCores">--</span> cores</div>
     </div>

@@ -965,6 +965,11 @@ in {
                 #   - Global hourly: 1000 → 10000 (shared bucket consumed by every API call)
                 "AIDB_RATE_LIMIT_INGEST_RPM=500"
                 "AIDB_RATE_LIMIT_GLOBAL_RPH=10000"
+                # Bound fire-and-forget Qdrant vectorization so imports cannot starve foreground
+                # vector search or overload the local embedding server.
+                "AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY=2"
+                "AIDB_QDRANT_VECTORIZE_MAX_QUEUE=16"
+                "AIDB_QDRANT_VECTORIZE_TIMEOUT_S=45"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"
