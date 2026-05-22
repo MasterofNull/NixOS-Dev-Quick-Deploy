@@ -97,6 +97,7 @@ declare -A COMMAND_MAP=(
   # Specialized tools (standard profile)
   ["optimizer"]="aq-optimizer:standard"
   ["report"]="aq-report:standard"
+  ["chat"]="aq-chat:standard"
   ["rate"]="aq-rate:standard"
   ["prompt-eval"]="aq-prompt-eval:standard"
   ["model-switch"]="aq-model-switch:standard"
@@ -147,6 +148,9 @@ ${GREEN}COMMON COMMANDS:${NC}
     rag-prewarm             Pre-compute embeddings
     knowledge-import        Import external docs
     index                   Manage search indices
+
+  ${YELLOW}Interactive:${NC}
+    chat                    Start high-end AI terminal
 
 ${GREEN}OPTIONS:${NC}
   --list                    Show all available commands
