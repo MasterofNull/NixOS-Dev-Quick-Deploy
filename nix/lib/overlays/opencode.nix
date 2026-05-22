@@ -9,9 +9,9 @@
   so the CLI is available on all AI-stack hosts without touching base.nix.
 */
 final: prev: {
-  models-dev = prev.callPackage ../../../.forks/nixpkgs/pkgs/by-name/mo/models-dev/package.nix { };
+  models-dev = prev.callPackage ../../pkgs/by-name/models-dev/package.nix { };
 
-  opencode = prev.callPackage ../../../.forks/nixpkgs/pkgs/by-name/op/opencode/package.nix {
+  opencode = prev.callPackage ../../pkgs/by-name/opencode/package.nix {
     models-dev = final.models-dev;
   };
 }
