@@ -93,6 +93,8 @@ tabs_spec = [
     ("intelligence", None,                "tab-intelligence"),
     ("operations",   None,                "tab-operations"),
     ("security",     None,                "tab-security"),
+    ("map",          None,                "tab-map"),
+    ("logic",        None,                "tab-logic"),
 ]
 
 errors = []
