@@ -1319,8 +1319,22 @@ def _check_nsjail_sandbox(ctx: RunContext) -> list[CheckResult]:
     )
 
     # 62.1 — nsjail binary available (skip gracefully if not yet; requires rebuild)
-    import shutil as _shutil
+    import shutil as _shutil, subprocess as _sp, re as _re
     nsjail_bin = __import__("os").environ.get("NSJAIL_BIN") or _shutil.which("nsjail")
+    if not nsjail_bin:
+        # Fall back to reading NSJAIL_BIN from the deployed service environment —
+        # the coordinator PATH includes the nix store nsjail bin but the aq-qa
+        # process runs in the user shell which doesn't inherit that PATH.
+        try:
+            env_out = _sp.check_output(
+                ["systemctl", "show", "ai-hybrid-coordinator", "-p", "Environment"],
+                text=True, timeout=5,
+            )
+            m = _re.search(r"NSJAIL_BIN=(\S+)", env_out)
+            if m:
+                nsjail_bin = m.group(1)
+        except Exception:
+            pass
     if nsjail_bin and __import__("os").path.isfile(nsjail_bin):
         results.append(passed(4, "62.1", f"nsjail binary available: {nsjail_bin}"))
     else:
