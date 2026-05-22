@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides the locally hosted AI agent with complete knowledge of the AI harness infrastructure, tools, and usage patterns.
 
-**Read this first** when starting any session.
+**Read this first** when starting any session. For full agent instructions see `.agent/QWEN.md`.
 
 ---
 
@@ -12,10 +12,17 @@
 
 | Service                | URL                     | Purpose                               |
 | ---------------------- | ----------------------- | ------------------------------------- |
-| **llama-cpp**          | `http://127.0.0.1:8080` | Local LLM (Gemma 4 E4B)               |
+| **llama-cpp**          | `http://127.0.0.1:8080` | Local LLM (Qwen3.6-35B-A3B-MTP)       |
 | **hybrid-coordinator** | `http://127.0.0.1:8003` | Workflow orchestration, hints, memory |
 | **AIDB**               | `http://127.0.0.1:8002` | RAG knowledge base, tool registry     |
 | **embedding-server**   | `http://127.0.0.1:8081` | Embeddings for semantic search        |
+| **switchboard**        | `http://127.0.0.1:8085` | LLM routing + profile injection       |
+| **dashboard**          | `http://127.0.0.1:8889` | AI Command Center UI + API            |
+
+**CRITICAL — Physical limits (Renoir APU, 27 GB RAM):**
+- Max GPU layers: 12. Max context: 4096 tokens default. Max draft tokens: 2 (MTP).
+- Always set `enable_thinking: false` in llama.cpp requests or responses will be empty.
+- Full constraints: `.agent/QWEN.md` § "Physical System Constraints"
 
 ### Health Check Command
 
