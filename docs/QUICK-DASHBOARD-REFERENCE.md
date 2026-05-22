@@ -42,6 +42,25 @@ Your dashboard now shows:
 ✅ **Network traffic** (TX/RX rates)
 ✅ **Top processes** (by CPU usage)
 
+
+## Managed AI Harness Visibility
+
+Use these API checks when validating that recent feature/module work is visible
+to operators:
+
+```bash
+curl -sf http://127.0.0.1:8889/api/health/aggregate | jq '.overall_status'
+curl -sf http://127.0.0.1:8889/api/agent-ops/status | jq '{drift_score, alert_active, profile_override}'
+curl -sf http://127.0.0.1:8889/api/memory/stats | jq '{initialized, memory_type_count, supersession_events}'
+curl -sf http://127.0.0.1:8889/api/traces/summary | jq '{count, intent_breakdown}'
+curl -sf http://127.0.0.1:8889/api/ports/registry | jq '.services | keys'
+```
+
+If `curl` succeeds while `systemctl is-active command-center-dashboard-api.service`
+is not `active`, stop the unmanaged process on port 8889 and restart the managed
+service. The dashboard must be served by systemd on `127.0.0.1:8889`, not by an
+ad-hoc `uvicorn` process on `0.0.0.0:8889`.
+
 ## Troubleshooting
 
 ### Graphs not updating?

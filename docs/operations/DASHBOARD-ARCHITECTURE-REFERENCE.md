@@ -1,7 +1,7 @@
 # Dashboard Architecture Reference
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-03-09
+Last Updated: 2026-05-22
 
 This document defines the supported operator and maintenance surfaces for the
 dashboard stack. It exists to keep work on the still-large collector scripts
@@ -23,6 +23,29 @@ bounded and predictable.
 4. AI reporting surface
    - `scripts/ai/aq-report --since=7d --format=text|json`
    - Preferred view for routing split, cache behavior, and coaching/remediation signals
+
+
+## Current AI Command Center visibility contract
+
+The production dashboard is not just a static status page. It is the operator
+visibility layer for managed AI-harness changes. Current high-value cards and
+backend routes include:
+
+| Area | Dashboard/API surface | Operator question answered |
+|---|---|---|
+| Agent drift and overrides | `GET /api/agent-ops/status` | Is the coordinator in a nominal profile or reacting to drift? |
+| Agent lessons | `GET /api/hints/report` | Which promoted lessons are shaping new sessions? |
+| Hints registry | `GET /api/hints/active` | What active workflow hints are being injected? |
+| Memory state | `GET /api/memory/stats`, `/api/memory/crystalline/status`, `/api/memory/supersede/history` | Is memory initialized, superseding facts, and crystallizing sessions? |
+| Trace posture | `GET /api/traces/summary`, `/api/traces/drift` | Which intents/routes are active and is routing drifting? |
+| Service topology | `GET /api/ports/registry`, `/api/health/aggregate` | Which managed services/ports are registered and healthy? |
+| Runtime policy | `GET /api/harness/overview` | Which auth/profile/tool policy controls are currently active? |
+
+When adding or changing a managed module, route, service, validation gate, agent
+capability, or runtime policy, update either this table, a more specific runbook,
+or the active PRD/plan in the same slice. If the change creates a measurable
+health, drift, validation, or operational state, expose it through the Command
+Center API/UI unless the handoff records why that is not applicable.
 
 ## Ownership Boundaries
 

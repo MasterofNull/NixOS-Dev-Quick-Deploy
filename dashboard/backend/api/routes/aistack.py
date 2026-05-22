@@ -234,16 +234,25 @@ def _load_hybrid_api_key() -> str:
     if direct:
         return direct
     key_file = os.getenv("HYBRID_API_KEY_FILE", "").strip()
-    if not key_file:
-        return ""
-    try:
-        return Path(key_file).read_text().strip()
-    except FileNotFoundError:
-        logger.warning("Hybrid API key file not found: %s", key_file)
-        return ""
-    except OSError as exc:
-        logger.warning("Failed reading hybrid API key file %s: %s", key_file, exc)
-        return ""
+    candidates = [key_file] if key_file else []
+    # Fallback to well-known secret paths (NixOS secrets + local dev)
+    candidates += [
+        "/run/secrets/hybrid_coordinator_api_key",
+        "/run/secrets/ai_hybrid_coordinator_api_key",
+        os.path.expanduser("~/.config/ai-stack/hybrid_coordinator_api_key"),
+    ]
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            key = Path(path).read_text().strip()
+            if key:
+                return key
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("Failed reading hybrid API key file %s: %s", path, exc)
+    return ""
 
 
 def _hybrid_headers() -> Optional[Dict[str, str]]:
@@ -2266,11 +2275,29 @@ async def proxy_eval_trend() -> Dict[str, Any]:
 
 @router.get("/traces/drift")
 async def proxy_traces_drift() -> Dict[str, Any]:
-    """Proxy coordinator /traces/drift for drift analysis (Phase 55)."""
-    return await fetch_with_fallback(
-        f"{SERVICES['hybrid']}/traces/drift",
+    """Proxy coordinator /api/traces/drift — flattens breakdown for dashboard consumers."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    raw = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/api/traces/drift",
         {"drift_score": None, "intent_flip_rate": None, "latency_degradation": None, "available": False},
+        headers=headers,
     )
+    if not raw or raw.get("available") is False:
+        return raw
+    # Flatten breakdown sub-object to top-level for backward compat
+    bd = raw.get("breakdown") or {}
+    return {
+        "drift_score":       raw.get("drift_score", 0.0),
+        "window_size":       raw.get("window_size"),
+        "threshold":         raw.get("threshold"),
+        "alert_triggered":   raw.get("alert_triggered", False),
+        "intent_flip_rate":  bd.get("intent_flip_rate", 0.0),
+        "latency_trend":     bd.get("latency_trend", 0.0),
+        "latency_degradation": bd.get("latency_degradation", 0.0),
+        "trace_count":       raw.get("window_size"),
+        "available":         True,
+    }
 
 
 @router.get("/hardware/state")

@@ -107,7 +107,7 @@ function loadLens(id) {
   else if (id === 'intelligence') loadIntelligence();
   else if (id === 'security')     loadSecurity();
   else if (id === 'operations')   loadOperations();
-  else if (id === 'map')          initTopo();
+  else if (id === 'map')          { initTopo(); loadWorkflowGraph(); }
   else if (id === 'logic')        initLogic();
   else if (id === 'logs')         loadLogs();
 }
@@ -183,7 +183,7 @@ async function loadKPIs() {
     if (pgLat != null) { setText('kpiPgLat', `${pgLat.toFixed(0)}ms`); setColor('kpiPgLat', pgLat > 500 ? 'err' : pgLat > 200 ? 'warn' : 'ok'); }
     if (rdLat != null) { setText('kpiRedisLat', `${rdLat.toFixed(1)}ms`); setColor('kpiRedisLat', rdLat > 50 ? 'warn' : 'ok'); }
   }
-  // Ops/7d from routing analytics (more useful than empty token-savings counter)
+  // Ops/7d from routing analytics
   if (analytics) {
     const w7d = ((analytics.windows && analytics.windows.windows) || {})['7d'] || {};
     const cur  = analytics.current || {};
@@ -191,6 +191,9 @@ async function loadKPIs() {
     if (totalOps != null) {
       const label = totalOps >= 1000 ? `${(totalOps/1000).toFixed(1)}k` : String(totalOps);
       setText('kpiTokSaved', label);
+      // Populate Overview OPS/DAY tile (loadCoordinator also sets this but only from Intelligence tab)
+      const opsDay = Math.round(totalOps / 7);
+      setText('vOpsDay', opsDay >= 1000 ? `${(opsDay/1000).toFixed(1)}k` : String(opsDay));
     }
     // KPI ribbon p95 latency from hotspots is fetched separately in loadSystem()
   }
@@ -201,17 +204,18 @@ async function loadKPIs() {
 async function loadRagQuality() {
   const d = await apiFetch('/eval/trend');
   const r = (d && d.ragas_metrics) ? d.ragas_metrics : {};
-  const p = v => (v != null && v > 0) ? `${(v * 100).toFixed(1)}%` : '--';
+  const noData = !d || (d.count === 0);
+  const p = v => (v != null && v > 0) ? `${(v * 100).toFixed(1)}%` : (noData ? 'no evals' : '--');
   setText('ragAnswerRelevance',  p(r.answer_relevance_avg));
   setText('ragContextPrecision', p(r.context_precision_avg));
   setText('ragFaithfulness',     p(r.faithfulness_avg));
-  setText('ragSampleCount',      r.sample_count != null ? r.sample_count : '--');
+  setText('ragSampleCount',      noData ? '0' : (r.sample_count != null ? r.sample_count : '--'));
   // Mirror into intelligence eval card
   setText('evalAR',      p(r.answer_relevance_avg));
   setText('evalCP',      p(r.context_precision_avg));
   setText('evalFaith',   p(r.faithfulness_avg));
-  setText('evalSamples', r.sample_count != null ? r.sample_count : '--');
-  if (d) setText('evalRunCount', d.count ?? '--');
+  setText('evalSamples', noData ? '0' : (r.sample_count != null ? r.sample_count : '--'));
+  if (d) setText('evalRunCount', d.count ?? '0');
 }
 
 // ─── OVERVIEW: SYSTEM STATS ───────────────────────────────────────────────────
@@ -661,11 +665,13 @@ async function loadAIDB() {
   const bgv = (aidbSvc.health_check && aidbSvc.health_check.background_vectorization) || {};
   const lv = (det && det.liveness) || {};
   const rd = (det && det.readiness) || {};
-  setText('aidbBadge', lv.status || '--');
+  // If detailed probe has null liveness, derive status from service reachability
+  const aidbStatus = lv.status || (det && det.service === 'aidb' ? (det.startup_complete ? 'healthy' : 'running') : '--');
+  setText('aidbBadge', aidbStatus);
   const rows = [
-    fwRow('Liveness',  lv.status || '--', statusColor(lv.status)),
-    fwRow('Readiness', rd.status || '--', statusColor(rd.status)),
-    fwRow('Startup',   det ? (det.startup_complete ? 'yes' : 'no') : '--', det && det.startup_complete ? 'ok' : 'warn'),
+    fwRow('Liveness',  lv.status || aidbStatus, statusColor(lv.status || aidbStatus)),
+    fwRow('Readiness', rd.status || (det && det.service === 'aidb' ? 'ok' : '--'), statusColor(rd.status || 'ok')),
+    fwRow('Startup',   det ? (det.startup_complete ? 'yes' : 'no') : '--', det && det.startup_complete ? 'ok' : 'info'),
     fwRow('Vectors',   kb.total_points != null ? kb.total_points.toLocaleString() : '--'),
     fwRow('Real Embeddings', kb.real_embeddings_percent != null ? pctD(kb.real_embeddings_percent) : '--'),
     fwRow('Vectorize Pending', bgv.pending ?? '--', bgv.pending > 0 ? 'warn' : ''),
@@ -1024,6 +1030,67 @@ async function loadHomeostasis() {
   }
 }
 
+// ─── INTELLIGENCE: LOGIC PATTERN MAP (graph/vector) ──────────────────────────
+async function loadLogicPatterns() {
+  const d  = await apiFetch('/graph/vector');
+  const el = document.getElementById('logicPatternsDetails');
+  if (!el) return;
+  if (!d || !d.nodes) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const nodes = d.nodes || [];
+  const groups = {};
+  nodes.forEach(n => { const g = n.group || 'unknown'; groups[g] = (groups[g] || 0) + 1; });
+  const topGroups = Object.entries(groups).sort((a,b) => b[1]-a[1]).slice(0,6);
+  setText('logicPatternsBadge', nodes.length.toLocaleString());
+  el.innerHTML = [
+    fwRow('Total Patterns', nodes.length.toLocaleString(), 'ok'),
+    fwRow('Unique Groups',  Object.keys(groups).length.toString(), 'info'),
+    ...topGroups.map(([g,n]) => fwRow(g, n.toString(), 'info')),
+  ].join('');
+}
+
+// ─── NEURAL MAP: ROUTING WORKFLOW (graph/workflow) ────────────────────────────
+async function loadWorkflowGraph() {
+  const data = await apiFetch('/graph/workflow');
+  const c = document.getElementById('workflowCanvas');
+  if (!c) return;
+  c.querySelectorAll('svg').forEach(s => s.remove());
+  if (!data || !data.nodes || !window.d3) {
+    setText('workflowHud', 'DATA_UNAVAILABLE'); return;
+  }
+  const edges = (data.edges || data.links || []).map(e => ({
+    source: e.source || e.from, target: e.target || e.to, label: e.label || ''
+  }));
+  const w = c.clientWidth || 600, h = c.clientHeight || 400;
+  const svg = d3.select('#workflowCanvas').append('svg').attr('width','100%').attr('height','100%');
+  const g   = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.2,6]).on('zoom', e => g.attr('transform', e.transform)));
+  const groupColor = gr => gr === 'input' ? '#ffffff' : gr === 'router' ? '#f4a261'
+    : gr === 'local' ? '#2ec4b6' : gr === 'remote' ? '#e76f51' : gr === 'service' ? '#a8dadc'
+    : gr === 'vector-db' ? '#f4d35e' : gr === 'rag' ? '#ee6c4d' : 'var(--fg3)';
+  const sim = d3.forceSimulation(data.nodes)
+    .force('link',   d3.forceLink(edges).id(d => d.id).distance(110))
+    .force('charge', d3.forceManyBody().strength(-280))
+    .force('center', d3.forceCenter(w/2, h/2))
+    .force('coll',   d3.forceCollide(22));
+  const link = g.append('g').selectAll('line').data(edges).enter().append('line').attr('class','link-line');
+  const node = g.append('g').selectAll('g').data(data.nodes).enter().append('g')
+    .call(d3.drag()
+      .on('start', (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end',   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+  node.append('circle')
+    .attr('r', d => (d.val || 3) * 1.8)
+    .attr('fill', d => d.color || groupColor(d.group))
+    .attr('stroke','var(--bg)').attr('stroke-width',2);
+  node.append('text').attr('class','node-label').attr('dx',14).attr('dy','.35em')
+    .text(d => d.name || d.id);
+  sim.on('tick', () => {
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+  setText('workflowHud', `ROUTING_WORKFLOW: ${data.nodes.length} NODES`);
+}
+
 async function loadIntelligence() {
   await Promise.allSettled([
     loadCoordinator(), loadRouting(), loadModels(), loadSwitchboard(),
@@ -1033,6 +1100,8 @@ async function loadIntelligence() {
     loadRoutingConfig(), loadHomeostasis(), loadSchedulerStatus(), loadCLMStatus(),
     loadMemoryBroker(), loadAffectiveState(), loadHintsRegistry(),
     loadAICoordinator(), loadReasoningProfiles(),
+    loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
+    loadLogicPatterns(),
   ]);
 }
 
@@ -1049,7 +1118,7 @@ async function loadFirewall() {
     fwRow('CrowdSec',         d.crowdsec_active ? 'active' : 'inactive', d.crowdsec_active ? 'ok' : 'warn'),
     fwRow('Captive Portal',   d.captive_portal_bypass ? 'bypass ON' : 'off', d.captive_portal_bypass ? 'warn' : 'ok'),
     fwRow('Open Ports',       (d.open_ports || []).join(', ') || 'none'),
-    fwRow('Interfaces',       Object.keys(d.interfaces || {}).join(', ') || '--'),
+    fwRow('Interfaces',       Object.keys(d.interfaces || {}).join(', ') || 'none'),
   ].join('');
 }
 
@@ -1478,7 +1547,7 @@ async function loadOperations() {
     loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(),
     loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
     loadRalph(), loadTrainingData(), loadParityScorecard(),
-    loadFleetSummary(), loadBudgetPolicy(),
+    loadFleetSummary(), loadBudgetPolicy(), loadPortsRegistry(), loadHealthAggregate(),
   ]);
 }
 
@@ -1489,31 +1558,39 @@ async function initTopo() {
   if (!c) return;
   c.querySelectorAll('svg').forEach(s => s.remove());
   if (!data || !window.d3) { setText('topoHud', 'DATA_UNAVAILABLE'); return; }
+  // Normalise edge shape: topology uses from/to, D3 needs source/target
+  const edges = (data.edges || data.links || []).map(e => ({
+    source: e.source || e.from, target: e.target || e.to, label: e.label || ''
+  }));
   const w = c.clientWidth, h = c.clientHeight;
   const svg = d3.select('#topoCanvas').append('svg').attr('width','100%').attr('height','100%');
   const g   = svg.append('g');
   svg.call(d3.zoom().scaleExtent([0.1,8]).on('zoom', e => g.attr('transform', e.transform)));
   const sim = d3.forceSimulation(data.nodes)
-    .force('link',   d3.forceLink(data.edges).id(d => d.id).distance(90))
-    .force('charge', d3.forceManyBody().strength(-250))
+    .force('link',   d3.forceLink(edges).id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-300))
     .force('center', d3.forceCenter(w/2, h/2))
-    .force('coll',   d3.forceCollide(14));
-  const link = g.append('g').selectAll('line').data(data.edges).enter().append('line').attr('class','link-line');
+    .force('coll',   d3.forceCollide(18));
+  const link = g.append('g').selectAll('line').data(edges).enter().append('line').attr('class','link-line');
   const node = g.append('g').selectAll('g').data(data.nodes).enter().append('g')
     .call(d3.drag()
       .on('start', (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
       .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
       .on('end',   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+  const roleColor = r => r === 'inference' ? 'var(--cyan)' : r === 'coordinator' ? 'var(--mag)'
+    : r === 'vector-db' ? '#f4a261' : r === 'rag' ? '#2ec4b6' : r === 'embeddings' ? '#a8dadc'
+    : r === 'dashboard' ? '#e9c46a' : 'var(--fg3)';
   node.append('circle')
-    .attr('r', d => d.type === 'service' ? 10 : d.type === 'directory' ? 7 : 5)
-    .attr('fill', d => d.type === 'service' ? 'var(--cyan)' : d.type === 'directory' ? 'var(--mag)' : 'var(--fg3)')
-    .attr('stroke','var(--bg)').attr('stroke-width',1.5);
-  node.append('text').attr('class','node-label').attr('dx',13).attr('dy','.35em').text(d => d.label || d.id);
+    .attr('r', d => d.role === 'coordinator' ? 12 : d.role === 'inference' ? 10 : 8)
+    .attr('fill', d => d.color || roleColor(d.role || d.type))
+    .attr('stroke','var(--bg)').attr('stroke-width',2);
+  node.append('text').attr('class','node-label').attr('dx',15).attr('dy','.35em')
+    .text(d => d.label || d.id);
   sim.on('tick', () => {
     link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
     node.attr('transform', d => `translate(${d.x},${d.y})`);
   });
-  setText('topoHud', `NODES:${data.nodes.length} EDGES:${data.edges.length}`);
+  setText('topoHud', `NODES:${data.nodes.length} EDGES:${edges.length}`);
 }
 
 // ─── LOGIC DAG (Mermaid) ──────────────────────────────────────────────────────
@@ -1814,6 +1891,110 @@ async function loadBudgetPolicy() {
     fwRow('Warn Threshold',  def.warn_threshold_pct ? `${def.warn_threshold_pct}%` : '--',        'info'),
     fwRow('Fail Safe',       def.fail_safe || '--',                         def.fail_safe === 'abort' ? 'warn' : 'info'),
     fwRow('Scope',           (enf.scope || []).join(', ') || '--',          'info'),
+  ].join('');
+}
+
+// ─── INTELLIGENCE: AGENT OPS STATUS ──────────────────────────────────────────
+async function loadAgentOpsStatus() {
+  const d  = await apiFetch('/agent-ops/status');
+  const el = document.getElementById('agentOpsDetails');
+  const badge = document.getElementById('agentOpsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const alertOn  = d.alert_active;
+  const drift    = d.drift_score ?? 0;
+  const override = d.profile_override;
+  const color    = alertOn ? 'err' : drift > 0.4 ? 'warn' : 'ok';
+  if (badge) { badge.textContent = alertOn ? 'ALERT' : override ? 'override' : 'nominal'; badge.className = `card-badge ${color === 'ok' ? 'badge-ok' : color === 'warn' ? 'badge-warn' : 'badge-err'}`; }
+  el.innerHTML = [
+    fwRow('Alert Active',    alertOn ? 'YES' : 'no',                       alertOn ? 'err' : 'ok'),
+    fwRow('Drift Score',     drift.toFixed(3),                              drift > 0.4 ? 'warn' : 'ok'),
+    fwRow('Profile Override',override || 'none',                            override ? 'warn' : 'ok'),
+    fwRow('Window Size',     d.window_size ?? '--',                         'info'),
+    d.since ? fwRow('Alert Since', relTime(d.since), 'warn') : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: AGENT LESSONS ─────────────────────────────────────────────
+async function loadAgentLessons() {
+  const d  = await apiFetch('/hints/report');
+  const el = document.getElementById('agentLessonsDetails');
+  const badge = document.getElementById('agentLessonsBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const lessons = (d.agent_lessons || {}).registry || {};
+  const entries = (lessons.entries || []).filter(e => e.state === 'promoted');
+  if (badge) { badge.textContent = `${entries.length} promoted`; badge.className = 'card-badge badge-ok'; }
+  if (!entries.length) { el.innerHTML = fwRow('Promoted Lessons', '0', 'info'); return; }
+  el.innerHTML = entries.slice(0, 6).map(e => {
+    const parts = (e.lesson_key || '').split('::');
+    const agent = parts[0] || '--';
+    const label = parts.slice(1).join('::').replace(/-/g,' ').slice(0,30) || '--';
+    const conf  = e.confidence != null ? `${(e.confidence*100).toFixed(0)}%` : '--';
+    return `<div class="fw-row">
+      <span class="fk" title="${e.lesson_key}">${agent}: ${label}</span>
+      <span class="fv ok">${conf}</span>
+    </div>`;
+  }).join('');
+}
+
+// ─── INTELLIGENCE: MEMORY STATS ───────────────────────────────────────────────
+async function loadMemStats() {
+  const d  = await apiFetch('/memory/stats');
+  const el = document.getElementById('memStatsDetails');
+  const badge = document.getElementById('memStatsBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  if (badge) { badge.textContent = `${d.memory_type_count ?? '--'} types`; badge.className = 'card-badge badge-info'; }
+  el.innerHTML = [
+    fwRow('Initialized',       d.initialized ? 'yes' : 'no',             d.initialized ? 'ok' : 'warn'),
+    fwRow('Memory Types',      d.memory_type_count ?? '--',               'info'),
+    fwRow('Contradiction Pairs',d.contradiction_pairs ?? 0,               d.contradiction_pairs > 0 ? 'warn' : 'ok'),
+    fwRow('Supersession Events',d.supersession_events ?? 0,               d.supersession_events > 0 ? 'ok' : 'info'),
+    fwRow('Sessions Processed',d.sessions_processed ?? 0,                 'info'),
+    fwRow('Insights Stored',   d.insights_stored ?? 0,                    'info'),
+    d.timestamp ? fwRow('Updated', relTime(d.timestamp), 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: PORTS REGISTRY ──────────────────────────────────────────────
+async function loadPortsRegistry() {
+  const d  = await apiFetch('/ports/registry');
+  const el = document.getElementById('portsRegDetails');
+  const badge = document.getElementById('portsRegBadge');
+  if (!el) return;
+  if (!d || !d.services) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const svcCount = Object.keys(d.services).length;
+  if (badge) { badge.textContent = `${svcCount} services`; badge.className = 'card-badge badge-info'; }
+  el.innerHTML = Object.entries(d.services).slice(0, 12).map(([name, info]) => {
+    const port = info.port || info.Port || '--';
+    const label = name.replace(/_/g,' ');
+    return fwRow(label, `:${port}`, 'info');
+  }).join('');
+}
+
+// ─── OPERATIONS: HEALTH AGGREGATE ────────────────────────────────────────────
+async function loadHealthAggregate() {
+  const d  = await apiFetch('/health/aggregate');
+  const el = document.getElementById('healthAggDetails');
+  const badge = document.getElementById('healthAggBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const overall = d.overall_status || 'unknown';
+  const color   = overall === 'healthy' ? 'ok' : overall === 'degraded' ? 'warn' : 'err';
+  if (badge) { badge.textContent = overall; badge.className = `card-badge badge-${color}`; }
+  const svcs    = d.services || {};
+  const summary = d.summary  || {};
+  el.innerHTML = [
+    fwRow('Overall',    overall,                                   color),
+    fwRow('Healthy',    summary.healthy   ?? Object.values(svcs).filter(s=>s.status==='healthy').length,   'ok'),
+    fwRow('Degraded',   summary.degraded  ?? Object.values(svcs).filter(s=>s.status==='degraded').length,  'warn'),
+    fwRow('Unhealthy',  summary.unhealthy ?? Object.values(svcs).filter(s=>s.status==='unhealthy').length, 'err'),
+    ...Object.entries(svcs).slice(0, 8).map(([name, info]) => {
+      const st = info.status || 'unknown';
+      const c  = st === 'healthy' ? 'ok' : st === 'degraded' ? 'warn' : 'err';
+      return fwRow(`  ∟ ${name.replace(/^ai-/,'').replace(/-/g,' ')}`, st, c);
+    }),
   ].join('');
 }
 
