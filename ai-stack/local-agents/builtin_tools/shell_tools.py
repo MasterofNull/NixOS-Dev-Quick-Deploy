@@ -83,12 +83,16 @@ SAFE_COMMANDS = {
     "free", "df", "du", "ps", "top", "systemctl", "journalctl",
     # Git (read-only ops)
     "git",
+    # HTTP — coordinator/RAG/memory API calls (coordinator at :8003 only; :8002 blocked by safe_command_executor.py)
+    "curl",
     # Code analysis / validation
     "bash", "python3", "python", "nix-instantiate", "nix",
     "shellcheck", "statix", "deadnix",
-    # Harness tools
+    # Harness tools (full suite from QWEN.md)
     "agrep", "als", "acat", "asum",
     "aq-qa", "aq-hints", "aq-report", "aq-session-start",
+    "aq-commit-facts", "aq-lesson-promote", "aq-crystallize",
+    "aq-agent-loop", "aqd",
     # JSON/YAML inspection
     "jq", "yq",
     # File utilities
