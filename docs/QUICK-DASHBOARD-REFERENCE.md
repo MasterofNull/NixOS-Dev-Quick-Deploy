@@ -54,6 +54,7 @@ curl -sf http://127.0.0.1:8889/api/agent-ops/status | jq '{drift_score, alert_ac
 curl -sf http://127.0.0.1:8889/api/memory/stats | jq '{initialized, memory_type_count, supersession_events}'
 curl -sf http://127.0.0.1:8889/api/traces/summary | jq '{count, intent_breakdown}'
 curl -sf http://127.0.0.1:8889/api/ports/registry | jq '.services | keys'
+curl -sf http://127.0.0.1:8889/api/graph/workflow | jq '{nodes: (.nodes|length), edges: (.edges|length)}'
 ```
 
 If `curl` succeeds while `systemctl is-active command-center-dashboard-api.service`

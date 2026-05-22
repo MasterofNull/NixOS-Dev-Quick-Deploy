@@ -26,6 +26,9 @@ EXPECTED = {
     "/api/ports/registry",
     "/api/health/aggregate",
     "/api/traces/drift",
+    "/api/graph/vector",
+    "/api/graph/workflow",
+    "/api/topology",
     "/api/memory/facts",
     "/api/memory/crystalline/status",
     "/api/memory/supersede/history",
@@ -50,11 +53,15 @@ for needle in (
     "memStatsDetails",
     "portsRegDetails",
     "healthAggDetails",
+    "logicPatternsDetails",
+    "workflowCanvas",
     "loadAgentOpsStatus",
     "loadAgentLessons",
     "loadMemStats",
     "loadPortsRegistry",
     "loadHealthAggregate",
+    "loadLogicPatterns",
+    "loadWorkflowGraph",
 ):
     if needle not in FRONTEND:
         raise SystemExit(f"missing dashboard visibility surface: {needle}")
