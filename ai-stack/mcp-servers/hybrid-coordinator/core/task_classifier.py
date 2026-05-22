@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 CHARS_PER_TOKEN = 4
-LOCAL_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_MAX_INPUT_TOKENS", "600"))
-LOCAL_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_MAX_OUTPUT_TOKENS", "300"))
+LOCAL_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_MAX_INPUT_TOKENS", "1800"))
+LOCAL_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_MAX_OUTPUT_TOKENS", "800"))
 
 _LOOKUP_RE = re.compile(
     r"\b(what is|what are|define|who is|when was|where is|which|list the|list all)\b",
@@ -45,12 +45,12 @@ _CONTINUATION_RE = re.compile(
     re.IGNORECASE,
 )
 
-LOCAL_CONTINUATION_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_INPUT_TOKENS", "900"))
-LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS", "400"))
-LOCAL_CONTINUATION_CONTEXT_CHARS = int(os.getenv("LOCAL_CONTINUATION_CONTEXT_CHARS", "700"))
-LOCAL_REASONING_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_REASONING_MAX_INPUT_TOKENS", "450"))
-LOCAL_REASONING_CONTEXT_CHARS = int(os.getenv("LOCAL_REASONING_CONTEXT_CHARS", "420"))
-LOCAL_SYNTHESIZE_CONTEXT_CHARS = int(os.getenv("LOCAL_SYNTHESIZE_CONTEXT_CHARS", "420"))
+LOCAL_CONTINUATION_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_INPUT_TOKENS", "2000"))
+LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS = int(os.getenv("LOCAL_CONTINUATION_MAX_OUTPUT_TOKENS", "800"))
+LOCAL_CONTINUATION_CONTEXT_CHARS = int(os.getenv("LOCAL_CONTINUATION_CONTEXT_CHARS", "1600"))
+LOCAL_REASONING_MAX_INPUT_TOKENS = int(os.getenv("LOCAL_REASONING_MAX_INPUT_TOKENS", "1600"))
+LOCAL_REASONING_CONTEXT_CHARS = int(os.getenv("LOCAL_REASONING_CONTEXT_CHARS", "1200"))
+LOCAL_SYNTHESIZE_CONTEXT_CHARS = int(os.getenv("LOCAL_SYNTHESIZE_CONTEXT_CHARS", "1200"))
 LOCAL_SHORT_EXPLANATION_MAX_WORDS = int(os.getenv("LOCAL_SHORT_EXPLANATION_MAX_WORDS", "14"))
 _SHORT_EXPLANATION_RE = re.compile(
     r"^\s*(explain|how does|how do|why does|why do|what makes|what causes|compare)\b",
@@ -163,13 +163,15 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
             remote_required=True,
             reason=f"output_too_large requested={max_output_tokens} limit={LOCAL_MAX_OUTPUT_TOKENS}",
         )
-    if task_type in ("code", "reasoning"):
+    # Code and reasoning tasks: route remote only for architecture-heavy or oversize requests.
+    # Qwen3-35B is a strong code model — bounded code and reasoning tasks belong local.
+    if task_type in ("code", "reasoning") and _ARCHITECTURE_HEAVY_RE.search(q):
         return TaskComplexity(
             token_estimate=token_estimate,
             task_type=task_type,
             local_suitable=False,
             remote_required=True,
-            reason=f"task_type={task_type}_requires_remote",
+            reason=f"task_type={task_type}_architecture_heavy_requires_remote",
         )
 
     # Build discrete, bounded prompt for local model
@@ -178,6 +180,17 @@ def classify(query: str, context: str = "", max_output_tokens: int = 400) -> Tas
         optimized = f"Answer in one sentence: {q}\n\nFacts:\n{ctx}"
     elif task_type == "format":
         optimized = f"Output ONLY the requested data, no explanation:\n{q}\n\nInput:\n{ctx}"
+    elif task_type == "code":
+        optimized = (
+            "Write the code change requested. Be concise and complete within your context window. "
+            "No preamble — output code directly.\n"
+            f"Task: {q}\n\nContext:\n{ctx}"
+        )
+    elif task_type == "reasoning":
+        optimized = (
+            "Answer concisely and directly. Focus on the specific question asked, not broad analysis.\n"
+            f"Question: {q}\n\nContext:\n{ctx}"
+        )
     else:  # synthesize / summarize
         optimized = (
             f"Using only the strongest context below, answer in one short paragraph under 70 words.\n"

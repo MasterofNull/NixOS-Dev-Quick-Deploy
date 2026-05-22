@@ -41,11 +41,19 @@ The 4096-token window is not your knowledge limit. The harness holds:
 
 **Pattern — before reading a file, ask the harness:**
 ```bash
-run_command "curl -s 'http://localhost:8003/hints?q=<task keyword>'"        # ranked guidance
-run_command "curl -s -X POST http://localhost:8002/search -d '{\"q\":\"<concept>\"}'"  # AIDB search
-run_command "curl -s -X POST http://localhost:8003/api/knowledge/graph/search -d '{\"q\":\"<entity>\"}'"  # graph search
+run_command "curl -s 'http://localhost:8003/hints?q=<task keyword>'"    # ranked guidance
+run_command "curl -s -X POST http://localhost:8003/query \
+  -H 'Content-Type: application/json' \
+  -d '{\"query\":\"<concept>\",\"max_tokens\":200}'"                    # full RAG query + memory recall
+run_command "curl -s -X POST http://localhost:8003/api/knowledge/graph/search \
+  -H 'Content-Type: application/json' \
+  -d '{\"q\":\"<entity>\"}'"                                            # graph search
+run_command "curl -s -X POST http://localhost:8003/api/logic/search \
+  -H 'Content-Type: application/json' \
+  -d '{\"query\":\"<code concept>\",\"top_k\":5}'"                     # logic patterns
 ```
 This pulls the 3-5 most relevant facts into context, leaving room for your actual reasoning.
+**All search goes through the coordinator at :8003 — never curl AIDB at :8002 directly (blocked).**
 **Never pre-load files you haven't confirmed you need.**
 
 ### 2. Memory Loss Between Calls → Session Continuity Tools
@@ -84,14 +92,16 @@ run_command "curl -s http://localhost:8889/api/ai/metrics"            # full sys
 For tasks requiring broader capabilities (web search, external API, complex shell work),
 **delegate to Claude or Codex** via the orchestrator — that is not failure, that is correct architecture.
 
-### 5. Knowledge Gaps → Knowledge Graph + AIDB Collections
+### 5. Knowledge Gaps → Coordinator Search (NOT direct AIDB curl)
 
-When you don't know something, the harness may already know it:
+When you don't know something, the harness may already know it.
+**Direct AIDB curl to :8002 is blocked by SAFE_COMMANDS policy. Always use :8003.**
+
 ```bash
-# Search indexed knowledge collections by intent:
-run_command "curl -s -X POST http://localhost:8002/search \
+# Full RAG query with memory recall, hints, retrieval — the primary search tool:
+run_command "curl -s -X POST http://localhost:8003/query \
   -H 'Content-Type: application/json' \
-  -d '{\"q\":\"<your question>\",\"collection\":\"knowledge\",\"top_k\":5}'"
+  -d '{\"query\":\"<your question>\",\"max_tokens\":300}'"
 
 # Graph search for architecture/system relationships:
 run_command "curl -s -X POST http://localhost:8003/api/knowledge/graph/search \
@@ -189,10 +199,14 @@ If resuming: read `.agent/collaboration/HANDOFF.md` first — don't reconstruct 
 ### Step 2 — RESEARCH (pull, don't pre-load)
 ```bash
 search_files "<keyword>"                          # confirm path before reading
-run_command "curl -s -X POST http://localhost:8002/search -d '{\"q\":\"<concept>\"}'"  # AIDB first
+run_command "curl -s 'http://localhost:8003/hints?q=<keyword>'"   # harness hints first
+run_command "curl -s -X POST http://localhost:8003/query \
+  -H 'Content-Type: application/json' \
+  -d '{\"query\":\"<concept>\",\"max_tokens\":150}'"              # RAG query via coordinator
 read_file <confirmed_path>                        # only confirmed, targeted files
 ```
-- Use AIDB/graph/hints before reading raw files — they return compressed, ranked signal
+- Use coordinator hints + RAG (/query at :8003) before reading raw files — returns compressed, ranked signal
+- Direct AIDB curl (:8002) is blocked by SAFE_COMMANDS policy — always use :8003 endpoints
 - Read only the file sections you need; use `search_files` to locate exact lines
 
 ### Step 3 — PRD / PLAN (write 3 lines before touching code)
@@ -270,7 +284,7 @@ Source of truth: `nix/modules/core/options.nix`. Never hardcode.
 - **Canonical workflow**: `.agent/WORKFLOW-CANON.md`
 - **Session start**: `scripts/ai/aq-session-start`
 - **Hints engine**: `http://localhost:8003/hints?q=<query>`
-- **AIDB search**: `http://localhost:8002/search`
+- **RAG query**: `http://localhost:8003/query` (POST — full retrieval + memory recall)
 - **Graph search**: `http://localhost:8003/api/knowledge/graph/search`
 - **Memory write**: `http://localhost:8003/api/memory/facts`
 - **Logic search**: `http://localhost:8003/api/logic/search`
