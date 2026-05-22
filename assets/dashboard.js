@@ -1054,13 +1054,13 @@ async function loadWorkflowGraph() {
   const c = document.getElementById('workflowCanvas');
   if (!c) return;
   c.querySelectorAll('svg').forEach(s => s.remove());
-  if (!data || !data.nodes || !window.d3) {
-    setText('workflowHud', 'DATA_UNAVAILABLE'); return;
-  }
+  if (!window.d3) { setText('workflowHud', 'D3_LOADING…'); setTimeout(loadWorkflowGraph, 800); return; }
+  if (!data || !data.nodes) { setText('workflowHud', 'DATA_UNAVAILABLE'); return; }
   const edges = (data.edges || data.links || []).map(e => ({
     source: e.source || e.from, target: e.target || e.to, label: e.label || ''
   }));
-  const w = c.clientWidth || 600, h = c.clientHeight || 400;
+  const w = c.clientWidth  || 800;
+  const h = c.clientHeight || 400;
   const svg = d3.select('#workflowCanvas').append('svg').attr('width','100%').attr('height','100%');
   const g   = svg.append('g');
   svg.call(d3.zoom().scaleExtent([0.2,6]).on('zoom', e => g.attr('transform', e.transform)));
@@ -1557,12 +1557,14 @@ async function initTopo() {
   const c    = document.getElementById('topoCanvas');
   if (!c) return;
   c.querySelectorAll('svg').forEach(s => s.remove());
-  if (!data || !window.d3) { setText('topoHud', 'DATA_UNAVAILABLE'); return; }
+  if (!window.d3) { setText('topoHud', 'D3_LOADING…'); setTimeout(initTopo, 800); return; }
+  if (!data || !data.nodes) { setText('topoHud', 'DATA_UNAVAILABLE'); return; }
   // Normalise edge shape: topology uses from/to, D3 needs source/target
   const edges = (data.edges || data.links || []).map(e => ({
     source: e.source || e.from, target: e.target || e.to, label: e.label || ''
   }));
-  const w = c.clientWidth, h = c.clientHeight;
+  const w = c.clientWidth  || 800;
+  const h = c.clientHeight || 500;
   const svg = d3.select('#topoCanvas').append('svg').attr('width','100%').attr('height','100%');
   const g   = svg.append('g');
   svg.call(d3.zoom().scaleExtent([0.1,8]).on('zoom', e => g.attr('transform', e.transform)));
@@ -1594,23 +1596,38 @@ async function initTopo() {
 }
 
 // ─── LOGIC DAG (Mermaid) ──────────────────────────────────────────────────────
+let _logicRetries = 0;
 async function initLogic() {
   const data = await apiFetch('/topology/flow');
   const c    = document.getElementById('logicCanvas');
   if (!c) return;
-  if (!data || !data.flowchart) { setText('logicHud', 'DATA_UNAVAILABLE'); return; }
-  if (!window.mermaid) { setText('logicHud', 'MERMAID_LOADING'); setTimeout(initLogic, 1000); return; }
+  const flowchart = data && (data.flowchart || data.mermaid);
+  if (!flowchart) { setText('logicHud', 'DATA_UNAVAILABLE'); return; }
+  if (!window.mermaid) {
+    _logicRetries++;
+    if (_logicRetries > 10) {
+      // Mermaid CDN failed — show raw text fallback
+      c.innerHTML = `<pre style="color:var(--fg2);font-size:.65rem;padding:1rem;overflow:auto;height:100%">${flowchart}</pre>`;
+      setText('logicHud', 'RAW_MERMAID (CDN unavailable)');
+      return;
+    }
+    setText('logicHud', `MERMAID_LOADING (${_logicRetries}/10)`);
+    setTimeout(initLogic, 1000);
+    return;
+  }
+  _logicRetries = 0;
   try {
     mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose',
       themeVariables: { primaryColor: '#0d1220', primaryTextColor: '#e2eaf4',
         primaryBorderColor: '#00d9ff', lineColor: '#d400ff', background: '#080c12' }});
     const id = 'mermaid-flow';
-    c.innerHTML = `<div id="${id}" style="width:100%;height:100%;overflow:auto;padding:1rem"></div>`;
-    const { svg } = await mermaid.render('mermaid-svg', data.flowchart);
+    c.innerHTML = `<div id="${id}" style="width:100%;overflow:auto;padding:1rem"></div>`;
+    const uid = 'mermaid-svg-' + Date.now();
+    const { svg } = await mermaid.render(uid, flowchart);
     document.getElementById(id).innerHTML = svg;
     setText('logicHud', 'REQUEST_FLOW: RENDERED');
   } catch (e) {
-    c.innerHTML = `<pre style="color:var(--fg2);font-size:.65rem;padding:1rem;overflow:auto;height:100%">${data.flowchart}</pre>`;
+    c.innerHTML = `<pre style="color:var(--fg2);font-size:.65rem;padding:1rem;overflow:auto;height:100%">${flowchart}</pre>`;
     setText('logicHud', 'RAW_MERMAID');
   }
 }
