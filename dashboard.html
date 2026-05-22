@@ -488,6 +488,13 @@
       <div id="collectionList" style="margin-top:.5rem"></div>
     </div>
     <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Logic Pattern Map</span>
+        <span class="card-badge badge-info" id="logicPatternsBadge">--</span>
+      </div>
+      <div id="logicPatternsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
       <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok" id="agenticBadge">--</span></div>
       <div id="agenticDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
@@ -542,6 +549,18 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">Reasoning Profiles</span><span class="card-badge badge-info" id="reasoningProfilesBadge">--</span></div>
       <div id="reasoningProfilesDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Agent Ops Status</span><span class="card-badge badge-info" id="agentOpsBadge">--</span></div>
+      <div id="agentOpsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Agent Lessons</span><span class="card-badge badge-info" id="agentLessonsBadge">--</span></div>
+      <div id="agentLessonsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Memory Statistics</span><span class="card-badge badge-info" id="memStatsBadge">--</span></div>
+      <div id="memStatsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
   </div>
 </div>
@@ -646,6 +665,14 @@
       <div id="budgetDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
+      <div class="card-hd"><span class="card-title">Service Ports Registry</span><span class="card-badge badge-info" id="portsRegBadge">--</span></div>
+      <div id="portsRegDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><span class="card-title">Health Aggregate</span><span class="card-badge badge-ok" id="healthAggBadge">--</span></div>
+      <div id="healthAggDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card">
       <div class="card-hd"><span class="card-title">System Controls</span><span class="card-badge badge-info">actions</span></div>
       <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.3rem">
         <button class="mini-btn" onclick="loadQA()" style="text-align:left">Run QA Phase 0</button>
@@ -662,8 +689,19 @@
 
 <!-- ── NEURAL MAP ── -->
 <div class="panel" id="panel-map">
-  <div class="d3-panel" id="topoCanvas">
-    <div class="d3-hud" id="topoHud">OSI_MAPPING: READY</div>
+  <div style="display:flex;flex-direction:column;height:100%;gap:.5rem;padding:.5rem">
+    <div style="flex:1;min-height:0">
+      <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Service Topology</div>
+      <div class="d3-panel" id="topoCanvas" style="height:calc(100% - 1.4rem)">
+        <div class="d3-hud" id="topoHud">OSI_MAPPING: READY</div>
+      </div>
+    </div>
+    <div style="flex:1;min-height:0">
+      <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Routing Workflow</div>
+      <div class="d3-panel" id="workflowCanvas" style="height:calc(100% - 1.4rem)">
+        <div class="d3-hud" id="workflowHud">ROUTING_WORKFLOW: READY</div>
+      </div>
+    </div>
   </div>
 </div>
 

@@ -1488,3 +1488,12 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Slice: validated and tightened `/api/traces/summary` and `/api/hints/active` dashboard proxies, added both to the compatibility route guard, and kept canonical plus `/api/aistack/*` legacy namespaces live.
 - Live validation: `/api/traces/summary`, `/api/hints/active`, `/api/aistack/traces/summary`, and `/api/aistack/hints/active` returned 200 after restarting the managed dashboard service.
 - Visual validation: `scripts/ai/aq-screenshot http://127.0.0.1:8889 /tmp/aq-dashboard-hints-registry.png --wait 1500` saved a fresh dashboard PNG; no 404s appeared after the restart window.
+
+## 2026-05-22 Codex handoff — parity dashboard visibility and managed monitoring sweep
+
+- Context: user reiterated that managed system changes must update progressive-disclosure docs, agent-facing plans, and Command Center monitoring/reporting surfaces.
+- Runtime repair: found dashboard HTTP was being served by an unmanaged `uvicorn` process on `0.0.0.0:8889` while `command-center-dashboard-api.service` was inactive. Killed the unmanaged process and restored the managed systemd service on `127.0.0.1:8889`.
+- Slice: validated the current dashboard visibility expansion for agent ops, agent lessons, memory statistics, service ports registry, health aggregate, AIDB derived health, and flattened trace drift. Extended `scripts/testing/test-dashboard-compat-routes.py` to guard both backend routes and frontend card/function IDs.
+- Docs/progressive disclosure: updated `docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md`, `docs/QUICK-DASHBOARD-REFERENCE.md`, and `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md` with the current visibility contract and managed-service requirement.
+- Live validation: managed dashboard active; `ss` shows `127.0.0.1:8889`; `/api/traces/drift`, `/api/agent-ops/status`, `/api/memory/stats`, `/api/ports/registry`, `/api/health/aggregate`, and `/api/hints/report` returned 200. Screenshot saved to `/tmp/aq-dashboard-phase5-visibility.png` with no recent dashboard 404/bind errors.
+- Health validation: `aq-qa 0 --json` reported 82 pass / 0 fail / 3 skip. `./scripts/health/system-health-check.sh` reported declarative health check passed, including dashboard API/root/aggregate endpoints.

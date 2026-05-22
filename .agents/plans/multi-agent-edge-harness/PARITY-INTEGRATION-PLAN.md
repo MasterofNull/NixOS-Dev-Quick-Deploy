@@ -130,6 +130,9 @@ Recent committed work changed the Phase 1/62 status:
 - Dashboard visual QA tooling now has a local `scripts/ai/aq-screenshot` entrypoint, Home Manager Playwright/system-Chromium no-download contract, and `scripts/testing/test-aq-screenshot-contract.sh` guardrail for operator-visibility validation.
 - Runtime auth/profile baseline now resolves middleware `auth_context`, validates `X-Harness-Auth-Profile`, and exposes `policies.runtime_auth_profiles` in Command Center.
 
+- Command Center visibility has expanded for parity-cycle operations: agent ops drift/override state, promoted lessons, active hints, memory statistics, trace summary/drift, fleet/budget/reasoning profile cards, ports registry, and health aggregate are now visible through dashboard cards and guarded API routes.
+- Managed-service discipline is part of the acceptance criteria: dashboard validation must confirm `command-center-dashboard-api.service` is active and serving `127.0.0.1:8889`; ad-hoc `uvicorn` on `0.0.0.0:8889` is considered degraded state, not a valid workaround.
+
 Remaining work is not the same as the completed static gate: runtime MCP authorization/profile enforcement, bounded delegation envelopes, and deeper security/audit metrics still need implementation slices.
 
 ## Slice queue after refactor lands

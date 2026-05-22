@@ -21,6 +21,11 @@ EXPECTED = {
     "/api/aistack/memory/stats",
     "/api/traces/summary",
     "/api/hints/active",
+    "/api/agent-ops/status",
+    "/api/memory/stats",
+    "/api/ports/registry",
+    "/api/health/aggregate",
+    "/api/traces/drift",
     "/api/memory/facts",
     "/api/memory/crystalline/status",
     "/api/memory/supersede/history",
@@ -36,5 +41,22 @@ source = (ROOT / "dashboard/backend/api/routes/aistack.py").read_text()
 for needle in ("def _append_query", "def _hybrid_dual_auth_headers", "get_harness_legacy_alias"):
     if needle not in source:
         raise SystemExit(f"missing compatibility helper/function: {needle}")
+
+
+FRONTEND = (ROOT / "dashboard.html").read_text() + "\n" + (ROOT / "assets/dashboard.js").read_text()
+for needle in (
+    "agentOpsDetails",
+    "agentLessonsDetails",
+    "memStatsDetails",
+    "portsRegDetails",
+    "healthAggDetails",
+    "loadAgentOpsStatus",
+    "loadAgentLessons",
+    "loadMemStats",
+    "loadPortsRegistry",
+    "loadHealthAggregate",
+):
+    if needle not in FRONTEND:
+        raise SystemExit(f"missing dashboard visibility surface: {needle}")
 
 print(f"PASS: {len(EXPECTED)} dashboard compatibility routes registered")
