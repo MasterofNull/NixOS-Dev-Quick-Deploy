@@ -879,6 +879,15 @@ in {
         ) "AI stack: a 32B model requires ~20 GB RAM but mySystem.hardware.systemRamGb = ${toString cfg.hardware.systemRamGb} (< 12).";
     })
 
+    # ── OpenCode CLI overlay ────────────────────────────────────────────────────
+    # Provides pkgs.opencode (AI coding agent) + pkgs.models-dev from the
+    # in-repo .forks/nixpkgs staging area. Enabled for all AI-stack hosts.
+    # Once opencode lands in nixpkgs 25.11 this overlay can be dropped.
+    (lib.mkIf roleEnabled {
+      nixpkgs.overlays = [ (import ../../lib/overlays/opencode.nix) ];
+      environment.systemPackages = [ pkgs.opencode ];
+    })
+
     # ── Phase 20.1 — llama.cpp version tracking overlay ────────────────────────
     # When trackLatest = true, build llama.cpp from source using the pinned
     # version in nix/pins/llama-cpp.json. This allows tracking upstream releases

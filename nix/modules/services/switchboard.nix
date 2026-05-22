@@ -178,6 +178,12 @@ let
     Use the configured remote tool-calling lane for bounded tool use with strict arguments.
     Prefer minimal tool schemas, explicit constraints, and concise final output.
   '';
+  remoteOpencodeCard = ''
+    [profile-card:remote-opencode]
+    Use the opencode coding-agent lane backed by a free or low-cost remote model.
+    Route concrete file-editing, refactoring, and code-generation tasks here to preserve
+    paid-tier budget. Keep prompts scoped to a single file or function; do not dump broad context.
+  '';
   localToolCallingCard = ''
     [profile-card:local-tool-calling]
     Use the local tool-calling lane for bounded built-in tool execution on the local host.
@@ -313,6 +319,21 @@ let
       toolExecution = null;
       profileCard = remoteToolCallingCard;
     };
+    "remote-opencode" = {
+      forceProvider = "remote";
+      injectHints = false;
+      modelAlias =
+        if swb.remoteModelAliases.opencode != null
+        then swb.remoteModelAliases.opencode
+        else swb.remoteModelAliases.free;
+      advertisedContextWindow = null;
+      maxInputTokens = 5000;
+      maxMessages = 20;
+      maxOutputTokens = 2000;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = remoteOpencodeCard;
+    };
     "local-tool-calling" = {
       forceProvider = "local";
       injectHints = false;
@@ -446,6 +467,11 @@ in {
             then swb.remoteModelAliases.toolCalling
             else ""
           }"
+          "SWB_REMOTE_MODEL_ALIAS_OPENCODE=${
+            if swb.remoteModelAliases.opencode != null
+            then swb.remoteModelAliases.opencode
+            else ""
+          }"
           "SWB_REMOTE_DAILY_TOKEN_CAP=${toString swb.remoteBudget.dailyTokenCap}"
           "SWB_REMOTE_BUDGET_FALLBACK_LOCAL=${
             if swb.remoteBudget.fallbackToLocal
@@ -455,6 +481,9 @@ in {
           "SWB_REMOTE_BUDGET_STATE_PATH=${remoteBudgetStatePath}"
           "SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS=${toString swb.continueLocal.maxInputTokens}"
           "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
+          # Must match --parallel N in facts.nix llamaCpp.extraArgs so the
+          # switchboard concurrency ceiling matches llama.cpp's slot count.
+          "SWB_LOCAL_CONCURRENCY=2"
           "SWB_PROFILE_CATALOG_YAML_FILE=${repoPath}/config/switchboard-profiles.yaml"
           "SWB_PROFILE_CATALOG_JSON_FILE=${switchboardProfileCatalogFile}"
           "HYBRID_COORDINATOR_URL=${hybridUrl}"

@@ -49,8 +49,9 @@
                                                               llamaCpp.extraArgs = [
                                                                 # Qwen3.6-35B on this CPU needs up to 5 minutes for large prompts.
                                                                 "--timeout" "600"
-                                                                # 27GB RAM: 24.5GB model (Q5_K_S) + KV cache = tight; 1 parallel slot only.
-                                                                "--parallel" "1"
+                                                                # 27GB RAM: UD-Q4_K_XL ~19GB + 2×KV(ctx=8192) ~1GB = ~20GB; headroom for 2 slots.
+                                                                # Must match SWB_LOCAL_CONCURRENCY in switchboard.nix.
+                                                                "--parallel" "2"
                                                                 "--batch-size" "512"
                                                                 "--ubatch-size" "256"
                                                                 "--threads" "8"
