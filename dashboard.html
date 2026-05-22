@@ -7,8 +7,7 @@
   <title>AI Command Center</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
-  <script src="https://d3js.org/d3.v7.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" defer></script>
+  <!-- D3 and Mermaid loaded at end of body as vendor scripts — see below -->
   <style>
     :root {
       --bg:#080c12; --bg2:#0d1220; --bg3:rgba(13,18,32,.96);
@@ -750,6 +749,8 @@
   </div>
 </div>
 
+<script src="/assets/vendor/d3.v7.min.js"></script>
+<script src="/assets/vendor/mermaid.min.js"></script>
 <script src="/assets/dashboard.js"></script>
 <script>
 // aq-qa 60.7.3: section-rag-quality ragAnswerRelevance ragContextPrecision ragFaithfulness loadRagQuality
