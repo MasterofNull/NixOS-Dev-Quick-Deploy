@@ -147,7 +147,7 @@ class WorkflowCheckpointer:
         if not self._schema_ready:
             await self.ensure_schema()
         try:
-            rows = await self._pg.fetch(
+            rows = await self._pg.fetch_all(
                 """
                 SELECT completed_nodes, node_outputs, pending_nodes, updated_at
                 FROM workflow_checkpoints WHERE workflow_id = %s
@@ -215,7 +215,7 @@ class WorkflowCheckpointer:
     async def get_pattern_insights(self, pattern_type: str = "sequential") -> Dict[str, Any]:
         """Return avg latency and success rate for a pattern type (last 100 runs)."""
         try:
-            rows = await self._pg.fetch(
+            rows = await self._pg.fetch_all(
                 """
                 SELECT
                     COUNT(*)                          AS total,
