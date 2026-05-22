@@ -1618,6 +1618,18 @@
               Prefer an OpenRouter model/router that supports stable OpenAI-compatible tool use.
             '';
           };
+
+          opencode = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "openrouter/qwen/qwen3-235b-a22b:free";
+            description = ''
+              Remote model alias passed to the opencode CLI via OPENCODE_MODEL.
+              Set to an OpenRouter free-tier model id (e.g. qwen/qwen3-235b-a22b:free)
+              to use free capacity for coding-agent tasks without burning paid budget.
+              Null disables the remote-opencode switchboard profile.
+            '';
+          };
         };
 
         remoteBudget = {

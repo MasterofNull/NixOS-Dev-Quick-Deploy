@@ -229,6 +229,73 @@ async def get_workflow_status_handler(workflow_id: str) -> Dict:
         }
 
 
+async def run_opencode_handler(
+    prompt: str,
+    model: Optional[str] = None,
+) -> Dict:
+    """
+    Invoke the opencode CLI coding agent with the given prompt.
+
+    The model is resolved from the SWB_REMOTE_MODEL_ALIAS_OPENCODE env var
+    when not explicitly provided, falling back to the configured remote-free
+    alias so free capacity is used by default.
+
+    Args:
+        prompt: Coding task description passed to opencode
+        model:  Override model id (OpenRouter format, e.g. qwen/qwen3-235b-a22b:free)
+
+    Returns:
+        {
+            "success": bool,
+            "output": str,
+            "model": str,
+            "error": str (if failed)
+        }
+    """
+    import asyncio
+    import shutil
+
+    opencode_bin = shutil.which("opencode")
+    if not opencode_bin:
+        return {"success": False, "error": "opencode not found in PATH"}
+
+    resolved_model = (
+        model
+        or os.getenv("SWB_REMOTE_MODEL_ALIAS_OPENCODE")
+        or os.getenv("SWB_REMOTE_MODEL_ALIAS_FREE")
+        or ""
+    )
+
+    cmd = [opencode_bin, "run", "--print", prompt]
+    env = {**os.environ}
+    if resolved_model:
+        env["OPENCODE_MODEL"] = resolved_model
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+        if proc.returncode == 0:
+            return {
+                "success": True,
+                "output": stdout.decode().strip(),
+                "model": resolved_model,
+            }
+        return {
+            "success": False,
+            "error": stderr.decode().strip() or f"exit code {proc.returncode}",
+            "model": resolved_model,
+        }
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "opencode timed out after 120s", "model": resolved_model}
+    except Exception as e:
+        return {"success": False, "error": str(e), "model": resolved_model}
+
+
 def register_ai_coordination_tools(registry: ToolRegistry):
     """Register all AI coordination tools in the registry"""
 
@@ -270,7 +337,7 @@ def register_ai_coordination_tools(registry: ToolRegistry):
                 "agent_type": {
                     "type": "string",
                     "description": "Agent type",
-                    "enum": ["codex", "claude", "qwen"],
+                    "enum": ["codex", "claude", "qwen", "opencode"],
                     "default": "codex",
                 },
                 "priority": {
@@ -365,4 +432,39 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=get_workflow_status_handler,
     ))
 
-    logger.info("Registered 5 AI coordination tools")
+    # run_opencode
+    registry.register(ToolDefinition(
+        name="run_opencode",
+        description=(
+            "Invoke the opencode CLI coding agent for file-editing, refactoring, or "
+            "code-generation tasks. Routes through the free remote model lane by default "
+            "(SWB_REMOTE_MODEL_ALIAS_OPENCODE). Use for concrete implementation work to "
+            "preserve paid-tier budget."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Coding task description",
+                },
+                "model": {
+                    "type": "string",
+                    "description": (
+                        "Override model id in OpenRouter format "
+                        "(e.g. qwen/qwen3-235b-a22b:free). "
+                        "Defaults to SWB_REMOTE_MODEL_ALIAS_OPENCODE env var."
+                    ),
+                },
+            },
+            "required": ["prompt"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.WRITE_SAFE,
+        sandbox_profile="execute-guarded",
+        network_policy="loopback",
+        timeout_seconds=120,
+        handler=run_opencode_handler,
+    ))
+
+    logger.info("Registered 6 AI coordination tools")
