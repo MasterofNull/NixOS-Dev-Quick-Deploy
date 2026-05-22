@@ -61,15 +61,16 @@ def _strip_think(text: str) -> str:
 
 def _thinking_kwargs(task_type: Optional[str]) -> dict:
     """
-    Return chat_template_kwargs to disable thinking for tasks that don't benefit.
-    Only used when the model declares can_disable_thinking (detected via /props).
-    Disabling thinking on lookup/format tasks saves 100-300 tokens per request.
+    Return chat_template_kwargs to disable thinking for all local inference.
+    Qwen3 generates reasoning_content (thinking tokens) that are filtered from
+    the OpenAI content field — if not disabled, the content field is empty.
+    Disable for all task types when the model supports it; never enable for local.
     """
     if not Config.AI_MODEL_CAN_DISABLE_THINKING:
         return {}
-    if str(task_type or "").lower() in _NO_THINK_TASK_TYPES:
-        return {"chat_template_kwargs": {"enable_thinking": False}}
-    return {}
+    # Disable thinking for all task types — Qwen3 thinking tokens produce empty
+    # content responses unless explicitly disabled. This is always correct for local.
+    return {"chat_template_kwargs": {"enable_thinking": False}}
 
 import capability_discovery
 from config import Config, routing_config
