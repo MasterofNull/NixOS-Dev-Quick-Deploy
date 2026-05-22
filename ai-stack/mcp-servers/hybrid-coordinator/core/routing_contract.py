@@ -134,6 +134,7 @@ def _build_profile_registry() -> Dict[str, ProfileEntry]:
         alias_coding    = Config.SWITCHBOARD_REMOTE_ALIAS_CODING       or "qwen-coder"
         alias_reasoning = Config.SWITCHBOARD_REMOTE_ALIAS_REASONING    or "claude-sonnet-4-6"
         alias_tool      = Config.SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING or alias_reasoning
+        alias_opencode  = Config.SWITCHBOARD_REMOTE_ALIAS_OPENCODE     or "opencode/v1-coder-7b"
     except (ImportError, AttributeError):
         # Fallback when imported outside the coordinator process (tests, CI)
         alias_gemini    = os.getenv("SWITCHBOARD_REMOTE_ALIAS_GEMINI",       "gemini-2.0-flash")
@@ -141,6 +142,7 @@ def _build_profile_registry() -> Dict[str, ProfileEntry]:
         alias_coding    = os.getenv("SWITCHBOARD_REMOTE_ALIAS_CODING",       "qwen-coder")
         alias_reasoning = os.getenv("SWITCHBOARD_REMOTE_ALIAS_REASONING",    "claude-sonnet-4-6")
         alias_tool      = os.getenv("SWITCHBOARD_REMOTE_ALIAS_TOOL_CALLING", alias_reasoning)
+        alias_opencode  = os.getenv("SWITCHBOARD_REMOTE_ALIAS_OPENCODE",     "opencode/v1-coder-7b")
 
     return {
         "default": ProfileEntry(
@@ -226,6 +228,11 @@ def _build_profile_registry() -> Dict[str, ProfileEntry]:
             model_alias="llama-cpp-local",
             description="Compact embedded-assist lane",
         ),
+        "opencode": ProfileEntry(
+            tier=RoutingTier.EDGE,
+            model_alias=alias_opencode,
+            description="OpenCode CLI-integrated coding lane",
+        ),
     }
 
 
@@ -274,6 +281,7 @@ def profile_for_model_alias(model_alias: str, *, tier_hint: Optional[RoutingTier
         "gemini": "remote-gemini",
         "gemini-2.0-flash": "remote-gemini",
         "claude-sonnet": "remote-reasoning",
+        "opencode": "opencode",
         # Until switchboard exposes a distinct flagship profile, critical
         # requests reuse the strongest existing reasoning lane.
         "claude-opus": "remote-reasoning",

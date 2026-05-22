@@ -40,6 +40,7 @@ let
     "cargo"
     "ruby"
     "neovim"
+    "opencode"
   ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
   missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) mergedPackageNames;

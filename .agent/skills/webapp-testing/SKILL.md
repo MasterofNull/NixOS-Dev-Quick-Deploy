@@ -54,8 +54,24 @@ To create an automation script, include only Playwright logic (servers are manag
 ```python
 from playwright.sync_api import sync_playwright
 
+import os, shutil
+
+# NixOS REQUIRED: Playwright cannot install its own browser due to FHS incompatibility.
+# Always use the system Chromium via executable_path. Never call playwright install.
+CHROMIUM = (
+    os.environ.get("CHROMIUM_PATH") or
+    next((p for p in [
+        os.path.expanduser("~/.nix-profile/bin/chromium"),
+        "/run/current-system/sw/bin/chromium",
+        shutil.which("chromium") or "",
+    ] if p and os.path.isfile(p)), None)
+)
+
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True) # Always launch chromium in headless mode
+    launch_kw = dict(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+    if CHROMIUM:
+        launch_kw["executable_path"] = CHROMIUM
+    browser = p.chromium.launch(**launch_kw)
     page = browser.new_page()
     page.goto('http://localhost:5173') # Server already running and ready
     page.wait_for_load_state('networkidle') # CRITICAL: Wait for JS to execute
