@@ -38,6 +38,7 @@ backend routes include:
 | Hints registry | `GET /api/hints/active` | What active workflow hints are being injected? |
 | Memory state | `GET /api/memory/stats`, `/api/memory/crystalline/status`, `/api/memory/supersede/history` | Is memory initialized, superseding facts, and crystallizing sessions? |
 | Trace posture | `GET /api/traces/summary`, `/api/traces/drift` | Which intents/routes are active and is routing drifting? |
+| Graph visibility | `GET /api/topology`, `/api/graph/vector`, `/api/graph/workflow` | How do services, logic patterns, and routing workflow connect? |
 | Service topology | `GET /api/ports/registry`, `/api/health/aggregate` | Which managed services/ports are registered and healthy? |
 | Runtime policy | `GET /api/harness/overview` | Which auth/profile/tool policy controls are currently active? |
 
