@@ -64,6 +64,7 @@ Health and service status:
 
 ```bash
 systemctl status command-center-dashboard-api.service
+bash scripts/testing/check-dashboard-managed-service.sh
 bash scripts/governance/manage-dashboard-collectors.sh status
 ```
 

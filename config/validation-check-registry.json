@@ -233,6 +233,23 @@
       "timeout_seconds": 30
     },
     {
+      "id": "dashboard-managed-service",
+      "description": "dashboard managed systemd service smoke",
+      "trigger_paths": [
+        "scripts/testing/check-dashboard-managed-service.sh",
+        "nix/modules/roles/ai-stack.nix",
+        "docs/QUICK-DASHBOARD-REFERENCE.md",
+        "docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/check-dashboard-managed-service.sh"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "require_tool": "systemctl"
+    },
+    {
       "id": "aq-screenshot-contract",
       "description": "aq-screenshot local browser automation contract",
       "trigger_paths": [
