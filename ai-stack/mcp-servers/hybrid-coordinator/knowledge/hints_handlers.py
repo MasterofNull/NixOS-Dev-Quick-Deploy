@@ -146,7 +146,11 @@ async def handle_hints(request: web.Request) -> web.Response:
         try:
             import sys as _sys
             from pathlib import Path as _Path
-            _hints_dir = _Path(__file__).parent
+            # .parent = knowledge/, .parent.parent = hybrid-coordinator/
+            # Must insert coordinator root so top-level hints_engine.py shim is
+            # found; importing knowledge/hints_engine.py directly as a top-level
+            # module breaks its relative imports (.hints_engine_impl, etc.).
+            _hints_dir = _Path(__file__).parent.parent
             if str(_hints_dir) not in _sys.path:
                 _sys.path.insert(0, str(_hints_dir))
             from hints_engine import HintsEngine  # type: ignore[import]
