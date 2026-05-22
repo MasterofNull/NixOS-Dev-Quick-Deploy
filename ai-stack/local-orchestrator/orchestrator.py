@@ -14,24 +14,54 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .mcp_client import MCPClient, get_mcp_client
-from routing_contract import RoutingDecision, RoutingTier
+try:
+    from .mcp_client import MCPClient, get_mcp_client
+    from .router import TaskRouter, TaskCategory
+except ImportError:
+    from mcp_client import MCPClient, get_mcp_client
+    from router import TaskRouter, TaskCategory
 
-from .router import TaskRouter, TaskCategory
+try:
+    from routing_contract import RoutingDecision, RoutingTier
+except ImportError:
+    # Handle if not in path, but it should be added by the wrapper script
+    sys.path.insert(0, str(Path(__file__).parent.parent / "mcp-servers" / "hybrid-coordinator"))
+    from routing_contract import RoutingDecision, RoutingTier
 
-# Add parent path for autonomous-orchestrator imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from autonomous_orchestrator import (
-    DelegatedTask,
-    TaskType,
-    AgentPreference,
-    TaskContext,
-    TaskConstraints,
-    get_delegation_protocol,
+from orchestration.delegation_api import (
+    DelegationAPI,
+    DelegationRequest as DelegatedTask,
+    DelegationStatus as TaskStatus,
+    AgentCapability as TaskType,
 )
+from orchestration.agent_hq import AgentHQ, Session, TaskInfo, AgentStatus
+
+# Map AgentPreference to a local enum for compatibility
+class AgentPreference(Enum):
+    LOCAL = "local"
+    CLAUDE = "claude"
+    FLAGSHIP = "flagship"
+    ANY = "any"
+
+# Stub for TaskContext and TaskConstraints if not in new API
+@dataclass
+class TaskContext:
+    files_to_read: List[str] = field(default_factory=list)
+    hints: List[str] = field(default_factory=list)
+
+@dataclass
+class TaskConstraints:
+    max_files_changed: int = 10
+    require_tests: bool = False
+    safety_level: str = "medium"
+
+def get_delegation_protocol():
+    """Bridge to the new DelegationAPI."""
+    return DelegationAPI()
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +110,15 @@ class LocalOrchestrator:
         self.router = router or TaskRouter(cost_budget_usd=cost_budget)
         self.repo_root = repo_root or Path.cwd()
 
+        # Phase 60: Agent HQ Integration
+        self.hq = AgentHQ(persistence_dir=self.repo_root / ".agent-hq")
+        self.session = self.hq.create_session(name="local-orchestrator-cli")
+        self.hq.register_agent(
+            name="local-qwen",
+            capabilities={"implementer", "architect", "reviewer", "domain:python", "domain:nixos"},
+            metadata={"model": "qwen3.6-35b"}
+        )
+
         # Load system prompt
         self.system_prompt = self._load_system_prompt()
 
@@ -115,6 +154,13 @@ class LocalOrchestrator:
         self.total_prompts += 1
         context = context or {}
 
+        # Log task to HQ
+        hq_task = await self.hq.submit_task(
+            self.session.session_id,
+            description=prompt,
+            metadata={"source": "cli", "context": context}
+        )
+
         # 1. Route the task
         decision = self.router.route(prompt, context)
         logger.info(f"Routing decision: {decision.extra['reasoning']}")
@@ -123,10 +169,21 @@ class LocalOrchestrator:
         gathered_context = await self._gather_context(prompt, decision)
 
         # 3. Execute based on backend
-        if decision.is_local:
-            response = await self._execute_local(prompt, gathered_context, decision)
-        else:
-            response = await self._execute_delegate(prompt, gathered_context, decision)
+        try:
+            if decision.is_local:
+                response = await self._execute_local(prompt, gathered_context, decision)
+            else:
+                response = await self._execute_delegate(prompt, gathered_context, decision)
+            
+            if hq_task:
+                hq_task.status = "completed"
+                hq_task.result = response.content
+
+        except Exception as e:
+            if hq_task:
+                hq_task.status = "failed"
+                hq_task.error = str(e)
+            raise e
 
         # 4. Update stats
         response.execution_time = time.time() - start_time
@@ -403,6 +460,7 @@ class LocalOrchestrator:
             "services": services,
             "mcp_stats": self.mcp.get_stats(),
             "conversation_length": len(self.conversation_history),
+            "session_id": self.session.session_id if hasattr(self, "session") else None
         }
 
 
@@ -439,6 +497,7 @@ async def main():
     # Check services
     status = orchestrator.get_status()
     print(f"Services: {status['services']}")
+    print(f"Session: {status['session_id']}")
     print()
 
     while True:

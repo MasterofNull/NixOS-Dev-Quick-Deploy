@@ -93,6 +93,8 @@ SAFE_COMMANDS = {
     "aq-qa", "aq-hints", "aq-report", "aq-session-start",
     "aq-commit-facts", "aq-lesson-promote", "aq-crystallize",
     "aq-agent-loop", "aqd",
+    # OpenCode CLI (Phase 60 Integration)
+    "opencode",
     # JSON/YAML inspection
     "jq", "yq",
     # File utilities
@@ -400,8 +402,8 @@ def register_shell_tools(registry: ToolRegistry):
             "properties": {
                 "service_name": {
                     "type": "string",
-                    "description": "Service name (e.g., 'ai-aidb.service')",
-                },
+                    "description": "Name of the systemd service",
+                }
             },
             "required": ["service_name"],
         },
@@ -409,5 +411,30 @@ def register_shell_tools(registry: ToolRegistry):
         safety_policy=SafetyPolicy.READ_ONLY,
         handler=check_service_handler,
     ))
+
+    # opencode (Phase 60 Integration)
+    registry.register(ToolDefinition(
+        name="opencode",
+        description="Call the OpenCode CLI for specialized coding and implementation tasks.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The coding objective or prompt for OpenCode.",
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Execution mode (e.g., direct, draft, implement).",
+                    "default": "direct",
+                }
+            },
+            "required": ["prompt"],
+        },
+        category=ToolCategory.CODE_EXEC,
+        safety_policy=SafetyPolicy.WRITE_SAFE,
+        handler=run_command_handler, # Reusing run_command_handler for the CLI
+    ))
+
 
     logger.info("Registered 4 shell command tools")

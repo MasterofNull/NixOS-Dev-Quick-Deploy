@@ -90,9 +90,11 @@ class MCPClient:
         if key:
             headers["X-API-Key"] = key
 
+        timeout = float(os.getenv("AI_LOCAL_FRONTDOOR_MAX_TIME", "600"))
+
         req = urllib.request.Request(url, data=body, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())
         except urllib.error.HTTPError as e:
             self._stats["errors"] += 1
@@ -107,9 +109,11 @@ class MCPClient:
         if key:
             headers["X-API-Key"] = key
 
+        timeout = float(os.getenv("AI_LOCAL_FRONTDOOR_MAX_TIME", "600"))
+
         req = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())
         except Exception as e:
             self._stats["errors"] += 1

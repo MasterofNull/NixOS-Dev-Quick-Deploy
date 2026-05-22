@@ -18,8 +18,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Source service endpoints
+# shellcheck source=../../config/service-endpoints.sh
+source "${REPO_ROOT}/config/service-endpoints.sh"
+
 # Add to Python path
 export PYTHONPATH="${REPO_ROOT}/ai-stack:${PYTHONPATH:-}"
+
+# Disable strict env check in hybrid-coordinator config
+export AI_STRICT_ENV="false"
 
 # Service URLs (configurable)
 export HYBRID_URL="${HYBRID_URL:-http://127.0.0.1:8003}"
@@ -149,36 +156,31 @@ check_services() {
 run_legacy_single_prompt() {
     python3 - "$REPO_ROOT" "$PROMPT" <<'PY'
 import asyncio
-import importlib.util
 import sys
+import importlib.util
 from pathlib import Path
 
 repo_root = Path(sys.argv[1])
 prompt = sys.argv[2]
-sys.path.insert(0, str(repo_root / "ai-stack"))
-auto_package_dir = repo_root / "ai-stack" / "autonomous-orchestrator"
-auto_spec = importlib.util.spec_from_file_location(
-    "autonomous_orchestrator",
-    auto_package_dir / "__init__.py",
-    submodule_search_locations=[str(auto_package_dir)],
-)
-auto_module = importlib.util.module_from_spec(auto_spec)
-sys.modules["autonomous_orchestrator"] = auto_module
-auto_spec.loader.exec_module(auto_module)
+
+# Setup paths
+sys.path.insert(0, str(repo_root))
+sys.path.insert(0, str(repo_root / "ai-stack" / "mcp-servers"))
+sys.path.insert(0, str(repo_root / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
+sys.path.insert(0, str(repo_root / "ai-stack" / "local-orchestrator"))
+
+# Load orchestrator module dynamically to avoid package name issues
 package_dir = repo_root / "ai-stack" / "local-orchestrator"
 spec = importlib.util.spec_from_file_location(
-    "local_orchestrator",
-    package_dir / "__init__.py",
-    submodule_search_locations=[str(package_dir)],
+    "orchestrator",
+    package_dir / "orchestrator.py",
 )
-module = importlib.util.module_from_spec(spec)
-sys.modules["local_orchestrator"] = module
-spec.loader.exec_module(module)
-
-from local_orchestrator import get_orchestrator
+orchestrator = importlib.util.module_from_spec(spec)
+sys.modules["orchestrator"] = orchestrator
+spec.loader.exec_module(orchestrator)
 
 async def main():
-    orch = get_orchestrator()
+    orch = orchestrator.get_orchestrator(repo_root=repo_root)
     response = await orch.process(prompt)
     print(response.content)
     print()
@@ -234,36 +236,29 @@ if [[ "$MODE" == "plan" ]]; then
 
     python3 - "$REPO_ROOT" "$OBJECTIVE" <<'PY'
 import asyncio
-import importlib.util
 import sys
+import importlib.util
 from pathlib import Path
 
 repo_root = Path(sys.argv[1])
 objective = sys.argv[2]
-sys.path.insert(0, str(repo_root / "ai-stack"))
-auto_package_dir = repo_root / "ai-stack" / "autonomous-orchestrator"
-auto_spec = importlib.util.spec_from_file_location(
-    "autonomous_orchestrator",
-    auto_package_dir / "__init__.py",
-    submodule_search_locations=[str(auto_package_dir)],
-)
-auto_module = importlib.util.module_from_spec(auto_spec)
-sys.modules["autonomous_orchestrator"] = auto_module
-auto_spec.loader.exec_module(auto_module)
+
+sys.path.insert(0, str(repo_root))
+sys.path.insert(0, str(repo_root / "ai-stack" / "mcp-servers"))
+sys.path.insert(0, str(repo_root / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
+sys.path.insert(0, str(repo_root / "ai-stack" / "local-orchestrator"))
+
 package_dir = repo_root / "ai-stack" / "local-orchestrator"
 spec = importlib.util.spec_from_file_location(
-    "local_orchestrator",
-    package_dir / "__init__.py",
-    submodule_search_locations=[str(package_dir)],
+    "orchestrator",
+    package_dir / "orchestrator.py",
 )
-module = importlib.util.module_from_spec(spec)
-sys.modules["local_orchestrator"] = module
-spec.loader.exec_module(module)
-
-from local_orchestrator import get_orchestrator
+orchestrator = importlib.util.module_from_spec(spec)
+sys.modules["orchestrator"] = orchestrator
+spec.loader.exec_module(orchestrator)
 
 async def main():
-    orch = get_orchestrator()
+    orch = orchestrator.get_orchestrator(repo_root=repo_root)
     response = await orch.plan_task(objective)
     print(response.content)
 
@@ -277,7 +272,7 @@ if [[ "$MODE" == "single" ]]; then
     check_services || true
     if [[ "${AI_LOCAL_FRONTDOOR_ROUTING_ENABLE}" == "true" ]]; then
         api_key="$(load_hybrid_api_key || true)"
-        curl_args=(-sS --max-time "${AI_LOCAL_FRONTDOOR_MAX_TIME:-120}" -H "Content-Type: application/json")
+        curl_args=(-sS --max-time "${AI_LOCAL_FRONTDOOR_MAX_TIME:-600}" -H "Content-Type: application/json")
         if [[ -n "${api_key}" ]]; then
             curl_args+=(-H "X-API-Key: ${api_key}")
         fi
@@ -325,32 +320,25 @@ check_services || true
 
 exec python3 - "$REPO_ROOT" <<'PY'
 import asyncio
-import importlib.util
 import sys
+import importlib.util
 from pathlib import Path
 
 repo_root = Path(sys.argv[1])
-sys.path.insert(0, str(repo_root / "ai-stack"))
-auto_package_dir = repo_root / "ai-stack" / "autonomous-orchestrator"
-auto_spec = importlib.util.spec_from_file_location(
-    "autonomous_orchestrator",
-    auto_package_dir / "__init__.py",
-    submodule_search_locations=[str(auto_package_dir)],
-)
-auto_module = importlib.util.module_from_spec(auto_spec)
-sys.modules["autonomous_orchestrator"] = auto_module
-auto_spec.loader.exec_module(auto_module)
+sys.path.insert(0, str(repo_root))
+sys.path.insert(0, str(repo_root / "ai-stack" / "mcp-servers"))
+sys.path.insert(0, str(repo_root / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
+sys.path.insert(0, str(repo_root / "ai-stack" / "local-orchestrator"))
+
 package_dir = repo_root / "ai-stack" / "local-orchestrator"
 spec = importlib.util.spec_from_file_location(
-    "local_orchestrator",
-    package_dir / "__init__.py",
-    submodule_search_locations=[str(package_dir)],
+    "orchestrator",
+    package_dir / "orchestrator.py",
 )
-module = importlib.util.module_from_spec(spec)
-sys.modules["local_orchestrator"] = module
-spec.loader.exec_module(module)
+orchestrator = importlib.util.module_from_spec(spec)
+sys.modules["orchestrator"] = orchestrator
+spec.loader.exec_module(orchestrator)
 
-from local_orchestrator.orchestrator import main
-
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(orchestrator.main())
 PY

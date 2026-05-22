@@ -6,7 +6,7 @@ Requires playwright in environment:
 Or set PLAYWRIGHT_BROWSERS_PATH and run directly.
 """
 from playwright.sync_api import sync_playwright
-import time, sys
+import time, sys, os
 
 BASE = "http://localhost:8889"
 OUT  = "/tmp/dashboard-smoke"
@@ -22,8 +22,23 @@ import os; os.makedirs(OUT, exist_ok=True)
 
 errors, results = [], {}
 
+import shutil
+# NixOS: Playwright cannot install its own Chromium due to FHS incompatibility.
+# Use the system Chromium installed via nix instead.
+CHROMIUM = (
+    os.environ.get("CHROMIUM_PATH")
+    or next((p for p in [
+        os.path.expanduser("~/.nix-profile/bin/chromium"),
+        "/run/current-system/sw/bin/chromium",
+        shutil.which("chromium") or "",
+    ] if p and os.path.isfile(p)), None)
+)
+
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    launch_kwargs = dict(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+    if CHROMIUM:
+        launch_kwargs["executable_path"] = CHROMIUM
+    browser = p.chromium.launch(**launch_kwargs)
     page = browser.new_page(viewport={"width": 1600, "height": 1000})
     page.on("console", lambda m: errors.append(f"[{m.type}] {m.text}") if m.type == "error" else None)
 

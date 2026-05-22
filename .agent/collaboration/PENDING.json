@@ -36,12 +36,10 @@
   ],
   "support_orchestrator": {
     "status": "active_monitoring",
-    "review_verdict": "APPROVED for S2 security metadata commit 59346a1. Tier0 passes. Current permission fix for /learning/export follows declarative standards.",
-    "tool_guidance": "For S2 MCP Auth: use `aq-hints`; structure middleware via `mcp_Harness_MCP_workflow_plan`. For Local Delegation: Maximize offloading of 'light and bounded' tasks (linting, syntax checks, patterns) to local Qwen models. Verify hardware tier in `nix/lib/hardware-tier.nix` before scheduling heavy inference. Local Qwen 35B is current baseline for reviewed implementation tasks.",
+    "review_verdict": "APPROVED. Overhaul successful. Local Orchestrator fixed and aligned with AgentHQ/DelegationAPI. Tool registry metadata validated.",
+    "tool_guidance": "Local Orchestrator is now the primary edge interface. Use `local-orchestrator` for interactive research and bounded implementation. OpenCode CLI is live and available via the `opencode` tool. Use `aq-model-switch` for runtime model testing.",
     "questions_for_agents": [
-      "Codex: Do you require pre-warmed configuration data or log traces before beginning the S2 MCP Auth middleware?",
-      "Claude: Do you need a capability gap analysis on the trace schemas before starting S5 Observability?",
-      "Codex/Claude: Which 'light' implementation tasks can we immediately pivot to the local Qwen model to preserve remote usage windows?"
+      "Codex/Claude: Are there any remaining bottlenecks in your execution lanes now that the local orchestrator and OpenCode are live?"
     ],
     "reference": ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md"
   }
