@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""
+aq-chat — High-end interactive terminal for locally hosted AI models.
+"""
+
+import asyncio
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import httpx
+from prompt_toolkit import PromptSession, HTML
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.spinner import Spinner
+from rich.syntax import Syntax
+from rich.table import Table
+
+# --- Configuration ---
+DEFAULT_LLAMA_URL = "http://127.0.0.1:8080"
+DEFAULT_HYBRID_URL = "http://127.0.0.1:8003"
+USER_HISTORY_FILE = Path.home() / ".aq_chat_history"
+
+# --- Styling ---
+STYLE = Style.from_dict({
+    "prompt": "#00d9ff bold",
+    "model": "#ff00ff bold",
+})
+
+console = Console()
+
+class AQChat:
+    def __init__(self):
+        self.llama_url = os.getenv("LLAMA_URL", DEFAULT_LLAMA_URL)
+        self.hybrid_url = os.getenv("HYBRID_URL", DEFAULT_HYBRID_URL)
+        self.session = PromptSession(history=FileHistory(str(USER_HISTORY_FILE)))
+        self.client = httpx.AsyncClient(timeout=600.0)
+        self.model_name = "qwen3.6-35b"
+        self.context_history = []
+
+    async def _get_active_model(self) -> str:
+        try:
+            resp = await self.client.get(f"{self.llama_url}/v1/models")
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("data", [{}])[0].get("id", "unknown")
+        except Exception:
+            pass
+        return "local-qwen"
+
+    async def _stream_chat(self, prompt: str):
+        self.context_history.append({"role": "user", "content": prompt})
+        
+        # Thinking Phase (Spinner)
+        with console.status("[bold #00d9ff]Synthesizing logic...", spinner="dots"):
+            payload = {
+                "model": "local",
+                "messages": self.context_history,
+                "stream": True,
+                "temperature": 0.2
+            }
+            
+            # Start request
+            try:
+                async with self.client.stream("POST", f"{self.llama_url}/v1/chat/completions", json=payload) as response:
+                    if response.status_code != 200:
+                        console.print(f"[bold red]Error: Received {response.status_code} from model backend.[/]")
+                        return
+
+                    full_response = ""
+                    # Create Live display for streaming
+                    with Live(Markdown(""), refresh_per_second=10) as live:
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                try:
+                                    content = line[6:]
+                                    if content.strip() == "[DONE]":
+                                        break
+                                    chunk = json.loads(content)
+                                    token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                    full_response += token
+                                    live.update(Markdown(full_response))
+                                except json.JSONDecodeError:
+                                    continue
+                    
+                    self.context_history.append({"role": "assistant", "content": full_response})
+            except Exception as e:
+                console.print(f"[bold red]Connection Error: {e}[/]")
+
+    async def handle_slash_command(self, cmd: str):
+        parts = cmd.split()
+        base = parts[0].lower()
+        
+        if base == "/clear":
+            self.context_history = []
+            console.clear()
+            console.print("[dim italic]Context history cleared.[/]")
+        elif base == "/status":
+            await self.show_status()
+        elif base == "/prime":
+            console.print("[bold cyan]Running aq-prime...[/]")
+            os.system("aq-prime")
+        elif base == "/exit":
+            sys.exit(0)
+        else:
+            console.print(f"[red]Unknown command: {base}[/]")
+
+    async def show_status(self):
+        table = Table(title="AI Stack Status", border_style="#00d9ff")
+        table.add_column("Component", style="cyan")
+        table.add_column("State", style="magenta")
+        
+        active_model = await self._get_active_model()
+        table.add_row("Model", active_model)
+        table.add_row("Backend", self.llama_url)
+        table.add_row("History", f"{len(self.context_history)} turns")
+        
+        console.print(table)
+
+    async def run(self):
+        self.model_name = await self._get_active_model()
+        console.print(Panel.fit(
+            f"[bold #00d9ff]Command Center Chat HUD v2.0[/]\n"
+            f"[dim]Connected to {self.model_name} @ {self.llama_url}[/]\n"
+            f"Type [bold #ff00ff]/help[/] for commands.",
+            border_style="#00d9ff"
+        ))
+
+        while True:
+            try:
+                user_input = await self.session.prompt(
+                    HTML(f'<prompt>[{self.model_name}]</prompt> <model>❯</model> '),
+                    style=STYLE
+                )
+                user_input = user_input.strip()
+                
+                if not user_input:
+                    continue
+                
+                if user_input.startswith("/"):
+                    if user_input.lower() == "/help":
+                        console.print("[bold magenta]Available Commands:[/]\n"
+                                      " /clear  - Clear history\n"
+                                      " /status - System metrics\n"
+                                      " /prime  - Onboard context\n"
+                                      " /exit   - Exit chat")
+                        continue
+                    await self.handle_slash_command(user_input)
+                else:
+                    await self._stream_chat(user_input)
+                    
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                continue
+
+if __name__ == "__main__":
+    chat = AQChat()
+    asyncio.run(chat.run())
