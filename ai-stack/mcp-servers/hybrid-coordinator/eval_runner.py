@@ -253,7 +253,7 @@ async def _fetch_ragas_averages(window: int = 100) -> Dict[str, Any]:
         return {}
     await ensure_schema()
     try:
-        rows = await _pg.fetch(
+        rows = await _pg.fetch_all(
             """
             SELECT
                 AVG(answer_relevance)  AS answer_relevance_avg,
@@ -339,7 +339,7 @@ async def _fetch_trend(limit: int = 10) -> List[Dict[str, Any]]:
         return []
     await ensure_schema()
     try:
-        rows = await _pg.fetch(
+        rows = await _pg.fetch_all(
             """
             SELECT id, phase_tag, score, checks_passed, checks_failed, run_at
             FROM eval_trend ORDER BY run_at DESC LIMIT %s

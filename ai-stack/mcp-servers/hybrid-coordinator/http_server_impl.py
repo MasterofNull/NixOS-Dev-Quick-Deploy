@@ -2264,7 +2264,14 @@ async def run_http_mode(port: int) -> None:
         except Exception:
             return web.json_response({"error": "invalid JSON body"}, status=400)
         body = json.dumps(data).encode()
-        return await handle_query(_QueryShimRequest(body, request))
+        shim = _QueryShimRequest(body, request)
+        resp = await handle_query(shim)
+        # Propagate audit_metadata from shim back to the real aiohttp request so
+        # the request_id_middleware audit hook can read backend/routing telemetry.
+        audit_meta = shim.get("audit_metadata")
+        if isinstance(audit_meta, dict):
+            request["audit_metadata"] = audit_meta
+        return resp
 
     async def handle_orchestrate(request):
         """Phase 0 Slice 0.2 — unified front-door routing endpoint.
@@ -2324,6 +2331,12 @@ async def run_http_mode(port: int) -> None:
 
         shim = _QueryShimRequest(json.dumps(forwarded_payload).encode(), request)
         resp = await handle_query(shim)
+
+        # Propagate audit_metadata from shim back to the real aiohttp request so
+        # the request_id_middleware audit hook can read backend/routing telemetry.
+        audit_meta = shim.get("audit_metadata")
+        if isinstance(audit_meta, dict):
+            request["audit_metadata"] = audit_meta
 
         # Inject routing telemetry headers on success
         try:
