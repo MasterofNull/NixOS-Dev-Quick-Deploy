@@ -881,11 +881,14 @@ in {
 
     # ── OpenCode CLI overlay ────────────────────────────────────────────────────
     # Provides pkgs.opencode (AI coding agent) + pkgs.models-dev from the
-    # in-repo .forks/nixpkgs staging area. Enabled for all AI-stack hosts.
-    # Once opencode lands in nixpkgs 25.11 this overlay can be dropped.
+    # nix/pkgs/by-name/ staging area (pending nixpkgs 25.11 inclusion).
+    # systemPackages install is intentionally omitted: opencode v1.3.0 has a
+    # Bun 1.3.3 bundling bug (undici not defined) that fails the smoke test.
+    # The overlay is kept so pkgs.opencode is available once the package is
+    # fixed; the run_opencode tool and remote-opencode switchboard profile
+    # degrade gracefully when the binary is absent from PATH.
     (lib.mkIf roleEnabled {
       nixpkgs.overlays = [ (import ../../lib/overlays/opencode.nix) ];
-      environment.systemPackages = [ pkgs.opencode ];
     })
 
     # ── Phase 20.1 — llama.cpp version tracking overlay ────────────────────────

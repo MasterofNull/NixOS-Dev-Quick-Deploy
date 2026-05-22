@@ -111,6 +111,9 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
 - `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
+- `enable_thinking: false` in EVERY llama.cpp request — Qwen3 thinking tokens cause empty responses
+- GPU layers ceiling = 12 (Renoir APU VRAM = 4 GB shared); never suggest n_gpu_layers > 12
+- Total usable RAM = 27 GB; model UMBM = 22.5 GB model / 1.0 GB KV / 3.0 GB OS reserve
 
 ## Service Ports
 
@@ -118,6 +121,16 @@ Port options are the single source of truth at `nix/modules/core/options.nix`.
 Current defaults: llama.cpp=8080, llama-embed=8081, AIDB=8002, hybrid-coordinator=8003,
 switchboard=8085, cli-bridge=8089, dashboard=8889.
 Never hardcode these values in Python or shell — always read from injected env vars.
+
+## Agent Instruction Files
+
+| Agent | File | Purpose |
+|-------|------|---------|
+| Claude Code | `CLAUDE.md` (this file) | Claude Code CLI + VSCode extension |
+| Gemini CLI | `.agent/GEMINI.md` | Gemini CLI, delegate-to-gemini |
+| Codex CLI | `.agent/CODEX.md` | Codex CLI, delegate-to-codex |
+| Qwen/Local | `.agent/QWEN.md` | aq-agent-loop, delegate-to-local |
+| Canonical workflow | `.agent/WORKFLOW-CANON.md` | Shared 7-step contract for all agents |
 
 ## On-Demand Context
 
