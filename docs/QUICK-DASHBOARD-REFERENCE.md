@@ -7,6 +7,7 @@
 ```bash
 # View dashboard
 systemctl status command-center-dashboard-api.service
+bash scripts/testing/check-dashboard-managed-service.sh
 xdg-open http://127.0.0.1:8889/
 
 # Legacy collector management context

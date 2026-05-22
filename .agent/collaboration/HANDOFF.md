@@ -1497,3 +1497,10 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Docs/progressive disclosure: updated `docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md`, `docs/QUICK-DASHBOARD-REFERENCE.md`, and `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md` with the current visibility contract and managed-service requirement.
 - Live validation: managed dashboard active; `ss` shows `127.0.0.1:8889`; `/api/traces/drift`, `/api/agent-ops/status`, `/api/memory/stats`, `/api/ports/registry`, `/api/health/aggregate`, and `/api/hints/report` returned 200. Screenshot saved to `/tmp/aq-dashboard-phase5-visibility.png` with no recent dashboard 404/bind errors.
 - Health validation: `aq-qa 0 --json` reported 82 pass / 0 fail / 3 skip. `./scripts/health/system-health-check.sh` reported declarative health check passed, including dashboard API/root/aggregate endpoints.
+
+## 2026-05-22 Codex handoff — dashboard managed-service smoke guard
+
+- Context: repeated degraded state allowed ad-hoc `uvicorn` on port 8889 to masquerade as a healthy dashboard while `command-center-dashboard-api.service` was inactive.
+- Slice: added `scripts/testing/check-dashboard-managed-service.sh` to require the managed systemd service, loopback `127.0.0.1:8889` binding, no `0.0.0.0:8889` listener, and a responding `/api/health` endpoint. Registered it in focused CI for dashboard/service documentation and ai-stack service wiring changes.
+- Docs: quick dashboard reference and dashboard architecture reference now include the smoke command in the operator flow.
+- Validation: local smoke passed with the managed service active.
