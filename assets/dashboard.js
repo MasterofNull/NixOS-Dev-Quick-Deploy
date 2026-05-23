@@ -1101,8 +1101,40 @@ async function loadIntelligence() {
     loadMemoryBroker(), loadAffectiveState(), loadHintsRegistry(),
     loadAICoordinator(), loadReasoningProfiles(),
     loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
-    loadLogicPatterns(),
+    loadLogicPatterns(), loadLocalInsights(),
   ]);
+}
+
+// ─── LOCAL INSIGHTS (aq-insights output) ──────────────────────────────────────
+async function loadLocalInsights() {
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  let d = null;
+  try { d = await apiFetch('/aistack/local-insights/latest', {}, 6000); }
+  finally { clearTimeout(timer); }
+  const el    = document.getElementById('localInsightsDetails');
+  const badge = document.getElementById('localInsightsBadge');
+  if (!el) return;
+  if (!d || !d.available) {
+    el.innerHTML = fwRow('Status', 'No insights yet — run aq-insights', 'warn');
+    if (badge) { badge.textContent = '--'; badge.className = 'card-badge badge-warn'; }
+    return;
+  }
+  if (badge) {
+    badge.textContent = d.date_tag || 'ready';
+    badge.className = 'card-badge badge-ok';
+  }
+  // Show meta then a preview of the markdown content (first ~400 chars)
+  const preview = (d.content || '').replace(/^#+\s/gm, '').slice(0, 400).trim();
+  el.innerHTML = [
+    fwRow('Date',      d.date_tag || '--',           'info'),
+    fwRow('Generated', d.generated_at ? d.generated_at.replace('Z', ' UTC') : '--', 'info'),
+    fwRow('Snapshot',  d.report_snapshot ? d.report_snapshot.slice(0, 28) + '…' : '--', 'info'),
+  ].join('') +
+    `<div style="margin-top:.4rem;padding:.4rem;background:rgba(255,255,255,.03);border-radius:3px;` +
+    `font-size:.57rem;color:var(--fg2);white-space:pre-wrap;line-height:1.5;max-height:8rem;overflow:hidden" id="localInsightsPreview"></div>`;
+  const previewEl = document.getElementById('localInsightsPreview');
+  if (previewEl) previewEl.textContent = preview + (d.content && d.content.length > 400 ? '\n…' : '');
 }
 
 // ─── SECURITY ─────────────────────────────────────────────────────────────────

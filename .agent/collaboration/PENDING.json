@@ -1,37 +1,52 @@
 {
   "agent": "Claude (covering Codex until 2026-05-26)",
-  "task": "S2 follow-up: MCP/tool dispatch auth enforcement + denial stats",
-  "intent": "Enforce harness auth profile at concrete tool dispatch boundaries; expose denial counts for dashboard.",
+  "task": "Local model integration + agent config standardization",
+  "intent": "Embed local model into workflows; standardize all agent behavioral rules; model-agnostic local agent config; monitoring parity for all new features.",
   "status": "validated_committed",
   "timestamp": "2026-05-22T00:00:00+00:00",
-  "commit": "e1987d06",
+  "commits": ["e1987d06", "6bc19cb8", "59608bf1"],
   "files": [
-    "ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_session_handlers.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/control/control_service.py",
+    "scripts/ai/aq-insights",
+    "scripts/ai/aq-chat",
+    ".agent/LOCAL-AGENT.md",
+    ".agent/QWEN.md (redirect stub)",
+    ".agent/GEMINI.md",
+    ".agent/CODEX.md",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".agent/WORKFLOW-CANON.md",
+    ".agent/LOCAL-AGENT-HARNESS-PRIMER.md",
+    "dashboard/backend/api/routes/aistack.py",
+    "dashboard.html",
+    "assets/dashboard.js",
     "scripts/testing/harness_qa/phases/phase0.py"
   ],
   "evidence": [
     "tier0: 17/17 PASS",
-    "aq-qa: 88 passed · 0 failed · 2 skipped",
-    "S2.1–S2.4 PASS immediately (static + unit)",
-    "S2.5 SKIP (GET /admin/v1/policy/tool-deny-stats needs nixos-rebuild to deploy)"
+    "aq-qa: 92 passed · 0 failed · 2 skipped",
+    "LA.1–LA.4 PASS (LOCAL-AGENT.md + aq-insights + aq-chat injection)",
+    "JS syntax: node --check OK",
+    "Python compile: aistack.py + phase0.py OK"
   ],
   "guardrails": [
     "Use declarative tmpfiles z/f ownership repair, not one-off chown.",
-    "Do not include whitespace-only facts.nix drift."
+    "Do not include whitespace-only facts.nix drift.",
+    "Model-specific knobs live in LOCAL-AGENT.md ## Current Model Config only — never scattered in scripts.",
+    "Dashboard monitoring parity required before any phase is marked complete."
   ],
   "next": [
-    "Dashboard panel: wire GET /admin/v1/policy/tool-deny-stats into dashboard.html (by_tool bar or table in Agent Ops panel).",
-    "S2.5 activates after next nixos-rebuild (new control_service.py endpoint live).",
-    "Home Manager switch remains pending for Playwright availability in the default user Python environment.",
-    "aq-homeostasis tool: systemd-timer collecting CPU/GPU/RAM/fd → .agent/memory/homeostasis/ → circuit-break switchboard at >95% RAM (Gemini design).",
-    "MTP tuning decision tree: when to raise specDraftNMax 2→3 based on acceptance rate thresholds (Gemini assigned)."
+    "nixos-rebuild switch: deploys S2.5 live endpoint (coordinator control_service.py) + new insights API",
+    "S2.5 aq-qa gate activates automatically after rebuild (currently SKIP).",
+    "Run aq-insights to seed first .agent/memory/qwen-insights-*.md for dashboard card.",
+    "aq-homeostasis systemd timer: Gemini design pending — collect CPU/GPU/RAM/fd → .agent/memory/homeostasis/ → circuit-break switchboard at >95% RAM.",
+    "MTP tuning decision tree: when to raise specDraftNMax 2→3 based on acceptance rate (Gemini assigned).",
+    "Home Manager switch: Playwright availability in user Python env (blocked).",
+    "Update docs/architecture/qwen-task-eligibility.md → rename/retitle to local-agent-task-eligibility.md for full model-agnostic consistency."
   ],
   "support_orchestrator": {
     "status": "active_monitoring",
-    "review_verdict": "APPROVED. S2 follow-up complete. Tool access policy enforced at workflow session event boundary. Denial counter + admin endpoint shipped. 5 aq-qa gates added.",
-    "tool_guidance": "Local Orchestrator is now the primary edge interface. Use `local-orchestrator` for interactive research and bounded implementation. OpenCode CLI is live and available via the `opencode` tool. Use `aq-model-switch` for runtime model testing.",
+    "review_verdict": "APPROVED. Local model integration complete. Agent configs standardized with canonical 10-rule behavioral table. LOCAL-AGENT.md replaces QWEN.md with model-agnostic design + swap checklist. All features monitored: LA.1–LA.4 aq-qa gates + dashboard card.",
+    "tool_guidance": "aq-insights available immediately. Run with --print to test before rebuild. Dashboard card at section-local-insights in Agent Ops panel.",
     "questions_for_agents": [
       "Gemini: aq-homeostasis design — ready to hand off spec for Claude to implement?",
       "Gemini: MTP tuning decision tree — thresholds for specDraftNMax 2→3 determined?"
