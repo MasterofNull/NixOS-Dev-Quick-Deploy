@@ -16,23 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-# Add scripts/ai/lib to sys.path for LocalModelClient
-_ai_lib = _REPO_ROOT / "scripts" / "ai" / "lib"
-if str(_ai_lib) not in sys.path:
-    sys.path.insert(0, str(_ai_lib))
-try:
-    from model_client import LocalModelClient
-except ImportError:
-    # Handle kebab-case rename policy
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("model_client", str(_ai_lib / "model-client.py"))
-        model_client = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(model_client)
-        LocalModelClient = model_client.LocalModelClient
-    except Exception:
-        LocalModelClient = None
-
 # Allow direct execution (python3 main.py) as well as package import (python3 -m harness_qa.main)
 if __package__ is None or __package__ == "":
     _pkg_parent = Path(__file__).resolve().parent.parent
@@ -49,6 +32,23 @@ if __package__ is None or __package__ == "":
 # Ensure repo root is on sys.path so dashboard/backend imports work if needed
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent.parent
+
+# Add scripts/ai/lib to sys.path for LocalModelClient (must be after _REPO_ROOT is defined)
+_ai_lib = _REPO_ROOT / "scripts" / "ai" / "lib"
+if str(_ai_lib) not in sys.path:
+    sys.path.insert(0, str(_ai_lib))
+try:
+    from model_client import LocalModelClient
+except ImportError:
+    # Handle kebab-case rename policy
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("model_client", str(_ai_lib / "model-client.py"))
+        model_client = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model_client)
+        LocalModelClient = model_client.LocalModelClient
+    except Exception:
+        LocalModelClient = None
 
 # Load service-endpoints.sh into environment if not already set
 def _source_endpoints() -> None:

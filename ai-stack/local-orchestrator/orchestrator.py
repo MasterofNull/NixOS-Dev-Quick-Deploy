@@ -40,11 +40,12 @@ from orchestration.delegation_api import (
 )
 from orchestration.agent_hq import AgentHQ, Session, TaskInfo, AgentStatus
 
-# Map AgentPreference to a local enum for compatibility
+# Map AgentPreference to a local enum for compatibility (Tier-based, not model-based)
 class AgentPreference(Enum):
     LOCAL = "local"
-    CLAUDE = "claude"
-    FLAGSHIP = "flagship"
+    TIER1 = "tier1"  # e.g. Free remote
+    TIER2 = "tier2"  # e.g. Paid/Pro
+    TIER3 = "tier3"  # e.g. Flagship/Reasoning
     ANY = "any"
 
 # Stub for TaskContext and TaskConstraints if not in new API
@@ -110,13 +111,16 @@ class LocalOrchestrator:
         self.router = router or TaskRouter(cost_budget_usd=cost_budget)
         self.repo_root = repo_root or Path.cwd()
 
-        # Phase 60: Agent HQ Integration
+        # Phase 60: Agent HQ Integration (Dynamic Discovery)
+        agent_name = os.getenv("AI_AGENT_NAME", "local-edge-agent")
+        model_id = os.getenv("AI_LOCAL_MODEL_ID", "unidentified-local-model")
+        
         self.hq = AgentHQ(persistence_dir=self.repo_root / ".agent-hq")
-        self.session = self.hq.create_session(name="local-orchestrator-cli")
+        self.session = self.hq.create_session(name=f"{agent_name}-session")
         self.hq.register_agent(
-            name="local-qwen",
+            name=agent_name,
             capabilities={"implementer", "architect", "reviewer", "domain:python", "domain:nixos"},
-            metadata={"model": "qwen3.6-35b"}
+            metadata={"model": model_id}
         )
 
         # Load system prompt
@@ -385,9 +389,9 @@ class LocalOrchestrator:
         agent_pref_map = {
             RoutingTier.LOCAL: AgentPreference.LOCAL,
             RoutingTier.EDGE: AgentPreference.LOCAL,
-            RoutingTier.REMOTE_FREE: AgentPreference.LOCAL,
-            RoutingTier.REMOTE_PAID: AgentPreference.CLAUDE,
-            RoutingTier.REMOTE_FLAGSHIP: AgentPreference.FLAGSHIP,
+            RoutingTier.REMOTE_FREE: AgentPreference.TIER1,
+            RoutingTier.REMOTE_PAID: AgentPreference.TIER2,
+            RoutingTier.REMOTE_FLAGSHIP: AgentPreference.TIER3,
         }
 
         # Create delegated task
