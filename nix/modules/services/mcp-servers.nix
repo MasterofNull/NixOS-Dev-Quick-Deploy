@@ -2103,6 +2103,118 @@ in {
       };
     })
 
+    # ── Phase 66.3 — AppArmor profiles: hybrid-coordinator + dashboard API ──────
+    # Gemini VP Eng review: audit (complain) mode first; switch to enforce after
+    # one week of clean audit logs (journalctl -b --grep apparmor).
+    # Both profiles drafted in .agent/collaboration/GEMINI-PHASE-65-REVIEW.md.
+    (lib.mkIf active {
+      security.apparmor.policies."ai-hybrid-coordinator" = {
+        state = "complain";   # Phase 66.3: audit mode — switch to "enforce" post-soak
+        profile = ''
+          #include <tunables/global>
+          # Phase 66.3 — ai-hybrid-coordinator: hybrid MCP + HTTP coordinator
+          # Confinement: Nix store read, service data rw, loopback network only.
+          # Deny: raw sockets, admin capabilities, external filesystem writes.
+          profile ai-hybrid-coordinator flags=(attach_disconnected) {
+            #include <abstractions/base>
+
+            # Nix store — read-only execution
+            /nix/store/** r,
+            /nix/store/**/*.so* mr,
+            /nix/store/**/bin/python3* ix,
+            /run/current-system/sw/** r,
+            /run/current-system/sw/**/*.so* mr,
+
+            # Runtime state
+            ${dataDir}/hybrid/** rw,
+            /var/log/ai-audit-sidecar/** rw,
+            /tmp/ai-hybrid-** rw,
+
+            # Repo path (config files, scripts — read-only)
+            ${repoSource}/** r,
+
+            # Secrets (read-only)
+            /run/secrets/ r,
+            /run/secrets/** r,
+
+            # System resources needed by Python async runtime
+            /proc/self/** r,
+            /proc/sys/kernel/osrelease r,
+            /proc/meminfo r,
+            /dev/null rw,
+            /dev/urandom r,
+
+            # Unix socket (audit sidecar)
+            /run/ai-audit-sidecar.sock rw,
+
+            # Network — loopback only (ports: 8003, 8002, 8085, 6379, 5432, 6333)
+            network inet stream,
+            network inet dgram,
+            network unix stream,
+            deny network raw,
+            deny network packet,
+
+            # Deny privileged capabilities
+            deny capability sys_admin,
+            deny capability sys_ptrace,
+            deny capability net_admin,
+            deny capability net_raw,
+
+            # Deny home/root writes
+            deny /home/** rwx,
+            deny /root/** rwx,
+          }
+        '';
+      };
+
+      security.apparmor.policies."command-center-dashboard-api" = {
+        state = "complain";   # Phase 66.3: audit mode — switch to "enforce" post-soak
+        profile = ''
+          #include <tunables/global>
+          # Phase 66.3 — command-center-dashboard-api: dashboard FastAPI backend
+          # Reads Python directly from repo (hot-reload on file change, no rebuild).
+          # Confinement: repo read, dashboard data rw, localhost :8889 only.
+          profile command-center-dashboard-api flags=(attach_disconnected) {
+            #include <abstractions/base>
+
+            # Repo read (dashboard reads Python directly from repo)
+            ${repoSource}/** r,
+
+            # Nix store
+            /nix/store/** r,
+            /nix/store/**/*.so* mr,
+            /nix/store/**/bin/python3* ix,
+            /run/current-system/sw/** r,
+
+            # Dashboard data (telemetry snapshots — read only from data dir)
+            ${dataDir}/** r,
+            /var/lib/nixos-system-dashboard/** rw,
+
+            # System resources
+            /proc/self/** r,
+            /proc/sys/kernel/osrelease r,
+            /proc/meminfo r,
+            /dev/null rw,
+            /dev/urandom r,
+
+            # Network — localhost only (:8889) + outbound to coordinator loopback
+            network inet stream,
+            network unix stream,
+            deny network raw,
+            deny network packet,
+
+            # Deny privileged capabilities
+            deny capability sys_admin,
+            deny capability net_admin,
+
+            # Deny writes outside allowed dirs
+            deny /home/** rwx,
+            deny /root/** rwx,
+          }
+        '';
+      };
+    })
+
     # ── Phase 12.3.3 — Forward audit log to remote syslog when configured ────
     (lib.mkIf (active && cfg.logging.remoteSyslog.enable) {
       # rsyslogd imfile module tails the audit JSONL and feeds entries into the
