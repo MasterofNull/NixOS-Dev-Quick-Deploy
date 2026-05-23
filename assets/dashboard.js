@@ -863,39 +863,23 @@ async function loadPerfHotspots() {
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
 
-  const rl = d.route_latency || {};
-  const cache = d.cache || {};
-  const rag = d.rag_posture || {};
   const hotspots = d.hotspots || [];
-  const watching = hotspots.filter(h => h.status === 'watch').length;
+  const watching  = hotspots.filter(h => h.status === 'watch').length;
+  const critical  = hotspots.filter(h => h.status === 'critical').length;
+  const color = critical > 0 ? 'err' : watching > 0 ? 'warn' : 'ok';
 
   if (badge) {
-    badge.textContent = watching > 0 ? `${watching} watch` : 'healthy';
-    badge.className = `card-badge ${watching > 0 ? 'badge-warn' : 'badge-ok'}`;
+    badge.textContent = critical > 0 ? `${critical} critical` : watching > 0 ? `${watching} watch` : 'healthy';
+    badge.className = `card-badge badge-${color}`;
   }
 
-  // Latency section
-  const p50 = rl.backend_valid_p50_ms; const p95 = rl.backend_valid_p95_ms;
-  const cacheHit = cache.hit_pct; const totalCalls = rl.total_calls;
-
-  el.innerHTML = [
-    fwRow('p50 Latency',     p50 != null ? `${p50.toFixed(0)}ms` : '--', p50 > 500 ? 'warn' : 'ok'),
-    fwRow('p95 Latency',     p95 != null ? `${p95.toFixed(0)}ms` : '--', p95 > 1000 ? 'warn' : p95 > 2000 ? 'err' : 'ok'),
-    fwRow('Cache Hit Rate',  cacheHit != null ? `${cacheHit.toFixed(0)}%` : '--', cacheHit >= 60 ? 'ok' : 'warn'),
-    fwRow('Total Calls (7d)',totalCalls != null ? totalCalls.toLocaleString() : '--'),
-    fwRow('Memory Recall %', rag.memory_recall_share_pct != null ? `${rag.memory_recall_share_pct.toFixed(0)}%` : '--', 'info'),
-    fwRow('Recall Miss',     rag.memory_recall_miss_pct != null ? `${rag.memory_recall_miss_pct.toFixed(0)}%` : '--', rag.memory_recall_miss_pct > 5 ? 'warn' : 'ok'),
-    fwRow('Error Rate',      rl.client_error_count != null && totalCalls ? `${((rl.client_error_count/totalCalls)*100).toFixed(1)}%` : '--',
-                             rl.client_error_count > 500 ? 'warn' : 'ok'),
-  ].join('');
-
-  // Top bottlenecks mini-list
-  const bottlenecks = (d.top_bottlenecks || []).filter(b => b.status === 'watch').slice(0,3);
-  if (bottlenecks.length) {
-    el.innerHTML += `<div style="margin-top:.4rem;border-top:1px solid rgba(255,255,255,.05);padding-top:.35rem">` +
-      bottlenecks.map(b => fwRow('  '+b.label.replace(/^\w+:/,''), `p95=${b.p95_ms.toFixed(0)}ms`, 'warn')).join('') +
-      `</div>`;
-  }
+  // Render each hotspot as a row
+  el.innerHTML = hotspots.length
+    ? hotspots.map(h => {
+        const c = h.status === 'critical' ? 'err' : h.status === 'watch' ? 'warn' : 'ok';
+        return fwRow(h.label || h.id, h.summary || h.status, c);
+      }).join('')
+    : fwRow('Status', 'no hotspots detected', 'ok');
 }
 
 // ─── SECURITY: COMPLIANCE CONTROLS ───────────────────────────────────────────
@@ -953,25 +937,30 @@ async function loadOrchestrationSessions() {
   if (!el) return;
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
   const sessions = d.sessions || [];
-  const active   = sessions.filter(s => s.status === 'in_progress').length;
-  const completed= sessions.filter(s => s.status === 'completed').length;
-  const failed   = sessions.filter(s => s.status === 'failed').length;
-  if (badge) { badge.textContent = `${active} active`; badge.className = `card-badge ${active > 200 ? 'badge-warn' : 'badge-ok'}`; }
-  // Token/tool burn across active sessions
-  const asl  = sessions.filter(s => s.status === 'in_progress').slice(0, 50);
+  const pings    = sessions.filter(s => s.objective === 'ping');
+  const real_all = sessions.filter(s => s.objective && s.objective !== 'ping');
+  const active   = real_all.filter(s => s.status === 'in_progress').length;
+  const completed= real_all.filter(s => s.status === 'completed').length;
+  const failed   = real_all.filter(s => s.status === 'failed').length;
+  const stalePings = pings.filter(s => s.status === 'in_progress').length;
+  if (badge) { badge.textContent = `${active} active`; badge.className = `card-badge ${active > 20 ? 'badge-warn' : 'badge-ok'}`; }
+  // Token/tool burn across real active sessions
+  const asl  = real_all.filter(s => s.status === 'in_progress').slice(0, 50);
   const tokU = asl.reduce((s, x) => s + (x.usage?.tokens_used || 0), 0);
   const tokB = asl.reduce((s, x) => s + (x.budget?.token_limit || 0), 0);
   const toolU= asl.reduce((s, x) => s + (x.usage?.tool_calls_used || 0), 0);
   el.innerHTML = [
-    fwRow('Total Sessions', sessions.length.toLocaleString()),
-    fwRow('Active',     active.toLocaleString(),    active > 200 ? 'warn' : 'ok'),
-    fwRow('Completed',  completed.toLocaleString(), completed > 0 ? 'ok' : 'info'),
-    fwRow('Failed',     failed.toLocaleString(),    failed > 0 ? 'err' : 'ok'),
+    fwRow('Total Sessions',  sessions.length.toLocaleString()),
+    fwRow('Real (non-ping)', real_all.length.toLocaleString(), 'info'),
+    fwRow('Active',          active.toLocaleString(),    active > 20 ? 'warn' : 'ok'),
+    fwRow('Completed',       completed.toLocaleString(), completed > 0 ? 'ok' : 'info'),
+    fwRow('Failed',          failed.toLocaleString(),    failed > 0 ? 'err' : 'ok'),
+    stalePings ? fwRow('Stale Pings',  stalePings.toLocaleString(), 'warn') : '',
     tokB  ? fwRow('Token Burn', `${tokU.toLocaleString()} / ${tokB.toLocaleString()}`, 'info') : '',
     toolU ? fwRow('Tool Calls', toolU.toLocaleString()) : '',
   ].filter(Boolean).join('');
   // Non-ping sessions sample
-  const real = sessions.filter(s => s.objective && s.objective !== 'ping').slice(0, 4);
+  const real = real_all.slice(0, 4);
   if (real.length) {
     el.innerHTML += `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05)">` +
       real.map(s => fwRow((s.objective || '--').slice(0, 26), s.status, s.status === 'completed' ? 'ok' : s.status === 'failed' ? 'err' : 'info')).join('') + `</div>`;
