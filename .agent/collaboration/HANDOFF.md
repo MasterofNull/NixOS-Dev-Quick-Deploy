@@ -97,14 +97,32 @@ Anti-gaming mandate: fix root producers, never patch labels.
 - **Agent Outcomes Gauge** (Intelligence): `/query/traces` → SVG donut success/slow/error classification
 - **Mission Control** (Operations): `/aistack/orchestration/sessions` → active session grid with status colors
 
+### Phase 66.1 — Wasmtime devShell staging (commit cf702163)
+- `pkgs.wasmtime` added to `devShells.full` in flake.nix (v38.0.4, nixpkgs-unstable)
+- `scripts/testing/smoke-wasmtime.sh`: 3 checks — version, WAT add(2,3)=5, fuel-limit
+- aq-qa 66.1.a/b PASS; 66.1.c SKIP (wasmtime not in PATH outside `nix develop .#full`)
+- Codex review: staged approach approved — devShells.full only, not hybridPython
+
+### Phase 66.3 — AppArmor complain-mode profiles (commit 99dc2ccd)
+- `ai-hybrid-coordinator`: state="complain" — Nix store r, dataDir rw, loopback only
+- `command-center-dashboard-api`: state="complain" — repo r, dashboard data rw, :8889
+- Gemini review condition met: audit mode first; switch to "enforce" after 1-week soak
+- Monitor: `journalctl -b --grep apparmor`
+- **Requires nixos-rebuild switch to activate**
+
+### Phase 67 dashboard elevation (commit 706e4424 + e5e0c682) — COMPLETE
+- **Agent Outcomes Gauge** (Intelligence): `/query/traces` → SVG donut success/slow/error classification
+- **Mission Control** (Operations): `/aistack/orchestration/sessions` → active session grid with status colors
+- aq-qa 67.1.a-c + 67.2.a-c: 6 checks added, all PASS
+
 ## Current State
-- **aq-qa**: 92/92 PASS · 0 failed · 2 skipped (0.5.6 timing, 0.5.7 report-backed)
+- **aq-qa**: 100/100 PASS · 0 failed · 3 skipped (0.5.6 timing, 0.5.7 report-backed, 66.1.c wasmtime outside devShell)
 - **tier0**: 17/17 PASS
 - **Dashboard**: All 7 tabs fully populated, two-wave loading active
   - KPI ribbon: LOCAL AI 100%, CACHE HIT 15%, EVAL 100%, HINT ADOPT 100%, REDIS OK, PG OK, QDRANT healthy, VECTORS 9,416, COORD healthy, SYS HEALTH 57, THERMAL optimal
-  - Intelligence: 46 panels, two-wave (20+27), all rendering with live data
+  - Intelligence: 48 panels (+Agent Outcomes Gauge, +Tool Heatmap, +Trace Gantt), two-wave (20+29)
   - Security: 14 panels, all populated
-  - Operations: 27 panels, two-wave (14+13), all rendering
+  - Operations: 28 panels (+Mission Control), two-wave (14+14), all rendering
   - Neural Map: Service Topology, Routing Workflow, Vector Knowledge Graph rendering
   - Logic DAG: Logic Pattern Map rendering (131 patterns)
 
