@@ -217,6 +217,26 @@ async function loadRagQuality() {
   setText('evalFaith',   p(r.faithfulness_avg));
   setText('evalSamples', noData ? '0' : (r.sample_count != null ? r.sample_count : '--'));
   if (d) setText('evalRunCount', d.count ?? '0');
+
+  // Per-model RAGAS breakdown — model-agnostic eval visibility
+  const byModel = (d && d.ragas_by_model) ? d.ragas_by_model : {};
+  const byModelEl = document.getElementById('evalByModel');
+  if (byModelEl) {
+    const entries = Object.entries(byModel);
+    if (entries.length) {
+      byModelEl.innerHTML = '<div style="margin-top:.4rem;font-size:.55rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.05em">Per Model</div>'
+        + entries.map(([model, m]) => {
+          const ar  = m.answer_relevance_avg  != null ? `${(m.answer_relevance_avg * 100).toFixed(0)}%` : '--';
+          const cp  = m.context_precision_avg != null ? `${(m.context_precision_avg * 100).toFixed(0)}%` : '--';
+          const n   = m.sample_count ?? 0;
+          const col = m.answer_relevance_avg >= 0.7 ? 'ok' : m.answer_relevance_avg >= 0.5 ? 'warn' : 'err';
+          const tag = model.length > 24 ? model.slice(0, 22) + '…' : model;
+          return fwRow(tag, `AR ${ar} · CP ${cp} · n=${n}`, col);
+        }).join('');
+    } else {
+      byModelEl.innerHTML = '';
+    }
+  }
 }
 
 // ─── OVERVIEW: SYSTEM STATS ───────────────────────────────────────────────────

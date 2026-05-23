@@ -973,14 +973,55 @@ class AIInsightsService:
         """Get LLM routing analytics and model performance."""
         report = await self.get_full_report()
 
-        return {
+        result = {
             "timestamp": report.get("generated_at"),
             "window": report.get("window"),
-            "current": report.get("routing", {}),
+            "current": dict(report.get("routing") or {}),
             "recent": report.get("recent_routing", {}),
             "windows": report.get("routing_windows", {}),
             "remote_profile_utilization": report.get("remote_profile_utilization_windows", {}),
         }
+
+        # Augment with live coordinator traces when tool_audit lacks LLM routing labels.
+        # tool_audit.jsonl records coordinator MCP tool calls (hints, discovery, a2a, …),
+        # NOT LLM routing decisions — so local_pct/local_n are always null/0 there.
+        # The coordinator /api/traces has the real per-query backend routing.
+        current = result["current"]
+        if current.get("local_pct") is None:
+            try:
+                traces_url = f"{HYBRID_URL.rstrip('/')}/api/traces"
+
+                def _fetch_traces() -> dict:
+                    import json as _json
+                    from urllib.request import Request as _Req, urlopen as _urlopen
+                    req = _Req(traces_url, headers={"Accept": "application/json"})
+                    with _urlopen(req, timeout=3.0) as resp:
+                        return _json.loads(resp.read())
+
+                raw = await asyncio.wait_for(
+                    asyncio.to_thread(_fetch_traces),
+                    timeout=4.0,
+                )
+                traces_list = raw.get("traces", []) if isinstance(raw, dict) else []
+                tc = len(traces_list)
+                if tc > 0:
+                    # Compute backend breakdown from trace records.
+                    # Mirrors proxy_traces_summary logic: missing backend defaults to "local".
+                    backend_breakdown: dict = {}
+                    for t in traces_list:
+                        be = (t.get("backend") or "local").lower()
+                        backend_breakdown[be] = backend_breakdown.get(be, 0) + 1
+                    local_n = backend_breakdown.get("local", 0)
+                    current["local_n"] = local_n
+                    current["remote_n"] = tc - local_n
+                    current["local_pct"] = round(100 * local_n / tc, 1)
+                    current["query_ok_n"] = tc
+                    current["source"] = "traces"
+                    result["current"] = current
+            except Exception as exc:
+                logger.debug("get_routing_analytics: traces augment failed: %s", exc)
+
+        return result
 
     async def get_hint_effectiveness(self) -> Dict[str, Any]:
         """Get hint adoption and effectiveness metrics."""
