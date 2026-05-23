@@ -1202,7 +1202,7 @@ async function loadIntelligence() {
     loadLogicPatterns(), loadLocalInsights(),
     loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(),
     loadHintsStats(), loadMemorySupersedeHistory(),
-    loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(),
+    loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
   ]);
 }
 
@@ -2437,6 +2437,35 @@ async function loadHealthAudit() {
     const col = e.status === 'error' ? 'err' : e.status === 'warning' ? 'warn' : 'ok';
     return fwRow(`[${e.type || '--'}] ${(e.detail || '--').slice(0, 34)}`, ts, col);
   }).join('') || fwRow('Events', 'none', 'info');
+}
+
+// ─── INTELLIGENCE: QUERY COMPLEXITY & LATENCY ────────────────────────────────
+async function loadQueryComplexity() {
+  const d  = await apiFetch('/insights/queries/complexity');
+  const el = document.getElementById('queryComplexityDetails');
+  const badge = document.getElementById('queryComplexityBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const lb = d.latency_breakdown || {};
+  const ds = d.downshift_summary || lb.continuation_downshift || {};
+  const p95 = lb.backend_valid_p95_ms != null ? `${lb.backend_valid_p95_ms.toFixed(0)}ms` : '--';
+  if (badge) {
+    badge.textContent = lb.available ? `p95 ${p95}` : '--';
+    badge.className = `card-badge badge-${(lb.backend_valid_p95_ms || 0) < 5000 ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Window',            d.window || '7d',                  'info'),
+    fwRow('Total Calls',       (lb.total_calls ?? 0).toLocaleString(), 'info'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Backend (LLM) Calls</div>',
+    fwRow('Valid Calls',       lb.backend_valid_calls ?? 0,        'info'),
+    fwRow('p50',               lb.backend_valid_p50_ms != null ? `${lb.backend_valid_p50_ms.toFixed(0)}ms` : '--', 'ok'),
+    fwRow('p95',               p95, (lb.backend_valid_p95_ms || 0) < 5000 ? 'ok' : 'warn'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Other Paths</div>',
+    fwRow('Retrieval Only',    (lb.retrieval_only_calls ?? 0).toLocaleString(), 'info'),
+    fwRow('Synthesis',         lb.synthesis_calls ?? 0,           'info'),
+    fwRow('Client Errors',     lb.client_error_count ?? 0,        (lb.client_error_count || 0) > 0 ? 'warn' : 'ok'),
+    ds.available ? fwRow('Continuation Downshift', `${ds.downshifted_calls ?? 0}/${ds.candidate_calls ?? 0}`, 'info') : '',
+  ].filter(Boolean).join('');
 }
 
 // ─── INTELLIGENCE: CACHE ANALYTICS ───────────────────────────────────────────
