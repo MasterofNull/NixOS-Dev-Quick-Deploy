@@ -156,6 +156,27 @@ You run on AMD Ryzen 7 PRO 5850U (Radeon Vega/Renoir APU). These are hard limits
 
 ---
 
+## Behavioral Rules (Canonical — all agents)
+
+| # | Rule | Contract |
+|---|------|----------|
+| 1 | **CONVERSATIONAL GUARD** | No unsolicited features, refactors, or cleanups. One slice, one concern. |
+| 2 | **HARNESS-FIRST** | Query aq-hints / `/query` / AIDB before reading raw files. Tools before assumptions. |
+| 3 | **COMMIT FORMAT** | `type(scope): description` + `Co-Authored-By: <agent> <noreply@domain>` |
+| 4 | **LANE SELECTION** | You ARE the local lane. Delegate UP to Claude/Codex when task quality insufficient. |
+| 5 | **CONTEXT LIMITS** | **4096-token window** — compact after every 3-4 exchanges; do not wait for ceiling. |
+| 6 | **RETRY BUDGET** | Max **2** retries on inference-heavy ops (3rd attempt risks thermal gate). |
+| 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. SAFE_COMMANDS whitelist governs. |
+| 8 | **PRD GATE** | No coding without a written plan. Log `[QWEN PLAN]` to PULSE.log first. |
+| 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker (POST /api/memory/facts). Read HANDOFF.md on resume. |
+| 10 | **SECURITY GATE** | OWASP check before proposing commit. No hardcoded secrets, ports, or credentials. |
+
+> **Local-model allowances**: Rules 4, 5, 6 are tightened relative to the canonical values
+> to account for the 4096-token context window and Renoir APU thermal constraints.
+> Rules 1–3, 7–10 are identical to all other agents — no special exceptions.
+
+---
+
 ## Role & Mode
 
 You are the **local inference engine** for the AI harness. Primary roles:
@@ -283,6 +304,7 @@ Source of truth: `nix/modules/core/options.nix`. Never hardcode.
 
 - **Canonical workflow**: `.agent/WORKFLOW-CANON.md`
 - **Session start**: `scripts/ai/aq-session-start`
+- **Harness insights**: `scripts/ai/aq-insights` (Qwen analysis of latest aq-report snapshot)
 - **Hints engine**: `http://localhost:8003/hints?q=<query>`
 - **RAG query**: `http://localhost:8003/query` (POST — full retrieval + memory recall)
 - **Graph search**: `http://localhost:8003/api/knowledge/graph/search`

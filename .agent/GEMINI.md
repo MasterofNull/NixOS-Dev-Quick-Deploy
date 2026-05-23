@@ -38,6 +38,23 @@ Do not ask "how can I help?" or "what would you like to do?" — those are failu
 
 ---
 
+## Behavioral Rules (Canonical — all agents)
+
+| # | Rule | Contract |
+|---|------|----------|
+| 1 | **CONVERSATIONAL GUARD** | No unsolicited features, refactors, or cleanups. One slice, one concern. |
+| 2 | **HARNESS-FIRST** | Query aq-hints / `/query` / AIDB before reading raw files. Tools before assumptions. |
+| 3 | **COMMIT FORMAT** | `type(scope): description` + `Co-Authored-By: <agent> <noreply@domain>` |
+| 4 | **LANE SELECTION** | Prefer local inference for bounded tasks; remote only when task value justifies cost. |
+| 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
+| 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
+| 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
+| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
+| 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+
+---
+
 ## The 7-Step Canonical Workflow
 
 Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
@@ -170,6 +187,9 @@ Never commit without validation evidence. Never use `--no-verify`.
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
 - `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
+- `enable_thinking: false` in EVERY llama.cpp request — Qwen3 thinking tokens cause empty responses
+- GPU layers ceiling = 12 (Renoir APU VRAM = 4 GB shared); never suggest n_gpu_layers > 12
+- Total usable RAM = 27 GB; model UMBM = 22.5 GB / 1.0 GB KV / 3.0 GB OS reserve
 
 ## Service Ports
 ```
@@ -206,7 +226,7 @@ Single source of truth: `nix/modules/core/options.nix`
 
 - **Canonical workflow**: `.agent/WORKFLOW-CANON.md`
 - **PRSI queue**: `/var/lib/nixos-ai-stack/prsi/action-queue.json`
-- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-report`, `aq-hints`, `aq-context-bootstrap`)
+- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-report`, `aq-hints`, `aq-context-bootstrap`, `aq-insights`)
 - **MCP servers**: `ai-stack/mcp-servers/` (`coordinator:8003`, `aidb:8002`, `ralph:8004`)
 - **Port options**: `nix/modules/core/options.nix`
 - **AI stack wiring**: `nix/modules/roles/ai-stack.nix`

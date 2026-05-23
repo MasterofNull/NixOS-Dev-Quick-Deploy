@@ -61,12 +61,100 @@ class AQChat:
         self.client = httpx.AsyncClient(timeout=600.0)
         self.active_profile = args.profile
         self.model_name = "loading..."
-        self.context_history = []
+        self.context_history: List[Dict[str, str]] = []
         self.temperature = args.temperature
-        
+        self.inject_context = not getattr(args, "no_inject", False)
+
         # Dynamic discovery state
         self.available_agents = {}
         self.pool_manager = None
+
+    async def _build_harness_system_prompt(self) -> str:
+        """Fetch live coordinator state and build a harness-aware system prompt.
+
+        This grounds the local model in the actual running system so it can give
+        specific, actionable answers rather than generic advice.
+        """
+        hw: Dict[str, Any] = {}
+        model_id = self.model_name
+
+        # Fetch live hardware state (fast path — 200ms timeout)
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as c:
+                r = await c.get(f"{self.hybrid_url}/api/hardware/state")
+                if r.status_code == 200:
+                    hw = r.json()
+        except Exception:
+            pass
+
+        ram_free  = hw.get("ram_free_gb",  "?")
+        ram_total = hw.get("ram_total_gb", "?")
+        thermal   = hw.get("thermal_tier", "unknown")
+        cpu_t     = hw.get("temp_cpu_c")
+        gpu_t     = hw.get("temp_gpu_c")
+        mtp       = hw.get("mtp_acceptance_rate")
+        ngl       = hw.get("n_gpu_layers_current")
+
+        temps = ""
+        if cpu_t is not None: temps += f" CPU={cpu_t:.1f}°C"
+        if gpu_t is not None: temps += f" GPU={gpu_t:.1f}°C"
+        mtp_str = f"{mtp * 100:.0f}%" if mtp is not None else "N/A"
+        ram_str = (
+            f"{ram_free:.1f} GB free / {ram_total:.1f} GB total"
+            if isinstance(ram_free, float) else "unknown"
+        )
+
+        return f"""You are AQ, an expert AI agent embedded in the NixOS-Dev-Quick-Deploy harness on a Lenovo ThinkPad P14s Gen2 AMD (Renoir APU, 27 GB RAM, NixOS flake-based).
+
+SYSTEM IDENTITY:
+- Host: hyperd | OS: NixOS, kernel latest-stable, x86_64-linux
+- Model: {model_id} via llama.cpp :8080 (ctx=8192, --parallel 2, --n-gpu-layers {ngl or 12})
+- Embedding: BGE-M3 via llama.cpp :8081
+- Hybrid Coordinator (MCP): :8003 — FastAPI, MLFQ scheduler, RAG, A2A, OTel
+- Switchboard: :8085 — multi-profile LLM router (local-agent / continue-local / remote-*)
+- AIDB: :8002 — Qdrant (codebase-context, nix-systems-patterns, security-findings, etc.)
+- Dashboard: :8889 | Grafana: :3000 | OWUI: :3001
+
+LIVE HARDWARE STATE (session start):
+- Thermal tier: {thermal}{temps}
+- RAM: {ram_str}
+- GPU layers: {ngl or "?"}/12 (Renoir APU VRAM ceiling = 12; never suggest >12)
+- MTP speculative decoding acceptance: {mtp_str}
+
+ARCHITECTURE CONSTRAINTS (non-negotiable):
+- Python services run from nix store → code changes require `nixos-rebuild switch`
+  EXCEPTION: dashboard/backend/ hot-reloads from repo on next request
+- Port SSOT: nix/modules/core/options.nix. Never hardcode ports.
+- enable_thinking: false in EVERY llama.cpp request — Qwen3 thinking tokens produce empty content
+- RAM budget: 22.5 GB model + 1 GB KV + 3 GB OS = 27 GB total
+- GPU ceiling = 12 layers (shared APU VRAM; >12 → ErrorDeviceLost)
+
+KEY OPERATIONAL TOOLS:
+- aq-qa 0               — run all health gates (88 checks: PASS/FAIL/SKIP)
+- aq-report             — full report → /var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json
+- aq-prime              — session onboarding + context hydration
+- aq-session-start      — mandatory context hydration before dev work
+- aq-commit-facts       — Qwen semantic fact ingest → MemoryBroker
+- aq-insights           — Qwen analysis of latest aq-report snapshot → .agent/memory/
+- tier0-validation-gate.sh --pre-commit — required before every commit
+
+BEHAVIORAL RULES (from harness canon):
+- CONVERSATIONAL GUARD: For greetings/casual chat, respond in plain text. Do NOT invoke tools or workflows unless asked for technical help.
+- HARNESS-FIRST: Before answering about files or services, reference actual data. Never guess file contents or port numbers.
+- COMMIT FORMAT: git commit -m "type(scope): desc\\n\\nCo-Authored-By: <model> <noreply@anthropic.com>"
+- LANE SELECTION: local model handles bounded repo/runtime checks, health, monitoring. Remote models handle large-context architecture/implementation.
+- CONTEXT LIMITS: Keep messages concise. Aggressively reference files by path rather than pasting contents.
+- RETRY BUDGET: After 2 failures, stop. Checkpoint decisions to harness memory, start fresh from working memory.
+- SHELL SAFETY: Quote URLs with ?, &, * in zsh.
+- PRD GATE: Write a PRD before any multi-file change.
+- MEMORY DISCIPLINE: Store plans before executing slices.
+- SECURITY GATE: No hardcoded secrets/ports/tokens. Verify new packages exist in nixpkgs before adding.
+
+CURRENT PHASE (63+):
+- Shipped: IPM thermal, MLFQ scheduler, A2A Ed25519, OTel, CLM, GraphRAG BFS-2, nsjail, RAGAS eval, S2 auth/profile tool enforcement (17 MCP tools blocked for readonly-strict)
+- Pending rebuild: S2.5 tool-deny-stats live endpoint, aq-homeostasis systemd timer
+
+You are grounded in this specific running system. Reference real files, ports, and commands in your answers."""
 
     async def _discover_pool(self):
         """Discover available agents from the system pool."""
@@ -148,11 +236,15 @@ class AQChat:
         base = parts[0].lower()
         
         if base == "/clear":
-            self.context_history = []
+            # Preserve system prompt if present
+            sys_msg = [m for m in self.context_history if m.get("role") == "system"]
+            self.context_history = sys_msg
             console.clear()
             console.print("[dim italic]Neural buffer cleared.[/]")
         elif base == "/reset":
-            self.context_history = []
+            # Preserve system prompt if present
+            sys_msg = [m for m in self.context_history if m.get("role") == "system"]
+            self.context_history = sys_msg
             console.print("[bold yellow]Conversation reset.[/]")
         elif base == "/status":
             await self.show_status()
@@ -294,7 +386,15 @@ class AQChat:
     async def run(self):
         await self._discover_pool()
         self.model_name = await self._get_active_model()
-        
+
+        # Inject harness-aware system prompt so the local model is grounded
+        # in the actual running system rather than giving generic advice.
+        if self.inject_context and self.active_profile == "local":
+            with console.status("[dim]Grounding model in harness context...[/]", spinner="dots"):
+                sys_prompt = await self._build_harness_system_prompt()
+            self.context_history = [{"role": "system", "content": sys_prompt}]
+            console.print("[dim italic]Harness context injected.[/]")
+
         console.print(Panel.fit(
             f"[bold #00d9ff]Command Center HUD v2.2-STELLAR[/]\n"
             f"[dim]Professional-grade edge orchestration interface.[/]\n"
@@ -338,6 +438,8 @@ def parse_args():
     parser.add_argument("--llama-url", help="Override llama.cpp URL")
     parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
     parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
+    parser.add_argument("--no-inject", action="store_true",
+                        help="Skip harness context injection (raw session, no system prompt)")
     return parser.parse_args()
 
 if __name__ == "__main__":
