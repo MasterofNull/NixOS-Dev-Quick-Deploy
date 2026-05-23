@@ -107,7 +107,7 @@ function loadLens(id) {
   else if (id === 'intelligence') loadIntelligence();
   else if (id === 'security')     loadSecurity();
   else if (id === 'operations')   loadOperations();
-  else if (id === 'map')          { initTopo(); loadWorkflowGraph(); }
+  else if (id === 'map')          { initTopo(); loadWorkflowGraph(); loadVectorGraph(); }
   else if (id === 'logic')        initLogic();
   else if (id === 'logs')         loadLogs();
 }
@@ -1117,6 +1117,76 @@ async function loadWorkflowGraph() {
   setText('workflowHud', `ROUTING_WORKFLOW: ${data.nodes.length} NODES`);
 }
 
+// ─── NEURAL MAP: VECTOR KNOWLEDGE GRAPH ──────────────────────────────────────
+async function loadVectorGraph() {
+  const data = await apiFetch('/graph/vector');
+  const c = document.getElementById('vectorCanvas');
+  if (!c) return;
+  c.querySelectorAll('svg').forEach(s => s.remove());
+  if (!window.d3) { setText('vectorHud', 'D3_LOADING…'); setTimeout(loadVectorGraph, 800); return; }
+  if (!data || !data.nodes || !data.nodes.length) { setText('vectorHud', 'DATA_UNAVAILABLE'); return; }
+  const edges = (data.links || []).map(e => ({ source: e.source || e.from, target: e.target || e.to }));
+  const w = c.clientWidth  || 800;
+  const h = c.clientHeight || 400;
+  // Project-based color palette
+  const projects = [...new Set(data.nodes.map(n => n.group || 'unknown'))];
+  const palette  = ['#2ec4b6','#f4a261','#e76f51','#a8dadc','#f4d35e','#d400ff','#00d9ff','#84a98c'];
+  const projColor = p => palette[projects.indexOf(p) % palette.length] || 'var(--fg3)';
+  const svg = d3.select('#vectorCanvas').append('svg').attr('width','100%').attr('height','100%');
+  const g   = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.05,8]).on('zoom', e => g.attr('transform', e.transform)));
+  const sim = d3.forceSimulation(data.nodes)
+    .force('link',   d3.forceLink(edges).id(d => d.id).distance(40).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(-60))
+    .force('center', d3.forceCenter(w/2, h/2))
+    .force('coll',   d3.forceCollide(8));
+  const link = g.append('g').selectAll('line').data(edges).enter().append('line')
+    .attr('stroke','rgba(0,217,255,.06)').attr('stroke-width',1);
+  const node = g.append('g').selectAll('circle').data(data.nodes).enter().append('circle')
+    .attr('r', d => (d.val || 1) + 3)
+    .attr('fill', d => projColor(d.group || 'unknown'))
+    .attr('stroke','var(--bg)').attr('stroke-width',1)
+    .call(d3.drag()
+      .on('start', (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end',   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+    .append('title').text(d => `${d.name || d.id} [${d.group || '?'}]`);
+  sim.on('tick', () => {
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('cx',d=>d.x).attr('cy',d=>d.y);
+  });
+  const projLegend = projects.slice(0,5).map((p,i) =>
+    `<span style="color:${palette[i]};margin-right:.5rem">■ ${p.split('-').slice(-1)[0]}</span>`).join('');
+  setText('vectorHud', `KNOWLEDGE_GRAPH: ${data.nodes.length}n ${edges.length}e`);
+  const hud = document.getElementById('vectorHud');
+  if (hud) hud.innerHTML = `<span style="font-size:.55rem">${projLegend}</span><br>NODES:${data.nodes.length} EDGES:${edges.length}`;
+}
+
+// ─── INTELLIGENCE: TASK CLASSIFIER STATS ─────────────────────────────────────
+async function loadTaskClassifier() {
+  const d  = await apiFetch('/aistack/task-classification/stats');
+  const el = document.getElementById('taskClassDetails');
+  const badge = document.getElementById('taskClassBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const total = d.total_classified ?? 0;
+  const rate  = d.success_rate ?? 0;
+  const byType = d.by_task_type || {};
+  const byRisk = d.by_risk_tier || {};
+  const color  = rate >= 95 ? 'ok' : rate >= 75 ? 'warn' : 'err';
+  if (badge) { badge.textContent = `${total} classified`; badge.className = `card-badge badge-${color}`; }
+  const topTypes = Object.entries(byType).sort((a,b) => b[1]-a[1]).slice(0,6);
+  el.innerHTML = [
+    fwRow('Total Classified', total, total > 0 ? 'ok' : 'info'),
+    fwRow('Success Rate',     `${rate.toFixed(1)}%`, color),
+    fwRow('Risk: low',        byRisk.low    ?? 0, 'ok'),
+    fwRow('Risk: medium',     byRisk.medium ?? 0, 'warn'),
+    byRisk.high ? fwRow('Risk: high', byRisk.high, 'err') : '',
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">By Task Type</div>',
+    ...topTypes.map(([t, n]) => fwRow(t.replace(/_/g,' '), n, 'info')),
+  ].filter(Boolean).join('');
+}
+
 async function loadIntelligence() {
   await Promise.allSettled([
     loadCoordinator(), loadRouting(), loadModels(), loadSwitchboard(),
@@ -1127,6 +1197,7 @@ async function loadIntelligence() {
     loadMemoryBroker(), loadAffectiveState(), loadHintsRegistry(),
     loadAICoordinator(), loadReasoningProfiles(),
     loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
+    loadTaskClassifier(),
     loadLogicPatterns(), loadLocalInsights(),
   ]);
 }
