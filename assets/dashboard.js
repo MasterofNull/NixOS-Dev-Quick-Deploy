@@ -204,7 +204,8 @@ async function loadKPIs() {
 async function loadRagQuality() {
   const d = await apiFetch('/eval/trend');
   const r = (d && d.ragas_metrics) ? d.ragas_metrics : {};
-  const noData = !d || (d.count === 0);
+  // noData only when both eval_trend runs AND RAGAS samples are absent
+  const noData = !d || (d.count === 0 && !(r.sample_count > 0));
   const p = v => (v != null && v > 0) ? `${(v * 100).toFixed(1)}%` : (noData ? 'no evals' : '--');
   setText('ragAnswerRelevance',  p(r.answer_relevance_avg));
   setText('ragContextPrecision', p(r.context_precision_avg));
