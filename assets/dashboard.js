@@ -1623,7 +1623,7 @@ async function loadSecurity() {
     loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(),
     loadSecDrift(), loadAgentPool(), loadSecCompliance(),
     loadVulnAudit(), loadAuditSummary(), loadToolDenyStats(), loadHealthAudit(), loadHealthAlerts(),
-    loadAuditIntegrity(), loadFirewallCrowdsec(),
+    loadAuditIntegrity(), loadFirewallCrowdsec(), loadFirewallRules(), loadFirewallAuditLog(),
   ]);
 }
 
@@ -1873,7 +1873,7 @@ async function loadOperations() {
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
-    loadReadinessRadar(),
+    loadReadinessRadar(), loadWorkflowBlueprints(),
   ]);
 }
 
@@ -2845,6 +2845,69 @@ async function loadReadinessRadar() {
     badge.className = `card-badge badge-${activeCount > 0 ? 'ok' : 'info'}`;
   }
   el.innerHTML = rows.join('');
+}
+
+
+async function loadFirewallRules() {
+  const d = await apiFetch('/firewall/rules');
+  const el = document.getElementById('fwRulesDetails');
+  const badge = document.getElementById('fwRulesBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const rules = d.rules || '';
+  const tables = (rules.match(/^table /mg) || []).length;
+  const chains = (rules.match(/chain \w/g) || []).length;
+  const sets   = (rules.match(/^	set \w/mg) || []).length;
+  if (badge) {
+    badge.textContent = `${tables} tables · ${chains} chains`;
+    badge.className = 'card-badge badge-ok';
+  }
+  el.innerHTML = [
+    fwRow('Tables', tables, 'info'),
+    fwRow('Chains', chains, 'info'),
+    fwRow('Sets', sets, 'info'),
+    fwRow('CrowdSec IPv4', rules.includes('crowdsec-blacklists') ? 'active' : 'absent', rules.includes('crowdsec-blacklists') ? 'ok' : 'warn'),
+    fwRow('CrowdSec IPv6', rules.includes('crowdsec6-blacklists') ? 'active' : 'absent', rules.includes('crowdsec6-blacklists') ? 'ok' : 'info'),
+  ].join('');
+}
+
+async function loadFirewallAuditLog() {
+  const d = await apiFetch('/firewall/audit-log');
+  const el = document.getElementById('fwAuditDetails');
+  const badge = document.getElementById('fwAuditBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const entries = d.entries || [];
+  const successes = entries.filter(e => e.success).length;
+  if (badge) {
+    badge.textContent = `${entries.length} events`;
+    badge.className = 'card-badge badge-info';
+  }
+  if (!entries.length) { el.innerHTML = fwRow('Events', '0', 'info'); return; }
+  el.innerHTML = entries.slice(0, 6).map(e => {
+    const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '--';
+    const col = e.success ? 'ok' : 'warn';
+    return fwRow(`${e.action || '--'} · ${ts}`, e.client_ip || '--', col);
+  }).join('') + (entries.length > 6 ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${entries.length - 6} more · ${successes} succeeded</div>` : '');
+}
+
+async function loadWorkflowBlueprints() {
+  const d = await apiFetch('/config/graphs/workflow-blueprints');
+  const el = document.getElementById('wfBlueprintsDetails');
+  const badge = document.getElementById('wfBlueprintsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const bps = d.blueprints || [];
+  if (badge) {
+    badge.textContent = `${bps.length} blueprints`;
+    badge.className = 'card-badge badge-ok';
+  }
+  el.innerHTML = bps.slice(0, 8).map(bp => {
+    const pol = bp.orchestration_policy || {};
+    return fwRow(
+      (bp.name || bp.workflow_id || '--').replace(/-/g, ' ').slice(0, 32),
+      pol.primary_lane || '--', 'info');
+  }).join('') + (bps.length > 8 ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${bps.length - 8} more</div>` : '');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
