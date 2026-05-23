@@ -1297,11 +1297,45 @@ async function loadAuditSummary() {
   }
 }
 
+async function loadToolDenyStats() {
+  const d    = await apiFetch('/aistack/policy/tool-deny-stats');
+  const el   = document.getElementById('toolDenyDetails');
+  const badge = document.getElementById('toolDenyBadge');
+  if (!el) return;
+  if (!d || d.available === false) {
+    el.innerHTML = fwRow('Status', 'Unavailable (needs rebuild)', 'warn');
+    if (badge) { badge.textContent = '--'; badge.className = 'card-badge badge-warn'; }
+    return;
+  }
+  const total = d.total_denials || 0;
+  if (badge) {
+    badge.textContent = total > 0 ? `${total} denied` : 'clean';
+    badge.className = `card-badge ${total > 0 ? 'badge-warn' : 'badge-ok'}`;
+  }
+  const byTool    = d.by_tool    || {};
+  const byProfile = d.by_profile || {};
+  const policy    = d.policy     || {};
+  const readonlyBlocked = (policy['readonly-strict'] || []).length;
+  el.innerHTML = [
+    fwRow('Total Denials',       total,           total > 0 ? 'warn' : 'ok'),
+    fwRow('Readonly-strict',     byProfile['readonly-strict']  ?? 0, 'info'),
+    fwRow('Execute-guarded',     byProfile['execute-guarded']  ?? 0, 'info'),
+    fwRow('Blocked tools (policy)', readonlyBlocked, 'info'),
+  ].join('');
+  if (Object.keys(byTool).length) {
+    el.innerHTML += `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05)">` +
+      `<div style="font-size:.56rem;color:var(--fg3);text-transform:uppercase;margin-bottom:.2rem">Top Denied Tools</div>` +
+      Object.entries(byTool).sort((a, b) => b[1] - a[1]).slice(0, 4)
+        .map(([t, c]) => fwRow(t.replace(/_/g, ' ').slice(0, 28), c, 'warn')).join('') +
+      `</div>`;
+  }
+}
+
 async function loadSecurity() {
   await Promise.allSettled([
     loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(),
     loadSecDrift(), loadAgentPool(), loadSecCompliance(),
-    loadVulnAudit(), loadAuditSummary(),
+    loadVulnAudit(), loadAuditSummary(), loadToolDenyStats(),
   ]);
 }
 
