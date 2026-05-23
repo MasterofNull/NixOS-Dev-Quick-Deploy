@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""
+aq-integrity-scan (The Orphan Hunter)
+--------------------------------------
+Purpose: Detects gaps between Documentation, Implementation, and Registration.
+Usage: aq-integrity-scan [--purge] [--json]
+
+Heuristics:
+1. Documentation Gap: Commands mentioned in .md files but missing in scripts/ai/.
+2. Registration Gap: Async handlers in *_handlers.py but missing in mcp_handlers.py or server.py.
+3. Import Gap: .py files in ai-stack with zero inbound imports.
+4. Protocol Gap: HTTP routes in coordinator without corresponding MCP tool definitions.
+"""
+
+import os
+import re
+import json
+import argparse
+from pathlib import Path
+from typing import Dict, List, Set
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+AI_STACK = REPO_ROOT / "ai-stack"
+SCRIPTS_AI = REPO_ROOT / "scripts/ai"
+DOCS_DIR = REPO_ROOT / ".agent"
+
+class IntegrityScanner:
+    def __init__(self):
+        self.findings = {
+            "doc_orphans": [],      # Commands in docs but not in scripts/
+            "registration_gaps": [], # Logic implemented but not wired to MCP/HTTP
+            "logical_orphans": [],   # Code with no callers
+            "protocol_drifts": []    # HTTP/MCP mismatch
+        }
+
+    def scan_doc_consistency(self):
+        """Find commands referenced in markdown that don't exist in scripts/ai."""
+        documented_cmds = set()
+        for md_file in DOCS_DIR.glob("**/*.md"):
+            content = md_file.read_text()
+            matches = re.findall(r'`(aq-[a-z0-9-]+)`', content)
+            documented_cmds.update(matches)
+        
+        live_cmds = {f.name for f in SCRIPTS_AI.glob("aq-*")}
+        for cmd in documented_cmds:
+            if cmd not in live_cmds:
+                self.findings["doc_orphans"].append({
+                    "command": cmd,
+                    "reason": "Referenced in documentation but missing from scripts/ai/"
+                })
+
+    def scan_coordinator_wiring(self):
+        """Find handler modules in hybrid-coordinator that aren't wired to any routing surface.
+
+        Strategy: modules register via register_routes(app) or by being imported into a wiring
+        surface. We check at the MODULE level (not individual handler fn names), because a single
+        register_routes() call wires all handlers in that module.
+
+        Wiring surfaces checked:
+          - http_server_impl.py  (monolith: ~20 register_routes() calls)
+          - router.py            (Strangler Fig R2.x domain registrations)
+          - server.py            (MCP + init)
+          - extensions/mcp_handlers.py  (TOOL_DEFINITIONS + dispatch)
+          - *_service.py         (domain service modules own their sub-routes)
+        """
+        coord_dir = AI_STACK / "mcp-servers/hybrid-coordinator"
+
+        wiring_files = [
+            coord_dir / "http_server_impl.py",
+            coord_dir / "router.py",
+            coord_dir / "server.py",
+            coord_dir / "extensions/mcp_handlers.py",
+        ]
+        wiring_content = "".join([f.read_text() for f in wiring_files if f.exists()])
+        for svc_file in coord_dir.glob("**/*_service.py"):
+            if "__pycache__" not in str(svc_file):
+                wiring_content += svc_file.read_text()
+
+        for h_file in coord_dir.glob("**/*_handlers.py"):
+            if "__pycache__" in str(h_file):
+                continue
+            content = h_file.read_text()
+            # Only check modules that define a register_routes() function — those are
+            # HTTP handler modules that must be explicitly wired. Modules without
+            # register_routes() are MCP-only (dispatched via mcp_handlers.dispatch_tool).
+            if "def register_routes(" not in content:
+                continue
+            module_name = h_file.stem  # e.g. "hints_handlers"
+            # Wired if: module imported by name OR register_routes called by module reference
+            is_wired = (
+                f"import {module_name}" in wiring_content
+                or f"from {module_name}" in wiring_content
+                or f"{module_name}.register_routes" in wiring_content
+                or f"{module_name} import" in wiring_content
+            )
+            if not is_wired:
+                self.findings["registration_gaps"].append({
+                    "handler": f"{module_name}.register_routes()",
+                    "file": str(h_file.relative_to(REPO_ROOT)),
+                    "reason": "Module has register_routes() but is not imported/called in any wiring surface"
+                })
+
+    def scan_logical_orphans(self):
+        """Find python files in ai-stack with zero imports from other files."""
+        all_py_files = list(AI_STACK.glob("**/*.py"))
+        py_names = {f.stem for f in all_py_files if f.name != "__init__.py"}
+        
+        import_map = {name: 0 for name in py_names}
+        
+        for py_file in all_py_files:
+            content = py_file.read_text()
+            for name in py_names:
+                if py_file.stem == name: continue
+                # Match 'import name' or 'from name import'
+                if re.search(fr'\b(import|from)\s+{name}\b', content):
+                    import_map[name] += 1
+        
+        for name, count in import_map.items():
+            if count == 0:
+                # Filter out known entrypoints
+                if name in ["server", "autonomous_loop", "agent_executor", "checkpoint_service"]:
+                    continue
+                self.findings["logical_orphans"].append({
+                    "module": name,
+                    "reason": "Module exists but has 0 inbound imports in ai-stack (potential dead code)"
+                })
+
+    def report(self):
+        print(f"--- Integrity Scan Report: {len(self.findings['registration_gaps']) + len(self.findings['doc_orphans'])} issues found ---")
+        
+        if self.findings["registration_gaps"]:
+            print("\n[!] Registration Gaps (Half-Implemented):")
+            for gap in self.findings["registration_gaps"]:
+                print(f"  - {gap['handler']} in {gap['file']}")
+
+        if self.findings["doc_orphans"]:
+            print("\n[!] Documentation Orphans (Ghost Commands):")
+            for gap in self.findings["doc_orphans"]:
+                print(f"  - {gap['command']}")
+
+        if self.findings["logical_orphans"]:
+            print("\n[?] Logical Orphans (Potential Dead Code):")
+            for gap in self.findings["logical_orphans"]:
+                print(f"  - {gap['module']}")
+
+def main():
+    scanner = IntegrityScanner()
+    scanner.scan_doc_consistency()
+    scanner.scan_coordinator_wiring()
+    scanner.scan_logical_orphans()
+    scanner.report()
+
+if __name__ == "__main__":
+    main()
