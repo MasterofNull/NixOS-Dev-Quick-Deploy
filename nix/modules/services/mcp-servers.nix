@@ -1128,6 +1128,11 @@ in {
                 # maintenance and dashboard operator workflows.
                 "AI_CAPABILITY_DISCOVERY_ENABLED=true"
                 "AI_CAPABILITY_DISCOVERY_ON_QUERY=true"
+                # Speculative decoding state — reflects llama.cpp --spec-type draft-mtp launch flag.
+                # Coordinator scorecard reads this to report speculative_decoding_enabled correctly.
+                "AI_SPECULATIVE_DECODING_ENABLED=${if llama.specType != "" then "true" else "false"}"
+                "AI_SPECULATIVE_DECODING_MODE=${if llama.specType != "" then llama.specType else "draft-model"}"
+                "LLAMA_SPEC_DRAFT_N_MAX=${toString llama.specDraftNMax}"
                 "AI_SEMANTIC_TOOLING_AUTORUN=${
                   if ai.aiHarness.runtime.semanticToolingAutorun
                   then "true"

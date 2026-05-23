@@ -208,22 +208,40 @@ class InferenceParamManager:
         return data
 
     def _read_n_gpu_layers_sync(self) -> Optional[int]:
-        """Find llama-server process and extract --n-gpu-layers from cmdline."""
+        """Find the chat llama-server process and extract --n-gpu-layers from cmdline.
+
+        Skips embedding servers (--embedding flag) to avoid picking up the embed
+        server's cmdline which contains intermediate --n-gpu-layers 99 before the
+        final --n-gpu-layers 12, causing the IPM to report 99 instead of 12.
+        """
         try:
             for proc_dir in Path("/proc").iterdir():
                 if not proc_dir.name.isdigit():
                     continue
                 try:
                     cmdline = (proc_dir / "cmdline").read_bytes().split(b"\x00")
-                    # Look for llama-server or any cmdline containing llama.cpp
                     is_llama = any(b"llama-server" in arg or b"llama.cpp" in arg for arg in cmdline)
-                    if is_llama:
-                        for i, arg in enumerate(cmdline):
-                            if arg == b"-ngl" or arg == b"--n-gpu-layers":
-                                if i + 1 < len(cmdline):
-                                    return int(cmdline[i+1])
-                            elif arg.startswith(b"--n-gpu-layers="):
-                                return int(arg.split(b"=")[1])
+                    if not is_llama:
+                        continue
+                    # Skip embedding servers — they have a separate GPU layer budget
+                    if b"--embedding" in cmdline:
+                        continue
+                    # Use the LAST occurrence of --n-gpu-layers (cmdline may repeat the flag)
+                    result = None
+                    for i, arg in enumerate(cmdline):
+                        if arg == b"-ngl" or arg == b"--n-gpu-layers":
+                            if i + 1 < len(cmdline):
+                                try:
+                                    result = int(cmdline[i+1])
+                                except ValueError:
+                                    pass
+                        elif arg.startswith(b"--n-gpu-layers="):
+                            try:
+                                result = int(arg.split(b"=")[1])
+                            except ValueError:
+                                pass
+                    if result is not None:
+                        return result
                 except (OSError, ValueError, IndexError):
                     continue
         except Exception as e:
@@ -231,19 +249,46 @@ class InferenceParamManager:
         return None
 
     async def _fetch_mtp_rate(self) -> Optional[float]:
+        """Derive MTP acceptance rate from llama.cpp Prometheus metrics.
+
+        llama.cpp with --spec-type draft-mtp does NOT expose a dedicated
+        acceptance_rate metric. We derive it from the decode efficiency ratio:
+            tokens_per_decode = tokens_predicted_total / n_decode_total
+            acceptance_rate = (tokens_per_decode - 1) / spec_draft_n_max
+
+        When spec_draft_n_max=2 and all drafts accepted: tokens_per_decode≈3 → rate=1.0
+        When no drafts accepted: tokens_per_decode≈1 → rate=0.0
+        """
         try:
             async with httpx.AsyncClient(timeout=0.2) as client:
                 resp = await client.get(f"{self._llama_url}/metrics")
-                if resp.status_code == 200:
-                    # Look for speculative acceptance rate in Prometheus metrics
-                    # Typical names: llm_spec_accept_rate, llama_speculative_acceptance_rate
-                    for line in resp.text.splitlines():
-                        if line.startswith("llm_spec_accept_rate") or line.startswith("llama_speculative_acceptance_rate"):
-                            parts = line.split()
-                            if len(parts) >= 2:
-                                return float(parts[1])
+                if resp.status_code != 200:
+                    return None
+                metrics: dict = {}
+                for line in resp.text.splitlines():
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            metrics[parts[0]] = float(parts[1])
+                        except ValueError:
+                            pass
+                tokens_predicted = metrics.get("llamacpp:tokens_predicted_total", 0.0)
+                n_decode = metrics.get("llamacpp:n_decode_total", 0.0)
+                if n_decode < 10:
+                    # Not enough data for a meaningful estimate
+                    return None
+                tokens_per_decode = tokens_predicted / n_decode
+                if tokens_per_decode <= 1.01:
+                    # No speculative gains observed — MTP may not be active
+                    return 0.0
+                # spec_draft_n_max=2 is our deployed config (options.nix default)
+                spec_draft_n_max = int(os.getenv("LLAMA_SPEC_DRAFT_N_MAX", "2"))
+                rate = (tokens_per_decode - 1.0) / spec_draft_n_max
+                return round(min(1.0, max(0.0, rate)), 4)
         except Exception as e:
-            logger.debug(f"Failed to fetch MTP rate from {self._llama_url}/metrics: {e}")
+            logger.debug(f"Failed to derive MTP rate from {self._llama_url}/metrics: {e}")
         return None
 
 _ipm: Optional[InferenceParamManager] = None
