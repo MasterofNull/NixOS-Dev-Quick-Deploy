@@ -39,6 +39,15 @@ _continuous_learning: Any = None
 _VALID_EVENT_TYPES = frozenset({
     "task_completed", "error_resolution", "lesson", "decision",
     "delegation_start", "delegation_end",
+    "memory", "safety", "workflow",
+})
+
+# Phase 64.2: Canonical sub_type taxonomy for ContinuousLearning clustering
+# Callers may pass any string; this set is used only for documentation + GET filter hints.
+_CANONICAL_SUB_TYPES = frozenset({
+    "schema_violation", "context_overflow", "logic_deadlock",
+    "tool_timeout", "safety_block", "contradiction_detected",
+    "drift_alert", "budget_exceeded",
 })
 _VALID_AGENTS = frozenset({
     "gemini", "codex", "claude", "local", "coordinator", "unknown",
@@ -188,6 +197,7 @@ async def handle_agent_events_post(request: web.Request) -> web.Response:
     return web.json_response({
         "accepted": True,
         "event_type": event_type,
+        "sub_type": sub_type or None,
         "agent": agent,
         "outcome": outcome,
         "timestamp": ts,
@@ -200,7 +210,8 @@ async def handle_agent_events_get(request: web.Request) -> web.Response:
         limit = min(int(request.rel_url.query.get("limit", "20")), 100)
     except (ValueError, TypeError):
         limit = 20
-    filter_type = request.rel_url.query.get("event_type", "")
+    filter_type     = request.rel_url.query.get("event_type", "")
+    filter_sub_type = request.rel_url.query.get("sub_type", "")
     try:
         window_s = int(request.rel_url.query.get("window_s", "86400"))
     except (ValueError, TypeError):
@@ -236,8 +247,11 @@ async def handle_agent_events_get(request: web.Request) -> web.Response:
             params = entry.get("parameters") or {}
             if filter_type and params.get("event_type") != filter_type:
                 continue
+            if filter_sub_type and params.get("sub_type") != filter_sub_type:
+                continue
             events.append({
                 "event_type": params.get("event_type", "task_completed"),
+                "sub_type":   params.get("sub_type", ""),
                 "agent":      params.get("agent", "unknown"),
                 "outcome":    entry.get("outcome", ""),
                 "summary":    params.get("summary", ""),
