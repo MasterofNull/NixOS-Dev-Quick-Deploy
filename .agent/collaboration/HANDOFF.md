@@ -1,3 +1,26 @@
+# Handoff Memo — 2026-05-23 Post-Rebuild Parity + Agent Config Standardization (Claude)
+
+**Status:** Complete. Commits `6102a5a8` `ac7e18de` `f308f396` `07d37281` `a14975f5`.
+**Scope:** Nix eval fixes, aq-chat target_url bug, doc renames, agent config parity, dashboard restoration.
+
+**Key changes:**
+1. **Nix eval fixed** (6102a5a8): `ctxSize` conflict `lib.mkDefault→lib.mkOverride 1100`; `tailwind-language-server` removed from frontend+full devShells.
+2. **aq-chat target_url** (ac7e18de): Local profile routed to `llama_url/v1/chat/completions` + `enable_thinking:false`. Verified: Qwen3 responds with full hardware + role awareness (harness inject working).
+3. **qwen-task-eligibility.md → local-agent-task-eligibility.md** (f308f396): 10 reference sites updated.
+4. **Agent config parity** (07d37281 + a14975f5): All 4 agent configs now share identical canonical sections. CLAUDE.md: added Behavioral Rules table + Context Engineering Rules. CODEX.md: UMBM full breakdown + aq-insights Key Path + Context Engineering Rules. All configs: model-agnostic Project Goal + enable_thinking note.
+5. **Dashboard local-insights card**: Route `/api/aistack/local-insights/latest` live and returning real Qwen3 analysis. Dashboard manually restarted (sudo unavailable; HUP restart as hyperd).
+
+**Validation:** tier0 17/17 · aq-qa 93/93 · nix flake check CLEAN · aq-insights end-to-end PASS.
+
+**Open items:**
+- aq-homeostasis systemd timer: CPU/GPU/RAM/fd polling → `.agent/memory/homeostasis/` → circuit-break at >95% RAM. Gemini spec pending.
+- MTP tuning decision tree: `specDraftNMax` 2→3 threshold. Gemini pending.
+- Audit labeling: 21,327 rows missing local/remote backend labels (aq-insights signal).
+- Greeting query knowledge gap: 8 occurrences, relevance 0.0 — `aq-knowledge-import.sh` needed.
+- Dashboard service: next nixos-rebuild will permanently fix restart (currently running as manual process PID ~1370762).
+
+---
+
 # Handoff Memo — 2026-05-22 Local Model Integration + Agent Config Standardization (Claude)
 
 **Status:** Complete. commits `6bc19cb8` + `59608bf1` + monitoring commit (pending tier0).

@@ -14,14 +14,14 @@ The coordinator refactor line is past R2.9 and current commits have moved into P
 
 | PA Item | Description | Maps to PRD Phase | Status |
 |---------|-------------|-------------------|--------|
-| PA-1 | Bitemporal memory schema + supersession tests | Phase 60.1–60.4 | 60.1 DONE (9844d3e0); 60.2 follow-on dirty/pending validation |
-| PA-2 | Tool sandbox policy schema + registry lint | Phase 62 (nsjail, AM-C3) | PARTIAL: static contract + nsjail/safety rails committed; full registry lint/runtime profile enforcement remains |
-| PA-3 | Agent identity/delegation review gate | Phase 62 safety rails (`config/safety-rails.yaml`) | PARTIAL: review-gate contract pinned; delegation envelope runtime enforcement remains |
-| PA-4 | MCP/A2A governance profile | Ed25519 Agent Cards (MAEAH Phase D) + Phase 62 | PARTIAL: A2A done + static security contract pinned; MCP runtime auth/profile enforcement remains |
-| PA-5 | Memory poisoning + retrieval benchmark additions | Phase 60.3–60.7 (RAGAS metrics) | Pending Phase 60.5–60.6 |
-| PA-6 | Trace schema: prompt version, route, tool sequence | Phase 60 (prompt_version_id) + Phase 63 path view | Pending |
-| PA-7 | Semantic task descriptor + scheduler pressure tests | Phase 61 CLM + MLFQ pressure integration | Pending Phase 61 |
-| PA-8 | Edge persistence classification + rollback drill | Phase 63 impermanence + `/persist` mounts | Pending Phase 63 |
+| PA-1 | Bitemporal memory schema + supersession tests | Phase 60.1–60.4 | **COMPLETE** — bitemporal event_time+valid_at (9844d3e0), superseder `_superseded_ids` ledger + `is_superseded()` bitemporal (commit 0fc32d28) |
+| PA-2 | Tool sandbox policy schema + registry lint | Phase 62 (nsjail, AM-C3) | **COMPLETE** — nsjail+safety-rails.yaml (f61ef4b1); S2 tool-auth enforcement middleware (e1987d06); S2.5 `/admin/v1/policy/tool-deny-stats` live (post-rebuild) |
+| PA-3 | Agent identity/delegation review gate | Phase 62 safety rails (`config/safety-rails.yaml`) | **PARTIAL** — static no-recursive-delegation rail + Ed25519 A2A cards; runtime bounded delegation envelope enforcement remains |
+| PA-4 | MCP/A2A governance profile | Ed25519 Agent Cards (MAEAH Phase D) + Phase 62 | **PARTIAL** — A2A Ed25519 signing (6e1d8072) + static security contract; MCP runtime tool-boundary profile enforcement remains |
+| PA-5 | Memory poisoning + retrieval benchmark additions | Phase 60.3–60.7 (RAGAS metrics) | **COMPLETE** — RAGAS eval_runner: answer relevance (embed cosine), context precision, faithfulness (Qwen judge); eval_results Postgres table; `/eval/trend` (commits 0fc32d28, 5a98b394) |
+| PA-6 | Trace schema: prompt version, route, tool sequence | Phase 60 (prompt_version_id) + Phase 63 path view | **PARTIAL** — OTel trace_collector gen_ai.* attrs (0e1be322); prompt_version_id + full path view still pending |
+| PA-7 | Semantic task descriptor + scheduler pressure tests | Phase 61 CLM + MLFQ pressure integration | **COMPLETE** — CLM Hot→Warm→Cold (53c724e0); MLFQ `apply_clm_pressure()` wired; thermal gate coupling (AM-G3) via IPM→scheduler |
+| PA-8 | Edge persistence classification + rollback drill | Phase 63 impermanence + `/persist` mounts | **COMPLETE** — impermanence module in flake+options+host-class (b80723b2); enable-flag guarded; `/persist` FS required before activation |
 
 ## Slice Queue → PRD Mapping
 
@@ -119,7 +119,7 @@ Only open after Phases 1–4 are stable and accepted:
 - NATS/gRPC mesh and chaos testing for multi-node deployments.
 - Federated learning, PQC identity, audio-native agents, neuromorphic/embodied/cryptoeconomic tracks.
 
-## Current reconciliation — 2026-05-21
+## Current reconciliation — 2026-05-23
 
 Recent committed work changed the Phase 1/62 status:
 
@@ -133,7 +133,9 @@ Recent committed work changed the Phase 1/62 status:
 - Command Center visibility has expanded for parity-cycle operations: agent ops drift/override state, promoted lessons, active hints, memory statistics, trace summary/drift, fleet/budget/reasoning profile cards, ports registry, and health aggregate are now visible through dashboard cards and guarded API routes.
 - Managed-service discipline is part of the acceptance criteria: dashboard validation must confirm `command-center-dashboard-api.service` is active and serving `127.0.0.1:8889`; ad-hoc `uvicorn` on `0.0.0.0:8889` is considered degraded state, not a valid workaround.
 
-Remaining work is not the same as the completed static gate: runtime MCP authorization/profile enforcement, bounded delegation envelopes, and deeper security/audit metrics still need implementation slices.
+PA-1, PA-2, PA-5, PA-7, PA-8 are fully complete as of 2026-05-23. PA-3 and PA-4 have static contracts committed; runtime bounded delegation envelopes and MCP tool-boundary profile enforcement remain. PA-6 (trace schema path view) is partially complete via OTel attrs; prompt_version_id and full path view still pending.
+
+All agent configs (CLAUDE.md, GEMINI.md, CODEX.md, LOCAL-AGENT.md) now share identical canonical sections (Behavioral Rules, Architecture Constraints, Service Ports, File Placement, On-Demand Context). aq-insights end-to-end validated (local model producing real harness analysis). Dashboard `section-local-insights` card live. aq-qa 93/93 PASS · tier0 17/17 PASS.
 
 ## Slice queue after refactor lands
 
