@@ -168,7 +168,7 @@ These constraints are non-negotiable and apply to ALL agents working in this dom
 - `docs/architecture/capability-lifecycle.md`
 - `docs/architecture/gemini-review-gate.md`
 - `docs/architecture/routing-profile-inventory.md`
-- `docs/architecture/qwen-task-eligibility.md`
+- `docs/architecture/local-agent-task-eligibility.md`
 - `scripts/governance/nix-static-analysis.sh`
 - `scripts/governance/tier0-validation-gate.sh`
 - `nix/modules/core/options.nix` (port SSOT)

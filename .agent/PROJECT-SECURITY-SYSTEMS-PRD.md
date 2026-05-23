@@ -132,7 +132,7 @@ Forbidden: `--no-verify` flag on any commit, hardcoded secrets, eval of LLM outp
 - `docs/architecture/domain-activation-template.md`
 - `docs/architecture/capability-lifecycle.md`
 - `docs/architecture/gemini-review-gate.md`
-- `docs/architecture/qwen-task-eligibility.md`
+- `docs/architecture/local-agent-task-eligibility.md`
 - `docs/architecture/routing-profile-inventory.md`
 - `scripts/governance/tier0-validation-gate.sh`
 - `AGENTS.md` §Security checklist (OWASP Agentic Top 10)

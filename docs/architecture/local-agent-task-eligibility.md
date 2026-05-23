@@ -1,4 +1,6 @@
-# Qwen Bounded-Task Eligibility Contract
+# Local Agent Bounded-Task Eligibility Contract
+
+> Renamed from `qwen-task-eligibility.md` — now model-agnostic. Current deployment: Qwen3-35B via LOCAL-AGENT.md.
 
 **Status:** Accepted — Phase 58A.5 (2026-05-18)
 **Upstream authority:** `docs/architecture/role-matrix.md` (implementer role definition)

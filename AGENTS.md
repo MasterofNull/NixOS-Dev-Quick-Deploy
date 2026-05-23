@@ -115,7 +115,7 @@ Codex default role: **orchestrator / implementer / reviewer** (final acceptance 
 - Sub-agent rule: do not re-scope, do not route other agents, do not finalize acceptance of own work.
 
 Gemini work requires review gate before integration — see `docs/architecture/gemini-review-gate.md`.
-Local agent task eligibility — see `docs/architecture/qwen-task-eligibility.md` (model-agnostic; Qwen3-35B is current deployment).
+Local agent task eligibility — see `docs/architecture/local-agent-task-eligibility.md` (model-agnostic; Qwen3-35B is current deployment).
 New domain activation — use `docs/architecture/domain-activation-template.md`.
 
 ## Routing Discipline

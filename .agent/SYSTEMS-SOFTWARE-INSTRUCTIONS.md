@@ -25,7 +25,7 @@ Agents outside this domain MUST NOT modify `nix/modules/core/options.nix` (port 
 
 ## Eligible Task Classes
 
-Reference: `docs/architecture/qwen-task-eligibility.md`
+Reference: `docs/architecture/local-agent-task-eligibility.md`
 
 | Task class | Eligible agents | Notes |
 |---|---|---|

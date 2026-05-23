@@ -26,7 +26,7 @@ Agents MUST check `config/hardware-capability-matrix.json` before recommending a
 
 ## Eligible Task Classes
 
-Reference: `docs/architecture/qwen-task-eligibility.md`
+Reference: `docs/architecture/local-agent-task-eligibility.md`
 
 | Task class | Eligible agents | Notes |
 |---|---|---|

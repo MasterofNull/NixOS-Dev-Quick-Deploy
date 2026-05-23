@@ -155,7 +155,7 @@ Indexing: Add to `scripts/automation/aidb-reindex.sh` once domain reaches `imple
 - `docs/architecture/domain-activation-template.md`
 - `docs/architecture/capability-lifecycle.md`
 - `docs/architecture/gemini-review-gate.md`
-- `docs/architecture/qwen-task-eligibility.md`
+- `docs/architecture/local-agent-task-eligibility.md`
 - `docs/architecture/routing-profile-inventory.md`
 - `docs/operations/AUTONOMOUS-OPERATIONS-POLICY.md`
 - `config/hardware-capability-matrix.json`

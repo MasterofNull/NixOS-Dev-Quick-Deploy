@@ -6,7 +6,7 @@ Define explicit, testable task-class eligibility for Qwen as implementer: which 
 
 ## Outputs
 
-- `docs/architecture/qwen-task-eligibility.md` — eligibility contract
+- `docs/architecture/local-agent-task-eligibility.md` — eligibility contract
 - `.qwen/SESSION-RULES.md` — eligibility SSOT pointer added
 - `.agents/plans/phase-58a-qwen-eligibility.md` — this slice plan
 
@@ -24,5 +24,5 @@ Define explicit, testable task-class eligibility for Qwen as implementer: which 
 ACCEPTED — 2026-05-18 (Claude authored, Codex final acceptance complete)
 
 ### Evidence
-- `docs/architecture/qwen-task-eligibility.md` created with Tier A/B/C tables, complexity bounds table, escalation protocol, promotion path, hardware notes.
+- `docs/architecture/local-agent-task-eligibility.md` created with Tier A/B/C tables, complexity bounds table, escalation protocol, promotion path, hardware notes.
 - `SESSION-RULES.md` Sub-Agent Boundaries pointer updated to include eligibility SSOT.
