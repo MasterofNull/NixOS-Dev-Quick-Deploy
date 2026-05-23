@@ -85,12 +85,27 @@ _aq_generic_complete() {
 }
 
 # ---------------------------------------------------------------------------
+# aq-chat completion
+# ---------------------------------------------------------------------------
+_aq_chat_complete() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    case "$prev" in
+        --profile) COMPREPLY=( $(compgen -W "local remote_free remote_coding remote_reasoning" -- "$cur") ); return ;;
+    esac
+    if [[ "$cur" == --* ]]; then
+        COMPREPLY=( $(compgen -W "--profile --llama-url --hybrid-url --temperature" -- "$cur") )
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Register completions
 # ---------------------------------------------------------------------------
 if command -v complete >/dev/null 2>&1; then
     complete -F _aq_hints_complete       aq-hints
     complete -F _aq_report_complete      aq-report
     complete -F _aq_prompt_eval_complete aq-prompt-eval
+    complete -F _aq_chat_complete        aq-chat
     complete -F _aq_generic_complete     aq-completions.sh
 fi
 
@@ -102,4 +117,5 @@ if [[ -n "${ZSH_VERSION:-}" ]]; then
     complete -F _aq_hints_complete       aq-hints
     complete -F _aq_report_complete      aq-report
     complete -F _aq_prompt_eval_complete aq-prompt-eval
+    complete -F _aq_chat_complete        aq-chat
 fi
