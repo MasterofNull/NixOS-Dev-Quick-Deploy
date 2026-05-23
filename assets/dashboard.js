@@ -1873,7 +1873,7 @@ async function loadOperations() {
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
-    loadAIServicesDetail(), loadReadinessRadar(), loadWorkflowBlueprints(),
+    loadAIServicesDetail(), loadReadinessRadar(), loadWorkflowBlueprints(), loadSystemActions(),
   ]);
 }
 
@@ -2957,6 +2957,63 @@ async function loadAIServicesDetail() {
     const col = st === 'healthy' ? 'ok' : st === 'degraded' ? 'warn' : 'err';
     return fwRow(id.replace(/^ai-/, ''), `${st} · ${rt}`, col);
   }).join('');
+}
+
+
+async function loadSystemActions() {
+  const d = await apiFetch('/actions/');
+  const el = document.getElementById('sysActionsDetails');
+  const badge = document.getElementById('sysActionsBadge');
+  if (!el) return;
+  if (!Array.isArray(d) || !d.length) { el.innerHTML = fwRow('Actions', 'Unavailable', 'warn'); return; }
+  const runActions = d.filter(a => a.mode === 'run');
+  if (badge) {
+    badge.textContent = `${runActions.length} actions`;
+    badge.className = 'card-badge badge-info';
+  }
+  const groups = {
+    'AI Stack': ['Start AI Stack','Stop AI Stack','Clean Restart AI Stack','Clean Restart AIDB','AI Stack Health Check','Dashboard Data Refresh','Run Feedback Verification'],
+    'Nix / System': ['Nix Store GC','Nix Store Optimise','Reload systemd Daemon','System Update Check','Vacuum Journald (500M)','Reload NixOS Config','Rebuild Home Manager'],
+    'Firewall / Net': ['Restart Firewall (nftables)','Show Firewall Rules','Restart Tailscale','Restart Fail2ban','Ping 1.1.1.1','DNS Status','List Listening Ports','Show IP Addresses'],
+    'Diagnostics': ['Journal Disk Usage','Force Logrotate','Process Snapshot','Disk Usage (Root)','Memory Snapshot','Show System Journal (Last 200)'],
+  };
+  const remaining = new Set(runActions.map(a => a.label));
+  let html = '';
+  for (const [group, labels] of Object.entries(groups)) {
+    const groupActions = runActions.filter(a => labels.includes(a.label));
+    if (!groupActions.length) continue;
+    groupActions.forEach(a => remaining.delete(a.label));
+    html += `<div style="color:var(--fg3);font-size:.55rem;padding:.2rem .4rem .1rem;text-transform:uppercase;letter-spacing:.06em">${group}</div>`;
+    html += groupActions.map(a =>
+      `<button class="mini-btn" style="text-align:left;width:100%;margin-bottom:.18rem" onclick="runSysAction(${JSON.stringify(a.label)})">${a.label}</button>`
+    ).join('');
+  }
+  if (remaining.size) {
+    html += `<div style="color:var(--fg3);font-size:.55rem;padding:.2rem .4rem .1rem;text-transform:uppercase;letter-spacing:.06em">Other</div>`;
+    html += runActions.filter(a => remaining.has(a.label)).map(a =>
+      `<button class="mini-btn" style="text-align:left;width:100%;margin-bottom:.18rem" onclick="runSysAction(${JSON.stringify(a.label)})">${a.label}</button>`
+    ).join('');
+  }
+  el.innerHTML = html;
+}
+
+async function runSysAction(label) {
+  const el = document.getElementById('ctrlResult');
+  try {
+    const r = await apiFetch('/actions/execute', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({label}),
+    });
+    if (el) {
+      const out = (r && r.output) ? r.output.slice(0, 120) : (r && (r.status || r.message)) || 'done';
+      el.textContent = '[' + label + '] ' + out;
+      el.style.color = 'var(--grn)';
+      setTimeout(() => { if (el) el.textContent = ''; }, 6000);
+    }
+  } catch (e) {
+    if (el) { el.textContent = 'ERR: ' + e; el.style.color = 'var(--red)'; }
+  }
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
