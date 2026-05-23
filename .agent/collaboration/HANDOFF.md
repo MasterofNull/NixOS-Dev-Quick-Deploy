@@ -1564,3 +1564,29 @@ Proceed with the **bitemporal retrieval traceability pack** before sandbox/gover
 - Slice: added `scripts/testing/check-dashboard-managed-service.sh` to require the managed systemd service, loopback `127.0.0.1:8889` binding, no `0.0.0.0:8889` listener, and a responding `/api/health` endpoint. Registered it in focused CI for dashboard/service documentation and ai-stack service wiring changes.
 - Docs: quick dashboard reference and dashboard architecture reference now include the smoke command in the operator flow.
 - Validation: local smoke passed with the managed service active.
+
+---
+
+## 2026-05-23 — Dashboard fixes + model-agnostic eval (commit d71c7503)
+
+**Claude Sonnet 4.6 | Orchestrator+Implementer**
+
+### Fixes shipped (no rebuild needed)
+| Endpoint | Root cause | Fix |
+|---|---|---|
+| `/models` | dashboard Nix Python lacks `aiohttp` → import fails | Read model-registry.json from filesystem |
+| `/aidb/health/detailed` | returns cached state (`startup_complete=false`) | Synthesize from live `/health/live` + `/health/ready` |
+| `/aistack/task-classification/stats` | looked for `task_type`/`routed_local` not in tool-audit schema | Use actual fields: `tool_name`, `risk_tier`, `outcome` |
+| Routing panel `local_pct` | analytics always null — tool_audit has no routing labels | JS now falls back to `traceSummary.backend_breakdown` |
+| `/local-insights/latest` | only matched `qwen-insights-*.md` | Accept both `local-insights-*.md` and `qwen-insights-*.md` |
+
+### Model-agnostic changes (deploy after nixos-rebuild)
+- `eval_runner.py`: `eval_results` table gets `llm_model` column (+ idempotent ALTER TABLE migration). `record_query_metrics()` accepts `llm_model` param. `POST /eval/score-query` passes `llm_model` from request body or `ACTIVE_LLM_MODEL` env var.
+- `memory_broker.py`: `store_fn`/`recall_fn` repr strings → `store_fn_available`/`recall_fn_available` booleans.
+- `aq-insights`: output filenames → `local-insights-YYYYMMDD.md`; all "Qwen3"-branded strings → "local model".
+
+### Open items
+- Lesson registry has no model_id tag — architectural enhancement needed (Phase 64?)
+- Routing analytics (`/insights/routing/analytics`) reads stale aq-report snapshot — local_n/remote_n always 0 from tool_audit source. Fix: augment `get_routing_analytics()` in ai_insights.py to query `/api/traces/summary` (coordinator) and populate local_n from `backend_breakdown.local`.
+- nixos-rebuild needed to deploy: memory_broker.py clean JSON, eval_runner.py llm_model tracking.
+
