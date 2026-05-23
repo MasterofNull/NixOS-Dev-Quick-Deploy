@@ -1126,6 +1126,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_nsjail_sandbox(ctx))
     results.extend(_check_graphrag(ctx))
     results.extend(_check_s2_tool_auth_policy(ctx))
+    results.extend(_check_local_agent_docs(ctx))
     return results
 
 
@@ -1571,5 +1572,80 @@ def _check_s2_tool_auth_policy(ctx: RunContext) -> list[CheckResult]:
             results.append(failed(4, "S2.5", "tool-deny-stats policy", "readonly-strict not in policy map"))
         else:
             results.append(passed(4, "S2.5", "GET /admin/v1/policy/tool-deny-stats returns valid denial stats shape"))
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# LA — Local-Agent model-agnostic config + aq-insights + aq-chat injection
+# ---------------------------------------------------------------------------
+
+def _check_local_agent_docs(ctx: RunContext) -> list[CheckResult]:
+    """LA: LOCAL-AGENT.md model-agnostic config; QWEN.md redirect stub; aq-insights CLI."""
+    results: list[CheckResult] = []
+    agent_dir = ctx.repo_root / ".agent"
+
+    # LA.1 — LOCAL-AGENT.md exists with all required sections
+    la = agent_dir / "LOCAL-AGENT.md"
+    if not la.exists():
+        results.append(failed(4, "LA.1", "LOCAL-AGENT.md", "file missing"))
+    else:
+        text = la.read_text()
+        required_sections = [
+            "## Hardware Floor",
+            "## Current Model Config",
+            "## Model Swap Checklist",
+            "## Behavioral Rules",
+            "enable_thinking",
+        ]
+        missing = [s for s in required_sections if s not in text]
+        if missing:
+            results.append(failed(4, "LA.1", "LOCAL-AGENT.md sections", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "LA.1", "LOCAL-AGENT.md: Hardware Floor + Current Model Config + swap checklist + Behavioral Rules"))
+
+    # LA.2 — QWEN.md is a redirect stub (not the old full config)
+    qwen = agent_dir / "QWEN.md"
+    if not qwen.exists():
+        results.append(skipped(4, "LA.2", "QWEN.md redirect stub", "file not present (acceptable if intentionally removed)"))
+    else:
+        text = qwen.read_text()
+        if "LOCAL-AGENT.md" in text and "Superseded" in text:
+            results.append(passed(4, "LA.2", "QWEN.md: redirect stub points to LOCAL-AGENT.md"))
+        else:
+            results.append(failed(4, "LA.2", "QWEN.md redirect stub", "still contains old config — should redirect to LOCAL-AGENT.md"))
+
+    # LA.3 — aq-insights CLI executable and contains required functions
+    insights = ctx.repo_root / "scripts" / "ai" / "aq-insights"
+    if not insights.exists():
+        results.append(failed(4, "LA.3", "scripts/ai/aq-insights", "file missing"))
+    else:
+        text = insights.read_text()
+        required = ["extract_signals", "build_prompt", "call_local_model", "write_insights", "enable_thinking"]
+        missing = [s for s in required if s not in text]
+        if missing:
+            results.append(failed(4, "LA.3", "aq-insights functions", f"missing: {', '.join(missing)}"))
+        elif not insights.stat().st_mode & 0o111:
+            results.append(failed(4, "LA.3", "aq-insights", "not executable"))
+        else:
+            results.append(passed(4, "LA.3", "aq-insights: executable, extract_signals+build_prompt+call_local_model+write_insights present"))
+
+    # LA.4 — aq-chat harness-aware system prompt injection wired
+    aq_chat = ctx.repo_root / "scripts" / "ai" / "aq-chat"
+    if not aq_chat.exists():
+        results.append(skipped(4, "LA.4", "aq-chat harness injection", "script not found"))
+    else:
+        text = aq_chat.read_text()
+        checks = {
+            "_build_harness_system_prompt": "_build_harness_system_prompt" in text,
+            "--no-inject flag": "no-inject" in text,
+            "enable_thinking guard": "enable_thinking" in text,
+            "HARNESS BEHAVIORAL RULES": "BEHAVIORAL RULES" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "LA.4", "aq-chat harness injection", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "LA.4", "aq-chat: harness-aware system prompt injection + behavioral rules wired"))
 
     return results

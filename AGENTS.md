@@ -7,7 +7,7 @@
 
 # AI Agent Onboarding — NixOS-Dev-Quick-Deploy
 
-Project: NixOS AI harness (Qwen3-35B local · hybrid-coordinator · switchboard · AIDB)
+Project: NixOS AI harness (locally hosted model · hybrid-coordinator · switchboard · AIDB)
 Full policy: `docs/AGENTS.md` · Quick start: `docs/agent-guides/01-QUICK-START.md`
 
 ## Canonical Workflow Contract
@@ -36,7 +36,7 @@ To prevent state loss during rate limits or model switches, all agents MUST:
 3. **Handoff Memo**: Update `HANDOFF.md` when finishing a slice or hitting a limit.
 4. **Recovery**: On 429/400 errors, attempt a 1-turn emergency write to `RECOVERY.md`.
 
-*Applies to: Claude, Gemini, Codex, Qwen, and any future autonomous agents.*
+*Applies to: Claude, Gemini, Codex, local agent, and any future autonomous agents.*
 
 ## Security checklist (OWASP Agentic Top 10) continua...
 no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
@@ -98,7 +98,7 @@ aq-session-start            # mandatory context hydration
 `llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889`
 
 ## Key CLIs
-`aq-prime` · `aq-qa 0` · `aq-hints "<task>"` · `aq-report` · `aq-context-bootstrap`
+`aq-prime` · `aq-qa 0` · `aq-hints "<task>"` · `aq-report` · `aq-insights` · `aq-context-bootstrap`
 
 ## Role and Architecture (Phase 58A — all agents read this)
 
@@ -115,7 +115,7 @@ Codex default role: **orchestrator / implementer / reviewer** (final acceptance 
 - Sub-agent rule: do not re-scope, do not route other agents, do not finalize acceptance of own work.
 
 Gemini work requires review gate before integration — see `docs/architecture/gemini-review-gate.md`.
-Qwen task eligibility — see `docs/architecture/qwen-task-eligibility.md`.
+Local agent task eligibility — see `docs/architecture/qwen-task-eligibility.md` (model-agnostic; Qwen3-35B is current deployment).
 New domain activation — use `docs/architecture/domain-activation-template.md`.
 
 ## Routing Discipline
@@ -146,5 +146,6 @@ Prefer 3-5 repo-only slices before `nixos-quick-deploy.sh`. Deploy earlier only 
 ## Key Files
 - `ai-stack/mcp-servers/hybrid-coordinator/` — MCP + UAG lifecycle
 - `nix/modules/roles/ai-stack.nix` — service wiring
-- `scripts/ai/` — harness CLIs
+- `scripts/ai/` — harness CLIs (`aq-insights` for local model harness analysis)
 - `.agent/CODEX.md` — Codex-specific instruction projection
+- `.agent/LOCAL-AGENT.md` — local inference agent (model-agnostic; current model + swap checklist)

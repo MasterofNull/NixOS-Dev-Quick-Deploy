@@ -28,9 +28,11 @@ Trivial single-line fixes may skip to VALIDATE, but never skip COMMIT.
 
 ```bash
 aq-prime                                     # orientation (available for AI tool calls)
+aq-session-start --task "<task>"             # mandatory context hydration (lessons + hints + memory)
 aq-hints "<task summary>" --format=json      # ranked workflow guidance
 aq-qa 0                                      # health check — know what's live
 aq-context-bootstrap --task "<task>"         # minimal context + entrypoint
+aq-insights --print                          # optional: local model analysis of latest aq-report
 ```
 
 **Rules**:

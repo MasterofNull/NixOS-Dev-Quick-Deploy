@@ -1,3 +1,28 @@
+# Handoff Memo — 2026-05-22 Local Model Integration + Agent Config Standardization (Claude)
+
+**Status:** Complete. commits `6bc19cb8` + `59608bf1` + monitoring commit (pending tier0).
+**Scope:** Local model embedding into workflows; agent config standardization; monitoring parity.
+
+**Key changes:**
+1. `scripts/ai/aq-insights`: Qwen3 harness analyst — reads aq-report snapshot, extracts signals, POSTs to local model, writes `.agent/memory/qwen-insights-YYYYMMDD.md`. Works immediately (no rebuild needed).
+2. `scripts/ai/aq-chat`: Harness-aware system prompt injection (`_build_harness_system_prompt`); fetches live hw state from coordinator; 10 behavioral rules embedded; `--no-inject` escape hatch.
+3. `.agent/LOCAL-AGENT.md`: Model-agnostic local agent config. Hardware Floor (machine constants) + Current Model Config (Qwen3-35B knobs + swap checklist) clearly separated. Any model works out of the box by updating the Current Model Config section.
+4. `.agent/QWEN.md`: Reduced to redirect stub — points to LOCAL-AGENT.md.
+5. All agent configs (GEMINI.md, CODEX.md, LOCAL-AGENT.md, CLAUDE.md): Canonical 10-rule Behavioral Rules table. LOCAL-AGENT.md tightens rules 4/5/6 for hardware constraints.
+6. `AGENTS.md` + `WORKFLOW-CANON.md`: aq-insights added to Key CLIs + ORIENT step.
+7. Dashboard: `GET /aistack/local-insights/latest` proxy endpoint + `section-local-insights` card in Agent Ops panel.
+8. `phase0.py`: 4 new LA.* aq-qa gates — LA.1 (LOCAL-AGENT.md sections), LA.2 (QWEN.md redirect), LA.3 (aq-insights functions), LA.4 (aq-chat injection).
+
+**Validation:** tier0 17/17 · aq-qa 92/92 (2 skipped — both rebuild-pending, as before).
+
+**Immediate next steps:**
+- `nixos-rebuild switch` — deploys dashboard API endpoint + S2.5 live gate
+- `aq-insights --print` — seeds first insights file for dashboard card
+- Gemini: aq-homeostasis spec handoff?
+- Gemini: MTP tuning thresholds?
+
+---
+
 # Handoff Memo — 2026-05-22 S2 Tool Auth Enforcement (Claude covering Codex)
 
 **Status:** Complete. commit `e1987d06`.
