@@ -1204,7 +1204,7 @@ async function loadIntelligence() {
     loadHintsStats(), loadMemorySupersedeHistory(),
     loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
-    loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(),
+    loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(), loadAIMetricsDetail(),
   ]);
 }
 
@@ -1623,7 +1623,7 @@ async function loadSecurity() {
     loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(),
     loadSecDrift(), loadAgentPool(), loadSecCompliance(),
     loadVulnAudit(), loadAuditSummary(), loadToolDenyStats(), loadHealthAudit(), loadHealthAlerts(),
-    loadAuditIntegrity(), loadFirewallCrowdsec(), loadFirewallRules(), loadFirewallAuditLog(),
+    loadAuditIntegrity(), loadFirewallCrowdsec(), loadFirewallRules(), loadFirewallAuditLog(), loadPrometheusScrape(),
   ]);
 }
 
@@ -1873,7 +1873,7 @@ async function loadOperations() {
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
-    loadAIServicesDetail(), loadReadinessRadar(), loadWorkflowBlueprints(), loadSystemActions(),
+    loadAIServicesDetail(), loadDashboardConfig(), loadReadinessRadar(), loadWorkflowBlueprints(), loadSystemActions(),
   ]);
 }
 
@@ -3014,6 +3014,72 @@ async function runSysAction(label) {
   } catch (e) {
     if (el) { el.textContent = 'ERR: ' + e; el.style.color = 'var(--red)'; }
   }
+}
+
+
+async function loadAIMetricsDetail() {
+  const d = await apiFetch('/insights/metrics/ai-specific');
+  const el = document.getElementById('aiMetricsDetailDetails');
+  const badge = document.getElementById('aiMetricsDetailBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  if (badge) {
+    badge.textContent = (d.status || '--').toUpperCase();
+    badge.className = `card-badge badge-${d.status === 'active' ? 'ok' : 'info'}`;
+  }
+  const po = d.delegated_prompt_optimization || {};
+  const la = d.learning_and_adaptation || {};
+  const dq = d.delegated_quality || {};
+  el.innerHTML = [
+    fwRow('Status', d.status || '--', d.status === 'active' ? 'ok' : 'info'),
+    po.tokens_saved_total != null ? fwRow('Tokens Saved', po.tokens_saved_total.toLocaleString(), 'ok') : '',
+    po.samples_before != null ? fwRow('Prompt Samples', po.samples_before, 'info') : '',
+    dq.avg_quality_score != null ? fwRow('Avg Quality', dq.avg_quality_score.toFixed(2), 'ok') : fwRow('Quality Samples', dq.score_samples ?? 0, 'info'),
+    la.progressive_context_loads_total != null ? fwRow('Context Loads', la.progressive_context_loads_total, 'info') : '',
+    la.real_time_learning_events_total != null ? fwRow('Learning Events', la.real_time_learning_events_total, 'info') : '',
+    la.meta_learning_adaptations_total != null ? fwRow('Meta Adaptations', la.meta_learning_adaptations_total, 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+async function loadPrometheusScrape() {
+  const d = await apiFetch('/aistack/prometheus/query?query=up');
+  const el = document.getElementById('promScrapeDetails');
+  const badge = document.getElementById('promScrapeBadge');
+  if (!el) return;
+  if (!d || d.status !== 'success') { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const results = (d.data || {}).result || [];
+  const up = results.filter(r => r.value && r.value[1] === '1').length;
+  if (badge) {
+    badge.textContent = `${up}/${results.length} up`;
+    badge.className = `card-badge badge-${up === results.length ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = results.map(r => {
+    const job = r.metric.job || r.metric.instance || '--';
+    const isUp = r.value && r.value[1] === '1';
+    return fwRow(job, isUp ? 'UP' : 'DOWN', isUp ? 'ok' : 'err');
+  }).join('') || fwRow('Status', 'No targets', 'info');
+}
+
+async function loadDashboardConfig() {
+  const d = await apiFetch('/config');
+  const el = document.getElementById('dashConfigDetails');
+  const badge = document.getElementById('dashConfigBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  if (badge) {
+    badge.textContent = `rate ${d.rate_limit ?? '--'}/min`;
+    badge.className = 'card-badge badge-info';
+  }
+  const hr = d.harness_runtime || {};
+  const s  = hr.settings || {};
+  el.innerHTML = [
+    fwRow('Rate Limit', `${d.rate_limit ?? '--'}/min`, 'info'),
+    fwRow('Log Level', d.log_level || '--', 'info'),
+    fwRow('Checkpoint Interval', d.checkpoint_interval ?? '--', 'info'),
+    fwRow('Backpressure Threshold', d.backpressure_threshold_mb != null ? `${d.backpressure_threshold_mb} MB` : '--', 'info'),
+    s.memory_enabled != null ? fwRow('Memory Enabled', s.memory_enabled ? 'yes' : 'no', s.memory_enabled ? 'ok' : 'warn') : '',
+    s.tree_search_enabled != null ? fwRow('Tree Search', s.tree_search_enabled ? 'yes' : 'no', s.tree_search_enabled ? 'ok' : 'info') : '',
+  ].filter(Boolean).join('');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
