@@ -1201,6 +1201,8 @@ async function loadIntelligence() {
     loadTaskClassifier(),
     loadLogicPatterns(), loadLocalInsights(),
     loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(),
+    loadHintsStats(), loadMemorySupersedeHistory(),
+    loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(),
   ]);
 }
 
@@ -1265,7 +1267,11 @@ async function loadQueryTraces() {
 
 // ─── INTELLIGENCE: ADK STATUS ─────────────────────────────────────────────────
 async function loadADKStatus() {
-  const d  = await apiFetch('/adk/status');
+  const [d, disc, gaps] = await Promise.all([
+    apiFetch('/adk/status'),
+    apiFetch('/adk/discoveries'),
+    apiFetch('/adk/gaps'),
+  ]);
   const el = document.getElementById('adkStatusDetails');
   const badge = document.getElementById('adkStatusBadge');
   if (!el) return;
@@ -1273,13 +1279,20 @@ async function loadADKStatus() {
   const healthy = d.healthy !== false;
   if (badge) { badge.textContent = healthy ? 'healthy' : 'degraded'; badge.className = `card-badge badge-${healthy ? 'ok' : 'warn'}`; }
   const comps = d.components || {};
-  el.innerHTML = Object.entries(comps).map(([name, c]) => {
+  const compRows = Object.entries(comps).map(([name, c]) => {
     const avail = c.available;
     const label = name.replace(/_/g, ' ');
     const lastRun = c.last_updated || c.last_run;
     const age = lastRun ? new Date(lastRun).toLocaleString() : 'never';
     return fwRow(label, avail ? age : 'not yet run', avail ? 'ok' : 'info');
   }).join('') || fwRow('Components', 'none', 'info');
+  const discRow = disc ? fwRow('Discoveries', `${disc.total_features ?? 0} features · ${disc.releases_analyzed ?? 0} releases`, disc.total_features > 0 ? 'ok' : 'info') : '';
+  const gapRows = gaps ? [
+    fwRow('Gap Analysis', `${gaps.total_gaps ?? 0} gaps · ${gaps.high_priority ?? 0} high`, gaps.high_priority > 0 ? 'warn' : 'ok'),
+  ].join('') : '';
+  el.innerHTML = compRows +
+    (discRow || gapRows ? '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Discovery</div>' : '') +
+    discRow + gapRows;
 }
 
 // ─── INTELLIGENCE: ROUTING DECISIONS ─────────────────────────────────────────
@@ -1607,7 +1620,7 @@ async function loadSecurity() {
   await Promise.allSettled([
     loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(),
     loadSecDrift(), loadAgentPool(), loadSecCompliance(),
-    loadVulnAudit(), loadAuditSummary(), loadToolDenyStats(),
+    loadVulnAudit(), loadAuditSummary(), loadToolDenyStats(), loadHealthAudit(), loadHealthAlerts(),
   ]);
 }
 
@@ -1855,6 +1868,7 @@ async function loadOperations() {
     loadRalph(), loadTrainingData(), loadParityScorecard(),
     loadFleetSummary(), loadBudgetPolicy(), loadPortsRegistry(), loadHealthAggregate(),
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
+    loadHarnessScorecard(),
   ]);
 }
 
@@ -2335,6 +2349,202 @@ async function loadHealthAggregate() {
       return fwRow(`  ∟ ${name.replace(/^ai-/,'').replace(/-/g,' ')}`, st, c);
     }),
   ].join('');
+}
+
+// ─── INTELLIGENCE: HINTS STATISTICS ──────────────────────────────────────────
+async function loadHintsStats() {
+  const d  = await apiFetch('/aistack/hints/stats');
+  const el = document.getElementById('hintsStatsDetails');
+  const badge = document.getElementById('hintsStatsBadge');
+  if (!el) return;
+  if (!d || d.available === false) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  if (badge) { badge.textContent = `${d.hint_count ?? 0} hints`; badge.className = 'card-badge badge-ok'; }
+  const hints = d.top_hints || [];
+  el.innerHTML = [
+    fwRow('Total Hints', d.hint_count ?? 0, (d.hint_count || 0) > 0 ? 'ok' : 'info'),
+    hints.length ? '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Top Hints by Score</div>' : '',
+    ...hints.slice(0, 5).map(h => {
+      const score = h.score != null ? `${(h.score * 100).toFixed(0)}%` : '--';
+      return fwRow((h.title || h.id || '--').slice(0, 32), `${h.type || 'hint'} · ${score}`,
+        h.score >= 0.8 ? 'ok' : h.score >= 0.5 ? 'info' : 'warn');
+    }),
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: HARNESS SCORECARD ────────────────────────────────────────────
+async function loadHarnessScorecard() {
+  const d  = await apiFetch('/aistack/harness/scorecard');
+  const el = document.getElementById('harnessScoreDetails');
+  const badge = document.getElementById('harnessScoreBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const acc  = d.acceptance || {};
+  const disc = d.discovery  || {};
+  const inf  = d.inference_optimizations || {};
+  const accOk = acc.ok !== false;
+  if (badge) {
+    badge.textContent = accOk ? `${((acc.pass_rate || 0) * 100).toFixed(0)}% pass` : 'degraded';
+    badge.className = `card-badge badge-${accOk ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    '<div style="font-size:.55rem;color:var(--fg3);margin-bottom:.2rem;text-transform:uppercase">Acceptance</div>',
+    fwRow('Pass Rate', `${((acc.pass_rate || 0) * 100).toFixed(0)}% (target ${((acc.target || 0.7) * 100).toFixed(0)}%)`, accOk ? 'ok' : 'warn'),
+    fwRow('Passed / Total', `${acc.passed ?? '--'} / ${acc.total ?? '--'}`, accOk ? 'ok' : 'warn'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Discovery</div>',
+    fwRow('Invoked',        disc.invoked ?? 0,              'info'),
+    fwRow('Cache Hit Rate', disc.cache_hit_rate != null ? `${(disc.cache_hit_rate * 100).toFixed(0)}%` : '--', 'info'),
+    fwRow('Error Rate',     disc.error_rate    != null ? `${(disc.error_rate    * 100).toFixed(1)}%` : '--', disc.error_rate > 0.05 ? 'warn' : 'ok'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Inference Optimizations</div>',
+    fwRow('Prompt Cache',        inf.prompt_cache_policy_enabled  ? 'enabled' : 'off', inf.prompt_cache_policy_enabled  ? 'ok' : 'info'),
+    fwRow('Speculative Decode',  inf.speculative_decoding_enabled ? (inf.speculative_decoding_mode || 'enabled') : 'off', inf.speculative_decoding_enabled ? 'ok' : 'info'),
+    fwRow('Context Compression', inf.context_compression_enabled ? 'enabled' : 'off', inf.context_compression_enabled ? 'ok' : 'info'),
+  ].join('');
+}
+
+// ─── INTELLIGENCE: MEMORY SUPERSESSION HISTORY ───────────────────────────────
+async function loadMemorySupersedeHistory() {
+  const d  = await apiFetch('/aistack/memory/supersede/history');
+  const el = document.getElementById('memorySupersedeDetails');
+  const badge = document.getElementById('memorySupersedeBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const events = d.events || [];
+  if (badge) { badge.textContent = `${events.length} events`; badge.className = 'card-badge badge-info'; }
+  if (!events.length) { el.innerHTML = fwRow('Events', 'none recorded', 'info'); return; }
+  el.innerHTML = events.slice(0, 5).map(e => {
+    const ts    = e.created_at ? new Date(e.created_at).toLocaleDateString() : '--';
+    const label = (`${e.fact_id || '--'} → ${(e.replacement || '--').slice(0, 18)}`).slice(0, 36);
+    return fwRow(label, ts, 'info');
+  }).join('') +
+    (events.length > 5 ? fwRow(`+${events.length - 5} older`, '', 'info') : '');
+}
+
+// ─── SECURITY: HEALTH AUDIT TRAIL ─────────────────────────────────────────────
+async function loadHealthAudit() {
+  const d  = await apiFetch('/aistack/health/audit');
+  const el = document.getElementById('healthAuditDetails');
+  const badge = document.getElementById('healthAuditBadge');
+  if (!el) return;
+  if (!d || !Array.isArray(d)) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const warns = d.filter(e => e.status === 'warning').length;
+  const errs  = d.filter(e => e.status === 'error').length;
+  if (badge) {
+    badge.textContent = errs > 0 ? `${errs} errors` : warns > 0 ? `${warns} warnings` : `${d.length} ok`;
+    badge.className = `card-badge badge-${errs > 0 ? 'err' : warns > 0 ? 'warn' : 'ok'}`;
+  }
+  el.innerHTML = d.slice(0, 8).map(e => {
+    const ts  = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '--';
+    const col = e.status === 'error' ? 'err' : e.status === 'warning' ? 'warn' : 'ok';
+    return fwRow(`[${e.type || '--'}] ${(e.detail || '--').slice(0, 34)}`, ts, col);
+  }).join('') || fwRow('Events', 'none', 'info');
+}
+
+// ─── INTELLIGENCE: CACHE ANALYTICS ───────────────────────────────────────────
+async function loadCacheAnalytics() {
+  const d  = await apiFetch('/insights/cache/analytics');
+  const el = document.getElementById('cacheAnalyticsDetails');
+  const badge = document.getElementById('cacheAnalyticsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const c   = d.cache || {};
+  const pw  = d.cache_prewarm || {};
+  const hitPct = c.hit_pct != null ? `${c.hit_pct.toFixed(1)}%` : '--';
+  if (badge) {
+    badge.textContent = c.available ? `${hitPct} hit` : '--';
+    badge.className = `card-badge badge-${(c.hit_pct || 0) >= 50 ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Window', d.window || '7d', 'info'),
+    fwRow('Hit Rate', hitPct, (c.hit_pct || 0) >= 50 ? 'ok' : 'warn'),
+    fwRow('Hits', c.hits ?? 0,   'ok'),
+    fwRow('Misses', c.misses ?? 0, c.misses > c.hits ? 'warn' : 'info'),
+    fwRow('Sample Total', c.sample_total ?? 0, 'info'),
+    fwRow('Source', c.source || '--', 'info'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Cache Prewarm</div>',
+    fwRow('Enabled', pw.enabled ? 'yes' : 'no', pw.enabled ? 'ok' : 'info'),
+    fwRow('Active', pw.active ? 'yes' : 'no', pw.active ? 'ok' : 'warn'),
+    fwRow('Timer', pw.timer || '--', 'info'),
+  ].join('');
+}
+
+// ─── INTELLIGENCE: TOOL CALL PERFORMANCE ─────────────────────────────────────
+async function loadToolsPerformance() {
+  const d  = await apiFetch('/insights/tools/performance');
+  const el = document.getElementById('toolsPerfDetails');
+  const badge = document.getElementById('toolsPerfBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const s    = d.summary || {};
+  const errPct = s.error_rate_pct != null ? s.error_rate_pct.toFixed(1) + '%' : '--';
+  if (badge) {
+    badge.textContent = `${s.total_tools ?? 0} tools · ${errPct} err`;
+    badge.className = `card-badge badge-${(s.error_rate_pct || 0) < 5 ? 'ok' : 'warn'}`;
+  }
+  const tools = (d.top_tools || []).slice(0, 6);
+  el.innerHTML = [
+    fwRow('Total Calls', (s.total_calls ?? 0).toLocaleString(), 'info'),
+    fwRow('Total Tools', s.total_tools ?? 0, 'info'),
+    fwRow('Error Rate', errPct, (s.error_rate_pct || 0) < 5 ? 'ok' : 'warn'),
+    tools.length ? '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Top Tools (7d)</div>' : '',
+    ...tools.map(t => {
+      const p50 = t.p50_ms != null ? `${t.p50_ms.toFixed(0)}ms` : '--';
+      const ok  = (t.success_pct || 0) >= 90;
+      return fwRow(t.name || '--', `${(t.calls || 0).toLocaleString()} calls · p50 ${p50} · ${(t.success_pct || 0).toFixed(0)}%`, ok ? 'ok' : 'warn');
+    }),
+  ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: AI RECOMMENDATIONS ────────────────────────────────────────
+async function loadAIRecommendations() {
+  const d  = await apiFetch('/insights/actions/recommendations');
+  const el = document.getElementById('aiRecsDetails');
+  const badge = document.getElementById('aiRecsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const actions = d.actions || [];
+  if (badge) {
+    badge.textContent = `${actions.length} action${actions.length !== 1 ? 's' : ''}`;
+    badge.className = `card-badge badge-${actions.length > 0 ? 'ok' : 'info'}`;
+  }
+  if (!actions.length) { el.innerHTML = fwRow('Recommendations', 'none pending', 'info'); return; }
+  el.innerHTML = actions.slice(0, 6).map(a => {
+    const conf = a.confidence != null ? ` (${(a.confidence * 100).toFixed(0)}%)` : '';
+    const col  = a.safe ? 'ok' : 'warn';
+    return [
+      fwRow(`[${a.type || '--'}] ${a.action || '--'}${conf}`, a.safe ? 'safe' : 'review', col),
+      a.reason ? `<div style="font-size:.55rem;color:var(--fg3);padding-left:.6rem;margin-bottom:.2rem">${a.reason.slice(0, 60)}</div>` : '',
+    ].join('');
+  }).join('');
+}
+
+// ─── SECURITY: HEALTH ALERTS ──────────────────────────────────────────────────
+async function loadHealthAlerts() {
+  const d  = await apiFetch('/health/alerts');
+  const el = document.getElementById('healthAlertsDetails');
+  const badge = document.getElementById('healthAlertsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const alerts = d.alerts || [];
+  const s      = d.summary || {};
+  const crit   = s.by_severity?.critical ?? 0;
+  const warn   = s.by_severity?.warning  ?? 0;
+  if (badge) {
+    badge.textContent = s.total > 0 ? `${s.total} alerts` : '0 alerts';
+    badge.className = `card-badge badge-${crit > 0 ? 'err' : warn > 0 ? 'warn' : 'ok'}`;
+  }
+  el.innerHTML = s.total === 0
+    ? fwRow('Status', 'No active alerts', 'ok')
+    : [
+        fwRow('Total',    s.total       ?? 0, s.total > 0 ? 'warn' : 'ok'),
+        fwRow('Critical', crit,               crit > 0    ? 'err'  : 'ok'),
+        fwRow('Warning',  warn,               warn > 0    ? 'warn' : 'ok'),
+        fwRow('Info',     s.by_severity?.info ?? 0, 'info'),
+        fwRow('Acknowledged', s.acknowledged ?? 0, 'info'),
+        ...alerts.slice(0, 4).map(a => {
+          const col = a.severity === 'critical' ? 'err' : a.severity === 'warning' ? 'warn' : 'info';
+          return fwRow(`[${a.severity || '--'}] ${(a.message || '--').slice(0, 34)}`, a.source || '--', col);
+        }),
+      ].join('');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
