@@ -74,6 +74,29 @@ This means:
 - [ ] New configuration option → reflected in Inference Config or equivalent panel
 - [ ] All previously `--` fields that now have data → updated in same PR
 
+## Memory Discipline (all agents — 2026-05-23)
+
+**Three-tier memory system. Runaway memory accumulation is a defect.**
+
+| Tier | Location | Rule |
+|------|----------|------|
+| **Hot** | `MEMORY.md` (auto-loaded) | Index + pointers only. Hard limit: 150 lines. Never append phase dumps. |
+| **Warm** | Topic files (e.g. `phase68-audit.md`) | Active work detail. Read on demand. |
+| **Cold** | `archive/` | Write-once. Move warm files here after 2 sessions without reference. |
+
+**Degradation rules (all agents must follow):**
+1. Phase complete + deployed → collapse MEMORY.md entry to 1-line pointer → topic file
+2. Topic file not referenced in 2+ sessions → move to `archive/`
+3. MEMORY.md never grows — swap entries, don't append
+4. Promote a pattern to MEMORY.md only if it recurs in 2+ separate sessions
+5. Never store session-specific context (current task, in-progress state) in MEMORY.md
+6. `mcp_server_store_memory` writes go to topic files, not raw MEMORY.md dumps
+
+**Topic file naming:**
+- Active phase: `memory/phaseNN-<topic>.md`
+- Permanent references: `memory/infra-constraints.md`, `memory/agent-coordination.md`
+- Archive: `memory/archive/<topic>.md`
+
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
 - Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
