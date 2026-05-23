@@ -1204,7 +1204,7 @@ async function loadIntelligence() {
     loadHintsStats(), loadMemorySupersedeHistory(),
     loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
-    loadA2AReadiness(), loadWorkflowCompliance(),
+    loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(),
   ]);
 }
 
@@ -1873,7 +1873,7 @@ async function loadOperations() {
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
-    loadReadinessRadar(), loadWorkflowBlueprints(),
+    loadAIServicesDetail(), loadReadinessRadar(), loadWorkflowBlueprints(),
   ]);
 }
 
@@ -2908,6 +2908,55 @@ async function loadWorkflowBlueprints() {
       (bp.name || bp.workflow_id || '--').replace(/-/g, ' ').slice(0, 32),
       pol.primary_lane || '--', 'info');
   }).join('') + (bps.length > 8 ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${bps.length - 8} more</div>` : '');
+}
+
+
+async function loadSystemHealthInsights() {
+  const d = await apiFetch('/insights/system/health');
+  const el = document.getElementById('sysHealthInsightsDetails');
+  const badge = document.getElementById('sysHealthInsightsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const statusColor = s => s === 'healthy' ? 'ok' : s === 'degraded' ? 'warn' : s === 'critical' ? 'err' : 'info';
+  if (badge) {
+    badge.textContent = (d.status || '--').toUpperCase();
+    badge.className = `card-badge badge-${statusColor(d.status)}`;
+  }
+  const rh = d.recent_health || {};
+  const slowTools = (rh.slow_tools || []).map(t => t.tool_name || t.name || '?').join(', ');
+  const flakyTools = (rh.flaky_tools || []).map(t => t.tool_name || t.name || '?').join(', ');
+  const rt = d.routing || {};
+  const ch = d.cache || {};
+  el.innerHTML = [
+    fwRow('Status', d.status || '--', statusColor(d.status)),
+    (d.issues || []).length ? fwRow('Issues', d.issues.join(' · ').slice(0, 50), 'warn') : '',
+    rt.available ? fwRow('Local Routing', `${rt.local_pct != null ? rt.local_pct.toFixed(0) + '%' : '--'} · ${rt.local_n ?? 0} calls`, 'ok') : '',
+    ch.available ? fwRow('Cache Hit Rate', ch.hit_pct != null ? `${ch.hit_pct.toFixed(1)}%` : '--', (ch.hit_pct||0) >= 50 ? 'ok' : 'warn') : '',
+    slowTools ? fwRow('Slow Tools', slowTools.slice(0, 40), 'warn') : '',
+    flakyTools ? fwRow('Flaky Tools', flakyTools.slice(0, 40), 'warn') : '',
+  ].filter(Boolean).join('');
+}
+
+async function loadAIServicesDetail() {
+  const d = await apiFetch('/health/services/all', {}, 8000);
+  const el = document.getElementById('aiSvcDetailDetails');
+  const badge = document.getElementById('aiSvcDetailBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const svcs = d.services || {};
+  const entries = Object.entries(svcs);
+  const healthy = entries.filter(([, v]) => v.status === 'healthy').length;
+  if (badge) {
+    badge.textContent = `${healthy}/${entries.length} healthy`;
+    badge.className = `card-badge badge-${healthy === entries.length ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = entries.map(([id, info]) => {
+    const h = info.http_health || {};
+    const rt = h.response_time_ms != null ? `${h.response_time_ms}ms` : '--';
+    const st = info.status || 'unknown';
+    const col = st === 'healthy' ? 'ok' : st === 'degraded' ? 'warn' : 'err';
+    return fwRow(id.replace(/^ai-/, ''), `${st} · ${rt}`, col);
+  }).join('');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
