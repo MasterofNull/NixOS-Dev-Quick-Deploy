@@ -2923,17 +2923,21 @@ async function loadSystemHealthInsights() {
     badge.className = `card-badge badge-${statusColor(d.status)}`;
   }
   const rh = d.recent_health || {};
-  const slowTools = (rh.slow_tools || []).map(t => t.tool_name || t.name || '?').join(', ');
-  const flakyTools = (rh.flaky_tools || []).map(t => t.tool_name || t.name || '?').join(', ');
   const rt = d.routing || {};
   const ch = d.cache || {};
+  const slowRows = (rh.slow_tools || []).map(t =>
+    fwRow(`slow: ${t.tool || t.tool_name || '?'}`, `p95 ${t.p95_ms != null ? (t.p95_ms/1000).toFixed(1) + 's' : '--'} · ${t.calls ?? 0} calls`, 'warn')
+  );
+  const flakyRows = (rh.flaky_tools || []).map(t =>
+    fwRow(`flaky: ${t.tool || t.tool_name || '?'}`, `${t.success_pct != null ? t.success_pct.toFixed(0) + '%' : '--'} ok · ${t.error_count ?? 0} err${t.active_incident ? ' ⚠' : ''}`, 'err')
+  );
   el.innerHTML = [
     fwRow('Status', d.status || '--', statusColor(d.status)),
-    (d.issues || []).length ? fwRow('Issues', d.issues.join(' · ').slice(0, 50), 'warn') : '',
+    (d.issues || []).length ? fwRow('Issues', d.issues.join(' · ').slice(0, 60), 'warn') : '',
     rt.available ? fwRow('Local Routing', `${rt.local_pct != null ? rt.local_pct.toFixed(0) + '%' : '--'} · ${rt.local_n ?? 0} calls`, 'ok') : '',
     ch.available ? fwRow('Cache Hit Rate', ch.hit_pct != null ? `${ch.hit_pct.toFixed(1)}%` : '--', (ch.hit_pct||0) >= 50 ? 'ok' : 'warn') : '',
-    slowTools ? fwRow('Slow Tools', slowTools.slice(0, 40), 'warn') : '',
-    flakyTools ? fwRow('Flaky Tools', flakyTools.slice(0, 40), 'warn') : '',
+    ...slowRows,
+    ...flakyRows,
   ].filter(Boolean).join('');
 }
 
