@@ -735,7 +735,7 @@ in {
           huggingFaceFile = entry.file;
           sha256 = entry.sha256;
           model = "/var/lib/llama-cpp/models/${entry.file}";
-          ctxSize = lib.mkDefault (lib.min entry.contextSize adaptiveChatCtxCap);
+          ctxSize = lib.mkOverride 1100 (lib.min entry.contextSize adaptiveChatCtxCap);
         };
       warnings = let
         catalog = ai.llamaCpp.modelCatalog // defaultModelCatalog;

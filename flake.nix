@@ -503,7 +503,6 @@
               bun
               nodejs_22
               typescript
-              tailwind-language-server
             ];
             shellHook = ''
               export FRONTEND_DOMAIN_SHELL=1
@@ -577,7 +576,7 @@
               # Embedded / hardware
               verilator ghdl-llvm yosys openocd gcc-arm-embedded dtc qemu gdb minicom
               # Mobile / web / frontend
-              flutter android-tools nodejs_22 chromium playwright-driver bun typescript tailwind-language-server
+              flutter android-tools nodejs_22 chromium playwright-driver bun typescript
               # Scientific / docs
               pandoc texlive.combined.scheme-small R
               # GIS / spatial
