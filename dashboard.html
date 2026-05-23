@@ -744,10 +744,23 @@
     <div class="drawer-title">CONTROLS</div>
   </div>
   <div class="drawer-section">
-    <div class="drawer-section-title">System Actions</div>
+    <div class="drawer-section-title">Dashboard</div>
     <button class="drawer-btn" onclick="forceSync()">Force Sync (aq-qa 0)</button>
-    <button class="drawer-btn" onclick="refreshAll()">Refresh All Data</button>
-    <button class="drawer-btn" onclick="forceLayerRefresh()">Re-run Layer Health</button>
+    <button class="drawer-btn" onclick="refreshAll()">Refresh All Panels</button>
+    <button class="drawer-btn" onclick="forceLayerRefresh()">Re-run OSI Health</button>
+    <button class="drawer-btn" onclick="loadQA()">Re-run QA Check</button>
+  </div>
+  <div class="drawer-section">
+    <div class="drawer-section-title">Cache &amp; Memory</div>
+    <button class="drawer-btn" onclick="ctrlAction('/cache/warm','POST',null,'Warm semantic cache?')">Warm Cache</button>
+    <button class="drawer-btn" onclick="ctrlAction('/cache/clear','POST',null,'Clear semantic cache?')">Clear Cache</button>
+    <button class="drawer-btn" onclick="ctrlAction('/memory/recall','POST',{query:'recent agent activity',limit:5},null)">Recall Memory</button>
+  </div>
+  <div class="drawer-section">
+    <div class="drawer-section-title">Agent Ops</div>
+    <button class="drawer-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)">Sync PRSI State</button>
+    <button class="drawer-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)">Execute PRSI Queue</button>
+    <button class="drawer-btn" onclick="ctrlAction('/adapt','POST',{signal:'manual_refresh'},null)">Trigger Adaptation</button>
   </div>
   <div class="drawer-section">
     <div class="drawer-section-title">Endpoints</div>
@@ -756,6 +769,8 @@
     <div class="drawer-kv"><span>Switchboard</span><span>:8085</span></div>
     <div class="drawer-kv"><span>AIDB</span><span>:8002</span></div>
     <div class="drawer-kv"><span>llama.cpp</span><span>:8080</span></div>
+    <div class="drawer-kv"><span>Ralph</span><span>:8004</span></div>
+    <div class="drawer-kv"><span>CLI Bridge</span><span>:8089</span></div>
   </div>
   <div class="drawer-section">
     <div class="drawer-section-title">Legend</div>
