@@ -59,6 +59,8 @@ _COMPACTION_PROMPT_FILE: Path = Path(os.getenv(
 ))
 _HOT_REDIS_PREFIX: str = "clm:hot:"
 _TICK_INTERVAL: int = 60  # seconds between background promotion checks
+_WARM_MAX_SESSIONS: int = int(os.getenv("CLM_WARM_MAX_SESSIONS", "8"))  # Phase 65.1: K-LRU threshold
+_WARM_KLRU_K: int = int(os.getenv("CLM_WARM_KLRU_K", "3"))             # Phase 65.1: evict K LRU warm blocks
 
 # ---------------------------------------------------------------------------
 # Module singleton
@@ -111,6 +113,7 @@ class ContextLifecycleManager:
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._tick_task: Optional[asyncio.Task] = None
         self._compaction_prompt: Optional[str] = None
+        self._klru_evictions: int = 0   # Phase 65.1: lifetime K-LRU eviction counter
         _WARM_DIR.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -204,10 +207,13 @@ class ContextLifecycleManager:
             "thermal_tier": thermal,
             "compaction_suspended": thermal in ("critical", "shutdown"),
             "warm_dir": str(_WARM_DIR),
+            "klru_evictions": self._klru_evictions,
             "thresholds": {
                 "hot_idle_secs": _HOT_IDLE_SECS,
                 "warm_idle_secs": _WARM_IDLE_SECS,
                 "hot_pressure_pct": _HOT_PRESSURE_PCT,
+                "warm_max_sessions": _WARM_MAX_SESSIONS,
+                "warm_klru_k": _WARM_KLRU_K,
             },
         }
 
@@ -249,6 +255,11 @@ class ContextLifecycleManager:
                 if idle > _WARM_IDLE_SECS:
                     await self._demote_to_cold(sid, s)
 
+        # Phase 65.1: K-LRU eviction when warm tier exceeds max sessions
+        warm_count = sum(1 for s in self._sessions.values() if s.get("tier") == "warm")
+        if warm_count > _WARM_MAX_SESSIONS:
+            await self.apply_klru_pressure(k=_WARM_KLRU_K)
+
     @staticmethod
     def _report_pressure_to_scheduler(pressure_pct: float) -> None:
         """Phase 61.5: notify MLFQ scheduler of CLM Hot-tier pressure."""
@@ -257,6 +268,40 @@ class ContextLifecycleManager:
             get_scheduler().apply_clm_pressure(pressure_pct)
         except Exception:
             pass
+
+    async def apply_klru_pressure(self, k: int = 3) -> int:
+        """Phase 65.1: K-LRU eviction for the warm tier.
+
+        Evicts the K least-recently-used warm context blocks to cold storage.
+        Uses the existing `last_active` timestamp already tracked in `_sessions` —
+        no separate Redis hash needed (Codex Staff Eng review 2026-05-23).
+
+        Called from _promote_stale_sessions() when warm_count > _WARM_MAX_SESSIONS.
+        Returns the number of sessions actually evicted.
+        """
+        warm_sessions = [
+            (sid, s)
+            for sid, s in list(self._sessions.items())
+            if s.get("tier") == "warm"
+        ]
+        if not warm_sessions:
+            return 0
+
+        # Sort by last_active ascending — oldest (least recently used) first
+        warm_sessions.sort(key=lambda x: x[1].get("last_active", 0))
+        evicted = 0
+        for sid, s in warm_sessions[:k]:
+            try:
+                await self._demote_to_cold(sid, s)
+                evicted += 1
+                logger.info("clm.klru_evict session=%s last_active=%.0f", sid, s.get("last_active", 0))
+            except Exception as exc:
+                logger.debug("clm.klru_evict_failed session=%s exc=%s", sid, exc)
+        self._klru_evictions += evicted
+        if evicted:
+            logger.info("clm.klru_pressure evicted=%d warm_remaining=%d total_klru=%d",
+                        evicted, len(warm_sessions) - evicted, self._klru_evictions)
+        return evicted
 
     # ------------------------------------------------------------------
     # Tier demotion helpers
