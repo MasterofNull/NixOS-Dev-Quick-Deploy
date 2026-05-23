@@ -1130,7 +1130,7 @@ async function loadVectorGraph() {
     .force('center', d3.forceCenter(w/2, h/2))
     .force('coll',   d3.forceCollide(8));
   const link = g.append('g').selectAll('line').data(edges).enter().append('line')
-    .attr('stroke','rgba(0,217,255,.06)').attr('stroke-width',1);
+    .attr('stroke','rgba(0,217,255,.22)').attr('stroke-width',1);
   const node = g.append('g').selectAll('circle').data(data.nodes).enter().append('circle')
     .attr('r', d => (d.val || 1) + 3)
     .attr('fill', d => projColor(d.group || 'unknown'))
@@ -1138,8 +1138,9 @@ async function loadVectorGraph() {
     .call(d3.drag()
       .on('start', (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
       .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
-      .on('end',   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
-    .append('title').text(d => `${d.name || d.id} [${d.group || '?'}]`);
+      .on('end',   (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+  // append tooltip AFTER storing node selection — .append() returns children, not circles
+  node.append('title').text(d => `${d.name || d.id} [${d.group || '?'}]`);
   sim.on('tick', () => {
     link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
     node.attr('cx',d=>d.x).attr('cy',d=>d.y);
@@ -1188,6 +1189,7 @@ async function loadIntelligence() {
     loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
     loadTaskClassifier(),
     loadLogicPatterns(), loadLocalInsights(),
+    loadADKStatus(), loadRoutingDecisions(),
   ]);
 }
 
@@ -1221,6 +1223,97 @@ async function loadLocalInsights() {
     `font-size:.57rem;color:var(--fg2);white-space:pre-wrap;line-height:1.5;max-height:8rem;overflow:hidden" id="localInsightsPreview"></div>`;
   const previewEl = document.getElementById('localInsightsPreview');
   if (previewEl) previewEl.textContent = preview + (d.content && d.content.length > 400 ? '\n…' : '');
+}
+
+// ─── INTELLIGENCE: ADK STATUS ─────────────────────────────────────────────────
+async function loadADKStatus() {
+  const d  = await apiFetch('/adk/status');
+  const el = document.getElementById('adkStatusDetails');
+  const badge = document.getElementById('adkStatusBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const healthy = d.healthy !== false;
+  if (badge) { badge.textContent = healthy ? 'healthy' : 'degraded'; badge.className = `card-badge badge-${healthy ? 'ok' : 'warn'}`; }
+  const comps = d.components || {};
+  el.innerHTML = Object.entries(comps).map(([name, c]) => {
+    const avail = c.available;
+    const label = name.replace(/_/g, ' ');
+    const lastRun = c.last_updated || c.last_run;
+    const age = lastRun ? new Date(lastRun).toLocaleString() : 'never';
+    return fwRow(label, avail ? age : 'not yet run', avail ? 'ok' : 'info');
+  }).join('') || fwRow('Components', 'none', 'info');
+}
+
+// ─── INTELLIGENCE: ROUTING DECISIONS ─────────────────────────────────────────
+async function loadRoutingDecisions() {
+  const d  = await apiFetch('/routing/decisions');
+  const el = document.getElementById('routingDecisionsDetails');
+  const badge = document.getElementById('routingDecisionsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const items = d.items || [];
+  const count = d.count ?? items.length;
+  if (badge) { badge.textContent = `${count} recent`; badge.className = 'card-badge badge-info'; }
+  if (!items.length) { el.innerHTML = fwRow('Decisions', 'no audit log entries', 'info'); return; }
+  const successN = items.filter(i => i.outcome === 'success').length;
+  el.innerHTML = [
+    fwRow('Total',    count,                    'info'),
+    fwRow('Success',  `${successN}/${items.length}`, successN === items.length ? 'ok' : 'warn'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Recent Decisions</div>',
+    ...items.slice(0, 8).map(i => {
+      const ts   = i.timestamp ? new Date(i.timestamp).toLocaleTimeString() : '--';
+      const col  = i.outcome === 'success' ? 'ok' : i.outcome === 'error' ? 'err' : 'warn';
+      const lat  = i.latency_ms != null ? ` ${i.latency_ms.toFixed(0)}ms` : '';
+      const risk = i.risk_tier ? ` [${i.risk_tier}]` : '';
+      return fwRow(`${i.tool_name || '--'}${risk}`, `${i.outcome || '--'}${lat}`, col);
+    }),
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: WORKFLOW STATISTICS ─────────────────────────────────────────
+async function loadWorkflowStats() {
+  const [stats, hist] = await Promise.all([
+    apiFetch('/workflows/statistics'),
+    apiFetch('/workflows/history'),
+  ]);
+  const el = document.getElementById('workflowStatsDetails');
+  const badge = document.getElementById('workflowStatsBadge');
+  if (!el) return;
+  if (!stats) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const total = stats.total_executions ?? 0;
+  const rate  = stats.success_rate ?? 0;
+  const color = total > 0 ? (rate >= 0.9 ? 'ok' : rate >= 0.7 ? 'warn' : 'err') : 'info';
+  if (badge) { badge.textContent = total > 0 ? `${total} runs` : 'no runs'; badge.className = `card-badge badge-${color}`; }
+  const recent = ((hist || {}).executions || []).slice(0, 4);
+  el.innerHTML = [
+    fwRow('Total Executions',  total,                                   total > 0 ? 'ok' : 'info'),
+    fwRow('Success Rate',      total > 0 ? `${(rate*100).toFixed(0)}%` : '--', color),
+    fwRow('Avg Duration',      stats.avg_duration > 0 ? `${stats.avg_duration.toFixed(1)}s` : '--', 'info'),
+    fwRow('Last 24h',          stats.recent_executions_24h ?? 0, 'info'),
+    ...recent.map(e => fwRow((e.template_id || e.id || '--').slice(0,20), e.status || '--',
+      e.status === 'completed' ? 'ok' : e.status === 'failed' ? 'err' : 'info')),
+  ].join('');
+}
+
+// ─── OPERATIONS: COLLABORATION METRICS ───────────────────────────────────────
+async function loadCollaborationMetrics() {
+  const d  = await apiFetch('/collaboration/metrics/summary');
+  const el = document.getElementById('collaborationDetails');
+  const badge = document.getElementById('collaborationBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const teams = d.teams_tracked ?? 0;
+  const tasks = d.total_tasks  ?? 0;
+  if (badge) { badge.textContent = teams > 0 ? `${teams} teams` : 'no data'; badge.className = 'card-badge badge-info'; }
+  const cmp = d.comparison || {};
+  el.innerHTML = [
+    fwRow('Teams Tracked',     teams, teams > 0 ? 'ok' : 'info'),
+    fwRow('Individual Agents', d.individual_agents ?? 0, 'info'),
+    fwRow('Total Tasks',       tasks, tasks > 0 ? 'ok' : 'info'),
+    tasks > 0 ? fwRow('Team Success',  `${(cmp.team_success_rate*100).toFixed(0)}%`,  'ok')  : '',
+    tasks > 0 ? fwRow('Indiv Success', `${(cmp.individual_success_rate*100).toFixed(0)}%`, 'info') : '',
+    cmp.recommendation ? fwRow('Recommendation', cmp.recommendation.slice(0,30), 'info') : '',
+  ].filter(Boolean).join('');
 }
 
 // ─── SECURITY ─────────────────────────────────────────────────────────────────
@@ -1700,6 +1793,7 @@ async function loadOperations() {
     loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
     loadRalph(), loadTrainingData(), loadParityScorecard(),
     loadFleetSummary(), loadBudgetPolicy(), loadPortsRegistry(), loadHealthAggregate(),
+    loadWorkflowStats(), loadCollaborationMetrics(),
   ]);
 }
 
