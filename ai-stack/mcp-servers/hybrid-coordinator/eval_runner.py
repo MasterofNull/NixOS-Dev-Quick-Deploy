@@ -303,6 +303,51 @@ async def _fetch_ragas_averages(window: int = 100) -> Dict[str, Any]:
     return {}
 
 
+async def _fetch_ragas_by_model(window: int = 100) -> Dict[str, Any]:
+    """Return per-model RAGAS averages from the last N eval_results rows.
+
+    Supports the model-agnostic mandate: every active model's eval metrics
+    are surfaced individually so no model is invisible in monitoring.
+    """
+    if _pg is None:
+        return {}
+    await ensure_schema()
+    try:
+        rows = await _pg.fetch_all(
+            """
+            SELECT
+                COALESCE(llm_model, 'unknown') AS model,
+                AVG(answer_relevance)           AS answer_relevance_avg,
+                AVG(context_precision)          AS context_precision_avg,
+                AVG(faithfulness)               AS faithfulness_avg,
+                COUNT(*)                        AS sample_count
+            FROM (
+                SELECT llm_model, answer_relevance, context_precision, faithfulness
+                FROM eval_results
+                ORDER BY run_at DESC
+                LIMIT %s
+            ) sub
+            GROUP BY COALESCE(llm_model, 'unknown')
+            ORDER BY sample_count DESC
+            """,
+            window,
+        )
+        def _fmt(v: Any) -> Optional[float]:
+            return round(float(v), 4) if v is not None else None
+        return {
+            r["model"]: {
+                "answer_relevance_avg": _fmt(r["answer_relevance_avg"]),
+                "context_precision_avg": _fmt(r["context_precision_avg"]),
+                "faithfulness_avg": _fmt(r["faithfulness_avg"]),
+                "sample_count": int(r["sample_count"] or 0),
+            }
+            for r in rows
+        }
+    except Exception as exc:
+        logger.debug("eval_runner._fetch_ragas_by_model error: %s", exc)
+    return {}
+
+
 async def _run_aq_qa() -> Dict[str, Any]:
     """Run aq-qa 0 as subprocess; parse passed/failed counts."""
     if not _AQ_QA_SCRIPT.exists():
@@ -429,14 +474,16 @@ async def handle_eval_trend(request) -> Any:
     from aiohttp import web
     try:
         limit = min(int(request.rel_url.query.get("limit", 10)), 50)
-        runs, ragas = await asyncio.gather(
+        runs, ragas, by_model = await asyncio.gather(
             _fetch_trend(limit),
             _fetch_ragas_averages(window=100),
+            _fetch_ragas_by_model(window=100),
         )
         return web.json_response({
             "runs": runs,
             "count": len(runs),
-            "ragas_metrics": ragas,  # Phase 60.5 — faithfulness_avg, answer_relevance_avg, context_precision_avg
+            "ragas_metrics": ragas,   # Phase 60.5 — global averages
+            "ragas_by_model": by_model,  # model-agnostic per-model breakdown
         })
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)

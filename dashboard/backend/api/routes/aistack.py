@@ -1797,6 +1797,19 @@ async def get_circuit_breakers() -> Dict[str, Any]:
     }
 
 
+@router.get("/stats/delegate")
+async def get_delegate_stats() -> Dict[str, Any]:
+    """Get delegation stats (24h window) from hybrid coordinator."""
+    result = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/stats/delegate",
+        None,
+        _hybrid_headers(),
+    )
+    if result is None:
+        raise HTTPException(status_code=503, detail="Delegate stats unavailable")
+    return result
+
+
 @router.get("/discovery/signals")
 async def get_discovery_signals() -> Dict[str, Any]:
     """Return keyword/discovery signal data from the current local source when available."""

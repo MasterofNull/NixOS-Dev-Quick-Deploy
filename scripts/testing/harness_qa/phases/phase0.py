@@ -1063,6 +1063,8 @@ def _check_local_model_config(ctx: RunContext) -> list[CheckResult]:
                 results.append(failed(4, "60.0.1", "local-model-config.yaml thinking guard", "chat.enable_thinking must be false"))
             else:
                 results.append(passed(4, "60.0.1", "local-model-config.yaml valid (schema + thinking guard)"))
+        except ModuleNotFoundError:
+            results.append(skipped(4, "60.0.1", "local-model-config.yaml parse (PyYAML not in this env; install pyyaml)"))
         except Exception as exc:
             results.append(failed(4, "60.0.1", "local-model-config.yaml parse", str(exc)))
 
@@ -1177,6 +1179,8 @@ def _check_clm(ctx: RunContext) -> list[CheckResult]:
                 results.append(passed(4, "61.2", "clm-compaction-prompt.yaml valid (template + {session_id})"))
             else:
                 results.append(failed(4, "61.2", "clm-compaction-prompt.yaml", "missing template or {session_id} placeholder"))
+        except ModuleNotFoundError:
+            results.append(skipped(4, "61.2", "clm-compaction-prompt.yaml parse (PyYAML not in this env; install pyyaml)"))
         except Exception as exc:
             results.append(failed(4, "61.2", "clm-compaction-prompt.yaml parse", str(exc)))
 
