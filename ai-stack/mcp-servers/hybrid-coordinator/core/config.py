@@ -483,7 +483,7 @@ class Config:
         ],
     )
     AI_SPECULATIVE_DECODING_ENABLED = os.getenv("AI_SPECULATIVE_DECODING_ENABLED", "false").lower() == "true"
-    AI_SPECULATIVE_DECODING_MODE = os.getenv("AI_SPECULATIVE_DECODING_MODE", "draft-model")
+    AI_SPECULATIVE_DECODING_MODE = os.getenv("AI_SPECULATIVE_DECODING_MODE", "draft-mtp")
     # Context budgets scale with generation budgets: synthesis generates 2000 tokens,
     # so it needs proportional context to avoid under-informed responses.
     # Compressor always runs (unconditional) — these are density targets, not just ceilings.

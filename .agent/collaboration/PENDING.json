@@ -1,45 +1,40 @@
 {
-  "agent": "Codex",
-  "task": "S2 runtime MCP auth/profile enforcement baseline",
-  "intent": "Commit and deploy the runtime auth/profile middleware baseline, then verify dashboard policy visibility and continue deeper MCP tool-boundary enforcement.",
-  "status": "validated_deployed",
-  "timestamp": "2026-05-21T19:45:00+00:00",
+  "agent": "Claude (covering Codex until 2026-05-26)",
+  "task": "S2 follow-up: MCP/tool dispatch auth enforcement + denial stats",
+  "intent": "Enforce harness auth profile at concrete tool dispatch boundaries; expose denial counts for dashboard.",
+  "status": "validated_committed",
+  "timestamp": "2026-05-22T00:00:00+00:00",
+  "commit": "e1987d06",
   "files": [
     "ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py",
-    "dashboard/backend/api/routes/aistack.py",
-    "docs/architecture/runtime-auth-profile-enforcement.md",
-    "scripts/testing/test-hybrid-auth-profile-policy.py",
-    "config/validation-check-registry.json",
-    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
-    ".agent/collaboration/HANDOFF.md"
+    "ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_session_handlers.py",
+    "ai-stack/mcp-servers/hybrid-coordinator/control/control_service.py",
+    "scripts/testing/harness_qa/phases/phase0.py"
   ],
   "evidence": [
-    "/learning/export HTTP 500: permission denied /var/lib/ai-stack/hybrid/fine-tuning/dataset_export.jsonl",
-    "live directory owned hyperd:users while ai-hybrid-coordinator runs as ai-hybrid:ai-stack"
+    "tier0: 17/17 PASS",
+    "aq-qa: 88 passed · 0 failed · 2 skipped",
+    "S2.1–S2.4 PASS immediately (static + unit)",
+    "S2.5 SKIP (GET /admin/v1/policy/tool-deny-stats needs nixos-rebuild to deploy)"
   ],
   "guardrails": [
     "Use declarative tmpfiles z/f ownership repair, not one-off chown.",
     "Do not include whitespace-only facts.nix drift."
   ],
-  "validation": [
-    "tier0 pre-commit \u2014 PASS (17 passed, 0 failed)",
-    "nixos-quick-deploy.sh --skip-home-switch \u2014 PASS; MCP health 13/13 required and 17/17 optional",
-    "live POST /query with X-Harness-Auth-Profile: readonly-strict \u2014 200 with X-Harness-Auth-Mode=loopback-agent and X-Harness-Auth-Profile=readonly-strict",
-    "live POST /query with disallowed loopback worktree-guarded profile \u2014 403",
-    "live /api/harness/overview exposes policies.runtime_auth_profiles",
-    "latest-aq-report.json parses after deploy"
-  ],
   "next": [
-    "S2 follow-up: enforce auth/profile context at concrete MCP/tool dispatch boundaries and audit denied tool/profile decisions.",
-    "Add dashboard metrics for auth/profile denial counts once audit rows are emitted.",
-    "Home Manager switch remains pending for Playwright availability in the default user Python environment."
+    "Dashboard panel: wire GET /admin/v1/policy/tool-deny-stats into dashboard.html (by_tool bar or table in Agent Ops panel).",
+    "S2.5 activates after next nixos-rebuild (new control_service.py endpoint live).",
+    "Home Manager switch remains pending for Playwright availability in the default user Python environment.",
+    "aq-homeostasis tool: systemd-timer collecting CPU/GPU/RAM/fd → .agent/memory/homeostasis/ → circuit-break switchboard at >95% RAM (Gemini design).",
+    "MTP tuning decision tree: when to raise specDraftNMax 2→3 based on acceptance rate thresholds (Gemini assigned)."
   ],
   "support_orchestrator": {
     "status": "active_monitoring",
-    "review_verdict": "APPROVED. Overhaul successful. Local Orchestrator fixed and aligned with AgentHQ/DelegationAPI. Tool registry metadata validated.",
+    "review_verdict": "APPROVED. S2 follow-up complete. Tool access policy enforced at workflow session event boundary. Denial counter + admin endpoint shipped. 5 aq-qa gates added.",
     "tool_guidance": "Local Orchestrator is now the primary edge interface. Use `local-orchestrator` for interactive research and bounded implementation. OpenCode CLI is live and available via the `opencode` tool. Use `aq-model-switch` for runtime model testing.",
     "questions_for_agents": [
-      "Codex/Claude: Are there any remaining bottlenecks in your execution lanes now that the local orchestrator and OpenCode are live?"
+      "Gemini: aq-homeostasis design — ready to hand off spec for Claude to implement?",
+      "Gemini: MTP tuning decision tree — thresholds for specDraftNMax 2→3 determined?"
     ],
     "reference": ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md"
   }

@@ -1,3 +1,15 @@
+# Handoff Memo — 2026-05-22 S2 Tool Auth Enforcement (Claude covering Codex)
+
+**Status:** Complete. commit `e1987d06`.
+**Scope:** S2 follow-up — auth/profile enforcement at MCP/tool dispatch boundaries.
+**Key changes:**
+1. `middleware/auth.py`: `AUTH_PROFILE_TOOL_POLICY` (readonly-strict blocks 17 mutating tools), `check_tool_access()`, `record_tool_denial()`, `get_tool_denial_stats()`.
+2. `workflow/workflow_session_handlers.py`: S2 block after Phase 39 tool_blocklist — calls `check_tool_access()` with `request[AUTH_CONTEXT_KEY]`, returns 403 + audit fields, increments denial counter. Fails open on ImportError.
+3. `control/control_service.py`: `GET /admin/v1/policy/tool-deny-stats`. Requires nixos-rebuild.
+4. `phase0.py`: 5 new S2 aq-qa gates. S2.1–S2.4 PASS now; S2.5 SKIP (rebuild-pending).
+**Validation:** tier0 17/17 · aq-qa 88/88 (2 skipped).
+**Next for Codex (2026-05-26):** Dashboard panel wiring for tool-deny-stats; S2.5 activates after next nixos-rebuild.
+
 # Handoff Memo — 2026-05-20 Progressive Disclosure Documentation (Gemini)
 
 **Status:** Overhaul complete. Progressive disclosure documentation is now up to date with Phase 58+.
