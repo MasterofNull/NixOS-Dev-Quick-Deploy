@@ -93,10 +93,9 @@ Anti-gaming mandate: fix root producers, never patch labels.
 - K-LRU CLM (65.1), contradiction events (65.2), constraints array (65.3) for coordinator
 - KV cache q8_0 (66.1)
 
-### Next planned: Phase 67 dashboard elevation (67.1-67.3) — no rebuild needed
-- 67.1: Gantt trace visualization enhancement (fuller SVG with axes)
-- 67.2: Agent success/failure gauge panel
-- 67.3: Mission Control — active session monitoring grid
+### Phase 67 dashboard elevation (commit 706e4424) — COMPLETE
+- **Agent Outcomes Gauge** (Intelligence): `/query/traces` → SVG donut success/slow/error classification
+- **Mission Control** (Operations): `/aistack/orchestration/sessions` → active session grid with status colors
 
 ## Current State
 - **aq-qa**: 92/92 PASS · 0 failed · 2 skipped (0.5.6 timing, 0.5.7 report-backed)

@@ -1129,6 +1129,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_graphrag(ctx))
     results.extend(_check_s2_tool_auth_policy(ctx))
     results.extend(_check_local_agent_docs(ctx))
+    results.extend(_check_phase67_dashboard(ctx))
     return results
 
 
@@ -1651,5 +1652,56 @@ def _check_local_agent_docs(ctx: RunContext) -> list[CheckResult]:
             results.append(failed(4, "LA.4", "aq-chat harness injection", f"missing: {', '.join(missing)}"))
         else:
             results.append(passed(4, "LA.4", "aq-chat: harness-aware system prompt injection + behavioral rules wired"))
+
+    return results
+
+
+def _check_phase67_dashboard(ctx: RunContext) -> list[CheckResult]:
+    """Phase 67: Agent Outcomes Gauge (67.1) + Mission Control grid (67.2) dashboard panels."""
+    results: list[CheckResult] = []
+    html = (ctx.repo_root / "dashboard.html").read_text()
+    js   = (ctx.repo_root / "assets" / "dashboard.js").read_text()
+
+    # 67.1.a — HTML card IDs present
+    missing_html = [i for i in ["section-agent-outcomes", "agentOutcomesDetails", "agentOutcomesBadge"] if i not in html]
+    if missing_html:
+        results.append(failed(4, "67.1.a", "Agent Outcomes Gauge HTML", f"missing IDs: {missing_html}"))
+    else:
+        results.append(passed(4, "67.1.a", "Agent Outcomes Gauge: HTML card present (section-agent-outcomes)"))
+
+    # 67.1.b — JS function defined
+    if "async function loadAgentOutcomes" not in js:
+        results.append(failed(4, "67.1.b", "loadAgentOutcomes", "not defined in dashboard.js"))
+    else:
+        results.append(passed(4, "67.1.b", "loadAgentOutcomes: defined in dashboard.js"))
+
+    # 67.1.c — wired into Intelligence wave 2 (block containing loadAIMetricsDetail)
+    wave2_start = js.find("loadA2AReadiness")
+    wave2_block = js[wave2_start:wave2_start + 500] if wave2_start >= 0 else ""
+    if "loadAgentOutcomes" not in wave2_block:
+        results.append(failed(4, "67.1.c", "loadAgentOutcomes wave-2 wiring", "not in Intelligence wave 2"))
+    else:
+        results.append(passed(4, "67.1.c", "loadAgentOutcomes: wired into Intelligence wave 2"))
+
+    # 67.2.a — HTML card IDs present
+    missing_html2 = [i for i in ["section-mission-control", "missionControlDetails", "missionControlBadge"] if i not in html]
+    if missing_html2:
+        results.append(failed(4, "67.2.a", "Mission Control HTML", f"missing IDs: {missing_html2}"))
+    else:
+        results.append(passed(4, "67.2.a", "Mission Control: HTML card present (section-mission-control)"))
+
+    # 67.2.b — JS function defined
+    if "async function loadMissionControl" not in js:
+        results.append(failed(4, "67.2.b", "loadMissionControl", "not defined in dashboard.js"))
+    else:
+        results.append(passed(4, "67.2.b", "loadMissionControl: defined in dashboard.js"))
+
+    # 67.2.c — wired into Operations wave 2 (first occurrence = call site in wave 2)
+    ops_start = js.find("loadWorkflowBlueprints")  # first occurrence = wave 2 call site
+    ops_block = js[ops_start:ops_start + 300] if ops_start >= 0 else ""
+    if "loadMissionControl" not in ops_block:
+        results.append(failed(4, "67.2.c", "loadMissionControl wave-2 wiring", "not in Operations wave 2"))
+    else:
+        results.append(passed(4, "67.2.c", "loadMissionControl: wired into Operations wave 2"))
 
     return results
