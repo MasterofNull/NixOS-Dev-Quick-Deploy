@@ -1204,6 +1204,7 @@ async function loadIntelligence() {
     loadHintsStats(), loadMemorySupersedeHistory(),
     loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
+    loadA2AReadiness(), loadWorkflowCompliance(),
   ]);
 }
 
@@ -1872,6 +1873,7 @@ async function loadOperations() {
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
+    loadReadinessRadar(),
   ]);
 }
 
@@ -2768,6 +2770,81 @@ async function loadHealthCategories() {
     badge.className = 'card-badge badge-ok';
   }
   el.innerHTML = rows.join('') || fwRow('Status', 'No data', 'info');
+}
+
+
+async function loadA2AReadiness() {
+  const d = await apiFetch('/insights/workflows/a2a-readiness');
+  const el = document.getElementById('a2aReadyDetails');
+  const badge = document.getElementById('a2aReadyBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const ok = d.status === 'ready';
+  if (badge) {
+    badge.textContent = (d.status || '--').toUpperCase();
+    badge.className = `card-badge badge-${ok ? 'ok' : d.status === 'partial' ? 'warn' : 'info'}`;
+  }
+  el.innerHTML = [
+    fwRow('Protocol', `v${d.protocol_version || '--'}`, 'info'),
+    fwRow('Status', d.status || '--', ok ? 'ok' : 'warn'),
+    fwRow('Streaming', d.streaming ? 'yes' : 'no', d.streaming ? 'ok' : 'info'),
+    fwRow('Push Notifications', d.push_notifications ? 'yes' : 'no', d.push_notifications ? 'ok' : 'info'),
+    fwRow('State History', d.state_transition_history ? 'yes' : 'no', d.state_transition_history ? 'ok' : 'info'),
+    d.capabilities ? fwRow('Capabilities', Object.keys(d.capabilities || {}).filter(k => d.capabilities[k]).join(', ') || 'none', 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+async function loadWorkflowCompliance() {
+  const d = await apiFetch('/insights/workflows/compliance');
+  const el = document.getElementById('wfComplianceDetails');
+  const badge = document.getElementById('wfComplianceBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const ic = d.intent_contract || {};
+  const cov = ic.contract_coverage_pct;
+  if (badge) {
+    badge.textContent = cov != null ? `${cov.toFixed(0)}% coverage` : '--';
+    badge.className = `card-badge badge-${(cov||0) >= 90 ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Total Runs', ic.total_runs ?? 0, 'info'),
+    fwRow('With Contract', ic.with_contract ?? 0, 'ok'),
+    fwRow('Missing Contract', ic.missing_contract ?? 0, ic.missing_contract ? 'warn' : 'ok'),
+    fwRow('Coverage', cov != null ? `${cov.toFixed(1)}%` : '--', (cov||0) >= 90 ? 'ok' : 'warn'),
+  ].join('');
+}
+
+async function loadReadinessRadar() {
+  const el = document.getElementById('readinessRadarDetails');
+  const badge = document.getElementById('readinessRadarBadge');
+  if (!el) return;
+  const areas = [
+    ['observability', '/insights/observability/readiness'],
+    ['deployments',   '/insights/deployments/readiness'],
+    ['testing',       '/insights/testing/readiness'],
+    ['improvements',  '/insights/improvements/readiness'],
+    ['profiling',     '/insights/performance/profiling'],
+    ['experiments',   '/insights/experiments/readiness'],
+    ['patterns',      '/insights/patterns/readiness'],
+    ['roadmap',       '/insights/roadmap/readiness'],
+  ];
+  const results = await Promise.allSettled(areas.map(([, ep]) => apiFetch(ep)));
+  const statusColor = s => s === 'active' || s === 'ready' ? 'ok' : s === 'watch' ? 'warn' : s === 'pending' ? 'info' : 'info';
+  let activeCount = 0;
+  const rows = results.map((r, i) => {
+    const [name] = areas[i];
+    const d = r.status === 'fulfilled' ? r.value : null;
+    if (!d) return fwRow(name, 'unavailable', 'warn');
+    const status = d.status || '--';
+    const fc = d.feature_count ?? d.phases ? '—' : '--';
+    if (status === 'active' || status === 'ready') activeCount++;
+    return fwRow(name, `${status} · ${d.feature_count != null ? d.feature_count + ' features' : '--'}`, statusColor(status));
+  });
+  if (badge) {
+    badge.textContent = `${activeCount}/${areas.length} active`;
+    badge.className = `card-badge badge-${activeCount > 0 ? 'ok' : 'info'}`;
+  }
+  el.innerHTML = rows.join('');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
