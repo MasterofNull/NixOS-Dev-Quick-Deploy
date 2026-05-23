@@ -28,8 +28,9 @@ class LocalModelClient:
     ) -> Any:
         """Execute chat completion against the local model."""
         url = f"{self.llama_url}/v1/chat/completions"
+        model_id = os.getenv("AI_LOCAL_MODEL_ID", "local-model")
         payload = {
-            "model": "local",
+            "model": model_id,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,

@@ -158,6 +158,7 @@ You are grounded in this specific running system. Reference real files, ports, a
 
     async def _discover_pool(self):
         """Discover available agents from the system pool."""
+        local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local-model")
         try:
             offloading_path = REPO_ROOT / "ai-stack" / "offloading"
             if str(offloading_path) not in sys.path:
@@ -166,23 +167,16 @@ You are grounded in this specific running system. Reference real files, ports, a
             from agent_pool_manager import AgentPoolManager
             self.pool_manager = AgentPoolManager()
             self.available_agents = {
-                "local": "Local Llama.cpp (35B)",
+                "local": f"Local Inference ({local_model_id})",
                 **{a.agent_id: f"{a.name} ({a.model_id})" for a in self.pool_manager.agents.values()}
             }
         except Exception as e:
             console.print(f"[dim]Note: Agent pool discovery restricted ({e})[/]")
-            self.available_agents = {"local": "Local Llama.cpp (35B)"}
+            self.available_agents = {"local": f"Local Inference ({local_model_id})"}
 
     async def _get_active_model(self) -> str:
         if self.active_profile == "local":
-            try:
-                resp = await self.client.get(f"{self.llama_url}/v1/models")
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return data.get("data", [{}])[0].get("id", "local-qwen")
-            except Exception:
-                pass
-            return "local-qwen"
+            return os.getenv("AI_LOCAL_MODEL_ID", "local-model")
         return self.available_agents.get(self.active_profile, self.active_profile)
 
     async def _stream_chat(self, prompt: str):
@@ -190,9 +184,9 @@ You are grounded in this specific running system. Reference real files, ports, a
         
         thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
         with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
-            target_url = f"{self.llama_url}/v1/chat/completions"
+            local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
             payload = {
-                "model": "local" if self.active_profile == "local" else self.active_profile,
+                "model": local_model_id if self.active_profile == "local" else self.active_profile,
                 "messages": self.context_history,
                 "stream": True,
                 "temperature": self.temperature
