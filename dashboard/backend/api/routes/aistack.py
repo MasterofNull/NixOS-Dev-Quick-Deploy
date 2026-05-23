@@ -1590,9 +1590,31 @@ async def submit_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
 
 @router.get("/aidb/health/{probe}")
 async def proxy_aidb_health(probe: str) -> Dict[str, Any]:
-    """Proxy AIDB health endpoints via cluster DNS."""
+    """Proxy AIDB health endpoints via cluster DNS.
+
+    For 'detailed': synthesize from live /health/live + /health/ready rather
+    than returning the cached summary that shows startup_complete=false until
+    the background startup_probe() fires.
+    """
     if probe not in ("health", "live", "ready", "startup", "detailed"):
         raise HTTPException(status_code=404, detail="Unsupported probe")
+    if probe == "detailed":
+        live, ready = await asyncio.gather(
+            fetch_with_fallback(f"{SERVICES['aidb']}/health/live", None),
+            fetch_with_fallback(f"{SERVICES['aidb']}/health/ready", None),
+        )
+        if live is None and ready is None:
+            raise HTTPException(status_code=503, detail="AIDB health unavailable")
+        live_status = (live or {}).get("status")
+        ready_status = (ready or {}).get("status")
+        startup_complete = live_status in ("healthy", "ok") and ready_status in ("healthy", "ok")
+        return {
+            "service": "aidb",
+            "startup_complete": startup_complete,
+            "liveness": live,
+            "readiness": ready,
+            "timestamp": (live or ready or {}).get("timestamp"),
+        }
     path = f"/health/{probe}" if probe != "health" else "/health"
     result = await fetch_with_fallback(f"{SERVICES['aidb']}{path}", None)
     if result is None:
@@ -2338,10 +2360,11 @@ async def proxy_tool_deny_stats() -> Dict[str, Any]:
 
 @router.get("/local-insights/latest")
 async def get_local_insights_latest() -> Dict[str, Any]:
-    """Read the latest aq-insights output from .agent/memory/qwen-insights-*.md.
+    """Read the latest aq-insights output from .agent/memory/.
 
-    Returns the most recent harness analysis produced by `aq-insights` so the
-    dashboard can display it without re-running the full LLM inference call.
+    Accepts both new model-agnostic naming (local-insights-*.md) and legacy
+    Qwen-branded files (qwen-insights-*.md) for backward compatibility.
+    Returns the most recent harness analysis produced by `aq-insights`.
     """
     memory_dir = _repo_root() / ".agent" / "memory"
     empty: Dict[str, Any] = {
@@ -2354,7 +2377,11 @@ async def get_local_insights_latest() -> Dict[str, Any]:
     if not memory_dir.is_dir():
         return empty
     try:
-        files = sorted(memory_dir.glob("qwen-insights-*.md"), reverse=True)
+        files = sorted(
+            list(memory_dir.glob("local-insights-*.md")) + list(memory_dir.glob("qwen-insights-*.md")),
+            key=lambda p: p.name,
+            reverse=True,
+        )
     except Exception:
         return empty
     if not files:
@@ -4092,70 +4119,57 @@ async def get_switchboard_profiles() -> Dict[str, Any]:
 @router.get("/task-classification/stats")
 async def get_task_classification_stats() -> Dict[str, Any]:
     """
-    Return task complexity routing statistics from the hybrid coordinator.
-    Reads tool_audit.jsonl to aggregate local vs remote routing decisions.
+    Return tool-call audit statistics from tool_audit.jsonl.
+
+    The audit log schema (written by S2 tool-auth middleware) contains:
+      timestamp, service, tool_name, caller_hash, risk_tier, outcome,
+      error_message, latency_ms, metadata.
+
+    Note: local/remote routing labels are not present in the tool-audit log.
+    Routing intent breakdown is available via /traces/summary on the coordinator.
     """
-    repo_root = _repo_root()
     audit_log = Path(os.getenv("TOOL_AUDIT_LOG", "/var/log/nixos-ai-stack/tool-audit.jsonl"))
 
-    local_count = 0
-    remote_count = 0
-    by_task_type: Dict[str, int] = {}
-    recent_decisions: list = []
+    total = 0
+    by_tool: Dict[str, int] = {}
+    by_risk_tier: Dict[str, int] = {}
+    by_outcome: Dict[str, int] = {}
+    recent: list = []
 
     if audit_log.exists():
         try:
             lines = audit_log.read_text(errors="replace").splitlines()
-            for raw in lines[-500:]:  # last 500 entries
+            for raw in lines[-500:]:
                 try:
                     entry = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                meta = entry.get("metadata") or {}
-                task_type = meta.get("task_type") or meta.get("classifier_task_type")
-                routed_local = meta.get("routed_local") or meta.get("local_suitable")
-                route_alias = meta.get("route_alias")
-                routed_profile = meta.get("routed_profile") or meta.get("recommended_profile")
-                routing_decision = meta.get("routing_decision") or {}
-                rationale = (
-                    meta.get("rationale")
-                    or (routing_decision.get("rationale") if isinstance(routing_decision, dict) else None)
-                )
-                if task_type:
-                    by_task_type[task_type] = by_task_type.get(task_type, 0) + 1
-                if routed_local is True:
-                    local_count += 1
-                elif routed_local is False:
-                    remote_count += 1
-                if (
-                    task_type
-                    or route_alias
-                    or routed_profile
-                    or isinstance(routed_local, bool)
-                    or rationale
-                ):
-                    recent_decisions.append(
-                        {
-                            "timestamp": entry.get("timestamp"),
-                            "task_type": task_type,
-                            "route_alias": route_alias,
-                            "routed_profile": routed_profile,
-                            "routed_local": routed_local if isinstance(routed_local, bool) else None,
-                            "rationale": rationale,
-                        }
-                    )
+                total += 1
+                tool = entry.get("tool_name") or "unknown"
+                tier = entry.get("risk_tier") or "unknown"
+                outcome = entry.get("outcome") or "unknown"
+                by_tool[tool] = by_tool.get(tool, 0) + 1
+                by_risk_tier[tier] = by_risk_tier.get(tier, 0) + 1
+                by_outcome[outcome] = by_outcome.get(outcome, 0) + 1
+                if len(recent) < 8:
+                    recent.append({
+                        "timestamp": entry.get("timestamp"),
+                        "tool_name": tool,
+                        "risk_tier": tier,
+                        "outcome": outcome,
+                        "latency_ms": entry.get("latency_ms"),
+                    })
         except OSError:
             pass
 
-    total = local_count + remote_count
+    success = by_outcome.get("success", 0)
     return {
         "total_classified": total,
-        "local_count": local_count,
-        "remote_count": remote_count,
-        "local_pct": round(100 * local_count / total, 1) if total else None,
-        "remote_pct": round(100 * remote_count / total, 1) if total else None,
-        "by_task_type": by_task_type,
-        "recent_decisions": recent_decisions[-8:],
+        "by_task_type": {k: v for k, v in sorted(by_tool.items(), key=lambda x: -x[1])[:20]},
+        "by_risk_tier": by_risk_tier,
+        "by_outcome": by_outcome,
+        "success_rate": round(100 * success / total, 1) if total else None,
+        "recent_decisions": recent,
         "audit_log": str(audit_log),
         "audit_log_exists": audit_log.exists(),
         "timestamp": datetime.now(timezone.utc).isoformat(),

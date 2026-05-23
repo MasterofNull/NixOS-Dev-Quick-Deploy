@@ -70,12 +70,26 @@ CREATE TABLE IF NOT EXISTS eval_results (
     id                SERIAL PRIMARY KEY,
     query_text        TEXT,
     intent            TEXT,
+    llm_model         TEXT,
     answer_relevance  FLOAT,
     context_precision FLOAT,
     faithfulness      FLOAT,
     run_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_eval_results_run_at ON eval_results (run_at DESC);
+"""
+
+# Migration: add llm_model to existing eval_results tables (idempotent)
+_DDL_EVAL_RESULTS_MIGRATE = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='eval_results' AND column_name='llm_model'
+    ) THEN
+        ALTER TABLE eval_results ADD COLUMN llm_model TEXT;
+    END IF;
+END$$;
 """
 
 _REPO_ROOT = Path(os.getenv(
@@ -101,6 +115,7 @@ async def ensure_schema() -> None:
     try:
         await _pg.execute(_DDL_EVAL_TREND)
         await _pg.execute(_DDL_EVAL_RESULTS)
+        await _pg.execute(_DDL_EVAL_RESULTS_MIGRATE)
         _schema_ready = True
         logger.info("eval_runner: schema ready (eval_trend + eval_results)")
     except Exception as exc:
@@ -223,9 +238,11 @@ async def record_query_metrics(
     answer_relevance: Optional[float],
     context_precision: Optional[float],
     faithfulness: Optional[float],
+    llm_model: Optional[str] = None,
 ) -> None:
     """
     Persist per-query RAGAS metrics to eval_results. Fire-and-forget — never awaited inline.
+    llm_model tracks which model produced the response (model-agnostic eval).
     """
     if _pg is None:
         return
@@ -234,11 +251,12 @@ async def record_query_metrics(
         await _pg.execute(
             """
             INSERT INTO eval_results
-                (query_text, intent, answer_relevance, context_precision, faithfulness, run_at)
-            VALUES (%s, %s, %s, %s, %s, now())
+                (query_text, intent, llm_model, answer_relevance, context_precision, faithfulness, run_at)
+            VALUES (%s, %s, %s, %s, %s, %s, now())
             """,
             query_text[:500] if query_text else "",
             intent or "",
+            llm_model or "",
             answer_relevance,
             context_precision,
             faithfulness,
@@ -448,6 +466,7 @@ async def handle_eval_score_query(request) -> Any:
     query = data.get("query", "")
     response = data.get("response", "")
     intent = data.get("intent", "")
+    llm_model = data.get("llm_model") or data.get("model") or os.getenv("ACTIVE_LLM_MODEL", "")
     retrieved_docs = data.get("retrieved_docs") or []
     context = data.get("context") or " ".join(
         d.get("content", "") for d in retrieved_docs if isinstance(d, dict)
@@ -462,6 +481,7 @@ async def handle_eval_score_query(request) -> Any:
         await record_query_metrics(
             query_text=query,
             intent=intent,
+            llm_model=llm_model,
             answer_relevance=ar,
             context_precision=cp,
             faithfulness=faith,

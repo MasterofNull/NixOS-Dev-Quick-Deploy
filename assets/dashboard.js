@@ -562,8 +562,13 @@ async function loadRouting() {
   const cur = (analytics || {}).current || {};
   const w7d = ((analytics || {}).windows || {}).windows?.['7d'] || {};
   const localN = cur.local_n ?? w7d.local_n ?? (cls || {}).local_count ?? 0;
-  const localPct = cur.local_pct ?? w7d.local_pct ?? (cls || {}).local_pct;
-  const totalOk = cur.query_ok_n ?? localN;
+  // Compute local_pct from traces backend_breakdown when analytics returns null
+  const traceBB = (traceSummary && traceSummary.backend_breakdown) || {};
+  const traceCount = (traceSummary && traceSummary.count) || 0;
+  const traceLocalPct = (traceBB.local != null && traceCount > 0)
+    ? Math.round(100 * traceBB.local / traceCount) : null;
+  const localPct = cur.local_pct ?? w7d.local_pct ?? (cls || {}).local_pct ?? traceLocalPct;
+  const totalOk = cur.query_ok_n ?? (traceCount > 0 ? traceCount : localN);
 
   setText('routeTotal',  totalOk.toLocaleString());
   setText('routeLocalP', localPct != null ? pctD(localPct) : `${localN}`);
