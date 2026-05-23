@@ -135,20 +135,56 @@ class LocalOrchestrator:
             return prompt_path.read_text()
         return "You are a helpful AI assistant."
 
+    def _get_role_prompt(self, role: str) -> str:
+        """Load role-specific instructions (SSOT from .agent/roles/)."""
+        role_path = self.repo_root / ".agent" / "roles" / f"{role.lower()}.md"
+        if role_path.exists():
+            return role_path.read_text()
+        return ""
+
+    def _get_domain_prompt(self, domain: str) -> str:
+        """Load domain-specific instructions (e.g. .agent/SECURITY-SYSTEMS-INSTRUCTIONS.md)."""
+        # Mapping from router category to domain filename
+        domain_map = {
+            TaskCategory.SECURITY: "SECURITY",
+            TaskCategory.CONFIGURATION: "SYSTEMS",
+            # Add others as needed
+        }
+        domain_key = domain_map.get(domain, domain.upper() if isinstance(domain, str) else "")
+        domain_path = self.repo_root / ".agent" / f"{domain_key}-SYSTEMS-INSTRUCTIONS.md"
+        if domain_path.exists():
+            return domain_path.read_text()
+        return ""
+
+    async def _plan_task(self, prompt: str, context: Dict[str, Any]) -> str:
+        """Use local model as Architect to generate a formal technical plan."""
+        role_instructions = self._get_role_prompt("architect")
+        
+        plan_prompt = (
+            "You are the Task Architect. Based on the objective and context below, "
+            "generate a formal technical plan in markdown format. "
+            "The plan must include: Objective, Scope Lock, Workstreams, Step Plan, "
+            "Validation Strategy, and Rollback Path.\n\n"
+            f"Objective: {prompt}\n"
+            f"Context: {json.dumps(context, indent=2)}\n\n"
+            "Plan:"
+        )
+        
+        messages = [
+            {"role": "system", "content": f"{self.system_prompt}\n\n{role_instructions}"},
+            {"role": "user", "content": plan_prompt}
+        ]
+        
+        response_text = self.mcp.llm_chat(messages, max_tokens=2000, temperature=0.1)
+        return response_text
+
     async def process(
         self,
         prompt: str,
         context: Optional[Dict[str, Any]] = None,
     ) -> OrchestratorResponse:
         """
-        Process a user prompt.
-
-        Args:
-            prompt: User prompt
-            context: Optional additional context
-
-        Returns:
-            OrchestratorResponse
+        Process a user prompt with Local-First orchestration.
         """
         start_time = time.time()
         self.total_prompts += 1
@@ -165,10 +201,24 @@ class LocalOrchestrator:
         decision = self.router.route(prompt, context)
         logger.info(f"Routing decision: {decision.extra['reasoning']}")
 
-        # 2. Gather context based on needs
+        # 2. Gather context
         gathered_context = await self._gather_context(prompt, decision)
 
-        # 3. Execute based on backend
+        # 3. Task Architect Phase (Planning)
+        # If the task is non-trivial and we are going to delegate or perform heavy local work, plan it first.
+        if decision.extra["estimated_complexity"] != "trivial":
+            logger.info("Phase: Plan (Task Architect)")
+            plan = await self._plan_task(prompt, gathered_context)
+            gathered_context["architect_plan"] = plan
+            
+            # Persist plan for agent transparency
+            plan_id = int(time.time())
+            plan_path = self.repo_root / ".agents" / "plans" / f"auto-plan-{plan_id}.md"
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.write_text(plan)
+            logger.info(f"Architect plan persisted: {plan_path}")
+
+        # 4. Execute based on backend
         try:
             if decision.is_local:
                 response = await self._execute_local(prompt, gathered_context, decision)
@@ -185,21 +235,15 @@ class LocalOrchestrator:
                 hq_task.error = str(e)
             raise e
 
-        # 4. Update stats
+        # 5. Update stats
         response.execution_time = time.time() - start_time
         response.context_gathered = gathered_context
         self.total_cost += response.cost_usd
         self.router.record_cost(response.cost_usd)
 
-        # 5. Store in conversation history
-        self.conversation_history.append({
-            "role": "user",
-            "content": prompt,
-        })
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": response.content,
-        })
+        # 6. Store in conversation history
+        self.conversation_history.append({"role": "user", "content": prompt})
+        self.conversation_history.append({"role": "assistant", "content": response.content})
 
         return response
 
@@ -251,21 +295,18 @@ class LocalOrchestrator:
         decision: RoutingDecision,
     ) -> OrchestratorResponse:
         """
-        Execute task locally using Gemma model.
-
-        Args:
-            prompt: User prompt
-            context: Gathered context
-            decision: Routing decision
-
-        Returns:
-            OrchestratorResponse
+        Execute task locally with Dynamic Role Assignment.
         """
-        # Build messages for chat
-        messages = []
+        # 1. Determine Role & Domain
+        role = "implementer"  # Default for execution
+        domain = decision.extra.get("category", "general")
+        
+        role_instructions = self._get_role_prompt(role)
+        domain_instructions = self._get_domain_prompt(domain)
 
-        # System message with context
-        system_content = self.system_prompt
+        # 2. Build system message with context
+        system_content = f"{self.system_prompt}\n\n{role_instructions}\n\n{domain_instructions}"
+        
         if context["hints"]:
             system_content += "\n\n## Relevant Hints\n"
             for hint in context["hints"]:
@@ -275,34 +316,38 @@ class LocalOrchestrator:
             system_content += "\n\n## Relevant Context\n"
             for result in context["search_results"][:3]:
                 system_content += f"Source: {result['source']}\n{result['content'][:500]}\n\n"
+        
+        if "architect_plan" in context:
+            system_content += f"\n\n## Approved Technical Plan\n{context['architect_plan']}\n"
 
-        messages.append({"role": "system", "content": system_content})
+        # 3. Build message list
+        messages = [{"role": "system", "content": system_content}]
 
-        # Add conversation history (last 4 turns)
+        # Add history
         for msg in self.conversation_history[-8:]:
             messages.append(msg)
 
-        # Add current prompt
+        # Add prompt
         messages.append({"role": "user", "content": prompt})
 
-        # Call local model
+        # 4. Call local model
         response_text = self.mcp.llm_chat(
             messages,
             max_tokens=decision.extra["estimated_tokens"],
             temperature=0.7,
         )
 
-        # Store memory if significant
+        # 5. Store memory
         if decision.extra["category"] in (TaskCategory.PLANNING, TaskCategory.ANALYSIS):
             self.mcp.store_memory(
-                f"Analyzed: {prompt[:100]}... Response key points: {response_text[:200]}",
+                f"Analyzed: {prompt[:100]}... Response: {response_text[:200]}",
                 memory_type="semantic",
             )
 
         return OrchestratorResponse(
             action="direct_response",
             content=response_text,
-            backend_used="local",
+            backend_used="local-qwen",
             tokens_used=decision.extra["estimated_tokens"],
             cost_usd=0.0,
         )

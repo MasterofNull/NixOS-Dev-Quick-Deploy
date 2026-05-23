@@ -25,7 +25,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Add lib to sys.path for LocalModelClient
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+try:
+    from model_client import LocalModelClient
+except ImportError:
+    # Handle kebab-case rename policy
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("model_client", str(Path(__file__).resolve().parent / "lib" / "model-client.py"))
+        model_client = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model_client)
+        LocalModelClient = model_client.LocalModelClient
+    except Exception:
+        LocalModelClient = None
+
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent.parent.resolve()
 DEFAULT_REPORT_PATH = Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
 DEFAULT_SUMMARY_PATH = Path("/var/lib/ai-stack/hybrid/telemetry/aq-auto-remediation-latest.json")
 
@@ -454,6 +470,60 @@ def _write_summary(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def remediate_qa_failures(settings: Settings) -> Dict[str, Any]:
+    """Diagnose and suggest patches for QA failures using local model."""
+    result: Dict[str, Any] = {
+        "triggered": False,
+        "failures_detected": 0,
+        "diagnoses": [],
+        "errors": [],
+    }
+    
+    qa_path = REPO_ROOT / "data" / "hybrid" / "telemetry" / "latest-qa-results.json"
+    if not qa_path.exists():
+        return result
+        
+    try:
+        qa_data = json.loads(qa_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        result["errors"].append(f"load_qa_failed: {e}")
+        return result
+        
+    failures = [t for t in qa_data.get("tests", []) if t.get("status") == "FAIL"]
+    if not failures:
+        return result
+        
+    result["triggered"] = True
+    result["failures_detected"] = len(failures)
+    
+    if not LocalModelClient:
+        result["errors"].append("LocalModelClient not available")
+        return result
+        
+    client = LocalModelClient()
+    
+    for f in failures:
+        prompt = (
+            "You are the AI Stack SRE. Diagnose the root cause of this QA failure "
+            "and provide a specific shell command to fix it or a brief diagnostic step.\n\n"
+            f"Failure: {f.get('id')} - {f.get('description')}\n\n"
+            "Diagnosis & Command:"
+        )
+        messages = [{"role": "user", "content": prompt}]
+        diagnosis_resp = client.chat(messages)
+        
+        if "choices" in diagnosis_resp:
+            text = diagnosis_resp["choices"][0]["message"]["content"]
+            result["diagnoses"].append({"id": f.get("id"), "text": text})
+            
+            # TODO: Integrate with PRSI for auto-patching if safe
+            
+        else:
+            result["errors"].append(f"diagnosis_failed_{f.get('id')}: {diagnosis_resp.get('error')}")
+            
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Safe auto-remediation from aq-report recommendations")
     p.add_argument("--report-json", default="", help="Existing aq-report JSON path")
@@ -501,6 +571,12 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         summary["status"] = "warn"
         summary["errors"].append(f"stale_gap_curation_failed: {exc}")
+
+    try:
+        summary["qa_failure_remediation"] = remediate_qa_failures(settings)
+    except Exception as exc:  # noqa: BLE001
+        summary["status"] = "warn"
+        summary["errors"].append(f"qa_failure_remediation_failed: {exc}")
 
     _write_summary(settings.summary_out, summary)
     print(json.dumps(summary, sort_keys=True))
