@@ -77,7 +77,7 @@ Location: `.agent/<DOMAIN-NAME>-INSTRUCTIONS.md` or appended to relevant agent i
 
 Must contain:
 - Domain tag (for agent identification in session context)
-- Eligible task classes within this domain (reference `docs/architecture/qwen-task-eligibility.md` Tier table if Qwen is involved)
+- Eligible task classes within this domain (reference `docs/architecture/local-agent-task-eligibility.md` Tier table if Qwen is involved)
 - Tool preferences (preferred tools; forbidden tools; fallback order)
 - AIDB namespace binding (which namespace agents in this domain read/write)
 - Review requirements (which work categories require a gate per `docs/architecture/gemini-review-gate.md`)
