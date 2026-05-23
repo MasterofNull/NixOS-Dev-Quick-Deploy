@@ -3719,6 +3719,23 @@ async def get_evaluation_trends() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Phase 68.2-68.3 — MCP JSON-RPC 2.0 proxy
+# ---------------------------------------------------------------------------
+
+@router.get("/mcp/v2/tools")
+async def get_mcp_v2_tools() -> Dict[str, Any]:
+    """Phase 68.5: Proxy to coordinator /mcp/v2/tools — MCP JSON-RPC 2.0 tool manifest."""
+    try:
+        return await _hybrid_get("/mcp/v2/tools")
+    except aiohttp.ClientError as e:
+        logger.warning(f"MCP v2 tools unavailable (pending rebuild?): {e}")
+        return {"available": False, "reason": "MCP JSON-RPC 2.0 not yet deployed — pending nixos-rebuild"}
+    except Exception as e:
+        logger.warning(f"MCP v2 tools error: {e}")
+        return {"available": False, "reason": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 — Model Optimization Endpoints
 # ---------------------------------------------------------------------------
 

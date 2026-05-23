@@ -418,7 +418,7 @@ async def handle_get_traces(request) -> Any:
             SELECT trace_id, query_text, intent, profile,
                    retrieval_hits, retrieval_ms, rag_skipped,
                    llm_model, tokens_in, tokens_out, llm_ms, total_ms,
-                   otel_attributes, trace_at
+                   otel_attributes, prompt_hash, trace_at
             FROM query_traces
             {where_sql}
             ORDER BY trace_at DESC
@@ -448,6 +448,7 @@ async def handle_get_traces(request) -> Any:
                 "llm_ms": r["llm_ms"],
                 "total_ms": r["total_ms"],
                 "otel_attributes": otel,
+                "prompt_hash": r.get("prompt_hash"),   # Phase 64.1
                 "trace_at": r["trace_at"].isoformat() if r["trace_at"] else None,
             })
         return web.json_response({"traces": traces, "count": len(traces)})

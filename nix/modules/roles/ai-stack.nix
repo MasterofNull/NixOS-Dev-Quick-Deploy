@@ -1006,7 +1006,9 @@ in {
               "--spec-draft-n-max" (toString llama.specDraftNMax)
             ])
             # Phase 66.1: KV cache quantization — halves KV RAM on Renoir APU
+            # --flash-attn on is required by llama.cpp when KV cache quantization is enabled
             ++ (lib.optionals (llama.kvCacheType != "") [
+              "--flash-attn" "on"
               "--cache-type-k" llama.kvCacheType
               "--cache-type-v" llama.kvCacheType
             ])
