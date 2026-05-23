@@ -57,6 +57,47 @@ Anti-gaming mandate: fix root producers, never patch labels.
 - `ai-aidb-reindex.service` in failed state: reset via `systemctl reset-failed`
   (one-shot timer completed successfully with status=partial, exited 1 due to "below 500-doc gate" warnings)
 
+## Session — 2026-05-23 (Phase 64-65 AIOS Elevation)
+
+### ADK graceful degradation (commit dc8abc5d)
+- `/api/adk/parity` and `/api/adk/integrations`: FileNotFoundError uncaught → now returns stub 200
+- `/api/adk/status` .glob() on non-existent dirs guarded with .exists()
+
+### Phase 64 — AIOS Observability (commit d5484210)
+- **64.1 Prompt versioning**: TraceCollector.set_system_prompt() → SHA256[:8] prompt_hash
+  stored in trace schema; DDL migration adds column; OTel gen_ai.maeah.prompt_hash attribute.
+  Takes effect post-nixos-rebuild.
+- **64.2 Event bus sub_type**: GET /api/agent-events now returns sub_type field; ?sub_type= filter;
+  POST response echoes sub_type; _CANONICAL_SUB_TYPES documented; new event types: memory/safety/workflow
+- **64.3 Tool Execution Heatmap**: GET /api/aistack/insights/tools/heatmap — 11 tools live:
+  hints=258 calls hottest, route_search=1881ms slowest, recall_agent_memory=30.6% err rate.
+  Dashboard panel "Tool Execution Heatmap" Intelligence tab wave 2.
+- **64.4 Trace Gantt Timeline**: loadTraceGantt() SVG inline — RAG/LLM/Total spans as bars.
+  Dashboard panel "Trace Timeline (Gantt)" Intelligence tab wave 2.
+
+### Phase 65 — Memory Hardening + Governance (commit a6829e14)
+- **65.1 K-LRU CLM**: apply_klru_pressure(k=3) — sort warm sessions by last_active, evict K LRU.
+  Wired in _promote_stale_sessions() when warm_count > 8. klru_evictions in /context/lifecycle/status.
+- **65.2 Contradiction events**: active_constraint guard (Gemini security condition); after supersession
+  → POST /api/agent-events {event_type:"memory", sub_type:"contradiction_detected"}
+- **65.3 Constraints array**: GET /control/ai-coordinator/lessons now includes constraints:[...]
+  — lesson entries tagged "constraint" or state="active_constraint"
+- **66.1 KV cache quantization**: options.nix kvCacheType="q8_0" + ai-stack.nix wired.
+  Takes effect post-nixos-rebuild. Halves KV RAM (~1.0GB saved at ctx=8192).
+- **Collaboration restored**: PHASE-65-67-TEAM-BRIEF.md written; Gemini dispatched async;
+  Codex proxy review filed (Codex offline); proxy reviews for both roles written.
+- **Policy**: When agent is offline, orchestrator fills role + marks proxy clearly.
+
+### Pending — next nixos-rebuild
+- prompt_hash in traces (64.1)
+- K-LRU CLM (65.1), contradiction events (65.2), constraints array (65.3) for coordinator
+- KV cache q8_0 (66.1)
+
+### Next planned: Phase 67 dashboard elevation (67.1-67.3) — no rebuild needed
+- 67.1: Gantt trace visualization enhancement (fuller SVG with axes)
+- 67.2: Agent success/failure gauge panel
+- 67.3: Mission Control — active session monitoring grid
+
 ## Current State
 - **aq-qa**: 92/92 PASS · 0 failed · 2 skipped (0.5.6 timing, 0.5.7 report-backed)
 - **tier0**: 17/17 PASS
@@ -78,8 +119,8 @@ Anti-gaming mandate: fix root producers, never patch labels.
    improvement: scroll-triggered IntersectionObserver lazy loading for below-fold panels.
 
 ## Remaining Gaps (no live data / blocked)
-- `/api/adk/integrations` — 500 error (needs `.agent/adk/` directory + data)
-- `/api/adk/parity` — 500 error
+- `/api/adk/integrations` — returns empty stub (no `.agent/adk/` data yet; graceful 200 since commit dc8abc5d)
+- `/api/adk/parity` — returns stub with `overall_parity: 0.0, adk_version: "not-yet-run"` (graceful 200 since commit dc8abc5d)
 - `/api/firewall/crowdsec/decisions` — CrowdSec config missing `/etc/crowdsec/config.yaml`
 - `/api/memory/facts` — empty (needs coordinator activity)
 - `/api/workflows/agents` — empty
