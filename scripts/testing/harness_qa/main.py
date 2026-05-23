@@ -16,6 +16,23 @@ import sys
 import time
 from pathlib import Path
 
+# Add scripts/ai/lib to sys.path for LocalModelClient
+_ai_lib = _REPO_ROOT / "scripts" / "ai" / "lib"
+if str(_ai_lib) not in sys.path:
+    sys.path.insert(0, str(_ai_lib))
+try:
+    from model_client import LocalModelClient
+except ImportError:
+    # Handle kebab-case rename policy
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("model_client", str(_ai_lib / "model-client.py"))
+        model_client = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model_client)
+        LocalModelClient = model_client.LocalModelClient
+    except Exception:
+        LocalModelClient = None
+
 # Allow direct execution (python3 main.py) as well as package import (python3 -m harness_qa.main)
 if __package__ is None or __package__ == "":
     _pkg_parent = Path(__file__).resolve().parent.parent
@@ -88,6 +105,7 @@ Phases:
     parser.add_argument("--sudo", action="store_true", help="Enable checks requiring sudo")
     parser.add_argument("--layer", type=int, default=0, metavar="N", help="Run only layer N checks")
     parser.add_argument("--causality", action="store_true", help="Include dependency layers (L1..LN)")
+    parser.add_argument("--remediate", action="store_true", help="Auto-diagnose failures using local model")
     return parser.parse_args(argv)
 
 
@@ -102,6 +120,51 @@ def _run_phase(phase_id: str, ctx) -> list:
     for r in results:
         r.phase = phase_id
     return results
+
+
+def auto_remediate(rs: ResultSet) -> None:
+    """Use the local model to diagnose failures and suggest remediations."""
+    if not LocalModelClient:
+        print("\n[aq-qa] Error: LocalModelClient not available for remediation.", file=sys.stderr)
+        return
+    
+    import json as _json
+    failures = [r for r in rs.results if r.status.name == "FAIL"]
+    if not failures:
+        return
+    
+    print("\n[aq-qa] Initiating auto-diagnosis for failures using local model...", file=sys.stderr)
+    
+    client = LocalModelClient()
+    
+    failure_data = []
+    for f in failures:
+        failure_data.append({
+            "id": f.id,
+            "layer": f.layer,
+            "description": f.description,
+            "reason": f.reason,
+        })
+    
+    prompt = (
+        "You are the AI Stack SRE. The following QA checks have FAILED. "
+        "Diagnose the likely root cause for each failure and provide a specific, "
+        "actionable remediation command or step.\n\n"
+        f"Failed Checks: {_json.dumps(failure_data, indent=2)}\n\n"
+        "Diagnosis & Remediation:"
+    )
+    
+    messages = [{"role": "user", "content": prompt}]
+    response = client.chat(messages)
+    
+    if "choices" in response:
+        print("\n" + "=" * 80)
+        print("  AUTO-DIAGNOSIS & REMEDIATION")
+        print("=" * 80)
+        print(response["choices"][0]["message"]["content"])
+        print("=" * 80 + "\n")
+    else:
+        print(f"\n[aq-qa] Error during diagnosis: {response.get('error', 'unknown error')}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -165,6 +228,33 @@ def main(argv: list[str] | None = None) -> int:
         JsonReporter().render(rs)
     else:
         ConsoleReporter().render(rs)
+
+    # Persist latest results for auto-remediation
+    try:
+        latest_json = _REPO_ROOT / "data" / "hybrid" / "telemetry" / "latest-qa-results.json"
+        latest_json.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        # Extract logic from JsonReporter to get the dict
+        layers: dict[str, list] = {}
+        tests = []
+        for r in rs.results:
+            item = {
+                "layer": r.layer, "id": r.id, "status": r.status.value,
+                "description": f"{r.description} ({r.reason})" if r.reason else r.description,
+            }
+            tests.append(item)
+            layers.setdefault(str(r.layer), []).append(item)
+        output = {
+            "phase": rs.phase, "passed": rs.passed, "failed": rs.failed,
+            "skipped": rs.skipped, "duration_s": rs.duration_s,
+            "tests": tests,
+        }
+        latest_json.write_text(_json.dumps(output, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    if rs.failed > 0 and ns.remediate:
+        auto_remediate(rs)
 
     return 1 if rs.failed > 0 else 0
 

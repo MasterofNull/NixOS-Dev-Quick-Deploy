@@ -41,6 +41,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Add lib to sys.path for LocalModelClient
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+try:
+    from model_client import LocalModelClient
+except ImportError:
+    # Handle kebab-case rename policy
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("model_client", str(Path(__file__).resolve().parent / "lib" / "model-client.py"))
+        model_client = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model_client)
+        LocalModelClient = model_client.LocalModelClient
+    except Exception:
+        LocalModelClient = None
+
 # ---------------------------------------------------------------------------
 # Configuration (env-var driven — never hardcoded per project policy)
 # ---------------------------------------------------------------------------
@@ -188,6 +203,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--aidb-import", action="store_true",
         help="Ingest the generated report into AIDB after printing"
+    )
+    p.add_argument(
+        "--summarize", action="store_true",
+        help="Use local model to generate a high-level executive summary"
     )
     return p.parse_args()
 
@@ -7006,6 +7025,40 @@ def aidb_import(content: str, week_label: str) -> bool:
     return False
 
 
+def summarize_with_local_model(report_data: Dict[str, Any]) -> str:
+    """Use the local model to generate an executive summary of the report data."""
+    if not LocalModelClient:
+        return "Error: LocalModelClient not available for summarization."
+    
+    client = LocalModelClient()
+    
+    # Condense data to avoid context overflow
+    condensed = {
+        "ts": report_data.get("ts"),
+        "window": report_data.get("window"),
+        "tool_summary": {k: v.get("success_rate_pct") for k, v in report_data.get("tool_stats", {}).items()},
+        "routing": report_data.get("routing"),
+        "eval_trend": report_data.get("eval_trend"),
+        "recommendations": report_data.get("recommendations"),
+        "structured_actions": report_data.get("structured_actions"),
+    }
+    
+    prompt = (
+        "You are the AI Stack SRE. Summarize the following system performance data into a concise, "
+        "professional executive summary. Highlight critical failures, routing efficiency, and top "
+        "actionable recommendations.\n\n"
+        f"Data: {json.dumps(condensed, indent=2)}\n\n"
+        "Summary:"
+    )
+    
+    messages = [{"role": "user", "content": prompt}]
+    response = client.chat(messages)
+    
+    if "choices" in response:
+        return response["choices"][0]["message"]["content"]
+    return f"Error during summarization: {response.get('error', 'unknown error')}"
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -7192,12 +7245,22 @@ def main() -> None:
     )
     json_output = format_json(*fmt_args[:-1], structured_actions=structured_actions)
     _persist_latest_report_json(json_output)
+
+    summary_text = ""
+    if args.summarize:
+        print("[aq-report] Generating executive summary using local model...", file=sys.stderr)
+        summary_text = summarize_with_local_model(json_output)
+        summary_text = f"# EXECUTIVE SUMMARY\n\n{summary_text}\n\n---\n\n"
+
     if args.fmt == "md":
-        output = format_md(*fmt_args)
+        output = summary_text + format_md(*fmt_args)
     elif args.fmt == "json":
+        # For JSON, we can optionally add the summary to a field
+        if args.summarize:
+            json_output["executive_summary"] = summary_text.strip().replace("# EXECUTIVE SUMMARY\n\n", "")
         output = json_output
     else:
-        output = format_text(*fmt_args)
+        output = summary_text + format_text(*fmt_args)
 
     print(output)
 

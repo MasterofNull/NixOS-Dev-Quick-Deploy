@@ -455,7 +455,101 @@
               echo "CRS DISCIPLINE: always validate CRS with 'ogrinfo -al -so <file>' before any spatial operation"
             '';
           };
-          # ── Unified full-stack shell: all 6 domains in one env ──────────────
+
+          # data-eng domain: database, data processing, telemetry
+          data-eng = pkgs'.mkShell {
+            packages = with pkgs'; [
+              postgresql
+              redis
+              duckdb
+              (python3.withPackages (ps: with ps; [
+                pandas
+                sqlalchemy
+                psycopg2
+                redis
+                pyarrow
+              ]))
+            ];
+            shellHook = ''
+              export DATA_ENG_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=data-engineering-patterns
+              echo "data-eng shell: postgres, redis, duckdb, pandas, sqlalchemy"
+            '';
+          };
+
+          # qa-auto domain: automated testing, performance, accessibility
+          qa-auto = pkgs'.mkShell {
+            packages = with pkgs'; [
+              playwright-driver
+              k6
+              (python3.withPackages (ps: with ps; [
+                pytest
+                pytest-asyncio
+                pytest-xdist
+                locust
+              ]))
+            ];
+            shellHook = ''
+              export QA_AUTO_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=qa-automation-patterns
+              export PLAYWRIGHT_BROWSERS_PATH="${pkgs'.playwright-driver.browsers}"
+              echo "qa-auto shell: playwright, k6, pytest, locust"
+            '';
+          };
+
+          # frontend domain: modern web development, UI/UX, visualization
+          frontend = pkgs'.mkShell {
+            packages = with pkgs'; [
+              bun
+              nodejs_22
+              typescript
+              tailwind-language-server
+            ];
+            shellHook = ''
+              export FRONTEND_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=frontend-uiux-patterns
+              echo "frontend shell: bun, nodejs, typescript, tailwind"
+            '';
+          };
+
+          # ml-ai domain: model training, inference optimization, ROCm/CUDA
+          ml-ai = pkgs'.mkShell {
+            packages = with pkgs'; [
+              (python3.withPackages (ps: with ps; [
+                torch
+                transformers
+                datasets
+                huggingface-hub
+              ]))
+              # ROCm tools for AMD hardware
+              rocmPackages.rocminfo
+              rocmPackages.rocm-smi
+            ];
+            shellHook = ''
+              export ML_AI_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=ml-ai-patterns
+              echo "ml-ai shell: pytorch, transformers, huggingface, rocm-smi"
+            '';
+          };
+
+          # cloud-ops domain: infrastructure, orchestration, cloud APIs
+          cloud-ops = pkgs'.mkShell {
+            packages = with pkgs'; [
+              terraform
+              kubectl
+              kubernetes-helm
+              ansible
+              awscli2
+              google-cloud-sdk
+            ];
+            shellHook = ''
+              export CLOUD_OPS_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=cloud-operations-patterns
+              echo "cloud-ops shell: terraform, kubectl, helm, ansible, aws/gcloud"
+            '';
+          };
+
+          # ── Unified full-stack shell: all 11 domains in one env ──────────────
           # Use this when you want all domain tools in PATH without manually
           # entering per-domain shells. The harness (hybrid-coordinator) reads
           # DOMAIN_SHELL=full and auto-selects tools based on intent classification.
@@ -466,33 +560,45 @@
               statix deadnix alejandra shellcheck nix-tree nix-diff nixpkgs-fmt
               # Security
               semgrep trivy cppcheck
+              # Data / ML / Research
+              postgresql redis duckdb
               (python3.withPackages (ps: with ps; [
+                # Security
                 bandit safety
+                # Data / ML
+                pandas sqlalchemy psycopg2 redis pyarrow
+                torch transformers datasets huggingface-hub
                 # Scientific + GIS Python stack
-                numpy scipy matplotlib pandas jupyterlab snakemake biopython
+                numpy scipy matplotlib jupyterlab snakemake biopython
                 geopandas rasterio shapely pyproj fiona
+                # QA
+                pytest pytest-asyncio pytest-xdist locust
               ]))
               # Embedded / hardware
               verilator ghdl-llvm yosys openocd gcc-arm-embedded dtc qemu gdb minicom
-              # Mobile / web
-              flutter android-tools nodejs_22 chromium playwright-driver
+              # Mobile / web / frontend
+              flutter android-tools nodejs_22 chromium playwright-driver bun typescript tailwind-language-server
               # Scientific / docs
               pandoc texlive.combined.scheme-small R
               # GIS / spatial
               gdal proj qgis spatialite-tools
+              # Cloud / Ops
+              terraform kubectl kubernetes-helm ansible awscli2 google-cloud-sdk
+              # ROCm
+              rocmPackages.rocminfo rocmPackages.rocm-smi
             ];
             shellHook = ''
               export DOMAIN_SHELL=full
               export FULL_STACK_SHELL=1
               # Per-domain namespace hints (harness reads these to route to AIDB)
-              export DOMAIN_NAMESPACES="security-findings,nix-systems-patterns,embedded-hardware-patterns,mobile-web-patterns,scientific-research-patterns,gis-systems-patterns"
-              # Mobile
+              export DOMAIN_NAMESPACES="security-findings,nix-systems-patterns,embedded-hardware-patterns,mobile-web-patterns,scientific-research-patterns,gis-systems-patterns,data-engineering-patterns,qa-automation-patterns,frontend-uiux-patterns,ml-ai-patterns,cloud-operations-patterns"
+              # Mobile / Web
               export CHROME_EXECUTABLE="${pkgs'.chromium}/bin/chromium"
               export PLAYWRIGHT_BROWSERS_PATH="${pkgs'.playwright-driver.browsers}"
               # GIS
               export CANONICAL_CRS="EPSG:4326"
               echo "=== AI Harness Full-Stack Domain Shell ==="
-              echo "All 6 domains active: security | systems | embedded | mobile-web | scientific | gis"
+              echo "All 11 domains active: security | systems | embedded | mobile-web | scientific | gis | data-eng | qa-auto | frontend | ml-ai | cloud-ops"
               echo "Intent routing: hybrid-coordinator classifies task → selects AIDB namespace + profile"
               echo "AIDB namespaces: \$DOMAIN_NAMESPACES"
               echo "Embedded safety: firmware flash/JTAG requires user confirmation"

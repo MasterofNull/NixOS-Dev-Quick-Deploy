@@ -79,31 +79,19 @@ async def embed_text_uncached(text: str) -> List[float]:
                 if Config.EMBEDDING_API_KEY:
                     headers["X-API-Key"] = Config.EMBEDDING_API_KEY
                 try:
+                    # Phase 61: Use the specific local model ID instead of OpenAI hardcoding.
                     return await _request_embedding(
                         f"{Config.EMBEDDING_SERVICE_URL}/v1/embeddings",
-                        {"model": "text-embedding-ada-002", "input": text},
+                        {"model": Config.EMBEDDING_MODEL, "input": text},
                         headers=headers,
                     )
                 except Exception:  # noqa: BLE001
-                    logger.warning("Embedding service failed, falling back", exc_info=True)
+                    logger.error("Primary local embedding service failed. Fallbacks are deprecated in Phase 61.", exc_info=True)
+                    # We return the zero vector to signal a terminal retrieval failure.
+                    return [0.0] * Config.EMBEDDING_DIM
 
-            if Config.AIDB_URL:
-                try:
-                    return await _request_embedding(
-                        f"{Config.AIDB_URL}/vector/embed",
-                        {"texts": [text]},
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.warning("AIDB embedding fallback failed, using llama.cpp", exc_info=True)
-
-            response = await _embedding_client.post(
-                f"{Config.LLAMA_CPP_URL}/v1/embeddings",
-                json={"model": "nomic-embed-text", "input": text},
-                timeout=8.0,
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("data", [{}])[0].get("embedding", [])
+            # Fallbacks deprecated in Phase 61 for Local-First Dominance.
+            return [0.0] * Config.EMBEDDING_DIM
 
         except Exception as e:
             span.record_exception(e)
