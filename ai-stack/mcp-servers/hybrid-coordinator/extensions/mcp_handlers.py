@@ -928,6 +928,42 @@ TOOL_DEFINITIONS: List[Tool] = [
             },
         },
     ),
+    Tool(
+        name="mcp_server_prsi_orchestrate",
+        description=(
+            "Orchestrate PRSI queue actions via prsi-orchestrator.py. "
+            "Supports: approve/reject a specific queued action by ID, execute all approved actions, "
+            "or sync the queue from aq-report. High-risk actions (risk_level=critical) "
+            "are blocked from MCP approve — require human CLI sign-off."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Orchestrator subcommand to run.",
+                    "enum": ["approve", "reject", "sync", "execute"],
+                },
+                "action_id": {
+                    "type": "string",
+                    "description": "Queue action ID (required for approve/reject).",
+                },
+                "approved_by": {
+                    "type": "string",
+                    "description": "Name/agent approving or rejecting (optional, defaults to 'mcp-agent').",
+                },
+                "note": {
+                    "type": "string",
+                    "description": "Optional note recorded with approve/reject decision.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max actions to execute (for action='execute', default 1).",
+                },
+            },
+            "required": ["action"],
+        },
+    ),
 ]
 
 
@@ -1457,6 +1493,74 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                     "stdout": proc.stdout[:2000],
                     "stderr": proc.stderr[:500] if proc.stderr else "",
                 }
+            _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "mcp_server_prsi_orchestrate":
+            import subprocess as _sp
+            import sys as _sys
+            action = str(arguments.get("action", "")).strip()
+            action_id = str(arguments.get("action_id", "")).strip()
+            approved_by = str(arguments.get("approved_by", "mcp-agent")).strip()
+            note = str(arguments.get("note", "")).strip()
+            limit = int(arguments.get("limit", 1))
+            repo_root = Path(__file__).resolve().parents[4]
+            orchestrator = repo_root / "scripts" / "automation" / "prsi-orchestrator.py"
+            if not orchestrator.exists():
+                result = {"status": "error", "error": "prsi-orchestrator.py not found", "path": str(orchestrator)}
+            elif action in ("approve", "reject"):
+                if not action_id:
+                    result = {"status": "error", "error": "action_id required for approve/reject"}
+                else:
+                    # Safety gate: block MCP approval of critical-risk items
+                    queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+                    if queue_path.exists():
+                        import json as _json
+                        queue = _json.loads(queue_path.read_text())
+                        entry = next((a for a in queue.get("actions", []) if a.get("id") == action_id), None)
+                        if entry and entry.get("risk_level") == "critical" and action == "approve":
+                            result = {
+                                "status": "blocked",
+                                "reason": "critical-risk actions require human CLI sign-off",
+                                "cli": f"python3 scripts/automation/prsi-orchestrator.py approve --id {action_id} --by <name>",
+                            }
+                            _write_audit(name, 'client_error', result["reason"], (_time.perf_counter() - _start) * 1000, arguments)
+                            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+                    cmd = [_sys.executable, str(orchestrator), action, "--id", action_id, "--by", approved_by]
+                    if note:
+                        cmd += ["--note", note]
+                    proc = await asyncio.to_thread(lambda: _sp.run(cmd, capture_output=True, text=True, timeout=30))
+                    result = {
+                        "status": "ok" if proc.returncode == 0 else "failed",
+                        "action": action,
+                        "action_id": action_id,
+                        "exit_code": proc.returncode,
+                        "stdout": proc.stdout[:1000],
+                        "stderr": proc.stderr[:500] if proc.stderr else "",
+                    }
+            elif action == "execute":
+                cmd = [_sys.executable, str(orchestrator), "execute", "--limit", str(limit)]
+                proc = await asyncio.to_thread(lambda: _sp.run(cmd, capture_output=True, text=True, timeout=300))
+                result = {
+                    "status": "ok" if proc.returncode == 0 else "failed",
+                    "action": "execute",
+                    "limit": limit,
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout[:2000],
+                    "stderr": proc.stderr[:500] if proc.stderr else "",
+                }
+            elif action == "sync":
+                cmd = [_sys.executable, str(orchestrator), "sync"]
+                proc = await asyncio.to_thread(lambda: _sp.run(cmd, capture_output=True, text=True, timeout=60))
+                result = {
+                    "status": "ok" if proc.returncode == 0 else "failed",
+                    "action": "sync",
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout[:2000],
+                    "stderr": proc.stderr[:500] if proc.stderr else "",
+                }
+            else:
+                result = {"status": "error", "error": f"unknown action '{action}'", "valid_actions": ["approve", "reject", "execute", "sync"]}
             _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
