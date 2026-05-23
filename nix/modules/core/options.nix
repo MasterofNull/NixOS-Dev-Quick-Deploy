@@ -1103,6 +1103,17 @@
           description = "Additional CLI flags passed to llama-server.";
         };
 
+        kvCacheType = lib.mkOption {
+          type = lib.types.str;
+          default = "q8_0";
+          example = "q8_0";
+          description = ''
+            Phase 66.1: KV cache quantization type for llama-server (--cache-type-k / --cache-type-v).
+            q8_0 halves KV RAM vs fp16, enabling larger effective context on Renoir APU (27 GB).
+            Set to "" to disable (uses fp16 default). Supported values: q8_0, q4_0, f16.
+          '';
+        };
+
         specType = lib.mkOption {
           type = lib.types.str;
           default = "";

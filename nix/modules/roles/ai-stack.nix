@@ -1005,6 +1005,11 @@ in {
               "--spec-type" llama.specType
               "--spec-draft-n-max" (toString llama.specDraftNMax)
             ])
+            # Phase 66.1: KV cache quantization — halves KV RAM on Renoir APU
+            ++ (lib.optionals (llama.kvCacheType != "") [
+              "--cache-type-k" llama.kvCacheType
+              "--cache-type-v" llama.kvCacheType
+            ])
             ++ (lib.optionals llama.mlock ["--mlock"])
             ++ (map lib.escapeShellArg llamaArgs));
         };

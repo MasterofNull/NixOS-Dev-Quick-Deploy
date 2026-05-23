@@ -127,12 +127,35 @@ class MemoryBroker:
             existing = await self.read(memory_type, content, top_k=2, include_superseded=True)
             for entry in existing:
                 if self.check_contradiction(entry.get("content", ""), content):
+                    # Phase 65.2 (Gemini security condition): never auto-supersede active_constraint facts.
+                    # Constraint facts require explicit human review — auto-supersession is disabled for them.
+                    entry_state = (entry.get("metadata") or {}).get("state") or entry.get("state") or ""
+                    if entry_state == "active_constraint":
+                        logger.warning(
+                            "memory_broker.contradiction_blocked_constraint type=%s conflicting_id=%s",
+                            memory_type, entry.get("id"),
+                        )
+                        # Emit safety event so dashboard surfaces the blocked attempt
+                        asyncio.create_task(self._emit_contradiction_event(
+                            entry.get("id", ""), content, blocked=True
+                        ))
+                        return {
+                            "status": "contradiction_blocked",
+                            "memory_type": memory_type,
+                            "conflicting_entry": entry.get("id"),
+                            "reason": "Contradicts an active_constraint fact — requires explicit review",
+                        }
+
                     if supersede and self._superseder:
                         superseded_id = self._superseder.resolve_lineage(content, [entry])
                         logger.info(
                             "memory_broker.superseding: old_id=%s content=%r -> new_content=%r",
                             superseded_id, entry.get("content"), content
                         )
+                        # Phase 65.2: emit contradiction_detected event after successful supersession
+                        asyncio.create_task(self._emit_contradiction_event(
+                            superseded_id or entry.get("id", ""), content, blocked=False
+                        ))
                         break # Only supersede the most relevant match
                     else:
                         logger.warning(
@@ -322,6 +345,32 @@ class MemoryBroker:
             t: (r if isinstance(r, list) else [])
             for t, r in zip(MEMORY_TYPES, results)
         }
+
+    async def _emit_contradiction_event(self, old_id: str, new_content: str, *, blocked: bool) -> None:
+        """Phase 65.2: fire-and-forget event to /api/agent-events for contradiction detection.
+
+        sub_type='contradiction_detected' allows ContinuousLearning to cluster and surface
+        memory conflicts in the dashboard Tool Execution Heatmap / Agent Events panel.
+        Silently skips if coordinator event bus is unreachable.
+        """
+        try:
+            import aiohttp
+            payload = {
+                "event_type": "memory",
+                "sub_type": "contradiction_detected",
+                "agent": "coordinator",
+                "outcome": "blocked" if blocked else "superseded",
+                "summary": f"Contradiction: old_id={old_id[:16]} new={new_content[:80]}",
+                "latency_ms": 0,
+            }
+            async with aiohttp.ClientSession() as _s:
+                await _s.post(
+                    "http://127.0.0.1:8003/api/agent-events",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=2),
+                )
+        except Exception:
+            pass  # Non-critical — never block memory writes on event bus failures
 
     def check_contradiction(self, existing: str, candidate: str) -> bool:
         """

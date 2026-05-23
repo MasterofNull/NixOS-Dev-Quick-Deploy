@@ -452,17 +452,34 @@ async def handle_ai_coordinator_status(_request: web.Request) -> web.Response:
 
 
 async def handle_ai_coordinator_lessons(_request: web.Request) -> web.Response:
-    """Expose the persistent agent-lesson registry."""
+    """Expose the persistent agent-lesson registry.
+
+    Phase 65.3: Response includes a `constraints` array — lessons tagged
+    'constraint' or with state='active_constraint'. These are procedural
+    constraints injected into aq-session-start to prevent re-testing
+    known-bad approaches (Gemini PRD refinement from PROJECT-AI-HARNESS-EVOLUTION-PRD).
+    """
     try:
         async with _agent_lessons_lock:
             registry = await _load_agent_lessons_registry()
         lesson_refs = _active_lesson_refs(registry, limit=2)
+
+        # Phase 65.3: extract constraints from lesson entries
+        entries = list((registry.get("entries") or []))
+        constraints = [
+            e.get("summary", "")[:200]
+            for e in entries
+            if "constraint" in (e.get("tags") or [])
+            or e.get("state") == "active_constraint"
+        ]
+
         return web.json_response(
             {
                 "status": "ok",
                 "service": "ai-coordinator",
                 "agent_lessons": registry,
                 "active_lesson_refs": lesson_refs,
+                "constraints": constraints,
             }
         )
     except Exception as exc:
