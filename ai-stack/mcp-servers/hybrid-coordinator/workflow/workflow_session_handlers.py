@@ -1082,6 +1082,28 @@ async def handle_workflow_run_event(request: web.Request) -> web.Response:
                         "policy_description": mode_policy.get("description", ""),
                     }, status=403)
 
+            # S2: auth/profile enforcement at tool dispatch boundary
+            if tool_name:
+                try:
+                    from middleware.auth import (
+                        AUTH_CONTEXT_KEY as _ACK,
+                        check_tool_access as _cta,
+                        record_tool_denial as _rtd,
+                    )
+                    _auth_ctx = request.get(_ACK) or {}
+                    _allowed, _reason = _cta(tool_name, _auth_ctx)
+                    if not _allowed:
+                        _profile = _auth_ctx.get("profile", "unknown")
+                        _rtd(tool_name, _profile, _reason)
+                        return web.json_response({
+                            "error": "tool blocked by auth profile policy",
+                            "tool_name": tool_name,
+                            "auth_profile": _profile,
+                            "reason": _reason,
+                        }, status=403)
+                except ImportError:
+                    pass  # middleware not yet deployed; degrade gracefully
+
             isolation_error = _check_isolation_constraints(session, data)
             if isolation_error:
                 return web.json_response({

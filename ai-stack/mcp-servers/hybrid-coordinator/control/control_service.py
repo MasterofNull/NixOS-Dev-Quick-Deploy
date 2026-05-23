@@ -3,12 +3,13 @@ control/control_service.py — ControlService for the hybrid-coordinator.
 
 Phase R2.6 (Strangler Fig): route registration extracted from http_server.py.
 Handles:
-  GET /admin/v1/scheduler/status   — MLFQ scheduler status
-  GET /control/model-fleet/status  — model fleet status (model_fleet_manager)
-  *   /control/runtimes/*          — runtime registry (delegated to runtime_control_handlers)
-  GET /control/fleet/summary       — fleet summary (delegated to runtime_control_handlers)
-  GET /control/budget/*            — budget policy (delegated to runtime_control_handlers)
-  GET /control/reasoning/*         — reasoning profiles (delegated to runtime_control_handlers)
+  GET /admin/v1/scheduler/status          — MLFQ scheduler status
+  GET /admin/v1/policy/tool-deny-stats    — auth-profile tool denial counters (S2)
+  GET /control/model-fleet/status         — model fleet status (model_fleet_manager)
+  *   /control/runtimes/*                 — runtime registry (delegated to runtime_control_handlers)
+  GET /control/fleet/summary              — fleet summary (delegated to runtime_control_handlers)
+  GET /control/budget/*                   — budget policy (delegated to runtime_control_handlers)
+  GET /control/reasoning/*                — reasoning profiles (delegated to runtime_control_handlers)
 
 Standalone async handlers are written using direct module imports —
 no configure() injection required; all dependencies are importable.
@@ -36,6 +37,12 @@ async def handle_scheduler_status(request: web.Request) -> web.Response:
     return web.json_response(await _get_scheduler().status())
 
 
+async def handle_tool_deny_stats(request: web.Request) -> web.Response:
+    """GET /admin/v1/policy/tool-deny-stats — auth-profile tool denial counts (S2)."""
+    from middleware.auth import get_tool_denial_stats as _gds
+    return web.json_response(_gds())
+
+
 async def handle_fleet_status(request: web.Request) -> web.Response:
     """GET /control/model-fleet/status — model fleet health snapshot."""
     try:
@@ -55,6 +62,7 @@ async def handle_fleet_status(request: web.Request) -> web.Response:
 def register_routes(app: web.Application) -> None:
     """Register all ControlService routes on the given aiohttp Application."""
     app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
+    app.router.add_get("/admin/v1/policy/tool-deny-stats", handle_tool_deny_stats)
     app.router.add_get("/control/model-fleet/status", handle_fleet_status)
 
     # Runtime/budget/fleet/reasoning routes — already fully extracted

@@ -201,6 +201,87 @@ def resolve_auth_context(path: str, remote: str, headers, configured_api_key: st
     return _auth_context("api-key", profile, True, "api_key_valid"), 0
 
 
+# ---------------------------------------------------------------------------
+# Tool-level access policy (S2: auth/profile enforcement at dispatch boundaries)
+# ---------------------------------------------------------------------------
+
+# MCP tools that mutate state and must be blocked for read-only profiles.
+# Keys are harness auth profiles; values are sets of lower-cased tool names.
+AUTH_PROFILE_TOOL_POLICY: dict = {
+    "readonly-strict": {
+        # Fine-tuning / training pipeline — writes dataset artifacts
+        "generate_training_data",
+        "capture_training_example",
+        "flush_training_data",
+        "start_finetuning_job",
+        "run_distillation_pipeline",
+        "generate_synthetic_training_data",
+        # Memory writes
+        "store_agent_memory",
+        # Interaction / outcome writes
+        "track_interaction",
+        "update_outcome",
+        "learning_feedback",
+        "record_learning_signal",
+        # Prompt mutation
+        "optimize_prompt_template",
+        "record_prompt_variant_outcome",
+        # Model performance writes
+        "record_model_performance",
+        # Eval run (has side effects on eval store)
+        "run_harness_eval",
+    },
+    # execute-guarded: all MCP tools permitted; restrict at higher layers (shell/git)
+    "execute-guarded": set(),
+    # worktree-guarded: unrestricted
+    "worktree-guarded": set(),
+}
+
+# In-memory denial counter: {(tool_name, profile): count}
+_tool_denial_counts: dict = {}
+
+
+def check_tool_access(tool_name: str, auth_context: dict) -> tuple:
+    """Return (allowed: bool, reason: str) for a given tool + auth context.
+
+    Called at every MCP/tool dispatch boundary before executing the tool.
+    ``auth_context`` is the dict stored at ``request[AUTH_CONTEXT_KEY]``.
+    """
+    profile = (auth_context or {}).get("profile") or "readonly-strict"
+    blocked = AUTH_PROFILE_TOOL_POLICY.get(profile, AUTH_PROFILE_TOOL_POLICY["readonly-strict"])
+    if tool_name.lower() in blocked:
+        return False, f"tool '{tool_name}' blocked by auth profile '{profile}'"
+    return True, ""
+
+
+def record_tool_denial(tool_name: str, profile: str, reason: str) -> None:
+    """Increment in-memory denial counter.  Cheap — no I/O on hot path."""
+    key = (tool_name.lower(), profile)
+    _tool_denial_counts[key] = _tool_denial_counts.get(key, 0) + 1
+
+
+def get_tool_denial_stats() -> dict:
+    """Return denial stats for the /admin/v1/policy/tool-deny-stats endpoint."""
+    total = sum(_tool_denial_counts.values())
+    by_tool: dict = {}
+    by_profile: dict = {}
+    breakdown = []
+    for (tool, profile), count in sorted(_tool_denial_counts.items()):
+        by_tool[tool] = by_tool.get(tool, 0) + count
+        by_profile[profile] = by_profile.get(profile, 0) + count
+        breakdown.append({"tool_name": tool, "profile": profile, "count": count})
+    return {
+        "total_denials": total,
+        "by_tool": by_tool,
+        "by_profile": by_profile,
+        "breakdown": breakdown,
+        "policy": {
+            profile: sorted(blocked)
+            for profile, blocked in AUTH_PROFILE_TOOL_POLICY.items()
+        },
+    }
+
+
 def auth_profile_policy_summary() -> dict:
     """Return operator-facing policy metadata for dashboard/report surfaces."""
     return {
@@ -210,6 +291,7 @@ def auth_profile_policy_summary() -> dict:
         "modes": AUTH_PROFILE_POLICY,
         "public_paths": sorted(PUBLIC_PATHS),
         "loopback_prefix_count": len(LOOPBACK_AGENT_PREFIXES),
+        "tool_policy_profiles": sorted(AUTH_PROFILE_TOOL_POLICY.keys()),
     }
 
 

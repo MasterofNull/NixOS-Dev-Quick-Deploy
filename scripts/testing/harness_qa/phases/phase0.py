@@ -1125,6 +1125,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))
     results.extend(_check_graphrag(ctx))
+    results.extend(_check_s2_tool_auth_policy(ctx))
     return results
 
 
@@ -1467,5 +1468,108 @@ def _check_ragas_eval(ctx: RunContext) -> list[CheckResult]:
         # Coordinator is up but returning pre-Phase-60.5 response: old nix store build.
         # Treat as skip (rebuild-pending) rather than fail (code bug).
         results.append(skipped(4, "60.7.4", "GET /eval/trend ragas_metrics", "old build active — ragas_metrics absent; nixos-rebuild required"))
+
+    return results
+
+
+def _check_s2_tool_auth_policy(ctx: RunContext) -> list[CheckResult]:
+    """S2: auth/profile enforcement at MCP/tool dispatch boundaries."""
+    results: list[CheckResult] = []
+    from pathlib import Path as _P
+    coord_root = _P(ctx.repo_root) / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
+
+    # S2.1 — middleware/auth.py has tool policy functions
+    auth_py = coord_root / "middleware" / "auth.py"
+    if not auth_py.exists():
+        results.append(failed(4, "S2.1", "middleware/auth.py tool policy", "file missing"))
+    else:
+        text = auth_py.read_text()
+        checks = {
+            "AUTH_PROFILE_TOOL_POLICY": "AUTH_PROFILE_TOOL_POLICY" in text,
+            "check_tool_access": "check_tool_access" in text,
+            "record_tool_denial": "record_tool_denial" in text,
+            "get_tool_denial_stats": "get_tool_denial_stats" in text,
+            "readonly-strict blocked set": '"readonly-strict"' in text and "generate_training_data" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "S2.1", "middleware/auth.py tool policy", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "S2.1", "middleware/auth.py: AUTH_PROFILE_TOOL_POLICY + check/record/stats functions"))
+
+    # S2.2 — workflow_session_handlers.py has S2 enforcement block
+    wsh = coord_root / "workflow" / "workflow_session_handlers.py"
+    if not wsh.exists():
+        results.append(failed(4, "S2.2", "workflow_session_handlers S2 enforcement", "file missing"))
+    else:
+        text = wsh.read_text()
+        checks = {
+            "check_tool_access import": "check_tool_access" in text,
+            "record_tool_denial import": "record_tool_denial" in text,
+            "auth profile blocked response": "tool blocked by auth profile policy" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "S2.2", "workflow_session_handlers S2 enforcement", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "S2.2", "workflow_session_handlers: S2 auth profile tool enforcement wired"))
+
+    # S2.3 — control_service.py has tool-deny-stats endpoint
+    cs = coord_root / "control" / "control_service.py"
+    if not cs.exists():
+        results.append(failed(4, "S2.3", "control_service tool-deny-stats", "file missing"))
+    else:
+        text = cs.read_text()
+        checks = {
+            "handle_tool_deny_stats": "handle_tool_deny_stats" in text,
+            "admin/v1/policy/tool-deny-stats route": "/admin/v1/policy/tool-deny-stats" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "S2.3", "control_service tool-deny-stats", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "S2.3", "GET /admin/v1/policy/tool-deny-stats registered in control_service.py"))
+
+    # S2.4 — unit: check_tool_access logic is correct
+    try:
+        import importlib.util as _ilu, sys as _sys
+        _spec = _ilu.spec_from_file_location("_auth_s2_test", str(auth_py))
+        _mod = _ilu.module_from_spec(_spec)  # type: ignore[arg-type]
+        # Provide stub Config dependency to avoid import errors in test env
+        import types as _types
+        _cfg_stub = _types.ModuleType("config")
+        _cfg_stub.Config = type("Config", (), {"API_KEY": ""})()  # type: ignore[attr-defined]
+        _sys.modules.setdefault("config", _cfg_stub)
+        _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+        _cta = _mod.check_tool_access
+        # Returns (allowed: bool, reason: str); allowed=False means blocked/denied
+        _allowed_mut, _ = _cta("generate_training_data", {"profile": "readonly-strict"})
+        _allowed_ro, _ = _cta("augment_query", {"profile": "readonly-strict"})
+        _allowed_exec, _ = _cta("generate_training_data", {"profile": "execute-guarded"})
+        if _allowed_mut:
+            results.append(failed(4, "S2.4", "check_tool_access logic", "generate_training_data should be denied for readonly-strict but was allowed"))
+        elif not _allowed_ro:
+            results.append(failed(4, "S2.4", "check_tool_access logic", "augment_query should be allowed for readonly-strict but was denied"))
+        elif not _allowed_exec:
+            results.append(failed(4, "S2.4", "check_tool_access logic", "generate_training_data should be allowed for execute-guarded but was denied"))
+        else:
+            results.append(passed(4, "S2.4", "check_tool_access: readonly-strict blocks mutating tools, execute-guarded allows all"))
+    except Exception as exc:
+        results.append(skipped(4, "S2.4", "check_tool_access unit test", f"import error in test env: {exc}"))
+
+    # S2.5 — live: GET /admin/v1/policy/tool-deny-stats returns 200 with expected fields
+    data = http_json(f"{ctx.hybrid_coordinator_url}/admin/v1/policy/tool-deny-stats",
+                     headers={"X-API-Key": ctx.api_key}, timeout=4)
+    if data is None:
+        results.append(skipped(4, "S2.5", "GET /admin/v1/policy/tool-deny-stats", "coordinator unreachable or endpoint not yet deployed (nixos-rebuild required)"))
+    else:
+        required = {"total_denials", "by_tool", "by_profile", "breakdown", "policy"}
+        missing_keys = required - set(data.keys())
+        if missing_keys:
+            results.append(failed(4, "S2.5", "tool-deny-stats response shape", f"missing keys: {', '.join(sorted(missing_keys))}"))
+        elif "readonly-strict" not in data.get("policy", {}):
+            results.append(failed(4, "S2.5", "tool-deny-stats policy", "readonly-strict not in policy map"))
+        else:
+            results.append(passed(4, "S2.5", "GET /admin/v1/policy/tool-deny-stats returns valid denial stats shape"))
 
     return results
