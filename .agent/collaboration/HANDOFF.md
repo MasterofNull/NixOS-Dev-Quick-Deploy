@@ -36,30 +36,56 @@ Anti-gaming mandate: fix root producers, never patch labels.
 - **Run Acceptance Checks**: `POST /aistack/harness/maintenance/run {action:'acceptance_checks'}`
 - **Run Improvement Pass**: `POST /aistack/harness/maintenance/run {action:'improvement_pass'}`
 
+## Session — 2026-05-23 (Fourth Pass + Performance Fixes)
+
+### Post-rebuild verification
+- nixos-rebuild confirmed deployed: nsjail PATH ✅, memory_broker booleans ✅, RAGAS by_model ✅
+- `store_fn_available: true`, `recall_fn_available: true` — broker working post-rebuild
+- RAGAS by_model: `{'unknown': {'answer_relevance_avg': 0.644, 'context_precision_avg': 1.0}}`
+
+### Performance fixes (commit fd49bcc4)
+- **Two-wave loading for Intelligence tab**: split 46 concurrent calls → 20 wave1 + 27 wave2
+  - Wave1 fires first (above-fold panels), Wave2 fires after Wave1 completes
+  - Prevents coordinator queue saturation that left 20+ panels stuck in "Loading..."
+- **Two-wave loading for Operations tab**: 14 wave1 + 13 wave2
+- **KPI ribbon `--` for REDIS/PG/QDRANT**: `loadKPIs` now uses `window._aiMetrics` cache
+  when fresh, falls back to T_SLOW (25s) timeout; prevents timeout during concurrent tab loads
+- **nftables chain count always 0**: corrupted `\x08` byte injected before "chain" in regex
+  `/^Hchain \w/g` → never matched; fixed to `/\bchain\s+\w/g` (also more robust)
+
+### Bug fixes
+- `ai-aidb-reindex.service` in failed state: reset via `systemctl reset-failed`
+  (one-shot timer completed successfully with status=partial, exited 1 due to "below 500-doc gate" warnings)
+
 ## Current State
-- **aq-qa**: 93/93 PASS · 0 failed · 1 skipped
+- **aq-qa**: 92/92 PASS · 0 failed · 2 skipped (0.5.6 timing, 0.5.7 report-backed)
 - **tier0**: 17/17 PASS
-- **Dashboard**: 93 card elements, 38 named sections, 100/100 integrity score
-  - KPI ribbon: LOCAL AI 99%, CACHE ACT 82%, EVAL 100%, HINT ADOPT 100%, REDIS OK, PG OK, QDRANT healthy, VECTORS 9056, COORD healthy, SYS HEALTH 56 (warning), THERMAL optimal
-  - All 7 tabs fully populated
-  - Neural Map: Service Topology, Routing Workflow, Vector Knowledge Graph all rendering
+- **Dashboard**: All 7 tabs fully populated, two-wave loading active
+  - KPI ribbon: LOCAL AI 100%, CACHE HIT 15%, EVAL 100%, HINT ADOPT 100%, REDIS OK, PG OK, QDRANT healthy, VECTORS 9,416, COORD healthy, SYS HEALTH 57, THERMAL optimal
+  - Intelligence: 46 panels, two-wave (20+27), all rendering with live data
+  - Security: 14 panels, all populated
+  - Operations: 27 panels, two-wave (14+13), all rendering
+  - Neural Map: Service Topology, Routing Workflow, Vector Knowledge Graph rendering
+  - Logic DAG: Logic Pattern Map rendering (131 patterns)
+
+## Known Minor Issues (stored for future dev cycle)
+1. **asyncio latency artifact**: `/api/ai/metrics` fires 17 concurrent gathers; event-loop
+   overhead inflates Redis/PG latency readings (shows 2000-4000ms vs actual <200ms).
+   Fix: measure latency in isolated probe, not inside large gather(). Low priority.
+2. **ai-aidb-reindex exit code**: exits 1 on "partial" status even when all domains succeed.
+   Should exit 0 when all domains completed (partial = below doc gate, not an error).
+3. **Lazy loading**: Intelligence tab has 47 total panel calls across 2 waves. Future
+   improvement: scroll-triggered IntersectionObserver lazy loading for below-fold panels.
 
 ## Remaining Gaps (no live data / blocked)
-- `/api/adk/integrations` — 500 error
+- `/api/adk/integrations` — 500 error (needs `.agent/adk/` directory + data)
 - `/api/adk/parity` — 500 error
 - `/api/firewall/crowdsec/decisions` — CrowdSec config missing `/etc/crowdsec/config.yaml`
 - `/api/memory/facts` — empty (needs coordinator activity)
 - `/api/workflows/agents` — empty
 - `/api/workflows/templates` — empty
 - `/api/insights/workflows/phase-4-acceptance` — in_progress, 0 flows
-- `/api/health/services/all` — slow (6s timeout), panel added with 8s budget
-- `evalByModel` card — needs nixos-rebuild + llm_model column population
-
-## Pending (Needs nixos-rebuild)
-- `eval_runner.py` per-model RAGAS (`_fetch_ragas_by_model`, `ragas_by_model` in eval/trend)
-- `memory_broker.py` boolean store_fn/recall_fn flags
-- `hints_engine.py` sys.path fix
-- `eval_runner.py`/`workflow_checkpointer.py` `_pg.fetch()` → `_pg.fetch_all()` fix
+- `evalByModel` card — populating as new queries run with llm_model field
 
 ## Dashboard Service Info
 - Dashboard PID: check with `pgrep -f "api.main:app"`
