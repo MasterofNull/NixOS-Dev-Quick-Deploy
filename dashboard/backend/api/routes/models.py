@@ -404,8 +404,31 @@ async def delete_model(model_id: str, request: Request):
 
 # ── Stub catalog (fallback when coordinator not importable) ───────────────────
 
+_REGISTRY_PATHS = [
+    Path(os.getenv("MODEL_REGISTRY_PATH", "")),
+    Path(os.getenv("DASHBOARD_DATA_DIR", "/var/lib/nixos-system-dashboard")) / "model-registry.json",
+    Path(__file__).resolve().parents[4] / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "model-registry.json",
+]
+
+
 def _stub_catalog():
-    """Return minimal catalog when lifecycle modules aren't available."""
+    """Read model catalog from the persisted registry JSON; fall back to empty list."""
+    for reg_path in _REGISTRY_PATHS:
+        if not reg_path or not reg_path.exists():
+            continue
+        try:
+            data = json.loads(reg_path.read_text())
+            models = data.get("models", [])
+            # Enrich with disk presence
+            for m in models:
+                local = m.get("local_path")
+                try:
+                    m["file_exists"] = bool(local and Path(local).exists())
+                except (PermissionError, OSError):
+                    m["file_exists"] = None
+            return {"models": models, "count": len(models), "source": "registry_file"}
+        except Exception as _e:
+            logger.warning("models route: failed to read registry file %s: %s", reg_path, _e)
     return {
         "models": [],
         "count": 0,

@@ -430,6 +430,6 @@ async def handle_broker_status(request) -> Any:
         "initialized": _broker is not None,
         "memory_types": sorted(MEMORY_TYPES),
         "contradiction_pairs": len(_CONTRADICTION_ANTONYMS),
-        "store_fn": str(_store_fn),
-        "recall_fn": str(_recall_fn),
+        "store_fn_available": _store_fn is not None,
+        "recall_fn_available": _recall_fn is not None,
     })
