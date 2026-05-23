@@ -97,11 +97,11 @@ def load_parity_scorecard() -> Dict[str, Any]:
                 capture_output=True,
                 timeout=30
             )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to generate parity scorecard: {e}")
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
+            logger.warning(f"Parity tracker unavailable: {e}")
             return {}
         except subprocess.TimeoutExpired:
-            logger.error("Parity tracker timed out")
+            logger.warning("Parity tracker timed out")
             return {}
 
     try:
@@ -167,7 +167,13 @@ async def get_parity_status():
     scorecard = load_parity_scorecard()
 
     if not scorecard:
-        raise HTTPException(status_code=503, detail="Parity scorecard not available")
+        return ParityStatusResponse(
+            overall_parity=0.0,
+            generated_at=datetime.now().isoformat(),
+            adk_version="not-yet-run",
+            harness_version="unknown",
+            categories={}
+        )
 
     response = ParityStatusResponse(
         overall_parity=scorecard.get('overall_parity', 0.0),
@@ -234,7 +240,7 @@ async def get_integrations():
     scorecard = load_parity_scorecard()
 
     if not scorecard:
-        raise HTTPException(status_code=503, detail="Integration data not available")
+        return IntegrationResponse(adopted=[], adapted=[], deferred=[], not_applicable=[])
 
     adopted = []
     adapted = []
@@ -409,8 +415,8 @@ async def get_status():
     Returns overall health and data freshness.
     """
     scorecard_file = ADK_DATA_DIR / 'parity-scorecard.json'
-    discoveries_file = sorted(ADK_DISCOVERIES_DIR.glob('features-*.json'), reverse=True)
-    gaps_file = sorted(ADK_REPORTS_DIR.glob('capability-gaps-*.json'), reverse=True)
+    discoveries_file = sorted(ADK_DISCOVERIES_DIR.glob('features-*.json'), reverse=True) if ADK_DISCOVERIES_DIR.exists() else []
+    gaps_file = sorted(ADK_REPORTS_DIR.glob('capability-gaps-*.json'), reverse=True) if ADK_REPORTS_DIR.exists() else []
 
     status = {
         'healthy': True,
