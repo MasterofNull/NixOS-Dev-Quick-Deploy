@@ -2324,6 +2324,18 @@ async def proxy_scheduler_status() -> Dict[str, Any]:
     )
 
 
+@router.get("/policy/tool-deny-stats")
+async def proxy_tool_deny_stats() -> Dict[str, Any]:
+    """Proxy coordinator GET /admin/v1/policy/tool-deny-stats — auth-profile tool denial counts (S2)."""
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/admin/v1/policy/tool-deny-stats",
+        {"total_denials": 0, "by_tool": {}, "by_profile": {}, "breakdown": [], "policy": {}, "available": False},
+        headers=headers,
+    )
+
+
 @router.get("/context/lifecycle/status")
 async def proxy_clm_status() -> Dict[str, Any]:
     """Proxy coordinator /context/lifecycle/status — CLM Hot/Warm/Cold tier distribution."""
