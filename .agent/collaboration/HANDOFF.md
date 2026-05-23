@@ -150,3 +150,55 @@ Anti-gaming mandate: fix root producers, never patch labels.
 - Start: `PYTHONPATH="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/dashboard/backend" /nix/store/vhn5n237ynx80xdxvkkdl16aiymgf36c-python3-3.13.12-env/bin/uvicorn api.main:app --host 127.0.0.1 --port 8889 --log-level warning &`
 - Dashboard reads Python directly from repo (hot-reload on file change, no rebuild needed)
 - Coordinator runs from Nix store — changes need `nixos-rebuild switch`
+
+## Session — 2026-05-23 (Phase 68 + Audit Recovery)
+
+### P0 — llama-cpp flash-attn crash loop FIXED (commits 433cf329, c35f3c9b)
+- **Root cause**: Phase 66.1 added `--cache-type-k/v q8_0` to `ai-stack.nix` without the
+  required `--flash-attn on`. Separately, `facts.nix` had `--flash-attn off` in extraArgs
+  which overrode the new flag even after first fix attempt.
+- **Fix 1** (`ai-stack.nix`): `--flash-attn on` added to `kvCacheType` lib.optionals block.
+  Flag syntax is `--flash-attn [on|off|auto]` — bare `--flash-attn` consumes next arg as value.
+- **Fix 2** (`facts.nix`): removed `"--flash-attn" "off"` from `llamaCpp.extraArgs` (Renoir host).
+- **Result**: NRestarts=0, model loads, 100/100 aq-qa, 17/17 tier0. Committed.
+
+### P1 — PRSI MCP bridge COMPLETE (commits 433cf329, c35f3c9b)
+- Local agent audit (HIGH-FIDELITY-SYSTEM-AUDIT.md v6) found PRSI was Functional Island:
+  HTTP handlers existed but no MCP tool registration in mcp_handlers.py.
+- Added 4 MCP tools to `extensions/mcp_handlers.py`:
+  - `mcp_server_get_prsi_pending` — file-only queue read, no subprocess
+  - `mcp_server_list_prsi_actions` — aq-report --format=json via asyncio.to_thread
+  - `mcp_server_execute_prsi_action` — aq-optimizer / aq-gap-auto-remediate
+  - `mcp_server_prsi_orchestrate` — approve/reject/execute/sync via prsi-orchestrator.py
+    with critical-risk safety gate (blocks MCP approve → requires human CLI sign-off)
+
+### Phase 68 delivered (commit 433cf329)
+- **68.2-68.3 MCP JSON-RPC 2.0 adapter**: `extensions/mcp_jsonrpc_adapter.py` — POST /mcp/v2
+  (tools/call + tools/list) + GET /mcp/v2/tools. Registered in `router.py`. Auth: loopback-exempt
+  OR X-API-Key. Dashboard proxy: `/aistack/mcp/v2/tools` in aistack.py.
+- **68.4-68.5 Dashboard panels**: `loadWorkflowReplay()` (Operations wave 2) +
+  `loadMCPStatus()` (Intelligence wave 2). Anti-gaming: MCP panel shows "Pending rebuild"
+  when endpoint unavailable.
+- **Phase 64.1**: `prompt_hash` added to SELECT + response dict in `trace_collector.py`.
+
+### Local agent deliverables (untracked, repo root)
+- `scripts/ai/aq-integrity-scan` — 3-way cross-reference (docs/implementation/registration)
+- `SYSTEM-INTEGRITY-MASTER.md` — 221 registration gaps, 187 zero-import logical orphans
+- `HIGH-FIDELITY-SYSTEM-AUDIT.md` — original audit triggering this session's work
+- Additional analysis files: COMPREHENSIVE-SOTA-AI-ANALYSIS.md, FINAL-SOTA-TECHNICAL-REPORT.md,
+  INDUSTRY-AI-HARNESS-COMPARISON.md, MASTER-AI-HARNESS-ANALYSIS.md, OPERATIONAL-INTEGRITY-AUDIT.md
+- All committed to agentic memory (audit_report_20260523_v6, final_integrity_master_20260523)
+
+### Orphan audit findings (backlog — not yet actioned)
+- 221 async handlers implemented but unreachable via MCP or HTTP
+- 187 modules with zero inbound imports (dead code candidates)
+- Candidate purge: task_router.py (superseded by routing_contract.py),
+  llm_code_reviewer.py (moved to ai_insights.py), local-agents/safe_command_executor.py
+- P2 backlog per SOTA 2.0 roadmap
+
+### Resume dev cycle: Phase 68 remaining + Phase 69
+- Phase 68.1 (NOT YET DONE): workflow_checkpointer.py ReAct backtracking
+  `backtrack_to(parent_node_id)` + Postgres durability. See PHASE-68-70-AIOS-CONTINUITY-PRD.md
+- Phase 69: AG-UI WebSocket + Temporal Knowledge Graph
+- AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
+- MCP JSON-RPC 2.0 adapter + prompt_hash fix: deploy on next nixos-rebuild
