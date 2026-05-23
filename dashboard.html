@@ -753,6 +753,8 @@
         <button class="mini-btn" onclick="ctrlAction('/actions/restart-all','POST',null,'Restart all AI stack services?')" style="text-align:left">Restart AI Stack</button>
         <button class="mini-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)" style="text-align:left">Execute PRSI Queue</button>
         <button class="mini-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)" style="text-align:left">Sync PRSI State</button>
+        <button class="mini-btn" onclick="ctrlAction('/aistack/harness/maintenance/run','POST',{action:'acceptance_checks'},null)" style="text-align:left">Run Acceptance Checks</button>
+        <button class="mini-btn" onclick="ctrlAction('/aistack/harness/maintenance/run','POST',{action:'improvement_pass'},'Run harness improvement pass? (7 min)')" style="text-align:left">Run Improvement Pass</button>
         <button class="mini-btn" onclick="forceLayerRefresh()" style="text-align:left">Refresh OSI Health</button>
         <button class="mini-btn" onclick="refreshAll()" style="text-align:left">Refresh All Panels</button>
       </div>
