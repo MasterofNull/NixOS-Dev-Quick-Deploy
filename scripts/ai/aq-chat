@@ -3,16 +3,21 @@
 aq-chat — High-end interactive terminal for locally hosted AI models.
 """
 
+import argparse
 import asyncio
 import json
+import logging
 import os
+import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 from prompt_toolkit import PromptSession, HTML
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from rich.console import Console
@@ -23,7 +28,9 @@ from rich.spinner import Spinner
 from rich.syntax import Syntax
 from rich.table import Table
 
-# --- Configuration ---
+# --- Constants & Paths ---
+SCRIPT_DIR = Path(__file__).parent.resolve()
+REPO_ROOT = SCRIPT_DIR.parent.parent.resolve()
 DEFAULT_LLAMA_URL = "http://127.0.0.1:8080"
 DEFAULT_HYBRID_URL = "http://127.0.0.1:8003"
 USER_HISTORY_FILE = Path.home() / ".aq_chat_history"
@@ -32,67 +39,109 @@ USER_HISTORY_FILE = Path.home() / ".aq_chat_history"
 STYLE = Style.from_dict({
     "prompt": "#00d9ff bold",
     "model": "#ff00ff bold",
+    "meta": "#546e7a italic",
 })
 
 console = Console()
 
+COMMANDS = [
+    "/help", "/exit", "/clear", "/reset", "/status", 
+    "/prime", "/route", "/save", "/load", "/search", "/tools"
+]
+command_completer = WordCompleter(COMMANDS, ignore_case=True)
+
 class AQChat:
-    def __init__(self):
-        self.llama_url = os.getenv("LLAMA_URL", DEFAULT_LLAMA_URL)
-        self.hybrid_url = os.getenv("HYBRID_URL", DEFAULT_HYBRID_URL)
-        self.session = PromptSession(history=FileHistory(str(USER_HISTORY_FILE)))
+    def __init__(self, args: argparse.Namespace):
+        self.llama_url = args.llama_url or os.getenv("LLAMA_URL", DEFAULT_LLAMA_URL)
+        self.hybrid_url = args.hybrid_url or os.getenv("HYBRID_URL", DEFAULT_HYBRID_URL)
+        self.session = PromptSession(
+            history=FileHistory(str(USER_HISTORY_FILE)),
+            completer=command_completer
+        )
         self.client = httpx.AsyncClient(timeout=600.0)
-        self.model_name = "qwen3.6-35b"
+        self.active_profile = args.profile
+        self.model_name = "loading..."
         self.context_history = []
+        self.temperature = args.temperature
+        
+        # Dynamic discovery state
+        self.available_agents = {}
+        self.pool_manager = None
+
+    async def _discover_pool(self):
+        """Discover available agents from the system pool."""
+        try:
+            offloading_path = REPO_ROOT / "ai-stack" / "offloading"
+            if str(offloading_path) not in sys.path:
+                sys.path.insert(0, str(offloading_path))
+            
+            from agent_pool_manager import AgentPoolManager
+            self.pool_manager = AgentPoolManager()
+            self.available_agents = {
+                "local": "Local Llama.cpp (35B)",
+                **{a.agent_id: f"{a.name} ({a.model_id})" for a in self.pool_manager.agents.values()}
+            }
+        except Exception as e:
+            console.print(f"[dim]Note: Agent pool discovery restricted ({e})[/]")
+            self.available_agents = {"local": "Local Llama.cpp (35B)"}
 
     async def _get_active_model(self) -> str:
-        try:
-            resp = await self.client.get(f"{self.llama_url}/v1/models")
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("data", [{}])[0].get("id", "unknown")
-        except Exception:
-            pass
-        return "local-qwen"
+        if self.active_profile == "local":
+            try:
+                resp = await self.client.get(f"{self.llama_url}/v1/models")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("data", [{}])[0].get("id", "local-qwen")
+            except Exception:
+                pass
+            return "local-qwen"
+        return self.available_agents.get(self.active_profile, self.active_profile)
 
     async def _stream_chat(self, prompt: str):
         self.context_history.append({"role": "user", "content": prompt})
         
-        # Thinking Phase (Spinner)
-        with console.status("[bold #00d9ff]Synthesizing logic...", spinner="dots"):
+        thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
+        with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
+            target_url = f"{self.llama_url}/v1/chat/completions"
             payload = {
-                "model": "local",
+                "model": "local" if self.active_profile == "local" else self.active_profile,
                 "messages": self.context_history,
                 "stream": True,
-                "temperature": 0.2
+                "temperature": self.temperature
             }
+
+            if self.active_profile != "local":
+                target_url = f"{self.hybrid_url}/v1/orchestrate"
             
-            # Start request
             try:
-                async with self.client.stream("POST", f"{self.llama_url}/v1/chat/completions", json=payload) as response:
+                async with self.client.stream("POST", target_url, json=payload) as response:
                     if response.status_code != 200:
-                        console.print(f"[bold red]Error: Received {response.status_code} from model backend.[/]")
+                        console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
                         return
 
                     full_response = ""
-                    # Create Live display for streaming
-                    with Live(Markdown(""), refresh_per_second=10) as live:
-                        async for line in response.aiter_lines():
-                            if line.startswith("data: "):
-                                try:
-                                    content = line[6:]
-                                    if content.strip() == "[DONE]":
-                                        break
-                                    chunk = json.loads(content)
-                                    token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                                    full_response += token
-                                    live.update(Markdown(full_response))
-                                except json.JSONDecodeError:
-                                    continue
+                    console.print()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            try:
+                                content = line[6:]
+                                if content.strip() == "[DONE]":
+                                    break
+                                chunk = json.loads(content)
+                                token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "") or ""
+                                full_response += token
+                                print(token, end="", flush=True)
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    print()
+                    console.print(Markdown("---"))
+                    console.print(Markdown(full_response))
+                    console.print(Markdown("---"))
                     
                     self.context_history.append({"role": "assistant", "content": full_response})
             except Exception as e:
-                console.print(f"[bold red]Connection Error: {e}[/]")
+                console.print(f"[bold red]Inference Loop Interrupted: {e}[/]")
 
     async def handle_slash_command(self, cmd: str):
         parts = cmd.split()
@@ -101,66 +150,197 @@ class AQChat:
         if base == "/clear":
             self.context_history = []
             console.clear()
-            console.print("[dim italic]Context history cleared.[/]")
+            console.print("[dim italic]Neural buffer cleared.[/]")
+        elif base == "/reset":
+            self.context_history = []
+            console.print("[bold yellow]Conversation reset.[/]")
         elif base == "/status":
             await self.show_status()
+        elif base == "/route":
+            if len(parts) > 1:
+                target = parts[1]
+                if target in self.available_agents:
+                    self.active_profile = target
+                    self.model_name = await self._get_active_model()
+                    console.print(f"[bold green]Routed to {target}[/]")
+                else:
+                    console.print(f"[red]Unknown route: {target}. Available: {list(self.available_agents.keys())}[/]")
+            else:
+                console.print(f"[yellow]Current route: {self.active_profile}[/]")
+        elif base == "/save":
+            filename = parts[1] if len(parts) > 1 else f"chat_{int(time.time())}.md"
+            self._save_chat(filename)
+        elif base == "/load":
+            if len(parts) > 1:
+                self._load_chat(parts[1])
+            else:
+                console.print("[red]Usage: /load <filename>[/]")
         elif base == "/prime":
-            console.print("[bold cyan]Running aq-prime...[/]")
+            console.print("[bold cyan]Pruning context via aq-prime...[/]")
             os.system("aq-prime")
+        elif base == "/search":
+            query = " ".join(parts[1:])
+            if query: await self._rag_search(query)
+            else: console.print("[red]Usage: /search <query>[/]")
+        elif base == "/tools":
+            await self._show_tools()
         elif base == "/exit":
             sys.exit(0)
         else:
             console.print(f"[red]Unknown command: {base}[/]")
 
+    def _save_chat(self, filename: str):
+        path = REPO_ROOT / "data" / "chats" / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            for msg in self.context_history:
+                f.write(f"## {msg['role'].upper()}\n\n{msg['content']}\n\n")
+        console.print(f"[bold green]Chat saved to {path}[/]")
+
+    def _load_chat(self, filename: str):
+        path = REPO_ROOT / "data" / "chats" / filename
+        if not path.exists():
+            console.print(f"[red]File not found: {path}[/]")
+            return
+        
+        try:
+            self.context_history = []
+            with open(path, "r") as f:
+                content = f.read()
+                blocks = content.split("## ")
+                for b in blocks:
+                    if not b.strip(): continue
+                    lines = b.split("\n")
+                    role = lines[0].strip().lower()
+                    text = "\n".join(lines[1:]).strip()
+                    if role in ["user", "assistant", "system"]:
+                        self.context_history.append({"role": role, "content": text})
+            console.print(f"[bold green]Loaded {len(self.context_history)} turns from {path}[/]")
+        except Exception as e:
+            console.print(f"[bold red]Load failed: {e}[/]")
+
+    async def _rag_search(self, query: str):
+        with console.status("[bold cyan]Searching knowledge base...", spinner="bouncingBar"):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(f"{self.hybrid_url}/api/documents?search={query}&limit=5")
+                    if resp.status_code == 200:
+                        results = resp.json().get("results", [])
+                        if not results:
+                            console.print("[yellow]No relevant documents found.[/]")
+                            return
+                        
+                        table = Table(title=f"RAG Results: {query}", border_style="cyan")
+                        table.add_column("Score", style="dim", justify="right")
+                        table.add_column("Source", style="green")
+                        table.add_column("Snippet", style="white")
+                        for r in results:
+                            table.add_row(f"{r['score']:.2f}", r['source'], r['content'][:120].replace("\n", " ") + "...")
+                        console.print(table)
+                    else:
+                        console.print(f"[red]Search API error: {resp.status_code}[/]")
+            except Exception as e:
+                console.print(f"[red]Search connection failed: {e}[/]")
+
+    async def _show_tools(self):
+        try:
+            registry_path = REPO_ROOT / "ai-stack" / "local-agents"
+            if str(registry_path) not in sys.path:
+                sys.path.insert(0, str(registry_path))
+            from tool_registry import get_registry
+            registry = get_registry()
+            
+            table = Table(title="Local Agent Tool Registry", border_style="#ff00ff")
+            table.add_column("Tool Name", style="bold cyan")
+            table.add_column("Safety", style="magenta")
+            table.add_column("Description")
+            
+            for name, tool in registry.get_all_tools().items():
+                table.add_row(name, str(tool.safety_policy.value), tool.description)
+            console.print(table)
+        except Exception as e:
+            console.print(f"[red]Could not load tool registry: {e}[/]")
+
     async def show_status(self):
-        table = Table(title="AI Stack Status", border_style="#00d9ff")
-        table.add_column("Component", style="cyan")
-        table.add_column("State", style="magenta")
+        grid = Table.grid(expand=True)
+        grid.add_column(style="cyan")
+        grid.add_column(style="magenta", justify="right")
         
         active_model = await self._get_active_model()
-        table.add_row("Model", active_model)
-        table.add_row("Backend", self.llama_url)
-        table.add_row("History", f"{len(self.context_history)} turns")
+        grid.add_row("Active Model", active_model)
+        grid.add_row("Current Profile", self.active_profile)
+        grid.add_row("History Depth", f"{len(self.context_history)} messages")
+        grid.add_row("Temperature", str(self.temperature))
+
+        console.print(Panel(grid, title="[bold #00d9ff]System Context[/]", border_style="#00d9ff"))
         
-        console.print(table)
+        try:
+            load = os.getloadavg()
+            res_table = Table(title="Host Resources", box=None)
+            res_table.add_column("Load (1/5/15m)", style="dim")
+            res_table.add_row(f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}")
+            console.print(res_table)
+        except: pass
+
+        if self.available_agents:
+            pool_table = Table(title="Available Agent Pool", box=None, header_style="bold blue")
+            pool_table.add_column("ID")
+            pool_table.add_column("Description")
+            for aid, desc in self.available_agents.items():
+                style = "bold green" if aid == self.active_profile else "dim"
+                pool_table.add_row(aid, desc, style=style)
+            console.print(pool_table)
 
     async def run(self):
+        await self._discover_pool()
         self.model_name = await self._get_active_model()
+        
         console.print(Panel.fit(
-            f"[bold #00d9ff]Command Center Chat HUD v2.0[/]\n"
-            f"[dim]Connected to {self.model_name} @ {self.llama_url}[/]\n"
-            f"Type [bold #ff00ff]/help[/] for commands.",
+            f"[bold #00d9ff]Command Center HUD v2.2-STELLAR[/]\n"
+            f"[dim]Professional-grade edge orchestration interface.[/]\n"
+            f"Active: [bold #ff00ff]{self.active_profile}[/] ({self.model_name})",
             border_style="#00d9ff"
         ))
 
         while True:
             try:
-                user_input = await self.session.prompt(
-                    HTML(f'<prompt>[{self.model_name}]</prompt> <model>❯</model> '),
+                user_input = await self.session.prompt_async(
+                    HTML(f'<prompt>[{self.active_profile}]</prompt> <model>❯</model> '),
                     style=STYLE
                 )
                 user_input = user_input.strip()
                 
-                if not user_input:
-                    continue
+                if not user_input: continue
                 
                 if user_input.startswith("/"):
                     if user_input.lower() == "/help":
-                        console.print("[bold magenta]Available Commands:[/]\n"
-                                      " /clear  - Clear history\n"
-                                      " /status - System metrics\n"
-                                      " /prime  - Onboard context\n"
-                                      " /exit   - Exit chat")
+                        console.print("[bold magenta]Slash Commands:[/]\n"
+                                      " /route <id> - Switch agent lane\n"
+                                      " /search <q> - Knowledge base lookup\n"
+                                      " /tools      - List agent capabilities\n"
+                                      " /save <f>   - Export markdown chat\n"
+                                      " /load <f>   - Import markdown context\n"
+                                      " /reset      - Reset conversation\n"
+                                      " /status     - Show system metrics\n"
+                                      " /prime      - Sync repository context\n"
+                                      " /exit       - Terminate session")
                         continue
                     await self.handle_slash_command(user_input)
                 else:
                     await self._stream_chat(user_input)
                     
-            except EOFError:
-                break
-            except KeyboardInterrupt:
-                continue
+            except EOFError: break
+            except KeyboardInterrupt: continue
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="aq-chat: Professional AI Terminal")
+    parser.add_argument("--profile", default="local", help="Initial agent profile/lane")
+    parser.add_argument("--llama-url", help="Override llama.cpp URL")
+    parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
+    parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    chat = AQChat()
+    args = parse_args()
+    chat = AQChat(args)
     asyncio.run(chat.run())

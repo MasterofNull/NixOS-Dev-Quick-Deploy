@@ -1103,6 +1103,39 @@
           description = "Additional CLI flags passed to llama-server.";
         };
 
+        specType = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          example = "draft-mtp";
+          description = ''
+            Speculative decoding type for llama-server (--spec-type).
+            Set to "draft-mtp" to enable multi-token prediction.
+            Empty string disables speculative decoding.
+            The coordinator reads AI_SPECULATIVE_DECODING_ENABLED from this.
+          '';
+        };
+
+        specDraftNMax = lib.mkOption {
+          type = lib.types.int;
+          default = 2;
+          description = ''
+            Maximum number of draft tokens for speculative decoding (--spec-draft-n-max).
+            Only used when specType != "". Typical range: 1–4.
+            Higher values improve throughput when acceptance rate > 60%.
+          '';
+        };
+
+        mlock = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Lock model weights in RAM via --mlock (mlockall).
+            Prevents model from being swapped out under memory pressure.
+            Requires sufficient free RAM to hold the full model (22+ GB for 35B Q4).
+            Enable only when ram_free_gb > model_size_gb + 3GB OS reserve.
+          '';
+        };
+
         ctxSize = lib.mkOption {
           type = lib.types.int;
           default = 32768;

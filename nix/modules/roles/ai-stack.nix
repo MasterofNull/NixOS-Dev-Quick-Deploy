@@ -882,11 +882,10 @@ in {
     # ── OpenCode CLI overlay ────────────────────────────────────────────────────
     # Provides pkgs.opencode (AI coding agent) + pkgs.models-dev from the
     # nix/pkgs/by-name/ staging area (pending nixpkgs 25.11 inclusion).
-    # systemPackages install is intentionally omitted: opencode v1.3.0 has a
-    # Bun 1.3.3 bundling bug (undici not defined) that fails the smoke test.
-    # The overlay is kept so pkgs.opencode is available once the package is
-    # fixed; the run_opencode tool and remote-opencode switchboard profile
-    # degrade gracefully when the binary is absent from PATH.
+    #
+    # Note: opencode v1.3.0 has a Bun 1.3.3 bundling bug (undici not defined)
+    # that failed the build-time smoke test. This is patched in our local 
+    # package definition to allow successful inclusion in systemPackages.
     (lib.mkIf roleEnabled {
       nixpkgs.overlays = [ (import ../../lib/overlays/opencode.nix) ];
     })
@@ -967,6 +966,9 @@ in {
           # Phase 5.2.2: allow model weights to be locked in RAM (mlockall).
           # Prevents OS from paging out model pages during inference under pressure.
           LimitMEMLOCK = "infinity";
+          # Gemini finding (2026-05-23): soft fd limit defaults to 1024.
+          # 35B model + mmap + concurrent connections can exhaust this under load.
+          LimitNOFILE = "65535";
           # GPU backend environment for Vulkan/ROCm acceleration.
           Environment = gpuEnvList;
           # Phase 13.1.3 — inference server never needs internet access;
@@ -999,6 +1001,11 @@ in {
               (toString llama.ctxSize)
               "--metrics"
             ]
+            ++ (lib.optionals (llama.specType != "") [
+              "--spec-type" llama.specType
+              "--spec-draft-n-max" (toString llama.specDraftNMax)
+            ])
+            ++ (lib.optionals llama.mlock ["--mlock"])
             ++ (map lib.escapeShellArg llamaArgs));
         };
       };

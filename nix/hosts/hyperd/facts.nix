@@ -60,10 +60,11 @@
                                                                 "--n-gpu-layers" "12"
                                                                 "--flash-attn" "off"
                                                                 "--jinja"
-                                                                # MTP speculative decoding — draft heads bundled in this GGUF.
-                                                                "--spec-type" "draft-mtp"
-                                                                "--spec-draft-n-max" "2"
                                                               ];
+                                                              # MTP speculative decoding — declared as first-class options so
+                                                              # the coordinator can read AI_SPECULATIVE_DECODING_ENABLED correctly.
+                                                              llamaCpp.specType = "draft-mtp";
+                                                              llamaCpp.specDraftNMax = 2;
                                                               embeddingServer = {
                                                                 activeModel = "bge-m3";
                                                                 # useSymlink: embedding model also uses stable symlink path.
@@ -73,6 +74,10 @@
                                                                 # ai-stack.nix causes GPU OOM for inputs > ~400 tokens. Override
                                                                 # to 12 layers (same as chat model) for reliable KV-cache headroom.
                                                                 extraArgs = [ "--threads" "4" "--n-gpu-layers" "12" ];
+                                                              };
+
+                                                              switchboard.remoteModelAliases = {
+                                                                opencode = "qwen/qwen3-coder-32b";
                                                               };
                                                             };
   };
