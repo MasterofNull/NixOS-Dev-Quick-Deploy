@@ -442,6 +442,10 @@
         <tbody id="routeBody"><tr><td colspan="3" style="color:var(--fg3)">Loading...</td></tr></tbody>
       </table>
     </div>
+    <div class="card" id="section-task-classifier">
+      <div class="card-hd"><span class="card-title">Task Classifier Stats</span><span class="card-badge badge-info" id="taskClassBadge">--</span></div>
+      <div id="taskClassDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
     <div class="card" id="section-model-lifecycle">
       <div class="card-hd"><span class="card-title">Model Lifecycle</span><span class="card-badge badge-info" id="mlBadge">--</span></div>
       <div id="modelList"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
@@ -708,6 +712,12 @@
       <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Routing Workflow</div>
       <div class="d3-panel" id="workflowCanvas" style="height:calc(50vh - 110px);min-height:300px">
         <div class="d3-hud" id="workflowHud">ROUTING_WORKFLOW: READY</div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Vector Knowledge Graph</div>
+      <div class="d3-panel" id="vectorCanvas" style="height:calc(50vh - 110px);min-height:300px">
+        <div class="d3-hud" id="vectorHud">KNOWLEDGE_GRAPH: READY</div>
       </div>
     </div>
   </div>
