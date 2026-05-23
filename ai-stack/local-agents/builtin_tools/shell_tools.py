@@ -88,7 +88,7 @@ SAFE_COMMANDS = {
     # Code analysis / validation
     "bash", "python3", "python", "nix-instantiate", "nix",
     "shellcheck", "statix", "deadnix",
-    # Harness tools (full suite from QWEN.md)
+    # Harness tools (full suite from LOCAL-AGENT.md)
     "agrep", "als", "acat", "asum",
     "aq-qa", "aq-hints", "aq-report", "aq-session-start",
     "aq-commit-facts", "aq-lesson-promote", "aq-crystallize",
