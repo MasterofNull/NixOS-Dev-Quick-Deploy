@@ -2,7 +2,7 @@
 
 **Purpose**: This document provides the locally hosted AI agent with complete knowledge of the AI harness infrastructure, tools, and usage patterns.
 
-**Read this first** when starting any session. For full agent instructions see `.agent/QWEN.md`.
+**Read this first** when starting any session. For full agent instructions see `.agent/LOCAL-AGENT.md`.
 
 ---
 
@@ -22,7 +22,7 @@
 **CRITICAL — Physical limits (Renoir APU, 27 GB RAM):**
 - Max GPU layers: 12. Max context: 4096 tokens default. Max draft tokens: 2 (MTP).
 - Always set `enable_thinking: false` in llama.cpp requests or responses will be empty.
-- Full constraints: `.agent/QWEN.md` § "Physical System Constraints"
+- Full constraints: `.agent/LOCAL-AGENT.md` § "Hardware Floor"
 
 ### Health Check Command
 
