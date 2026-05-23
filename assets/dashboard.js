@@ -1210,6 +1210,7 @@ async function loadIntelligence() {
     loadCacheAnalytics(), loadToolsPerformance(), loadToolsHeatmap(), loadAIRecommendations(), loadQueryComplexity(),
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
     loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(), loadAIMetricsDetail(),
+    loadAgentOutcomes(),
   ]);
 }
 
@@ -1320,6 +1321,64 @@ async function loadTraceGantt() {
       <line x1="${W * 0.32}" y1="14" x2="${W}" y2="14" stroke="var(--border)" stroke-width="0.3"/>
       ${bars}
     </svg>`;
+}
+
+// ─── INTELLIGENCE: AGENT OUTCOMES GAUGE (Phase 67.1) ──────────────────────────
+async function loadAgentOutcomes() {
+  const d   = await apiFetch('/query/traces');
+  const el  = document.getElementById('agentOutcomesDetails');
+  const badge = document.getElementById('agentOutcomesBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const traces = d.traces || [];
+  if (!traces.length) {
+    if (badge) { badge.textContent = 'no data'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">Awaiting trace data — run a query first</div>';
+    return;
+  }
+  let success = 0, slow = 0, error = 0;
+  for (const t of traces) {
+    const ms = t.total_ms || 0;
+    if (ms === 0 || ms >= 10000) error++;
+    else if (ms >= 3000) slow++;
+    else success++;
+  }
+  const total = traces.length;
+  const sPct  = Math.round(success / total * 100);
+  const slPct = Math.round(slow    / total * 100);
+  const ePct  = Math.round(error   / total * 100);
+  if (badge) {
+    badge.textContent = `${sPct}% ok`;
+    badge.className   = `card-badge ${sPct >= 80 ? 'badge-ok' : sPct >= 50 ? 'badge-warn' : 'badge-err'}`;
+  }
+  // SVG donut via stroke-dasharray segments
+  const circ  = 2 * Math.PI * 20;  // r=20
+  const sLen  = (success / total) * circ;
+  const slLen = (slow    / total) * circ;
+  const eLen  = (error   / total) * circ;
+  const seg = (len, color, offset) =>
+    len > 0.5
+      ? `<circle cx="32" cy="32" r="20" fill="none" stroke="${color}" stroke-width="10" ` +
+        `stroke-dasharray="${len.toFixed(2)} ${circ.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" ` +
+        `transform="rotate(-90 32 32)" opacity="0.85"/>`
+      : '';
+  const donut = `<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="20" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="10"/>
+    ${seg(sLen,  '#84a98c', 0)}
+    ${seg(slLen, '#e9c46a', -sLen)}
+    ${seg(eLen,  '#e76f51', -(sLen + slLen))}
+    <circle cx="32" cy="32" r="10" fill="var(--bg,#0d1117)"/>
+    <text x="32" y="36" text-anchor="middle" font-size="9" fill="var(--fg1,#e6edf3)" font-family="monospace">${total}</text>
+  </svg>`;
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:.8rem">
+    ${donut}
+    <div>${[
+      fwRow('Success',      `${success} (${sPct}%)`,  success > 0 ? 'ok'   : 'info'),
+      fwRow('Slow 3-10s',   `${slow}    (${slPct}%)`, slow    > 0 ? 'warn' : 'info'),
+      fwRow('Error/Timeout',`${error}   (${ePct}%)`,  error   > 0 ? 'err'  : 'info'),
+      fwRow('Thresholds',   '< 3s ok · 3-10s slow · ≥ 10s err', 'info'),
+    ].join('')}</div>
+  </div>`;
 }
 
 // ─── INTELLIGENCE: ADK STATUS ─────────────────────────────────────────────────
@@ -1933,6 +1992,7 @@ async function loadOperations() {
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
     loadAIServicesDetail(), loadDashboardConfig(), loadReadinessRadar(), loadWorkflowBlueprints(), loadSystemActions(),
+    loadMissionControl(),
   ]);
 }
 
@@ -2990,6 +3050,53 @@ async function loadWorkflowBlueprints() {
   }).join('') + (bps.length > 8 ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${bps.length - 8} more</div>` : '');
 }
 
+// ─── OPERATIONS: MISSION CONTROL (Phase 67.2) ─────────────────────────────────
+async function loadMissionControl() {
+  const d     = await apiFetch('/aistack/orchestration/sessions', {}, T_SLOW);
+  const el    = document.getElementById('missionControlDetails');
+  const badge = document.getElementById('missionControlBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Coordinator unavailable', 'warn'); return; }
+  const sessions = d.sessions || d.active_sessions || [];
+  if (!sessions.length) {
+    if (badge) { badge.textContent = 'idle'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No active sessions — coordinator idle</div>';
+    return;
+  }
+  const active = sessions.filter(s => ['active','running','in_progress'].includes((s.status||'').toLowerCase()));
+  if (badge) {
+    badge.textContent = `${active.length}/${sessions.length} active`;
+    badge.className   = active.length > 0 ? 'card-badge badge-ok' : 'card-badge badge-info';
+  }
+  const stCol = s => {
+    const sl = (s||'').toLowerCase();
+    if (['active','running','in_progress'].includes(sl)) return '#84a98c';
+    if (['failed','error'].includes(sl)) return '#e76f51';
+    if (['completed','done'].includes(sl)) return '#4e9af1';
+    return 'var(--fg3)';
+  };
+  const rows = sessions.slice(0, 8).map(s => {
+    const sid    = (s.session_id || s.id || '?').slice(0, 8);
+    const bp     = (s.blueprint || s.workflow || s.intent || s.task || '--').slice(0, 20);
+    const status = s.status || 'unknown';
+    const agents = s.agents?.length ?? s.agent_count ?? '--';
+    return `<div style="display:flex;gap:.4rem;font-size:.57rem;padding:.15rem 0;border-bottom:1px solid rgba(255,255,255,.04);align-items:center">
+      <span style="color:var(--fg3);font-family:var(--hud);min-width:4rem">${sid}…</span>
+      <span style="color:var(--fg2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${bp}</span>
+      <span style="color:${stCol(status)};font-family:var(--hud);min-width:4.5rem;text-align:right">${status}</span>
+      <span style="color:var(--fg3);font-family:var(--hud);min-width:2rem;text-align:right">${agents}A</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = [
+    fwRow('Total Sessions', sessions.length,         'info'),
+    fwRow('Active',         active.length,            active.length > 0 ? 'ok' : 'info'),
+    `<div style="margin-top:.4rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.06)">
+      <div style="font-size:.55rem;color:var(--fg3);margin-bottom:.25rem;text-transform:uppercase;letter-spacing:.06em">Sessions</div>
+      ${rows}
+      ${sessions.length > 8 ? `<div style="font-size:.55rem;color:var(--fg3);padding:.15rem 0">+${sessions.length - 8} more</div>` : ''}
+    </div>`,
+  ].join('');
+}
 
 async function loadSystemHealthInsights() {
   const d = await apiFetch('/insights/system/health');
