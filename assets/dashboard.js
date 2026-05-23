@@ -117,11 +117,12 @@ function toggleDrawer() { document.getElementById('drawer').classList.toggle('op
 async function loadKPIs() {
   const [metrics, aiM, hs, analytics] = await Promise.all([
     apiFetch('/metrics'),
-    apiFetch('/ai/metrics'),
+    // Use cached aiM if fresh (<90s old) to avoid competing with tab loads; T_SLOW for resilience
+    window._aiMetrics ? Promise.resolve(window._aiMetrics) : apiFetch('/ai/metrics', {}, T_SLOW),
     apiFetch('/metrics/health-score'),
     apiFetch('/insights/routing/analytics'),
   ]);
-  window._aiMetrics = aiM;
+  if (aiM) window._aiMetrics = aiM;  // only update cache if fresh data arrived
 
   // Populate header health score immediately (before OSI layer health completes)
   if (hs && hs.score != null) {
@@ -1189,17 +1190,21 @@ async function loadTaskClassifier() {
 }
 
 async function loadIntelligence() {
+  // Wave 1 — above-fold panels + coordinator core (≤20 calls, avoid overwhelming coordinator)
   await Promise.allSettled([
     loadCoordinator(), loadRouting(), loadModels(), loadSwitchboard(),
     loadAIDB(), loadLearning(), loadDrift(), loadVerifier(),
     loadKnowledge(), loadAgentic(), loadRagQuality(), loadAgentEvalTrends(),
     loadPerfHotspots(), loadOrchestrationSessions(), loadRAGHealth(),
     loadRoutingConfig(), loadHomeostasis(), loadSchedulerStatus(), loadCLMStatus(),
-    loadMemoryBroker(), loadAffectiveState(), loadHintsRegistry(),
+    loadMemoryBroker(),
+  ]);
+  // Wave 2 — secondary panels, fires after Wave 1 clears the coordinator queue
+  await Promise.allSettled([
+    loadAffectiveState(), loadHintsRegistry(),
     loadAICoordinator(), loadReasoningProfiles(),
     loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
-    loadTaskClassifier(),
-    loadLogicPatterns(), loadLocalInsights(),
+    loadTaskClassifier(), loadLogicPatterns(), loadLocalInsights(),
     loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(),
     loadHintsStats(), loadMemorySupersedeHistory(),
     loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
@@ -1865,11 +1870,15 @@ async function ctrlAction(endpoint, method, body, confirmMsg) {
 }
 
 async function loadOperations() {
+  // Wave 1 — top panels (QA, deployments, harness, pipeline, fleet)
   await Promise.allSettled([
     loadQA(), loadDeployments(), loadPRSI(), loadRuntimeDetails(),
     loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
     loadRalph(), loadTrainingData(), loadParityScorecard(),
     loadFleetSummary(), loadBudgetPolicy(), loadPortsRegistry(), loadHealthAggregate(),
+  ]);
+  // Wave 2 — lower panels (testing, scorecard, containers, readiness radar, actions)
+  await Promise.allSettled([
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
@@ -2856,7 +2865,7 @@ async function loadFirewallRules() {
   if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
   const rules = d.rules || '';
   const tables = (rules.match(/^table /mg) || []).length;
-  const chains = (rules.match(/chain \w/g) || []).length;
+  const chains = (rules.match(/\bchain\s+\w/g) || []).length;
   const sets   = (rules.match(/^	set \w/mg) || []).length;
   if (badge) {
     badge.textContent = `${tables} tables · ${chains} chains`;
