@@ -888,6 +888,46 @@ TOOL_DEFINITIONS: List[Tool] = [
         description="Get learning statistics from the advanced online-learning module",
         inputSchema={"type": "object", "properties": {}},
     ),
+    # P1 — PRSI bridge (Phase audit 2026-05-23): expose PRSI loop to MCP callers
+    Tool(
+        name="mcp_server_get_prsi_pending",
+        description=(
+            "Read pending PRSI (Pessimistic Recursive Self-Improvement) actions from the "
+            "on-disk action queue. Returns actions not yet in a terminal state "
+            "(approved/rejected/executed/completed/failed). Fast file-only read, no subprocess."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="mcp_server_list_prsi_actions",
+        description=(
+            "List available PRSI optimization actions by running aq-report --format=json. "
+            "Returns structured_actions from the report. May take up to 30 seconds."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="mcp_server_execute_prsi_action",
+        description=(
+            "Execute a PRSI optimization action via aq-optimizer or aq-gap-auto-remediate. "
+            "Defaults to dry_run=true for safety. Set dry_run=false to apply changes. "
+            "action_type: '' (default aq-optimizer) or 'gap_remediation'."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true (default), simulate action without applying changes.",
+                },
+                "action_type": {
+                    "type": "string",
+                    "description": "Action type: '' for aq-optimizer, 'gap_remediation' for aq-gap-auto-remediate.",
+                    "enum": ["", "gap_remediation"],
+                },
+            },
+        },
+    ),
 ]
 
 
@@ -1325,6 +1365,99 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             import advanced_features
             result = await advanced_features.get_learning_stats()
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        # P1 — PRSI bridge (Phase audit 2026-05-23)
+        elif name == "mcp_server_get_prsi_pending":
+            import json as _json
+            queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+            if not queue_path.exists():
+                result = {"status": "ok", "pending": [], "count": 0, "queue_exists": False}
+            else:
+                queue = _json.loads(queue_path.read_text())
+                terminal_states = {"approved", "rejected", "executed", "completed", "failed", "counterfactual_queued"}
+                all_actions = queue.get("actions", [])
+                pending = [
+                    {
+                        "id": a.get("id", ""),
+                        "type": a.get("type", ""),
+                        "risk_level": a.get("risk_level", ""),
+                        "state": a.get("state", ""),
+                        "summary": str(a.get("action_detail", {}).get("summary", ""))[:200],
+                        "created_at": a.get("created_at", ""),
+                    }
+                    for a in all_actions if a.get("state") not in terminal_states
+                ]
+                state_counts: Dict[str, int] = {}
+                for a in all_actions:
+                    s = a.get("state", "unknown")
+                    state_counts[s] = state_counts.get(s, 0) + 1
+                result = {
+                    "status": "ok",
+                    "pending": pending,
+                    "count": len(pending),
+                    "state_counts": state_counts,
+                    "queue_exists": True,
+                }
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "mcp_server_list_prsi_actions":
+            import subprocess as _sp
+            import sys as _sys
+            repo_root = Path(__file__).resolve().parents[4]
+            aq_report = repo_root / "scripts" / "ai" / "aq-report"
+            if not aq_report.exists():
+                result = {"status": "error", "error": "aq-report not found", "path": str(aq_report)}
+            else:
+                proc = await asyncio.to_thread(
+                    lambda: _sp.run(
+                        [_sys.executable, str(aq_report), "--format=json"],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                )
+                if proc.returncode != 0:
+                    result = {"status": "error", "error": "aq-report failed", "stderr": proc.stderr[:500]}
+                else:
+                    try:
+                        report_data = json.loads(proc.stdout)
+                        actions = report_data.get("structured_actions", [])
+                        result = {"status": "ok", "actions": actions, "action_count": len(actions)}
+                    except json.JSONDecodeError as exc:
+                        result = {"status": "error", "error": f"invalid JSON from aq-report: {exc}"}
+            _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "mcp_server_execute_prsi_action":
+            import subprocess as _sp
+            import sys as _sys
+            dry_run = bool(arguments.get("dry_run", True))
+            action_type = str(arguments.get("action_type", "")).strip()
+            repo_root = Path(__file__).resolve().parents[4]
+            scripts_dir = repo_root / "scripts" / "ai"
+            if action_type == "gap_remediation":
+                script = scripts_dir / "aq-gap-auto-remediate"
+                cmd = [_sys.executable, str(script)] + (["--dry-run"] if dry_run else []) + ["--limit", "5"]
+                tool_name = "aq-gap-auto-remediate"
+            else:
+                script = scripts_dir / "aq-optimizer"
+                cmd = [_sys.executable, str(script)] + (["--dry-run"] if dry_run else []) + ["--output-json"]
+                tool_name = "aq-optimizer"
+            if not script.exists():
+                result = {"status": "error", "error": f"{script.name} not found", "path": str(script)}
+            else:
+                proc = await asyncio.to_thread(
+                    lambda: _sp.run(cmd, capture_output=True, text=True, timeout=300)
+                )
+                result = {
+                    "status": "ok" if proc.returncode == 0 else "failed",
+                    "tool": tool_name,
+                    "dry_run": dry_run,
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout[:2000],
+                    "stderr": proc.stderr[:500] if proc.stderr else "",
+                }
+            _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         else:

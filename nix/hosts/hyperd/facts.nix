@@ -58,7 +58,8 @@
                                                                 "--threads-batch" "8"
                                                                 # Renoir iGPU: 12 layers avoids ErrorDeviceLost at startup.
                                                                 "--n-gpu-layers" "12"
-                                                                "--flash-attn" "off"
+                                                                # flash-attn is now enabled via ai-stack.nix kvCacheType block
+                                                                # (Phase 66.1: q8_0 KV cache requires --flash-attn)
                                                                 "--jinja"
                                                               ];
                                                               # MTP speculative decoding — declared as first-class options so

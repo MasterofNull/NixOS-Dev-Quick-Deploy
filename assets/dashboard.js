@@ -1210,7 +1210,7 @@ async function loadIntelligence() {
     loadCacheAnalytics(), loadToolsPerformance(), loadToolsHeatmap(), loadAIRecommendations(), loadQueryComplexity(),
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
     loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(), loadAIMetricsDetail(),
-    loadAgentOutcomes(),
+    loadAgentOutcomes(), loadMCPStatus(),
   ]);
 }
 
@@ -1992,7 +1992,7 @@ async function loadOperations() {
     loadHarnessScorecard(),
     loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
     loadAIServicesDetail(), loadDashboardConfig(), loadReadinessRadar(), loadWorkflowBlueprints(), loadSystemActions(),
-    loadMissionControl(),
+    loadMissionControl(), loadWorkflowReplay(),
   ]);
 }
 
@@ -3095,6 +3095,81 @@ async function loadMissionControl() {
       ${rows}
       ${sessions.length > 8 ? `<div style="font-size:.55rem;color:var(--fg3);padding:.15rem 0">+${sessions.length - 8} more</div>` : ''}
     </div>`,
+  ].join('');
+}
+
+// ─── OPERATIONS: WORKFLOW REPLAY (Phase 68.4) ─────────────────────────────────
+async function loadWorkflowReplay() {
+  const d     = await apiFetch('/aistack/orchestration/sessions', {}, T_SLOW);
+  const el    = document.getElementById('workflowReplayDetails');
+  const badge = document.getElementById('workflowReplayBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Coordinator unavailable', 'warn'); return; }
+  const sessions = d.sessions || [];
+  // Filter sessions that had backtracking (backtrack_count > 0) or failures
+  const retried  = sessions.filter(s => (s.backtrack_count || 0) > 0 || s.status === 'retrying');
+  const failed   = sessions.filter(s => s.status === 'failed');
+  const total    = sessions.length;
+  if (badge) {
+    const issues = retried.length + failed.length;
+    badge.textContent = issues > 0 ? `${issues} issues` : `${total} clean`;
+    badge.className   = `card-badge ${issues > 0 ? 'badge-warn' : 'badge-ok'}`;
+  }
+  if (!total) {
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No workflow sessions — coordinator idle</div>';
+    return;
+  }
+  const highlight = [...retried, ...failed].slice(0, 6);
+  const highlightRows = highlight.map(s => {
+    const sid    = (s.session_id || s.id || '?').slice(0, 8);
+    const status = s.status || 'unknown';
+    const depth  = s.backtrack_count != null ? `↩${s.backtrack_count}` : '';
+    const bp     = (s.blueprint || s.workflow || '--').slice(0, 18);
+    const col    = status === 'failed' ? 'err' : 'warn';
+    return fwRow(`${sid}… ${depth}`, `${bp} · ${status}`, col);
+  }).join('');
+  el.innerHTML = [
+    fwRow('Total Sessions',  total,          'info'),
+    fwRow('Backtracked',     retried.length, retried.length > 0 ? 'warn' : 'info'),
+    fwRow('Failed',          failed.length,  failed.length  > 0 ? 'err'  : 'info'),
+    highlight.length
+      ? `<div style="margin-top:.4rem;border-top:1px solid rgba(255,255,255,.06);padding-top:.3rem">${highlightRows}</div>`
+      : '<div style="color:var(--fg3);font-size:.6rem;margin-top:.3rem">All sessions completed cleanly</div>',
+  ].join('');
+}
+
+// ─── INTELLIGENCE: MCP PROTOCOL STATUS (Phase 68.5) ───────────────────────────
+async function loadMCPStatus() {
+  // Try JSON-RPC 2.0 endpoint (Phase 68.2 — available post-rebuild)
+  const d = await apiFetch('/aistack/mcp/v2/tools');
+  const el    = document.getElementById('mcpStatusDetails');
+  const badge = document.getElementById('mcpStatusBadge');
+  if (!el) return;
+  if (!d) {
+    // Pre-Phase-68.2 rebuild: show pending state (anti-gaming: real status, not fake pass)
+    if (badge) { badge.textContent = 'pending rebuild'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = [
+      fwRow('JSON-RPC 2.0', 'Pending rebuild (Phase 68.2)', 'warn'),
+      fwRow('Current MCP', 'Proprietary tool bridge (pre-standard)', 'info'),
+      fwRow('Endpoint', '/mcp/v2 — not yet deployed', 'info'),
+      fwRow('Migration', 'Phase 68 — thin shim preserves existing handlers', 'info'),
+    ].join('');
+    return;
+  }
+  // Phase 68.2+ available
+  const tools = (d.result || {}).tools || d.tools || [];
+  if (badge) {
+    badge.textContent = `v2 · ${tools.length} tools`;
+    badge.className   = 'card-badge badge-ok';
+  }
+  el.innerHTML = [
+    fwRow('Protocol',  'JSON-RPC 2.0 (MCP 2025-11-05)', 'ok'),
+    fwRow('Endpoint',  '/mcp/v2',                        'ok'),
+    fwRow('Tools',     tools.length,                      'info'),
+    fwRow('Auth',      'X-API-Key required (non-loopback)', 'ok'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.3rem 0 .15rem;text-transform:uppercase">Tools</div>',
+    ...tools.slice(0, 6).map(t => fwRow(t.name || '?', (t.description || '--').slice(0, 40), 'info')),
+    tools.length > 6 ? `<div style="font-size:.55rem;color:var(--fg3)">+${tools.length - 6} more</div>` : '',
   ].join('');
 }
 

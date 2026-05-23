@@ -252,6 +252,9 @@ def create_app(
     # Phase 63: GraphRAG knowledge search (/api/knowledge/graph/search)
     _register_graph_search_routes(app)
 
+    # Phase 68.2-68.3: MCP JSON-RPC 2.0 adapter (/mcp/v2, /mcp/v2/tools)
+    _register_mcp_jsonrpc_routes(app)
+
     return app
 
 
@@ -269,3 +272,13 @@ def _register_graph_search_routes(app: web.Application) -> None:
     except Exception as exc:
         import logging
         logging.getLogger("hybrid-coordinator").warning("GraphRAG route registration skipped: %s", exc)
+
+
+def _register_mcp_jsonrpc_routes(app: web.Application) -> None:
+    """Phase 68.2-68.3: Register MCP JSON-RPC 2.0 adapter routes (/mcp/v2, /mcp/v2/tools)."""
+    try:
+        from extensions import mcp_jsonrpc_adapter as _mcp_rpc
+        _mcp_rpc.register_routes(app)
+    except Exception as exc:
+        import logging
+        logging.getLogger("hybrid-coordinator").warning("MCP JSON-RPC 2.0 route registration skipped: %s", exc)
