@@ -4771,3 +4771,79 @@ async def get_workflow_graph() -> Dict[str, Any]:
     _WORKFLOW_GRAPH_CACHE["payload"] = payload
     _WORKFLOW_GRAPH_CACHE["ts"] = now
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Phase 64.3 — Tool Execution Heatmap
+# GET /api/aistack/insights/tools/heatmap
+# ---------------------------------------------------------------------------
+
+@router.get("/insights/tools/heatmap")
+async def get_tool_execution_heatmap() -> Dict[str, Any]:
+    """
+    Phase 64.3: Tool execution heatmap — aggregate tool_audit.jsonl by tool name.
+
+    Returns per-tool: call_count, avg_latency_ms, error_rate, last_called.
+    Sorted by call_count descending (hottest tools first).
+    Reads coordinator audit log; falls back to dashboard audit log path.
+    """
+    # Try coordinator audit log first, then dashboard fallback
+    audit_candidates = [
+        Path("/var/log/ai-audit-sidecar/tool-audit.jsonl"),
+        Path(os.getenv("TOOL_AUDIT_LOG", "/var/log/nixos-ai-stack/tool-audit.jsonl")),
+    ]
+    audit_log: Optional[Path] = None
+    for candidate in audit_candidates:
+        if candidate.exists():
+            audit_log = candidate
+            break
+
+    tools: Dict[str, Dict] = {}
+
+    if audit_log:
+        try:
+            lines = audit_log.read_text(errors="replace").splitlines()[-1000:]
+            for raw in lines:
+                try:
+                    entry = json.loads(raw)
+                except Exception:
+                    continue
+                tool_name = entry.get("tool_name") or "unknown"
+                latency = entry.get("latency_ms") or 0
+                outcome = entry.get("outcome") or "success"
+                ts = entry.get("timestamp") or ""
+
+                rec = tools.setdefault(tool_name, {
+                    "tool_name": tool_name,
+                    "call_count": 0,
+                    "total_latency_ms": 0,
+                    "error_count": 0,
+                    "last_called": "",
+                })
+                rec["call_count"] += 1
+                rec["total_latency_ms"] += int(latency) if latency else 0
+                if outcome not in {"success", "ok"}:
+                    rec["error_count"] += 1
+                if ts > rec["last_called"]:
+                    rec["last_called"] = ts
+        except OSError:
+            pass
+
+    heatmap = []
+    for rec in sorted(tools.values(), key=lambda r: -r["call_count"]):
+        n = rec["call_count"]
+        heatmap.append({
+            "tool_name": rec["tool_name"],
+            "call_count": n,
+            "avg_latency_ms": round(rec["total_latency_ms"] / n) if n else 0,
+            "error_rate": round(rec["error_count"] / n, 3) if n else 0.0,
+            "last_called": rec["last_called"],
+        })
+
+    return {
+        "heatmap": heatmap,
+        "total_tools": len(heatmap),
+        "audit_log": str(audit_log) if audit_log else None,
+        "window_entries": min(len(heatmap) * 1000, 1000),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }

@@ -63,6 +63,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -97,6 +98,11 @@ CREATE INDEX IF NOT EXISTS idx_query_traces_trace_at ON query_traces (trace_at D
 # Phase E: additive migration — adds otel_attributes column if not present
 _DDL_MIGRATE_OTEL = """
 ALTER TABLE query_traces ADD COLUMN IF NOT EXISTS otel_attributes JSONB;
+"""
+
+# Phase 64.1: additive migration — adds prompt_hash column for prompt versioning
+_DDL_MIGRATE_PROMPT_HASH = """
+ALTER TABLE query_traces ADD COLUMN IF NOT EXISTS prompt_hash TEXT;
 """
 
 # OTel GenAI SemConv spec pin (Phase E — update when upgrading spec version)
@@ -139,8 +145,13 @@ async def ensure_schema(postgres_client: Optional[Any] = None) -> None:
             await pg.execute(_DDL_MIGRATE_OTEL)
         except Exception:
             pass  # column may already exist
+        # Phase 64.1: add prompt_hash column for prompt versioning
+        try:
+            await pg.execute(_DDL_MIGRATE_PROMPT_HASH)
+        except Exception:
+            pass
         _schema_ready = True
-        logger.info("trace_collector: schema ready (Phase E otel_attributes column)")
+        logger.info("trace_collector: schema ready (Phase E otel_attributes + 64.1 prompt_hash)")
     except Exception as exc:
         logger.warning("trace_collector: schema setup failed: %s", exc)
 
@@ -166,6 +177,7 @@ class TraceCollector:
         self.tokens_out: int = 0
         self.llm_ms: int = 0
         self.finish_reason: str = "stop"   # Phase E: OTel gen_ai.response.finish_reason
+        self.prompt_hash: str = ""          # Phase 64.1: SHA256[:8] of system prompt
         self._start: float = time.perf_counter()
 
     async def __aenter__(self) -> "TraceCollector":
@@ -195,6 +207,11 @@ class TraceCollector:
         self.retrieval_ms = latency_ms
         self.rag_skipped = skipped
         self.retrieval_collection_count = collection_count
+
+    def set_system_prompt(self, system_prompt: str) -> None:
+        """Phase 64.1: hash the system prompt for prompt versioning. SHA256[:8]."""
+        if system_prompt:
+            self.prompt_hash = hashlib.sha256(system_prompt.encode()).hexdigest()[:8]
 
     def set_llm(self, model: str, tokens_in: int = 0, tokens_out: int = 0, latency_ms: int = 0,
                 finish_reason: str = "stop") -> None:
@@ -234,6 +251,7 @@ class TraceCollector:
             "gen_ai.maeah.ttft_ms": self.llm_ms,
             "gen_ai.maeah.total_ms": total_ms,
             "gen_ai.maeah.semconv_version": _OTEL_SEMCONV_VERSION,
+            "gen_ai.maeah.prompt_hash": self.prompt_hash,   # Phase 64.1
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -252,6 +270,7 @@ class TraceCollector:
             "llm_ms": self.llm_ms,
             "total_ms": total_ms,
             "finish_reason": self.finish_reason,
+            "prompt_hash": self.prompt_hash,
             "otel_attributes": self.otel_span(total_ms),
             "trace_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -270,8 +289,8 @@ class TraceCollector:
                         (trace_id, query_text, intent, profile,
                          retrieval_hits, retrieval_ms, rag_skipped,
                          llm_model, tokens_in, tokens_out, llm_ms, total_ms,
-                         otel_attributes, trace_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                         otel_attributes, prompt_hash, trace_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
                     """,
                     self.trace_id,
                     self.query_text,
@@ -286,6 +305,7 @@ class TraceCollector:
                     self.llm_ms,
                     total_ms,
                     json.dumps(otel_attrs),
+                    self.prompt_hash or None,
                 )
                 logger.debug(
                     "trace_collector.commit trace_id=%s intent=%s total_ms=%d",

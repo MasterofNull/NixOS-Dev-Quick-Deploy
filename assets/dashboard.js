@@ -1205,9 +1205,9 @@ async function loadIntelligence() {
     loadAICoordinator(), loadReasoningProfiles(),
     loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
     loadTaskClassifier(), loadLogicPatterns(), loadLocalInsights(),
-    loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(),
+    loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(), loadTraceGantt(),
     loadHintsStats(), loadMemorySupersedeHistory(),
-    loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
+    loadCacheAnalytics(), loadToolsPerformance(), loadToolsHeatmap(), loadAIRecommendations(), loadQueryComplexity(),
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
     loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(), loadAIMetricsDetail(),
   ]);
@@ -1270,6 +1270,56 @@ async function loadQueryTraces() {
       return fwRow(query, `${t.intent || '--'} · ${lat}`, col);
     }),
   ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: TRACE GANTT TIMELINE (Phase 64.4) ─────────────────────────
+async function loadTraceGantt() {
+  const d   = await apiFetch('/query/traces');
+  const el  = document.getElementById('traceGanttDetails');
+  const badge = document.getElementById('traceGanttBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const traces = (d.traces || []).slice(0, 8);
+  if (badge) { badge.textContent = `${traces.length} spans`; badge.className = 'card-badge badge-info'; }
+  if (!traces.length) { el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No trace data yet — run a query first</div>'; return; }
+
+  // Determine x-axis max (capped at 30s for display)
+  const maxMs = Math.min(Math.max(...traces.map(t => t.total_ms || 0), 500), 30000);
+  const W = 240, ROW_H = 14, PAD = 2;
+  const svgH = traces.length * (ROW_H + PAD) + 20;
+
+  const bars = traces.map((t, i) => {
+    const y = i * (ROW_H + PAD) + 18;
+    const ragMs  = Math.min(t.retrieval_ms || 0, maxMs);
+    const llmMs  = Math.min(t.llm_ms || 0, maxMs);
+    const totMs  = Math.min(t.total_ms || 1, maxMs);
+    const ragW   = Math.max(1, (ragMs / maxMs) * W);
+    const llmW   = Math.max(1, (llmMs / maxMs) * W);
+    const totW   = Math.max(2, (totMs / maxMs) * W);
+    const label  = (t.query_text || '--').slice(0, 16);
+    const intent = (t.intent || '?').slice(0, 10);
+    const slow   = totMs > 10000;
+    return `
+      <text x="0" y="${y + 10}" font-size="7" fill="var(--fg3)" font-family="monospace">${label}</text>
+      <rect x="${W * 0.32}" y="${y}" width="${totW * 0.68}" height="${ROW_H}" rx="2" fill="${slow ? '#e76f51' : '#2ec4b6'}22" stroke="${slow ? '#e76f51' : '#2ec4b6'}" stroke-width="0.5"/>
+      ${ragMs > 0 ? `<rect x="${W * 0.32}" y="${y}" width="${ragW * 0.68}" height="${ROW_H}" rx="2" fill="#84a98c88"/>` : ''}
+      ${llmMs > 0 ? `<rect x="${W * 0.32 + ragW * 0.68}" y="${y}" width="${Math.min(llmW * 0.68, W * 0.68 - ragW * 0.68)}" height="${ROW_H}" rx="2" fill="#4e9af188"/>` : ''}
+      <text x="${W * 0.32 + totW * 0.68 + 2}" y="${y + 10}" font-size="6" fill="var(--fg2)" font-family="monospace">${totMs}ms · ${intent}</text>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:.55rem;color:var(--fg3);margin-bottom:.3rem">
+      <span style="color:#84a98c">■ RAG</span> &nbsp;
+      <span style="color:#4e9af1">■ LLM</span> &nbsp;
+      <span style="color:#2ec4b6">■ Total</span> &nbsp;
+      (max ${maxMs}ms)
+    </div>
+    <svg width="100%" viewBox="0 0 ${W} ${svgH}" xmlns="http://www.w3.org/2000/svg">
+      <text x="${W * 0.32}" y="12" font-size="6" fill="var(--fg3)" font-family="monospace">0ms</text>
+      <text x="${W * 0.98}" y="12" font-size="6" fill="var(--fg3)" font-family="monospace" text-anchor="end">${maxMs}ms</text>
+      <line x1="${W * 0.32}" y1="14" x2="${W}" y2="14" stroke="var(--border)" stroke-width="0.3"/>
+      ${bars}
+    </svg>`;
 }
 
 // ─── INTELLIGENCE: ADK STATUS ─────────────────────────────────────────────────
@@ -2535,6 +2585,27 @@ async function loadToolsPerformance() {
       return fwRow(t.name || '--', `${(t.calls || 0).toLocaleString()} calls · p50 ${p50} · ${(t.success_pct || 0).toFixed(0)}%`, ok ? 'ok' : 'warn');
     }),
   ].filter(Boolean).join('');
+}
+
+// ─── INTELLIGENCE: TOOL EXECUTION HEATMAP (Phase 64.3) ───────────────────────
+async function loadToolsHeatmap() {
+  const d   = await apiFetch('/aistack/insights/tools/heatmap');
+  const el  = document.getElementById('toolsHeatmapDetails');
+  const badge = document.getElementById('toolsHeatmapBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const tools = d.heatmap || [];
+  if (badge) {
+    const hotTool = tools[0] ? tools[0].tool_name : '--';
+    badge.textContent = `${d.total_tools} tools · hottest: ${hotTool}`;
+    badge.className = 'card-badge badge-info';
+  }
+  if (!tools.length) { el.innerHTML = fwRow('Heatmap', 'no audit data', 'info'); return; }
+  el.innerHTML = tools.slice(0, 8).map(t => {
+    const errPct = (t.error_rate * 100).toFixed(0) + '%';
+    const st = t.error_rate > 0.1 ? 'warn' : (t.error_rate > 0 ? 'info' : 'ok');
+    return fwRow(t.tool_name, `${t.call_count} calls · ${t.avg_latency_ms}ms · err ${errPct}`, st);
+  }).join('');
 }
 
 // ─── INTELLIGENCE: AI RECOMMENDATIONS ────────────────────────────────────────
