@@ -188,12 +188,14 @@ async function loadKPIs() {
     const w7d = ((analytics.windows && analytics.windows.windows) || {})['7d'] || {};
     const cur  = analytics.current || {};
     const totalOps = w7d.query_ok_n ?? cur.query_ok_n;
+    const backendN = w7d.local_n   ?? cur.local_n   ?? 0;
     if (totalOps != null) {
       const label = totalOps >= 1000 ? `${(totalOps/1000).toFixed(1)}k` : String(totalOps);
       setText('kpiTokSaved', label);
-      // Populate Overview OPS/DAY tile (loadCoordinator also sets this but only from Intelligence tab)
+      // Populate Overview KPI tiles (loadCoordinator also sets these from Intelligence tab)
       const opsDay = Math.round(totalOps / 7);
       setText('vOpsDay', opsDay >= 1000 ? `${(opsDay/1000).toFixed(1)}k` : String(opsDay));
+      if (backendN) setText('vBackendN', Math.round(backendN / 7).toLocaleString());
     }
     // KPI ribbon p95 latency from hotspots is fetched separately in loadSystem()
   }
@@ -999,7 +1001,10 @@ async function loadRAGHealth() {
 
 // ─── INTELLIGENCE: ROUTING FRONTDOOR CONFIG ──────────────────────────────────
 async function loadRoutingConfig() {
-  const d  = await apiFetch('/aistack/routing/summary');
+  const [d, lf] = await Promise.all([
+    apiFetch('/aistack/routing/summary'),
+    apiFetch('/routing/lane-failures'),
+  ]);
   const el = document.getElementById('routingConfigDetails');
   const badge = document.getElementById('routingConfigBadge');
   if (!el) return;
@@ -1007,10 +1012,16 @@ async function loadRoutingConfig() {
   const fd = d.frontdoor || {};
   const aliases = fd.aliases || {};
   const uniqueTargets = [...new Set(Object.values(aliases))];
-  if (badge) { badge.textContent = `${uniqueTargets.length} targets`; badge.className = 'card-badge badge-ok'; }
+  // Lane failures
+  const lf1h  = Object.keys((lf || {}).window_1h  || {}).length;
+  const lf24h = Object.keys((lf || {}).window_24h || {}).length;
+  const laneColor = lf1h > 0 ? 'err' : lf24h > 0 ? 'warn' : 'ok';
+  if (badge) { badge.textContent = `${uniqueTargets.length} targets`; badge.className = `card-badge badge-${laneColor}`; }
   el.innerHTML = [
     fwRow('Alias Count',   Object.keys(aliases).length),
     fwRow('Targets',       uniqueTargets.length),
+    fwRow('Lane Fail 1h',  lf1h  || 0, lf1h  > 0 ? 'err' : 'ok'),
+    fwRow('Lane Fail 24h', lf24h || 0, lf24h > 0 ? 'warn' : 'ok'),
     ...uniqueTargets.map(t => fwRow('→ ' + t, `${Object.values(aliases).filter(v => v === t).length} aliases`, 'info')),
   ].join('');
 }
@@ -1883,16 +1894,31 @@ async function loadLogs() {
   const el = document.getElementById('logPanel');
   if (!el) return;
   el.innerHTML = '<div class="log-line"><span class="log-ts">...</span>Fetching events...</div>';
-  const events = await apiFetch('/ai/homeostasis/events', {}, T_SLOW);
-  if (!events || !events.length) {
-    el.innerHTML = '<div class="log-line"><span class="log-ts">--</span>No homeostasis events recorded.</div>';
+  // Fetch operator audit events (rich event stream) + homeostasis
+  const [auditResp, homeostasis] = await Promise.allSettled([
+    apiFetch('/audit/operator/events', {}, T_SLOW),
+    apiFetch('/ai/homeostasis/events', {}, T_SLOW),
+  ]);
+  const auditEvts = (auditResp.status === 'fulfilled' && auditResp.value && auditResp.value.events) ? auditResp.value.events : [];
+  const homeEvts  = (homeostasis.status === 'fulfilled' && Array.isArray(homeostasis.value)) ? homeostasis.value : [];
+  // Build combined, deduped event list (operator audit is richer)
+  const allEvents = [...auditEvts.slice(-150), ...homeEvts.slice(-50)];
+  if (!allEvents.length) {
+    el.innerHTML = '<div class="log-line"><span class="log-ts">--</span>No events recorded yet.</div>';
     return;
   }
-  el.innerHTML = events.slice(-200).reverse().map(e => {
-    const ts  = e.timestamp ? new Date(e.timestamp * 1000).toLocaleTimeString() : '--';
-    const typ = e.type || e.level || 'INFO';
-    const msg = e.message || e.event || JSON.stringify(e);
-    return `<div class="log-line"><span class="log-ts">${ts}</span><span class="log-type">[${typ}]</span>${msg}</div>`;
+  el.innerHTML = allEvents.slice(-200).reverse().map(e => {
+    const rawTs = e.ts || e.timestamp;
+    const ts  = rawTs
+      ? (typeof rawTs === 'number'
+          ? new Date(rawTs * 1000).toLocaleTimeString()
+          : new Date(rawTs).toLocaleTimeString())
+      : '--';
+    const typ = e.method || e.type || e.level || 'INFO';
+    const msg = e.path || e.message || e.event || JSON.stringify(e).slice(0, 80);
+    const status = e.status_code ? ` → ${e.status_code}` : '';
+    const cls  = (e.status_code >= 500 || e.level === 'error') ? 'err' : (e.status_code >= 400) ? 'warn' : '';
+    return `<div class="log-line${cls ? ' log-' + cls : ''}"><span class="log-ts">${ts}</span><span class="log-type">[${typ}]</span>${msg}${status}</div>`;
   }).join('');
 }
 
