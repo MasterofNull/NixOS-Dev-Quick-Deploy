@@ -111,6 +111,23 @@ When unassigned, Codex defaults to the role constraints declared in the canonica
 
 ---
 
+## Behavioral Rules (Canonical — all agents)
+
+| # | Rule | Contract |
+|---|------|----------|
+| 1 | **CONVERSATIONAL GUARD** | No unsolicited features, refactors, or cleanups. One slice, one concern. |
+| 2 | **HARNESS-FIRST** | Query aq-hints / `/query` / AIDB before reading raw files. Tools before assumptions. |
+| 3 | **COMMIT FORMAT** | `type(scope): description` + `Co-Authored-By: <agent> <noreply@domain>` |
+| 4 | **LANE SELECTION** | Prefer local inference for bounded tasks; remote only when task value justifies cost. |
+| 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
+| 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
+| 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
+| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
+| 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+
+---
+
 ## The 7-Step Canonical Workflow
 
 Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
@@ -204,7 +221,7 @@ Single source of truth: `nix/modules/core/options.nix`. Never hardcode these.
 ## Key Paths & Resources
 
 - **Canonical workflow**: `.agent/WORKFLOW-CANON.md`
-- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-hints`, `aq-session-start`, `aqd`)
+- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-hints`, `aq-session-start`, `aqd`, `aq-insights`)
 - **Coordinator**: `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`
 - **Port options**: `nix/modules/core/options.nix`
 - **AI stack wiring**: `nix/modules/roles/ai-stack.nix`

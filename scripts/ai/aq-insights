@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""
+aq-insights — Qwen3 analysis of the latest aq-report snapshot.
+
+Reads /var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json,
+extracts key signals, sends them to the local model for natural-language
+analysis, and writes the result to .agent/memory/qwen-insights-YYYYMMDD.md.
+
+Usage:
+  aq-insights                   # analyse latest snapshot, write to .agent/memory/
+  aq-insights --print           # also print result to stdout
+  aq-insights --no-write        # analyse only, do not write file
+  aq-insights --model-url URL   # override llama.cpp base URL
+  aq-insights --report PATH     # override report snapshot path
+  aq-insights --temperature N   # generation temperature (default 0.3)
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+from datetime import datetime
+from pathlib import Path
+
+# ── defaults ────────────────────────────────────────────────────────────────
+REPORT_PATH  = Path("/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+LLAMA_URL    = os.environ.get("LLAMA_CPP_BASE_URL", "http://localhost:8080")
+REPO_ROOT    = Path(__file__).resolve().parent.parent.parent
+MEMORY_DIR   = REPO_ROOT / ".agent" / "memory"
+
+
+# ── signal extraction ────────────────────────────────────────────────────────
+def extract_signals(report: dict) -> dict:
+    """Pull the most actionable fields from the full aq-report."""
+    out: dict = {}
+
+    # --- routing ---
+    routing = report.get("routing") or {}
+    out["routing"] = {
+        "total_queries":    routing.get("total", 0),
+        "local_pct":        routing.get("local_pct", 0),
+        "remote_pct":       routing.get("remote_pct", 0),
+        "fallback_pct":     routing.get("fallback_pct", 0),
+        "search_strategy":  routing.get("strategy_dist", {}),
+    }
+
+    # --- eval trend ---
+    eval_trend = report.get("eval_trend") or {}
+    out["eval_trend"] = {
+        "answer_relevance":   eval_trend.get("answer_relevance_avg"),
+        "context_precision":  eval_trend.get("context_precision_avg"),
+        "faithfulness":       eval_trend.get("faithfulness_avg"),
+        "sample_count":       eval_trend.get("sample_count", 0),
+    }
+
+    # --- tool performance ---
+    tp = report.get("tool_performance") or {}
+    out["tool_performance"] = {
+        "top_tools":   list((tp.get("by_tool") or {}).keys())[:6],
+        "error_rate":  tp.get("error_rate"),
+    }
+
+    # --- rag posture ---
+    rag = report.get("rag_posture") or {}
+    out["rag_posture"] = {
+        "collections":        rag.get("collection_count"),
+        "avg_result_count":   rag.get("avg_result_count"),
+        "top_collections":    rag.get("top_collections", [])[:4],
+    }
+
+    # --- health ---
+    health = report.get("recent_health") or {}
+    out["health"] = {
+        "ok_pct":     health.get("ok_pct"),
+        "warn_count": health.get("warn_count"),
+        "error_count": health.get("error_count"),
+    }
+
+    # --- query gaps (top 3) ---
+    gaps = report.get("query_gaps") or []
+    out["query_gaps"] = gaps[:3] if isinstance(gaps, list) else []
+
+    # --- recommendations (top 3) ---
+    recs = report.get("recommendations") or []
+    out["recommendations"] = recs[:3] if isinstance(recs, list) else []
+
+    # --- agent lessons (top 3) ---
+    lessons = report.get("agent_lessons") or []
+    out["agent_lessons"] = lessons[:3] if isinstance(lessons, list) else []
+
+    # --- hint adoption ---
+    hint = report.get("hint_adoption") or {}
+    out["hint_adoption"] = {
+        "adoption_rate": hint.get("rate"),
+        "top_hints":     (hint.get("top_hints") or [])[:3],
+    }
+
+    # --- generated_at ---
+    out["report_generated_at"] = report.get("generated_at", "unknown")
+
+    return out
+
+
+# ── prompt builder ────────────────────────────────────────────────────────────
+def build_prompt(signals: dict) -> str:
+    sig_json = json.dumps(signals, indent=2, default=str)
+    return f"""You are a local AI harness analyst for NixOS-Dev-Quick-Deploy.
+You have received an operational signals snapshot from the AI harness aq-report.
+Analyse this snapshot and produce a concise markdown report with the following sections:
+
+## Status Summary
+One paragraph: overall health, routing efficiency, eval quality.
+
+## Top Issues / Gaps
+Bullet list of the 2-3 most important problems or gaps visible in the data.
+
+## Recommendations
+Bullet list of 2-3 concrete, actionable next steps. Reference specific metrics.
+
+## Positive Signals
+1-2 bullets: what is working well.
+
+Keep the total response under 400 words. Be specific — reference actual numbers from the data.
+Do not add unsolicited sections or general AI advice.
+
+--- SIGNALS ---
+{sig_json}
+--- END SIGNALS ---
+"""
+
+
+# ── llama.cpp inference ───────────────────────────────────────────────────────
+def call_local_model(prompt: str, base_url: str, temperature: float) -> str:
+    payload = json.dumps({
+        "model": "local",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "max_tokens": 600,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Cannot reach local model at {base_url}: {exc}") from exc
+
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"Empty choices in model response: {data}")
+    content = (choices[0].get("message") or {}).get("content") or ""
+    if not content.strip():
+        raise RuntimeError("Model returned empty content (thinking tokens leaking?)")
+    return content.strip()
+
+
+# ── writer ────────────────────────────────────────────────────────────────────
+def write_insights(content: str, report_ts: str) -> Path:
+    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    date_tag = datetime.utcnow().strftime("%Y%m%d")
+    out_path = MEMORY_DIR / f"qwen-insights-{date_tag}.md"
+
+    header = (
+        f"# Qwen Harness Insights — {date_tag}\n\n"
+        f"*Generated by aq-insights at {datetime.utcnow().isoformat()}Z*\n"
+        f"*Report snapshot: {report_ts}*\n\n"
+        "---\n\n"
+    )
+    out_path.write_text(header + content + "\n", encoding="utf-8")
+    return out_path
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Qwen3 analysis of aq-report snapshot")
+    parser.add_argument("--print",       action="store_true", help="Print result to stdout")
+    parser.add_argument("--no-write",    action="store_true", help="Skip writing output file")
+    parser.add_argument("--model-url",   default=LLAMA_URL,   help="llama.cpp base URL")
+    parser.add_argument("--report",      default=str(REPORT_PATH), help="aq-report JSON path")
+    parser.add_argument("--temperature", type=float, default=0.3, help="Generation temperature")
+    args = parser.parse_args()
+
+    report_path = Path(args.report)
+    if not report_path.exists():
+        print(f"[aq-insights] ERROR: report not found: {report_path}", file=sys.stderr)
+        print("Run: python3 scripts/ai/aq-report --format=json to seed it.", file=sys.stderr)
+        return 1
+
+    print(f"[aq-insights] Reading report from {report_path} …", file=sys.stderr)
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"[aq-insights] ERROR: malformed JSON in report: {exc}", file=sys.stderr)
+        return 1
+
+    signals = extract_signals(report)
+    prompt  = build_prompt(signals)
+
+    print(f"[aq-insights] Calling local model at {args.model_url} …", file=sys.stderr)
+    try:
+        analysis = call_local_model(prompt, args.model_url, args.temperature)
+    except RuntimeError as exc:
+        print(f"[aq-insights] ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if not args.no_write:
+        out_path = write_insights(analysis, signals.get("report_generated_at", "unknown"))
+        print(f"[aq-insights] Written: {out_path}", file=sys.stderr)
+
+    if args.print or args.no_write:
+        print(analysis)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
