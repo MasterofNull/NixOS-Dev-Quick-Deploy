@@ -1200,7 +1200,7 @@ async function loadIntelligence() {
     loadAgentOpsStatus(), loadAgentLessons(), loadMemStats(),
     loadTaskClassifier(),
     loadLogicPatterns(), loadLocalInsights(),
-    loadADKStatus(), loadRoutingDecisions(),
+    loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(),
   ]);
 }
 
@@ -1234,6 +1234,33 @@ async function loadLocalInsights() {
     `font-size:.57rem;color:var(--fg2);white-space:pre-wrap;line-height:1.5;max-height:8rem;overflow:hidden" id="localInsightsPreview"></div>`;
   const previewEl = document.getElementById('localInsightsPreview');
   if (previewEl) previewEl.textContent = preview + (d.content && d.content.length > 400 ? '\n…' : '');
+}
+
+// ─── INTELLIGENCE: QUERY TRACES ──────────────────────────────────────────────
+async function loadQueryTraces() {
+  const d  = await apiFetch('/query/traces');
+  const el = document.getElementById('queryTracesDetails');
+  const badge = document.getElementById('queryTracesBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const traces = (d.traces || []).slice(0, 10);
+  const total  = (d.traces || []).length;
+  if (badge) { badge.textContent = `${total} traces`; badge.className = 'card-badge badge-info'; }
+  if (!traces.length) { el.innerHTML = fwRow('Traces', 'No traces yet', 'info'); return; }
+  const avgMs = traces.reduce((s, t) => s + (t.total_ms || 0), 0) / traces.length;
+  const hitRate = traces.filter(t => t.retrieval_hits > 0).length / traces.length;
+  el.innerHTML = [
+    fwRow('Recent',       `${total} traces`, 'info'),
+    fwRow('Avg Latency',  `${avgMs.toFixed(0)}ms`, avgMs > 5000 ? 'warn' : 'ok'),
+    fwRow('RAG Hit Rate', `${(hitRate*100).toFixed(0)}%`, hitRate > 0.5 ? 'ok' : 'warn'),
+    '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Recent Queries</div>',
+    ...traces.slice(0, 6).map(t => {
+      const query = (t.query_text || '--').slice(0, 28);
+      const lat   = t.total_ms != null ? `${t.total_ms}ms` : '--';
+      const col   = t.total_ms > 10000 ? 'err' : t.total_ms > 3000 ? 'warn' : 'ok';
+      return fwRow(query, `${t.intent || '--'} · ${lat}`, col);
+    }),
+  ].filter(Boolean).join('');
 }
 
 // ─── INTELLIGENCE: ADK STATUS ─────────────────────────────────────────────────
@@ -1277,6 +1304,29 @@ async function loadRoutingDecisions() {
       const lat  = i.latency_ms != null ? ` ${i.latency_ms.toFixed(0)}ms` : '';
       const risk = i.risk_tier ? ` [${i.risk_tier}]` : '';
       return fwRow(`${i.tool_name || '--'}${risk}`, `${i.outcome || '--'}${lat}`, col);
+    }),
+  ].filter(Boolean).join('');
+}
+
+// ─── OPERATIONS: TESTING SUITES ──────────────────────────────────────────────
+async function loadTestingSuites() {
+  const [suites, execs] = await Promise.all([
+    apiFetch('/testing/suites'),
+    apiFetch('/testing/executions'),
+  ]);
+  const el = document.getElementById('testingSuitesDetails');
+  const badge = document.getElementById('testingSuitesBadge');
+  if (!el) return;
+  if (!suites) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const list = suites.suites || [];
+  const recent = ((execs || {}).executions || []).slice(0, 4);
+  if (badge) { badge.textContent = `${list.length} suites`; badge.className = 'card-badge badge-info'; }
+  el.innerHTML = [
+    ...list.map(s => fwRow(s.title || s.id, `${s.timeout_seconds}s · phase ${s.phase || '?'}`, 'info')),
+    recent.length ? '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Recent Runs</div>' : '',
+    ...recent.map(e => {
+      const col = e.status === 'passed' ? 'ok' : e.status === 'failed' ? 'err' : 'info';
+      return fwRow(e.suite_id || '--', e.status || '--', col);
     }),
   ].filter(Boolean).join('');
 }
@@ -1804,7 +1854,7 @@ async function loadOperations() {
     loadHarnessOv(), loadModelOptimization(), loadLearnPipeline(),
     loadRalph(), loadTrainingData(), loadParityScorecard(),
     loadFleetSummary(), loadBudgetPolicy(), loadPortsRegistry(), loadHealthAggregate(),
-    loadWorkflowStats(), loadCollaborationMetrics(),
+    loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
   ]);
 }
 
