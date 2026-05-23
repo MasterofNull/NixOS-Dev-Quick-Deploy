@@ -156,7 +156,7 @@
       letter-spacing:.12em;background:rgba(0,0,0,.65);padding:.2rem .65rem;
       border-right:2px solid var(--cyan);pointer-events:none;z-index:10}
     .node-label{font-size:9px;fill:var(--fg);pointer-events:none}
-    .link-line{stroke:rgba(0,217,255,.12);stroke-width:1}
+    .link-line{stroke:rgba(0,217,255,.35);stroke-width:1.5}
 
     /* LOG PANEL */
     .log-panel{height:calc(100vh - 220px);min-height:400px;overflow-y:auto;
@@ -570,6 +570,14 @@
       <div class="card-hd"><span class="card-title">Local Insights (aq-insights)</span><span class="card-badge badge-info" id="localInsightsBadge">--</span></div>
       <div id="localInsightsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
+    <div class="card" id="section-adk-status">
+      <div class="card-hd"><span class="card-title">ADK Status</span><span class="card-badge badge-info" id="adkStatusBadge">--</span></div>
+      <div id="adkStatusDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card" id="section-routing-decisions">
+      <div class="card-hd"><span class="card-title">Routing Decisions</span><span class="card-badge badge-info" id="routingDecisionsBadge">--</span></div>
+      <div id="routingDecisionsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -683,6 +691,14 @@
     <div class="card">
       <div class="card-hd"><span class="card-title">Health Aggregate</span><span class="card-badge badge-ok" id="healthAggBadge">--</span></div>
       <div id="healthAggDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card" id="section-workflow-stats">
+      <div class="card-hd"><span class="card-title">Workflow Statistics</span><span class="card-badge badge-info" id="workflowStatsBadge">--</span></div>
+      <div id="workflowStatsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+    <div class="card" id="section-collaboration">
+      <div class="card-hd"><span class="card-title">Collaboration Metrics</span><span class="card-badge badge-info" id="collaborationBadge">--</span></div>
+      <div id="collaborationDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
     <div class="card">
       <div class="card-hd"><span class="card-title">System Controls</span><span class="card-badge badge-info">actions</span></div>
