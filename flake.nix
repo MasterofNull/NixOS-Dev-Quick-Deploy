@@ -585,6 +585,9 @@
               terraform kubectl kubernetes-helm ansible awscli2 google-cloud-sdk
               # ROCm
               rocmPackages.rocminfo rocmPackages.rocm-smi
+              # Phase 66.1: Wasmtime — WASM sandbox tier (L2) below nsjail cost
+              # Staged here (devShells.full only); not in hybridPython coordinator env
+              wasmtime
             ];
             shellHook = ''
               export DOMAIN_SHELL=full

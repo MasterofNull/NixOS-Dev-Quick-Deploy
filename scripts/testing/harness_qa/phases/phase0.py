@@ -1130,6 +1130,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_s2_tool_auth_policy(ctx))
     results.extend(_check_local_agent_docs(ctx))
     results.extend(_check_phase67_dashboard(ctx))
+    results.extend(_check_phase66_wasmtime(ctx))
     return results
 
 
@@ -1652,6 +1653,36 @@ def _check_local_agent_docs(ctx: RunContext) -> list[CheckResult]:
             results.append(failed(4, "LA.4", "aq-chat harness injection", f"missing: {', '.join(missing)}"))
         else:
             results.append(passed(4, "LA.4", "aq-chat: harness-aware system prompt injection + behavioral rules wired"))
+
+    return results
+
+
+def _check_phase66_wasmtime(ctx: RunContext) -> list[CheckResult]:
+    """Phase 66.1: Wasmtime staged in devShells.full; smoke-wasmtime.sh present + executable."""
+    results: list[CheckResult] = []
+
+    # 66.1.a — flake.nix references wasmtime in full devShell
+    flake = (ctx.repo_root / "flake.nix").read_text()
+    if "wasmtime" not in flake:
+        results.append(failed(4, "66.1.a", "Wasmtime in flake.nix devShells.full", "wasmtime not found in flake.nix"))
+    else:
+        results.append(passed(4, "66.1.a", "Wasmtime: present in flake.nix devShells.full"))
+
+    # 66.1.b — smoke-wasmtime.sh exists and is executable
+    smoke = ctx.repo_root / "scripts" / "testing" / "smoke-wasmtime.sh"
+    if not smoke.exists():
+        results.append(failed(4, "66.1.b", "smoke-wasmtime.sh", "file missing"))
+    elif not smoke.stat().st_mode & 0o111:
+        results.append(failed(4, "66.1.b", "smoke-wasmtime.sh", "not executable"))
+    else:
+        results.append(passed(4, "66.1.b", "smoke-wasmtime.sh: present and executable"))
+
+    # 66.1.c — wasmtime binary availability (skip if not in PATH — expected outside nix develop .#full)
+    import shutil
+    if shutil.which("wasmtime"):
+        results.append(passed(4, "66.1.c", "wasmtime: binary in PATH (nix develop .#full active)"))
+    else:
+        results.append(skipped(4, "66.1.c", "wasmtime binary", "not in PATH — activate nix develop .#full to test L2 sandbox"))
 
     return results
 
