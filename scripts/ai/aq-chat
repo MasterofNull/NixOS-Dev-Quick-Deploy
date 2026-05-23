@@ -192,9 +192,12 @@ You are grounded in this specific running system. Reference real files, ports, a
                 "temperature": self.temperature
             }
 
-            if self.active_profile != "local":
+            if self.active_profile == "local":
+                target_url = f"{self.llama_url}/v1/chat/completions"
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
+            else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
-            
+
             try:
                 async with self.client.stream("POST", target_url, json=payload) as response:
                     if response.status_code != 200:
