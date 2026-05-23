@@ -6,7 +6,7 @@ This file provides Codex-specific guidance for NixOS-Dev-Quick-Deploy.
 ## Project Overview
 
 Project: NixOS-Dev-Quick-Deploy AI Harness
-Goal: Local-first AI agent stack on NixOS — Qwen3-35B, AIDB, hybrid-coordinator, switchboard, AGI scaffold
+Goal: Local-first AI agent stack on NixOS — locally hosted LLM (currently Qwen3-35B), AIDB, hybrid-coordinator, switchboard, AGI scaffold
 Owner: hyperd
 Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Redis, PostgreSQL, Qdrant
 
@@ -191,6 +191,16 @@ Co-Authored-By: <Codex model name> <noreply@openai.com>"
 
 ---
 
+## Context Engineering Rules
+
+- Reference files by path — do not paste full file contents into context
+- Use `mcp_server_hybrid_search` / `aq-hints` to pull context on demand
+- Do NOT re-read files already read in the current session
+- Pass only slice-relevant context to sub-agents — not full history
+- Compact aggressively when approaching context limits
+
+---
+
 ## Architecture Constraints (Non-Negotiable)
 
 - NixOS-first, flake-based — no bare `pip install`, no manual `systemctl`
@@ -198,8 +208,9 @@ Co-Authored-By: <Codex model name> <noreply@openai.com>"
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
 - `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
-- `enable_thinking: false` in EVERY llama.cpp request (Qwen3 thinking tokens cause empty responses)
-- GPU layers ceiling = 12 (Renoir APU); total usable RAM = 27 GB
+- `enable_thinking: false` in EVERY llama.cpp request — current model thinking tokens cause empty responses; see `.agent/LOCAL-AGENT.md ## Current Model Config`
+- GPU layers ceiling = 12 (Renoir APU VRAM = 4 GB shared); never suggest n_gpu_layers > 12
+- Total usable RAM = 27 GB; model UMBM = 22.5 GB model / 1.0 GB KV / 3.0 GB OS reserve
 
 ## Service Ports
 ```
@@ -221,7 +232,8 @@ Single source of truth: `nix/modules/core/options.nix`. Never hardcode these.
 ## Key Paths & Resources
 
 - **Canonical workflow**: `.agent/WORKFLOW-CANON.md`
-- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-hints`, `aq-session-start`, `aqd`, `aq-insights`)
+- **Harness CLIs**: `scripts/ai/` (`aq-qa`, `aq-hints`, `aq-session-start`, `aqd`)
+- **Harness insights**: `scripts/ai/aq-insights` (local model analysis of latest aq-report snapshot)
 - **Coordinator**: `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`
 - **Port options**: `nix/modules/core/options.nix`
 - **AI stack wiring**: `nix/modules/roles/ai-stack.nix`
