@@ -1203,6 +1203,7 @@ async function loadIntelligence() {
     loadADKStatus(), loadRoutingDecisions(), loadQueryTraces(),
     loadHintsStats(), loadMemorySupersedeHistory(),
     loadCacheAnalytics(), loadToolsPerformance(), loadAIRecommendations(), loadQueryComplexity(),
+    loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
   ]);
 }
 
@@ -1621,6 +1622,7 @@ async function loadSecurity() {
     loadFirewall(), loadSecMon(), loadCircuitBreakers(), loadHardening(),
     loadSecDrift(), loadAgentPool(), loadSecCompliance(),
     loadVulnAudit(), loadAuditSummary(), loadToolDenyStats(), loadHealthAudit(), loadHealthAlerts(),
+    loadAuditIntegrity(), loadFirewallCrowdsec(),
   ]);
 }
 
@@ -1869,6 +1871,7 @@ async function loadOperations() {
     loadFleetSummary(), loadBudgetPolicy(), loadPortsRegistry(), loadHealthAggregate(),
     loadWorkflowStats(), loadCollaborationMetrics(), loadTestingSuites(),
     loadHarnessScorecard(),
+    loadContainers(), loadActiveDeployments(), loadHarnessStats(), loadHealthCategories(),
   ]);
 }
 
@@ -2574,6 +2577,197 @@ async function loadHealthAlerts() {
           return fwRow(`[${a.severity || '--'}] ${(a.message || '--').slice(0, 34)}`, a.source || '--', col);
         }),
       ].join('');
+}
+
+
+async function loadHintsEffectiveness() {
+  const d = await apiFetch('/insights/hints/effectiveness');
+  const el = document.getElementById('hintsEffDetails');
+  const badge = document.getElementById('hintsEffBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const a = d.adoption || {};
+  if (badge) {
+    badge.textContent = a.adoption_pct != null ? `${a.adoption_pct.toFixed(0)}% adopted` : '--';
+    badge.className = `card-badge badge-${(a.adoption_pct || 0) >= 80 ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Total Hints', a.total ?? '--', 'info'),
+    fwRow('Accepted', a.accepted ?? '--', 'ok'),
+    fwRow('Adoption Rate', a.adoption_pct != null ? `${a.adoption_pct.toFixed(1)}%` : '--', (a.adoption_pct||0) >= 80 ? 'ok' : 'warn'),
+    a.tooling_plan_total ? fwRow('Tooling Plans', `${a.tooling_plan_success}/${a.tooling_plan_total} success`, 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+async function loadDiscoverySignals() {
+  const d = await apiFetch('/discovery/signals');
+  const el = document.getElementById('discSigDetails');
+  const badge = document.getElementById('discSigBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const s = d.summary || {};
+  if (badge) {
+    badge.textContent = `${s.signal_count ?? 0} signals`;
+    badge.className = `card-badge badge-${(s.signal_count || 0) > 0 ? 'ok' : 'info'}`;
+  }
+  el.innerHTML = [
+    fwRow('Status', d.status || '--', d.status === 'ok' ? 'ok' : 'warn'),
+    fwRow('Signals', s.signal_count ?? 0, 'info'),
+    fwRow('Candidates', s.candidate_count ?? 0, 'info'),
+    fwRow('Sources', s.source_count ?? 0, 'info'),
+  ].join('');
+}
+
+async function loadImprovementCandidates() {
+  const d = await apiFetch('/insights/improvements/candidates');
+  const el = document.getElementById('improvCandDetails');
+  const badge = document.getElementById('improvCandBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const pc = d.priority_counts || {};
+  if (badge) {
+    badge.textContent = `${d.total_candidates ?? 0} candidates`;
+    badge.className = `card-badge badge-${(d.total_candidates || 0) > 0 ? 'warn' : 'ok'}`;
+  }
+  el.innerHTML = [
+    fwRow('Status', d.status || '--', d.available ? 'ok' : 'info'),
+    fwRow('Total', d.total_candidates ?? 0, 'info'),
+    fwRow('High Priority', pc.high ?? 0, (pc.high||0) > 0 ? 'warn' : 'ok'),
+    fwRow('Medium', pc.medium ?? 0, 'info'),
+    fwRow('Low', pc.low ?? 0, 'info'),
+  ].join('');
+}
+
+async function loadCollaborationPatterns() {
+  const d = await apiFetch('/collaboration/patterns');
+  const el = document.getElementById('collabPatDetails');
+  const badge = document.getElementById('collabPatBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const p = d.patterns || {};
+  const total = Object.values(p).reduce((s, v) => s + (v.executions || 0), 0);
+  if (badge) {
+    badge.textContent = `${total} executions`;
+    badge.className = 'card-badge badge-info';
+  }
+  el.innerHTML = Object.entries(p).map(([name, v]) =>
+    fwRow(name.charAt(0).toUpperCase() + name.slice(1),
+      v.executions ? `${v.executions} runs · ${((v.success_rate||0)*100).toFixed(0)}% ok` : '0 runs',
+      v.executions ? ((v.success_rate||0) >= 0.8 ? 'ok' : 'warn') : 'info')
+  ).join('') || fwRow('Status', 'No patterns', 'info');
+}
+
+async function loadAuditIntegrity() {
+  const d = await apiFetch('/audit/operator/integrity');
+  const el = document.getElementById('auditIntegrityDetails');
+  const badge = document.getElementById('auditIntegrityBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  if (badge) {
+    badge.textContent = d.fully_sealed ? 'SEALED' : d.valid ? 'VALID' : 'BROKEN';
+    badge.className = `card-badge badge-${d.fully_sealed ? 'ok' : d.valid ? 'warn' : 'err'}`;
+  }
+  el.innerHTML = [
+    fwRow('Algorithm', d.seal_algorithm || '--', 'info'),
+    fwRow('Checked', (d.checked_events ?? 0).toLocaleString(), 'info'),
+    fwRow('Sealed', (d.sealed_events ?? 0).toLocaleString(), d.fully_sealed ? 'ok' : 'warn'),
+    d.legacy_events ? fwRow('Legacy Events', d.legacy_events, 'warn') : '',
+    fwRow('Chain Valid', d.valid ? 'YES' : 'NO', d.valid ? 'ok' : 'err'),
+  ].filter(Boolean).join('');
+}
+
+async function loadFirewallCrowdsec() {
+  const d = await apiFetch('/firewall/crowdsec/status');
+  const el = document.getElementById('crowdsecDetails');
+  const badge = document.getElementById('crowdsecBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const ok = d.status === 'active' && !d.paused_by_dashboard;
+  if (badge) {
+    badge.textContent = d.paused_by_dashboard ? 'PAUSED' : (d.status || '--').toUpperCase();
+    badge.className = `card-badge badge-${ok ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Status', d.status || '--', d.status === 'active' ? 'ok' : 'err'),
+    fwRow('Paused by Dashboard', d.paused_by_dashboard ? 'YES' : 'NO', d.paused_by_dashboard ? 'warn' : 'ok'),
+    d.paused_reason ? fwRow('Reason', d.paused_reason, 'warn') : '',
+  ].filter(Boolean).join('');
+}
+
+async function loadContainers() {
+  const d = await apiFetch('/containers');
+  const el = document.getElementById('containersDetails');
+  const badge = document.getElementById('containersBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const arr = Array.isArray(d) ? d : (d.containers || []);
+  const running = arr.filter(c => c.status === 'running').length;
+  if (badge) {
+    badge.textContent = `${running}/${arr.length} running`;
+    badge.className = `card-badge badge-${running === arr.length ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = arr.slice(0, 14).map(c =>
+    fwRow(c.name || c.id, c.status || '--', c.status === 'running' ? 'ok' : 'err')
+  ).join('') + (arr.length > 14 ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${arr.length - 14} more</div>` : '');
+}
+
+async function loadActiveDeployments() {
+  const d = await apiFetch('/deployments/active');
+  const el = document.getElementById('activeDeploysDetails');
+  const badge = document.getElementById('activeDeploysBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const deps = d.deployments || [];
+  if (badge) {
+    badge.textContent = `${deps.length} active`;
+    badge.className = `card-badge badge-${deps.length > 0 ? 'warn' : 'ok'}`;
+  }
+  if (!deps.length) { el.innerHTML = fwRow('Active', 'None', 'ok'); return; }
+  el.innerHTML = deps.slice(0, 5).map(dep => [
+    fwRow((dep.deployment_id || '--').slice(-22), dep.status || '--', dep.status === 'running' ? 'warn' : 'info'),
+    dep.progress != null ? fwRow('Progress', `${dep.progress}%`, 'info') : '',
+  ].filter(Boolean).join('')).join('');
+}
+
+async function loadHarnessStats() {
+  const d = await apiFetch('/aistack/harness/stats');
+  const el = document.getElementById('harnessStatsDetails');
+  const badge = document.getElementById('harnessStatsBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const passRate = d.total_runs ? Math.round((d.passed / d.total_runs) * 100) : null;
+  if (badge) {
+    badge.textContent = passRate != null ? `${passRate}% pass` : '--';
+    badge.className = `card-badge badge-${(passRate||0) >= 90 ? 'ok' : 'warn'}`;
+  }
+  el.innerHTML = [
+    fwRow('Total Runs', d.total_runs ?? 0, 'info'),
+    fwRow('Passed', d.passed ?? 0, 'ok'),
+    fwRow('Failed', d.failed ?? 0, d.failed ? 'err' : 'ok'),
+    fwRow('Scorecards Generated', (d.scorecards_generated ?? 0).toLocaleString(), 'info'),
+    fwRow('Active Lesson Refs', (d.active_lesson_refs || []).length, 'info'),
+    d.last_run_at ? fwRow('Last Run', new Date(d.last_run_at).toLocaleTimeString(), 'info') : '',
+  ].filter(Boolean).join('');
+}
+
+async function loadHealthCategories() {
+  const d = await apiFetch('/health/categories');
+  const el = document.getElementById('healthCatDetails');
+  const badge = document.getElementById('healthCatBadge');
+  if (!el) return;
+  if (!d || !d.categories) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  const rows = await Promise.all(d.categories.map(async cat => {
+    const cd = await apiFetch(`/health/categories/${cat}`);
+    if (!cd) return fwRow(cat, '--', 'warn');
+    const pct = cd.health_percentage != null ? `${cd.health_percentage.toFixed(0)}%` : '--';
+    return fwRow(cat, `${cd.healthy_services ?? '--'}/${cd.total_services ?? '--'} · ${pct}`,
+      cd.status === 'healthy' ? 'ok' : 'warn');
+  }));
+  if (badge) {
+    badge.textContent = `${d.categories.length} categories`;
+    badge.className = 'card-badge badge-ok';
+  }
+  el.innerHTML = rows.join('') || fwRow('Status', 'No data', 'info');
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
