@@ -6,7 +6,7 @@ This file provides guidance to Gemini agents when working in this repository.
 ## Project Overview
 
 Project: NixOS-Dev-Quick-Deploy AI Harness
-Goal: Local-first AI agent stack on NixOS — Qwen3-35B, AIDB, hybrid-coordinator, switchboard, AGI scaffold
+Goal: Local-first AI agent stack on NixOS — locally hosted LLM (currently Qwen3-35B), AIDB, hybrid-coordinator, switchboard, AGI scaffold
 Owner: hyperd
 Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Redis, PostgreSQL, Qdrant
 
@@ -187,7 +187,7 @@ Never commit without validation evidence. Never use `--no-verify`.
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
 - `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
-- `enable_thinking: false` in EVERY llama.cpp request — Qwen3 thinking tokens cause empty responses
+- `enable_thinking: false` in EVERY llama.cpp request — current model thinking tokens cause empty responses; see `.agent/LOCAL-AGENT.md ## Current Model Config`
 - GPU layers ceiling = 12 (Renoir APU VRAM = 4 GB shared); never suggest n_gpu_layers > 12
 - Total usable RAM = 27 GB; model UMBM = 22.5 GB / 1.0 GB KV / 3.0 GB OS reserve
 
