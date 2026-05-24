@@ -258,6 +258,9 @@ def create_app(
     # Phase 69.3: Temporal Knowledge Graph (/knowledge/graph/fact-chain)
     _register_temporal_graph_routes(app)
 
+    # Phase 70.1: Reputation-weighted consensus engine (/workflow/consensus/vote)
+    _register_consensus_routes(app)
+
     return app
 
 
@@ -295,3 +298,13 @@ def _register_temporal_graph_routes(app: web.Application) -> None:
     except Exception as exc:
         import logging
         logging.getLogger("hybrid-coordinator").warning("Temporal graph route registration skipped: %s", exc)
+
+
+def _register_consensus_routes(app: web.Application) -> None:
+    """Phase 70.1: Register reputation-weighted consensus routes (/workflow/consensus/*)."""
+    try:
+        from workflow import consensus_engine as _ce
+        _ce.register_routes(app)
+    except Exception as exc:
+        import logging
+        logging.getLogger("hybrid-coordinator").warning("Consensus engine route registration skipped: %s", exc)
