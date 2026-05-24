@@ -157,6 +157,20 @@ variables:
     consumers: [switchboard]
     description: "Maximum tool calls per local-model request before forcing a response"
 
+  - canonical: SWB_LOCAL_TOOL_MAX_INPUT_TOKENS
+    aliases: []
+    default: "5000"
+    layer: nix
+    consumers: [switchboard]
+    description: "Max input tokens for local-tool-calling profile (must leave headroom for output within LLAMA_CTX_SIZE)"
+
+  - canonical: SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS
+    aliases: []
+    default: "1024"
+    layer: nix
+    consumers: [switchboard]
+    description: "Max output tokens for local-tool-calling profile"
+
   - canonical: SWB_CONNECT_TIMEOUT_S
     aliases: []
     default: "10"

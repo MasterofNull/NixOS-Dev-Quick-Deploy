@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""aq-prsi-review — Secondary PRSI queue audit + safe-purge tool.
+
+Reads the PRSI action queue and classifies each rejected/obsolete entry
+against a set of safe-clear criteria. Produces a human-readable audit
+report and — with --purge — removes entries that meet ALL criteria,
+writing an audit record before deletion.
+
+Usage:
+  aq-prsi-review                    # audit report only (dry run)
+  aq-prsi-review --purge            # purge safe-to-clear entries + emit audit log
+  aq-prsi-review --json             # machine-readable output
+  aq-prsi-review --show-unsafe      # include entries NOT safe to clear
+
+Safe-clear criteria (ALL must be met):
+  1. status == "rejected"
+  2. approval note present (human/agent already reviewed)
+  3. created_at > 60 days ago  OR  action class is inherently superseded
+  4. Action class is not "alert_human" with unseen_count > 0 (re-triggered alert)
+  5. No pending/approved sibling with same action ID prefix (no active replacement)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
+AUDIT_LOG  = Path(os.getenv("PRSI_PURGE_AUDIT_LOG", "/var/lib/nixos-ai-stack/prsi/purge-audit.jsonl"))
+
+# Action types that become inherently obsolete once rejected with an approval note
+# (the reason the action was proposed no longer applies)
+_INHERENTLY_SUPERSEDED = {
+    "prefer_local",     # policy is already committed in ai-dev.nix
+    "prefer_remote",    # remote disabled (remoteUrl=null)
+    "prewarm_cache",    # cache warm by the time it's reviewed
+    "import_gap",       # knowledge gaps filled via aidb/commits
+    "tighten_openrouter_delegation_contract",  # OpenRouter decommissioned
+}
+
+# Stale threshold: entries older than this are candidates regardless of class
+_STALE_DAYS = 60
+
+
+def _load_queue() -> dict:
+    if not QUEUE_PATH.exists():
+        sys.exit(f"Queue not found: {QUEUE_PATH}")
+    return json.loads(QUEUE_PATH.read_text())
+
+
+def _parse_ts(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _is_safe_to_clear(action: dict, active_ids: set[str]) -> tuple[bool, str]:
+    """Return (safe, reason). reason explains the verdict."""
+    status = action.get("status", "")
+    if status != "rejected":
+        return False, f"status={status} (only rejected entries are eligible)"
+
+    approval = action.get("approval") or {}
+    if not approval.get("note"):
+        return False, "no approval note — not yet human/agent reviewed"
+
+    # Check if a non-rejected sibling exists
+    action_id = action.get("id", "")
+    if action_id in active_ids:
+        return False, "active sibling with same ID exists"
+
+    action_type = action.get("action", "")
+    created_at  = _parse_ts(action.get("created_at"))
+    age_days    = (datetime.now(timezone.utc) - created_at).days if created_at else 9999
+
+    if action_type in _INHERENTLY_SUPERSEDED:
+        return True, f"action class '{action_type}' inherently superseded + approved note present"
+
+    if age_days >= _STALE_DAYS:
+        return True, f"stale ({age_days}d old) + approved note present"
+
+    # alert_human: only safe if seen_count is low (not re-triggered recently)
+    if action_type == "alert_human":
+        seen = action.get("seen_count", 0)
+        last_seen = _parse_ts(action.get("last_seen_at"))
+        if last_seen:
+            days_since = (datetime.now(timezone.utc) - last_seen).days
+            if days_since < 14:
+                return False, f"alert_human re-triggered {days_since}d ago (seen_count={seen})"
+        return True, f"alert_human stale ({age_days}d, last seen {action.get('last_seen_at', '?')}) + approved"
+
+    return False, f"action class '{action_type}' age={age_days}d — does not meet safe-clear criteria"
+
+
+def _build_report(actions: list[dict], show_unsafe: bool) -> dict:
+    now = datetime.now(timezone.utc)
+    active_ids = {
+        a["id"] for a in actions
+        if a.get("status") in ("pending_approval", "approved", "counterfactual_queued")
+    }
+
+    safe_entries: list[dict] = []
+    unsafe_entries: list[dict] = []
+    skipped_non_rejected: list[dict] = []
+
+    for a in actions:
+        if a.get("status") != "rejected":
+            skipped_non_rejected.append(a)
+            continue
+        safe, reason = _is_safe_to_clear(a, active_ids)
+        created_at = _parse_ts(a.get("created_at"))
+        age_days = (now - created_at).days if created_at else -1
+        entry = {
+            "id": a.get("id"),
+            "action": a.get("action"),
+            "type": a.get("type"),
+            "risk": a.get("risk"),
+            "age_days": age_days,
+            "seen_count": a.get("seen_count", 1),
+            "approval_note": (a.get("approval") or {}).get("note", ""),
+            "safe_to_clear": safe,
+            "reason": reason,
+        }
+        if safe:
+            safe_entries.append(entry)
+        else:
+            unsafe_entries.append(entry)
+
+    return {
+        "total": len(actions),
+        "rejected": len(safe_entries) + len(unsafe_entries),
+        "non_rejected": len(skipped_non_rejected),
+        "safe_to_clear": len(safe_entries),
+        "unsafe_to_clear": len(unsafe_entries),
+        "safe_entries": safe_entries,
+        "unsafe_entries": unsafe_entries if show_unsafe else [],
+    }
+
+
+def _print_report(report: dict, show_unsafe: bool) -> None:
+    print(f"\n{'='*60}")
+    print(f"  PRSI Queue Audit — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"{'='*60}")
+    print(f"  Total entries:     {report['total']}")
+    print(f"  Rejected:          {report['rejected']}")
+    print(f"  Non-rejected:      {report['non_rejected']}  (pending/approved — NOT touched)")
+    print(f"  Safe to clear:     {report['safe_to_clear']}")
+    print(f"  Unsafe to clear:   {report['unsafe_to_clear']}")
+    print()
+
+    if report["safe_entries"]:
+        print("── SAFE TO PURGE ─────────────────────────────────────")
+        for e in report["safe_entries"]:
+            print(f"  [{e['id'][:12]}] {e['action']:40s} age={e['age_days']}d seen={e['seen_count']}")
+            print(f"    reason: {e['reason']}")
+            if e["approval_note"]:
+                print(f"    note:   {e['approval_note'][:80]}")
+        print()
+
+    if show_unsafe and report["unsafe_entries"]:
+        print("── NOT SAFE TO PURGE ─────────────────────────────────")
+        for e in report["unsafe_entries"]:
+            print(f"  [{e['id'][:12]}] {e['action']:40s} age={e['age_days']}d seen={e['seen_count']}")
+            print(f"    reason: {e['reason']}")
+        print()
+
+    if report["safe_to_clear"] > 0:
+        print(f"  Run with --purge to remove {report['safe_to_clear']} safe entries.")
+    else:
+        print("  Nothing safe to purge.")
+    print()
+
+
+def _purge(queue_data: dict, report: dict) -> int:
+    safe_ids = {e["id"] for e in report["safe_entries"]}
+    if not safe_ids:
+        print("Nothing to purge.")
+        return 0
+
+    original_actions = queue_data.get("actions", [])
+    kept    = [a for a in original_actions if a.get("id") not in safe_ids]
+    removed = [a for a in original_actions if a.get("id") in safe_ids]
+
+    # Write audit record
+    audit_entry = {
+        "purged_at": datetime.now(timezone.utc).isoformat(),
+        "purged_by": "aq-prsi-review",
+        "count": len(removed),
+        "ids": [a.get("id") for a in removed],
+        "summary": {a.get("id"): a.get("action") for a in removed},
+    }
+    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with AUDIT_LOG.open("a") as f:
+        f.write(json.dumps(audit_entry) + "\n")
+
+    # Update queue
+    queue_data["actions"] = kept
+    queue_data["count"] = len(kept)
+    # Recompute counts
+    counts: dict[str, int] = {}
+    for a in kept:
+        s = a.get("status", "unknown")
+        counts[s] = counts.get(s, 0) + 1
+    queue_data["counts"] = counts
+    queue_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Atomic write
+    tmp = QUEUE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(queue_data, indent=2))
+    tmp.rename(QUEUE_PATH)
+
+    print(f"Purged {len(removed)} entries. Audit log: {AUDIT_LOG}")
+    return len(removed)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="PRSI queue secondary audit + safe-purge")
+    parser.add_argument("--purge",       action="store_true", help="Remove safe-to-clear entries")
+    parser.add_argument("--json",        action="store_true", help="Machine-readable JSON output")
+    parser.add_argument("--show-unsafe", action="store_true", help="List entries NOT safe to clear")
+    args = parser.parse_args()
+
+    queue_data = _load_queue()
+    actions    = queue_data.get("actions", [])
+    report     = _build_report(actions, show_unsafe=args.show_unsafe)
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        if args.purge:
+            _purge(queue_data, report)
+        return
+
+    _print_report(report, show_unsafe=args.show_unsafe)
+
+    if args.purge:
+        confirm = input(f"Purge {report['safe_to_clear']} entries? [y/N] ").strip().lower()
+        if confirm == "y":
+            _purge(queue_data, report)
+        else:
+            print("Aborted.")
+
+
+if __name__ == "__main__":
+    main()

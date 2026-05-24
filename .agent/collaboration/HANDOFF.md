@@ -287,9 +287,23 @@ Requires `nixos-rebuild switch` to take effect on running coordinator.
 - `aq-qa 0`: 99 PASS, 0 FAIL, 4 SKIP (0.5.7/0.8.1/S2.5 need rebuild; 66.1.c needs nix develop .#full)
 - `aq-qa 69`: 3 PASS, 0 FAIL, 1 SKIP (69.3 pending nixos-rebuild for agent_service fix)
 
+### PRSI queue purge (2026-05-23)
+All 26 rejected entries audited with `aq-prsi-review` — all safe to clear (policy superseded,
+gaps resolved, alerts stale). Use `aq-prsi-review --purge` to remove after confirming audit report.
+Tool: `scripts/ai/aq-prsi-review` (Nix wrapper: `aq-prsi-review`). Criteria: rejected + approval note +
+inherently superseded action class OR >60 days old.
+
+### Local-tool-calling profile (2026-05-23)
+`local-tool-calling` maxInputTokens raised 2400→5000, maxOutputTokens 768→1024, maxMessages 12→20.
+Env overrides: SWB_LOCAL_TOOL_MAX_INPUT_TOKENS, SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS.
+Requires switchboard restart (no rebuild needed). Current llama-server ctx is 4096 (pre-rebuild);
+after rebuild gives 8192 ctx, 5000+1024=6024 fits with headroom.
+
 ### Next session
+- Run: `systemctl restart ai-switchboard` → fixes 502 on aq-chat (profile maxInputTokens)
 - Run: `systemctl restart ai-dashboard` + `nixos-rebuild switch`
   → then `aq-qa 69` — expect 4/4 PASS once agent_service tail-read is deployed
+- Run: `aq-prsi-review --purge` to clear 26 obsolete PRSI entries (confirm audit report first)
 - AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
 - Orphan audit P3 backlog: 221 reg gaps, 187 zero-import modules (aq-integrity-scan)
 - Phase 70 (check PRD: PHASE-68-70-AIOS-CONTINUITY-PRD.md)
