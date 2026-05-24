@@ -76,6 +76,32 @@ class GarbageCollector:
         self.min_value_score = min_value_score
         self.deduplicate_similarity = deduplicate_similarity
 
+    _schema_ready: bool = False
+
+    async def _ensure_schema(self) -> None:
+        """Idempotent DDL bootstrap — creates solved_issues if absent."""
+        if GarbageCollector._schema_ready:
+            return
+        try:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS solved_issues (
+                        id          BIGSERIAL PRIMARY KEY,
+                        query       TEXT NOT NULL,
+                        solution    TEXT NOT NULL,
+                        value_score FLOAT NOT NULL DEFAULT 0.5,
+                        created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_solved_issues_value_score
+                        ON solved_issues (value_score);
+                    CREATE INDEX IF NOT EXISTS idx_solved_issues_created_at
+                        ON solved_issues (created_at);
+                """)
+            GarbageCollector._schema_ready = True
+            logger.info("garbage_collector: solved_issues schema ready")
+        except Exception as exc:
+            logger.warning("garbage_collector: schema bootstrap failed: %s", exc)
+
     async def run_full_gc(self) -> Dict[str, int]:
         """
         Run complete garbage collection cycle.
@@ -83,6 +109,7 @@ class GarbageCollector:
         Returns:
             Dict with counts of items cleaned by each operation
         """
+        await self._ensure_schema()
         logger.info("Starting full garbage collection cycle")
         results = {}
 

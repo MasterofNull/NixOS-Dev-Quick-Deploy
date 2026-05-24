@@ -296,6 +296,8 @@ def create_session(
 
 
 def get_session(session_id: str) -> Optional[LifecycleSession]:
+    if _lifecycle_dir is None:
+        return None
     return _read_session(session_id)
 
 

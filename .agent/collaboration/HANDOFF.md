@@ -226,9 +226,53 @@ Anti-gaming mandate: fix root producers, never patch labels.
 - Added /sys/devices/pci*/**/uevent r, to ai-llama-cpp profile in ai-stack.nix
 - Profile reloaded post-rebuild: apparmor="STATUS" operation="profile_replace" confirmed
 
-### Resume dev cycle: Phase 68 remaining + Phase 69
-- Phase 68.1 (NOT YET DONE): workflow_checkpointer.py ReAct backtracking
-  `backtrack_to(parent_node_id)` + Postgres durability. See PHASE-68-70-AIOS-CONTINUITY-PRD.md
-- Phase 69: AG-UI WebSocket + Temporal Knowledge Graph
+### Phase 69 — COMPLETE (commit 6d917882) — 2026-05-23
+**Requires two restarts to go live:**
+1. `systemctl restart ai-dashboard` — enables 69.1 WS + 69.4 proxy
+2. `nixos-rebuild switch` — enables 69.3 coordinator routes + TemporalGraph startup wiring
+
+Delivered:
+- 69.1 `/ws/agent-state` WebSocket in `dashboard/backend/api/main.py` (FastAPI)
+  Polls coordinator `/api/agent-events` every 2s; sends AG-UI state_delta packets.
+- 69.2 Live Event Feed card in `dashboard.html` + `initLiveEventFeed()` IIFE in `assets/dashboard.js`
+  WebSocket client, colour-coded events, auto-reconnect, badge: live/reconnecting/error.
+- 69.3 `knowledge/temporal_graph.py` — append-only fact store (Postgres `fact_chain` table)
+  Supersession pattern, `query_at(ts)` time-travel, GET+POST `/knowledge/graph/fact-chain`.
+  Registered in `router.py`; `TemporalGraph` wired into `http_app["temporal_graph"]` in
+  `http_server_impl.py` at startup after scheduler hooks.
+- 69.4 `loadFactChainTimeline()` SVG renderer in `assets/dashboard.js` (Intelligence wave2)
+  Proxy endpoint `GET /knowledge/graph/fact-chain` in `dashboard/backend/api/routes/aistack.py`.
+- QA: `scripts/testing/harness_qa/phases/phase69.py` (4 checks) registered in `__init__.py`.
+
+Last aq-qa 69 (pre-restart):
+- 69.1 SKIP (403 — dashboard restart needed)
+- 69.2 PASS (HTML + JS elements present)
+- 69.3 FAIL/404 (coordinator needs nixos-rebuild)
+- 69.4 FAIL/404 (dashboard restart needed)
+
+### Stability fixes (2026-05-23) — commits aed19ed5 + pending
+Root-cause analysis from journal after rebuild degradation:
+
+1. **lifecycle_fsm.get_session() AssertionError** (causes connection drop → QA -1):
+   `workflow/lifecycle_fsm.py:get_session()` — added `if _lifecycle_dir is None: return None` guard
+   (matches existing guard in `list_sessions()`). Effect: UAG replay endpoint returns 404
+   instead of crashing aiohttp with 500/connection-drop.
+
+2. **memory_broker.read timeout hardcoded at 5s** (causes cascading timeouts under load / cold Qdrant):
+   `memory_broker.py` — made configurable via `AI_MEMORY_BROKER_RW_TIMEOUT_S` env var, default 10s.
+   All 5 memory-type timeouts were simultaneous → Qdrant/AIDB slow on cold start or busy event loop.
+
+3. **solved_issues table missing** (GC fails hourly with UndefinedTableError):
+   Created table directly in Postgres (id, query, solution, value_score, created_at).
+   Added `_ensure_schema()` to `GarbageCollector.run_full_gc()` for idempotent auto-DDL on future rebuilds.
+
+4. **Embedding service ReadTimeout** (recurring, cascades to memory failures):
+   Not fixed in code — embedding service (llama-cpp-embed) is healthy now. The timeouts from
+   the earlier session were a transient post-rebuild cold-start issue. Monitor `journalctl -u llama-cpp-embed`.
+
+### Next session
+- Run: `systemctl restart ai-dashboard` + `nixos-rebuild switch` → then `aq-qa 69` + `aq-qa 0`
+- Expected: 0.9.1 PASS, 0.9.2 PASS, 0.5.6 PASS after nixos-rebuild picks up lifecycle_fsm fix
 - AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
 - Orphan audit P3 backlog: 221 reg gaps, 187 zero-import modules (aq-integrity-scan)
+- Phase 70 (check PRD: PHASE-68-70-AIOS-CONTINUITY-PRD.md)
