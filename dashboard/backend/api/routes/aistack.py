@@ -3736,6 +3736,34 @@ async def get_mcp_v2_tools() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Phase 69.3-69.4 — Temporal Knowledge Graph proxy
+# ---------------------------------------------------------------------------
+
+@router.get("/knowledge/graph/fact-chain")
+async def get_fact_chain(
+    subject: Optional[str] = None,
+    predicate: Optional[str] = None,
+    at: Optional[str] = None,
+    mode: str = "chain",
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Phase 69.4: Proxy to coordinator /knowledge/graph/fact-chain."""
+    params: list[str] = [f"limit={min(limit, 500)}", f"mode={mode}"]
+    if subject:
+        params.append(f"subject={subject}")
+    if predicate:
+        params.append(f"predicate={predicate}")
+    if at:
+        params.append(f"at={at}")
+    path = "/knowledge/graph/fact-chain?" + "&".join(params)
+    try:
+        return await _hybrid_get(path)
+    except Exception as e:
+        logger.warning(f"fact-chain unavailable: {e}")
+        return {"facts": [], "total": 0, "active": 0, "superseded": 0, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 — Model Optimization Endpoints
 # ---------------------------------------------------------------------------
 

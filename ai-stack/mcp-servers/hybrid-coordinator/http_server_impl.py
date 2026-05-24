@@ -2447,6 +2447,14 @@ async def run_http_mode(port: int) -> None:
     http_app.on_startup.append(_scheduler_startup)
     http_app.on_cleanup.append(_scheduler_cleanup)
 
+    # Phase 69.3: Wire TemporalGraph into aiohttp app dict
+    try:
+        from knowledge.temporal_graph import TemporalGraph as _TemporalGraph
+        http_app["temporal_graph"] = _TemporalGraph(postgres_client)
+        logger.info("temporal_graph: initialized and wired into http_app")
+    except Exception as _tg_exc:
+        logger.warning("temporal_graph: startup wiring skipped: %s", _tg_exc)
+
     # Phase 2.4: Initialize YAML workflow system
     if YAML_WORKFLOWS_AVAILABLE:
         try:

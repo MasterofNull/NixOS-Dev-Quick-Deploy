@@ -1211,6 +1211,7 @@ async function loadIntelligence() {
     loadHintsEffectiveness(), loadDiscoverySignals(), loadImprovementCandidates(), loadCollaborationPatterns(),
     loadA2AReadiness(), loadWorkflowCompliance(), loadSystemHealthInsights(), loadAIMetricsDetail(),
     loadAgentOutcomes(), loadMCPStatus(),
+    loadFactChainTimeline(),
   ]);
 }
 
@@ -3392,6 +3393,132 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Expose to HTML onclick handlers
+// ─── Phase 69.2 — Live Event Feed (WebSocket /ws/agent-state) ────────────────
+(function initLiveEventFeed() {
+  const MAX_EVENTS = 20;
+  let _ws = null;
+  let _events = [];
+  let _reconnectTimer = null;
+
+  function _render() {
+    const el    = document.getElementById('liveEventsDetails');
+    const badge = document.getElementById('liveEventsBadge');
+    if (!el) return;
+    if (!_events.length) {
+      el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No events yet</div>';
+      return;
+    }
+    el.innerHTML = _events.slice().reverse().map(ev => {
+      const subType = ev.sub_type ? `/${ev.sub_type}` : '';
+      const label   = `${ev.event_type || '?'}${subType}`;
+      const color   = ev.outcome === 'error' || ev.outcome === 'failed' ? 'err'
+                    : ev.outcome === 'superseded' ? 'warn' : 'ok';
+      const ts      = ev.timestamp ? ev.timestamp.slice(11, 19) : '';
+      return `<div style="display:flex;justify-content:space-between;font-size:.58rem;margin:.1rem 0">
+        <span style="color:var(--${color === 'ok' ? 'ok' : color === 'warn' ? 'warn' : 'err'});flex:0 0 auto">${label}</span>
+        <span style="color:var(--fg3);flex:1;margin:0 .4rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(ev.summary||ev.agent||'').slice(0,50)}</span>
+        <span style="color:var(--fg3);flex:0 0 auto">${ts}</span>
+      </div>`;
+    }).join('');
+    if (badge) { badge.textContent = 'live'; badge.className = 'card-badge badge-ok'; }
+  }
+
+  function _connect() {
+    if (_ws && (_ws.readyState === WebSocket.OPEN || _ws.readyState === WebSocket.CONNECTING)) return;
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    _ws = new WebSocket(`${proto}//${location.host}/ws/agent-state`);
+
+    _ws.onopen = () => {
+      const badge = document.getElementById('liveEventsBadge');
+      if (badge) { badge.textContent = 'connecting'; badge.className = 'card-badge badge-info'; }
+      if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    };
+
+    _ws.onmessage = (msg) => {
+      try {
+        const pkt = JSON.parse(msg.data);
+        if (pkt.type === 'state_delta' && pkt.value) {
+          _events.push(pkt.value);
+          if (_events.length > MAX_EVENTS) _events.shift();
+          _render();
+        } else if (pkt.type === 'status') {
+          const badge = document.getElementById('liveEventsBadge');
+          if (badge) { badge.textContent = pkt.status || 'live'; badge.className = 'card-badge badge-ok'; }
+        }
+      } catch (_) {}
+    };
+
+    _ws.onerror = () => {
+      const badge = document.getElementById('liveEventsBadge');
+      if (badge) { badge.textContent = 'error'; badge.className = 'card-badge badge-warn'; }
+    };
+
+    _ws.onclose = () => {
+      const badge = document.getElementById('liveEventsBadge');
+      if (badge) { badge.textContent = 'reconnecting'; badge.className = 'card-badge badge-warn'; }
+      // Auto-reconnect after 5 seconds
+      if (!_reconnectTimer) {
+        _reconnectTimer = setTimeout(() => { _reconnectTimer = null; _connect(); }, 5000);
+      }
+    };
+  }
+
+  // Start on DOM ready (already in DOMContentLoaded context when dashboard.js loads)
+  _connect();
+  // Expose for manual reconnect if needed
+  window._liveEventFeedReconnect = _connect;
+})();
+
+// ─── Phase 69.4 — Fact Chain Timeline ────────────────────────────────────────
+async function loadFactChainTimeline() {
+  const d = await apiFetch('/knowledge/graph/fact-chain?limit=30');
+  const el    = document.getElementById('factChainDetails');
+  const badge = document.getElementById('factChainBadge');
+  if (!el) return;
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+
+  const facts   = d.facts || [];
+  const active  = d.active  ?? facts.filter(f => f.status === 'active').length;
+  const superseded = d.superseded ?? facts.filter(f => f.status === 'superseded').length;
+
+  if (badge) {
+    badge.textContent = `${active} active · ${superseded} superseded`;
+    badge.className   = 'card-badge badge-info';
+  }
+
+  if (!facts.length) {
+    el.innerHTML = fwRow('Facts', 'No facts in chain yet', 'info');
+    return;
+  }
+
+  // SVG timeline — each fact is a row; green=active, grey=superseded
+  const rows = facts.slice(0, 15).map(f => {
+    const color  = f.status === 'active' ? '#4caf50' : '#555';
+    const subj   = (f.subject  || '?').slice(0, 18);
+    const pred   = (f.predicate|| '?').slice(0, 14);
+    const obj    = (f.object   || '?').slice(0, 20);
+    const ts     = (f.valid_from || '').slice(5, 16);
+    return { subj, pred, obj, ts, color, status: f.status };
+  });
+
+  const rowH = 16, pad = 4, svgH = rows.length * rowH + pad * 2;
+  const svgRows = rows.map((r, i) => {
+    const y = pad + i * rowH + rowH * 0.7;
+    return `<g>
+      <rect x="0" y="${pad + i * rowH}" width="8" height="${rowH - 2}" rx="2" fill="${r.color}"/>
+      <text x="12" y="${y}" font-size="7" fill="${r.color}">${r.subj}</text>
+      <text x="100" y="${y}" font-size="6" fill="#888">${r.pred}</text>
+      <text x="175" y="${y}" font-size="6.5" fill="#ccc">${r.obj}</text>
+      <text x="320" y="${y}" font-size="5.5" fill="#555">${r.ts}</text>
+    </g>`;
+  }).join('');
+
+  el.innerHTML = `<svg viewBox="0 0 380 ${svgH}" style="width:100%;font-family:monospace">${svgRows}</svg>
+    <div style="font-size:.52rem;color:var(--fg3);margin-top:.2rem">
+      <span style="color:#4caf50">■</span> active &nbsp; <span style="color:#555">■</span> superseded
+    </div>`;
+}
+
 window.setLens       = setLens;
 window.toggleDrawer  = toggleDrawer;
 window.drillLayer    = drillLayer;
