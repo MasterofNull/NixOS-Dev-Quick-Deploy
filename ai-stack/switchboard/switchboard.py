@@ -728,6 +728,77 @@ def _normalize_tool_choice(tool_choice, allowed_names):
         return tool_choice
     return "auto"
 
+
+def _local_tool_limit_fallback(body: dict, tool_calls_used: int) -> dict:
+    return {
+        "id": body.get("id", f"local-tool-limit-{time.time_ns()}"),
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": body.get("model", "local"),
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": (
+                    f"Local tool-call limit reached after {tool_calls_used} calls. "
+                    "I stopped to avoid an execution loop; any completed tool outputs or files remain available. "
+                    "Continue with a narrower request or rerun with a higher --max-tools value if more tool work is intentional."
+                ),
+            },
+            "finish_reason": "tool_calls_exhausted",
+        }],
+        "usage": body.get("usage", {}),
+        "local_tool_budget_exhausted": True,
+        "local_tool_finalization": "fallback",
+    }
+
+
+async def _finalize_after_local_tool_limit(
+    client: httpx.AsyncClient,
+    request_payload: dict,
+    body: dict,
+    messages: list,
+    tool_calls_used: int,
+    max_tool_calls: int,
+) -> dict:
+    """Force a final, tool-free answer after local tool budget exhaustion."""
+    final_messages = list(messages)
+    final_messages.append({
+        "role": "user",
+        "content": (
+            f"You have used the local tool budget ({tool_calls_used}/{max_tool_calls}). "
+            "Stop calling tools. Produce the best final answer now from the completed tool outputs. "
+            "Mention any artifact paths that were created or inspected. If evidence is incomplete, state the gap and the next narrow check."
+        ),
+    })
+    final_payload = {
+        key: value
+        for key, value in request_payload.items()
+        if key not in {"tools", "tool_choice", "max_tool_calls"}
+    }
+    final_payload["messages"] = final_messages
+    final_payload["stream"] = False
+    final_payload["max_tokens"] = max(256, min(int(final_payload.get("max_tokens") or 512), 1024))
+    try:
+        upstream = await client.post(
+            f"{LLAMA_URL}/v1/chat/completions",
+            headers={"Content-Type": "application/json"},
+            json=final_payload,
+        )
+        final_body = upstream.json()
+        choices = final_body.get("choices", []) if isinstance(final_body, dict) else []
+        content = ""
+        if choices and isinstance(choices[0], dict):
+            content = str((choices[0].get("message") or {}).get("content") or "").strip()
+        if upstream.status_code < 400 and content:
+            final_body["local_tool_budget_exhausted"] = True
+            final_body["local_tool_finalization"] = "forced_tool_free"
+            return final_body
+    except Exception as exc:
+        print(f"[switchboard] local_tool_limit_finalization_failed: {exc}", file=sys.stderr)
+    return _local_tool_limit_fallback(body, tool_calls_used)
+
+
 async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
     registry, tool_call_cls = _load_local_tool_registry()
     tools_payload, allowed_names = _normalize_local_tools(payload.get("tools"))
@@ -775,27 +846,25 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                 "tool_calls": tool_calls,
             })
 
-            for tool_call in tool_calls:
+            for tool_index, tool_call in enumerate(tool_calls):
                 if tool_calls_used >= max_tool_calls:
-                    return {
-                        "id": body.get("id", f"local-tool-limit-{time.time_ns()}"),
-                        "object": "chat.completion",
-                        "created": int(time.time()),
-                        "model": body.get("model", "local"),
-                        "choices": [{
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": (
-                                    f"Local tool-call limit reached after {tool_calls_used} calls. "
-                                    "I stopped to avoid an execution loop; any completed tool outputs or files remain available. "
-                                    "Continue with a narrower request or rerun with a higher --max-tools value if more tool work is intentional."
-                                ),
-                            },
-                            "finish_reason": "tool_calls_exhausted",
-                        }],
-                        "usage": body.get("usage", {}),
-                    }, tool_calls_used
+                    for skipped_call in tool_calls[tool_index:]:
+                        skipped_id = str(skipped_call.get("id", "")).strip() or hashlib.md5(
+                            f"skipped:{time.time()}".encode("utf-8")
+                        ).hexdigest()[:16]
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": skipped_id,
+                            "content": json.dumps({
+                                "status": "skipped",
+                                "reason": "local_tool_call_limit_exhausted",
+                                "tool_calls_used": tool_calls_used,
+                                "max_tool_calls": max_tool_calls,
+                            }),
+                        })
+                    return await _finalize_after_local_tool_limit(
+                        client, request_payload, body, messages, tool_calls_used, max_tool_calls
+                    ), tool_calls_used
                 function_payload = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
                 tool_name = str(function_payload.get("name", "")).strip()
                 tool_call_id = str(tool_call.get("id", "")).strip() or hashlib.md5(
