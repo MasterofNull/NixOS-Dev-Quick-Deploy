@@ -14,6 +14,7 @@ All other dependencies imported directly from their origin modules (no http_serv
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -169,6 +170,64 @@ async def handle_hardware_state(request: web.Request) -> web.Response:
     return web.json_response(asdict(state))
 
 
+_DELEGATE_TAIL_BYTES = 256 * 1024 * 1024  # read last 256 MB max (covers multi-day windows)
+
+
+def _read_delegate_stats_sync(audit_log: str, window_s: int, now: float):
+    """Sync helper: parse audit log for delegation stats. Runs in a thread pool."""
+    from datetime import datetime as _dt, timezone as _tz
+
+    total = 0
+    ok = 0
+    skipped_probes = 0
+    _TERMINAL_OUTCOMES = {"success", "error", "timeout", "failed"}
+
+    with open(audit_log, "r", encoding="utf-8", errors="replace") as fh:
+        fh.seek(0, 2)
+        file_size = fh.tell()
+        fh.seek(max(0, file_size - _DELEGATE_TAIL_BYTES))
+        chunk = fh.read()
+
+    for raw in chunk.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entry = json.loads(raw)
+        except Exception:
+            continue
+        if entry.get("tool_name") != "ai_coordinator_delegate":
+            continue
+        ts_str = entry.get("timestamp", "")
+        try:
+            ts = _dt.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            continue
+        if now - ts > window_s:
+            continue
+        latency_ms = float(entry.get("latency_ms") or 0)
+        err_msg_e = entry.get("error_message") or ""
+        is_probe = (
+            (
+                entry.get("outcome") == "error"
+                and err_msg_e == "http_status_504"
+                and latency_ms < 15000
+            )
+            or err_msg_e.startswith("blocked_endpoint_pattern:")
+        )
+        if is_probe:
+            skipped_probes += 1
+            continue
+        outcome = entry.get("outcome", "")
+        if outcome not in _TERMINAL_OUTCOMES:
+            continue
+        total += 1
+        if outcome == "success":
+            ok += 1
+
+    return total, ok, skipped_probes
+
+
 async def handle_delegate_stats(request: web.Request) -> web.Response:
     """GET /stats/delegate — delegation success rate from audit log.
 
@@ -192,50 +251,12 @@ async def handle_delegate_stats(request: web.Request) -> web.Response:
         "/var/log/ai-audit-sidecar/tool-audit.jsonl",
     )
     now = time.time()
-    total = 0
-    ok = 0
-    skipped_probes = 0
     error_msg = None
+    total = ok = skipped_probes = 0
     try:
-        with open(audit_log, "r", encoding="utf-8", errors="replace") as fh:
-            for raw in fh:
-                raw = raw.strip()
-                if not raw:
-                    continue
-                try:
-                    entry = json.loads(raw)
-                except Exception:
-                    continue
-                if entry.get("tool_name") != "ai_coordinator_delegate":
-                    continue
-                ts_str = entry.get("timestamp", "")
-                try:
-                    from datetime import datetime as _dt, timezone as _tz
-                    ts = _dt.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
-                except Exception:
-                    continue
-                if now - ts > window_s:
-                    continue
-                latency_ms = float(entry.get("latency_ms") or 0)
-                err_msg_e = entry.get("error_message") or ""
-                is_probe = (
-                    (
-                        entry.get("outcome") == "error"
-                        and err_msg_e == "http_status_504"
-                        and latency_ms < 15000
-                    )
-                    or err_msg_e.startswith("blocked_endpoint_pattern:")
-                )
-                if is_probe:
-                    skipped_probes += 1
-                    continue
-                outcome = entry.get("outcome", "")
-                _TERMINAL_OUTCOMES = {"success", "error", "timeout", "failed"}
-                if outcome not in _TERMINAL_OUTCOMES:
-                    continue
-                total += 1
-                if outcome == "success":
-                    ok += 1
+        total, ok, skipped_probes = await asyncio.to_thread(
+            _read_delegate_stats_sync, audit_log, window_s, now
+        )
     except OSError as exc:
         error_msg = str(exc)
     except Exception as exc:
