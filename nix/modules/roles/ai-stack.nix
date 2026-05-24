@@ -1559,6 +1559,9 @@ in {
             # --- ROCm/HSA sysfs paths for GPU enumeration --------------------
             /sys/class/kfd/** r,
             /sys/devices/virtual/kfd/** r,
+            # PCI device uevent files — read by llama-server at startup for GPU enumeration.
+            # Pattern covers the full PCI hardware tree (pci0000:00/.../uevent).
+            /sys/devices/pci*/**/uevent r,
 
             # --- Vulkan ICD loader paths -------------------------------------
             # Required for ggml-vulkan to discover and load the RADV driver.
