@@ -1,6 +1,6 @@
 # Logical Orphan Baseline PRD
 
-Updated: 2026-05-24T20:36:55Z
+Updated: 2026-05-24T20:44:49Z
 
 ## Objective
 
@@ -17,6 +17,7 @@ The earlier scanner reported a large count of zero-inbound modules without file 
 - Treat the baseline as known debt, not acceptance: every entry still needs `keep`, `wire`, `delete`, or `document-entrypoint`.
 - Add a focused CI guard that fails when changed `ai-stack` code introduces a new zero-inbound module not present in the baseline.
 - Keep scanner output bounded and machine-readable so agents can automate the cleanup safely.
+- Count external operational references from harness scripts, Nix, dashboard backend, config, tests, and skill docs so runtime entrypoints are not misclassified as dead libraries.
 
 ## Acceptance
 
@@ -25,6 +26,17 @@ The earlier scanner reported a large count of zero-inbound modules without file 
 - Focused CI runs the logical orphan guard for `ai-stack` changes.
 - Contract tests cover path-aware findings and baseline/new-candidate separation.
 - Workflow notes explain the failure pattern and prevention rule.
+- First remediation pass wires confirmed backend gaps and lowers the baseline from 115 to 84 candidates.
+
+## Current Status
+
+- 84 candidates remain in the baseline.
+- 51 are externally referenced entrypoint candidates that need coverage verification.
+- 17 are unreferenced entrypoint-shaped files that need wiring or removal review.
+- 14 are skill assets and should remain as skill-owned assets.
+- 2 remain pure library candidates:
+  - `ai-stack/autonomous-improvement/monitoring_integration.py`
+  - `ai-stack/trading-agents/schemas.py`
 
 ## Remediation Workflow
 

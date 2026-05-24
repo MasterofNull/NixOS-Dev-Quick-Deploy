@@ -266,7 +266,7 @@ Anti-gaming mandate: fix root producers, never patch labels.
 
 ### Orphan audit findings (backlog — not yet actioned)
 - 221 async handlers implemented but unreachable via MCP or HTTP
-- 115 baselined production modules with zero inbound imports after AST import parsing and noise filtering
+- 84 baselined production modules with zero inbound imports after AST import parsing, operational reference detection, and noise filtering
 - Candidate purge: task_router.py (superseded by routing_contract.py),
   llm_code_reviewer.py (moved to ai_insights.py), local-agents/safe_command_executor.py
 - P2 backlog per SOTA 2.0 roadmap
@@ -390,7 +390,7 @@ after rebuild gives 8192 ctx, 5000+1024=6024 fits with headroom.
   → then `aq-qa 69` (expect 4/4), `aq-qa 70` (expect 70.1 PASS, 70.2 PASS/SKIP)
 - Run: `aq-prsi-review --purge` to clear 26 obsolete PRSI entries (confirm audit report first)
 - AppArmor enforce: run `nixos-rebuild switch` with state="enforce" in mcp-servers.nix after 2026-05-30
-- Orphan audit P3 backlog: scanner now bounded; current JSON snapshot shows 0 doc orphans, 0 registration gaps, 115 baselined production logical orphan candidates after AST import parsing and filtering tests/migrations/examples.
+- Orphan audit P3 backlog: scanner now bounded; current JSON snapshot shows 0 doc orphans, 0 registration gaps, 84 baselined production logical orphan candidates after AST import parsing, operational reference detection, and filtering tests/migrations/examples.
 - Phase 70.3: soak validation after rebuild (aq-qa 0 + maeah-acceptance-tests)
 
 ## 2026-05-24 Codex handoff — mutable agentic slice helper
@@ -559,7 +559,7 @@ aq-qa 71   # expect 7/7 PASS
 - Wire aq-qa failures to auto-create improvement tasks
 - Add "new service = aq-qa + dashboard panel" contract to WORKFLOW-CANON.md and AGENTS.md
 - AppArmor enforce: scheduled 2026-05-30 (complain since 2026-05-23)
-- Orphan audit P3: historical reg-gap count needs bounded re-audit; logical orphan baseline is 115 candidates in `config/aq-integrity-logical-orphans.json`
+- Orphan audit P3: historical reg-gap count needs bounded re-audit; logical orphan baseline is 84 candidates in `config/aq-integrity-logical-orphans.json`
 
 ## Session — 2026-05-24 Logical Orphan Baseline
 
@@ -567,10 +567,7 @@ Slice owner: Codex
 
 Completed:
 - Added path-aware logical orphan findings to `scripts/ai/aq-integrity-scan`.
-- Added `config/aq-integrity-logical-orphans.json` with 115 current candidates:
-  - 93 `entrypoint_candidate`
-  - 19 `library_candidate`
-  - 3 `runtime_component_candidate`
+- Added `config/aq-integrity-logical-orphans.json` with the current candidate baseline.
 - Added `new_logical_orphans` detection and `--fail-on-new-logical`.
 - Added focused guard `scripts/testing/check-aq-integrity-logical-baseline.py`.
 - Updated focused CI trigger matching so directory triggers such as `ai-stack` protect entire subsystems.
@@ -585,3 +582,29 @@ Next remediation:
 - For `entrypoint_candidate`, verify Nix/systemd/CLI/plugin reachability and change `action` to `keep` with rationale, or wire/delete.
 - For `library_candidate`, search for docs/runtime references; delete or add real imports/tests.
 - For `runtime_component_candidate`, require an aq-qa check and dashboard/service visibility if it is meant to be live.
+
+## Session — 2026-05-24 Logical Orphan Remediation Pass 1
+
+Slice owner: Codex
+
+Completed:
+- Expanded `aq-integrity-scan` beyond ai-stack-only imports:
+  - counts Python imports from operational reference roots
+  - handles extensionless `scripts/ai/aq-*` Python heredocs
+  - records external reference examples
+  - fails the baseline guard when logical scans truncate instead of trusting partial results
+- Wired `AlertEngine` to bundled notification handlers and remediation workflows.
+- Wired affective reciprocity tracking into the coordinator affective pipeline so dashboard `reciprocity_debt` has a real data source.
+- Fixed trading handler import logic for the hyphenated `ai-stack/trading-agents` directory by exposing it as `trading_agents`.
+- Added focused regression checks for all three backend fixes.
+- Regenerated logical orphan baseline: 84 remaining candidates.
+
+Remaining pure library candidates:
+- `ai-stack/autonomous-improvement/monitoring_integration.py` — likely needs design-level integration with autonomous loop/local LLM operation telemetry before wiring.
+- `ai-stack/trading-agents/schemas.py` — appears superseded by `ai-stack/trading-agents/graph/state.py`; deletion requires approval or compatibility decision.
+
+Patterns learned:
+- Static import-only orphan detection is insufficient for this harness because services use path injection, extensionless shell/Python wrappers, skill assets, and dynamic package aliases.
+- Hyphenated runtime directories need explicit import aliases or tests will miss route-level import failures.
+- Dashboard-visible fields such as `reciprocity_debt` need source-code wiring tests, not only frontend display checks.
+- Partial scanner output on timeout is dangerous; validation must treat truncation as inconclusive failure.

@@ -522,7 +522,56 @@
         "scripts/testing/check-aq-integrity-logical-baseline.py"
       ],
       "tier": "behavioral",
-      "timeout_seconds": 20
+      "timeout_seconds": 30
+    },
+    {
+      "id": "alert-engine-builtins",
+      "description": "AlertEngine registers bundled notification and remediation integrations",
+      "trigger_paths": [
+        "ai-stack/observability/alert_engine.py",
+        "ai-stack/observability/notification_handlers.py",
+        "ai-stack/observability/remediation_workflows.py",
+        "scripts/testing/test-alert-engine-builtins.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-alert-engine-builtins.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "affective-reciprocity-wiring",
+      "description": "Affective pipeline wires ReciprocityTracker into dashboard-visible state",
+      "trigger_paths": [
+        "ai-stack/affective-engine/reciprocity_tracker.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "scripts/testing/test-affective-reciprocity-wiring.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-affective-reciprocity-wiring.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "trading-handlers-imports",
+      "description": "Trading handlers import the hyphenated trading-agents package",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/trading_handlers.py",
+        "ai-stack/trading-agents",
+        "scripts/testing/test-trading-handlers-imports.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-trading-handlers-imports.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
     }
   ]
 }

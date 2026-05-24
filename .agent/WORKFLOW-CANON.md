@@ -262,7 +262,7 @@ EOF
 
 **Services currently at zero coverage (P3 backlog):**
 - Historical orphan-handler inventory requires re-audit under the bounded scanner — see `SYSTEM-INTEGRITY-MASTER.md`
-- 115 production logical orphan candidates are baselined in `config/aq-integrity-logical-orphans.json`; new candidates fail focused CI.
+- 84 production logical orphan candidates are baselined in `config/aq-integrity-logical-orphans.json`; new candidates fail focused CI.
 
 ## Bounded Validation Primitive Rule (Permanent — 2026-05-24)
 

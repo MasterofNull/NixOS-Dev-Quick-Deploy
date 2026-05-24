@@ -70,6 +70,31 @@
   },
   "pending_slices": [
     {
+      "updated_at": "2026-05-24T20:44:49Z",
+      "agent": "codex",
+      "task": "remediate first logical orphan root-cause batch",
+      "intent": "Work through baseline candidates by root cause: fix false-positive scanner patterns, wire confirmed backend gaps, add focused checks, and regenerate the ratcheting baseline.",
+      "target_files": [
+        "scripts/ai/aq-integrity-scan",
+        "config/aq-integrity-logical-orphans.json",
+        "ai-stack/observability/alert_engine.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/trading_handlers.py",
+        "scripts/testing/test-alert-engine-builtins.py",
+        "scripts/testing/test-affective-reciprocity-wiring.py",
+        "scripts/testing/test-trading-handlers-imports.py",
+        "config/validation-check-registry.json"
+      ],
+      "validation": [
+        "python scripts/testing/test-alert-engine-builtins.py",
+        "python scripts/testing/test-affective-reciprocity-wiring.py",
+        "python scripts/testing/test-trading-handlers-imports.py",
+        "python scripts/testing/check-aq-integrity-logical-baseline.py",
+        "scripts/governance/tier0-validation-gate.sh --pre-commit"
+      ],
+      "risk": "medium: backend wiring changes for observability, affective state, and trading route imports"
+    },
+    {
       "updated_at": "2026-05-24T20:36:55Z",
       "agent": "codex",
       "task": "baseline and prevent logical orphan debt",

@@ -169,6 +169,8 @@ class AlertEngine:
         # WebSocket connections for browser notifications
         self.websocket_connections: Set[Any] = set()
 
+        self._register_builtin_integrations()
+
         # Load alert rules if config provided
         if rules_config_path and rules_config_path.exists():
             self.load_rules(rules_config_path)
@@ -177,6 +179,54 @@ class AlertEngine:
             f"AlertEngine initialized: dedup_window={dedup_window_seconds}s, "
             f"grouping_window={grouping_window_seconds}s, max_history={max_alert_history}"
         )
+
+    def _register_builtin_integrations(self) -> None:
+        """Register bundled notification handlers and remediation workflows.
+
+        Observability modules live as loose Python files in this repository, so imports are
+        deliberately local and best-effort. Missing optional notification dependencies must not
+        prevent the alert engine from starting.
+        """
+        try:
+            from notification_handlers import (
+                discord_notification_handler,
+                email_notification_handler,
+                slack_notification_handler,
+                webhook_notification_handler,
+            )
+
+            self.notification_handlers.update(
+                {
+                    "discord": discord_notification_handler,
+                    "email": email_notification_handler,
+                    "primary": webhook_notification_handler,
+                    "slack": slack_notification_handler,
+                    "webhook": webhook_notification_handler,
+                }
+            )
+        except Exception as exc:
+            logger.debug("Built-in notification handlers unavailable: %s", exc)
+
+        try:
+            from remediation_workflows import (
+                clear_cache_workflow,
+                refresh_models_workflow,
+                restart_service_workflow,
+                rotate_logs_workflow,
+                scale_resources_workflow,
+            )
+
+            self.remediation_workflows.update(
+                {
+                    "clear_cache": clear_cache_workflow,
+                    "refresh_models": refresh_models_workflow,
+                    "restart_service": restart_service_workflow,
+                    "rotate_logs": rotate_logs_workflow,
+                    "scale_resources": scale_resources_workflow,
+                }
+            )
+        except Exception as exc:
+            logger.debug("Built-in remediation workflows unavailable: %s", exc)
 
     def load_rules(self, config_path: Path) -> None:
         """Load alert rules from YAML configuration."""
