@@ -262,7 +262,26 @@ EOF
 
 **Services currently at zero coverage (P3 backlog):**
 - 221 registered handlers unreachable via MCP or HTTP — see `SYSTEM-INTEGRITY-MASTER.md`
-- 187 zero-import modules (dead code candidates) — see `aq-integrity-scan`
+- 179 production logical orphan candidates after filtering tests/migrations/examples — see `aq-integrity-scan --json`
+
+## Bounded Validation Primitive Rule (Permanent — 2026-05-24)
+
+> Origin: `aq-integrity-scan | head -80` did not return promptly while investigating orphan-handler debt.
+> Root cause: validation tooling was itself unbounded and prose-only, so agents could not safely automate remediation.
+
+Any audit, scanner, or debt-discovery tool used by agents MUST provide:
+
+1. **Machine-readable output** — `--json` or equivalent with stable `meta` and `findings` keys.
+2. **Runtime bounds** — timeout and/or maximum item/file limits with explicit `truncated` metadata.
+3. **Noise classification** — tests, migrations, examples, generated files, and entrypoints must not inflate production debt counts.
+4. **Focused CI coverage** — path-gated test in `config/validation-check-registry.json` for the scanner contract.
+5. **Actionable summaries** — counts by class plus artifact path for full details.
+
+Before using a scanner to drive remediation, first run its bounded JSON mode and confirm:
+
+```bash
+scripts/ai/aq-integrity-scan --json --timeout-seconds 10 --max-files 5000 | python3 -m json.tool
+```
 
 ---
 

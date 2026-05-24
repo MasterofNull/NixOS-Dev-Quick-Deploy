@@ -489,6 +489,21 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 30
+    },
+    {
+      "id": "aq-integrity-scan-contract",
+      "description": "aq-integrity-scan bounded JSON contract",
+      "trigger_paths": [
+        "scripts/ai/aq-integrity-scan",
+        "scripts/testing/test-aq-integrity-scan-contract.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-integrity-scan-contract.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
     }
   ]
 }

@@ -16,28 +16,85 @@ import os
 import re
 import json
 import argparse
+import time
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, Iterable, List, Set
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 AI_STACK = REPO_ROOT / "ai-stack"
 SCRIPTS_AI = REPO_ROOT / "scripts/ai"
 DOCS_DIR = REPO_ROOT / ".agent"
+DEFAULT_TIMEOUT_SECONDS = 15.0
+DEFAULT_MAX_FILES = 6000
+DEFAULT_MAX_LOGICAL_FILES = 1500
 
 class IntegrityScanner:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        max_files: int = DEFAULT_MAX_FILES,
+        max_logical_files: int = DEFAULT_MAX_LOGICAL_FILES,
+        include_logical: bool = True,
+    ):
+        self.started_at = time.monotonic()
+        self.timeout_seconds = max(0.1, float(timeout_seconds))
+        self.max_files = max(1, int(max_files))
+        self.max_logical_files = max(1, int(max_logical_files))
+        self.include_logical = include_logical
         self.findings = {
             "doc_orphans": [],      # Commands in docs but not in scripts/
             "registration_gaps": [], # Logic implemented but not wired to MCP/HTTP
             "logical_orphans": [],   # Code with no callers
             "protocol_drifts": []    # HTTP/MCP mismatch
         }
+        self.meta = {
+            "version": "2.0",
+            "bounded": True,
+            "timeout_seconds": self.timeout_seconds,
+            "max_files": self.max_files,
+            "max_logical_files": self.max_logical_files,
+            "files_scanned": 0,
+            "files_skipped": 0,
+            "logical_files_ignored": 0,
+            "truncated": False,
+            "warnings": [],
+        }
+
+    def _deadline_exceeded(self) -> bool:
+        return (time.monotonic() - self.started_at) >= self.timeout_seconds
+
+    def _safe_read_text(self, path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            self.meta["warnings"].append(f"read_failed:{path}:{exc}")
+            return ""
+
+    def _bounded_files(self, paths: Iterable[Path], *, limit: int | None = None) -> List[Path]:
+        selected: List[Path] = []
+        limit = limit or self.max_files
+        for path in paths:
+            if self._deadline_exceeded():
+                self.meta["truncated"] = True
+                self.meta["warnings"].append("scan_timeout_reached")
+                break
+            if len(selected) >= limit or self.meta["files_scanned"] >= self.max_files:
+                self.meta["truncated"] = True
+                self.meta["warnings"].append("file_scan_limit_reached")
+                break
+            if "__pycache__" in str(path):
+                self.meta["files_skipped"] += 1
+                continue
+            selected.append(path)
+            self.meta["files_scanned"] += 1
+        return selected
 
     def scan_doc_consistency(self):
         """Find commands referenced in markdown that don't exist in scripts/ai."""
         documented_cmds = set()
-        for md_file in DOCS_DIR.glob("**/*.md"):
-            content = md_file.read_text()
+        for md_file in self._bounded_files(DOCS_DIR.glob("**/*.md")):
+            content = self._safe_read_text(md_file)
             matches = re.findall(r'`(aq-[a-z0-9-]+)`', content)
             documented_cmds.update(matches)
         
@@ -71,15 +128,12 @@ class IntegrityScanner:
             coord_dir / "server.py",
             coord_dir / "extensions/mcp_handlers.py",
         ]
-        wiring_content = "".join([f.read_text() for f in wiring_files if f.exists()])
-        for svc_file in coord_dir.glob("**/*_service.py"):
-            if "__pycache__" not in str(svc_file):
-                wiring_content += svc_file.read_text()
+        wiring_content = "".join([self._safe_read_text(f) for f in wiring_files if f.exists()])
+        for svc_file in self._bounded_files(coord_dir.glob("**/*_service.py")):
+            wiring_content += self._safe_read_text(svc_file)
 
-        for h_file in coord_dir.glob("**/*_handlers.py"):
-            if "__pycache__" in str(h_file):
-                continue
-            content = h_file.read_text()
+        for h_file in self._bounded_files(coord_dir.glob("**/*_handlers.py")):
+            content = self._safe_read_text(h_file)
             # Only check modules that define a register_routes() function — those are
             # HTTP handler modules that must be explicitly wired. Modules without
             # register_routes() are MCP-only (dispatched via mcp_handlers.dispatch_tool).
@@ -102,17 +156,26 @@ class IntegrityScanner:
 
     def scan_logical_orphans(self):
         """Find python files in ai-stack with zero imports from other files."""
-        all_py_files = list(AI_STACK.glob("**/*.py"))
+        if not self.include_logical:
+            self.meta["warnings"].append("logical_orphan_scan_skipped")
+            return
+        all_py_files = [
+            f for f in self._bounded_files(AI_STACK.glob("**/*.py"), limit=self.max_logical_files)
+            if not self._ignore_logical_file(f)
+        ]
         py_names = {f.stem for f in all_py_files if f.name != "__init__.py"}
         
         import_map = {name: 0 for name in py_names}
         
         for py_file in all_py_files:
-            content = py_file.read_text()
-            for name in py_names:
-                if py_file.stem == name: continue
-                # Match 'import name' or 'from name import'
-                if re.search(fr'\b(import|from)\s+{name}\b', content):
+            if self._deadline_exceeded():
+                self.meta["truncated"] = True
+                self.meta["warnings"].append("logical_scan_timeout_reached")
+                break
+            content = self._safe_read_text(py_file)
+            imported_names = set(re.findall(r'^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)\b', content, flags=re.MULTILINE))
+            for name in imported_names & py_names:
+                if py_file.stem != name:
                     import_map[name] += 1
         
         for name, count in import_map.items():
@@ -125,8 +188,46 @@ class IntegrityScanner:
                     "reason": "Module exists but has 0 inbound imports in ai-stack (potential dead code)"
                 })
 
+    def _ignore_logical_file(self, path: Path) -> bool:
+        rel = str(path.relative_to(REPO_ROOT)) if path.is_relative_to(REPO_ROOT) else str(path)
+        stem = path.stem
+        ignored_parts = {
+            "tests",
+            "test",
+            "migrations",
+            "examples",
+            "__pycache__",
+        }
+        if any(part in ignored_parts for part in path.parts):
+            self.meta["logical_files_ignored"] += 1
+            return True
+        if stem.startswith(("test_", "example_", "bench_", "benchmark_")):
+            self.meta["logical_files_ignored"] += 1
+            return True
+        if re.match(r"^\d{4}_", stem):
+            self.meta["logical_files_ignored"] += 1
+            return True
+        if rel.endswith("/__init__.py"):
+            self.meta["logical_files_ignored"] += 1
+            return True
+        return False
+
+    def run(self):
+        self.scan_doc_consistency()
+        self.scan_coordinator_wiring()
+        self.scan_logical_orphans()
+        self.meta["elapsed_seconds"] = round(time.monotonic() - self.started_at, 3)
+        self.meta["finding_counts"] = {key: len(value) for key, value in self.findings.items()}
+        return {"meta": self.meta, "findings": self.findings}
+
     def report(self):
-        print(f"--- Integrity Scan Report: {len(self.findings['registration_gaps']) + len(self.findings['doc_orphans'])} issues found ---")
+        result = self.run()
+        counts = result["meta"]["finding_counts"]
+        print(f"--- Integrity Scan Report: {counts['registration_gaps'] + counts['doc_orphans']} doc/wiring issues found ---")
+        print(
+            f"Scanned {self.meta['files_scanned']} files in {self.meta['elapsed_seconds']}s"
+            + (" (TRUNCATED)" if self.meta["truncated"] else "")
+        )
         
         if self.findings["registration_gaps"]:
             print("\n[!] Registration Gaps (Half-Implemented):")
@@ -144,11 +245,24 @@ class IntegrityScanner:
                 print(f"  - {gap['module']}")
 
 def main():
-    scanner = IntegrityScanner()
-    scanner.scan_doc_consistency()
-    scanner.scan_coordinator_wiring()
-    scanner.scan_logical_orphans()
-    scanner.report()
+    parser = argparse.ArgumentParser(description="Bounded integrity scanner for docs, handler wiring, and logical orphan debt")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    parser.add_argument("--skip-logical", action="store_true", help="Skip logical orphan scan for fast wiring/doc checks")
+    parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS, help="Soft scan timeout")
+    parser.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help="Maximum total files to scan")
+    parser.add_argument("--max-logical-files", type=int, default=DEFAULT_MAX_LOGICAL_FILES, help="Maximum Python files for logical orphan scan")
+    args = parser.parse_args()
+
+    scanner = IntegrityScanner(
+        timeout_seconds=args.timeout_seconds,
+        max_files=args.max_files,
+        max_logical_files=args.max_logical_files,
+        include_logical=not args.skip_logical,
+    )
+    if args.json:
+        print(json.dumps(scanner.run(), sort_keys=True))
+    else:
+        scanner.report()
 
 if __name__ == "__main__":
     main()
