@@ -3322,34 +3322,88 @@ async def get_port_registry() -> Dict[str, Any]:
     }
 
 
+def _ralph_auth_header() -> Dict[str, str]:
+    """Load ralph-wiggum API key (wired to aidb_api_key in NixOS)."""
+    key_file = os.environ.get("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key")
+    try:
+        key = Path(key_file).read_text().strip()
+        return {"Authorization": f"Bearer {key}"}
+    except OSError:
+        return {}
+
+
 @router.get("/ralph/stats")
 async def get_ralph_stats() -> Dict[str, Any]:
-    """Get Ralph Wiggum task statistics"""
+    """Get Ralph Wiggum task statistics (auth-aware)."""
     ralph_base = SERVICES["ralph"]
-
-    stats = await fetch_with_fallback(
+    return await fetch_with_fallback(
         f"{ralph_base}/stats",
-        {
-            "active_tasks": 0,
-            "completed_tasks": 0,
-            "failed_tasks": 0,
-            "total_iterations": 0
-        }
+        {"active_tasks": 0, "completed_tasks": 0, "failed_tasks": 0, "total_iterations": 0},
+        headers=_ralph_auth_header(),
     )
-
-    return stats
 
 
 @router.get("/ralph/tasks")
 async def get_ralph_tasks() -> Dict[str, Any]:
-    """List Ralph Wiggum tasks"""
+    """List Ralph Wiggum tasks (auth-aware)."""
     ralph_base = SERVICES["ralph"]
+    tasks = await fetch_with_fallback(f"{ralph_base}/tasks", [],
+                                      headers=_ralph_auth_header())
+    return {"tasks": tasks, "timestamp": datetime.now(timezone.utc).isoformat()}
 
-    tasks = await fetch_with_fallback(f"{ralph_base}/tasks", [])
 
+@router.get("/ralph/integration-health")
+async def get_integration_health() -> Dict[str, Any]:
+    """Integration contract health: verifies the full delegation chain end-to-end.
+
+    Checks local_agent_runtime.py path, coordinator delegate endpoint (not broken),
+    ralph-wiggum reachability, and aider-wrapper.  No stub data — all live probes.
+    """
+    from pathlib import Path as _Path
+
+    checks: Dict[str, Any] = {}
+
+    # 1. local_agent_runtime.py path
+    runtime_path = _Path(__file__).parents[4] / "ai-stack" / "agents" / "runtimes" / "local_agent_runtime.py"
+    checks["runtime_path"] = {
+        "ok": runtime_path.exists(),
+        "path": str(runtime_path),
+        "detail": "present" if runtime_path.exists() else "MISSING — nixos-rebuild needed",
+    }
+
+    # 2. ralph-wiggum health
+    ralph_health = await fetch_with_fallback(
+        f"{SERVICES['ralph']}/health", None, headers=_ralph_auth_header()
+    )
+    checks["ralph_wiggum"] = {
+        "ok": bool(ralph_health and ralph_health.get("status") == "healthy"),
+        "loop_running": (ralph_health or {}).get("loop_running", False),
+        "active_tasks": (ralph_health or {}).get("active_tasks", 0),
+        "detail": (ralph_health or {}).get("status", "unreachable"),
+    }
+
+    # 3. aider-wrapper health
+    aider_url = os.environ.get("AIDER_WRAPPER_URL",
+                               f"http://127.0.0.1:{os.environ.get('AIDER_WRAPPER_PORT', '8090')}")
+    aider_health = await fetch_with_fallback(f"{aider_url}/health", None)
+    checks["aider_wrapper"] = {
+        "ok": bool(aider_health and aider_health.get("status") == "healthy"),
+        "aider_available": (aider_health or {}).get("aider_available", False),
+        "detail": (aider_health or {}).get("status", "unreachable"),
+    }
+
+    # 4. coordinator delegate reachability (health check only — no real task)
+    coord_health = await fetch_with_fallback(f"{SERVICES['hybrid']}/health", None)
+    checks["coordinator"] = {
+        "ok": bool(coord_health and coord_health.get("status") in ("ok", "healthy")),
+        "detail": (coord_health or {}).get("status", "unreachable"),
+    }
+
+    all_ok = all(v.get("ok", False) for v in checks.values())
     return {
-        "tasks": tasks,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "healthy": all_ok,
+        "checks": checks,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 

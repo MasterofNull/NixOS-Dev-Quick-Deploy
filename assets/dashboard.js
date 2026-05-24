@@ -1924,16 +1924,51 @@ async function loadLearnPipeline() {
 }
 
 // ─── OPERATIONS: RALPH TASK TRACKER ──────────────────────────────────────────
+// ─── OPERATIONS: INTEGRATION HEALTH ─────────────────────────────────────────
+async function loadIntegrationHealth() {
+  const d     = await apiFetch('/ralph/integration-health', {}, T_SLOW);
+  const el    = document.getElementById('integrationHealthDetails');
+  const badge = document.getElementById('integrationHealthBadge');
+  if (!el) return;
+  if (!d) {
+    if (badge) { badge.textContent = 'unavailable'; badge.className = 'card-badge badge-warn'; }
+    el.innerHTML = fwRow('Status', 'Dashboard restart needed', 'warn');
+    return;
+  }
+  const checks = d.checks || {};
+  const allOk  = d.healthy === true;
+  if (badge) {
+    badge.textContent  = allOk ? 'healthy' : 'degraded';
+    badge.className    = `card-badge ${allOk ? 'badge-ok' : 'badge-err'}`;
+  }
+  const rows = [];
+  const c2row = (label, check) => {
+    if (!check) return fwRow(label, 'no data', 'warn');
+    const col = check.ok ? 'ok' : 'err';
+    return fwRow(label, check.detail || (check.ok ? 'ok' : 'fail'), col);
+  };
+  if (checks.runtime_path)  rows.push(c2row('Runtime Path',   checks.runtime_path));
+  if (checks.coordinator)   rows.push(c2row('Coordinator',    checks.coordinator));
+  if (checks.ralph_wiggum)  rows.push(c2row('Ralph Loop',     checks.ralph_wiggum));
+  if (checks.aider_wrapper) rows.push(c2row('Aider Wrapper',  checks.aider_wrapper));
+  if (checks.ralph_wiggum && checks.ralph_wiggum.ok) {
+    rows.push(fwRow('Active Tasks', checks.ralph_wiggum.active_tasks ?? 0,
+      (checks.ralph_wiggum.active_tasks || 0) > 0 ? 'ok' : 'info'));
+  }
+  el.innerHTML = rows.join('');
+}
+
 async function loadRalph() {
   const d  = await apiFetch('/ralph/stats');
   const el = document.getElementById('ralphDetails');
   const badge = document.getElementById('ralphBadge');
   if (!el) return;
-  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable', 'warn'); return; }
+  if (!d) { el.innerHTML = fwRow('Status', 'Unavailable — check Integration Health panel', 'warn'); return; }
   const total = (d.active_tasks || 0) + (d.completed_tasks || 0) + (d.failed_tasks || 0);
   const sRate = total > 0 && d.completed_tasks ? Math.round((d.completed_tasks / total) * 100) : null;
   if (badge) { badge.textContent = d.active_tasks ? `${d.active_tasks} active` : 'idle'; badge.className = `card-badge ${d.active_tasks > 0 ? 'badge-ok' : 'badge-info'}`; }
   el.innerHTML = [
+    fwRow('Loop Running',  d.loop_running ? 'yes' : 'no', d.loop_running ? 'ok' : 'err'),
     fwRow('Active Tasks',  d.active_tasks   ?? 0, (d.active_tasks || 0) > 0   ? 'ok'  : 'info'),
     fwRow('Completed',     d.completed_tasks ?? 0, (d.completed_tasks || 0) > 0 ? 'ok' : 'info'),
     fwRow('Failed',        d.failed_tasks   ?? 0, (d.failed_tasks || 0) > 0   ? 'err' : 'ok'),
