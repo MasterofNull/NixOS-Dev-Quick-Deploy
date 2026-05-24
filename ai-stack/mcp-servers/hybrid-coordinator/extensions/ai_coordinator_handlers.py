@@ -1071,8 +1071,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             agent_state_file = state_dir / f"agent-{agent_id}.json"
 
             # Phase 12.4 / senior review: agent logic lives in a real Python file.
+            # Path: extensions/ → hybrid-coordinator/ → mcp-servers/ → ai-stack/ → agents/
             _runtime_path = (
-                Path(__file__).parent.parent.parent
+                Path(__file__).parent.parent.parent.parent
                 / "agents" / "runtimes" / "local_agent_runtime.py"
             )
             if not _runtime_path.exists():
