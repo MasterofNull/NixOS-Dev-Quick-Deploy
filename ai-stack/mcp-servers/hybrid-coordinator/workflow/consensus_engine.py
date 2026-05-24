@@ -243,8 +243,27 @@ async def _handle_status_get(request: web.Request) -> web.Response:
 # Route registration
 # ---------------------------------------------------------------------------
 
+async def _handle_sessions_get(request: web.Request) -> web.Response:
+    """GET /workflow/consensus/sessions — list recent sessions (newest first, max 50)."""
+    now = time.time()
+    sessions = []
+    for sid, session in _SESSIONS.items():
+        tally = _compute_outcome(session["votes"])
+        sessions.append({
+            "session_id": sid,
+            "topic": session["topic"],
+            "vote_count": len(session["votes"]),
+            "created_at": session["created_at"],
+            "age_s": int(now - session["created_at"]),
+            **tally,
+        })
+    sessions.sort(key=lambda s: s["created_at"], reverse=True)
+    return web.json_response({"sessions": sessions[:50], "total": len(sessions)})
+
+
 def register_routes(app: web.Application) -> None:
     """Phase 70.1: Register consensus engine routes."""
     app.router.add_post("/workflow/consensus/vote", _handle_vote_post)
     app.router.add_get("/workflow/consensus/status/{session_id}", _handle_status_get)
+    app.router.add_get("/workflow/consensus/sessions", _handle_sessions_get)
     logger.info("consensus_engine: routes registered")

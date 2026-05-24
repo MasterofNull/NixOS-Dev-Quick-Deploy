@@ -2611,20 +2611,85 @@ async def run_system_action(action: str = Query(...)) -> Dict[str, Any]:
 
 @router.get("/ai/consensus/history")
 async def get_consensus_history() -> List[Dict[str, Any]]:
-    """Fetch recent multi-agent consensus events."""
-    # No persisted consensus-history source exists yet. Return truthful empty
-    # state rather than rendering fabricated telemetry as if it were live data.
-    return []
+    """Fetch recent multi-agent consensus sessions from the consensus engine."""
+    try:
+        data = await _hybrid_get("/workflow/consensus/sessions")
+        return data.get("sessions", [])
+    except Exception:
+        return []
 
 
 @router.get("/health/audit")
 async def get_system_audit_log() -> List[Dict[str, Any]]:
-    """Fetch recent system changes from audit logs."""
-    # Placeholder: In a real system, this would parse 'journalctl' or 'nix profile history'
-    return [
-        {"type": "rebuild", "detail": "Generation 54 activation", "status": "success", "timestamp": datetime.now(timezone.utc).isoformat()},
-        {"type": "policy", "detail": "L6 Homeostasis triggered", "status": "warning", "timestamp": datetime.now(timezone.utc).isoformat()}
-    ]
+    """Fetch recent system changes from NixOS generation history and journalctl."""
+    events: List[Dict[str, Any]] = []
+
+    # NixOS generation history via /nix/var/nix/profiles symlinks (no lock file needed)
+    try:
+        import os as _os
+        profiles_dir = "/nix/var/nix/profiles"
+        current = _os.readlink(f"{profiles_dir}/system").replace("-link", "").split("-")
+        current_gen = current[1] if len(current) > 1 else None
+        entries = []
+        with _os.scandir(profiles_dir) as it:
+            for entry in it:
+                name = entry.name
+                if not name.startswith("system-") or not name.endswith("-link"):
+                    continue
+                try:
+                    gen_num = int(name.split("-")[1])
+                except (IndexError, ValueError):
+                    continue
+                stat = entry.stat(follow_symlinks=False)
+                ts = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+                is_current = (str(gen_num) == current_gen)
+                entries.append((stat.st_mtime, gen_num, ts, is_current))
+        entries.sort(reverse=True)
+        for _, gen_num, ts, is_current in entries[:10]:
+            events.append({
+                "type": "rebuild",
+                "detail": f"Generation {gen_num} activated" + (" (current)" if is_current else ""),
+                "status": "success",
+                "timestamp": ts,
+            })
+    except Exception:
+        pass
+
+    # Recent AppArmor events from journalctl
+    try:
+        result = await asyncio.to_thread(
+            lambda: __import__("subprocess").run(
+                ["journalctl", "-u", "apparmor", "--since", "7 days ago", "-n", "5",
+                 "--output=json", "--no-pager"],
+                capture_output=True, text=True, timeout=10,
+            )
+        )
+        import json as _json
+        for line in (result.stdout or "").splitlines():
+            try:
+                entry = _json.loads(line)
+                msg = entry.get("MESSAGE", "")
+                if not msg:
+                    continue
+                ts_us = int(entry.get("__REALTIME_TIMESTAMP", 0))
+                ts = datetime.fromtimestamp(ts_us / 1e6, tz=timezone.utc).isoformat() if ts_us else datetime.now(timezone.utc).isoformat()
+                events.append({"type": "policy", "detail": msg[:120], "status": "info", "timestamp": ts})
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if not events:
+        events.append({
+            "type": "info",
+            "detail": "No audit events found — run nixos-rebuild or check journalctl",
+            "status": "info",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    # Sort newest-first
+    events.sort(key=lambda e: e["timestamp"], reverse=True)
+    return events[:20]
 
 
 @router.get("/prsi/actions")
