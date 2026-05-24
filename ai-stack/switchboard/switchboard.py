@@ -421,6 +421,8 @@ PROFILE_CATALOG = _load_profile_catalog()
 REPO_PATH = os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
 LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/local-agents").strip()
 LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "8"))
+TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
+REMOTE_TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_REMOTE_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 CONNECT_TIMEOUT_S = float(os.environ.get("SWB_CONNECT_TIMEOUT_S", "10"))
 WRITE_TIMEOUT_S = float(os.environ.get("SWB_WRITE_TIMEOUT_S", "60"))
 POOL_TIMEOUT_S = float(os.environ.get("SWB_POOL_TIMEOUT_S", "30"))
@@ -662,27 +664,124 @@ def _tool_payload_from_schema(schema: dict) -> dict:
         },
     }
 
-# Core tool set injected when the caller does not specify an explicit tools list.
-# 26 tools × ~150 tokens each ≈ 3836 tokens — far too large for a 4096 ctx window.
-# This minimal set covers the most common local agent operations at ~900 tokens total.
-# After nixos-rebuild (ctx=8192) callers may request the full set via explicit tools=[].
-_DEFAULT_CORE_TOOLS = frozenset({
-    "run_command",
-    "read_file",
-    "search_files",
-    "git_status",
-    "query_context",
-    "get_hint",
-})
+# Tool working-set bundles. These are intentionally smaller than the full
+# built-in registry so a task leases only the schemas it can plausibly use.
+_TOOL_BUNDLES = {
+    "conversational": frozenset(),
+    "git": frozenset({"git_status", "git_diff", "run_command"}),
+    "search": frozenset({"search_files", "read_file", "list_files"}),
+    "sys_ops": frozenset({"check_service", "get_system_info", "run_command"}),
+    "file_edit": frozenset({
+        "search_files",
+        "read_file",
+        "write_file",
+        "run_command",
+        "git_status",
+        "git_diff",
+        "validate_before_commit",
+    }),
+    "harness_analysis": frozenset({
+        "get_hint",
+        "query_context",
+        "run_command",
+        "check_service",
+        "search_files",
+        "read_file",
+    }),
+    "memory": frozenset({"get_hint", "query_context", "store_memory"}),
+    "computer_use": frozenset({"screenshot", "get_screen_size"}),
+    "default": frozenset({"get_hint", "query_context"}),
+}
 
 
-def _normalize_local_tools(requested_tools):
+def _latest_user_text(messages: list) -> str:
+    if not isinstance(messages, list):
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        text = _extract_content_text(message).strip()
+        if text:
+            return text
+    return ""
+
+
+def _classify_tool_intent(messages: list) -> str:
+    text = _latest_user_text(messages).lower()
+    if not text:
+        return "default"
+    compact = re.sub(r"\s+", " ", text).strip()
+    words = set(_tokenize(compact))
+    conversational_exact = {
+        "hi",
+        "hello",
+        "hey",
+        "how are you",
+        "how are you today",
+        "thanks",
+        "thank you",
+        "ok",
+        "okay",
+        "yes",
+        "no",
+    }
+    if compact in conversational_exact:
+        return "conversational"
+    if len(words) <= 8 and any(greet in compact for greet in ("hello", "hi", "hey", "how are you", "who are you")):
+        return "conversational"
+    if any(token in words for token in {"git", "commit", "diff", "branch", "staged", "unstaged", "status"}):
+        return "git"
+    if any(token in words for token in {"systemctl", "service", "journalctl", "health", "restart", "deploy", "rebuild", "nixos", "gpu", "memory", "cpu"}):
+        return "sys_ops"
+    if any(token in words for token in {"search", "grep", "find", "where", "locate", "read", "file", "files", "codebase"}):
+        return "search"
+    if any(token in words for token in {"fix", "implement", "edit", "patch", "change", "update", "refactor", "test", "validate"}):
+        return "file_edit"
+    if any(token in words for token in {"harness", "analysis", "analyze", "assessment", "primer", "workflow", "phase", "agent", "agents", "context", "tools"}):
+        return "harness_analysis"
+    if any(token in words for token in {"memory", "remember", "recall", "store"}):
+        return "memory"
+    if any(token in words for token in {"screenshot", "screen", "click", "mouse", "keyboard"}):
+        return "computer_use"
+    return "default"
+
+
+def _tool_working_set_meta(intent: str, selected_names: set[str], available_count: int, explicit: bool) -> dict:
+    return {
+        "enabled": bool(TOOL_WORKING_SET_ENABLED),
+        "intent": intent,
+        "explicit": bool(explicit),
+        "selected_count": len(selected_names),
+        "available_count": int(available_count),
+        "selected_tools": sorted(selected_names),
+        "evicted_count": max(0, int(available_count) - len(selected_names)),
+    }
+
+
+def _select_auto_tool_names(messages: list, available_names: set[str]) -> tuple[str, set[str]]:
+    if not TOOL_WORKING_SET_ENABLED:
+        legacy = {"run_command", "read_file", "search_files", "git_status", "query_context", "get_hint"}
+        return "legacy-core", {name for name in legacy if name in available_names}
+    intent = _classify_tool_intent(messages)
+    selected = set(_TOOL_BUNDLES.get(intent, _TOOL_BUNDLES["default"]))
+    selected = {name for name in selected if name in available_names}
+    if intent != "conversational" and not selected:
+        selected = {name for name in _TOOL_BUNDLES["default"] if name in available_names}
+    return intent, selected
+
+
+def _normalize_local_tools(requested_tools, messages=None):
     registry, _tool_call_cls = _load_local_tool_registry()
     available = {
         tool.name: _tool_payload_from_schema(tool.to_json_schema())
         for tool in registry.list_tools()
     }
+    available_names = set(available)
     if isinstance(requested_tools, list) and requested_tools:
+        if any((isinstance(tool, str) and tool.strip() == "*") for tool in requested_tools):
+            selected_names = set(available_names)
+            selected = [available[name] for name in sorted(selected_names)]
+            return selected, selected_names, _tool_working_set_meta("explicit-all", selected_names, len(available), True)
         selected = []
         unsupported = []
         seen = set()
@@ -704,14 +803,11 @@ def _normalize_local_tools(requested_tools):
             )
         if not selected:
             raise ValueError("local-tool-calling did not receive any executable built-in tools")
-        return selected, set(seen)
-    # No explicit tool list → inject core set only to stay within 4096 ctx budget.
-    # Callers that need the full registry can pass tools=["*"] or an explicit list.
-    core = [v for k, v in available.items() if k in _DEFAULT_CORE_TOOLS]
-    if not core:
-        # Fallback: all tools if core tools somehow aren't registered
-        core = list(available.values())
-    return core, {_tool_name(t) for t in core}
+        return selected, set(seen), _tool_working_set_meta("explicit", set(seen), len(available), True)
+    # No explicit tool list → hot-load only the bundle for the current user turn.
+    intent, selected_names = _select_auto_tool_names(messages or [], available_names)
+    selected = [available[name] for name in sorted(selected_names)]
+    return selected, selected_names, _tool_working_set_meta(intent, selected_names, len(available), False)
 
 def _normalize_tool_choice(tool_choice, allowed_names):
     if tool_choice in (None, "", False):
@@ -727,6 +823,61 @@ def _normalize_tool_choice(tool_choice, allowed_names):
             raise ValueError(f"tool_choice requested unsupported local tool: {function_name}")
         return tool_choice
     return "auto"
+
+
+def _filter_remote_tools_for_working_set(payload: dict, profile: str) -> tuple[dict, dict | None]:
+    if (
+        not REMOTE_TOOL_WORKING_SET_ENABLED
+        or profile != "remote-tool-calling"
+        or not isinstance(payload, dict)
+        or not isinstance(payload.get("tools"), list)
+        or not payload.get("tools")
+    ):
+        return payload, None
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return payload, None
+    intent = _classify_tool_intent(messages)
+    allowed_names = set(_TOOL_BUNDLES.get(intent, _TOOL_BUNDLES["default"]))
+    before_tools = list(payload.get("tools") or [])
+    if intent == "conversational":
+        updated = dict(payload)
+        updated.pop("tools", None)
+        updated["tool_choice"] = "none"
+        return updated, {
+            "enabled": True,
+            "intent": intent,
+            "explicit": False,
+            "selected_count": 0,
+            "available_count": len(before_tools),
+            "selected_tools": [],
+            "evicted_count": len(before_tools),
+            "scope": "remote-explicit",
+        }
+    selected = [tool for tool in before_tools if _tool_name(tool) in allowed_names]
+    if not selected:
+        return payload, {
+            "enabled": True,
+            "intent": intent,
+            "explicit": True,
+            "selected_count": len(before_tools),
+            "available_count": len(before_tools),
+            "selected_tools": [_tool_name(tool) for tool in before_tools if _tool_name(tool)],
+            "evicted_count": 0,
+            "scope": "remote-explicit-no-match",
+        }
+    updated = dict(payload)
+    updated["tools"] = selected
+    return updated, {
+        "enabled": True,
+        "intent": intent,
+        "explicit": False,
+        "selected_count": len(selected),
+        "available_count": len(before_tools),
+        "selected_tools": [_tool_name(tool) for tool in selected if _tool_name(tool)],
+        "evicted_count": max(0, len(before_tools) - len(selected)),
+        "scope": "remote-explicit",
+    }
 
 
 def _local_tool_limit_fallback(body: dict, tool_calls_used: int) -> dict:
@@ -801,11 +952,11 @@ async def _finalize_after_local_tool_limit(
 
 async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
     registry, tool_call_cls = _load_local_tool_registry()
-    tools_payload, allowed_names = _normalize_local_tools(payload.get("tools"))
-    tool_choice = _normalize_tool_choice(payload.get("tool_choice"), allowed_names)
     messages = list(payload.get("messages") or [])
     if not messages:
         raise ValueError("chat/completions requires messages for local-tool-calling")
+    tools_payload, allowed_names, working_set = _normalize_local_tools(payload.get("tools"), messages)
+    tool_choice = _normalize_tool_choice(payload.get("tool_choice"), allowed_names)
 
     requested_limit = payload.get("max_tool_calls", LOCAL_TOOL_CALL_LIMIT)
     try:
@@ -816,11 +967,28 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
     tool_calls_used = 0
     request_payload = dict(payload)
     request_payload["messages"] = messages
-    request_payload["tools"] = tools_payload
-    request_payload["tool_choice"] = tool_choice
+    if tools_payload:
+        request_payload["tools"] = tools_payload
+        request_payload["tool_choice"] = tool_choice
+    else:
+        request_payload.pop("tools", None)
+        request_payload["tool_choice"] = "none"
     request_payload["stream"] = False
 
     async with httpx.AsyncClient(timeout=_timeout_for("local", False)) as client:
+        if not tools_payload:
+            upstream = await client.post(
+                f"{LLAMA_URL}/v1/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json={k: v for k, v in request_payload.items() if k != "tool_choice"},
+            )
+            body = upstream.json()
+            if upstream.status_code >= 400:
+                message = body.get("error", {}).get("message") if isinstance(body, dict) else str(body)
+                raise RuntimeError(f"local llama.cpp tool-free step failed: {message or upstream.text}")
+            if isinstance(body, dict):
+                body["tool_working_set"] = working_set
+            return body, tool_calls_used
         while True:
             upstream = await client.post(
                 f"{LLAMA_URL}/v1/chat/completions",
@@ -838,6 +1006,8 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
             message_obj = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
             tool_calls = message_obj.get("tool_calls") or []
             if not tool_calls:
+                if isinstance(body, dict):
+                    body["tool_working_set"] = working_set
                 return body, tool_calls_used
 
             messages.append({
@@ -862,9 +1032,12 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                                 "max_tool_calls": max_tool_calls,
                             }),
                         })
-                    return await _finalize_after_local_tool_limit(
+                    final_body = await _finalize_after_local_tool_limit(
                         client, request_payload, body, messages, tool_calls_used, max_tool_calls
-                    ), tool_calls_used
+                    )
+                    if isinstance(final_body, dict):
+                        final_body["tool_working_set"] = working_set
+                    return final_body, tool_calls_used
                 function_payload = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
                 tool_name = str(function_payload.get("name", "")).strip()
                 tool_call_id = str(tool_call.get("id", "")).strip() or hashlib.md5(
@@ -1746,6 +1919,12 @@ async def health():
         "default_provider": DEFAULT_PROVIDER,
         "remote_configured": bool(REMOTE_URL),
         "profiles": PROFILE_CATALOG,
+        "tool_working_set": {
+            "enabled": bool(TOOL_WORKING_SET_ENABLED),
+            "remote_enabled": bool(REMOTE_TOOL_WORKING_SET_ENABLED),
+            "intents": sorted(_TOOL_BUNDLES.keys()),
+            "bundles": {name: sorted(tools) for name, tools in _TOOL_BUNDLES.items()},
+        },
         "local_runtime": local_runtime,
         "local_lane_status": local_lane_status,
     }
@@ -1763,6 +1942,7 @@ async def proxy(path: str, request: Request):
     profile_card_applied = False
     relevance = 1.0
     gate_applied = False
+    tool_working_set = None
     if body:
         try:
             payload = await request.json()
@@ -1824,6 +2004,9 @@ async def proxy(path: str, request: Request):
         rewritten_model = str(payload.get("model", ""))
         if rewritten_model and rewritten_model != original_model:
             model_alias_used = rewritten_model
+        payload, remote_working_set = _filter_remote_tools_for_working_set(payload, profile)
+        if remote_working_set:
+            tool_working_set = remote_working_set
         payload = _apply_local_thinking_profile(payload, profile, target_type)
         payload = _apply_compact_local_response_budget(payload, profile)
         if path == "chat/completions":
@@ -1976,6 +2159,8 @@ async def proxy(path: str, request: Request):
                 ):
                     try:
                         local_body, local_tool_calls_used = await _execute_local_tool_calling(payload)
+                        if isinstance(local_body, dict) and isinstance(local_body.get("tool_working_set"), dict):
+                            tool_working_set = local_body.get("tool_working_set")
                     except ValueError as exc:
                         return JSONResponse(
                             status_code=400,
@@ -2068,6 +2253,10 @@ async def proxy(path: str, request: Request):
     if local_tool_execution_used:
         response.headers["X-AI-Tool-Execution"] = "local-agent"
         response.headers["X-AI-Tool-Calls-Used"] = str(local_tool_calls_used)
+    if isinstance(tool_working_set, dict):
+        response.headers["X-AI-Tool-Intent"] = str(tool_working_set.get("intent") or "")
+        response.headers["X-AI-Tools-Selected"] = str(tool_working_set.get("selected_count", 0))
+        response.headers["X-AI-Tools-Evicted"] = str(tool_working_set.get("evicted_count", 0))
     if remote_budget:
         response.headers["X-AI-Remote-Tokens-Used"] = str(remote_budget.get("remote_tokens_used", 0))
         if remote_budget.get("remote_tokens_remaining") is not None:

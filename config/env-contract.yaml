@@ -157,6 +157,20 @@ variables:
     consumers: [switchboard]
     description: "Maximum tool calls per local-model request before forcing a response"
 
+  - canonical: SWB_TOOL_WORKING_SET_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable intent-based local tool working-set selection so unused built-in tool schemas are not injected"
+
+  - canonical: SWB_REMOTE_TOOL_WORKING_SET_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable pruning of explicit remote-tool-calling schemas when intent clearly needs no tools or matches known bundles"
+
   - canonical: SWB_LOCAL_TOOL_MAX_INPUT_TOKENS
     aliases: []
     default: "5000"

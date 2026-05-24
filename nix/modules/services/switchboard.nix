@@ -484,6 +484,8 @@ in {
           # Must match --parallel N in facts.nix llamaCpp.extraArgs so the
           # switchboard concurrency ceiling matches llama.cpp's slot count.
           "SWB_LOCAL_CONCURRENCY=1"
+          "SWB_TOOL_WORKING_SET_ENABLED=1"
+          "SWB_REMOTE_TOOL_WORKING_SET_ENABLED=1"
           "SWB_PROFILE_CATALOG_YAML_FILE=${repoPath}/config/switchboard-profiles.yaml"
           "SWB_PROFILE_CATALOG_JSON_FILE=${switchboardProfileCatalogFile}"
           "HYBRID_COORDINATOR_URL=${hybridUrl}"

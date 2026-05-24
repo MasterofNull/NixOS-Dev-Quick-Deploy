@@ -1,5 +1,26 @@
 # HANDOFF — 2026-05-23 Session (Third Pass)
 
+## Session — 2026-05-24 Tool Working-Set GC
+
+### Completed
+- Switchboard now classifies `local-tool-calling` turns before automatic tool injection.
+- Casual chat leases zero tools; live smoke confirmed `how are you today?` selected 0, evicted 26, used 0 tool calls.
+- Intent bundles added for git, search, sys-ops, file-edit, harness-analysis, memory, computer-use, and default.
+- Explicit caller tool lists remain authoritative; `tools=["*"]` now leases the full local registry as the old comment promised.
+- `remote-tool-calling` can prune explicit tools for conversational turns and known bundle matches.
+- `/health` exposes `tool_working_set` policy metadata; responses expose `X-AI-Tool-Intent`, `X-AI-Tools-Selected`, and `X-AI-Tools-Evicted`.
+
+### Validation
+- `python -m py_compile ai-stack/switchboard/switchboard.py scripts/testing/test-switchboard-tool-working-set-gc.py scripts/testing/test-switchboard-local-tool-finalization.py`
+- `python scripts/testing/test-switchboard-tool-working-set-gc.py`
+- `python scripts/testing/test-switchboard-local-tool-finalization.py`
+- live `ai-switchboard.service` restart and health check
+- live local-tool-calling conversational smoke: HTTP 200, intent `conversational`, selected `0`, evicted `26`, calls `0`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` PASS 17/17
+
+### Remaining
+- Full multi-phase context artifact GC is still future work: this slice removes unused tool schemas and exposes telemetry, but does not yet summarize raw tool outputs into artifact pointers across long-running workflow phases.
+
 ## Session Goal
 Comprehensive dashboard parity pass — connect all remaining system features to monitoring panels.
 Anti-gaming mandate: fix root producers, never patch labels.
