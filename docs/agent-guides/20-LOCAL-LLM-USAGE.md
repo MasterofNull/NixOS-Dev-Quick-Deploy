@@ -21,6 +21,24 @@ curl -fsS http://127.0.0.1:8080/v1/chat/completions \
   }' | jq
 ```
 
+## Local Chat with Built-in Tools
+
+`aq-chat --profile local` now uses Switchboard's `local-tool-calling` lane by
+default instead of talking directly to llama.cpp. This gives the local model
+server-side built-in tools for bounded inspection and validation work. Use
+`--no-tools` only when you intentionally need a raw llama.cpp chat session.
+
+```bash
+# Harness-aware local chat with server-side built-in tools
+scripts/ai/aq-chat --profile local
+
+# Raw llama.cpp fallback, no built-in tool execution
+scripts/ai/aq-chat --profile local --no-tools
+
+# Live smoke; keep bounded because local 35B tool calls can be slow
+SWB_TOOL_CALL_TIMEOUT_SECONDS=120 scripts/testing/test-switchboard-local-tool-calling.sh
+```
+
 ## Service Management
 
 ```bash

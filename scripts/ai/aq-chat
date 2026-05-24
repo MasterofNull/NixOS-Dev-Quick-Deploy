@@ -33,6 +33,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 REPO_ROOT = SCRIPT_DIR.parent.parent.resolve()
 DEFAULT_LLAMA_URL = "http://127.0.0.1:8080"
 DEFAULT_HYBRID_URL = "http://127.0.0.1:8003"
+DEFAULT_SWITCHBOARD_URL = "http://127.0.0.1:8085"
 USER_HISTORY_FILE = Path.home() / ".aq_chat_history"
 
 # --- Styling ---
@@ -54,6 +55,7 @@ class AQChat:
     def __init__(self, args: argparse.Namespace):
         self.llama_url = args.llama_url or os.getenv("LLAMA_URL", DEFAULT_LLAMA_URL)
         self.hybrid_url = args.hybrid_url or os.getenv("HYBRID_URL", DEFAULT_HYBRID_URL)
+        self.switchboard_url = args.switchboard_url or os.getenv("SWITCHBOARD_URL", DEFAULT_SWITCHBOARD_URL)
         self.session = PromptSession(
             history=FileHistory(str(USER_HISTORY_FILE)),
             completer=command_completer
@@ -64,6 +66,7 @@ class AQChat:
         self.context_history: List[Dict[str, str]] = []
         self.temperature = args.temperature
         self.inject_context = not getattr(args, "no_inject", False)
+        self.local_tools_enabled = not getattr(args, "no_tools", False)
 
         # Dynamic discovery state
         self.available_agents = {}
@@ -138,6 +141,15 @@ KEY OPERATIONAL TOOLS:
 - aq-insights           — Qwen analysis of latest aq-report snapshot → .agent/memory/
 - tier0-validation-gate.sh --pre-commit — required before every commit
 
+LOCAL TOOL EXECUTION:
+- aq-chat local sessions are routed through Switchboard `local-tool-calling` by default.
+- You have server-side built-in tools such as `run_command`, `read_file`, `search_files`,
+  `git_status`, `git_diff`, and `validate_before_commit`; use them directly when a task
+  requires inspection or validation.
+- Do not tell the operator to configure command execution just to run health checks. If a
+  requested command is outside the whitelist, report that exact tool rejection and use a
+  coordinator API or ask Codex/Claude to handle the privileged operation.
+
 BEHAVIORAL RULES (from harness canon):
 - CONVERSATIONAL GUARD: For greetings/casual chat, respond in plain text. Do NOT invoke tools or workflows unless asked for technical help.
 - HARNESS-FIRST: Before answering about files or services, reference actual data. Never guess file contents or port numbers.
@@ -192,14 +204,41 @@ You are grounded in this specific running system. Reference real files, ports, a
                 "temperature": self.temperature
             }
 
-            if self.active_profile == "local":
+            headers = {}
+            if self.active_profile == "local" and self.local_tools_enabled:
+                target_url = f"{self.switchboard_url}/v1/chat/completions"
+                headers["X-AI-Profile"] = "local-tool-calling"
+                payload["stream"] = False
+                payload["max_tool_calls"] = 3
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
+            elif self.active_profile == "local":
                 target_url = f"{self.llama_url}/v1/chat/completions"
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
 
             try:
-                async with self.client.stream("POST", target_url, json=payload) as response:
+                if self.active_profile == "local" and self.local_tools_enabled:
+                    response = await self.client.post(target_url, json=payload, headers=headers)
+                    if response.status_code != 200:
+                        console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
+                        try:
+                            console.print(response.json())
+                        except Exception:
+                            console.print(response.text)
+                        return
+                    body = response.json()
+                    message = (body.get("choices") or [{}])[0].get("message") or {}
+                    full_response = message.get("content", "") or ""
+                    console.print()
+                    console.print(Markdown(full_response))
+                    self.context_history.append({"role": "assistant", "content": full_response})
+                    tool_calls_used = response.headers.get("X-AI-Tool-Calls-Used")
+                    if tool_calls_used is not None:
+                        console.print(f"[dim]local tools used: {tool_calls_used}[/]")
+                    return
+
+                async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
                     if response.status_code != 200:
                         console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
                         return
@@ -337,7 +376,18 @@ You are grounded in this specific running system. Reference real files, ports, a
             if str(registry_path) not in sys.path:
                 sys.path.insert(0, str(registry_path))
             from tool_registry import get_registry
+            from builtin_tools.ai_coordination import register_ai_coordination_tools
+            from builtin_tools.computer_use import register_computer_use_tools
+            from builtin_tools.file_operations import register_file_tools
+            from builtin_tools.git_tools import register_git_tools
+            from builtin_tools.shell_tools import register_shell_tools
             registry = get_registry()
+            if not registry.tools:
+                register_file_tools(registry)
+                register_shell_tools(registry)
+                register_git_tools(registry)
+                register_ai_coordination_tools(registry)
+                register_computer_use_tools(registry)
             
             table = Table(title="Local Agent Tool Registry", border_style="#ff00ff")
             table.add_column("Tool Name", style="bold cyan")
@@ -434,9 +484,12 @@ def parse_args():
     parser.add_argument("--profile", default="local", help="Initial agent profile/lane")
     parser.add_argument("--llama-url", help="Override llama.cpp URL")
     parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
+    parser.add_argument("--switchboard-url", help="Override switchboard URL")
     parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
     parser.add_argument("--no-inject", action="store_true",
                         help="Skip harness context injection (raw session, no system prompt)")
+    parser.add_argument("--no-tools", action="store_true",
+                        help="Use raw llama.cpp local chat without Switchboard local-tool-calling")
     return parser.parse_args()
 
 if __name__ == "__main__":

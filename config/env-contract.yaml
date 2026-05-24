@@ -47,9 +47,16 @@ variables:
     consumers: [service-endpoints.sh]
     description: "Host for llama.cpp inference server"
 
+  - canonical: LLAMA_CTX_SIZE
+    aliases: []
+    default: "8192"
+    layer: nix
+    consumers: [switchboard]
+    description: "Advertised local llama.cpp context window used by switchboard profile budget validation"
+
   # ── llama.cpp embedding server ──────────────────────────────────────────
   - canonical: EMBED_BASE_URL
-    aliases: [EMBEDDINGS_URL, LLAMA_EMBED_URL, EMBED_URL]
+    aliases: [EMBEDDINGS_URL, LLAMA_EMBED_URL, EMBED_URL, EMBEDDING_URL]
     default: "http://127.0.0.1:8081"
     layer: all
     consumers: [hybrid-coordinator, aq-qa]
@@ -122,7 +129,7 @@ variables:
 
   # ── switchboard ─────────────────────────────────────────────────────────
   - canonical: SWITCHBOARD_URL
-    aliases: []
+    aliases: [SWB_URL]
     default: "http://127.0.0.1:8085"
     layer: all
     consumers: [aq-qa, dashboard-backend, edgeai]
@@ -700,6 +707,13 @@ variables:
     consumers: [harness_qa (core/context.py)]
     description: "Host for switchboard service; used by QA harness to construct switchboard_url when SWITCHBOARD_URL is not set"
 
+  - canonical: SWB_TOOL_CALL_TIMEOUT_SECONDS
+    aliases: []
+    default: "90"
+    layer: testing
+    consumers: [test-switchboard-local-tool-calling.sh]
+    description: "Maximum seconds for the live switchboard local-tool-calling smoke request"
+
   - canonical: AQ_QA_PORT_RETRY_DELAY_SECONDS
     aliases: []
     default: "1"
@@ -736,7 +750,7 @@ variables:
     description: "Base URL of the llama.cpp inference service"
 
   - canonical: EMBED_BASE_URL
-    aliases: [EMBEDDINGS_URL, LLAMA_EMBED_URL]
+    aliases: [EMBEDDINGS_URL, LLAMA_EMBED_URL, EMBEDDING_URL]
     default: "http://127.0.0.1:8081"
     layer: all
     consumers: [hybrid-coordinator, dashboard-backend, shell scripts]
