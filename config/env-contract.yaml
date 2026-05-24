@@ -127,6 +127,41 @@ variables:
     consumers: [hybrid-coordinator (self)]
     description: "Path to file containing the hybrid-coordinator API key"
 
+  - canonical: AI_TREE_SEARCH_ENABLED
+    aliases: []
+    default: "true"
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Enable branch-and-aggregate tree retrieval in hybrid coordinator"
+
+  - canonical: AI_TREE_SEARCH_MAX_DEPTH
+    aliases: []
+    default: "2"
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Maximum tree-search expansion depth"
+
+  - canonical: AI_TREE_SEARCH_BRANCH_FACTOR
+    aliases: []
+    default: "3"
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Maximum tree-search branches evaluated per depth level"
+
+  - canonical: AI_TREE_SEARCH_MAX_BRANCHES
+    aliases: []
+    default: "4"
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Maximum total tree-search branch queries evaluated per request"
+
+  - canonical: AI_TREE_SEARCH_TIMEOUT_S
+    aliases: []
+    default: "12.0"
+    layer: nix
+    consumers: [hybrid-coordinator]
+    description: "Maximum tree-search wall-clock seconds before returning partial ranked evidence"
+
   # ── switchboard ─────────────────────────────────────────────────────────
   - canonical: SWITCHBOARD_URL
     aliases: [SWB_URL]
@@ -170,6 +205,41 @@ variables:
     layer: nix
     consumers: [switchboard]
     description: "Enable pruning of explicit remote-tool-calling schemas when intent clearly needs no tools or matches known bundles"
+
+  - canonical: SWB_CONTEXT_OUTPUT_GC_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable compaction of large local tool observations into artifact pointers"
+
+  - canonical: SWB_CONTEXT_OUTPUT_GC_MIN_CHARS
+    aliases: []
+    default: "2400"
+    layer: nix
+    consumers: [switchboard]
+    description: "Minimum raw tool observation size before switchboard writes an artifact and keeps a compact pointer"
+
+  - canonical: SWB_CONTEXT_OUTPUT_GC_SUMMARY_CHARS
+    aliases: []
+    default: "900"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum preview characters retained in compacted tool observations"
+
+  - canonical: SWB_CONTEXT_ARTIFACT_DIR
+    aliases: []
+    default: "/home/$USER/.local/share/nixos-ai-stack/local-agents/switchboard-artifacts"
+    layer: nix
+    consumers: [switchboard]
+    description: "Writable directory where switchboard stores raw local tool output artifacts"
+
+  - canonical: SWB_TOOL_RESULT_DEDUPE_ENABLED
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable per-request reuse of identical local tool-call observations"
 
   - canonical: SWB_LOCAL_TOOL_MAX_INPUT_TOKENS
     aliases: []

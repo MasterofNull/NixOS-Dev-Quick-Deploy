@@ -270,6 +270,8 @@ class Config:
     AI_TREE_SEARCH_ENABLED = os.getenv("AI_TREE_SEARCH_ENABLED", "false").lower() == "true"
     AI_TREE_SEARCH_MAX_DEPTH = int(os.getenv("AI_TREE_SEARCH_MAX_DEPTH", "1"))
     AI_TREE_SEARCH_BRANCH_FACTOR = int(os.getenv("AI_TREE_SEARCH_BRANCH_FACTOR", "3"))
+    AI_TREE_SEARCH_MAX_BRANCHES = int(os.getenv("AI_TREE_SEARCH_MAX_BRANCHES", "4"))
+    AI_TREE_SEARCH_TIMEOUT_S = float(os.getenv("AI_TREE_SEARCH_TIMEOUT_S", "12.0"))
     AI_HARNESS_EVAL_ENABLED = os.getenv("AI_HARNESS_EVAL_ENABLED", "true").lower() == "true"
     AI_HARNESS_MIN_ACCEPTANCE_SCORE = float(os.getenv("AI_HARNESS_MIN_ACCEPTANCE_SCORE", "0.7"))
     AI_HARNESS_MAX_LATENCY_MS = int(os.getenv("AI_HARNESS_MAX_LATENCY_MS", "3000"))

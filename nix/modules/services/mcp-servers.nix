@@ -1122,6 +1122,8 @@ in {
                 }"
                 "AI_TREE_SEARCH_MAX_DEPTH=${toString ai.aiHarness.retrieval.treeSearchMaxDepth}"
                 "AI_TREE_SEARCH_BRANCH_FACTOR=${toString ai.aiHarness.retrieval.treeSearchBranchFactor}"
+                "AI_TREE_SEARCH_MAX_BRANCHES=${toString ai.aiHarness.retrieval.treeSearchMaxBranches}"
+                "AI_TREE_SEARCH_TIMEOUT_S=${toString ai.aiHarness.retrieval.treeSearchTimeoutSeconds}"
                 "AI_HARNESS_EVAL_ENABLED=${
                   if ai.aiHarness.eval.enable
                   then "true"

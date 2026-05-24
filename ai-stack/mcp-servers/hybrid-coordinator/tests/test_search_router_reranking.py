@@ -14,6 +14,8 @@ Config.AI_ROUTE_COLLECTION_KEYWORD_TIMEOUT_SECONDS = 1.0
 Config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS = 20
 Config.AI_TREE_SEARCH_MAX_DEPTH = 1
 Config.AI_TREE_SEARCH_BRANCH_FACTOR = 1
+Config.AI_TREE_SEARCH_MAX_BRANCHES = 4
+Config.AI_TREE_SEARCH_TIMEOUT_S = 12.0
 Config.AI_MEMORY_MAX_RECALL_ITEMS = 5
 sys.modules["config"].Config = Config
 sys.modules["config"].RoutingConfig = MagicMock()
@@ -165,6 +167,8 @@ def test_tree_search_reuses_reranker_for_final_ranking():
 def test_tree_search_runs_depth_branches_concurrently():
     Config.AI_TREE_SEARCH_MAX_DEPTH = 2
     Config.AI_TREE_SEARCH_BRANCH_FACTOR = 3
+    Config.AI_TREE_SEARCH_MAX_BRANCHES = 4
+    Config.AI_TREE_SEARCH_TIMEOUT_S = 12.0
     router = _DelayedRouter(
         qdrant_client=_FakeQdrant(),
         embed_fn=MagicMock(),
@@ -196,6 +200,46 @@ def test_tree_search_runs_depth_branches_concurrently():
     finally:
         Config.AI_TREE_SEARCH_MAX_DEPTH = 1
         Config.AI_TREE_SEARCH_BRANCH_FACTOR = 1
+        Config.AI_TREE_SEARCH_MAX_BRANCHES = 4
+        Config.AI_TREE_SEARCH_TIMEOUT_S = 12.0
+
+
+def test_tree_search_returns_partial_results_on_branch_timeout():
+    Config.AI_TREE_SEARCH_MAX_DEPTH = 1
+    Config.AI_TREE_SEARCH_BRANCH_FACTOR = 3
+    Config.AI_TREE_SEARCH_MAX_BRANCHES = 3
+    Config.AI_TREE_SEARCH_TIMEOUT_S = 0.02
+    router = _DelayedRouter(
+        qdrant_client=_FakeQdrant(),
+        embed_fn=MagicMock(),
+        call_breaker_fn=lambda _name, fn: fn(),
+        check_local_health_fn=MagicMock(),
+        wait_for_model_fn=MagicMock(),
+        get_local_loading_fn=lambda: False,
+        routing_config=MagicMock(),
+        record_telemetry_fn=lambda *args, **kwargs: None,
+        collections={"codebase-context": {}},
+        delay=0.05,
+    )
+
+    try:
+        result = asyncio.run(
+            router.tree_search(
+                "reduce prompt assembly size in route handler fallback summaries",
+                collections=["codebase-context"],
+                limit=2,
+                keyword_limit=2,
+            )
+        )
+
+        assert result["budget_exhausted"] is True
+        assert result["timed_out_branches"] >= 1
+        assert result["elapsed_ms"] < 200
+    finally:
+        Config.AI_TREE_SEARCH_MAX_DEPTH = 1
+        Config.AI_TREE_SEARCH_BRANCH_FACTOR = 1
+        Config.AI_TREE_SEARCH_MAX_BRANCHES = 4
+        Config.AI_TREE_SEARCH_TIMEOUT_S = 12.0
 
 
 def test_rerank_combined_results_uses_files_changed_as_path_signal():
