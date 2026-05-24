@@ -401,6 +401,9 @@ let
       (pkgs.writeShellScriptBin "aq-rate" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-rate" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-prsi-review" ''
+        exec "${pkgs.python3}/bin/python3" "${cfg.mcpServers.repoPath}/scripts/ai/aq-prsi-review" "$@"
+      '')
     ];
   };
 

@@ -312,9 +312,10 @@ DEFAULT_PROFILE_CATALOG = {
         "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
-        "maxInputTokens": 2400,
-        "maxMessages": 12,
-        "maxOutputTokens": 768,
+        # 5000 input + 1024 output = 6024 < 8192 ctx headroom; env-override for rebuild flexibility
+        "maxInputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_INPUT_TOKENS", "5000")),
+        "maxMessages": 20,
+        "maxOutputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS", "1024")),
         "embeddingsOnly": False,
         "toolExecution": "built-in",
         "profileCard": LOCAL_TOOL_CALLING_CARD,
