@@ -657,9 +657,9 @@ in {
           "d /var/log/ai-stack                      0750 root ${aiGroup} -"
           "f /var/log/ai-stack/tool-audit.jsonl     0660 ${svcUser} ${aiGroup} - -"
           "f /var/log/ai-stack/agent-commands.jsonl 0660 ${svcUser} ${aiGroup} - -"
-          "d ${mutableLogDir}                       0770 ${svcUser} ${aiGroup} -"
-          # base.nix z-rule sets mutableLogDir group to primaryGroup (users) — override it
-          # so ai-stack services (coordinator, etc.) can traverse the directory.
+          # base.nix creates mutableLogDir via its mutableUserServicePaths d-rule (0750 primaryUser users).
+          # We must NOT add a second d-rule here (systemd-tmpfiles warns on duplicate paths).
+          # Use z-only to override ownership/mode so ai-stack services can traverse the directory.
           "z ${mutableLogDir}                       0770 ${svcUser} ${aiGroup} -"
           "f ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
@@ -673,10 +673,15 @@ in {
           "d ${dataDir}/nixos-docs/cache     0750 ${docsUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs/repos     0750 ${docsUser} ${aiGroup} -"
         ]
-        ++ map (path: "d ${path} 0750 ${svcUser} ${aiGroup} -") (lib.unique [
-          (builtins.dirOf cfg.deployment.npmSecurity.quarantineStateFile)
-          (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
-        ])
+        # Collision guard: security/npm is already declared above with auditUser (line 655).
+        # Only add a d-rule for npm-security paths that land OUTSIDE the pre-declared subtree.
+        ++ map (path: "d ${path} 0750 ${svcUser} ${aiGroup} -") (lib.subtractLists
+            [ "${dataDir}/security/npm" "${dataDir}/security" ]
+            (lib.unique [
+              (builtins.dirOf cfg.deployment.npmSecurity.quarantineStateFile)
+              (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
+            ])
+          )
         ++ map (root: "d ${root} 0750 ${svcUser} ${aiGroup} -") runtimeWorkspaceRoots;
     })
 
