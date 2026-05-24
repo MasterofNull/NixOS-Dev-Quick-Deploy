@@ -237,6 +237,35 @@ EOF
 
 ---
 
+## Service Coverage Contract (Permanent — 2026-05-23)
+
+> Origin: runtime path bug (local_agent_runtime.py) returned 500 on every delegate call for days.
+> Root cause: zero aq-qa checks + zero dashboard panels for that service = no detection.
+
+**A service or feature is NOT complete until it has both:**
+
+1. **An `aq-qa` check** — at minimum one `CheckResult` in a phase file that exercises the service's
+   integration path (not just its own `/health` endpoint). Wire it into `phases/__init__.py` and
+   include it in `ALL_PHASES`.
+
+2. **A dashboard panel** — at minimum one card in the command-center dashboard that shows live
+   status for the service. Cards that show `--` or hardcoded stubs are treated as incomplete.
+
+**Enforcement checklist (add to PRD acceptance criteria for every new service):**
+
+| Gate | Command |
+|------|---------|
+| aq-qa phase exists | `grep -r "<service>" scripts/testing/harness_qa/phases/` |
+| Phase registered | `grep "<phase>" scripts/testing/harness_qa/phases/__init__.py` |
+| Dashboard panel exists | `grep -r "<service>" assets/dashboard.js dashboard.html` |
+| Panel shows live data | `curl -s http://127.0.0.1:8889/api/<service-route> | python3 -m json.tool` |
+
+**Services currently at zero coverage (P3 backlog):**
+- 221 registered handlers unreachable via MCP or HTTP — see `SYSTEM-INTEGRITY-MASTER.md`
+- 187 zero-import modules (dead code candidates) — see `aq-integrity-scan`
+
+---
+
 ## Quick Reference Card
 
 ```

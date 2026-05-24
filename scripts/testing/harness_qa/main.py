@@ -106,6 +106,10 @@ Phases:
     parser.add_argument("--layer", type=int, default=0, metavar="N", help="Run only layer N checks")
     parser.add_argument("--causality", action="store_true", help="Include dependency layers (L1..LN)")
     parser.add_argument("--remediate", action="store_true", help="Auto-diagnose failures using local model")
+    parser.add_argument(
+        "--queue-to-ralph", action="store_true",
+        help="Submit each failing check as a ralph-wiggum improvement task (POST /tasks)",
+    )
     return parser.parse_args(argv)
 
 
@@ -165,6 +169,79 @@ def auto_remediate(rs: ResultSet) -> None:
         print("=" * 80 + "\n")
     else:
         print(f"\n[aq-qa] Error during diagnosis: {response.get('error', 'unknown error')}", file=sys.stderr)
+
+
+def _submit_failures_to_ralph(rs) -> None:
+    """Submit each failing aq-qa check as a ralph-wiggum improvement task.
+
+    Reads the API key from /run/secrets/aidb_api_key (same credential ralph-wiggum
+    uses internally) or falls back to the RALPH_API_KEY env var.
+    """
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    failures = [r for r in rs.results if r.status.name == "FAIL"]
+    if not failures:
+        return
+
+    # Resolve auth key — ralph-wiggum uses aidb_api_key per mcp-servers.nix wiring
+    api_key = ""
+    try:
+        api_key = Path("/run/secrets/aidb_api_key").read_text().strip()
+    except OSError:
+        api_key = os.environ.get("RALPH_API_KEY", "")
+
+    ralph_url = os.environ.get("RALPH_URL", "http://127.0.0.1:8004")
+
+    submitted = 0
+    errors = []
+    for f in failures:
+        prompt = (
+            f"AQ-QA Phase {rs.phase} check {f.id} FAILED.\n"
+            f"Description: {f.description}\n"
+            f"Reason: {f.reason or 'no detail'}\n\n"
+            "Diagnose the root cause and provide a specific remediation step or "
+            "nixos-rebuild / service restart command to fix this failure."
+        )
+        payload = _json.dumps({
+            "prompt": prompt,
+            "backend": "aider",
+            "max_iterations": 2,
+            "metadata": {
+                "source": "aq-qa",
+                "phase": rs.phase,
+                "check_id": f.id,
+                "layer": f.layer,
+            },
+        }).encode()
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        req = urllib.request.Request(
+            f"{ralph_url}/tasks", data=payload, headers=headers, method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = _json.loads(resp.read())
+                task_id = body.get("task_id", "?")
+                print(
+                    f"[aq-qa] ralph task queued for {f.id}: {task_id[:12]}…",
+                    file=sys.stderr,
+                )
+                submitted += 1
+        except urllib.error.HTTPError as exc:
+            errors.append(f"{f.id}: HTTP {exc.code}")
+        except Exception as exc:
+            errors.append(f"{f.id}: {exc}")
+
+    if submitted:
+        print(
+            f"[aq-qa] {submitted}/{len(failures)} failure(s) queued to ralph-wiggum for remediation.",
+            file=sys.stderr,
+        )
+    if errors:
+        print(f"[aq-qa] ralph submission errors: {'; '.join(errors)}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -255,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if rs.failed > 0 and ns.remediate:
         auto_remediate(rs)
+
+    if rs.failed > 0 and ns.queue_to_ralph:
+        _submit_failures_to_ralph(rs)
 
     return 1 if rs.failed > 0 else 0
 

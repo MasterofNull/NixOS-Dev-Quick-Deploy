@@ -548,6 +548,28 @@ variables:
     consumers: [aq-qa, scripts]
     description: "Base URL of the ralph-wiggum service (port 8004)"
 
+  - canonical: RALPH_API_KEY
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-qa, scripts/testing/harness_qa]
+    description: "API key for ralph-wiggum; falls back to aidb_api_key secret (/run/secrets/aidb_api_key)"
+
+  # ── Aider Wrapper ────────────────────────────────────────────────────────
+  - canonical: AIDER_WRAPPER_PORT
+    aliases: []
+    default: "8090"
+    layer: all
+    consumers: [aq-qa, scripts/testing/harness_qa]
+    description: "Port for the aider-wrapper service (default 8090)"
+
+  - canonical: AIDER_WRAPPER_API_KEY
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-qa, scripts/testing/harness_qa]
+    description: "API key for aider-wrapper; falls back to /run/secrets/aider_wrapper_api_key"
+
   # ── Prometheus / Grafana ────────────────────────────────────────────────
   - canonical: PROMETHEUS_URL
     aliases: []

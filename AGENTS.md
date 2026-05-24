@@ -74,6 +74,27 @@ This means:
 - [ ] New configuration option → reflected in Inference Config or equivalent panel
 - [ ] All previously `--` fields that now have data → updated in same PR
 
+### Service Coverage Contract (2026-05-23 — MANDATORY)
+
+> Origin: `local_agent_runtime.py` path bug returned 500 on every delegate call for multiple days.
+> Root cause: zero `aq-qa` checks AND zero dashboard panels for that service = zero detection.
+
+**A service or feature is NOT complete until all three are true:**
+
+| Gate | Requirement |
+|------|-------------|
+| **aq-qa check** | At least one `CheckResult` exercises the service's integration path (not just `/health`). Registered in `phases/__init__.py` and `ALL_PHASES`. |
+| **Dashboard panel** | At least one live card or badge showing service state. Hardcoded stubs count as `--`. |
+| **Committed together** | The service code, its aq-qa check, and its dashboard panel ship in the same PR or in immediately consecutive commits on the same branch. Never ship a service without both gates. |
+
+**When you add a new service, before marking the slice complete:**
+```bash
+grep -r "<service>" scripts/testing/harness_qa/phases/    # aq-qa exists
+grep -r "<service>" assets/dashboard.js dashboard.html    # dashboard panel exists
+aq-qa <phase>                                             # passes
+curl -s http://127.0.0.1:8889/api/<route> | python3 -m json.tool  # live data
+```
+
 ## Memory Discipline (all agents — 2026-05-23)
 
 **Three-tier memory system. Runaway memory accumulation is a defect.**
