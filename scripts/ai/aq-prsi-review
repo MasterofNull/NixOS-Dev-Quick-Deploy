@@ -177,7 +177,7 @@ def _print_report(report: dict, show_unsafe: bool) -> None:
     print()
 
 
-def _purge(queue_data: dict, report: dict) -> int:
+def _purge(queue_data: dict, report: dict, silent: bool = False) -> int:
     safe_ids = {e["id"] for e in report["safe_entries"]}
     if not safe_ids:
         print("Nothing to purge.")
@@ -215,7 +215,8 @@ def _purge(queue_data: dict, report: dict) -> int:
     tmp.write_text(json.dumps(queue_data, indent=2))
     tmp.rename(QUEUE_PATH)
 
-    print(f"Purged {len(removed)} entries. Audit log: {AUDIT_LOG}")
+    if not silent:
+        print(f"Purged {len(removed)} entries. Audit log: {AUDIT_LOG}")
     return len(removed)
 
 
@@ -231,9 +232,9 @@ def main() -> None:
     report     = _build_report(actions, show_unsafe=args.show_unsafe)
 
     if args.json:
-        print(json.dumps(report, indent=2))
         if args.purge:
-            _purge(queue_data, report)
+            _purge(queue_data, report, silent=True)
+        print(json.dumps(report, indent=2))
         return
 
     _print_report(report, show_unsafe=args.show_unsafe)
