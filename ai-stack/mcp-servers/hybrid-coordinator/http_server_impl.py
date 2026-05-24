@@ -321,6 +321,9 @@ _MCP_TOOL_INVOKER = MCPToolInvoker(cache_enabled=True)
 # Phase 1.3 — Live Bottleneck Detection & Performance Profiling
 _PERFORMANCE_PROFILER = _get_global_profiler()
 
+# Phase 69.3 — TemporalGraph postgres client reference (set by init(), read by run_http_mode())
+_POSTGRES_CLIENT: Optional[Any] = None
+
 # Phase 11.2 — Health history tracking for trend analysis
 from collections import deque
 _HEALTH_HISTORY: deque = deque(maxlen=60)  # Last 60 snapshots (1 hour at 1/min)
@@ -841,6 +844,8 @@ def init(
 
     # Phase 54.5 / 54.6 — TraceCollector + EvalRunner (share postgres_client)
     # postgres_client may be None if DB is unavailable; modules degrade gracefully
+    global _POSTGRES_CLIENT
+    _POSTGRES_CLIENT = postgres_client
     trace_collector.init(postgres_client=postgres_client)
     eval_runner.init(postgres_client=postgres_client)
 
@@ -2450,7 +2455,7 @@ async def run_http_mode(port: int) -> None:
     # Phase 69.3: Wire TemporalGraph into aiohttp app dict
     try:
         from knowledge.temporal_graph import TemporalGraph as _TemporalGraph
-        http_app["temporal_graph"] = _TemporalGraph(postgres_client)
+        http_app["temporal_graph"] = _TemporalGraph(_POSTGRES_CLIENT)
         logger.info("temporal_graph: initialized and wired into http_app")
     except Exception as _tg_exc:
         logger.warning("temporal_graph: startup wiring skipped: %s", _tg_exc)

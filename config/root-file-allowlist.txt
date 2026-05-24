@@ -20,3 +20,4 @@ flake.nix
 nixos-quick-deploy.sh
 pytest.ini
 .aiexclude
+pyrightconfig.json
