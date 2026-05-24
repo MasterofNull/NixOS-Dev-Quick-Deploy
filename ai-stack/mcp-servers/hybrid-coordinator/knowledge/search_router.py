@@ -868,13 +868,27 @@ class SearchRouter:
 
         for depth in range(max_depth):
             next_branches: List[str] = []
-            for branch_query in branches[:branch_factor]:
+            depth_queries = branches[:branch_factor]
+
+            async def _run_branch(branch_query: str) -> Tuple[str, Dict[str, Any]]:
                 result = await self.hybrid_search(
                     query=branch_query, collections=collections,
                     limit=limit, keyword_limit=keyword_limit,
                     score_threshold=score_threshold,
                     keyword_pool=branch_keyword_pool,
                 )
+                return branch_query, result
+
+            branch_results = await asyncio.gather(
+                *(_run_branch(branch_query) for branch_query in depth_queries),
+                return_exceptions=True,
+            )
+
+            for branch_result in branch_results:
+                if isinstance(branch_result, Exception):
+                    logger.warning("tree_search_branch_failed depth=%s error=%s", depth, branch_result)
+                    continue
+                branch_query, result = branch_result
                 branch_runs.append({
                     "depth": depth, "query": branch_query,
                     "semantic_results": len(result.get("semantic_results", [])),

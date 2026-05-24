@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -111,6 +112,31 @@ class _StaticRouter(search_router.SearchRouter):
         }
 
 
+class _DelayedRouter(search_router.SearchRouter):
+    def __init__(self, *args, delay: float = 0.05, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.delay = delay
+        self.calls = []
+
+    async def hybrid_search(self, query: str, collections=None, limit=5, keyword_limit=5, score_threshold=0.7, keyword_pool=60):
+        self.calls.append(query)
+        await asyncio.sleep(self.delay)
+        return {
+            "combined_results": [
+                {
+                    "collection": "codebase-context",
+                    "id": query,
+                    "score": 1.0,
+                    "payload": {"title": query},
+                    "source": "semantic",
+                    "sources": ["semantic"],
+                }
+            ],
+            "semantic_results": [{"id": query}],
+            "keyword_results": [],
+        }
+
+
 def test_tree_search_reuses_reranker_for_final_ranking():
     router = _StaticRouter(
         qdrant_client=_FakeQdrant(),
@@ -134,6 +160,42 @@ def test_tree_search_reuses_reranker_for_final_ranking():
     )
 
     assert result["combined_results"][0]["id"] == "specific"
+
+
+def test_tree_search_runs_depth_branches_concurrently():
+    Config.AI_TREE_SEARCH_MAX_DEPTH = 2
+    Config.AI_TREE_SEARCH_BRANCH_FACTOR = 3
+    router = _DelayedRouter(
+        qdrant_client=_FakeQdrant(),
+        embed_fn=MagicMock(),
+        call_breaker_fn=lambda _name, fn: fn(),
+        check_local_health_fn=MagicMock(),
+        wait_for_model_fn=MagicMock(),
+        get_local_loading_fn=lambda: False,
+        routing_config=MagicMock(),
+        record_telemetry_fn=lambda *args, **kwargs: None,
+        collections={"codebase-context": {}},
+        delay=0.05,
+    )
+
+    try:
+        started = time.perf_counter()
+        result = asyncio.run(
+            router.tree_search(
+                "reduce prompt assembly size in route handler fallback summaries",
+                collections=["codebase-context"],
+                limit=2,
+                keyword_limit=2,
+            )
+        )
+        elapsed = time.perf_counter() - started
+
+        assert len(router.calls) == 4
+        assert len(result["branches"]) == 4
+        assert elapsed < 0.18
+    finally:
+        Config.AI_TREE_SEARCH_MAX_DEPTH = 1
+        Config.AI_TREE_SEARCH_BRANCH_FACTOR = 1
 
 
 def test_rerank_combined_results_uses_files_changed_as_path_signal():

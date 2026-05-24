@@ -1,11 +1,14 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   isP14sAmdAiDev =
-    cfg.profile == "ai-dev"
+    cfg.profile
+    == "ai-dev"
     && cfg.hardware.nixosHardwareModule == "lenovo-thinkpad-p14s-amd-gen2";
-in
-{
+in {
   config = lib.mkIf isP14sAmdAiDev {
     mySystem.roles.aiStack.enable = lib.mkDefault true;
     mySystem.roles.server.enable = lib.mkDefault false;
@@ -30,15 +33,22 @@ in
         activeModel = lib.mkDefault "gemma4-e4b";
         # Mobile 27GB RAM target: leave memory reclaimable so the editor and
         # desktop are not OOM-killed when the dashboard or QA tooling runs.
-        ctxSize = lib.mkDefault 8192;
+        ctxSize = lib.mkDefault 16384;
         extraArgs = lib.mkDefault [
-          "--timeout" "600"
-          "--parallel" "1"
-          "--batch-size" "512"
-          "--ubatch-size" "256"
-          "--threads" "8"
-          "--threads-batch" "8"
-          "--flash-attn" "on"
+          "--timeout"
+          "600"
+          "--parallel"
+          "1"
+          "--batch-size"
+          "512"
+          "--ubatch-size"
+          "256"
+          "--threads"
+          "8"
+          "--threads-batch"
+          "8"
+          "--flash-attn"
+          "on"
         ];
       };
 
@@ -46,9 +56,12 @@ in
         enable = lib.mkDefault true;
         activeModel = lib.mkDefault "bge-m3";
         extraArgs = lib.mkDefault [
-          "--threads" "4"
-          "--batch-size" "2048"
-          "--flash-attn" "on"
+          "--threads"
+          "4"
+          "--batch-size"
+          "2048"
+          "--flash-attn"
+          "on"
         ];
       };
 
@@ -70,33 +83,33 @@ in
 
     security.sudo.extraRules = lib.mkAfter [
       {
-        users = [ cfg.primaryUser ];
+        users = [cfg.primaryUser];
         commands = [
           {
             command = "/home/${cfg.primaryUser}/Documents/NixOS-Dev-Quick-Deploy/nixos-quick-deploy.sh *";
-            options = [ "NOPASSWD" ];
+            options = ["NOPASSWD"];
           }
           {
             command = "/run/current-system/sw/bin/nixos-rebuild *";
-            options = [ "NOPASSWD" ];
+            options = ["NOPASSWD"];
           }
           {
             command = "/run/current-system/sw/bin/systemctl *";
-            options = [ "NOPASSWD" ];
+            options = ["NOPASSWD"];
           }
           {
             command = "/run/current-system/sw/bin/journalctl *";
-            options = [ "NOPASSWD" ];
+            options = ["NOPASSWD"];
           }
           {
             command = "/run/current-system/sw/bin/flatpak *";
-            options = [ "NOPASSWD" ];
+            options = ["NOPASSWD"];
           }
           # Model-switch CLI: allows aq-coder / aq-architect without password prompt.
           # Script is repo-local, executable, Python shebang — sudo resolves interpreter.
           {
             command = "${cfg.mcpServers.repoPath}/scripts/ai/aq-model-switch *";
-            options = [ "NOPASSWD" ];
+            options = ["NOPASSWD"];
           }
         ];
       }
