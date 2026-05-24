@@ -291,7 +291,7 @@ def _check_68_4(ctx: RunContext) -> CheckResult:
     """Dashboard workflow replay panel: /aistack/orchestration/sessions returns array."""
     import os
     _dash = os.environ.get("DASHBOARD_URL", "http://127.0.0.1:8889")
-    url = f"{_dash}/aistack/orchestration/sessions?limit=20"
+    url = f"{_dash}/api/aistack/orchestration/sessions?limit=20"
     status, body = _http_get(url, timeout=15)
     if status == 0:
         return skipped(3, "68.4", "Dashboard workflow replay panel", "dashboard unreachable", phase="68")
@@ -307,13 +307,19 @@ def _check_68_5(ctx: RunContext) -> CheckResult:
     """Dashboard MCP status panel: /aistack/mcp/v2/tools returns >= 1 tools."""
     import os
     _dash = os.environ.get("DASHBOARD_URL", "http://127.0.0.1:8889")
-    url = f"{_dash}/aistack/mcp/v2/tools"
+    url = f"{_dash}/api/aistack/mcp/v2/tools"
     status, body = _http_get(url, timeout=15)
     if status == 0:
         return skipped(3, "68.5", "Dashboard MCP status panel", "dashboard unreachable", phase="68")
     if status != 200:
         return failed(3, "68.5", "Dashboard MCP status panel", f"HTTP {status}", phase="68")
-    tools = body if isinstance(body, list) else body.get("tools", [])
+    if isinstance(body, list):
+        tools = body
+    elif isinstance(body, dict):
+        result = body.get("result", body)
+        tools = result.get("tools", []) if isinstance(result, dict) else []
+    else:
+        tools = []
     count = len(tools)
     if count < 1:
         return failed(3, "68.5", "Dashboard MCP status panel", f"tool count={count} expected >=1", phase="68")
