@@ -19,6 +19,23 @@
   },
   "checks": [
     {
+      "id": "aq-slice-helper-contract",
+      "description": "aq-slice-helper mutable lesson contract",
+      "trigger_paths": [
+        "scripts/ai/aq-slice-helper",
+        "config/lessons/agentic-slice-lessons.json",
+        "scripts/testing/test-aq-slice-helper-contract.sh",
+        "docs/agent-guides/61-WORKFLOW-PRACTICES.md",
+        "nix/modules/roles/ai-stack.nix"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/test-aq-slice-helper-contract.sh"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
       "id": "hybrid-coordinator-route-handler",
       "description": "hybrid coordinator route handler optimizations regression",
       "trigger_paths": [

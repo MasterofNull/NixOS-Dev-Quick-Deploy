@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "description": "Mutable lessons used by aq-slice-helper to reduce context load for recurring dev-cycle slices.",
+  "lessons": [
+    {
+      "id": "managed-dashboard-service-required",
+      "title": "Dashboard HTTP success is not enough; require managed systemd service",
+      "triggers": ["dashboard", "command-center", "visibility", "monitoring"],
+      "rationale": "An unmanaged uvicorn process on 0.0.0.0:8889 can mask an inactive command-center-dashboard-api.service.",
+      "commands": ["bash scripts/testing/check-dashboard-managed-service.sh"],
+      "surfaces": ["docs/QUICK-DASHBOARD-REFERENCE.md", "docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md"]
+    },
+    {
+      "id": "cross-surface-contract",
+      "title": "Runtime and service changes need docs, dashboard visibility, or explicit non-applicability",
+      "triggers": ["ai-stack/", "dashboard/backend/", "scripts/ai/", "nix/modules/", "service", "runtime"],
+      "rationale": "Hidden behavior drift creates dead-end code and unmanageable features.",
+      "commands": ["python3 scripts/governance/check-cross-surface-contract.py --mode=--pre-commit"],
+      "surfaces": ["docs/architecture/cross-surface-change-contract.md", ".agent/collaboration/HANDOFF.md"]
+    },
+    {
+      "id": "dashboard-route-card-guard",
+      "title": "Dashboard visibility cards must have registered backend routes and frontend IDs",
+      "triggers": ["assets/dashboard.js", "dashboard.html", "dashboard/backend/api/routes/"],
+      "rationale": "Cards without live routes produce noisy 404s and false operator confidence.",
+      "commands": ["python3 scripts/testing/test-dashboard-compat-routes.py"],
+      "surfaces": ["dashboard.html", "assets/dashboard.js", "scripts/testing/test-dashboard-compat-routes.py"]
+    },
+    {
+      "id": "cheap-before-expensive-validation",
+      "title": "Run cheap syntax and focused guards before full tier0",
+      "triggers": ["python", "javascript", "bash", "validation", "commit"],
+      "rationale": "Fast local checks catch most slice errors before spending full QA/runtime budget.",
+      "commands": ["git diff --check", "scripts/governance/tier0-validation-gate.sh --pre-commit"],
+      "surfaces": ["docs/agent-guides/61-WORKFLOW-PRACTICES.md"]
+    }
+  ]
+}

@@ -270,6 +270,9 @@ let
       (pkgs.writeShellScriptBin "aq-mine" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-mine" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-slice-helper" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-slice-helper" "$@"
+      '')
       (pkgs.writeShellScriptBin "aq-memory" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-memory" "$@"
       '')

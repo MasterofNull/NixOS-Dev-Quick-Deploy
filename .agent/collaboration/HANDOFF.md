@@ -293,3 +293,11 @@ Requires `nixos-rebuild switch` to take effect on running coordinator.
 - AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
 - Orphan audit P3 backlog: 221 reg gaps, 187 zero-import modules (aq-integrity-scan)
 - Phase 70 (check PRD: PHASE-68-70-AIOS-CONTINUITY-PRD.md)
+
+## 2026-05-24 Codex handoff — mutable agentic slice helper
+
+- Context: user asked that high-token system/dev requirements be captured as reusable, evolving tooling instead of rediscovered each slice.
+- Slice: added `scripts/ai/aq-slice-helper`, backed by mutable lessons in `config/lessons/agentic-slice-lessons.json`. The tool classifies current git changes, matches task/path triggers to lessons, recommends docs/dashboard surfaces, and can run cheap checks before tier0.
+- Initial lessons: managed dashboard service required, cross-surface docs/dashboard contract, dashboard route/card guard, and cheap-before-expensive validation.
+- Exposure: added an `aq-slice-helper` Nix wrapper in `nix/modules/roles/ai-stack.nix`, workflow guidance in `docs/agent-guides/61-WORKFLOW-PRACTICES.md`, and a focused CI contract test.
+- Memory: stored decision fact via `aq-memory` under project `ai-stack`, topic `agentic-tooling`.
