@@ -335,3 +335,122 @@ after rebuild gives 8192 ctx, 5000+1024=6024 fits with headroom.
 - PRSI status: live queue currently has 26 actions, all rejected/obsolete; no pending or approved PRSI work. `ai-prsi-orchestrator.timer` is active; latest service run at 2026-05-24T04:01:54Z finished successfully with "no actions selected after policy gates". `aq-qa 7 --json` passed 4/0/0, and confidence calibration passed with ECE 0.1020.
 - Validation: `python3 -m py_compile ai-stack/switchboard/switchboard.py scripts/ai/aq-chat scripts/ai/aq-slice-helper`; `python3 scripts/ai/aq-chat --help | rg -- '--switchboard-url|--no-tools'`; `scripts/testing/test-switchboard-local-tool-calling.sh`; `scripts/testing/check-prsi-confidence-calibration.sh`; `scripts/ai/aq-slice-helper assess --task "aq-chat local-tool-calling switchboard validation" --run --json`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed 17/0.
 - Note: context bootstrap suggested `scripts/testing/check-prsi-phase7-static-gates.sh`, `check-prsi-bootstrap-integrity.sh`, and `check-prsi-budget-discipline.sh`, but those files are absent in this checkout; use `aq-qa 7 --json` plus live PRSI scripts instead.
+
+## 2026-05-23 Session — Phase 70+71 Integration Contract Governance
+
+### Root Cause Audit — Silent Breakage for Days
+
+Three governance gaps discovered this session; all three are now closed:
+
+1. **local_agent_runtime.py path bug** (commit `be92c6cf`):
+   `Path(__file__).parent.parent.parent` from `extensions/ai_coordinator_handlers.py` resolved to
+   `ai-stack/mcp-servers/` but the runtime lives at `ai-stack/agents/runtimes/`. Every
+   `POST /control/ai-coordinator/delegate` returned 500 `agent_runtime_missing`. Fix: +1 parent
+   (4 parents total). No nixos-rebuild needed — coordinator resolves path at request time.
+
+2. **Coverage gap**: ralph-wiggum had 0 dashboard refs, aider-wrapper had 0 QA checks,
+   local_agent_runtime.py had 0 QA checks. Allowed silent breakage for days.
+
+3. **Async blocking**: `/stats/delegate` read the full 360 MB audit log synchronously inside
+   `async def`, blocking the aiohttp event loop. Fixed with tail-read (256 MB window) + `asyncio.to_thread`.
+
+### Phase 70 Stub Fixes (all committed in `2dd95058`)
+
+- **`/health/audit`**: replaced hardcoded fake events with real NixOS generation history via
+  `os.scandir("/nix/var/nix/profiles")` (world-readable; no sudo). Supplemented with journalctl
+  AppArmor events. `nix-env --list-generations` requires lock file (permission denied) — do not use.
+- **`/ai/consensus/history`**: was permanently returning `[]`. Now proxies
+  `GET /workflow/consensus/sessions` on coordinator. Requires coordinator to expose the new route.
+- **`GET /workflow/consensus/sessions`** (coordinator): added to `workflow/consensus_engine.py`.
+  Returns in-memory sessions sorted by created_at, capped at 50.
+- **`/stats/delegate`** (coordinator `core/status_service.py`): extracted sync I/O to
+  `_read_delegate_stats_sync()`, wrapped with `asyncio.to_thread()`. Read time: minutes → ms.
+- **`RALPH_API_KEY` wiring**: ralph-wiggum uses `aidb_api_key` secret per
+  `RALPH_WIGGUM_API_KEY_FILE=/run/secrets/aidb_api_key`. Dashboard added `_ralph_auth_header()`;
+  `/ralph/stats` and `/ralph/tasks` now send auth headers (were returning 401 fallback silently).
+
+### Phase 70.2 — Agent Governance Standards (commit `2874ced1`)
+
+- Added **Rule 8a (ATOMIC PULSE)** to CLAUDE.md behavioural rules: every successful write/commit
+  appends one line to `.agent/collaboration/PULSE.log`. Was in Codex/Gemini contracts; now uniform.
+- Added **agentic CLI wrapper enforcement**: `agrep`/`als`/`acat` mandatory in Bash tool calls;
+  raw `grep`/`ls`/`cat` explicitly forbidden. Degrades harness observability if bypassed.
+
+### PRSI JSON mode fix (commit `2c2b7791`)
+
+`scripts/ai/aq-prsi-review --json --purge` was emitting purge status text to stdout before JSON,
+breaking pipeline consumers. Fix: run purge first with `silent=True`, then print clean JSON.
+
+### Phase 71 — Integration Contract QA (commit `cdb00d53`)
+
+New `scripts/testing/harness_qa/phases/phase71.py` — 7 checks targeting previously zero-coverage seams:
+
+| Check | Target | Pass criteria |
+|-------|--------|---------------|
+| 71.1 | `local_agent_runtime.py` path | File exists at correct 4-parent path |
+| 71.2 | `POST /control/ai-coordinator/delegate` | Non-500 (503 = busy OK; 0 = skip) |
+| 71.3 | `POST http://127.0.0.1:8004/tasks` ralph-wiggum | Returns task_id (not 401/500) |
+| 71.4 | ralph-wiggum task lifecycle | Polls 30s; no `agent_runtime_missing` in result |
+| 71.5 | `GET /health` aider-wrapper | 200 (port from `AIDER_WRAPPER_PORT` env, default 8090) |
+| 71.6 | 4 autonomous timer services | `systemctl is-active` → "active" for all 4 |
+| 71.7 | `/api/health/audit` | Returns real generation events (not hardcoded fake) |
+
+First run after path fix: **7/7 PASS, 0 fail, 0 skip**.
+
+### Dashboard Integration Health Panel (commit `cdb00d53`)
+
+- New card "Integration Health" in `dashboard.html` (before RALPH Task Tracker)
+- `loadIntegrationHealth()` in `assets/dashboard.js` fetches `GET /ralph/integration-health`
+  — shows per-component ok/err status for runtime_path, coordinator, ralph_wiggum, aider_wrapper
+- `loadRalph()` updated: shows `loop_running` status; references Integration Health panel on failure
+- Backend: `GET /ralph/integration-health` added to `dashboard/backend/api/routes/aistack.py`
+  with live HTTP probes and combined `healthy: bool` flag
+
+### Full Delegation Chain (verified working)
+
+```
+ralph-wiggum POST /tasks
+  → loop_engine.py → orchestrator.py (AIDB RAG + coordinator)
+  → POST /control/ai-coordinator/delegate
+  → local_agent_runtime.py subprocess
+  → Qwen3-35B via switchboard (local-tool-calling)
+```
+
+ralph-wiggum task lifecycle confirmed via 71.4: task submitted, polled 30s, completed without
+runtime error. Full chain operational after `be92c6cf` path fix.
+
+Autonomous timers confirmed active (71.6): ai-gap-auto-remediate.timer, ai-crystallize-sessions.timer,
+ai-context-warmer.timer, ai-aidb-reindex.timer.
+
+Gap: these timers run standalone scripts — they do NOT feed tasks into ralph-wiggum's queue.
+Wiring them to ralph-wiggum `POST /tasks` is Phase 71 backlog (not started).
+
+### Governance Contract (New — PERMANENT)
+
+**Every new service must have an `aq-qa` check + dashboard panel before it is considered complete.**
+This prevents the coverage gap pattern that allowed the runtime path bug to go undetected for days.
+Document in WORKFLOW-CANON.md and AGENTS.md (backlog — not yet added).
+
+### Deploy Requirements
+
+| Action | What it picks up |
+|--------|-----------------|
+| `systemctl restart ai-dashboard` | health/audit real data, consensus history, ralph auth, integration-health endpoint, JS/HTML Integration Health panel |
+| `nixos-rebuild switch` | coordinator: consensus/sessions route, status_service async delegate stats |
+
+### Post-Deploy Validation
+
+```bash
+aq-qa 70   # expect 2/2 PASS (consensus/sessions live after rebuild)
+aq-qa 71   # expect 7/7 PASS
+```
+
+### Outstanding Backlog (carry to next session)
+
+- Register `RALPH_API_KEY` in `config/env-contract.yaml` (advisory warning from tier0)
+- Wire autonomous timers to submit tasks to `ralph-wiggum POST /tasks` instead of standalone
+- Wire PRSI approved actions to ralph-wiggum task queue
+- Wire aq-qa failures to auto-create improvement tasks
+- Add "new service = aq-qa + dashboard panel" contract to WORKFLOW-CANON.md and AGENTS.md
+- AppArmor enforce: scheduled 2026-05-30 (complain since 2026-05-23)
+- Orphan audit P3: 221 reg gaps, 187 zero-import modules

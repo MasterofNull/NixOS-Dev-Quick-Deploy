@@ -662,6 +662,20 @@ def _tool_payload_from_schema(schema: dict) -> dict:
         },
     }
 
+# Core tool set injected when the caller does not specify an explicit tools list.
+# 26 tools × ~150 tokens each ≈ 3836 tokens — far too large for a 4096 ctx window.
+# This minimal set covers the most common local agent operations at ~900 tokens total.
+# After nixos-rebuild (ctx=8192) callers may request the full set via explicit tools=[].
+_DEFAULT_CORE_TOOLS = frozenset({
+    "run_command",
+    "read_file",
+    "search_files",
+    "git_status",
+    "query_context",
+    "get_hint",
+})
+
+
 def _normalize_local_tools(requested_tools):
     registry, _tool_call_cls = _load_local_tool_registry()
     available = {
@@ -691,8 +705,13 @@ def _normalize_local_tools(requested_tools):
         if not selected:
             raise ValueError("local-tool-calling did not receive any executable built-in tools")
         return selected, set(seen)
-    selected = list(available.values())
-    return selected, {name for name in available}
+    # No explicit tool list → inject core set only to stay within 4096 ctx budget.
+    # Callers that need the full registry can pass tools=["*"] or an explicit list.
+    core = [v for k, v in available.items() if k in _DEFAULT_CORE_TOOLS]
+    if not core:
+        # Fallback: all tools if core tools somehow aren't registered
+        core = list(available.values())
+    return core, {_tool_name(t) for t in core}
 
 def _normalize_tool_choice(tool_choice, allowed_names):
     if tool_choice in (None, "", False):
