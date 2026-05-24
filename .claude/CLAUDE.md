@@ -49,10 +49,12 @@ scripts/governance/tier0-validation-gate.sh --pre-commit  # required before ever
 - validation and testing (test runners, linters, build commands)
 
 Use the canonical low-friction order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`:
-- search: `agrep`, then `rg`
-- path discovery: `als`, then `fd`
-- bounded reads: `acat`, then native read tools or `sed -n`
+- search: `agrep`, then `rg` — **never raw `grep` in shell commands**
+- path discovery: `als`, then `fd` — **never raw `ls` or `find` in shell commands**
+- bounded reads: `acat`, then native read tools or `sed -n` — **never raw `cat` in shell commands**
 - do not retry an unchanged failed tool call without a changed hypothesis
+
+**Agentic CLI wrappers are mandatory in Bash tool calls.** These wrappers add context injection, audit logging, and rate-limit guardrails. Bypassing them degrades harness observability.
 
 Use direct implementation only after:
 - problem scope is clear from tool output
@@ -79,6 +81,7 @@ Use direct implementation only after:
 | 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
 | 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
 | 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 8a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
 | 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
 | 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
 
