@@ -196,9 +196,39 @@ Anti-gaming mandate: fix root producers, never patch labels.
   llm_code_reviewer.py (moved to ai_insights.py), local-agents/safe_command_executor.py
 - P2 backlog per SOTA 2.0 roadmap
 
+### Session 2026-05-23 (Fifth Pass — Hygiene + AppArmor Fix)
+
+#### Agentic Wisdom Report review + remediation
+- Evaluated Gemini/local agent AGENTIC-WISDOM-REPORT; rejected self-healing daemon activation
+  (PodmanAPIClient incompatible with NixOS systemd). Documented in health-monitor/README.md.
+- Confirmed PRSI 4 MCP tools already registered (mcp_handlers.py:891-973); wisdom gap was false negative.
+- Deleted 10 root-level Gemini audit files violating file placement contract.
+- Port SSOT drift: added port table + canonical SSOT pointer to LOCAL-AGENT.md and HARNESS-PRIMER.md.
+
+#### aq-setup (NEW — scripts/ai/aq-setup)
+- Harness prerequisite checker: toolchain / secrets / services / repo sections
+- Reads flake target from facts.nix (`profile = "ai-dev"`) — not literal string search in flake.nix
+- Flags: --quiet, --json, --section; URL pattern reads env vars, never hardcodes ports
+- Exposed in NixOS PATH via pkgs.writeShellScriptBin in ai-stack.nix
+
+#### aq-mine (NEW — scripts/ai/aq-mine)
+- Conversation export ingestion tool using @source() decorator registry
+- 5 equal-status source profiles: claude, chatgpt, gemini, jsonl, directory
+- Subcommands: import --source NAME, split, sources
+- Model-agnostic by design (no Claude privilege); exposed in NixOS PATH via ai-stack.nix
+
+#### tmpfiles collisions fixed (mcp-servers.nix)
+- Collision 1 (/var/lib/ai-stack/security/npm): lib.subtractLists to exclude already-declared paths
+- Collision 2 (/var/log/nixos-ai-stack): removed duplicate d-rule, kept only z override
+
+#### AppArmor DENIED → FIXED (commit 1ed57a9a)
+- llama-server denied reading /sys/devices/pci0000:00/.../uevent at boot (GPU enumeration)
+- Added /sys/devices/pci*/**/uevent r, to ai-llama-cpp profile in ai-stack.nix
+- Profile reloaded post-rebuild: apparmor="STATUS" operation="profile_replace" confirmed
+
 ### Resume dev cycle: Phase 68 remaining + Phase 69
 - Phase 68.1 (NOT YET DONE): workflow_checkpointer.py ReAct backtracking
   `backtrack_to(parent_node_id)` + Postgres durability. See PHASE-68-70-AIOS-CONTINUITY-PRD.md
 - Phase 69: AG-UI WebSocket + Temporal Knowledge Graph
 - AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
-- MCP JSON-RPC 2.0 adapter + prompt_hash fix: deploy on next nixos-rebuild
+- Orphan audit P3 backlog: 221 reg gaps, 187 zero-import modules (aq-integrity-scan)
