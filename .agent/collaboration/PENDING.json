@@ -70,6 +70,30 @@
   },
   "pending_slices": [
     {
+      "updated_at": "2026-05-24T16:11:46Z",
+      "agent": "codex",
+      "task": "implement switchboard context output GC and tool-result dedupe",
+      "intent": "Extend runtime narrowing by compacting large local tool observations into artifact pointers and caching identical tool calls within a request, then surface telemetry for performance validation.",
+      "target_files": [
+        "ai-stack/switchboard/switchboard.py",
+        "nix/modules/services/switchboard.nix",
+        "config/env-contract.yaml",
+        "scripts/testing/test-switchboard-context-output-gc.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/core/config.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/knowledge/search_router.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/tests/test_search_router_reranking.py",
+        "nix/modules/core/options.nix",
+        "nix/modules/services/mcp-servers.nix",
+        ".agent/PROJECT-RUNTIME-NARROWING-PRD.md"
+      ],
+      "validation": [
+        "python -m py_compile ai-stack/switchboard/switchboard.py scripts/testing/test-switchboard-context-output-gc.py",
+        "python scripts/testing/test-switchboard-context-output-gc.py",
+        "scripts/governance/tier0-validation-gate.sh --pre-commit"
+      ],
+      "risk": "medium: changes local tool observation payloads; raw output remains available through artifacts"
+    },
+    {
       "updated_at": "2026-05-24T16:00:04Z",
       "agent": "codex",
       "task": "implement switchboard tool working-set GC",

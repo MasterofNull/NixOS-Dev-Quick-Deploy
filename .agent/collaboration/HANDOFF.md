@@ -21,6 +21,35 @@
 ### Remaining
 - Full multi-phase context artifact GC is still future work: this slice removes unused tool schemas and exposes telemetry, but does not yet summarize raw tool outputs into artifact pointers across long-running workflow phases.
 
+## Session — 2026-05-24 Runtime Narrowing + Tree Budget
+
+### Completed
+- Added switchboard context-output GC for large local tool observations.
+  - Raw output is written to `SWB_CONTEXT_ARTIFACT_DIR`.
+  - Model context receives compact JSON with `artifact_path`, `sha256`, `raw_chars`, and preview.
+- Added per-request local tool-result dedupe.
+  - Identical `{tool, arguments}` calls reuse the cached compact observation instead of executing twice.
+- Added telemetry:
+  - `/health` exposes `context_output_gc`.
+  - Responses expose `X-AI-Context-GC-Artifacts`, `X-AI-Context-GC-Pruned-Chars`, and `X-AI-Tool-Duplicate-Calls`.
+- Added hybrid tree-search branch and timeout budgets.
+  - New config: `AI_TREE_SEARCH_MAX_BRANCHES`, `AI_TREE_SEARCH_TIMEOUT_S`.
+  - Tree search now returns partial ranked evidence with `budget_exhausted`, `timed_out_branches`, and `elapsed_ms`.
+
+### Validation
+- `python -m py_compile ai-stack/switchboard/switchboard.py ai-stack/mcp-servers/hybrid-coordinator/core/config.py ai-stack/mcp-servers/hybrid-coordinator/knowledge/search_router.py scripts/testing/test-switchboard-context-output-gc.py`
+- `python scripts/testing/test-switchboard-context-output-gc.py`
+- `python scripts/testing/test-switchboard-tool-working-set-gc.py`
+- `python scripts/testing/test-switchboard-local-tool-finalization.py`
+- `pytest -q ai-stack/mcp-servers/hybrid-coordinator/tests/test_search_router_reranking.py` → 24 passed
+- restarted `ai-switchboard.service` and `ai-hybrid-coordinator.service`
+- health checks: switchboard `ok`, hybrid coordinator `healthy`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` PASS 17/17
+
+### Remaining Technical Debt
+- Orphan handler audit is still open. `scripts/ai/aq-integrity-scan | head -80` did not return promptly and was stopped, so the scanner itself needs bounded runtime/output before using it as a remediation driver.
+- Full cross-phase workflow artifact GC remains separate from switchboard per-request output GC.
+
 ## Session Goal
 Comprehensive dashboard parity pass — connect all remaining system features to monitoring panels.
 Anti-gaming mandate: fix root producers, never patch labels.

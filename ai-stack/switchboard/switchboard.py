@@ -423,6 +423,14 @@ LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/l
 LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "8"))
 TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 REMOTE_TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_REMOTE_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
+CONTEXT_OUTPUT_GC_ENABLED = os.environ.get("SWB_CONTEXT_OUTPUT_GC_ENABLED", "1").strip() not in ("0", "false", "no")
+CONTEXT_OUTPUT_GC_MIN_CHARS = max(256, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "2400")))
+CONTEXT_OUTPUT_GC_SUMMARY_CHARS = max(160, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_SUMMARY_CHARS", "900")))
+CONTEXT_ARTIFACT_DIR = os.environ.get(
+    "SWB_CONTEXT_ARTIFACT_DIR",
+    "/home/hyperd/.local/share/nixos-ai-stack/local-agents/switchboard-artifacts",
+).strip()
+TOOL_RESULT_DEDUPE_ENABLED = os.environ.get("SWB_TOOL_RESULT_DEDUPE_ENABLED", "1").strip() not in ("0", "false", "no")
 CONNECT_TIMEOUT_S = float(os.environ.get("SWB_CONNECT_TIMEOUT_S", "10"))
 WRITE_TIMEOUT_S = float(os.environ.get("SWB_WRITE_TIMEOUT_S", "60"))
 POOL_TIMEOUT_S = float(os.environ.get("SWB_POOL_TIMEOUT_S", "30"))
@@ -880,6 +888,105 @@ def _filter_remote_tools_for_working_set(payload: dict, profile: str) -> tuple[d
     }
 
 
+def _json_safe_preview(value, max_chars: int) -> str:
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=True, sort_keys=True)
+    else:
+        text = str(value)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[: max(0, max_chars - 3)].rstrip() + "..."
+
+
+def _canonical_tool_arguments(raw_arguments) -> str:
+    try:
+        parsed = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+        return json.dumps(parsed or {}, sort_keys=True, separators=(",", ":"), default=str)
+    except Exception:
+        return str(raw_arguments or "")
+
+
+def _tool_result_cache_key(tool_name: str, raw_arguments) -> str:
+    base = json.dumps(
+        {
+            "tool": str(tool_name or ""),
+            "arguments": _canonical_tool_arguments(raw_arguments),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
+
+def _context_gc_empty_stats() -> dict:
+    return {
+        "enabled": bool(CONTEXT_OUTPUT_GC_ENABLED),
+        "artifacts_written": 0,
+        "raw_chars_pruned": 0,
+        "duplicate_tool_calls": 0,
+        "tool_observations_compacted": 0,
+    }
+
+
+def _tool_result_summary(tool_name: str, result_text: str, max_chars: int) -> dict:
+    summary = {
+        "tool": tool_name,
+        "status": "compacted",
+        "preview": _json_safe_preview(result_text, max_chars),
+    }
+    try:
+        parsed = json.loads(result_text)
+    except Exception:
+        return summary
+    if isinstance(parsed, dict):
+        summary["status"] = parsed.get("status", summary["status"])
+        if parsed.get("error"):
+            summary["error"] = _json_safe_preview(parsed.get("error"), max_chars)
+        if "result" in parsed:
+            result = parsed.get("result")
+            summary["result_type"] = type(result).__name__
+            if isinstance(result, (list, tuple, dict, str)):
+                summary["result_size"] = len(result)
+            summary["preview"] = _json_safe_preview(result, max_chars)
+    return summary
+
+
+def _compact_tool_result_if_needed(tool_name: str, tool_call_id: str, result_text: str, stats: dict) -> str:
+    raw = str(result_text or "")
+    if not CONTEXT_OUTPUT_GC_ENABLED or len(raw) < CONTEXT_OUTPUT_GC_MIN_CHARS:
+        return raw
+    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()
+    artifact_dir = pathlib.Path(CONTEXT_ARTIFACT_DIR).expanduser()
+    try:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path = artifact_dir / f"{int(time.time())}-{tool_name}-{digest[:12]}.json"
+        artifact_payload = {
+            "created_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "tool": tool_name,
+            "tool_call_id": tool_call_id,
+            "sha256": digest,
+            "raw_chars": len(raw),
+            "content": raw,
+        }
+        artifact_path.write_text(json.dumps(artifact_payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"[switchboard] context_output_gc_failed tool={tool_name} error={exc}", file=sys.stderr)
+        return raw
+    summary = _tool_result_summary(tool_name, raw, CONTEXT_OUTPUT_GC_SUMMARY_CHARS)
+    summary.update({
+        "artifact_path": str(artifact_path),
+        "sha256": digest,
+        "raw_chars": len(raw),
+        "raw_output_compacted": True,
+    })
+    compact = json.dumps(summary, ensure_ascii=True, sort_keys=True)
+    stats["artifacts_written"] = int(stats.get("artifacts_written", 0) or 0) + 1
+    stats["raw_chars_pruned"] = int(stats.get("raw_chars_pruned", 0) or 0) + max(0, len(raw) - len(compact))
+    stats["tool_observations_compacted"] = int(stats.get("tool_observations_compacted", 0) or 0) + 1
+    return compact
+
+
 def _local_tool_limit_fallback(body: dict, tool_calls_used: int) -> dict:
     return {
         "id": body.get("id", f"local-tool-limit-{time.time_ns()}"),
@@ -965,6 +1072,8 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
         max_tool_calls = LOCAL_TOOL_CALL_LIMIT
     max_tool_calls = max(1, min(max_tool_calls, LOCAL_TOOL_CALL_LIMIT))
     tool_calls_used = 0
+    tool_result_cache = {}
+    context_gc = _context_gc_empty_stats()
     request_payload = dict(payload)
     request_payload["messages"] = messages
     if tools_payload:
@@ -988,6 +1097,7 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                 raise RuntimeError(f"local llama.cpp tool-free step failed: {message or upstream.text}")
             if isinstance(body, dict):
                 body["tool_working_set"] = working_set
+                body["context_output_gc"] = context_gc
             return body, tool_calls_used
         while True:
             upstream = await client.post(
@@ -1008,6 +1118,7 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
             if not tool_calls:
                 if isinstance(body, dict):
                     body["tool_working_set"] = working_set
+                    body["context_output_gc"] = context_gc
                 return body, tool_calls_used
 
             messages.append({
@@ -1037,9 +1148,11 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                     )
                     if isinstance(final_body, dict):
                         final_body["tool_working_set"] = working_set
+                        final_body["context_output_gc"] = context_gc
                     return final_body, tool_calls_used
                 function_payload = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
                 tool_name = str(function_payload.get("name", "")).strip()
+                raw_arguments = function_payload.get("arguments", "{}")
                 tool_call_id = str(tool_call.get("id", "")).strip() or hashlib.md5(
                     f"{tool_name}:{time.time()}".encode("utf-8")
                 ).hexdigest()[:16]
@@ -1050,26 +1163,42 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                         "error": f"unsupported local tool: {tool_name}",
                     })
                 else:
-                    raw_arguments = function_payload.get("arguments", "{}")
-                    try:
-                        arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments or {})
-                    except Exception as exc:
+                    cache_key = _tool_result_cache_key(tool_name, raw_arguments)
+                    cached_result = tool_result_cache.get(cache_key) if TOOL_RESULT_DEDUPE_ENABLED else None
+                    if cached_result is not None:
+                        context_gc["duplicate_tool_calls"] = int(context_gc.get("duplicate_tool_calls", 0) or 0) + 1
                         tool_result_text = json.dumps({
                             "tool": tool_name,
-                            "status": "error",
-                            "error": f"invalid JSON arguments: {exc}",
-                            "raw_arguments": raw_arguments,
+                            "status": "cached",
+                            "cached_from_tool_call_id": cached_result.get("tool_call_id"),
+                            "result": cached_result.get("content"),
                         })
                     else:
-                        tool_call_obj = tool_call_cls(
-                            id=tool_call_id,
-                            tool_name=tool_name,
-                            arguments=arguments,
-                            model_id=str(body.get("model", "")),
-                            session_id=f"switchboard-{hashlib.md5(json.dumps(messages, default=str).encode('utf-8')).hexdigest()[:12]}",
-                        )
-                        tool_result = await registry.execute_tool_call(tool_call_obj)
-                        tool_result_text = registry.format_tool_result(tool_result)
+                        try:
+                            arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments or {})
+                        except Exception as exc:
+                            tool_result_text = json.dumps({
+                                "tool": tool_name,
+                                "status": "error",
+                                "error": f"invalid JSON arguments: {exc}",
+                                "raw_arguments": raw_arguments,
+                            })
+                        else:
+                            tool_call_obj = tool_call_cls(
+                                id=tool_call_id,
+                                tool_name=tool_name,
+                                arguments=arguments,
+                                model_id=str(body.get("model", "")),
+                                session_id=f"switchboard-{hashlib.md5(json.dumps(messages, default=str).encode('utf-8')).hexdigest()[:12]}",
+                            )
+                            tool_result = await registry.execute_tool_call(tool_call_obj)
+                            tool_result_text = registry.format_tool_result(tool_result)
+                        tool_result_text = _compact_tool_result_if_needed(tool_name, tool_call_id, tool_result_text, context_gc)
+                        if TOOL_RESULT_DEDUPE_ENABLED:
+                            tool_result_cache[cache_key] = {
+                                "tool_call_id": tool_call_id,
+                                "content": tool_result_text,
+                            }
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call_id,
@@ -1925,6 +2054,13 @@ async def health():
             "intents": sorted(_TOOL_BUNDLES.keys()),
             "bundles": {name: sorted(tools) for name, tools in _TOOL_BUNDLES.items()},
         },
+        "context_output_gc": {
+            "enabled": bool(CONTEXT_OUTPUT_GC_ENABLED),
+            "min_chars": int(CONTEXT_OUTPUT_GC_MIN_CHARS),
+            "summary_chars": int(CONTEXT_OUTPUT_GC_SUMMARY_CHARS),
+            "artifact_dir": CONTEXT_ARTIFACT_DIR,
+            "dedupe_enabled": bool(TOOL_RESULT_DEDUPE_ENABLED),
+        },
         "local_runtime": local_runtime,
         "local_lane_status": local_lane_status,
     }
@@ -1943,6 +2079,7 @@ async def proxy(path: str, request: Request):
     relevance = 1.0
     gate_applied = False
     tool_working_set = None
+    context_output_gc = None
     if body:
         try:
             payload = await request.json()
@@ -2161,6 +2298,8 @@ async def proxy(path: str, request: Request):
                         local_body, local_tool_calls_used = await _execute_local_tool_calling(payload)
                         if isinstance(local_body, dict) and isinstance(local_body.get("tool_working_set"), dict):
                             tool_working_set = local_body.get("tool_working_set")
+                        if isinstance(local_body, dict) and isinstance(local_body.get("context_output_gc"), dict):
+                            context_output_gc = local_body.get("context_output_gc")
                     except ValueError as exc:
                         return JSONResponse(
                             status_code=400,
@@ -2257,6 +2396,10 @@ async def proxy(path: str, request: Request):
         response.headers["X-AI-Tool-Intent"] = str(tool_working_set.get("intent") or "")
         response.headers["X-AI-Tools-Selected"] = str(tool_working_set.get("selected_count", 0))
         response.headers["X-AI-Tools-Evicted"] = str(tool_working_set.get("evicted_count", 0))
+    if isinstance(context_output_gc, dict):
+        response.headers["X-AI-Context-GC-Artifacts"] = str(context_output_gc.get("artifacts_written", 0))
+        response.headers["X-AI-Context-GC-Pruned-Chars"] = str(context_output_gc.get("raw_chars_pruned", 0))
+        response.headers["X-AI-Tool-Duplicate-Calls"] = str(context_output_gc.get("duplicate_tool_calls", 0))
     if remote_budget:
         response.headers["X-AI-Remote-Tokens-Used"] = str(remote_budget.get("remote_tokens_used", 0))
         if remote_budget.get("remote_tokens_remaining") is not None:

@@ -1870,6 +1870,18 @@
             description = "Maximum branches evaluated per tree-search depth level.";
           };
 
+          treeSearchMaxBranches = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 4;
+            description = "Maximum total tree-search branch queries evaluated per request.";
+          };
+
+          treeSearchTimeoutSeconds = lib.mkOption {
+            type = lib.types.float;
+            default = 12.0;
+            description = "Maximum wall-clock seconds for tree-search before returning partial ranked evidence.";
+          };
+
           searchScoreThreshold = lib.mkOption {
             type = lib.types.float;
             default = 0.55;

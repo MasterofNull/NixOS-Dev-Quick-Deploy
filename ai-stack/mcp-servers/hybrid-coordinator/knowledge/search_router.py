@@ -855,6 +855,19 @@ class SearchRouter:
         collections = collections or list(self._collections.keys())
         max_depth = max(1, Config.AI_TREE_SEARCH_MAX_DEPTH)
         branch_factor = max(1, Config.AI_TREE_SEARCH_BRANCH_FACTOR)
+        try:
+            max_branches = int(getattr(Config, "AI_TREE_SEARCH_MAX_BRANCHES", 4))
+        except (TypeError, ValueError):
+            max_branches = 4
+        try:
+            timeout_s = float(getattr(Config, "AI_TREE_SEARCH_TIMEOUT_S", 12.0))
+        except (TypeError, ValueError):
+            timeout_s = 12.0
+        max_branches = max(1, max_branches)
+        timeout_s = max(0.001, timeout_s)
+        started_at = time.perf_counter()
+        timed_out_branches = 0
+        budget_exhausted = False
 
         # Phase 14.4: cap keyword scroll budget per branch to limit * 2 (min 10).
         # The full keyword_pool=60 default is only needed for single-query hybrid
@@ -868,7 +881,18 @@ class SearchRouter:
 
         for depth in range(max_depth):
             next_branches: List[str] = []
-            depth_queries = branches[:branch_factor]
+            remaining_branches = max_branches - len(branch_runs)
+            if remaining_branches <= 0:
+                budget_exhausted = True
+                break
+            remaining_time = timeout_s - (time.perf_counter() - started_at)
+            if remaining_time <= 0:
+                budget_exhausted = True
+                timed_out_branches += min(len(branches), branch_factor, remaining_branches)
+                break
+            depth_queries = branches[:min(branch_factor, remaining_branches)]
+            if not depth_queries:
+                break
 
             async def _run_branch(branch_query: str) -> Tuple[str, Dict[str, Any]]:
                 result = await self.hybrid_search(
@@ -879,10 +903,17 @@ class SearchRouter:
                 )
                 return branch_query, result
 
-            branch_results = await asyncio.gather(
-                *(_run_branch(branch_query) for branch_query in depth_queries),
-                return_exceptions=True,
-            )
+            tasks = [asyncio.create_task(_run_branch(branch_query)) for branch_query in depth_queries]
+            done, pending = await asyncio.wait(tasks, timeout=remaining_time)
+            timed_out_branches += len(pending)
+            for task in pending:
+                task.cancel()
+            branch_results = []
+            for task in done:
+                try:
+                    branch_results.append(task.result())
+                except Exception as exc:
+                    branch_results.append(exc)
 
             for branch_result in branch_results:
                 if isinstance(branch_result, Exception):
@@ -901,6 +932,9 @@ class SearchRouter:
                         all_results[key] = item
                 next_branches.extend(tree_expand_queries(branch_query, branch_factor))
             branches = next_branches
+            if pending:
+                budget_exhausted = True
+                break
 
         ranked = rerank_combined_results(query, list(all_results.values()))
         # Phase 14.4: slice to caller-requested limit, not max(limit,kw_limit,recall_items).
@@ -910,6 +944,11 @@ class SearchRouter:
         return {
             "query": query, "search_mode": "tree",
             "depth": max_depth, "branch_factor": branch_factor,
+            "branch_budget": max_branches,
+            "timeout_s": timeout_s,
+            "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 3),
+            "budget_exhausted": budget_exhausted,
+            "timed_out_branches": timed_out_branches,
             "combined_results": ranked, "branches": branch_runs,
         }
 
