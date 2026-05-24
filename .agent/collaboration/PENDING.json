@@ -70,6 +70,29 @@
   },
   "pending_slices": [
     {
+      "updated_at": "2026-05-24T20:36:55Z",
+      "agent": "codex",
+      "task": "baseline and prevent logical orphan debt",
+      "intent": "Turn the current logical orphan backlog into an explicit baseline with path-aware findings, then fail focused CI when ai-stack changes introduce unbaselined zero-inbound modules.",
+      "target_files": [
+        "scripts/ai/aq-integrity-scan",
+        "config/aq-integrity-logical-orphans.json",
+        "scripts/testing/check-aq-integrity-logical-baseline.py",
+        "scripts/testing/test-aq-integrity-scan-contract.py",
+        "scripts/governance/run-focused-ci-checks.sh",
+        "config/validation-check-registry.json",
+        ".agent/PROJECT-LOGICAL-ORPHAN-BASELINE-PRD.md",
+        ".agent/WORKFLOW-CANON.md"
+      ],
+      "validation": [
+        "python -m py_compile scripts/ai/aq-integrity-scan scripts/testing/test-aq-integrity-scan-contract.py scripts/testing/check-aq-integrity-logical-baseline.py",
+        "python scripts/testing/test-aq-integrity-scan-contract.py",
+        "python scripts/testing/check-aq-integrity-logical-baseline.py",
+        "scripts/ai/aq-integrity-scan --json --timeout-seconds 10 --max-files 5000 --fail-on-new-logical"
+      ],
+      "risk": "medium: validation behavior changes; no source deletion or runtime service changes"
+    },
+    {
       "updated_at": "2026-05-24T20:21:33Z",
       "agent": "codex",
       "task": "make integrity/orphan scanner bounded and validated",

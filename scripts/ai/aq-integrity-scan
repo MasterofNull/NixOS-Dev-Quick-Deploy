@@ -12,13 +12,13 @@ Heuristics:
 4. Protocol Gap: HTTP routes in coordinator without corresponding MCP tool definitions.
 """
 
-import os
-import re
-import json
 import argparse
+import ast
+import json
+import re
 import time
 from pathlib import Path
-from typing import Dict, Iterable, List, Set
+from typing import Iterable, List
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 AI_STACK = REPO_ROOT / "ai-stack"
@@ -27,6 +27,9 @@ DOCS_DIR = REPO_ROOT / ".agent"
 DEFAULT_TIMEOUT_SECONDS = 15.0
 DEFAULT_MAX_FILES = 6000
 DEFAULT_MAX_LOGICAL_FILES = 1500
+DEFAULT_LOGICAL_BASELINE = REPO_ROOT / "config/aq-integrity-logical-orphans.json"
+ENTRYPOINT_NAMES = {"server", "autonomous_loop", "agent_executor", "checkpoint_service"}
+DOC_SCAN_EXCLUDED_PARTS = {"collaboration", "scratchpad", "archive"}
 
 class IntegrityScanner:
     def __init__(
@@ -36,18 +39,15 @@ class IntegrityScanner:
         max_files: int = DEFAULT_MAX_FILES,
         max_logical_files: int = DEFAULT_MAX_LOGICAL_FILES,
         include_logical: bool = True,
+        logical_baseline: Path | None = DEFAULT_LOGICAL_BASELINE,
     ):
         self.started_at = time.monotonic()
         self.timeout_seconds = max(0.1, float(timeout_seconds))
         self.max_files = max(1, int(max_files))
         self.max_logical_files = max(1, int(max_logical_files))
         self.include_logical = include_logical
-        self.findings = {
-            "doc_orphans": [],      # Commands in docs but not in scripts/
-            "registration_gaps": [], # Logic implemented but not wired to MCP/HTTP
-            "logical_orphans": [],   # Code with no callers
-            "protocol_drifts": []    # HTTP/MCP mismatch
-        }
+        self.logical_baseline = logical_baseline
+        self.findings = self._empty_findings()
         self.meta = {
             "version": "2.0",
             "bounded": True,
@@ -57,8 +57,18 @@ class IntegrityScanner:
             "files_scanned": 0,
             "files_skipped": 0,
             "logical_files_ignored": 0,
+            "logical_baseline_entries": 0,
             "truncated": False,
             "warnings": [],
+        }
+
+    def _empty_findings(self):
+        return {
+            "doc_orphans": [],      # Commands in docs but not in scripts/
+            "registration_gaps": [], # Logic implemented but not wired to MCP/HTTP
+            "logical_orphans": [],   # Code with no callers
+            "new_logical_orphans": [], # Logical orphans absent from the committed baseline
+            "protocol_drifts": []    # HTTP/MCP mismatch
         }
 
     def _deadline_exceeded(self) -> bool:
@@ -94,6 +104,9 @@ class IntegrityScanner:
         """Find commands referenced in markdown that don't exist in scripts/ai."""
         documented_cmds = set()
         for md_file in self._bounded_files(DOCS_DIR.glob("**/*.md")):
+            if any(part in DOC_SCAN_EXCLUDED_PARTS for part in md_file.relative_to(DOCS_DIR).parts):
+                self.meta["files_skipped"] += 1
+                continue
             content = self._safe_read_text(md_file)
             matches = re.findall(r'`(aq-[a-z0-9-]+)`', content)
             documented_cmds.update(matches)
@@ -159,10 +172,10 @@ class IntegrityScanner:
         if not self.include_logical:
             self.meta["warnings"].append("logical_orphan_scan_skipped")
             return
-        all_py_files = [
+        all_py_files = sorted(
             f for f in self._bounded_files(AI_STACK.glob("**/*.py"), limit=self.max_logical_files)
             if not self._ignore_logical_file(f)
-        ]
+        )
         py_names = {f.stem for f in all_py_files if f.name != "__init__.py"}
         
         import_map = {name: 0 for name in py_names}
@@ -172,21 +185,78 @@ class IntegrityScanner:
                 self.meta["truncated"] = True
                 self.meta["warnings"].append("logical_scan_timeout_reached")
                 break
-            content = self._safe_read_text(py_file)
-            imported_names = set(re.findall(r'^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)\b', content, flags=re.MULTILINE))
+            imported_names = self._imported_module_names(py_file)
             for name in imported_names & py_names:
                 if py_file.stem != name:
                     import_map[name] += 1
+
+        baseline_paths = self._logical_baseline_paths()
         
-        for name, count in import_map.items():
+        for py_file in all_py_files:
+            name = py_file.stem
+            count = import_map.get(name, 0)
             if count == 0:
-                # Filter out known entrypoints
-                if name in ["server", "autonomous_loop", "agent_executor", "checkpoint_service"]:
+                if name in ENTRYPOINT_NAMES:
                     continue
-                self.findings["logical_orphans"].append({
+                rel_path = str(py_file.relative_to(REPO_ROOT))
+                item = {
                     "module": name,
+                    "path": rel_path,
+                    "classification": self._classify_logical_orphan(py_file),
                     "reason": "Module exists but has 0 inbound imports in ai-stack (potential dead code)"
-                })
+                }
+                self.findings["logical_orphans"].append(item)
+                if baseline_paths is not None and rel_path not in baseline_paths:
+                    self.findings["new_logical_orphans"].append(item)
+
+    def _imported_module_names(self, path: Path) -> set[str]:
+        content = self._safe_read_text(path)
+        try:
+            tree = ast.parse(content, filename=str(path))
+        except SyntaxError:
+            self.meta["warnings"].append(f"syntax_skipped:{path}")
+            return set(re.findall(r'^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)\b', content, flags=re.MULTILINE))
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    parts = alias.name.split(".")
+                    imported.add(parts[0])
+                    imported.add(parts[-1])
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    parts = node.module.split(".")
+                    imported.add(parts[0])
+                    imported.add(parts[-1])
+                for alias in node.names:
+                    if alias.name != "*":
+                        imported.add(alias.name.split(".")[-1])
+        return imported
+
+    def _logical_baseline_paths(self) -> set[str] | None:
+        if not self.logical_baseline or not self.logical_baseline.exists():
+            return None
+        try:
+            payload = json.loads(self.logical_baseline.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            self.meta["warnings"].append(f"logical_baseline_unreadable:{self.logical_baseline}:{exc}")
+            return set()
+        entries = payload.get("entries", [])
+        paths = {entry.get("path") for entry in entries if isinstance(entry, dict) and entry.get("path")}
+        self.meta["logical_baseline_entries"] = len(paths)
+        return paths
+
+    def _classify_logical_orphan(self, path: Path) -> str:
+        content = self._safe_read_text(path)
+        stem = path.stem
+        if "__main__" in content or content.startswith("#!"):
+            return "entrypoint_candidate"
+        if stem.endswith(("_service", "_daemon", "_server", "_cli", "_agent", "_manager")):
+            return "runtime_component_candidate"
+        if stem.endswith(("_test", "_bench", "_benchmark")) or "pytest" in content:
+            return "test_like_candidate"
+        return "library_candidate"
 
     def _ignore_logical_file(self, path: Path) -> bool:
         rel = str(path.relative_to(REPO_ROOT)) if path.is_relative_to(REPO_ROOT) else str(path)
@@ -213,6 +283,14 @@ class IntegrityScanner:
         return False
 
     def run(self):
+        self.started_at = time.monotonic()
+        self.findings = self._empty_findings()
+        self.meta["files_scanned"] = 0
+        self.meta["files_skipped"] = 0
+        self.meta["logical_files_ignored"] = 0
+        self.meta["logical_baseline_entries"] = 0
+        self.meta["truncated"] = False
+        self.meta["warnings"] = []
         self.scan_doc_consistency()
         self.scan_coordinator_wiring()
         self.scan_logical_orphans()
@@ -223,7 +301,11 @@ class IntegrityScanner:
     def report(self):
         result = self.run()
         counts = result["meta"]["finding_counts"]
-        print(f"--- Integrity Scan Report: {counts['registration_gaps'] + counts['doc_orphans']} doc/wiring issues found ---")
+        print(
+            "--- Integrity Scan Report: "
+            f"{counts['registration_gaps'] + counts['doc_orphans']} doc/wiring issues, "
+            f"{counts['new_logical_orphans']} new logical orphans ---"
+        )
         print(
             f"Scanned {self.meta['files_scanned']} files in {self.meta['elapsed_seconds']}s"
             + (" (TRUNCATED)" if self.meta["truncated"] else "")
@@ -242,7 +324,29 @@ class IntegrityScanner:
         if self.findings["logical_orphans"]:
             print("\n[?] Logical Orphans (Potential Dead Code):")
             for gap in self.findings["logical_orphans"]:
-                print(f"  - {gap['module']}")
+                marker = "NEW " if gap in self.findings["new_logical_orphans"] else ""
+                print(f"  - {marker}{gap['path']} ({gap['classification']})")
+
+    def logical_baseline_payload(self):
+        if not self.findings["logical_orphans"]:
+            self.run()
+        return {
+            "version": 1,
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
+            "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
+            "entries": [
+                {
+                    "path": item["path"],
+                    "module": item["module"],
+                    "classification": item["classification"],
+                    "owner": "unassigned",
+                    "action": "classify",
+                    "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline.",
+                }
+                for item in sorted(self.findings["logical_orphans"], key=lambda entry: entry["path"])
+            ],
+        }
 
 def main():
     parser = argparse.ArgumentParser(description="Bounded integrity scanner for docs, handler wiring, and logical orphan debt")
@@ -251,6 +355,10 @@ def main():
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS, help="Soft scan timeout")
     parser.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help="Maximum total files to scan")
     parser.add_argument("--max-logical-files", type=int, default=DEFAULT_MAX_LOGICAL_FILES, help="Maximum Python files for logical orphan scan")
+    parser.add_argument("--logical-baseline", type=Path, default=DEFAULT_LOGICAL_BASELINE, help="Known logical-orphan baseline JSON")
+    parser.add_argument("--no-logical-baseline", action="store_true", help="Do not compare logical orphan results with a baseline")
+    parser.add_argument("--fail-on-new-logical", action="store_true", help="Exit non-zero when logical orphan candidates are not in the baseline")
+    parser.add_argument("--write-logical-baseline", type=Path, help="Write the current logical orphan set as a baseline JSON file")
     args = parser.parse_args()
 
     scanner = IntegrityScanner(
@@ -258,11 +366,22 @@ def main():
         max_files=args.max_files,
         max_logical_files=args.max_logical_files,
         include_logical=not args.skip_logical,
+        logical_baseline=None if args.no_logical_baseline else args.logical_baseline,
     )
+    if args.write_logical_baseline:
+        payload = scanner.logical_baseline_payload()
+        args.write_logical_baseline.parent.mkdir(parents=True, exist_ok=True)
+        args.write_logical_baseline.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return
+
     if args.json:
-        print(json.dumps(scanner.run(), sort_keys=True))
+        result = scanner.run()
+        print(json.dumps(result, sort_keys=True))
     else:
         scanner.report()
+        result = {"findings": scanner.findings}
+    if args.fail_on_new_logical and result["findings"]["new_logical_orphans"]:
+        raise SystemExit(2)
 
 if __name__ == "__main__":
     main()

@@ -49,13 +49,35 @@ def main():
         (ext / "mcp_handlers.py").write_text("", encoding="utf-8")
         (root / "ai-stack" / "tests" / "test_not_dead_code.py").write_text("def test_example():\n    pass\n", encoding="utf-8")
         (root / "ai-stack" / "production_orphan.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (root / "ai-stack" / "known_orphan.py").write_text("VALUE = 2\n", encoding="utf-8")
+        baseline = root / "config" / "aq-integrity-logical-orphans.json"
+        baseline.parent.mkdir()
+        baseline.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "entries": [
+                        {
+                            "path": "ai-stack/known_orphan.py",
+                            "module": "known_orphan",
+                            "classification": "library_candidate",
+                            "owner": "test",
+                            "action": "classify",
+                            "rationale": "fixture baseline",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         module.REPO_ROOT = root
         module.AI_STACK = root / "ai-stack"
         module.SCRIPTS_AI = root / "scripts" / "ai"
         module.DOCS_DIR = root / ".agent"
+        module.DEFAULT_LOGICAL_BASELINE = baseline
 
-        scanner = module.IntegrityScanner(timeout_seconds=2, max_files=100, include_logical=True)
+        scanner = module.IntegrityScanner(timeout_seconds=2, max_files=100, include_logical=True, logical_baseline=baseline)
         result = scanner.run()
         assert_true(result["meta"]["bounded"] is True, "scanner should report bounded mode")
         assert_true(result["meta"]["finding_counts"]["doc_orphans"] == 1, "expected one missing documented command")
@@ -64,6 +86,12 @@ def main():
         logical_modules = [item["module"] for item in result["findings"]["logical_orphans"]]
         assert_true("production_orphan" in logical_modules, "logical scan should keep production candidates")
         assert_true("test_not_dead_code" not in logical_modules, "logical orphan scan should ignore tests")
+        first_logical = result["findings"]["logical_orphans"][0]
+        assert_true("path" in first_logical and "classification" in first_logical, "logical findings need path and classification")
+        new_paths = [item["path"] for item in result["findings"]["new_logical_orphans"]]
+        assert_true("ai-stack/production_orphan.py" in new_paths, "unbaselined logical orphan should be new")
+        assert_true("ai-stack/known_orphan.py" not in new_paths, "baselined logical orphan should not be new")
+        assert_true(result["meta"]["logical_baseline_entries"] == 1, "expected baseline entry accounting")
         assert_true(result["meta"]["logical_files_ignored"] >= 1, "expected ignored logical file accounting")
         assert_true("elapsed_seconds" in result["meta"], "scanner should report elapsed time")
 

@@ -1,0 +1,928 @@
+{
+  "entries": [
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "reciprocity_tracker",
+      "owner": "unassigned",
+      "path": "ai-stack/affective-engine/reciprocity_tracker.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "local_agent_runtime",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/runtimes/local_agent_runtime.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "evaluation",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/mcp-builder/scripts/evaluation.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "check_bounding_boxes_test",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pdf/scripts/check_bounding_boxes_test.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "check_fillable_fields",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pdf/scripts/check_fillable_fields.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "convert_pdf_to_images",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pdf/scripts/convert_pdf_to_images.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "create_validation_image",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pdf/scripts/create_validation_image.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "fill_fillable_fields",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pdf/scripts/fill_fillable_fields.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "fill_pdf_form_with_annotations",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pdf/scripts/fill_pdf_form_with_annotations.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "pack",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/ooxml/scripts/pack.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "unpack",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/ooxml/scripts/unpack.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "validate",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/ooxml/scripts/validate.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "docx",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/ooxml/scripts/validation/docx.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "redlining",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/ooxml/scripts/validation/redlining.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "rearrange",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/scripts/rearrange.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "replace",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/scripts/replace.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "thumbnail",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/pptx/scripts/thumbnail.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "init_skill",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/skill-creator/scripts/init_skill.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "package_skill",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/skill-creator/scripts/package_skill.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "validators",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/core/validators.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "bounce",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/bounce.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "explode",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/explode.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "flip",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/flip.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "kaleidoscope",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/kaleidoscope.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "morph",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/morph.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "move",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/move.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "pulse",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/pulse.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "shake",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/shake.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "slide",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/slide.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "spin",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/spin.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "wiggle",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/wiggle.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "zoom",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/slack-gif-creator/templates/zoom.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "with_server",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/webapp-testing/scripts/with_server.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "recalc",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/xlsx/recalc.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "agent_diary",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/agent_diary.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "performance_bench",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/benchmarks/performance_bench.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "recall_accuracy",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/benchmarks/recall_accuracy.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "code_change_indexer",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/code_change_indexer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "identity_manager",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/identity_manager.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "interaction_indexer",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/interaction_indexer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "layered_loading",
+      "owner": "unassigned",
+      "path": "ai-stack/aidb/layered_loading.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "monitoring_integration",
+      "owner": "unassigned",
+      "path": "ai-stack/autonomous-improvement/monitoring_integration.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "failure_pattern_analysis",
+      "owner": "unassigned",
+      "path": "ai-stack/capability-gap/failure_pattern_analysis.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "runtime_component_candidate",
+      "module": "context_manager",
+      "owner": "unassigned",
+      "path": "ai-stack/context_memory/context_manager.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "auto_deployer",
+      "owner": "unassigned",
+      "path": "ai-stack/deployment/auto_deployer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "response_caching",
+      "owner": "unassigned",
+      "path": "ai-stack/efficiency/response_caching.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "semantic_compression",
+      "owner": "unassigned",
+      "path": "ai-stack/efficiency/semantic_compression.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "agent_spawner",
+      "owner": "unassigned",
+      "path": "ai-stack/local-agents/agent_spawner.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "code_execution",
+      "owner": "unassigned",
+      "path": "ai-stack/local-agents/builtin_tools/code_execution.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "monitoring_agent",
+      "owner": "unassigned",
+      "path": "ai-stack/local-agents/monitoring_agent.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "self_improvement",
+      "owner": "unassigned",
+      "path": "ai-stack/local-agents/self_improvement.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "agent_interface",
+      "owner": "unassigned",
+      "path": "ai-stack/local-orchestrator/agent_interface.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "remote_agents",
+      "owner": "unassigned",
+      "path": "ai-stack/local-orchestrator/remote_agents.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "sop_engine",
+      "owner": "unassigned",
+      "path": "ai-stack/local-orchestrator/sop_engine.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "workflow_graph",
+      "owner": "unassigned",
+      "path": "ai-stack/local-orchestrator/workflow_graph.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "codemachine_client",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/codemachine_client.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "document_importer",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/document_importer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "issue_tracker",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/issue_tracker.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "llama_cpp_tool_agent",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/llama_cpp_tool_agent.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "mindsdb_client",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/mindsdb_client.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "parallel_inference",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/parallel_inference.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "pipeline",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/rag/pipeline.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "tool_discovery_daemon",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/aidb/tool_discovery_daemon.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "self_healing_daemon",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/health-monitor/self_healing_daemon.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "runtime_component_candidate",
+      "module": "continuous_learning_daemon",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/continuous_learning_daemon.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "coordinator",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/coordinator.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "continuous_learning_daemon",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning_daemon.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "federation_sync",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/extensions/federation_sync.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "harness_sdk",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/extensions/harness_sdk.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "skill_validator",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/extensions/skill_validator.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "federation_sync",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/federation_sync.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "harness_sdk",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/harness_sdk.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "runtime_component_candidate",
+      "module": "model_lifecycle_manager",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/model_lifecycle_manager.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "safe_command_executor",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/safe_command_executor.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "skill_validator",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/skill_validator.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "coordinator",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/workflow/coordinator.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "safe_command_executor",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/workflow/safe_command_executor.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "workflow_checkpointer",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_checkpointer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "populate",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/qdrant-populator/populate.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "ab_testing",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/shared/ab_testing.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "audit_sidecar",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/shared/audit_sidecar.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "inference_telemetry",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/shared/inference_telemetry.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "model_catalog",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/shared/model_catalog.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "model_monitoring",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/shared/model_monitoring.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "retry_backoff",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/shared/retry_backoff.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "harness_evolution_tracker",
+      "owner": "unassigned",
+      "path": "ai-stack/meta-optimization/harness_evolution_tracker.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "meta_optimizer",
+      "owner": "unassigned",
+      "path": "ai-stack/meta-optimization/meta_optimizer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "continuous_finetuning",
+      "owner": "unassigned",
+      "path": "ai-stack/model-optimization/continuous_finetuning.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "data_curator",
+      "owner": "unassigned",
+      "path": "ai-stack/model-optimization/data_curator.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "local_llm_monitor",
+      "owner": "unassigned",
+      "path": "ai-stack/monitoring/local_llm_monitor.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "anomaly_alert_integration",
+      "owner": "unassigned",
+      "path": "ai-stack/observability/anomaly_alert_integration.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "integrate_monitoring",
+      "owner": "unassigned",
+      "path": "ai-stack/observability/integrate_monitoring.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "metrics_middleware",
+      "owner": "unassigned",
+      "path": "ai-stack/observability/metrics_middleware.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "notification_handlers",
+      "owner": "unassigned",
+      "path": "ai-stack/observability/notification_handlers.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "remediation_workflows",
+      "owner": "unassigned",
+      "path": "ai-stack/observability/remediation_workflows.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "agent_quality_profiler",
+      "owner": "unassigned",
+      "path": "ai-stack/offloading/agent_quality_profiler.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "work_classifier",
+      "owner": "unassigned",
+      "path": "ai-stack/offloading/work_classifier.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "mcp_tool_invoker",
+      "owner": "unassigned",
+      "path": "ai-stack/orchestration/mcp_tool_invoker.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "workspace_isolation",
+      "owner": "unassigned",
+      "path": "ai-stack/orchestration/workspace_isolation.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "agent_marketplace",
+      "owner": "unassigned",
+      "path": "ai-stack/platform/agent_marketplace.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "federation_protocol",
+      "owner": "unassigned",
+      "path": "ai-stack/platform/federation_protocol.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "harness_sdk_v2",
+      "owner": "unassigned",
+      "path": "ai-stack/platform/harness_sdk_v2.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "production_hardening",
+      "owner": "unassigned",
+      "path": "ai-stack/platform/production_hardening.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "audit_trail",
+      "owner": "unassigned",
+      "path": "ai-stack/security/audit_trail.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "security_hardening",
+      "owner": "unassigned",
+      "path": "ai-stack/security/security_hardening.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "zero_trust",
+      "owner": "unassigned",
+      "path": "ai-stack/security/zero_trust.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "improvement_detector",
+      "owner": "unassigned",
+      "path": "ai-stack/self-improvement/improvement_detector.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "llm_code_reviewer",
+      "owner": "unassigned",
+      "path": "ai-stack/self-improvement/llm_code_reviewer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "switchboard",
+      "owner": "unassigned",
+      "path": "ai-stack/switchboard/switchboard.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "chaos_engineering",
+      "owner": "unassigned",
+      "path": "ai-stack/testing/chaos_engineering.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "performance_benchmarks",
+      "owner": "unassigned",
+      "path": "ai-stack/testing/performance_benchmarks.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "entrypoint_candidate",
+      "module": "property_based_tests",
+      "owner": "unassigned",
+      "path": "ai-stack/testing/property_based_tests.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "schemas",
+      "owner": "unassigned",
+      "path": "ai-stack/trading-agents/schemas.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "coordinator",
+      "owner": "unassigned",
+      "path": "ai-stack/workflows/coordinator.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    },
+    {
+      "action": "classify",
+      "classification": "library_candidate",
+      "module": "context_warmer",
+      "owner": "unassigned",
+      "path": "ai-stack/world-model/context_warmer.py",
+      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
+    }
+  ],
+  "generated_at": "2026-05-24T20:38:52Z",
+  "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
+  "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
+  "version": 1
+}
