@@ -777,7 +777,25 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
 
             for tool_call in tool_calls:
                 if tool_calls_used >= max_tool_calls:
-                    raise RuntimeError(f"local tool-call limit exceeded: {tool_calls_used}>{max_tool_calls}")
+                    return {
+                        "id": body.get("id", f"local-tool-limit-{time.time_ns()}"),
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": body.get("model", "local"),
+                        "choices": [{
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": (
+                                    f"Local tool-call limit reached after {tool_calls_used} calls. "
+                                    "I stopped to avoid an execution loop; any completed tool outputs or files remain available. "
+                                    "Continue with a narrower request or rerun with a higher --max-tools value if more tool work is intentional."
+                                ),
+                            },
+                            "finish_reason": "tool_calls_exhausted",
+                        }],
+                        "usage": body.get("usage", {}),
+                    }, tool_calls_used
                 function_payload = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
                 tool_name = str(function_payload.get("name", "")).strip()
                 tool_call_id = str(tool_call.get("id", "")).strip() or hashlib.md5(
