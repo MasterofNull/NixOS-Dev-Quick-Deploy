@@ -78,6 +78,25 @@ qwen --provider openai --base-url http://localhost:8085/v1 \
   -H "x-ai-profile: local-tool-calling" "..."
 ```
 
+## local-tool-calling Profile (Local Built-in Tool Execution)
+
+Use `local-tool-calling` when the local model should inspect files, run bounded
+health checks, query harness context, or validate a small slice through the
+server-side built-in tool registry. `aq-chat --profile local` selects this lane
+by default; pass `--no-tools` to `aq-chat` only for raw llama.cpp behavior.
+
+Operational guardrails:
+- Keep tool loops bounded (`max_tool_calls` is capped by the caller/profile).
+- Live smoke tests must set explicit curl timeouts; killed clients can leave the
+  local lane busy until the server-side request completes.
+- If a requested tool is unsupported, surface the exact rejection instead of
+  pretending the local model can execute arbitrary commands.
+
+Focused validation:
+```bash
+SWB_TOOL_CALL_TIMEOUT_SECONDS=120 scripts/testing/test-switchboard-local-tool-calling.sh
+```
+
 ## local-agent Profile (Agent Tasks on Local Model)
 
 Use `local-agent` when you want the local model to perform real agent work — PRSI triage,

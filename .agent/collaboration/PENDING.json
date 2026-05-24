@@ -37,9 +37,9 @@
   ],
   "evidence": [
     "tier0: 17/17 PASS (post-rebuild)",
-    "aq-qa: 93 passed · 0 failed · 1 skipped (S2.5 now live)",
-    "LA.1–LA.4 PASS",
-    "S2.1–S2.5 all PASS",
+    "aq-qa: 93 passed \u00b7 0 failed \u00b7 1 skipped (S2.5 now live)",
+    "LA.1\u2013LA.4 PASS",
+    "S2.1\u2013S2.5 all PASS",
     "aq-insights end-to-end: Qwen3 analysis written to .agent/memory/qwen-insights-20260523.md",
     "nix flake check --no-build: CLEAN",
     "ctxSize conflict resolved (lib.mkOverride 1100 in ai-stack.nix)"
@@ -47,13 +47,13 @@
   "guardrails": [
     "Use declarative tmpfiles z/f ownership repair, not one-off chown.",
     "Do not include whitespace-only facts.nix drift.",
-    "Model-specific knobs live in LOCAL-AGENT.md ## Current Model Config only — never scattered in scripts.",
+    "Model-specific knobs live in LOCAL-AGENT.md ## Current Model Config only \u2014 never scattered in scripts.",
     "Dashboard monitoring parity required before any phase is marked complete.",
-    "Gemini scope: bounded discrete tasks only — review all Gemini commits before rebuild (4a08052e exceeded scope)."
+    "Gemini scope: bounded discrete tasks only \u2014 review all Gemini commits before rebuild (4a08052e exceeded scope)."
   ],
   "next": [
-    "aq-homeostasis systemd timer: collect CPU/GPU/RAM/fd → .agent/memory/homeostasis/ → circuit-break switchboard at >95% RAM. Gemini spec pending.",
-    "MTP tuning decision tree: when to raise specDraftNMax 2→3 based on acceptance rate. Gemini assigned.",
+    "aq-homeostasis systemd timer: collect CPU/GPU/RAM/fd \u2192 .agent/memory/homeostasis/ \u2192 circuit-break switchboard at >95% RAM. Gemini spec pending.",
+    "MTP tuning decision tree: when to raise specDraftNMax 2\u21923 based on acceptance rate. Gemini assigned.",
     "Home Manager switch: Playwright availability in user Python env (blocked).",
     "Fix audit labeling: 21,327 rows missing local/remote backend labels (per aq-insights analysis).",
     "Import missing knowledge: greeting query gap (8 occurrences, relevance 0.0)."
@@ -61,30 +61,43 @@
   "support_orchestrator": {
     "status": "monitoring",
     "review_verdict": "COMPLETE. All local model integration features live and validated post-rebuild. aq-insights producing real Qwen3 analysis. Dashboard card + LA/S2 aq-qa gates all passing. qwen-task-eligibility.md renamed to local-agent-task-eligibility.md for full model-agnostic consistency.",
-    "gemini_delegation_note": "Gemini commits 4a08052e and a90ea3cc: reviewed and accepted with fixes (ctxSize conflict + tailwind-language-server invalid pkg). Gemini went beyond scope in 4a08052e — added new domain instruction files, role files, devShells without authorization. All vetted clean but scope guardrail added above.",
+    "gemini_delegation_note": "Gemini commits 4a08052e and a90ea3cc: reviewed and accepted with fixes (ctxSize conflict + tailwind-language-server invalid pkg). Gemini went beyond scope in 4a08052e \u2014 added new domain instruction files, role files, devShells without authorization. All vetted clean but scope guardrail added above.",
     "questions_for_agents": [
-      "Gemini: aq-homeostasis design — CPU/GPU/RAM/fd polling spec + circuit-breaker thresholds?",
-      "Gemini: MTP tuning decision tree — specDraftNMax 2→3 acceptance rate threshold?"
+      "Gemini: aq-homeostasis design \u2014 CPU/GPU/RAM/fd polling spec + circuit-breaker thresholds?",
+      "Gemini: MTP tuning decision tree \u2014 specDraftNMax 2\u21923 acceptance rate threshold?"
     ],
     "reference": ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md"
   },
   "pending_slices": [
     {
-      "updated_at": "2026-05-24T04:23:52Z",
+      "updated_at": "2026-05-24T05:10:00Z",
       "agent": "codex",
       "task": "fix locally hosted model restrictions and validate PRSI execution loop",
       "intent": "Route aq-chat local sessions through the existing Switchboard local-tool-calling profile so the local model receives executable built-in tool schemas instead of only descriptive prompt text.",
       "target_files": [
-        "scripts/ai/aq-chat"
+        "scripts/ai/aq-chat",
+        "ai-stack/switchboard/switchboard.py",
+        "scripts/testing/test-switchboard-local-tool-calling.sh",
+        "docs/agent-guides/20-LOCAL-LLM-USAGE.md",
+        "docs/agent-guides/46-SWITCHBOARD-PROFILES.md",
+        "config/lessons/agentic-slice-lessons.json",
+        "config/env-contract.yaml",
+        "scripts/ai/aq-slice-helper",
+        "docs/agent-guides/61-WORKFLOW-PRACTICES.md"
       ],
       "validation": [
-        "python3 -m py_compile scripts/ai/aq-chat",
-        "scripts/testing/test-switchboard-local-tool-calling.sh",
-        "scripts/testing/check-prsi-phase7-static-gates.sh"
+        "python3 -m py_compile scripts/ai/aq-chat ai-stack/switchboard/switchboard.py scripts/ai/aq-slice-helper",
+        "bash -n scripts/testing/test-switchboard-local-tool-calling.sh",
+        "python3 scripts/ai/aq-chat --help | rg -- --switchboard-url",
+        "SWB_TOOL_CALL_TIMEOUT_SECONDS=120 scripts/testing/test-switchboard-local-tool-calling.sh",
+        "aq-qa 7 --json",
+        "scripts/testing/check-prsi-confidence-calibration.sh",
+        "scripts/ai/aq-slice-helper assess --task \"aq-chat local-tool-calling switchboard validation\" --run --json",
+        "scripts/governance/tier0-validation-gate.sh --pre-commit"
       ],
-      "risk": "medium: changes interactive local chat transport; preserve --no-tools raw llama fallback"
+      "risk": "medium: changes interactive local chat transport and expands switchboard local built-in registry with git inspection/validation tools; preserve --no-tools raw llama fallback"
     }
   ],
-  "last_repaired_at": "2026-05-24T04:30:00Z",
+  "last_repaired_at": "2026-05-24T05:10:00Z",
   "repair_note": "Merged appended JSON object(s) into pending_slices to preserve object-shaped Intent Lock contract."
 }

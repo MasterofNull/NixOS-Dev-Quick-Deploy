@@ -58,7 +58,7 @@ PY
 headers_file="${TMP_DIR}/headers.txt"
 body_file="${TMP_DIR}/body.json"
 http_code="$(
-  curl -sS -D "${headers_file}" -o "${body_file}" \
+  curl -sS --connect-timeout 5 --max-time "${SWB_TOOL_CALL_TIMEOUT_SECONDS:-90}" -D "${headers_file}" -o "${body_file}" \
     -H 'Content-Type: application/json' \
     -H 'X-AI-Profile: local-tool-calling' \
     "${SWB_URL}/v1/chat/completions" \

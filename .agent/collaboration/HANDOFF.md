@@ -301,3 +301,13 @@ Requires `nixos-rebuild switch` to take effect on running coordinator.
 - Initial lessons: managed dashboard service required, cross-surface docs/dashboard contract, dashboard route/card guard, and cheap-before-expensive validation.
 - Exposure: added an `aq-slice-helper` Nix wrapper in `nix/modules/roles/ai-stack.nix`, workflow guidance in `docs/agent-guides/61-WORKFLOW-PRACTICES.md`, and a focused CI contract test.
 - Memory: stored decision fact via `aq-memory` under project `ai-stack`, topic `agentic-tooling`.
+
+## 2026-05-24 Codex handoff — local model operational tool path
+
+- Context: local model answered a system-assessment request by asking the operator to configure command execution instead of using the existing harness path.
+- Root cause found: `aq-chat` routed `--profile local` directly to llama.cpp at `:8080`, so the model received prompt text about tools but no executable tool schema. Switchboard already exposes server-side built-in tool execution through `X-AI-Profile: local-tool-calling`.
+- Slice: updated `scripts/ai/aq-chat` so local sessions use Switchboard `local-tool-calling` by default, pass `chat_template_kwargs.enable_thinking=false`, allow up to 3 server-side tool calls, and keep `--no-tools` for raw llama.cpp sessions.
+- Follow-on: `scripts/ai/aq-slice-helper` now supports leading `KEY=value` environment assignments in lesson commands without shell execution; this was needed for the bounded Switchboard smoke lesson.
+- PRSI status: live queue currently has 26 actions, all rejected/obsolete; no pending or approved PRSI work. `ai-prsi-orchestrator.timer` is active; latest service run at 2026-05-24T04:01:54Z finished successfully with "no actions selected after policy gates". `aq-qa 7 --json` passed 4/0/0, and confidence calibration passed with ECE 0.1020.
+- Validation: `python3 -m py_compile ai-stack/switchboard/switchboard.py scripts/ai/aq-chat scripts/ai/aq-slice-helper`; `python3 scripts/ai/aq-chat --help | rg -- '--switchboard-url|--no-tools'`; `scripts/testing/test-switchboard-local-tool-calling.sh`; `scripts/testing/check-prsi-confidence-calibration.sh`; `scripts/ai/aq-slice-helper assess --task "aq-chat local-tool-calling switchboard validation" --run --json`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed 17/0.
+- Note: context bootstrap suggested `scripts/testing/check-prsi-phase7-static-gates.sh`, `check-prsi-bootstrap-integrity.sh`, and `check-prsi-budget-discipline.sh`, but those files are absent in this checkout; use `aq-qa 7 --json` plus live PRSI scripts instead.

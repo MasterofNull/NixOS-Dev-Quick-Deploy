@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -17,6 +20,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LESSONS = REPO_ROOT / "config" / "lessons" / "agentic-slice-lessons.json"
+ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
 
 RUNTIME_PREFIXES = (
     "ai-stack/",
@@ -49,10 +53,31 @@ class Check:
         }
 
 
+def _split_command(command: str) -> list[str]:
+    return shlex.split(command)
+
+
+def _prepare_command(cmd: list[str]) -> tuple[list[str], dict[str, str] | None]:
+    env_updates: dict[str, str] = {}
+    argv = list(cmd)
+    while argv and ENV_ASSIGNMENT_RE.match(argv[0]):
+        key, value = argv.pop(0).split("=", 1)
+        env_updates[key] = value
+    if not env_updates:
+        return argv, None
+    env = os.environ.copy()
+    env.update(env_updates)
+    return argv, env
+
+
 def run(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess[str]:
+    argv, env = _prepare_command(cmd)
+    if not argv:
+        return subprocess.CompletedProcess(cmd, 127, "", "empty command after environment assignments")
     return subprocess.run(
-        cmd,
+        argv,
         cwd=REPO_ROOT,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -121,19 +146,39 @@ def build_checks(info: dict[str, Any], matched_lessons: list[dict[str, Any]], fu
         checks.append(Check("cross-surface contract", ["python3", "scripts/governance/check-cross-surface-contract.py", "--mode=--pre-commit"]))
     for lesson in matched_lessons:
         for command in lesson.get("commands", []):
-            parts = str(command).split()
+            parts = _split_command(str(command))
             if parts and all(parts != c.command for c in checks):
                 checks.append(Check(f"lesson:{lesson.get('id', 'unknown')}", parts))
     checks.append(Check("diff whitespace", ["git", "diff", "--check"]))
     if full:
         checks.append(Check("tier0 pre-commit", ["scripts/governance/tier0-validation-gate.sh", "--pre-commit"]))
-    return checks
+    deduped: list[Check] = []
+    seen: set[tuple[str, ...]] = set()
+    for check in checks:
+        key = tuple(check.command)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(check)
+    return deduped
+
+
+def _timeout_for_check(check: Check) -> int:
+    if "tier0" in check.name:
+        return 180
+    for part in check.command:
+        if part.startswith("SWB_TOOL_CALL_TIMEOUT_SECONDS="):
+            try:
+                return max(60, int(part.split("=", 1)[1]) + 30)
+            except ValueError:
+                return 150
+    return 60
 
 
 def execute_checks(checks: list[Check]) -> None:
     for check in checks:
         try:
-            result = run(check.command, timeout=180 if "tier0" in check.name else 60)
+            result = run(check.command, timeout=_timeout_for_check(check))
             check.exit_code = result.returncode
             check.output = result.stdout.strip()
             check.status = "PASS" if result.returncode == 0 else "FAIL"

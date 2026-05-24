@@ -629,6 +629,7 @@ def _load_local_tool_registry():
         from builtin_tools.ai_coordination import register_ai_coordination_tools
         from builtin_tools.computer_use import register_computer_use_tools
         from builtin_tools.file_operations import register_file_tools
+        from builtin_tools.git_tools import register_git_tools
         from builtin_tools.shell_tools import register_shell_tools
     except Exception as exc:
         raise RuntimeError(f"failed to import local agent tooling from {LOCAL_AGENTS_PATH}: {exc}") from exc
@@ -637,6 +638,7 @@ def _load_local_tool_registry():
     if not registry.tools:
         register_file_tools(registry)
         register_shell_tools(registry)
+        register_git_tools(registry)
         register_ai_coordination_tools(registry)
         register_computer_use_tools(registry)
     _LOCAL_TOOL_REGISTRY = (registry, ToolCall)
