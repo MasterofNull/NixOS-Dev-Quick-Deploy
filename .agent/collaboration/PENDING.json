@@ -70,6 +70,25 @@
   },
   "pending_slices": [
     {
+      "updated_at": "2026-05-24T16:00:04Z",
+      "agent": "codex",
+      "task": "implement switchboard tool working-set GC",
+      "intent": "Classify local tool-calling requests before tool injection, hot-load only the relevant built-in tool bundle, allow zero-tool conversational turns, and expose working-set telemetry for local and remote profile policy.",
+      "target_files": [
+        "ai-stack/switchboard/switchboard.py",
+        "nix/modules/services/switchboard.nix",
+        "config/env-contract.yaml",
+        "scripts/testing/test-switchboard-tool-working-set-gc.py",
+        ".agent/PROJECT-TOOL-WORKING-SET-GC-PRD.md"
+      ],
+      "validation": [
+        "python -m py_compile ai-stack/switchboard/switchboard.py scripts/testing/test-switchboard-tool-working-set-gc.py",
+        "python scripts/testing/test-switchboard-tool-working-set-gc.py",
+        "scripts/governance/tier0-validation-gate.sh --pre-commit"
+      ],
+      "risk": "medium: changes default local-tool-calling schema injection; explicit tools must remain authoritative"
+    },
+    {
       "updated_at": "2026-05-24T05:10:00Z",
       "agent": "codex",
       "task": "fix locally hosted model restrictions and validate PRSI execution loop",
