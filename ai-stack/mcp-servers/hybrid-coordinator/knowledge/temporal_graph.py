@@ -353,8 +353,8 @@ def _row_to_dict(row: Any) -> Dict[str, Any]:
         "subject": row["subject"] if hasattr(row, "__getitem__") else getattr(row, "subject", ""),
         "predicate": row["predicate"] if hasattr(row, "__getitem__") else getattr(row, "predicate", ""),
         "object": row["object"] if hasattr(row, "__getitem__") else getattr(row, "object", ""),
-        "valid_from": valid_from.isoformat() if hasattr(valid_from, "isoformat") else str(valid_from or ""),
-        "valid_to": valid_to.isoformat() if hasattr(valid_to, "isoformat") else (None if valid_to is None else str(valid_to)),
+        "valid_from": valid_from.isoformat() if valid_from is not None else "",
+        "valid_to": valid_to.isoformat() if valid_to is not None else None,
         "source": row["source"] if hasattr(row, "__getitem__") else getattr(row, "source", None),
         "status": "active" if valid_to is None else "superseded",
     }

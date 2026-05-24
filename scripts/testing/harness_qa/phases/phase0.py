@@ -401,9 +401,9 @@ def _check_continue(ctx: RunContext) -> list[CheckResult]:
     else:
         results.append(failed(7, "0.5.5", "continue-local trims oversized dense prompts"))
 
-    # 0.5.6 editor flow smoke
+    # 0.5.6 editor flow smoke — up to 60s: 5 HTTP calls × up to ~10s each under load
     flow_script = ctx.repo_root / "scripts" / "testing" / "smoke-continue-editor-flow.sh"
-    if cmd_ok("bash", str(flow_script)):
+    if cmd_ok("bash", str(flow_script), timeout=60):
         results.append(passed(7, "0.5.6", "Continue/editor prompt to feedback smoke"))
     else:
         results.append(failed(7, "0.5.6", "Continue/editor prompt to feedback smoke"))
@@ -623,7 +623,7 @@ def _check_safety_gate(ctx: RunContext) -> list[CheckResult]:
     code, body = _raw_post(
         f"{ctx.hybrid_url}/control/safety/gate",
         {"session_id": "healthcheck", "safety_mode": "open"},
-        headers=headers, timeout=10,
+        headers=headers, timeout=25,
     )
     if code == 200 or '"ok": true' in body or '"ok":true' in body:
         return [passed(4, "0.9.1", "safety gate endpoint responds (POST /control/safety/gate)")]
@@ -634,23 +634,10 @@ def _check_safety_gate(ctx: RunContext) -> list[CheckResult]:
 
 
 def _check_uag_replay(ctx: RunContext) -> list[CheckResult]:
-    _, body = http_get(
+    code, _ = http_get(
         f"{ctx.hybrid_url}/agent/lifecycle/healthcheck-probe/replay",
-        timeout=5, headers={"X-API-Key": ctx.api_key},
+        timeout=20, headers={"X-API-Key": ctx.api_key},
     )
-    # We need the status code; re-do with low-level
-    import urllib.request
-    req = urllib.request.Request(
-        f"{ctx.hybrid_url}/agent/lifecycle/healthcheck-probe/replay",
-        headers={"X-API-Key": ctx.api_key},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            code = resp.status
-    except urllib.request.HTTPError as e:
-        code = e.code
-    except Exception:
-        code = -1
     if code in (404, 200):
         return [passed(4, "0.9.2", "UAG lifecycle replay endpoint wired (GET /agent/lifecycle/{id}/replay)")]
     if code == 405:

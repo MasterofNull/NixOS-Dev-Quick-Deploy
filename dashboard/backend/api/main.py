@@ -350,6 +350,7 @@ async def websocket_agent_state(websocket: WebSocket):
                     await websocket.send_json({"type": "state_delta", "path": "agent_events[-1]", "value": ev})
                 if new_events:
                     try:
+                        import dateutil.parser  # type: ignore  # noqa: PLC0415
                         for ev in new_events:
                             last_ts = max(last_ts, dateutil.parser.parse(ev.get("timestamp", "")).timestamp())
                     except Exception:
