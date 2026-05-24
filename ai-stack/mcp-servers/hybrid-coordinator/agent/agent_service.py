@@ -204,28 +204,31 @@ async def handle_agent_events_post(request: web.Request) -> web.Response:
     })
 
 
-async def handle_agent_events_get(request: web.Request) -> web.Response:
-    """GET /api/agent-events — recent events from tool-audit.jsonl."""
-    try:
-        limit = min(int(request.rel_url.query.get("limit", "20")), 100)
-    except (ValueError, TypeError):
-        limit = 20
-    filter_type     = request.rel_url.query.get("event_type", "")
-    filter_sub_type = request.rel_url.query.get("sub_type", "")
-    try:
-        window_s = int(request.rel_url.query.get("window_s", "86400"))
-    except (ValueError, TypeError):
-        window_s = 86400
+_AUDIT_TAIL_BYTES = 512 * 1024  # read at most the last 512 KB — avoids 359 MB readlines()
 
-    audit_log = os.getenv(
-        "TOOL_AUDIT_LOG_PATH",
-        "/var/log/ai-audit-sidecar/tool-audit.jsonl",
-    )
+
+def _read_audit_tail_sync(
+    audit_log: str,
+    limit: int,
+    filter_type: str,
+    filter_sub_type: str,
+    window_s: int,
+) -> list:
+    """Blocking helper — MUST be called via asyncio.to_thread().
+
+    Tail-reads the last _AUDIT_TAIL_BYTES of the JSONL log so we never load
+    the full file (currently 359 MB) into memory on every poll request.
+    """
+    from datetime import datetime as _dt
     now = time.time()
-    events = []
+    events: list = []
     try:
         with open(audit_log, "r", encoding="utf-8", errors="replace") as _fh:
-            lines = _fh.readlines()
+            _fh.seek(0, 2)  # seek to end
+            file_size = _fh.tell()
+            _fh.seek(max(0, file_size - _AUDIT_TAIL_BYTES))
+            chunk = _fh.read()
+        lines = chunk.splitlines()
         for raw in reversed(lines):
             raw = raw.strip()
             if not raw:
@@ -238,7 +241,6 @@ async def handle_agent_events_get(request: web.Request) -> web.Response:
                 continue
             ts_str = entry.get("timestamp", "")
             try:
-                from datetime import datetime as _dt, timezone as _tz
                 ts = _dt.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
             except Exception:
                 continue
@@ -264,6 +266,30 @@ async def handle_agent_events_get(request: web.Request) -> web.Response:
                 break
     except OSError:
         pass
+    return events
+
+
+async def handle_agent_events_get(request: web.Request) -> web.Response:
+    """GET /api/agent-events — recent events from tool-audit.jsonl."""
+    try:
+        limit = min(int(request.rel_url.query.get("limit", "20")), 100)
+    except (ValueError, TypeError):
+        limit = 20
+    filter_type     = request.rel_url.query.get("event_type", "")
+    filter_sub_type = request.rel_url.query.get("sub_type", "")
+    try:
+        window_s = int(request.rel_url.query.get("window_s", "86400"))
+    except (ValueError, TypeError):
+        window_s = 86400
+
+    audit_log = os.getenv(
+        "TOOL_AUDIT_LOG_PATH",
+        "/var/log/ai-audit-sidecar/tool-audit.jsonl",
+    )
+    # Run blocking file I/O in a thread — never block the aiohttp event loop.
+    events = await asyncio.to_thread(
+        _read_audit_tail_sync, audit_log, limit, filter_type, filter_sub_type, window_s
+    )
     return web.json_response({"events": events, "total_in_window": len(events)})
 
 

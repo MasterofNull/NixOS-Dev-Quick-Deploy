@@ -270,9 +270,26 @@ Root-cause analysis from journal after rebuild degradation:
    Not fixed in code — embedding service (llama-cpp-embed) is healthy now. The timeouts from
    the earlier session were a transient post-rebuild cold-start issue. Monitor `journalctl -u llama-cpp-embed`.
 
+### Stability fix 5 — `/api/agent-events` blocks coordinator event loop (2026-05-23)
+Root cause: `handle_agent_events_get` in `agent/agent_service.py` called `open(...).readlines()`
+synchronously on a 359 MB JSONL audit log, taking ~19s and blocking the entire aiohttp event loop.
+Impact: every `aq-qa 69` run had 69.1 (WebSocket → triggers dashboard WS poll → coordinator
+`/api/agent-events`) complete first; coordinator then unresponsive for 15s+ → 69.3 skip.
+
+Fix:
+- Extracted sync I/O into `_read_audit_tail_sync()` helper that tail-reads last 512 KB only
+- Wrapped with `asyncio.to_thread()` in `handle_agent_events_get` — event loop never blocked
+- Read time: 19s → 14ms
+
+Requires `nixos-rebuild switch` to take effect on running coordinator.
+
+### Current status (2026-05-23 post-restart)
+- `aq-qa 0`: 99 PASS, 0 FAIL, 4 SKIP (0.5.7/0.8.1/S2.5 need rebuild; 66.1.c needs nix develop .#full)
+- `aq-qa 69`: 3 PASS, 0 FAIL, 1 SKIP (69.3 pending nixos-rebuild for agent_service fix)
+
 ### Next session
-- Run: `systemctl restart ai-dashboard` + `nixos-rebuild switch` → then `aq-qa 69` + `aq-qa 0`
-- Expected: 0.9.1 PASS, 0.9.2 PASS, 0.5.6 PASS after nixos-rebuild picks up lifecycle_fsm fix
+- Run: `systemctl restart ai-dashboard` + `nixos-rebuild switch`
+  → then `aq-qa 69` — expect 4/4 PASS once agent_service tail-read is deployed
 - AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
 - Orphan audit P3 backlog: 221 reg gaps, 187 zero-import modules (aq-integrity-scan)
 - Phase 70 (check PRD: PHASE-68-70-AIOS-CONTINUITY-PRD.md)
