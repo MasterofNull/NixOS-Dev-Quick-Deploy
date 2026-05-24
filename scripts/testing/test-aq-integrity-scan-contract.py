@@ -50,6 +50,11 @@ def main():
         (root / "ai-stack" / "tests" / "test_not_dead_code.py").write_text("def test_example():\n    pass\n", encoding="utf-8")
         (root / "ai-stack" / "production_orphan.py").write_text("VALUE = 1\n", encoding="utf-8")
         (root / "ai-stack" / "known_orphan.py").write_text("VALUE = 2\n", encoding="utf-8")
+        (root / "ai-stack" / "referenced_orphan.py").write_text("VALUE = 3\n", encoding="utf-8")
+        (root / "scripts" / "runner.py").write_text(
+            "RUNTIME = 'ai-stack/referenced_orphan.py'\n",
+            encoding="utf-8",
+        )
         baseline = root / "config" / "aq-integrity-logical-orphans.json"
         baseline.parent.mkdir()
         baseline.write_text(
@@ -88,6 +93,14 @@ def main():
         assert_true("test_not_dead_code" not in logical_modules, "logical orphan scan should ignore tests")
         first_logical = result["findings"]["logical_orphans"][0]
         assert_true("path" in first_logical and "classification" in first_logical, "logical findings need path and classification")
+        by_path = {item["path"]: item for item in result["findings"]["logical_orphans"]}
+        referenced = by_path["ai-stack/referenced_orphan.py"]
+        assert_true(
+            referenced["classification"] == "referenced_entrypoint_candidate",
+            "text-referenced modules should be classified separately",
+        )
+        assert_true(referenced["external_reference_count"] >= 1, "expected external reference accounting")
+        assert_true(referenced["reference_examples"] == ["scripts/runner.py"], "expected stable reference example")
         new_paths = [item["path"] for item in result["findings"]["new_logical_orphans"]]
         assert_true("ai-stack/production_orphan.py" in new_paths, "unbaselined logical orphan should be new")
         assert_true("ai-stack/known_orphan.py" not in new_paths, "baselined logical orphan should not be new")

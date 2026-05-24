@@ -17,7 +17,7 @@ def main() -> int:
             str(SCANNER),
             "--json",
             "--timeout-seconds",
-            "10",
+            "18",
             "--max-files",
             "5000",
             "--max-logical-files",
@@ -27,7 +27,7 @@ def main() -> int:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=25,
     )
     try:
         payload = json.loads(proc.stdout)
@@ -37,6 +37,11 @@ def main() -> int:
         return proc.returncode or 1
 
     counts = payload.get("meta", {}).get("finding_counts", {})
+    if payload.get("meta", {}).get("truncated"):
+        warnings = ", ".join(payload.get("meta", {}).get("warnings", []))
+        print(f"aq-integrity logical baseline scan truncated: {warnings}", file=sys.stderr)
+        return 3
+
     new_items = payload.get("findings", {}).get("new_logical_orphans", [])
     print(
         "aq-integrity logical baseline: "

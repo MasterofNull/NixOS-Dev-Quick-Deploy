@@ -30,6 +30,24 @@ DEFAULT_MAX_LOGICAL_FILES = 1500
 DEFAULT_LOGICAL_BASELINE = REPO_ROOT / "config/aq-integrity-logical-orphans.json"
 ENTRYPOINT_NAMES = {"server", "autonomous_loop", "agent_executor", "checkpoint_service"}
 DOC_SCAN_EXCLUDED_PARTS = {"collaboration", "scratchpad", "archive"}
+REFERENCE_EXTENSIONS = {".py", ".sh", ".nix", ".md", ".json", ".yaml", ".yml", ".toml", ".js", ".ts"}
+REFERENCE_EXCLUDED_PARTS = {
+    ".git",
+    ".agents",
+    "__pycache__",
+    "node_modules",
+    "result",
+}
+REFERENCE_EXCLUDED_FILES = {
+    "config/aq-integrity-logical-orphans.json",
+}
+REFERENCE_EXCLUDED_PREFIXES = (
+    ".agent/collaboration/",
+    ".agent/archive/",
+    ".agents/scratchpad/",
+    "archive/",
+    "docs/archive/",
+)
 
 class IntegrityScanner:
     def __init__(
@@ -47,6 +65,7 @@ class IntegrityScanner:
         self.max_logical_files = max(1, int(max_logical_files))
         self.include_logical = include_logical
         self.logical_baseline = logical_baseline
+        self._text_cache: dict[Path, str] = {}
         self.findings = self._empty_findings()
         self.meta = {
             "version": "2.0",
@@ -58,6 +77,7 @@ class IntegrityScanner:
             "files_skipped": 0,
             "logical_files_ignored": 0,
             "logical_baseline_entries": 0,
+            "logical_reference_files_scanned": 0,
             "truncated": False,
             "warnings": [],
         }
@@ -75,8 +95,12 @@ class IntegrityScanner:
         return (time.monotonic() - self.started_at) >= self.timeout_seconds
 
     def _safe_read_text(self, path: Path) -> str:
+        if path in self._text_cache:
+            return self._text_cache[path]
         try:
-            return path.read_text(encoding="utf-8", errors="replace")
+            content = path.read_text(encoding="utf-8", errors="replace")
+            self._text_cache[path] = content
+            return content
         except OSError as exc:
             self.meta["warnings"].append(f"read_failed:{path}:{exc}")
             return ""
@@ -177,17 +201,21 @@ class IntegrityScanner:
             if not self._ignore_logical_file(f)
         )
         py_names = {f.stem for f in all_py_files if f.name != "__init__.py"}
-        
         import_map = {name: 0 for name in py_names}
         
-        for py_file in all_py_files:
+        reference_files = self._logical_reference_files()
+        py_reference_files = [
+            path for path in reference_files
+            if path.suffix == ".py" or (path.parent == SCRIPTS_AI and path.name.startswith("aq-"))
+        ]
+        for py_file in py_reference_files:
             if self._deadline_exceeded():
                 self.meta["truncated"] = True
                 self.meta["warnings"].append("logical_scan_timeout_reached")
-                break
+                return
             imported_names = self._imported_module_names(py_file)
             for name in imported_names & py_names:
-                if py_file.stem != name:
+                if not (py_file.is_relative_to(AI_STACK) and py_file.stem == name):
                     import_map[name] += 1
 
         baseline_paths = self._logical_baseline_paths()
@@ -198,19 +226,94 @@ class IntegrityScanner:
             if count == 0:
                 if name in ENTRYPOINT_NAMES:
                     continue
+                reference_examples = self._text_reference_examples(py_file, reference_files)
+                if self._deadline_exceeded():
+                    self.meta["truncated"] = True
+                    self.meta["warnings"].append("reference_example_timeout_reached")
+                    return
+                external_reference_count = len(reference_examples)
                 rel_path = str(py_file.relative_to(REPO_ROOT))
                 item = {
                     "module": name,
                     "path": rel_path,
-                    "classification": self._classify_logical_orphan(py_file),
-                    "reason": "Module exists but has 0 inbound imports in ai-stack (potential dead code)"
+                    "classification": self._classify_logical_orphan(py_file, external_reference_count),
+                    "inbound_imports": count,
+                    "external_reference_count": external_reference_count,
+                    "reference_examples": reference_examples,
+                    "reason": "Module exists but has 0 inbound imports from scanned Python files"
                 }
                 self.findings["logical_orphans"].append(item)
                 if baseline_paths is not None and rel_path not in baseline_paths:
                     self.findings["new_logical_orphans"].append(item)
 
+    def _logical_reference_files(self) -> List[Path]:
+        selected: List[Path] = []
+        candidate_paths: List[Path] = []
+        reference_roots = (
+            AI_STACK,
+            REPO_ROOT / "scripts",
+            REPO_ROOT / "tests",
+            REPO_ROOT / "nix",
+            REPO_ROOT / "dashboard/backend",
+            REPO_ROOT / "config",
+            REPO_ROOT / ".agent/skills",
+        )
+        reference_files = (
+            REPO_ROOT / "AGENTS.md",
+        )
+        for root in reference_roots:
+            if root.exists():
+                candidate_paths.extend(root.glob("**/*"))
+        candidate_paths.extend(path for path in reference_files if path.exists())
+        for path in sorted(candidate_paths):
+            if self._deadline_exceeded():
+                self.meta["truncated"] = True
+                self.meta["warnings"].append("reference_scan_timeout_reached")
+                break
+            if len(selected) >= self.max_files:
+                self.meta["truncated"] = True
+                self.meta["warnings"].append("reference_file_limit_reached")
+                break
+            is_harness_cli = path.parent == SCRIPTS_AI and path.name.startswith("aq-")
+            if not path.is_file() or (path.suffix not in REFERENCE_EXTENSIONS and not is_harness_cli):
+                continue
+            if self._ignore_reference_file(path):
+                continue
+            selected.append(path)
+        self.meta["logical_reference_files_scanned"] = len(selected)
+        return selected
+
+    def _ignore_reference_file(self, path: Path) -> bool:
+        try:
+            rel = str(path.relative_to(REPO_ROOT))
+        except ValueError:
+            rel = str(path)
+        if rel in REFERENCE_EXCLUDED_FILES:
+            return True
+        if any(rel.startswith(prefix) for prefix in REFERENCE_EXCLUDED_PREFIXES):
+            return True
+        return any(part in REFERENCE_EXCLUDED_PARTS for part in path.parts)
+
+    def _text_reference_examples(self, target: Path, reference_files: List[Path]) -> List[str]:
+        rel = str(target.relative_to(REPO_ROOT))
+        name = target.name
+        examples: List[str] = []
+        for ref_file in reference_files:
+            if self._deadline_exceeded():
+                break
+            if ref_file == target:
+                continue
+            content = self._safe_read_text(ref_file)
+            if rel in content or name in content:
+                examples.append(str(ref_file.relative_to(REPO_ROOT)))
+            if len(examples) >= 5:
+                break
+        return examples
+
     def _imported_module_names(self, path: Path) -> set[str]:
         content = self._safe_read_text(path)
+        if path.suffix != ".py":
+            return set(re.findall(r'^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)\b', content, flags=re.MULTILINE))
         try:
             tree = ast.parse(content, filename=str(path))
         except SyntaxError:
@@ -247,9 +350,13 @@ class IntegrityScanner:
         self.meta["logical_baseline_entries"] = len(paths)
         return paths
 
-    def _classify_logical_orphan(self, path: Path) -> str:
+    def _classify_logical_orphan(self, path: Path, external_reference_count: int = 0) -> str:
         content = self._safe_read_text(path)
         stem = path.stem
+        if external_reference_count:
+            return "referenced_entrypoint_candidate"
+        if path.is_relative_to(AI_STACK / "agents/skills"):
+            return "skill_asset_candidate"
         if "__main__" in content or content.startswith("#!"):
             return "entrypoint_candidate"
         if stem.endswith(("_service", "_daemon", "_server", "_cli", "_agent", "_manager")):
@@ -284,11 +391,13 @@ class IntegrityScanner:
 
     def run(self):
         self.started_at = time.monotonic()
+        self._text_cache = {}
         self.findings = self._empty_findings()
         self.meta["files_scanned"] = 0
         self.meta["files_skipped"] = 0
         self.meta["logical_files_ignored"] = 0
         self.meta["logical_baseline_entries"] = 0
+        self.meta["logical_reference_files_scanned"] = 0
         self.meta["truncated"] = False
         self.meta["warnings"] = []
         self.scan_doc_consistency()
@@ -336,16 +445,35 @@ class IntegrityScanner:
             "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
             "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
             "entries": [
-                {
-                    "path": item["path"],
-                    "module": item["module"],
-                    "classification": item["classification"],
-                    "owner": "unassigned",
-                    "action": "classify",
-                    "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline.",
-                }
+                self._baseline_entry(item)
                 for item in sorted(self.findings["logical_orphans"], key=lambda entry: entry["path"])
             ],
+        }
+
+    def _baseline_entry(self, item):
+        classification = item["classification"]
+        action = "classify"
+        rationale = "Existing zero-inbound import candidate captured as technical-debt baseline."
+        if classification == "referenced_entrypoint_candidate":
+            action = "verify-entrypoint-coverage"
+            refs = ", ".join(item.get("reference_examples", [])[:3])
+            rationale = f"Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: {refs}"
+        elif classification == "skill_asset_candidate":
+            action = "keep-skill-asset"
+            rationale = "Bundled skill asset invoked by skill workflows or templates; not expected to have inbound ai-stack imports."
+        elif classification == "entrypoint_candidate":
+            action = "verify-entrypoint-wiring"
+            rationale = "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
+        elif classification == "runtime_component_candidate":
+            action = "wire-or-cover-runtime-component"
+            rationale = "Runtime-shaped component needs explicit service wiring, aq-qa coverage, or removal."
+        return {
+            "path": item["path"],
+            "module": item["module"],
+            "classification": classification,
+            "owner": "unassigned",
+            "action": action,
+            "rationale": rationale,
         }
 
 def main():

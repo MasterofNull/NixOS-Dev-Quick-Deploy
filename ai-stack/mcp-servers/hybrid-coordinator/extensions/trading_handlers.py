@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import sys
 import os
+import importlib.util
+from pathlib import Path
 from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
@@ -180,13 +182,14 @@ async def handle_trading_debate(request: Any) -> Any:
 
     try:
         # Build partial state from request body
-        from ...trading_agents.graph.state import AgentState
+        _ensure_trading_agents_package()
+        from trading_agents.graph.state import AgentState  # type: ignore
         state = AgentState(**{k: v for k, v in body.items() if k in AgentState.__annotations__})
 
         graph = _get_graph()
         # Run one debate round
-        from ...trading_agents.researchers.bull_researcher import run_bull_researcher
-        from ...trading_agents.researchers.bear_researcher import run_bear_researcher
+        from trading_agents.researchers.bull_researcher import run_bull_researcher  # type: ignore
+        from trading_agents.researchers.bear_researcher import run_bear_researcher  # type: ignore
         state = run_bull_researcher(state, graph._llm)
         state = run_bear_researcher(state, graph._llm)
 
@@ -324,13 +327,25 @@ async def handle_trading_tools(request: Any) -> Any:
 
 def _get_graph(analyst_types: Optional[list] = None) -> Any:
     """Lazy-load the TradingGraph to avoid import cost at startup."""
-    # Build path relative to this file's location
-    coordinator_dir = os.path.dirname(os.path.abspath(__file__))
-    ai_stack_dir = os.path.dirname(os.path.dirname(coordinator_dir))
-    trading_agents_dir = os.path.join(ai_stack_dir, "trading-agents")
-
-    if trading_agents_dir not in sys.path:
-        sys.path.insert(0, ai_stack_dir)
-
+    _ensure_trading_agents_package()
     from trading_agents.graph.trading_graph import TradingGraph  # type: ignore
     return TradingGraph(analyst_types=analyst_types)
+
+
+def _ensure_trading_agents_package() -> None:
+    """Expose the hyphenated trading-agents directory as importable trading_agents."""
+    if "trading_agents" in sys.modules:
+        return
+    trading_agents_dir = str(Path(__file__).resolve().parents[3] / "trading-agents")
+
+    init_file = os.path.join(trading_agents_dir, "__init__.py")
+    spec = importlib.util.spec_from_file_location(
+        "trading_agents",
+        init_file,
+        submodule_search_locations=[trading_agents_dir],
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load trading_agents package from {trading_agents_dir}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["trading_agents"] = module
+    spec.loader.exec_module(module)

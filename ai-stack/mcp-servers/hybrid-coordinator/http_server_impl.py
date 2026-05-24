@@ -2178,12 +2178,17 @@ async def run_http_mode(port: int) -> None:
                         from signal_detectors import SignalDetectors as _SigDet  # noqa: PLC0415
                         from state_model import AffectiveState as _AffState  # noqa: PLC0415
                         from output_modulator import OutputModulator as _OutMod  # noqa: PLC0415
+                        from reciprocity_tracker import ReciprocityTracker as _RecTrack  # noqa: PLC0415
                         _req_ctx = {"query": query}
                         _det = _SigDet()
+                        _session_id = request.headers.get("X-Session-ID") or iid or "default"
+                        _reciprocity = _RecTrack()
+                        _reciprocity.record_give(_session_id, 1.0)
                         _state = _AffState(
                             empathy_signal=_det.detect_empathy(_req_ctx),
                             compassion_level=_det.detect_compassion(_req_ctx),
                             aesthetic_gap=_det.detect_aesthetic_gap(result.get("response", "")),
+                            reciprocity_debt=_reciprocity.get_debt(_session_id),
                         )
                         result["response"] = _OutMod().modulate(result["response"], _state)
                         # Cache state snapshot for /affective/state endpoint
