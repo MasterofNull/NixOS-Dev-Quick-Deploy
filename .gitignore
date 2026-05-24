@@ -119,6 +119,7 @@ data/prsi-artifacts/runs/
 **/nixos-ai-stack/telemetry/hybrid-events.jsonl
 data/registry/
 data/dashboard/
+data/hybrid/
 
 # BUT: Keep federated learning data in repo
 !data/
