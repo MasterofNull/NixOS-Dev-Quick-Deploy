@@ -4,6 +4,26 @@
 **Created**: 2025-12-21
 **Type**: MCP Server (Model Context Protocol)
 
+> **Architectural Status (2026-05-23): UNDEPLOYED / PRE-NIXOS SCAFFOLD**
+>
+> This directory was designed for a Podman/Docker-based deployment and is NOT wired into the
+> current NixOS stack. Key incompatibilities:
+>
+> - `self_healing_daemon.py` depends on `PodmanAPIClient` — incompatible with NixOS systemd.
+> - Port references in this README are stale (AIDB=8091, hybrid=8092 are wrong; correct values
+>   are in `nix/modules/core/options.nix`).
+> - References to Ollama, MindsDB, and Podman are pre-migration artifacts; not in the current stack.
+>
+> **NixOS self-healing is implemented via systemd restart policies:**
+> - `llama-cpp`, `llama-cpp-embed`: `Restart=on-failure RestartSec=5s` (ai-stack.nix)
+> - `ai-hybrid-coordinator`, `ai-aidb`, `ai-ralph-wiggum`: `Restart=on-failure RestartSec=10s`
+>   (mcp-servers.nix `commonServiceConfig`)
+> - `ai-switchboard`: `Restart=on-failure` (switchboard.nix)
+> - `llama-cpp-resume`: systemd sleep hook restarts llama.cpp after suspend
+>
+> If you want to activate `self_healing_daemon.py`, it must first be ported from PodmanAPIClient
+> to systemd D-Bus or `systemctl` subprocess calls. Track in PRSI queue before starting.
+
 ## Overview
 
 The Health Monitoring MCP Server provides continuous health monitoring capabilities for the NixOS Hybrid AI Learning Stack. It exposes tools that agents can use to check service health, collect metrics, and identify issues.

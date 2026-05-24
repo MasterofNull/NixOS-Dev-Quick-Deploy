@@ -19,6 +19,8 @@
 | **switchboard**        | `http://127.0.0.1:8085` | LLM routing + profile injection       |
 | **dashboard**          | `http://127.0.0.1:8889` | AI Command Center UI + API            |
 
+> Canonical SSOT: `nix/modules/core/options.nix` — these are defaults; actual values injected via env vars at runtime.
+
 **CRITICAL — Physical limits (Renoir APU, 27 GB RAM):**
 - Max GPU layers: 12. Max context: 4096 tokens default. Max draft tokens: 2 (MTP).
 - Always set `enable_thinking: false` in llama.cpp requests or responses will be empty.

@@ -10,6 +10,13 @@ This file provides guidance to whichever locally hosted model fills the **local 
 **Currently running:** Qwen3-35B (unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL)
 **Full policy, workflow contracts → `AGENTS.md` (repo root)**
 
+## Service Ports (defaults — canonical SSOT: `nix/modules/core/options.nix`)
+```
+llama:8080  embed:8081  aidb:8002  hybrid:8003  ralph:8004  swb:8085  dash:8889
+```
+All curl examples in this file use these defaults. Actual values come from the NixOS config at
+runtime via env vars — never hardcode ports in code or shell scripts.
+
 ---
 
 ## Operating Philosophy
