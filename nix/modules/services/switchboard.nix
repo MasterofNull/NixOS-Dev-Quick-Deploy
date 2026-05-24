@@ -408,7 +408,6 @@ let
       uvicorn
       httpx
     ]);
-
 in {
   config = lib.mkIf (cfg.roles.aiStack.enable && swb.enable) {
     systemd.services.ai-switchboard = {
@@ -430,6 +429,7 @@ in {
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
+          "LLAMA_CTX_SIZE=${toString ai.llamaCpp.ctxSize}"
           "EMBEDDING_URL=${embeddingUrl}"
           "ROUTING_MODE=${swb.routingMode}"
           "DEFAULT_PROVIDER=${swb.defaultProvider}"
@@ -483,7 +483,7 @@ in {
           "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
           # Must match --parallel N in facts.nix llamaCpp.extraArgs so the
           # switchboard concurrency ceiling matches llama.cpp's slot count.
-          "SWB_LOCAL_CONCURRENCY=2"
+          "SWB_LOCAL_CONCURRENCY=1"
           "SWB_PROFILE_CATALOG_YAML_FILE=${repoPath}/config/switchboard-profiles.yaml"
           "SWB_PROFILE_CATALOG_JSON_FILE=${switchboardProfileCatalogFile}"
           "HYBRID_COORDINATOR_URL=${hybridUrl}"

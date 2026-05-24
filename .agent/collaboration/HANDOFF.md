@@ -336,6 +336,37 @@ after rebuild gives 8192 ctx, 5000+1024=6024 fits with headroom.
 - Validation: `python3 -m py_compile ai-stack/switchboard/switchboard.py scripts/ai/aq-chat scripts/ai/aq-slice-helper`; `python3 scripts/ai/aq-chat --help | rg -- '--switchboard-url|--no-tools'`; `scripts/testing/test-switchboard-local-tool-calling.sh`; `scripts/testing/check-prsi-confidence-calibration.sh`; `scripts/ai/aq-slice-helper assess --task "aq-chat local-tool-calling switchboard validation" --run --json`; `scripts/governance/tier0-validation-gate.sh --pre-commit` passed 17/0.
 - Note: context bootstrap suggested `scripts/testing/check-prsi-phase7-static-gates.sh`, `check-prsi-bootstrap-integrity.sh`, and `check-prsi-budget-discipline.sh`, but those files are absent in this checkout; use `aq-qa 7 --json` plus live PRSI scripts instead.
 
+## 2026-05-24 Session — Local Tool Context + Tree Search Latency
+
+### Completed
+
+- Fixed local `aq-chat`/Switchboard context overflow by deploying llama.cpp as one full-context slot:
+  - `nix/hosts/hyperd/facts.nix`: `llamaCpp.ctxSize = 16384`, `--parallel 1`
+  - `nix/modules/services/switchboard.nix`: `LLAMA_CTX_SIZE=16384`, `SWB_LOCAL_CONCURRENCY=1`
+  - `ai-stack/switchboard/switchboard.py`: local-tool-calling default input budget raised to 12000
+  - `scripts/ai/aq-chat`: configurable `--max-tools`, compact `BEHAVIORAL RULES` marker retained for LA.4
+- Deployed with `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`.
+- Verified live runtime:
+  - `llama-cpp.service`: `--ctx-size 16384 --parallel 1`
+  - `/slots`: `n_ctx=16384`, `total_slots=1`
+  - Switchboard `local-tool-calling`: `advertisedContextWindow=16384`, `maxInputTokens=12000`
+  - Local-tool-calling smoke: `"how are you today?"` returned a normal answer, no 502/context overflow
+- Fixed `tree_search` branch latency root cause:
+  - `SearchRouter.tree_search()` now runs each depth's branch batch concurrently with `asyncio.gather`
+  - Added regression coverage proving depth branches run concurrently
+
+### Validation
+
+- `python -m py_compile scripts/ai/aq-chat ai-stack/switchboard/switchboard.py ai-stack/mcp-servers/hybrid-coordinator/knowledge/search_router.py ai-stack/mcp-servers/hybrid-coordinator/tests/test_search_router_reranking.py`
+- `PYTHONPATH=ai-stack/mcp-servers/hybrid-coordinator/knowledge pytest -q ai-stack/mcp-servers/hybrid-coordinator/tests/test_search_router_reranking.py -q` → 23 passed
+- `aq-qa 0 --json` → 100 passed, 0 failed, 3 skipped
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` → 17 passed, 0 failed
+
+### Notes
+
+- Single local slot does not remove embedded harness access. It serializes local inference so one request gets the full 16k context instead of two concurrent 4k slots. Harness operations remain available through `local-tool-calling`, the coordinator, and local-agent runtime; high concurrency should use remote lanes or queued delegation.
+- Untracked `primer-assessment.md` was present before this slice and left untouched.
+
 ## 2026-05-23 Session — Phase 70+71 Integration Contract Governance
 
 ### Root Cause Audit — Silent Breakage for Days

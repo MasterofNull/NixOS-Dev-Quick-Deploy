@@ -65,6 +65,7 @@ class AQChat:
         self.model_name = "loading..."
         self.context_history: List[Dict[str, str]] = []
         self.temperature = args.temperature
+        self.max_tool_calls = getattr(args, "max_tools", 8)
         self.inject_context = not getattr(args, "no_inject", False)
         self.local_tools_enabled = not getattr(args, "no_tools", False)
 
@@ -113,7 +114,7 @@ STACK: llama.cpp :8080 ({model_id}, n_gpu_layers={ngl or 12}/12) | embed :8081 |
 HARDWARE: thermal={thermal}{temps} | RAM={ram_str} | MTP={mtp_str}
 CONSTRAINTS: gpu_layers≤12 | ports from nix/modules/core/options.nix only | enable_thinking=false always | dashboard/backend hot-reloads; coordinator/switchboard/llama need nixos-rebuild
 TOOLS: run_command, read_file, search_files, git_status, query_context, get_hint — invoke directly, never ask operator to configure execution
-RULES: casual chat → plain text no tools | search before answering (harness-first) | max 2 retries → stop | commits: type(scope): desc + Co-Authored-By"""
+BEHAVIORAL RULES: casual chat → plain text no tools | search before answering (harness-first) | max 2 retries → stop | commits: type(scope): desc + Co-Authored-By"""
 
     async def _discover_pool(self):
         """Discover available agents from the system pool."""
@@ -156,7 +157,7 @@ RULES: casual chat → plain text no tools | search before answering (harness-fi
                 target_url = f"{self.switchboard_url}/v1/chat/completions"
                 headers["X-AI-Profile"] = "local-tool-calling"
                 payload["stream"] = False
-                payload["max_tool_calls"] = 3
+                payload["max_tool_calls"] = self.max_tool_calls
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
             elif self.active_profile == "local":
                 target_url = f"{self.llama_url}/v1/chat/completions"
@@ -433,6 +434,8 @@ def parse_args():
     parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
     parser.add_argument("--switchboard-url", help="Override switchboard URL")
     parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
+    parser.add_argument("--max-tools", type=int, default=8,
+                        help="Max tool calls allowed per local turn (default: 8)")
     parser.add_argument("--no-inject", action="store_true",
                         help="Skip harness context injection (raw session, no system prompt)")
     parser.add_argument("--no-tools", action="store_true",
