@@ -255,6 +255,9 @@ def create_app(
     # Phase 68.2-68.3: MCP JSON-RPC 2.0 adapter (/mcp/v2, /mcp/v2/tools)
     _register_mcp_jsonrpc_routes(app)
 
+    # Phase 69.3: Temporal Knowledge Graph (/knowledge/graph/fact-chain)
+    _register_temporal_graph_routes(app)
+
     return app
 
 
@@ -282,3 +285,13 @@ def _register_mcp_jsonrpc_routes(app: web.Application) -> None:
     except Exception as exc:
         import logging
         logging.getLogger("hybrid-coordinator").warning("MCP JSON-RPC 2.0 route registration skipped: %s", exc)
+
+
+def _register_temporal_graph_routes(app: web.Application) -> None:
+    """Phase 69.3: Register Temporal Knowledge Graph routes (/knowledge/graph/fact-chain)."""
+    try:
+        from knowledge import temporal_graph as _tg
+        _tg.register_routes(app)
+    except Exception as exc:
+        import logging
+        logging.getLogger("hybrid-coordinator").warning("Temporal graph route registration skipped: %s", exc)

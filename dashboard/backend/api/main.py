@@ -267,6 +267,107 @@ async def websocket_metrics(websocket: WebSocket):
                 active_connections.remove(websocket)
 
 
+# Phase 69.1 — AG-UI agent-state WebSocket
+# Subscribes to coordinator /api/agent-events (JSON polling) and converts
+# each new event to an AG-UI delta patch pushed to connected clients.
+# Clients receive: {"type": "state_delta", "path": "agent_events[-1]", "value": <event>}
+# Client reconnect is handled by the JS client (badge "live" / "reconnecting").
+
+_AGENT_STATE_CONNECTIONS: List[WebSocket] = []
+_AGENT_STATE_LOCK = asyncio.Lock()
+_AGENT_STATE_POLL_INTERVAL = 2.0  # seconds
+
+
+async def _fetch_agent_events(since_ts: float, limit: int = 20) -> list:
+    """Poll coordinator /api/agent-events and return events newer than since_ts."""
+    try:
+        from api.routes.aistack import SERVICES, _hybrid_auth_headers, REQUEST_TIMEOUT, get_http_session
+        session = await get_http_session()
+        url = f"{SERVICES['hybrid']}/api/agent-events?limit={limit}"
+        async with session.get(url, headers=_hybrid_auth_headers(), timeout=REQUEST_TIMEOUT) as resp:
+            if resp.status != 200:
+                return []
+            data = await resp.json()
+            events = data.get("events", []) if isinstance(data, dict) else []
+            # Filter to events strictly newer than since_ts
+            if since_ts > 0:
+                import dateutil.parser  # type: ignore
+                new_events = []
+                for ev in events:
+                    try:
+                        ts = dateutil.parser.parse(ev.get("timestamp", "")).timestamp()
+                        if ts > since_ts:
+                            new_events.append(ev)
+                    except Exception:
+                        pass
+                return new_events
+            return events
+    except Exception as exc:
+        logger.debug("agent-state poll error: %s", exc)
+        return []
+
+
+@app.websocket("/ws/agent-state")
+async def websocket_agent_state(websocket: WebSocket):
+    """Phase 69.1 — AG-UI WebSocket: streams coordinator agent events as state deltas."""
+    await websocket.accept()
+    async with _AGENT_STATE_LOCK:
+        _AGENT_STATE_CONNECTIONS.append(websocket)
+    logger.info("ws/agent-state: client connected (%d total)", len(_AGENT_STATE_CONNECTIONS))
+
+    # Send initial batch (last 20 events) immediately on connect
+    last_ts: float = 0.0
+    try:
+        initial = await _fetch_agent_events(since_ts=0, limit=20)
+        if initial:
+            for ev in initial:
+                await websocket.send_json({"type": "state_delta", "path": "agent_events[-1]", "value": ev})
+            # Track latest timestamp seen
+            import dateutil.parser  # type: ignore
+            for ev in initial:
+                try:
+                    last_ts = max(last_ts, dateutil.parser.parse(ev.get("timestamp", "")).timestamp())
+                except Exception:
+                    pass
+        await websocket.send_json({"type": "status", "status": "live", "buffered": len(initial)})
+    except Exception as exc:
+        logger.debug("ws/agent-state initial fetch error: %s", exc)
+
+    try:
+        while True:
+            # Non-blocking receive with timeout — lets us poll while waiting for client msgs
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=_AGENT_STATE_POLL_INTERVAL)
+                if msg == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                pass  # no client message — proceed to poll
+
+            # Poll for new events
+            try:
+                new_events = await _fetch_agent_events(since_ts=last_ts, limit=50)
+                for ev in new_events:
+                    await websocket.send_json({"type": "state_delta", "path": "agent_events[-1]", "value": ev})
+                if new_events:
+                    try:
+                        for ev in new_events:
+                            last_ts = max(last_ts, dateutil.parser.parse(ev.get("timestamp", "")).timestamp())
+                    except Exception:
+                        pass
+            except Exception as exc:
+                logger.debug("ws/agent-state poll error: %s", exc)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.debug("ws/agent-state closed: %s", exc)
+    finally:
+        async with _AGENT_STATE_LOCK:
+            if websocket in _AGENT_STATE_CONNECTIONS:
+                _AGENT_STATE_CONNECTIONS.remove(websocket)
+        logger.info("ws/agent-state: client disconnected (%d remaining)", len(_AGENT_STATE_CONNECTIONS))
+
+
 # ── Frontend static file serving ────────────────────────────────────────────
 # Serve Command Center dashboard (at repo root)
 _COMMAND_CENTER_PATH = Path(__file__).parent.parent.parent.parent / "dashboard.html"
