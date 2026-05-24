@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""
+aq-mine — Conversation mining and AIDB import CLI
+--------------------------------------------------
+Parses conversation export files and ingests them as documents into AIDB.
+Supports multiple export sources via --source profiles. Add new source
+profiles by extending SOURCE_PROFILES.
+
+Usage:
+    aq-mine import <file> --source claude       # Claude export JSON
+    aq-mine import <file> --source chatgpt      # ChatGPT export JSON
+    aq-mine import <file> --source gemini       # Google Gemini Takeout JSON
+    aq-mine import <path> --source jsonl        # Generic JSONL (one doc per line)
+    aq-mine import <path> --source directory    # Directory of .md/.txt files
+    aq-mine split <file> [--min-sessions N] [--out-dir DIR]
+    aq-mine sources                             # List registered source profiles
+
+Flags:
+    --dry-run       Preview without writing to AIDB
+    --classify      Auto-tag documents by content type
+    --project NAME  AIDB project name
+    -v / --verbose  Show all results
+
+Environment:
+    AIDB_URL       Base URL for AIDB (default: http://127.0.0.1:8002)
+    AIDB_API_KEY   API key (falls back to /run/secrets/aidb_api_key)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Dict, Iterator, List, Optional
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+SERVICE_HOST = os.getenv("SERVICE_HOST", "127.0.0.1")
+AIDB_URL = os.getenv(
+    "AIDB_URL",
+    f"http://{SERVICE_HOST}:{os.getenv('AIDB_PORT', '8002')}"
+).rstrip("/")
+
+CLASSIFICATION_KEYWORDS: Dict[str, List[str]] = {
+    "decision":     ["decided", "decision", "chose", "we'll use", "going with"],
+    "preference":   ["prefer", "always", "never", "don't", "please", "style"],
+    "bug":          ["bug", "error", "traceback", "exception", "failed", "broken"],
+    "architecture": ["architecture", "pattern", "design", "module", "service", "layer"],
+    "task":         ["implement", "add", "create", "fix", "refactor", "update"],
+}
+
+# Each source profile is a callable: (path: Path) -> Iterator[dict]
+# Yielded dicts must have: title (str), content (str)
+# Optional keys: created_at (str), source_label (str)
+SourceIterator = Callable[[Path], Iterator[dict]]
+SOURCE_PROFILES: Dict[str, SourceIterator] = {}
+
+
+def source(name: str, description: str = "") -> Callable[[SourceIterator], SourceIterator]:
+    """Decorator to register a source profile by name."""
+    def decorator(fn: SourceIterator) -> SourceIterator:
+        fn._description = description  # type: ignore[attr-defined]
+        SOURCE_PROFILES[name] = fn
+        return fn
+    return decorator
+
+
+# ---------------------------------------------------------------------------
+# Source profiles
+# ---------------------------------------------------------------------------
+
+@source("claude", "Claude.ai conversation export JSON (chat_messages format)")
+def _parse_claude(path: Path) -> Iterator[dict]:
+    data = json.loads(path.read_text())
+    conversations = data if isinstance(data, list) else data.get("conversations", [data])
+    for conv in conversations:
+        if not isinstance(conv, dict):
+            continue
+        title = conv.get("name") or conv.get("title") or "Untitled"
+        created = conv.get("created_at") or conv.get("created") or ""
+        messages = conv.get("chat_messages") or conv.get("messages") or []
+        parts: List[str] = []
+        for msg in messages:
+            role = msg.get("sender") or msg.get("role") or "unknown"
+            raw = msg.get("text") or msg.get("content") or ""
+            text = (" ".join(
+                c.get("text", "") if isinstance(c, dict) else str(c)
+                for c in raw
+            ) if isinstance(raw, list) else str(raw)).strip()
+            if text:
+                parts.append(f"[{role}] {text}")
+        if parts:
+            yield {"title": title, "content": "\n\n".join(parts), "created_at": created}
+
+
+@source("chatgpt", "ChatGPT conversation export JSON (OpenAI format)")
+def _parse_chatgpt(path: Path) -> Iterator[dict]:
+    data = json.loads(path.read_text())
+    conversations = data if isinstance(data, list) else [data]
+    for conv in conversations:
+        if not isinstance(conv, dict):
+            continue
+        title = conv.get("title") or "Untitled"
+        created = conv.get("create_time") or ""
+        if isinstance(created, (int, float)):
+            created = datetime.fromtimestamp(created, tz=timezone.utc).isoformat()
+        mapping = conv.get("mapping", {})
+        parts: List[str] = []
+        for node in mapping.values():
+            msg = node.get("message") or {}
+            role = msg.get("author", {}).get("role", "unknown")
+            content = msg.get("content", {})
+            parts_raw = content.get("parts", []) if isinstance(content, dict) else []
+            text = " ".join(str(p) for p in parts_raw if p).strip()
+            if text and role != "system":
+                parts.append(f"[{role}] {text}")
+        if parts:
+            yield {"title": title, "content": "\n\n".join(parts), "created_at": str(created)}
+
+
+@source("gemini", "Google Gemini Takeout JSON (conversations array)")
+def _parse_gemini(path: Path) -> Iterator[dict]:
+    data = json.loads(path.read_text())
+    conversations = data if isinstance(data, list) else data.get("conversations", [])
+    for conv in conversations:
+        if not isinstance(conv, dict):
+            continue
+        title = conv.get("title") or conv.get("id") or "Untitled"
+        created = conv.get("createTime") or conv.get("created_at") or ""
+        messages = conv.get("messages") or conv.get("turns") or []
+        parts: List[str] = []
+        for msg in messages:
+            role = msg.get("role") or msg.get("author") or "unknown"
+            text = str(msg.get("content") or msg.get("text") or "").strip()
+            if text:
+                parts.append(f"[{role}] {text}")
+        if parts:
+            yield {"title": title, "content": "\n\n".join(parts), "created_at": str(created)}
+
+
+@source("jsonl", "Generic JSONL file — one JSON object per line with title/content fields")
+def _parse_jsonl(path: Path) -> Iterator[dict]:
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            yield {
+                "title": obj.get("title") or obj.get("name") or "entry",
+                "content": obj.get("content") or obj.get("text") or str(obj),
+            }
+        except json.JSONDecodeError:
+            continue
+
+
+@source("directory", "Directory of .md, .txt, or .rst files — one document per file")
+def _parse_directory(path: Path) -> Iterator[dict]:
+    for f in sorted(path.rglob("*")):
+        if f.suffix in (".md", ".txt", ".rst") and f.is_file():
+            yield {"title": f.stem, "content": f.read_text(errors="replace")}
+
+
+# ---------------------------------------------------------------------------
+# AIDB helpers
+# ---------------------------------------------------------------------------
+
+def _load_api_key() -> Optional[str]:
+    key = os.getenv("AIDB_API_KEY")
+    if key:
+        return key
+    secret = Path("/run/secrets/aidb_api_key")
+    if secret.exists():
+        try:
+            return secret.read_text().strip().strip("\t\r\n ")
+        except PermissionError:
+            pass
+    return None
+
+
+def _post_document(doc: dict, api_key: Optional[str], dry_run: bool) -> dict:
+    if dry_run:
+        return {"status": "dry_run", "title": doc.get("title", "?")}
+    url = f"{AIDB_URL}/documents"
+    body = json.dumps(doc).encode()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["X-API-Key"] = api_key
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return {"status": "error", "http": e.code, "detail": e.read(200).decode(errors="replace")}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
+def _classify(text: str) -> List[str]:
+    text_lower = text.lower()
+    return [tag for tag, keywords in CLASSIFICATION_KEYWORDS.items()
+            if any(kw in text_lower for kw in keywords)]
+
+
+# ---------------------------------------------------------------------------
+# Subcommands
+# ---------------------------------------------------------------------------
+
+def cmd_import(args: argparse.Namespace) -> int:
+    source_name = args.source
+    if source_name not in SOURCE_PROFILES:
+        print(f"Error: unknown source '{source_name}'. Run `aq-mine sources` to list available.", file=sys.stderr)
+        return 1
+
+    path = Path(args.path)
+    if not path.exists():
+        print(f"Error: path not found: {path}", file=sys.stderr)
+        return 1
+
+    api_key = _load_api_key()
+    project = args.project or f"mined-{source_name}"
+    parser = SOURCE_PROFILES[source_name]
+    ingested = 0
+    skipped = 0
+
+    try:
+        for entry in parser(path):
+            tags = _classify(entry["content"]) if args.classify else []
+            title = entry.get("title", "Untitled")
+            doc = {
+                "title": f"[mine/{source_name}] {title}",
+                "content": entry["content"][:16000],
+                "project": project,
+                "relative_path": f"mined/{source_name}/{title[:60].replace('/', '_')}.md",
+                "metadata": {
+                    "source": source_name,
+                    "mined_at": datetime.now(timezone.utc).isoformat(),
+                    "original_created": entry.get("created_at", ""),
+                    "tags": tags,
+                    "file": str(path),
+                },
+            }
+            result = _post_document(doc, api_key, args.dry_run)
+            status = result.get("status", "?")
+            if args.verbose or args.dry_run or status not in ("ok", "dry_run", "skipped"):
+                tag_str = f" [{', '.join(tags)}]" if tags else ""
+                prefix = "[DRY]" if args.dry_run else f"[{status.upper()}]"
+                print(f"  {prefix} {title[:70]}{tag_str}")
+            if status in ("ok", "dry_run"):
+                ingested += 1
+            else:
+                skipped += 1
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON in {path} — {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print(f"\nDone: {ingested} ingested, {skipped} skipped/errors.")
+    return 0 if skipped == 0 else 1
+
+
+def cmd_split(args: argparse.Namespace) -> int:
+    """Split a large conversation export (Claude format) into smaller chunk files."""
+    path = Path(args.file)
+    if not path.exists():
+        print(f"Error: file not found: {path}", file=sys.stderr)
+        return 1
+
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON — {e}", file=sys.stderr)
+        return 1
+
+    # Use the claude parser since split is format-specific; for other formats use import+split manually
+    conversations = list(_parse_claude(path))
+    min_sessions = max(args.min_sessions, 1)
+    out_dir = Path(args.out_dir) if args.out_dir else path.parent / f"{path.stem}-split"
+
+    if not args.dry_run:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    chunks = [conversations[i:i + min_sessions] for i in range(0, len(conversations), min_sessions)]
+    for idx, chunk in enumerate(chunks):
+        out_file = out_dir / f"chunk_{idx + 1:03d}.json"
+        if not args.dry_run:
+            out_file.write_text(json.dumps(chunk, indent=2))
+        print(f"  {'[DRY]' if args.dry_run else '[WRITE]'} {out_file} ({len(chunk)} conversations)")
+
+    print(f"\nSplit {len(conversations)} conversations into {len(chunks)} files (min {min_sessions} each).")
+    return 0
+
+
+def cmd_sources(_args: argparse.Namespace) -> int:
+    print("Registered source profiles:")
+    for name, fn in sorted(SOURCE_PROFILES.items()):
+        desc = getattr(fn, "_description", "")
+        print(f"  {name:<12}  {desc}")
+    print(f"\nTotal: {len(SOURCE_PROFILES)} sources. Use with: aq-mine import <path> --source <name>")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="aq-mine: Conversation mining and AIDB import CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Preview without writing to AIDB")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show all results")
+    parser.add_argument("--project", help="AIDB project name")
+
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_import = sub.add_parser("import", help="Import conversations into AIDB")
+    p_import.add_argument("path", help="Path to file or directory")
+    p_import.add_argument("--source", required=True, choices=list(SOURCE_PROFILES.keys()),
+                          metavar="SOURCE", help="Source profile (see `aq-mine sources`)")
+    p_import.add_argument("--classify", action="store_true", help="Auto-tag by content type")
+
+    p_split = sub.add_parser("split", help="Split a large Claude export into smaller chunks")
+    p_split.add_argument("file", help="Path to Claude conversation export JSON")
+    p_split.add_argument("--min-sessions", type=int, default=5, metavar="N",
+                         help="Conversations per chunk (default: 5)")
+    p_split.add_argument("--out-dir", help="Output directory (default: <file>-split/)")
+
+    sub.add_parser("sources", help="List registered source profiles")
+
+    args = parser.parse_args()
+    dispatch = {"import": cmd_import, "split": cmd_split, "sources": cmd_sources}
+    return dispatch[args.cmd](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
