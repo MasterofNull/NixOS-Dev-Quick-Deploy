@@ -58,6 +58,22 @@ aq-delegate codex "<task>"                 # orchestrator delegation
 
 ---
 
+
+### Low-token slice helper
+
+Use `aq-slice-helper` before broad manual validation when a slice touches runtime, dashboard, docs, or agent operations. It reads `config/lessons/agentic-slice-lessons.json`, matches current changed paths and task text against known edge cases, and emits the smallest useful checks and documentation/dashboard surfaces.
+
+```bash
+aq-slice-helper assess --task "<slice summary>"
+aq-slice-helper assess --task "<slice summary>" --run
+aq-slice-helper assess --task "<slice summary>" --run --full --json
+aq-slice-helper learn --id "<lesson-id>" --title "<short lesson>" \
+  --trigger "dashboard" --command "python3 scripts/testing/test-dashboard-compat-routes.py" \
+  --surface "docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md"
+```
+
+Lesson entries are mutable by design. When an agent discovers a recurring edge case, add or update one lesson rather than forcing every future agent to rediscover the same context.
+
 ## 5. After Development — Before Commit
 
 ```bash

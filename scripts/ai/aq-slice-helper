@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""aq-slice-helper — compact slice assessor for docs/dashboard/validation discipline.
+
+The helper reads a mutable lessons catalog and the current git diff, then emits a
+small action plan for the current slice. It can run cheap checks so agents do not
+re-discover the same edge cases in every session.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_LESSONS = REPO_ROOT / "config" / "lessons" / "agentic-slice-lessons.json"
+
+RUNTIME_PREFIXES = (
+    "ai-stack/",
+    "dashboard/backend/",
+    "nix/modules/",
+    "scripts/ai/",
+    "scripts/automation/",
+    "scripts/governance/",
+)
+DOC_PREFIXES = ("docs/", ".agent/", ".agents/plans/", "AGENTS.md", "CLAUDE.md")
+DASHBOARD_PATHS = ("dashboard.html", "assets/dashboard.js", "dashboard/backend/")
+TEST_PREFIXES = ("scripts/testing/", "tests/")
+
+
+@dataclass
+class Check:
+    name: str
+    command: list[str]
+    status: str = "PENDING"
+    exit_code: int | None = None
+    output: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "command": self.command,
+            "status": self.status,
+            "exit_code": self.exit_code,
+            "output": self.output[-2000:],
+        }
+
+
+def run(cmd: list[str], timeout: int = 60) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def changed_paths(staged: bool = False) -> list[str]:
+    cmd = ["git", "diff", "--cached", "--name-only"] if staged else ["git", "diff", "--name-only"]
+    paths = set(filter(None, run(cmd).stdout.splitlines()))
+    if not staged:
+        porcelain = run(["git", "status", "--short", "--untracked-files=all"]).stdout.splitlines()
+        for line in porcelain:
+            if not line.strip():
+                continue
+            path = line[3:] if len(line) > 3 else line.strip()
+            if " -> " in path:
+                path = path.split(" -> ", 1)[1]
+            paths.add(path.strip())
+    return sorted(paths)
+
+
+def load_lessons(path: Path) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return []
+    lessons = data.get("lessons", [])
+    return lessons if isinstance(lessons, list) else []
+
+
+def lesson_matches(lesson: dict[str, Any], paths: list[str], task: str) -> bool:
+    haystack = "\n".join(paths + [task]).lower()
+    for trigger in lesson.get("triggers", []):
+        if str(trigger).lower() in haystack:
+            return True
+    return False
+
+
+def classify(paths: list[str]) -> dict[str, Any]:
+    return {
+        "changed_paths": paths,
+        "runtime_changed": any(p.startswith(RUNTIME_PREFIXES) for p in paths),
+        "docs_changed": any(p.startswith(DOC_PREFIXES) for p in paths),
+        "dashboard_changed": any(p == "dashboard.html" or p.startswith(DASHBOARD_PATHS) for p in paths),
+        "tests_changed": any(p.startswith(TEST_PREFIXES) for p in paths),
+        "python_changed": [p for p in paths if p.endswith(".py")],
+        "js_changed": [p for p in paths if p.endswith(".js")],
+        "bash_changed": [p for p in paths if p.endswith(".sh") or p.startswith("scripts/ai/")],
+    }
+
+
+def build_checks(info: dict[str, Any], matched_lessons: list[dict[str, Any]], full: bool) -> list[Check]:
+    checks: list[Check] = []
+    if info["python_changed"]:
+        checks.append(Check("python syntax", ["python3", "-m", "py_compile", *info["python_changed"]]))
+    if info["js_changed"]:
+        checks.extend(Check(f"node syntax {p}", ["node", "--check", p]) for p in info["js_changed"])
+    shell_files = [p for p in info["bash_changed"] if p.endswith(".sh")]
+    checks.extend(Check(f"bash syntax {p}", ["bash", "-n", p]) for p in shell_files)
+    if info["dashboard_changed"]:
+        checks.append(Check("dashboard compatibility routes/cards", ["python3", "scripts/testing/test-dashboard-compat-routes.py"]))
+        checks.append(Check("dashboard managed service", ["bash", "scripts/testing/check-dashboard-managed-service.sh"]))
+    if info["runtime_changed"]:
+        checks.append(Check("cross-surface contract", ["python3", "scripts/governance/check-cross-surface-contract.py", "--mode=--pre-commit"]))
+    for lesson in matched_lessons:
+        for command in lesson.get("commands", []):
+            parts = str(command).split()
+            if parts and all(parts != c.command for c in checks):
+                checks.append(Check(f"lesson:{lesson.get('id', 'unknown')}", parts))
+    checks.append(Check("diff whitespace", ["git", "diff", "--check"]))
+    if full:
+        checks.append(Check("tier0 pre-commit", ["scripts/governance/tier0-validation-gate.sh", "--pre-commit"]))
+    return checks
+
+
+def execute_checks(checks: list[Check]) -> None:
+    for check in checks:
+        try:
+            result = run(check.command, timeout=180 if "tier0" in check.name else 60)
+            check.exit_code = result.returncode
+            check.output = result.stdout.strip()
+            check.status = "PASS" if result.returncode == 0 else "FAIL"
+        except subprocess.TimeoutExpired as exc:
+            check.exit_code = 124
+            check.output = str(exc)
+            check.status = "FAIL"
+
+
+def render_text(payload: dict[str, Any]) -> str:
+    lines = ["aq-slice-helper", "================"]
+    lines.append(f"task: {payload['task'] or '--'}")
+    lines.append(f"changed_paths: {len(payload['classification']['changed_paths'])}")
+    flags = [k for k, v in payload["classification"].items() if k.endswith("_changed") and v is True]
+    lines.append("flags: " + (", ".join(flags) if flags else "none"))
+    if payload["matched_lessons"]:
+        lines.append("\nmatched lessons:")
+        for lesson in payload["matched_lessons"]:
+            lines.append(f"- {lesson.get('id')}: {lesson.get('title')}")
+    lines.append("\nrecommended surfaces:")
+    for surface in payload["recommended_surfaces"]:
+        lines.append(f"- {surface}")
+    lines.append("\nchecks:")
+    for check in payload["checks"]:
+        status = check["status"]
+        cmd = " ".join(check["command"])
+        lines.append(f"- [{status}] {check['name']}: {cmd}")
+    return "\n".join(lines)
+
+
+def cmd_assess(args: argparse.Namespace) -> int:
+    paths = changed_paths(staged=args.staged)
+    info = classify(paths)
+    lessons = load_lessons(Path(args.lessons))
+    matched = [l for l in lessons if lesson_matches(l, paths, args.task or "")]
+    surfaces: list[str] = []
+    for lesson in matched:
+        surfaces.extend(str(s) for s in lesson.get("surfaces", []))
+    if info["runtime_changed"] and not surfaces:
+        surfaces.extend(["docs/architecture/cross-surface-change-contract.md", ".agent/collaboration/HANDOFF.md"])
+    if info["dashboard_changed"]:
+        surfaces.extend(["docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md", "scripts/testing/test-dashboard-compat-routes.py"])
+    checks = build_checks(info, matched, full=args.full)
+    if args.run:
+        execute_checks(checks)
+    payload = {
+        "task": args.task,
+        "lessons_path": str(Path(args.lessons)),
+        "classification": info,
+        "matched_lessons": matched,
+        "recommended_surfaces": sorted(set(surfaces)),
+        "checks": [c.to_dict() for c in checks],
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(render_text(payload))
+    return 1 if any(c.status == "FAIL" for c in checks) else 0
+
+
+def cmd_learn(args: argparse.Namespace) -> int:
+    path = Path(args.lessons)
+    data = {"version": "1.0", "lessons": []}
+    if path.exists():
+        data = json.loads(path.read_text())
+    lessons = data.setdefault("lessons", [])
+    existing = next((l for l in lessons if l.get("id") == args.id), None)
+    lesson = existing or {"id": args.id}
+    lesson.update({
+        "title": args.title,
+        "triggers": args.trigger,
+        "rationale": args.rationale,
+        "commands": args.command,
+        "surfaces": args.surface,
+    })
+    if existing is None:
+        lessons.append(lesson)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    print(f"stored lesson: {args.id}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Assess and validate a small dev-cycle slice with mutable lessons.")
+    parser.add_argument("--lessons", default=str(DEFAULT_LESSONS), help="Mutable lessons JSON path")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    assess = sub.add_parser("assess", help="Assess current git slice and print/run recommended checks")
+    assess.add_argument("--task", default="", help="Short task description for lesson matching")
+    assess.add_argument("--staged", action="store_true", help="Assess staged paths only")
+    assess.add_argument("--run", action="store_true", help="Run recommended cheap checks")
+    assess.add_argument("--full", action="store_true", help="Include tier0 pre-commit in recommended checks")
+    assess.add_argument("--json", action="store_true", help="Emit JSON")
+    assess.set_defaults(func=cmd_assess)
+
+    learn = sub.add_parser("learn", help="Add or update one lesson in the mutable catalog")
+    learn.add_argument("--id", required=True)
+    learn.add_argument("--title", required=True)
+    learn.add_argument("--rationale", default="")
+    learn.add_argument("--trigger", action="append", default=[])
+    learn.add_argument("--command", action="append", default=[])
+    learn.add_argument("--surface", action="append", default=[])
+    learn.set_defaults(func=cmd_learn)
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
