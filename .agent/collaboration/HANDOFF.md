@@ -299,14 +299,24 @@ Env overrides: SWB_LOCAL_TOOL_MAX_INPUT_TOKENS, SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS
 Requires switchboard restart (no rebuild needed). Current llama-server ctx is 4096 (pre-rebuild);
 after rebuild gives 8192 ctx, 5000+1024=6024 fits with headroom.
 
+### Phase 70.1 — Reputation-weighted consensus engine (2026-05-23)
+`workflow/consensus_engine.py` — `WeightedVote` pattern.
+- `POST /workflow/consensus/vote` — accepts {session_id, agent_id, vote, confidence, topic}
+- `GET /workflow/consensus/status/{session_id}` — current tally + outcome
+- Reputation from `agent_registry` evaluation rows (success_rate × lesson_bonus × avg_score)
+- Tie-break = orchestrator veto → outcome "tie_veto" (pessimistic-safe)
+- Registered in `router.py` via `_register_consensus_routes()` + graceful startup guard
+- QA: `phase70.py` checks 70.1 (vote outcome) + 70.2 (AppArmor enforce)
+- **Requires nixos-rebuild to deploy** — 70.1 currently 404 (route pending rebuild)
+
 ### Next session
-- Run: `systemctl restart ai-switchboard` → fixes 502 on aq-chat (profile maxInputTokens)
-- Run: `systemctl restart ai-dashboard` + `nixos-rebuild switch`
-  → then `aq-qa 69` — expect 4/4 PASS once agent_service tail-read is deployed
+- Run: `systemctl restart ai-switchboard` → fixes aq-chat 502 (maxInputTokens 2400→5000)
+- Run: `nixos-rebuild switch --flake .#hyperd-ai-dev` → deploys consensus routes + agent_service tail-read
+  → then `aq-qa 69` (expect 4/4), `aq-qa 70` (expect 70.1 PASS, 70.2 PASS/SKIP)
 - Run: `aq-prsi-review --purge` to clear 26 obsolete PRSI entries (confirm audit report first)
-- AppArmor enforce: schedule 2026-05-30 (7-day soak from 2026-05-23)
+- AppArmor enforce: run `nixos-rebuild switch` with state="enforce" in mcp-servers.nix after 2026-05-30
 - Orphan audit P3 backlog: 221 reg gaps, 187 zero-import modules (aq-integrity-scan)
-- Phase 70 (check PRD: PHASE-68-70-AIOS-CONTINUITY-PRD.md)
+- Phase 70.3: soak validation after rebuild (aq-qa 0 + maeah-acceptance-tests)
 
 ## 2026-05-24 Codex handoff — mutable agentic slice helper
 
