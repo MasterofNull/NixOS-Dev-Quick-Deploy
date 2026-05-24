@@ -70,6 +70,26 @@
   },
   "pending_slices": [
     {
+      "updated_at": "2026-05-24T20:21:33Z",
+      "agent": "codex",
+      "task": "make integrity/orphan scanner bounded and validated",
+      "intent": "Fix the technical-debt audit tool before using it for remediation: implement JSON output, runtime/file bounds, faster logical orphan scanning, and a focused validation check so future agents do not run unbounded scans.",
+      "target_files": [
+        "scripts/ai/aq-integrity-scan",
+        "scripts/testing/test-aq-integrity-scan-contract.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "config/validation-check-registry.json",
+        ".agent/PROJECT-INTEGRITY-SCAN-DEBT-PRD.md"
+      ],
+      "validation": [
+        "python -m py_compile scripts/ai/aq-integrity-scan scripts/testing/test-aq-integrity-scan-contract.py",
+        "python scripts/testing/test-aq-integrity-scan-contract.py",
+        "scripts/ai/aq-integrity-scan --json --skip-logical",
+        "scripts/governance/tier0-validation-gate.sh --pre-commit"
+      ],
+      "risk": "low: scanner/reporting behavior only; no source deletion or automated remediation"
+    },
+    {
       "updated_at": "2026-05-24T16:11:46Z",
       "agent": "codex",
       "task": "implement switchboard context output GC and tool-result dedupe",

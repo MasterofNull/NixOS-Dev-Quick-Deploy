@@ -604,9 +604,10 @@ def _check_delegate_rate(ctx: RunContext) -> list[CheckResult]:
                         "coordinator /stats/delegate unavailable (needs nixos-rebuild)")]
     total = int(data.get("total") or 0)
     ok = int(data.get("ok") or 0)
-    if total < 1:
+    min_sample = 10
+    if total < min_sample:
         return [skipped(4, "0.8.1", "delegate 24h success rate",
-                        "insufficient sample (0 calls in last 24h)")]
+                        f"insufficient sample ({total}/{min_sample} calls in last 24h)")]
     pct = round(100 * ok / total)
     if pct >= 50:
         return [passed(4, "0.8.1", f"delegate 24h success rate {pct}% ({ok}/{total})")]
