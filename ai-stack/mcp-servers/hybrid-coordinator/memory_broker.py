@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -31,6 +32,10 @@ import memory_superseder
 import consensus_manager
 
 logger = logging.getLogger("hybrid-coordinator")
+
+# Memory read/write timeout — configurable for cold-start or high-load environments.
+# Increase AI_MEMORY_BROKER_RW_TIMEOUT_S if reads time out on post-rebuild cold Qdrant.
+_BROKER_RW_TIMEOUT: float = float(os.environ.get("AI_MEMORY_BROKER_RW_TIMEOUT_S", "10.0"))
 
 # ---------------------------------------------------------------------------
 # Valid memory types — matches Qdrant collection suffixes in memory_manager.py
@@ -282,13 +287,13 @@ class MemoryBroker:
                     retrieval_mode="hybrid",
                     valid_at=valid_at,
                 ),
-                timeout=5.0,
+                timeout=_BROKER_RW_TIMEOUT,
             )
             latency = time.perf_counter() - start_time
             _record_broker_metrics("read", memory_type, "success", latency)
         except asyncio.TimeoutError:
             logger.warning("memory_broker.read timeout type=%s", memory_type)
-            _record_broker_metrics("read", memory_type, "timeout", 5.0)
+            _record_broker_metrics("read", memory_type, "timeout", _BROKER_RW_TIMEOUT)
             return []
         except Exception as exc:
             logger.warning("memory_broker.read error type=%s exc=%s", memory_type, exc)
