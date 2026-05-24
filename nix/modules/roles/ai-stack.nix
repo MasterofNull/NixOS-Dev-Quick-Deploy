@@ -264,6 +264,12 @@ let
       (pkgs.writeShellScriptBin "aq-prime" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-prime" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-setup" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-setup" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-mine" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-mine" "$@"
+      '')
       (pkgs.writeShellScriptBin "aq-memory" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-memory" "$@"
       '')
@@ -1642,6 +1648,7 @@ in {
             --- Session & onboarding ---
             aqd              - Main workflow CLI (aqd workflows list)
             aq-prime         - Progressive disclosure agent onboarding
+            aq-setup         - Prerequisite checker and harness setup wizard
             aq-context-bootstrap - Recommend minimal context for a task
             aq-feedback-loop - Convert agent feedback into a PRD/plan/checkpoint loop
             aq-context-card  - Progressive-disclosure context cards
@@ -1694,6 +1701,9 @@ in {
             aq-workflow      - YAML workflow management CLI
             aq-collaborate   - Multi-agent collaboration
             aq-federated-learning - Federated learning tooling
+
+            --- Data & import ---
+            aq-mine          - Conversation mining and AIDB import (claude/chatgpt/gemini/jsonl/directory)
 
             --- Reporting & feedback ---
             aq-report        - AI stack health and metrics digest

@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""
+aq-setup — Harness prerequisite checker and setup wizard
+---------------------------------------------------------
+Validates that all services, secrets, and toolchain components are present
+and reachable. Non-destructive (read-only). Safe to run at any time.
+
+Usage:
+    aq-setup              # Full check, show all results
+    aq-setup --quiet      # Show only failures and warnings
+    aq-setup --json       # Machine-readable JSON output
+    aq-setup --section secrets   # Run only one check section
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+SERVICE_HOST = os.getenv("SERVICE_HOST", "127.0.0.1")
+AIDB_URL = os.getenv("AIDB_URL", f"http://{SERVICE_HOST}:{os.getenv('AIDB_PORT', '8002')}")
+HYBRID_URL = os.getenv("HYBRID_COORDINATOR_URL", f"http://{SERVICE_HOST}:{os.getenv('HYBRID_PORT', '8003')}")
+LLAMA_URL = os.getenv("LLAMA_URL", f"http://{SERVICE_HOST}:{os.getenv('LLAMA_PORT', '8080')}")
+SWB_URL = os.getenv("SWITCHBOARD_URL", f"http://{SERVICE_HOST}:{os.getenv('SWB_PORT', '8085')}")
+DASH_URL = os.getenv("DASHBOARD_URL", f"http://{SERVICE_HOST}:{os.getenv('DASH_PORT', '8889')}")
+
+PASS = "PASS"
+FAIL = "FAIL"
+WARN = "WARN"
+SKIP = "SKIP"
+
+
+class CheckResult:
+    def __init__(self, status: str, label: str, detail: str = ""):
+        self.status = status
+        self.label = label
+        self.detail = detail
+
+    def to_dict(self) -> dict:
+        return {"status": self.status, "label": self.label, "detail": self.detail}
+
+
+def check_binary(name: str, label: Optional[str] = None) -> CheckResult:
+    lbl = label or name
+    path = shutil.which(name)
+    if path:
+        return CheckResult(PASS, lbl, path)
+    return CheckResult(FAIL, lbl, f"{name} not found in PATH")
+
+
+def check_path(path: Path, label: str, required: bool = True) -> CheckResult:
+    if path.exists():
+        return CheckResult(PASS, label, str(path))
+    status = FAIL if required else WARN
+    return CheckResult(status, label, f"not found: {path}")
+
+
+def check_secret(name: str) -> CheckResult:
+    p = Path(f"/run/secrets/{name}")
+    if not p.exists():
+        return CheckResult(WARN, f"secret/{name}", "not found (may be OK outside NixOS)")
+    try:
+        content = p.read_text().strip()
+        if not content:
+            return CheckResult(FAIL, f"secret/{name}", "file exists but is empty")
+        return CheckResult(PASS, f"secret/{name}", "present")
+    except PermissionError:
+        return CheckResult(WARN, f"secret/{name}", "exists but not readable (permission OK for DynamicUser)")
+
+
+def check_http(url: str, label: str, timeout: int = 5) -> CheckResult:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "aq-setup/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            code = resp.getcode()
+            if code < 400:
+                return CheckResult(PASS, label, f"HTTP {code} at {url}")
+            return CheckResult(FAIL, label, f"HTTP {code} at {url}")
+    except urllib.error.HTTPError as e:
+        # 4xx from an authenticated endpoint still means the service is up
+        if e.code in (401, 403):
+            return CheckResult(PASS, label, f"HTTP {e.code} (auth required — service up) at {url}")
+        return CheckResult(FAIL, label, f"HTTP {e.code} at {url}")
+    except Exception as e:
+        return CheckResult(FAIL, label, f"{type(e).__name__}: {e}")
+
+
+def check_flake_target() -> CheckResult:
+    flake_nix = REPO_ROOT / "flake.nix"
+    if not flake_nix.exists():
+        return CheckResult(FAIL, "flake.nix", "not found in repo root")
+    # Target is constructed dynamically: <hostname>-<profile> via mkHostConfigs.
+    # Verify it exists by checking the host facts.nix for profile = "ai-dev".
+    facts = REPO_ROOT / "nix/hosts/hyperd/facts.nix"
+    if facts.exists() and 'profile = "ai-dev"' in facts.read_text():
+        return CheckResult(PASS, "flake target", "hyperd-ai-dev (hyperd host + ai-dev profile confirmed)")
+    if not facts.exists():
+        return CheckResult(WARN, "flake target", "nix/hosts/hyperd/facts.nix not found")
+    return CheckResult(WARN, "flake target", "ai-dev profile not found in facts.nix — check nix/hosts/hyperd/")
+
+
+def check_tier0_gate() -> CheckResult:
+    gate = REPO_ROOT / "scripts/governance/tier0-validation-gate.sh"
+    if not gate.exists():
+        return CheckResult(FAIL, "tier0 gate", f"not found: {gate}")
+    return CheckResult(PASS, "tier0 gate", str(gate))
+
+
+def run_section_toolchain() -> List[CheckResult]:
+    results = []
+    results.append(check_binary("git"))
+    results.append(check_binary("nix"))
+    results.append(check_binary("python3"))
+    results.append(check_binary("jq", "jq (optional)") if shutil.which("jq") else CheckResult(WARN, "jq", "not in PATH — optional but recommended"))
+    results.append(check_flake_target())
+    results.append(check_tier0_gate())
+    results.append(check_path(REPO_ROOT / "scripts/ai/aq-qa", "aq-qa script"))
+    results.append(check_path(REPO_ROOT / "scripts/ai/aq-report", "aq-report script"))
+    results.append(check_path(REPO_ROOT / "scripts/ai/aq-prime", "aq-prime script"))
+    return results
+
+
+def run_section_secrets() -> List[CheckResult]:
+    return [
+        check_secret("hybrid_coordinator_api_key"),
+        check_secret("aidb_api_key"),
+    ]
+
+
+def run_section_services() -> List[CheckResult]:
+    return [
+        check_http(f"{LLAMA_URL}/health", "llama.cpp (:8080)"),
+        check_http(f"{AIDB_URL}/health", "AIDB (:8002)"),
+        check_http(f"{HYBRID_URL}/health", "hybrid-coordinator (:8003)"),
+        check_http(f"{SWB_URL}/health", "switchboard (:8085)"),
+        check_http(f"{DASH_URL}/", "dashboard (:8889)"),
+    ]
+
+
+def run_section_repo() -> List[CheckResult]:
+    results = []
+    results.append(check_path(REPO_ROOT / "AGENTS.md", "AGENTS.md"))
+    results.append(check_path(REPO_ROOT / "CLAUDE.md", "CLAUDE.md"))
+    results.append(check_path(REPO_ROOT / ".agent/WORKFLOW-CANON.md", "WORKFLOW-CANON.md"))
+    results.append(check_path(REPO_ROOT / "nix/modules/core/options.nix", "options.nix (port SSOT)"))
+    results.append(check_path(REPO_ROOT / "config/env-contract.yaml", "env-contract.yaml"))
+    # Check git is clean enough to work in
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10
+        )
+        changed = len([l for l in result.stdout.splitlines() if l.strip()])
+        if changed == 0:
+            results.append(CheckResult(PASS, "git working tree", "clean"))
+        else:
+            results.append(CheckResult(WARN, "git working tree", f"{changed} modified/untracked files"))
+    except Exception as e:
+        results.append(CheckResult(WARN, "git status", str(e)))
+    return results
+
+
+SECTIONS: Dict[str, Tuple[str, callable]] = {
+    "toolchain": ("Toolchain & Scripts", run_section_toolchain),
+    "secrets":   ("Secrets",             run_section_secrets),
+    "services":  ("Services",            run_section_services),
+    "repo":      ("Repository",          run_section_repo),
+}
+
+
+def print_results(section_name: str, results: List[CheckResult], quiet: bool) -> int:
+    failures = sum(1 for r in results if r.status == FAIL)
+    warnings = sum(1 for r in results if r.status == WARN)
+    if not quiet:
+        print(f"\n[{section_name}]")
+    for r in results:
+        if quiet and r.status == PASS:
+            continue
+        sym = {"PASS": "✓", "FAIL": "✗", "WARN": "!", "SKIP": "-"}.get(r.status, "?")
+        detail = f"  — {r.detail}" if r.detail else ""
+        print(f"  {sym} [{r.status}] {r.label}{detail}")
+    return failures
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="aq-setup: Harness prerequisite checker",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Sections: " + ", ".join(SECTIONS.keys()),
+    )
+    parser.add_argument("--quiet", "-q", action="store_true", help="Show only failures and warnings")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--section", choices=list(SECTIONS.keys()), help="Run only one section")
+    args = parser.parse_args()
+
+    sections_to_run = {args.section: SECTIONS[args.section]} if args.section else SECTIONS
+    all_results: Dict[str, List[dict]] = {}
+    total_failures = 0
+
+    for key, (name, fn) in sections_to_run.items():
+        results = fn()
+        all_results[key] = [r.to_dict() for r in results]
+        if args.json:
+            continue
+        total_failures += print_results(name, results, args.quiet)
+
+    if args.json:
+        summary = {
+            "sections": all_results,
+            "total_pass": sum(1 for sec in all_results.values() for r in sec if r["status"] == PASS),
+            "total_fail": sum(1 for sec in all_results.values() for r in sec if r["status"] == FAIL),
+            "total_warn": sum(1 for sec in all_results.values() for r in sec if r["status"] == WARN),
+        }
+        print(json.dumps(summary, indent=2))
+        return 0 if summary["total_fail"] == 0 else 1
+
+    total_failures = sum(
+        1 for sec in all_results.values() for r in sec if r["status"] == FAIL
+    )
+    total_warnings = sum(
+        1 for sec in all_results.values() for r in sec if r["status"] == WARN
+    )
+
+    print(f"\n--- Setup Check Complete: {total_failures} failures, {total_warnings} warnings ---")
+    if total_failures == 0:
+        print("All required checks passed. Run `aq-prime` to begin a session.")
+    else:
+        print("Fix failures above before starting a session.")
+
+    return 0 if total_failures == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
