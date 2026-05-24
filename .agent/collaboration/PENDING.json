@@ -4,7 +4,15 @@
   "intent": "Embed local model into workflows; standardize all agent behavioral rules; model-agnostic local agent config; monitoring parity for all new features.",
   "status": "complete_post_rebuild",
   "timestamp": "2026-05-23T00:00:00+00:00",
-  "commits": ["e1987d06", "6bc19cb8", "59608bf1", "48770770", "4a08052e", "a90ea3cc", "6102a5a8"],
+  "commits": [
+    "e1987d06",
+    "6bc19cb8",
+    "59608bf1",
+    "48770770",
+    "4a08052e",
+    "a90ea3cc",
+    "6102a5a8"
+  ],
   "files": [
     "scripts/ai/aq-insights",
     "scripts/ai/aq-chat",
@@ -59,5 +67,24 @@
       "Gemini: MTP tuning decision tree — specDraftNMax 2→3 acceptance rate threshold?"
     ],
     "reference": ".agent/collaboration/LOCAL_DELEGATION_STRATEGY.md"
-  }
+  },
+  "pending_slices": [
+    {
+      "updated_at": "2026-05-24T04:23:52Z",
+      "agent": "codex",
+      "task": "fix locally hosted model restrictions and validate PRSI execution loop",
+      "intent": "Route aq-chat local sessions through the existing Switchboard local-tool-calling profile so the local model receives executable built-in tool schemas instead of only descriptive prompt text.",
+      "target_files": [
+        "scripts/ai/aq-chat"
+      ],
+      "validation": [
+        "python3 -m py_compile scripts/ai/aq-chat",
+        "scripts/testing/test-switchboard-local-tool-calling.sh",
+        "scripts/testing/check-prsi-phase7-static-gates.sh"
+      ],
+      "risk": "medium: changes interactive local chat transport; preserve --no-tools raw llama fallback"
+    }
+  ],
+  "last_repaired_at": "2026-05-24T04:30:00Z",
+  "repair_note": "Merged appended JSON object(s) into pending_slices to preserve object-shaped Intent Lock contract."
 }
