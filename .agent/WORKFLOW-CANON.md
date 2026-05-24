@@ -261,8 +261,8 @@ EOF
 | Panel shows live data | `curl -s http://127.0.0.1:8889/api/<service-route> | python3 -m json.tool` |
 
 **Services currently at zero coverage (P3 backlog):**
-- 221 registered handlers unreachable via MCP or HTTP — see `SYSTEM-INTEGRITY-MASTER.md`
-- 179 production logical orphan candidates after filtering tests/migrations/examples — see `aq-integrity-scan --json`
+- Historical orphan-handler inventory requires re-audit under the bounded scanner — see `SYSTEM-INTEGRITY-MASTER.md`
+- 115 production logical orphan candidates are baselined in `config/aq-integrity-logical-orphans.json`; new candidates fail focused CI.
 
 ## Bounded Validation Primitive Rule (Permanent — 2026-05-24)
 
@@ -276,12 +276,21 @@ Any audit, scanner, or debt-discovery tool used by agents MUST provide:
 3. **Noise classification** — tests, migrations, examples, generated files, and entrypoints must not inflate production debt counts.
 4. **Focused CI coverage** — path-gated test in `config/validation-check-registry.json` for the scanner contract.
 5. **Actionable summaries** — counts by class plus artifact path for full details.
+6. **Debt ratchets** — large legacy findings must be baselined, then enforced so new debt cannot enter unnoticed.
 
 Before using a scanner to drive remediation, first run its bounded JSON mode and confirm:
 
 ```bash
 scripts/ai/aq-integrity-scan --json --timeout-seconds 10 --max-files 5000 | python3 -m json.tool
 ```
+
+For logical orphan debt specifically:
+
+```bash
+scripts/ai/aq-integrity-scan --json --timeout-seconds 10 --max-files 5000 --fail-on-new-logical
+```
+
+If this fails, either wire/remove the new module or add a reviewed baseline entry with an owner, classification, and rationale in the same change.
 
 ---
 

@@ -76,8 +76,13 @@ for check in registry.get("checks", []):
             print(f"[focused-ci] SKIP ({check_id}): '{require_tool}' not in PATH")
             continue
 
-    # Check if any trigger path is staged
-    if not any(t in staged for t in triggers):
+    def matches_trigger(path, trigger):
+        trigger = trigger.rstrip("/")
+        return path == trigger or path.startswith(trigger + "/")
+
+    # Check if any trigger path is staged. Directory triggers use prefix matching
+    # so checks can guard whole subsystems such as ai-stack without listing every file.
+    if not any(matches_trigger(path, trigger) for path in staged for trigger in triggers):
         continue
 
     ran_any = True

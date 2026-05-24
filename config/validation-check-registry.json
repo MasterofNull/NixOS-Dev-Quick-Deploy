@@ -496,6 +496,8 @@
       "trigger_paths": [
         "scripts/ai/aq-integrity-scan",
         "scripts/testing/test-aq-integrity-scan-contract.py",
+        "scripts/testing/check-aq-integrity-logical-baseline.py",
+        "config/aq-integrity-logical-orphans.json",
         "config/validation-check-registry.json"
       ],
       "command": [
@@ -504,6 +506,23 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 15
+    },
+    {
+      "id": "aq-integrity-logical-baseline",
+      "description": "aq-integrity logical orphan baseline guard",
+      "trigger_paths": [
+        "ai-stack",
+        "scripts/ai/aq-integrity-scan",
+        "scripts/testing/check-aq-integrity-logical-baseline.py",
+        "config/aq-integrity-logical-orphans.json",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/check-aq-integrity-logical-baseline.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 20
     }
   ]
 }

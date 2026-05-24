@@ -66,7 +66,7 @@
 ### Current Debt Snapshot
 - Command: `scripts/ai/aq-integrity-scan --json --timeout-seconds 10 --max-files 5000 --max-logical-files 1200`
 - Result: 827 files scanned in 0.142s, not truncated.
-- Counts: doc orphans 0, registration gaps 0, protocol drifts 0, production logical orphan candidates 179.
+- Counts before path-aware baseline pass: doc orphans 0, registration gaps 0, protocol drifts 0, production logical orphan candidates 179.
 - Full snapshot artifact: `.agents/scratchpad/integrity-scan-20260524.json`
 - `aq-qa 0`: 0 failed, 3 skipped. Delegate rate now reports skip with `insufficient sample (9/10 calls in last 24h)`.
 
@@ -258,7 +258,7 @@ Anti-gaming mandate: fix root producers, never patch labels.
 
 ### Local agent deliverables (untracked, repo root)
 - `scripts/ai/aq-integrity-scan` — 3-way cross-reference (docs/implementation/registration)
-- `SYSTEM-INTEGRITY-MASTER.md` — 221 registration gaps, 187 zero-import logical orphans
+- `SYSTEM-INTEGRITY-MASTER.md` — historical orphan inventory; re-audit with bounded `aq-integrity-scan`
 - `HIGH-FIDELITY-SYSTEM-AUDIT.md` — original audit triggering this session's work
 - Additional analysis files: COMPREHENSIVE-SOTA-AI-ANALYSIS.md, FINAL-SOTA-TECHNICAL-REPORT.md,
   INDUSTRY-AI-HARNESS-COMPARISON.md, MASTER-AI-HARNESS-ANALYSIS.md, OPERATIONAL-INTEGRITY-AUDIT.md
@@ -266,7 +266,7 @@ Anti-gaming mandate: fix root producers, never patch labels.
 
 ### Orphan audit findings (backlog — not yet actioned)
 - 221 async handlers implemented but unreachable via MCP or HTTP
-- 187 modules with zero inbound imports (dead code candidates)
+- 115 baselined production modules with zero inbound imports after AST import parsing and noise filtering
 - Candidate purge: task_router.py (superseded by routing_contract.py),
   llm_code_reviewer.py (moved to ai_insights.py), local-agents/safe_command_executor.py
 - P2 backlog per SOTA 2.0 roadmap
@@ -390,7 +390,7 @@ after rebuild gives 8192 ctx, 5000+1024=6024 fits with headroom.
   → then `aq-qa 69` (expect 4/4), `aq-qa 70` (expect 70.1 PASS, 70.2 PASS/SKIP)
 - Run: `aq-prsi-review --purge` to clear 26 obsolete PRSI entries (confirm audit report first)
 - AppArmor enforce: run `nixos-rebuild switch` with state="enforce" in mcp-servers.nix after 2026-05-30
-- Orphan audit P3 backlog: scanner now bounded; current JSON snapshot shows 0 doc orphans, 0 registration gaps, 179 production logical orphan candidates after filtering tests/migrations/examples.
+- Orphan audit P3 backlog: scanner now bounded; current JSON snapshot shows 0 doc orphans, 0 registration gaps, 115 baselined production logical orphan candidates after AST import parsing and filtering tests/migrations/examples.
 - Phase 70.3: soak validation after rebuild (aq-qa 0 + maeah-acceptance-tests)
 
 ## 2026-05-24 Codex handoff — mutable agentic slice helper
@@ -559,4 +559,29 @@ aq-qa 71   # expect 7/7 PASS
 - Wire aq-qa failures to auto-create improvement tasks
 - Add "new service = aq-qa + dashboard panel" contract to WORKFLOW-CANON.md and AGENTS.md
 - AppArmor enforce: scheduled 2026-05-30 (complain since 2026-05-23)
-- Orphan audit P3: 221 reg gaps, 187 zero-import modules
+- Orphan audit P3: historical reg-gap count needs bounded re-audit; logical orphan baseline is 115 candidates in `config/aq-integrity-logical-orphans.json`
+
+## Session — 2026-05-24 Logical Orphan Baseline
+
+Slice owner: Codex
+
+Completed:
+- Added path-aware logical orphan findings to `scripts/ai/aq-integrity-scan`.
+- Added `config/aq-integrity-logical-orphans.json` with 115 current candidates:
+  - 93 `entrypoint_candidate`
+  - 19 `library_candidate`
+  - 3 `runtime_component_candidate`
+- Added `new_logical_orphans` detection and `--fail-on-new-logical`.
+- Added focused guard `scripts/testing/check-aq-integrity-logical-baseline.py`.
+- Updated focused CI trigger matching so directory triggers such as `ai-stack` protect entire subsystems.
+
+Failure pattern captured:
+- A large orphan count is not actionable unless every finding has a stable path, classification, owner, and prevention gate.
+- Static import checks undercount dynamic/plugin/runtime wiring and overcount entrypoints, so the correct workflow is baseline + classify + ratchet, not immediate mass deletion.
+- Transient collaboration files can create false documented-command findings; command drift scans now skip `.agent/collaboration` style state.
+
+Next remediation:
+- Triage baseline entries in small batches by classification.
+- For `entrypoint_candidate`, verify Nix/systemd/CLI/plugin reachability and change `action` to `keep` with rationale, or wire/delete.
+- For `library_candidate`, search for docs/runtime references; delete or add real imports/tests.
+- For `runtime_component_candidate`, require an aq-qa check and dashboard/service visibility if it is meant to be live.
