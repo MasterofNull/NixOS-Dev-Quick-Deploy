@@ -187,10 +187,17 @@ variables:
   # ── switchboard tunables (Phase B+) ──────────────────────────────────────
   - canonical: SWB_LOCAL_TOOL_CALL_LIMIT
     aliases: []
-    default: "8"
+    default: "16"
     layer: nix
     consumers: [switchboard]
-    description: "Maximum tool calls per local-model request before forcing a response"
+    description: "Safety-fuse maximum tool calls per local-model request before forcing a response"
+
+  - canonical: SWB_ACTIVE_TOOL_SCHEMA_LIMIT
+    aliases: []
+    default: "7"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum local tool schemas leased into an automatic active working set; explicit tool requests can still override"
 
   - canonical: SWB_TOOL_WORKING_SET_ENABLED
     aliases: []
