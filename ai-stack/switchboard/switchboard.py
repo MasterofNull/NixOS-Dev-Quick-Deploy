@@ -179,6 +179,7 @@ LOCAL_TOOL_CALLING_CARD = """[profile-card:local-tool-calling]
 Use the local tool-calling lane for bounded built-in tool execution on the local host.
 The runtime leases a small active tool set; use the leased tools for evidence, then synthesize.
 For broad analysis, gather only the strongest 2-4 evidence points before answering.
+Use lease_tools to swap to a different active bundle when the current leased tools are the wrong fit.
 Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
 CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
 """
@@ -677,21 +678,24 @@ def _tool_payload_from_schema(schema: dict) -> dict:
 
 # Tool working-set bundles. These are intentionally smaller than the full
 # built-in registry so a task leases only the schemas it can plausibly use.
+VIRTUAL_TOOL_LEASE_NAME = "lease_tools"
+
 _TOOL_BUNDLES = {
     "conversational": frozenset(),
-    "git": frozenset({"git_status", "git_diff", "run_command"}),
-    "search": frozenset({"search_files", "read_file", "list_files"}),
-    "sys_ops": frozenset({"check_service", "get_system_info", "run_command"}),
+    "git": frozenset({VIRTUAL_TOOL_LEASE_NAME, "git_status", "git_diff", "run_command"}),
+    "search": frozenset({VIRTUAL_TOOL_LEASE_NAME, "search_files", "read_file", "list_files"}),
+    "sys_ops": frozenset({VIRTUAL_TOOL_LEASE_NAME, "check_service", "get_system_info", "run_command"}),
     "file_edit": frozenset({
+        VIRTUAL_TOOL_LEASE_NAME,
         "search_files",
         "read_file",
         "write_file",
         "run_command",
         "git_status",
-        "git_diff",
         "validate_before_commit",
     }),
     "harness_analysis": frozenset({
+        VIRTUAL_TOOL_LEASE_NAME,
         "get_hint",
         "query_context",
         "run_command",
@@ -699,12 +703,13 @@ _TOOL_BUNDLES = {
         "search_files",
         "read_file",
     }),
-    "memory": frozenset({"get_hint", "query_context", "store_memory"}),
-    "computer_use": frozenset({"screenshot", "get_screen_size"}),
-    "default": frozenset({"get_hint", "query_context"}),
+    "memory": frozenset({VIRTUAL_TOOL_LEASE_NAME, "get_hint", "query_context", "store_memory"}),
+    "computer_use": frozenset({VIRTUAL_TOOL_LEASE_NAME, "screenshot", "get_screen_size"}),
+    "default": frozenset({VIRTUAL_TOOL_LEASE_NAME, "get_hint", "query_context"}),
 }
 
 _TOOL_LEASE_PRIORITY = {
+    VIRTUAL_TOOL_LEASE_NAME: 5,
     "get_hint": 10,
     "query_context": 20,
     "check_service": 30,
@@ -721,6 +726,47 @@ _TOOL_LEASE_PRIORITY = {
     "screenshot": 140,
     "get_screen_size": 150,
 }
+
+
+def _virtual_lease_tools_payload() -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": VIRTUAL_TOOL_LEASE_NAME,
+            "description": (
+                "Swap the active local tool lease for the next step without loading the full tool registry. "
+                "Use this when the current task needs a different tool bundle."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent": {
+                        "type": "string",
+                        "description": "Intent bundle to lease.",
+                        "enum": sorted(_TOOL_BUNDLES.keys()),
+                    },
+                    "tools": {
+                        "type": "array",
+                        "description": "Optional explicit built-in tool names to lease instead of an intent bundle.",
+                        "items": {"type": "string"},
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief reason the active tool set needs to change.",
+                    },
+                },
+            },
+        },
+    }
+
+
+def _local_tool_schema_catalog(registry) -> dict[str, dict]:
+    available = {
+        tool.name: _tool_payload_from_schema(tool.to_json_schema())
+        for tool in registry.list_tools()
+    }
+    available[VIRTUAL_TOOL_LEASE_NAME] = _virtual_lease_tools_payload()
+    return available
 
 
 def _latest_user_text(messages: list) -> str:
@@ -797,6 +843,49 @@ def _cap_active_tool_names(selected_names: set[str]) -> set[str]:
     return set(ordered[:ACTIVE_TOOL_SCHEMA_LIMIT])
 
 
+def _resolve_tool_lease(arguments: dict, available_names: set[str], current_allowed: set[str]) -> tuple[set[str], dict]:
+    """Resolve a virtual lease_tools request into the next active tool set."""
+    current = set(current_allowed or set())
+    intent = str((arguments or {}).get("intent") or "").strip()
+    explicit_tools = (arguments or {}).get("tools")
+    reason = str((arguments or {}).get("reason") or "").strip()
+    if isinstance(explicit_tools, list) and explicit_tools:
+        requested = {
+            str(name).strip()
+            for name in explicit_tools
+            if str(name or "").strip()
+        }
+        unsupported = sorted(name for name in requested if name not in available_names)
+        if unsupported:
+            return current, {
+                "tool": VIRTUAL_TOOL_LEASE_NAME,
+                "status": "error",
+                "error": "unsupported requested tool(s): " + ", ".join(unsupported),
+                "active_tools": sorted(current),
+            }
+        selected = requested
+        lease_intent = "explicit"
+    else:
+        lease_intent = intent if intent in _TOOL_BUNDLES else "default"
+        selected = set(_TOOL_BUNDLES.get(lease_intent, _TOOL_BUNDLES["default"]))
+        selected = {name for name in selected if name in available_names}
+    if selected and lease_intent != "conversational":
+        selected.add(VIRTUAL_TOOL_LEASE_NAME)
+    selected = _cap_active_tool_names(selected)
+    evicted = sorted(current - selected)
+    added = sorted(selected - current)
+    return selected, {
+        "tool": VIRTUAL_TOOL_LEASE_NAME,
+        "status": "ok",
+        "intent": lease_intent,
+        "reason": reason,
+        "active_schema_limit": int(ACTIVE_TOOL_SCHEMA_LIMIT),
+        "active_tools": sorted(selected),
+        "added_tools": added,
+        "evicted_tools": evicted,
+    }
+
+
 def _select_auto_tool_names(messages: list, available_names: set[str]) -> tuple[str, set[str]]:
     if not TOOL_WORKING_SET_ENABLED:
         legacy = {"run_command", "read_file", "search_files", "git_status", "query_context", "get_hint"}
@@ -812,10 +901,7 @@ def _select_auto_tool_names(messages: list, available_names: set[str]) -> tuple[
 
 def _normalize_local_tools(requested_tools, messages=None):
     registry, _tool_call_cls = _load_local_tool_registry()
-    available = {
-        tool.name: _tool_payload_from_schema(tool.to_json_schema())
-        for tool in registry.list_tools()
-    }
+    available = _local_tool_schema_catalog(registry)
     available_names = set(available)
     if isinstance(requested_tools, list) and requested_tools:
         if any((isinstance(tool, str) and tool.strip() == "*") for tool in requested_tools):
@@ -1096,6 +1182,8 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
     messages = list(payload.get("messages") or [])
     if not messages:
         raise ValueError("chat/completions requires messages for local-tool-calling")
+    available_schemas = _local_tool_schema_catalog(registry)
+    available_names = set(available_schemas)
     tools_payload, allowed_names, working_set = _normalize_local_tools(payload.get("tools"), messages)
     tool_choice = _normalize_tool_choice(payload.get("tool_choice"), allowed_names)
 
@@ -1108,6 +1196,7 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
     tool_calls_used = 0
     tool_result_cache = {}
     context_gc = _context_gc_empty_stats()
+    lease_events = []
     request_payload = dict(payload)
     request_payload["messages"] = messages
     if tools_payload:
@@ -1196,6 +1285,33 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                         "status": "error",
                         "error": f"unsupported local tool: {tool_name}",
                     })
+                elif tool_name == VIRTUAL_TOOL_LEASE_NAME:
+                    try:
+                        arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments or {})
+                    except Exception as exc:
+                        tool_result_text = json.dumps({
+                            "tool": tool_name,
+                            "status": "error",
+                            "error": f"invalid JSON arguments: {exc}",
+                            "raw_arguments": raw_arguments,
+                        })
+                    else:
+                        next_allowed, lease_result = _resolve_tool_lease(arguments, available_names, allowed_names)
+                        if lease_result.get("status") == "ok":
+                            allowed_names = set(next_allowed)
+                            tools_payload = [available_schemas[name] for name in sorted(allowed_names)]
+                            if tools_payload:
+                                request_payload["tools"] = tools_payload
+                            else:
+                                request_payload.pop("tools", None)
+                            working_set["intent"] = f"lease:{lease_result.get('intent', 'default')}"
+                            working_set["selected_count"] = len(allowed_names)
+                            working_set["selected_tools"] = sorted(allowed_names)
+                            working_set["evicted_count"] = max(0, int(working_set.get("available_count", len(available_names))) - len(allowed_names))
+                            lease_events.append(lease_result)
+                            working_set["lease_count"] = len(lease_events)
+                            working_set["lease_events"] = lease_events[-5:]
+                        tool_result_text = json.dumps(lease_result, ensure_ascii=True, sort_keys=True)
                 else:
                     cache_key = _tool_result_cache_key(tool_name, raw_arguments)
                     cached_result = tool_result_cache.get(cache_key) if TOOL_RESULT_DEDUPE_ENABLED else None
@@ -2086,6 +2202,7 @@ async def health():
             "enabled": bool(TOOL_WORKING_SET_ENABLED),
             "remote_enabled": bool(REMOTE_TOOL_WORKING_SET_ENABLED),
             "active_schema_limit": int(ACTIVE_TOOL_SCHEMA_LIMIT),
+            "virtual_tools": [VIRTUAL_TOOL_LEASE_NAME],
             "intents": sorted(_TOOL_BUNDLES.keys()),
             "bundles": {name: sorted(tools) for name, tools in _TOOL_BUNDLES.items()},
         },
