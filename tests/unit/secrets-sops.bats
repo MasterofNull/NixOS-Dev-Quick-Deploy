@@ -6,8 +6,7 @@
 load test_helper
 
 setup() {
-  source "$LIB_DIR/secrets-sops.sh"
-
+  source "$LIB_DIR/l1-infra/secrets-sops.sh"
   TEST_ROOT="$(mktemp -d)"
   SECRETS_DIR="$TEST_ROOT/secrets"
   mkdir -p "$SECRETS_DIR"

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-HTTP_SERVER_PATH = Path(__file__).with_name("http_server.py")
+HTTP_SERVER_PATH = Path(__file__).parent.parent / "http_server.py"
 TARGET_FUNCTIONS = {
     "_apply_query_response_mode",
 }

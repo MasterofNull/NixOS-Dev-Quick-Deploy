@@ -80,6 +80,7 @@ jobs:
       - name: Run service unit tests
         run: |
           set +e
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/ai-stack:$(pwd)/ai-stack/mcp-servers/${{ matrix.service }}
           pytest ai-stack/mcp-servers/${{ matrix.service }} -m "not integration" --cov=ai-stack/mcp-servers/${{ matrix.service }} --cov-report=term-missing
           rc=$?
           if [ "$rc" -eq 5 ]; then

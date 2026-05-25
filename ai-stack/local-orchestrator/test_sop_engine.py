@@ -3,11 +3,12 @@
 
 from pathlib import Path
 import sys
+import pytest
 
 # Add local-orchestrator to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from sop_engine import parse_sop, execute_sop, ConstraintLevel
+from sop_engine import parse_sop, execute_sop, ConstraintLevel, SOPDefinition, SOPStep, SOPSection
 
 
 def test_parse_sop():
@@ -55,6 +56,24 @@ def test_parse_sop():
     return sop
 
 
+@pytest.fixture
+def sop():
+    return SOPDefinition(
+        name="test-sop",
+        description="test description",
+        sections=[
+            SOPSection(
+                title="Section 1",
+                level=2,
+                content="section content",
+                steps=[
+                    SOPStep(number=1, title="step1", description="first step", constraint=ConstraintLevel.MUST),
+                    SOPStep(number=2, title="step2", description="second step", constraint=ConstraintLevel.SHOULD),
+                ]
+            )
+        ]
+    )
+
 def test_sop_execution(sop):
     """Test SOP execution."""
     print("\n" + "=" * 60)
@@ -84,8 +103,8 @@ def test_sop_execution(sop):
 
 
 if __name__ == "__main__":
-    sop = test_parse_sop()
-    test_sop_execution(sop)
+    sop_obj = test_parse_sop()
+    test_sop_execution(sop_obj)
     
     print("\n" + "=" * 60)
     print("All SOP engine tests passed!")

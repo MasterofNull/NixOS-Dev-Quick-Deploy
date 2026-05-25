@@ -41,8 +41,9 @@ def examples_dir():
 
 @pytest.fixture
 async def http_client():
-    """Create async HTTP client."""
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
+    """Create async HTTP client with authentication."""
+    headers = {"X-API-Key": "test-key"}
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0, headers=headers) as client:
         yield client
 
 

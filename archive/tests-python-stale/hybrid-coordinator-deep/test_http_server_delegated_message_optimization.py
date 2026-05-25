@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 
-DELEGATION_HANDLERS_PATH = Path(__file__).with_name("delegation_handlers.py")
+DELEGATION_HANDLERS_PATH = Path(__file__).parent.parent / "delegation_handlers.py"
 TARGET_FUNCTIONS = {
     "_message_content_text",
     "_content_has_only_text_blocks",

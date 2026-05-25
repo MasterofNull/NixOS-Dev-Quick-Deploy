@@ -6,7 +6,7 @@
 load test_helper
 
 setup() {
-    source "$LIB_DIR/error-codes.sh"
+    source "$LIB_DIR/cross-cutting/error-codes.sh"
 }
 
 # ============================================================================
