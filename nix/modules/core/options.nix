@@ -3302,6 +3302,12 @@
         description = "TCP port for the nixos-docs MCP server.";
       };
 
+      osintPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8097;
+        description = "TCP port for the osint-tools MCP server.";
+      };
+
       postgres = {
         enable = lib.mkOption {
           type = lib.types.bool;
