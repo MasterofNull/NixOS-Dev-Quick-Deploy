@@ -64,9 +64,19 @@
 - Go extension ENOENT root cause is a read-only Home Manager extension symlink (`~/.vscode-oss/extensions/golang.Go -> /nix/store/...`); creating `bin/` there failed as expected. Treat separately if Go extension remains noisy.
 
 ### Next Slices
-- Review Gemini orphan deletions and broad baseline triage as a separate evidence-based slice; do not batch them into the runtime-stability commit.
+- Review Gemini orphan deletions and broad baseline triage as a separate evidence-based slice; do not batch them into the runtime-stability commit. Update: second slice accepted deletion of `ai-stack/efficiency/response_caching.py` and `ai-stack/trading-agents/schemas.py` after reference search and trading import validation.
 - Turn remaining `library_candidate` logical orphans into either real imports/tests or explicit deletion commits with compatibility notes.
 - Add dashboard or `aq-qa` visibility for any remaining autonomous-loop components that are intended to be live services.
+
+### Logical Orphan Slice 2
+- Restored the logical orphan baseline semantics: referenced entrypoints remain `verify-entrypoint-coverage` until service/QA/dashboard coverage is proven.
+- Removed the two deleted files from `config/aq-integrity-logical-orphans.json`; baseline is now 82 known, 0 new.
+- Strengthened `scripts/testing/check-aq-integrity-logical-baseline.py` so stale deleted paths, blanket referenced-entrypoint `keep`, and generic “verified externally” rationales fail CI.
+- Validation:
+  - `python3 scripts/testing/check-aq-integrity-logical-baseline.py` → PASS, 82 known / 0 new.
+  - `python3 scripts/testing/test-aq-integrity-scan-contract.py` → PASS.
+  - `python3 scripts/testing/test-trading-handlers-imports.py` → PASS.
+  - Reference search for deleted modules → no live references.
 
 ## Session — 2026-05-24 Tool Working-Set GC
 
