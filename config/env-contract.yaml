@@ -594,6 +594,20 @@ variables:
     consumers: [service-endpoints.sh, aq-qa]
     description: "PostgreSQL database name"
 
+  - canonical: POSTGRES_USER
+    aliases: []
+    default: "aidb"
+    layer: all
+    consumers: [hybrid-coordinator, aidb, autonomous-improvement, meta-optimization]
+    description: "PostgreSQL database user"
+
+  - canonical: AIDB_TOOL_SCHEMA_CACHE
+    aliases: []
+    default: "/var/lib/ai-stack/aidb/mcp-cache/tool_schemas.json"
+    layer: service
+    consumers: [aidb]
+    description: "Writable filesystem cache for discovered MCP tool schemas"
+
   # ── Redis ───────────────────────────────────────────────────────────────
   - canonical: REDIS_URL
     aliases: []

@@ -6,7 +6,7 @@
   },
   "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
   "_version": "1.1",
-  "_updated": "2026-05-18",
+  "_updated": "2026-05-24",
   "intents": {
     "code_generation": {
       "profile": "local-tool-calling",
@@ -119,6 +119,13 @@
       "fallback_profile": "local",
       "memory_recall": true,
       "rag_project": "gis-systems-patterns,semantic"
+    },
+    "osint_reconnaissance": {
+      "profile": "remote-reasoning",
+      "min_confidence": 0.45,
+      "fallback_profile": "local-tool-calling",
+      "memory_recall": true,
+      "rag_project": "osint-intelligence,logic-patterns,semantic"
     }
   }
 }

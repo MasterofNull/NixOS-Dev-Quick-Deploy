@@ -777,7 +777,7 @@ async def initialize_server():
     # Phase 63 — GraphRAG knowledge search
     try:
         from knowledge import graph_search as _gs63
-        _gs63.init(aidb_client, aidb_api_key=Config.get("AIDB_API_KEY", ""))
+        _gs63.init(aidb_client, aidb_api_key=getattr(Config, "AIDB_API_KEY", ""))
         logger.info("✓ GraphRAG graph_search initialized (knowledge-graph project)")
     except Exception as _gs_exc:
         logger.warning("⚠ graph_search init failed (non-fatal): %s", _gs_exc)
@@ -966,6 +966,7 @@ async def initialize_server():
         routing_config=routing_config,
         record_telemetry_fn=record_telemetry_event,
         collections=COLLECTIONS,
+        postgres_client=postgres_client,
     )
 
     # Phase 6.1 — wire extracted route_handler module

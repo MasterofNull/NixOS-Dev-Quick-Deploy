@@ -625,6 +625,7 @@ class SearchRouter:
         routing_config: RoutingConfig,
         record_telemetry_fn: Callable,
         collections: Dict[str, Any],
+        postgres_client: Optional[Any] = None,
     ) -> None:
         self._qdrant = qdrant_client
         self._embed = embed_fn
@@ -635,6 +636,81 @@ class SearchRouter:
         self._routing_config = routing_config
         self._record_telemetry = record_telemetry_fn
         self._collections = collections
+        self._postgres = postgres_client
+
+    # ------------------------------------------------------------------
+    # SQL search (Phase 59.3 self-healing)
+    # ------------------------------------------------------------------
+
+    async def sql_search(
+        self,
+        query: str,
+        limit: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve high-value results from historical interaction tables."""
+        if self._postgres is None:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        try:
+            # 1. Search solved_issues (remediation patterns)
+            solved_rows = await self._postgres.fetch_all(
+                """
+                SELECT id, query, solution, value_score
+                FROM solved_issues
+                WHERE query ILIKE %s
+                ORDER BY value_score DESC, created_at DESC
+                LIMIT %s
+                """,
+                f"%{query}%",
+                limit,
+            )
+            for row in solved_rows:
+                results.append({
+                    "collection": "solved-issues",
+                    "id": str(row["id"]),
+                    "score": float(row.get("value_score") or 0.9),
+                    "payload": {
+                        "query": row["query"],
+                        "solution": row["solution"],
+                        "content": f"REMEDIATION: {row['solution']}",
+                        "type": "remediation_pattern"
+                    },
+                    "source": "sql",
+                })
+
+            # 2. Search interaction_history (recent context + high complexity priority)
+            hist_rows = await self._postgres.fetch_all(
+                """
+                SELECT interaction_id, query, response, value_score, metadata
+                FROM interaction_history
+                WHERE query ILIKE %s AND response IS NOT NULL
+                ORDER BY 
+                    (metadata->>'high_complexity')::boolean DESC NULLS LAST,
+                    created_at DESC
+                LIMIT %s
+                """,
+                f"%{query}%",
+                limit,
+            )
+            for row in hist_rows:
+                results.append({
+                    "collection": "interaction-history",
+                    "id": str(row["interaction_id"]),
+                    "score": float(row.get("value_score") or 0.7),
+                    "payload": {
+                        "query": row["query"],
+                        "response": row["response"],
+                        "content": f"PAST INTERACTION: Q: {row['query']} A: {row['response']}",
+                        "type": "historical_interaction"
+                    },
+                    "source": "sql",
+                })
+
+        except Exception as exc:
+            logger.warning("sql_search_failed error=%s", exc)
+
+        return results
 
     # ------------------------------------------------------------------
     # Backend selection
@@ -799,8 +875,14 @@ class SearchRouter:
         keyword_results.sort(key=lambda item: item["score"], reverse=True)
         keyword_results = keyword_results[:keyword_limit]
 
+        # Phase 59.3: Self-healing SQL recall (remediation patterns + successful history)
+        sql_results = []
+        if self._postgres:
+            sql_results = await self.sql_search(query, limit=2)
+
         combined: Dict[str, Dict[str, Any]] = {}
-        for item in semantic_results + keyword_results:
+        # SQL results take absolute priority (injected first with high scores)
+        for item in sql_results + semantic_results + keyword_results:
             key = f"{item['collection']}:{item['id']}"
             if key not in combined:
                 combined[key] = {**item, "sources": {item["source"]}}
@@ -821,13 +903,15 @@ class SearchRouter:
         self._record_telemetry(
             "hybrid_search",
             {"query": query[:200], "collections": collections,
-             "semantic_results": len(semantic_results), "keyword_results": len(keyword_results)},
+             "semantic_results": len(semantic_results), "keyword_results": len(keyword_results),
+             "sql_results": len(sql_results)},
         )
         return {
             "query": query,
             "collections": collections,
             "semantic_results": semantic_results,
             "keyword_results": keyword_results,
+            "sql_results": sql_results,
             "combined_results": combined_results,
             "tokens": tokens,
         }

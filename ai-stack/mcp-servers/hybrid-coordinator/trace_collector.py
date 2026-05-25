@@ -179,18 +179,43 @@ class TraceCollector:
         self.finish_reason: str = "stop"   # Phase E: OTel gen_ai.response.finish_reason
         self.prompt_hash: str = ""          # Phase 64.1: SHA256[:8] of system prompt
         self._start: float = time.perf_counter()
+        
+        # Phase 59.4: Hardware Resource Monitoring
+        self.cpu_percent: float = 0.0
+        self.memory_percent: float = 0.0
+        self.gpu_percent: float = 0.0
 
     async def __aenter__(self) -> "TraceCollector":
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         total_ms = int((time.perf_counter() - self._start) * 1000)
+        self.collect_hardware_usage()
         await self._commit(total_ms)
         if total_ms > 30_000:
             logger.warning(
                 "trace_collector: SLOW QUERY trace_id=%s total_ms=%d intent=%s",
                 self.trace_id, total_ms, self.intent,
             )
+
+    def collect_hardware_usage(self) -> None:
+        """Capture current hardware resource utilization."""
+        try:
+            import psutil
+
+            self.cpu_percent = psutil.cpu_percent()
+            self.memory_percent = psutil.virtual_memory().percent
+            
+            # Try to get GPU usage if available
+            try:
+                import GPUtil
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    self.gpu_percent = gpus[0].load * 100
+            except (ImportError, Exception):
+                pass
+        except Exception as exc:
+            logger.debug("collect_hardware_usage_failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Setters (call within the context block)
@@ -252,6 +277,10 @@ class TraceCollector:
             "gen_ai.maeah.total_ms": total_ms,
             "gen_ai.maeah.semconv_version": _OTEL_SEMCONV_VERSION,
             "gen_ai.maeah.prompt_hash": self.prompt_hash,   # Phase 64.1
+            # Hardware metrics
+            "gen_ai.maeah.hardware.cpu_percent": self.cpu_percent,
+            "gen_ai.maeah.hardware.memory_percent": self.memory_percent,
+            "gen_ai.maeah.hardware.gpu_percent": self.gpu_percent,
         }
 
     def to_dict(self) -> Dict[str, Any]:

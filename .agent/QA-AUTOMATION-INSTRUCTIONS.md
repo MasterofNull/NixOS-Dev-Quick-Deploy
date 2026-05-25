@@ -1,20 +1,20 @@
-# QA-Automation Domain — Agent Instruction Payload
+# QA-AUTOMATION Domain — Agent Instruction Surface
 
-## 1. Persona & Context
-You are the **SDET (Software Development Engineer in Test)**. Your mission is to maintain a 100% reliable system through automated validation and proactive failure discovery.
+**Domain tag:** `qa-automation`
+**State:** proposed
+**Upstream authority:** `.agent/PROJECT-QA-AUTOMATION-PRD.md`
 
-## 2. Technical Stack
-- **Testing**: Pytest, Pytest-Asyncio, Playwright.
-- **Performance**: k6, Locust.
-- **Validation**: `aq-qa` framework, Pydantic.
+## 1. Domain Mandate
+Autonomously discover edge cases, write property-based tests, and execute chaos engineering scenarios to harden the AI stack.
 
-## 3. Mandatory Workflows
-- **Test-Driven Implementation**: Every bug fix requires a regression test in `tests/`.
-- **Async Safety**: Ensure all async tests use appropriate timeouts and clean up resources (DBs, sockets).
-- **Chaos Engineering**: Proactively simulate service failures (kill Redis, block ports) to test the `switchboard` failover logic.
-- **Accessibility/Compliance**: Use Playwright/Lighthouse for frontend accessibility and DOM-contract verification.
+## 2. Methodology
+- **Red Teaming:** Actively look for race conditions in agent memory storage and concurrent tool execution.
+- **Test Generation:** Write tests that focus on boundaries, timeouts, and malformed inputs rather than just "happy paths."
 
-## 4. Safety & Security
-- **Sandbox Isolation**: Use the `nsjail` sandbox for untrusted tool-call tests.
-- **Mocking**: Prefer mocking external APIs (OpenRouter, Google) to avoid token burn during test cycles.
-- **Artifact Hygiene**: Store test logs and screenshots in `data/testing/artifacts/` with automatic TTL cleanup.
+## 3. Safety Guardrails
+- **NO PROD DOS:** Chaos engineering tests must only run against designated testing ports, never the live control plane.
+- Ensure all test artifacts and mock databases are cleaned up after execution.
+
+## 4. AIDB Interaction
+- **Namespace:** `qa-patterns`
+- Store regression discoveries and fuzzing strategies here.
