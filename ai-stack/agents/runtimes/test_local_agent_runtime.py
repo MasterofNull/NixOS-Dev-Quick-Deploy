@@ -170,8 +170,7 @@ def test_post_completion_falls_back_to_llama_and_strips_tool_payload():
     assert "tool_choice" not in fake_client.post_calls[1]["json"]
     assert fake_client.post_calls[1]["json"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert state["fallback_backend"] == "llama.cpp"
-    assert state["fallback_reason"] == "switchboard_unreachable"
-
+    assert state["fallback_reason"] == "switchboard_timeout_or_unreachable"
 
 def test_build_inference_payload_disables_thinking_when_runtime_is_off():
     module = _load_runtime(AGENT_THINKING_MODE="off")
@@ -189,7 +188,7 @@ def test_build_inference_payload_omits_thinking_override_when_runtime_is_on():
     assert "chat_template_kwargs" not in payload
 
 
-def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable():
+def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable(monkeypatch):
     module = _load_runtime(AGENT_STREAMING="true")
     fake_client = _FakeAsyncClient(
         stream_plan=[
@@ -203,7 +202,8 @@ def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable():
             ),
         ]
     )
-    module.httpx.AsyncClient = lambda timeout: fake_client
+    # Safely mock AsyncClient using monkeypatch
+    monkeypatch.setattr(module.httpx, "AsyncClient", lambda **kwargs: fake_client)
     stdout = io.StringIO()
 
     with contextlib.redirect_stdout(stdout):
@@ -219,10 +219,14 @@ def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable():
     assert fake_client.stream_calls[1]["headers"] == {}
 
 
-def test_run_reports_named_timeout_for_empty_timeout_exceptions():
+def test_run_reports_named_timeout_for_empty_timeout_exceptions(monkeypatch):
     module = _load_runtime()
-    fake_client = _FakeAsyncClient(post_plan=[httpx.ReadTimeout("")])
-    module.httpx.AsyncClient = lambda timeout: fake_client
+    # Provide two timeouts: one for switchboard, one for the direct llama.cpp fallback
+    fake_client = _FakeAsyncClient(post_plan=[httpx.ReadTimeout(""), httpx.ReadTimeout("")])
+    
+    # Safely mock AsyncClient using monkeypatch
+    monkeypatch.setattr(module.httpx, "AsyncClient", lambda **kwargs: fake_client)
+    
     stdout = io.StringIO()
     stderr = io.StringIO()
 

@@ -243,6 +243,7 @@ class TestE2EWorkflowExecution:
         assert workflow_stats["workflow"] == "simple-sequential"
 
 
+@pytest.mark.integration
 class TestE2EErrorHandling:
     """Test error handling in HTTP API."""
 

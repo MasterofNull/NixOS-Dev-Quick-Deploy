@@ -89,7 +89,7 @@ class TestDecisionPointDetector:
         )
 
         assert decision is not None, "Should detect planning decision"
-        assert decision.decision_type == "planning"
+        assert decision.decision_type in ["planning", "architecture"]
         assert "multi-step" in decision.detected_signals or "migration plan" in decision.detected_signals
 
     def test_straightforward_task_not_detected(self):

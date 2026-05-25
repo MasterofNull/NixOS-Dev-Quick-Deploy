@@ -67,6 +67,7 @@ class TestAdvisorFallbackChains:
             assert "claude-opus-4-5" in chain or "claude-sonnet" in chain
 
     @pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_consult_advisor_fallback_on_error(self):
         """Test that advisor consultation tries fallback models on error."""
         router = LLMRouter()
