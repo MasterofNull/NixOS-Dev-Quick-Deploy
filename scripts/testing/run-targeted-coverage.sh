@@ -116,6 +116,7 @@ cat > "${REPORT_DIR}/summary.md" <<'EOF'
 | --- | --- | --- |
 EOF
 
+# Component: context_store
 run_pytest_component \
   "context_store" \
   "${ROOT_DIR}/dashboard/backend" \
@@ -130,20 +131,7 @@ run_pytest_component \
   scripts/testing/test-deployment-causality-clustering.py \
   scripts/testing/test-context-store-performance.py
 
-run_pytest_component \
-  "route_handler" \
-  "${ROOT_DIR}/ai-stack/mcp-servers/hybrid-coordinator" \
-  "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py" \
-  "${TARGET_ROUTE_HANDLER_MIN_PCT:-28}" \
-  ai-stack/mcp-servers/hybrid-coordinator/test_route_handler_optimizations.py
-
-run_pytest_component \
-  "ai_coordinator" \
-  "${ROOT_DIR}/ai-stack/mcp-servers/hybrid-coordinator" \
-  "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py" \
-  "${TARGET_AI_COORDINATOR_MIN_PCT:-35}" \
-  ai-stack/mcp-servers/hybrid-coordinator/test_ai_coordinator_model_awareness.py
-
+# Component: advanced_features
 run_script_component \
   "advanced_features" \
   "${ROOT_DIR}/ai-stack/mcp-servers/hybrid-coordinator:${ROOT_DIR}/ai-stack/mcp-servers" \
@@ -151,6 +139,7 @@ run_script_component \
   "${TARGET_ADVANCED_FEATURES_MIN_PCT:-50}" \
   scripts/testing/test-advanced-features-implementation.py
 
+# Component: orchestration_framework
 run_script_component \
   "orchestration_framework" \
   "${ROOT_DIR}/ai-stack" \

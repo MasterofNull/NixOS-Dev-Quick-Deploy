@@ -92,7 +92,7 @@ def summarize(paths: Iterable[str]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", default="--pre-commit", choices=("--pre-commit", "--pre-deploy"))
+    parser.add_argument("--mode", default="--pre-commit", choices=("--pre-commit", "--pre-deploy", "--ci", "--pre-push", "--full"))
     parser.add_argument("files", nargs="*", help="Optional explicit file list for tests/dry-runs")
     args = parser.parse_args()
 
