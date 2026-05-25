@@ -52,6 +52,7 @@ def main():
     selected = names(tools)
     assert_true(meta["intent"] == "search", f"expected search intent, got {meta['intent']}")
     assert_true(len(tools) <= swb.ACTIVE_TOOL_SCHEMA_LIMIT, "automatic search lease exceeds active schema cap")
+    assert_true(swb.VIRTUAL_TOOL_LEASE_NAME in selected, "search bundle should include lease_tools broker")
     assert_true({"search_files", "read_file"}.issubset(selected), "search bundle incomplete")
     assert_true("check_service" not in selected, "search query should not receive sys-ops tools")
 
@@ -59,6 +60,26 @@ def main():
     tools, allowed, meta = swb._normalize_local_tools(None, edit_prompt)
     assert_true(meta["intent"] == "file_edit", f"expected file_edit intent, got {meta['intent']}")
     assert_true(len(tools) <= swb.ACTIVE_TOOL_SCHEMA_LIMIT, "automatic file-edit lease exceeds active schema cap")
+    assert_true(swb.VIRTUAL_TOOL_LEASE_NAME in names(tools), "file-edit bundle should include lease_tools broker")
+
+    next_allowed, lease_result = swb._resolve_tool_lease(
+        {"intent": "sys_ops", "reason": "need service health"},
+        {"lease_tools", "check_service", "get_system_info", "run_command", "read_file"},
+        {"lease_tools", "search_files", "read_file"},
+    )
+    assert_true(lease_result["status"] == "ok", "lease_tools should resolve valid intent bundles")
+    assert_true(lease_result["intent"] == "sys_ops", "lease result should name requested intent")
+    assert_true("check_service" in next_allowed, "sys_ops lease should add check_service")
+    assert_true(swb.VIRTUAL_TOOL_LEASE_NAME in next_allowed, "lease_tools should remain available after swap")
+    assert_true(len(next_allowed) <= swb.ACTIVE_TOOL_SCHEMA_LIMIT, "leased bundle exceeds active schema cap")
+
+    unchanged, bad_lease = swb._resolve_tool_lease(
+        {"tools": ["definitely_not_a_tool"]},
+        {"lease_tools", "read_file"},
+        {"lease_tools", "read_file"},
+    )
+    assert_true(bad_lease["status"] == "error", "unsupported explicit lease should return a tool error")
+    assert_true(unchanged == {"lease_tools", "read_file"}, "failed lease should preserve current active tools")
 
     explicit_tools, explicit_allowed, explicit_meta = swb._normalize_local_tools(
         [{"type": "function", "function": {"name": "write_file"}}],
@@ -88,9 +109,11 @@ def main():
     health_text = SWITCHBOARD_PATH.read_text(encoding="utf-8")
     assert_true('"tool_working_set"' in health_text, "health endpoint should expose working-set telemetry")
     assert_true('"active_schema_limit"' in health_text, "health endpoint should expose active schema cap telemetry")
+    assert_true('"virtual_tools"' in health_text, "health endpoint should expose virtual tool broker telemetry")
     assert_true("X-AI-Tool-Intent" in health_text, "responses should include tool intent telemetry")
     assert_true("runtime leases a small active tool set" in health_text, "local tool card should harden active lease behavior")
     assert_true("strongest 2-4 evidence points" in health_text, "local tool card should bound broad analysis evidence gathering")
+    assert_true("Use lease_tools to swap" in health_text, "local tool card should instruct mid-turn tool swapping")
 
     print("PASS: Switchboard hot-loads tool bundles and evicts unused schemas")
 

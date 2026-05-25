@@ -189,6 +189,7 @@ let
     Use the local tool-calling lane for bounded built-in tool execution on the local host.
     The runtime leases a small active tool set; use the leased tools for evidence, then synthesize.
     For broad analysis, gather only the strongest 2-4 evidence points before answering.
+    Use lease_tools to swap to a different active bundle when the current leased tools are the wrong fit.
     Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
     CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
   '';
