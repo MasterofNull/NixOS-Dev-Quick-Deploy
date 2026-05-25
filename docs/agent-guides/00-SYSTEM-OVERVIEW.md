@@ -22,6 +22,31 @@ Core characteristics:
 
 ---
 
+## System Pulse
+
+### Current Status: 🟢 OPERATIONAL
+- **Core Harness:** `aqd` v4.2 active.
+- **Inference:** Qwen3.6-35B stable on CUDA/Vulkan.
+- **Health:** 17/17 Tier 0 Gates passing.
+- **Visibility:** 100% dashboard service coverage.
+
+---
+
+## Functional Domains
+
+The harness projects specific knowledge and tools based on the active domain:
+
+| Domain | Focus | Status |
+|--------|-------|--------|
+| Systems Software | NixOS, Kernel, Hardware | 🟢 Production |
+| MLOps | Quantizing, Tuning, Profiling | 🟡 Active Dev |
+| QA Automation | Regression, Chaos, Parity | 🟢 Production |
+| Security Systems | Scanning, Isolation, Auditing | 🟢 Production |
+| Trading Agents | Market Data, Risk Synthesis | 🔵 Activated |
+| OSINT Systems | Intel, Link Analysis, Ingest | 🔵 Activated |
+
+---
+
 ## Component Name Clarifications
 
 These names cause common confusion — read this section before diagrams.

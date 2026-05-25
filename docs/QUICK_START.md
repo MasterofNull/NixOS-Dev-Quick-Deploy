@@ -23,30 +23,30 @@ chmod +x nixos-quick-deploy.sh
 
 If `--host` is omitted, the script auto-resolves from current hostname and flake hosts.
 
-## Core Commands
+## Day 2 Operations
+
+Once deployed, use the `deploy` CLI for ongoing maintenance:
 
 ```bash
-# show supported options
-./nixos-quick-deploy.sh --help
-
-# run preflight checks only (no build/switch)
-./nixos-quick-deploy.sh --analyze-only
-
-# evaluate/build only (no live switch)
-./nixos-quick-deploy.sh --build-only
-
-# stage next boot generation
-./nixos-quick-deploy.sh --boot
-
-# skip specific execution blocks when needed
-./nixos-quick-deploy.sh --skip-system-switch
-./nixos-quick-deploy.sh --skip-home-switch
-./nixos-quick-deploy.sh --skip-health-check
-./nixos-quick-deploy.sh --skip-discovery
-./nixos-quick-deploy.sh --skip-flatpak-sync
-./nixos-quick-deploy.sh --skip-readiness-check
-./nixos-quick-deploy.sh --skip-ai-secrets-bootstrap
+./deploy help          # List all available commands
+./deploy status        # Show active profile and system facts
+./deploy health        # Run tiered health checks (L1-L7)
+./deploy ai-stack      # Manage inference, embeddings, and MCP servers
+./deploy build         # Rebuild configuration without switching
 ```
+
+## System Verification
+
+Confirm the platform is operational:
+
+| Check | Command |
+|-------|---------|
+| **Dashboard** | `curl http://127.0.0.1:8889/api/health` |
+| **QA Suite** | `aq-qa 0` |
+| **Hints Engine** | `aq-hints "how do I update NixOS"` |
+| **Integrity** | `scripts/governance/tier0-validation-gate.sh --pre-commit` |
+
+---
 
 ## Safe Recovery
 

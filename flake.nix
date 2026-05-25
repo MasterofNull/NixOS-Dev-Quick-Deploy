@@ -1,5 +1,5 @@
 {
-  description = "Flake-first declarative scaffold for NixOS Quick Deploy";
+  description = "Declarative NixOS AI harness with autonomous optimization, host-local inference, and multi-agent coordination";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";

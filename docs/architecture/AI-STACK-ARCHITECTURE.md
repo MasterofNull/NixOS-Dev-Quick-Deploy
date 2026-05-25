@@ -25,11 +25,15 @@ NixOS-Dev-Quick-Deploy runs a local-first AI agent stack. All inference runs on-
 
 ```mermaid
 graph TB
-    subgraph Actors["Actor Layer (External Agents + Human)"]
+    subgraph UI["User Surface — COSMIC Desktop (NixOS 25.11)"]
+        Dash[Command Center Dashboard<br/>:8889]
+        human["Human Operator (IDE)"]
+    end
+
+    subgraph Actors["Actor Layer (External Agents)"]
         claude["Claude Code CLI/Ext"]
         codex["Codex CLI"]
         gemini["Gemini CLI"]
-        human["Human (IDE)"]
         aq["aq-* / aqd CLIs"]
     end
 
@@ -44,6 +48,15 @@ graph TB
         workflow["/workflow/*\n(DAG execution)"]
         control["/control/*\n(fleet, budget, safety)"]
         agentEvents["POST /api/agent-events\n(delegation bus)"]
+    end
+
+    subgraph Domains["Functional Execution Domains"]
+        sys_sw["Systems Software"]
+        mlops["MLOps & Opt"]
+        qa_auto["QA Automation"]
+        sec_sys["Security Systems"]
+        trade["Trading Agents"]
+        osint["OSINT Systems"]
     end
 
     subgraph Coordinator["Orchestration Brain — hybrid-coordinator :8003"]
@@ -84,7 +97,6 @@ graph TB
     end
 
     subgraph Observability["Observability"]
-        dashboard["Dashboard :8889"]
         grafana["Grafana :3000"]
         prometheus["Prometheus :9090"]
     end
@@ -95,9 +107,20 @@ graph TB
         optionsNix["options.nix\n(port SOT)"]
     end
 
-    %% Actor → Delegation
+    %% Flow
+    human --> Switchboard
     claude --> |MCP tools + REST| Ingress
     codex --> delScripts
+    delScripts --> Ingress
+    Ingress --> routeHandler
+    routeHandler --> Domains
+    routeHandler --> workflowExec
+    workflowExec --> llmRouter
+    llmRouter --> Switchboard
+    Switchboard --> llama
+    Switchboard --> llamaEmbed
+    Domains --> Dash
+```
     gemini --> delScripts
     delScripts --> auditLib
     auditLib --> agentEvents
