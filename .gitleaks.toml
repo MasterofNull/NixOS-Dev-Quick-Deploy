@@ -9,6 +9,7 @@ description = "Known non-secret documentation and fixture patterns"
 paths = [
   '''^\.agent/.*$''',
   '''^\.agents/.*$''',
+  '''^scripts/ai/aqd$''',
   '''^docs/archive/.*$''',
   '''^archive/.*$''',
   '''^\.forks/.*$''',

@@ -206,7 +206,8 @@ class TestRunQaCheckAsDict:
             )
 
     def test_missing_script_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(mcp_handlers, "_AQ_QA_SCRIPT", tmp_path / "nonexistent-aq-qa")
+        import extensions.mcp_handlers as ext
+        monkeypatch.setattr(ext, "_AQ_QA_SCRIPT", tmp_path / "nonexistent-aq-qa")
         with pytest.raises(FileNotFoundError):
             asyncio.run(
                 mcp_handlers.run_qa_check_as_dict({"phase": "0", "format": "json"})

@@ -3,13 +3,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-WORKFLOW_SESSION_HANDLERS_PATH = Path(__file__).parent.parent / "workflow_session_handlers.py"
+WORKFLOW_HANDLERS_PATH = Path(__file__).parent.parent / "workflow" / "workflow_session_handlers.py"
+
 TARGET_FUNCTIONS = {
     "_normalize_activation_patterns",
     "_score_blueprint_for_query",
     "_auto_select_workflow_blueprint",
 }
 
+
+WORKFLOW_SESSION_HANDLERS_PATH = Path(__file__).parent.parent / "workflow" / "workflow_session_handlers.py"
 
 def _load_helpers() -> Dict[str, Any]:
     source = WORKFLOW_SESSION_HANDLERS_PATH.read_text(encoding="utf-8")

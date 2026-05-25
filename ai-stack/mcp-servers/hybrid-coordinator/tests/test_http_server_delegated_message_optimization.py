@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 
-DELEGATION_HANDLERS_PATH = Path(__file__).parent.parent / "delegation_handlers.py"
+DELEGATION_HANDLERS_PATH = Path(__file__).parent.parent / "workflow" / "delegation_handlers.py"
 TARGET_FUNCTIONS = {
     "_message_content_text",
     "_content_has_only_text_blocks",
@@ -13,6 +13,7 @@ TARGET_FUNCTIONS = {
     "_build_text_message",
     "_replace_message_content",
     "_estimate_message_tokens",
+    "_should_skip_progressive_context_for_tiny_local_reply",
     "_optimize_delegated_messages",
 }
 

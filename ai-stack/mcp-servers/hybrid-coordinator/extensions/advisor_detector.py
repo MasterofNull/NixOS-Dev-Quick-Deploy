@@ -86,6 +86,8 @@ class DecisionPointDetector:
             "how should",
             "clarify",
             "uncertain",
+            "decide",
+            "whether to",
         ],
         "tradeoff": [
             "tradeoff",

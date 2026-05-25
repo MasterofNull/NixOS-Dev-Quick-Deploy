@@ -297,6 +297,7 @@
     devShells = lib.genAttrs devSystems (system': let
       pkgs' = import nixpkgs {
         system = system';
+        config.allowUnfree = true;
         overlays = [(import ./nix/lib/overlays/osint-tools.nix)];
       };
     in {

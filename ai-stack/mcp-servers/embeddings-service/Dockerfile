@@ -4,7 +4,14 @@ FROM docker.io/library/python:3.11-slim
 
 WORKDIR /app
 
-# Refresh packaging tooling before installing runtime dependencies so the
+# Install system dependencies and upgrade to fix base image vulnerabilities
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Refresh packaging tooling
+ before installing runtime dependencies so the
 # image does not retain known vulnerable pip/wheel/setuptools artifacts.
 RUN python -m pip install --no-cache-dir --upgrade \
     pip==25.3 \
