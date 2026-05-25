@@ -899,7 +899,10 @@ in {
     # that failed the build-time smoke test. This is patched in our local 
     # package definition to allow successful inclusion in systemPackages.
     (lib.mkIf roleEnabled {
-      nixpkgs.overlays = [ (import ../../lib/overlays/opencode.nix) ];
+      nixpkgs.overlays = [ 
+        (import ../../lib/overlays/opencode.nix)
+        (import ../../lib/overlays/osint-tools.nix)
+      ];
     })
 
     # ── Phase 20.1 — llama.cpp version tracking overlay ────────────────────────
@@ -1610,6 +1613,10 @@ in {
       environment.systemPackages = [
         aiHarnessCliWrappers
         (pkgs.callPackage ../../pkgs/agentic-tools.nix {})
+        # OSINT tools (Phase 61 capability activation)
+        pkgs.holehe
+        pkgs.sherlock
+        pkgs.bbot-placeholder
       ];
 
       # Agent-agnostic environment variables for tool discovery.
