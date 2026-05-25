@@ -7,10 +7,8 @@ useDefault = true
 [allowlist]
 description = "Known non-secret documentation and fixture patterns"
 paths = [
-  '''^\.sops\.yaml$''',
-  '''^AGENT_AUTH_SECRETS_ROTATION\.md$''',
-  '''^docs/PROGRESSIVE-DISCLOSURE-GUIDE\.md$''',
-  '''^docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README\.md$''',
+  '''^\.agent/.*$''',
+  '''^\.agents/.*$''',
   '''^docs/archive/.*$''',
   '''^archive/.*$''',
   '''^\.forks/.*$''',

@@ -61,8 +61,6 @@ let
     "com.obsproject.Studio"
   ];
 in {
-  core = core;
+  inherit core gaming minimal;
   ai_workstation = aiWorkstation;
-  gaming = gaming;
-  minimal = minimal;
 }

@@ -232,7 +232,8 @@ class TestQaPhaseAliases:
             assert result == phase
 
     def test_extended_phase_validation_reaches_file_check(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(mcp_handlers, "_AQ_QA_SCRIPT", tmp_path / "nonexistent-aq-qa")
+        from extensions import mcp_handlers as ext
+        monkeypatch.setattr(ext, "_AQ_QA_SCRIPT", tmp_path / "nonexistent-aq-qa")
         with pytest.raises(FileNotFoundError):
             asyncio.run(
                 mcp_handlers.run_qa_check_as_dict({"phase": "10", "format": "json"})
