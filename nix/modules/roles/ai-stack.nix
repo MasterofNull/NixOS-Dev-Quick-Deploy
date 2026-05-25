@@ -1976,7 +1976,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Run knowledge gap auto-remediation: ${cfg.mcpServers.repoPath}/scripts/ai/aq-gap-auto-remediate --limit 5 --verify\" aider";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -2022,7 +2022,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-optimizer --since=1d";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Run AI stack agentic optimizer: ${cfg.mcpServers.repoPath}/scripts/ai/aq-optimizer --since=1d\" aider";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -2067,7 +2067,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py cycle --since=1d --execute-limit=5";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Execute PRSI orchestrator cycle: ${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py cycle --since=1d --execute-limit=5\" aider";
           # aq-report --format=json can take 180-240s on cold Qwen3 start; give the
           # full cycle (report + approve + execute) 10 minutes to avoid false failures.
           TimeoutSec = "600";
@@ -2175,7 +2175,7 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-context-warm";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Run AI world model predictive context warming: ${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-context-warm\" aider";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;

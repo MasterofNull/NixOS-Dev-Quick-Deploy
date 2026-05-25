@@ -60,7 +60,7 @@ class AQChat:
             history=FileHistory(str(USER_HISTORY_FILE)),
             completer=command_completer
         )
-        self.client = httpx.AsyncClient(timeout=600.0)
+        self.client = httpx.AsyncClient(timeout=1200.0)
         self.active_profile = args.profile
         self.model_name = "loading..."
         self.context_history: List[Dict[str, str]] = []
@@ -213,7 +213,10 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                     
                     self.context_history.append({"role": "assistant", "content": full_response})
             except Exception as e:
-                console.print(f"[bold red]Inference Loop Interrupted: {e}[/]")
+                err_msg = str(e)
+                if not err_msg:
+                    err_msg = repr(e)
+                console.print(f"[bold red]Inference Loop Interrupted: {err_msg}[/]")
 
     async def handle_slash_command(self, cmd: str):
         parts = cmd.split()

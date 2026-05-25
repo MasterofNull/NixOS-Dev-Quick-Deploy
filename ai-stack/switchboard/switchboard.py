@@ -242,7 +242,7 @@ DEFAULT_PROFILE_CATALOG = {
         "advertisedContextWindow": None,
         "maxInputTokens": 3500,
         "maxMessages": 16,
-        "maxOutputTokens": 1024,
+        "maxOutputTokens": 2048,
         "embeddingsOnly": False,
         "toolExecution": None,
         "profileCard": REMOTE_DEFAULT_CARD,
@@ -315,7 +315,7 @@ DEFAULT_PROFILE_CATALOG = {
         # 12000 input + 1024 output = 13024 < 16384 ctx headroom; env-override for rebuild flexibility
         "maxInputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_INPUT_TOKENS", "12000")),
         "maxMessages": 20,
-        "maxOutputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS", "1024")),
+        "maxOutputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS", "2048")),
         "embeddingsOnly": False,
         "toolExecution": "built-in",
         "profileCard": LOCAL_TOOL_CALLING_CARD,
