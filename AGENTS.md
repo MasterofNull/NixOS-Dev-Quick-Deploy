@@ -144,6 +144,21 @@ aq-session-start            # mandatory context hydration
 ## Key CLIs
 `aq-prime` · `aq-qa 0` · `aq-hints "<task>"` · `aq-report` · `aq-insights` · `aq-context-bootstrap`
 
+## Functional Domains
+
+The harness projects specialized knowledge and tools based on the active domain:
+
+| Domain | Focus | Instruction File |
+|--------|-------|------------------|
+| **Systems Software** | NixOS, Kernel, Hardware | `.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md` |
+| **MLOps** | Quantizing, Tuning, Profiling | `.agent/MLOPS-ENGINEERING-INSTRUCTIONS.md` |
+| **QA Automation** | Regression, Chaos, Parity | `.agent/QA-AUTOMATION-INSTRUCTIONS.md` |
+| **Security Systems** | Scanning, Isolation, Auditing | `.agent/SECURITY-SYSTEMS-INSTRUCTIONS.md` |
+| **Trading Agents** | Market Data, Risk Synthesis | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |
+| **OSINT Systems** | Intel, Link Analysis, Ingest | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
+
+---
+
 ## Role and Architecture (Phase 58A — all agents read this)
 
 **Role SSOT → `docs/architecture/role-matrix.md`**
