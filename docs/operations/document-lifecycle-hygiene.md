@@ -45,6 +45,7 @@ Superseded-By: path/or/none
 | Project PRDs | `.agent/PROJECT-*.md` | `.agent/archive/` or `docs/archive/` after summarization |
 | Scratch context | `.agents/scratchpad/` | `.agents/scratchpad/archive/` |
 | Collaboration state | `.agent/collaboration/` | current only; summarize to plans/handoff before truncating |
+| Raw agent artifacts | `.agents/delegation/outputs/`, `.agents/sessions/` | cold archive or external forensic storage after summarization |
 
 ## Readability Standards
 
@@ -92,3 +93,4 @@ It verifies:
 
 This check is intentionally narrow. It prevents the index from disappearing, but it does not replace judgment or periodic human cleanup.
 
+For transient model outputs, session mirrors, scratch files, and generated caches, use `docs/operations/agent-artifact-gc-policy.md` and `scripts/governance/audit-agent-artifact-debt.py`. Raw artifacts are evidence, not current instructions.
