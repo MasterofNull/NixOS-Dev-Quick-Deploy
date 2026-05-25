@@ -29,6 +29,30 @@ def main() -> None:
         '"PYTHON_BIN=${worldModelPython}/bin/python3"' in text,
         "expected ai-context-warmer service to inject PYTHON_BIN from worldModelPython",
     )
+    assert_true(
+        "ExecStart = \"${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-context-warm\"" in text,
+        "expected ai-context-warmer to run aq-context-warm directly",
+    )
+    assert_true(
+        "aq-ralph-task" not in text[text.index("systemd.services.ai-context-warmer"):text.index("systemd.timers.ai-context-warmer")],
+        "ai-context-warmer must not enqueue local-agent Ralph tasks",
+    )
+    assert_true(
+        '"DATA_DIR=${cfg.mcpServers.dataDir}/hybrid"' in text,
+        "expected ai-context-warmer to write telemetry under the MCP data dir",
+    )
+    assert_true(
+        '"COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"' in text,
+        "expected ai-context-warmer to target the local hybrid coordinator",
+    )
+    assert_true(
+        '"HYBRID_COORDINATOR_API_KEY_FILE=/run/secrets/hybrid_coordinator_api_key"' in text,
+        "expected ai-context-warmer to use the hybrid coordinator API key file",
+    )
+    assert_true(
+        "ReadWritePaths = [\n            cfg.mcpServers.dataDir\n          ];" in text,
+        "expected ai-context-warmer to permit telemetry writes under mcpServers.dataDir",
+    )
 
     print("PASS: ai-context-warmer service injects a Python runtime with world-model deps")
 
