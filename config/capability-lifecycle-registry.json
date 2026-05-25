@@ -7,7 +7,7 @@
   "$schema": "./schemas/capability-lifecycle-registry.schema.json",
   "version": "1.1.0",
   "description": "Canonical capability lifecycle registry. State machine defined in docs/architecture/capability-lifecycle.md.",
-  "last_updated": "2026-05-19T01:22:50Z",
+  "last_updated": "2026-05-24T00:00:00Z",
   "capabilities": [
     {
       "id": "local-inference-qwen3-35b",
@@ -493,6 +493,33 @@
           "task": "GDAL CRS validate + ogr2ogr WGS84\u2192EPSG:3857",
           "result": "PASS"
         }
+      ]
+    },
+    {
+      "id": "osint-systems",
+      "name": "OSINT systems domain (automated reconnaissance and behavioral profiling)",
+      "domain": "osint",
+      "state": "proposed",
+      "state_since": "2026-05-24",
+      "description": "Capability domain for Open Source Intelligence (OSINT). Implements the Core Trinity (BBOT, Maigret, MOSAIC) for infrastructure mapping, identity correlation, and AI-native behavioral synthesis using structural truth and verbatim ledger patterns. AIDB namespace: osint-intelligence.",
+      "kernel_object": "memory-evidence",
+      "evidence": {
+        "commit": null,
+        "aq_qa_check": null,
+        "review_verdict": null,
+        "reviewer": null,
+        "reviewed_on": null,
+        "soak_sessions": 0,
+        "rollback_procedure": "Set state to blocked; disable osint-systems-health check; remove osint_reconnaissance intent class from intent-routing-map.json"
+      },
+      "blocked_reason": null,
+      "unblock_condition": null,
+      "superseded_by": null,
+      "replaces": null,
+      "related_docs": [
+        ".agent/PROJECT-OSINT-SYSTEMS-PRD.md",
+        ".agent/OSINT-SYSTEMS-INSTRUCTIONS.md",
+        "docs/architecture/domain-activation-template.md"
       ]
     }
   ]

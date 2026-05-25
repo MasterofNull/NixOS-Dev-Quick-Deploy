@@ -417,14 +417,6 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: ai-stack/mcp-servers/hybrid-coordinator/README.sdk.md, scripts/ai/aq-feedback-loop, scripts/data/generate-harness-sdk-api-docs.sh"
     },
     {
-      "action": "verify-entrypoint-coverage",
-      "classification": "referenced_entrypoint_candidate",
-      "module": "skill_validator",
-      "owner": "unassigned",
-      "path": "ai-stack/mcp-servers/hybrid-coordinator/skill_validator.py",
-      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: ai-stack/mcp-servers/hybrid-coordinator/extensions/skill_validator.py, scripts/data/migrate-hc-domains.py"
-    },
-    {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
       "module": "populate",
@@ -579,22 +571,6 @@
     {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
-      "module": "audit_trail",
-      "owner": "unassigned",
-      "path": "ai-stack/security/audit_trail.py",
-      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
-    },
-    {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
-      "module": "security_hardening",
-      "owner": "unassigned",
-      "path": "ai-stack/security/security_hardening.py",
-      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
-    },
-    {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
       "module": "zero_trust",
       "owner": "unassigned",
       "path": "ai-stack/security/zero_trust.py",
@@ -622,7 +598,7 @@
       "module": "switchboard",
       "owner": "unassigned",
       "path": "ai-stack/switchboard/switchboard.py",
-      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: config/env-contract.yaml, nix/modules/services/switchboard.nix, scripts/testing/test-switchboard-context-output-gc.py"
+      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: config/env-contract.yaml, config/validation-check-registry.json, nix/modules/services/switchboard.nix"
     },
     {
       "action": "verify-entrypoint-coverage",
@@ -649,7 +625,7 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
     }
   ],
-  "generated_at": "2026-05-25T03:35:00Z",
+  "generated_at": "2026-05-25T07:55:00Z",
   "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
   "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale. External references prove reachability only; live services still require aq-qa and dashboard visibility before action can become keep.",
   "version": 1

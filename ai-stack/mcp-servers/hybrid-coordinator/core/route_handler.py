@@ -34,6 +34,7 @@ import time
 from collections import defaultdict, deque, OrderedDict
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
@@ -88,6 +89,7 @@ from search_router import (
 from query_expansion import QueryExpander
 from prompt_injection import PromptInjectionScanner, sanitize_query
 import task_classifier
+from work_classifier import TaskComplexity as formal_complexity
 
 logger = logging.getLogger("hybrid-coordinator")
 _injection_scanner = PromptInjectionScanner()
@@ -194,6 +196,85 @@ _DISTILL_MIN_WORDS = int(os.getenv("AI_DISTILL_MIN_WORDS", "50"))
 _DISTILL_PROJECT = os.getenv("AI_DISTILL_PROJECT", "session-knowledge")
 # Tokens above which we force switchboard routing (900s timeout) for heavy synthesis.
 _HEAVY_SYNTHESIS_TOKENS_THRESHOLD = int(os.getenv("AI_HEAVY_SYNTHESIS_TOKENS_THRESHOLD", "800"))
+
+
+def _read_secret_file(path: str) -> str:
+    """Read secret from file, return empty string on error."""
+    if not path:
+        return ""
+    try:
+        p = Path(path).expanduser()
+        if p.exists() and p.is_file():
+            return p.read_text().strip()
+    except Exception:
+        pass
+    return ""
+
+
+async def _record_interaction_history(
+    query: str,
+    response: str,
+    interaction_id: str,
+    session_id: Optional[str] = None,
+    agent_type: str = "orchestrator",
+    model_used: Optional[str] = None,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    latency_ms: int = 0,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist interaction to AIDB SQL history for future self-healing recall."""
+    logger.debug("record_history_start: id=%s", interaction_id)
+    if not Config.AIDB_URL:
+        logger.warning("record_history_aborted: Config.AIDB_URL is not set")
+        return
+    aidb = _aidb_client_ref() if _aidb_client_ref else None
+    if not aidb:
+        logger.warning("record_history_aborted: aidb_client_ref is None")
+        return
+
+    # Phase 59.4: Complexity Auto-Tagging
+    final_metadata = dict(metadata or {})
+    query_lower = query.lower()
+    expert_markers = ["architecture", "optimize", "security", "refactor", "unleash", "expert"]
+    is_expert = any(m in query_lower for m in expert_markers)
+    
+    # Determine formal complexity tier
+    complexity_tier = formal_complexity.SIMPLE
+    if tokens_in >= 1500 or is_expert:
+        complexity_tier = formal_complexity.COMPLEX
+        if tokens_in >= 3000:
+             complexity_tier = formal_complexity.VERY_COMPLEX
+             
+    final_metadata["complexity_tier"] = complexity_tier.value
+    if is_expert or complexity_tier in (formal_complexity.COMPLEX, formal_complexity.VERY_COMPLEX):
+        final_metadata["high_complexity"] = True
+        if is_expert:
+            final_metadata["expert_intent"] = True
+
+    # Read API key for AIDB (shares key with Ralph-Wiggum in this environment)
+    api_key = _read_secret_file(Config.RALPH_WIGGUM_API_KEY_FILE)
+    headers = {"X-API-Key": api_key} if api_key else {}
+
+    payload = {
+        "interaction_id": interaction_id,
+        "session_id": session_id,
+        "query": query,
+        "response": _strip_think(response),
+        "agent_type": agent_type,
+        "model_used": model_used,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "latency_ms": latency_ms,
+        "outcome": "success" if response else "error",
+        "metadata": final_metadata,
+    }
+    try:
+        resp = await aidb.post("/history/record", json=payload, headers=headers)
+        if resp.status_code not in (200, 201):
+            logger.warning("record_history_failed status=%d id=%s", resp.status_code, interaction_id)
+    except Exception as exc:
+        logger.debug("record_history_failed: %s", exc)
 
 
 async def _distill_and_store(query: str, response: str, interaction_id: str) -> None:
@@ -1073,6 +1154,7 @@ async def route_search(
     query = sanitize_query(query)
     start = time.time()
     interaction_id = str(uuid4())
+    token_count = len(_normalize_tokens(query))
     
     # Phase 54.2 — Cognitive Intent Classification (Level 6)
     # Start semantic classification in background
@@ -1612,7 +1694,7 @@ async def route_search(
                     backend_reason_class = "default_local"
                 messages = []
                 if selected_backend == "local":
-                    local_system_prompt = Config.build_local_system_prompt()
+                    local_system_prompt = _build_dynamic_system_prompt(query)
                     if local_system_prompt:
                         messages.append({"role": "system", "content": local_system_prompt})
                 messages.append({"role": "user", "content": prompt})
@@ -1668,6 +1750,7 @@ async def route_search(
                     )
                     # Distill and archive to AIDB so future queries retrieve learned knowledge
                     # rather than re-generating. Fire-and-forget — never blocks the response.
+
                     if (
                         generate_response
                         and str(response_text or "").strip()
@@ -1676,6 +1759,7 @@ async def route_search(
                         asyncio.create_task(
                             _distill_and_store(query, response_text, interaction_id)
                         )
+
                 except Exception as exc:  # noqa: BLE001
                     response = getattr(exc, "response", None)
                     status_code = getattr(response, "status_code", None)
@@ -1687,7 +1771,7 @@ async def route_search(
                     ):
                         try:
                             fallback_messages = []
-                            local_system_prompt = Config.build_local_system_prompt()
+                            local_system_prompt = _build_dynamic_system_prompt(query)
                             if local_system_prompt:
                                 fallback_messages.append({"role": "system", "content": local_system_prompt})
                             fallback_messages.append({"role": "user", "content": prompt})
@@ -1816,6 +1900,23 @@ async def route_search(
         raise
 
     latency_ms = int((time.time() - start) * 1000)
+
+    # Phase 59.4: Universal interaction history recording
+    # Every query (Search, Discovery, or synthesis) provides value to memory recall.
+    asyncio.create_task(
+        _record_interaction_history(
+            query=query,
+            response=response_text or "",
+            interaction_id=interaction_id,
+            session_id=context.get("session_id") if context else None,
+            agent_type="orchestrator",
+            model_used=selected_backend or "none",
+            tokens_in=token_count,
+            tokens_out=len(_normalize_tokens(response_text)) if response_text else 0,
+            latency_ms=latency_ms,
+            metadata=context,
+        )
+    )
 
     # Batch 2.2: Track collection search latency for profiling
     track_collection_search_latency(target_collections, latency_ms)

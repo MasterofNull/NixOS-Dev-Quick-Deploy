@@ -633,6 +633,7 @@ in {
         [
           "d ${dataDir}                    0750 root ${aiGroup} -"
           "d ${dataDir}/aidb               0750 ${aidbUser} ${aiGroup} -"
+          "d ${dataDir}/aidb/mcp-cache     0750 ${aidbUser} ${aiGroup} -"
           "d ${dataDir}/aidb/logs          0750 ${aidbUser} ${aiGroup} -"
           "d ${dataDir}/aidb/telemetry     0750 ${aidbUser} ${aiGroup} -"
           "f ${dataDir}/aidb/telemetry/aidb-events.jsonl 0640 ${aidbUser} ${aiGroup} - -"
@@ -936,6 +937,7 @@ in {
                 "AIDB_SHARED_SKILLS_DIR=${dataDir}/aidb/shared-skills"
                 "XDG_STATE_HOME=${dataDir}/aidb/state"
                 "AIDB_VSCODE_TELEMETRY_DIR=${dataDir}/aidb/telemetry"
+                "AIDB_TOOL_SCHEMA_CACHE=${dataDir}/aidb/mcp-cache/tool_schemas.json"
                 "POSTGRES_HOST=127.0.0.1"
                 "POSTGRES_PORT=${toString ports.postgres}"
                 "POSTGRES_DB=${mcp.postgres.database}"

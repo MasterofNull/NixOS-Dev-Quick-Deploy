@@ -635,6 +635,42 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 15
+    },
+    {
+      "id": "osint-systems-health",
+      "description": "osint-systems domain baseline artifact presence check",
+      "trigger_paths": [
+        ".agent/PROJECT-OSINT-SYSTEMS-PRD.md",
+        ".agent/OSINT-SYSTEMS-INSTRUCTIONS.md",
+        "config/capability-lifecycle-registry.json"
+      ],
+      "command": [
+        "python3",
+        "-c",
+        "import json,os; reg=json.load(open(\"config/capability-lifecycle-registry.json\")); ids=[c[\"id\"] for c in reg.get(\"capabilities\",[])]; assert \"osint-systems\" in ids, \"osint-systems not in registry\"; assert os.path.exists(\".agent/PROJECT-OSINT-SYSTEMS-PRD.md\"), \"PRD missing\"; assert os.path.exists(\".agent/OSINT-SYSTEMS-INSTRUCTIONS.md\"), \"instructions missing\"; print(\"osint-systems domain: baseline artifacts present\")"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true,
+      "require_tool": null
+    },
+    {
+      "id": "phase59-expert-mode-wiring",
+      "description": "Phase 59.4 expert-mode SQL recall and trace hardware metrics degrade safely",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/knowledge/search_router.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/trace_collector.py",
+        "config/env-contract.yaml",
+        "scripts/testing/test-phase59-expert-mode-wiring.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-phase59-expert-mode-wiring.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
     }
   ]
 }

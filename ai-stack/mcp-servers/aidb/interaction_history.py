@@ -22,17 +22,27 @@ class InteractionHistoryStore:
 
     async def record_interaction(self, interaction: Dict[str, Any]) -> str:
         """
-        Record a single AI interaction.
-
-        Args:
-            interaction: Dictionary containing interaction details.
-
-        Returns:
-            Interaction ID (string)
+        Record a single AI interaction with complexity auto-tagging.
         """
+        # Phase 59.4: Complexity Auto-Tagging (redundant safety check; logic usually in route_handler)
+        metadata = dict(interaction.get("metadata", {}))
+        tokens_in = interaction.get("tokens_in", 0)
+        query = interaction.get("query", "").lower()
+        
+        # Expert markers that suggest high-value architecture/systems work
+        expert_markers = ["architecture", "optimize", "security", "refactor", "unleash", "expert"]
+        is_expert = any(m in query for m in expert_markers)
+        
+        if tokens_in >= 1500 or is_expert:
+            metadata["high_complexity"] = True
+            if is_expert:
+                metadata["expert_intent"] = True
+            logger.info("Tagged interaction as high_complexity for prioritized recall")
+
         def _insert():
             with self.engine.begin() as conn:
                 stmt = insert(INTERACTION_HISTORY).values(
+                    interaction_id=interaction.get("interaction_id"),
                     session_id=interaction.get("session_id"),
                     project=interaction.get("project"),
                     query=interaction["query"],
@@ -41,15 +51,16 @@ class InteractionHistoryStore:
                     model_used=interaction.get("model_used"),
                     role=interaction.get("role"),
                     outcome=interaction.get("outcome", "unknown"),
-                    tokens_in=interaction.get("tokens_in", 0),
+                    tokens_in=tokens_in,
                     tokens_out=interaction.get("tokens_out", 0),
                     latency_ms=interaction.get("latency_ms", 0),
                     value_score=interaction.get("value_score", 0.0),
-                    metadata=interaction.get("metadata", {}),
+                    metadata=metadata,
                 ).returning(INTERACTION_HISTORY.c.interaction_id)
-                
+
                 result = conn.execute(stmt)
                 return str(result.scalar())
+
 
         try:
             interaction_id = await sa.to_thread(_insert) if hasattr(sa, "to_thread") else _insert()
