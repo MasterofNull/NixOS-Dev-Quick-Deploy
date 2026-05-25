@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_DOCS = [
     "docs/architecture/agent-behavior-parity-index.md",
     "docs/operations/document-lifecycle-hygiene.md",
+    "docs/operations/agent-artifact-gc-policy.md",
     "docs/architecture/role-matrix.md",
     "docs/architecture/routing-profile-inventory.md",
     "docs/architecture/canonical-kernel-declaration.md",
@@ -28,6 +29,7 @@ REQUIRED_DOCS = [
 METADATA_TARGETS = [
     "docs/architecture/agent-behavior-parity-index.md",
     "docs/operations/document-lifecycle-hygiene.md",
+    "docs/operations/agent-artifact-gc-policy.md",
     ".agents/plans/README.md",
 ]
 
@@ -91,6 +93,18 @@ def main() -> int:
             "Archived",
             "Quarantined",
             "Retirement Rules",
+            "docs/operations/agent-artifact-gc-policy.md",
+        ],
+    )
+    require_contains(
+        "docs/operations/agent-artifact-gc-policy.md",
+        [
+            "Artifact Classes",
+            "Retention Targets",
+            ".agents/delegation/outputs/",
+            ".agents/sessions/",
+            ".agents/scratchpad/",
+            "scripts/governance/audit-agent-artifact-debt.py",
         ],
     )
     require_contains(

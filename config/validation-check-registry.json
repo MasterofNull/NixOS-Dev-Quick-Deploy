@@ -724,8 +724,10 @@
       "trigger_paths": [
         "docs/architecture/agent-behavior-parity-index.md",
         "docs/operations/document-lifecycle-hygiene.md",
+        "docs/operations/agent-artifact-gc-policy.md",
         ".agents/plans/README.md",
         "scripts/governance/check-doc-lifecycle-hygiene.py",
+        "scripts/governance/audit-agent-artifact-debt.py",
         "config/validation-check-registry.json"
       ],
       "command": [
