@@ -1,5 +1,9 @@
-{ lib, pkgs, config, ... }:
-let
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}: let
   cfg = config.mySystem.deployment.diskHealthMonitor;
   interval = toString cfg.intervalMinutes;
 
@@ -80,15 +84,14 @@ let
       exit 0
     '';
   };
-in
-{
+in {
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ diskHealthCheck ];
+    environment.systemPackages = [diskHealthCheck];
 
     systemd.services.disk-health-monitor = {
       description = "Disk Health Monitor (SMART/NVMe)";
-      after = [ "multi-user.target" ];
-      onFailure = [ "deploy-guardrail-alert@%n.service" ];
+      after = ["multi-user.target"];
+      onFailure = ["deploy-guardrail-alert@%n.service"];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${diskHealthCheck}/bin/disk-health-check";
@@ -97,7 +100,7 @@ in
 
     systemd.timers.disk-health-monitor = {
       description = "Periodic disk health monitor";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         OnBootSec = "5min";
         OnUnitActiveSec = "${interval}min";

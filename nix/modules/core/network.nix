@@ -1,4 +1,8 @@
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Core network module — DNS resolution, resolved, NetworkManager integration.
 #
@@ -12,18 +16,18 @@
 {
   # systemd-resolved: stub DNS resolver with fallback servers.
   services.resolved = {
-    enable     = lib.mkDefault true;
-    dnssec     = lib.mkDefault "allow-downgrade";
+    enable = lib.mkDefault true;
+    dnssec = lib.mkDefault "allow-downgrade";
     # Many consumer/campus resolvers advertise partial DoT support that causes
     # repeated downgrade churn; prefer stable plaintext DNS on local links.
     dnsovertls = lib.mkDefault "false";
     # Fallback DNS used when DHCP provides none or a broken nameserver.
     fallbackDns = lib.mkDefault [
-      "1.1.1.1"          # Cloudflare
+      "1.1.1.1" # Cloudflare
       "1.0.0.1"
-      "8.8.8.8"          # Google
+      "8.8.8.8" # Google
       "8.8.4.4"
-      "9.9.9.9"          # Quad9 (privacy-preserving)
+      "9.9.9.9" # Quad9 (privacy-preserving)
       "149.112.112.112"
     ];
     extraConfig = lib.mkDefault ''
@@ -47,7 +51,7 @@
   # detectportal.firefox.com returns HTTP 204 reliably from Mozilla's CDN.
   # 30s interval gives <30s lag when internet is lost/restored.
   networking.networkmanager.settings.connectivity = {
-    uri      = lib.mkDefault "http://detectportal.firefox.com/success.txt";
+    uri = lib.mkDefault "http://detectportal.firefox.com/success.txt";
     interval = lib.mkDefault 30;
   };
 

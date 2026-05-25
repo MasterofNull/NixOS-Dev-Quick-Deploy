@@ -1,5 +1,9 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   kdev = cfg.roles.kernelDev;
 
@@ -20,13 +24,13 @@ let
     ncurses.dev
 
     # Static analysis and linting
-    sparse                    # Semantic parser for C
-    coccinelle               # Semantic patching
-    cppcheck                 # Static analysis
-    shellcheck               # Shell script linting
+    sparse # Semantic parser for C
+    coccinelle # Semantic patching
+    cppcheck # Static analysis
+    shellcheck # Shell script linting
 
     # BTF/pahole for BPF development
-    pahole                   # DWARF/BTF generator
+    pahole # DWARF/BTF generator
 
     # Documentation
     sphinx
@@ -36,7 +40,7 @@ let
 
     # Kernel config tools
     pkg-config
-    kconfig-frontends        # menuconfig/nconfig
+    kconfig-frontends # menuconfig/nconfig
 
     # Compression support
     zstd
@@ -51,10 +55,10 @@ let
 
   # Debug and tracing tools
   kernelDebugTools = with pkgs; [
-    perf-tools              # perf wrapper scripts
-    trace-cmd               # ftrace frontend
-    bpftrace                # BPF tracing
-    bpftools                # BPF utilities
+    perf-tools # perf wrapper scripts
+    trace-cmd # ftrace frontend
+    bpftrace # BPF tracing
+    bpftools # BPF utilities
     # crash                 # Kernel crash dump analyzer (if available)
     strace
     ltrace
@@ -63,23 +67,24 @@ let
 
   # Testing infrastructure
   kernelTestTools = with pkgs; [
-    qemu_kvm                # KVM-accelerated QEMU
-    debootstrap             # Create Debian rootfs for testing
-    cpio                    # initramfs creation
+    qemu_kvm # KVM-accelerated QEMU
+    debootstrap # Create Debian rootfs for testing
+    cpio # initramfs creation
   ];
 
   # Git workflow tools for kernel development
   kernelGitTools = with pkgs; [
     git
-    git-send-email          # Patch submission
-    b4                      # Kernel patch workflow tool
-    patatt                  # Patch attestation
-    public-inbox            # lei/public-inbox client (lore.kernel.org)
-    msmtp                   # SMTP client for git-send-email
+    git-send-email # Patch submission
+    b4 # Kernel patch workflow tool
+    patatt # Patch attestation
+    public-inbox # lei/public-inbox client (lore.kernel.org)
+    msmtp # SMTP client for git-send-email
   ];
 
   # All kernel dev packages
-  allKernelPackages = kernelBuildDeps
+  allKernelPackages =
+    kernelBuildDeps
     ++ kernelDebugTools
     ++ kernelTestTools
     ++ kernelGitTools
@@ -89,7 +94,7 @@ let
       cargo
       rustfmt
       clippy
-      rust-bindgen           # Rust FFI bindings generator
+      rust-bindgen # Rust FFI bindings generator
 
       # Rust analyzer for IDE support
       rust-analyzer
@@ -101,13 +106,12 @@ let
       llvmPackages_latest.libclang
 
       # Additional Rust development tools
-      cargo-watch            # Auto-rebuild on changes
-      cargo-audit            # Security vulnerability checker
-      cargo-expand           # Macro expansion viewer
-      cargo-outdated         # Dependency update checker
+      cargo-watch # Auto-rebuild on changes
+      cargo-audit # Security vulnerability checker
+      cargo-expand # Macro expansion viewer
+      cargo-outdated # Dependency update checker
     ]));
-in
-{
+in {
   # ---------------------------------------------------------------------------
   # Kernel Development Role
   # Provides complete toolchain for Linux kernel development and testing.
@@ -191,7 +195,7 @@ in
       };
 
       smtpEncryption = lib.mkOption {
-        type = lib.types.enum [ "tls" "ssl" "none" ];
+        type = lib.types.enum ["tls" "ssl" "none"];
         default = "tls";
         description = "SMTP encryption method.";
       };
@@ -203,18 +207,18 @@ in
     environment.systemPackages = allKernelPackages;
 
     # Ensure KVM is available for fast kernel testing
-    boot.kernelModules = [ "kvm-amd" "kvm-intel" ];
+    boot.kernelModules = ["kvm-amd" "kvm-intel"];
 
     # Allow user access to /dev/kvm
-    users.groups.kvm.members = [ cfg.primaryUser ];
+    users.groups.kvm.members = [cfg.primaryUser];
 
     # Kernel config for development (enable debug features)
     boot.kernel.sysctl = {
       # Enable kernel debugging features
-      "kernel.sysrq" = 1;                    # Enable SysRq
-      "kernel.panic_on_oops" = 0;            # Don't panic on oops (for debugging)
-      "kernel.ftrace_enabled" = 1;           # Enable ftrace
-      "kernel.perf_event_paranoid" = -1;     # Allow perf for all users
+      "kernel.sysrq" = 1; # Enable SysRq
+      "kernel.panic_on_oops" = 0; # Don't panic on oops (for debugging)
+      "kernel.ftrace_enabled" = 1; # Enable ftrace
+      "kernel.perf_event_paranoid" = -1; # Allow perf for all users
     };
 
     # Create kernel source directory structure
@@ -230,7 +234,7 @@ in
     programs.ccache = {
       enable = true;
       cacheDir = "/var/cache/ccache";
-      packageNames = [ "gcc" ];
+      packageNames = ["gcc"];
     };
 
     # Increase limits for kernel builds

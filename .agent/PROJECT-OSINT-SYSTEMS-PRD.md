@@ -2,7 +2,7 @@
 
 **Domain tag:** `osint-systems`
 **Status:** Proposed — Phase 60+ Capability Expansion
-**Authors:** Gemini (Orchestrator)
+**Authors:** Gemini 2.0 Pro (Orchestrator)
 **Date:** 2026-05-24
 **Upstream Template:** `docs/architecture/domain-activation-template.md`
 

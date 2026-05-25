@@ -26,6 +26,50 @@ from qdrant_client.models import (
 logger = logging.getLogger("hybrid-coordinator")
 
 COLLECTIONS: Dict[str, Any] = {
+    "osint-intelligence": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "project": "string",
+            "selector": "string",
+            "fact_type": "string",
+            "content": "text",
+            "schema_version": "string",
+            "imported_at": "string",
+        },
+    },
+    "trading-patterns": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "ticker": "string",
+            "signal_type": "string",
+            "content": "text",
+            "confidence": "float",
+            "timestamp": "integer",
+        },
+    },
+    "mlops-patterns": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "model_id": "string",
+            "metric_type": "string",
+            "insight": "text",
+            "timestamp": "integer",
+        },
+    },
+    "qa-patterns": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "target": "string",
+            "failure_mode": "string",
+            "test_result": "text",
+            "timestamp": "integer",
+        },
+    },
+
     "codebase-context": {
         "vector_size": Config.EMBEDDING_DIM,
         "distance": Distance.COSINE,

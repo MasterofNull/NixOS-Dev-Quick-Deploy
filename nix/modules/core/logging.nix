@@ -1,5 +1,8 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   logCfg = cfg.logging;
   auditWatchRules = map (path: "-w ${path} -p rwxa -k ${logCfg.audit.key}") logCfg.audit.watchPaths;
@@ -18,8 +21,7 @@ let
       action.resumeRetryCount="-1"
     )
   '';
-in
-{
+in {
   options.mySystem.logging = {
     journald = {
       enable = lib.mkOption {
@@ -29,7 +31,7 @@ in
       };
 
       storage = lib.mkOption {
-        type = lib.types.enum [ "persistent" "volatile" "auto" "none" ];
+        type = lib.types.enum ["persistent" "volatile" "auto" "none"];
         default = "persistent";
         description = "journald storage backend.";
       };
@@ -159,7 +161,7 @@ in
           };
           positions.filename = "/var/lib/promtail/positions.yaml";
           clients = [
-            { url = "http://${logCfg.loki.listenAddress}:${toString logCfg.loki.port}/loki/api/v1/push"; }
+            {url = "http://${logCfg.loki.listenAddress}:${toString logCfg.loki.port}/loki/api/v1/push";}
           ];
           scrape_configs = [
             {
@@ -174,11 +176,11 @@ in
               };
               relabel_configs = [
                 {
-                  source_labels = [ "__journal__systemd_unit" ];
+                  source_labels = ["__journal__systemd_unit"];
                   target_label = "unit";
                 }
                 {
-                  source_labels = [ "__journal_priority_keyword" ];
+                  source_labels = ["__journal_priority_keyword"];
                   target_label = "level";
                 }
               ];
@@ -190,7 +192,7 @@ in
 
     (lib.mkIf (logCfg.loki.enable && logCfg.loki.exposeOnLan) {
       networking.firewall.allowedTCPPorts =
-        [ logCfg.loki.port ]
+        [logCfg.loki.port]
         ++ lib.optional (logCfg.loki.promtailEnable) logCfg.loki.promtailPort;
     })
 
@@ -203,7 +205,7 @@ in
       # When audit is already immutable (enabled=2), reloading rules during
       # switch returns non-zero even though policy enforcement is active.
       # Treat these auditctl statuses as non-fatal to keep switch idempotent.
-      systemd.services.audit-rules-nixos.serviceConfig.SuccessExitStatus = [ "1" "255" ];
+      systemd.services.audit-rules-nixos.serviceConfig.SuccessExitStatus = ["1" "255"];
 
       security.audit = {
         enable = true;

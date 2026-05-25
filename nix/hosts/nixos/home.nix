@@ -1,4 +1,8 @@
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Per-host Home Manager module for the "nixos" host.
 #
@@ -11,11 +15,12 @@
 # ---------------------------------------------------------------------------
 let
   aiderPackage =
-    if pkgs ? aider-chat then [ pkgs.aider-chat ]
-    else if pkgs ? aider then [ pkgs.aider ]
-    else [ ];
-in
-{
+    if pkgs ? aider-chat
+    then [pkgs.aider-chat]
+    else if pkgs ? aider
+    then [pkgs.aider]
+    else [];
+in {
   # ---- Host-specific packages -----------------------------------------------
   home.packages = with pkgs;
     [
@@ -27,13 +32,21 @@ in
       nixpkgs-fmt
 
       # Modern CLI replacements
-      fzf bat eza dust duf
+      fzf
+      bat
+      eza
+      dust
+      duf
 
       # Git power-tools
-      tig lazygit git-lfs git-crypt
+      tig
+      lazygit
+      git-lfs
+      git-crypt
 
       # Secrets
-      age sops
+      age
+      sops
     ]
     ++ aiderPackage;
 
@@ -43,7 +56,7 @@ in
     AIDER_LOG_DIR = "$HOME/.local/share/aider/logs";
     # Point AI tools at local llama.cpp inference server
     OPENAI_API_BASE = "http://127.0.0.1:8080/v1";
-    OPENAI_API_KEY  = "dummy";  # llama-server requires a key header but ignores the value
+    OPENAI_API_KEY = "dummy"; # llama-server requires a key header but ignores the value
   };
 
   # ---- Session PATH additions -----------------------------------------------
@@ -53,7 +66,7 @@ in
 
   # Retire imperative legacy dashboard user units so declarative system units
   # own the command-center ports without collisions.
-  home.activation.retireLegacyDashboardUserUnits = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  home.activation.retireLegacyDashboardUserUnits = lib.hm.dag.entryAfter ["writeBoundary"] ''
     for unit in dashboard-server dashboard-api dashboard-collector; do
       ${pkgs.systemd}/bin/systemctl --user disable --now "$unit.service" >/dev/null 2>&1 || true
       rm -f "$HOME/.config/systemd/user/$unit.service"

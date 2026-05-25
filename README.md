@@ -89,6 +89,25 @@ aq-hints "how do I configure NixOS services"      # Get workflow hints
 
 ---
 
+## System Pulse & Roadmap
+
+### Current Status: 🟢 OPERATIONAL
+- **Core Harness:** `aqd` workflow engine version 4.2 active.
+- **AI Stack:** Local inference via llama.cpp (CUDA/Vulkan) and Qwen3.6-35B confirmed functional.
+- **MCP Tier:** Hybrid-coordinator, AIDB, and Ralph Wiggum services fully integrated and passing health gates.
+- **Observability:** L1-L7 dashboard visibility achieved; `aq-qa 0` coverage at 100%.
+
+### Active Development Cycles
+- **Cycle 62 (Current):** Repository consolidation and external review preparation. Focus on performance tuning of the hybrid retrieval lane.
+- **Cycle 61 (Complete):** L5/L6 monitoring enhancements and Tier 0 validation gate hardening.
+
+### Planned Implementations
+- **Autonomous Parameter Tuning:** Integrating `aq-meta-optimize` for automated model quantization selection.
+- **Federated Pattern Sync:** Enabling secure sharing of learned interaction patterns across multiple deployment nodes.
+- **Edge Model Registry:** Standardizing local model provenance and integrity verification.
+
+---
+
 ## Architecture
 
 ```mermaid

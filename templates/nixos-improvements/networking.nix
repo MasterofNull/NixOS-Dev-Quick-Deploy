@@ -10,10 +10,12 @@
 #
 # Usage: Import this file in your configuration.nix:
 #   imports = [ ./nixos-improvements/networking.nix ];
-
-{ config, pkgs, lib, ... }:
-
 {
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   # Enable systemd-resolved for DNS resolution
   services.resolved = {
     enable = true;
@@ -23,11 +25,11 @@
     dnsovertls = "opportunistic";
     # Fallback DNS servers (used when DHCP doesn't provide DNS)
     fallbackDns = [
-      "1.1.1.1"        # Cloudflare primary
-      "1.0.0.1"        # Cloudflare secondary
-      "8.8.8.8"        # Google primary
-      "8.8.4.4"        # Google secondary
-      "9.9.9.9"        # Quad9 primary
+      "1.1.1.1" # Cloudflare primary
+      "1.0.0.1" # Cloudflare secondary
+      "8.8.8.8" # Google primary
+      "8.8.4.4" # Google secondary
+      "9.9.9.9" # Quad9 primary
       "149.112.112.112" # Quad9 secondary
     ];
     # Enable LLMNR (Link-Local Multicast Name Resolution)

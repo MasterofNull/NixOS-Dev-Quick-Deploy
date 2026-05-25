@@ -1,9 +1,11 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   skipRootFsck = cfg.deployment.rootFsckMode == "skip";
-in
-{
+in {
   config = {
     # Avoid initrd lockout loops: keep emergency shell accessible for local recovery.
     boot.initrd.systemd.emergencyAccess = lib.mkDefault cfg.deployment.initrdEmergencyAccess;
@@ -14,6 +16,5 @@ in
       "fsck.mode=skip"
       "fsck.repair=no"
     ]);
-
   };
 }

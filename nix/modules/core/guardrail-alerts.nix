@@ -1,5 +1,4 @@
-{ pkgs, ... }:
-let
+{pkgs, ...}: let
   guardrailFailureNotify = pkgs.writeShellApplication {
     name = "guardrail-failure-notify";
     runtimeInputs = with pkgs; [
@@ -47,10 +46,9 @@ let
       fi
     '';
   };
-in
-{
+in {
   config = {
-    environment.systemPackages = [ guardrailFailureNotify ];
+    environment.systemPackages = [guardrailFailureNotify];
 
     systemd.services."deploy-guardrail-alert@" = {
       description = "Deployment Guardrail Failure Alert (%i)";

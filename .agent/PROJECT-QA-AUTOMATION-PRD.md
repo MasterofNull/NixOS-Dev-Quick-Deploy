@@ -2,7 +2,7 @@
 
 **Domain tag:** `qa-automation`
 **Status:** Proposed — Phase 60
-**Authors:** Gemini (Orchestrator)
+**Authors:** Gemini 2.0 Pro (Orchestrator)
 
 ## 1. Goal
 Promote QA from a legacy script to a first-class autonomous domain utilizing Playwright, Chaos Mesh, and Property-Based Testing.

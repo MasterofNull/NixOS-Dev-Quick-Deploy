@@ -1,4 +1,4 @@
-{ lib, ... }:
+{lib, ...}:
 # Per-host Home Manager config for hyperd.
 # home.username and home.homeDirectory are injected by flake.nix from
 # mySystem.primaryUser — do NOT declare them here.

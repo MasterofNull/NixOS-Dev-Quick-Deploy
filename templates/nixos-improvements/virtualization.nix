@@ -12,44 +12,46 @@
 #
 # Usage: Import this file in your configuration.nix:
 #   imports = [ ./nixos-improvements/virtualization.nix ];
-
-{ config, pkgs, lib, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   virtInstallAvailable = pkgs ? virtinst;
   virtInstallCmd =
-    if virtInstallAvailable then "${pkgs.virtinst}/bin/virt-install" else "virt-install";
+    if virtInstallAvailable
+    then "${pkgs.virtinst}/bin/virt-install"
+    else "virt-install";
   libvirtDefaultNetworkScript = pkgs.writeShellScript "libvirt-default-network" ''
-    set -eu
-    virsh_bin="${pkgs.libvirt}/bin/virsh"
-    net_name="default"
+        set -eu
+        virsh_bin="${pkgs.libvirt}/bin/virsh"
+        net_name="default"
 
-    # Define network if missing (virsh net-define is idempotent per net_name).
-    if ! "$virsh_bin" net-info "$net_name" >/dev/null 2>&1; then
-      tmp_xml="$(mktemp)"
-      cat >"$tmp_xml" <<'EOF'
-<network>
-  <name>default</name>
-  <forward mode='nat'/>
-  <bridge name='virbr0' stp='on' delay='0'/>
-  <ip address='192.168.122.1' netmask='255.255.255.0'>
-    <dhcp>
-      <range start='192.168.122.2' end='192.168.122.254'/>
-    </dhcp>
-  </ip>
-</network>
-EOF
-      "$virsh_bin" net-define "$tmp_xml" >/dev/null 2>&1 || true
-      "$virsh_bin" net-autostart "$net_name" >/dev/null 2>&1 || true
-      rm -f "$tmp_xml"
-    fi
+        # Define network if missing (virsh net-define is idempotent per net_name).
+        if ! "$virsh_bin" net-info "$net_name" >/dev/null 2>&1; then
+          tmp_xml="$(mktemp)"
+          cat >"$tmp_xml" <<'EOF'
+    <network>
+      <name>default</name>
+      <forward mode='nat'/>
+      <bridge name='virbr0' stp='on' delay='0'/>
+      <ip address='192.168.122.1' netmask='255.255.255.0'>
+        <dhcp>
+          <range start='192.168.122.2' end='192.168.122.254'/>
+        </dhcp>
+      </ip>
+    </network>
+    EOF
+          "$virsh_bin" net-define "$tmp_xml" >/dev/null 2>&1 || true
+          "$virsh_bin" net-autostart "$net_name" >/dev/null 2>&1 || true
+          rm -f "$tmp_xml"
+        fi
 
-    # Start network; ignore failure if already active.
-    "$virsh_bin" net-start "$net_name" >/dev/null 2>&1 || true
+        # Start network; ignore failure if already active.
+        "$virsh_bin" net-start "$net_name" >/dev/null 2>&1 || true
   '';
-in
-
-{
+in {
   # =========================================================================
   # Core Virtualization Services
   # =========================================================================
@@ -124,94 +126,94 @@ in
       # Core virtualization tools
       # virt-manager - removed, using Flatpak version (org.virt_manager.virt-manager)
       # virt-viewer - removed, using Flatpak version (included with virt-manager)
-      libvirt                   # Provides virsh CLI and core tooling
+      libvirt # Provides virsh CLI and core tooling
 
       # VM automation
-      vagrant                   # VM provisioning tool
-      quickemu                  # Quick VM testing (Windows, macOS, etc.)
+      vagrant # VM provisioning tool
+      quickemu # Quick VM testing (Windows, macOS, etc.)
 
       # Network tools
-      bridge-utils              # Network bridge management
-      dnsmasq                   # DHCP/DNS for VM networks
+      bridge-utils # Network bridge management
+      dnsmasq # DHCP/DNS for VM networks
 
       # Debugging
-      qemu                      # QEMU utilities
-      libguestfs                # VM disk image tools
+      qemu # QEMU utilities
+      libguestfs # VM disk image tools
       libguestfs-with-appliance # Appliance for guestfs
 
       # Performance analysis
-      virt-top                  # VM resource monitoring
+      virt-top # VM resource monitoring
     ])
     ++ lib.optional virtInstallAvailable pkgs.virtinst
     ++ [
       # Helper scripts
       (pkgs.writeShellScriptBin "vm-create-nixos" ''
-      #!/usr/bin/env bash
-      # Quick NixOS VM creation script
-      set -euo pipefail
+        #!/usr/bin/env bash
+        # Quick NixOS VM creation script
+        set -euo pipefail
 
-      NAME=''${1:-nixos-test}
-      MEMORY=''${2:-4096}
-      CPUS=''${3:-2}
-      DISK_SIZE=''${4:-20}
+        NAME=''${1:-nixos-test}
+        MEMORY=''${2:-4096}
+        CPUS=''${3:-2}
+        DISK_SIZE=''${4:-20}
 
-      echo "🚀 Creating NixOS VM: $NAME"
-      echo "  Memory: $MEMORY MB"
-      echo "  CPUs: $CPUS"
-      echo "  Disk: $DISK_SIZE GB"
+        echo "🚀 Creating NixOS VM: $NAME"
+        echo "  Memory: $MEMORY MB"
+        echo "  CPUs: $CPUS"
+        echo "  Disk: $DISK_SIZE GB"
 
-      # Download latest NixOS ISO (or specify path)
-      ISO_URL="https://channels.nixos.org/nixos-26.05/latest-nixos-minimal-x86_64-linux.iso"
-      ISO_PATH="/var/lib/libvirt/images/nixos-minimal.iso"
+        # Download latest NixOS ISO (or specify path)
+        ISO_URL="https://channels.nixos.org/nixos-26.05/latest-nixos-minimal-x86_64-linux.iso"
+        ISO_PATH="/var/lib/libvirt/images/nixos-minimal.iso"
 
-      if [ ! -f "$ISO_PATH" ]; then
-        echo "📥 Downloading NixOS ISO..."
-        ${pkgs.curl}/bin/curl -L "$ISO_URL" -o "$ISO_PATH"
-      fi
+        if [ ! -f "$ISO_PATH" ]; then
+          echo "📥 Downloading NixOS ISO..."
+          ${pkgs.curl}/bin/curl -L "$ISO_URL" -o "$ISO_PATH"
+        fi
 
-      # Ensure virt-install is available
-      if ! command -v virt-install >/dev/null 2>&1; then
-        echo "virt-install is not available. Install the virtinst package or add it to environment.systemPackages."
-        exit 1
-      fi
+        # Ensure virt-install is available
+        if ! command -v virt-install >/dev/null 2>&1; then
+          echo "virt-install is not available. Install the virtinst package or add it to environment.systemPackages."
+          exit 1
+        fi
 
-      # Create VM
-      ${virtInstallCmd} \
-        --name "$NAME" \
-        --memory "$MEMORY" \
-        --vcpus "$CPUS" \
-        --disk size="$DISK_SIZE" \
-        --cdrom "$ISO_PATH" \
-        --os-variant nixos-unstable \
-        --network network=default \
-        --graphics spice \
-        --console pty,target_type=serial \
-        --boot uefi
+        # Create VM
+        ${virtInstallCmd} \
+          --name "$NAME" \
+          --memory "$MEMORY" \
+          --vcpus "$CPUS" \
+          --disk size="$DISK_SIZE" \
+          --cdrom "$ISO_PATH" \
+          --os-variant nixos-unstable \
+          --network network=default \
+          --graphics spice \
+          --console pty,target_type=serial \
+          --boot uefi
 
-      echo "✅ VM created: $NAME"
-      echo "   Access with: virt-manager (Flatpak)"
-    '')
+        echo "✅ VM created: $NAME"
+        echo "   Access with: virt-manager (Flatpak)"
+      '')
 
-    (pkgs.writeShellScriptBin "vm-list" ''
-      #!/usr/bin/env bash
-      # List all VMs with status
-      echo "📋 Virtual Machines:"
-      ${pkgs.libvirt}/bin/virsh list --all
-    '')
+      (pkgs.writeShellScriptBin "vm-list" ''
+        #!/usr/bin/env bash
+        # List all VMs with status
+        echo "📋 Virtual Machines:"
+        ${pkgs.libvirt}/bin/virsh list --all
+      '')
 
-    (pkgs.writeShellScriptBin "vm-snapshot" ''
-      #!/usr/bin/env bash
-      # Create VM snapshot
-      set -euo pipefail
+      (pkgs.writeShellScriptBin "vm-snapshot" ''
+        #!/usr/bin/env bash
+        # Create VM snapshot
+        set -euo pipefail
 
-      VM_NAME="$1"
-      SNAPSHOT_NAME="''${2:-snapshot-$(date +%Y%m%d-%H%M%S)}"
+        VM_NAME="$1"
+        SNAPSHOT_NAME="''${2:-snapshot-$(date +%Y%m%d-%H%M%S)}"
 
-      echo "📸 Creating snapshot: $SNAPSHOT_NAME for $VM_NAME"
-      ${pkgs.libvirt}/bin/virsh snapshot-create-as "$VM_NAME" "$SNAPSHOT_NAME"
-      echo "✅ Snapshot created"
-    '')
-  ];
+        echo "📸 Creating snapshot: $SNAPSHOT_NAME for $VM_NAME"
+        ${pkgs.libvirt}/bin/virsh snapshot-create-as "$VM_NAME" "$SNAPSHOT_NAME"
+        echo "✅ Snapshot created"
+      '')
+    ];
 
   # =========================================================================
   # Documentation (declarative via environment.etc)
@@ -256,14 +258,12 @@ in
     ========================================
   '';
 
-
-
   # Default NAT network
   systemd.services."libvirt-network-default" = {
     description = "Libvirt default NAT network";
-    after = [ "libvirtd.service" ];
-    requires = [ "libvirtd.service" ];
-    wantedBy = [ "multi-user.target" ];
+    after = ["libvirtd.service"];
+    requires = ["libvirtd.service"];
+    wantedBy = ["multi-user.target"];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

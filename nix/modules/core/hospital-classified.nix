@@ -1,8 +1,10 @@
-{ lib, config, ... }:
-let
-  cfg = config.mySystem.compliance.hospitalClassified;
-in
 {
+  lib,
+  config,
+  ...
+}: let
+  cfg = config.mySystem.compliance.hospitalClassified;
+in {
   options.mySystem.compliance.hospitalClassified = {
     enable = lib.mkOption {
       type = lib.types.bool;

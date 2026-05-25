@@ -3,9 +3,12 @@
 #
 # Usage:
 #   services.data-retention.enable = true;
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.services.data-retention;
 
   trimFactsScript = pkgs.writeShellScript "data-retention-trim-facts" ''
@@ -27,9 +30,7 @@ let
     ${trimFactsScript}
     ${trimSnapshotsScript}
   '';
-
-in
-{
+in {
   options.services.data-retention = {
     enable = lib.mkEnableOption "AI harness data retention trimmer";
 
@@ -86,14 +87,16 @@ in
   config = lib.mkIf cfg.enable {
     systemd.timers.data-retention = {
       description = "AI harness data retention timer";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = cfg.interval;
-        Persistent = true;
-        RandomizedDelaySec = "10min";
-      } // lib.optionalAttrs cfg.onBoot {
-        OnBootSec = "10min";
-      };
+      wantedBy = ["timers.target"];
+      timerConfig =
+        {
+          OnCalendar = cfg.interval;
+          Persistent = true;
+          RandomizedDelaySec = "10min";
+        }
+        // lib.optionalAttrs cfg.onBoot {
+          OnBootSec = "10min";
+        };
     };
 
     systemd.services.data-retention = {

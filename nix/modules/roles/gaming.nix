@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Gaming role — Steam, Proton, Gamemode, MangoHud, Wine.
 #
@@ -11,8 +16,7 @@ let
   cfg = config.mySystem;
   gamingEnabled = cfg.roles.gaming.enable;
   gamingSupported = pkgs.stdenv.hostPlatform.isx86_64;
-in
-{
+in {
   config = lib.mkMerge [
     (lib.mkIf (gamingEnabled && !gamingSupported) {
       warnings = [
@@ -20,7 +24,6 @@ in
       ];
     })
     (lib.mkIf (gamingEnabled && gamingSupported) {
-
       # ---- Steam + Proton ------------------------------------------------
       programs.steam = {
         enable = lib.mkDefault true;
@@ -46,11 +49,11 @@ in
 
       # ---- Wine / Proton-GE ecosystem ------------------------------------
       environment.systemPackages = with pkgs; [
-        wine          # Windows compatibility layer
-        winetricks    # Wine prefix configuration helper
-        lutris        # Game launcher with Wine/Proton management
-        heroic        # Epic Games / GOG / Amazon launcher
-        mangohud      # Performance overlay (MangoHud NixOS module removed upstream)
+        wine # Windows compatibility layer
+        winetricks # Wine prefix configuration helper
+        lutris # Game launcher with Wine/Proton management
+        heroic # Epic Games / GOG / Amazon launcher
+        mangohud # Performance overlay (MangoHud NixOS module removed upstream)
       ];
     })
   ];

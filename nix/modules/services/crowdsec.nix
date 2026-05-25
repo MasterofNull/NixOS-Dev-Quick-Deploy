@@ -1,9 +1,12 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   cs = cfg.security.crowdsec;
-in
-{
+in {
   # ---------------------------------------------------------------------------
   # Crowdsec IPS: behavior-based intrusion prevention system.
   # Watches logs for malicious patterns, shares threat intel, and blocks IPs.
@@ -68,24 +71,26 @@ in
       };
 
       # Acquisitions: which log sources to monitor
-      localConfig.acquisitions = lib.optionals cs.watchSshd [
-        {
-          source = "journalctl";
-          journalctl_filter = [ "_SYSTEMD_UNIT=sshd.service" ];
-          labels.type = "syslog";
-        }
-      ] ++ lib.optionals cs.watchNginx [
-        {
-          source = "file";
-          filenames = [ "/var/log/nginx/access.log" ];
-          labels.type = "nginx";
-        }
-        {
-          source = "file";
-          filenames = [ "/var/log/nginx/error.log" ];
-          labels.type = "nginx";
-        }
-      ];
+      localConfig.acquisitions =
+        lib.optionals cs.watchSshd [
+          {
+            source = "journalctl";
+            journalctl_filter = ["_SYSTEMD_UNIT=sshd.service"];
+            labels.type = "syslog";
+          }
+        ]
+        ++ lib.optionals cs.watchNginx [
+          {
+            source = "file";
+            filenames = ["/var/log/nginx/access.log"];
+            labels.type = "nginx";
+          }
+          {
+            source = "file";
+            filenames = ["/var/log/nginx/error.log"];
+            labels.type = "nginx";
+          }
+        ];
     };
 
     # Firewall bouncer: block malicious IPs at the firewall level
@@ -120,7 +125,7 @@ in
         ProtectSystem = "strict";
         ProtectHome = true;
         NoNewPrivileges = true;
-        ReadWritePaths = [ "/var/lib/crowdsec" "/var/log/crowdsec" ];
+        ReadWritePaths = ["/var/lib/crowdsec" "/var/log/crowdsec"];
       };
     };
 
@@ -130,17 +135,17 @@ in
     # do not fail with "API error: access forbidden".
     systemd.services.crowdsec-firewall-bouncer-key-sync = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
       description = "Sync CrowdSec firewall bouncer API key from secret";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "crowdsec.service" ];
-      wants = [ "crowdsec.service" ];
-      before = [ "crowdsec-firewall-bouncer.service" ];
+      wantedBy = ["multi-user.target"];
+      after = ["crowdsec.service"];
+      wants = ["crowdsec.service"];
+      before = ["crowdsec-firewall-bouncer.service"];
       serviceConfig = {
         Type = "oneshot";
         User = config.services.crowdsec.user;
         Group = config.services.crowdsec.group;
-        LoadCredential = [ "API_KEY_FILE:${toString cs.apiKeyFile}" ];
+        LoadCredential = ["API_KEY_FILE:${toString cs.apiKeyFile}"];
         StateDirectory = "crowdsec-firewall-bouncer-key-sync";
-        ReadWritePaths = [ "/var/lib/crowdsec" ];
+        ReadWritePaths = ["/var/lib/crowdsec"];
         DynamicUser = true;
         LockPersonality = true;
         PrivateDevices = true;
@@ -155,8 +160,8 @@ in
         ProtectProc = "invisible";
         RestrictNamespaces = true;
         RestrictRealtime = true;
-        RestrictAddressFamilies = [ "AF_UNIX" ];
-        CapabilityBoundingSet = [ "" ];
+        RestrictAddressFamilies = ["AF_UNIX"];
+        CapabilityBoundingSet = [""];
         SystemCallArchitectures = "native";
         SystemCallFilter = [
           "@system-service"
@@ -167,12 +172,12 @@ in
       };
       script = let
         bouncerName = config.services.crowdsec-firewall-bouncer.registerBouncer.bouncerName;
-        crowdsecConfigFile = (pkgs.formats.yaml { }).generate "crowdsec-sync.yaml" config.services.crowdsec.settings.general;
+        crowdsecConfigFile = (pkgs.formats.yaml {}).generate "crowdsec-sync.yaml" config.services.crowdsec.settings.general;
         cscliBin = lib.getExe' config.services.crowdsec.package "cscli";
       in ''
         set -euo pipefail
 
-        export PATH="${lib.makeBinPath [ config.services.crowdsec.package ]}:$PATH"
+        export PATH="${lib.makeBinPath [config.services.crowdsec.package]}:$PATH"
         cscli=${lib.escapeShellArg cscliBin}
         crowdsec_config=${lib.escapeShellArg crowdsecConfigFile}
         api_key="$(<"$CREDENTIALS_DIRECTORY/API_KEY_FILE")"
@@ -186,15 +191,15 @@ in
     };
 
     systemd.services.crowdsec-firewall-bouncer = lib.mkIf (cs.enableFirewallBouncer && cs.apiKeyFile != null) {
-      after = [ "crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service" ];
-      wants = [ "crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service" ];
-      requires = [ "crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service" ];
+      after = ["crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service"];
+      wants = ["crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service"];
+      requires = ["crowdsec-firewall-bouncer-key-sync.service" "crowdsec.service"];
     };
 
     # Open firewall for local API only (bouncer communication)
-    networking.firewall.interfaces."lo".allowedTCPPorts = [ 8088 ];
+    networking.firewall.interfaces."lo".allowedTCPPorts = [8088];
 
     # Install crowdsec CLI for management
-    environment.systemPackages = [ pkgs.crowdsec ];
+    environment.systemPackages = [pkgs.crowdsec];
   };
 }

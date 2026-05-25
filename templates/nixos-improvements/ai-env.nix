@@ -12,13 +12,14 @@
 #     aidbProjectName = "NixOS-Dev-Quick-Deploy";
 #   };
 #
-
-{ config, lib, pkgs, ... }:
-
-let
-  cfg = config.services.aiEnv;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.services.aiEnv;
+in {
   options.services.aiEnv = {
     enable = lib.mkEnableOption "write a small /etc/ai-env.conf for local AI tools and agents";
 

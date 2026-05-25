@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Apple Silicon (M-series) CPU module — Asahi Linux
 #
@@ -32,11 +37,10 @@
 # GPU: Apple AGX — handled by nix/modules/hardware/gpu/apple.nix
 # ---------------------------------------------------------------------------
 let
-  cfg      = config.mySystem;
-  isApple  = cfg.hardware.cpuVendor == "apple";
+  cfg = config.mySystem;
+  isApple = cfg.hardware.cpuVendor == "apple";
   isMobile = cfg.hardware.isMobile;
-in
-{
+in {
   config = lib.mkIf isApple {
     # ---- CPU frequency scaling -----------------------------------------------
     # Apple M-series firmware manages frequency/voltage natively.
@@ -73,7 +77,7 @@ in
 
     # ---- Known-good kernel parameters for Asahi ----------------------------
     boot.kernelParams = lib.mkAfter [
-      "apple_dcp.show_notch=1"   # Allow full display height (hide notch area)
+      "apple_dcp.show_notch=1" # Allow full display height (hide notch area)
     ];
 
     # ---- Nix build parallelism ---------------------------------------------

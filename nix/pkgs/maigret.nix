@@ -1,8 +1,8 @@
-{ lib
-, python3
-, fetchFromGitHub
+{
+  lib,
+  python3,
+  fetchFromGitHub,
 }:
-
 python3.pkgs.buildPythonApplication rec {
   pname = "maigret";
   version = "0.6.1";
@@ -69,17 +69,17 @@ python3.pkgs.buildPythonApplication rec {
   postPatch = ''
     # Remove problematic dependencies for Python 3.13
     sed -i '/future/d' pyproject.toml
-    
+
     # Swap insecure pypdf2 for pypdf
-    sed -i 's/PyPDF2 = "\^3.0.1"/pypdf = "*"/' pyproject.toml
-    
+    sed -i 's/PyPDF2 = "^3.0.1"/pypdf = "*"/' pyproject.toml
+
     # Relax strict version constraints for all failing packages
-    sed -i 's/networkx = "\^2.6.3"/networkx = "*"/' pyproject.toml
-    sed -i 's/alive_progress = "\^3.2.0"/alive-progress = "*"/' pyproject.toml
-    sed -i 's/pyvis = "\^0.3.2"/pyvis = "*"/' pyproject.toml
+    sed -i 's/networkx = "^2.6.3"/networkx = "*"/' pyproject.toml
+    sed -i 's/alive_progress = "^3.2.0"/alive_progress = "*"/' pyproject.toml
+    sed -i 's/pyvis = "^0.3.2"/pyvis = "*"/' pyproject.toml
     sed -i 's/curl-cffi = ">=0.14,<1.0"/curl-cffi = "*"/' pyproject.toml
-    sed -i 's/PySocks = "\^1.7.1"/pysocks = "*"/' pyproject.toml
-    sed -i 's/XMind = "\^1.2.0"/xmind = "*"/' pyproject.toml
+    sed -i 's/PySocks = "^1.7.1"/PySocks = "*"/' pyproject.toml
+    sed -i 's/XMind = "^1.2.0"/XMind = "*"/' pyproject.toml
   '';
 
   # Disable tests as they usually require network for OSINT tools

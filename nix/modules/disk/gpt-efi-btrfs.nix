@@ -1,20 +1,21 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem.disk;
   mkMountpoint = name:
-    if name == "@root" then
-      "/"
-    else if lib.hasPrefix "@" name then
-      "/" + (lib.removePrefix "@" name)
-    else
-      "/" + name;
-  subvolumes =
-    builtins.listToAttrs (map (name: {
+    if name == "@root"
+    then "/"
+    else if lib.hasPrefix "@" name
+    then "/" + (lib.removePrefix "@" name)
+    else "/" + name;
+  subvolumes = builtins.listToAttrs (map (name: {
       inherit name;
       value.mountpoint = mkMountpoint name;
-    }) cfg.btrfsSubvolumes);
-in
-{
+    })
+    cfg.btrfsSubvolumes);
+in {
   config = lib.mkIf (cfg.layout == "gpt-efi-btrfs") {
     disko.devices = {
       disk.main = {

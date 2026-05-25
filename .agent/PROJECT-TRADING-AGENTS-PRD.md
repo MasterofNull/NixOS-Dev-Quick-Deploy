@@ -2,7 +2,7 @@
 
 **Domain tag:** `trading-agents`
 **Status:** Proposed — Phase 60
-**Authors:** Gemini (Orchestrator)
+**Authors:** Gemini 2.0 Pro (Orchestrator)
 
 ## 1. Goal
 Establish `trading-agents` domain for autonomous market intelligence, sentiment analysis, and simulated paper-trading using local LLMs.

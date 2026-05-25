@@ -6,40 +6,40 @@
 # drop CLI shims, or add propagated dependencies. Placeholders are not used
 # here—the file is copied verbatim into the rendered configuration.
 # =============================================================================
-python-self: python-super:
-let
-  inherit (builtins)
+python-self: python-super: let
+  inherit
+    (builtins)
     concatStringsSep
     filter
     getAttr
     hasAttr
     map
     removeAttrs
-    typeOf;
+    typeOf
+    ;
 
   getAttrOr = name: default: attrs:
-    if hasAttr name attrs then
-      let
-        value = getAttr name attrs;
-      in
-      if value != null then value else default
-    else
-      default;
+    if hasAttr name attrs
+    then let
+      value = getAttr name attrs;
+    in
+      if value != null
+      then value
+      else default
+    else default;
 
   appendPostInstall = old: snippet:
     concatStringsSep "\n"
-      (filter (s: s != "") [ (getAttrOr "postInstall" "" old) snippet ]);
+    (filter (s: s != "") [(getAttrOr "postInstall" "" old) snippet]);
 
-  removeCliWrappers = binaries: old:
-    let
-      commands = map (bin: ''rm -f "$out/bin/${bin}" "$out/bin/.${bin}-wrapped"'') binaries;
-      snippet = concatStringsSep "\n" commands;
-    in
+  removeCliWrappers = binaries: old: let
+    commands = map (bin: ''rm -f "$out/bin/${bin}" "$out/bin/.${bin}-wrapped"'') binaries;
+    snippet = concatStringsSep "\n" commands;
+  in
     appendPostInstall old snippet;
 
   filterNulls = filter (pkg: pkg != null);
-in
-{
+in {
   joserfc = python-super.joserfc.overridePythonAttrs (old: {
     # Skip tests to avoid flaky failures with duplicate key identifiers.
     doCheck = false;
@@ -59,9 +59,11 @@ in
     # plugin entry points are available when the library is imported. Ensure it
     # is propagated so pythonRuntimeDepsCheck succeeds while still allowing the
     # tests to remain disabled.
-    propagatedBuildInputs = getAttrOr "propagatedBuildInputs" [] old ++ [
-      python-self.pytest
-    ];
+    propagatedBuildInputs =
+      getAttrOr "propagatedBuildInputs" [] old
+      ++ [
+        python-self.pytest
+      ];
   });
 
   markdown = python-super.markdown.overridePythonAttrs (_: {
@@ -96,7 +98,8 @@ in
   });
 
   sqlframe = python-super.sqlframe.overridePythonAttrs (old: {
-    postPatch = getAttrOr "postPatch" "" old
+    postPatch =
+      getAttrOr "postPatch" "" old
       + ''
         find . -type f -name '*.py' -exec sed -i 's/np\\.NaN/np.nan/g' {} +
       '';
@@ -110,17 +113,17 @@ in
   });
 
   "llama-index" = python-super."llama-index".overridePythonAttrs (old: {
-    postInstall = removeCliWrappers [ "llamaindex-cli" ] old;
+    postInstall = removeCliWrappers ["llamaindex-cli"] old;
   });
 
   "llama-cloud-services" = python-super."llama-cloud-services".overridePythonAttrs (old: {
-    postInstall = removeCliWrappers [ "llama-parse" ] old;
+    postInstall = removeCliWrappers ["llama-parse"] old;
   });
 
   "openai" = python-super."openai".overridePythonAttrs (old: {
     doCheck = false;
     pythonImportsCheck = [];
-    postInstall = removeCliWrappers [ "openai" ] old;
+    postInstall = removeCliWrappers ["openai"] old;
   });
 
   pylint = python-super.pylint.overridePythonAttrs (_: {
@@ -220,9 +223,9 @@ in
   "gradio" = python-super."gradio".overridePythonAttrs (old: {
     doCheck = false;
     pythonImportsCheck = [];
-    passthru = removeAttrs (getAttrOr "passthru" {} old) [ "sans-reverse-dependencies" ];
+    passthru = removeAttrs (getAttrOr "passthru" {} old) ["sans-reverse-dependencies"];
   });
-  
+
   #"gradio" = python-super."gradio".overridePythonAttrs (_: {
   #  doCheck = false;
   #  pythonImportsCheck = [];
@@ -231,18 +234,20 @@ in
   gradio-client = python-super.gradio-client.overridePythonAttrs (old: {
     doCheck = false;
     pythonImportsCheck = [];
-    nativeCheckInputs =
-      let
-        existing = getAttrOr "nativeCheckInputs" [] old;
-        transformed = map
-          (pkg:
-            if typeOf pkg == "set"
-              && pkg ? pname
-              && (getAttrOr "pname" "" pkg) == "gradio"
-            then null
-            else pkg)
-          existing;
-      in
+    nativeCheckInputs = let
+      existing = getAttrOr "nativeCheckInputs" [] old;
+      transformed =
+        map
+        (pkg:
+          if
+            typeOf pkg
+            == "set"
+            && pkg ? pname
+            && (getAttrOr "pname" "" pkg) == "gradio"
+          then null
+          else pkg)
+        existing;
+    in
       filterNulls transformed;
   });
 

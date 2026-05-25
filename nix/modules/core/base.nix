@@ -1,22 +1,31 @@
-{ lib, pkgs, config, ... }:
-let
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   ports = cfg.ports;
-  bootFsType = lib.attrByPath [ "fileSystems" "/boot" "fsType" ] null config;
+  bootFsType = lib.attrByPath ["fileSystems" "/boot" "fsType"] null config;
   useSystemdBoot = (!cfg.secureboot.enable) && (cfg.hardware.firmwareType == "efi" || bootFsType == "vfat");
   selectedKernelPackages =
-    if cfg.kernel.track == "lts" && pkgs ? linuxPackages_6_18 then
-      pkgs.linuxPackages_6_18
-    else if cfg.kernel.track == "latest-stable" && pkgs ? linuxPackages_latest then
-      pkgs.linuxPackages_latest
-    else
-      pkgs.linuxPackages;
-  usersCfg = config.users.users or { };
+    if cfg.kernel.track == "lts" && pkgs ? linuxPackages_6_18
+    then pkgs.linuxPackages_6_18
+    else if cfg.kernel.track == "latest-stable" && pkgs ? linuxPackages_latest
+    then pkgs.linuxPackages_latest
+    else pkgs.linuxPackages;
+  usersCfg = config.users.users or {};
   hasPrimaryUserDecl = builtins.hasAttr cfg.primaryUser usersCfg;
-  primaryUserCfg = if hasPrimaryUserDecl then usersCfg.${cfg.primaryUser} else { };
-  primaryGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
+  primaryUserCfg =
+    if hasPrimaryUserDecl
+    then usersCfg.${cfg.primaryUser}
+    else {};
+  primaryGroup = lib.attrByPath ["users" "users" cfg.primaryUser "group"] "users" config;
   hasRootDecl = builtins.hasAttr "root" usersCfg;
-  rootUserCfg = if hasRootDecl then usersCfg.root else { };
+  rootUserCfg =
+    if hasRootDecl
+    then usersCfg.root
+    else {};
   hasPasswordDirective = userCfg:
     (userCfg ? hashedPassword)
     || (userCfg ? hashedPasswordFile)
@@ -44,44 +53,54 @@ let
   ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
   missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) mergedPackageNames;
-  resolvedPackages =
-    builtins.filter (pkg: pkg != null) (
-      map (name:
-        if builtins.hasAttr name pkgs then pkgs.${name} else null
-      ) mergedPackageNames
-    );
+  resolvedPackages = builtins.filter (pkg: pkg != null) (
+    map (
+      name:
+        if builtins.hasAttr name pkgs
+        then pkgs.${name}
+        else null
+    )
+    mergedPackageNames
+  );
   # Phase 16.1.1 — tier computed by shared library function.
-  _computeTier = import ../../lib/hardware-tier.nix { inherit lib; };
+  _computeTier = import ../../lib/hardware-tier.nix {inherit lib;};
   hardwareTier = _computeTier {
-    systemRamGb    = cfg.hardware.systemRamGb;
-    hasDiscreteGpu = cfg.hardware.gpuVendor != "none"
-                  && cfg.hardware.gpuVendor != "integrated";
+    systemRamGb = cfg.hardware.systemRamGb;
+    hasDiscreteGpu =
+      cfg.hardware.gpuVendor
+      != "none"
+      && cfg.hardware.gpuVendor != "integrated";
     cpuArchitecture =
-      if pkgs.stdenv.hostPlatform.isx86_64 then "x86_64"
-      else if pkgs.stdenv.hostPlatform.isAarch64 then "aarch64"
+      if pkgs.stdenv.hostPlatform.isx86_64
+      then "x86_64"
+      else if pkgs.stdenv.hostPlatform.isAarch64
+      then "aarch64"
       else "other";
   };
   mutableStateDir = cfg.deployment.mutableSpaces.aiStackStateDir;
   mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
   mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
   mutableUserPaths = cfg.deployment.mutableSpaces.userWritablePaths;
-  mutableSharedTraversePaths = [ mutableStateDir ];
+  mutableSharedTraversePaths = [mutableStateDir];
   mutableProgramPaths = lib.unique (
     cfg.deployment.mutableSpaces.programWritablePaths
-    ++ [ mutableStateDir mutableOptimizerDir mutableLogDir ]
+    ++ [mutableStateDir mutableOptimizerDir mutableLogDir]
   );
-  mutableUserServicePaths = lib.unique [ mutableOptimizerDir mutableLogDir ];
-  mutableRootProgramPaths = builtins.filter (path:
-    !(builtins.elem path mutableUserServicePaths)
-    && !(builtins.elem path mutableSharedTraversePaths)
-  ) mutableProgramPaths;
+  mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];
+  mutableRootProgramPaths =
+    builtins.filter (
+      path:
+        !(builtins.elem path mutableUserServicePaths)
+        && !(builtins.elem path mutableSharedTraversePaths)
+    )
+    mutableProgramPaths;
   mutableAllPaths = mutableUserPaths ++ mutableProgramPaths;
 
   # ── Dev testing helper scripts (referenced by system-health-check.sh) ──────
   # These are minimal wrappers installed as system commands so they appear in
   # PATH for all users without a project-local virtualenv.
   devHelperPackages = with pkgs; [
-    watchexec  # file-watcher for pytest-watch; also useful standalone
+    watchexec # file-watcher for pytest-watch; also useful standalone
     (writeShellScriptBin "pytest-init" ''
       set -euo pipefail
       mkdir -p tests
@@ -115,8 +134,7 @@ let
       exec pytest -x -q --no-header "$@"
     '')
   ];
-in
-{
+in {
   config = {
     networking.hostName = lib.mkDefault cfg.hostName;
     mySystem.hardwareTier = lib.mkDefault hardwareTier;
@@ -138,12 +156,12 @@ in
     mySystem.monitoring.commandCenter.apiPort = lib.mkDefault ports.commandCenterApi;
 
     nix.settings = {
-      experimental-features = [ "nix-command" "flakes" ];
+      experimental-features = ["nix-command" "flakes"];
       auto-optimise-store = lib.mkDefault true;
       # Explicit policy (not mkDefault) to prevent regressions where only
       # root is trusted after a generation switch.
-      trusted-users = [ "root" "@wheel" cfg.primaryUser ];
-      allowed-users = [ "@wheel" cfg.primaryUser ];
+      trusted-users = ["root" "@wheel" cfg.primaryUser];
+      allowed-users = ["@wheel" cfg.primaryUser];
       substituters = lib.mkDefault cfg.deployment.nixBinaryCaches;
       # Phase 11.2.1 — audited cache keys (verified in-repo on 2026-02-26)
       # cache.nixos.org: official NixOS binary cache
@@ -153,7 +171,9 @@ in
       # Phase 11.2.3 — restrict eval-time fetch URLs for AI stack hosts.
       # Keep this allowlist centralized in mySystem.deployment.nixAllowedUris.
       allowed-uris = lib.mkDefault (
-        if cfg.roles.aiStack.enable then cfg.deployment.nixAllowedUris else [ ]
+        if cfg.roles.aiStack.enable
+        then cfg.deployment.nixAllowedUris
+        else []
       );
       # Phase 11.2.2 — require cryptographic signatures on all substituted
       # store paths.  This is the NixOS default (true) but we set it
@@ -168,7 +188,7 @@ in
     };
     nix.optimise = {
       automatic = lib.mkDefault true;
-      dates = lib.mkDefault [ "weekly" ];
+      dates = lib.mkDefault ["weekly"];
     };
     boot.kernelPackages = lib.mkDefault selectedKernelPackages;
 
@@ -234,8 +254,8 @@ in
 
     # sudo: restrict to wheel group; require password for every invocation.
     security.sudo = {
-      enable           = lib.mkDefault true;
-      execWheelOnly    = lib.mkDefault true;   # wheel group only — no free sudo
+      enable = lib.mkDefault true;
+      execWheelOnly = lib.mkDefault true; # wheel group only — no free sudo
       wheelNeedsPassword = lib.mkDefault true; # no passwordless sudo by default
 
       # Extend credential cache to 60 minutes so a single deploy run (nixos-rebuild
@@ -251,9 +271,12 @@ in
       # silently skips all bootloader checks.
       extraRules = lib.mkDefault [
         {
-          groups   = [ "wheel" ];
+          groups = ["wheel"];
           commands = [
-            { command = "${pkgs.systemd}/bin/bootctl"; options = [ "NOPASSWD" ]; }
+            {
+              command = "${pkgs.systemd}/bin/bootctl";
+              options = ["NOPASSWD"];
+            }
           ];
         }
       ];
@@ -276,125 +299,133 @@ in
       noto-fonts-color-emoji
     ]);
 
-    warnings = lib.optionals (missingPackageNames != [ ]) [
-      "Ignoring unknown package names in mySystem.profileData.systemPackageNames: ${lib.concatStringsSep ", " missingPackageNames}"
-    ] ++ lib.optionals (cfg.kernel.track == "latest-stable" && !(pkgs ? linuxPackages_latest)) [
-      "mySystem.kernel.track=latest-stable requested, but pkgs.linuxPackages_latest is unavailable for this platform. Falling back to pkgs.linuxPackages."
-    ] ++ lib.optionals (cfg.kernel.track == "lts" && !(pkgs ? linuxPackages_6_18)) [
-      "mySystem.kernel.track=lts requested, but pkgs.linuxPackages_6_18 is unavailable for this platform. Falling back to pkgs.linuxPackages."
-    ];
+    warnings =
+      lib.optionals (missingPackageNames != []) [
+        "Ignoring unknown package names in mySystem.profileData.systemPackageNames: ${lib.concatStringsSep ", " missingPackageNames}"
+      ]
+      ++ lib.optionals (cfg.kernel.track == "latest-stable" && !(pkgs ? linuxPackages_latest)) [
+        "mySystem.kernel.track=latest-stable requested, but pkgs.linuxPackages_latest is unavailable for this platform. Falling back to pkgs.linuxPackages."
+      ]
+      ++ lib.optionals (cfg.kernel.track == "lts" && !(pkgs ? linuxPackages_6_18)) [
+        "mySystem.kernel.track=lts requested, but pkgs.linuxPackages_6_18 is unavailable for this platform. Falling back to pkgs.linuxPackages."
+      ];
 
-    assertions =
-      [
-        {
-          assertion = !(hashedPasswordLocked primaryUserCfg);
-          message = "Primary user '${cfg.primaryUser}' has a locked hashedPassword in declarative config. Refusing build to prevent account lockout.";
-        }
-        {
-          assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && hashedPasswordLocked rootUserCfg);
-          message = "Root user has a locked hashedPassword while mySystem.deployment.initrdEmergencyAccess=true. Refusing build to preserve recovery login.";
-        }
-        {
-          assertion = !(!config.users.mutableUsers && hasPrimaryUserDecl && !hasPasswordDirective primaryUserCfg);
-          message = "users.mutableUsers=false requires a password directive for users.users.${cfg.primaryUser}.";
-        }
-        {
-          assertion = !(!config.users.mutableUsers && !hasPrimaryUserDecl);
-          message = "users.mutableUsers=false requires declaring users.users.${cfg.primaryUser}.";
-        }
-        {
-          assertion = !(cfg.deployment.mutableSpaces.enable)
-            || builtins.all (path: lib.hasPrefix "/" path) mutableAllPaths;
-          message = "mySystem.deployment.mutableSpaces.* paths must be absolute.";
-        }
-        {
-          assertion = !(cfg.deployment.mutableSpaces.enable)
-            || builtins.all (path: !(lib.hasPrefix "/nix/store" path)) mutableAllPaths;
-          message = "mySystem.deployment.mutableSpaces.* paths cannot be inside /nix/store.";
-        }
-        {
-          assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && !hasPasswordDirective rootUserCfg);
-          message = "mySystem.deployment.initrdEmergencyAccess=true requires a password directive on users.users.root when root is declared.";
-        }
+    assertions = [
+      {
+        assertion = !(hashedPasswordLocked primaryUserCfg);
+        message = "Primary user '${cfg.primaryUser}' has a locked hashedPassword in declarative config. Refusing build to prevent account lockout.";
+      }
+      {
+        assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && hashedPasswordLocked rootUserCfg);
+        message = "Root user has a locked hashedPassword while mySystem.deployment.initrdEmergencyAccess=true. Refusing build to preserve recovery login.";
+      }
+      {
+        assertion = !(!config.users.mutableUsers && hasPrimaryUserDecl && !hasPasswordDirective primaryUserCfg);
+        message = "users.mutableUsers=false requires a password directive for users.users.${cfg.primaryUser}.";
+      }
+      {
+        assertion = !(!config.users.mutableUsers && !hasPrimaryUserDecl);
+        message = "users.mutableUsers=false requires declaring users.users.${cfg.primaryUser}.";
+      }
+      {
+        assertion =
+          !(cfg.deployment.mutableSpaces.enable)
+          || builtins.all (path: lib.hasPrefix "/" path) mutableAllPaths;
+        message = "mySystem.deployment.mutableSpaces.* paths must be absolute.";
+      }
+      {
+        assertion =
+          !(cfg.deployment.mutableSpaces.enable)
+          || builtins.all (path: !(lib.hasPrefix "/nix/store" path)) mutableAllPaths;
+        message = "mySystem.deployment.mutableSpaces.* paths cannot be inside /nix/store.";
+      }
+      {
+        assertion = !(cfg.deployment.initrdEmergencyAccess && hasRootDecl && !hasPasswordDirective rootUserCfg);
+        message = "mySystem.deployment.initrdEmergencyAccess=true requires a password directive on users.users.root when root is declared.";
+      }
 
-        # ── Phase 18.3: Configuration schema validation ───────────────────────
-        # These assertions catch common misconfiguration at eval time,
-        # preventing broken deployments from reaching nixos-rebuild.
+      # ── Phase 18.3: Configuration schema validation ───────────────────────
+      # These assertions catch common misconfiguration at eval time,
+      # preventing broken deployments from reaching nixos-rebuild.
 
-        # AI stack: K3s backend cannot have llamaCpp.enable with conflicting port settings.
-        # (No hard conflict; this is a guard against accidental port collisions.)
-        {
-          assertion = !(cfg.roles.aiStack.enable
+      # AI stack: K3s backend cannot have llamaCpp.enable with conflicting port settings.
+      # (No hard conflict; this is a guard against accidental port collisions.)
+      {
+        assertion =
+          !(cfg.roles.aiStack.enable
             && cfg.aiStack.backend == "llamacpp"
             && cfg.mcpServers.enable
             && cfg.mcpServers.embeddingsPort == cfg.aiStack.llamaCpp.port);
-          message = "Port conflict: mcpServers.embeddingsPort (${toString cfg.mcpServers.embeddingsPort}) must not equal aiStack.llamaCpp.port (${toString cfg.aiStack.llamaCpp.port}).";
-        }
+        message = "Port conflict: mcpServers.embeddingsPort (${toString cfg.mcpServers.embeddingsPort}) must not equal aiStack.llamaCpp.port (${toString cfg.aiStack.llamaCpp.port}).";
+      }
 
-        # MCP server ports must all be distinct.
-        {
-          assertion = cfg.mcpServers.embeddingsPort != cfg.mcpServers.aidbPort
-            && cfg.mcpServers.embeddingsPort != cfg.mcpServers.hybridPort
-            && cfg.mcpServers.embeddingsPort != cfg.mcpServers.ralphPort
-            && cfg.mcpServers.aidbPort       != cfg.mcpServers.hybridPort
-            && cfg.mcpServers.aidbPort       != cfg.mcpServers.ralphPort
-            && cfg.mcpServers.hybridPort     != cfg.mcpServers.ralphPort;
-          message = "mcpServers port conflict: embeddingsPort=${toString cfg.mcpServers.embeddingsPort}, aidbPort=${toString cfg.mcpServers.aidbPort}, hybridPort=${toString cfg.mcpServers.hybridPort}, ralphPort=${toString cfg.mcpServers.ralphPort} — all must be distinct.";
-        }
+      # MCP server ports must all be distinct.
+      {
+        assertion =
+          cfg.mcpServers.embeddingsPort
+          != cfg.mcpServers.aidbPort
+          && cfg.mcpServers.embeddingsPort != cfg.mcpServers.hybridPort
+          && cfg.mcpServers.embeddingsPort != cfg.mcpServers.ralphPort
+          && cfg.mcpServers.aidbPort != cfg.mcpServers.hybridPort
+          && cfg.mcpServers.aidbPort != cfg.mcpServers.ralphPort
+          && cfg.mcpServers.hybridPort != cfg.mcpServers.ralphPort;
+        message = "mcpServers port conflict: embeddingsPort=${toString cfg.mcpServers.embeddingsPort}, aidbPort=${toString cfg.mcpServers.aidbPort}, hybridPort=${toString cfg.mcpServers.hybridPort}, ralphPort=${toString cfg.mcpServers.ralphPort} — all must be distinct.";
+      }
 
+      # Central ports registry: internal service ports must be unique.
+      {
+        assertion =
+          ports.postgres
+          != ports.redis
+          && ports.postgres != ports.qdrantHttp
+          && ports.postgres != ports.mcpAidb
+          && ports.redis != ports.qdrantHttp
+          && ports.redis != ports.mcpAidb
+          && ports.qdrantHttp != ports.mcpAidb
+          && ports.mcpAidb != ports.mcpHybrid
+          && ports.mcpAidb != ports.mcpRalph
+          && ports.mcpHybrid != ports.mcpRalph
+          && ports.mcpAidb != ports.aiderWrapper
+          && ports.mcpHybrid != ports.aiderWrapper
+          && ports.mcpRalph != ports.aiderWrapper
+          && ports.otelCollectorMetrics != ports.commandCenterFrontend
+          && ports.otelCollectorMetrics != ports.commandCenterApi
+          && ports.otelCollectorMetrics != ports.prometheus
+          && ports.otelCollectorMetrics != ports.nodeExporter
+          && ports.otelCollectorMetrics != ports.grafana
+          && ports.otelCollectorMetrics != ports.otlpGrpc
+          && ports.otelCollectorMetrics != ports.otlpHttp
+          && ports.aiderWrapper != ports.anthropicProxy
+          && ports.prometheus != ports.grafana
+          && ports.nodeExporter != ports.grafana
+          && ports.otlpGrpc != ports.otlpHttp;
+        message = "ports registry conflict: postgres=${toString ports.postgres}, redis=${toString ports.redis}, qdrantHttp=${toString ports.qdrantHttp}, mcpAidb=${toString ports.mcpAidb}, mcpHybrid=${toString ports.mcpHybrid}, mcpRalph=${toString ports.mcpRalph}, aiderWrapper=${toString ports.aiderWrapper}, anthropicProxy=${toString ports.anthropicProxy}, otelCollectorMetrics=${toString ports.otelCollectorMetrics}, otlpGrpc=${toString ports.otlpGrpc}, otlpHttp=${toString ports.otlpHttp}, commandCenterFrontend=${toString ports.commandCenterFrontend}, commandCenterApi=${toString ports.commandCenterApi}, prometheus=${toString ports.prometheus}, nodeExporter=${toString ports.nodeExporter}, grafana=${toString ports.grafana} — all constrained ports must be distinct.";
+      }
 
-        # Central ports registry: internal service ports must be unique.
-        {
-          assertion = ports.postgres != ports.redis
-            && ports.postgres != ports.qdrantHttp
-            && ports.postgres != ports.mcpAidb
-            && ports.redis != ports.qdrantHttp
-            && ports.redis != ports.mcpAidb
-            && ports.qdrantHttp != ports.mcpAidb
-            && ports.mcpAidb != ports.mcpHybrid
-            && ports.mcpAidb != ports.mcpRalph
-            && ports.mcpHybrid != ports.mcpRalph
-            && ports.mcpAidb != ports.aiderWrapper
-            && ports.mcpHybrid != ports.aiderWrapper
-            && ports.mcpRalph != ports.aiderWrapper
-            && ports.otelCollectorMetrics != ports.commandCenterFrontend
-            && ports.otelCollectorMetrics != ports.commandCenterApi
-            && ports.otelCollectorMetrics != ports.prometheus
-            && ports.otelCollectorMetrics != ports.nodeExporter
-            && ports.otelCollectorMetrics != ports.grafana
-            && ports.otelCollectorMetrics != ports.otlpGrpc
-            && ports.otelCollectorMetrics != ports.otlpHttp
-            && ports.aiderWrapper != ports.anthropicProxy
-            && ports.prometheus != ports.grafana
-            && ports.nodeExporter != ports.grafana
-            && ports.otlpGrpc != ports.otlpHttp;
-          message = "ports registry conflict: postgres=${toString ports.postgres}, redis=${toString ports.redis}, qdrantHttp=${toString ports.qdrantHttp}, mcpAidb=${toString ports.mcpAidb}, mcpHybrid=${toString ports.mcpHybrid}, mcpRalph=${toString ports.mcpRalph}, aiderWrapper=${toString ports.aiderWrapper}, anthropicProxy=${toString ports.anthropicProxy}, otelCollectorMetrics=${toString ports.otelCollectorMetrics}, otlpGrpc=${toString ports.otlpGrpc}, otlpHttp=${toString ports.otlpHttp}, commandCenterFrontend=${toString ports.commandCenterFrontend}, commandCenterApi=${toString ports.commandCenterApi}, prometheus=${toString ports.prometheus}, nodeExporter=${toString ports.nodeExporter}, grafana=${toString ports.grafana} — all constrained ports must be distinct.";
-        }
+      # MCP servers require the AI stack role to be enabled.
+      {
+        assertion = !(cfg.mcpServers.enable && !cfg.roles.aiStack.enable);
+        message = "mcpServers.enable = true requires roles.aiStack.enable = true.";
+      }
 
-        # MCP servers require the AI stack role to be enabled.
-        {
-          assertion = !(cfg.mcpServers.enable && !cfg.roles.aiStack.enable);
-          message = "mcpServers.enable = true requires roles.aiStack.enable = true.";
-        }
+      # Hibernation requires swap.
+      {
+        assertion = !(cfg.deployment.enableHibernation && cfg.deployment.swapSizeGb == 0);
+        message = "deployment.enableHibernation = true requires deployment.swapSizeGb > 0 (currently 0). Set swapSizeGb >= systemRamGb (${toString cfg.hardware.systemRamGb}).";
+      }
 
-        # Hibernation requires swap.
-        {
-          assertion = !(cfg.deployment.enableHibernation && cfg.deployment.swapSizeGb == 0);
-          message = "deployment.enableHibernation = true requires deployment.swapSizeGb > 0 (currently 0). Set swapSizeGb >= systemRamGb (${toString cfg.hardware.systemRamGb}).";
-        }
+      # Secure boot requires EFI firmware.
+      {
+        assertion = !(cfg.secureboot.enable && cfg.hardware.firmwareType != "efi");
+        message = "secureboot.enable = true requires hardware.firmwareType = \"efi\" (currently \"${cfg.hardware.firmwareType}\").";
+      }
 
-        # Secure boot requires EFI firmware.
-        {
-          assertion = !(cfg.secureboot.enable && cfg.hardware.firmwareType != "efi");
-          message = "secureboot.enable = true requires hardware.firmwareType = \"efi\" (currently \"${cfg.hardware.firmwareType}\").";
-        }
-
-        # LUKS disk encryption requires a supported layout.
-        {
-          assertion = !(cfg.disk.luks.enable && cfg.disk.layout == "none");
-          message = "disk.luks.enable = true requires disk.layout != \"none\". Set disk.layout to \"gpt-luks-ext4\" or another LUKS-capable layout.";
-        }
-      ];
+      # LUKS disk encryption requires a supported layout.
+      {
+        assertion = !(cfg.disk.luks.enable && cfg.disk.layout == "none");
+        message = "disk.luks.enable = true requires disk.layout != \"none\". Set disk.layout to \"gpt-luks-ext4\" or another LUKS-capable layout.";
+      }
+    ];
 
     # This keeps the scaffold evaluable while migration progresses.
     system.stateVersion = lib.mkDefault "25.11";

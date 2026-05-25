@@ -1,5 +1,8 @@
-{ lib, config, ... }:
 {
+  lib,
+  config,
+  ...
+}: {
   config = lib.mkIf (config.mySystem.profile == "ai-dev") {
     mySystem.aiStack.switchboard = {
       remoteUrl = lib.mkForce "https://openrouter.ai/api";

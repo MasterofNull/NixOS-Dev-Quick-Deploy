@@ -1744,7 +1744,7 @@
           type = lib.types.attrsOf (lib.types.submodule {
             options = {
               forceProvider = lib.mkOption {
-                type = lib.types.nullOr (lib.types.enum [ "local" "remote" ]);
+                type = lib.types.nullOr (lib.types.enum ["local" "remote"]);
                 default = null;
                 description = "Override the switchboard provider for this profile. null preserves the default routing flow.";
               };
@@ -3359,7 +3359,6 @@
           description = "Redis maxmemory-policy setting.";
         };
       };
-
     };
 
     profileData = {
@@ -3374,7 +3373,6 @@
         default = [];
         description = "Profile-scoped system package names merged with base packages and deduplicated.";
       };
-
     };
   };
 }

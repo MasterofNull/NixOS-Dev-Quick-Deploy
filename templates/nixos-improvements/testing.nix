@@ -12,14 +12,19 @@
 #
 # Usage: Import this file in your home.nix:
 #   imports = [ ./nixos-improvements/testing.nix ];
-
-{ config, pkgs, lib, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   py =
-    if pkgs ? python3Packages then pkgs.python3Packages
-    else if pkgs ? python313Packages then pkgs.python313Packages
-    else if pkgs ? python312Packages then pkgs.python312Packages
+    if pkgs ? python3Packages
+    then pkgs.python3Packages
+    else if pkgs ? python313Packages
+    then pkgs.python313Packages
+    else if pkgs ? python312Packages
+    then pkgs.python312Packages
     else pkgs.python311Packages;
   pythonPackageNames = [
     "pytest"
@@ -65,14 +70,16 @@ let
   ];
   pythonPackages =
     lib.concatMap
-      (name:
+    (
+      name:
         lib.optional (builtins.hasAttr name py) (builtins.getAttr name py)
-      )
-      pythonPackageNames;
+    )
+    pythonPackageNames;
   pytestWatchPkg =
-    if builtins.hasAttr "pytest-watch" py then py."pytest-watch" else null;
-in
-{
+    if builtins.hasAttr "pytest-watch" py
+    then py."pytest-watch"
+    else null;
+in {
   # =========================================================================
   # Core Testing Packages
   # =========================================================================
@@ -80,82 +87,82 @@ in
   home.packages =
     pythonPackages
     ++ [
-    # -------------------------------------------------------------------------
-    # pytest Core & Essential Plugins
-    # -------------------------------------------------------------------------
-    py.pytest              # Core testing framework
-    py.pytest-cov          # Coverage reporting
-    py.pytest-xdist        # Parallel test execution
-    py.pytest-asyncio      # Async test support
-    py.pytest-timeout      # Test timeouts
-    py.pytest-repeat       # Repeat tests
-    py.pytest-rerunfailures # Retry flaky tests
+      # -------------------------------------------------------------------------
+      # pytest Core & Essential Plugins
+      # -------------------------------------------------------------------------
+      py.pytest # Core testing framework
+      py.pytest-cov # Coverage reporting
+      py.pytest-xdist # Parallel test execution
+      py.pytest-asyncio # Async test support
+      py.pytest-timeout # Test timeouts
+      py.pytest-repeat # Repeat tests
+      py.pytest-rerunfailures # Retry flaky tests
 
-    # -------------------------------------------------------------------------
-    # Advanced Testing Tools
-    # -------------------------------------------------------------------------
-    py.pytest-benchmark    # Performance benchmarking
-    py.pytest-mock         # Mocking utilities
-    py.pytest-freezegun    # Time/date mocking
-    py.pytest-env          # Environment variable management
-    py.pytest-httpserver   # Mock HTTP servers
+      # -------------------------------------------------------------------------
+      # Advanced Testing Tools
+      # -------------------------------------------------------------------------
+      py.pytest-benchmark # Performance benchmarking
+      py.pytest-mock # Mocking utilities
+      py.pytest-freezegun # Time/date mocking
+      py.pytest-env # Environment variable management
+      py.pytest-httpserver # Mock HTTP servers
 
-    # -------------------------------------------------------------------------
-    # Property-Based & Generative Testing
-    # -------------------------------------------------------------------------
-    py.hypothesis          # Property-based testing
-    py.faker               # Realistic test data generation
-    py.factory-boy         # Test fixture factories
+      # -------------------------------------------------------------------------
+      # Property-Based & Generative Testing
+      # -------------------------------------------------------------------------
+      py.hypothesis # Property-based testing
+      py.faker # Realistic test data generation
+      py.factory-boy # Test fixture factories
 
-    # -------------------------------------------------------------------------
-    # Code Quality Integration
-    # -------------------------------------------------------------------------
-    py.pytest-flake8       # Linting integration
-    py.pytest-mypy         # Type checking integration
-    py.pytest-black        # Code formatting checks
-    py.pytest-isort        # Import sorting checks
-    py.pytest-pylint       # Pylint integration
+      # -------------------------------------------------------------------------
+      # Code Quality Integration
+      # -------------------------------------------------------------------------
+      py.pytest-flake8 # Linting integration
+      py.pytest-mypy # Type checking integration
+      py.pytest-black # Code formatting checks
+      py.pytest-isort # Import sorting checks
+      py.pytest-pylint # Pylint integration
 
-    # -------------------------------------------------------------------------
-    # Reporting & Output
-    # -------------------------------------------------------------------------
-    py.pytest-html         # HTML test reports
-    py.pytest-json-report  # JSON output for CI
-    py.pytest-sugar        # Better test output
-    py.pytest-clarity      # Better assertion messages
+      # -------------------------------------------------------------------------
+      # Reporting & Output
+      # -------------------------------------------------------------------------
+      py.pytest-html # HTML test reports
+      py.pytest-json-report # JSON output for CI
+      py.pytest-sugar # Better test output
+      py.pytest-clarity # Better assertion messages
 
-    # -------------------------------------------------------------------------
-    # Database Testing
-    # -------------------------------------------------------------------------
-    py.pytest-postgresql   # PostgreSQL fixtures
-    py.pytest-redis        # Redis fixtures
-    py.pytest-mongodb      # MongoDB fixtures
+      # -------------------------------------------------------------------------
+      # Database Testing
+      # -------------------------------------------------------------------------
+      py.pytest-postgresql # PostgreSQL fixtures
+      py.pytest-redis # Redis fixtures
+      py.pytest-mongodb # MongoDB fixtures
 
-    # -------------------------------------------------------------------------
-    # Web/API Testing
-    # -------------------------------------------------------------------------
-    py.pytest-django       # Django testing support
-    py.pytest-flask        # Flask testing support
-    py.pytest-tornado      # Tornado testing support
-    py.requests-mock       # Mock HTTP requests
+      # -------------------------------------------------------------------------
+      # Web/API Testing
+      # -------------------------------------------------------------------------
+      py.pytest-django # Django testing support
+      py.pytest-flask # Flask testing support
+      py.pytest-tornado # Tornado testing support
+      py.requests-mock # Mock HTTP requests
 
-    # -------------------------------------------------------------------------
-    # Additional Testing Tools
-    # -------------------------------------------------------------------------
-    py.tox                 # Test automation
-    py.coverage            # Coverage CLI
-    py.nose2               # Alternative test runner
+      # -------------------------------------------------------------------------
+      # Additional Testing Tools
+      # -------------------------------------------------------------------------
+      py.tox # Test automation
+      py.coverage # Coverage CLI
+      py.nose2 # Alternative test runner
 
-    # -------------------------------------------------------------------------
-    # Linters & Formatters (for quality checks)
-    # -------------------------------------------------------------------------
-    py.flake8              # Linting
-    py.black               # Code formatting
-    py.isort               # Import sorting
-    py.mypy                # Static type checking
-    py.pylint              # Code analysis
-    py.ruff                # Fast linter & formatter
-  ]
+      # -------------------------------------------------------------------------
+      # Linters & Formatters (for quality checks)
+      # -------------------------------------------------------------------------
+      py.flake8 # Linting
+      py.black # Code formatting
+      py.isort # Import sorting
+      py.mypy # Static type checking
+      py.pylint # Code analysis
+      py.ruff # Fast linter & formatter
+    ]
     ++ [
       (pkgs.writeShellScriptBin "pytest-init" ''
         #!/usr/bin/env bash
@@ -356,8 +363,8 @@ in
   programs.bash.shellAliases = {
     pt = "pytest";
     ptv = "pytest -v";
-    ptx = "pytest -x";  # Stop on first failure
-    ptlf = "pytest --lf";  # Re-run last failures
+    ptx = "pytest -x"; # Stop on first failure
+    ptlf = "pytest --lf"; # Re-run last failures
     ptcov = "pytest --cov --cov-report=html";
   };
 

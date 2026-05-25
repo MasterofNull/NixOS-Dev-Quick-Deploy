@@ -536,13 +536,41 @@ variables:
     consumers: [hybrid-coordinator, ralph-wiggum, dashboard-backend]
     description: "API key for AIDB service authentication"
 
+  - canonical: AIDB_CONFIG
+    aliases: []
+    default: ""
+    layer: python
+    consumers: [aidb]
+    description: "Path to AIDB configuration file"
+
+  - canonical: AIDB_TELEMETRY_PATH
+    aliases: []
+    default: "/var/lib/ai-stack/aidb/telemetry.json"
+    layer: python
+    consumers: [aidb]
+    description: "Path to AIDB telemetry output file"
+
+  - canonical: AIDB_EMBEDDING_SERVICE_URL
+    aliases: [EMBEDDING_SERVICE_URL]
+    default: "http://127.0.0.1:8081"
+    layer: python
+    consumers: [aidb]
+    description: "URL for the embedding service used by AIDB"
+
+  - canonical: AIDB_EMBEDDING_TRUST_REMOTE_CODE
+    aliases: []
+    default: "false"
+    layer: python
+    consumers: [aidb]
+    description: "Whether to trust remote code for embedding models"
+
   # ── Qdrant ──────────────────────────────────────────────────────────────
   - canonical: AIDB_API_KEY_FILE
-    aliases: []
+    aliases: [EMBEDDINGS_API_KEY_FILE]
     default: "/run/secrets/aidb_api_key"
     layer: all
-    consumers: [aq-index-knowledge-graph]
-    description: "Path to the AIDB API key used by the knowledge graph indexer when --ingest is enabled"
+    consumers: [aq-index-knowledge-graph, aidb]
+    description: "Path to the AIDB API key file"
 
   - canonical: AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY
     aliases: []
@@ -588,25 +616,67 @@ variables:
     description: "PostgreSQL connection URL"
 
   - canonical: POSTGRES_PORT
-    aliases: []
+    aliases: [AIDB_POSTGRES_PORT]
     default: "5432"
     layer: shell
     consumers: [service-endpoints.sh]
     description: "Port for PostgreSQL"
 
   - canonical: POSTGRES_DB
-    aliases: []
+    aliases: [AIDB_POSTGRES_DB]
     default: "aidb"
     layer: shell
     consumers: [service-endpoints.sh, aq-qa]
     description: "PostgreSQL database name"
 
   - canonical: POSTGRES_USER
-    aliases: []
+    aliases: [AIDB_POSTGRES_USER]
     default: "aidb"
     layer: all
     consumers: [hybrid-coordinator, aidb, autonomous-improvement, meta-optimization]
     description: "PostgreSQL database user"
+
+  - canonical: POSTGRES_HOST
+    aliases: [AIDB_POSTGRES_HOST]
+    default: "127.0.0.1"
+    layer: all
+    consumers: [aidb, hybrid-coordinator]
+    description: "PostgreSQL database host"
+
+  - canonical: POSTGRES_PASSWORD_FILE
+    aliases: [AIDB_POSTGRES_PASSWORD_FILE]
+    default: "/run/secrets/postgres_password"
+    layer: all
+    consumers: [aidb]
+    description: "Path to PostgreSQL password file"
+
+  - canonical: AIDB_POSTGRES_SSLCERT
+    aliases: []
+    default: ""
+    layer: python
+    consumers: [aidb]
+    description: "Path to PostgreSQL SSL certificate"
+
+  - canonical: AIDB_POSTGRES_SSLKEY
+    aliases: []
+    default: ""
+    layer: python
+    consumers: [aidb]
+    description: "Path to PostgreSQL SSL key"
+
+  - canonical: AIDB_POSTGRES_SSLMODE
+    aliases: []
+    default: "prefer"
+    layer: python
+    consumers: [aidb]
+    description: "PostgreSQL SSL mode"
+
+  - canonical: AIDB_POSTGRES_SSLROOTCERT
+    aliases: []
+    default: ""
+    layer: python
+    consumers: [aidb]
+    description: "Path to PostgreSQL SSL root certificate"
 
   - canonical: AIDB_TOOL_SCHEMA_CACHE
     aliases: []
@@ -624,11 +694,60 @@ variables:
     description: "Redis connection URL"
 
   - canonical: REDIS_PORT
-    aliases: []
+    aliases: [AIDB_REDIS_PORT]
     default: "6379"
     layer: shell
     consumers: [service-endpoints.sh]
     description: "Port for Redis"
+
+  - canonical: REDIS_HOST
+    aliases: [AIDB_REDIS_HOST]
+    default: "127.0.0.1"
+    layer: all
+    consumers: [aidb, hybrid-coordinator]
+    description: "Redis host"
+
+  - canonical: REDIS_DB
+    aliases: [AIDB_REDIS_DB]
+    default: "0"
+    layer: all
+    consumers: [aidb]
+    description: "Redis database index"
+
+  - canonical: REDIS_PASSWORD_FILE
+    aliases: [AIDB_REDIS_PASSWORD_FILE]
+    default: "/run/secrets/redis_password"
+    layer: all
+    consumers: [aidb]
+    description: "Path to Redis password file"
+
+  - canonical: AIDB_REDIS_SCHEME
+    aliases: []
+    default: "redis"
+    layer: python
+    consumers: [aidb]
+    description: "Redis connection scheme"
+
+  - canonical: AIDB_REDIS_SSL_CA
+    aliases: []
+    default: ""
+    layer: python
+    consumers: [aidb]
+    description: "Path to Redis SSL CA certificate"
+
+  - canonical: AIDB_REDIS_SSL_CERT_REQS
+    aliases: []
+    default: "none"
+    layer: python
+    consumers: [aidb]
+    description: "Redis SSL certificate requirements"
+
+  - canonical: AIDB_REDIS_TLS
+    aliases: []
+    default: "false"
+    layer: python
+    consumers: [aidb]
+    description: "Whether to use TLS for Redis"
 
   # ── Dashboard ───────────────────────────────────────────────────────────
   - canonical: DASHBOARD_URL

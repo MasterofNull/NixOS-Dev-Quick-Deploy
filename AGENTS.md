@@ -152,6 +152,21 @@ aq-session-start            # mandatory context hydration
 **Capability lifecycle → `docs/architecture/capability-lifecycle.md`**
 **Domain activation template → `docs/architecture/domain-activation-template.md`**
 
+### Domain Instructions
+
+| Domain | File |
+|--------|------|
+| osint-systems | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
+| trading-agents | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |
+| mlops-engineering | `.agent/MLOPS-ENGINEERING-INSTRUCTIONS.md` |
+| qa-automation | `.agent/QA-AUTOMATION-INSTRUCTIONS.md` |
+| mobile-web | `.agent/MOBILE-WEB-INSTRUCTIONS.md` |
+| security-systems | `.agent/SECURITY-SYSTEMS-INSTRUCTIONS.md` |
+| systems-software | `.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md` |
+| gis-systems | `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` |
+| embedded-hardware | `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` |
+| scientific-research | `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` |
+
 Codex default role: **orchestrator / implementer / reviewer** (final acceptance on most 58A+ slices).
 - As orchestrator: open/close sessions, assign slices, produce PENDING.json + HANDOFF.md + registry.jsonl entries, run tier0 gate before commit.
 - As implementer: bounded execution within assigned slice; validate before proposing commit.

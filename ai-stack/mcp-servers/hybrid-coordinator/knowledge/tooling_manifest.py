@@ -237,9 +237,35 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "Discover all available financial data tools (stock data, indicators, fundamentals, news).",
         )
         add(
+            "trading_market_data",
+            "mcp://trading_market_data",
+            "Fetch structured market data and run Bull/Bear sentiment debates.",
+        )
+        add(
             "route_search",
             "/query",
             "Retrieve trading knowledge from AIDB (project: trading-knowledge).",
+        )
+
+    if any(k in q for k in ("osint", "recon", "reconnaissance", "footprint", "whois", "shodan", "maigret", "bbot")):
+        add(
+            "osint_recon",
+            "mcp://osint_recon",
+            "Run automated OSINT reconnaissance for usernames, domains, and behavioral profiling.",
+        )
+    
+    if any(k in q for k in ("mlops", "model health", "inference latency", "context compression", "crystallize")):
+        add(
+            "mlops_optimize",
+            "mcp://mlops_optimize",
+            "Monitor local LLM health and trigger semantic context compression.",
+        )
+
+    if any(k in q for k in ("chaos", "fault injection", "ui audit", "accessibility", "lighthouse")):
+        add(
+            "qa_chaos_test",
+            "mcp://qa_chaos_test",
+            "Trigger chaos experiments or run automated UI/accessibility audits.",
         )
 
     if "route_search" not in seen:
@@ -406,6 +432,30 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "mcp_tool": "",
         "args": ["ticker", "trade_date", "market_report", "fundamentals_report", "debate_round"],
         "output_focus": "Bull and bear arguments with updated debate round counter.",
+    },
+    "osint_recon": {
+        "method": "MCP",
+        "mcp_tool": "osint_recon",
+        "args": ["target", "tool"],
+        "output_focus": "Structured reconnaissance findings (accounts, subdomains, dossiers).",
+    },
+    "trading_market_data": {
+        "method": "MCP",
+        "mcp_tool": "trading_market_data",
+        "args": ["ticker", "action"],
+        "output_focus": "OHLCV data summaries or multi-agent debate synthesis.",
+    },
+    "mlops_optimize": {
+        "method": "MCP",
+        "mcp_tool": "mlops_optimize",
+        "args": ["action", "namespace"],
+        "output_focus": "Model health status or context compression outcome.",
+    },
+    "qa_chaos_test": {
+        "method": "MCP",
+        "mcp_tool": "qa_chaos_test",
+        "args": ["target", "action", "mode"],
+        "output_focus": "Chaos experiment outcome or UI audit scorecard.",
     },
 }
 

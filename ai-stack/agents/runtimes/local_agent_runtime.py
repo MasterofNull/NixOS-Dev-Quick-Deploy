@@ -456,17 +456,24 @@ async def _post_completion_with_fallback(
     state: dict,
 ) -> httpx.Response:
     inference_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+    start_time = time.perf_counter()
     try:
-        return await client.post(inference_url, json=payload, headers=headers)
-    except (httpx.ConnectError, httpx.ConnectTimeout):
+        resp = await client.post(inference_url, json=payload, headers=headers)
+        state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
+        return resp
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
         state["fallback_backend"] = "llama.cpp"
-        state["fallback_reason"] = "switchboard_unreachable"
+        state["fallback_reason"] = "switchboard_timeout_or_unreachable"
         _write_state(state)
-        return await client.post(
+        start_time = time.perf_counter()
+        resp = await client.post(
             f"{LLAMA_CPP_URL}/v1/chat/completions",
             json=_payload_for_direct_llama(payload),
             headers={},
+            timeout=AGENT_TIMEOUT
         )
+        state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
+        return resp
 
 
 def _streaming_payload(messages: list[dict]) -> dict:

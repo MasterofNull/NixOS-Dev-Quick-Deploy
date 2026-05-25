@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Capability Registry — Index Card strategy.
 #
@@ -10,32 +15,31 @@
 # ---------------------------------------------------------------------------
 let
   cfg = config.mySystem;
-  ai  = cfg.aiStack;
+  ai = cfg.aiStack;
   mcp = cfg.mcpServers;
 
   caps = {
-    backend         = ai.backend;
-    inference       = ai.llamaCpp.enable;
-    inferencePort   = ai.llamaCpp.port;
-    embedding       = ai.embeddingServer.enable;
-    embeddingPort   = ai.embeddingServer.port;
-    vectorDb        = ai.vectorDb.enable;
-    openWebui       = ai.ui.enable;
-    mcpServers      = mcp.enable;
-    mcpAidbPort     = mcp.aidbPort;
-    mcpHybridPort   = mcp.hybridPort;
-    mcpRalphPort    = mcp.ralphPort;
-    switchboard     = ai.switchboard.enable;
+    backend = ai.backend;
+    inference = ai.llamaCpp.enable;
+    inferencePort = ai.llamaCpp.port;
+    embedding = ai.embeddingServer.enable;
+    embeddingPort = ai.embeddingServer.port;
+    vectorDb = ai.vectorDb.enable;
+    openWebui = ai.ui.enable;
+    mcpServers = mcp.enable;
+    mcpAidbPort = mcp.aidbPort;
+    mcpHybridPort = mcp.hybridPort;
+    mcpRalphPort = mcp.ralphPort;
+    switchboard = ai.switchboard.enable;
     switchboardPort = ai.switchboard.port;
   };
 
   capsJson = pkgs.writeText "ai-capabilities.json" (builtins.toJSON caps);
-in
-{
+in {
   config = lib.mkIf cfg.roles.aiStack.enable {
     environment.etc."ai-stack/capabilities.json" = {
       source = capsJson;
-      mode   = "0644";
+      mode = "0644";
     };
   };
 }

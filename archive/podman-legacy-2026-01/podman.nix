@@ -10,14 +10,16 @@
 #
 # Usage: Import this file in your configuration.nix:
 #   imports = [ ./nixos-improvements/podman.nix ];
-
-{ config, pkgs, lib, ... }:
-
 {
+  config,
+  pkgs,
+  lib,
+  ...
+}: {
   # Enable Podman with rootless support
   virtualisation.podman = {
     enable = true;
-    dockerCompat = true;  # docker alias for podman
+    dockerCompat = true; # docker alias for podman
     defaultNetwork.settings = {
       dns_enabled = true;
     };
@@ -62,8 +64,8 @@
   environment.systemPackages = with pkgs; [
     podman
     podman-compose
-    podman-tui  # TUI for podman management
-    skopeo      # Work with container images
-    buildah     # Build OCI containers
+    podman-tui # TUI for podman management
+    skopeo # Work with container images
+    buildah # Build OCI containers
   ];
 }

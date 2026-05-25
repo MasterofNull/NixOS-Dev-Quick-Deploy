@@ -1,15 +1,16 @@
-{ config, lib, pkgs, ... }:
-
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # ============================================================================
 # Hybrid Local-Remote AI Learning System
 # ============================================================================
 # NixOS module for persistent, declarative hybrid learning configuration
 # Automatically integrated with nixos-quick-deploy
 # ============================================================================
-
-with lib;
-
-let
+with lib; let
   cfg = config.services.hybridLearning;
   reasoningUrl =
     if cfg.llamaCpp.reasoningUrl != null
@@ -19,13 +20,14 @@ let
     else "";
 
   # Python environment with all dependencies
-  pythonEnv = pkgs.python3.withPackages (ps: with ps; [
-    aiohttp
-    httpx
-    pydantic
-    python-dotenv
-    # Note: mcp and qdrant-client may need to be added to nixpkgs or use buildPythonPackage
-  ]);
+  pythonEnv = pkgs.python3.withPackages (ps:
+    with ps; [
+      aiohttp
+      httpx
+      pydantic
+      python-dotenv
+      # Note: mcp and qdrant-client may need to be added to nixpkgs or use buildPythonPackage
+    ]);
 
   # Hybrid coordinator service script
   hybridCoordinatorScript = pkgs.writeShellScriptBin "hybrid-coordinator" ''
@@ -40,8 +42,16 @@ let
     export LLAMA_CPP_DEEPSEEK_URL="${reasoningUrl}"
     export LOCAL_CONFIDENCE_THRESHOLD="${toString cfg.learning.localConfidenceThreshold}"
     export HIGH_VALUE_THRESHOLD="${toString cfg.learning.highValueThreshold}"
-    export PATTERN_EXTRACTION_ENABLED="${if cfg.learning.patternExtractionEnabled then "true" else "false"}"
-    export AUTO_FINETUNE_ENABLED="${if cfg.learning.autoFinetuneEnabled then "true" else "false"}"
+    export PATTERN_EXTRACTION_ENABLED="${
+      if cfg.learning.patternExtractionEnabled
+      then "true"
+      else "false"
+    }"
+    export AUTO_FINETUNE_ENABLED="${
+      if cfg.learning.autoFinetuneEnabled
+      then "true"
+      else "false"
+    }"
     export FINETUNE_DATA_PATH="${cfg.paths.finetuneData}"
     export HYBRID_TELEMETRY_PATH="${cfg.paths.telemetryPath}"
     export TELEMETRY_PATH="${cfg.paths.telemetryPath}"
@@ -62,7 +72,6 @@ let
       --mode "${cfg.federation.mode}" \
       --sync-interval "${toString cfg.federation.syncInterval}"
   '';
-
 in {
   # ============================================================================
   # Options
@@ -202,7 +211,7 @@ in {
       };
 
       mode = mkOption {
-        type = types.enum [ "peer" "hub" "spoke" ];
+        type = types.enum ["peer" "hub" "spoke"];
         default = "peer";
         description = ''
           Federation mode:
@@ -216,7 +225,7 @@ in {
         type = types.listOf types.str;
         default = [];
         description = "List of federation node URLs (e.g., http://node1:8092)";
-        example = [ "http://node1.example.com:8092" "http://node2.example.com:8092" ];
+        example = ["http://node1.example.com:8092" "http://node2.example.com:8092"];
       };
 
       syncInterval = mkOption {
@@ -226,7 +235,7 @@ in {
       };
 
       conflictResolution = mkOption {
-        type = types.enum [ "latest" "highest-value" "merge" "manual" ];
+        type = types.enum ["latest" "highest-value" "merge" "manual"];
         default = "highest-value";
         description = ''
           Conflict resolution strategy:
@@ -276,7 +285,6 @@ in {
   # ============================================================================
 
   config = mkIf cfg.enable {
-
     # Create persistent directories
     systemd.tmpfiles.rules = lib.mkAfter [
       "d ${cfg.paths.dataDir} 0755 root root -"
@@ -290,9 +298,9 @@ in {
     # Hybrid Coordinator Service
     systemd.services.hybrid-coordinator = {
       description = "Hybrid AI Learning Coordinator MCP Server";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" "qdrant.service" ];
-      wants = [ "qdrant.service" ];
+      wantedBy = ["multi-user.target"];
+      after = ["network.target" "qdrant.service"];
+      wants = ["qdrant.service"];
 
       serviceConfig = {
         Type = "simple";
@@ -329,9 +337,9 @@ in {
     # Federation Sync Service (if enabled)
     systemd.services.hybrid-learning-sync = mkIf cfg.federation.enable {
       description = "Hybrid Learning Federation Sync";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" "hybrid-coordinator.service" ];
-      wants = [ "hybrid-coordinator.service" ];
+      wantedBy = ["multi-user.target"];
+      after = ["network.target" "hybrid-coordinator.service"];
+      wants = ["hybrid-coordinator.service"];
 
       serviceConfig = {
         Type = "simple";
@@ -385,7 +393,7 @@ in {
     # Backup Timer
     systemd.timers.hybrid-learning-backup = mkIf cfg.backup.enable {
       description = "Hybrid Learning Backup Timer";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         OnCalendar = cfg.backup.schedule;
         Persistent = true;
@@ -422,9 +430,9 @@ in {
     # Auto Fine-tuning Timer
     systemd.timers.hybrid-learning-finetune = mkIf cfg.learning.autoFinetuneEnabled {
       description = "Automatic Fine-tuning Timer";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
-        OnCalendar = "*-*-01,15 02:00:00";  # 1st and 15th of month at 2 AM
+        OnCalendar = "*-*-01,15 02:00:00"; # 1st and 15th of month at 2 AM
         Persistent = true;
       };
     };
@@ -432,8 +440,8 @@ in {
     # Monitoring Exporter (if enabled)
     systemd.services.hybrid-learning-exporter = mkIf cfg.monitoring.enable {
       description = "Hybrid Learning Prometheus Exporter";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" "hybrid-coordinator.service" ];
+      wantedBy = ["multi-user.target"];
+      after = ["network.target" "hybrid-coordinator.service"];
 
       serviceConfig = {
         Type = "simple";
@@ -447,10 +455,12 @@ in {
     };
 
     # Open firewall for MCP server and federation
-    networking.firewall.allowedTCPPorts = mkIf cfg.enable [
-      # MCP server port (adjust as needed)
-      # 8092  # Federation sync port
-    ] ++ optional cfg.monitoring.enable cfg.monitoring.port;
+    networking.firewall.allowedTCPPorts =
+      mkIf cfg.enable [
+        # MCP server port (adjust as needed)
+        # 8092  # Federation sync port
+      ]
+      ++ optional cfg.monitoring.enable cfg.monitoring.port;
 
     # Environment variables for user sessions
     environment.sessionVariables = {

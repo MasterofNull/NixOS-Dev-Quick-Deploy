@@ -6,8 +6,7 @@
   fetchFromGitHub,
   nix-update-script,
   writableTmpDirAsHomeHook,
-}:
-let
+}: let
   pname = "models-dev";
   version = "0-unstable-2026-03-17";
   src = fetchFromGitHub {
@@ -21,10 +20,12 @@ let
     pname = "${pname}-node_modules";
     inherit version src;
 
-    impureEnvVars = lib.fetchers.proxyImpureEnvVars ++ [
-      "GIT_PROXY_COMMAND"
-      "SOCKS_SERVER"
-    ];
+    impureEnvVars =
+      lib.fetchers.proxyImpureEnvVars
+      ++ [
+        "GIT_PROXY_COMMAND"
+        "SOCKS_SERVER"
+      ];
 
     nativeBuildInputs = [
       bun
@@ -63,55 +64,55 @@ let
     outputHashMode = "recursive";
   };
 in
-stdenvNoCC.mkDerivation (finalAttrs: {
-  inherit
-    pname
-    version
-    src
-    node_modules
-    ;
+  stdenvNoCC.mkDerivation (finalAttrs: {
+    inherit
+      pname
+      version
+      src
+      node_modules
+      ;
 
-  nativeBuildInputs = [ bun ];
+    nativeBuildInputs = [bun];
 
-  configurePhase = ''
-    runHook preConfigure
+    configurePhase = ''
+      runHook preConfigure
 
-    cp -R ${node_modules}/. .
+      cp -R ${node_modules}/. .
 
-    runHook postConfigure
-  '';
+      runHook postConfigure
+    '';
 
-  buildPhase = ''
-    runHook preBuild
+    buildPhase = ''
+      runHook preBuild
 
-    cd packages/web
-    bun run ./script/build.ts
+      cd packages/web
+      bun run ./script/build.ts
 
-    runHook postBuild
-  '';
+      runHook postBuild
+    '';
 
-  installPhase = ''
-    runHook preInstall
+    installPhase = ''
+      runHook preInstall
 
-    mkdir -p $out/dist
-    cp -R ./dist $out
+      mkdir -p $out/dist
+      cp -R ./dist $out
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
-  passthru.updateScript = nix-update-script {
-    extraArgs = [
-      "--version=branch"
-      "--subpackage"
-      "node_modules"
-    ];
-  };
+    passthru.updateScript = nix-update-script {
+      extraArgs = [
+        "--version=branch"
+        "--subpackage"
+        "node_modules"
+      ];
+    };
 
-  meta = {
-    description = "Comprehensive open-source database of AI model specifications, pricing, and capabilities";
-    homepage = "https://github.com/anomalyco/models.dev";
-    license = lib.licenses.mit;
-    platforms = lib.platforms.unix;
-    maintainers = with lib.maintainers; [ delafthi ];
-  };
-})
+    meta = {
+      description = "Comprehensive open-source database of AI model specifications, pricing, and capabilities";
+      homepage = "https://github.com/anomalyco/models.dev";
+      license = lib.licenses.mit;
+      platforms = lib.platforms.unix;
+      maintainers = with lib.maintainers; [delafthi];
+    };
+  })

@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Qualcomm Adreno GPU module
 #
@@ -26,24 +31,23 @@
 # linux-firmware package subset and extraction helpers.
 # ---------------------------------------------------------------------------
 let
-  cfg       = config.mySystem;
-  isAdreno  = cfg.hardware.gpuVendor == "adreno";
+  cfg = config.mySystem;
+  isAdreno = cfg.hardware.gpuVendor == "adreno";
 
   # Turnip is Mesa's Adreno Vulkan driver — part of main Mesa since 21.0.
   # freedreno is the OpenGL driver (always part of Mesa).
-  hasTurnip = builtins.hasAttr "mesa" pkgs;  # Turnip ships inside Mesa on NixOS
-in
-{
+  hasTurnip = builtins.hasAttr "mesa" pkgs; # Turnip ships inside Mesa on NixOS
+in {
   config = lib.mkIf isAdreno {
     # ---- Mesa / Graphics stack ---------------------------------------------
     hardware.graphics = {
-      enable     = lib.mkDefault true;
-      enable32Bit = lib.mkDefault false;  # 32-bit not relevant on aarch64
+      enable = lib.mkDefault true;
+      enable32Bit = lib.mkDefault false; # 32-bit not relevant on aarch64
 
       # freedreno (OpenGL) and Turnip (Vulkan) ship inside the standard Mesa
       # package on NixOS — no extra packages needed beyond enabling Mesa.
       extraPackages = lib.mkDefault (
-        lib.optionals (pkgs ? mesa) [ pkgs.mesa ]
+        lib.optionals (pkgs ? mesa) [pkgs.mesa]
       );
     };
 

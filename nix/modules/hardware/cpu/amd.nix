@@ -1,9 +1,12 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   isAmd = cfg.hardware.cpuVendor == "amd";
-in
-{
+in {
   # AMD CPU: microcode, P-state, thermal.
   # Owns services.thermald.enable for ALL profiles — Intel cpu/intel.nix sets it true.
   hardware.cpu.amd.updateMicrocode = lib.mkIf isAmd (lib.mkDefault true);
@@ -11,17 +14,17 @@ in
   # Avoid NixOS cpu-freq.nix auto-loading cpufreq_schedutil as a kernel module.
   # On this kernel schedutil is built in, so module load fails at boot.
   powerManagement.cpuFreqGovernor = lib.mkIf isAmd (lib.mkForce null);
-  environment.systemPackages = lib.mkIf isAmd [ config.boot.kernelPackages.cpupower ];
+  environment.systemPackages = lib.mkIf isAmd [config.boot.kernelPackages.cpupower];
   systemd.services.cpu-governor-amd = lib.mkIf isAmd {
     description = "Set AMD CPU governor to schedutil";
-    after = [ "systemd-modules-load.service" ];
-    wantedBy = [ "multi-user.target" ];
+    after = ["systemd-modules-load.service"];
+    wantedBy = ["multi-user.target"];
     unitConfig.ConditionVirtualization = false;
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
       ExecStart = "${config.boot.kernelPackages.cpupower}/bin/cpupower frequency-set --governor schedutil";
-      SuccessExitStatus = [ "0" "237" ];
+      SuccessExitStatus = ["0" "237"];
     };
   };
 
@@ -44,14 +47,14 @@ in
   # noise, and carry known CVEs (CVE-2024-42147, CVE-2024-47730,
   # CVE-2024-38568, CVE-2024-38569). Blacklisting prevents auto-load.
   boot.blacklistedKernelModules = lib.mkIf isAmd (lib.mkAfter [
-    "hisi_sec2"     # HiSilicon crypto accelerator
-    "hisi_hpre"     # HiSilicon RSA/DH accelerator
-    "hisi_zip"      # HiSilicon ZIP/decompress accelerator
-    "hisi_trng"     # HiSilicon true RNG
-    "hisi_qm"       # HiSilicon Queue Manager (shared infrastructure)
+    "hisi_sec2" # HiSilicon crypto accelerator
+    "hisi_hpre" # HiSilicon RSA/DH accelerator
+    "hisi_zip" # HiSilicon ZIP/decompress accelerator
+    "hisi_trng" # HiSilicon true RNG
+    "hisi_qm" # HiSilicon Queue Manager (shared infrastructure)
     "hisi_pcie_pmu" # HiSilicon PCIe performance monitor
-    "hns3"          # Huawei HNS3 NIC driver
-    "hclge"         # HNS3 PF driver
-    "hnae3"         # HNS3 base framework
+    "hns3" # Huawei HNS3 NIC driver
+    "hclge" # HNS3 PF driver
+    "hnae3" # HNS3 base framework
   ]);
 }

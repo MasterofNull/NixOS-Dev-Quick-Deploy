@@ -125,7 +125,7 @@
       "min_confidence": 0.45,
       "fallback_profile": "local-tool-calling",
       "memory_recall": true,
-      "rag_project": "osint-intelligence,logic-patterns,semantic"
+      "rag_project": "osint-intelligence,codebase-context,semantic"
     }
   }
 }

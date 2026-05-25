@@ -12,15 +12,16 @@
 #
 # Usage: Import in configuration.nix:
 #   imports = [ ./nixos-improvements/optimizations.nix ];
-
-{ config, pkgs, lib, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   hasNixosInit = lib.versionAtLeast lib.version "25.11";
   hasLact = lib.versionAtLeast lib.version "26.05";
   hasAmdGpu = builtins.elem "amdgpu" (config.services.xserver.videoDrivers or []);
-in
-{
+in {
   # =========================================================================
   # NixOS 26.05+: Rust-based Systemd Initrd
   # =========================================================================
@@ -38,9 +39,9 @@ in
   # Compressed swap in RAM for better performance
   boot.kernelParams = [
     "zswap.enabled=1"
-    "zswap.compressor=zstd"      # Fast compression
-    "zswap.max_pool_percent=20"  # Use up to 20% of RAM
-    "zswap.zpool=z3fold"         # Memory pool allocator
+    "zswap.compressor=zstd" # Fast compression
+    "zswap.max_pool_percent=20" # Use up to 20% of RAM
+    "zswap.zpool=z3fold" # Memory pool allocator
   ];
 
   # I/O Scheduler optimization
@@ -74,26 +75,26 @@ in
 
   boot.kernel.sysctl = lib.mkMerge [
     {
-    # Reduce swappiness for desktop workstation
-    "vm.swappiness" = lib.mkDefault 10;          # Prefer RAM over swap
-    "vm.vfs_cache_pressure" = lib.mkDefault 50;  # Keep directory/inode cache
+      # Reduce swappiness for desktop workstation
+      "vm.swappiness" = lib.mkDefault 10; # Prefer RAM over swap
+      "vm.vfs_cache_pressure" = lib.mkDefault 50; # Keep directory/inode cache
 
-    # Increase file descriptor limit
-    "fs.file-max" = lib.mkDefault 2097152;
+      # Increase file descriptor limit
+      "fs.file-max" = lib.mkDefault 2097152;
 
-    # Increase AIO limits (for databases)
-    "fs.aio-max-nr" = lib.mkDefault 1048576;
+      # Increase AIO limits (for databases)
+      "fs.aio-max-nr" = lib.mkDefault 1048576;
 
-    # Virtual memory tuning
-    "vm.dirty_ratio" = lib.mkDefault 10;                # Start background writes at 10%
-    "vm.dirty_background_ratio" = lib.mkDefault 5;      # Background writes at 5%
-    "vm.dirty_expire_centisecs" = lib.mkDefault 3000;   # Flush dirty pages after 30s
-    "vm.dirty_writeback_centisecs" = lib.mkDefault 500; # Check every 5s
+      # Virtual memory tuning
+      "vm.dirty_ratio" = lib.mkDefault 10; # Start background writes at 10%
+      "vm.dirty_background_ratio" = lib.mkDefault 5; # Background writes at 5%
+      "vm.dirty_expire_centisecs" = lib.mkDefault 3000; # Flush dirty pages after 30s
+      "vm.dirty_writeback_centisecs" = lib.mkDefault 500; # Check every 5s
     }
     {
       # TCP performance tuning
-      "net.core.rmem_max" = lib.mkDefault 134217728;         # 128MB receive buffer
-      "net.core.wmem_max" = lib.mkDefault 134217728;         # 128MB send buffer
+      "net.core.rmem_max" = lib.mkDefault 134217728; # 128MB receive buffer
+      "net.core.wmem_max" = lib.mkDefault 134217728; # 128MB send buffer
       "net.ipv4.tcp_rmem" = lib.mkDefault "4096 87380 134217728";
       "net.ipv4.tcp_wmem" = lib.mkDefault "4096 65536 134217728";
 
@@ -117,7 +118,7 @@ in
   nix.settings = {
     # Use all CPU cores for builds
     max-jobs = lib.mkDefault "auto";
-    cores = lib.mkDefault 0;  # Use all available cores per build
+    cores = lib.mkDefault 0; # Use all available cores per build
 
     # Build optimization
     builders-use-substitutes = lib.mkDefault true;
@@ -125,17 +126,17 @@ in
     keep-derivations = lib.mkDefault true;
 
     # Garbage collection thresholds
-    min-free = lib.mkDefault (5 * 1024 * 1024 * 1024);   # Keep 5GB free
-    max-free = lib.mkDefault (10 * 1024 * 1024 * 1024);  # GC above 10GB free
+    min-free = lib.mkDefault (5 * 1024 * 1024 * 1024); # Keep 5GB free
+    max-free = lib.mkDefault (10 * 1024 * 1024 * 1024); # GC above 10GB free
 
     # Experimental features
-    experimental-features = [ "nix-command" "flakes" ];
+    experimental-features = ["nix-command" "flakes"];
 
     # Substituters and caches
     substituters = [
       "https://cache.nixos.org"
       "https://nix-community.cachix.org"
-      "https://cuda-maintainers.cachix.org"  # For CUDA packages
+      "https://cuda-maintainers.cachix.org" # For CUDA packages
     ];
     trusted-public-keys = [
       "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
@@ -150,7 +151,7 @@ in
   # Automatic Nix store optimization (deduplicate files)
   nix.optimise = {
     automatic = lib.mkDefault true;
-    dates = lib.mkDefault [ "weekly" ];
+    dates = lib.mkDefault ["weekly"];
   };
 
   # =========================================================================
@@ -175,10 +176,30 @@ in
 
   # Increase process limits
   security.pam.loginLimits = [
-    { domain = "*"; type = "soft"; item = "nofile"; value = "65536"; }
-    { domain = "*"; type = "hard"; item = "nofile"; value = "1048576"; }
-    { domain = "*"; type = "soft"; item = "nproc"; value = "32768"; }
-    { domain = "*"; type = "hard"; item = "nproc"; value = "1048576"; }
+    {
+      domain = "*";
+      type = "soft";
+      item = "nofile";
+      value = "65536";
+    }
+    {
+      domain = "*";
+      type = "hard";
+      item = "nofile";
+      value = "1048576";
+    }
+    {
+      domain = "*";
+      type = "soft";
+      item = "nproc";
+      value = "32768";
+    }
+    {
+      domain = "*";
+      type = "hard";
+      item = "nproc";
+      value = "1048576";
+    }
   ];
 
   # =========================================================================
@@ -214,23 +235,23 @@ in
   environment.systemPackages =
     (with pkgs; [
       # System monitoring
-      btop              # Better htop
-      iotop             # I/O monitoring
-      nethogs           # Network per-process monitoring
+      btop # Better htop
+      iotop # I/O monitoring
+      nethogs # Network per-process monitoring
 
       # Benchmarking
-      sysbench          # System benchmark
-      fio               # I/O benchmark
-      iperf3            # Network benchmark
-      stress-ng         # Stress testing
+      sysbench # System benchmark
+      fio # I/O benchmark
+      iperf3 # Network benchmark
+      stress-ng # Stress testing
 
       # Performance analysis
-      hotspot           # perf GUI
-      flamegraph        # Flame graph visualization
+      hotspot # perf GUI
+      flamegraph # Flame graph visualization
     ])
     ++ lib.optional (pkgs ? nvtop) pkgs.nvtop
-    ++ lib.optionals (pkgs ? perf) [ pkgs.perf ]
-    ++ lib.optionals (!(pkgs ? perf) && pkgs ? linuxPackages && pkgs.linuxPackages ? perf) [ pkgs.linuxPackages.perf ];  # Include perf fallback when available
+    ++ lib.optionals (pkgs ? perf) [pkgs.perf]
+    ++ lib.optionals (!(pkgs ? perf) && pkgs ? linuxPackages && pkgs.linuxPackages ? perf) [pkgs.linuxPackages.perf]; # Include perf fallback when available
 
   # =========================================================================
   # Tmpfs for /tmp (faster temporary files)
@@ -238,7 +259,7 @@ in
 
   boot.tmp = {
     useTmpfs = lib.mkDefault true;
-    tmpfsSize = lib.mkDefault "50%";  # Use up to 50% of RAM for /tmp
+    tmpfsSize = lib.mkDefault "50%"; # Use up to 50% of RAM for /tmp
   };
 
   # =========================================================================

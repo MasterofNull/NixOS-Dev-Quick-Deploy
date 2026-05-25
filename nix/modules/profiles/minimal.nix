@@ -1,10 +1,12 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   flatpakProfiles = import ../../data/flatpak-profiles.nix;
   profilePackages = import ../../data/profile-system-packages.nix;
-in
-{
+in {
   config = lib.mkIf (cfg.profile == "minimal") {
     mySystem.roles.aiStack.enable = lib.mkDefault false;
     mySystem.roles.gaming.enable = lib.mkDefault false;

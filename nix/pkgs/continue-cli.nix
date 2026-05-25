@@ -1,5 +1,7 @@
-{ lib, pkgs }:
-
+{
+  lib,
+  pkgs,
+}:
 pkgs.stdenvNoCC.mkDerivation rec {
   pname = "continue-cli";
   version = "1.5.45";
@@ -9,7 +11,7 @@ pkgs.stdenvNoCC.mkDerivation rec {
     sha256 = "0wp33iakvn960y6572h62rildjlb43v5224xvg3fr1r33r5n8z4i";
   };
 
-  nativeBuildInputs = [ pkgs.makeWrapper ];
+  nativeBuildInputs = [pkgs.makeWrapper];
 
   unpackPhase = ''
     runHook preUnpack
@@ -39,6 +41,6 @@ pkgs.stdenvNoCC.mkDerivation rec {
     license = licenses.asl20;
     mainProgram = "cn";
     platforms = platforms.linux;
-    maintainers = [ ];
+    maintainers = [];
   };
 }

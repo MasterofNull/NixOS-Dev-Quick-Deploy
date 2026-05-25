@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Core user provisioning — declares the primary system user.
 #
@@ -18,8 +23,7 @@
 # ---------------------------------------------------------------------------
 let
   cfg = config.mySystem;
-in
-{
+in {
   config = {
     # Explicitly preserve passwords from /etc/shadow across nixos-rebuild.
     # With mutableUsers = true NixOS never touches a user's password unless a
@@ -35,11 +39,11 @@ in
       # merge strategy, rather than replacing it (which lib.mkDefault would cause
       # since mkDefault = priority 1000 loses to any normal-priority definition).
       extraGroups = [
-        "wheel"           # sudo / polkit access
-        "networkmanager"  # manage network connections without sudo
-        "video"           # GPU / backlight access
-        "audio"           # ALSA fallback (PipeWire covers most cases)
-        "input"           # evdev device access for Wayland compositors
+        "wheel" # sudo / polkit access
+        "networkmanager" # manage network connections without sudo
+        "video" # GPU / backlight access
+        "audio" # ALSA fallback (PipeWire covers most cases)
+        "input" # evdev device access for Wayland compositors
       ];
       # SSH authorized keys — set mySystem.sshAuthorizedKeys in per-host default.nix.
       openssh.authorizedKeys.keys = lib.mkDefault cfg.sshAuthorizedKeys;

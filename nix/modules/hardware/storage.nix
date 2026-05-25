@@ -1,12 +1,14 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   isNvme = cfg.hardware.storageType == "nvme";
-  isSsd  = cfg.hardware.storageType == "ssd" || isNvme;
-  isHdd  = cfg.hardware.storageType == "hdd";
+  isSsd = cfg.hardware.storageType == "ssd" || isNvme;
+  isHdd = cfg.hardware.storageType == "hdd";
   hibernate = cfg.deployment.enableHibernation;
-in
-{
+in {
   # I/O scheduler policy by media type.
   # - NVMe: none (device has its own multi-queue logic)
   # - SSD/SATA: mq-deadline (good latency/throughput balance)
@@ -36,7 +38,7 @@ in
   # NVMe/HDD-specific kernel params.
   boot.kernelParams = lib.mkAfter (
     lib.optionals isNvme [
-      "nvme_core.default_ps_max_latency_us=5500"  # Allow deeper APST states
+      "nvme_core.default_ps_max_latency_us=5500" # Allow deeper APST states
     ]
     ++ lib.optionals isHdd [
       "elevator=bfq"

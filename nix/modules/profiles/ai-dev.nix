@@ -1,10 +1,13 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   flatpakProfiles = import ../../data/flatpak-profiles.nix;
   profilePackages = import ../../data/profile-system-packages.nix;
-in
-{
+in {
   config = lib.mkIf (cfg.profile == "ai-dev") {
     # ── Role Activation ─────────────────────────────────────────────────────────
     mySystem.roles.aiStack.enable = lib.mkDefault true;
@@ -34,7 +37,7 @@ in
         spectre = lib.mkDefault true;
         meltdown = lib.mkDefault true;
         mds = lib.mkDefault true;
-        srso = lib.mkDefault true;  # AMD Zen specific
+        srso = lib.mkDefault true; # AMD Zen specific
       };
     };
 
@@ -53,7 +56,8 @@ in
       watchNginx = lib.mkDefault true;
       # Bouncer requires API key from sops - only enable when secrets are available
       enableFirewallBouncer = lib.mkDefault config.mySystem.secrets.enable;
-      apiKeyFile = lib.mkIf config.mySystem.secrets.enable
+      apiKeyFile =
+        lib.mkIf config.mySystem.secrets.enable
         (lib.mkDefault "/run/secrets/${config.mySystem.secrets.names.crowdsecBouncerApiKey}");
     };
 
@@ -70,7 +74,7 @@ in
     # Kernel development: lore.kernel.org patch monitoring
     services.lore-sync = {
       enable = lib.mkDefault true;
-      subsystems = lib.mkDefault [ "dri-devel" "netdev" "linux-hardening" "rust-for-linux" ];
+      subsystems = lib.mkDefault ["dri-devel" "netdev" "linux-hardening" "rust-for-linux"];
       interval = lib.mkDefault "6h";
     };
 
@@ -112,20 +116,20 @@ in
     # ── AGI Scaffold — Phases 16–20 ─────────────────────────────────────────────
     # Any host running the ai-dev profile gets the full AGI scaffold.
     # Override with lib.mkForce false in host/default.nix to disable.
-    mySystem.aiStack.identityKernel.enable  = lib.mkDefault true;
-    mySystem.aiStack.agentMesh.enable       = lib.mkDefault true;
+    mySystem.aiStack.identityKernel.enable = lib.mkDefault true;
+    mySystem.aiStack.agentMesh.enable = lib.mkDefault true;
     mySystem.aiStack.affectiveEngine.enable = lib.mkDefault true;
-    mySystem.aiStack.worldModel.enable      = lib.mkDefault true;
+    mySystem.aiStack.worldModel.enable = lib.mkDefault true;
 
     # ── Touchpad defaults for modern laptops ────────────────────────────────────
     # clickfinger eliminates accidental middle-click on ClickPads
     services.libinput.touchpad = {
-      middleEmulation    = lib.mkDefault false;
-      clickMethod        = lib.mkDefault "clickfinger";
+      middleEmulation = lib.mkDefault false;
+      clickMethod = lib.mkDefault "clickfinger";
       disableWhileTyping = lib.mkDefault true;
-      tapping            = lib.mkDefault true;
-      scrollMethod       = lib.mkDefault "twofinger";
-      naturalScrolling   = lib.mkDefault false;
+      tapping = lib.mkDefault true;
+      scrollMethod = lib.mkDefault "twofinger";
+      naturalScrolling = lib.mkDefault false;
     };
   };
 }

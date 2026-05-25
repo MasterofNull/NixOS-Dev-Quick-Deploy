@@ -1,12 +1,15 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   isNvidia = cfg.hardware.gpuVendor == "nvidia";
   # Hybrid: Intel iGPU + Nvidia dGPU (Optimus). Enables PRIME render offload.
   # Bus IDs must still be set manually in local-overrides.nix for PRIME sync.
   isNvidiaHybrid = isNvidia && cfg.hardware.igpuVendor != "none";
-in
-{
+in {
   # NVIDIA GPU: proprietary driver, power management, NVENC/NVDEC.
   hardware.nvidia = lib.mkIf isNvidia {
     modesetting.enable = lib.mkDefault true;
@@ -23,17 +26,17 @@ in
     # in local-overrides.nix and provide prime.intelBusId / prime.nvidiaBusId.
     prime.offload = lib.mkIf isNvidiaHybrid {
       enable = lib.mkDefault true;
-      enableOffloadCmd = lib.mkDefault true;  # installs `nvidia-offload` helper
+      enableOffloadCmd = lib.mkDefault true; # installs `nvidia-offload` helper
     };
   };
 
-  services.xserver.videoDrivers = lib.mkIf isNvidia (lib.mkDefault [ "nvidia" ]);
+  services.xserver.videoDrivers = lib.mkIf isNvidia (lib.mkDefault ["nvidia"]);
 
   hardware.graphics = lib.mkIf isNvidia {
     enable = lib.mkDefault true;
     enable32Bit = lib.mkDefault true;
     extraPackages = lib.mkAfter (
-      lib.optionals (pkgs ? nvidia-vaapi-driver) [ pkgs.nvidia-vaapi-driver ]
+      lib.optionals (pkgs ? nvidia-vaapi-driver) [pkgs.nvidia-vaapi-driver]
     );
   };
 
