@@ -139,21 +139,25 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             return os.getenv("AI_LOCAL_MODEL_ID", "local-model")
         return self.available_agents.get(self.active_profile, self.active_profile)
 
+    def _uses_switchboard_local_tools(self) -> bool:
+        return self.local_tools_enabled and self.active_profile in {"local", "local-tool-calling"}
+
     async def _stream_chat(self, prompt: str):
         self.context_history.append({"role": "user", "content": prompt})
         
         thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
         with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
             local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
+            switchboard_local_tools = self._uses_switchboard_local_tools()
             payload = {
-                "model": local_model_id if self.active_profile == "local" else self.active_profile,
+                "model": local_model_id if self.active_profile in {"local", "local-tool-calling"} else self.active_profile,
                 "messages": self.context_history,
                 "stream": True,
                 "temperature": self.temperature
             }
 
             headers = {}
-            if self.active_profile == "local" and self.local_tools_enabled:
+            if switchboard_local_tools:
                 target_url = f"{self.switchboard_url}/v1/chat/completions"
                 headers["X-AI-Profile"] = "local-tool-calling"
                 payload["stream"] = False
@@ -166,7 +170,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
 
             try:
-                if self.active_profile == "local" and self.local_tools_enabled:
+                if switchboard_local_tools:
                     response = await self.client.post(target_url, json=payload, headers=headers)
                     if response.status_code != 200:
                         console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
