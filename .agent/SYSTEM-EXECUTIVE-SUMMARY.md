@@ -12,11 +12,9 @@
 ├─────────────────────────────────────────────────────────────┤
 │  llama.cpp :8080 ←── switchboard :8085 ──→ remote/local    │
 ├─────────────────────────────────────────────────────────────┤
-│  hybrid-coordinator :8003                                   │
-│    ├── progressive_disclosure (token-efficient discovery)   │
-│    ├── hints_engine (contextual bandit ranking)             │
-│    ├── harness_eval (scorecard + SLOs)                      │
-│    └── workflow_blueprints (intent contracts)               │
+│  hybrid-coordinator :8003 (Task Classifier / UAG / Hints)   │
+├─────────────────────────────────────────────────────────────┤
+│  Domains: promoted/default core + proposed MLOps/Trading/OSINT │
 ├─────────────────────────────────────────────────────────────┤
 │  PostgreSQL :5432 │ Redis :6379 │ Qdrant :6333              │
 └─────────────────────────────────────────────────────────────┘
@@ -95,4 +93,4 @@ scripts/ai/aq-report --since=7d --format=text
 
 ---
 
-*System Version: 0.3.0 | NixOS 25.11 | COSMIC Desktop*
+*System Version: 0.4.0 | NixOS 25.11 | COSMIC Desktop*

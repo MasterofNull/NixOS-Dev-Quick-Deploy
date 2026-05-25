@@ -99,6 +99,7 @@ ai-stack/compose/secrets/*
 # Fallback reports directory (when database unavailable)
 .reports/
 /reports/
+/artifacts/
 
 # Eval runtime artifacts (generated; stored outside repo by default)
 ai-stack/eval/results/eval-*.json
