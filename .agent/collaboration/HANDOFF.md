@@ -1,5 +1,73 @@
 # HANDOFF — 2026-05-23 Session (Third Pass)
 
+## Session — 2026-05-25 Multi-Agent Remediation Resume
+
+### Completed
+- Reviewed Gemini CLI/VSCodium-agent changes before continuing.
+- Confirmed `solved_issues` table exists in live `aidb` database.
+- Confirmed Ralph auth for `aq-ralph-task` should use shared `/run/secrets/aidb_api_key` per deployed Ralph config.
+- Rebuilt system with `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`.
+- Activated autonomous timer rewiring; these now execute through `scripts/ai/aq-ralph-task`:
+  - `ai-gap-auto-remediate.service`
+  - `ai-optimizer.service`
+  - `ai-prsi-orchestrator.service`
+  - `ai-context-warmer.service`
+- Restarted `ai-switchboard.service`.
+- Fixed switchboard profile drift root cause:
+  - Added `pyyaml` to the switchboard service environment.
+  - Aligned `config/switchboard-profiles.yaml` and `nix/modules/services/switchboard.nix`.
+  - Live `/health` now reports `remote-default.maxOutputTokens=2048` and `local-tool-calling=12000/20/2048`.
+- Stabilized VSCodium/Gemini workspace behavior:
+  - Expanded `.aiexclude` for archives, generated state, binary assets, and packaged VSCode templates.
+  - Added workspace watcher/search excludes in `.vscode/settings.json`.
+  - Disabled `llama-vscode` RAG indexing for this repo (`llama-vscode.rag_enabled=false`, `rag_max_files=0`) because logs showed it indexing fonts/tarballs and throwing RAG/Invalid URL errors.
+  - Terminated stale orphan Gemini Code Assist A2A helper process (`PPID=1`); active A2A helper restarted under the current extension host.
+- Added regression guards for the failure patterns found during remediation:
+  - `switchboard-profile-catalog-contract` catches Python/YAML/Nix profile-budget drift and missing PyYAML runtime dependency.
+  - `aq-qa-delegate-window` scopes delegate SLOs to the current coordinator activation when systemd uptime is available.
+  - `aidb-reindex-exit-policy` keeps partial re-index results visible as telemetry without marking the whole service failed.
+  - `ralph-task-systemd-wiring` catches systemd minimal-PATH regressions for Ralph queued timer wrappers.
+- Fixed `scripts/automation/aidb-reindex.sh` exit semantics: `ok` and `partial` exit 0, only total sub-job failure exits 1.
+- Fixed Ralph queued timer wrappers so systemd invokes `scripts/ai/aq-ralph-task` through `${pkgs.bash}/bin/bash`; verified `ai-context-warmer.service` and `ai-prsi-orchestrator.service` both queued tasks successfully after rebuild.
+- Cleaned up the Gemini-created `solved_issues` provisioning helper into canonical `scripts/data/provision-solved-issues.py` plus an underscore compatibility shim.
+
+### Validation
+- `python scripts/testing/check-aq-integrity-logical-baseline.py` → 82 known, 0 new.
+- `scripts/ai/aq-integrity-scan --json --timeout-seconds 18 --max-files 5000 --max-logical-files 1500 --fail-on-new-logical` → 82 known logical candidates, 0 new, no protocol drift, no registration gaps.
+- `bash -n scripts/ai/aq-ralph-task`.
+- `python -m py_compile scripts/automation/triage-baseline.py scripts/data/provision_solved_issues.py ai-stack/switchboard/switchboard.py`.
+- Live switchboard smoke equivalent to `aq-chat` local-tool path:
+  - Prompt: `how are you today?`
+  - HTTP 200 in 24s.
+  - Usage: 92 prompt tokens, 18 completion tokens, 110 total.
+  - `tool_working_set.intent=conversational`, `selected_count=0`, `evicted_count=26`.
+- `aq-qa 0` after first switch: 100 passed, 1 failed, 2 skipped.
+- Post-fix focused regression suite:
+  - `python3 scripts/testing/test-aq-qa-delegate-window.py` → PASS.
+  - `python3 scripts/testing/test-switchboard-profile-catalog-contract.py` → PASS.
+  - `bash scripts/testing/test-aidb-reindex-exit-policy.sh` → PASS.
+  - `bash scripts/testing/test-ralph-task-systemd-wiring.sh` → PASS.
+  - `python3 -m py_compile scripts/data/provision-solved-issues.py scripts/data/provision_solved_issues.py` → PASS.
+  - `scripts/governance/check-script-shim-consistency.sh` → PASS.
+  - Python compile and `bash -n` checks for touched test/runtime files → PASS.
+- Runtime timer verification after rebuild:
+  - `ai-context-warmer.service` queued Ralph task `0b51280a-2c36-4497-935f-ae0d79fad36f`.
+  - `ai-prsi-orchestrator.service` queued Ralph task `9fb7e6c2-c7d9-41ae-8bd1-039922faf927`.
+  - `systemctl --failed` → 0 failed units.
+- `aq-qa 0` final: 100 passed, 0 failed, 3 skipped.
+
+### Remaining / Risks
+- `aq-qa 0.8.1` now skips when `/stats/delegate` is unavailable or when current coordinator activation has insufficient samples; the old 24h failure is no longer poisoning current-generation validation.
+- Gemini deleted `ai-stack/efficiency/response_caching.py` and `ai-stack/trading-agents/schemas.py`. Direct reference search found no current imports, but deletion acceptance still needs explicit review before commit.
+- `config/aq-integrity-logical-orphans.json` was broadly triaged by `scripts/automation/triage-baseline.py`; verify the generic `keep` rationales before treating the baseline as final engineering truth.
+- `flake.lock` remains modified from other-agent/user work and was not analyzed in this pass.
+- Go extension ENOENT root cause is a read-only Home Manager extension symlink (`~/.vscode-oss/extensions/golang.Go -> /nix/store/...`); creating `bin/` there failed as expected. Treat separately if Go extension remains noisy.
+
+### Next Slices
+- Review Gemini orphan deletions and broad baseline triage as a separate evidence-based slice; do not batch them into the runtime-stability commit.
+- Turn remaining `library_candidate` logical orphans into either real imports/tests or explicit deletion commits with compatibility notes.
+- Add dashboard or `aq-qa` visibility for any remaining autonomous-loop components that are intended to be live services.
+
 ## Session — 2026-05-24 Tool Working-Set GC
 
 ### Completed

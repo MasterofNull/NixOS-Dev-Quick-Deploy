@@ -116,7 +116,13 @@ fi
 # ---------------------------------------------------------------------------
 END_TS=$(date +%s)
 DURATION=$(( END_TS - START_TS ))
-OVERALL=$( [[ "$LOGIC_STATUS" -eq 0 && "$KNOWLEDGE_STATUS" -eq 0 && "$DOMAIN_STATUS" -eq 0 ]] && echo "ok" || echo "partial" )
+if [[ "$LOGIC_STATUS" -eq 0 && "$KNOWLEDGE_STATUS" -eq 0 && "$DOMAIN_STATUS" -eq 0 ]]; then
+  OVERALL="ok"
+elif [[ "$LOGIC_STATUS" -ne 0 && "$KNOWLEDGE_STATUS" -ne 0 && "$DOMAIN_STATUS" -ne 0 ]]; then
+  OVERALL="failed"
+else
+  OVERALL="partial"
+fi
 
 if [[ -n "$REINDEX_OUTPUT" ]]; then
   mkdir -p "$(dirname "$REINDEX_OUTPUT")" 2>/dev/null || true
@@ -135,4 +141,15 @@ if [[ -n "$REINDEX_OUTPUT" ]]; then
 fi
 
 log "done — status=${OVERALL} duration=${DURATION}s"
-[[ "$OVERALL" == "ok" ]]
+case "$OVERALL" in
+  ok)
+    exit 0
+    ;;
+  partial)
+    warn "partial re-index completed; see ${REINDEX_OUTPUT:-journal output} for failed sub-job details"
+    exit 0
+    ;;
+  *)
+    exit 1
+    ;;
+esac

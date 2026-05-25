@@ -53,7 +53,7 @@ profiles:
     advertisedContextWindow: null
     maxInputTokens: 3500
     maxMessages: 16
-    maxOutputTokens: 1024
+    maxOutputTokens: 2048
     embeddingsOnly: false
     toolExecution: null
     ctxSize_min: null
@@ -123,12 +123,12 @@ profiles:
     injectHints: false
     modelAlias: null
     advertisedContextWindow: null  # LLAMA_CTX_SIZE
-    maxInputTokens: 2400
-    maxMessages: 12
-    maxOutputTokens: 768
+    maxInputTokens: 12000
+    maxMessages: 20
+    maxOutputTokens: 2048
     embeddingsOnly: false
     toolExecution: "built-in"
-    ctxSize_min: 3500
+    ctxSize_min: 15000
 
   embedding-local:
     forceProvider: "local"

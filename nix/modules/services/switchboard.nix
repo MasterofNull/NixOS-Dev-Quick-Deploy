@@ -251,7 +251,7 @@ let
       advertisedContextWindow = null;
       maxInputTokens = 3500;
       maxMessages = 16;
-      maxOutputTokens = 1024;
+      maxOutputTokens = 2048;
       embeddingsOnly = false;
       toolExecution = null;
       profileCard = remoteDefaultCard;
@@ -339,9 +339,9 @@ let
       injectHints = false;
       modelAlias = null;
       advertisedContextWindow = ai.llamaCpp.ctxSize;
-      maxInputTokens = 2400;
-      maxMessages = 12;
-      maxOutputTokens = 768;
+      maxInputTokens = 12000;
+      maxMessages = 20;
+      maxOutputTokens = 2048;
       embeddingsOnly = false;
       toolExecution = "built-in";
       profileCard = localToolCallingCard;
@@ -407,6 +407,7 @@ let
       fastapi
       uvicorn
       httpx
+      pyyaml
     ]);
 in {
   config = lib.mkIf (cfg.roles.aiStack.enable && swb.enable) {

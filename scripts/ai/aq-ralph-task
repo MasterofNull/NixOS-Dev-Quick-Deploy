@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# aq-ralph-task — helper to submit a task to the ralph-wiggum loop orchestrator
+#
+# Usage:
+#   aq-ralph-task "My task prompt" [backend] [max_iterations]
+
+set -euo pipefail
+
+export PATH="/run/current-system/sw/bin:/usr/bin:/bin:${PATH:-}"
+
+PROMPT="${1:?Usage: $0 '<prompt>' [backend] [max_iterations]}"
+BACKEND="${2:-aider}"
+MAX_ITERATIONS="${3:--1}" # -1 = adaptive
+
+# Fetch Ralph endpoint from env or fallback
+RALPH_URL="${AI_STACK_RALPH_ENDPOINT:-http://127.0.0.1:8004}"
+
+# Fetch API key
+RALPH_KEY=""
+KEY_FILE="/run/secrets/aidb_api_key"
+if [[ -r "$KEY_FILE" ]]; then
+    RALPH_KEY=$(tr -d '[:space:]' < "$KEY_FILE")
+fi
+
+echo "Submitting task to Ralph-Wiggum..."
+echo "  Prompt: ${PROMPT:0:100}..."
+echo "  Backend: ${BACKEND}"
+
+RESPONSE=$(curl -s -X POST "${RALPH_URL}/tasks" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${RALPH_KEY}" \
+  -d "$(jq -n \
+    --arg p "$PROMPT" \
+    --arg b "$BACKEND" \
+    --arg mi "$MAX_ITERATIONS" \
+    '{prompt: $p, backend: $b, max_iterations: ($mi|tonumber)}' )")
+
+TASK_ID=$(echo "$RESPONSE" | jq -r '.task_id // empty')
+
+if [[ -n "$TASK_ID" ]]; then
+    echo "Task queued successfully. ID: ${TASK_ID}"
+    echo "Status URL: ${RALPH_URL}/tasks/${TASK_ID}"
+else
+    echo "Failed to queue task."
+    echo "Response: ${RESPONSE}"
+    exit 1
+fi

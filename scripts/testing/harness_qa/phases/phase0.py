@@ -597,8 +597,39 @@ def _check_aidb_search(ctx: RunContext) -> list[CheckResult]:
 # 0.8 Delegate metrics
 # ---------------------------------------------------------------------------
 
+def _service_active_age_seconds(unit: str) -> int | None:
+    """Return current activation age for a systemd unit.
+
+    Delegate SLOs should describe the currently deployed coordinator process,
+    not stale failures from a previous generation that still sit in the 24h
+    audit window after a rebuild/restart.
+    """
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", unit, "-p", "ActiveEnterTimestampMonotonic", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    raw = r.stdout.strip()
+    try:
+        active_us = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if active_us <= 0:
+        return None
+    return max(1, int(time.monotonic() - (active_us / 1_000_000)))
+
+
 def _check_delegate_rate(ctx: RunContext) -> list[CheckResult]:
-    data = http_json(f"{ctx.hybrid_coordinator_url}/stats/delegate?window_s=86400", timeout=5)
+    max_window_s = 86400
+    active_age_s = _service_active_age_seconds("ai-hybrid-coordinator.service")
+    window_s = min(max_window_s, active_age_s) if active_age_s is not None else max_window_s
+    data = http_json(f"{ctx.hybrid_coordinator_url}/stats/delegate?window_s={window_s}", timeout=5)
     if data is None or "error" in (data or {}):
         return [skipped(4, "0.8.1", "delegate 24h success rate",
                         "coordinator /stats/delegate unavailable (needs nixos-rebuild)")]
@@ -606,8 +637,9 @@ def _check_delegate_rate(ctx: RunContext) -> list[CheckResult]:
     ok = int(data.get("ok") or 0)
     min_sample = 10
     if total < min_sample:
+        sample_scope = "current coordinator activation" if active_age_s is not None else "last 24h"
         return [skipped(4, "0.8.1", "delegate 24h success rate",
-                        f"insufficient sample ({total}/{min_sample} calls in last 24h)")]
+                        f"insufficient sample ({total}/{min_sample} calls in {sample_scope})")]
     pct = round(100 * ok / total)
     if pct >= 50:
         return [passed(4, "0.8.1", f"delegate 24h success rate {pct}% ({ok}/{total})")]

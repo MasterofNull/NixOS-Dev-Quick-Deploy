@@ -508,6 +508,69 @@
       "timeout_seconds": 15
     },
     {
+      "id": "ralph-task-systemd-wiring",
+      "description": "Ralph queued timer helpers run under systemd's minimal PATH",
+      "trigger_paths": [
+        "nix/modules/roles/ai-stack.nix",
+        "scripts/ai/aq-ralph-task",
+        "scripts/testing/test-ralph-task-systemd-wiring.sh",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/test-ralph-task-systemd-wiring.sh"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "aidb-reindex-exit-policy",
+      "description": "AIDB reindex partial results remain telemetry, total failure remains service failure",
+      "trigger_paths": [
+        "scripts/automation/aidb-reindex.sh",
+        "scripts/testing/test-aidb-reindex-exit-policy.sh",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "bash",
+        "scripts/testing/test-aidb-reindex-exit-policy.sh"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "aq-qa-delegate-window",
+      "description": "aq-qa delegate SLO uses current coordinator activation window",
+      "trigger_paths": [
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/testing/test-aq-qa-delegate-window.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-qa-delegate-window.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "switchboard-profile-catalog-contract",
+      "description": "Switchboard profile catalog budgets match Python/YAML/Nix SSOTs",
+      "trigger_paths": [
+        "ai-stack/switchboard/switchboard.py",
+        "config/switchboard-profiles.yaml",
+        "nix/modules/services/switchboard.nix",
+        "scripts/testing/test-switchboard-profile-catalog-contract.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-switchboard-profile-catalog-contract.py"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 15
+    },
+    {
       "id": "aq-integrity-logical-baseline",
       "description": "aq-integrity logical orphan baseline guard",
       "trigger_paths": [
