@@ -379,6 +379,30 @@
             '';
           };
 
+          # osint-systems domain: reconnaissance + behavioral profiling
+          osint = pkgs'.mkShell {
+            packages = with pkgs'; [
+              holehe
+              sherlock
+              (writeShellScriptBin "bbot" ''
+                echo "BBOT is currently being provisioned. Use the OSINT MCP server's bounded tools for now." >&2
+                exit 1
+              '')
+              # Support tools
+              exiftool
+              mat2
+              theharvester
+              h8mail
+            ];
+            shellHook = ''
+              export OSINT_DOMAIN_SHELL=1
+              export AIDB_NAMESPACE=osint-intelligence
+              echo "osint-systems shell: sherlock, holehe, bbot-placeholder, exiftool, mat2, theharvester, h8mail"
+              echo "maigret/mosaic are held pending secure derivations; do not permit insecure PyPDF2"
+              echo "AIDB namespace: osint-intelligence | Route: remote-reasoning"
+            '';
+          };
+
           # mobile-web domain: Flutter, web tooling, accessibility + security audits
           # Note: lighthouse is installed via npm in shellHook (removed from nodePackages in nixpkgs 25.11)
           mobile-web = pkgs'.mkShell {

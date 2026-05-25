@@ -1762,6 +1762,12 @@ PYEOF
             "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
             "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
           }
+        },
+        {
+          "name": "OSINT Tools",
+          "command": "python3",
+          "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"],
+          "env": {}
         }
       ],
       "allowAnonymousTelemetry": false
@@ -1834,6 +1840,10 @@ PYEOF
         "memory": {
           "command": "npx",
           "args": ["-y", "@modelcontextprotocol/server-memory"]
+        },
+        "osint-tools": {
+          "command": "python3",
+          "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"]
         },
         "postgres": {
           "command": "npx",

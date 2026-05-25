@@ -671,6 +671,24 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 15
+    },
+    {
+      "id": "osint-tools-mcp-contract",
+      "description": "OSINT MCP wrapper lists tools and avoids insecure Maigret/MOSAIC activation",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/osint-tools/server.py",
+        "flake.nix",
+        "nix/modules/roles/ai-stack.nix",
+        "nix/modules/services/mcp-servers.nix",
+        "scripts/testing/test-osint-tools-mcp-contract.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-osint-tools-mcp-contract.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
     }
   ]
 }
