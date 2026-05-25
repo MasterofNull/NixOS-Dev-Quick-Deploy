@@ -1,7 +1,7 @@
 # Architecture Diagrams
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-05-14
+Last Updated: 2026-05-25
 
 ## Agentic AI Operating System (AI OS) Architecture
 
@@ -11,26 +11,36 @@ The NixOS-Dev-Quick-Deploy stack operates as a foundational "AI Operating System
 
 ```mermaid
 flowchart TD
-    subgraph Client Layer [Human & Agent Clients]
+    subgraph UI ["User Surface — COSMIC Desktop (NixOS 25.11)"]
         CLI[aq-prime / aq-* CLIs]
-        Editor[Continue IDE Plugin]
-        Dash[Dashboard UI :8889]
+        Editor[Continue / Aider / Cursor]
+        Dash[Command Center UI :8889]
     end
 
-    subgraph Governance & Gateway [Policy & Routing]
+    subgraph Governance ["Governance & Gateway (Policy & Routing)"]
         SWB[ai-switchboard :8085]
     end
 
-    subgraph Orchestration [Cyclic State Machine]
+    subgraph Orchestration ["Orchestration (Cyclic State Machine)"]
         HC[hybrid-coordinator :8003]
         HC --"MCP (A2A)"--> HC
     end
 
-    subgraph Execution & Persistence [Compute & Memory]
-        LLM[llama-cpp :8080]
+    subgraph Compute ["Execution & Inference"]
+        LLM[llama-cpp :8080\nQwen3.6-35B]
         EMB[llama-embed :8081]
-        AIDB[(AIDB :8002\nTemporal Memory)]
         RAG[ralph-wiggum :8004]
+    end
+
+    subgraph Domains ["Functional Execution Domains"]
+        D1[Systems Software]
+        D2[MLOps / Opt\nscaffolded]
+        D3[QA Automation\nscaffolded]
+        D4[Trading / OSINT\nproposed]
+    end
+
+    subgraph Memory ["Knowledge & Persistence"]
+        AIDB[(AIDB :8002\nTemporal Memory)]
         VDB[(Qdrant :6333)]
         KV[(Redis :6379)]
         PG[(Postgres :5432)]
@@ -42,6 +52,7 @@ flowchart TD
     
     SWB -->|profile-execution| HC
     
+    HC -->|task/intent| Domains
     HC -->|inference| LLM
     HC -->|semantic query| AIDB
     HC -->|rag orchestration| RAG

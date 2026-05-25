@@ -27,13 +27,13 @@
 
   <rect x="628" y="292" width="236" height="128" rx="20" fill="#1F2937" stroke="#34D399"/>
   <text x="658" y="338" fill="#D1FAE5" font-family="Arial, sans-serif" font-size="25" font-weight="700">AI Services</text>
-  <text x="658" y="372" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="18">llama.cpp</text>
-  <text x="658" y="396" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="18">AIDB / coordinator</text>
+  <text x="658" y="372" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="18">llama.cpp + Qwen</text>
+  <text x="658" y="396" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="18">OSINT / Trading / AIDB</text>
 
   <rect x="896" y="292" width="236" height="128" rx="20" fill="#3A2A12" stroke="#F59E0B"/>
   <text x="926" y="338" fill="#FEF3C7" font-family="Arial, sans-serif" font-size="25" font-weight="700">Data Layer</text>
-  <text x="926" y="372" fill="#FDE68A" font-family="Arial, sans-serif" font-size="18">PostgreSQL</text>
-  <text x="926" y="396" fill="#FDE68A" font-family="Arial, sans-serif" font-size="18">Qdrant / Redis</text>
+  <text x="926" y="372" fill="#FDE68A" font-family="Arial, sans-serif" font-size="18">PostgreSQL / Redis</text>
+  <text x="926" y="396" fill="#FDE68A" font-family="Arial, sans-serif" font-size="18">Qdrant Vector Store</text>
 
   <rect x="220" y="500" width="320" height="132" rx="22" fill="#0F172A" stroke="#60A5FA"/>
   <text x="250" y="548" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="28" font-weight="700">Command Center</text>
@@ -42,8 +42,8 @@
 
   <rect x="660" y="500" width="320" height="132" rx="22" fill="#0F172A" stroke="#34D399"/>
   <text x="690" y="548" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="28" font-weight="700">Validation Gate</text>
-  <text x="690" y="584" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">pre-commit and pre-deploy</text>
-  <text x="690" y="610" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">syntax, structure, roadmap, QA</text>
+  <text x="690" y="584" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">PRSI Self-Improvement Loops</text>
+  <text x="690" y="610" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">evidence-gated completion</text>
 
   <path d="M610 172V246" stroke="#64748B" stroke-width="4" stroke-linecap="round"/>
   <path d="M210 420V468H380" stroke="#60A5FA" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
