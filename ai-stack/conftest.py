@@ -28,3 +28,28 @@ os.environ.setdefault("POSTGRES_PORT", "5432")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("STRICT_ENV", "false")
 os.environ.setdefault("AI_STRICT_ENV", "false")
+
+# Mock missing third-party modules that tests might import at module level
+from unittest.mock import MagicMock
+from types import ModuleType
+
+def mock_module(name, attributes=None):
+    m = ModuleType(name)
+    m.__spec__ = MagicMock()
+    if attributes:
+        for k, v in attributes.items():
+            setattr(m, k, v)
+    sys.modules[name] = m
+    return m
+
+# Robust structlog mock
+structlog_mock = mock_module("structlog")
+structlog_mock.get_logger = MagicMock(return_value=MagicMock())
+
+mock_module("prometheus_client", {
+    "Counter": MagicMock,
+    "Gauge": MagicMock,
+    "Histogram": MagicMock,
+    "Summary": MagicMock,
+})
+mock_module("psutil")

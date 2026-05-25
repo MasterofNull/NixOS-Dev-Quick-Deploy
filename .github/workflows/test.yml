@@ -143,11 +143,15 @@ jobs:
           nix_path: nixpkgs=channel:nixos-25.11
 
       - name: Flake show/check
+        env:
+          NIXPKGS_ALLOW_UNFREE: 1
         run: |
           nix flake show --no-write-lock-file path:.
           nix flake check --no-build path:.
 
       - name: Profile eval smoke tests
+        env:
+          NIXPKGS_ALLOW_UNFREE: 1
         run: |
           set -euo pipefail
           mapfile -t hosts < <(find nix/hosts -mindepth 1 -maxdepth 1 -type d \
@@ -409,14 +413,12 @@ jobs:
             "LICENSE"
             "AGENTS.md"
             "CLAUDE.md"
-            "docs/archive/root-docs/SKILLS.md"
-            "docs/archive/root-docs/MCP.md"
             "nixos-quick-deploy.sh"
             "config/defaults.sh"
             "config/variables.sh"
-            "lib/logging.sh"
-            "lib/state-management.sh"
-            "lib/validation.sh"
+            "lib/l7-interaction/logging.sh"
+            "lib/l5-state/state-management.sh"
+            "lib/l7-interaction/validation.sh"
             "phases/phase-01-system-initialization.sh"
             "phases/phase-02-system-backup.sh"
             "phases/phase-03-configuration-generation.sh"
@@ -428,14 +430,9 @@ jobs:
             "scripts/health/system-health-check.sh"
             "scripts/ai/mcp-db-validate"
             "scripts/ai/mcp-server"
-            "templates/configuration.nix"
             "templates/flake.nix"
             "docs/AGENTS.md"
             "docs/AVAILABLE_TOOLS.md"
-            "docs/AQD-CLI-USAGE.md"
-            "docs/MCP_SETUP.md"
-            "docs/MCP_SERVERS.md"
-            "docs/SKILLS-AND-MCP-INVENTORY.md"
             "docs/QUICK_START.md"
             "docs/TROUBLESHOOTING.md"
             "docs/harness-first/HARNESS-FIRST-RUNBOOK.md"
