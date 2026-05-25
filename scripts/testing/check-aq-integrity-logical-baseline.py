@@ -9,9 +9,49 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCANNER = REPO_ROOT / "scripts" / "ai" / "aq-integrity-scan"
+BASELINE = REPO_ROOT / "config" / "aq-integrity-logical-orphans.json"
+
+
+def validate_baseline_metadata() -> int:
+    try:
+        baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"failed to read logical orphan baseline: {exc}", file=sys.stderr)
+        return 2
+
+    failures: list[str] = []
+    for entry in baseline.get("entries", []):
+        path = entry.get("path")
+        if not path:
+            failures.append("baseline entry missing path")
+            continue
+        if not (REPO_ROOT / path).exists():
+            failures.append(f"baseline path no longer exists: {path}")
+
+        classification = entry.get("classification")
+        action = entry.get("action")
+        rationale = entry.get("rationale", "")
+        if classification == "referenced_entrypoint_candidate" and action == "keep":
+            failures.append(
+                f"referenced entrypoint cannot be blanket keep without coverage proof: {path}"
+            )
+        if rationale == "Verified entrypoint referenced externally in baseline rationale.":
+            failures.append(f"generic baseline rationale hides required evidence: {path}")
+
+    if failures:
+        for failure in failures[:20]:
+            print(f"LOGICAL BASELINE: {failure}", file=sys.stderr)
+        if len(failures) > 20:
+            print(f"... {len(failures) - 20} more logical baseline failures", file=sys.stderr)
+        return 2
+    return 0
 
 
 def main() -> int:
+    baseline_status = validate_baseline_metadata()
+    if baseline_status != 0:
+        return baseline_status
+
     proc = subprocess.run(
         [
             str(SCANNER),

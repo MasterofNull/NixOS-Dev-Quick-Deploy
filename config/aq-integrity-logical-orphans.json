@@ -305,14 +305,6 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/deployments.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-auto-deployer-error-threshold.py"
     },
     {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
-      "module": "response_caching",
-      "owner": "unassigned",
-      "path": "ai-stack/efficiency/response_caching.py",
-      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
-    },
-    {
       "action": "verify-entrypoint-coverage",
       "classification": "referenced_entrypoint_candidate",
       "module": "semantic_compression",
@@ -663,18 +655,10 @@
       "owner": "unassigned",
       "path": "ai-stack/testing/property_based_tests.py",
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
-    },
-    {
-      "action": "classify",
-      "classification": "library_candidate",
-      "module": "schemas",
-      "owner": "unassigned",
-      "path": "ai-stack/trading-agents/schemas.py",
-      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
     }
   ],
-  "generated_at": "2026-05-24T20:57:11Z",
+  "generated_at": "2026-05-25T03:20:00Z",
   "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
-  "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
+  "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale. External references prove reachability only; live services still require aq-qa and dashboard visibility before action can become keep.",
   "version": 1
 }
