@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from sop_engine import parse_sop, execute_sop, ConstraintLevel, SOPDefinition, SOPStep, SOPSection
 
 
-def test_parse_sop():
+def load_codebase_analysis_sop():
     """Test parsing an SOP file."""
     sop_path = Path(__file__).parent.parent / "sop-templates" / "codebase-analysis.sop.md"
     
@@ -54,6 +54,10 @@ def test_parse_sop():
     
     print("\n✓ SOP parsing test passed!")
     return sop
+
+
+def test_parse_sop():
+    load_codebase_analysis_sop()
 
 
 @pytest.fixture
@@ -99,11 +103,13 @@ def test_sop_execution(sop):
     print(f"  Failed: {result['failed_steps']}")
     
     print("\n✓ SOP execution test passed!")
-    return result
+    assert result["status"] == "completed"
+    assert result["completed_steps"] == result["total_steps"]
+    assert result["failed_steps"] == 0
 
 
 if __name__ == "__main__":
-    sop_obj = test_parse_sop()
+    sop_obj = load_codebase_analysis_sop()
     test_sop_execution(sop_obj)
     
     print("\n" + "=" * 60)
