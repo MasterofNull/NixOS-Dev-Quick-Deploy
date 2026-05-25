@@ -1447,37 +1447,6 @@ in {
       };
     })
 
-    # ── OSINT Tools — automated reconnaissance MCP server ─────────────────────
-    (lib.mkIf active {
-      systemd.services.ai-osint-tools = {
-        description = "OSINT tools MCP server";
-        wantedBy = ["ai-stack.target"];
-        partOf = ["ai-stack.target"];
-        after = ["network-online.target"];
-        requires = [];
-        wants = ["network-online.target"];
-        serviceConfig =
-          commonServiceConfig
-          // {
-            User = svcUser;
-            ExecStart = lib.escapeShellArgs [
-              "${pkgs.python3}/bin/python3"
-              "${repoMcp}/osint-tools/server.py"
-            ];
-            Environment = [
-              "PORT=${toString mcp.osintPort}"
-              "HOST=127.0.0.1"
-              # Maigret/MOSAIC stay out of the active service PATH until their
-              # derivations no longer evaluate insecure PyPDF2.
-              "PATH=${lib.makeBinPath osintRuntimePackages}"
-            ];
-            # Phase 13.1.1 — isolated loopback service
-            IPAddressAllow = ["127.0.0.1/8" "::1/128"];
-            IPAddressDeny = ["any"];
-          };
-      };
-    })
-
     # ── NixOS Docs — documentation MCP server ─────────────────────────────────
     (lib.mkIf active {
       systemd.services.ai-nixos-docs = {
