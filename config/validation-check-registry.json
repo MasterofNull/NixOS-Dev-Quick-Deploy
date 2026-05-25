@@ -719,6 +719,23 @@
       "timeout_seconds": 15
     },
     {
+      "id": "doc-lifecycle-hygiene",
+      "description": "Document lifecycle anchors and agent behavior parity index remain discoverable",
+      "trigger_paths": [
+        "docs/architecture/agent-behavior-parity-index.md",
+        "docs/operations/document-lifecycle-hygiene.md",
+        ".agents/plans/README.md",
+        "scripts/governance/check-doc-lifecycle-hygiene.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/governance/check-doc-lifecycle-hygiene.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
       "id": "context-warmer-direct-execution",
       "description": "ai-context-warmer runs bounded warming directly instead of queueing local-agent Ralph tasks",
       "trigger_paths": [
