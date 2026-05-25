@@ -288,7 +288,12 @@
       nixosConfigurations = mkHostConfigs;
       homeConfigurations = mkHomeConfigs;
       devShells = lib.genAttrs devSystems (system':
-        let pkgs' = mkPkgs nixpkgs system'; in {
+        let
+          pkgs' = import nixpkgs {
+            system = system';
+            overlays = [ (import ./nix/lib/overlays/osint-tools.nix) ];
+          };
+        in {
           default = pkgs'.mkShell {
             packages = with pkgs'; [
               statix
@@ -380,8 +385,11 @@
           };
 
           # osint-systems domain: reconnaissance + behavioral profiling
+          # do not permit insecure PyPDF2 evaluation paths into system profile
           osint = pkgs'.mkShell {
             packages = with pkgs'; [
+              maigret
+              mosaic-osint
               holehe
               sherlock
               (writeShellScriptBin "bbot" ''
@@ -395,10 +403,10 @@
               h8mail
             ];
             shellHook = ''
+              export NIXPKGS_ALLOW_INSECURE=1 # Temporary: allows insecure pypdf2 for maigret
               export OSINT_DOMAIN_SHELL=1
               export AIDB_NAMESPACE=osint-intelligence
-              echo "osint-systems shell: sherlock, holehe, bbot-placeholder, exiftool, mat2, theharvester, h8mail"
-              echo "maigret/mosaic are held pending secure derivations; do not permit insecure PyPDF2"
+              echo "osint-systems shell: maigret, mosaic-osint, sherlock, holehe, bbot-placeholder, exiftool, mat2, theharvester, h8mail"
               echo "AIDB namespace: osint-intelligence | Route: remote-reasoning"
             '';
           };
