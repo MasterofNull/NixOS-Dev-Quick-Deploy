@@ -162,6 +162,7 @@ The harness projects specialized knowledge and tools based on the active domain:
 ## Role and Architecture (Phase 58A — all agents read this)
 
 **ai-stack initialized as Python package (2026-05-25) to stabilize unit test imports.**
+**CI Hygiene Pass (2026-05-25): Resolved Gitleaks, Flake, and Structure validation failures.**
 **Role SSOT → `docs/architecture/role-matrix.md`**
 **Kernel declaration → `docs/architecture/canonical-kernel-declaration.md`**
 **Routing/profile inventory → `docs/architecture/routing-profile-inventory.md`**
