@@ -78,6 +78,14 @@
   - `python3 scripts/testing/test-trading-handlers-imports.py` → PASS.
   - Reference search for deleted modules → no live references.
 
+### Logical Orphan Slice 3
+- Removed `ai-stack/autonomous-improvement/monitoring_integration.py`, a zero-inbound duplicate of the active `ai-stack/monitoring/local_llm_monitor.py` implementation.
+- Rationale: the duplicate used stale PostgreSQL defaults (`postgres` / `ai_context`) while the active autonomous-improvement stack uses `aidb` / `aidb`, and no live code imported it.
+- Updated `.agent/PROJECT-LOGICAL-ORPHAN-BASELINE-PRD.md`: baseline is now 81 known candidates, 0 pure library candidates.
+- Validation:
+  - `python3 scripts/testing/check-aq-integrity-logical-baseline.py` → PASS, 81 known / 0 new.
+  - `python3 -m py_compile scripts/testing/check-aq-integrity-logical-baseline.py ai-stack/monitoring/local_llm_monitor.py` → PASS.
+
 ## Session — 2026-05-24 Tool Working-Set GC
 
 ### Completed
@@ -678,8 +686,7 @@ Completed:
 - Regenerated logical orphan baseline: 84 remaining candidates.
 
 Remaining pure library candidates:
-- `ai-stack/autonomous-improvement/monitoring_integration.py` — likely needs design-level integration with autonomous loop/local LLM operation telemetry before wiring.
-- `ai-stack/trading-agents/schemas.py` — appears superseded by `ai-stack/trading-agents/graph/state.py`; deletion requires approval or compatibility decision.
+- Resolved in later slices: `ai-stack/autonomous-improvement/monitoring_integration.py`, `ai-stack/trading-agents/schemas.py`.
 
 Patterns learned:
 - Static import-only orphan detection is insufficient for this harness because services use path injection, extensionless shell/Python wrappers, skill assets, and dynamic package aliases.
