@@ -2182,19 +2182,25 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Run AI world model predictive context warming: ${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-context-warm\" aider";
+          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-context-warm";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
           ProtectSystem = "strict";
           PrivateTmp = true;
           MemoryMax = "128M";
+          ReadWritePaths = [
+            cfg.mcpServers.dataDir
+          ];
           Environment = [
             "WORLD_MODEL_ENABLED=true"
             "WORLD_MODEL_WARM_THRESHOLD=${cfg.aiStack.worldModel.warmThreshold}"
             "WORLD_MODEL_MAX_WARM_QUERIES=${toString cfg.aiStack.worldModel.maxWarmQueriesPerRun}"
             "WORLD_MODEL_PATTERN_RETENTION_DAYS=${toString cfg.aiStack.worldModel.patternRetentionDays}"
             "PYTHON_BIN=${worldModelPython}/bin/python3"
+            "DATA_DIR=${cfg.mcpServers.dataDir}/hybrid"
+            "COORDINATOR_URL=http://127.0.0.1:${toString cfg.mcpServers.hybridPort}"
+            "HYBRID_COORDINATOR_API_KEY_FILE=/run/secrets/hybrid_coordinator_api_key"
           ];
         };
       };
