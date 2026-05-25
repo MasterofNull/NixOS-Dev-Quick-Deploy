@@ -187,6 +187,8 @@ let
   localToolCallingCard = ''
     [profile-card:local-tool-calling]
     Use the local tool-calling lane for bounded built-in tool execution on the local host.
+    The runtime leases a small active tool set; use the leased tools for evidence, then synthesize.
+    For broad analysis, gather only the strongest 2-4 evidence points before answering.
     Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
     CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
   '';
@@ -485,6 +487,8 @@ in {
           # Must match --parallel N in facts.nix llamaCpp.extraArgs so the
           # switchboard concurrency ceiling matches llama.cpp's slot count.
           "SWB_LOCAL_CONCURRENCY=1"
+          "SWB_LOCAL_TOOL_CALL_LIMIT=16"
+          "SWB_ACTIVE_TOOL_SCHEMA_LIMIT=7"
           "SWB_TOOL_WORKING_SET_ENABLED=1"
           "SWB_REMOTE_TOOL_WORKING_SET_ENABLED=1"
           "SWB_CONTEXT_OUTPUT_GC_ENABLED=1"

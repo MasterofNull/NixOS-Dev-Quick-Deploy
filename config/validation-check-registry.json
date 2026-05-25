@@ -688,6 +688,37 @@
       "timeout_seconds": 15
     },
     {
+      "id": "switchboard-local-tool-finalization",
+      "description": "Switchboard finalizes local tool-budget exhaustion with a complete tool-free synthesis",
+      "trigger_paths": [
+        "ai-stack/switchboard/switchboard.py",
+        "scripts/testing/test-switchboard-local-tool-finalization.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-switchboard-local-tool-finalization.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
+      "id": "switchboard-active-tool-working-set",
+      "description": "Switchboard leases capped active tool bundles and evicts unused schemas",
+      "trigger_paths": [
+        "ai-stack/switchboard/switchboard.py",
+        "scripts/testing/test-switchboard-tool-working-set-gc.py",
+        "config/env-contract.yaml",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-switchboard-tool-working-set-gc.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
       "id": "context-warmer-direct-execution",
       "description": "ai-context-warmer runs bounded warming directly instead of queueing local-agent Ralph tasks",
       "trigger_paths": [

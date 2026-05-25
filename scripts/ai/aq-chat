@@ -65,7 +65,7 @@ class AQChat:
         self.model_name = "loading..."
         self.context_history: List[Dict[str, str]] = []
         self.temperature = args.temperature
-        self.max_tool_calls = getattr(args, "max_tools", 8)
+        self.max_tool_calls = getattr(args, "max_tools", 16)
         self.inject_context = not getattr(args, "no_inject", False)
         self.local_tools_enabled = not getattr(args, "no_tools", False)
 
@@ -188,6 +188,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                     tool_calls_used = response.headers.get("X-AI-Tool-Calls-Used")
                     if tool_calls_used is not None:
                         console.print(f"[dim]local tools used: {tool_calls_used}[/]")
+                    if body.get("local_tool_budget_exhausted"):
+                        console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
                     return
 
                 async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
@@ -441,8 +443,8 @@ def parse_args():
     parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
     parser.add_argument("--switchboard-url", help="Override switchboard URL")
     parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
-    parser.add_argument("--max-tools", type=int, default=8,
-                        help="Max tool calls allowed per local turn (default: 8)")
+    parser.add_argument("--max-tools", type=int, default=16,
+                        help="Max tool calls allowed per local turn (default: 16)")
     parser.add_argument("--no-inject", action="store_true",
                         help="Skip harness context injection (raw session, no system prompt)")
     parser.add_argument("--no-tools", action="store_true",

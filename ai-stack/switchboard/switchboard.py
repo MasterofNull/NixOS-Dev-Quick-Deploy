@@ -177,6 +177,8 @@ Prefer minimal tool schemas, explicit constraints, and concise final output.
 
 LOCAL_TOOL_CALLING_CARD = """[profile-card:local-tool-calling]
 Use the local tool-calling lane for bounded built-in tool execution on the local host.
+The runtime leases a small active tool set; use the leased tools for evidence, then synthesize.
+For broad analysis, gather only the strongest 2-4 evidence points before answering.
 Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
 CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
 """
@@ -420,7 +422,8 @@ def _load_profile_catalog() -> dict:
 PROFILE_CATALOG = _load_profile_catalog()
 REPO_PATH = os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
 LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/local-agents").strip()
-LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "8"))
+LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "16"))
+ACTIVE_TOOL_SCHEMA_LIMIT = max(1, int(os.environ.get("SWB_ACTIVE_TOOL_SCHEMA_LIMIT", "7")))
 TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 REMOTE_TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_REMOTE_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 CONTEXT_OUTPUT_GC_ENABLED = os.environ.get("SWB_CONTEXT_OUTPUT_GC_ENABLED", "1").strip() not in ("0", "false", "no")
@@ -701,6 +704,24 @@ _TOOL_BUNDLES = {
     "default": frozenset({"get_hint", "query_context"}),
 }
 
+_TOOL_LEASE_PRIORITY = {
+    "get_hint": 10,
+    "query_context": 20,
+    "check_service": 30,
+    "get_system_info": 40,
+    "search_files": 50,
+    "read_file": 60,
+    "list_files": 70,
+    "run_command": 80,
+    "git_status": 90,
+    "git_diff": 100,
+    "validate_before_commit": 110,
+    "write_file": 120,
+    "store_memory": 130,
+    "screenshot": 140,
+    "get_screen_size": 150,
+}
+
 
 def _latest_user_text(messages: list) -> str:
     if not isinstance(messages, list):
@@ -759,11 +780,21 @@ def _tool_working_set_meta(intent: str, selected_names: set[str], available_coun
         "enabled": bool(TOOL_WORKING_SET_ENABLED),
         "intent": intent,
         "explicit": bool(explicit),
+        "active_schema_limit": int(ACTIVE_TOOL_SCHEMA_LIMIT),
         "selected_count": len(selected_names),
         "available_count": int(available_count),
         "selected_tools": sorted(selected_names),
         "evicted_count": max(0, int(available_count) - len(selected_names)),
     }
+
+def _cap_active_tool_names(selected_names: set[str]) -> set[str]:
+    if len(selected_names) <= ACTIVE_TOOL_SCHEMA_LIMIT:
+        return set(selected_names)
+    ordered = sorted(
+        selected_names,
+        key=lambda name: (_TOOL_LEASE_PRIORITY.get(name, 1000), name),
+    )
+    return set(ordered[:ACTIVE_TOOL_SCHEMA_LIMIT])
 
 
 def _select_auto_tool_names(messages: list, available_names: set[str]) -> tuple[str, set[str]]:
@@ -775,6 +806,7 @@ def _select_auto_tool_names(messages: list, available_names: set[str]) -> tuple[
     selected = {name for name in selected if name in available_names}
     if intent != "conversational" and not selected:
         selected = {name for name in _TOOL_BUNDLES["default"] if name in available_names}
+    selected = _cap_active_tool_names(selected)
     return intent, selected
 
 
@@ -1025,8 +1057,10 @@ async def _finalize_after_local_tool_limit(
         "role": "user",
         "content": (
             f"You have used the local tool budget ({tool_calls_used}/{max_tool_calls}). "
-            "Stop calling tools. Produce the best final answer now from the completed tool outputs. "
-            "Mention any artifact paths that were created or inspected. If evidence is incomplete, state the gap and the next narrow check."
+            "Stop calling tools. Produce a complete final answer now from the completed tool outputs. "
+            "Prioritize the user's requested analysis and recommendations over explaining the tool budget. "
+            "Mention any artifact paths that were created or inspected. If evidence is incomplete, state the gap and the next narrow check. "
+            "Do not stop mid-sentence."
         ),
     })
     final_payload = {
@@ -1036,7 +1070,7 @@ async def _finalize_after_local_tool_limit(
     }
     final_payload["messages"] = final_messages
     final_payload["stream"] = False
-    final_payload["max_tokens"] = max(256, min(int(final_payload.get("max_tokens") or 512), 1024))
+    final_payload["max_tokens"] = max(768, min(int(final_payload.get("max_tokens") or 1536), 2048))
     try:
         upstream = await client.post(
             f"{LLAMA_URL}/v1/chat/completions",
@@ -2051,6 +2085,7 @@ async def health():
         "tool_working_set": {
             "enabled": bool(TOOL_WORKING_SET_ENABLED),
             "remote_enabled": bool(REMOTE_TOOL_WORKING_SET_ENABLED),
+            "active_schema_limit": int(ACTIVE_TOOL_SCHEMA_LIMIT),
             "intents": sorted(_TOOL_BUNDLES.keys()),
             "bundles": {name: sorted(tools) for name, tools in _TOOL_BUNDLES.items()},
         },

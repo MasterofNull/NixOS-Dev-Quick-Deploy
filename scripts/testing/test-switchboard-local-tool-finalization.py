@@ -25,8 +25,20 @@ def main() -> None:
         "expected finalization payload to remove tool schemas and max_tool_calls",
     )
     assert_true(
-        "Stop calling tools. Produce the best final answer now from the completed tool outputs." in text,
+        "Stop calling tools. Produce a complete final answer now from the completed tool outputs." in text,
         "expected finalization prompt to force a tool-free final answer",
+    )
+    assert_true(
+        'LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "16"))' in text,
+        "expected local tool-call ceiling default to support broad analysis turns",
+    )
+    assert_true(
+        'final_payload["max_tokens"] = max(768, min(int(final_payload.get("max_tokens") or 1536), 2048))' in text,
+        "expected forced finalization to reserve enough output tokens for complete synthesis",
+    )
+    assert_true(
+        "Do not stop mid-sentence." in text,
+        "expected forced finalization to guard against truncated synthesis",
     )
     assert_true(
         "local_tool_finalization" in text and "forced_tool_free" in text,

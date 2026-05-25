@@ -31,6 +31,14 @@ def main() -> None:
         'if switchboard_local_tools:' in text,
         "aq-chat should post local-tool-calling requests to switchboard, not hybrid orchestration",
     )
+    assert_true(
+        'parser.add_argument("--max-tools", type=int, default=16,' in text,
+        "aq-chat should default to enough local tool calls for broad analysis turns",
+    )
+    assert_true(
+        'local tool budget exhausted; answer finalized from completed tool outputs' in text,
+        "aq-chat should surface when a response was forced after local tool budget exhaustion",
+    )
     print("PASS: aq-chat local-tool-calling profile routes through switchboard")
 
 
