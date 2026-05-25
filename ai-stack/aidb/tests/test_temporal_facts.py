@@ -224,9 +224,9 @@ class TestFactExpiration:
 
         assert fact.is_ongoing()
 
-        expire_date = datetime(2026, 4, 30, tzinfo=timezone.utc)
+        # Ensure expire_date is AFTER the fact's creation date (now)
+        expire_date = datetime.now(timezone.utc) + timedelta(days=1)
         fact.expire(expire_date, reason="superseded")
-
         assert fact.valid_until == expire_date
         assert not fact.is_ongoing()
         assert "expiration_reason:superseded" in fact.tags

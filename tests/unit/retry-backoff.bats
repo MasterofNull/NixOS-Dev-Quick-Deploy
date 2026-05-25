@@ -6,7 +6,7 @@
 load test_helper
 
 setup() {
-    source "$LIB_DIR/retry-backoff.sh"
+    source "$LIB_DIR/cross-cutting/retry-backoff.sh"
 }
 
 # ============================================================================

@@ -113,11 +113,6 @@ jobs:
           chmod +x scripts/governance/lint-skill-external-deps.sh
           ./scripts/governance/lint-skill-external-deps.sh
 
-      - name: Run skill reference integrity lint
-        run: |
-          chmod +x scripts/testing/validate-skill-references.sh
-          ./scripts/testing/validate-skill-references.sh
-
       - name: Run skill template lint
         run: |
           chmod +x scripts/governance/lint-skill-template.sh

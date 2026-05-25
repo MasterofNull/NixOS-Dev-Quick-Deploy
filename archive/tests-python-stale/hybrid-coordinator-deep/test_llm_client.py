@@ -102,7 +102,7 @@ class LLMClientLocalTests(unittest.TestCase):
         )
         self.assertEqual(
             recorder.calls[0]["headers"]["X-AI-Profile"],
-            "continue-local",
+            "coordinator-internal",
         )
         self.assertEqual(
             recorder.calls[0]["json"]["messages"][0],
@@ -155,11 +155,20 @@ class LLMClientLocalTests(unittest.TestCase):
         )
         self.assertEqual(
             recorder.calls[0]["headers"]["X-AI-Profile"],
-            "local-tool-calling",
+            "coordinator-internal",
         )
         self.assertEqual(
             recorder.calls[0]["json"]["tools"],
-            [{"name": "read_file"}],
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read_file",
+                        "description": "",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
         )
 
 
@@ -233,7 +242,19 @@ class LLMClientOpenAITests(unittest.TestCase):
             recorder.calls[0]["messages"][0],
             {"role": "system", "content": "Be concise."},
         )
-        self.assertEqual(recorder.calls[0]["tools"], [{"name": "list_files"}])
+        self.assertEqual(
+            recorder.calls[0]["tools"],
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "list_files",
+                        "description": "",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":

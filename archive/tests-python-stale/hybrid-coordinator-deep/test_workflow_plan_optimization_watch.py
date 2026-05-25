@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-WORKFLOW_PLANNING_PATH = Path(__file__).with_name("workflow_planning.py")
+WORKFLOW_PLANNING_PATH = Path(__file__).parent.parent / "workflow_planning.py"
 TARGET_FUNCTIONS = {
     "_load_aq_report_status_summary",
     "_should_prioritize_memory_recall",

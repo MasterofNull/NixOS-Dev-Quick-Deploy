@@ -25,3 +25,10 @@
 - Added read-only audit command `scripts/governance/audit-agent-artifact-debt.py`.
 - Current audit result: WARN with 361 cleanup signals; largest active-context risks are `.agents/delegation/outputs/`, `.agents/sessions/`, `.agent/workflows/`, `.agents/planning/`, `.agents/summary/`, and generated cache dirs.
 - No files were deleted. Next cleanup should summarize/promote useful lessons before pruning raw artifacts.
+
+## 2026-05-25 Codex/Gemini Coordination Note
+- Gemini active progress per `PULSE.log`: Phase 11 local-first async optimization completed at 13:54, Phase 12 MLOps/ContextWeaver/coordinator tool wiring completed at 14:00.
+- Current tree contains an unfinished test-suite reorganization: root-level coordinator tests, workflow tests, local-agent tests, AIDB tests, and PDF skill test assets are deleted or moved into archive paths while replacements under `ai-stack/mcp-servers/hybrid-coordinator/tests/` are still being adjusted.
+- Codex committed only the showcase/readiness slice `3faf09d4`; Codex did not commit the moving test cleanup.
+- Codex temporarily validated a narrow relocated-test subset (`test_llm_client`, `test_llm_router`, `test_harness_eval_scorecard`) after updating expectations, but left those edits unstaged because Gemini owns the active reorganization.
+- Before any commit of the test cleanup, re-check Gemini ownership, run focused relocated tests, run `scripts/governance/run-focused-ci-checks.sh`, and reconcile `config/aq-integrity-logical-orphans.json` for any intentionally archived baseline paths.

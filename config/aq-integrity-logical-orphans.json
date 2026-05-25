@@ -19,14 +19,6 @@
     {
       "action": "keep-skill-asset",
       "classification": "skill_asset_candidate",
-      "module": "check_bounding_boxes_test",
-      "owner": "unassigned",
-      "path": "ai-stack/agents/skills/pdf/scripts/check_bounding_boxes_test.py",
-      "rationale": "Bundled skill asset invoked by skill workflows or templates; not expected to have inbound ai-stack imports."
-    },
-    {
-      "action": "keep-skill-asset",
-      "classification": "skill_asset_candidate",
       "module": "check_fillable_fields",
       "owner": "unassigned",
       "path": "ai-stack/agents/skills/pdf/scripts/check_fillable_fields.py",
@@ -615,6 +607,14 @@
       "owner": "unassigned",
       "path": "ai-stack/testing/performance_benchmarks.py",
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-testing-artifact-paths.py"
+    },
+    {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
+      "module": "conftest",
+      "owner": "unassigned",
+      "path": "ai-stack/conftest.py",
+      "rationale": "Global pytest configuration for ai-stack; correctly has no inbound production imports."
     },
     {
       "action": "verify-entrypoint-coverage",

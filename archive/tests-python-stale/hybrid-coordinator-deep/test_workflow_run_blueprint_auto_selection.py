@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-WORKFLOW_SESSION_HANDLERS_PATH = Path(__file__).with_name("workflow_session_handlers.py")
+WORKFLOW_SESSION_HANDLERS_PATH = Path(__file__).parent.parent / "workflow_session_handlers.py"
 TARGET_FUNCTIONS = {
     "_normalize_activation_patterns",
     "_score_blueprint_for_query",

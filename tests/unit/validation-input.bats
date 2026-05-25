@@ -8,7 +8,7 @@ load test_helper
 TMP_ROOT="${TMPDIR:-/${TMP_FALLBACK:-tmp}}"
 
 setup() {
-    source "$LIB_DIR/validation-input.sh"
+    source "$LIB_DIR/l7-interaction/validation-input.sh"
 }
 
 # ============================================================================

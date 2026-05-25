@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 
-_HARNESS_EVAL_PATH = Path(__file__).with_name("harness_eval.py")
+_HARNESS_EVAL_PATH = Path(__file__).parent.parent / "harness_eval.py"
 os.environ["AI_STRICT_ENV"] = "false"
 sys.path.insert(0, str(_HARNESS_EVAL_PATH.parent))
 sys.path.insert(0, str(_HARNESS_EVAL_PATH.parent.parent))

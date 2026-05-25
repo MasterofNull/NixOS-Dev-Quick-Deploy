@@ -1,1 +1,11 @@
-{"task": "Phase 59.4: Integrated Expert Mode Implementation", "status": "executing", "plan": ".agents/plans/phase-59-logical-orphan-triage.md"}
+{
+  "task": "Coordinate Gemini active repo/test reorganization before further cleanup commits",
+  "status": "coordination-hold",
+  "owner": "Gemini primary, Codex reviewer/validator",
+  "plan": ".agent/PROJECT-LOCAL-ASYNC-OPTIMIZATION-PRD.md",
+  "notes": [
+    "Gemini Phase 11 and Phase 12 completion lines are present in .agent/collaboration/PULSE.log.",
+    "Working tree contains unfinished test relocation/archive edits; do not commit or revert without re-checking Gemini ownership.",
+    "Codex showcase commit 3faf09d4 is complete; remaining test cleanup is intentionally unstaged."
+  ]
+}
