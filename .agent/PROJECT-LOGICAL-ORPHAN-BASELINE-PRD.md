@@ -1,6 +1,6 @@
 # Logical Orphan Baseline PRD
 
-Updated: 2026-05-24T20:44:49Z
+Updated: 2026-05-25T03:35:00Z
 
 ## Objective
 
@@ -26,17 +26,15 @@ The earlier scanner reported a large count of zero-inbound modules without file 
 - Focused CI runs the logical orphan guard for `ai-stack` changes.
 - Contract tests cover path-aware findings and baseline/new-candidate separation.
 - Workflow notes explain the failure pattern and prevention rule.
-- First remediation pass wires confirmed backend gaps and lowers the baseline from 115 to 84 candidates.
+- Remediation passes wire confirmed backend gaps and lower the baseline from 115 to 81 candidates.
 
 ## Current Status
 
-- 84 candidates remain in the baseline.
+- 81 candidates remain in the baseline.
 - 51 are externally referenced entrypoint candidates that need coverage verification.
-- 17 are unreferenced entrypoint-shaped files that need wiring or removal review.
+- 16 are unreferenced entrypoint-shaped files that need wiring or removal review.
 - 14 are skill assets and should remain as skill-owned assets.
-- 2 remain pure library candidates:
-  - `ai-stack/autonomous-improvement/monitoring_integration.py`
-  - `ai-stack/trading-agents/schemas.py`
+- 0 remain pure library candidates.
 
 ## Remediation Workflow
 

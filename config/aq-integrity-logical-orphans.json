@@ -281,14 +281,6 @@
       "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
     },
     {
-      "action": "classify",
-      "classification": "library_candidate",
-      "module": "monitoring_integration",
-      "owner": "unassigned",
-      "path": "ai-stack/autonomous-improvement/monitoring_integration.py",
-      "rationale": "Existing zero-inbound import candidate captured as technical-debt baseline."
-    },
-    {
       "action": "verify-entrypoint-coverage",
       "classification": "referenced_entrypoint_candidate",
       "module": "failure_pattern_analysis",
@@ -657,7 +649,7 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
     }
   ],
-  "generated_at": "2026-05-25T03:20:00Z",
+  "generated_at": "2026-05-25T03:35:00Z",
   "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
   "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale. External references prove reachability only; live services still require aq-qa and dashboard visibility before action can become keep.",
   "version": 1
