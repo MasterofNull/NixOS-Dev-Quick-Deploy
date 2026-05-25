@@ -673,6 +673,21 @@
       "timeout_seconds": 15
     },
     {
+      "id": "aq-chat-local-tool-profile",
+      "description": "aq-chat local-tool-calling profile routes through switchboard local tools",
+      "trigger_paths": [
+        "scripts/ai/aq-chat",
+        "scripts/testing/test-aq-chat-local-tool-profile.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-chat-local-tool-profile.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15
+    },
+    {
       "id": "context-warmer-direct-execution",
       "description": "ai-context-warmer runs bounded warming directly instead of queueing local-agent Ralph tasks",
       "trigger_paths": [
