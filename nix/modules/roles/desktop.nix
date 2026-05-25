@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Desktop role — COSMIC desktop environment with cosmic-greeter.
 #
@@ -20,26 +25,24 @@
 let
   cfg = config.mySystem;
   desktopEnabled = cfg.roles.desktop.enable;
-  primaryGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
+  primaryGroup = lib.attrByPath ["users" "users" cfg.primaryUser "group"] "users" config;
   cosmicThemeDarkPalette = builtins.readFile (../../../templates + "/Royal Wine-inner.ron");
 
   # XDG portal backend selection.
   # xdg-desktop-portal-gnome requires gnome-shell running — do NOT add it when
   # a non-GNOME DE is active (NIX-ISSUE-013).  Use COSMIC or Hyprland portal
   # when available; fall back to GNOME portal only on older/GNOME-only systems.
-  hasCosmicPortal   = builtins.hasAttr "xdg-desktop-portal-cosmic"   pkgs;
+  hasCosmicPortal = builtins.hasAttr "xdg-desktop-portal-cosmic" pkgs;
   hasHyprlandPortal = builtins.hasAttr "xdg-desktop-portal-hyprland" pkgs;
-  hasGnomePortal    = builtins.hasAttr "xdg-desktop-portal-gnome"    pkgs;
+  hasGnomePortal = builtins.hasAttr "xdg-desktop-portal-gnome" pkgs;
 
   extraPortals =
-    lib.optional hasCosmicPortal   pkgs.xdg-desktop-portal-cosmic
+    lib.optional hasCosmicPortal pkgs.xdg-desktop-portal-cosmic
     ++ lib.optional hasHyprlandPortal pkgs.xdg-desktop-portal-hyprland
     ++ lib.optional (!hasCosmicPortal && hasGnomePortal)
-         pkgs.xdg-desktop-portal-gnome;
-in
-{
+    pkgs.xdg-desktop-portal-gnome;
+in {
   config = lib.mkIf desktopEnabled {
-
     # Shorten user-session stop timeout so hung GUI app scopes (for example
     # codium descendants) do not block shutdown for the default 90s.
     systemd.user.extraConfig = lib.mkDefault ''
@@ -52,7 +55,7 @@ in
     # ---- Desktop environment: COSMIC + cosmic-greeter ----------------------
     # GDM/GNOME are intentionally omitted; cosmic-greeter handles the login
     # screen and COSMIC handles the session.
-    services.desktopManager.cosmic.enable      = lib.mkDefault true;
+    services.desktopManager.cosmic.enable = lib.mkDefault true;
     services.displayManager.cosmic-greeter.enable = lib.mkDefault true;
     services.displayManager.defaultSession = lib.mkDefault "cosmic";
 
@@ -62,15 +65,15 @@ in
     # Auto-login: off by default. Override in per-host default.nix:
     #   services.displayManager.autoLogin = { enable = true; user = "alice"; };
     services.displayManager.autoLogin.enable = lib.mkDefault false;
-    services.displayManager.autoLogin.user   = lib.mkDefault cfg.primaryUser;
+    services.displayManager.autoLogin.user = lib.mkDefault cfg.primaryUser;
 
     # ---- Wayland session environment ---------------------------------------
     environment.sessionVariables = {
-      QT_QPA_PLATFORM             = lib.mkDefault "wayland";
-      MOZ_ENABLE_WAYLAND          = lib.mkDefault "1";
-      NIXOS_OZONE_WL              = lib.mkDefault "1";
+      QT_QPA_PLATFORM = lib.mkDefault "wayland";
+      MOZ_ENABLE_WAYLAND = lib.mkDefault "1";
+      NIXOS_OZONE_WL = lib.mkDefault "1";
       COSMIC_DATA_CONTROL_ENABLED = lib.mkDefault "1";
-      XDG_DATA_HOME               = lib.mkDefault "$HOME/.local/share";
+      XDG_DATA_HOME = lib.mkDefault "$HOME/.local/share";
       # XDG_DATA_DIRS is NOT set here.  services.flatpak.enable handles
       # adding /var/lib/flatpak/exports/share and the per-user export path
       # via /etc/profile.d/flatpak.sh.  Hardcoding it here caused both paths
@@ -79,19 +82,19 @@ in
 
       # HDR support (Linux 6.19+ with DRM Color Pipeline API)
       # Enables hardware HDR for games and video; COSMIC Epoch 2 will use this.
-      ENABLE_HDR_WSI              = lib.mkDefault "1";
-      DXVK_HDR                    = lib.mkDefault "1";
+      ENABLE_HDR_WSI = lib.mkDefault "1";
+      DXVK_HDR = lib.mkDefault "1";
     };
 
     # ---- Audio -------------------------------------------------------------
     security.rtkit.enable = lib.mkDefault true;
     services.pulseaudio.enable = lib.mkDefault false;
     services.pipewire = {
-      enable            = lib.mkDefault true;
-      alsa.enable       = lib.mkDefault true;
+      enable = lib.mkDefault true;
+      alsa.enable = lib.mkDefault true;
       alsa.support32Bit = lib.mkDefault true;
-      pulse.enable      = lib.mkDefault true;
-      jack.enable       = lib.mkDefault true;
+      pulse.enable = lib.mkDefault true;
+      jack.enable = lib.mkDefault true;
       wireplumber.enable = lib.mkDefault true;
     };
 
@@ -112,7 +115,7 @@ in
 
     # ---- Bluetooth ---------------------------------------------------------
     hardware.bluetooth = {
-      enable      = lib.mkDefault true;
+      enable = lib.mkDefault true;
       powerOnBoot = lib.mkDefault true;
     };
     services.blueman.enable = lib.mkDefault true;
@@ -132,15 +135,15 @@ in
 
     security.pam.services = {
       greetd.enableGnomeKeyring = lib.mkDefault true;
-      login.enableGnomeKeyring  = lib.mkDefault true;
+      login.enableGnomeKeyring = lib.mkDefault true;
       passwd.enableGnomeKeyring = lib.mkDefault true;
     };
 
     # ---- XDG desktop portals -----------------------------------------------
     # Required for Flatpak file-picker, screenshot, screen-cast, etc.
     xdg.portal = {
-      enable               = lib.mkDefault true;
-      extraPortals         = lib.mkDefault extraPortals;
+      enable = lib.mkDefault true;
+      extraPortals = lib.mkDefault extraPortals;
       config.common.default = lib.mkDefault "*";
     };
 
@@ -165,8 +168,8 @@ in
       geoProviderUrl = lib.mkDefault "https://api.beacondb.net/v1/geolocate";
       appConfig."com.system76.CosmicSettings" = {
         isAllowed = true;
-        isSystem  = true;
-        users     = [ ];
+        isSystem = true;
+        users = [];
       };
     };
 
@@ -202,9 +205,9 @@ in
 
     systemd.services.cosmic-greeter-config-seed = {
       description = "Seed minimal COSMIC greeter config to avoid parser and watcher churn";
-      wantedBy = [ "graphical.target" ];
-      before = [ "greetd.service" "cosmic-greeter-daemon.service" ];
-      after = [ "systemd-tmpfiles-setup.service" ];
+      wantedBy = ["graphical.target"];
+      before = ["greetd.service" "cosmic-greeter-daemon.service"];
+      after = ["systemd-tmpfiles-setup.service"];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;

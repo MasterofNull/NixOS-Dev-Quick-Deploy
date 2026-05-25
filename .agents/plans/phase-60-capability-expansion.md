@@ -24,6 +24,9 @@ Formalize the AI Harness architecture by archiving legacy instructional debt and
 - [ ] Research on MLOps continuous learning pipelines.
 - [ ] Research on Chaos Engineering & Playwright QA.
 
-### WS4: Implementation (Pending Fresh Agent)
-- [ ] Build OSINT/Trading/MLOps/QA MCP servers.
-- [ ] Wire to local-agent runtime.
+### WS4: Implementation (Partial Progress)
+- [x] Implemented Python MCP server stubs for Trading, MLOps, and QA Automation.
+- [x] OSINT Foundation (Nix Layer): Custom Nix derivations for `maigret` and `mosaic-osint` created and integrated via overlay. `maigret` successfully tested in `osint` devShell.
+- [x] MLOps Health Check: Integrated MLOps MCP server health check into `continuous_learning_daemon.py`.
+- [x] Trading Simulation: Successfully tested Trading MCP server with mock sentiment debate.
+- [ ] Wire to local-agent runtime (remaining).

@@ -1,5 +1,4 @@
-{ ... }:
-{
+{...}: {
   mySystem = {
     hostName = "nixos";
     primaryUser = "hyperd";
@@ -29,9 +28,8 @@
       layout = "none";
       device = "/dev/disk/by-id/CHANGE-ME";
       luks.enable = false;
-      btrfsSubvolumes = [ "@root" "@home" "@nix" ];
+      btrfsSubvolumes = ["@root" "@home" "@nix"];
     };
     secureboot.enable = false;
-
   };
 }

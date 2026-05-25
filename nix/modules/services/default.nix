@@ -1,5 +1,4 @@
-{ ... }:
-{
+{...}: {
   imports = [
     ./ai-stack.nix
     ./mcp-servers.nix

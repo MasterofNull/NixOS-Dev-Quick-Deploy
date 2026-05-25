@@ -1,4 +1,8 @@
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # RISC-V CPU module (riscv64gc)
 #
@@ -27,10 +31,9 @@
 #   VisionFive 2  → inputs.nixos-hardware.nixosModules.starfive-visionfive2
 # ---------------------------------------------------------------------------
 let
-  cfg      = config.mySystem;
-  isRiscV  = cfg.hardware.cpuVendor == "riscv";
-in
-{
+  cfg = config.mySystem;
+  isRiscV = cfg.hardware.cpuVendor == "riscv";
+in {
   config = lib.mkIf isRiscV {
     # ---- CPU frequency scaling -----------------------------------------------
     # schedutil is set as the default; many RISC-V boards do not expose cpufreq

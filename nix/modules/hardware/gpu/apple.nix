@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Apple Silicon GPU module (AGX / Apple Graphics Accelerator)
 #
@@ -36,28 +41,29 @@
 # Architecture: aarch64-linux — set mySystem.system = "aarch64-linux" in facts.nix.
 # ---------------------------------------------------------------------------
 let
-  cfg     = config.mySystem;
+  cfg = config.mySystem;
   isApple = cfg.hardware.gpuVendor == "apple";
 
   # mesa-asahi-edge provides the AGX Vulkan driver (honeykrisp).
   # On standard nixpkgs, only the standard Mesa (without AGX) is available.
   # The Asahi flake provides mesa-asahi-edge as an overlay package.
   hasMesaAsahi = builtins.hasAttr "mesa-asahi-edge" pkgs;
-  hasMesa      = builtins.hasAttr "mesa" pkgs;
-in
-{
+  hasMesa = builtins.hasAttr "mesa" pkgs;
+in {
   config = lib.mkIf isApple {
     # ---- Mesa / AGX graphics stack ----------------------------------------
     hardware.graphics = {
-      enable      = lib.mkDefault true;
-      enable32Bit  = lib.mkDefault false;  # Not applicable on aarch64
+      enable = lib.mkDefault true;
+      enable32Bit = lib.mkDefault false; # Not applicable on aarch64
 
       extraPackages = lib.mkDefault (
         # Prefer mesa-asahi-edge (Asahi overlay) when available;
         # fall back to standard Mesa (limited AGX support).
-        if hasMesaAsahi then [ pkgs.mesa-asahi-edge ]
-        else if hasMesa then [ pkgs.mesa ]
-        else [ ]
+        if hasMesaAsahi
+        then [pkgs.mesa-asahi-edge]
+        else if hasMesa
+        then [pkgs.mesa]
+        else []
       );
     };
 

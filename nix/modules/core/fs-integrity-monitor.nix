@@ -1,5 +1,9 @@
-{ lib, pkgs, config, ... }:
-let
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}: let
   cfg = config.mySystem.deployment.fsIntegrityMonitor;
   interval = toString cfg.intervalMinutes;
 
@@ -55,15 +59,14 @@ let
       exit 0
     '';
   };
-in
-{
+in {
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ fsIntegrityCheck ];
+    environment.systemPackages = [fsIntegrityCheck];
 
     systemd.services.fs-integrity-monitor = {
       description = "Filesystem Integrity Monitor";
-      after = [ "multi-user.target" ];
-      onFailure = [ "deploy-guardrail-alert@%n.service" ];
+      after = ["multi-user.target"];
+      onFailure = ["deploy-guardrail-alert@%n.service"];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${fsIntegrityCheck}/bin/fs-integrity-check";
@@ -72,7 +75,7 @@ in
 
     systemd.timers.fs-integrity-monitor = {
       description = "Periodic filesystem integrity monitor";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         OnBootSec = "3min";
         OnUnitActiveSec = "${interval}min";

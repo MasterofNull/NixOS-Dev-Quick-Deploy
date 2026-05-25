@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Qualcomm Snapdragon SoC CPU module
 #
@@ -23,11 +28,10 @@
 #   ThinkPad X13s  → inputs.nixos-hardware.nixosModules.lenovo-thinkpad-x13s
 # ---------------------------------------------------------------------------
 let
-  cfg         = config.mySystem;
-  isQualcomm  = cfg.hardware.cpuVendor == "qualcomm";
-  isMobile    = cfg.hardware.isMobile;
-in
-{
+  cfg = config.mySystem;
+  isQualcomm = cfg.hardware.cpuVendor == "qualcomm";
+  isMobile = cfg.hardware.isMobile;
+in {
   config = lib.mkIf isQualcomm {
     # ---- CPU frequency scaling -----------------------------------------------
     # schedutil integrates well with cpufreq-hw (Qualcomm's hardware-accelerated
@@ -40,8 +44,8 @@ in
     # power-profiles-daemon: supported on ACPI-based Snapdragon platforms
     # (Snapdragon X Elite, ThinkPad X13s).  DTB-only boards may not expose
     # the ACPI platform_profile interface — this is a safe default.
-    services.power-profiles-daemon.enable = lib.mkDefault (isMobile);
-    services.tlp.enable = lib.mkIf isMobile (lib.mkForce false);  # conflicts with ppd
+    services.power-profiles-daemon.enable = lib.mkDefault isMobile;
+    services.tlp.enable = lib.mkIf isMobile (lib.mkForce false); # conflicts with ppd
 
     # ---- Boot ---------------------------------------------------------------
     # Snapdragon X Elite and ThinkPad X13s use EFI + systemd-boot.
@@ -60,7 +64,7 @@ in
     #   - mem_sleep_default=s2idle preferred (s2RAM often not fully supported)
     #   - wakeup sources via PMIC GPIO; handled by board-specific nixos-hardware
     boot.kernelParams = lib.mkAfter [
-      "mem_sleep_default=s2idle"  # Qualcomm S2 idle (Connected Standby / AOSP)
+      "mem_sleep_default=s2idle" # Qualcomm S2 idle (Connected Standby / AOSP)
     ];
   };
 }

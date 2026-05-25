@@ -20,7 +20,8 @@ REQUIRED_SNIPPETS = {
     ],
     HARDWARE_LIB: [
         'Supported accelerators:',
-        'else if explicit == "rocm" then',
+        'else if explicit == "rocm"',
+        'then',
         # Container layer falls back to Vulkan (promotion gate enforced by NixOS module)
         '# ROCm is promotion-gated; container layer remaps to vulkan',
     ],

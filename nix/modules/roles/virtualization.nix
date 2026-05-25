@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Virtualization role — KVM/QEMU host support via libvirtd.
 #
@@ -15,20 +20,21 @@ let
   cfg = config.mySystem;
   virtEnabled = cfg.roles.virtualization.enable;
 
-  vmHelper = name: command: pkgs.writeShellScriptBin name ''
-    set -euo pipefail
-    exec ${pkgs.libvirt}/bin/virsh ${command} "$@"
-  '';
-in
-{
+  vmHelper = name: command:
+    pkgs.writeShellScriptBin name ''
+      set -euo pipefail
+      exec ${pkgs.libvirt}/bin/virsh ${command} "$@"
+    '';
+in {
   config = lib.mkIf virtEnabled {
-
     # ---- KVM kernel modules -----------------------------------------------
     # Explicitly load the appropriate KVM module so the health check finds it
     # even on first boot before a reboot has loaded it from hardware-config.
     boot.kernelModules = lib.mkDefault (
-      if cfg.hardware.cpuVendor == "amd"   then [ "kvm_amd"   ]
-      else if cfg.hardware.cpuVendor == "intel" then [ "kvm_intel" ]
+      if cfg.hardware.cpuVendor == "amd"
+      then ["kvm_amd"]
+      else if cfg.hardware.cpuVendor == "intel"
+      then ["kvm_intel"]
       else []
     );
 
@@ -37,7 +43,7 @@ in
       enable = lib.mkDefault true;
       # Keep libvirtd resident to avoid idle-timeout forced shutdowns that can
       # leave the legacy monolithic unit in failed state on some hosts.
-      extraOptions = lib.mkAfter [ "--timeout" "0" ];
+      extraOptions = lib.mkAfter ["--timeout" "0"];
       qemu = {
         # ovmf.enable removed in NixOS 25.11 — OVMF is bundled by default.
         runAsRoot = lib.mkDefault false; # run QEMU as qemu-kvm user
@@ -53,14 +59,14 @@ in
     # ---- Primary user groups ----------------------------------------------
     # lib.mkAfter appends without replacing defaults set in core/users.nix.
     users.users.${cfg.primaryUser}.extraGroups =
-      lib.mkAfter [ "libvirtd" "kvm" ];
+      lib.mkAfter ["libvirtd" "kvm"];
 
     # ---- Extra packages ---------------------------------------------------
     environment.systemPackages = with pkgs; [
-      libvirt      # virsh CLI expected by health checks
-      qemu_kvm     # qemu-system-* binaries for local VM execution
-      virt-viewer  # Display guest VM consoles (VNC/SPICE)
-      spice-gtk    # SPICE client libraries for virt-viewer
+      libvirt # virsh CLI expected by health checks
+      qemu_kvm # qemu-system-* binaries for local VM execution
+      virt-viewer # Display guest VM consoles (VNC/SPICE)
+      spice-gtk # SPICE client libraries for virt-viewer
       (vmHelper "vm-list" "list --all")
       (vmHelper "vm-snapshot" "snapshot-list")
       (pkgs.writeShellScriptBin "vm-create-nixos" ''

@@ -1113,59 +1113,59 @@ in {
   #
   # Skip when VSCodium is running to avoid corrupting the live WAL journal.
   home.activation.pruneHeavyExtensionGlobalState = lib.hm.dag.entryAfter ["linkGeneration"] ''
-    if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
-      echo "[vscodium] codium running — skipping globalStorage pruning (runs on next switch after closing)"
-    else
-      _gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
-      if [ -f "$_gdb" ] && command -v python3 >/dev/null 2>&1; then
-        python3 - "$_gdb" <<'PYEOF'
-import json, sqlite3, sys, pathlib
+        if pgrep -u "$USER" -x codium >/dev/null 2>&1; then
+          echo "[vscodium] codium running — skipping globalStorage pruning (runs on next switch after closing)"
+        else
+          _gdb="$HOME/.config/VSCodium/User/globalStorage/state.vscdb"
+          if [ -f "$_gdb" ] && command -v python3 >/dev/null 2>&1; then
+            python3 - "$_gdb" <<'PYEOF'
+    import json, sqlite3, sys, pathlib
 
-db_path = pathlib.Path(sys.argv[1])
-con = sqlite3.connect(str(db_path))
-cur = con.cursor()
-total_saved = 0
+    db_path = pathlib.Path(sys.argv[1])
+    con = sqlite3.connect(str(db_path))
+    cur = con.cursor()
+    total_saved = 0
 
-def prune_qwen(data):
-    changed = False
-    convs = data.get("conversations", [])
-    if not convs:
+    def prune_qwen(data):
+        changed = False
+        convs = data.get("conversations", [])
+        if not convs:
+            return data, changed
+        before = len(convs)
+        convs = [c for c in convs if isinstance(c, dict) and c.get("messages")]
+        if len(convs) < before:
+            changed = True
+        if len(convs) > 30:
+            convs = sorted(convs, key=lambda c: c.get("updatedAt", 0), reverse=True)[:30]
+            changed = True
+        if changed:
+            data["conversations"] = convs
         return data, changed
-    before = len(convs)
-    convs = [c for c in convs if isinstance(c, dict) and c.get("messages")]
-    if len(convs) < before:
-        changed = True
-    if len(convs) > 30:
-        convs = sorted(convs, key=lambda c: c.get("updatedAt", 0), reverse=True)[:30]
-        changed = True
-    if changed:
-        data["conversations"] = convs
-    return data, changed
 
-for ext_key, fn in [
-    ("qwenlm.qwen-code-vscode-ide-companion", prune_qwen),
-]:
-    cur.execute("SELECT value FROM ItemTable WHERE key=?", (ext_key,))
-    row = cur.fetchone()
-    if not row:
-        continue
-    before = len(row[0])
-    d, changed = fn(json.loads(row[0]))
-    if changed:
-        v = json.dumps(d, separators=(",", ":"))
-        cur.execute("UPDATE ItemTable SET value=? WHERE key=?", (v, ext_key))
-        saved = before - len(v)
-        total_saved += saved
-        print(f"[vscodium] pruned {ext_key}: {before//1024}KB -> {len(v)//1024}KB (saved {saved//1024}KB)")
+    for ext_key, fn in [
+        ("qwenlm.qwen-code-vscode-ide-companion", prune_qwen),
+    ]:
+        cur.execute("SELECT value FROM ItemTable WHERE key=?", (ext_key,))
+        row = cur.fetchone()
+        if not row:
+            continue
+        before = len(row[0])
+        d, changed = fn(json.loads(row[0]))
+        if changed:
+            v = json.dumps(d, separators=(",", ":"))
+            cur.execute("UPDATE ItemTable SET value=? WHERE key=?", (v, ext_key))
+            saved = before - len(v)
+            total_saved += saved
+            print(f"[vscodium] pruned {ext_key}: {before//1024}KB -> {len(v)//1024}KB (saved {saved//1024}KB)")
 
-if total_saved > 0:
-    con.commit()
-    print(f"[vscodium] globalStorage reclaimed: {total_saved//1024}KB total")
-con.close()
-PYEOF
-      fi
-      unset _gdb
-    fi
+    if total_saved > 0:
+        con.commit()
+        print(f"[vscodium] globalStorage reclaimed: {total_saved//1024}KB total")
+    con.close()
+    PYEOF
+          fi
+          unset _gdb
+        fi
   '';
 
   # Install runtime-mutable extensions that write inside their own install dir.
@@ -1322,7 +1322,7 @@ PYEOF
           raw = data.get("geminiCodeAssist.chatThreads")
           if not raw:
               return data, changed
-          
+
           def _safe_load(val):
               if not val: return {}
               if isinstance(val, dict):
@@ -1350,7 +1350,7 @@ PYEOF
               for tid in list(inner.keys()):
                   t = _safe_load(inner[tid])
                   if not isinstance(t, dict): continue
-                  
+
                   hist = t.get("history", [])
                   last_idx = len(hist) - 1
                   for i, msg in enumerate(hist):
@@ -1366,7 +1366,7 @@ PYEOF
                               changed = True
                   inner[tid] = json.dumps(t, separators=(",", ":"))
               outer[account] = json.dumps(inner, separators=(",", ":"))
-          
+
           if changed:
               data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
           return data, changed

@@ -1,8 +1,10 @@
-{ lib, config, ... }:
-let
-  cfg = config.mySystem.disk;
-in
 {
+  lib,
+  config,
+  ...
+}: let
+  cfg = config.mySystem.disk;
+in {
   config = lib.mkIf (cfg.layout == "gpt-efi-ext4") {
     disko.devices = {
       disk.main = {

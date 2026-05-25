@@ -246,3 +246,14 @@ Single source of truth: `nix/modules/core/options.nix`
 | Port options | `nix/modules/core/options.nix` |
 | AI stack wiring | `nix/modules/roles/ai-stack.nix` |
 | Switchboard profiles | `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` |
+| **Domain Instructions** | |
+| osint-systems | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
+| trading-agents | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |
+| mlops-engineering | `.agent/MLOPS-ENGINEERING-INSTRUCTIONS.md` |
+| qa-automation | `.agent/QA-AUTOMATION-INSTRUCTIONS.md` |
+| mobile-web | `.agent/MOBILE-WEB-INSTRUCTIONS.md` |
+| security-systems | `.agent/SECURITY-SYSTEMS-INSTRUCTIONS.md` |
+| systems-software | `.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md` |
+| gis-systems | `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` |
+| embedded-hardware | `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` |
+| scientific-research | `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` |

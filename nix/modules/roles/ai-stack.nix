@@ -111,21 +111,23 @@ let
     else explicit;
 
   rocmTargetFromOverride =
-    if ai.rocmGfxOverride == null then
-      null
-    else
-      let
-        match = builtins.match "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$" ai.rocmGfxOverride;
-      in
-        if match == null then
-          null
-        else
-          "gfx${builtins.elemAt match 0}${builtins.elemAt match 1}${builtins.elemAt match 2}";
+    if ai.rocmGfxOverride == null
+    then null
+    else let
+      match = builtins.match "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$" ai.rocmGfxOverride;
+    in
+      if match == null
+      then null
+      else "gfx${builtins.elemAt match 0}${builtins.elemAt match 1}${builtins.elemAt match 2}";
 
   rocmGpuTargets =
     lib.optional
-      (cfg.hardware.rocmGpuTarget != null || rocmTargetFromOverride != null)
-      (if cfg.hardware.rocmGpuTarget != null then cfg.hardware.rocmGpuTarget else rocmTargetFromOverride);
+    (cfg.hardware.rocmGpuTarget != null || rocmTargetFromOverride != null)
+    (
+      if cfg.hardware.rocmGpuTarget != null
+      then cfg.hardware.rocmGpuTarget
+      else rocmTargetFromOverride
+    );
 
   hasGpuLayersArg =
     lib.any (
@@ -793,22 +795,26 @@ in {
         catalog = llama.modelCatalog // defaultModelCatalog;
         key = llama.activeModel;
         entry = catalog.${key} or null;
-        targetFile = if entry != null then "${dataDir}/models/${entry.file}" else "";
-      in lib.mkIf (entry != null) {
-        text = ''
-          symlink="${dataDir}/models/active.gguf"
-          target="${targetFile}"
-          # Only seed symlink if it does not already point somewhere (first apply).
-          if [ ! -e "$symlink" ] && [ -f "$target" ]; then
-            ln -sf "$target" "$symlink"
-            chown -h llama:llama "$symlink" 2>/dev/null || true
-            echo "llamaCppActiveSymlink: seeded $symlink -> $target"
-          elif [ ! -e "$symlink" ] && [ ! -f "$target" ]; then
-            echo "llamaCppActiveSymlink: target not yet downloaded ($target); symlink deferred"
-          fi
-        '';
-        deps = [];
-      };
+        targetFile =
+          if entry != null
+          then "${dataDir}/models/${entry.file}"
+          else "";
+      in
+        lib.mkIf (entry != null) {
+          text = ''
+            symlink="${dataDir}/models/active.gguf"
+            target="${targetFile}"
+            # Only seed symlink if it does not already point somewhere (first apply).
+            if [ ! -e "$symlink" ] && [ -f "$target" ]; then
+              ln -sf "$target" "$symlink"
+              chown -h llama:llama "$symlink" 2>/dev/null || true
+              echo "llamaCppActiveSymlink: seeded $symlink -> $target"
+            elif [ ! -e "$symlink" ] && [ ! -f "$target" ]; then
+              echo "llamaCppActiveSymlink: target not yet downloaded ($target); symlink deferred"
+            fi
+          '';
+          deps = [];
+        };
     })
 
     # ── Symlink embed model path — runtime embedding model swapping ──────────
@@ -818,21 +824,25 @@ in {
         catalog = ai.embeddingServer.modelCatalog // defaultModelCatalog;
         key = ai.embeddingServer.activeModel;
         entry = catalog.${key} or null;
-        targetFile = if entry != null then "${dataDir}/models/embed-${entry.file}" else "";
-      in lib.mkIf (entry != null) {
-        text = ''
-          symlink="${dataDir}/models/active-embed.gguf"
-          target="${targetFile}"
-          if [ ! -e "$symlink" ] && [ -f "$target" ]; then
-            ln -sf "$target" "$symlink"
-            chown -h llama:llama "$symlink" 2>/dev/null || true
-            echo "llamaCppEmbedActiveSymlink: seeded $symlink -> $target"
-          elif [ ! -e "$symlink" ] && [ ! -f "$target" ]; then
-            echo "llamaCppEmbedActiveSymlink: target not yet downloaded ($target); symlink deferred"
-          fi
-        '';
-        deps = [];
-      };
+        targetFile =
+          if entry != null
+          then "${dataDir}/models/embed-${entry.file}"
+          else "";
+      in
+        lib.mkIf (entry != null) {
+          text = ''
+            symlink="${dataDir}/models/active-embed.gguf"
+            target="${targetFile}"
+            if [ ! -e "$symlink" ] && [ -f "$target" ]; then
+              ln -sf "$target" "$symlink"
+              chown -h llama:llama "$symlink" 2>/dev/null || true
+              echo "llamaCppEmbedActiveSymlink: seeded $symlink -> $target"
+            elif [ ! -e "$symlink" ] && [ ! -f "$target" ]; then
+              echo "llamaCppEmbedActiveSymlink: target not yet downloaded ($target); symlink deferred"
+            fi
+          '';
+          deps = [];
+        };
     })
 
     (lib.mkIf roleEnabled {
@@ -896,10 +906,10 @@ in {
     # nix/pkgs/by-name/ staging area (pending nixpkgs 25.11 inclusion).
     #
     # Note: opencode v1.3.0 has a Bun 1.3.3 bundling bug (undici not defined)
-    # that failed the build-time smoke test. This is patched in our local 
+    # that failed the build-time smoke test. This is patched in our local
     # package definition to allow successful inclusion in systemPackages.
     (lib.mkIf roleEnabled {
-      nixpkgs.overlays = [ 
+      nixpkgs.overlays = [
         (import ../../lib/overlays/opencode.nix)
         (import ../../lib/overlays/osint-tools.nix)
       ];
@@ -1017,15 +1027,20 @@ in {
               "--metrics"
             ]
             ++ (lib.optionals (llama.specType != "") [
-              "--spec-type" llama.specType
-              "--spec-draft-n-max" (toString llama.specDraftNMax)
+              "--spec-type"
+              llama.specType
+              "--spec-draft-n-max"
+              (toString llama.specDraftNMax)
             ])
             # Phase 66.1: KV cache quantization — halves KV RAM on Renoir APU
             # --flash-attn on is required by llama.cpp when KV cache quantization is enabled
             ++ (lib.optionals (llama.kvCacheType != "") [
-              "--flash-attn" "on"
-              "--cache-type-k" llama.kvCacheType
-              "--cache-type-v" llama.kvCacheType
+              "--flash-attn"
+              "on"
+              "--cache-type-k"
+              llama.kvCacheType
+              "--cache-type-v"
+              llama.kvCacheType
             ])
             ++ (lib.optionals llama.mlock ["--mlock"])
             ++ (map lib.escapeShellArg llamaArgs));
@@ -1083,21 +1098,21 @@ in {
                 # keep the model and stamp metadata so future runs are idempotent.
                 # Skip this check if sha256 is not configured (empty string).
                 ${
-                  if hfSha256Valid
-                  then ''
-                    if [ -z "$current_ref" ]; then
-                      existing_sha="$(${pkgs.coreutils}/bin/sha256sum "$model" | ${pkgs.gawk}/bin/awk '{print $1}')"
-                      if [ "$existing_sha" = "${hfSha256}" ]; then
-                        echo "$desired_ref" > "$model_meta"
-                        chown llama:llama "$model_meta"
-                        chmod 0640 "$model_meta"
-                        echo "llama-cpp: model hash matches requested source; metadata recorded"
-                        exit 0
-                      fi
+                if hfSha256Valid
+                then ''
+                  if [ -z "$current_ref" ]; then
+                    existing_sha="$(${pkgs.coreutils}/bin/sha256sum "$model" | ${pkgs.gawk}/bin/awk '{print $1}')"
+                    if [ "$existing_sha" = "${hfSha256}" ]; then
+                      echo "$desired_ref" > "$model_meta"
+                      chown llama:llama "$model_meta"
+                      chmod 0640 "$model_meta"
+                      echo "llama-cpp: model hash matches requested source; metadata recorded"
+                      exit 0
                     fi
-                  ''
-                  else ""
-                }
+                  fi
+                ''
+                else ""
+              }
 
                 # If sha is not pinned, retain an existing manually placed
                 # concrete catalog file and stamp metadata by repo/file ref.

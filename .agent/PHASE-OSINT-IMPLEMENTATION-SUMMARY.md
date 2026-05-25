@@ -1,5 +1,6 @@
 # Phase: OSINT Domain Activation - Research & PRD
 
+**Authors:** Gemini 2.0 Pro (Orchestrator)
 **Date:** 2026-05-24
 **Phase:** OSINT Domain Discovery & Capability Activation
 **Status:** ⟳ PROPOSED (PRD Created)

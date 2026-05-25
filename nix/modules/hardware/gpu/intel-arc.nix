@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Intel Arc discrete GPU module (Xe / Arc A-series, B-series)
 #
@@ -33,8 +38,8 @@
 #     manually via hardware.firmware).
 # ---------------------------------------------------------------------------
 let
-  cfg    = config.mySystem;
-  isArc  = cfg.hardware.gpuVendor == "intel-arc";
+  cfg = config.mySystem;
+  isArc = cfg.hardware.gpuVendor == "intel-arc";
 
   # Detect xe driver availability (kernel 6.8+, NixOS 25.11 uses ≥6.6).
   # On NixOS 25.11, xe may be present but experimental; i915 handles Arc in compat mode.
@@ -46,25 +51,23 @@ let
 
   # intel-media-driver (iHD) VA-API backend for Arc hardware decode.
   hasIHD = builtins.hasAttr "intel-media-driver" pkgs;
-
   # intel-vaapi-driver (i965) — legacy, NOT needed for Arc.
-in
-{
+in {
   config = lib.mkIf isArc {
     # ---- Mesa / Vulkan / OpenGL --------------------------------------------
     hardware.graphics = {
-      enable      = lib.mkDefault true;
-      enable32Bit  = lib.mkDefault true;  # Steam Proton / 32-bit Wine support
+      enable = lib.mkDefault true;
+      enable32Bit = lib.mkDefault true; # Steam Proton / 32-bit Wine support
 
       extraPackages = lib.mkDefault (
-        lib.optionals hasIHD  [ pkgs.intel-media-driver ]  # VA-API (iHD)
-        ++ lib.optionals hasNEO [ pkgs.intel-compute-runtime ]  # OpenCL NEO
-        ++ lib.optionals (pkgs ? intel-ocl) [ pkgs.intel-ocl ]
+        lib.optionals hasIHD [pkgs.intel-media-driver] # VA-API (iHD)
+        ++ lib.optionals hasNEO [pkgs.intel-compute-runtime] # OpenCL NEO
+        ++ lib.optionals (pkgs ? intel-ocl) [pkgs.intel-ocl]
       );
 
       extraPackages32 = lib.mkDefault (
         lib.optionals (pkgs ? pkgsi686Linux && pkgs.pkgsi686Linux ? mesa)
-          [ pkgs.pkgsi686Linux.mesa ]
+        [pkgs.pkgsi686Linux.mesa]
       );
     };
 
@@ -80,13 +83,13 @@ in
     # the DGFX compatibility path.
     #
     # Force xe on 26.05+ where it is stable; on 25.11, i915 compat mode is used.
-    boot.kernelModules = lib.optionals hasXeDriver [ "xe" ];
+    boot.kernelModules = lib.optionals hasXeDriver ["xe"];
 
     # GuC/HuC firmware: required for Arc command submission and video decode.
     # linux-firmware includes the Intel GuC/HuC blobs.
-    hardware.enableAllFirmware = lib.mkDefault false;  # too broad; prefer selective
+    hardware.enableAllFirmware = lib.mkDefault false; # too broad; prefer selective
     hardware.firmware = lib.mkDefault (
-      lib.optionals (pkgs ? linux-firmware) [ pkgs.linux-firmware ]
+      lib.optionals (pkgs ? linux-firmware) [pkgs.linux-firmware]
     );
 
     # ---- Performance / power tuning ----------------------------------------

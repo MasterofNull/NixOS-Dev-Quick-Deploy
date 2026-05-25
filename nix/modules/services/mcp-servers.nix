@@ -57,10 +57,11 @@ let
   repoSource =
     if mcp.flakeRepoPath != null
     then mcp.flakeRepoPath
-    else builtins.path {
-      path = mcp.repoPath;
-      name = "nixos-quick-deploy-repo";
-    };
+    else
+      builtins.path {
+        path = mcp.repoPath;
+        name = "nixos-quick-deploy-repo";
+      };
 
   repoMcp = "${toString repoSource}/ai-stack/mcp-servers";
   repoAiStack = "${toString repoSource}/ai-stack";
@@ -679,18 +680,18 @@ in {
         ]
         # Collision guard: security/npm is already declared above with auditUser (line 655).
         # Only add a d-rule for npm-security paths that land OUTSIDE the pre-declared subtree.
-        ++ map (path: "d ${path} 0750 ${svcUser} ${aiGroup} -") (lib.subtractLists
-            [ "${dataDir}/security/npm" "${dataDir}/security" ]
-            (lib.unique [
-              (builtins.dirOf cfg.deployment.npmSecurity.quarantineStateFile)
-              (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
-            ])
-          )
+        ++ map (path: "d ${path} 0750 ${svcUser} ${aiGroup} -") (
+          lib.subtractLists
+          ["${dataDir}/security/npm" "${dataDir}/security"]
+          (lib.unique [
+            (builtins.dirOf cfg.deployment.npmSecurity.quarantineStateFile)
+            (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
+          ])
+        )
         ++ map (root: "d ${root} 0750 ${svcUser} ${aiGroup} -") runtimeWorkspaceRoots;
     })
 
     (lib.mkIf active {
-
       # ── Firewall: expose MCP ports on LAN when requested ───────────────────
       # embeddingsPort (:8001) omitted — embeddings served by llama-cpp-embed.
       networking.firewall.allowedTCPPorts = lib.mkIf ai.listenOnLan [
@@ -1020,7 +1021,7 @@ in {
         after = hybridDeps;
         requires = hybridDeps;
         wants = ["network-online.target"];
-        path = [ pkgs.nsjail ]; # Phase 62.1: nsjail execution sandbox
+        path = [pkgs.nsjail]; # Phase 62.1: nsjail execution sandbox
         serviceConfig =
           commonServiceConfig
           // {
@@ -1144,8 +1145,16 @@ in {
                 "AI_CAPABILITY_DISCOVERY_ON_QUERY=true"
                 # Speculative decoding state — reflects llama.cpp --spec-type draft-mtp launch flag.
                 # Coordinator scorecard reads this to report speculative_decoding_enabled correctly.
-                "AI_SPECULATIVE_DECODING_ENABLED=${if llama.specType != "" then "true" else "false"}"
-                "AI_SPECULATIVE_DECODING_MODE=${if llama.specType != "" then llama.specType else "draft-model"}"
+                "AI_SPECULATIVE_DECODING_ENABLED=${
+                  if llama.specType != ""
+                  then "true"
+                  else "false"
+                }"
+                "AI_SPECULATIVE_DECODING_MODE=${
+                  if llama.specType != ""
+                  then llama.specType
+                  else "draft-model"
+                }"
                 "LLAMA_SPEC_DRAFT_N_MAX=${toString llama.specDraftNMax}"
                 "AI_SEMANTIC_TOOLING_AUTORUN=${
                   if ai.aiHarness.runtime.semanticToolingAutorun
@@ -1622,14 +1631,7 @@ in {
           User = auditUser;
           Group = aiGroup;
           WorkingDirectory = dataDir;
-          ExecStart = lib.escapeShellArgs [
-            "${pkgs.bash}/bin/bash"
-            "${toString repoSource}/scripts/security/npm-security-monitor.sh"
-            "--repo-root"
-            (toString repoSource)
-            "--output-dir"
-            "${dataDir}/security/npm"
-          ];
+          ExecStart = "${pkgs.bash}/bin/bash" + " " + "${repoSource}/scripts/security/npm-security-monitor.sh" + " --repo-root " + "${repoSource}" + " --output-dir ${dataDir}/security/npm";
           ReadOnlyPaths = ["/"];
           # Keep namespace requirements stable by anchoring writes to dataDir.
           # Per-path confinement is still preserved by service logic + assertions.
@@ -1704,16 +1706,16 @@ in {
           PrivateNetwork = false;
           SystemCallFilter = ["@system-service" "~@privileged"];
           MemoryMax = "1G";
-          TimeoutStartSec = "10800";  # 3h: 7700+ chunks × 1.0s/chunk = ~128 min; 3h gives headroom for slow embed
+          TimeoutStartSec = "10800"; # 3h: 7700+ chunks × 1.0s/chunk = ~128 min; 3h gives headroom for slow embed
           StandardOutput = "journal";
           StandardError = "journal";
         };
         environment = {
-          REPO_ROOT         = mcp.repoPath;
-          AIDB_URL          = "http://127.0.0.1:${toString mcp.aidbPort}";
+          REPO_ROOT = mcp.repoPath;
+          AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
           AIDB_API_KEY_FILE = "/run/secrets/aidb_api_key";
-          INGEST_DELAY      = cfg.deployment.aidbReindex.projectKnowledgeDelay;
-          REINDEX_OUTPUT    = "${dataDir}/hybrid/telemetry/aidb-reindex-latest.json";
+          INGEST_DELAY = cfg.deployment.aidbReindex.projectKnowledgeDelay;
+          REINDEX_OUTPUT = "${dataDir}/hybrid/telemetry/aidb-reindex-latest.json";
         };
       };
 
@@ -1737,7 +1739,7 @@ in {
       systemd.services.ai-crystallize-sessions = {
         description = "Crystallize Continue sessions into AIDB episodic memory";
         restartIfChanged = false;
-        path = with pkgs; [ bash coreutils curl findutils python3 ];
+        path = with pkgs; [bash coreutils curl findutils python3];
         after = [
           "network-online.target"
           "ai-hybrid-coordinator.service"
@@ -1745,14 +1747,16 @@ in {
         wants = ["network-online.target" "ai-hybrid-coordinator.service"];
         serviceConfig = {
           Type = "oneshot";
-          User = "hyperd";   # needs ~/.continue/sessions access
+          User = "hyperd"; # needs ~/.continue/sessions access
           Group = aiGroup;
           WorkingDirectory = "/home/hyperd";
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
             "${mcp.repoPath}/scripts/ai/aq-crystallize"
-            "--session-dir" "/home/hyperd/.continue/sessions"
-            "--since-hours" "25"   # process sessions from last 25h (overlap buffer)
+            "--session-dir"
+            "/home/hyperd/.continue/sessions"
+            "--since-hours"
+            "25" # process sessions from last 25h (overlap buffer)
           ];
           PrivateTmp = true;
           PrivateNetwork = false;
@@ -2121,7 +2125,7 @@ in {
     # Both profiles drafted in .agent/collaboration/GEMINI-PHASE-65-REVIEW.md.
     (lib.mkIf active {
       security.apparmor.policies."ai-hybrid-coordinator" = {
-        state = "complain";   # Phase 66.3: audit mode — switch to "enforce" post-soak
+        state = "complain"; # Phase 66.3: audit mode — switch to "enforce" post-soak
         profile = ''
           #include <tunables/global>
           # Phase 66.3 — ai-hybrid-coordinator: hybrid MCP + HTTP coordinator
@@ -2180,7 +2184,7 @@ in {
       };
 
       security.apparmor.policies."command-center-dashboard-api" = {
-        state = "complain";   # Phase 66.3: audit mode — switch to "enforce" post-soak
+        state = "complain"; # Phase 66.3: audit mode — switch to "enforce" post-soak
         profile = ''
           #include <tunables/global>
           # Phase 66.3 — command-center-dashboard-api: dashboard FastAPI backend

@@ -37,8 +37,7 @@
 #
 # To add a new host: run scripts/governance/discover-system-facts.sh which auto-detects
 # CPU/GPU vendor and writes the correct values to nix/hosts/<host>/facts.nix.
-{ ... }:
-{
+{...}: {
   imports = [
     # ── CPU modules ─────────────────────────────────────────────────────────
     ./cpu/amd.nix

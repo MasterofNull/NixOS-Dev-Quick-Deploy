@@ -1,10 +1,13 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   sec = cfg.secrets;
   swb = cfg.aiStack.switchboard;
   secretsOwner = cfg.primaryUser;
-  secretsGroup = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] "users" config;
+  secretsGroup = lib.attrByPath ["users" "users" cfg.primaryUser "group"] "users" config;
   # External string paths (for strict zero-secrets-in-repo) cannot be
   # reliably validated at flake evaluation time. Validate only when this is
   # a Nix path literal; otherwise defer existence checks to deploy/bootstrap.
@@ -15,8 +18,7 @@ let
   repoLocalSopsPath = builtins.match ".*/nix/hosts/[^/]+/secrets\\.sops\\.ya?ml$" sec.sopsFile != null;
   needsRemoteLlmSecret = swb.enable && swb.remoteUrl != null && swb.remoteApiKeyFile == null;
   needsCrowdsecSecret = cfg.security.crowdsec.enable && cfg.security.crowdsec.enableFirewallBouncer;
-in
-{
+in {
   config = lib.mkIf sec.enable {
     assertions = [
       {
@@ -51,20 +53,61 @@ in
       secrets = let
         aiGroup = "ai-stack";
         aiSvcOwner = "root";
-        aiSvcGroup = if cfg.roles.aiStack.enable then aiGroup else secretsGroup;
-        aiSvcMode = if cfg.roles.aiStack.enable then "0440" else "0400";
-      in {
-        "${sec.names.aidbApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-        "${sec.names.hybridApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-        "${sec.names.embeddingsApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-        "${sec.names.postgresPassword}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-        "${sec.names.redisPassword}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-        "${sec.names.aiderWrapperApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-      } // lib.optionalAttrs needsRemoteLlmSecret {
-        "${sec.names.remoteLlmApiKey}" = { mode = aiSvcMode; owner = aiSvcOwner; group = aiSvcGroup; };
-      } // lib.optionalAttrs needsCrowdsecSecret {
-        "${sec.names.crowdsecBouncerApiKey}" = { mode = "0400"; owner = "root"; group = "root"; };
-      };
+        aiSvcGroup =
+          if cfg.roles.aiStack.enable
+          then aiGroup
+          else secretsGroup;
+        aiSvcMode =
+          if cfg.roles.aiStack.enable
+          then "0440"
+          else "0400";
+      in
+        {
+          "${sec.names.aidbApiKey}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+          "${sec.names.hybridApiKey}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+          "${sec.names.embeddingsApiKey}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+          "${sec.names.postgresPassword}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+          "${sec.names.redisPassword}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+          "${sec.names.aiderWrapperApiKey}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+        }
+        // lib.optionalAttrs needsRemoteLlmSecret {
+          "${sec.names.remoteLlmApiKey}" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
+        }
+        // lib.optionalAttrs needsCrowdsecSecret {
+          "${sec.names.crowdsecBouncerApiKey}" = {
+            mode = "0400";
+            owner = "root";
+            group = "root";
+          };
+        };
     };
   };
 }

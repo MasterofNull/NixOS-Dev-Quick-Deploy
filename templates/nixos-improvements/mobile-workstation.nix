@@ -24,13 +24,16 @@
 #
 # Note: This module uses lib.mkDefault extensively so values can be
 # overridden in your main configuration.nix
-
-{ config, pkgs, lib, ... }:
-
-let
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}: let
   # Detect if this is likely a laptop/mobile system
-  isLaptop = builtins.pathExists "/sys/class/power_supply/BAT0"
-          || builtins.pathExists "/sys/class/power_supply/BAT1";
+  isLaptop =
+    builtins.pathExists "/sys/class/power_supply/BAT0"
+    || builtins.pathExists "/sys/class/power_supply/BAT1";
 
   # Detect AMD CPU/GPU
   hasAmdCpu = config.hardware.cpu.amd.updateMicrocode or false;
@@ -40,8 +43,7 @@ let
   # - true = use power-profiles-daemon (COSMIC/GNOME GUI integration)
   # - false = use TLP (more advanced, CLI-based)
   useCOSMICPowerManagement = true;
-in
-{
+in {
   # =========================================================================
   # Power Profiles Daemon - GUI Power Management (COSMIC/GNOME)
   # =========================================================================
@@ -64,53 +66,53 @@ in
       # CPU Governor
       CPU_SCALING_GOVERNOR_ON_AC = "performance";
       CPU_SCALING_GOVERNOR_ON_BAT = "powersave";
-      
+
       # CPU Turbo Boost
       CPU_BOOST_ON_AC = 1;
       CPU_BOOST_ON_BAT = 0;
-      
+
       # CPU Energy Performance Preference (AMD/Intel)
       CPU_ENERGY_PERF_POLICY_ON_AC = "performance";
       CPU_ENERGY_PERF_POLICY_ON_BAT = "power";
-      
+
       # Platform Profile (AMD specific - performance/balanced/low-power)
       PLATFORM_PROFILE_ON_AC = "performance";
       PLATFORM_PROFILE_ON_BAT = "low-power";
-      
+
       # WiFi Power Saving
       WIFI_PWR_ON_AC = "off";
       WIFI_PWR_ON_BAT = "on";
-      
+
       # USB Autosuspend
       USB_AUTOSUSPEND = 1;
-      USB_EXCLUDE_BTUSB = 1;  # Don't suspend Bluetooth
-      USB_EXCLUDE_PHONE = 1;  # Don't suspend phones (charging)
-      
+      USB_EXCLUDE_BTUSB = 1; # Don't suspend Bluetooth
+      USB_EXCLUDE_PHONE = 1; # Don't suspend phones (charging)
+
       # PCIe ASPM (Active State Power Management)
       PCIE_ASPM_ON_AC = "default";
       PCIE_ASPM_ON_BAT = "powersupersave";
-      
+
       # Runtime Power Management for PCIe devices
       RUNTIME_PM_ON_AC = "on";
       RUNTIME_PM_ON_BAT = "auto";
-      
+
       # SATA Link Power Management
       SATA_LINKPWR_ON_AC = "med_power_with_dipm";
       SATA_LINKPWR_ON_BAT = "min_power";
-      
+
       # NVMe Runtime Power Management
       AHCI_RUNTIME_PM_ON_AC = "on";
       AHCI_RUNTIME_PM_ON_BAT = "auto";
-      
+
       # Screen Brightness (0-100)
       # Uncomment and adjust if you want TLP to manage brightness
       # BRIGHTNESS_ON_AC = 100;
       # BRIGHTNESS_ON_BAT = 50;
-      
+
       # Sound Power Management
       SOUND_POWER_SAVE_ON_AC = 0;
       SOUND_POWER_SAVE_ON_BAT = 1;
-      
+
       # Battery Charge Thresholds (if supported by hardware)
       # Helps prolong battery lifespan by not charging to 100%
       # Uncomment if your laptop supports it (ThinkPad, some ASUS, etc.)
@@ -134,7 +136,7 @@ in
   # UPower - Battery Monitoring
   # =========================================================================
   # Required for battery status in desktop environments
-  
+
   services.upower = {
     enable = lib.mkDefault true;
     # Action when battery is critically low
@@ -148,7 +150,7 @@ in
   # =========================================================================
   # Lid Close & Suspend Handling
   # =========================================================================
-  
+
   # NOTE: logind lid/power-key tuning was removed here because nixpkgs option
   # paths changed between pinned revisions (`settings.Login` vs `extraConfig`).
   # Keep module evaluation stable across releases and rely on upstream defaults.
@@ -171,39 +173,38 @@ in
   # =========================================================================
   # AMD iGPU Optimizations
   # =========================================================================
-  
+
   # AMD CPU/GPU kernel tuning
   # Keep defaults conservative to avoid boot regressions from aggressive
   # amdgpu tuning flags. CPU pstate remains enabled for AMD CPUs.
-  boot.kernelParams =
-    lib.optionals hasAmdCpu [
-      "amd_pstate=active"  # Use AMD P-State driver (Zen 2+)
-    ];
-  
+  boot.kernelParams = lib.optionals hasAmdCpu [
+    "amd_pstate=active" # Use AMD P-State driver (Zen 2+)
+  ];
+
   # Enable AMD GPU overclocking/undervolting support
   hardware.amdgpu.overdrive.enable = lib.mkDefault hasAmdGpu;
-  
+
   # Hardware video acceleration for AMD
   hardware.graphics = {
     enable = lib.mkDefault true;
-    enable32Bit = lib.mkDefault true;  # For 32-bit games/apps
+    enable32Bit = lib.mkDefault true; # For 32-bit games/apps
   };
-  
+
   # ROCm OpenCL for AMD GPUs (AI/ML compute)
   hardware.amdgpu.opencl.enable = lib.mkDefault hasAmdGpu;
 
   # =========================================================================
   # Network Optimizations for Mobile
   # =========================================================================
-  
+
   networking.networkmanager = {
     # WiFi power saving
     wifi.powersave = lib.mkDefault true;
-    
+
     # WiFi backend (iwd is faster and more efficient than wpa_supplicant)
     wifi.backend = lib.mkDefault "iwd";
   };
-  
+
   # Enable iwd (Intel Wireless Daemon) for better WiFi performance
   networking.wireless.iwd = {
     enable = lib.mkDefault true;
@@ -227,10 +228,10 @@ in
   # =========================================================================
   # Bluetooth Power Management
   # =========================================================================
-  
+
   hardware.bluetooth = {
     enable = lib.mkDefault true;
-    powerOnBoot = lib.mkDefault false;  # Save power, enable manually
+    powerOnBoot = lib.mkDefault false; # Save power, enable manually
     settings = {
       General = {
         # Fast connect for known devices
@@ -255,21 +256,21 @@ in
 
   # Enable power management
   powerManagement.enable = lib.mkDefault true;
-  powerManagement.powertop.enable = lib.mkDefault false;  # Can interfere with power-profiles-daemon
+  powerManagement.powertop.enable = lib.mkDefault false; # Can interfere with power-profiles-daemon
 
   # =========================================================================
   # Backlight Control
   # =========================================================================
-  
+
   # Allow users to control screen brightness
   programs.light.enable = lib.mkDefault true;
-  
+
   # Alternative: brightnessctl
   environment.systemPackages = with pkgs; [
-    brightnessctl       # CLI brightness control
-    powertop            # Power consumption analyzer
-    acpi                # Battery status CLI
-    lm_sensors          # Hardware sensors
+    brightnessctl # CLI brightness control
+    powertop # Power consumption analyzer
+    acpi # Battery status CLI
+    lm_sensors # Hardware sensors
   ];
 
   # =========================================================================
@@ -290,7 +291,7 @@ in
   # =========================================================================
   # Documentation
   # =========================================================================
-  
+
   environment.etc."nixos/MOBILE-WORKSTATION.txt".text = ''
     ==========================================
     NixOS Mobile Workstation Optimizations
@@ -351,24 +352,24 @@ in
     3. Reduce screen brightness on battery
     4. Close unused applications
     5. Enable WiFi power saving (auto-enabled on battery)
-    
+
     AMD iGPU:
     ---------
     - Using RADV (Vulkan) driver
     - VA-API via radeonsi
     - ROCm for compute (if enabled)
     - P-State driver for efficient frequency scaling
-    
+
     TROUBLESHOOTING:
     ----------------
     If battery drain is high:
       $ sudo powertop --auto-tune
       $ tlp-stat -b  # Check battery health
-    
+
     If WiFi is slow:
       $ iwd  # Check iwd status
       $ nmcli connection show
-    
+
     ==========================================
     Configuration: mobile-workstation.nix
     ==========================================

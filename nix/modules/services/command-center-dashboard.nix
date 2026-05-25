@@ -1,5 +1,9 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   ports = cfg.ports;
   mon = cfg.monitoring;
@@ -7,7 +11,7 @@ let
   mcp = cfg.mcpServers;
   sec = cfg.secrets;
   svcUser = cfg.primaryUser;
-  svcGroup = lib.attrByPath [ "users" "users" svcUser "group" ] "users" config;
+  svcGroup = lib.attrByPath ["users" "users" svcUser "group"] "users" config;
   secretPath = name: config.sops.secrets.${name}.path;
   hybridApiKeySecret = sec.names.hybridApiKey;
 
@@ -15,18 +19,19 @@ let
   dashboardBackendRoot = "${dashboardRoot}/dashboard/backend";
   dashboardPublicDir = "${dashboardRoot}/dashboard/public";
 
-  dashboardPython = pkgs.python3.withPackages (ps: with ps; [
-    fastapi
-    uvicorn
-    pydantic
-    pydantic-settings
-    python-dotenv
-    websockets
-    psutil
-    aiofiles
-    aiohttp
-    asyncpg
-  ]);
+  dashboardPython = pkgs.python3.withPackages (ps:
+    with ps; [
+      fastapi
+      uvicorn
+      pydantic
+      pydantic-settings
+      python-dotenv
+      websockets
+      psutil
+      aiofiles
+      aiohttp
+      asyncpg
+    ]);
   dashboardPathPackages = [
     pkgs.bash
     pkgs.coreutils
@@ -42,8 +47,7 @@ let
     pkgs.sudo
     pkgs.systemd
   ];
-in
-{
+in {
   config = lib.mkIf (mon.enable && cc.enable) {
     # ── Sudo rules for firewall management ──────────────────────────────────────
     # The dashboard provides operator controls for captive portal bypass and
@@ -51,28 +55,67 @@ in
     # tightly scoped to specific commands.
     security.sudo.extraRules = [
       {
-        users = [ svcUser ];
+        users = [svcUser];
         commands = [
           # nftables: list and modify firewall rules (captive portal bypass)
-          { command = "${pkgs.nftables}/bin/nft"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.nftables}/bin/nft";
+            options = ["NOPASSWD"];
+          }
           # CrowdSec bouncer control (pause/resume for portal login)
-          { command = "${pkgs.systemd}/bin/systemctl start crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
-          { command = "${pkgs.systemd}/bin/systemctl stop crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
-          { command = "${pkgs.systemd}/bin/systemctl restart crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
-          { command = "${pkgs.systemd}/bin/systemctl is-active crowdsec-firewall-bouncer"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.systemd}/bin/systemctl start crowdsec-firewall-bouncer";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl stop crowdsec-firewall-bouncer";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl restart crowdsec-firewall-bouncer";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl is-active crowdsec-firewall-bouncer";
+            options = ["NOPASSWD"];
+          }
           # NixOS firewall reset (restore declarative rules)
-          { command = "${pkgs.systemd}/bin/systemctl restart firewall"; options = [ "NOPASSWD" ]; }
-          { command = "${pkgs.systemd}/bin/systemctl is-active firewall"; options = [ "NOPASSWD" ]; }
-          { command = "${pkgs.systemd}/bin/systemctl is-active nftables"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.systemd}/bin/systemctl restart firewall";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl is-active firewall";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl is-active nftables";
+            options = ["NOPASSWD"];
+          }
           # CrowdSec CLI for decision management (view/remove blocked IPs)
-          { command = "${pkgs.crowdsec}/bin/cscli"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.crowdsec}/bin/cscli";
+            options = ["NOPASSWD"];
+          }
           # iptables fallback (read-only listing)
-          { command = "${pkgs.iptables}/bin/iptables -L *"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.iptables}/bin/iptables -L *";
+            options = ["NOPASSWD"];
+          }
           # llama-cpp model hot-swap (restart service to load new model)
-          { command = "${pkgs.systemd}/bin/systemctl restart llama-cpp"; options = [ "NOPASSWD" ]; }
-          { command = "${pkgs.systemd}/bin/systemctl is-active llama-cpp"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.systemd}/bin/systemctl restart llama-cpp";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl is-active llama-cpp";
+            options = ["NOPASSWD"];
+          }
           # llama-cpp model symlink update (swap active model without rebuild)
-          { command = "${pkgs.coreutils}/bin/ln -sf /var/lib/llama-cpp/models/* /var/lib/llama-cpp/models/active.gguf"; options = [ "NOPASSWD" ]; }
+          {
+            command = "${pkgs.coreutils}/bin/ln -sf /var/lib/llama-cpp/models/* /var/lib/llama-cpp/models/active.gguf";
+            options = ["NOPASSWD"];
+          }
         ];
       }
     ];
@@ -100,17 +143,19 @@ in
     # dashboard/public application mounted by the backend.
     systemd.services.command-center-dashboard-api = {
       description = "NixOS Command Center Dashboard API";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       path = dashboardPathPackages;
-      after = [ "network-online.target" "prometheus.service" ]
-        ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
-      wants = [ "network-online.target" "prometheus.service" ]
-        ++ lib.optionals cfg.roles.aiStack.enable [ "ai-stack.target" ];
+      after =
+        ["network-online.target" "prometheus.service"]
+        ++ lib.optionals cfg.roles.aiStack.enable ["ai-stack.target"];
+      wants =
+        ["network-online.target" "prometheus.service"]
+        ++ lib.optionals cfg.roles.aiStack.enable ["ai-stack.target"];
       serviceConfig = {
         Type = "simple";
         User = svcUser;
         Group = svcGroup;
-        SupplementaryGroups = [ "llama" "ai-stack" ];
+        SupplementaryGroups = ["llama" "ai-stack"];
         Restart = "on-failure";
         RestartSec = "5s";
         WorkingDirectory = dashboardBackendRoot;
@@ -121,7 +166,7 @@ in
         NoNewPrivileges = false;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadOnlyPaths = [ dashboardRoot ];
+        ReadOnlyPaths = [dashboardRoot];
         ReadWritePaths = [
           cc.dataDir
           "/tmp"
@@ -130,65 +175,67 @@ in
           "${dashboardRoot}/data"
         ];
       };
-      environment = {
-        SERVICE_HOST = "127.0.0.1";
-        PROMETHEUS_PORT = toString mon.prometheusPort;
-        OTEL_COLLECTOR_HEALTH_PORT = toString ports.otelCollectorHealth;
-        DASHBOARD_API_BIND_ADDRESS = cc.bindAddress;
-        DASHBOARD_API_PORT = toString cc.apiPort;
-        DASHBOARD_MODE = "systemd";
-        DASHBOARD_EXPOSE_HOSTNAME = "false";
-        DASHBOARD_HOSTNAME_ALIAS = "local-node";
-        DASHBOARD_FRONTEND_DIST = dashboardPublicDir;
-        DASHBOARD_CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss:; script-src 'self' 'unsafe-inline' https://unpkg.com https://d3js.org https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com";
-        DASHBOARD_RATE_LIMIT_ENABLED = "true";
-        DASHBOARD_RATE_LIMIT_WINDOW_SECONDS = "60";
-        DASHBOARD_RATE_LIMIT_DEFAULT_RPM = "240";
-        DASHBOARD_RATE_LIMIT_HEALTH_RPM = "120";
-        DASHBOARD_RATE_LIMIT_SEARCH_RPM = "90";
-        DASHBOARD_RATE_LIMIT_OPERATOR_WRITE_RPM = "30";
-        DASHBOARD_OPERATOR_AUDIT_LOG_PATH = "${cc.dataDir}/telemetry/operator-audit.jsonl";
-        DASHBOARD_DATA_DIR = "${cc.dataDir}";
-        DASHBOARD_CONTEXT_DB_PATH = "${cc.dataDir}/telemetry/deployments-context.db";
-        MODEL_REGISTRY_PATH = "${cc.dataDir}/model-registry.json";
-        MODEL_STAGING_DIR = "${cc.dataDir}/model-downloads";
-        MODEL_DIR = "/var/lib/llama-cpp/models";
-        LLAMA_CPP_HEALTH_URL = "http://127.0.0.1:${toString cfg.aiStack.llamaCpp.port}/health";
-        XDG_CACHE_HOME = "${cc.dataDir}/cache";
-        AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
-        HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
-        RALPH_URL = "http://127.0.0.1:${toString mcp.ralphPort}";
-        QDRANT_URL = "http://127.0.0.1:${toString ports.qdrantHttp}";
-        LLAMA_URL = "http://127.0.0.1:${toString cfg.aiStack.llamaCpp.port}";
-        EMBEDDINGS_URL = "http://127.0.0.1:${toString cfg.aiStack.embeddingServer.port}";
-        SWITCHBOARD_URL = "http://127.0.0.1:${toString cfg.aiStack.switchboard.port}";
-        AIDER_WRAPPER_URL = "http://127.0.0.1:${toString mcp.aiderWrapperPort}";
-        NIXOS_DOCS_URL = "http://127.0.0.1:${toString mcp.nixosDocsPort}";
-        EMBEDDINGS_PORT = toString cfg.aiStack.embeddingServer.port;
-        SWITCHBOARD_PORT = toString cfg.aiStack.switchboard.port;
-        EMBEDDING_DIMENSIONS = toString cfg.aiStack.embeddingDimensions;
-        POSTGRES_PORT = toString ports.postgres;
-        AIDB_DB_USER = mcp.postgres.user;
-        AIDB_DB_NAME = mcp.postgres.database;
-        BASH_BIN = "${pkgs.bash}/bin/bash";
-        PRSI_ACTION_QUEUE_PATH = "${cc.dataDir}/telemetry/prsi-action-queue.json";
-        PRSI_ACTIONS_LOG_PATH = "${cc.dataDir}/telemetry/prsi-actions.jsonl";
-        PRSI_POLICY_FILE = "${mcp.repoPath}/config/runtime-prsi-policy.json";
-        PRSI_STATE_PATH = "${cc.dataDir}/telemetry/prsi-runtime-state.json";
-        OPTIMIZER_OVERRIDES_ENV = "${cc.dataDir}/telemetry/optimizer-overrides.env";
-        OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
-        AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";
-        AI_NPM_SECURITY_DIR = "${mcp.dataDir}/security/npm";
-        SUDO_BIN = "/run/wrappers/bin/sudo";
-        SYSTEMCTL_BIN = "${pkgs.systemd}/bin/systemctl";
-        NFT_BIN = "${pkgs.nftables}/bin/nft";
-        CSCLI_BIN = "${pkgs.crowdsec}/bin/cscli";
-        IPTABLES_BIN = "${pkgs.iptables}/bin/iptables";
-      } // lib.optionalAttrs sec.enable {
-        AIDER_WRAPPER_API_KEY_FILE = secretPath sec.names.aiderWrapperApiKey;
-        HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
-        POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;
-      };
+      environment =
+        {
+          SERVICE_HOST = "127.0.0.1";
+          PROMETHEUS_PORT = toString mon.prometheusPort;
+          OTEL_COLLECTOR_HEALTH_PORT = toString ports.otelCollectorHealth;
+          DASHBOARD_API_BIND_ADDRESS = cc.bindAddress;
+          DASHBOARD_API_PORT = toString cc.apiPort;
+          DASHBOARD_MODE = "systemd";
+          DASHBOARD_EXPOSE_HOSTNAME = "false";
+          DASHBOARD_HOSTNAME_ALIAS = "local-node";
+          DASHBOARD_FRONTEND_DIST = dashboardPublicDir;
+          DASHBOARD_CSP = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss:; script-src 'self' 'unsafe-inline' https://unpkg.com https://d3js.org https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com";
+          DASHBOARD_RATE_LIMIT_ENABLED = "true";
+          DASHBOARD_RATE_LIMIT_WINDOW_SECONDS = "60";
+          DASHBOARD_RATE_LIMIT_DEFAULT_RPM = "240";
+          DASHBOARD_RATE_LIMIT_HEALTH_RPM = "120";
+          DASHBOARD_RATE_LIMIT_SEARCH_RPM = "90";
+          DASHBOARD_RATE_LIMIT_OPERATOR_WRITE_RPM = "30";
+          DASHBOARD_OPERATOR_AUDIT_LOG_PATH = "${cc.dataDir}/telemetry/operator-audit.jsonl";
+          DASHBOARD_DATA_DIR = "${cc.dataDir}";
+          DASHBOARD_CONTEXT_DB_PATH = "${cc.dataDir}/telemetry/deployments-context.db";
+          MODEL_REGISTRY_PATH = "${cc.dataDir}/model-registry.json";
+          MODEL_STAGING_DIR = "${cc.dataDir}/model-downloads";
+          MODEL_DIR = "/var/lib/llama-cpp/models";
+          LLAMA_CPP_HEALTH_URL = "http://127.0.0.1:${toString cfg.aiStack.llamaCpp.port}/health";
+          XDG_CACHE_HOME = "${cc.dataDir}/cache";
+          AIDB_URL = "http://127.0.0.1:${toString mcp.aidbPort}";
+          HYBRID_URL = "http://127.0.0.1:${toString mcp.hybridPort}";
+          RALPH_URL = "http://127.0.0.1:${toString mcp.ralphPort}";
+          QDRANT_URL = "http://127.0.0.1:${toString ports.qdrantHttp}";
+          LLAMA_URL = "http://127.0.0.1:${toString cfg.aiStack.llamaCpp.port}";
+          EMBEDDINGS_URL = "http://127.0.0.1:${toString cfg.aiStack.embeddingServer.port}";
+          SWITCHBOARD_URL = "http://127.0.0.1:${toString cfg.aiStack.switchboard.port}";
+          AIDER_WRAPPER_URL = "http://127.0.0.1:${toString mcp.aiderWrapperPort}";
+          NIXOS_DOCS_URL = "http://127.0.0.1:${toString mcp.nixosDocsPort}";
+          EMBEDDINGS_PORT = toString cfg.aiStack.embeddingServer.port;
+          SWITCHBOARD_PORT = toString cfg.aiStack.switchboard.port;
+          EMBEDDING_DIMENSIONS = toString cfg.aiStack.embeddingDimensions;
+          POSTGRES_PORT = toString ports.postgres;
+          AIDB_DB_USER = mcp.postgres.user;
+          AIDB_DB_NAME = mcp.postgres.database;
+          BASH_BIN = "${pkgs.bash}/bin/bash";
+          PRSI_ACTION_QUEUE_PATH = "${cc.dataDir}/telemetry/prsi-action-queue.json";
+          PRSI_ACTIONS_LOG_PATH = "${cc.dataDir}/telemetry/prsi-actions.jsonl";
+          PRSI_POLICY_FILE = "${mcp.repoPath}/config/runtime-prsi-policy.json";
+          PRSI_STATE_PATH = "${cc.dataDir}/telemetry/prsi-runtime-state.json";
+          OPTIMIZER_OVERRIDES_ENV = "${cc.dataDir}/telemetry/optimizer-overrides.env";
+          OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
+          AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";
+          AI_NPM_SECURITY_DIR = "${mcp.dataDir}/security/npm";
+          SUDO_BIN = "/run/wrappers/bin/sudo";
+          SYSTEMCTL_BIN = "${pkgs.systemd}/bin/systemctl";
+          NFT_BIN = "${pkgs.nftables}/bin/nft";
+          CSCLI_BIN = "${pkgs.crowdsec}/bin/cscli";
+          IPTABLES_BIN = "${pkgs.iptables}/bin/iptables";
+        }
+        // lib.optionalAttrs sec.enable {
+          AIDER_WRAPPER_API_KEY_FILE = secretPath sec.names.aiderWrapperApiKey;
+          HYBRID_API_KEY_FILE = secretPath hybridApiKeySecret;
+          POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;
+        };
       script = ''
         export PYTHONPATH="${dashboardBackendRoot}"
         exec ${dashboardPython}/bin/uvicorn api.main:app \

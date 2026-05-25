@@ -22,32 +22,36 @@ let
     "org.prismlauncher.PrismLauncher"
   ];
 
-  aiWorkstation = core ++ [
-    # Keep GPT4All declarative without gating system closure builds on nixpkgs
-    # C++/Qt build health.
-    "io.gpt4all.gpt4all"
-    "org.jupyter.JupyterLab"
-    "com.getpostman.Postman"
-    "rest.insomnia.Insomnia"
-    "io.dbeaver.DBeaverCommunity"
-    "io.github.shiftey.Desktop"
-    "com.tradingview.tradingview"
-    "com.ultimaker.cura"
-  ];
+  aiWorkstation =
+    core
+    ++ [
+      # Keep GPT4All declarative without gating system closure builds on nixpkgs
+      # C++/Qt build health.
+      "io.gpt4all.gpt4all"
+      "org.jupyter.JupyterLab"
+      "com.getpostman.Postman"
+      "rest.insomnia.Insomnia"
+      "io.dbeaver.DBeaverCommunity"
+      "io.github.shiftey.Desktop"
+      "com.tradingview.tradingview"
+      "com.ultimaker.cura"
+    ];
 
-  gaming = core ++ [
-    "com.valvesoftware.Steam"
-    "net.lutris.Lutris"
-    "com.heroicgameslauncher.hgl"
-    "com.usebottles.bottles"
-    "org.libretro.RetroArch"
-    "net.pcsx2.PCSX2"
-    "org.DolphinEmu.dolphin-emu"
-    "net.rpcs3.RPCS3"
-    "io.github.ryubing.Ryujinx"
-    "com.discordapp.Discord"
-    "page.kramo.Cartridges"
-  ];
+  gaming =
+    core
+    ++ [
+      "com.valvesoftware.Steam"
+      "net.lutris.Lutris"
+      "com.heroicgameslauncher.hgl"
+      "com.usebottles.bottles"
+      "org.libretro.RetroArch"
+      "net.pcsx2.PCSX2"
+      "org.DolphinEmu.dolphin-emu"
+      "net.rpcs3.RPCS3"
+      "io.github.ryubing.Ryujinx"
+      "com.discordapp.Discord"
+      "page.kramo.Cartridges"
+    ];
 
   minimal = [
     "org.mozilla.firefox"
@@ -56,8 +60,7 @@ let
     "com.github.tchx84.Flatseal"
     "com.obsproject.Studio"
   ];
-in
-{
+in {
   core = core;
   ai_workstation = aiWorkstation;
   gaming = gaming;

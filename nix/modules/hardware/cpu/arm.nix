@@ -1,4 +1,8 @@
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Generic ARM64 (AArch64) CPU module
 #
@@ -19,10 +23,9 @@
 # appropriate nixos-hardware module (e.g. nixos-hardware.nixosModules.raspberry-pi-4).
 # ---------------------------------------------------------------------------
 let
-  cfg    = config.mySystem;
-  isArm  = cfg.hardware.cpuVendor == "arm";
-in
-{
+  cfg = config.mySystem;
+  isArm = cfg.hardware.cpuVendor == "arm";
+in {
   config = lib.mkIf isArm {
     # ---- CPU frequency scaling ---------------------------------------------
     # schedutil is the best general-purpose governor on ARM:

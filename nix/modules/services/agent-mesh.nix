@@ -1,4 +1,8 @@
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Agent Mesh Collective Memory — Phase 18
 #
@@ -16,18 +20,17 @@
 let
   cfg = config.mySystem;
   mcp = cfg.mcpServers;
-  ai  = cfg.aiStack;
-  am  = ai.agentMesh;
+  ai = cfg.aiStack;
+  am = ai.agentMesh;
 
   active = cfg.roles.aiStack.enable && mcp.enable && am.enable;
 in
-lib.mkIf active {
-  # Inject agent mesh env vars into the hybrid coordinator service.
-  systemd.services.ai-hybrid-coordinator.serviceConfig.Environment =
-    lib.mkAfter [
+  lib.mkIf active {
+    # Inject agent mesh env vars into the hybrid coordinator service.
+    systemd.services.ai-hybrid-coordinator.serviceConfig.Environment = lib.mkAfter [
       "AGENT_MESH_ENABLED=true"
       "AGENT_MESH_BLACKBOARD_TTL=${toString am.blackboardTtlSeconds}"
       "AGENT_MESH_DISTANCE_THRESHOLD=${am.distanceThreshold}"
       "AGENT_MESH_COLLABORATION_RETENTION_DAYS=${toString am.collaborationRetentionDays}"
     ];
-}
+  }

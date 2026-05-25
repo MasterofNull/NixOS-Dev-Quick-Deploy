@@ -1,8 +1,11 @@
-{ lib, config, ... }:
 {
+  lib,
+  config,
+  ...
+}: {
   imports =
-    [ ./facts.nix ]
-    ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [ ./hardware-configuration.nix ];
+    [./facts.nix]
+    ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [./hardware-configuration.nix];
 
   # ── Host-Specific Configuration ───────────────────────────────────────────────
   # Shared ai-dev and workstation-class behavior now lives in

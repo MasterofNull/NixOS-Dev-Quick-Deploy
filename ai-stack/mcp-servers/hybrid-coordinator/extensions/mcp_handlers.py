@@ -964,6 +964,55 @@ TOOL_DEFINITIONS: List[Tool] = [
             "required": ["action"],
         },
     ),
+    # Phase 60/61 — Domain Specific MCP Proxies
+    Tool(
+        name="osint_recon",
+        description="Run automated OSINT reconnaissance (maigret, bbot, mosaic-osint).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Username, domain, or selector"},
+                "tool": {"type": "string", "enum": ["maigret", "bbot", "mosaic"], "default": "maigret"}
+            },
+            "required": ["target"]
+        },
+    ),
+    Tool(
+        name="trading_market_data",
+        description="Fetch market data and run Bull/Bear sentiment debates.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string"},
+                "action": {"type": "string", "enum": ["data", "debate"], "default": "data"}
+            },
+            "required": ["ticker"]
+        },
+    ),
+    Tool(
+        name="mlops_optimize",
+        description="Monitor LLM health and run semantic context compression.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["health", "compress"], "default": "health"},
+                "namespace": {"type": "string", "default": "default"}
+            }
+        },
+    ),
+    Tool(
+        name="qa_chaos_test",
+        description="Trigger chaos experiments or run UI audits.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Service name or URL"},
+                "action": {"type": "string", "enum": ["chaos", "audit"], "default": "chaos"},
+                "mode": {"type": "string", "default": "crash"}
+            },
+            "required": ["target"]
+        },
+    ),
 ]
 
 
@@ -971,11 +1020,83 @@ TOOL_DEFINITIONS: List[Tool] = [
 # Tool dispatch
 # ---------------------------------------------------------------------------
 
+async def _call_mcp_server(executable_path: Path, tool_name: str, arguments: Dict[str, Any]) -> str:
+    """Run a local MCP server via subprocess stdio and call a specific tool."""
+    if not executable_path.exists():
+        return json.dumps({"error": f"MCP server not found at {executable_path}", "status": "error"})
+    
+    # Construct MCP JSON-RPC call
+    call = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": arguments
+        }
+    }
+    
+    proc = await asyncio.create_subprocess_exec(
+        _resolve_python3_binary(), str(executable_path),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=json.dumps(call).encode() + b"\n"),
+            timeout=120
+        )
+        if proc.returncode != 0:
+            return json.dumps({"error": f"MCP server failed with exit code {proc.returncode}", "stderr": stderr.decode()})
+        
+        resp = json.loads(stdout.decode().strip())
+        if "result" in resp and "content" in resp["result"]:
+            # Our stubs return JSON strings in text content
+            return resp["result"]["content"][0]["text"]
+        return json.dumps(resp)
+    except Exception as e:
+        return json.dumps({"error": f"MCP communication error: {str(e)}", "status": "error"})
+
 async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
     """Dispatch an MCP tool call by name."""
     _start = _time.perf_counter()
     try:
-        if name == "augment_query":
+        if name == "osint_recon":
+            tool = arguments.get("tool", "maigret")
+            target = arguments.get("target", "")
+            # Mapping bbot -> bbot to match server.py internal tool names
+            args = {"username": target} if tool == "maigret" else {"target": target} if tool == "bbot" else {"selector": target}
+            result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/osint-tools/server.py", tool, args)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=result_text)]
+
+        elif name == "trading_market_data":
+            action = arguments.get("action", "data")
+            ticker = arguments.get("ticker", "")
+            mcp_tool = "get_ticker_data" if action == "data" else "run_sentiment_debate"
+            result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/trading-tools/server.py", mcp_tool, {"ticker": ticker})
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=result_text)]
+
+        elif name == "mlops_optimize":
+            action = arguments.get("action", "health")
+            mcp_tool = "check_llm_health" if action == "health" else "run_semantic_compression"
+            args = {} if action == "health" else {"namespace": arguments.get("namespace", "default")}
+            result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/mlops-tools/server.py", mcp_tool, args)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=result_text)]
+
+        elif name == "qa_chaos_test":
+            action = arguments.get("action", "chaos")
+            mcp_tool = "trigger_chaos_experiment" if action == "chaos" else "run_ui_audit"
+            args = {"target_service": arguments.get("target", ""), "failure_type": arguments.get("mode", "crash")} if action == "chaos" else {"url": arguments.get("target", "")}
+            result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/qa-tools/server.py", mcp_tool, args)
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=result_text)]
+
+        elif name == "augment_query":
             query = arguments.get("query", "")
             agent_type = arguments.get("agent_type", "remote")
             result = await _augment_query(query, agent_type)

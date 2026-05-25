@@ -7,9 +7,12 @@
 #     subsystems = [ "dri-devel" "netdev" ];
 #     interval = "6h";
 #   };
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.services.lore-sync;
 
   # Mailing list configurations
@@ -66,47 +69,46 @@ let
     log "Starting lore sync for subsystems: ${lib.concatStringsSep ", " cfg.subsystems}"
 
     ${lib.concatMapStrings (subsystem: ''
-      log "Syncing ${subsystem}..."
+        log "Syncing ${subsystem}..."
 
-      # Use public-inbox/lei if available, otherwise fetch via HTTP
-      if command -v lei >/dev/null 2>&1; then
-        lei q -o "$LORE_DIR/${subsystem}" \
-          --threads \
-          -f mboxrd \
-          "l:${mailingLists.${subsystem}.email} AND dt:${toString cfg.lookbackDays}d.." \
-          2>&1 | tee -a "$LOG_FILE" || true
-      else
-        # Fallback: fetch recent Atom feed
-        ${pkgs.curl}/bin/curl -sf \
-          "${mailingLists.${subsystem}.url}/new.atom" \
-          -o "$LORE_DIR/${subsystem}.atom" 2>&1 | tee -a "$LOG_FILE" || true
-      fi
+        # Use public-inbox/lei if available, otherwise fetch via HTTP
+        if command -v lei >/dev/null 2>&1; then
+          lei q -o "$LORE_DIR/${subsystem}" \
+            --threads \
+            -f mboxrd \
+            "l:${mailingLists.${subsystem}.email} AND dt:${toString cfg.lookbackDays}d.." \
+            2>&1 | tee -a "$LOG_FILE" || true
+        else
+          # Fallback: fetch recent Atom feed
+          ${pkgs.curl}/bin/curl -sf \
+            "${mailingLists.${subsystem}.url}/new.atom" \
+            -o "$LORE_DIR/${subsystem}.atom" 2>&1 | tee -a "$LOG_FILE" || true
+        fi
 
-      # Extract patch metadata and send to AIDB if available
-      if ${pkgs.curl}/bin/curl -sf "$AIDB_ENDPOINT/health" >/dev/null 2>&1; then
-        log "Reporting to AIDB..."
-        # Count new patches (simplified - real implementation would parse mbox)
-        patch_count=$(find "$LORE_DIR/${subsystem}" -type f -name "*.mbox" 2>/dev/null | wc -l || echo 0)
-        ${pkgs.curl}/bin/curl -sf "$AIDB_ENDPOINT/kernel/lore/sync" \
-          -H "Content-Type: application/json" \
-          -d "{\"subsystem\": \"${subsystem}\", \"patch_count\": $patch_count}" \
-          >/dev/null 2>&1 || true
-      fi
+        # Extract patch metadata and send to AIDB if available
+        if ${pkgs.curl}/bin/curl -sf "$AIDB_ENDPOINT/health" >/dev/null 2>&1; then
+          log "Reporting to AIDB..."
+          # Count new patches (simplified - real implementation would parse mbox)
+          patch_count=$(find "$LORE_DIR/${subsystem}" -type f -name "*.mbox" 2>/dev/null | wc -l || echo 0)
+          ${pkgs.curl}/bin/curl -sf "$AIDB_ENDPOINT/kernel/lore/sync" \
+            -H "Content-Type: application/json" \
+            -d "{\"subsystem\": \"${subsystem}\", \"patch_count\": $patch_count}" \
+            >/dev/null 2>&1 || true
+        fi
 
-    '') cfg.subsystems}
+      '')
+      cfg.subsystems}
 
     log "Lore sync complete"
   '';
-
-in
-{
+in {
   options.services.lore-sync = {
     enable = lib.mkEnableOption "lore.kernel.org patch synchronization service";
 
     subsystems = lib.mkOption {
       type = lib.types.listOf (lib.types.enum (builtins.attrNames mailingLists));
-      default = [ "linux-hardening" "rust-for-linux" ];
-      example = [ "dri-devel" "netdev" "linux-fsdevel" ];
+      default = ["linux-hardening" "rust-for-linux"];
+      example = ["dri-devel" "netdev" "linux-fsdevel"];
       description = ''
         Kernel subsystem mailing lists to monitor.
         Available: ${lib.concatStringsSep ", " (builtins.attrNames mailingLists)}
@@ -160,23 +162,25 @@ in
     # Timer for periodic sync
     systemd.timers.lore-sync = {
       description = "Lore kernel patch sync timer";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnBootSec = "5min";
-        OnUnitActiveSec = cfg.interval;
-        RandomizedDelaySec = "10min";
-        Persistent = true;
-      } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-        # systemd 257+: defer reactivation if service still running
-        DeferReactivation = true;
-      };
+      wantedBy = ["timers.target"];
+      timerConfig =
+        {
+          OnBootSec = "5min";
+          OnUnitActiveSec = cfg.interval;
+          RandomizedDelaySec = "10min";
+          Persistent = true;
+        }
+        // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          # systemd 257+: defer reactivation if service still running
+          DeferReactivation = true;
+        };
     };
 
     # Service for sync execution
     systemd.services.lore-sync = {
       description = "Lore kernel patch synchronization";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
+      after = ["network-online.target"];
+      wants = ["network-online.target"];
 
       serviceConfig = {
         Type = "oneshot";
@@ -187,7 +191,7 @@ in
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = true;
-        ReadWritePaths = [ cfg.dataDir "/var/log/lore-sync" ];
+        ReadWritePaths = [cfg.dataDir "/var/log/lore-sync"];
         NoNewPrivileges = true;
         PrivateDevices = true;
         ProtectKernelTunables = true;

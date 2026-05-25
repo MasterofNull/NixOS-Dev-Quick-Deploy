@@ -623,6 +623,22 @@
       "owner": "unassigned",
       "path": "ai-stack/testing/property_based_tests.py",
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
+    },
+    {
+      "action": "verify-entrypoint-wiring",
+      "classification": "entrypoint_candidate",
+      "module": "context_compressor",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/mlops-tools/context_compressor.py",
+      "rationale": "New MLOps component; verify service or command wiring."
+    },
+    {
+      "action": "verify-entrypoint-wiring",
+      "classification": "entrypoint_candidate",
+      "module": "context_weaver",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/mlops-tools/context_weaver.py",
+      "rationale": "New MLOps component; verify service or command wiring."
     }
   ],
   "generated_at": "2026-05-25T07:55:00Z",

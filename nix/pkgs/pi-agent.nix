@@ -8,18 +8,20 @@
 #
 # Until hashes are known, lib.fakeHash causes a build-time error that
 # prints the correct hash — replace lib.fakeHash with the printed hash.
-{ lib, pkgs }:
-
+{
+  lib,
+  pkgs,
+}:
 pkgs.buildNpmPackage {
-  pname   = "pi-coding-agent";
+  pname = "pi-coding-agent";
   version = "0.55.3";
 
   src = pkgs.fetchFromGitHub {
     owner = "badlogic";
-    repo  = "pi-mono";
-    rev   = "v0.55.3";
+    repo = "pi-mono";
+    rev = "v0.55.3";
     # TODO: compute with: nix-prefetch-github --owner badlogic --repo pi-mono --rev v0.55.3
-    hash  = lib.fakeHash;
+    hash = lib.fakeHash;
   };
 
   npmDepsHash =
@@ -31,10 +33,10 @@ pkgs.buildNpmPackage {
   makeCacheWritable = true;
 
   meta = {
-    description  = "Minimal terminal coding agent with read/write/edit/bash tools";
-    homepage     = "https://github.com/badlogic/pi-mono";
-    license      = lib.licenses.mit;
-    mainProgram  = "pi";
-    maintainers  = [];
+    description = "Minimal terminal coding agent with read/write/edit/bash tools";
+    homepage = "https://github.com/badlogic/pi-mono";
+    license = lib.licenses.mit;
+    mainProgram = "pi";
+    maintainers = [];
   };
 }

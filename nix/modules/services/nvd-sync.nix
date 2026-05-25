@@ -3,9 +3,12 @@
 #
 # Usage:
 #   services.nvd-sync.enable = true;
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.services.nvd-sync;
   aidbCfg = config.mySystem.mcpServers;
 
@@ -46,9 +49,7 @@ let
 
     log "NVD sync complete"
   '';
-
-in
-{
+in {
   options.services.nvd-sync = {
     enable = lib.mkEnableOption "NVD CVE synchronization service";
 
@@ -87,25 +88,28 @@ in
     # Timer for periodic sync
     systemd.timers.nvd-sync = {
       description = "NVD CVE sync timer";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = cfg.interval;
-        Persistent = true;
-        RandomizedDelaySec = "30min";
-      } // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
-        # systemd 257+: schedule the next run from service inactivity instead of
-        # immediately retriggering after an overdue OnCalendar interval.
-        DeferReactivation = true;
-      } // lib.optionalAttrs cfg.onBoot {
-        OnBootSec = "5min";
-      };
+      wantedBy = ["timers.target"];
+      timerConfig =
+        {
+          OnCalendar = cfg.interval;
+          Persistent = true;
+          RandomizedDelaySec = "30min";
+        }
+        // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
+          # systemd 257+: schedule the next run from service inactivity instead of
+          # immediately retriggering after an overdue OnCalendar interval.
+          DeferReactivation = true;
+        }
+        // lib.optionalAttrs cfg.onBoot {
+          OnBootSec = "5min";
+        };
     };
 
     # Service for sync execution
     systemd.services.nvd-sync = {
       description = "NVD CVE synchronization";
-      after = [ "network-online.target" "aidb-mcp-server.service" ];
-      wants = [ "network-online.target" ];
+      after = ["network-online.target" "aidb-mcp-server.service"];
+      wants = ["network-online.target"];
 
       serviceConfig = {
         Type = "oneshot";
@@ -116,7 +120,7 @@ in
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = true;
-        ReadWritePaths = [ "/var/log/nvd-sync" ];
+        ReadWritePaths = ["/var/log/nvd-sync"];
         NoNewPrivileges = true;
         PrivateDevices = true;
         ProtectKernelTunables = true;

@@ -1,9 +1,9 @@
-{ lib
-, python3
-, fetchFromGitHub
-, makeWrapper
+{
+  lib,
+  python3,
+  fetchFromGitHub,
+  makeWrapper,
 }:
-
 python3.pkgs.buildPythonApplication rec {
   pname = "mosaic-osint";
   version = "1.0.0-unstable-2024-05-24";
@@ -24,12 +24,12 @@ python3.pkgs.buildPythonApplication rec {
     telethon
   ];
 
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [makeWrapper];
 
   installPhase = ''
     mkdir -p $out/bin $out/share/mosaic
     cp -r . $out/share/mosaic
-    
+
     makeWrapper ${python3.interpreter} $out/bin/mosaic-osint \
       --add-flags "$out/share/mosaic/mosaic.py" \
       --prefix PYTHONPATH : "$PYTHONPATH"

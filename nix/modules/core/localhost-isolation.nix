@@ -1,20 +1,23 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   ports = cfg.ports;
-  primaryGroupName = lib.attrByPath [ "users" "users" cfg.primaryUser "group" ] null config;
+  primaryGroupName = lib.attrByPath ["users" "users" cfg.primaryUser "group"] null config;
   primaryGroupGid =
-    if primaryGroupName == null then null
-    else lib.attrByPath [ "users" "groups" primaryGroupName "gid" ] null config;
+    if primaryGroupName == null
+    then null
+    else lib.attrByPath ["users" "groups" primaryGroupName "gid"] null config;
   prometheusGroupGid =
-    lib.attrByPath [ "users" "groups" "prometheus" "gid" ] null config;
+    lib.attrByPath ["users" "groups" "prometheus" "gid"] null config;
 
-  effectiveAllowedGids =
-    lib.unique (
-      cfg.localhostIsolation.allowedServiceGids
-      ++ lib.optional (primaryGroupGid != null) primaryGroupGid
-      ++ lib.optional (prometheusGroupGid != null) prometheusGroupGid
-    );
+  effectiveAllowedGids = lib.unique (
+    cfg.localhostIsolation.allowedServiceGids
+    ++ lib.optional (primaryGroupGid != null) primaryGroupGid
+    ++ lib.optional (prometheusGroupGid != null) prometheusGroupGid
+  );
 
   protectedPorts = lib.unique [
     ports.postgres
@@ -28,8 +31,7 @@ let
 
   portSet = lib.concatStringsSep ", " (map toString protectedPorts);
   gidSet = lib.concatStringsSep ", " (map toString effectiveAllowedGids);
-in
-{
+in {
   config = lib.mkIf cfg.localhostIsolation.enable {
     networking.nftables.enable = true;
 

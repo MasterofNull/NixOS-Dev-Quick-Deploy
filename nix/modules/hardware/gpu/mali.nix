@@ -1,4 +1,9 @@
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # ARM Mali GPU module (open-source driver stack)
 #
@@ -30,23 +35,22 @@
 # set via the appropriate nixos-hardware module for your board family.
 # ---------------------------------------------------------------------------
 let
-  cfg     = config.mySystem;
-  isMali  = cfg.hardware.gpuVendor == "mali";
+  cfg = config.mySystem;
+  isMali = cfg.hardware.gpuVendor == "mali";
 
   # Panfrost and Lima ship inside Mesa on NixOS.
   hasMesa = builtins.hasAttr "mesa" pkgs;
-in
-{
+in {
   config = lib.mkIf isMali {
     # ---- Mesa / Panfrost / Lima --------------------------------------------
     hardware.graphics = {
-      enable      = lib.mkDefault true;
-      enable32Bit  = lib.mkDefault false;  # Not applicable on aarch64
+      enable = lib.mkDefault true;
+      enable32Bit = lib.mkDefault false; # Not applicable on aarch64
 
       # Mesa includes both panfrost (Midgard/Bifrost/Valhall) and lima (Utgard).
       # The correct driver is selected automatically from the DRM device node.
       extraPackages = lib.mkDefault (
-        lib.optionals hasMesa [ pkgs.mesa ]
+        lib.optionals hasMesa [pkgs.mesa]
       );
     };
 

@@ -1,22 +1,25 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
-  isAmd        = cfg.hardware.gpuVendor == "amd";
-  isMobile     = cfg.hardware.isMobile;
+  isAmd = cfg.hardware.gpuVendor == "amd";
+  isMobile = cfg.hardware.isMobile;
   # AMD iGPU in a hybrid system (AMD Ryzen iGPU + NVIDIA/Intel dGPU).
   # e.g. Ryzen 7 5800H + RTX 3080 on ASUS ROG: gpuVendor="nvidia", igpuVendor="amd".
   # The AMD iGPU still needs Mesa packages and the amdgpu kernel module.
-  isAmdIgpu    = cfg.hardware.igpuVendor == "amd";
+  isAmdIgpu = cfg.hardware.igpuVendor == "amd";
   # True when AMD is involved as primary or integrated GPU.
-  hasAmd       = isAmd || isAmdIgpu;
+  hasAmd = isAmd || isAmdIgpu;
   # Dual-AMD: APU + discrete AMD dGPU (e.g. Ryzen APU + RX 6700M on ASUS ROG G14).
   # igpuVendor = "amd" is set by hardware-detect.sh when two AMD PCI entries found.
-  isDualAmd    = isAmd && isAmdIgpu;
+  isDualAmd = isAmd && isAmdIgpu;
   # Discrete AMD on a laptop (not APU-only): enable runtime PM.
   isMobileDiscreteAmd = isAmd && isMobile && isDualAmd;
-  hasLact      = lib.versionAtLeast lib.version "26.05";
-in
-{
+  hasLact = lib.versionAtLeast lib.version "26.05";
+in {
   # ---------------------------------------------------------------------------
   # AMD GPU: Mesa, Vulkan, VA-API, ROCm (gated on aiStack role), LACT.
   # Activates when AMD is the primary dGPU (isAmd) OR the iGPU in a hybrid
@@ -24,8 +27,8 @@ in
   # ---------------------------------------------------------------------------
 
   hardware.graphics = lib.mkIf hasAmd {
-    enable      = lib.mkDefault true;
-    enable32Bit = lib.mkDefault true;   # 32-bit games and Steam Proton
+    enable = lib.mkDefault true;
+    enable32Bit = lib.mkDefault true; # 32-bit games and Steam Proton
 
     # extraPackages are ADDITIONAL packages beyond the default Mesa install.
     # Do NOT add `mesa` here — NixOS includes it automatically.
@@ -34,15 +37,15 @@ in
       # rocm-opencl-icd + rocm-opencl-runtime are several GB — do not pull them
       # for minimal or gaming profiles.
       lib.optionals cfg.roles.aiStack.enable (
-        lib.optionals (pkgs ? rocm-opencl-icd)      [ pkgs.rocm-opencl-icd ]
-        ++ lib.optionals (pkgs ? rocm-opencl-runtime) [ pkgs.rocm-opencl-runtime ]
+        lib.optionals (pkgs ? rocm-opencl-icd) [pkgs.rocm-opencl-icd]
+        ++ lib.optionals (pkgs ? rocm-opencl-runtime) [pkgs.rocm-opencl-runtime]
       )
     );
 
     # 32-bit Mesa for Steam Proton / Wine (x86_64 only; no-op on aarch64).
     extraPackages32 = lib.mkAfter (
       lib.optionals (pkgs ? pkgsi686Linux && pkgs.pkgsi686Linux ? mesa)
-        [ pkgs.pkgsi686Linux.mesa ]
+      [pkgs.pkgsi686Linux.mesa]
     );
   };
 
@@ -52,8 +55,9 @@ in
   # amdgpu initrd: load for any system with AMD GPU (primary or iGPU in hybrid).
   # Only force-loaded in initrd when earlyKmsPolicy = "force"; default "auto"
   # lets the driver initialise itself — correct for AMD APU and hybrid iGPU.
-  boot.initrd.kernelModules = lib.mkIf (hasAmd && cfg.hardware.earlyKmsPolicy == "force")
-    (lib.mkAfter [ "amdgpu" ]);
+  boot.initrd.kernelModules =
+    lib.mkIf (hasAmd && cfg.hardware.earlyKmsPolicy == "force")
+    (lib.mkAfter ["amdgpu"]);
 
   # kernel params only meaningful when AMD is the primary/sole GPU.
   boot.kernelParams = lib.mkIf isAmd (lib.mkAfter (

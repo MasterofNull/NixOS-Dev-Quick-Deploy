@@ -9,9 +9,12 @@
 #     patches = [{ name = "cve-fix"; url = "..."; sha256 = "..."; }];
 #     rustSupport = true;
 #   };
-{ config, lib, pkgs, ... }:
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem.kernel;
   customCfg = cfg.customBuild;
   hardeningCfg = cfg.hardening;
@@ -46,17 +49,20 @@ let
   };
 
   # Build custom patches list
-  customPatches = map (patch: {
-    name = patch.name;
-    patch = if patch ? url then
-      pkgs.fetchpatch {
-        inherit (patch) name url sha256;
-      }
-    else if patch ? path then
-      patch.path
-    else
-      throw "Patch ${patch.name} must have either 'url' or 'path' attribute";
-  }) customCfg.patches;
+  customPatches =
+    map (patch: {
+      name = patch.name;
+      patch =
+        if patch ? url
+        then
+          pkgs.fetchpatch {
+            inherit (patch) name url sha256;
+          }
+        else if patch ? path
+        then patch.path
+        else throw "Patch ${patch.name} must have either 'url' or 'path' attribute";
+    })
+    customCfg.patches;
 
   # Hardening kernel config fragments
   hardeningConfigs = {
@@ -128,61 +134,62 @@ let
     src = kernelTarball;
 
     # Base config from defconfig
-    configfile = pkgs.runCommand "kernel-config" {
-      nativeBuildInputs = [ pkgs.flex pkgs.bison pkgs.perl ];
-    } ''
-      cd ${kernelTarball}
-      make defconfig
-      cat .config > $out
+    configfile =
+      pkgs.runCommand "kernel-config" {
+        nativeBuildInputs = [pkgs.flex pkgs.bison pkgs.perl];
+      } ''
+        cd ${kernelTarball}
+        make defconfig
+        cat .config > $out
 
-      # Apply hardening fragment
-      ${lib.optionalString hardeningCfg.enable ''
-        cat >> $out << 'EOF'
-      ${hardeningConfigs.${hardeningCfg.level}}
-      EOF
-      ''}
+        # Apply hardening fragment
+        ${lib.optionalString hardeningCfg.enable ''
+            cat >> $out << 'EOF'
+          ${hardeningConfigs.${hardeningCfg.level}}
+          EOF
+        ''}
 
-      # Apply Rust fragment
-      ${lib.optionalString customCfg.rustSupport ''
-        cat >> $out << 'EOF'
-      ${rustConfig}
-      EOF
-      ''}
+        # Apply Rust fragment
+        ${lib.optionalString customCfg.rustSupport ''
+            cat >> $out << 'EOF'
+          ${rustConfig}
+          EOF
+        ''}
 
-      # Apply custom config fragments
-      ${lib.concatMapStrings (frag: ''
-        cat >> $out << 'EOF'
-      ${frag}
-      EOF
-      '') customCfg.configFragments}
-    '';
+        # Apply custom config fragments
+        ${lib.concatMapStrings (frag: ''
+              cat >> $out << 'EOF'
+            ${frag}
+            EOF
+          '')
+          customCfg.configFragments}
+      '';
 
-    kernelPatches = customPatches ++ (lib.optionals hardeningCfg.enable [
-      # Additional hardening patches
-    ]);
+    kernelPatches =
+      customPatches
+      ++ (lib.optionals hardeningCfg.enable [
+        # Additional hardening patches
+      ]);
 
     allowImportFromDerivation = true;
   };
 
   # Select kernel packages based on configuration
   selectedKernelPackages =
-    if customCfg.enable then
-      pkgs.linuxPackagesFor customKernel
-    else if cfg.track == "lts" && pkgs ? linuxPackages_6_18 then
-      pkgs.linuxPackages_6_18
-    else if cfg.track == "latest-stable" && pkgs ? linuxPackages_latest then
-      pkgs.linuxPackages_latest
-    else
-      pkgs.linuxPackages;
-
-in
-{
+    if customCfg.enable
+    then pkgs.linuxPackagesFor customKernel
+    else if cfg.track == "lts" && pkgs ? linuxPackages_6_18
+    then pkgs.linuxPackages_6_18
+    else if cfg.track == "latest-stable" && pkgs ? linuxPackages_latest
+    then pkgs.linuxPackages_latest
+    else pkgs.linuxPackages;
+in {
   options.mySystem.kernel = {
     customBuild = {
       enable = lib.mkEnableOption "custom kernel build from source";
 
       source = lib.mkOption {
-        type = lib.types.enum [ "mainline" "stable" "longterm" "local" ];
+        type = lib.types.enum ["mainline" "stable" "longterm" "local"];
         default = "stable";
         description = ''
           Kernel source to build from:
@@ -244,13 +251,13 @@ in
             cveIds = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [];
-              example = [ "CVE-2026-12345" ];
+              example = ["CVE-2026-12345"];
               description = "CVE IDs this patch addresses.";
             };
             subsystems = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [];
-              example = [ "net" "security" ];
+              example = ["net" "security"];
               description = "Kernel subsystems affected by this patch.";
             };
           };
@@ -290,7 +297,7 @@ in
       extraBuildFlags = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [];
-        example = [ "LLVM=1" "LLVM_IAS=1" ];
+        example = ["LLVM=1" "LLVM_IAS=1"];
         description = "Extra flags passed to kernel make.";
       };
     };
@@ -299,7 +306,7 @@ in
       enable = lib.mkEnableOption "kernel hardening configuration";
 
       level = lib.mkOption {
-        type = lib.types.enum [ "standard" "maximum" "custom" ];
+        type = lib.types.enum ["standard" "maximum" "custom"];
         default = "standard";
         description = ''
           Hardening preset level:
@@ -364,19 +371,19 @@ in
     (lib.mkIf hardeningCfg.enable {
       # Add kernel mitigations to boot parameters
       boot.kernelParams =
-        lib.optionals hardeningCfg.mitigations.spectre [ "spectre_v2=on" "spectre_v1=on" ]
-        ++ lib.optionals hardeningCfg.mitigations.meltdown [ "pti=on" ]
-        ++ lib.optionals hardeningCfg.mitigations.mds [ "mds=full" ]
-        ++ lib.optionals hardeningCfg.mitigations.srso [ "spec_rstack_overflow=safe-ret" ];
+        lib.optionals hardeningCfg.mitigations.spectre ["spectre_v2=on" "spectre_v1=on"]
+        ++ lib.optionals hardeningCfg.mitigations.meltdown ["pti=on"]
+        ++ lib.optionals hardeningCfg.mitigations.mds ["mds=full"]
+        ++ lib.optionals hardeningCfg.mitigations.srso ["spec_rstack_overflow=safe-ret"];
     })
 
     # CVE tracking: auto-scan kernel on boot
     (lib.mkIf (cfg.cveTracking.enable && cfg.cveTracking.autoScan) {
       systemd.services.kernel-cve-scan = {
         description = "Scan running kernel for known CVEs";
-        after = [ "network-online.target" "aidb-mcp-server.service" ];
-        wants = [ "network-online.target" ];
-        wantedBy = [ "multi-user.target" ];
+        after = ["network-online.target" "aidb-mcp-server.service"];
+        wants = ["network-online.target"];
+        wantedBy = ["multi-user.target"];
 
         serviceConfig = {
           Type = "oneshot";

@@ -15,12 +15,13 @@
 # - Observability hook configuration
 # - A2A endpoint configuration
 # - Example integration modules
-
-{ config, lib, pkgs, ... }:
-
-with lib;
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+with lib; let
   cfg = config.mySystem.aiStack.adk;
 
   # ADK Integration Module Type
@@ -81,14 +82,14 @@ let
           type = types.listOf types.str;
           default = [];
           description = "SystemD services this integration depends on";
-          example = [ "ai-hybrid-coordinator.service" "postgresql.service" ];
+          example = ["ai-hybrid-coordinator.service" "postgresql.service"];
         };
 
         ports = mkOption {
           type = types.listOf types.str;
           default = [];
           description = "Port configuration dependencies";
-          example = [ "adkAgent" "hybridCoordinator" ];
+          example = ["adkAgent" "hybridCoordinator"];
         };
       };
 
@@ -147,12 +148,12 @@ let
             type = types.listOf types.str;
             default = [];
             description = "Agent capabilities";
-            example = [ "task_execution" "event_streaming" "tool_calling" ];
+            example = ["task_execution" "event_streaming" "tool_calling"];
           };
 
           protocols = mkOption {
             type = types.listOf types.str;
-            default = [ "a2a" "openai" ];
+            default = ["a2a" "openai"];
             description = "Supported protocols";
           };
         };
@@ -218,13 +219,13 @@ let
 
         logging = {
           level = mkOption {
-            type = types.enum [ "debug" "info" "warn" "error" ];
+            type = types.enum ["debug" "info" "warn" "error"];
             default = "info";
             description = "Log level";
           };
 
           format = mkOption {
-            type = types.enum [ "json" "text" ];
+            type = types.enum ["json" "text"];
             default = "json";
             description = "Log format";
           };
@@ -273,7 +274,6 @@ let
       };
     };
   };
-
 in {
   options.mySystem.aiStack.adk = {
     enable = mkEnableOption "Google ADK integrations";
@@ -315,7 +315,6 @@ in {
     ];
   };
 }
-
 # Example Integration Configurations
 #
 # Example 1: Basic ADK Agent
@@ -443,3 +442,4 @@ in {
 #     ];
 #   };
 # };
+

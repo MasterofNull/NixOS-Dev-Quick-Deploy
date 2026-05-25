@@ -135,6 +135,23 @@ async def main():
                     logger.info("🎓 Dataset ready for fine-tuning (1000+ examples)")
                     logger.info("Export dataset: /data/fine-tuning/dataset.jsonl")
 
+                # MLOps health check (Phase 9.6)
+                try:
+                    process = await asyncio.create_subprocess_shell(
+                        "echo \'{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/call\", \"params\": {\"name\": \"check_llm_health\", \"arguments\": {}}}\' | ai-stack/mcp-servers/mlops-tools/server.py",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    response = json.loads(stdout.decode().strip())
+                    if "result" in response and "content" in response["result"]:
+                        health_data = json.loads(response["result"]["content"][0]["text"])
+                        logger.info(f"MLOps LLM Health: {health_data['health']} - {health_data['note']}")
+                    else:
+                        logger.warning(f"MLOps LLM Health Check failed: {stderr.decode().strip()}")
+                except Exception as e:
+                    logger.error(f"Error during MLOps LLM Health Check: {e}")
+
         except KeyboardInterrupt:
             logger.info("Shutting down Continuous Learning Pipeline")
             await pipeline.stop()

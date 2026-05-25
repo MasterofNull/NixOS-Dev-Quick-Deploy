@@ -1,9 +1,12 @@
-{ lib, config, pkgs, ... }:
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}: let
   cfg = config.mySystem;
   isIntel = cfg.hardware.cpuVendor == "intel";
-in
-{
+in {
   # Intel CPU: microcode and thermal management.
   hardware.cpu.intel.updateMicrocode = lib.mkIf isIntel (lib.mkDefault true);
 
@@ -16,6 +19,7 @@ in
   powerManagement.cpuFreqGovernor = lib.mkIf isIntel (lib.mkDefault "schedutil");
 
   # i915 for early display output. Conditionally added to initrd based on earlyKmsPolicy.
-  boot.initrd.kernelModules = lib.mkIf (isIntel && cfg.hardware.earlyKmsPolicy == "force")
-    (lib.mkAfter [ "i915" ]);
+  boot.initrd.kernelModules =
+    lib.mkIf (isIntel && cfg.hardware.earlyKmsPolicy == "force")
+    (lib.mkAfter ["i915"]);
 }

@@ -1,5 +1,8 @@
-{ lib, config, ... }:
-let
+{
+  lib,
+  config,
+  ...
+}: let
   cfg = config.mySystem;
   mon = cfg.monitoring;
   cc = mon.commandCenter;
@@ -7,8 +10,7 @@ let
 
   # Both API and SPA are served by the single FastAPI backend on apiPort.
   backendApi = "http://127.0.0.1:${toString cc.apiPort}";
-in
-{
+in {
   options.mySystem.ingress = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -60,7 +62,10 @@ in
         message = "mySystem.ingress.enable requires mySystem.ingress.domain.";
       }
       {
-        assertion = if ing.useAcme then (ing.acmeEmail != null && ing.acmeEmail != "") else (ing.tlsCertPath != null && ing.tlsKeyPath != null);
+        assertion =
+          if ing.useAcme
+          then (ing.acmeEmail != null && ing.acmeEmail != "")
+          else (ing.tlsCertPath != null && ing.tlsKeyPath != null);
         message = "Ingress TLS is incomplete: set acmeEmail when useAcme=true, or tlsCertPath/tlsKeyPath when useAcme=false.";
       }
     ];
@@ -69,20 +74,22 @@ in
       enable = true;
       recommendedProxySettings = true;
       recommendedTlsSettings = true;
-      virtualHosts."${ing.domain}" = {
-        forceSSL = true;
-        enableACME = ing.useAcme;
-        locations."/".proxyPass = backendApi;
-        locations."/ws/".extraConfig = ''
-          proxy_pass ${backendApi};
-          proxy_http_version 1.1;
-          proxy_set_header Upgrade $http_upgrade;
-          proxy_set_header Connection "upgrade";
-        '';
-      } // lib.optionalAttrs (!ing.useAcme) {
-        sslCertificate = ing.tlsCertPath;
-        sslCertificateKey = ing.tlsKeyPath;
-      };
+      virtualHosts."${ing.domain}" =
+        {
+          forceSSL = true;
+          enableACME = ing.useAcme;
+          locations."/".proxyPass = backendApi;
+          locations."/ws/".extraConfig = ''
+            proxy_pass ${backendApi};
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+          '';
+        }
+        // lib.optionalAttrs (!ing.useAcme) {
+          sslCertificate = ing.tlsCertPath;
+          sslCertificateKey = ing.tlsKeyPath;
+        };
     };
 
     security.acme = lib.mkIf ing.useAcme {
@@ -90,7 +97,7 @@ in
       defaults.email = ing.acmeEmail;
     };
 
-    networking.firewall.allowedTCPPorts = lib.mkIf ing.exposeOnLan [ 80 443 ];
+    networking.firewall.allowedTCPPorts = lib.mkIf ing.exposeOnLan [80 443];
 
     warnings = lib.optionals (mon.commandCenter.bindAddress != "127.0.0.1") [
       "Command center bindAddress is not loopback; prefer 127.0.0.1 behind nginx TLS ingress."

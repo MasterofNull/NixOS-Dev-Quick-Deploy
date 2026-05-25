@@ -12,7 +12,6 @@
   versionCheckHook,
   writableTmpDirAsHomeHook,
 }:
-
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "opencode";
   version = "1.3.0";
@@ -28,10 +27,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "${finalAttrs.pname}-node_modules";
     inherit (finalAttrs) version src;
 
-    impureEnvVars = lib.fetchers.proxyImpureEnvVars ++ [
-      "GIT_PROXY_COMMAND"
-      "SOCKS_SERVER"
-    ];
+    impureEnvVars =
+      lib.fetchers.proxyImpureEnvVars
+      ++ [
+        "GIT_PROXY_COMMAND"
+        "SOCKS_SERVER"
+      ];
 
     nativeBuildInputs = [
       bun
@@ -126,15 +127,15 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     install -Dm755 dist/opencode-*/bin/opencode $out/bin/opencode
     wrapProgram $out/bin/opencode \
      --prefix PATH : ${
-       lib.makeBinPath (
-         [
-           ripgrep
-         ]
-         ++ lib.optionals stdenvNoCC.hostPlatform.isDarwin [
-           sysctl
-         ]
-       )
-     }
+      lib.makeBinPath (
+        [
+          ripgrep
+        ]
+        ++ lib.optionals stdenvNoCC.hostPlatform.isDarwin [
+          sysctl
+        ]
+      )
+    }
 
     install -Dm644 schema.json $out/share/opencode/schema.json
 
@@ -178,7 +179,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       graham33
       superherointj
     ];
-    sourceProvenance = with lib.sourceTypes; [ fromSource ];
+    sourceProvenance = with lib.sourceTypes; [fromSource];
     platforms = [
       "aarch64-linux"
       "x86_64-linux"
