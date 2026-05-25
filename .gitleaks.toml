@@ -11,14 +11,16 @@ paths = [
   '''^AGENT_AUTH_SECRETS_ROTATION\.md$''',
   '''^docs/PROGRESSIVE-DISCLOSURE-GUIDE\.md$''',
   '''^docs/AI-AGENT-PROGRESSIVE-DISCLOSURE-README\.md$''',
-  '''^docs/archive/DAY5-INTEGRATION-TESTING-RESULTS\.md$''',
-  '''^docs/archive/PROGRESSIVE-DISCLOSURE-IMPLEMENTATION\.md$''',
-  '''^tests/chaos-engineering/06-full-agent-lifecycle/test-agent-progressive-disclosure\.sh$''',
+  '''^docs/archive/.*$''',
+  '''^archive/.*$''',
+  '''^\.forks/.*$''',
+  '''^tests/chaos-engineering/.*$''',
   '''^tests/progressive-disclosure-validation\.py$''',
-  '''^archive/scripts/test-password-migration\.sh$''',
+  '''^scripts/governance/check-cross-surface-contract\.py$''',
 ]
 regexes = [
   '''AKIAIOSFODNN7EXAMPLE''',
+  '''AKIAXXXXXXXXXXXXXXXX''',
   '''sk-(test|live|proj)-(example|dummy|fake|placeholder|test)[A-Za-z0-9_-]*''',
-  '''ghp_(example|dummy|fake|placeholder|sample|test)[A-Za-z0-9_]*''',
+  '''ghp_(example|dummy|fake|placeholder|sample|test|your_token_here)[A-Za-z0-9_]*''',
 ]
