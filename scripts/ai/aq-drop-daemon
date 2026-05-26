@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""
+aq-drop-daemon — Event-driven autonomous task intake.
+                  Monitors drops.yaml paths and triggers agent workflows.
+"""
+
+import argparse
+import asyncio
+import json
+import logging
+import os
+import time
+from pathlib import Path
+from typing import Dict, List, Set, Any
+
+import yaml
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("drop-daemon")
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+CONFIG_PATH = REPO_ROOT / "config" / "drops.yaml"
+LOCK_PATH = REPO_ROOT / ".agent" / "collaboration" / "PENDING.json"
+
+class IntentLock:
+    """Manages the PENDING.json intent lock to prevent agent collisions."""
+    
+    @staticmethod
+    def get_lock() -> Dict[str, Any]:
+        if not LOCK_PATH.exists():
+            return {}
+        try:
+            with open(LOCK_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def set_lock(agent_id: str, session_id: str, intended_changes: List[Dict[str, Any]], locks: List[str]):
+        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        lock_data = {
+            "session_id": session_id,
+            "active_agent": agent_id,
+            "intended_changes": intended_changes,
+            "locks": locks,
+            "timestamp": time.time()
+        }
+        with open(LOCK_PATH, "w") as f:
+            json.dump(lock_data, f, indent=2)
+
+    @staticmethod
+    def clear_lock():
+        if LOCK_PATH.exists():
+            LOCK_PATH.unlink()
+
+class DropDaemon:
+    def __init__(self, config_path: Path):
+        self.config_path = config_path
+        self.state: Dict[str, Dict[str, float]] = {} # zone_name -> {file_path -> mtime}
+        self.running = True
+
+    def load_config(self) -> List[Dict[str, Any]]:
+        if not self.config_path.exists():
+            logger.warning(f"Config not found: {self.config_path}")
+            return []
+        try:
+            with open(self.config_path, "r") as f:
+                return yaml.safe_load(f).get("drop_zones", [])
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+            return []
+
+    async def scan_zone(self, zone: Dict[str, Any]):
+        name = zone["name"]
+        watch_patterns = zone["watch"]
+        triggers = zone.get("trigger", ["created"])
+        
+        # Expand directory patterns
+        expanded_patterns = []
+        for p in watch_patterns:
+            full_path = REPO_ROOT / p
+            if full_path.is_dir():
+                expanded_patterns.append(str(Path(p) / "*"))
+                expanded_patterns.append(str(Path(p) / "**" / "*"))
+            else:
+                expanded_patterns.append(p)
+
+        if name not in self.state:
+            self.state[name] = {}
+            # Initial baseline
+            for pattern in expanded_patterns:
+                for file_path in REPO_ROOT.glob(pattern):
+                    if file_path.is_file():
+                        self.state[name][str(file_path)] = file_path.stat().st_mtime
+            return
+
+        for pattern in expanded_patterns:
+            for file_path in REPO_ROOT.glob(pattern):
+                if not file_path.is_file():
+                    continue
+                    
+                path_str = str(file_path)
+                mtime = file_path.stat().st_mtime
+                
+                if path_str not in self.state[name]:
+                    # New file
+                    if "created" in triggers:
+                        logger.info(f"Trigger [created] in zone '{name}': {file_path}")
+                        await self.trigger_workflow(zone, file_path)
+                    self.state[name][path_str] = mtime
+                elif mtime > self.state[name][path_str]:
+                    # Modified file
+                    if "modified" in triggers:
+                        logger.info(f"Trigger [modified] in zone '{name}': {file_path}")
+                        await self.trigger_workflow(zone, file_path)
+                    self.state[name][path_str] = mtime
+
+    async def trigger_workflow(self, zone: Dict[str, Any], file_path: Path):
+        """Simulate triggering an agent workflow."""
+        name = zone["name"]
+        skill = zone["skill"]
+        team = zone["team"]
+        
+        logger.info(f"Workflow '{name}' starting with team {team} for {file_path}")
+        # In a real implementation, this would call aq-session-start or similar
+        # For now, we'll just log the intent
+        
+        # Example of setting an intent lock
+        session_id = f"auto-{int(time.time())}"
+        IntentLock.set_lock(
+            agent_id=team[0],
+            session_id=session_id,
+            intended_changes=[{"file": str(file_path), "action": "analyze", "reason": f"Drop zone trigger: {name}"}],
+            locks=[str(file_path)]
+        )
+        
+        # Simulate processing time
+        await asyncio.sleep(1)
+        # IntentLock.clear_lock() # Don't clear immediately in simulation
+
+    async def run(self, interval: int = 5):
+        logger.info(f"Drop Daemon started (polling every {interval}s)...")
+        while self.running:
+            zones = self.load_config()
+            for zone in zones:
+                await self.scan_zone(zone)
+            await asyncio.sleep(interval)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Drop Zone Daemon")
+    parser.add_argument("--interval", type=int, default=5, help="Polling interval in seconds")
+    args = parser.parse_args()
+
+    daemon = DropDaemon(CONFIG_PATH)
+    try:
+        asyncio.run(daemon.run(args.interval))
+    except KeyboardInterrupt:
+        logger.info("Daemon stopping...")

@@ -1,0 +1,14 @@
+drop_zones:
+  - name: "Autonomous Research"
+    watch: ["research_inbox/"]
+    trigger: ["created"]
+    skill: ".agent/skills/autoresearch/SKILL.md"
+    team: ["Architect"]
+    handoff_limit: 5
+
+  - name: "Security Audit"
+    watch: ["src/**/*.py"]
+    trigger: ["modified"]
+    skill: ".agent/skills/security-audit/SKILL.md"
+    team: ["Auditor"]
+    handoff_limit: 3

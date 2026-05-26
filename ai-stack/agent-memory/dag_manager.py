@@ -122,3 +122,53 @@ class DAGSessionManager:
             content=handoff.model_dump(),
             metadata={"trace_id": handoff.trace_id}
         )
+
+    def compact_session(self, session_id: str, leaf_id: str, summary: str, key_facts: List[str]) -> DAGEntry:
+        """
+        Create a compaction entry that summarizes the history up to leaf_id.
+        The compaction entry becomes the new parent for future turns.
+        """
+        content = {
+            "summary": summary,
+            "key_facts": key_facts,
+            "compacted_until": leaf_id
+        }
+        return self.create_entry(
+            session_id=session_id,
+            entry_type="compaction",
+            parent_id=leaf_id,
+            content=content
+        )
+
+    def get_effective_history(self, session_id: str, leaf_id: str) -> List[Dict[str, Any]]:
+        """
+        Get the 'effective' history for LLM context.
+        If a compaction entry is found, it starts from there.
+        """
+        history = self.get_history_branch(session_id, leaf_id)
+        
+        # Find the latest compaction entry
+        compaction_index = -1
+        for i, entry in enumerate(history):
+            if entry.type == "compaction":
+                compaction_index = i
+        
+        if compaction_index != -1:
+            # If we found a compaction, we only need what's after it (and the compaction itself)
+            effective = history[compaction_index:]
+        else:
+            effective = history
+            
+        # Convert to OpenAI-style message list
+        messages = []
+        for entry in effective:
+            if entry.type == "compaction":
+                content = entry.content
+                msg_text = f"[HISTORY COMPACTION]\nSummary: {content['summary']}\nKey Facts:\n- " + "\n- ".join(content['key_facts'])
+                messages.append({"role": "system", "content": msg_text})
+            elif entry.type == "message":
+                messages.append({"role": entry.role, "content": entry.content})
+            elif entry.type == "handoff":
+                messages.append({"role": "system", "content": f"[AGENT HANDOFF] {entry.content['reason']}"})
+                
+        return messages

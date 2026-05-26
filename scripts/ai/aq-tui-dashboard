@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""
+aq-tui-dashboard — High-fidelity terminal observability for Agentic Engineering.
+                   Uses Rich for differential rendering of health, tasks, and fleet.
+"""
+
+import time
+import os
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from rich.console import Console
+from rich.table import Table
+from rich.live import Live
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.text import Text
+from rich.progress import Progress, BarColumn, TextColumn
+
+console = Console()
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+def get_health_data():
+    # Simulated health data - in real use, call aq-qa 0 --json
+    return {
+        "status": "nominal",
+        "score": 92,
+        "services": [
+            {"name": "hybrid-coordinator", "status": "ok", "port": 8003},
+            {"name": "switchboard", "status": "ok", "port": 8085},
+            {"name": "aidb-qdrant", "status": "ok", "port": 6333},
+            {"name": "llama-cpp", "status": "ok", "port": 8080},
+        ]
+    }
+
+def get_fleet_data():
+    # Simulated fleet data
+    return {
+        "agents": [
+            {"id": "Architect-01", "role": "Architect", "task": "Planning P.A.E.A Phase 4", "status": "active"},
+            {"id": "Coder-05", "role": "Coder", "task": "Idle", "status": "idle"},
+            {"id": "Auditor-02", "role": "Auditor", "task": "Reviewing PR #77", "status": "busy"},
+        ]
+    }
+
+def make_layout() -> Layout:
+    layout = Layout()
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="main"),
+        Layout(name="footer", size=3)
+    )
+    layout["main"].split_row(
+        Layout(name="fleet"),
+        Layout(name="health")
+    )
+    return layout
+
+def generate_header() -> Panel:
+    grid = Table.grid(expand=True)
+    grid.add_column(justify="left", ratio=1)
+    grid.add_column(justify="right")
+    grid.add_row(
+        Text("SOVEREIGN SOFTWARE FACTORY", style="bold cyan"),
+        Text(datetime.now().strftime("%H:%M:%S"), style="white")
+    )
+    return Panel(grid, style="blue")
+
+def generate_fleet_table() -> Panel:
+    table = Table(title="Agent Fleet Status", expand=True)
+    table.add_column("Agent ID")
+    table.add_column("Role")
+    table.add_column("Current Task")
+    table.add_column("Status")
+    
+    data = get_fleet_data()
+    for agent in data["agents"]:
+        status_style = "green" if agent["status"] == "active" else "yellow" if agent["status"] == "busy" else "white"
+        table.add_row(agent["id"], agent["role"], agent["task"], Text(agent["status"], style=status_style))
+        
+    return Panel(table, border_style="magenta")
+
+def generate_health_table() -> Panel:
+    table = Table(title="System Health", expand=True)
+    table.add_column("Service")
+    table.add_column("Status")
+    table.add_column("Port")
+    
+    data = get_health_data()
+    for svc in data["services"]:
+        status_style = "bold green" if svc["status"] == "ok" else "bold red"
+        table.add_row(svc["name"], Text(svc["status"], style=status_style), str(svc["port"]))
+        
+    return Panel(table, border_style="cyan")
+
+def generate_footer() -> Panel:
+    return Panel(Text("Press Ctrl+C to exit | P.A.E.A v3.1 | Level 5 Dark Factory", justify="center"), style="blue")
+
+def main():
+    layout = make_layout()
+    
+    with Live(layout, refresh_per_second=1, screen=True):
+        try:
+            while True:
+                layout["header"].update(generate_header())
+                layout["fleet"].update(generate_fleet_table())
+                layout["health"].update(generate_health_table())
+                layout["footer"].update(generate_footer())
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+
+if __name__ == "__main__":
+    main()

@@ -277,6 +277,7 @@
     <button class="tab"    onclick="setLens('intelligence')" id="tab-intelligence">Intelligence</button>
     <button class="tab"    onclick="setLens('security')"    id="tab-security">Security</button>
     <button class="tab"    onclick="setLens('operations')"  id="tab-operations">Operations</button>
+    <button class="tab"    onclick="setLens('fleet')"       id="tab-fleet">Agent Fleet</button>
     <button class="tab"    onclick="setLens('map')"         id="tab-map">Neural Map</button>
     <button class="tab"    onclick="setLens('logic')"       id="tab-logic">Logic DAG</button>
     <button class="tab"    onclick="setLens('logs')"        id="tab-logs">Logs</button>
@@ -905,7 +906,32 @@
   </div>
 </div>
 
+<!-- ── AGENT FLEET ── -->
+<div class="panel" id="panel-fleet">
+  <div class="panel-grid g2">
+    <div class="card full">
+      <div class="card-hd">
+        <span class="card-title">Active Agent Fleet & Session DAGs</span>
+        <span class="card-badge badge-info" id="fleet-count">0 Agents Active</span>
+      </div>
+      <div id="fleet-dag-container" style="width:100%; height:500px; background:var(--bg2); border:1px solid var(--border); position:relative;">
+         <div class="d3-hud">DAG VISUALIZATION (OZ CONTROL PLANE)</div>
+         <div id="dag-viz" style="width:100%; height:100%"></div>
+      </div>
+    </div>
+    <div class="card">
+       <div class="card-hd"><span class="card-title">Active Intent Locks</span></div>
+       <div id="intent-locks-list" class="check-list"></div>
+    </div>
+    <div class="card">
+       <div class="card-hd"><span class="card-title">Recent Handoffs</span></div>
+       <div id="handoffs-list" class="check-list"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── NEURAL MAP ── -->
+
 <div class="panel" id="panel-map">
   <div style="display:flex;flex-direction:column;gap:.5rem">
     <div>
