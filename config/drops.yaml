@@ -12,3 +12,17 @@ drop_zones:
     skill: ".agent/skills/security-audit/SKILL.md"
     team: ["Auditor"]
     handoff_limit: 3
+
+  - name: "System Recovery"
+    watch: ["logs/alerts/*.json"]
+    trigger: ["created", "modified"]
+    skill: ".agent/skills/system-recovery/SKILL.md"
+    team: ["Architect", "Coder", "Tester"]
+    handoff_limit: 5
+
+  - name: "PRSI Autonomous Review"
+    watch: [".reports/prsi-pending.json"]
+    trigger: ["created", "modified"]
+    skill: ".agent/skills/prsi-review/SKILL.md"
+    team: ["Auditor"]
+    handoff_limit: 3
