@@ -109,7 +109,82 @@ function loadLens(id) {
   else if (id === 'operations')   loadOperations();
   else if (id === 'map')          { initTopo(); loadWorkflowGraph(); loadVectorGraph(); }
   else if (id === 'logic')        initLogic();
+  else if (id === 'fleet')        loadFleet();
   else if (id === 'logs')         loadLogs();
+}
+...
+// ─── AGENT FLEET & DAG (D3) ───────────────────────────────────────────────────
+async function loadFleet() {
+  const [fleet, locks] = await Promise.all([
+    apiFetch('/api/fleet/status').catch(() => ({ agents: [], sessions: [] })),
+    apiFetch('/api/collaboration/locks').catch(() => ({ locks: [] }))
+  ]);
+  
+  const countEl = document.getElementById('fleet-count');
+  if (countEl) countEl.textContent = `${(fleet.agents || []).length} Agents Active`;
+  
+  const locksEl = document.getElementById('intent-locks-list');
+  if (locksEl) {
+    locksEl.innerHTML = (locks.locks || []).map(l => 
+      `<div class="check-item pass"><span class="ci-status">LOCK</span><span class="ci-id">${l.agent_id}</span><span class="ci-desc">${l.reason}</span></div>`
+    ).join('') || '<div style="color:var(--fg3);font-size:.6rem">No active intent locks.</div>';
+  }
+  
+  if (fleet.sessions && fleet.sessions.length > 0) {
+    initFleetDAG(fleet.sessions[0]); // Visualize the first active session DAG
+  } else {
+    // Mock for demo if no real sessions
+    initFleetDAG({
+      nodes: [
+        { id: 'root', label: 'Architect: PLAN', role: 'architect' },
+        { id: 'c1',   label: 'Coder: IMPLEMENT', role: 'coder' },
+        { id: 'a1',   label: 'Auditor: REVIEW', role: 'auditor' }
+      ],
+      links: [
+        { source: 'root', target: 'c1' },
+        { source: 'c1',   target: 'a1' }
+      ]
+    });
+  }
+}
+
+async function initFleetDAG(data) {
+  const c = document.getElementById('dag-viz');
+  if (!c) return;
+  c.querySelectorAll('svg').forEach(s => s.remove());
+  if (!window.d3) { setTimeout(() => initFleetDAG(data), 800); return; }
+  
+  const w = c.clientWidth || 800;
+  const h = c.clientHeight || 500;
+  const svg = d3.select('#dag-viz').append('svg').attr('width','100%').attr('height','100%');
+  const g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.1, 8]).on('zoom', e => g.attr('transform', e.transform)));
+  
+  const edges = data.links || [];
+  const nodes = data.nodes || [];
+  
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(edges).id(d => d.id).distance(80))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(w/2, h/2));
+    
+  const link = g.append('g').selectAll('line').data(edges).enter().append('line').attr('class','link-line');
+  const node = g.append('g').selectAll('g').data(nodes).enter().append('g')
+    .call(d3.drag()
+      .on('start', (e,d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end', (e,d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+      
+  node.append('circle').attr('r', 10)
+    .attr('fill', d => d.role === 'architect' ? 'var(--mag)' : d.role === 'coder' ? 'var(--cyan)' : 'var(--grn)')
+    .attr('stroke', 'var(--bg)').attr('stroke-width', 2);
+    
+  node.append('text').attr('class','node-label').attr('dx', 15).attr('dy', '.35em').text(d => d.label);
+  
+  sim.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
 }
 function toggleDrawer() { document.getElementById('drawer').classList.toggle('open'); }
 

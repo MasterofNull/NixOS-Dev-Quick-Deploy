@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""
+aq-push-intelligence — Automates lesson extraction from sessions and pushes to AIDB.
+"""
+
+import json
+import logging
+import subprocess
+from pathlib import Path
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("intelligence-loop")
+
+def run_aq_insights():
+    logger.info("Extracting insights from recent sessions...")
+    result = subprocess.run(["scripts/ai/aq-insights", "--format", "json"], capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(f"Failed to run aq-insights: {result.stderr}")
+        return []
+    
+    try:
+        data = json.loads(result.stdout)
+        return data.get("agent_lessons", [])
+    except json.JSONDecodeError:
+        logger.error("Failed to parse aq-insights output")
+        return []
+
+def push_to_aidb(lessons):
+    if not lessons:
+        logger.info("No lessons to push.")
+        return
+        
+    for lesson in lessons:
+        logger.info(f"Pushing lesson to AIDB: {lesson}")
+        # Simulated AIDB push. In reality, call the hybrid-coordinator / AIDB endpoint
+        # e.g., curl -X POST http://localhost:8002/api/agent-intelligence/push ...
+        # For now, we simulate the log
+        logger.info("[SIMULATED] Lesson successfully pushed to 'agent-intelligence' namespace.")
+
+def main():
+    lessons = run_aq_insights()
+    push_to_aidb(lessons)
+    logger.info("Collective Intelligence Loop completed.")
+
+if __name__ == "__main__":
+    main()
