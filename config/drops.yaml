@@ -26,3 +26,24 @@ drop_zones:
     skill: ".agent/skills/prsi-review/SKILL.md"
     team: ["Auditor"]
     handoff_limit: 3
+
+  - name: "Asynchronous Delegation"
+    watch: ["tasks_inbox/*.md"]
+    trigger: ["created"]
+    skill: ".agent/skills/async-delegation/SKILL.md"
+    team: ["Architect", "Coder", "Auditor"]
+    handoff_limit: 8
+
+  - name: "Test Failure Auto-Remediation"
+    watch: [".reports/test-failures/*.json", ".reports/test-failures/*.log"]
+    trigger: ["created", "modified"]
+    skill: ".agent/skills/test-remediation/SKILL.md"
+    team: ["Architect", "Coder", "Tester"]
+    handoff_limit: 5
+
+  - name: "Flake Supply-Chain Review"
+    watch: ["flake.lock"]
+    trigger: ["modified"]
+    skill: ".agent/skills/flake-review/SKILL.md"
+    team: ["Auditor", "Tester"]
+    handoff_limit: 3

@@ -38,6 +38,19 @@ To prevent state loss during rate limits or model switches, all agents MUST:
 
 *Applies to: Claude, Gemini, Codex, local agent, and any future autonomous agents.*
 
+## Asynchronous Delegation via Drop Zones (Event-Driven Collaboration)
+
+Agents (both local and remote) and human users can offload complex, time-consuming tasks or trigger specialized workflows asynchronously using **Drop Zones**.
+
+A Drop Zone is a watched directory or file pattern. When a file is created or modified in a Drop Zone, a background daemon (`aq-drop-daemon`) automatically detects it and spawns a specialized agent team to handle the event. This prevents blocking your current session and avoids hitting context ceilings on large side-tasks.
+
+### How to use Drop Zones:
+1.  **General Task Delegation (`tasks_inbox/`)**: To delegate a general task (e.g., "refactor this module", "write tests for X"), write a markdown file containing the task description and drop it into `tasks_inbox/` (e.g., `write_file(file_path="tasks_inbox/refactor-api.md", content="Please refactor the api routes in src/...")`). The `Async Delegation` team will pick it up, plan, execute, and commit the changes in the background.
+2.  **Test Failure Auto-Remediation (`.reports/test-failures/`)**: If a test suite fails, write the failure output to a `.log` or `.json` file in `.reports/test-failures/`. The `Test Remediation` team will automatically diagnose the failure, apply a fix, verify it, and commit.
+3.  **System Recovery (`logs/alerts/`)**: For system health issues or service crashes, drop the error trace into `logs/alerts/`. The `System Recovery` team will execute `journalctl`, attempt a restart or config fix, and verify with `aq-qa 0`.
+
+**Note:** Always ensure the dropped file contains enough context (file paths, error traces, specific goals) for the receiving background team to operate autonomously.
+
 ## Security checklist (OWASP Agentic Top 10) continua...
 no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
 `bash -n` on shell, `py_compile` on Python; privilege minimization. Never use `--no-verify`.
