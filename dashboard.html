@@ -278,6 +278,7 @@
     <button class="tab"    onclick="setLens('security')"    id="tab-security">Security</button>
     <button class="tab"    onclick="setLens('operations')"  id="tab-operations">Operations</button>
     <button class="tab"    onclick="setLens('fleet')"       id="tab-fleet">Agent Fleet</button>
+    <button class="tab"    onclick="setLens('spider')"      id="tab-spider">Health Spider</button>
     <button class="tab"    onclick="setLens('map')"         id="tab-map">Neural Map</button>
     <button class="tab"    onclick="setLens('logic')"       id="tab-logic">Logic DAG</button>
     <button class="tab"    onclick="setLens('logs')"        id="tab-logs">Logs</button>
@@ -906,7 +907,21 @@
   </div>
 </div>
 
+<!-- ── HEALTH SPIDER ── -->
+<div class="panel" id="panel-spider">
+  <div class="panel-grid g2">
+    <div class="card full">
+       <div class="card-hd">
+         <span class="card-title">Autonomous Anomaly History</span>
+         <span class="card-badge badge-info" id="anomaly-count">0 Detected</span>
+       </div>
+       <div id="anomaly-list" class="check-list" style="max-height:500px"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── AGENT FLEET ── -->
+
 <div class="panel" id="panel-fleet">
   <div class="panel-grid g2">
     <div class="card full">

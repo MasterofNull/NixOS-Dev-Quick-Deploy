@@ -32,8 +32,10 @@ def register_routes(app: web.Application) -> None:
     """Register all InsightsService routes on the given aiohttp Application."""
     import trace_collector as _tc
     import eval_runner as _er
+    import health_spider_handlers as _hsh
 
     app.router.add_get("/api/traces", _tc.handle_get_traces)
     app.router.add_post("/eval/run", _er.handle_eval_run)
     app.router.add_get("/eval/trend", _er.handle_eval_trend)
-    app.router.add_post("/eval/score-query", _er.handle_eval_score_query)  # Phase 60.5
+    app.router.add_post("/eval/score-query", _er.handle_eval_score_query)
+    app.router.add_get("/api/telemetry/anomalies", _hsh.handle_get_anomalies)
