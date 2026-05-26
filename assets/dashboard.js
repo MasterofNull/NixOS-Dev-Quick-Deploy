@@ -116,12 +116,19 @@ function loadLens(id) {
 ...
 // ─── HEALTH SPIDER ────────────────────────────────────────────────────────────
 async function loadSpider() {
+  console.log("Health Spider: Loading anomalies...");
   const res = await apiFetch('/api/telemetry/anomalies');
+  console.log("Health Spider API Response:", res);
+  
   const listEl = document.getElementById('anomaly-list');
   const countEl = document.getElementById('anomaly-count');
   
-  if (countEl) countEl.textContent = `${(res.anomalies || []).length} Detected`;
+  if (countEl) countEl.textContent = `${(res && res.anomalies ? res.anomalies.length : 0)} Detected`;
   if (listEl) {
+    if (!res || !res.anomalies) {
+      listEl.innerHTML = '<div style="color:var(--red);font-size:.6rem">Error: Could not fetch data.</div>';
+      return;
+    }
     listEl.innerHTML = (res.anomalies || []).map(a => 
       `<div class="check-item fail"><span class="ci-status">ISSUE</span><span class="ci-id">${a.zone}</span><span class="ci-desc">${a.issue}</span></div>`
     ).join('') || '<div style="color:var(--fg3);font-size:.6rem">No anomalies detected.</div>';
