@@ -112,7 +112,7 @@ function loadLens(id) {
   else if (id === 'fleet')        loadFleet();
   else if (id === 'logs')         loadLogs();
 }
-...
+
 // ─── AGENT FLEET & DAG (D3) ───────────────────────────────────────────────────
 async function loadFleet() {
   const [fleet, locks] = await Promise.all([
