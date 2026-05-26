@@ -17,6 +17,14 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: .agent/skills/mcp-builder/reference/evaluation.md, .agent/skills/mcp-builder/scripts/evaluation.py, ai-stack/agents/skills/mcp-builder/reference/evaluation.md"
     },
     {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
+      "module": "test",
+      "owner": "unassigned",
+      "path": "ai-stack/agents/skills/memory-diagnostics/test.py",
+      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: .agent/skills/webapp-testing/scripts/with_server.py, ai-stack/agents/skills/webapp-testing/scripts/with_server.py, nix/modules/core/base.nix"
+    },
+    {
       "action": "keep-skill-asset",
       "classification": "skill_asset_candidate",
       "module": "check_fillable_fields",
@@ -283,6 +291,14 @@
     {
       "action": "verify-entrypoint-coverage",
       "classification": "referenced_entrypoint_candidate",
+      "module": "conftest",
+      "owner": "unassigned",
+      "path": "ai-stack/conftest.py",
+      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: nix/modules/core/base.nix"
+    },
+    {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
       "module": "auto_deployer",
       "owner": "unassigned",
       "path": "ai-stack/deployment/auto_deployer.py",
@@ -411,6 +427,22 @@
     {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
+      "module": "context_compressor",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/mlops-tools/context_compressor.py",
+      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
+    },
+    {
+      "action": "verify-entrypoint-wiring",
+      "classification": "entrypoint_candidate",
+      "module": "context_weaver",
+      "owner": "unassigned",
+      "path": "ai-stack/mcp-servers/mlops-tools/context_weaver.py",
+      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
+    },
+    {
+      "action": "verify-entrypoint-wiring",
+      "classification": "entrypoint_candidate",
       "module": "populate",
       "owner": "unassigned",
       "path": "ai-stack/mcp-servers/qdrant-populator/populate.py",
@@ -523,14 +555,6 @@
     {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
-      "module": "work_classifier",
-      "owner": "unassigned",
-      "path": "ai-stack/offloading/work_classifier.py",
-      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
-    },
-    {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
       "module": "agent_marketplace",
       "owner": "unassigned",
       "path": "ai-stack/platform/agent_marketplace.py",
@@ -611,38 +635,14 @@
     {
       "action": "verify-entrypoint-coverage",
       "classification": "referenced_entrypoint_candidate",
-      "module": "conftest",
-      "owner": "unassigned",
-      "path": "ai-stack/conftest.py",
-      "rationale": "Global pytest configuration for ai-stack; correctly has no inbound production imports."
-    },
-    {
-      "action": "verify-entrypoint-coverage",
-      "classification": "referenced_entrypoint_candidate",
       "module": "property_based_tests",
       "owner": "unassigned",
       "path": "ai-stack/testing/property_based_tests.py",
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
-    },
-    {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
-      "module": "context_compressor",
-      "owner": "unassigned",
-      "path": "ai-stack/mcp-servers/mlops-tools/context_compressor.py",
-      "rationale": "New MLOps component; verify service or command wiring."
-    },
-    {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
-      "module": "context_weaver",
-      "owner": "unassigned",
-      "path": "ai-stack/mcp-servers/mlops-tools/context_weaver.py",
-      "rationale": "New MLOps component; verify service or command wiring."
     }
   ],
-  "generated_at": "2026-05-25T07:55:00Z",
+  "generated_at": "2026-05-26T02:25:09Z",
   "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
-  "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale. External references prove reachability only; live services still require aq-qa and dashboard visibility before action can become keep.",
+  "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
   "version": 1
 }
