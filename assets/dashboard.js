@@ -110,7 +110,22 @@ function loadLens(id) {
   else if (id === 'map')          { initTopo(); loadWorkflowGraph(); loadVectorGraph(); }
   else if (id === 'logic')        initLogic();
   else if (id === 'fleet')        loadFleet();
+  else if (id === 'spider')       loadSpider();
   else if (id === 'logs')         loadLogs();
+}
+...
+// ─── HEALTH SPIDER ────────────────────────────────────────────────────────────
+async function loadSpider() {
+  const res = await apiFetch('/api/telemetry/anomalies');
+  const listEl = document.getElementById('anomaly-list');
+  const countEl = document.getElementById('anomaly-count');
+  
+  if (countEl) countEl.textContent = `${(res.anomalies || []).length} Detected`;
+  if (listEl) {
+    listEl.innerHTML = (res.anomalies || []).map(a => 
+      `<div class="check-item fail"><span class="ci-status">ISSUE</span><span class="ci-id">${a.zone}</span><span class="ci-desc">${a.issue}</span></div>`
+    ).join('') || '<div style="color:var(--fg3);font-size:.6rem">No anomalies detected.</div>';
+  }
 }
 
 // ─── AGENT FLEET & DAG (D3) ───────────────────────────────────────────────────
