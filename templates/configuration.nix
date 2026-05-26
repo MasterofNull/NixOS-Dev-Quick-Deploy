@@ -513,9 +513,6 @@ in
     };
   };
 
-  nixpkgs.config.allowUnfree = true;
-  nixpkgs.overlays = [ pythonOverridesOverlay ];
-
   # ============================================================================
   # Package Overrides (Fix build issues)
   # ============================================================================

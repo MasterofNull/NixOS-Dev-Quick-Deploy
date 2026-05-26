@@ -1353,7 +1353,6 @@ in
   # The module is already included in the flake's module list, so no manual import is required here
 
   nixpkgs = {
-    config.allowUnfree = true;
     overlays = [ pythonOverridesOverlay ];
   };
 

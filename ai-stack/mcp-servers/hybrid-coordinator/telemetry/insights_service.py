@@ -32,7 +32,7 @@ def register_routes(app: web.Application) -> None:
     """Register all InsightsService routes on the given aiohttp Application."""
     import trace_collector as _tc
     import eval_runner as _er
-    from ai_stack.mcp_servers.hybrid_coordinator.telemetry import health_spider_handlers as _hsh
+    from telemetry import health_spider_handlers as _hsh
 
     app.router.add_get("/api/traces", _tc.handle_get_traces)
     app.router.add_post("/eval/run", _er.handle_eval_run)
