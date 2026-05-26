@@ -1,23 +1,24 @@
-# Allowed tracked files at repository root.
-# This is an explicit root hygiene guardrail for migration stability.
 
-.aider.md
-.env.example
-.gitignore
-.gitleaks.toml
-.pre-commit-config.yaml
-.sops.yaml
-.vscode.configs.import.cspell.config.json
 AGENTS.md
+.aider.md
+.aiexclude
+# Allowed tracked files at repository root.
 CLAUDE.md
-LICENSE
-Makefile
-README.md
 dashboard.html
 deploy
+.env.example
 flake.lock
 flake.nix
+.gitignore
+.gitleaks.toml
+LICENSE
+Makefile
 nixos-quick-deploy.sh
-pytest.ini
-.aiexclude
+.pre-commit-config.yaml
 pyrightconfig.json
+pytest.ini
+README.md
+.sops.yaml
+# This is an explicit root hygiene guardrail for migration stability.
+.trivyignore
+.vscode.configs.import.cspell.config.json

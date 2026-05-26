@@ -155,6 +155,8 @@ in {
     mySystem.monitoring.commandCenter.frontendPort = lib.mkDefault ports.commandCenterFrontend;
     mySystem.monitoring.commandCenter.apiPort = lib.mkDefault ports.commandCenterApi;
 
+    nixpkgs.config.allowUnfree = true;
+
     nix.settings = {
       experimental-features = ["nix-command" "flakes"];
       auto-optimise-store = lib.mkDefault true;

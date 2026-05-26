@@ -503,7 +503,7 @@ PY
 
 gate_cross_surface_contract() {
   log "Checking cross-surface docs/dashboard contract..."
-  if python3 "${SCRIPT_DIR}/check-cross-surface-contract.py" --mode="${MODE}" >/dev/null 2>&1; then
+  if python3 "${SCRIPT_DIR}/check-cross-surface-contract.py" --mode="${MODE}"; then
     pass "Cross-surface docs/dashboard contract satisfied"
   else
     fail "Cross-surface docs/dashboard contract failed"

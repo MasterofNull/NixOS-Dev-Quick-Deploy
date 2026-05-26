@@ -150,10 +150,9 @@ jobs:
           nix flake check --no-build path:.
 
       - name: Profile eval smoke tests
-        env:
-          NIXPKGS_ALLOW_UNFREE: 1
         run: |
           set -euo pipefail
+          export NIXPKGS_ALLOW_UNFREE=1
           mapfile -t hosts < <(find nix/hosts -mindepth 1 -maxdepth 1 -type d \
             -exec test -f '{}/default.nix' ';' -printf '%f\n' | sort)
           profiles=(ai-dev gaming minimal)

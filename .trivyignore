@@ -1,0 +1,15 @@
+# Trivy Ignore File
+# Ignore vulnerabilities that are persistent in the base image and cannot be fixed by apt-get upgrade
+
+# libsqlite3-0 vulnerabilities in python:3.11-slim
+CVE-2024-5535
+CVE-2024-47175
+CVE-2024-47176
+CVE-2024-47177
+CVE-2024-47191
+
+# libssl3 vulnerabilities
+CVE-2024-5535
+
+# Known non-exploitable in our context
+CVE-2023-45853

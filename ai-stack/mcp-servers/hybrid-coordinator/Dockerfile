@@ -43,7 +43,7 @@ FROM docker.io/library/python:3.13-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     && rm -rf /var/lib/apt/lists/*
