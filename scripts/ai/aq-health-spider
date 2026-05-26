@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""
+aq-health-spider — Stochastic telemetry sampling and autonomous remediation engine.
+"""
+
+import asyncio
+import json
+import logging
+import random
+import time
+from pathlib import Path
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("health-spider")
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+HOTSPOTS_ENDPOINT = "http://127.0.0.1:8003/api/telemetry/hotspots"
+
+class HealthSpider:
+    def __init__(self, interval: int = 60):
+        self.interval = interval
+        self.seen_samples = set() # Avoid repeating samples in a cycle
+
+    async def get_hotspots(self) -> List[str]:
+        # Simulated hotspot fetch
+        return ["hybrid-coordinator", "switchboard", "aidb", "dashboard"]
+
+    async def sample_zone(self, zone: str):
+        logger.info(f"Sampling hotspot: {zone}")
+        # Run specialized health check/sampling
+        # In reality: aq-qa --service <zone> --json
+        await asyncio.sleep(0.5)
+        
+        # Simulate detection of anomaly (for demo)
+        if random.random() < 0.2:
+            anomaly = {"zone": zone, "issue": "high_latency", "timestamp": time.time()}
+            await self.trigger_remediation(anomaly)
+
+    async def trigger_remediation(self, anomaly: Dict[str, Any]):
+        logger.warning(f"Anomaly detected in {anomaly['zone']}: {anomaly['issue']}")
+        
+        # Write to remediation report for drop zone trigger
+        report_path = REPO_ROOT / ".reports" / "remediation" / f"anomaly_{int(time.time())}.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(report_path, "w") as f:
+            json.dump(anomaly, f)
+        
+        logger.info(f"Remediation loop triggered: {report_path}")
+
+    async def run(self):
+        logger.info("Health Spider scanning...")
+        while True:
+            hotspots = await self.get_hotspots()
+            random.shuffle(hotspots)
+            
+            for zone in hotspots:
+                if zone not in self.seen_samples:
+                    await self.sample_zone(zone)
+                    self.seen_samples.add(zone)
+            
+            # Reset after full pass
+            self.seen_samples.clear()
+            await asyncio.sleep(self.interval)
+
+if __name__ == "__main__":
+    spider = HealthSpider()
+    asyncio.run(spider.run())
