@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Dict, List, Set, Any
@@ -117,16 +118,13 @@ class DropDaemon:
                     self.state[name][path_str] = mtime
 
     async def trigger_workflow(self, zone: Dict[str, Any], file_path: Path):
-        """Simulate triggering an agent workflow."""
+        """Trigger an agent workflow using aq-session-start."""
         name = zone["name"]
         skill = zone["skill"]
         team = zone["team"]
         
         logger.info(f"Workflow '{name}' starting with team {team} for {file_path}")
-        # In a real implementation, this would call aq-session-start or similar
-        # For now, we'll just log the intent
         
-        # Example of setting an intent lock
         session_id = f"auto-{int(time.time())}"
         IntentLock.set_lock(
             agent_id=team[0],
@@ -135,9 +133,26 @@ class DropDaemon:
             locks=[str(file_path)]
         )
         
-        # Simulate processing time
-        await asyncio.sleep(1)
-        # IntentLock.clear_lock() # Don't clear immediately in simulation
+        # Actually spawn the background workflow
+        task_desc = f"Handle drop zone event '{name}' for file {file_path}. Use skill {skill}."
+        cmd = [
+            str(REPO_ROOT / "scripts" / "ai" / "aq-session-start"),
+            "--task", task_desc,
+        ]
+        
+        try:
+            logger.info(f"Spawning background process: {' '.join(cmd)}")
+            # Fire and forget
+            subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=str(REPO_ROOT)
+            )
+        except Exception as e:
+            logger.error(f"Failed to spawn workflow process: {e}")
+
+        # IntentLock is cleared by the agent when done
 
     async def run(self, interval: int = 5):
         logger.info(f"Drop Daemon started (polling every {interval}s)...")
