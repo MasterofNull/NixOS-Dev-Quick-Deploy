@@ -39,3 +39,4 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/eval/trend", _er.handle_eval_trend)
     app.router.add_post("/eval/score-query", _er.handle_eval_score_query)
     app.router.add_get("/api/telemetry/anomalies", _hsh.handle_get_anomalies)
+
