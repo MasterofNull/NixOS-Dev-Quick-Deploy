@@ -14,7 +14,6 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_TIMEOUT=300
 
 RUN apt-get update \
-    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         build-essential \
         curl \

@@ -7,11 +7,13 @@ set -euo pipefail
 # uppercase environment-variable interpolation.
 
 USE_STAGED=0
+TARGET_FILES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --staged) USE_STAGED=1; shift ;;
-    *) printf 'Unknown arg: %s\n' "$1" >&2; exit 2 ;;
+    -*) printf 'Unknown arg: %s\n' "$1" >&2; exit 2 ;;
+    *) TARGET_FILES+=("$1"); shift ;;
   esac
 done
 
@@ -41,7 +43,9 @@ find_offending_echoes() {
 }
 
 gather_targets() {
-  if [[ "$USE_STAGED" -eq 1 ]]; then
+  if [[ "${#TARGET_FILES[@]}" -gt 0 ]]; then
+    printf '%s\n' "${TARGET_FILES[@]}"
+  elif [[ "$USE_STAGED" -eq 1 ]]; then
     git diff --cached --name-only --diff-filter=ACM | filter_shell_files
   else
     git ls-files '*.sh' '*.bash' ':!:archive/deprecated/**' || true

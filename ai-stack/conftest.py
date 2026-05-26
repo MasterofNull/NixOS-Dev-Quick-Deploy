@@ -29,27 +29,36 @@ os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("STRICT_ENV", "false")
 os.environ.setdefault("AI_STRICT_ENV", "false")
 
-# Mock missing third-party modules that tests might import at module level
+# Safe conditional mocking of missing third-party modules
 from unittest.mock import MagicMock
 from types import ModuleType
 
-def mock_module(name, attributes=None):
-    m = ModuleType(name)
-    m.__spec__ = MagicMock()
-    if attributes:
-        for k, v in attributes.items():
-            setattr(m, k, v)
-    sys.modules[name] = m
-    return m
+def mock_module_if_missing(name, attributes=None):
+    if name in sys.modules:
+        return sys.modules[name]
+    try:
+        # Check if it can be imported normally
+        import importlib
+        importlib.import_module(name)
+        return sys.modules[name]
+    except (ImportError, ModuleNotFoundError):
+        m = ModuleType(name)
+        m.__spec__ = MagicMock()
+        if attributes:
+            for k, v in attributes.items():
+                setattr(m, k, v)
+        sys.modules[name] = m
+        return m
 
-# Robust structlog mock
-structlog_mock = mock_module("structlog")
-structlog_mock.get_logger = MagicMock(return_value=MagicMock())
+# Robust conditional mocks
+structlog_mock = mock_module_if_missing("structlog")
+if not hasattr(structlog_mock, "get_logger"):
+    structlog_mock.get_logger = MagicMock(return_value=MagicMock())
 
-mock_module("prometheus_client", {
+mock_module_if_missing("prometheus_client", {
     "Counter": MagicMock,
     "Gauge": MagicMock,
     "Histogram": MagicMock,
     "Summary": MagicMock,
 })
-mock_module("psutil")
+mock_module_if_missing("psutil")

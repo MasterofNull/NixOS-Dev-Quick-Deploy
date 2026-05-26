@@ -297,7 +297,13 @@
     devShells = lib.genAttrs devSystems (system': let
       pkgs' = import nixpkgs {
         system = system';
-        config.allowUnfree = true;
+        config = {
+          allowUnfree = true;
+          allowUnfreePredicate = pkg:
+            builtins.elem (lib.getName pkg) [
+              "terraform"
+            ];
+        };
         overlays = [(import ./nix/lib/overlays/osint-tools.nix)];
       };
     in {
