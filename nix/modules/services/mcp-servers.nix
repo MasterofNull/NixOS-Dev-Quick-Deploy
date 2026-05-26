@@ -1030,6 +1030,9 @@ in {
               "${hybridPython}/bin/python3"
               "${repoMcp}/hybrid-coordinator/server.py"
             ];
+            Restart = "always";
+            RestartSec = "5s";
+            WatchdogSec = "30s";
             Environment =
               [
                 "PORT=${toString mcp.hybridPort}"
@@ -1039,6 +1042,7 @@ in {
                 "HOST=127.0.0.1"
                 "AI_LOCAL_MODEL_ID=${llama.activeModel}"
                 "AI_AGENT_NAME=local-${cfg.hardwareTier}-agent"
+                "AI_SEMANTIC_TOOLING_AUTORUN=true"
                 "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
                 "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
                 "SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"

@@ -25,7 +25,7 @@ CONFIG_PATH = REPO_ROOT / "config" / "drops.yaml"
 LOCK_PATH = REPO_ROOT / ".agent" / "collaboration" / "PENDING.json"
 
 class IntentLock:
-    """Manages the PENDING.json intent lock to prevent agent collisions."""
+    """Manages the PENDING.json intent lock to prevent agent collisions (v2 with TTL)."""
     
     @staticmethod
     def get_lock() -> Dict[str, Any]:
@@ -33,19 +33,29 @@ class IntentLock:
             return {}
         try:
             with open(LOCK_PATH, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                
+            # Check TTL (v2)
+            timestamp = data.get("timestamp", 0)
+            ttl = data.get("ttl_seconds", 300) # Default 5 minutes
+            if time.time() - timestamp > ttl:
+                logger.info(f"Stale lock detected and ignored (expired by {time.time() - timestamp - ttl:.1f}s)")
+                return {}
+                
+            return data
         except Exception:
             return {}
 
     @staticmethod
-    def set_lock(agent_id: str, session_id: str, intended_changes: List[Dict[str, Any]], locks: List[str]):
+    def set_lock(agent_id: str, session_id: str, intended_changes: List[Dict[str, Any]], locks: List[str], ttl_seconds: int = 300):
         LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
         lock_data = {
             "session_id": session_id,
             "active_agent": agent_id,
             "intended_changes": intended_changes,
             "locks": locks,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "ttl_seconds": ttl_seconds
         }
         with open(LOCK_PATH, "w") as f:
             json.dump(lock_data, f, indent=2)

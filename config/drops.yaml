@@ -7,7 +7,7 @@ drop_zones:
     handoff_limit: 5
 
   - name: "Security Audit"
-    watch: ["src/**/*.py"]
+    watch: ["ai-stack/**/*.py"]
     trigger: ["modified"]
     skill: ".agent/skills/security-audit/SKILL.md"
     team: ["Auditor"]
