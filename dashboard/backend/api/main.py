@@ -120,7 +120,7 @@ if cors_env:
     cors_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
 else:
     cors_hosts = [service_host, "127.0.0.1"]
-    cors_ports = [8888, 8890, 5173]
+    cors_ports = [8888, 8889, 8890, 5173]
     cors_origins = [f"http://{host}:{port}" for host in cors_hosts for port in cors_ports]
 
 app.add_middleware(
