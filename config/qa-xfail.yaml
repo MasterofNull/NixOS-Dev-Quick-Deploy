@@ -23,14 +23,6 @@ xfail:
     expires: "2026-06-26"
     owner: hyperd
 
-  - id: "0.2.3"
-    reason: >
-      Qdrant vector store has 0 documents. Corpus seeding requires a privileged service
-      operation: sudo systemctl start ai-qdrant-seed.service (or equivalent ingest job).
-    created: "2026-05-27"
-    expires: "2026-06-26"
-    owner: hyperd
-
   - id: "0.8.1"
     reason: >
       Delegate 24h success rate is 0% due to historical failures from before the
