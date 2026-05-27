@@ -1,16 +1,1 @@
-{
-  "session_id": "auto-1779759954",
-  "active_agent": "Auditor",
-  "intended_changes": [
-    {
-      "file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/flake.lock",
-      "action": "analyze",
-      "reason": "Drop zone trigger: Flake Supply-Chain Review"
-    }
-  ],
-  "locks": [
-    "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/flake.lock"
-  ],
-  "timestamp": 1779759954.0951657,
-  "ttl_seconds": 300
-}
+{"status": "finalized_remediation_plan", "timestamp": "2026-05-27T08:30:00Z"}
