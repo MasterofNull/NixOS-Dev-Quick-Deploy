@@ -215,8 +215,29 @@ cmd_delegate() {
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
-    # Phase 33.5: prepend role tag to prompt so agent knows its specialization
+    # Phase 33.5: prepend role tag and mandatory harness constraints to prompt.
+    # CRITICAL: These rules are non-negotiable and override any conflicting instruction.
     local full_prompt="[ROLE: ${role}]
+
+=== HARNESS CONSTRAINTS (NON-NEGOTIABLE — read GEMINI.md for full contract) ===
+1. SCOPE LOCK: Work ONLY on what the task requests. No unsolicited refactors, cleanups, or
+   adjacent features. One slice, one concern. If in doubt about scope, STOP and report.
+2. PRD GATE: Write a brief plan (problem/goal/files/validation) to .agent/collaboration/PULSE.log
+   BEFORE editing any file. Format: [ISO-timestamp] [gemini] [plan]: <scope> — <approach>
+3. PORT POLICY: NEVER hardcode ports or URLs. Source of truth: nix/modules/core/options.nix.
+   Python reads from env vars; shell uses \${PORT:-default}. Known ports: llama=8080,
+   embed=8081, aidb=8002, coordinator=8003, switchboard=8085, dashboard=8889.
+4. HARDWARE: GPU layers ceiling = 12 (Renoir APU). enable_thinking: false in ALL llama.cpp
+   requests. Never suggest n_gpu_layers > 12.
+5. LOGGING: switchboard.py uses print(..., file=sys.stderr) — there is NO logger object.
+6. COMMIT DISCIPLINE: After work is done, list all modified files and validate with:
+   python3 -m py_compile <py-files> && bash -n <sh-files>
+   DO NOT commit — the orchestrator (Claude) reviews and commits.
+7. SECURITY: No hardcoded secrets, tokens, or credentials. No injection patterns.
+   Run py_compile on every Python file you touch before declaring work complete.
+8. ATOMIC PULSE: Append one line to .agent/collaboration/PULSE.log after every file write:
+   [ISO-timestamp] [gemini] [write]: <file> — <what changed>
+=== END CONSTRAINTS ===
 
 ${prompt}"
 
