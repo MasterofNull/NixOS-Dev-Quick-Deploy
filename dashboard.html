@@ -445,6 +445,20 @@
       </div>
       <div id="hwStateDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
     </div>
+
+    <!-- Inference Slots -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Inference Slots</span>
+        <span class="card-badge badge-info" id="slotBadge">--</span>
+      </div>
+      <div style="max-height:240px;overflow-y:auto">
+        <table class="coll-table">
+          <thead><tr><th>Server</th><th>Slot</th><th>Task</th><th>Usage</th></tr></thead>
+          <tbody id="slotBody"><tr><td colspan="4" style="color:var(--fg3)">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1032,7 +1046,7 @@
 
 <script src="/assets/vendor/d3.v7.min.js"></script>
 <script src="/assets/vendor/mermaid.min.js"></script>
-<script src="/assets/dashboard.js"></script>
+<script src="/assets/dashboard.js?v=3"></script>
 <script>
 // aq-qa 60.7.3: section-rag-quality ragAnswerRelevance ragContextPrecision ragFaithfulness loadRagQuality
 </script>

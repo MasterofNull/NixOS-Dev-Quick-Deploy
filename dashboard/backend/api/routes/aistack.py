@@ -189,11 +189,15 @@ async def fetch_with_fallback(
         return fallback
 
 
-async def fetch_text_with_fallback(url: str, fallback: Any = None) -> Any:
+async def fetch_text_with_fallback(
+    url: str,
+    fallback: Any = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> Any:
     """Fetch text response with error handling and fallback"""
     try:
         session = await get_http_session()
-        async with session.get(url) as resp:
+        async with session.get(url, headers=headers) as resp:
             if resp.status == 200:
                 return await resp.text()
             logger.warning(f"Non-200 status from {url}: {resp.status}")
@@ -776,7 +780,20 @@ async def _http_health_probe(url: str) -> tuple[bool, Optional[str]]:
         # Reuse the global session (avoids creating a new TCP connector per probe)
         # but override the per-request timeout to the lightweight probe budget.
         sess = await get_http_session()
-        async with sess.get(url, timeout=_HEALTH_PROBE_TIMEOUT) as resp:
+        
+        # Determine appropriate auth headers based on the service being probed
+        headers = {}
+        if url.startswith(SERVICES['hybrid']):
+            headers = _hybrid_dual_auth_headers()
+        elif url.startswith(SERVICES['aider_wrapper']):
+            headers = _aider_wrapper_auth_headers()
+        elif url.startswith(SERVICES['ralph']):
+            headers = _ralph_auth_header()
+        elif url.startswith(SERVICES['aidb']):
+            # AIDB and Ralph often share the same API key in this stack
+            headers = _ralph_auth_header()
+
+        async with sess.get(url, headers=headers, timeout=_HEALTH_PROBE_TIMEOUT) as resp:
             if 200 <= resp.status < 300:
                 return True, None
             return False, f"http_{resp.status}"
@@ -1172,7 +1189,11 @@ def _prometheus_metric_scalar(metrics_text: str, metric_name: str) -> Optional[f
 
 
 async def _fetch_aidb_prometheus_summary() -> Dict[str, Any]:
-    metrics_text = await fetch_text_with_fallback(f"{SERVICES['aidb']}/metrics", "")
+    metrics_text = await fetch_text_with_fallback(
+        f"{SERVICES['aidb']}/metrics",
+        "",
+        headers=_ralph_auth_header(),
+    )
     if not isinstance(metrics_text, str) or not metrics_text.strip():
         return {}
     request_total = _prometheus_metric_sum(metrics_text, "aidb_http_requests_total")
@@ -1566,8 +1587,8 @@ async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, i
 @router.post("/feedback")
 async def submit_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
     """Forward user feedback to the hybrid coordinator learning endpoint."""
-    api_key = _load_hybrid_api_key()
-    if not api_key:
+    headers = _hybrid_dual_auth_headers()
+    if not headers:
         raise HTTPException(status_code=503, detail="Hybrid API key not configured")
 
     hybrid_base = SERVICES["hybrid"]
@@ -1581,7 +1602,7 @@ async def submit_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
     result = await post_with_fallback(
         f"{hybrid_base}/feedback",
         payload_dict,
-        headers={"X-API-Key": api_key},
+        headers=headers,
     )
     if result is None:
         raise HTTPException(status_code=503, detail="Hybrid feedback endpoint unavailable")
@@ -1598,10 +1619,13 @@ async def proxy_aidb_health(probe: str) -> Dict[str, Any]:
     """
     if probe not in ("health", "live", "ready", "startup", "detailed"):
         raise HTTPException(status_code=404, detail="Unsupported probe")
+    
+    headers = _ralph_auth_header()
+    
     if probe == "detailed":
         live, ready = await asyncio.gather(
-            fetch_with_fallback(f"{SERVICES['aidb']}/health/live", None),
-            fetch_with_fallback(f"{SERVICES['aidb']}/health/ready", None),
+            fetch_with_fallback(f"{SERVICES['aidb']}/health/live", None, headers=headers),
+            fetch_with_fallback(f"{SERVICES['aidb']}/health/ready", None, headers=headers),
         )
         if live is None and ready is None:
             raise HTTPException(status_code=503, detail="AIDB health unavailable")
@@ -1616,7 +1640,7 @@ async def proxy_aidb_health(probe: str) -> Dict[str, Any]:
             "timestamp": (live or ready or {}).get("timestamp"),
         }
     path = f"/health/{probe}" if probe != "health" else "/health"
-    result = await fetch_with_fallback(f"{SERVICES['aidb']}{path}", None)
+    result = await fetch_with_fallback(f"{SERVICES['aidb']}{path}", None, headers=headers)
     if result is None:
         raise HTTPException(status_code=503, detail="AIDB health unavailable")
     return result
@@ -1625,7 +1649,11 @@ async def proxy_aidb_health(probe: str) -> Dict[str, Any]:
 @router.get("/aidb/metrics")
 async def proxy_aidb_metrics() -> Response:
     """Proxy AIDB Prometheus metrics."""
-    metrics = await fetch_text_with_fallback(f"{SERVICES['aidb']}/metrics", None)
+    metrics = await fetch_text_with_fallback(
+        f"{SERVICES['aidb']}/metrics",
+        None,
+        headers=_ralph_auth_header(),
+    )
     if metrics is None:
         raise HTTPException(status_code=503, detail="AIDB metrics unavailable")
     return Response(content=metrics, media_type="text/plain")
@@ -1636,12 +1664,10 @@ async def query_traces(limit: int = 20) -> Dict[str, Any]:
     """Proxy coordinator /api/traces for dashboard Intelligence lane.
     Returns empty list with coordinator_offline=True when coordinator is down."""
     hybrid_base = SERVICES["hybrid"]
-    api_key = _load_hybrid_api_key()
-    headers = {"X-API-Key": api_key} if api_key else None
     result = await fetch_with_fallback(
         f"{hybrid_base}/api/traces?limit={limit}",
         {"traces": [], "total": 0, "coordinator_offline": True},
-        headers=headers,
+        headers=_hybrid_dual_auth_headers(),
     )
     if isinstance(result, dict) and "error" in result:
         return {"traces": [], "total": 0, "coordinator_offline": True, "error": result["error"]}
@@ -1787,7 +1813,11 @@ async def get_learning_stats() -> Dict[str, Any]:
 async def get_circuit_breakers() -> Dict[str, Any]:
     """Get circuit breaker states from hybrid coordinator"""
     hybrid_base = SERVICES["hybrid"]
-    health = await fetch_with_fallback(f"{hybrid_base}/health", {})
+    health = await fetch_with_fallback(
+        f"{hybrid_base}/health",
+        {},
+        headers=_hybrid_dual_auth_headers(),
+    )
 
     circuit_breakers = health.get("circuit_breakers", {})
 
@@ -2267,16 +2297,23 @@ async def run_harness_maintenance(payload: HarnessMaintenancePayload) -> Dict[st
 @router.get("/ai/metrics/hybrid")
 async def proxy_hybrid_metrics() -> Response:
     """Proxy Hybrid Coordinator Prometheus metrics with auth."""
-    metrics = await fetch_text_with_fallback(f"{SERVICES['hybrid']}/metrics", None)
+    metrics = await fetch_text_with_fallback(
+        f"{SERVICES['hybrid']}/metrics",
+        None,
+    )
     if metrics is None:
-        # Try with headers if simple fetch failed
+        # Retry with dual auth headers if simple fetch failed
         try:
             session = await get_http_session()
-            async with session.get(f"{SERVICES['hybrid']}/metrics", headers=_hybrid_headers()) as resp:
+            async with session.get(
+                f"{SERVICES['hybrid']}/metrics",
+                headers=_hybrid_dual_auth_headers(),
+                timeout=REQUEST_TIMEOUT
+            ) as resp:
                 if resp.status == 200:
                     metrics = await resp.text()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to fetch hybrid metrics with auth: %s", exc)
             
     if metrics is None:
         raise HTTPException(status_code=503, detail="Hybrid metrics unavailable")
@@ -2286,26 +2323,42 @@ async def proxy_hybrid_metrics() -> Response:
 @router.get("/ai/homeostasis/events")
 async def proxy_homeostasis_events() -> List[Dict[str, Any]]:
     """Proxy coordinator /homeostasis/events."""
-    result = await fetch_with_fallback(f"{SERVICES['hybrid']}/homeostasis/events", [])
+    result = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/homeostasis/events",
+        [],
+        headers=_hybrid_dual_auth_headers(),
+    )
     return result if isinstance(result, list) else []
 
 
 @router.get("/ai/health/rag")
 async def proxy_rag_health() -> Dict[str, Any]:
     """Proxy coordinator /api/health/rag."""
-    return await fetch_with_fallback(f"{SERVICES['hybrid']}/api/health/rag", {"status": "offline"})
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/api/health/rag",
+        {"status": "offline"},
+        headers=_hybrid_dual_auth_headers(),
+    )
 
 
 @router.get("/ai/memory/status")
 async def proxy_memory_status() -> Dict[str, Any]:
     """Proxy coordinator /memory/broker/status."""
-    return await fetch_with_fallback(f"{SERVICES['hybrid']}/memory/broker/status", {"status": "offline"})
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/memory/broker/status",
+        {"status": "offline"},
+        headers=_hybrid_dual_auth_headers(),
+    )
 
 
 @router.get("/eval/trend")
 async def proxy_eval_trend() -> Dict[str, Any]:
     """Proxy coordinator /eval/trend for RAGAS quality metrics (Phase 60.5)."""
-    return await fetch_with_fallback(f"{SERVICES['hybrid']}/eval/trend", {"available": False})
+    return await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/eval/trend",
+        {"available": False},
+        headers=_hybrid_dual_auth_headers(),
+    )
 
 
 @router.get("/traces/drift")
@@ -2984,15 +3037,15 @@ async def get_ai_metrics() -> Dict[str, Any]:
         aider_task_summary,
         prsi_stats,
     ) = await asyncio.gather(
-        fetch_with_fallback(f"{SERVICES['aidb']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['aidb']}/health", {}, headers=_ralph_auth_header()),
         _fetch_aidb_prometheus_summary(),
-        fetch_with_fallback(f"{SERVICES['hybrid']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['hybrid']}/health", {}, headers=_hybrid_dual_auth_headers()),
         fetch_with_fallback(f"{SERVICES['llama_cpp']}/health", {}),
         fetch_with_fallback(f"{SERVICES['llama_cpp']}/v1/models", {}),
         fetch_with_fallback(f"{SERVICES['embeddings']}/health", {}),
         fetch_with_fallback(f"{SERVICES['embeddings']}/v1/models", {}),
         fetch_with_fallback(f"{SERVICES['switchboard']}/health", {}),
-        fetch_with_fallback(f"{SERVICES['aider_wrapper']}/health", {}),
+        fetch_with_fallback(f"{SERVICES['aider_wrapper']}/health", {}, headers=_aider_wrapper_auth_headers()),
         fetch_text_with_fallback(f"{SERVICES['qdrant']}/healthz"),
         fetch_with_fallback(f"{SERVICES['qdrant']}/collections", {}),
         _redis_ping_probe(),
@@ -3393,7 +3446,11 @@ async def get_integration_health() -> Dict[str, Any]:
     }
 
     # 4. coordinator delegate reachability (health check only — no real task)
-    coord_health = await fetch_with_fallback(f"{SERVICES['hybrid']}/health", None)
+    coord_health = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/health",
+        None,
+        headers=_hybrid_dual_auth_headers(),
+    )
     checks["coordinator"] = {
         "ok": bool(coord_health and coord_health.get("status") in ("ok", "healthy")),
         "detail": (coord_health or {}).get("status", "unreachable"),
@@ -3499,7 +3556,7 @@ async def get_aistack_metrics() -> Dict[str, Any]:
     before_q = "increase(context_compression_tokens_before_sum[1h])"
     after_q = "increase(context_compression_tokens_after_sum[1h])"
 
-    hits, misses, local_sel, total_sel, before_sum, after_sum, report = await asyncio.gather(
+    hits, misses, local_sel_prom, total_sel_prom, before_sum, after_sum, report, ai_metrics = await asyncio.gather(
         _prom_scalar(hits_q),
         _prom_scalar(misses_q),
         _prom_scalar(local_q),
@@ -3507,7 +3564,19 @@ async def get_aistack_metrics() -> Dict[str, Any]:
         _prom_scalar(before_q),
         _prom_scalar(after_q),
         _aq_report_snapshot(),
+        get_ai_metrics(),
     )
+
+    rt = report.get("routing", {})
+    local_sel = rt.get("local_n") or rt.get("local_selections", 0)
+    total_sel = (rt.get("local_n", 0) + rt.get("remote_n", 0)) if "local_n" in rt else rt.get("total_selections", 0)
+    
+    # If Prometheus scalars are unavailable, fallback to aq-report routing data
+    if local_sel_prom is None: local_sel = local_sel
+    else: local_sel = local_sel_prom
+    
+    if total_sel_prom is None: total_sel = total_sel
+    else: total_sel = total_sel_prom
 
     h = hits or 0.0
     m = misses or 0.0
@@ -3555,18 +3624,22 @@ async def get_aistack_metrics() -> Dict[str, Any]:
     )
 
     return {
-        "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct,
-        "llm_routing_local_pct": llm_routing_local_pct,
-        "tokens_compressed_last_hour": tokens_compressed_last_hour,
-        "hint_adoption_pct": round(hint_adoption_pct, 2) if hint_adoption_pct is not None else None,
-        "eval_latest_pct": round(eval_latest_pct, 2) if eval_latest_pct is not None else None,
-        "tool_performance_rows": int(tool_rows) if tool_rows is not None else None,
-        "query_gap_count": int(query_gap_count) if query_gap_count is not None else None,
+        "embedding_cache_hit_rate_pct": embedding_cache_hit_rate_pct or 0.0,
+        "llm_routing_local_pct": llm_routing_local_pct if llm_routing_local_pct is not None else 100.0,
+        "tokens_compressed_last_hour": tokens_compressed_last_hour or 0.0,
+        "hint_adoption_pct": round(hint_adoption_pct, 2) if hint_adoption_pct is not None else 100.0,
+        "eval_latest_pct": round(eval_latest_pct, 2) if eval_latest_pct is not None else 0.0,
+        "tool_performance_rows": int(tool_rows) if tool_rows is not None else 0,
+        "query_gap_count": int(query_gap_count) if query_gap_count is not None else 0,
         "availability": {
             "embedding_cache_hit_rate": hits is not None or misses is not None,
             "llm_routing_local": local_sel is not None or total_sel is not None,
             "tokens_compressed_last_hour": before_sum is not None or after_sum is not None,
             "aq_report": isinstance(report, dict) and bool(report),
+        },
+        "circuit_breakers": {
+            "coordinator": (ai_metrics.get("services", {}).get("hybrid", {}).get("circuit_breakers") or {}),
+            "switchboard": (ai_metrics.get("services", {}).get("switchboard", {}).get("circuit_breakers") or {}),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
