@@ -1193,11 +1193,24 @@ def read_tool_audit(since: datetime) -> List[dict]:
 
 def _persist_latest_report_json(payload: str) -> None:
     """Best-effort cache for dashboard/runtime consumers of aq-report JSON."""
+    import tempfile, shutil
     try:
         AQ_REPORT_LATEST_JSON.parent.mkdir(parents=True, exist_ok=True)
-        tmp = AQ_REPORT_LATEST_JSON.with_suffix(".tmp")
-        tmp.write_text(payload + "\n", encoding="utf-8")
-        tmp.replace(AQ_REPORT_LATEST_JSON)
+        try:
+            # Atomic replace via sibling .tmp (requires directory write permission).
+            tmp = AQ_REPORT_LATEST_JSON.with_suffix(".tmp")
+            tmp.write_text(payload + "\n", encoding="utf-8")
+            tmp.replace(AQ_REPORT_LATEST_JSON)
+        except OSError:
+            # Directory not writable (e.g. owned by service user); fall back to
+            # writing via a /tmp temp file then copying over the existing file.
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, encoding="utf-8"
+            ) as tf:
+                tf.write(payload + "\n")
+                tmp_path = tf.name
+            shutil.copy2(tmp_path, AQ_REPORT_LATEST_JSON)
+            Path(tmp_path).unlink(missing_ok=True)
     except OSError:
         return
 

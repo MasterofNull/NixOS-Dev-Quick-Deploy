@@ -1882,11 +1882,15 @@ _p56_check_nix_timer() {
   grep -q "ai-crystallize-sessions" "${REPO_ROOT}/nix/modules/services/mcp-servers.nix"
 }
 _p56_check_auth_phase56() {
-  grep -q "api/agent-events" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/core/auth_middleware.py" &&
-  grep -q "api/agent-events" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
+  # Route registered in agent_service (R2.6 refactor moved it from http_server_impl)
+  grep -q "api/agent-events" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/agent/agent_service.py" &&
+  # Auth allowlist in middleware/auth.py (not core/auth_middleware.py)
+  grep -q "api/agent-events" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py"
 }
 _p56_check_dashboard_lessons() {
-  grep -q "agentOpsLessonsPromoted\|control/ai-coordinator/lessons" "${REPO_ROOT}/dashboard.html"
+  # Agent Lessons panel: agentLessonsDetails in dashboard.html, agent_lessons in dashboard.js
+  grep -q "agentLessonsDetails\|agent_lessons" "${REPO_ROOT}/dashboard.html" ||
+  grep -q "agentLessonsDetails\|agent_lessons" "${REPO_ROOT}/assets/dashboard.js"
 }
 _p56_check_drift_homeostasis() {
   grep -q "_drift_homeostasis_loop\|drift_homeostasis" "${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/server.py"
