@@ -126,6 +126,10 @@ def _submit_task(query: str, mode: str = "hybrid") -> Optional[str]:
     Submit a task to delegate-to-local in background mode.
     Returns the task ID or None on error.
     """
+    # delegate-to-local accepts: agent|hybrid|direct|ralph
+    # eval packs may specify "auto" (coordinator decides) — map to hybrid
+    if mode not in ("agent", "hybrid", "direct", "ralph"):
+        mode = "hybrid"
     delegate_bin = _SCRIPT_DIR / "delegate-to-local"
     if not delegate_bin.exists():
         print(f"[eval] ERROR: delegate-to-local not found at {delegate_bin}", file=sys.stderr)
