@@ -22,11 +22,14 @@ in {
       backend = lib.mkDefault "llamacpp";
       acceleration = lib.mkDefault "auto";
       rocmGfxOverride = lib.mkDefault "9.0.0";
-      switchboard.continueLocal = {
-        # Gemma on this host has a steep prompt-eval tail above ~2k input tokens.
-        # Keep Continue-local requests compact so editor smokes stay responsive.
-        maxInputTokens = lib.mkDefault 1200;
-        maxMessages = lib.mkDefault 8;
+      switchboard = {
+        localConcurrency = lib.mkDefault 4;
+        reservedSlots = lib.mkDefault 1;
+        continueLocal = {
+          # Increased limits for high-end interactive use.
+          maxInputTokens = lib.mkDefault 4000;
+          maxMessages = lib.mkDefault 12;
+        };
       };
 
       llamaCpp = {
@@ -49,6 +52,12 @@ in {
           "8"
           "--flash-attn"
           "on"
+          "--cache-type-k"
+          "q8_0"
+          "--cache-type-v"
+          "q8_0"
+          "--prompt-cache-capacity"
+          "3"
         ];
       };
 

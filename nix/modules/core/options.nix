@@ -1589,6 +1589,18 @@
           '';
         };
 
+        localConcurrency = lib.mkOption {
+          type = lib.types.int;
+          default = 1;
+          description = "Number of concurrent local inference requests the switchboard will allow before queuing.";
+        };
+
+        reservedSlots = lib.mkOption {
+          type = lib.types.int;
+          default = 0;
+          description = "Number of local inference slots reserved exclusively for high-priority interactive requests.";
+        };
+
         defaultProvider = lib.mkOption {
           type = lib.types.enum ["local" "remote"];
           default = "local";

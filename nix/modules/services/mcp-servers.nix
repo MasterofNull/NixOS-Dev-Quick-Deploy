@@ -1032,7 +1032,6 @@ in {
             ];
             Restart = "always";
             RestartSec = "5s";
-            WatchdogSec = "30s";
             Environment =
               [
                 "PORT=${toString mcp.hybridPort}"
@@ -1673,7 +1672,77 @@ in {
         };
       };
 
-      # ── AIDB periodic re-indexer ──────────────────────────────────────────
+      systemd.tmpfiles.rules = [
+        "d ${dataDir} 0755 ${svcUser} ${aiGroup} -"
+        "d ${dataDir}/hybrid 0755 ${svcUser} ${aiGroup} -"
+        "d ${dataDir}/hybrid/telemetry 0755 ${svcUser} ${aiGroup} -"
+        "z ${dataDir}/hybrid/telemetry/latest-aq-report.json 0644 ${svcUser} ${aiGroup} -"
+        "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0644 ${svcUser} ${aiGroup} -"
+        "d ${mutableStateDir} 0755 ${svcUser} ${aiGroup} -"
+        "d ${mutableOptimizerDir} 0755 ${svcUser} ${aiGroup} -"
+        "d ${mutableLogDir} 0755 ${svcUser} ${aiGroup} -"
+      ];
+
+      # ── Autonomous Remediation Loop ───────────────────────────────────────
+      systemd.services.ai-health-spider = {
+        description = "AI stack health spider telemetry and remediation engine";
+        wantedBy = ["ai-stack.target"];
+        partOf = ["ai-stack.target"];
+        after = ["network-online.target" "ai-hybrid-coordinator.service"];
+        path = with pkgs; [ bash coreutils curl gnugrep python3 ];
+        serviceConfig = {
+          Type = "simple";
+          User = svcUser;
+          Group = aiGroup;
+          WorkingDirectory = dataDir;
+          ExecStart = "${mcp.repoPath}/scripts/ai/aq-health-spider";
+          Restart = "always";
+          RestartSec = "10s";
+        };
+      };
+
+      systemd.services.ai-auto-remediate = {
+        description = "AI stack autonomous remediation loop";
+        restartIfChanged = false;
+        path = with pkgs; [ bash coreutils curl gnugrep python3 ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = svcUser;
+          Group = aiGroup;
+          WorkingDirectory = dataDir;
+          ExecStart = "${mcp.repoPath}/scripts/automation/auto-remediate.sh";
+        };
+      };
+
+      systemd.services.ai-throttler = {
+        description = "AI stack autonomous resource throttler";
+        wantedBy = ["ai-stack.target"];
+        partOf = ["ai-stack.target"];
+        after = ["network-online.target" "ai-hybrid-coordinator.service" "llama-cpp.service"];
+        path = with pkgs; [ bash coreutils curl (python3.withPackages (ps: with ps; [ httpx ])) ];
+        serviceConfig = {
+          Type = "simple";
+          User = svcUser;
+          Group = aiGroup;
+          WorkingDirectory = dataDir;
+          ExecStart = "${mcp.repoPath}/scripts/ai/aq-throttler";
+          Restart = "always";
+          RestartSec = "10s";
+        };
+      };
+
+      systemd.timers.ai-auto-remediate = {
+        description = "AI stack autonomous remediation timer";
+        wantedBy = ["timers.target"];
+        partOf = ["ai-stack.target"];
+        timerConfig = {
+          OnBootSec = "5min";
+          OnUnitActiveSec = "15min";
+          Persistent = true;
+        };
+      };
+
+      # --- AIDB periodic re-indexer ---
       systemd.services.ai-aidb-reindex = lib.mkIf cfg.deployment.aidbReindex.enable {
         description = "AIDB knowledge re-indexer (logic-patterns + project corpus)";
         restartIfChanged = false;
@@ -1802,6 +1871,7 @@ in {
           python3
           ripgrep
           util-linux
+          iproute2
         ];
         after = [
           "network-online.target"
