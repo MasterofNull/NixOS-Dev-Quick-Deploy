@@ -9,13 +9,34 @@ Purpose: Enable real workflow execution with LLM APIs
 """
 
 import os
+import sys
+from pathlib import Path
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities are on path
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
 import logging
 import json
 import httpx
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
+# Stability Backbone (Phase 55.2)
+from shared.circuit_breaker import CircuitBreakerRegistry, CircuitBreakerOpenError
+from shared.retry_backoff import retry_with_backoff
+
 logger = logging.getLogger("llm-client")
+
+# Initialize Circuit Breakers for LLM Providers
+CIRCUIT_BREAKERS = CircuitBreakerRegistry(
+    default_config={
+        "failure_threshold": 3,
+        "reset_timeout": 60.0,
+    }
+)
 
 
 @dataclass
@@ -222,6 +243,7 @@ class LLMClient:
         self.default_model = "local"
         logger.info("Local model client initialized via switchboard at %s", self.base_url)
 
+
     async def create_message(
         self,
         prompt: str,
@@ -232,41 +254,43 @@ class LLMClient:
         system: Optional[str] = None,
     ) -> LLMResponse:
         """
-        Create a message completion.
-
-        Args:
-            prompt: User prompt/query
-            model: Model to use (default: provider default)
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            tools: Available tools for function calling
-            system: System prompt
-
-        Returns:
-            LLMResponse with content, tool calls, and usage
-
-        Raises:
-            RuntimeError: If client not initialized or API error
+        Create a message completion with resilience.
         """
         if not self.client:
             raise RuntimeError(f"LLM client not initialized for provider: {self.provider}")
 
         model = model or self.default_model
+        breaker = CIRCUIT_BREAKERS.get(self.provider)
 
-        if self.provider == "anthropic":
-            return await self._anthropic_create_message(
-                prompt, model, max_tokens, temperature, tools, system
+        async def _do_create_message():
+            if self.provider == "anthropic":
+                return await self._anthropic_create_message(
+                    prompt, model, max_tokens, temperature, tools, system
+                )
+            elif self.provider == "openai":
+                return await self._openai_create_message(
+                    prompt, model, max_tokens, temperature, tools, system
+                )
+            elif self.provider == "local":
+                return await self._local_create_message(
+                    prompt, model, max_tokens, temperature, tools, system
+                )
+            else:
+                raise ValueError(f"Unknown provider: {self.provider}")
+
+        try:
+            return await retry_with_backoff(
+                breaker.call,
+                _do_create_message,
+                max_attempts=2,
+                breaker=breaker,
+                retry_on_exceptions=(httpx.TimeoutException, httpx.NetworkError),
             )
-        elif self.provider == "openai":
-            return await self._openai_create_message(
-                prompt, model, max_tokens, temperature, tools, system
-            )
-        elif self.provider == "local":
-            return await self._local_create_message(
-                prompt, model, max_tokens, temperature, tools, system
-            )
-        else:
-            raise NotImplementedError(f"Provider {self.provider} not implemented")
+        except CircuitBreakerOpenError:
+            raise RuntimeError(f"Circuit breaker is OPEN for LLM provider '{self.provider}'")
+        except Exception as e:
+            logger.error(f"LLM request to {self.provider} failed after retries: {e}")
+            raise
 
     async def _anthropic_create_message(
         self,

@@ -15,6 +15,15 @@ Features:
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities are on path
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
 import fcntl  # P2-REL-003: File locking for telemetry
 import hashlib
 import json

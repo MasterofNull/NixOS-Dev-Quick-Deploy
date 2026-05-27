@@ -222,12 +222,32 @@ async def handle_harness_eval(request: web.Request) -> web.Response:
         query = data.get("query") or data.get("prompt") or ""
         if not query:
             return web.json_response({"error": "query required"}, status=400)
-        result = await _run_harness_eval(
-            query=query,
-            expected_keywords=data.get("expected_keywords"),
-            mode=data.get("mode", "auto"),
-            max_latency_ms=data.get("max_latency_ms"),
+        
+        # Phase 55.2 — Schedule evaluation as background task
+        from mlfq_scheduler import get_scheduler, WorkloadDescriptor
+        workload = WorkloadDescriptor(
+            task_id=f"eval-{uuid4()}",
+            task_class="background",
+            priority=int(data.get("priority", 7)),  # Eval is lower priority than active routing
+            token_budget=200,  # Eval only retrieval, no synthesis
+            agent_id=data.get("agent_id"),
+            x_maeah=data.get("x_maeah", {}),
         )
+
+        handle = await get_scheduler().submit(
+            workload,
+            _run_harness_eval(
+                query=query,
+                expected_keywords=data.get("expected_keywords"),
+                mode=data.get("mode", "auto"),
+                max_latency_ms=data.get("max_latency_ms"),
+            )
+        )
+        handle = await get_scheduler().wait(handle.task_id)
+        if handle.status == "failed":
+            raise RuntimeError(handle.error)
+        result = handle.result
+        
         metrics = result.get("metrics") if isinstance(result, dict) else {}
         request["audit_metadata"] = {
             "harness_status": result.get("status") if isinstance(result, dict) else "",
@@ -249,7 +269,27 @@ async def handle_harness_eval(request: web.Request) -> web.Response:
 async def handle_qa_check(request: web.Request) -> web.Response:
     try:
         data = await request.json()
-        result = await mcp_handlers.run_qa_check_as_dict(data)
+        
+        # Phase 55.2 — Schedule QA check as batch task
+        from mlfq_scheduler import get_scheduler, WorkloadDescriptor
+        workload = WorkloadDescriptor(
+            task_id=f"qa-{uuid4()}",
+            task_class="batch",
+            priority=int(data.get("priority", 9)),  # QA is lowest priority batch work
+            token_budget=100,  # QA doesn't consume LLM tokens directly but is heavy on CPU
+            agent_id=data.get("agent_id"),
+            x_maeah=data.get("x_maeah", {}),
+        )
+
+        handle = await get_scheduler().submit(
+            workload,
+            mcp_handlers.run_qa_check_as_dict(data)
+        )
+        handle = await get_scheduler().wait(handle.task_id)
+        if handle.status == "failed":
+            raise RuntimeError(handle.error)
+        result = handle.result
+        
         qa_result = result.get("qa_result") if isinstance(result, dict) else {}
         request["audit_metadata"] = {
             "phase": result.get("phase"),

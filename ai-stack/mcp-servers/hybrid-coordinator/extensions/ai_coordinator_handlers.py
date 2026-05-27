@@ -74,6 +74,7 @@ from delegation_feedback import (
     classify_delegated_response,
     record_delegation_feedback,
 )
+from shared.retry_backoff import retry_with_backoff, RetryConfig
 from delegation_handlers import (
     _REMOTE_AVAIL_TTL_S,
     _apply_progressive_context,
@@ -779,6 +780,27 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         if not task:
             return web.json_response({"error": "task required"}, status=400)
         orchestration = _coerce_orchestration_context(data)
+        
+        # Map agent name to profile if agent is provided
+        agent_name = str(data.get("agent") or "").strip().lower()
+        profile = str(data.get("profile") or "").strip().lower()
+        
+        logger.info(f"handle_ai_coordinator_delegate: received agent={agent_name}, profile={profile}")
+
+        if not profile and agent_name:
+            # Mapping based on DEFAULT_PROFILES keys in model_coordinator.py
+            agent_map = {
+                "codex": "codex",
+                "claude": "claude-reasoning",
+                "gemini": "gemini-orchestrator"
+            }
+            profile = agent_map.get(agent_name, "remote-free")
+            logger.info(f"handle_ai_coordinator_delegate: mapped {agent_name} to {profile}")
+        
+        if not profile:
+            profile = "remote-free"
+            logger.info(f"handle_ai_coordinator_delegate: defaulting profile to {profile}")
+            
         async with _agent_lessons_lock:
             lesson_registry = await _load_agent_lessons_registry()
         lesson_refs = _active_lesson_refs(lesson_registry, limit=2)
@@ -1423,12 +1445,29 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 headers["X-AI-Route"] = "local"
             else:
                 headers["X-AI-Route"] = "remote"
-            async with httpx.AsyncClient(timeout=timeout_s) as client:
-                return await client.post(
-                    f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
-                    headers=headers,
-                    json=delegate_payload or payload,
-                )
+
+            async def _perform_call():
+                async with httpx.AsyncClient(timeout=timeout_s) as client:
+                    response = await client.post(
+                        f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
+                        headers=headers,
+                        json=delegate_payload or payload,
+                    )
+                    response.raise_for_status()
+                    return response
+
+            # Retry on 503 Service Unavailable, and network errors. 
+            # Increased retry attempts and delay to better handle 429/503 rate-limiting.
+            config = RetryConfig(
+                max_attempts=5,
+                base_delay=2.0,
+                max_delay=30.0,
+                retry_exceptions=[httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException],
+                exclude_exceptions=[]
+            )
+
+            response = await retry_with_backoff(_perform_call, config=config)
+            return response
 
         async def _post_delegate_with_local_slot_retry(
             profile_name: str,
