@@ -260,7 +260,12 @@ prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.
 payload = json.dumps({
     "model": "local",
     "messages": [{"role": "user", "content": prompt}],
-    "stream": False
+    "stream": False,
+    # ARCH CONSTRAINT: enable_thinking MUST be false — thinking tokens cause empty
+    # responses on Qwen3-35B. max_tokens caps runaway generation; without it the
+    # model fills the full n_ctx window (8192) even for simple questions.
+    "enable_thinking": False,
+    "max_tokens": 512,
 }).encode()
 
 req = urllib.request.Request(
