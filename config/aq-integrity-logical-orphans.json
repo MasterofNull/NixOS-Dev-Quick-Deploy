@@ -321,6 +321,22 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: nix/modules/services/agent-mesh.nix"
     },
     {
+      "action": "verify-entrypoint-wiring",
+      "classification": "entrypoint_candidate",
+      "module": "discovery_agent",
+      "owner": "unassigned",
+      "path": "ai-stack/local-agents/discovery_agent.py",
+      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
+    },
+    {
+      "action": "verify-entrypoint-wiring",
+      "classification": "entrypoint_candidate",
+      "module": "remediator_agent",
+      "owner": "unassigned",
+      "path": "ai-stack/local-agents/remediator_agent.py",
+      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
+    },
+    {
       "action": "verify-entrypoint-coverage",
       "classification": "referenced_entrypoint_candidate",
       "module": "codemachine_client",
@@ -491,14 +507,6 @@
     {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
-      "module": "retry_backoff",
-      "owner": "unassigned",
-      "path": "ai-stack/mcp-servers/shared/retry_backoff.py",
-      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
-    },
-    {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
       "module": "continuous_finetuning",
       "owner": "unassigned",
       "path": "ai-stack/model-optimization/continuous_finetuning.py",
@@ -641,7 +649,7 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
     }
   ],
-  "generated_at": "2026-05-26T02:25:09Z",
+  "generated_at": "2026-05-27T14:00:58Z",
   "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
   "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
   "version": 1

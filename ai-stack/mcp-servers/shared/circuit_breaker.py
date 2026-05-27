@@ -72,6 +72,7 @@ class CircuitState(Enum):
     CLOSED = "closed"      # Normal operation
     OPEN = "open"          # Tripped, requests blocked
     HALF_OPEN = "half_open"  # Testing recovery
+    THROTTLED = "throttled" # Explicitly requested wait (rate limit)
 
 
 @dataclass
@@ -99,15 +100,15 @@ class CircuitBreaker:
         self.success_count = 0
         self.last_failure_time = None
         self._circuit_opened_time: Optional[float] = None
+        self._throttle_until: float = 0.0
         self._lock = asyncio.Lock()
         self._update_state_metric()
 
     def _update_state_metric(self) -> None:
         """Update Prometheus gauge with current state."""
         if PROMETHEUS_AVAILABLE:
-            CIRCUIT_STATE_GAUGE.labels(service_name=self.service_name).set(
-                _state_to_metric_value(self.state)
-            )
+            val = {"closed": 0, "half_open": 1, "open": 2, "throttled": 3}.get(self.state.value, -1)
+            CIRCUIT_STATE_GAUGE.labels(service_name=self.service_name).set(val)
 
     def _record_state_transition(self, from_state: CircuitState, to_state: CircuitState) -> None:
         """Record state transition in Prometheus."""
@@ -121,6 +122,16 @@ class CircuitBreaker:
     async def call(self, func: Callable, *args, **kwargs) -> Any:
         """Execute a function with circuit breaker protection."""
         async with self._lock:
+            now = time.time()
+            
+            # Check for throttle expiration
+            if self.state == CircuitState.THROTTLED and now >= self._throttle_until:
+                old_state = self.state
+                self.state = CircuitState.CLOSED
+                self._record_state_transition(old_state, self.state)
+                self._update_state_metric()
+                logger.info(f"Throttle lifted for service '{self.service_name}'")
+
             if self.state == CircuitState.OPEN:
                 if self._should_attempt_reset():
                     old_state = self.state
@@ -131,13 +142,18 @@ class CircuitBreaker:
                 else:
                     if PROMETHEUS_AVAILABLE:
                         CIRCUIT_REJECTIONS.labels(service_name=self.service_name).inc()
-                    raise CircuitBreakerOpenError("Circuit breaker is OPEN")
+                    raise CircuitBreakerOpenError(f"Circuit breaker is OPEN for {self.service_name}")
+            
+            if self.state == CircuitState.THROTTLED:
+                wait_s = self._throttle_until - now
+                if PROMETHEUS_AVAILABLE:
+                    CIRCUIT_REJECTIONS.labels(service_name=self.service_name).inc()
+                raise CircuitBreakerOpenError(f"Service '{self.service_name}' is THROTTLED. Wait {wait_s:.1f}s")
 
             try:
                 result = await func(*args, **kwargs)
 
                 if self.state == CircuitState.HALF_OPEN:
-                    # Success in half-open state means service is recovered
                     await self._on_success()
                     logger.info("Circuit breaker reset successful, back to CLOSED state")
 
@@ -148,10 +164,19 @@ class CircuitBreaker:
                     await self._on_failure()
                     raise
                 else:
-                    # Not a "failure" for circuit breaker purposes
                     if self.state == CircuitState.HALF_OPEN:
                         await self._on_success()
                     raise
+
+    async def throttle(self, duration_s: float):
+        """Explicitly throttle the service for a specific period (e.g. 429/402)."""
+        async with self._lock:
+            old_state = self.state
+            self.state = CircuitState.THROTTLED
+            self._throttle_until = time.time() + duration_s
+            self._record_state_transition(old_state, self.state)
+            self._update_state_metric()
+            logger.warning(f"Throttling service '{self.service_name}' for {duration_s:.1f}s")
 
     def _should_attempt_reset(self) -> bool:
         """Check if enough time has passed to attempt reset."""
