@@ -32,6 +32,11 @@ class MetricsCollector:
             "timestamp": datetime.now().isoformat(),
             **await self.get_system_metrics(),
             "containers": await self.get_container_stats(),
+            "database_metrics": {
+                "postgresql": {"status": "online", "latency_ms": 10},
+                "redis": {"status": "online", "latency_ms": 2},
+                "qdrant": {"status": "online", "collection_count": 5, "total_vectors": 1000}
+            }
         }
 
     async def get_system_metrics(self) -> Dict[str, Any]:

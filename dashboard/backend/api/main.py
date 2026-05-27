@@ -391,7 +391,10 @@ async def favicon() -> Response:
 async def root():
     """Serve the Command Center dashboard"""
     if _COMMAND_CENTER_PATH.exists():
-        return FileResponse(_COMMAND_CENTER_PATH)
+        return FileResponse(
+            _COMMAND_CENTER_PATH,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
     else:
         return JSONResponse(
             {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",
@@ -404,7 +407,10 @@ async def root():
 async def root_index():
     """Serve the dashboard entrypoint for health checks and static clients."""
     if _COMMAND_CENTER_PATH.exists():
-        return FileResponse(_COMMAND_CENTER_PATH)
+        return FileResponse(
+            _COMMAND_CENTER_PATH,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+        )
     else:
         return JSONResponse(
             {"status": "online", "service": "NixOS Dashboard API", "version": "2.0.0",

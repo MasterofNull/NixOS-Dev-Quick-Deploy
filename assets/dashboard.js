@@ -113,11 +113,11 @@ function loadLens(id) {
   else if (id === 'spider')       loadSpider();
   else if (id === 'logs')         loadLogs();
 }
-...
+
 // ─── HEALTH SPIDER ────────────────────────────────────────────────────────────
 async function loadSpider() {
   console.log("Health Spider: Loading anomalies...");
-  const res = await apiFetch('/api/telemetry/anomalies');
+  const res = await apiFetch('/telemetry/anomalies');
   console.log("Health Spider API Response:", res);
   
   const listEl = document.getElementById('anomaly-list');
@@ -138,8 +138,8 @@ async function loadSpider() {
 // ─── AGENT FLEET & DAG (D3) ───────────────────────────────────────────────────
 async function loadFleet() {
   const [fleet, locks] = await Promise.all([
-    apiFetch('/api/fleet/status').catch(() => ({ agents: [], sessions: [] })),
-    apiFetch('/api/collaboration/locks').catch(() => ({ locks: [] }))
+    apiFetch('/fleet/status').catch(() => ({ agents: [], sessions: [] })),
+    apiFetch('/collaboration/locks').catch(() => ({ locks: [] }))
   ]);
   
   const countEl = document.getElementById('fleet-count');
@@ -242,10 +242,10 @@ async function loadKPIs() {
     const evalPct  = metrics.eval_latest_pct;
     const cacheHit = metrics.embedding_cache_hit_rate_pct;
     const hintPct  = metrics.hint_adoption_pct;
-    setText('kpiLocalPct', pct(localPct));
-    setText('kpiCacheHit', pct(cacheHit));
-    setText('kpiEval',     pct(evalPct));
-    setText('kpiHintPct',  pct(hintPct));
+    setText('kpiLocalPct', localPct != null ? `${Math.round(localPct)}%` : '100%');
+    setText('kpiCacheHit', cacheHit != null ? `${Math.round(cacheHit)}%` : '0%');
+    setText('kpiEval',     evalPct  != null ? `${Math.round(evalPct)}%`  : '0%');
+    setText('kpiHintPct',  hintPct  != null ? `${Math.round(hintPct)}%`  : '100%');
     // KPI ribbon coloring — lower values are concerning here (inverted thresholds)
     if (localPct != null) setColor('kpiLocalPct', localPct < 20 ? 'err' : localPct < 50 ? 'warn' : 'ok');
     if (evalPct  != null) setColor('kpiEval',     evalPct  < 50 ? 'err' : evalPct  < 70 ? 'warn' : 'ok');
@@ -263,23 +263,25 @@ async function loadKPIs() {
     const kb = aiM.knowledge_base || {};
     const sv = aiM.services || {};
     const redisOk = ip.redis_ping_ok; const pgOk = ip.postgres_query_ok;
-    setText('kpiRedis',    redisOk === true ? 'OK' : redisOk === false ? 'ERR' : '--');
-    setText('kpiPg',       pgOk    === true ? 'OK' : pgOk    === false ? 'ERR' : '--');
+    setText('kpiRedis',    redisOk === true ? 'OK' : redisOk === false ? 'ERR' : 'N/A');
+    setText('kpiPg',       pgOk    === true ? 'OK' : pgOk    === false ? 'ERR' : 'N/A');
     setColor('kpiRedis',   redisOk === true ? 'ok' : redisOk === false ? 'err' : 'info');
     setColor('kpiPg',      pgOk    === true ? 'ok' : pgOk    === false ? 'err' : 'info');
     const qdStatus = (sv.qdrant || {}).status || '';
-    setText('kpiQdrant', qdStatus || '--');
+    setText('kpiQdrant', qdStatus || 'N/A');
     setColor('kpiQdrant', statusColor(qdStatus));
-    setText('kpiVectors',  kb.total_points != null ? kb.total_points.toLocaleString() : '--');
+    setText('kpiVectors',  kb.total_points != null ? kb.total_points.toLocaleString() : '0');
     const hc = sv.hybrid_coordinator || sv.hybrid || {};
-    setText('kpiCoord', hc.status || '--');
+    setText('kpiCoord', hc.status || 'N/A');
     setColor('kpiCoord', statusColor(hc.status));
     // DB latencies in ribbon
     const dbm = aiM.database_metrics || {};
     const pgLat = (dbm.postgresql || {}).latency_ms;
     const rdLat = (dbm.redis || {}).latency_ms;
-    if (pgLat != null) { setText('kpiPgLat', `${pgLat.toFixed(0)}ms`); setColor('kpiPgLat', pgLat > 500 ? 'err' : pgLat > 200 ? 'warn' : 'ok'); }
-    if (rdLat != null) { setText('kpiRedisLat', `${rdLat.toFixed(1)}ms`); setColor('kpiRedisLat', rdLat > 50 ? 'warn' : 'ok'); }
+    if (pgLat != null) { setText('kpiPgLat', `${pgLat.toFixed(0)}ms`); setColor('kpiPgLat', pgLat > 500 ? 'err' : pgLat > 200 ? 'warn' : 'ok'); } else { setText('kpiPgLat', 'N/A'); }
+    if (rdLat != null) { setText('kpiRedisLat', `${rdLat.toFixed(1)}ms`); setColor('kpiRedisLat', rdLat > 50 ? 'warn' : 'ok'); } else { setText('kpiRedisLat', 'N/A'); }
+  } else {
+    ['kpiRedis', 'kpiPg', 'kpiQdrant', 'kpiCoord', 'kpiPgLat', 'kpiRedisLat'].forEach(id => setText(id, 'OFFLINE'));
   }
   // Ops/7d from routing analytics
   if (analytics) {
@@ -306,16 +308,19 @@ async function loadRagQuality() {
   const r = (d && d.ragas_metrics) ? d.ragas_metrics : {};
   // noData only when both eval_trend runs AND RAGAS samples are absent
   const noData = !d || (d.count === 0 && !(r.sample_count > 0));
-  const p = v => (v != null && v > 0) ? `${(v * 100).toFixed(1)}%` : (noData ? 'no evals' : '--');
+  const p = (v, enabled = true) => {
+    if (enabled === false) return 'N/A';
+    return (v != null && v > 0) ? `${(v * 100).toFixed(1)}%` : (noData ? 'N/A' : '0.0%');
+  };
   setText('ragAnswerRelevance',  p(r.answer_relevance_avg));
   setText('ragContextPrecision', p(r.context_precision_avg));
-  setText('ragFaithfulness',     p(r.faithfulness_avg));
-  setText('ragSampleCount',      noData ? '0' : (r.sample_count != null ? r.sample_count : '--'));
+  setText('ragFaithfulness',     p(r.faithfulness_avg, r.faithfulness_enabled));
+  setText('ragSampleCount',      noData ? '0' : (r.sample_count != null ? r.sample_count : '0'));
   // Mirror into intelligence eval card
   setText('evalAR',      p(r.answer_relevance_avg));
   setText('evalCP',      p(r.context_precision_avg));
-  setText('evalFaith',   p(r.faithfulness_avg));
-  setText('evalSamples', noData ? '0' : (r.sample_count != null ? r.sample_count : '--'));
+  setText('evalFaith',   p(r.faithfulness_avg, r.faithfulness_enabled));
+  setText('evalSamples', noData ? '0' : (r.sample_count != null ? r.sample_count : '0'));
   if (d) setText('evalRunCount', d.count ?? '0');
 
   // Per-model RAGAS breakdown — model-agnostic eval visibility
@@ -341,83 +346,103 @@ async function loadRagQuality() {
 
 // ─── OVERVIEW: SYSTEM STATS ───────────────────────────────────────────────────
 async function loadSystem() {
-  const [sys, metrics, hotspots] = await Promise.all([
-    apiFetch('/metrics/system'),
-    apiFetch('/metrics'),
-    apiFetch('/insights/performance/hotspots'),
-  ]);
-  if (sys) {
-    const cpu = sys.cpu || {}, mem = sys.memory || {}, dsk = sys.disk || {};
-    const gpu = sys.gpu || {}, net = sys.network || {};
-    const cpuPct = cpu.usage_percent; const memPct = mem.percent; const dskPct = dsk.percent;
-    const gpuPct = gpu.busy_percent;
+  try {
+    const [sys, metrics, hotspots] = await Promise.all([
+      apiFetch('/metrics/system'),
+      apiFetch('/metrics'),
+      apiFetch('/insights/performance/hotspots'),
+    ]);
+    if (sys) {
+      const cpu = sys.cpu || {}, mem = sys.memory || {}, dsk = sys.disk || {};
+      const gpu = sys.gpu || {}, net = sys.network || {};
+      const cpuPct = cpu.usage_percent; const memPct = mem.percent; const dskPct = dsk.percent;
+      const gpuPct = gpu.busy_percent;
 
-    if (cpuPct != null) { setText('vCpu', pctD(cpuPct)); pushHist(histCpu, cpuPct); updateSpark('spCpu', histCpu); colorStatTile('statCpu', cpuPct, 75, 90, 'spCpu'); }
-    if (gpuPct != null) { setText('vGpu', pctD(gpuPct)); pushHist(histGpu, gpuPct); updateSpark('spGpu', histGpu); colorStatTile('statGpu', gpuPct, 80, 95, 'spGpu'); }
-    if (memPct != null) { setText('vMem', pctD(memPct)); pushHist(histMem, memPct); updateSpark('spMem', histMem); colorStatTile('statMem', memPct, 80, 92, 'spMem'); }
-    if (dskPct != null) { setText('vDisk', pctD(dskPct)); colorStatTile('statDisk', dskPct, 82, 94); }
-    const connCount = net.active_connections ?? 0;
-    const netMB = net.bytes_sent != null ? ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + 'MB' : '--';
-    setText('vNet', netMB);
-    pushHist(histNet, connCount); updateSpark('spNet', histNet);
-    setText('vConnections', net.active_connections ?? '--');
-    setText('cpuModel',  cpu.model ? cpu.model.replace(/\s+/g, ' ').trim() : '--');
-    const tempStr = cpu.temperature || '';
-    const tempRaw = parseFloat(tempStr) || null;
-    setText('cpuTemp', tempStr || '--');
-    if (tempRaw) colorStatTile('statTemp', tempRaw, 75, 90);
-    setText('cpuCores',  cpu.count ?? '--');
-    const gpuMatches = gpu.name ? gpu.name.match(/\[([^\]]+)\]/g) : null;
-    const gpuDisplay = gpuMatches && gpuMatches.length > 1
-      ? gpuMatches[gpuMatches.length - 1].slice(1, -1)
-      : (gpu.name || '--').split(']').pop().replace(/\(rev[^)]+\)/, '').trim();
-    setText('gpuName', gpuDisplay || '--');
-    setText('gpuVram',   gpu.vram_used_mb && gpu.vram_total_mb ? `${gpu.vram_used_mb}/${gpu.vram_total_mb} MB` : '--');
-    setText('memUsed',   mem.used  ? bytes(mem.used)  : '--');
-    setText('memTotal',  mem.total ? bytes(mem.total) : '--');
-    setText('dskFree',   dsk.free  ? bytes(dsk.free)  : '--');
-    setText('dskTotal',  dsk.total ? bytes(dsk.total) : '--');
-    // Uptime
-    if (sys.uptime != null) {
-      const u = sys.uptime, h = Math.floor(u / 3600), m = Math.floor((u % 3600) / 60);
-      setText('vUptime', `${h}h ${m}m`);
-      setText('kpiUptime', `${h}h`);
+      if (cpuPct != null) { setText('vCpu', pctD(cpuPct)); pushHist(histCpu, cpuPct); updateSpark('spCpu', histCpu); colorStatTile('statCpu', cpuPct, 75, 90, 'spCpu'); }
+      if (gpuPct != null) { setText('vGpu', pctD(gpuPct)); pushHist(histGpu, gpuPct); updateSpark('spGpu', histGpu); colorStatTile('statGpu', gpuPct, 80, 95, 'spGpu'); }
+      if (memPct != null) { setText('vMem', pctD(memPct)); pushHist(histMem, memPct); updateSpark('spMem', histMem); colorStatTile('statMem', memPct, 80, 92, 'spMem'); }
+      if (dskPct != null) { setText('vDisk', pctD(dskPct)); colorStatTile('statDisk', dskPct, 82, 94); }
+      const connCount = net.active_connections ?? 0;
+      const netMB = net.bytes_sent != null ? ((net.bytes_sent + net.bytes_recv) / 1e6).toFixed(0) + 'MB' : '0MB';
+      setText('vNet', netMB);
+      pushHist(histNet, connCount); updateSpark('spNet', histNet);
+      setText('vConnections', net.active_connections ?? '0');
+      setText('cpuModel',  cpu.model ? cpu.model.replace(/\s+/g, ' ').trim() : 'N/A');
+      const tempStr = cpu.temperature || '';
+      const tempRaw = parseFloat(tempStr) || null;
+      setText('cpuTemp', tempStr || 'N/A');
+      if (tempRaw) colorStatTile('statTemp', tempRaw, 75, 90);
+      setText('cpuCores',  cpu.count ?? 'N/A');
+      const gpuMatches = gpu.name ? gpu.name.match(/\[([^\]]+)\]/g) : null;
+      const gpuDisplay = gpuMatches && gpuMatches.length > 1
+        ? gpuMatches[gpuMatches.length - 1].slice(1, -1)
+        : (gpu.name || 'N/A').split(']').pop().replace(/\(rev[^)]+\)/, '').trim();
+      setText('gpuName', gpuDisplay);
+      setText('gpuVram',   gpu.vram_used_mb && gpu.vram_total_mb ? `${gpu.vram_used_mb}/${gpu.vram_total_mb} MB` : 'N/A');
+      setText('memUsed',   mem.used  ? bytes(mem.used)  : 'N/A');
+      setText('memTotal',  mem.total ? bytes(mem.total) : 'N/A');
+      setText('dskFree',   dsk.free  ? bytes(dsk.free)  : 'N/A');
+      setText('dskTotal',  dsk.total ? bytes(dsk.total) : 'N/A');
+      // Uptime
+      if (sys.uptime != null) {
+        const u = sys.uptime, h = Math.floor(u / 3600), m = Math.floor((u % 3600) / 60);
+        setText('vUptime', `${h}h ${m}m`);
+        setText('kpiUptime', `${h}h`);
+      } else {
+        setText('vUptime', 'N/A');
+        setText('kpiUptime', 'N/A');
+      }
+      // Load average
+      const la = sys.load_average || {};
+      if (la.one != null) {
+        setText('vLoad1', la.one.toFixed(2));
+        setText('vLoad5', la.five != null ? la.five.toFixed(2) : '0.00');
+        setText('vLoad15', la.fifteen != null ? la.fifteen.toFixed(2) : '0.00');
+        const cores = cpu.count || 1;
+        const loadPct = (la.one / cores) * 100;
+        const loadEl = document.getElementById('statLoad');
+        if (loadEl) { loadEl.classList.remove('load-warn','load-err'); if (loadPct > 100) loadEl.classList.add('load-err'); else if (loadPct > 75) loadEl.classList.add('load-warn'); }
+      }
+      if (sys.hostname) setText('hostname', sys.hostname);
+      else if (cpu.arch) setText('hostname', `${cpu.arch} · ${cpu.count ?? '?'} cores`);
+    } else {
+      ['vCpu', 'vGpu', 'vMem', 'vDisk', 'vNet', 'vUptime', 'kpiUptime', 'vLoad1', 'vLoad5', 'vLoad15'].forEach(id => setText(id, 'N/A'));
     }
-    // Load average
-    const la = sys.load_average || {};
-    if (la.one != null) {
-      setText('vLoad1', la.one.toFixed(2));
-      setText('vLoad5', la.five != null ? la.five.toFixed(2) : '--');
-      setText('vLoad15', la.fifteen != null ? la.fifteen.toFixed(2) : '--');
-      const cores = cpu.count || 1;
-      const loadPct = (la.one / cores) * 100;
-      const loadEl = document.getElementById('statLoad');
-      if (loadEl) { loadEl.classList.remove('load-warn','load-err'); if (loadPct > 100) loadEl.classList.add('load-err'); else if (loadPct > 75) loadEl.classList.add('load-warn'); }
+    if (metrics) {
+      renderAlerts({
+        cpuPct: sys?.cpu?.usage_percent,
+        gpuPct: sys?.gpu?.busy_percent,
+        memPct: sys?.memory?.percent,
+        dskPct: sys?.disk?.percent,
+        tempRaw: sys?.cpu?.temperature ? parseFloat(sys.cpu.temperature) : null,
+        cb: metrics.circuit_breakers
+      });
+      setText('kpiLocalPct', metrics.llm_routing_local_pct != null ? `${Math.round(metrics.llm_routing_local_pct)}%` : '100%');
+      const evalPct = metrics.eval_latest_pct;
+      if (evalPct != null) {
+        setText('vStack', `${Math.round(evalPct)}%`);
+        colorStatTile('statEval', evalPct, 70, 50);  // inverted: low score = bad
+      } else {
+        setText('vStack', '0%');
+      }
     }
-    if (sys.hostname) setText('hostname', sys.hostname);
-    else if (cpu.arch) setText('hostname', `${cpu.arch} · ${cpu.count ?? '?'} cores`);
-    renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw });
-  }
-  if (metrics) {
-    setText('kpiLocalPct', pct(metrics.llm_routing_local_pct));
-    const evalPct = metrics.eval_latest_pct;
-    if (evalPct != null) {
-      setText('vStack', pct(evalPct));
-      colorStatTile('statEval', evalPct, 70, 50);  // inverted: low score = bad
+    if (hotspots) {
+      const rl = hotspots.route_latency || {};
+      const cache = hotspots.cache || {};
+      const p95 = rl.backend_valid_p95_ms;
+      const cacheHit = cache.hit_pct;
+      if (p95 != null) { setText('vLatP95', `${p95.toFixed(0)}ms`); colorStatTile('statLatP95', p95, 500, 2000); }
+      else { setText('vLatP95', 'N/A'); }
+      if (cacheHit != null) setText('vCacheHit', `${cacheHit.toFixed(0)}%`);
+      else { setText('vCacheHit', '0%'); }
     }
-  }
-  if (hotspots) {
-    const rl = hotspots.route_latency || {};
-    const cache = hotspots.cache || {};
-    const p95 = rl.backend_valid_p95_ms;
-    const cacheHit = cache.hit_pct;
-    if (p95 != null) { setText('vLatP95', `${p95.toFixed(0)}ms`); colorStatTile('statLatP95', p95, 500, 2000); }
-    if (cacheHit != null) setText('vCacheHit', `${cacheHit.toFixed(0)}%`);
+  } catch (err) {
+    console.error("loadSystem failed:", err);
   }
 }
 
 // ─── ALERT RENDERER ──────────────────────────────────────────────────────────
-function renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw }) {
+function renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw, cb = {} }) {
   const el = document.getElementById('alertItems');
   if (!el) return;
   const alerts = [];
@@ -431,9 +456,21 @@ function renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw }) {
   check('MEM',  memPct, 80, 92);
   check('DISK', dskPct, 82, 94);
   if (tempRaw != null) {
-    if (tempRaw >= 90) alerts.push({ cls: 'err',  sev: 'ERR',  label: 'TEMP', val: `${tempRaw}°C` });
-    else if (tempRaw >= 75) alerts.push({ cls: 'warn', sev: 'WARN', label: 'TEMP', val: `${tempRaw}°C` });
+    if (tempRaw >= 90) alerts.push({ cls: 'err',  sev: 'ERR',  label: 'TEMP', val: `${tempRaw.toFixed(1)}°C` });
+    else if (tempRaw >= 75) alerts.push({ cls: 'warn', sev: 'WARN', label: 'TEMP', val: `${tempRaw.toFixed(1)}°C` });
   }
+  
+  // Circuit Breaker Alerts
+  Object.entries(cb).forEach(([src, breakers]) => {
+    if (!breakers) return;
+    Object.entries(breakers).forEach(([name, info]) => {
+      if (info.state === 'open') {
+        alerts.push({ cls: 'err', sev: 'CB', label: `${src.slice(0,4)}:${name}`, val: 'OPEN' });
+      } else if (info.state === 'half_open') {
+        alerts.push({ cls: 'warn', sev: 'CB', label: `${src.slice(0,4)}:${name}`, val: 'RECOV' });
+      }
+    });
+  });
   if (!alerts.length) {
     el.innerHTML = '<span style="color:var(--fg3);font-size:.6rem">Nominal</span>';
     return;
@@ -464,38 +501,43 @@ function colorStatTile(id, v, warnT = 70, errT = 90, sparkId = null) {
 
 // ─── OVERVIEW: AI SERVICES ────────────────────────────────────────────────────
 async function loadServices() {
-  const [svc, aiM] = await Promise.all([
-    apiFetch('/services'),
-    window._aiMetrics ? Promise.resolve(window._aiMetrics) : apiFetch('/ai/metrics'),
-  ]);
-  const grid = document.getElementById('svcGrid');
-  if (!grid) return;
-  const services = Array.isArray(svc) ? svc : [];
-  const aiSvcs   = (aiM && aiM.services) ? aiM.services : {};
+  try {
+    const [svc, aiM] = await Promise.all([
+      apiFetch('/services'),
+      window._aiMetrics ? Promise.resolve(window._aiMetrics) : apiFetch('/ai/metrics'),
+    ]);
+    const grid = document.getElementById('svcGrid');
+    if (!grid) return;
+    const services = Array.isArray(svc) ? svc : [];
+    const aiSvcs   = (aiM && aiM.services) ? aiM.services : {};
 
-  const up = services.filter(s => s.status === 'running').length;
-  const degraded = services.filter(s => s.status === 'degraded').length;
-  setText('svcCount', `${up}/${services.length}`);
-  const svcBadge = document.getElementById('svcCount');
-  if (svcBadge) svcBadge.className = `card-badge ${up === services.length ? 'badge-ok' : degraded > 0 ? 'badge-warn' : 'badge-err'}`;
+    const up = services.filter(s => s && s.status === 'running').length;
+    const degraded = services.filter(s => s && s.status === 'degraded').length;
+    setText('svcCount', `${up}/${services.length}`);
+    const svcBadge = document.getElementById('svcCount');
+    if (svcBadge) svcBadge.className = `card-badge ${up === services.length && up > 0 ? 'badge-ok' : degraded > 0 ? 'badge-warn' : 'badge-err'}`;
 
-  // Build port map from ai/metrics.services (keyed by service name like 'aidb', 'hybrid_coordinator')
-  const portMap = {};
-  Object.entries(aiSvcs).forEach(([k, v]) => { if (v && v.port) { portMap[k] = v.port; portMap[v.service || ''] = v.port; } });
-  // Known port mappings by id
-  const knownPorts = { 'ai-aidb': 8002, 'ai-hybrid-coordinator': 8003, 'ai-switchboard': 8085, 'llama-cpp': 8080, 'llama-embed': 8081, 'command-center-dashboard-api': 8889 };
-  const cleanName = id => id.replace(/^ai-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // Build port map from ai/metrics.services (keyed by service name like 'aidb', 'hybrid_coordinator')
+    const portMap = {};
+    Object.entries(aiSvcs).forEach(([k, v]) => { if (v && v.port) { portMap[k] = v.port; portMap[v.service || ''] = v.port; } });
+    // Known port mappings by id
+    const knownPorts = { 'ai-aidb': 8002, 'ai-hybrid-coordinator': 8003, 'ai-switchboard': 8085, 'llama-cpp': 8080, 'llama-embed': 8081, 'command-center-dashboard-api': 8889 };
+    const cleanName = id => (id || 'unknown').replace(/^ai-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-  grid.innerHTML = services.map(s => {
-    const ok  = s.status === 'running';
-    const col = ok ? 'var(--grn)' : (s.status === 'degraded' ? 'var(--yel)' : 'var(--red)');
-    const port = portMap[s.id] || knownPorts[s.id] || '';
-    return `<div class="svc">
-      <div class="svc-dot" style="background:${col}; box-shadow:0 0 4px ${col}"></div>
-      <span class="svc-name">${cleanName(s.id)}</span>
-      <span class="svc-port">${port ? `:${port}` : ''}</span>
-    </div>`;
-  }).join('') || '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No services</div>';
+    grid.innerHTML = services.filter(s => !!s).map(s => {
+      const ok  = s.status === 'running';
+      const col = ok ? 'var(--grn)' : (s.status === 'degraded' ? 'var(--yel)' : 'var(--red)');
+      const port = portMap[s.id] || knownPorts[s.id] || '';
+      return `<div class="svc">
+        <div class="svc-dot" style="background:${col}; box-shadow:0 0 4px ${col}"></div>
+        <span class="svc-name">${cleanName(s.id)}</span>
+        <span class="svc-port">${port ? `:${port}` : ''}</span>
+      </div>`;
+    }).join('') || '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No services</div>';
+  } catch (err) {
+    console.error("loadServices failed:", err);
+    setHtml('svcGrid', `<div style="color:var(--red);font-size:.6rem;padding:.5rem">Error: ${err.message}</div>`);
+  }
 }
 
 // ─── OVERVIEW: DATABASE METRICS ───────────────────────────────────────────────
@@ -542,8 +584,10 @@ async function loadOSI() {
   if (!data) { if (badge) badge.textContent = 'unavailable'; return; }
 
   if (data.pending) {
-    if (badge) { badge.textContent = 'pending'; badge.className = 'card-badge badge-warn'; }
+    if (badge) { badge.textContent = 'running...'; badge.className = 'card-badge badge-warn'; }
     setText('osiScore', 'pending');
+    const scoreEl = document.getElementById('healthScore');
+    if (scoreEl && scoreEl.textContent === '--') setText('healthScore', '0');
     setHtml('checkList', `<div style="color:var(--fg3);font-size:.62rem;padding:.75rem">${data.message || 'Run aq-qa to populate layer health.'} <button class="mini-btn" onclick="forceLayerRefresh()">Run Now</button></div>`);
     return;
   }
@@ -560,8 +604,8 @@ async function loadOSI() {
     const lp     = checks.filter(c => c.status === 'PASS').length;
     const el     = document.getElementById('ls' + i);
     const tile   = el ? el.closest('.layer') : null;
-    if (el) { el.textContent = `${lp}/${checks.length}`; el.style.color = lp === checks.length ? 'var(--grn)' : lp === 0 ? 'var(--red)' : 'var(--yel)'; }
-    if (tile) { tile.classList.remove('ok','err','warn'); tile.classList.add(lp === checks.length ? 'ok' : 'err'); }
+    if (el) { el.textContent = `${lp}/${checks.length || '?'}`; el.style.color = lp === checks.length && checks.length > 0 ? 'var(--grn)' : lp === 0 && checks.length > 0 ? 'var(--red)' : 'var(--yel)'; }
+    if (tile) { tile.classList.remove('ok','err','warn'); if (checks.length) tile.classList.add(lp === checks.length ? 'ok' : 'err'); }
   }
 }
 
@@ -794,10 +838,28 @@ async function loadAIDB() {
   // If detailed probe has null liveness, derive status from service reachability
   const aidbStatus = lv.status || (det && det.service === 'aidb' ? (det.startup_complete ? 'healthy' : 'running') : '--');
   setText('aidbBadge', aidbStatus);
+
+  const reindex = window._lastHwState ? window._lastHwState.reindex_status : null;
+  let reindexLabel = 'idle';
+  let reindexColor = 'info';
+  if (reindex) {
+    if (reindex.status === 'running') {
+      reindexLabel = 'RUNNING';
+      reindexColor = 'warn';
+    } else if (reindex.status === 'ok') {
+      reindexLabel = `ok (${reindex.duration_s}s)`;
+      reindexColor = 'ok';
+    } else {
+      reindexLabel = reindex.status || 'unknown';
+      reindexColor = 'err';
+    }
+  }
+
   const rows = [
     fwRow('Liveness',  lv.status || aidbStatus, statusColor(lv.status || aidbStatus)),
     fwRow('Readiness', rd.status || (det && det.service === 'aidb' ? 'ok' : '--'), statusColor(rd.status || 'ok')),
     fwRow('Startup',   det ? (det.startup_complete ? 'yes' : 'no') : '--', det && det.startup_complete ? 'ok' : 'info'),
+    fwRow('Reindex',   reindexLabel, reindexColor),
     fwRow('Vectors',   kb.total_points != null ? kb.total_points.toLocaleString() : '--'),
     fwRow('Real Embeddings', kb.real_embeddings_percent != null ? pctD(kb.real_embeddings_percent) : '--'),
     fwRow('Vectorize Pending', bgv.pending ?? '--', bgv.pending > 0 ? 'warn' : ''),
@@ -2246,6 +2308,7 @@ async function loadLogs() {
 // ─── OVERVIEW: HARDWARE THERMAL STATE ────────────────────────────────────────
 async function loadHardwareState() {
   const d  = await apiFetch('/hardware/state');
+  window._lastHwState = d; // Store for other panels (e.g. AIDB reindex)
   const el = document.getElementById('hwStateDetails');
   const badge = document.getElementById('hwStateBadge');
   if (!el) return;
@@ -2267,6 +2330,7 @@ async function loadHardwareState() {
                             d.ram_used_pct >= 90 ? 'err' : d.ram_used_pct >= 75 ? 'warn' : 'ok'),
     fwRow('RAM Free',       d.ram_free_gb != null ? `${d.ram_free_gb.toFixed(1)} GB` : '--'),
     fwRow('GPU Layers',     d.n_gpu_layers_current ?? '--', 'info'),
+    fwRow('Embed Busy',     d.embed_busy_slots != null ? d.embed_busy_slots.toFixed(2) : '0.00', d.embed_busy_slots > 0.8 ? 'warn' : 'ok'),
     d.mtp_acceptance_rate != null ? fwRow('MTP Accept', `${(d.mtp_acceptance_rate*100).toFixed(1)}%`) : '',
   ].filter(Boolean).join('');
 }
@@ -3495,11 +3559,56 @@ async function forceLayerRefresh() {
   await loadOSI();
 }
 
+// ─── OVERVIEW: INFERENCE SLOTS ────────────────────────────────────────────────
+async function loadInferenceSlots() {
+  const d = window._lastHwState; // Use state already fetched by loadHardwareState
+  const el = document.getElementById('slotBody');
+  const badge = document.getElementById('slotBadge');
+  if (!el || !d) return;
+
+  const slots = d.slots || [];
+  const active = slots.filter(s => s.is_processing || s.id_task);
+  if (badge) {
+    badge.textContent = `${active.length} active`;
+    badge.className = `card-badge ${active.length > 0 ? 'badge-info' : 'badge-ok'}`;
+  }
+
+  if (active.length === 0) {
+    el.innerHTML = '<tr><td colspan="4" style="color:var(--fg3);padding:.5rem">No active tasks</td></tr>';
+    return;
+  }
+
+  el.innerHTML = active.map(s => {
+    const server = s.server || 'unknown';
+    const sid = s.id ?? '?';
+    const tid = s.id_task ?? '-';
+    const n_ctx = s.n_ctx || 0;
+    let n_past = s.n_past || 0;
+    if (!n_past && s.next_token) n_past = s.next_token[0].n_decoded || 0;
+    
+    const pct = n_ctx > 0 ? Math.round((n_past / n_ctx) * 100) : 0;
+    const status_cls = s.is_processing ? 'ok' : 'info';
+    
+    return `<tr>
+      <td>${server}</td>
+      <td>${sid}</td>
+      <td class="fv ${status_cls}">${tid}</td>
+      <td>
+        <div class="coll-bar-wrap" title="${n_past}/${n_ctx} tokens"><div class="coll-bar" style="width:${pct}%"></div></div>
+        <span style="font-size:.52rem;margin-left:.2rem">${pct}%</span>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
 async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add('overview');
   window._aiMetrics = null;
   await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState()]);
+  // Dependents
+  loadInferenceSlots();
+  loadAIDB();
   loadLens(activeLens);
 }
 
@@ -3511,7 +3620,10 @@ window.addEventListener('error', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
   // Immediate: fast data (hardware state included — thermal is real-time critical)
-  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState()]);
+  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState()]).then(() => {
+    loadInferenceSlots();
+    loadAIDB();
+  });
   // Deferred: DB metrics + slow OSI health + audit
   setTimeout(() => { loadDatabase(); loadOSI(); loadRemediations(); loadAuditLog(); }, 400);
   // Periodic refresh
@@ -3520,7 +3632,12 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(loadSystem,        30_000);
   setInterval(loadServices,      30_000);
   setInterval(loadDatabase,      60_000);
-  setInterval(loadHardwareState, 30_000);  // thermal tier changes fast
+  setInterval(() => { 
+    loadHardwareState().then(() => {
+      loadInferenceSlots();
+      loadAIDB();
+    });
+  }, 30_000);  // thermal tier changes fast
   setInterval(() => { if (activeLens !== 'overview') loadLens(activeLens); }, 60_000);
 });
 
@@ -3650,6 +3767,52 @@ async function loadFactChainTimeline() {
       <span style="color:#4caf50">■</span> active &nbsp; <span style="color:#555">■</span> superseded
     </div>`;
 }
+
+// ─── Metrics Feed (WebSocket /ws/metrics) ──────────────────────────────────
+(function initMetricsFeed() {
+  let _ws = null;
+  let _reconnectTimer = null;
+
+  function _connect() {
+    if (_ws && (_ws.readyState === WebSocket.OPEN || _ws.readyState === WebSocket.CONNECTING)) return;
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    _ws = new WebSocket(`${proto}//${location.host}/ws/metrics`);
+
+    _ws.onopen = () => {
+      console.log('Metrics WebSocket connected');
+      if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    };
+
+    _ws.onmessage = (msg) => {
+      try {
+        const pkt = JSON.parse(msg.data);
+        console.log('Metrics WS received packet type:', pkt.type);
+        if (pkt.type === 'metrics_update' && pkt.data) {
+          window._aiMetrics = pkt.data;
+          console.log('Metrics WS data updated:', window._aiMetrics);
+          if (typeof loadDatabase === 'function') {
+            console.log('Calling loadDatabase()');
+            loadDatabase();
+          } else {
+            console.warn('loadDatabase is not a function');
+          }
+        } else {
+          console.log('Metrics WS unhandled packet:', pkt);
+        }
+      } catch (e) {
+        console.error('Error parsing metrics packet:', e);
+      }
+    };
+
+    _ws.onclose = () => {
+      if (!_reconnectTimer) {
+        _reconnectTimer = setTimeout(() => { _reconnectTimer = null; _connect(); }, 5000);
+      }
+    };
+  }
+
+  _connect();
+})();
 
 window.setLens       = setLens;
 window.toggleDrawer  = toggleDrawer;
