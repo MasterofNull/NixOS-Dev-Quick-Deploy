@@ -235,12 +235,52 @@ def switch_model(key: str, embed: bool, dry_run: bool) -> None:
         ok = _health_wait(health_url, service)
         if ok:
             print(f"\nModel switch complete: {key} ({entry.get('name', key)}) is now active.")
+            _run_post_switch_hooks(key)
         else:
             print(f"\nWARNING: {service} started but health check timed out.")
             print(f"  Check: journalctl -u {service} -n 50")
     else:
         print(f"\nDry run complete. No changes made.")
         print(f"  Would switch to: {key} ({entry.get('name', key)})")
+
+
+def _run_post_switch_hooks(model_key: str) -> None:
+    """
+    Run post-switch hooks from config/training-manifest.yaml in the background.
+    Never blocks the model switch — spawns each hook as a detached subprocess.
+    """
+    import subprocess as _sp
+
+    manifest_path = REPO_ROOT / "config" / "training-manifest.yaml"
+    if not manifest_path.exists():
+        return
+
+    try:
+        import yaml as _yaml
+        manifest = _yaml.safe_load(manifest_path.read_text()) or {}
+    except Exception:
+        return  # skip if pyyaml not available
+
+    hooks = manifest.get("post_switch_hooks", [])
+    if not hooks:
+        return
+
+    print(f"\nRunning {len(hooks)} post-switch hook(s) in background (model: {model_key}):")
+    for hook in hooks:
+        cmd = hook.get("command", "")
+        hid = hook.get("id", "hook")
+        if not cmd:
+            continue
+        try:
+            _sp.Popen(
+                cmd, shell=True, cwd=str(REPO_ROOT),
+                stdout=open(f"/tmp/aq-post-switch-{hid}.log", "w"),
+                stderr=_sp.STDOUT,
+                start_new_session=True,
+            )
+            print(f"  → {hid}: {cmd}")
+        except Exception as exc:
+            print(f"  ! {hid}: failed to start — {exc}")
 
 
 def _uid(name: str) -> int:

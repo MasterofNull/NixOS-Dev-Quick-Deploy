@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""
+aq-local-training-loop — Local model test / eval / improve orchestrator.
+
+Runs a continuous loop that:
+  1. INGEST  — calls training_ingest to pull fresh training pairs from telemetry
+  2. EVAL    — delegates eval tasks to the local model (non-blocking, streams output)
+  3. SCORE   — grades responses against eval-pack criteria
+  4. IMPROVE — proposes prompt / profile / iteration-limit improvements from telemetry context
+  5. VALIDATE— re-runs failing cases against proposed improvements
+  6. COMMIT  — writes approved improvements and PULSE.log entry
+
+Key design:
+  • Uses asyncio polling instead of blocking waits — no timeouts on long-reasoning runs.
+  • Per-task POLL_INTERVAL_S polls the delegation registry; max TASK_TIMEOUT_S (default 1200s).
+  • Telemetry context (failure patterns, gap proposals) feeds directly into the IMPROVE step.
+  • Writes all findings to TELEMETRY_DIR/training-loop-results.jsonl for dashboard pickup.
+
+Usage:
+    aq-local-training-loop [--eval-pack PATH] [--mode once|daemon] [--dry-run]
+    aq-local-training-loop --status   # show recent run results
+    aq-local-training-loop --help
+
+Options:
+    --eval-pack PATH   JSON eval pack (default: data/harness-gap-eval-pack.json)
+    --mode once|daemon Run one cycle (default) or loop forever
+    --interval MINS    Daemon re-run interval in minutes (default: 60)
+    --task-timeout S   Max seconds to wait for a single local task (default: 1200)
+    --dry-run          Score and propose but do not apply improvements
+    --status           Print last N run summaries and exit
+    --verbose          Verbose scoring output
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# ── paths ──────────────────────────────────────────────────────────────────────
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parent.parent
+_LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
+
+sys.path.insert(0, str(_LOCAL_AGENTS))
+
+TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
+RESULTS_LOG   = TELEMETRY_DIR / "training-loop-results.jsonl"
+DELEGATION_DIR = _REPO_ROOT / ".agents" / "delegation"
+REGISTRY       = DELEGATION_DIR / "registry.jsonl"
+OUTPUTS_DIR    = DELEGATION_DIR / "outputs"
+PULSE_LOG      = _REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
+DEFAULT_EVAL_PACK = _REPO_ROOT / "data" / "harness-gap-eval-pack.json"
+
+POLL_INTERVAL_S  = 5        # seconds between registry polls
+DEFAULT_TASK_TIMEOUT_S = 1200  # 20 min max per task (Qwen3-35B long-reasoning safe limit)
+
+# ── helpers ────────────────────────────────────────────────────────────────────
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _load_eval_pack(path: Path) -> List[Dict]:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    cases = data.get("cases", data) if isinstance(data, dict) else data
+    return cases if isinstance(cases, list) else []
+
+
+def _score_response(response: str, case: Dict) -> Dict[str, Any]:
+    """Grade a response against expected_keywords and optional rubric."""
+    keywords = case.get("expected_keywords", [])
+    resp_lower = response.lower()
+    matched = [k for k in keywords if k.lower() in resp_lower]
+    coverage = len(matched) / max(len(keywords), 1)
+
+    # Length heuristic: reject empty / stub responses.
+    words = len(response.split())
+    length_ok = words >= 15
+
+    score = coverage if length_ok else 0.0
+    return {
+        "case_id": case.get("id"),
+        "score": round(score, 3),
+        "coverage": round(coverage, 3),
+        "matched_keywords": matched,
+        "missing_keywords": [k for k in keywords if k.lower() not in resp_lower],
+        "word_count": words,
+        "pass": score >= 0.6 and length_ok,
+    }
+
+
+def _read_registry() -> List[Dict]:
+    if not REGISTRY.exists():
+        return []
+    entries = []
+    for raw in open(REGISTRY, encoding="utf-8", errors="replace"):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entries.append(json.loads(raw))
+        except json.JSONDecodeError:
+            pass
+    return entries
+
+
+def _read_output(output_file: str) -> str:
+    path = Path(output_file)
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+# ── delegation ─────────────────────────────────────────────────────────────────
+
+def _submit_task(query: str, mode: str = "hybrid") -> Optional[str]:
+    """
+    Submit a task to delegate-to-local in background mode.
+    Returns the task ID or None on error.
+    """
+    delegate_bin = _SCRIPT_DIR / "delegate-to-local"
+    if not delegate_bin.exists():
+        print(f"[eval] ERROR: delegate-to-local not found at {delegate_bin}", file=sys.stderr)
+        return None
+    try:
+        result = subprocess.run(
+            [str(delegate_bin), "--mode", mode, "--prompt", query],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        # Parse task ID from output lines like "[delegate-to-local] task_id=local-20260527-..."
+        for line in result.stdout.splitlines():
+            if "task_id=" in line:
+                return line.split("task_id=", 1)[1].strip()
+            if line.strip().startswith("local-"):
+                return line.strip()
+        # Fallback: last line of stderr might have it
+        for line in result.stderr.splitlines():
+            if "task_id=" in line:
+                return line.split("task_id=", 1)[1].strip()
+        return None
+    except subprocess.TimeoutExpired:
+        print("[eval] ERROR: delegate-to-local submission timed out", file=sys.stderr)
+        return None
+
+
+async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) -> Optional[str]:
+    """
+    Poll the delegation registry until task_id reaches status=completed|failed.
+    Returns the output text or None on timeout/failure.
+    Never blocks — yields control between polls via asyncio.sleep.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        for entry in _read_registry():
+            if entry.get("id") == task_id:
+                status = entry.get("status", "running")
+                if status == "completed":
+                    return _read_output(entry.get("output_file", ""))
+                if status == "failed":
+                    return None
+        await asyncio.sleep(POLL_INTERVAL_S)
+    print(f"[eval] TIMEOUT: task {task_id} did not complete within {timeout_s}s", file=sys.stderr)
+    return None
+
+
+# ── improvement proposal ───────────────────────────────────────────────────────
+
+def _build_improvement_context(ingest_report: Dict) -> str:
+    """
+    Build a plain-text context block that summarises telemetry signals.
+    This is prepended to improvement prompts sent to the local model.
+    """
+    lines = ["=== TELEMETRY CONTEXT ==="]
+    if ingest_report.get("failure_summary"):
+        lines.append("Delegation failure classes (last 24h):")
+        for cls, cnt in ingest_report["failure_summary"].items():
+            lines.append(f"  {cls}: {cnt}x")
+    if ingest_report.get("gap_patterns"):
+        lines.append("Top gap patterns (improvement actions from failed tasks):")
+        for g in ingest_report["gap_patterns"][:5]:
+            lines.append(f"  [{g['count']}x] {g['pattern']}")
+    if ingest_report.get("proposals_auto_approved"):
+        lines.append(f"Auto-approved proposals: {len(ingest_report['proposals_auto_approved'])}")
+    if ingest_report.get("proposals_needing_review"):
+        lines.append(f"Proposals needing review: {len(ingest_report['proposals_needing_review'])}")
+    lines.append("=========================")
+    return "\n".join(lines)
+
+
+def _generate_improvement_prompt(
+    failing_cases: List[Dict],
+    ingest_report: Dict,
+) -> str:
+    """
+    Build a prompt for the local model to propose concrete improvements.
+    """
+    ctx = _build_improvement_context(ingest_report)
+    cases_text = "\n".join(
+        f"  - case={r['case_id']} score={r['score']} missing={r['missing_keywords']}"
+        for r in failing_cases[:8]
+    )
+    return (
+        f"{ctx}\n\n"
+        "You are reviewing eval results for the local Qwen3-35B AI harness.\n\n"
+        "FAILING EVAL CASES:\n"
+        f"{cases_text}\n\n"
+        "Propose 3 concrete, targeted improvements to fix these failures. Each improvement must:\n"
+        "1. Identify the root cause (missing knowledge, wrong profile, prompt framing issue)\n"
+        "2. Specify the exact change (system prompt addition, profile tweak, switchboard config)\n"
+        "3. Predict which missing keywords would be covered after the change\n"
+        "4. Be safe to apply without human review (no secrets, no port changes, no model swap)\n\n"
+        "Output as JSON array with keys: root_cause, change_type, change_description, "
+        "expected_keyword_gains, confidence (0-1)."
+    )
+
+
+# ── loop ───────────────────────────────────────────────────────────────────────
+
+class TrainingLoop:
+    def __init__(
+        self,
+        eval_pack: Path = DEFAULT_EVAL_PACK,
+        task_timeout: int = DEFAULT_TASK_TIMEOUT_S,
+        dry_run: bool = False,
+        verbose: bool = False,
+    ):
+        self.eval_pack = eval_pack
+        self.task_timeout = task_timeout
+        self.dry_run = dry_run
+        self.verbose = verbose
+
+    async def run_once(self) -> Dict[str, Any]:
+        """Execute one full test/eval/improve cycle."""
+        run_id = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        print(f"[training-loop] Starting run {run_id}")
+
+        # ── 1. INGEST ──────────────────────────────────────────────────────────
+        print("[training-loop] Phase 1: telemetry ingest")
+        try:
+            from training_ingest import TrainingIngestor
+            ingestor = TrainingIngestor(dry_run=self.dry_run)
+            ingest_report = ingestor.run(hours=24)
+            print(
+                f"[training-loop]   +{ingest_report['positive_samples_added']} training samples "
+                f"(dataset total: {ingest_report['dataset_total']})"
+            )
+        except Exception as exc:
+            print(f"[training-loop] WARNING: ingest failed: {exc}", file=sys.stderr)
+            ingest_report = {}
+
+        # ── 2. EVAL ────────────────────────────────────────────────────────────
+        print("[training-loop] Phase 2: delegating eval tasks")
+        cases = _load_eval_pack(self.eval_pack)
+        if not cases:
+            print("[training-loop] ERROR: no eval cases found", file=sys.stderr)
+            return {"run_id": run_id, "error": "no eval cases"}
+
+        task_ids: Dict[str, str] = {}  # case_id → task_id
+        for case in cases:
+            tid = _submit_task(case["query"], mode=case.get("mode", "hybrid"))
+            if tid:
+                task_ids[case["id"]] = tid
+                if self.verbose:
+                    print(f"[training-loop]   submitted {case['id']} → {tid}")
+            else:
+                print(f"[training-loop]   WARN: could not submit {case['id']}", file=sys.stderr)
+
+        # ── 3. WAIT + SCORE ────────────────────────────────────────────────────
+        print(f"[training-loop] Phase 3: waiting for {len(task_ids)} tasks "
+              f"(max {self.task_timeout}s each)…")
+        scores: List[Dict] = []
+        # Run all waits concurrently — each polls independently.
+        async def _eval_one(case: Dict) -> Dict:
+            tid = task_ids.get(case["id"])
+            if not tid:
+                return {**_score_response("", case), "task_id": None, "error": "not_submitted"}
+            response = await _wait_for_task(tid, timeout_s=self.task_timeout)
+            if response is None:
+                return {**_score_response("", case), "task_id": tid, "error": "timeout_or_failed"}
+            result = _score_response(response, case)
+            result["task_id"] = tid
+            if self.verbose:
+                status = "PASS" if result["pass"] else "FAIL"
+                print(f"[training-loop]   {status} {case['id']} score={result['score']}")
+            return result
+
+        scores = await asyncio.gather(*[_eval_one(c) for c in cases])
+
+        passing  = [s for s in scores if s.get("pass")]
+        failing  = [s for s in scores if not s.get("pass")]
+        pass_rate = len(passing) / max(len(scores), 1)
+        print(f"[training-loop]   pass {len(passing)}/{len(scores)} ({pass_rate:.0%})")
+
+        # ── 4. IMPROVE ─────────────────────────────────────────────────────────
+        improvements: List[Dict] = []
+        if failing:
+            print(f"[training-loop] Phase 4: generating improvements for {len(failing)} failures")
+            improve_prompt = _generate_improvement_prompt(failing, ingest_report)
+            improve_tid = _submit_task(improve_prompt, mode="hybrid")
+            if improve_tid:
+                improve_response = await _wait_for_task(improve_tid, timeout_s=self.task_timeout)
+                if improve_response:
+                    # Parse JSON array from response (may be wrapped in markdown).
+                    try:
+                        start = improve_response.find("[")
+                        end   = improve_response.rfind("]") + 1
+                        if start >= 0 and end > start:
+                            improvements = json.loads(improve_response[start:end])
+                    except (json.JSONDecodeError, ValueError):
+                        improvements = [{"raw": improve_response[:500]}]
+                    if self.verbose:
+                        print(f"[training-loop]   {len(improvements)} improvement proposals")
+
+        # ── 5. VALIDATE ────────────────────────────────────────────────────────
+        # (Placeholder for a future re-run-with-improvements cycle.
+        # Full implementation deferred — needs switchboard profile hot-reload.)
+        validated_improvements: List[Dict] = []
+        if improvements and not self.dry_run:
+            # For now, log improvements as pending proposals for human review.
+            proposals_path = TELEMETRY_DIR / "optimization_proposals.jsonl"
+            for imp in improvements:
+                proposal = {
+                    "proposal_id": f"loop-{run_id}-{len(validated_improvements)}",
+                    "proposal_type": "training_loop_finding",
+                    "title": imp.get("root_cause", str(imp)[:60]),
+                    "rationale": imp.get("change_description", ""),
+                    "evidence": {
+                        "failing_cases": [s["case_id"] for s in failing],
+                        "expected_keyword_gains": imp.get("expected_keyword_gains", []),
+                    },
+                    "status": "pending",
+                    "approval_required": True,
+                    "confidence": imp.get("confidence", 0.5),
+                    "created_at": _now(),
+                    "source": "aq-local-training-loop",
+                }
+                validated_improvements.append(proposal)
+                with open(proposals_path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(proposal) + "\n")
+
+        # ── 6. WRITE RESULTS ───────────────────────────────────────────────────
+        result = {
+            "run_id": run_id,
+            "timestamp": _now(),
+            "eval_pack": str(self.eval_pack.name),
+            "cases_total": len(cases),
+            "pass_count": len(passing),
+            "fail_count": len(failing),
+            "pass_rate": round(pass_rate, 3),
+            "ingest": {
+                "samples_added": ingest_report.get("positive_samples_added", 0),
+                "dataset_total": ingest_report.get("dataset_total", 0),
+                "top_failures": list(ingest_report.get("failure_summary", {}).items())[:5],
+            },
+            "scores": scores,
+            "improvements_proposed": len(validated_improvements),
+            "dry_run": self.dry_run,
+        }
+
+        TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
+        if not self.dry_run:
+            with open(RESULTS_LOG, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(result) + "\n")
+
+        # PULSE log entry.
+        _pulse(f"aq-local-training-loop run {run_id}: "
+               f"pass={len(passing)}/{len(cases)}, "
+               f"+{ingest_report.get('positive_samples_added', 0)} training samples, "
+               f"{len(validated_improvements)} improvement proposals written")
+
+        return result
+
+    async def run_daemon(self, interval_minutes: int = 60) -> None:
+        """Run continuously, once per interval_minutes."""
+        print(f"[training-loop] Daemon mode — interval {interval_minutes}m")
+        while True:
+            try:
+                result = await self.run_once()
+                print(f"[training-loop] Cycle complete: pass_rate={result.get('pass_rate', '?')}")
+            except Exception as exc:
+                print(f"[training-loop] ERROR in cycle: {exc}", file=sys.stderr)
+            print(f"[training-loop] Sleeping {interval_minutes}m…")
+            await asyncio.sleep(interval_minutes * 60)
+
+
+def _pulse(msg: str) -> None:
+    ts = _now()
+    entry = f"[{ts}] [aq-local-training-loop] [run]: {msg}\n"
+    try:
+        with open(PULSE_LOG, "a", encoding="utf-8") as fh:
+            fh.write(entry)
+    except OSError:
+        pass
+
+
+def _status(n: int = 10) -> None:
+    if not RESULTS_LOG.exists():
+        print("No results yet.")
+        return
+    runs = []
+    for raw in open(RESULTS_LOG, encoding="utf-8", errors="replace"):
+        try:
+            runs.append(json.loads(raw))
+        except json.JSONDecodeError:
+            pass
+    for run in runs[-n:]:
+        dr = " [dry]" if run.get("dry_run") else ""
+        print(
+            f"{run['timestamp'][:19]}  {run['run_id']}"
+            f"  pass={run['pass_count']}/{run['cases_total']}"
+            f"  +{run['ingest']['samples_added']} samples"
+            f"  {run['improvements_proposed']} proposals{dr}"
+        )
+
+
+# ── CLI ────────────────────────────────────────────────────────────────────────
+
+def _cli() -> None:
+    parser = argparse.ArgumentParser(
+        description="Local model test/eval/improve loop",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--eval-pack", type=Path, default=DEFAULT_EVAL_PACK,
+                        help="Eval pack JSON (default: data/harness-gap-eval-pack.json)")
+    parser.add_argument("--mode", choices=["once", "daemon"], default="once",
+                        help="Run once or loop as daemon (default: once)")
+    parser.add_argument("--interval", type=int, default=60,
+                        help="Daemon interval in minutes (default: 60)")
+    parser.add_argument("--task-timeout", type=int, default=DEFAULT_TASK_TIMEOUT_S,
+                        help=f"Max seconds per local task (default: {DEFAULT_TASK_TIMEOUT_S})")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Score and propose but do not write improvements")
+    parser.add_argument("--status", action="store_true",
+                        help="Print recent run summaries and exit")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Verbose per-case output")
+    args = parser.parse_args()
+
+    if args.status:
+        _status()
+        return
+
+    loop_runner = TrainingLoop(
+        eval_pack=args.eval_pack,
+        task_timeout=args.task_timeout,
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+    )
+
+    if args.mode == "daemon":
+        asyncio.run(loop_runner.run_daemon(interval_minutes=args.interval))
+    else:
+        result = asyncio.run(loop_runner.run_once())
+        print(json.dumps({
+            "pass_rate": result.get("pass_rate"),
+            "pass": result.get("pass_count"),
+            "total": result.get("cases_total"),
+            "samples_added": result.get("ingest", {}).get("samples_added"),
+            "proposals": result.get("improvements_proposed"),
+        }, indent=2))
+
+
+if __name__ == "__main__":
+    _cli()

@@ -47,8 +47,9 @@ STYLE = Style.from_dict({
 console = Console()
 
 COMMANDS = [
-    "/help", "/exit", "/clear", "/reset", "/status", 
-    "/prime", "/route", "/save", "/load", "/search", "/tools"
+    "/help", "/exit", "/clear", "/reset", "/status",
+    "/prime", "/route", "/save", "/load", "/search", "/tools",
+    "/rate",
 ]
 command_completer = WordCompleter(COMMANDS, ignore_case=True)
 
@@ -79,6 +80,10 @@ class AQChat:
         # Dynamic discovery state
         self.available_agents = {}
         self.pool_manager = None
+
+        # Feedback loop — tracks last exchange for /rate command
+        self._last_user_msg: str = ""
+        self._last_assistant_msg: str = ""
 
     async def _build_harness_system_prompt(self) -> str:
         """Fetch live coordinator state and build a harness-aware system prompt.
@@ -276,6 +281,9 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         console.print(Markdown(full_response))
                         console.print(Markdown("---"))
                         self.context_history.append({"role": "assistant", "content": full_response})
+                        # Track for /rate feedback capture
+                        self._last_user_msg = prompt
+                        self._last_assistant_msg = full_response
                     else:
                         # Handle steering
                         steer_msg = f"INTERRUPT: {self.steering_prompt}"
@@ -333,6 +341,14 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             else: console.print("[red]Usage: /search <query>[/]")
         elif base == "/tools":
             await self._show_tools()
+        elif base == "/rate":
+            # /rate good|bad [optional comment]
+            if len(parts) < 2 or parts[1].lower() not in ("good", "bad"):
+                console.print("[yellow]Usage: /rate good|bad [optional comment][/]")
+            else:
+                rating = parts[1].lower()
+                comment = " ".join(parts[2:]) if len(parts) > 2 else ""
+                self._write_feedback(rating, comment)
         elif base == "/exit":
             sys.exit(0)
         else:
@@ -367,6 +383,37 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             console.print(f"[bold green]Loaded {len(self.context_history)} turns from {path}[/]")
         except Exception as e:
             console.print(f"[bold red]Load failed: {e}[/]")
+
+    def _write_feedback(self, rating: str, comment: str) -> None:
+        """
+        Write a user feedback entry to delegation-feedback.jsonl.
+        Activates the feedback stream (currently 0MB) for the training pipeline.
+        """
+        import datetime as _dt
+        feedback_path = Path(os.getenv(
+            "TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"
+        )) / "delegation-feedback.jsonl"
+        entry = {
+            "event_type": "user_feedback",
+            "rating": rating,
+            "comment": comment,
+            "query": self._last_user_msg[:500] if self._last_user_msg else "",
+            "response_preview": self._last_assistant_msg[:300] if self._last_assistant_msg else "",
+            "profile": self.active_profile,
+            "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            # Map bad ratings to improvement_actions so training_ingest can pick them up
+            "improvement_actions": [comment] if rating == "bad" and comment else (
+                ["response quality too low — review profile routing"] if rating == "bad" else []
+            ),
+            "failure_class": "user_rated_bad" if rating == "bad" else "none",
+        }
+        try:
+            with open(feedback_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
+            icon = "[bold green]✓[/]" if rating == "good" else "[bold red]✗[/]"
+            console.print(f"{icon} Feedback recorded ({rating}). Use `aq-local-training-loop` to process.")
+        except OSError as exc:
+            console.print(f"[red]Could not write feedback: {exc}[/]")
 
     async def _rag_search(self, query: str):
         with console.status("[bold cyan]Searching knowledge base...", spinner="bouncingBar"):
