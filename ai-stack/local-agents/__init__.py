@@ -23,6 +23,16 @@ Usage:
 Part of Phase 11: Local Agent Agentic Capabilities
 """
 
+import os
+import sys
+from pathlib import Path
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities are on path
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
 import logging
 from typing import Optional
 
