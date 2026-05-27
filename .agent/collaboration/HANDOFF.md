@@ -29,6 +29,12 @@ Phase 72 training loop factory deployed. All directly fixable QA failures resolv
 - Root cause of 0 positive training samples: quality threshold too strict for current
   delegation success rate; fixed by improving retry path so future calls can succeed
 
+## Root Cause Fixed: 0.2.3 False Negative
+- _aq-qa-bash: Qdrant check only sampled FIRST collection (qa-patterns, 0 points)
+  Fixed to sum all 14 collections → 15,689 points → PASS (was never actually empty)
+- qa-xfail.yaml: removed 0.2.3 (was a code bug, not a runtime-blocked issue)
+- 63/65 pass; remaining: 0.1.2 (service restart) + 0.8.1 (delegation rate accumulation)
+
 ## Confirmed Non-Bugs
 - event_type "coercion" at agent_service.py:100 + http_server_impl.py:1832 is intentional:
   both sites have _VALID_EVENT_TYPES validation after defaulting → unknown types → 400

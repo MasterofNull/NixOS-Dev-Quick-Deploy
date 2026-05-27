@@ -507,7 +507,7 @@ run_phase_0() {
     fi
   fi
 
-  # 0.2.3 Qdrant document count > 0
+  # 0.2.3 Qdrant document count > 0 (sum ALL collections, not just the first)
   if _should_run 5; then
     local points_count
     points_count=$(curl -sf "${QDRANT_URL}/collections" | python3 -c "
@@ -519,16 +519,21 @@ try:
     if not colls:
         print(0)
         sys.exit(0)
-    # Check first collection for points
-    name = colls[0]['name']
-    with urllib.request.urlopen(f'{qdrant_url}/collections/{name}') as r:
-        cd = json.load(r)
-        print(cd.get('result', {}).get('points_count', 0))
+    total = 0
+    for coll in colls:
+        name = coll['name']
+        try:
+            with urllib.request.urlopen(f'{qdrant_url}/collections/{name}', timeout=5) as r:
+                cd = json.load(r)
+                total += cd.get('result', {}).get('points_count', 0) or 0
+        except Exception:
+            pass
+    print(total)
 except Exception:
     print(0)
 " "${QDRANT_URL}" 2>/dev/null || echo 0)
     if [[ "$points_count" -gt 0 ]]; then
-      _pass 5 "0.2.3" "Qdrant has ${points_count} points in primary collection"
+      _pass 5 "0.2.3" "Qdrant has ${points_count} points across all collections"
     else
       _fail 5 "0.2.3" "Qdrant has documents" "found 0"
     fi
