@@ -464,7 +464,12 @@ class LocalAgentExecutor:
 
     async def _call_llama(self, messages: List[Dict]) -> str:
         """
-        Call local llama.cpp server.
+        Call local llama.cpp server using SSE streaming.
+
+        Uses per-chunk read timeout (LLAMA_CHUNK_TIMEOUT env, default 120s) instead of a
+        wall-clock total timeout so long-reasoning tasks never time out as long as tokens
+        flow.  Falls back to a non-streaming POST if streaming is explicitly disabled via
+        LLAMA_USE_STREAMING=false.
 
         Args:
             messages: Conversation messages
@@ -472,22 +477,64 @@ class LocalAgentExecutor:
         Returns:
             Model response
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
+        use_streaming = _env_flag("LLAMA_USE_STREAMING", default=True)
+        chunk_timeout = _env_float("LLAMA_CHUNK_TIMEOUT", default=120.0)
+        max_tokens = int(os.getenv("LLAMA_MAX_TOKENS", "4096"))
+
+        payload: Dict[str, Any] = {
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+            "enable_thinking": False,  # thinking tokens → empty responses on Qwen3
+        }
+
+        if not use_streaming:
+            # Legacy non-streaming path — 300s wall-clock limit.
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.llama_endpoint}/v1/chat/completions",
+                    json=payload,
+                    timeout=300.0,
+                )
+                if response.status_code != 200:
+                    raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+
+        # Streaming path: collect SSE delta chunks.
+        # httpx.Timeout(read=chunk_timeout) is per-read-operation (per chunk), not total.
+        # A 10-minute generation succeeds as long as tokens keep arriving within chunk_timeout.
+        timeout = httpx.Timeout(connect=10.0, read=chunk_timeout, write=10.0, pool=5.0)
+        payload["stream"] = True
+
+        collected: List[str] = []
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST",
                 f"{self.llama_endpoint}/v1/chat/completions",
-                json={
-                    "messages": messages,
-                    "temperature": 0.2,   # deterministic for code generation
-                    "max_tokens": 4096,   # coding tasks need more tokens
-                },
-                timeout=300.0,  # Qwen3.6-35B: 90-120s/response; 30s caused false failures
-            )
+                json=payload,
+            ) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    raise Exception(f"llama.cpp error: {response.status_code} {body.decode()[:200]}")
 
-            if response.status_code != 200:
-                raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
+                async for raw_line in response.aiter_lines():
+                    line = raw_line.strip()
+                    if not line or line == "data: [DONE]":
+                        continue
+                    if line.startswith("data: "):
+                        line = line[len("data: "):]
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    token = delta.get("content") or ""
+                    if token:
+                        collected.append(token)
 
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+        return "".join(collected)
 
     async def _fallback_to_remote(self, task: Task) -> Task:
         """
