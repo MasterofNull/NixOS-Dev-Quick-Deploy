@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 """AI Switchboard — OpenAI-compatible LLM routing proxy."""
+import sys
+from pathlib import Path
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities are on path
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
 import asyncio
 import hashlib
 import os
@@ -10,12 +19,17 @@ import time
 import math
 import datetime
 import pathlib
+from typing import Optional, Union, Dict, List
 from urllib.parse import urlparse
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+
+# Stability Backbone (Phase 55.2)
+from shared.circuit_breaker import CircuitBreakerRegistry, CircuitBreakerError, CircuitState, CircuitBreakerOpenError
+from shared.retry_backoff import retry_with_backoff
 
 # Configuration from Environment
 LLAMA_URL = os.environ.get("LLAMA_CPP_URL", "http://127.0.0.1:8080").rstrip("/")
@@ -30,6 +44,24 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 ROUTE_HINT_HEADER = "x-ai-route"
 PROVIDER_HINT_HEADER = "x-ai-provider"
 PROFILE_HINT_HEADER = "x-ai-profile"
+
+# Initialize Independent Circuit Breaker Registries
+# Phase 56.1: Decouple local and remote paths to prevent downstream provider failures 
+# from blocking local inference/tooling.
+LOCAL_CIRCUIT_BREAKERS = CircuitBreakerRegistry(
+    default_config={
+        "failure_threshold": int(os.getenv("SWITCHBOARD_CB_FAILURE_THRESHOLD", "5")),
+        "reset_timeout": float(os.getenv("SWITCHBOARD_CB_RESET_TIMEOUT", "30.0")),
+        "success_threshold": int(os.getenv("SWITCHBOARD_CB_SUCCESS_THRESHOLD", "2")),
+    }
+)
+REMOTE_CIRCUIT_BREAKERS = CircuitBreakerRegistry(
+    default_config={
+        "failure_threshold": int(os.getenv("SWITCHBOARD_CB_FAILURE_THRESHOLD", "5")),
+        "reset_timeout": float(os.getenv("SWITCHBOARD_CB_RESET_TIMEOUT", "30.0")),
+        "success_threshold": int(os.getenv("SWITCHBOARD_CB_SUCCESS_THRESHOLD", "2")),
+    }
+)
 
 REMOTE_MODEL_PREFIXES = (
     "remote/",
@@ -47,15 +79,18 @@ HINTS_LIMIT = int(os.environ.get("HINTS_LIMIT", "2"))
 # Profile Card Definitions (Ported from Nix)
 DEFAULT_PROFILE_CARD = """/no_think
 [profile-card:default]
-You are a NixOS AI harness agent for the NixOS-Dev-Quick-Deploy repo. You are in AGENT MODE. The task is already given — execute immediately. Do NOT say "what would you like to do?" or run `ls` on the root as a first action — those are failure modes.
-MANDATORY: Use targeted agrep/als/read for the task, not a generic directory listing.
-PRSI task → run: python3 scripts/automation/prsi-orchestrator.py list  THEN  read /var/lib/nixos-ai-stack/prsi/action-queue.json
-Service/health task → run: aq-qa 0  THEN  journalctl -u ai-*.service -n 30 --no-pager
-Code/file task → run: agrep "<keyword>" . --include="*.py"
-Key dirs: scripts/ai/ (aq-*), scripts/agent-tools/ (als/agrep/acat/asum), scripts/automation/ (prsi-orchestrator.py), ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
-PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
-Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8006
-Harness: aq-prime | aq-qa 0 | aq-report | aq-operational-perspective | aq-hints "<task>" | aq-context-bootstrap --task "<task>"
+You are AQ, an expert coding and systems developer. You are proficient in NixOS and grounded in the NixOS-Dev-Quick-Deploy harness.
+
+MANDATORY: Show your work with proof (als, agrep, read_file) and CHECK-IN with a plan before acting.
+
+=== COMMON TASKS ===
+PRSI / Optimization: run: scripts/automation/prsi-orchestrator.py list
+Service Health: run: aq-qa 0
+Search Code: run: agrep "<keyword>" . --include="*.py"
+Knowledge: run: query_aidb {query: "<q>"}
+
+Key dirs: scripts/ai/, scripts/agent-tools/, ai-stack/mcp-servers/, nix/modules/, dashboard/, config/
+Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8889
 """
 
 CONTINUE_LOCAL_CARD = """/no_think
@@ -64,78 +99,32 @@ Concise. als/agrep first — never browse blindly. Act, don't restate.
 PRSI: /var/lib/nixos-ai-stack/prsi/action-queue.json | aq-hints "<q>" | aq-qa 0
 """
 
-HARNESS_AWARE_BODY = """You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy. You are in AGENT MODE. The task is already given — BEGIN EXECUTING IMMEDIATELY. Do not ask "how can I help?" or "what would you like to do?" — those are failure modes.
+HARNESS_AWARE_BODY = """You are AQ, an expert coding and systems developer embedded in the NixOS-Dev-Quick-Deploy harness. You are proficient in NixOS and autonomous AI orchestration.
 
-RULE: Never run `ls` on the repo root as a first action. Always start with the most targeted command for the task type below.
+=== OPERATIONAL GUIDELINES ===
+- CHECK-IN FIRST: Before making system changes, show your research and proposed plan with proof (file reads, command outputs).
+- EVIDENCE-BASED: Ground every answer in the actual system state using tools.
+- NIXOS MASTERY: Apply best practices for NixOS, Flakes, and declarative configuration.
+- PRECISION: Never guess; search and verify first.
 
 === TASK → FIRST ACTIONS ===
-PRSI / self-improvement / queue issues:
-  MCP tool (preferred): get_prsi_pending  → then prsi_orchestrate {command:"approve",...}
-  Shell fallback: python3 scripts/automation/prsi-orchestrator.py list
-  Approval flow: prsi_orchestrate approve → prsi_orchestrate execute
+PRSI / Self-Improvement:
+  MCP tool: get_prsi_pending -> then prsi_orchestrate {action: "approve", ...}
+  Approval flow: Proposed Plan -> User Check-in -> Execute (dry_run=true first)
 
-Service health / errors:
-  MCP tool (preferred): harness_health  → then journalctl -u ai-*.service -n 50 --no-pager
-  Shell fallback: aq-qa 0
+Service Health:
+  MCP tool: harness_health -> then journalctl -u ai-*.service -n 50 --no-pager
 
-Unknown file / code location:
-  1. run: als -d 1 (if broad orientation needed) OR agrep "<keyword>" . --include="*.py" (targeted search, NOT ls)
-  2. read the file identified with acat or read_file
+Knowledge Retrieval:
+  MCP tool: query_aidb {query: "<question>"} (vector search)
+  MCP tool: get_hint {query: "<task summary>"} (pattern lookup)
 
-Harness workflow / hints:
-  MCP tool (preferred): get_hints {q:"<task summary>"}
-  Shell fallback: aq-hints "<task summary>"
+Project Exploration:
+  1. Use als -d 1 or search_files for orientation.
+  2. Use read_file (or acat) to provide proof of current state.
 
-Knowledge search:
-  MCP tool: hybrid_search {query:"<question>"}
-  MCP tool: query_aidb {query:"<question>"}
-
-Agent introspection / operator perspective:
-  1. Gather bounded evidence first:
-     aq-feedback-loop --task "<prompt>" --format json
-     aq-context-bootstrap --task "<prompt>" --format json
-     aq-context-manage summary --task "<prompt>" --json
-     MCP tools: get_hints {q:"<prompt>"}, harness_health, get_working_memory, query_aidb
-  2. Use shell fallback only if needed:
-     aq-report --format=json
-     aq-operational-perspective --task "<prompt>" --format json
-     aq-qa 0 --json
-     aq-memory search "<topic>" --project ai-stack --limit 5
-  3. If the bootstrap or feedback loop selects context-offload:
-     execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering
-     prefer embedded-assist as the compact search/context helper lane before broader local or remote synthesis
-  4. Structure the answer with:
-     Observed signals
-     Inferred constraints
-     Evidence sources
-     Unknowns / next checks
-  5. Use `aq-introspection-validate --file <response-file>` or `--text <response>` when you need to verify the answer still satisfies the evidence contract.
-  6. Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it.
-
-=== KEY PATHS ===
-PRSI queue: /var/lib/nixos-ai-stack/prsi/action-queue.json
-PRSI policy: config/runtime-prsi-policy.json
-PRSI orchestrator: scripts/automation/prsi-orchestrator.py
-Harness CLIs: scripts/ai/ (aq-qa, aq-report, aq-operational-perspective, aq-hints, aq-system-act, aq-context-bootstrap, aq-runtime-diagnose)
-Agentic Tools: scripts/agent-tools/ (als, agrep, acat, asum)
-MCP servers: ai-stack/mcp-servers/ (coordinator:8003, aidb:8002, ralph:8004)
-NixOS modules: nix/modules/ | Dashboard: dashboard/backend/
-
-=== PORTS ===
-llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8006 grafana:3000 prom:9090 owui:3001
-
-=== CANONICAL WORKFLOW (full contract: .agent/WORKFLOW-CANON.md) ===
-Every non-trivial task: ORIENT(aq-prime+aq-hints+recall-memory) → RESEARCH(agrep/als/acat/asum+web-search) → PRD/PLAN(.agent/+.agents/plans/) → MEMORY-CHECKPOINT(store plan before coding) → EXECUTE(one-slice,read-before-edit) → VALIDATE(tier0-gate+security) → COMMIT(atomic+Co-Authored-By).
-PRD gate: write .agent/PROJECT-<NAME>-PRD.md before any multi-file implementation.
-Memory gate: store plan to harness memory before executing. At session start: recall memory first.
-Context rule: reference files by path; retrieve with hybrid_search/get_hints; do not paste full files.
-
-=== SECURITY (OWASP Agentic Top 10) ===
-Before every commit: (1) no hardcoded secrets/ports/tokens; (2) verify all new deps exist; (3) no injection patterns (SQL/shell/path-traversal); (4) treat LLM outputs as untrusted; (5) if auth added, verify it is wired in; (6) bash -n on shell files, py_compile on Python; (7) privilege minimization.
-
-=== COMMIT ===
-git add <specific files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit -m "type(scope): msg\\n\\nCo-Authored-By: <active-agent-name> <noreply@harness.local>"
-Never use --no-verify. One slice = one commit. Include validation evidence in body.
+=== COMMIT RULES ===
+git add <specific files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit -m "type(scope): msg\\n\\nCo-Authored-By: AQ <noreply@harness.local>"
 """
 
 LOCAL_AGENT_CARD = f"""/no_think
@@ -340,9 +329,9 @@ DEFAULT_PROFILE_CATALOG = {
         "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
-        "maxInputTokens": 1800,
-        "maxMessages": 10,
-        "maxOutputTokens": 512,
+        "maxInputTokens": 3000,
+        "maxMessages": 12,
+        "maxOutputTokens": 1024,
         "embeddingsOnly": False,
         "toolExecution": None,
         "profileCard": EMBEDDED_ASSIST_CARD,
@@ -698,21 +687,46 @@ _TOOL_BUNDLES = {
         VIRTUAL_TOOL_LEASE_NAME,
         "get_hint",
         "query_context",
+        "harness_health",
+        "get_working_memory",
         "run_command",
-        "check_service",
         "search_files",
         "read_file",
     }),
-    "memory": frozenset({VIRTUAL_TOOL_LEASE_NAME, "get_hint", "query_context", "store_memory"}),
+    "harness_control": frozenset({
+        VIRTUAL_TOOL_LEASE_NAME,
+        "harness_health",
+        "get_prsi_pending",
+        "prsi_orchestrate",
+        "query_aidb",
+    }),
+    "agent_mesh": frozenset({
+        VIRTUAL_TOOL_LEASE_NAME,
+        "mesh_discovery",
+        "recommend_agent_for_task",
+        "collective_memory_search",
+        "delegate_to_remote",
+    }),
+    "memory": frozenset({
+        VIRTUAL_TOOL_LEASE_NAME,
+        "get_hint",
+        "query_context",
+        "store_memory",
+        "get_working_memory",
+        "collective_memory_search",
+    }),
     "computer_use": frozenset({VIRTUAL_TOOL_LEASE_NAME, "screenshot", "get_screen_size"}),
-    "default": frozenset({VIRTUAL_TOOL_LEASE_NAME, "get_hint", "query_context"}),
+    "default": frozenset({VIRTUAL_TOOL_LEASE_NAME, "get_hint", "query_context", "harness_health"}),
 }
 
 _TOOL_LEASE_PRIORITY = {
     VIRTUAL_TOOL_LEASE_NAME: 5,
     "get_hint": 10,
+    "harness_health": 15,
     "query_context": 20,
-    "check_service": 30,
+    "get_working_memory": 25,
+    "mesh_discovery": 30,
+    "check_service": 35,
     "get_system_info": 40,
     "search_files": 50,
     "read_file": 60,
@@ -725,6 +739,12 @@ _TOOL_LEASE_PRIORITY = {
     "store_memory": 130,
     "screenshot": 140,
     "get_screen_size": 150,
+    "query_aidb": 160,
+    "collective_memory_search": 170,
+    "recommend_agent_for_task": 180,
+    "get_prsi_pending": 190,
+    "prsi_orchestrate": 200,
+    "delegate_to_remote": 210,
 }
 
 
@@ -1209,11 +1229,18 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
 
     async with httpx.AsyncClient(timeout=_timeout_for("local", False)) as client:
         if not tools_payload:
-            upstream = await client.post(
-                f"{LLAMA_URL}/v1/chat/completions",
-                headers={"Content-Type": "application/json"},
-                json={k: v for k, v in request_payload.items() if k != "tool_choice"},
-            )
+            try:
+                upstream = await _call_upstream_with_resilience(
+                    client=client,
+                    method="POST",
+                    url=f"{LLAMA_URL}/v1/chat/completions",
+                    headers={"Content-Type": "application/json"},
+                    json_body={k: v for k, v in request_payload.items() if k != "tool_choice"},
+                    service_name="llama",
+                )
+            except CircuitBreakerOpenError as exc:
+                raise RuntimeError(f"Circuit breaker is OPEN: {exc}")
+
             body = upstream.json()
             if upstream.status_code >= 400:
                 message = body.get("error", {}).get("message") if isinstance(body, dict) else str(body)
@@ -1223,16 +1250,22 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
                 body["context_output_gc"] = context_gc
             return body, tool_calls_used
         while True:
-            upstream = await client.post(
-                f"{LLAMA_URL}/v1/chat/completions",
-                headers={"Content-Type": "application/json"},
-                json=request_payload,
-            )
+            try:
+                upstream = await _call_upstream_with_resilience(
+                    client=client,
+                    method="POST",
+                    url=f"{LLAMA_URL}/v1/chat/completions",
+                    headers={"Content-Type": "application/json"},
+                    json_body=request_payload,
+                    service_name="llama",
+                )
+            except CircuitBreakerOpenError as exc:
+                raise RuntimeError(f"Circuit breaker is OPEN: {exc}")
+
             body = upstream.json()
             if upstream.status_code >= 400:
                 message = body.get("error", {}).get("message") if isinstance(body, dict) else str(body)
                 raise RuntimeError(f"local llama.cpp tool step failed: {message or upstream.text}")
-
             choices = body.get("choices", []) if isinstance(body, dict) else []
             if not choices:
                 raise RuntimeError("local llama.cpp returned no choices during tool execution")
@@ -1551,15 +1584,28 @@ def _decompose_query(query_text: str) -> list[str]:
 async def _semantic_scores(candidates: list, query_text: str) -> dict[int, float]:
     if not SEMANTIC_PRUNE_ENABLED or not EMBEDDING_URL or not query_text.strip() or _embed_client is None:
         return {}
-    try:
+    
+    breaker = LOCAL_CIRCUIT_BREAKERS.get("embedding")
+    
+    async def _do_embed():
         payload = {
             "model": "semantic-rerank",
             "input": [query_text] + [_extract_content_text(m)[:2000] for m in candidates],
         }
         resp = await _embed_client.post(f"{EMBEDDING_URL}/v1/embeddings", json=payload)
         if resp.status_code != 200:
-            return {}
-        data = resp.json()
+            raise RuntimeError(f"Embedding failed: {resp.status_code}")
+        return resp.json()
+
+    try:
+        data = await retry_with_backoff(
+            breaker.call,
+            _do_embed,
+            max_attempts=2,
+            breaker=breaker,
+            retry_on_exceptions=(httpx.TimeoutException, httpx.NetworkError, RuntimeError),
+        )
+        
         rows = data.get("data", [])
         if len(rows) < 2:
             return {}
@@ -1679,11 +1725,11 @@ async def _trim_profile_messages(messages: list, profile: str) -> tuple[list, bo
         return messages, False, 0, 0, "none", 1.0, False
     compact_guidance = profile in ("continue-local", "embedded-assist") and _looks_like_compact_guidance_request(messages)
     if profile in ("continue-local", "embedded-assist") and _looks_like_strict_reply_only(messages):
-        max_tokens = min(max_tokens, 256)
-        max_messages = min(max_messages, 2)
+        max_tokens = min(max_tokens, 1024)
+        max_messages = min(max_messages, 8)
     if compact_guidance:
-        max_tokens = min(max_tokens, 128)
-        max_messages = min(max_messages, 2)
+        max_tokens = min(max_tokens, 512)
+        max_messages = min(max_messages, 4)
 
     before = _estimate_messages_tokens(messages)
     if before <= max_tokens and len(messages) <= max_messages:
@@ -1771,7 +1817,7 @@ def _apply_compact_local_response_budget(payload: dict, profile: str) -> dict:
         current_int = int(current) if current is not None else 0
     except Exception:
         current_int = 0
-    target = 48
+    target = 128
     if current_int > 0:
         target = min(target, current_int)
     payload["max_tokens"] = max(32, target)
@@ -1822,28 +1868,40 @@ async def _get_hints(query: str):
     hdrs = {}
     if HYBRID_API_KEY:
         hdrs["X-API-Key"] = HYBRID_API_KEY
-    for attempt in range(2):
-        try:
-            resp = await _hints_client.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            hints_list = data.get("hints", []) if isinstance(data, dict) else []
-            if not hints_list:
-                return None
-            lines = ["[AI stack — tools available for this task]"]
-            for item in hints_list:
-                if isinstance(item, dict):
-                    name = item.get("name") or item.get("title") or item.get("id") or ""
-                    tip  = item.get("hint") or item.get("description") or item.get("text") or ""
-                    txt  = (f"{name}: {tip}".strip(": ")) if name else tip
-                    if txt:
-                        lines.append(f"- {txt}")
-            return "\n".join(lines) if len(lines) > 1 else None
-        except Exception:
-            if attempt == 0:
-                await asyncio.sleep(0.5)
-    return None
+    
+    breaker = LOCAL_CIRCUIT_BREAKERS.get("hybrid")
+    
+    async def _do_hint_fetch():
+        resp = await _hints_client.get(f"{HYBRID_URL}/hints?{params}", headers=hdrs)
+        if resp.status_code != 200:
+            return None
+        return resp
+
+    try:
+        resp = await retry_with_backoff(
+            breaker.call,
+            _do_hint_fetch,
+            max_attempts=2,
+            breaker=breaker,
+            retry_on_exceptions=(httpx.TimeoutException, httpx.NetworkError),
+        )
+        if resp is None:
+            return None
+        
+        data = resp.json()
+        hints_list = data.get("hints", []) if isinstance(data, dict) else []
+        if not hints_list:
+            return None
+        lines = ["[AI stack — tools available for this task]"]
+        for item in hints_list:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("title") or item.get("id") or ""
+                desc = item.get("description") or item.get("summary") or ""
+                if name:
+                    lines.append(f"- {name}: {desc}")
+        return "\n".join(lines)
+    except Exception:
+        return None
 
 def _loading_error_payload(detail: dict | None = None) -> dict:
     payload = {
@@ -2036,6 +2094,71 @@ def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str)
         payload["chat_template_kwargs"] = kwargs
     return payload
 
+async def _call_upstream_with_resilience(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: dict,
+    json_body: Optional[dict] = None,
+    content: Optional[bytes] = None,
+    params: Optional[dict] = None,
+    stream: bool = False,
+    service_name: str = "llama",
+) -> httpx.Response:
+    """Execute upstream request with retries and circuit breaker."""
+    # We determine the registry based on service type.
+    # Remote services (e.g. OpenRouter) use REMOTE_CIRCUIT_BREAKERS,
+    # Local services (e.g. local models, tools) use LOCAL_CIRCUIT_BREAKERS.
+    if service_name == "llama":
+        breaker = None
+    elif service_name in ["remote", "openrouter"]:
+        breaker = REMOTE_CIRCUIT_BREAKERS.get(service_name)
+    else:
+        breaker = LOCAL_CIRCUIT_BREAKERS.get(service_name)
+    
+    async def _do_request():
+        if stream:
+            return await client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                content=content,
+                json=json_body,
+                params=params,
+                stream=True,
+            )
+        else:
+            return await client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=json_body,
+                content=content,
+                params=params,
+            )
+
+    try:
+        # Wrap retry logic around the circuit breaker call
+        if breaker:
+            return await retry_with_backoff(
+                breaker.call,
+                _do_request,
+                max_attempts=3,
+                breaker=breaker,
+                retry_on_exceptions=(httpx.TimeoutException, httpx.NetworkError),
+            )
+        else:
+            return await retry_with_backoff(
+                _do_request,
+                max_attempts=3,
+                retry_on_exceptions=(httpx.TimeoutException, httpx.NetworkError),
+            )
+    except CircuitBreakerOpenError:
+        raise
+    except Exception as exc:
+        print(f"[switchboard] upstream_call_failed service={service_name} error={exc}", file=sys.stderr)
+        raise
+
 def _effective_profile(request: Request) -> str:
     profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
     if not profile:
@@ -2215,6 +2338,10 @@ async def health():
         },
         "local_runtime": local_runtime,
         "local_lane_status": local_lane_status,
+        "circuit_breakers": {
+            "local": LOCAL_CIRCUIT_BREAKERS.get_all_states(),
+            "remote": REMOTE_CIRCUIT_BREAKERS.get_all_states()
+        },
     }
 
 # --- Main Proxy Route ---
@@ -2419,18 +2546,17 @@ async def proxy(path: str, request: Request):
     timeout = _timeout_for(target_type, is_stream)
     sem = _remote_sem if target_type == "remote" else _local_sem
 
-    if path == "chat/completions" and target_type == "local" and _local_sem is not None and _local_sem._value <= 0:
-        return JSONResponse(
-            status_code=503,
-            headers={"Retry-After": "30", "X-AI-Upstream-State": "busy"},
-            content={
-                "error": {
-                    "message": "local inference slot busy — request rejected to prevent silent hang",
-                    "type": "local_slot_busy",
-                    "retry_after_s": 30,
-                }
-            },
-        )
+    # Check for lane reservation
+    is_priority = request.headers.get("X-AI-Lane") == "high-priority"
+    reserved_slots = int(os.environ.get("SWB_RESERVED_SLOTS", "0"))
+    total_concurrency = int(os.environ.get("SWB_LOCAL_CONCURRENCY", "1"))
+    
+    # Logic: If not priority, we can only proceed if total_slots - active_slots > reserved_slots
+    if target_type == "local" and _local_sem is not None:
+        active_slots = total_concurrency - _local_sem._value
+        if not is_priority and (total_concurrency - active_slots <= reserved_slots):
+            # Queueing logic: instead of fail-fast, allow wait but don't force-preempt
+            pass
 
     try:
         async with sem:
@@ -2466,54 +2592,91 @@ async def proxy(path: str, request: Request):
                     local_tool_execution_used = True
                 else:
                     client = httpx.AsyncClient(timeout=timeout)
-                    if is_stream:
-                        req = client.build_request(
-                            method=request.method,
-                            url=f"{target}/v1/{path}",
-                            headers=headers,
-                            content=body,
-                            params=dict(request.query_params),
-                        )
-                        upstream = await client.send(req, stream=True)
-
-                        async def _iter():
-                            try:
-                                async for chunk in upstream.aiter_bytes():
-                                    yield chunk
-                            finally:
-                                await upstream.aclose()
-                                await client.aclose()
-                                if local_active_request_id:
-                                    _clear_local_active_request(local_active_request_id)
-
-                        retain_local_request_until_stream_close = target_type == "local" and bool(local_active_request_id)
-                        response = StreamingResponse(
-                            _iter(),
-                            status_code=upstream.status_code,
-                            headers=_response_headers(dict(upstream.headers)),
-                        )
-                    else:
-                        async with client:
-                            upstream = await client.request(
+                    service_name = "llama" if target_type == "local" else "remote"
+                    try:
+                        if is_stream:
+                            upstream = await _call_upstream_with_resilience(
+                                client=client,
                                 method=request.method,
                                 url=f"{target}/v1/{path}",
                                 headers=headers,
                                 content=body,
                                 params=dict(request.query_params),
+                                stream=True,
+                                service_name=service_name,
                             )
-                        if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
-                            return JSONResponse(
-                                status_code=503,
-                                headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
-                                content=_loading_error_payload(),
+
+                            async def _iter():
+                                try:
+                                    async for chunk in upstream.aiter_bytes():
+                                        yield chunk
+                                finally:
+                                    await upstream.aclose()
+                                    await client.aclose()
+                                    if local_active_request_id:
+                                        _clear_local_active_request(local_active_request_id)
+
+                            retain_local_request_until_stream_close = target_type == "local" and bool(local_active_request_id)
+                            response = StreamingResponse(
+                                _iter(),
+                                status_code=upstream.status_code,
+                                headers=_response_headers(dict(upstream.headers)),
                             )
-                        if target_type == "local" and path == "chat/completions":
-                            _record_local_completion(path, profile, upstream.status_code, upstream.content)
-                        response = Response(
-                            content=upstream.content,
-                            status_code=upstream.status_code,
-                            headers=_response_headers(dict(upstream.headers)),
+                        else:
+                            async with client:
+                                upstream = await _call_upstream_with_resilience(
+                                    client=client,
+                                    method=request.method,
+                                    url=f"{target}/v1/{path}",
+                                    headers=headers,
+                                    content=body,
+                                    params=dict(request.query_params),
+                                    service_name=service_name,
+                                )
+                    except CircuitBreakerOpenError:
+                        await client.aclose()
+                        if local_active_request_id:
+                            _clear_local_active_request(local_active_request_id)
+                        
+                        # Retrieve breaker from correct registry
+                        if service_name in ["remote", "openrouter"]:
+                            _breaker = REMOTE_CIRCUIT_BREAKERS.get(service_name)
+                        else:
+                            _breaker = LOCAL_CIRCUIT_BREAKERS.get(service_name)
+
+                        return JSONResponse(
+                            status_code=503,
+                            content={
+                                "error": {
+                                    "message": f"Circuit breaker is OPEN for service '{service_name}'",
+                                    "type": "service_unavailable",
+                                    "retry_after": _breaker.config.reset_timeout,
+                                }
+                            },
+                            headers={"Retry-After": str(int(_breaker.config.reset_timeout))},
                         )
+                    except Exception as exc:
+                        await client.aclose()
+                        if local_active_request_id:
+                            _clear_local_active_request(local_active_request_id)
+                        return JSONResponse(
+                            status_code=502,
+                            content={"error": {"message": f"Upstream error: {exc}", "type": "bad_gateway"}},
+                        )
+
+                    if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
+                        return JSONResponse(
+                            status_code=503,
+                            headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
+                            content=_loading_error_payload(),
+                        )
+                    if target_type == "local" and path == "chat/completions":
+                        _record_local_completion(path, profile, upstream.status_code, upstream.content)
+                    response = Response(
+                        content=upstream.content,
+                        status_code=upstream.status_code,
+                        headers=_response_headers(dict(upstream.headers)),
+                    )
             finally:
                 if local_active_request_id and not retain_local_request_until_stream_close:
                     _clear_local_active_request(local_active_request_id)
