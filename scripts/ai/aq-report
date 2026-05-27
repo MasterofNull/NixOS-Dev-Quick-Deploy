@@ -616,18 +616,24 @@ def _json_bytes(value: Any) -> int:
 def _read_extension_state_rows(db_path: Path) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
     if not db_path.exists():
         return None, "missing"
-    try:
-        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    # Try URI read-only mode first; fall back to plain connect (handles active WAL files
+    # which cause "unable to open database file" in read-only URI mode on some SQLite builds).
+    last_exc: Optional[Exception] = None
+    for connect_arg in (f"file:{db_path}?mode=ro", str(db_path)):
+        is_uri = connect_arg.startswith("file:")
         try:
-            rows = connection.execute(
-                "SELECT key, value FROM ItemTable WHERE key IN (?, ?)",
-                ("google.geminicodeassist", "qwenlm.qwen-code-vscode-ide-companion"),
-            ).fetchall()
-        finally:
-            connection.close()
-    except Exception as exc:
-        return None, str(exc)
-    return {str(key): str(value) for key, value in rows}, None
+            connection = sqlite3.connect(connect_arg, uri=is_uri, check_same_thread=False)
+            try:
+                rows = connection.execute(
+                    "SELECT key, value FROM ItemTable WHERE key IN (?, ?)",
+                    ("google.geminicodeassist", "qwenlm.qwen-code-vscode-ide-companion"),
+                ).fetchall()
+            finally:
+                connection.close()
+            return {str(key): str(value) for key, value in rows}, None
+        except Exception as exc:
+            last_exc = exc
+    return None, str(last_exc)
 
 
 def _read_obsolete_markers(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -830,7 +836,18 @@ def editor_state_budget_health() -> Dict[str, Any]:
     }
     if CODEX_STATE_DB.exists():
         try:
-            connection = sqlite3.connect(f"file:{CODEX_STATE_DB}?mode=ro", uri=True)
+            # Try URI read-only mode; fall back to plain connect (handles active WAL).
+            _codex_conn: Optional[sqlite3.Connection] = None
+            for _codex_arg in (f"file:{CODEX_STATE_DB}?mode=ro", str(CODEX_STATE_DB)):
+                _is_uri = _codex_arg.startswith("file:")
+                try:
+                    _codex_conn = sqlite3.connect(_codex_arg, uri=_is_uri, check_same_thread=False)
+                    break
+                except Exception:
+                    pass
+            if _codex_conn is None:
+                raise RuntimeError("unable to open state DB with any connection mode")
+            connection = _codex_conn
             try:
                 integrity = connection.execute("PRAGMA integrity_check").fetchone()
             finally:

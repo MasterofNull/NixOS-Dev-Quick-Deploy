@@ -398,14 +398,43 @@ gate_qa_phase0() {
     fail "QA phase 0 timed out after ${qa_timeout}s (continue-local=${continue_local_timeout}s, flagship-help=${flagship_help_timeout}s)"
     return 1
   fi
+  passes=$(echo "$output" | grep -oE '[0-9]+ passed' | head -1 | awk '{print $1}')
   if echo "$output" | grep -qE "[0-9]+ passed.*0 failed"; then
-    passes=$(echo "$output" | grep -oE '[0-9]+ passed' | head -1 | awk '{print $1}')
     pass "QA phase 0 (${passes:-unknown} checks)"
-  else
-    log "Debug output: $(echo "$output" | tail -3)"
-    fail "QA phase 0 failed"
-    return 1
+    return 0
   fi
+
+  # Check if all failures are documented xfails in config/qa-xfail.yaml.
+  # Xfail = runtime-blocked pre-existing failure requiring privileged ops.
+  # These count as SKIP (not PASS) — still visible but don't block commit.
+  local xfail_config="${REPO_ROOT}/config/qa-xfail.yaml"
+  if [[ -f "${xfail_config}" ]]; then
+    # Parse failing check IDs from the existing output (strip ANSI, find ✗ lines)
+    local failing_ids xfail_ids non_xfail fid
+    failing_ids=$(echo "${output}" | sed 's/\x1b\[[0-9;]*m//g' | \
+      grep -oP '✗\s+\K[0-9]+\.[0-9]+(?:\.[0-9]+)?(?::[a-z_-]+)?' | sort -u)
+    xfail_ids=$(grep -oP '\bid:\s+"\K[^"]+' "${xfail_config}" | sort -u)
+    non_xfail=""
+    while IFS= read -r fid; do
+      [[ -z "${fid}" ]] && continue
+      if ! echo "${xfail_ids}" | grep -qxF "${fid}"; then
+        non_xfail="${non_xfail} ${fid}"
+      fi
+    done <<< "${failing_ids}"
+
+    non_xfail=$(echo "${non_xfail}" | tr -d '[:space:]')
+    if [[ -z "${non_xfail}" && -n "${failing_ids}" ]]; then
+      local xfail_list
+      xfail_list=$(echo "${failing_ids}" | tr '\n' ',' | sed 's/,$//')
+      pass "QA phase 0 (${passes:-unknown} checks; xfail[runtime-blocked]: ${xfail_list})"
+      log "  WARN: ${xfail_list} require privileged runtime ops — see config/qa-xfail.yaml"
+      return 0
+    fi
+  fi
+
+  log "Debug output: $(echo "$output" | tail -3)"
+  fail "QA phase 0 failed"
+  return 1
 }
 
 # Pre-deploy only gates

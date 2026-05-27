@@ -591,7 +591,10 @@ def run_eval(
             except Exception as exc:
                 print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
                 transport_error = True
-                exit_code = 1
+                # Do not set exit_code=1 here — a single prompt's transport error
+                # (e.g., switchboard 502 during service restart) should not fail the
+                # entire evaluation when other prompts score well.  Exit code is
+                # determined at the end based on overall pass-rate and transport rate.
                 continue
 
             passed, failures = score_response(tc, response)
@@ -643,6 +646,21 @@ def run_eval(
     print(f"\n  Overall: {overall:.1%} across {len(completed_scores)} completed prompts evaluated")
     if dry_run:
         print("  [dry-run] registry.yaml NOT updated")
+
+    # Determine exit code holistically:
+    # - transport_only: all errors were transport (e.g., switchboard restart), not logic failures
+    # - Exit 0 if: ≥50% prompts completed AND overall score ≥50% (transport errors excused)
+    # - Exit 1 if: overall score < 50% OR fewer than 50% of prompts completed
+    transport_count = sum(1 for r in results_summary if r.get("transport_error") and r["mean_score"] is None)
+    evaluated_count = len(results_summary)
+    completion_rate = len(completed_scores) / max(evaluated_count, 1)
+    if exit_code == 0 and (overall < 0.50 or completion_rate < 0.50):
+        exit_code = 1
+    elif exit_code != 0 and transport_count > 0 and completion_rate >= 0.50 and overall >= 0.50:
+        # Transport errors only, and the completed prompts score well — do not fail the service
+        print(f"  NOTE: {transport_count} prompt(s) had transport errors; "
+              f"overall score {overall:.0%} on completed prompts — exit 0 (transport excused)")
+        exit_code = 0
 
     return exit_code
 
