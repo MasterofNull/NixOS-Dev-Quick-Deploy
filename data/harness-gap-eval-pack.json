@@ -6,74 +6,146 @@
     {
       "id": "mkif-mkforce-basics",
       "query": "Explain lib.mkIf and lib.mkForce in NixOS modules in 3 bullet points",
-      "expected_keywords": ["mkIf", "mkForce", "merge", "override", "module"],
-      "mode": "auto"
+      "expected_keywords": [
+        "mkIf",
+        "mkForce",
+        "merge",
+        "override",
+        "module"
+      ],
+      "mode": "direct"
     },
     {
       "id": "flake-follows-lock",
       "query": "Explain nix flake inputs follows lock behavior",
-      "expected_keywords": ["flake.lock", "inputs", "follows", "pin", "nixpkgs"],
-      "mode": "auto"
+      "expected_keywords": [
+        "flake.lock",
+        "inputs",
+        "follows",
+        "pin",
+        "nixpkgs"
+      ],
+      "mode": "direct"
     },
     {
       "id": "tc3-feedback-validation",
       "query": "tc3 feedback validation after patch",
-      "expected_keywords": ["aq-report", "routing", "hint", "validation", "health"],
-      "mode": "auto"
+      "expected_keywords": [
+        "aq-report",
+        "routing",
+        "hint",
+        "validation",
+        "health"
+      ],
+      "mode": "direct"
     },
     {
       "id": "nixos-module-options",
       "query": "NixOS module options basics",
-      "expected_keywords": ["options", "mkOption", "types", "config", "lib"],
-      "mode": "auto"
+      "expected_keywords": [
+        "options",
+        "mkOption",
+        "types",
+        "config",
+        "lib"
+      ],
+      "mode": "direct"
     },
     {
       "id": "agent-workflow-phases",
       "query": "Describe the phases in an agent workflow session: discover, plan, implement, validate",
-      "expected_keywords": ["discover", "plan", "implement", "validate", "phase"],
-      "mode": "auto"
+      "expected_keywords": [
+        "discover",
+        "plan",
+        "implement",
+        "validate",
+        "phase"
+      ],
+      "mode": "direct"
     },
     {
       "id": "python-async-aiohttp",
       "query": "How does aiohttp handle concurrent HTTP requests in an async Python server?",
-      "expected_keywords": ["async", "await", "aiohttp", "concurrent", "event"],
-      "mode": "auto"
+      "expected_keywords": [
+        "async",
+        "await",
+        "aiohttp",
+        "concurrent",
+        "event"
+      ],
+      "mode": "direct"
     },
     {
       "id": "retry-backoff-pattern",
       "query": "Explain exponential backoff retry policy with max_attempts and backoff_factor",
-      "expected_keywords": ["exponential", "backoff", "retry", "attempt", "delay"],
-      "mode": "auto"
+      "expected_keywords": [
+        "exponential",
+        "backoff",
+        "retry",
+        "attempt",
+        "delay"
+      ],
+      "mode": "direct"
     },
     {
       "id": "nix-overlay-pattern",
       "query": "How do Nix overlays work and what is the correct way to add a package override?",
-      "expected_keywords": ["overlay", "final", "prev", "override", "pkgs"],
-      "mode": "auto"
+      "expected_keywords": [
+        "overlay",
+        "final",
+        "prev",
+        "override",
+        "pkgs"
+      ],
+      "mode": "direct"
     },
     {
       "id": "agent-safety-modes",
       "query": "What is the difference between plan-readonly and execute-mutating safety modes in an agent runtime?",
-      "expected_keywords": ["plan-readonly", "execute-mutating", "mutating", "blocked", "safe"],
-      "mode": "auto"
+      "expected_keywords": [
+        "plan-readonly",
+        "execute-mutating",
+        "mutating",
+        "blocked",
+        "safe"
+      ],
+      "mode": "direct"
     },
     {
       "id": "git-worktree-isolation",
       "query": "Explain how git worktrees provide workspace isolation for parallel agent coding tasks",
-      "expected_keywords": ["worktree", "branch", "isolation", "parallel", "checkout"],
-      "mode": "auto"
+      "expected_keywords": [
+        "worktree",
+        "branch",
+        "isolation",
+        "parallel",
+        "checkout"
+      ],
+      "mode": "direct"
     },
     {
       "id": "systemd-dynamicuser",
       "query": "What is SystemD DynamicUser and when should you NOT use it in a NixOS service?",
-      "expected_keywords": ["DynamicUser", "ephemeral", "UID", "home", "persistent"],
-      "mode": "auto"
+      "expected_keywords": [
+        "DynamicUser",
+        "ephemeral",
+        "UID",
+        "home",
+        "persistent"
+      ],
+      "mode": "direct"
     },
     {
       "id": "tool-call-json-schema",
       "query": "Describe how a tool-call in an LLM agent is represented: name, input parameters, and output",
-      "expected_keywords": ["tool", "name", "input", "output", "parameters"],
-      "mode": "auto"
+      "expected_keywords": [
+        "tool",
+        "name",
+        "input",
+        "output",
+        "parameters"
+      ],
+      "mode": "direct"
     }
   ]
 }
