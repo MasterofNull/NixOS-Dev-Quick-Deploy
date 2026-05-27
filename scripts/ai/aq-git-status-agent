@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# aq-git-status-agent — Minimalist git status
+status=$(git status --porcelain=v1)
+if [[ -z "$status" ]]; then
+  echo "CLEAN"
+else
+  echo "DIRTY"
+  echo "$status" | cut -c 4-
+fi

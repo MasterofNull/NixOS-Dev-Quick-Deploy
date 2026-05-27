@@ -8,7 +8,9 @@ import json
 import logging
 import random
 import time
+import sys
 from pathlib import Path
+from typing import List, Dict, Any
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -38,15 +40,22 @@ class HealthSpider:
             await self.trigger_remediation(anomaly)
 
     async def trigger_remediation(self, anomaly: Dict[str, Any]):
-        logger.warning(f"Anomaly detected in {anomaly['zone']}: {anomaly['issue']}")
-        
-        # Write to remediation report for drop zone trigger
-        report_path = REPO_ROOT / ".reports" / "remediation" / f"anomaly_{int(time.time())}.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(report_path, "w") as f:
-            json.dump(anomaly, f)
-        
-        logger.info(f"Remediation loop triggered: {report_path}")
+        logger.warning(f"ANOMALY DETECTED: {anomaly}")
+        python_bin = sys.executable
+        orchestrator = os.path.join(REPO_ROOT, "scripts", "automation", "prsi-orchestrator.py")
+
+        # Trigger autonomous remediation via the newly created orchestrator loop
+        proc = await asyncio.create_subprocess_exec(
+            python_bin, orchestrator, "queue", "--type", "remediation", "--risk", "medium",
+            "--summary", f"Health Spider Alert: {anomaly.get('issue')}",
+            "--details", json.dumps(anomaly)
+        )
+        await proc.wait()
+        proc2 = await asyncio.create_subprocess_exec(
+            python_bin, orchestrator, "execute", "--limit", "1"
+        )
+        await proc2.wait()
+        logger.info("Autonomous remediation triggered via PRSI.")
 
     async def run(self):
         logger.info("Health Spider scanning...")

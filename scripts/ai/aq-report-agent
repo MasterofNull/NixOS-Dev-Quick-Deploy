@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""
+aq-report-agent — Minimalist JSON digest of system report.
+"""
+import json, sys
+from pathlib import Path
+
+REPORT_PATH = "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json"
+
+if __name__ == "__main__":
+    if not Path(REPORT_PATH).exists():
+        print(json.dumps({"error": "report not found"}))
+        sys.exit(1)
+    
+    with open(REPORT_PATH, 'r') as f:
+        data = json.load(f)
+        digest = {
+            "health": data.get("degraded_confidence", False) and "degraded" or "ok",
+            "critical_alerts": len([t for t in data.get("tests", []) if t.get("status") == "FAIL"]),
+            "layers": {k: [t['id'] for t in v if t.get('status') == 'FAIL'] for k, v in data.get('layers', {}).items() if any(t.get('status') == 'FAIL' for t in v)}
+        }
+        print(json.dumps(digest))

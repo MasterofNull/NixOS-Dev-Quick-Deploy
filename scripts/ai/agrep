@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# agrep — minimalist grep for agents
+exec grep -r --exclude-dir=.git --exclude-dir=__pycache__ --exclude=*.{jsonl,log} "$@"

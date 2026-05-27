@@ -139,31 +139,42 @@ for q in "${DYNAMIC_GAP_QUERIES[@]}"; do
   [[ "${duplicate}" == true ]] || QUERIES+=("${q}")
 done
 
-printf 'seed-routing-traffic: sending %d queries x %d replay through hybrid-coordinator...\n' "$QUERY_COUNT" "$REPLAY_COUNT"
+printf 'seed-routing-traffic: sending %d queries x %d replay through hybrid-coordinator (parallel)...\n' "$QUERY_COUNT" "$REPLAY_COUNT"
 PASS=0; FAIL=0
+MAX_JOBS=4
+ACTIVE_JOBS=0
+
 for ((r=1; r<=REPLAY_COUNT; r++)); do
   for i in "${!QUERIES[@]}"; do
     [[ $i -ge $QUERY_COUNT ]] && break
     Q="${QUERIES[$i]}"
-    HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" \
-      --max-time 30 --connect-timeout 5 \
-      -X POST "${HYBRID_URL%/}/query" \
-      -H "Content-Type: application/json" \
-      -H "X-API-Key: ${HYBRID_KEY}" \
-      -d "{\"query\":$("${PYTHON_BIN}" -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
-      2>/dev/null || true)"
-    [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
-    if [[ "$HTTP_CODE" =~ ^2 ]]; then
-      printf '  OK  [pass %d] %s\n' "$r" "$Q"
-      (( PASS++ )) || true
-    else
-      printf '  FAIL HTTP %s [pass %d]: %s\n' "$HTTP_CODE" "$r" "$Q" >&2
-      (( FAIL++ )) || true
+    
+    (
+      HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" \
+        --max-time 30 --connect-timeout 5 \
+        -X POST "${HYBRID_URL%/}/query" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Key: ${HYBRID_KEY}" \
+        -d "{\"query\":$("${PYTHON_BIN}" -c "import json,sys; print(json.dumps(sys.argv[1]))" "$Q"),\"mode\":\"auto\",\"prefer_local\":true,\"limit\":3,\"context\":{\"skip_gap_tracking\":true,\"source\":\"seed-routing-traffic\"}}" \
+        2>/dev/null || true)"
+      [[ -n "$HTTP_CODE" ]] || HTTP_CODE="000"
+      if [[ "$HTTP_CODE" =~ ^2 ]]; then
+        printf '  OK  [pass %d] %s\n' "$r" "$Q"
+      else
+        printf '  FAIL HTTP %s [pass %d]: %s\n' "$HTTP_CODE" "$r" "$Q" >&2
+      fi
+    ) &
+    
+    (( ACTIVE_JOBS++ )) || true
+    if [[ ${ACTIVE_JOBS} -ge ${MAX_JOBS} ]]; then
+      wait -n || true
+      (( ACTIVE_JOBS-- )) || true
     fi
   done
 done
+wait || true
 
-printf 'seed-routing-traffic: %d OK, %d FAIL\n' "$PASS" "$FAIL"
+printf 'seed-routing-traffic: parallel seeding complete.\n'
 
 if [[ "${SEED_ROUTING_SKIP_GENERATION:-false}" == "true" ]]; then
   printf 'seed-routing-traffic: generation seed skipped (SEED_ROUTING_SKIP_GENERATION=true)\n'

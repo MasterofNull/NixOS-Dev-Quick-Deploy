@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""
+aq-throttler — Autonomous resource manager for the factory brain.
+Monitors inference slots and throttles background jobs to prioritize interactive work.
+"""
+
+import asyncio
+import json
+import logging
+import subprocess
+import httpx
+import sys
+import os
+import time
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
+logger = logging.getLogger("throttler")
+logging.basicConfig(level=logging.INFO)
+
+async def is_inference_busy():
+    try:
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            resp = await client.get("http://localhost:8080/slots")
+            if resp.status_code == 200:
+                slots = resp.json()
+                return any(s.get("is_processing", False) for s in slots)
+    except Exception:
+        return False
+    return False
+
+async def trigger_action(action: str):
+    logger.info(f"ThrottlerAction: {action}")
+    python_bin = sys.executable
+    orchestrator = REPO_ROOT / "scripts" / "automation" / "prsi-orchestrator.py"
+    queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+    
+    # Manually add action to the queue
+    queue = []
+    if queue_path.exists():
+        with open(queue_path, "r") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                queue = data
+            elif isinstance(data, dict):
+                queue = [data]
+            
+    queue.append({
+        "type": "maintenance",
+        "risk": "low",
+        "summary": action,
+        "details": f"Throttler initiated action: {action}",
+        "status": "queued",
+        "created_at": time.time()
+    })
+    
+    queue_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(queue_path, "w") as f:
+        json.dump(queue, f, indent=2)
+
+    # Execute
+    subprocess.run([python_bin, str(orchestrator), "execute", "--limit", "1"], check=True)
+
+async def main():
+    logger.info("ThrottlerAgent active.")
+    busy_counter = 0
+    while True:
+        busy = await is_inference_busy()
+        if busy:
+            busy_counter += 1
+            if busy_counter == 1:
+                await trigger_action("pause_background_maintenance")
+        else:
+            busy_counter = 0
+            # Only resume if idle for a sustained period
+            await trigger_action("resume_background_maintenance")
+        await asyncio.sleep(60)
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""
+aq-top — Live telemetry for AI Stack scheduler, slots, and inference health.
+"""
+
+import asyncio
+import json
+import os
+import sys
+import time
+from typing import Any, Dict
+
+import httpx
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.layout import Layout
+from rich.text import Text
+
+DEFAULT_COORDINATOR_URL = "http://127.0.0.1:8003"
+console = Console()
+
+def get_api_key():
+    key_file = "/run/secrets/hybrid_coordinator_api_key"
+    if os.path.exists(key_file):
+        with open(key_file, "r") as f:
+            return f.read().strip()
+    return ""
+
+async def fetch_status(client: httpx.AsyncClient, url: str, api_key: str) -> Dict[str, Any]:
+    try:
+        headers = {"X-API-Key": api_key}
+        resp = await client.get(f"{url}/admin/v1/scheduler/status", headers=headers, timeout=2.0)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        return {"error": str(e)}
+    return {"error": "unknown"}
+
+def make_layout() -> Layout:
+    layout = Layout()
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="body"),
+        Layout(name="slots", size=10),
+        Layout(name="footer", size=3)
+    )
+    layout["body"].split_row(
+        Layout(name="queues"),
+        Layout(name="metrics")
+    )
+    return layout
+
+def generate_table(status: Dict[str, Any]) -> Table:
+    table = Table(title="MLFQ Scheduler Queues", border_style="cyan")
+    table.add_column("Level", style="bold")
+    table.add_column("Queue Depth", justify="right")
+    table.add_column("Running", justify="right")
+    table.add_column("Concurrency", justify="right")
+    table.add_column("Failure Streak", justify="right")
+    
+    depths = status.get("queue_depths", {})
+    running = status.get("running_by_level", {})
+    limits = status.get("concurrency_limits", {})
+    streaks = status.get("failure_streak", {})
+    
+    for lvl in ("L0", "L1", "L2"):
+        l_num = lvl[1]
+        table.add_row(
+            lvl,
+            str(depths.get(lvl, 0)),
+            str(running.get(l_num, 0)),
+            str(limits.get(lvl, 0)),
+            str(streaks.get(l_num, 0))
+        )
+    return table
+
+def generate_metrics(status: Dict[str, Any]) -> Table:
+    table = Table(title="System Metrics", border_style="magenta")
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+    
+    table.add_row("Thermal Tier", status.get("thermal_tier", "unknown"))
+    table.add_row("Zombie Count", str(status.get("zombie_count", 0)))
+    table.add_row("Reserved Tokens", str(status.get("reserved_tokens_total", 0)))
+    
+    budget_total = status.get("system_token_budget", 0)
+    reserved = status.get("reserved_tokens_total", 0)
+    usage = (reserved / budget_total * 100) if budget_total > 0 else 0
+    table.add_row("Budget Usage", f"{usage:.1f}%")
+    
+    return table
+
+def generate_slots_table(status: Dict[str, Any]) -> Table:
+    table = Table(title="Active Inference Slots", border_style="green")
+    table.add_column("Server", style="dim")
+    table.add_column("Slot", justify="right")
+    table.add_column("Task ID", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Context", justify="right")
+    
+    slots = status.get("slots", [])
+    active_count = 0
+    for s in slots:
+        if not s.get("is_processing") and not s.get("id_task"):
+            continue
+            
+        active_count += 1
+        server = s.get("server", "unknown")
+        sid = s.get("id", "?")
+        tid = s.get("id_task", "-")
+        proc = "[bold green]BUSY[/]" if s.get("is_processing") else "[dim]IDLE[/]"
+        
+        n_ctx = s.get("n_ctx", 0)
+        n_past = s.get("n_past", 0)
+        if not n_past and s.get("next_token"):
+             n_past = s["next_token"][0].get("n_decoded", 0)
+             
+        ctx_usage = f"{n_past}/{n_ctx}"
+        
+        table.add_row(server, str(sid), str(tid), proc, ctx_usage)
+        
+    if active_count == 0:
+        table.add_row("-", "-", "-", "no active tasks", "-")
+        
+    return table
+
+async def main():
+    url = os.getenv("COORDINATOR_URL", DEFAULT_COORDINATOR_URL)
+    api_key = get_api_key()
+    
+    layout = make_layout()
+    
+    with Live(layout, refresh_per_second=1, screen=True):
+        async with httpx.AsyncClient() as client:
+            while True:
+                status = await fetch_status(client, url, api_key)
+                
+                if "error" in status:
+                    layout["body"].update(Panel(f"[bold red]Error:[/] {status['error']}", title="Status"))
+                else:
+                    layout["header"].update(Panel(f"AI Stack Telemetry | URL: {url} | Tier: {status.get('thermal_tier', 'N/A')}", style="bold white on blue"))
+                    layout["queues"].update(generate_table(status))
+                    layout["metrics"].update(generate_metrics(status))
+                    layout["slots"].update(generate_slots_table(status))
+                    
+                    events = status.get("backpressure_events", [])
+                    if events:
+                        last = events[-1]
+                        layout["footer"].update(Panel(f"[yellow]Backpressure:[/] {last.get('reason')} (L{last.get('level')} {last.get('old_limit')}->{last.get('new_limit')})", border_style="yellow"))
+                    else:
+                        layout["footer"].update(Panel("[green]System Nominal - No Backpressure[/]", border_style="green"))
+                
+                await asyncio.sleep(1)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

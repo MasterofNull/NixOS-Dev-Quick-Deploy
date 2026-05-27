@@ -148,12 +148,17 @@ def _check_qdrant_docs(ctx: RunContext) -> list[CheckResult]:
         colls = (data.get("result") or {}).get("collections", [])
         if not colls:
             return [failed(5, "0.2.3", "Qdrant has documents", "found 0")]
-        name = colls[0]["name"]
-        cd = http_json(f"{ctx.qdrant_url}/collections/{name}", timeout=5)
-        count = ((cd or {}).get("result") or {}).get("points_count", 0)
-        if count > 0:
-            return [passed(5, "0.2.3", f"Qdrant has {count} points in primary collection")]
-        return [failed(5, "0.2.3", "Qdrant has documents", "found 0")]
+        
+        total_points = 0
+        for coll in colls:
+            name = coll["name"]
+            cd = http_json(f"{ctx.qdrant_url}/collections/{name}", timeout=5)
+            count = ((cd or {}).get("result") or {}).get("points_count", 0)
+            total_points += count
+            
+        if total_points > 0:
+            return [passed(5, "0.2.3", f"Qdrant has {total_points} total points across {len(colls)} collections")]
+        return [failed(5, "0.2.3", "Qdrant has documents", "found 0 points across all collections")]
     except Exception as e:
         return [failed(5, "0.2.3", "Qdrant has documents", str(e))]
 

@@ -102,6 +102,7 @@ Phases:
         help="Phase number or 'all'",
     )
     parser.add_argument("--json", action="store_true", help="Machine-readable JSON output")
+    parser.add_argument("--machine", action="store_true", help="Minimalist, machine-friendly text output")
     parser.add_argument("--sudo", action="store_true", help="Enable checks requiring sudo")
     parser.add_argument("--layer", type=int, default=0, metavar="N", help="Run only layer N checks")
     parser.add_argument("--causality", action="store_true", help="Include dependency layers (L1..LN)")
@@ -304,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
     if ns.json:
         JsonReporter().render(rs)
     else:
-        ConsoleReporter().render(rs)
+        ConsoleReporter().render(rs, machine_mode=ns.machine)
 
     # Persist latest results for auto-remediation
     try:

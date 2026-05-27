@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""
+acat — minimalist cat with line numbers and capping for agents
+"""
+import sys
+
+def acat(filename):
+    try:
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+            for i, line in enumerate(lines[:500], 1): # Capped at 500 lines
+                print(f"{i:4} {line}", end='')
+            if len(lines) > 500:
+                print(f"\n... (truncated, {len(lines)} lines total)")
+    except Exception as e:
+        print(f"Error reading {filename}: {e}", file=sys.stderr)
+
+if __name__ == "__main__":
+    for arg in sys.argv[1:]:
+        acat(arg)
