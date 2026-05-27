@@ -192,6 +192,95 @@ PYEOF
     cat "$output_file"
 }
 
+# ── lifecycle: cancel / kill-all ──────────────────────────────────────────────
+# Cancel a single running task: kill PID + children, mark registry "cancelled".
+cmd_cancel() {
+    local id="$1"
+    [[ -n "$id" ]] || die "--cancel requires a task ID"
+    [[ -f "$REGISTRY" ]] || die "No registry at $REGISTRY"
+
+    local pid; pid=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
+import sys, json
+rf, tid = sys.argv[1], sys.argv[2]
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid:
+                print(e.get("pid",""))
+        except: pass
+PYEOF
+)
+    if [[ -n "$pid" && "$pid" != "None" ]]; then
+        # Kill children first (python3 sub-process making the HTTP call)
+        pkill -P "$pid" 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+        info "Sent SIGTERM to pid $pid and its children for task $id"
+    else
+        info "No PID found for $id (may already be dead)"
+    fi
+
+    # Mark registry
+    python3 - "$REGISTRY" "$id" "cancelled" <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid: e["status"] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, "w") as f: f.write("\n".join(lines) + "\n")
+PYEOF
+    info "Task $id marked cancelled"
+}
+
+# Kill all 'running' tasks — used before a fresh run or on session exit.
+cmd_kill_all() {
+    [[ -f "$REGISTRY" ]] || { info "No registry"; return; }
+    local killed=0
+    python3 - "$REGISTRY" <<'PYEOF' | while IFS=$'\t' read -r tid pid; do
+import sys, json
+rf = sys.argv[1]
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("status") == "running" and e.get("pid"):
+                print(f"{e['id']}\t{e['pid']}")
+        except: pass
+PYEOF
+        pkill -P "$pid" 2>/dev/null || true
+        kill "$pid" 2>/dev/null || true
+        python3 - "$REGISTRY" "$tid" "cancelled" <<'PYEOF2'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get("id") == tid: e["status"] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, "w") as f: f.write("\n".join(lines) + "\n")
+PYEOF2
+        info "Cancelled $tid (pid $pid)"
+        killed=$((killed+1))
+    done
+    info "Killed $killed running tasks"
+}
+
 run_agent() {
     local prompt="$1" output_file="$2" timeout_secs="$3"
     # Use $SCRIPT_DIR (set at source time) — $0 is 'bash' in nohup subshells
@@ -252,15 +341,22 @@ PYEOF
 run_direct() {
     local prompt="$1" output_file="$2" timeout_secs="$3"
     check_service "$LLAMA_PORT" "llama.cpp"
+    # Streaming mode: first token signals slot acquisition (event-driven).
+    # SLOT_WAIT_S = max seconds to wait for first token (detects queuing fast).
+    # After first token, generation proceeds until EOS or max_tokens.
     python3 - "$prompt" "http://127.0.0.1:${LLAMA_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
-import sys, json, urllib.request, urllib.error
+import sys, json, socket, urllib.request, urllib.error
 
 prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+
+# First-token timeout: if the slot isn't acquired within this window, the
+# llama.cpp queue is saturated.  45s gives ~1 queued request headroom.
+SLOT_WAIT_S = min(45, int(timeout_secs))
 
 payload = json.dumps({
     "model": "local",
     "messages": [{"role": "user", "content": prompt}],
-    "stream": False,
+    "stream": True,
     # ARCH CONSTRAINT: enable_thinking MUST be false — thinking tokens cause empty
     # responses on Qwen3-35B. max_tokens caps runaway generation; without it the
     # model fills the full n_ctx window (8192) even for simple questions.
@@ -275,16 +371,38 @@ req = urllib.request.Request(
     method="POST"
 )
 try:
-    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
-        data = json.loads(resp.read().decode())
-        result = data["choices"][0]["message"]["content"]
+    # Use SLOT_WAIT_S for connection + first byte; this detects queue saturation fast.
+    with urllib.request.urlopen(req, timeout=SLOT_WAIT_S) as resp:
+        full_text = []
+        tokens_in = tokens_out = 0
+        # Once the response object is open we have the slot — switch to a
+        # generous per-line timeout so slow generation doesn't abort us.
+        resp.fp.raw._sock.settimeout(int(timeout_secs))
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:]
+            if data_str == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data_str)
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                content = delta.get("content", "")
+                if content:
+                    full_text.append(content)
+                usage = chunk.get("usage") or {}
+                if usage:
+                    tokens_in  = usage.get("prompt_tokens", tokens_in)
+                    tokens_out = usage.get("completion_tokens", tokens_out)
+            except (json.JSONDecodeError, IndexError, KeyError):
+                pass
+        result = "".join(full_text)
         with open(output_file, "w") as f:
             f.write(result)
-        # Phase 33.3: write token usage sidecar for registry update
-        usage = data.get("usage", {})
-        if usage:
+        if tokens_in or tokens_out:
             with open(output_file + ".usage.json", "w") as uf:
-                json.dump({"tokens_in": usage.get("prompt_tokens"), "tokens_out": usage.get("completion_tokens")}, uf)
+                json.dump({"tokens_in": tokens_in, "tokens_out": tokens_out}, uf)
     sys.exit(0)
 except urllib.error.HTTPError as e:
     body = e.read().decode()
@@ -478,9 +596,11 @@ while [[ $# -gt 0 ]]; do
         --timeout)     TIMEOUT="$2";      shift 2 ;;
         --role)        ROLE="$2";         shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
-        --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
-        --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
-        --list)        SUBCMD="list";    shift   ;;
+        --check)       SUBCMD="check";    SUBCMD_ARG="$2"; shift 2 ;;
+        --status)      SUBCMD="status";   SUBCMD_ARG="$2"; shift 2 ;;
+        --list)        SUBCMD="list";     shift   ;;
+        --cancel)      SUBCMD="cancel";   SUBCMD_ARG="$2"; shift 2 ;;
+        --kill-all)    SUBCMD="kill-all"; shift   ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
@@ -497,9 +617,11 @@ case "$ROLE" in
 esac
 
 case "${SUBCMD:-}" in
-    list)   ensure_dirs; cmd_list ;;
-    status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
-    check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    list)     ensure_dirs; cmd_list ;;
+    status)   ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
+    check)    ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    cancel)   ensure_dirs; cmd_cancel "$SUBCMD_ARG" ;;
+    kill-all) ensure_dirs; cmd_kill_all ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
