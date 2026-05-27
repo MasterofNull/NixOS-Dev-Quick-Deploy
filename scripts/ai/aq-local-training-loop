@@ -35,6 +35,7 @@ import argparse
 import asyncio
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -221,6 +222,31 @@ def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -
         return None
 
 
+def _cancel_task(task_id: str) -> None:
+    """Cancel a delegated background task by calling delegate-to-local --cancel."""
+    delegate_bin = _SCRIPT_DIR / "delegate-to-local"
+    if not delegate_bin.exists():
+        # Fallback: kill via registry PID directly
+        for entry in _read_registry():
+            if entry.get("id") == task_id and entry.get("status") == "running":
+                pid = entry.get("pid")
+                if pid:
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                _mark_registry_status(task_id, "cancelled")
+        return
+    try:
+        subprocess.run(
+            [str(delegate_bin), "--cancel", task_id],
+            capture_output=True, timeout=10,
+        )
+        print(f"[eval] cancelled task {task_id}", file=sys.stderr)
+    except Exception as exc:
+        print(f"[eval] WARN: cancel failed for {task_id}: {exc}", file=sys.stderr)
+
+
 async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) -> Optional[str]:
     """
     Wait for a delegated task to finish.
@@ -288,6 +314,8 @@ async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) 
         await asyncio.sleep(POLL_INTERVAL_S)
 
     print(f"[eval] TIMEOUT: task {task_id} did not complete within {timeout_s}s", file=sys.stderr)
+    # Cancel the background process so it doesn't hold the llama.cpp slot
+    _cancel_task(task_id)
     return None
 
 
