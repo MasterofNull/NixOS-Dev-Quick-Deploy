@@ -43,7 +43,7 @@
       # model available, but reserve desktop headroom.
       # llama.cpp divides --ctx-size by --parallel slots; keep
       # one slot so local tool-calling gets the full 16k window.
-      llamaCpp.ctxSize = 16384;
+      llamaCpp.ctxSize = 8192;
       # useSymlink: llama-server loads from a stable symlink path.
       # Future model swaps need NO rebuild: sudo aq-model-switch <key>
       llamaCpp.useSymlink = true;
@@ -82,7 +82,7 @@
         # Renoir iGPU shares VRAM with system RAM. --n-gpu-layers 99 in
         # ai-stack.nix causes GPU OOM for inputs > ~400 tokens. Override
         # to 12 layers (same as chat model) for reliable KV-cache headroom.
-        extraArgs = ["--threads" "4" "--n-gpu-layers" "12"];
+        extraArgs = ["--threads" "4" "--n-gpu-layers" "12" "--parallel" "4"];
       };
 
       switchboard.remoteModelAliases = {

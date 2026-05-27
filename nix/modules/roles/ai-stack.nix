@@ -248,6 +248,36 @@ let
       (pkgs.writeShellScriptBin "aq-qa" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-qa" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-chat" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-chat" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-top" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-top" "$@"
+      '')
+      (pkgs.writeShellScriptBin "agrep" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/agrep" "$@"
+      '')
+      (pkgs.writeShellScriptBin "als" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/als" "$@"
+      '')
+      (pkgs.writeShellScriptBin "acat" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/acat" "$@"
+      '')
+      (pkgs.writeShellScriptBin "asum" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/asum" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-report-agent" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-report-agent" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-git-status-agent" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-git-status-agent" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-commit-agent" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-commit-agent" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-throttler" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-throttler" "$@"
+      '')
       (pkgs.writeShellScriptBin "harness-rpc" ''
         exec "${pkgs.nodejs}/bin/node" "${cfg.mcpServers.repoPath}/scripts/ai/harness-rpc.js" "$@"
       '')
@@ -1471,10 +1501,6 @@ in {
               embed.pooling
               "--ctx-size"
               (toString embed.ctxSize)
-              "--threads"
-              "8"
-              "--n-gpu-layers"
-              "99"
               "--metrics"
             ]
             ++ (map lib.escapeShellArg embed.extraArgs));
