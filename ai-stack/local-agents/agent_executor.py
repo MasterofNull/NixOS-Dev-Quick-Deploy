@@ -540,6 +540,10 @@ class LocalAgentExecutor:
         """
         Fallback to remote agent (hybrid coordinator).
 
+        Gap-pattern fix (44x): on provider 429/503, capture error details and
+        retry once with a simplified payload (reduced max_tokens, stripped context).
+        This prevents the same large payload from triggering the same rate-limit error.
+
         Args:
             task: Task to execute remotely
 
@@ -551,14 +555,37 @@ class LocalAgentExecutor:
         task.assigned_agent = "remote-fallback"
         task.degraded_reason = None
 
+        _RETRY_STATUSES = {429, 503, 502}
+
         try:
             async with httpx.AsyncClient() as client:
                 profile = self._select_remote_profile(task)
+                base_payload = self._build_remote_delegate_payload(task, profile)
                 delegate_response = await client.post(
                     f"{self.fallback_endpoint}/control/ai-coordinator/delegate",
-                    json=self._build_remote_delegate_payload(task, profile),
+                    json=base_payload,
                     timeout=self.remote_timeout_seconds,
                 )
+
+                if delegate_response.status_code in _RETRY_STATUSES:
+                    # Gap rule: log provider-specific failure, simplify payload, retry once.
+                    logger.warning(
+                        "remote_delegate_provider_error: status=%d detail=%s — retrying with simplified payload",
+                        delegate_response.status_code,
+                        delegate_response.text[:120],
+                    )
+                    await asyncio.sleep(2.0)
+                    simplified = {
+                        "task": task.objective[:800],
+                        "profile": "remote-free",
+                        "prefer_local": True,
+                        "max_tokens": 400,
+                    }
+                    delegate_response = await client.post(
+                        f"{self.fallback_endpoint}/control/ai-coordinator/delegate",
+                        json=simplified,
+                        timeout=self.remote_timeout_seconds,
+                    )
 
                 if delegate_response.status_code == 200:
                     data = delegate_response.json()
@@ -573,8 +600,8 @@ class LocalAgentExecutor:
                         )
                 else:
                     task.error = (
-                        "Remote delegate failed: "
-                        f"{delegate_response.status_code} {delegate_response.text}"
+                        f"Remote delegate failed [{delegate_response.status_code}]: "
+                        f"{delegate_response.text[:200]}"
                     )
 
                 if task.status != TaskStatus.COMPLETED:
@@ -592,7 +619,11 @@ class LocalAgentExecutor:
                         task.result = data.get("response", "")
                         task.status = TaskStatus.COMPLETED
                     else:
-                        task.error = f"Remote fallback failed: {response.status_code} {response.text}"
+                        logger.warning(
+                            "remote_query_fallback_error: status=%d detail=%s",
+                            response.status_code, response.text[:120],
+                        )
+                        task.error = f"Remote fallback failed [{response.status_code}]: {response.text[:200]}"
                         task.status = TaskStatus.FAILED
 
         except Exception as e:
@@ -668,7 +699,11 @@ class LocalAgentExecutor:
         return ""
 
     def _get_system_prompt(self, agent_type: AgentType, tools: List[Dict]) -> str:
-        """Get system prompt for agent type with tool descriptions"""
+        """Get system prompt for agent type with tool descriptions.
+
+        Appends learned gap rules from config/harness-prompt-extensions.yaml so
+        the model gets trained gap patterns on every call (agent-agnostic portability).
+        """
         base_prompt = {
             AgentType.AGENT: (
                 "You are AQ, an expert coding and systems developer embedded in the NixOS AI harness. "
@@ -692,8 +727,35 @@ class LocalAgentExecutor:
         }
 
         tools_desc = "\n\nAvailable tools:\n" + json.dumps(tools, indent=2)
+        extensions = self._load_prompt_extensions()
 
-        return base_prompt[agent_type] + tools_desc
+        return base_prompt[agent_type] + tools_desc + extensions
+
+    def _load_prompt_extensions(self) -> str:
+        """Load learned gap rules from harness-prompt-extensions.yaml.
+
+        Returns an empty string on any error so prompt building never fails.
+        Rules are injected as a compact advisory section to minimise token overhead.
+        """
+        _REPO_ROOT = Path(__file__).resolve().parents[2]
+        ext_path = _REPO_ROOT / "config" / "harness-prompt-extensions.yaml"
+        if not ext_path.exists():
+            return ""
+        try:
+            import yaml  # type: ignore[import]
+            data = yaml.safe_load(ext_path.read_text()) or {}
+            rules = data.get("rules") or []
+            if not rules:
+                return ""
+            lines = ["\n\n[Learned gap rules — apply these on every task:]"]
+            for r in rules[:5]:  # cap at 5 to limit token overhead
+                pattern = r.get("pattern", "")
+                if pattern:
+                    lines.append(f"- {pattern}")
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.debug("harness-prompt-extensions load skipped: %s", exc)
+            return ""
 
     def get_performance_stats(self) -> Dict[str, Any]:
         """Get performance statistics for all agents"""

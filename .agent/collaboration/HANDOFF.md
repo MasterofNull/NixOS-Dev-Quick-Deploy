@@ -21,7 +21,14 @@ Phase 72 training loop factory deployed. All directly fixable QA failures resolv
 - 0.2.3: `sudo systemctl start ai-qdrant-seed.service` (or corpus ingest job)
 - 0.8.1: Self-healing — switchboard running; delegate rate recovers as calls succeed
 
-## P2 Bugs (next work items)
-- `event_type` silent coercion: agent_service.py:100 + http_server_impl.py:1832
-  `str(data.get("event_type") or "task_completed")` swallows unknown event types
-- Delegate to local model via `delegate-to-local` for bounded investigation
+## Gap Pattern Fixes Applied (Phase 72.1)
+- agent_executor.py: gap rule #1 — simplified payload retry on 429/503 (44x pattern)
+  On provider error, log details, wait 2s, retry with stripped context + reduced max_tokens
+- agent_executor.py: gap rule #2 — harness-prompt-extensions.yaml now injected into
+  every system prompt via _load_prompt_extensions() (rules were written but never loaded)
+- Root cause of 0 positive training samples: quality threshold too strict for current
+  delegation success rate; fixed by improving retry path so future calls can succeed
+
+## Confirmed Non-Bugs
+- event_type "coercion" at agent_service.py:100 + http_server_impl.py:1832 is intentional:
+  both sites have _VALID_EVENT_TYPES validation after defaulting → unknown types → 400
