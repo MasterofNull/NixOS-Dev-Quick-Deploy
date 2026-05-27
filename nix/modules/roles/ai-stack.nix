@@ -2110,8 +2110,8 @@ in {
 
       systemd.services.ai-prsi-orchestrator = {
         description = "PRSI orchestrator cycle (identify → approve-low-risk → execute)";
-        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service"];
-        wants = ["network-online.target"];
+        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" "ai-ralph-wiggum.service"];
+        wants = ["network-online.target" "ai-ralph-wiggum.service"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;

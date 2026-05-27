@@ -1689,6 +1689,7 @@ in {
         wantedBy = ["ai-stack.target"];
         partOf = ["ai-stack.target"];
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
         path = with pkgs; [ bash coreutils curl gnugrep python3 ];
         serviceConfig = {
           Type = "simple";
@@ -1719,6 +1720,7 @@ in {
         wantedBy = ["ai-stack.target"];
         partOf = ["ai-stack.target"];
         after = ["network-online.target" "ai-hybrid-coordinator.service" "llama-cpp.service"];
+        wants = ["network-online.target"];
         path = with pkgs; [ bash coreutils curl (python3.withPackages (ps: with ps; [ httpx ])) ];
         serviceConfig = {
           Type = "simple";
