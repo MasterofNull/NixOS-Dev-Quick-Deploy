@@ -58,6 +58,8 @@ REGISTRY       = DELEGATION_DIR / "registry.jsonl"
 OUTPUTS_DIR    = DELEGATION_DIR / "outputs"
 PULSE_LOG      = _REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
 DEFAULT_EVAL_PACK = _REPO_ROOT / "data" / "harness-gap-eval-pack.json"
+# Checkpoint written after each completed task; enables --resume across reboots/hibernation
+CHECKPOINT_FILE = DELEGATION_DIR / "training-loop-checkpoint.json"
 
 POLL_INTERVAL_S  = 2        # seconds between output-file checks
 DEFAULT_TASK_TIMEOUT_S = 1200  # 20 min max per task (Qwen3-35B long-reasoning safe limit)
@@ -133,6 +135,44 @@ def _mark_registry_status(task_id: str, new_status: str) -> None:
         except json.JSONDecodeError:
             lines.append(raw)
     REGISTRY.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _checkpoint_save(run_id: str, completed: Dict[str, Any]) -> None:
+    """Write per-task results to checkpoint so --resume can skip done tasks."""
+    try:
+        existing: Dict = {}
+        if CHECKPOINT_FILE.exists():
+            try:
+                existing = json.loads(CHECKPOINT_FILE.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+        existing.setdefault(run_id, {}).update(completed)
+        CHECKPOINT_FILE.write_text(json.dumps(existing, indent=2))
+    except OSError:
+        pass  # non-fatal — checkpoint is a best-effort optimisation
+
+
+def _checkpoint_load(run_id: str) -> Dict[str, Any]:
+    """Return {case_id: score_dict} for cases already completed in run_id."""
+    try:
+        if CHECKPOINT_FILE.exists():
+            data = json.loads(CHECKPOINT_FILE.read_text())
+            return data.get(run_id, {})
+    except (json.JSONDecodeError, OSError):
+        pass
+    return {}
+
+
+def _checkpoint_clear(run_id: str) -> None:
+    """Remove checkpoint entry once a run completes successfully."""
+    try:
+        if not CHECKPOINT_FILE.exists():
+            return
+        data = json.loads(CHECKPOINT_FILE.read_text())
+        data.pop(run_id, None)
+        CHECKPOINT_FILE.write_text(json.dumps(data, indent=2))
+    except (json.JSONDecodeError, OSError):
+        pass
 
 
 def _task_age_seconds(task_id: str) -> Optional[float]:
@@ -434,9 +474,23 @@ class TrainingLoop:
         self.dry_run = dry_run
         self.verbose = verbose
 
-    async def run_once(self) -> Dict[str, Any]:
-        """Execute one full test/eval/improve cycle."""
+    async def run_once(self, resume: bool = False) -> Dict[str, Any]:
+        """Execute one full test/eval/improve cycle.
+
+        resume=True: load checkpoint and skip cases already completed in this run_id.
+        Enables safe restart after nixos-rebuild, hibernation, or SIGTERM.
+        """
         run_id = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+        if resume:
+            # On resume, reuse the most recent incomplete run_id from checkpoint
+            try:
+                if CHECKPOINT_FILE.exists():
+                    ckpt_data = json.loads(CHECKPOINT_FILE.read_text())
+                    if ckpt_data:
+                        run_id = sorted(ckpt_data.keys())[-1]
+                        print(f"[training-loop] Resuming run {run_id}")
+            except (json.JSONDecodeError, OSError):
+                pass
         print(f"[training-loop] Starting run {run_id}")
 
         # Layer 2: reap dead background processes before submitting new tasks
@@ -469,10 +523,23 @@ class TrainingLoop:
         # direct mode tasks go to llama.cpp which is serial: serialize them with
         # a Semaphore(1) so each task gets its full timeout window.  hybrid/agent
         # mode tasks go to the coordinator queue which handles concurrency itself.
+        # Load checkpoint: cases already scored in this run_id (from a prior interrupted run)
+        completed_cases: Dict[str, Any] = _checkpoint_load(run_id) if resume else {}
+        if completed_cases:
+            print(f"[training-loop]   resuming: {len(completed_cases)} cases already done")
+
         print(f"[training-loop] Phase 2+3: submitting and scoring {len(cases)} cases…")
         direct_sem = asyncio.Semaphore(1)
 
         async def _eval_one(case: Dict) -> Dict:
+            # Skip cases already completed in a prior interrupted run
+            if case["id"] in completed_cases:
+                prior = completed_cases[case["id"]]
+                if self.verbose:
+                    status = "PASS" if prior.get("pass") else "FAIL"
+                    print(f"[training-loop]   {status} {case['id']} score={prior.get('score')} (resumed)")
+                return prior
+
             mode = case.get("mode", "hybrid")
 
             async def _submit_and_wait() -> Optional[str]:
@@ -494,11 +561,16 @@ class TrainingLoop:
                 response = await _submit_and_wait()
 
             if response is None:
-                return {**_score_response("", case), "task_id": None, "error": "timeout_or_failed"}
-            result = _score_response(response, case)
+                result = {**_score_response("", case), "task_id": None, "error": "timeout_or_failed"}
+            else:
+                result = _score_response(response, case)
+
             if self.verbose:
-                status = "PASS" if result["pass"] else "FAIL"
-                print(f"[training-loop]   {status} {case['id']} score={result['score']}")
+                status = "PASS" if result.get("pass") else "FAIL"
+                print(f"[training-loop]   {status} {case['id']} score={result.get('score')}")
+
+            # Checkpoint after each task so partial progress survives interruption
+            _checkpoint_save(run_id, {case["id"]: result})
             return result
 
         scores: List[Dict] = []
@@ -594,6 +666,9 @@ class TrainingLoop:
                f"+{ingest_report.get('positive_samples_added', 0)} training samples, "
                f"{len(validated_improvements)} improvement proposals written")
 
+        # Clear checkpoint — run completed successfully, no resume needed
+        _checkpoint_clear(run_id)
+
         return result
 
     async def run_daemon(self, interval_minutes: int = 60) -> None:
@@ -658,6 +733,8 @@ def _cli() -> None:
                         help="Score and propose but do not write improvements")
     parser.add_argument("--status", action="store_true",
                         help="Print recent run summaries and exit")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume the most recent interrupted run from checkpoint")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Verbose per-case output")
     args = parser.parse_args()
@@ -665,6 +742,18 @@ def _cli() -> None:
     if args.status:
         _status()
         return
+
+    # SIGTERM handler: on rebuild/shutdown, let current task finish and checkpoint
+    # before exiting cleanly so --resume can pick up where we left off.
+    _shutdown = {"requested": False}
+
+    def _on_sigterm(signum: int, frame: object) -> None:
+        print("[training-loop] SIGTERM received — checkpointing and exiting after current task",
+              file=sys.stderr)
+        _shutdown["requested"] = True
+
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    signal.signal(signal.SIGHUP, _on_sigterm)
 
     loop_runner = TrainingLoop(
         eval_pack=args.eval_pack,
@@ -676,7 +765,7 @@ def _cli() -> None:
     if args.mode == "daemon":
         asyncio.run(loop_runner.run_daemon(interval_minutes=args.interval))
     else:
-        result = asyncio.run(loop_runner.run_once())
+        result = asyncio.run(loop_runner.run_once(resume=args.resume))
         print(json.dumps({
             "pass_rate": result.get("pass_rate"),
             "pass": result.get("pass_count"),
