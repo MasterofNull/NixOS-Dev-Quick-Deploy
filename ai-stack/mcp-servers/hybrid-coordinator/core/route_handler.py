@@ -26,6 +26,15 @@ Usage in server.py:
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities are on path
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
 import hashlib
 import logging
 import os
@@ -37,6 +46,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
+
+# Stability Backbone (Phase 55.2)
+from shared.circuit_breaker import CircuitBreakerOpenError
+from shared.retry_backoff import retry_with_backoff
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
@@ -189,6 +202,7 @@ _postgres_client_ref: Optional[Callable] = None
 _aidb_client_ref: Optional[Callable] = None
 _queue_depth_ref: Optional[Callable] = None
 _intent_classifier: Optional[Any] = None
+_CIRCUIT_BREAKERS: Optional[Any] = None
 _COLLECTIONS: Dict[str, Any] = {}
 _query_expander: Optional["QueryExpander"] = None
 
@@ -1114,6 +1128,7 @@ def init(
     queue_depth_ref: Optional[Callable] = None,
     intent_classifier: Optional[Any] = None,
     collections: Dict[str, Any],
+    circuit_breakers: Optional[Any] = None,
 ) -> None:
     """Inject runtime dependencies. Call once from server.py initialize_server()."""
     global _hybrid_search, _tree_search, _select_backend
@@ -1121,6 +1136,7 @@ def init(
     global _context_compressor_ref, _llama_cpp_client_ref, _llama_cpp_reasoning_client_ref
     global _switchboard_client_ref, _postgres_client_ref, _aidb_client_ref
     global _queue_depth_ref, _intent_classifier, _COLLECTIONS, _query_expander
+    global _CIRCUIT_BREAKERS
     _hybrid_search = hybrid_search_fn
     _tree_search = tree_search_fn
     _select_backend = select_backend_fn
@@ -1136,7 +1152,42 @@ def init(
     _queue_depth_ref = queue_depth_ref
     _intent_classifier = intent_classifier
     _COLLECTIONS = collections
+    _CIRCUIT_BREAKERS = circuit_breakers
     _query_expander = QueryExpander(Config.LLAMA_CPP_URL)
+
+
+async def _call_llm_with_resilience(
+    client,
+    path: str,
+    payload: dict,
+    headers: dict = None,
+    timeout: float = 180.0,
+    service_name: str = "llama",
+) -> Any:
+    """Execute LLM request with retries and circuit breaker."""
+    async def _do_request():
+        return await client.post(
+            path,
+            headers=headers or {},
+            json=payload,
+            timeout=timeout,
+        )
+
+    if _CIRCUIT_BREAKERS:
+        breaker = _CIRCUIT_BREAKERS.get(service_name)
+        try:
+            return await retry_with_backoff(
+                breaker.call,
+                _do_request,
+                max_attempts=2,
+                breaker=breaker,
+                retry_on_exceptions=(asyncio.TimeoutError, ConnectionError),
+            )
+        except CircuitBreakerOpenError:
+            raise
+    else:
+        # Fallback if no registry (e.g. tests)
+        return await _do_request()
 
 
 async def route_search(
@@ -1709,11 +1760,13 @@ async def route_search(
                 # tokens per request when the model supports it (detected via /props).
                 _llm_payload.update(_thinking_kwargs(_task_type))
                 try:
-                    llm_resp = await _inference_client.post(
-                        _inference_path,
+                    llm_resp = await _call_llm_with_resilience(
+                        client=_inference_client,
+                        path=_inference_path,
                         headers=_inference_headers,
-                        json=_llm_payload,
+                        payload=_llm_payload,
                         timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
+                        service_name="llama",
                     )
                     llm_resp.raise_for_status()
                     llm_json = llm_resp.json()
@@ -1775,11 +1828,12 @@ async def route_search(
                             if local_system_prompt:
                                 fallback_messages.append({"role": "system", "content": local_system_prompt})
                             fallback_messages.append({"role": "user", "content": prompt})
-                            llm_resp = await llama_cpp_client.post(
-                                "/chat/completions",
-                                headers={},
-                                json={"messages": fallback_messages, "temperature": 0.2, "max_tokens": local_max_tokens},
+                            llm_resp = await _call_llm_with_resilience(
+                                client=llama_cpp_client,
+                                path="/chat/completions",
+                                payload={"messages": fallback_messages, "temperature": 0.2, "max_tokens": local_max_tokens},
                                 timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
+                                service_name="llama",
                             )
                             llm_resp.raise_for_status()
                             llm_json = llm_resp.json()

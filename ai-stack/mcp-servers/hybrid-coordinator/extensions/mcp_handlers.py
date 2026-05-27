@@ -20,23 +20,60 @@ Usage in server.py:
         return await mcp_handlers.dispatch_tool(name, arguments)
 """
 
+import os
+import sys
+from pathlib import Path
+
+# Identify repo root (must be 4 levels up from this file)
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities and local-agents are on path
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
+_LOCAL_AGENTS_PATH = str(_REPO_ROOT / "ai-stack" / "local-agents")
+if _LOCAL_AGENTS_PATH not in sys.path:
+    sys.path.insert(0, _LOCAL_AGENTS_PATH)
+
 import json
 import logging
-import os
-from pathlib import Path
 import pwd
 import shutil
 import time as _time
 from typing import Any, Callable, Dict, List, Optional
 import asyncio
 
+# Bridge with local-agents tool registry
+try:
+    import local_agents
+    _local_registry = local_agents.get_registry()
+    local_agents.initialize_builtin_tools(_local_registry)
+    _bridged_local_tools = True
+except Exception as e:
+    # Use a basic logger here since the main logger isn't initialized yet
+    print(f"WARNING: Failed to bridge with local-agents registry: {e}")
+    _bridged_local_tools = False
+
 from mcp.types import TextContent, Tool
 from shared.tool_audit import write_audit_entry as _write_audit_entry
 from tooling_manifest import build_tooling_manifest, workflow_tool_catalog
 from memory_manager import coerce_memory_summary, normalize_memory_type, validate_memory_content
 
+# Stability Backbone (Phase 55.2)
+from shared.circuit_breaker import CircuitBreakerRegistry, CircuitBreakerOpenError
+from shared.retry_backoff import retry_with_backoff
+
 logger = logging.getLogger("hybrid-coordinator")
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+# Initialize Circuit Breakers for Sub-MCP Servers
+CIRCUIT_BREAKERS = CircuitBreakerRegistry(
+    default_config={
+        "failure_threshold": 3,
+        "reset_timeout": 60.0,
+    }
+)
+
 _AQ_QA_SCRIPT = _REPO_ROOT / "scripts" / "ai" / "aq-qa"
 _FLAGSHIP_CLI_SMOKE_SCRIPT = _REPO_ROOT / "scripts" / "testing" / "smoke-flagship-cli-surfaces.sh"
 _QA_PHASE_ALIASES = {
@@ -318,6 +355,20 @@ def init(
     _embed_fn = embed_fn
     _qdrant = qdrant_client
     _HARNESS_STATS = harness_stats
+
+    # Bridge local tools into definitions
+    if _bridged_local_tools:
+        for tool_name, tool_def in _local_registry.tools.items():
+            # Avoid overwriting existing native MCP tools if they have the same name
+            if any(t.name == tool_name for t in TOOL_DEFINITIONS):
+                continue
+            
+            TOOL_DEFINITIONS.append(Tool(
+                name=tool_name,
+                description=tool_def.description,
+                inputSchema=tool_def.parameters or {"type": "object", "properties": {}}
+            ))
+        logger.info(f"Bridged {len(_local_registry.tools)} local tools into coordinator")
 
 
 # ---------------------------------------------------------------------------
@@ -1021,41 +1072,67 @@ TOOL_DEFINITIONS: List[Tool] = [
 # ---------------------------------------------------------------------------
 
 async def _call_mcp_server(executable_path: Path, tool_name: str, arguments: Dict[str, Any]) -> str:
-    """Run a local MCP server via subprocess stdio and call a specific tool."""
+    """Run a local MCP server via subprocess stdio and call a specific tool with resilience."""
     if not executable_path.exists():
         return json.dumps({"error": f"MCP server not found at {executable_path}", "status": "error"})
     
-    # Construct MCP JSON-RPC call
-    call = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": tool_name,
-            "arguments": arguments
+    breaker = CIRCUIT_BREAKERS.get(executable_path.name)
+    
+    async def _do_mcp_call():
+        # Construct MCP JSON-RPC call
+        call = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": arguments
+            }
         }
-    }
-    
-    proc = await asyncio.create_subprocess_exec(
-        _resolve_python3_binary(), str(executable_path),
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(input=json.dumps(call).encode() + b"\n"),
-            timeout=120
-        )
-        if proc.returncode != 0:
-            return json.dumps({"error": f"MCP server failed with exit code {proc.returncode}", "stderr": stderr.decode()})
         
-        resp = json.loads(stdout.decode().strip())
-        if "result" in resp and "content" in resp["result"]:
-            # Our stubs return JSON strings in text content
-            return resp["result"]["content"][0]["text"]
-        return json.dumps(resp)
+        proc = await asyncio.create_subprocess_exec(
+            _resolve_python3_binary(), str(executable_path),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=json.dumps(call).encode() + b"\n"),
+                timeout=120
+            )
+            if proc.returncode != 0:
+                return json.dumps({"error": f"MCP server failed with exit code {proc.returncode}", "stderr": stderr.decode()})
+            
+            resp = json.loads(stdout.decode().strip())
+            if "result" in resp and "content" in resp["result"]:
+                # Our stubs return JSON strings in text content
+                return resp["result"]["content"][0]["text"]
+            return json.dumps(resp)
+        except Exception as e:
+            # Cleanup process if communication failed
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            raise
+
+    try:
+        return await retry_with_backoff(
+            breaker.call,
+            _do_mcp_call,
+            max_attempts=2,
+            breaker=breaker,
+            retry_on_exceptions=(asyncio.TimeoutError,),
+        )
+    except CircuitBreakerOpenError:
+        return json.dumps({
+            "error": f"Circuit breaker is OPEN for MCP server '{executable_path.name}'",
+            "status": "unavailable",
+            "retry_after": breaker.config.reset_timeout
+        })
     except Exception as e:
         return json.dumps({"error": f"MCP communication error: {str(e)}", "status": "error"})
 
@@ -1685,8 +1762,21 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-        else:
-            raise ValueError(f"Unknown tool: {name}")
+        # Check for bridged local tools
+        if _bridged_local_tools:
+            tool = _local_registry.get_tool(name)
+            if tool:
+                # Synchronous execute if the handler is not async (though most are)
+                import inspect
+                if asyncio.iscoroutinefunction(tool.handler):
+                    result = await tool.handler(**(arguments or {}))
+                else:
+                    result = tool.handler(**(arguments or {}))
+                
+                _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+                return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        raise ValueError(f"Unknown tool: {name}")
     except ValueError as exc:
         _write_audit(name, 'client_error', str(exc), (_time.perf_counter() - _start) * 1000, arguments)
         raise

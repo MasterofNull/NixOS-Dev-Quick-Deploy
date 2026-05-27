@@ -17,6 +17,15 @@ Usage:
 """
 
 import asyncio
+import sys
+from pathlib import Path
+
+# Stability Backbone (Phase 55.2): Ensure shared utilities are on path
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
 import hashlib
 import json
 import logging
@@ -338,12 +347,11 @@ _workflow_sessions_lock = asyncio.Lock()
 # ---------------------------------------------------------------------------
 # Team-load concurrency control (prevents Qwen CPU/RAM exhaustion)
 # ---------------------------------------------------------------------------
-# Cap simultaneous local LLM inference calls.  Agents get scheduling priority:
-# humans yield briefly when agents are waiting so agentic workflows are not
-# starved by interactive editor sessions under team orchestration load.
-_MAX_CONCURRENT_LLM: int = int(os.getenv("MAX_CONCURRENT_LLM", "2"))
-_llm_sem: asyncio.Semaphore = asyncio.Semaphore(_MAX_CONCURRENT_LLM)
-_agent_llm_waiters: int = 0  # agents currently queued for an LLM slot
+# MLFQ Task Prioritization & Concurrency Management
+# Humans (interactive) get priority over automated agents (background/batch)
+# via the MLFQScheduler.
+# ---------------------------------------------------------------------------
+
 
 # Reindex status — path matches REINDEX_OUTPUT injected by the systemd unit.
 # aidb-reindex.sh writes {"status":"running"} at start and overwrites with the
@@ -1832,6 +1840,10 @@ async def run_http_mode(port: int) -> None:
         except (ValueError, TypeError):
             return web.json_response({"error": "latency_ms must be integer"}, status=400)
         task_id    = str(data.get("task_id") or "")[:64]
+        try:
+            iteration = int(data.get("iteration") or 0)
+        except (ValueError, TypeError):
+            iteration = 0
 
         if event_type not in _VALID_EVENT_TYPES:
             # Preserve unknown types under a flagged key rather than silently coercing
@@ -1884,6 +1896,7 @@ async def run_http_mode(port: int) -> None:
                             "prompt": summary,
                             "output": summary,
                             "backend": agent,
+                            "iteration": iteration,
                             "context": {"sub_type": sub_type, "outcome": outcome},
                         },
                     }
@@ -2094,23 +2107,46 @@ async def run_http_mode(port: int) -> None:
             )
             request_context["generate_response_effective"] = generate_response
 
-            # Agent priority + LLM concurrency gate:
-            # Agents register a waiter; non-agents yield briefly so agentic
-            # workflows are not starved under concurrent team load.
-            global _agent_llm_waiters
+            # Phase 55.2 — MLFQ Priority Scheduling
             _query_is_agent = _is_agent_query(data)
-            if _query_is_agent:
-                _agent_llm_waiters += 1
-            elif _agent_llm_waiters > 0:
-                await asyncio.sleep(0.3)  # yield slot to waiting agents
+            task_class: TaskClass = "background" if _query_is_agent else "interactive"
+            if data.get("batch") or data.get("low_priority"):
+                task_class = "batch"
+
+            # Estimate tokens for admission control
+            token_estimate = (len(query) + len(str(request_context))) // 4
+            
+            workload = WorkloadDescriptor(
+                task_id=str(uuid4()),
+                task_class=task_class,
+                priority=int(data.get("priority", 5)),
+                token_budget=int(data.get("max_tokens") or 2000),
+                agent_id=data.get("agent_id"),
+                x_maeah=data.get("x_maeah", {}),
+            )
+
             try:
-                async with _llm_sem:
-                    result = await _execute_query_search(
+                # Submit to MLFQ scheduler
+                handle = await get_scheduler().submit(
+                    workload,
+                    _execute_query_search(
                         query, data, prefer_local, request_context, generate_response,
                     )
-            finally:
-                if _query_is_agent:
-                    _agent_llm_waiters -= 1
+                )
+                # Wait for execution (respecting LLM timeouts)
+                handle = await get_scheduler().wait(handle.task_id)
+                if handle.status == "failed":
+                    raise RuntimeError(handle.error or "task execution failed")
+                if handle.status == "evicted":
+                    return web.json_response({"error": "task_evicted", "detail": handle.error}, status=503)
+                
+                result = handle.result
+            except MLFQAdmissionError as exc:
+                return web.json_response({"error": "scheduler_busy", "detail": str(exc)}, status=503)
+            except Exception as exc:
+                logger.exception("Scheduled query failed: %s", exc)
+                return web.json_response({"error": "execution_failed", "detail": str(exc)}, status=500)
+
 
             # Warn agents when AIDB reindex is in progress (RAG corpus may be stale)
             _ridx = _get_reindex_status()

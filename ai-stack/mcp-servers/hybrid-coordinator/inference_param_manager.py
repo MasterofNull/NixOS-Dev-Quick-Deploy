@@ -16,7 +16,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -34,6 +34,9 @@ class HardwareState:
     mtp_acceptance_rate: Optional[float] = None
     thermal_tier: str = "unknown"
     n_gpu_layers_current: Optional[int] = None
+    embed_busy_slots: float = 0.0
+    reindex_status: Optional[Dict[str, Any]] = None
+    slots: List[Dict[str, Any]] = field(default_factory=list)
     updated_at: float = 0.0
 
 class InferenceParamManager:
@@ -42,6 +45,8 @@ class InferenceParamManager:
         self._polling_task: Optional[asyncio.Task] = None
         self._poll_interval = float(os.getenv("THERMAL_POLL_MS", "500")) / 1000.0
         self._llama_url = os.getenv("LLAMA_CPP_URL", "http://localhost:8080")
+        self._embed_url = os.getenv("LLAMA_EMBED_URL", "http://localhost:8081")
+        self._reindex_path = Path("/var/lib/ai-stack/hybrid/telemetry/aidb-reindex-latest.json")
         self._hwmon_paths: Dict[str, Path] = {}
         self._find_hwmon_sensors()
 
@@ -92,8 +97,18 @@ class InferenceParamManager:
                 mem_data = await asyncio.to_thread(self._read_meminfo_sync)
                 n_gpu_layers = await asyncio.to_thread(self._read_n_gpu_layers_sync)
                 
-                # Async I/O for MTP rate
+                # Async I/O for MTP rate and embed slots
                 mtp_rate = await self._fetch_mtp_rate()
+                embed_busy = await self._fetch_embed_busy()
+                reindex_status = await asyncio.to_thread(self._read_reindex_status_sync)
+                
+                # Full slot aggregation
+                slots_8080 = await self._fetch_full_slots(self._llama_url)
+                slots_8081 = await self._fetch_full_slots(self._embed_url)
+                
+                # Tag slots with their origin
+                for s in slots_8080: s["server"] = "chat:8080"
+                for s in slots_8081: s["server"] = "embed:8081"
 
                 # Update state
                 self._state.temp_cpu_c = thermal_data.get("cpu")
@@ -102,6 +117,9 @@ class InferenceParamManager:
                 self._state.ram_free_gb = mem_data.get("free", 0.0)
                 self._state.ram_used_pct = mem_data.get("used_pct", 0.0)
                 self._state.mtp_acceptance_rate = mtp_rate
+                self._state.embed_busy_slots = embed_busy
+                self._state.reindex_status = reindex_status
+                self._state.slots = slots_8080 + slots_8081
                 self._state.n_gpu_layers_current = n_gpu_layers
                 self._state.updated_at = time.time()
                 
@@ -116,12 +134,17 @@ class InferenceParamManager:
                     pass  # scheduler may not be running yet
 
                 elapsed = time.perf_counter() - start_time
-                await asyncio.sleep(max(0, self._poll_interval - elapsed))
+                
+                # Dynamic backoff: increase interval if idle
+                is_idle = not (self._state.slots or self._state.embed_busy_slots > 0)
+                interval = min(self._poll_interval * (2 if is_idle else 1), 5.0)
+                
+                await asyncio.sleep(max(0, interval - elapsed))
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in IPM poll loop: {e}")
-                await asyncio.sleep(self._poll_interval)
+                await asyncio.sleep(5.0)
 
     def _determine_thermal_tier(self) -> str:
         temps = [t for t in [self._state.temp_cpu_c, self._state.temp_gpu_c] if t is not None]
@@ -249,16 +272,7 @@ class InferenceParamManager:
         return None
 
     async def _fetch_mtp_rate(self) -> Optional[float]:
-        """Derive MTP acceptance rate from llama.cpp Prometheus metrics.
-
-        llama.cpp with --spec-type draft-mtp does NOT expose a dedicated
-        acceptance_rate metric. We derive it from the decode efficiency ratio:
-            tokens_per_decode = tokens_predicted_total / n_decode_total
-            acceptance_rate = (tokens_per_decode - 1) / spec_draft_n_max
-
-        When spec_draft_n_max=2 and all drafts accepted: tokens_per_decode≈3 → rate=1.0
-        When no drafts accepted: tokens_per_decode≈1 → rate=0.0
-        """
+        """Derive MTP acceptance rate from llama.cpp Prometheus metrics."""
         try:
             async with httpx.AsyncClient(timeout=0.2) as client:
                 resp = await client.get(f"{self._llama_url}/metrics")
@@ -290,6 +304,40 @@ class InferenceParamManager:
         except Exception as e:
             logger.debug(f"Failed to derive MTP rate from {self._llama_url}/metrics: {e}")
         return None
+
+    async def _fetch_embed_busy(self) -> float:
+        """Fetch active slot count from llama-cpp-embed server."""
+        try:
+            async with httpx.AsyncClient(timeout=0.2) as client:
+                resp = await client.get(f"{self._embed_url}/metrics")
+                if resp.status_code != 200:
+                    return 0.0
+                for line in resp.text.splitlines():
+                    if line.startswith("llamacpp:n_busy_slots_per_decode "):
+                        return float(line.split()[1])
+        except Exception:
+            pass
+        return 0.0
+
+    async def _fetch_full_slots(self, url: str) -> List[Dict[str, Any]]:
+        """Fetch full slot list from a llama.cpp server."""
+        try:
+            async with httpx.AsyncClient(timeout=0.2) as client:
+                resp = await client.get(f"{url}/slots")
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception:
+            pass
+        return []
+
+    def _read_reindex_status_sync(self) -> Optional[Dict[str, Any]]:
+        """Read latest AIDB reindex status from telemetry file."""
+        if not self._reindex_path.exists():
+            return None
+        try:
+            return json.loads(self._reindex_path.read_text())
+        except Exception:
+            return None
 
 _ipm: Optional[InferenceParamManager] = None
 

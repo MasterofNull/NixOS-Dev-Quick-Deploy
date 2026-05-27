@@ -160,6 +160,19 @@ async def handle_status(request: web.Request) -> web.Response:
     if lesson_refs:
         payload["active_lesson_refs"] = lesson_refs
 
+    # Phase 55.2 — Include scheduler and circuit breaker status
+    try:
+        from mlfq_scheduler import get_scheduler
+        payload["scheduler"] = await get_scheduler().status()
+    except Exception:
+        pass
+
+    try:
+        from server import CIRCUIT_BREAKERS
+        payload["circuit_breakers"] = CIRCUIT_BREAKERS.get_all_states()
+    except Exception:
+        pass
+
     return web.json_response(payload)
 
 
