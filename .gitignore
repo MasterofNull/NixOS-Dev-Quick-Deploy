@@ -1,3 +1,7 @@
+# Root-level agent test stubs (belong in scripts/testing/ with kebab-case names)
+/test_delegate*.py
+/test_delegation*.py
+
 # Generated files
 *.log
 *.backup.*
