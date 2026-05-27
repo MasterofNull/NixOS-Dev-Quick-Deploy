@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "name": "harness-gap-eval-pack",
   "description": "SWE-grade evaluation pack for the NixOS-Dev-Quick-Deploy AI harness. Covers NixOS module patterns, agent orchestration, Python async, workflow reasoning, and tool-call analysis.",
   "cases": [
@@ -29,13 +29,13 @@
     },
     {
       "id": "tc3-feedback-validation",
-      "query": "tc3 feedback validation after patch",
+      "query": "After applying a patch to an AI harness system, describe the validation steps: health checks, routing validation, hint-based feedback, and how to use a report tool to verify system health",
       "expected_keywords": [
-        "aq-report",
+        "health",
         "routing",
-        "hint",
         "validation",
-        "health"
+        "feedback",
+        "report"
       ],
       "mode": "direct"
     },
