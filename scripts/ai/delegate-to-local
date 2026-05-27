@@ -345,17 +345,31 @@ PYEOF
 run_direct() {
     local prompt="$1" output_file="$2" timeout_secs="$3"
     check_service "$LLAMA_PORT" "llama.cpp"
-    # Streaming mode: first token signals slot acquisition (event-driven).
-    # SLOT_WAIT_S = max seconds to wait for first token (detects queuing fast).
+    # Streaming mode: pre-polls /slots until free, then submits.
+    # SLOT_WAIT_S = full timeout_secs (slot is pre-confirmed free by poll).
     # After first token, generation proceeds until EOS or max_tokens.
     python3 - "$prompt" "http://127.0.0.1:${LLAMA_PORT}" "$timeout_secs" "$output_file" "${DIRECT_MAX_TOKENS}" <<'PYEOF'
-import sys, json, socket, urllib.request, urllib.error
+import sys, json, socket, urllib.request, urllib.error, time as _time
 
 prompt, base_url, timeout_secs, output_file, max_tokens = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], int(sys.argv[5])
 
-# First-token timeout: if the slot isn't acquired within this window, the
-# llama.cpp queue is saturated.  45s gives ~1 queued request headroom.
-SLOT_WAIT_S = min(45, int(timeout_secs))
+# Pre-flight: poll /slots until the slot is free before submitting.
+# This prevents SLOT_WAIT_S from firing during external request occupancy.
+_slot_poll_deadline = _time.monotonic() + timeout_secs
+while _time.monotonic() < _slot_poll_deadline:
+    try:
+        _sr = urllib.request.Request(f"{base_url}/slots")
+        with urllib.request.urlopen(_sr, timeout=5) as _resp:
+            _slots = json.loads(_resp.read())
+            if not _slots[0].get("is_processing", True):
+                break
+    except Exception:
+        break  # /slots unavailable — submit anyway, let SLOT_WAIT_S catch it
+    _time.sleep(3)
+
+# SLOT_WAIT_S: safety net only — slot should already be free from pre-poll.
+# Use full timeout so a slow slot acquisition after pre-poll doesn't abort us.
+SLOT_WAIT_S = int(timeout_secs)
 
 payload = json.dumps({
     "model": "local",
