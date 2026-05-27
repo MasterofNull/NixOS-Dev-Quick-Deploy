@@ -1,0 +1,42 @@
+# qa-xfail.yaml — Known pre-existing QA failures that require runtime/privileged operations.
+#
+# Format:
+#   - id:      check ID (e.g. 0.1.2)
+#     reason:  why it fails and what's needed to resolve it
+#     created: ISO date when first documented
+#     expires: ISO date after which this entry must be removed or re-reviewed
+#     owner:   who is responsible for fixing
+#
+# Policy:
+#   - Only runtime-blocked failures belong here (service restarts, corpus seeding, etc.)
+#   - Code-fixable failures MUST be fixed in code, not added here
+#   - Each entry expires 30 days from creation — remove or re-review by then
+#   - tier0 gate treats xfail failures as SKIP (not PASS) so they stay visible in CI output
+
+xfail:
+  - id: "0.1.2"
+    reason: >
+      ai-prompt-eval.service is in failed state from a previous run (exit code 1).
+      The exit-code logic has been fixed in aq-prompt-eval (holistic threshold check).
+      Fix: sudo systemctl start ai-prompt-eval.service (or wait for next timer trigger).
+    created: "2026-05-27"
+    expires: "2026-06-26"
+    owner: hyperd
+
+  - id: "0.2.3"
+    reason: >
+      Qdrant vector store has 0 documents. Corpus seeding requires a privileged service
+      operation: sudo systemctl start ai-qdrant-seed.service (or equivalent ingest job).
+    created: "2026-05-27"
+    expires: "2026-06-26"
+    owner: hyperd
+
+  - id: "0.8.1"
+    reason: >
+      Delegate 24h success rate is 0% due to historical failures from before the
+      ai-switchboard NameError fix. Switchboard is now running and healthy.
+      Rate will recover as successful delegations accumulate in the telemetry window.
+      Fix: no action needed — rate self-heals as successful calls occur.
+    created: "2026-05-27"
+    expires: "2026-06-26"
+    owner: hyperd

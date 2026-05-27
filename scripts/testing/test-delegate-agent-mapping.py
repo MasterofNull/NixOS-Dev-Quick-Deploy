@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# Delegation integration test — see scripts/testing/ for full test suite
 import os
 import urllib.request, json
 key = open("/run/secrets/hybrid_coordinator_api_key").read().strip()
