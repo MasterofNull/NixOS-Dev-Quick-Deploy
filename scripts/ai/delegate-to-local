@@ -357,10 +357,12 @@ payload = json.dumps({
     "model": "local",
     "messages": [{"role": "user", "content": prompt}],
     "stream": True,
-    # ARCH CONSTRAINT: enable_thinking MUST be false — thinking tokens cause empty
-    # responses on Qwen3-35B. max_tokens caps runaway generation; without it the
-    # model fills the full n_ctx window (8192) even for simple questions.
-    "enable_thinking": False,
+    # ARCH CONSTRAINT: thinking must be disabled for bounded eval tasks.
+    # enable_thinking is a Jinja2 chat-template variable — it must go inside
+    # chat_template_kwargs, NOT at the top level (top-level is silently ignored).
+    # Without this, Qwen3-35B fills all max_tokens with reasoning_content, leaving
+    # zero tokens for the actual response → empty output file.
+    "chat_template_kwargs": {"enable_thinking": False},
     "max_tokens": 512,
 }).encode()
 
