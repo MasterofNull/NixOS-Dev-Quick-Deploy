@@ -61,6 +61,9 @@ DEFAULT_EVAL_PACK = _REPO_ROOT / "data" / "harness-gap-eval-pack.json"
 
 POLL_INTERVAL_S  = 2        # seconds between output-file checks
 DEFAULT_TASK_TIMEOUT_S = 1200  # 20 min max per task (Qwen3-35B long-reasoning safe limit)
+# Eval tasks use a short token cap so bounded test cases complete quickly.
+# Production/improvement tasks default to DIRECT_MAX_TOKENS (4096) via env.
+EVAL_MAX_TOKENS = 512
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -241,11 +244,16 @@ def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -
     cmd = [str(delegate_bin), "--mode", mode, "--prompt", query]
     if http_timeout_secs > 0:
         cmd += ["--timeout", str(http_timeout_secs)]
+    # For eval loop tasks, cap max_tokens to EVAL_MAX_TOKENS so bounded test cases
+    # complete quickly.  Production / improvement tasks use DIRECT_MAX_TOKENS default.
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    if mode == "direct":
+        env.setdefault("DIRECT_MAX_TOKENS", str(EVAL_MAX_TOKENS))
     try:
         result = subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=30,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            env=env,
         )
         # Parse task ID from output lines like "[delegate-to-local] task_id=local-20260527-..."
         for line in result.stdout.splitlines():
@@ -569,8 +577,16 @@ class TrainingLoop:
 
         TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
         if not self.dry_run:
-            with open(RESULTS_LOG, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(result) + "\n")
+            # Telemetry dir may be owned by ai-hybrid (mode 750); fall back to
+            # a user-writable path so the loop doesn't crash after a successful eval.
+            results_path = RESULTS_LOG
+            try:
+                with open(results_path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result) + "\n")
+            except PermissionError:
+                results_path = DELEGATION_DIR / "training-loop-results.jsonl"
+                with open(results_path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(result) + "\n")
 
         # PULSE log entry.
         _pulse(f"aq-local-training-loop run {run_id}: "

@@ -42,6 +42,10 @@ LLAMA_PORT="${LLAMA_PORT:-8080}"
 HYBRID_PORT="${HYBRID_PORT:-8003}"
 RALPH_PORT="${RALPH_PORT:-8004}"
 
+# Token limits — high default for production use; override with DIRECT_MAX_TOKENS
+# for eval/dev cycles where bounded responses speed up iteration.
+DIRECT_MAX_TOKENS="${DIRECT_MAX_TOKENS:-4096}"
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
@@ -344,10 +348,10 @@ run_direct() {
     # Streaming mode: first token signals slot acquisition (event-driven).
     # SLOT_WAIT_S = max seconds to wait for first token (detects queuing fast).
     # After first token, generation proceeds until EOS or max_tokens.
-    python3 - "$prompt" "http://127.0.0.1:${LLAMA_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
+    python3 - "$prompt" "http://127.0.0.1:${LLAMA_PORT}" "$timeout_secs" "$output_file" "${DIRECT_MAX_TOKENS}" <<'PYEOF'
 import sys, json, socket, urllib.request, urllib.error
 
-prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+prompt, base_url, timeout_secs, output_file, max_tokens = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], int(sys.argv[5])
 
 # First-token timeout: if the slot isn't acquired within this window, the
 # llama.cpp queue is saturated.  45s gives ~1 queued request headroom.
@@ -363,7 +367,7 @@ payload = json.dumps({
     # Without this, Qwen3-35B fills all max_tokens with reasoning_content, leaving
     # zero tokens for the actual response → empty output file.
     "chat_template_kwargs": {"enable_thinking": False},
-    "max_tokens": 512,
+    "max_tokens": max_tokens,
 }).encode()
 
 req = urllib.request.Request(
