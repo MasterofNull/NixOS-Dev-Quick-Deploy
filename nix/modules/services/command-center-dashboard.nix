@@ -153,6 +153,8 @@ in {
         ++ lib.optionals cfg.roles.aiStack.enable ["ai-stack.target"];
       serviceConfig = {
         Type = "simple";
+        # Phase 72.x — attach AppArmor profile (complain mode; enforce after May-30 soak)
+        AppArmorProfile = "command-center-dashboard-api";
         User = svcUser;
         Group = svcGroup;
         SupplementaryGroups = ["llama" "ai-stack"];

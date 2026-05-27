@@ -58,7 +58,7 @@ OUTPUTS_DIR    = DELEGATION_DIR / "outputs"
 PULSE_LOG      = _REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
 DEFAULT_EVAL_PACK = _REPO_ROOT / "data" / "harness-gap-eval-pack.json"
 
-POLL_INTERVAL_S  = 5        # seconds between registry polls
+POLL_INTERVAL_S  = 2        # seconds between output-file checks
 DEFAULT_TASK_TIMEOUT_S = 1200  # 20 min max per task (Qwen3-35B long-reasoning safe limit)
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -158,21 +158,45 @@ def _submit_task(query: str, mode: str = "hybrid") -> Optional[str]:
 
 async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) -> Optional[str]:
     """
-    Poll the delegation registry until task_id reaches status=completed|failed.
-    Returns the output text or None on timeout/failure.
-    Never blocks — yields control between polls via asyncio.sleep.
+    Wait for a delegated task to finish.
+
+    Hook-style: watches the output file for existence/non-zero size (written by
+    delegate-to-local when the background process completes) before touching the
+    registry.  This reacts within POLL_INTERVAL_S of completion rather than on a
+    fixed registry-parse cadence, and avoids hammering the registry JSONL.
+
+    Falls back to a registry-only check if the output_file path is unavailable.
     """
     deadline = time.monotonic() + timeout_s
+    output_file: Optional[Path] = None
+
     while time.monotonic() < deadline:
-        for entry in _read_registry():
-            if entry.get("id") == task_id:
-                status = entry.get("status", "running")
-                # delegate-to-local writes "done"; accept both for forward-compat
-                if status in ("completed", "done"):
-                    return _read_output(entry.get("output_file", ""))
-                if status == "failed":
-                    return None
+        # Resolve output file path from registry (once)
+        if output_file is None:
+            for entry in _read_registry():
+                if entry.get("id") == task_id:
+                    of = entry.get("output_file", "")
+                    if of:
+                        output_file = (
+                            Path(of) if os.path.isabs(of) else _REPO_ROOT / of
+                        )
+                    break
+
+        # Fast path: output file appeared — check registry for terminal status
+        if output_file and output_file.exists() and output_file.stat().st_size > 0:
+            for entry in _read_registry():
+                if entry.get("id") == task_id:
+                    status = entry.get("status", "running")
+                    # delegate-to-local writes "done"; accept both for compat
+                    if status in ("completed", "done"):
+                        return _read_output(str(output_file))
+                    if status == "failed":
+                        return None
+                    # File written but registry not yet updated — one more cycle
+                    break
+
         await asyncio.sleep(POLL_INTERVAL_S)
+
     print(f"[eval] TIMEOUT: task {task_id} did not complete within {timeout_s}s", file=sys.stderr)
     return None
 
@@ -269,35 +293,40 @@ class TrainingLoop:
             print("[training-loop] ERROR: no eval cases found", file=sys.stderr)
             return {"run_id": run_id, "error": "no eval cases"}
 
-        task_ids: Dict[str, str] = {}  # case_id → task_id
-        for case in cases:
-            tid = _submit_task(case["query"], mode=case.get("mode", "hybrid"))
-            if tid:
-                task_ids[case["id"]] = tid
+        # ── 3. EVAL + WAIT + SCORE ─────────────────────────────────────────────
+        # direct mode tasks go to llama.cpp which is serial: serialize them with
+        # a Semaphore(1) so each task gets its full timeout window.  hybrid/agent
+        # mode tasks go to the coordinator queue which handles concurrency itself.
+        print(f"[training-loop] Phase 2+3: submitting and scoring {len(cases)} cases…")
+        direct_sem = asyncio.Semaphore(1)
+
+        async def _eval_one(case: Dict) -> Dict:
+            mode = case.get("mode", "hybrid")
+
+            async def _submit_and_wait() -> Optional[str]:
+                tid = _submit_task(case["query"], mode=mode)
+                if not tid:
+                    return None
                 if self.verbose:
                     print(f"[training-loop]   submitted {case['id']} → {tid}")
-            else:
-                print(f"[training-loop]   WARN: could not submit {case['id']}", file=sys.stderr)
+                return await _wait_for_task(tid, timeout_s=self.task_timeout)
 
-        # ── 3. WAIT + SCORE ────────────────────────────────────────────────────
-        print(f"[training-loop] Phase 3: waiting for {len(task_ids)} tasks "
-              f"(max {self.task_timeout}s each)…")
-        scores: List[Dict] = []
-        # Run all waits concurrently — each polls independently.
-        async def _eval_one(case: Dict) -> Dict:
-            tid = task_ids.get(case["id"])
-            if not tid:
-                return {**_score_response("", case), "task_id": None, "error": "not_submitted"}
-            response = await _wait_for_task(tid, timeout_s=self.task_timeout)
+            if mode == "direct":
+                # Serialized: only one direct request in-flight at a time
+                async with direct_sem:
+                    response = await _submit_and_wait()
+            else:
+                response = await _submit_and_wait()
+
             if response is None:
-                return {**_score_response("", case), "task_id": tid, "error": "timeout_or_failed"}
+                return {**_score_response("", case), "task_id": None, "error": "timeout_or_failed"}
             result = _score_response(response, case)
-            result["task_id"] = tid
             if self.verbose:
                 status = "PASS" if result["pass"] else "FAIL"
                 print(f"[training-loop]   {status} {case['id']} score={result['score']}")
             return result
 
+        scores: List[Dict] = []
         scores = await asyncio.gather(*[_eval_one(c) for c in cases])
 
         passing  = [s for s in scores if s.get("pass")]

@@ -1026,6 +1026,8 @@ in {
           commonServiceConfig
           // {
             User = hybridUser;
+            # Phase 72.x — attach AppArmor profile (complain mode; enforce after May-30 soak)
+            AppArmorProfile = "ai-hybrid-coordinator";
             ExecStart = lib.escapeShellArgs [
               "${hybridPython}/bin/python3"
               "${repoMcp}/hybrid-coordinator/server.py"
@@ -2252,8 +2254,13 @@ in {
             deny capability net_admin,
             deny capability net_raw,
 
-            # Deny home/root writes
-            deny /home/** rwx,
+            # Allow runtime repo reads (repoPath is under /home on dev machines).
+            # flakeRepoPath evaluates to a Nix store path and is already covered by
+            # /nix/store/** r above; this covers the live mutable source tree.
+            ${mcp.repoPath}/** r,
+
+            # Deny writes/exec to home/root; reads allowed for repo config above.
+            deny /home/** wx,
             deny /root/** rwx,
           }
         '';
@@ -2299,8 +2306,11 @@ in {
             deny capability sys_admin,
             deny capability net_admin,
 
-            # Deny writes outside allowed dirs
-            deny /home/** rwx,
+            # Allow runtime repo reads (repoPath is under /home on dev machines).
+            ${mcp.repoPath}/** r,
+
+            # Deny writes/exec to home/root; reads allowed for repo above.
+            deny /home/** wx,
             deny /root/** rwx,
           }
         '';
