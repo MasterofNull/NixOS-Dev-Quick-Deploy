@@ -112,6 +112,64 @@ def _read_registry() -> List[Dict]:
     return entries
 
 
+def _mark_registry_status(task_id: str, new_status: str) -> None:
+    """Rewrite registry in-place to set task_id's status to new_status."""
+    if not REGISTRY.exists():
+        return
+    lines = []
+    for raw in REGISTRY.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            entry = json.loads(raw)
+            if entry.get("id") == task_id:
+                entry["status"] = new_status
+            lines.append(json.dumps(entry))
+        except json.JSONDecodeError:
+            lines.append(raw)
+    REGISTRY.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _reap_orphans() -> int:
+    """
+    Layer 2: invoke the canonical registry reconciler to mark dead-PID 'running'
+    entries as 'stale'.  Falls back to an inline sweep if the tool is unavailable.
+    Returns count of entries reaped.
+    """
+    registry_tool = _SCRIPT_DIR / "aq-delegation-registry"
+    if registry_tool.exists():
+        try:
+            result = subprocess.run(
+                [str(registry_tool), "reconcile"],
+                capture_output=True, text=True, timeout=10,
+            )
+            out = result.stdout.strip()
+            if out:
+                data = json.loads(out)
+                return int(data.get("stale_marked", 0))
+        except Exception as exc:
+            print(f"[reap] registry tool failed, falling back inline: {exc}", file=sys.stderr)
+
+    # Inline fallback: scan + mark dead PIDs as 'stale'
+    reaped = 0
+    for entry in _read_registry():
+        if entry.get("status") != "running":
+            continue
+        pid = entry.get("pid")
+        if not pid:
+            continue
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            _mark_registry_status(entry["id"], "stale")
+            print(f"[reap] stale: {entry['id']} pid={pid} dead", file=sys.stderr)
+            reaped += 1
+        except (PermissionError, ValueError):
+            pass
+    return reaped
+
+
 def _read_output(output_file: str) -> str:
     path = Path(output_file)
     if not path.exists():
@@ -121,10 +179,14 @@ def _read_output(output_file: str) -> str:
 
 # ── delegation ─────────────────────────────────────────────────────────────────
 
-def _submit_task(query: str, mode: str = "hybrid") -> Optional[str]:
+def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -> Optional[str]:
     """
     Submit a task to delegate-to-local in background mode.
     Returns the task ID or None on error.
+
+    http_timeout_secs: passed to delegate-to-local --timeout (0 = use default 300).
+    For direct mode, callers should pass a higher value (e.g. 600) to tolerate
+    one extra queued request in the llama.cpp HTTP queue without timing out.
     """
     # delegate-to-local accepts: agent|hybrid|direct|ralph
     # eval packs may specify "auto" (coordinator decides) — map to hybrid
@@ -134,9 +196,12 @@ def _submit_task(query: str, mode: str = "hybrid") -> Optional[str]:
     if not delegate_bin.exists():
         print(f"[eval] ERROR: delegate-to-local not found at {delegate_bin}", file=sys.stderr)
         return None
+    cmd = [str(delegate_bin), "--mode", mode, "--prompt", query]
+    if http_timeout_secs > 0:
+        cmd += ["--timeout", str(http_timeout_secs)]
     try:
         result = subprocess.run(
-            [str(delegate_bin), "--mode", mode, "--prompt", query],
+            cmd,
             capture_output=True, text=True, timeout=30,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
@@ -194,6 +259,31 @@ async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) 
                         return None
                     # File written but registry not yet updated — one more cycle
                     break
+
+        # Layer 1: PID liveness — if the background process is dead but registry
+        # still shows "running", mark it "stale" and bail immediately rather than
+        # burning the full timeout_s waiting for a task that will never complete.
+        for entry in _read_registry():
+            if entry.get("id") != task_id:
+                continue
+            status = entry.get("status", "running")
+            # Accept stale/orphaned as terminal (set by reconciler or prior reap)
+            if status in ("stale", "orphaned"):
+                print(f"[eval] task {task_id} already {status}, skipping wait", file=sys.stderr)
+                return None
+            if status == "running":
+                pid = entry.get("pid")
+                if pid:
+                    try:
+                        os.kill(int(pid), 0)  # 0 = liveness probe, no signal sent
+                    except ProcessLookupError:
+                        print(f"[eval] orphan: {task_id} pid={pid} dead → stale",
+                              file=sys.stderr)
+                        _mark_registry_status(task_id, "stale")
+                        return None
+                    except PermissionError:
+                        pass  # process exists but belongs to another user; keep waiting
+            break
 
         await asyncio.sleep(POLL_INTERVAL_S)
 
@@ -272,6 +362,11 @@ class TrainingLoop:
         run_id = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
         print(f"[training-loop] Starting run {run_id}")
 
+        # Layer 2: reap dead background processes before submitting new tasks
+        reaped = _reap_orphans()
+        if reaped:
+            print(f"[training-loop] Reaped {reaped} orphaned task(s) from prior runs")
+
         # ── 1. INGEST ──────────────────────────────────────────────────────────
         print("[training-loop] Phase 1: telemetry ingest")
         try:
@@ -304,7 +399,10 @@ class TrainingLoop:
             mode = case.get("mode", "hybrid")
 
             async def _submit_and_wait() -> Optional[str]:
-                tid = _submit_task(case["query"], mode=mode)
+                # Use 600s HTTP timeout for direct mode to tolerate 1 extra queued
+                # request in llama.cpp without timing out (serial backend, 5 min/req)
+                http_to = 600 if mode == "direct" else 0
+                tid = _submit_task(case["query"], mode=mode, http_timeout_secs=http_to)
                 if not tid:
                     return None
                 if self.verbose:
