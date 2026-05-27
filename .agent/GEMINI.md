@@ -46,12 +46,13 @@ Do not ask "how can I help?" or "what would you like to do?" — those are failu
 | 2 | **HARNESS-FIRST** | Query aq-hints / `/query` / AIDB before reading raw files. Tools before assumptions. |
 | 3 | **COMMIT FORMAT** | `type(scope): description` + `Co-Authored-By: <agent> <noreply@domain>` |
 | 4 | **LANE SELECTION** | Prefer local inference for bounded tasks; remote only when task value justifies cost. |
-| 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
-| 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
-| 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
-| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
-| 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
-| 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+| 5 | **MACHINE-MODE MANDATE** | **ALWAYS use `-agent` tool variants** for routine/heavy CLI actions (e.g., `aq-qa-agent`, `aq-report-agent`). Use "Human" tools (`aq-qa`, `aq-report`) ONLY when explicit human-readable context richness is required for a manual review. |
+| 6 | **AUTONOMOUS LOOP INTEGRATION** | Respect and coordinate with `RemediatorAgent` and `DiscoveryAgent`. |
+| 7 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
+| 8 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
+| 9 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 10 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
+| 11 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
 
 ---
 

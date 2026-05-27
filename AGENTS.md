@@ -55,6 +55,15 @@ A Drop Zone is a watched directory or file pattern. When a file is created or mo
 no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted; verify auth wired in;
 `bash -n` on shell, `py_compile` on Python; privilege minimization. Never use `--no-verify`.
 
+## Lights-Out Factory Operational Rules (Phase 55+)
+
+Agents operate within the factory brain mesh with the following priorities:
+
+1. **Machine-Mode First:** All CLI interactions (`aq-qa`, `aq-report`) must use `--machine` to minimize reasoning overhead.
+2. **Autonomous Remediation:** Never manually restart failed services if the `RemediatorAgent` is active. Inspect PRSI logs first.
+3. **Proactive Discovery:** `DiscoveryAgent` tasks take precedence during system idle to identify knowledge gaps and bottlenecks.
+4. **Evidence-Driven Evolution:** All proposed system changes must be tied to a detected anomaly (log entry, latency spike, or QA failure) in the telemetry.
+
 ## Project Philosophy — You Cannot Manage What You Cannot Measure
 
 **This is the governing design principle for all features, phases, and dev cycles.**
