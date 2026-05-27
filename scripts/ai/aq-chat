@@ -21,6 +21,7 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from rich.console import Console
+from rich.layout import Layout
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -69,6 +70,12 @@ class AQChat:
         self.inject_context = not getattr(args, "no_inject", False)
         self.local_tools_enabled = not getattr(args, "no_tools", False)
 
+        # Steering & Concurrency state
+        self.current_stream_task: Optional[asyncio.Task] = None
+        self.interrupt_event = asyncio.Event()
+        self.steering_prompt: Optional[str] = None
+        self.is_thinking = False
+
         # Dynamic discovery state
         self.available_agents = {}
         self.pool_manager = None
@@ -108,12 +115,18 @@ class AQChat:
             if isinstance(ram_free, float) else "unknown"
         )
 
-        return f"""You are AQ, the AI agent for NixOS-Dev-Quick-Deploy (ThinkPad P14s AMD, Renoir APU, 27 GB RAM, NixOS flake).
+        return f"""You are AQ, the expert coding and systems developer for NixOS-Dev-Quick-Deploy (ThinkPad P14s AMD, Cezanne APU, 27 GB RAM, NixOS flake).
 
 STACK: llama.cpp :8080 ({model_id}, n_gpu_layers={ngl or 12}/12) | embed :8081 | coordinator :8003 | switchboard :8085 | AIDB :8002 | dashboard :8889
 HARDWARE: thermal={thermal}{temps} | RAM={ram_str} | MTP={mtp_str}
-CONSTRAINTS: gpu_layers≤12 | ports from nix/modules/core/options.nix only | enable_thinking=false always | dashboard/backend hot-reloads; coordinator/switchboard/llama need nixos-rebuild
-TOOLS: run_command, read_file, search_files, git_status, query_context, get_hint — invoke directly, never ask operator to configure execution
+CONSTRAINTS: gpu_layers≤12 | ports from nix/modules/core/options.nix only | enable_thinking=true | dashboard/backend hot-reloads; coordinator/switchboard/llama need nixos-rebuild
+
+=== OPERATIONAL RULES ===
+1. CHECK-IN FIRST: Before making system changes, show your research and proposed plan with proof (file reads, command outputs).
+2. EVIDENCE-BASED: Ground every answer in the actual system state using tools.
+3. NIXOS MASTERY: Apply best practices for NixOS and declarative configuration.
+4. TOOLS: run_command, read_file, search_files, git_status, query_context, get_hint, harness_health, get_prsi_pending, prsi_orchestrate, query_aidb, get_working_memory, recommend_agent_for_task — invoke directly.
+
 BEHAVIORAL RULES: casual chat → plain text no tools | search before answering (harness-first) | max 2 retries → stop | commits: type(scope): desc + Co-Authored-By"""
 
     async def _discover_pool(self):
@@ -144,6 +157,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
 
     async def _stream_chat(self, prompt: str):
         self.context_history.append({"role": "user", "content": prompt})
+        self.interrupt_event.clear()
+        self.steering_prompt = None
         
         thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
         with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
@@ -153,43 +168,67 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 "model": local_model_id if self.active_profile in {"local", "local-tool-calling"} else self.active_profile,
                 "messages": self.context_history,
                 "stream": True,
-                "temperature": self.temperature
+                "temperature": self.temperature,
+                "agent_type": "human"
             }
 
             headers = {}
+            if self.active_profile == "local":
+                headers["X-AI-Lane"] = "high-priority"
+                
             if switchboard_local_tools:
                 target_url = f"{self.switchboard_url}/v1/chat/completions"
                 headers["X-AI-Profile"] = "local-tool-calling"
                 payload["stream"] = False
                 payload["max_tool_calls"] = self.max_tool_calls
-                payload["chat_template_kwargs"] = {"enable_thinking": False}
+                payload["chat_template_kwargs"] = {"enable_thinking": True}
             elif self.active_profile == "local":
                 target_url = f"{self.llama_url}/v1/chat/completions"
-                payload["chat_template_kwargs"] = {"enable_thinking": False}
+                payload["chat_template_kwargs"] = {"enable_thinking": True}
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
 
             try:
                 if switchboard_local_tools:
-                    response = await self.client.post(target_url, json=payload, headers=headers)
-                    if response.status_code != 200:
-                        console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
-                        try:
-                            console.print(response.json())
-                        except Exception:
-                            console.print(response.text)
-                        return
-                    body = response.json()
-                    message = (body.get("choices") or [{}])[0].get("message") or {}
-                    full_response = message.get("content", "") or ""
-                    console.print()
-                    console.print(Markdown(full_response))
-                    self.context_history.append({"role": "assistant", "content": full_response})
-                    tool_calls_used = response.headers.get("X-AI-Tool-Calls-Used")
-                    if tool_calls_used is not None:
-                        console.print(f"[dim]local tools used: {tool_calls_used}[/]")
-                    if body.get("local_tool_budget_exhausted"):
-                        console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
+                    payload["stream"] = True
+                    async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
+                        if response.status_code != 200:
+                            console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
+                            return
+                        
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                content = line[6:]
+                                if content.strip() == "[DONE]": break
+                                try:
+                                    chunk = json.loads(content)
+                                    # DEBUG: Log the full chunk for analysis
+                                    # logger.debug(f"Chunk: {content}")
+                                    
+                                    # Display thoughts and tool calls in real-time
+                                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                    
+                                    # Check for dedicated reasoning field (e.g., DeepSeek/Qwen format)
+                                    if "reasoning" in delta and delta["reasoning"]:
+                                        if not self.is_thinking:
+                                            self.is_thinking = True
+                                            print("\n[dim]Thoughts: ", end="", flush=True)
+                                        print(f"\033[2m{delta['reasoning']}\033[0m", end="", flush=True)
+                                        continue
+
+                                    if "content" in delta and delta["content"]:
+                                        # Close thoughts if content starts
+                                        if self.is_thinking:
+                                            self.is_thinking = False
+                                            print("[/dim]\n", end="", flush=True)
+                                        print(delta["content"], end="", flush=True)
+                                    
+                                    if "tool_calls" in delta:
+                                        console.print(f"\n[bold magenta]Tool Call:[/] {delta['tool_calls']}")
+                                    if chunk.get("local_tool_budget_exhausted"):
+                                        console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
+                                except json.JSONDecodeError: continue
+                    print()
                     return
 
                 async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
@@ -198,8 +237,14 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         return
 
                     full_response = ""
-                    console.print()
+                    self.is_thinking = False
+                    print()
+                    
                     async for line in response.aiter_lines():
+                        if self.interrupt_event.is_set():
+                            console.print("\n[bold yellow]Interrupted! Steering with new prompt...[/]")
+                            break
+
                         if line.startswith("data: "):
                             try:
                                 content = line[6:]
@@ -207,17 +252,36 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                                     break
                                 chunk = json.loads(content)
                                 token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "") or ""
+                                
+                                if "<think>" in token or "<thought>" in token:
+                                    self.is_thinking = True
+                                    print("\n[dim]Thoughts: ", end="", flush=True)
+                                    continue
+                                elif "</think>" in token or "</thought>" in token:
+                                    self.is_thinking = False
+                                    print("[/dim]\n", end="", flush=True)
+                                    continue
+                                
                                 full_response += token
-                                print(token, end="", flush=True)
+                                if self.is_thinking:
+                                    print(f"\033[2m{token}\033[0m", end="", flush=True)
+                                else:
+                                    print(token, end="", flush=True)
                             except json.JSONDecodeError:
                                 continue
                     
                     print()
-                    console.print(Markdown("---"))
-                    console.print(Markdown(full_response))
-                    console.print(Markdown("---"))
-                    
-                    self.context_history.append({"role": "assistant", "content": full_response})
+                    if not self.interrupt_event.is_set():
+                        console.print(Markdown("---"))
+                        console.print(Markdown(full_response))
+                        console.print(Markdown("---"))
+                        self.context_history.append({"role": "assistant", "content": full_response})
+                    else:
+                        # Handle steering
+                        steer_msg = f"INTERRUPT: {self.steering_prompt}"
+                        self.context_history.append({"role": "assistant", "content": full_response + " [INTERRUPTED]"})
+                        # Re-trigger with steering
+                        await self._stream_chat(steer_msg)
             except Exception as e:
                 err_msg = str(e)
                 if not err_msg:
@@ -390,9 +454,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
     async def run(self):
         await self._discover_pool()
         self.model_name = await self._get_active_model()
-
-        # Inject harness-aware system prompt so the local model is grounded
-        # in the actual running system rather than giving generic advice.
+        
+        # Inject harness-aware system prompt
         if self.inject_context and self.active_profile == "local":
             with console.status("[dim]Grounding model in harness context...[/]", spinner="dots"):
                 sys_prompt = await self._build_harness_system_prompt()
@@ -408,27 +471,13 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
 
         while True:
             try:
-                user_input = await self.session.prompt_async(
-                    HTML(f'<prompt>[{self.active_profile}]</prompt> <model>❯</model> '),
-                    style=STYLE
-                )
+                p_text = f'<prompt>[{self.active_profile}]</prompt> <model>❯</model> '
+                user_input = await self.session.prompt_async(HTML(p_text), style=STYLE)
                 user_input = user_input.strip()
                 
                 if not user_input: continue
                 
                 if user_input.startswith("/"):
-                    if user_input.lower() == "/help":
-                        console.print("[bold magenta]Slash Commands:[/]\n"
-                                      " /route <id> - Switch agent lane\n"
-                                      " /search <q> - Knowledge base lookup\n"
-                                      " /tools      - List agent capabilities\n"
-                                      " /save <f>   - Export markdown chat\n"
-                                      " /load <f>   - Import markdown context\n"
-                                      " /reset      - Reset conversation\n"
-                                      " /status     - Show system metrics\n"
-                                      " /prime      - Sync repository context\n"
-                                      " /exit       - Terminate session")
-                        continue
                     await self.handle_slash_command(user_input)
                 else:
                     await self._stream_chat(user_input)

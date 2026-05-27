@@ -1,66 +1,39 @@
 #!/usr/bin/env bash
 # aq-qa — AI Stack QA phase runner
 #
-# Thin wrapper: delegates to the Python harness_qa framework for phase 0
-# (fully native Python), with bash fallback for phases not yet migrated.
-#
 # Usage:
-#   aq-qa 0               Run Phase 0 (pre-flight smoke)
-#   aq-qa 1               Run Phase 1 (infrastructure) — bash fallback
-#   aq-qa all             Run all implemented phases
-#   aq-qa 0 --json        Machine-readable JSON output
-#   aq-qa 0 --sudo        Enable checks requiring sudo
-#   aq-qa --layer 5       Run only Session/Persistence checks
-#   aq-qa --layer 4 --causality  Check L4 + all dependencies
+#   aq-qa [phase] [--machine]
 #
-# Exit codes: 0 = all pass, 1 = one or more failed, 2 = usage error
-#
-# Implementation: scripts/testing/harness_qa/phases/phase0.py (Python, phase 0)
-#                 scripts/ai/_aq-qa-bash (bash fallback, phases 1-59)
-#
-# Phase 0 check index (sourced by roadmap verification):
-#   0.5.2 — Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane
-#   0.5.5 — continue-local trims oversized dense prompts
-#   0.5.6 — Continue/editor prompt to feedback smoke
-#   0.6.1 — flagship agent CLI help smokes
-#   0.7.3 — RAG recall quality; aq-report exposes retrieval acceptance metrics
-#   0.8.1 — delegate 24h success rate
-#
-# Key implementation anchors (used by roadmap pattern checks):
-#   _aq_report_snapshot → ctx.aq_report_snapshot (context.py)
-#   expected_context → harness_qa/phases/phase0.py (_check_continue)
-#   /health → harness_qa/phases/phase0.py (http_health_ok calls)
-#   apiBase") == "http://127.0.0.1:8085/v1" → harness_qa/phases/phase0.py
-#   aq-report exposes retrieval acceptance metrics → harness_qa/phases/phase0.py (_check_rag_recall)
+# --machine: Strips ANSI styling and provides raw, deterministic output
+#            for autonomous agents.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-HARNESS_PY="${REPO_ROOT}/scripts/testing/harness_qa/main.py"
+HARNESS_PY="${REPO_ROOT}/scripts/ai/lib/harness_runner.py"
+
+MACHINE_MODE=false
+ARGS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--machine" ]]; then
+    MACHINE_MODE=true
+  else
+    ARGS+=("$arg")
+  fi
+done
 
 if [[ ! -f "${HARNESS_PY}" ]]; then
-  exec bash "${SCRIPT_DIR}/_aq-qa-bash" "$@"
+  exec bash "${SCRIPT_DIR}/_aq-qa-bash" "${ARGS[@]}"
 fi
 
-# Check if python3 is available
 if ! command -v python3 >/dev/null 2>&1; then
-  exec bash "${SCRIPT_DIR}/_aq-qa-bash" "$@"
+  exec bash "${SCRIPT_DIR}/_aq-qa-bash" "${ARGS[@]}"
 fi
 
-# Phase 0 and 'all' run via Python framework; other phases use bash fallback
-# until R1.3 migration completes.
-PHASE="${1:-help}"
-# Strip optional "phase" prefix
-PHASE="${PHASE#phase}"
-
-case "${PHASE}" in
-  0|all|help|"")
-    exec python3 "${HARNESS_PY}" "$@"
-    ;;
-  *)
-    # Non-zero phases: Python stubs call _aq-qa-bash internally via JSON parse.
-    # We can also route directly through Python which will call the stubs.
-    exec python3 "${HARNESS_PY}" "$@"
-    ;;
-esac
+if [[ "${MACHINE_MODE}" == "true" ]]; then
+    # Force NO_COLOR and machine-readable output
+    NO_COLOR=1 exec python3 "${HARNESS_PY}" "${ARGS[@]}" --machine
+else
+    exec python3 "${HARNESS_PY}" "${ARGS[@]}"
+fi

@@ -47,14 +47,29 @@ def output_matches(pattern: str, *args: str, timeout: int = 15) -> bool:
 
 
 def port_bound(port: int, retries: int = 4, delay: float = 1.0) -> bool:
-    """Check if a TCP port is listening (using ss -tlnp)."""
+    """Check if a TCP port is listening (resilient check)."""
+    import socket
     for attempt in range(retries):
-        result = subprocess.run(
-            ["ss", "-tlnp"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if f":{port} " in result.stdout:
-            return True
+        # Primary: socket connection check (most reliable across environments)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                if s.connect_ex(("127.0.0.1", port)) == 0:
+                    return True
+        except Exception:
+            pass
+
+        # Secondary: ss command (fallback for detailed diagnostic if needed)
+        try:
+            result = subprocess.run(
+                ["ss", "-tlnp"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if f":{port} " in result.stdout:
+                return True
+        except Exception:
+            pass
+
         if attempt < retries - 1:
             time.sleep(delay)
     return False

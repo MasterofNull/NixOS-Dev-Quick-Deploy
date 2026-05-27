@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# als — minimalist list for agents
+exec ls -1 -A --ignore=.git --ignore=__pycache__ "$@"

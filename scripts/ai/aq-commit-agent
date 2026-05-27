@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""
+aq-commit-agent — Atomic commit wrapper for PRSI slices.
+"""
+import subprocess
+import sys
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: aq-commit-agent <message>")
+        sys.exit(1)
+        
+    msg = sys.argv[1]
+    # Commit PENDING.json, PULSE.log, and HANDOFF.md + current changes
+    subprocess.run(["git", "add", ".agent/collaboration/"], check=True)
+    subprocess.run(["git", "commit", "-m", msg], check=True)
+    print("COMMIT_SUCCESS")

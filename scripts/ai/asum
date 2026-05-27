@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# asum — structural summary for agents
+printf "File: %s
+Lines: %s
+Size: %s
+" "$1" "$(wc -l < "$1")" "$(du -sh "$1" | cut -f1)"

@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""
+aq-qa-agent — Machine-readable QA runner.
+"""
+
+import subprocess
+import sys
+import os
+
+if __name__ == "__main__":
+    # Use the absolute path to the local script
+    aq_qa_path = os.path.abspath("scripts/ai/aq-qa")
+    sys.exit(subprocess.call([aq_qa_path, *sys.argv[1:], "--machine"]))
