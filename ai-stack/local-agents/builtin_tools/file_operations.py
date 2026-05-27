@@ -86,20 +86,27 @@ def validate_file_path(file_path: str, allow_write: bool = False) -> tuple[bool,
 
 # Tool handlers
 
-async def read_file_handler(file_path: str, max_size_kb: int = 1024) -> Dict:
+async def read_file_handler(
+    file_path: str,
+    max_size_kb: int = 1024,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None,
+) -> Dict:
     """
-    Read contents of a file.
+    Read contents of a file with optional line-range chunking.
 
     Args:
         file_path: Absolute path to file
         max_size_kb: Maximum file size in KB (default: 1MB)
+        start_line: 1-based start line (optional)
+        end_line: 1-based end line (optional)
 
     Returns:
         {
             "success": bool,
             "content": str (if success),
             "error": str (if failed),
-            "metadata": {size_bytes, lines}
+            "metadata": {size_bytes, lines, start_line, end_line}
         }
     """
     # Validate path
@@ -116,26 +123,46 @@ async def read_file_handler(file_path: str, max_size_kb: int = 1024) -> Dict:
     if not path.is_file():
         return {"success": False, "error": f"Path is not a file: {file_path}"}
 
-    # Check file size
+    # Check file size (only if reading the whole file)
     size_bytes = path.stat().st_size
-    if size_bytes > max_size_kb * 1024:
-        return {
-            "success": False,
-            "error": f"File too large: {size_bytes / 1024:.1f}KB > {max_size_kb}KB",
-        }
+    if start_line is None and end_line is None:
+        if size_bytes > max_size_kb * 1024:
+            return {
+                "success": False,
+                "error": f"File too large: {size_bytes / 1024:.1f}KB > {max_size_kb}KB. Use start_line/end_line for chunking.",
+            }
 
     # Read file
     try:
-        content = path.read_text()
-        lines = content.count("\n") + 1
+        if start_line is not None or end_line is not None:
+            # Chunked read
+            lines_content = []
+            s = (start_line or 1) - 1
+            e = end_line or 1000000 # default to "rest of file"
+            
+            with path.open("r", encoding="utf-8") as f:
+                for i, line in enumerate(f):
+                    if i >= s and i < e:
+                        lines_content.append(line)
+                    if i >= e:
+                        break
+            
+            content = "".join(lines_content)
+            actual_lines = len(lines_content)
+        else:
+            # Full read
+            content = path.read_text(encoding="utf-8")
+            actual_lines = content.count("\n") + 1
 
         return {
             "success": True,
             "content": content,
             "metadata": {
                 "size_bytes": size_bytes,
-                "lines": lines,
+                "lines": actual_lines,
                 "path": str(path),
+                "start_line": start_line,
+                "end_line": end_line,
             },
         }
 
@@ -369,7 +396,7 @@ def register_file_tools(registry: ToolRegistry):
     # read_file
     registry.register(ToolDefinition(
         name="read_file",
-        description="Read the contents of a file",
+        description="Read the contents of a file with optional line-range chunking.",
         parameters={
             "type": "object",
             "properties": {
@@ -381,6 +408,14 @@ def register_file_tools(registry: ToolRegistry):
                     "type": "integer",
                     "description": "Maximum file size in KB (default: 1024)",
                     "default": 1024,
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "1-based start line (optional)",
+                },
+                "end_line": {
+                    "type": "integer",
+                    "description": "1-based end line (optional)",
                 },
             },
             "required": ["file_path"],

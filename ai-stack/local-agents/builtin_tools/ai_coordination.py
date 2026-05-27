@@ -296,6 +296,111 @@ async def run_opencode_handler(
         return {"success": False, "error": str(e), "model": resolved_model}
 
 
+async def harness_health_handler(phase: str = "0") -> Dict:
+    """Proxy for run_qa_check (harness_health)"""
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/qa/check", json={"phase": phase})
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def get_prsi_pending_handler() -> Dict:
+    """Proxy for get_prsi_pending"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{HYBRID_COORDINATOR_URL}/control/prsi/pending")
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def prsi_orchestrate_handler(action: str, action_id: Optional[str] = None, note: Optional[str] = None) -> Dict:
+    """Proxy for prsi_orchestrate"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            payload = {"action": action, "action_id": action_id, "note": note}
+            # Note: The coordinator might use different endpoints for different actions
+            if action == "execute":
+                resp = await client.post(f"{HYBRID_COORDINATOR_URL}/control/prsi/actions/execute", json=payload)
+            else:
+                resp = await client.get(f"{HYBRID_COORDINATOR_URL}/control/prsi/actions", params=payload)
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def recommend_agent_for_task_handler(query: str) -> Dict:
+    """Proxy for recommend_agent_for_task (federated)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/federated/recommend", json={"query": query})
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def query_aidb_handler(query: str, limit: int = 5) -> Dict:
+    """Proxy for hybrid_search (query_aidb)"""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/search/tree", json={"query": query, "limit": limit})
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def get_working_memory_handler() -> Dict:
+    """Proxy for recall_agent_memory (get_working_memory)"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/memory/recall", json={"query": "working memory summary", "memory_types": ["semantic"]})
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def mesh_discovery_handler() -> Dict:
+    """Get active agents, teams, and capabilities from the mesh."""
+    try:
+        from collective_memory import CollectiveMemory
+        mem = CollectiveMemory()
+        active_teams = mem.get_active_teams()
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{HYBRID_COORDINATOR_URL}/discovery/capabilities")
+            capabilities = resp.json() if resp.status_code == 200 else {}
+            
+        return {
+            "success": True,
+            "active_teams": active_teams,
+            "team_count": len(active_teams),
+            "capabilities": capabilities.get("capabilities", []),
+            "redis_connected": mem.is_redis_connected(),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def collective_memory_search_handler(query: str, limit: int = 5) -> Dict:
+    """Search historical collaboration records in the collective memory (AIDB)."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Collaborations are stored in a specific project in AIDB
+            resp = await client.post(
+                f"{AIDB_URL}/documents/search",
+                json={
+                    "query": query,
+                    "limit": limit,
+                    "project": "agent-collaborations",
+                }
+            )
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def register_ai_coordination_tools(registry: ToolRegistry):
     """Register all AI coordination tools in the registry"""
 
@@ -467,4 +572,124 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=run_opencode_handler,
     ))
 
-    logger.info("Registered 6 AI coordination tools")
+    # harness_health
+    registry.register(ToolDefinition(
+        name="harness_health",
+        description="Run AI stack health checks (qa_check)",
+        parameters={
+            "type": "object",
+            "properties": {
+                "phase": {
+                    "type": "string",
+                    "description": "QA phase to run (0-10)",
+                    "default": "0",
+                },
+            },
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=harness_health_handler,
+    ))
+
+    # get_prsi_pending
+    registry.register(ToolDefinition(
+        name="get_prsi_pending",
+        description="Get list of pending PRSI optimization actions",
+        parameters={"type": "object", "properties": {}},
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=get_prsi_pending_handler,
+    ))
+
+    # prsi_orchestrate
+    registry.register(ToolDefinition(
+        name="prsi_orchestrate",
+        description="Approve, reject, or execute PRSI actions",
+        parameters={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["approve", "reject", "sync", "execute"],
+                },
+                "action_id": {"type": "string"},
+                "note": {"type": "string"},
+            },
+            "required": ["action"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.SYSTEM_MODIFY,
+        handler=prsi_orchestrate_handler,
+    ))
+
+    # recommend_agent_for_task
+    registry.register(ToolDefinition(
+        name="recommend_agent_for_task",
+        description="Get recommendation for the best agent to handle a task (agent mesh)",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+            },
+            "required": ["query"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=recommend_agent_for_task_handler,
+    ))
+
+    # query_aidb
+    registry.register(ToolDefinition(
+        name="query_aidb",
+        description="Search the AI stack knowledge base (hybrid_search)",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=query_aidb_handler,
+    ))
+
+    # get_working_memory
+    registry.register(ToolDefinition(
+        name="get_working_memory",
+        description="Retrieve recent session facts and decisions",
+        parameters={"type": "object", "properties": {}},
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=get_working_memory_handler,
+    ))
+
+    # mesh_discovery
+    registry.register(ToolDefinition(
+        name="mesh_discovery",
+        description="Discover active agents, teams, and capabilities in the mesh",
+        parameters={"type": "object", "properties": {}},
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=mesh_discovery_handler,
+    ))
+
+    # collective_memory_search
+    registry.register(ToolDefinition(
+        name="collective_memory_search",
+        description="Search past agent collaborations and lessons learned",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=collective_memory_search_handler,
+    ))
+
+    logger.info("Registered 14 AI coordination tools")
