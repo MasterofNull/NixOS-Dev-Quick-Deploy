@@ -13,7 +13,10 @@ Continue.dev integration.
 
 ## Port Policy (NON-NEGOTIABLE)
 
-
+**NEVER hardcode ports or URLs in Python or shell.** Single source of truth: `nix/modules/core/options.nix`.
+- Python reads from env vars; shell scripts use `${PORT:-default}`.
+- Current defaults: llama.cpp=8080, llama-embed=8081, AIDB=8002, hybrid-coordinator=8003,
+  switchboard=8085, cli-bridge=8089, dashboard=8889, ralph=8004.
 
 ## Key Service URLs (from config/service-endpoints.sh)
 
@@ -25,9 +28,21 @@ curl "$HINTS_URL?q=nixos+conflict"
 
 ## Hardware
 
-
+AMD ThinkPad P14s Gen 2a — Renoir APU (Radeon RX Vega 7 iGPU, 4 GB shared VRAM).
+- GPU layers ceiling: **`--n-gpu-layers 12` maximum** — never suggest higher.
+- `--flash-attn [on|off|auto]` — bare `--flash-attn` flag eats the next arg as value.
+- Total usable RAM: 27 GB. Model VRAM budget: 22.5 GB model / 1.0 GB KV / 3.0 GB OS reserve.
+- `enable_thinking: false` in EVERY llama.cpp request — thinking tokens cause empty responses.
 
 ## Recurring Errors
+
+- **logger NameError in switchboard**: switchboard.py uses `print(..., file=sys.stderr)`, NOT a logger object.
+- **Async blocking**: NEVER synchronous file I/O inside `async def` aiohttp/FastAPI handlers.
+- **JS fetch timeout**: Every fetch in Promise.allSettled needs AbortController.
+- **Duplicate inline auth**: `http_server.py` has `_is_loopback_agent_request()` at ~line 1412 with its own
+  `agent_prefixes` tuple — patch BOTH sites when adding loopback endpoints.
+- **Coverage gap**: if a service has 0 aq-qa checks AND 0 dashboard panels it breaks silently.
+  Governance: aq-qa + dashboard panel required before any feature/service is "done".
 
 
 
