@@ -132,12 +132,38 @@ def _mark_registry_status(task_id: str, new_status: str) -> None:
     REGISTRY.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _task_age_seconds(task_id: str) -> Optional[float]:
+    """
+    Parse submission time from task ID (format: local-YYYYMMDD-HHMMSS-xxx).
+    Returns age in seconds, or None if ID format doesn't match.
+    """
+    from datetime import datetime as _dt
+    parts = task_id.split("-")
+    # expect: ['local', 'YYYYMMDD', 'HHMMSS', 'xxx']
+    if len(parts) < 4:
+        return None
+    try:
+        ts = _dt.strptime(f"{parts[1]}-{parts[2]}", "%Y%m%d-%H%M%S")
+        age = (_dt.now() - ts).total_seconds()
+        return age
+    except (ValueError, IndexError):
+        return None
+
+
 def _reap_orphans() -> int:
     """
     Layer 2: invoke the canonical registry reconciler to mark dead-PID 'running'
     entries as 'stale'.  Falls back to an inline sweep if the tool is unavailable.
+
+    Also cancels live-PID tasks whose age exceeds DEFAULT_TASK_TIMEOUT_S — these
+    are ghost processes from previously killed training runs that still hold the
+    llama.cpp slot.
+
     Returns count of entries reaped.
     """
+    reaped = 0
+
+    # Phase A: reconcile dead PIDs via canonical tool
     registry_tool = _SCRIPT_DIR / "aq-delegation-registry"
     if registry_tool.exists():
         try:
@@ -148,26 +174,41 @@ def _reap_orphans() -> int:
             out = result.stdout.strip()
             if out:
                 data = json.loads(out)
-                return int(data.get("stale_marked", 0))
+                reaped += int(data.get("stale_marked", 0))
         except Exception as exc:
             print(f"[reap] registry tool failed, falling back inline: {exc}", file=sys.stderr)
+            # Inline fallback: scan + mark dead PIDs as 'stale'
+            for entry in _read_registry():
+                if entry.get("status") != "running":
+                    continue
+                pid = entry.get("pid")
+                if not pid:
+                    continue
+                try:
+                    os.kill(int(pid), 0)
+                except ProcessLookupError:
+                    _mark_registry_status(entry["id"], "stale")
+                    print(f"[reap] stale: {entry['id']} pid={pid} dead", file=sys.stderr)
+                    reaped += 1
+                except (PermissionError, ValueError):
+                    pass
 
-    # Inline fallback: scan + mark dead PIDs as 'stale'
-    reaped = 0
-    for entry in _read_registry():
+    # Phase B: cancel live-PID tasks that have exceeded the timeout window.
+    # These are ghosts from killed training runs that still hold llama.cpp slots.
+    now_entries = _read_registry()
+    for entry in now_entries:
         if entry.get("status") != "running":
             continue
-        pid = entry.get("pid")
-        if not pid:
+        age = _task_age_seconds(entry["id"])
+        if age is None or age <= DEFAULT_TASK_TIMEOUT_S:
             continue
-        try:
-            os.kill(int(pid), 0)
-        except ProcessLookupError:
-            _mark_registry_status(entry["id"], "stale")
-            print(f"[reap] stale: {entry['id']} pid={pid} dead", file=sys.stderr)
-            reaped += 1
-        except (PermissionError, ValueError):
-            pass
+        print(
+            f"[reap] ghost: {entry['id']} age={age:.0f}s > {DEFAULT_TASK_TIMEOUT_S}s, cancelling",
+            file=sys.stderr,
+        )
+        _cancel_task(entry["id"])
+        reaped += 1
+
     return reaped
 
 
