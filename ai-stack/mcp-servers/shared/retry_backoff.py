@@ -39,70 +39,131 @@ class RetryConfig:
 
 async def retry_with_backoff(
     func: Callable,
-    config: RetryConfig,
     *args,
+    config: Union[RetryConfig, int, None] = None,
+    max_attempts: int = 3,
+    breaker: Optional[Any] = None,
+    retry_on_exceptions: Optional[Union[Type[Exception], tuple[Type[Exception], ...]]] = None,
     **kwargs
 ) -> Any:
     """
-    Execute a function with retry and exponential backoff
-    
-    Args:
-        func: The function to execute
-        config: Retry configuration
-        *args: Arguments to pass to the function
-        **kwargs: Keyword arguments to pass to the function
-    
-    Returns:
-        Result of the function call
-    
-    Raises:
-        The last exception raised by the function if all retries fail
+    Execute a function with retry and exponential backoff.
+    Intelligently handles 429/402 rate limits by respecting Retry-After headers.
     """
+    # Normalize config
+    if isinstance(config, RetryConfig):
+        actual_config = config
+    else:
+        # Use provided max_attempts or config if it's an int
+        attempts = config if isinstance(config, int) else max_attempts
+        actual_config = RetryConfig(max_attempts=attempts)
+        
+        # Override exceptions if provided
+        if retry_on_exceptions:
+            if isinstance(retry_on_exceptions, type):
+                actual_config.retry_exceptions = [retry_on_exceptions]
+            else:
+                actual_config.retry_exceptions = list(retry_on_exceptions)
+
     last_exception = None
     
-    for attempt in range(config.max_attempts):
+    for attempt in range(actual_config.max_attempts):
         try:
             result = await func(*args, **kwargs)
+            
+            # If the result is an httpx.Response, check for rate limits
+            if hasattr(result, "status_code"):
+                if result.status_code in (429, 402):
+                    retry_after = _get_retry_after(result)
+                    if retry_after > 0:
+                        if breaker and hasattr(breaker, "throttle"):
+                            await breaker.throttle(retry_after)
+                        
+                        logger.warning(f"Service requested backoff: {result.status_code}. Sleeping for {retry_after:.1f}s")
+                        await asyncio.sleep(retry_after)
+                        # Retry after sleep
+                        return await retry_with_backoff(func, *args, config=actual_config, breaker=breaker, **kwargs)
+            
             return result
         except Exception as e:
             last_exception = e
             
+            # Check for rate limit info in common LLM client exceptions
+            retry_after = _get_exception_retry_after(e)
+            if retry_after > 0:
+                if breaker and hasattr(breaker, "throttle"):
+                    await breaker.throttle(retry_after)
+                
+                logger.warning(f"Exception requested backoff. Sleeping for {retry_after:.1f}s")
+                await asyncio.sleep(retry_after)
+                return await retry_with_backoff(func, *args, config=actual_config, breaker=breaker, **kwargs)
+
             # Check if this exception should be retried
             should_retry = False
-            for exc_type in config.retry_exceptions:
+            for exc_type in actual_config.retry_exceptions:
                 if isinstance(e, exc_type):
                     should_retry = True
                     break
             
             # Check if this exception should be excluded from retry
-            for exc_type in config.exclude_exceptions:
+            for exc_type in actual_config.exclude_exceptions:
                 if isinstance(e, exc_type):
                     should_retry = False
                     break
             
-            if not should_retry or attempt == config.max_attempts - 1:
-                # Don't retry or this is the last attempt
+            if not should_retry or attempt == actual_config.max_attempts - 1:
                 raise e
             
-            # Calculate delay with exponential backoff
             delay = min(
-                config.base_delay * (config.backoff_factor ** attempt),
-                config.max_delay
+                actual_config.base_delay * (actual_config.backoff_factor ** attempt),
+                actual_config.max_delay
             )
             
-            # Add jitter if enabled
-            if config.jitter:
-                delay *= (0.5 + random.random() * 0.5)  # Random factor between 0.5 and 1.5
+            if actual_config.jitter:
+                delay *= (0.5 + random.random() * 0.5)
             
             logger.warning(
-                f"Attempt {attempt + 1}/{config.max_attempts} failed: {e}. "
+                f"Attempt {attempt + 1}/{actual_config.max_attempts} failed: {e}. "
                 f"Retrying in {delay:.2f}s..."
             )
             
             await asyncio.sleep(delay)
     
-    # This shouldn't happen, but just in case
     raise last_exception
+
+
+def _get_retry_after(response: Any) -> float:
+    """Extract retry-after seconds from response headers."""
+    try:
+        # Standard header (seconds or date)
+        ra = response.headers.get("Retry-After")
+        if ra:
+            if ra.isdigit():
+                return float(ra)
+            # Could be a date string, but we'll stick to seconds for now
+            # or handle with dateutil if available. 
+        
+        # Anthropic/OpenAI specific headers
+        reset = response.headers.get("x-ratelimit-reset")
+        if reset:
+            try:
+                # Some are absolute timestamps, some are seconds
+                val = float(reset)
+                if val > 1e10: # Likely epoch
+                    return max(0.1, val - time.time())
+                return val
+            except ValueError: pass
+    except Exception: pass
+    return 0.0
+
+
+def _get_exception_retry_after(exc: Exception) -> float:
+    """Extract retry-after from exception objects (e.g. httpx.HTTPStatusError)."""
+    try:
+        if hasattr(exc, "response"):
+            return _get_retry_after(exc.response)
+    except Exception: pass
+    return 0.0
 
 
 def retryable(
