@@ -107,21 +107,40 @@ def _token_count(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+_STRUCTURED_MARKERS = (
+    "```", "def ", "class ", "import ", "return ", "function ",
+    "## ", "### ", "1. ", "2. ", "- [", "* ", "| ",  # markdown / lists
+)
+
+
 def _quality_score(response: str, query: str) -> float:
     """
-    Simple quality signal: length + query-term coverage.
-    Returns 0.0–1.0.  Not ML — just a heuristic gate to reject junk.
+    Quality signal: length + query-term coverage, code/structure-aware.
+    Returns 0.0–1.0.  Not ML — a heuristic gate to reject junk.
+
+    Keyword coverage is a poor signal for code or structured analytical
+    responses (agent tasks) — they don't repeat query terms verbatim.
+    For those, weight response length and structure instead.
     """
     if not response or not query:
         return 0.0
     resp_lower = response.lower()
     query_tokens = [t for t in query.lower().split() if len(t) > 3]
     if not query_tokens:
-        return 0.5
-    covered = sum(1 for t in query_tokens if t in resp_lower)
-    coverage = covered / len(query_tokens)
-    # Boost for longer, thoughtful responses (up to ~2k chars).
+        coverage = 0.5
+    else:
+        covered = sum(1 for t in query_tokens if t in resp_lower)
+        coverage = covered / len(query_tokens)
+    # Boost for longer, substantive responses (up to ~2k chars).
     length_bonus = min(0.3, len(response) / 6000.0)
+    # Structured/code/analytical content doesn't repeat query vocabulary.
+    # Multi-line prose (>5 newlines) is also likely structured agent output.
+    is_structured = (
+        any(m in response for m in _STRUCTURED_MARKERS)
+        or response.count("\n") > 5
+    )
+    if is_structured:
+        return min(1.0, 0.40 + length_bonus + coverage * 0.30)
     return min(1.0, coverage * 0.7 + length_bonus)
 
 
