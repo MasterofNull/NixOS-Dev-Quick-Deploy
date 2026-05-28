@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# aq-refine — dispatch → quality-gate → refine-and-retry loop
+#
+# Wraps delegate-to-local with an automated quality check and retry cycle.
+# On quality failure, injects a refinement hint into the next attempt's prompt.
+# Stops at max-retries (default 3, per CLAUDE.md rule 6).
+#
+# Usage:
+#   aq-refine --prompt "Write a sort function" [--role implementer]
+#   aq-refine --prompt-file task.md --mode direct --max-retries 2
+#   aq-refine --prompt "..." --on-pass "git add {output_file} && git commit -m 'feat: x'"
+#
+# Options:
+#   --prompt TEXT        Task prompt
+#   --prompt-file FILE   Read prompt from file
+#   --mode MODE          auto|direct|hybrid|agent|ralph  [default: auto]
+#   --role ROLE          orchestrator|architect|implementer|reviewer  [default: implementer]
+#   --timeout SECS       Per-attempt timeout  [default: 300]
+#   --max-retries N      Max refinement retries  [default: 3]
+#   --on-pass CMD        Shell command to run on first PASS (use {output_file} placeholder)
+#   --silent             Suppress progress output
+#   --json               Emit final result as JSON
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/lib"
+
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { [[ "$SILENT" == "true" ]] || echo "[aq-refine] $*"; }
+
+PROMPT=""
+PROMPT_FILE=""
+MODE="auto"
+ROLE="implementer"
+TIMEOUT=300
+MAX_RETRIES=3
+ON_PASS=""
+SILENT=false
+JSON_OUT=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --prompt)       PROMPT="$2";       shift 2 ;;
+        --prompt-file)  PROMPT_FILE="$2";  shift 2 ;;
+        --mode)         MODE="$2";         shift 2 ;;
+        --role)         ROLE="$2";         shift 2 ;;
+        --timeout)      TIMEOUT="$2";      shift 2 ;;
+        --max-retries)  MAX_RETRIES="$2";  shift 2 ;;
+        --on-pass)      ON_PASS="$2";      shift 2 ;;
+        --silent)       SILENT=true;       shift   ;;
+        --json)         JSON_OUT=true;     shift   ;;
+        --help|-h)      grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
+        *) die "Unknown option: $1" ;;
+    esac
+done
+
+if [[ -n "$PROMPT_FILE" ]]; then
+    [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
+    PROMPT="$(cat "$PROMPT_FILE")"
+fi
+[[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE"
+
+ATTEMPT=0
+CURRENT_PROMPT="$PROMPT"
+FINAL_STATUS="RETRY_EXHAUSTED"
+FINAL_OUTPUT=""
+FINAL_TASK_ID=""
+FINAL_HINT=""
+
+while [[ $ATTEMPT -lt $((MAX_RETRIES + 1)) ]]; do
+    ATTEMPT=$((ATTEMPT + 1))
+    info "Attempt $ATTEMPT / $((MAX_RETRIES + 1)) (mode=$MODE role=$ROLE)"
+
+    # Dispatch — blocking so we get the result before evaluating
+    DISPATCH_OUT=$(
+        "$SCRIPT_DIR/delegate-to-local" \
+            --prompt "$CURRENT_PROMPT" \
+            --mode "$MODE" \
+            --role "$ROLE" \
+            --timeout "$TIMEOUT" \
+            --wait 2>&1
+    )
+    # Extract task ID from the info line
+    TASK_ID=$(echo "$DISPATCH_OUT" | grep "Delegating task:" | awk '{print $NF}' || true)
+    FINAL_TASK_ID="$TASK_ID"
+
+    # Get output file path from registry
+    if [[ -n "$TASK_ID" ]]; then
+        OUTPUT_FILE=$(
+            "$SCRIPT_DIR/delegate-to-local" --status "$TASK_ID" 2>/dev/null \
+            | python3 -c "import sys,json; e=json.load(sys.stdin); print(e.get('output_file',''))" 2>/dev/null || true
+        )
+        TOKENS_OUT=$(
+            "$SCRIPT_DIR/delegate-to-local" --status "$TASK_ID" 2>/dev/null \
+            | python3 -c "import sys,json; e=json.load(sys.stdin); print(e.get('tokens_out') or '')" 2>/dev/null || true
+        )
+    else
+        OUTPUT_FILE=""
+        TOKENS_OUT=""
+    fi
+
+    FINAL_OUTPUT="$OUTPUT_FILE"
+
+    # Run quality gate
+    QC_ARGS=("$OUTPUT_FILE")
+    [[ -n "$TOKENS_OUT" ]] && QC_ARGS+=(--tokens-out "$TOKENS_OUT")
+    QC_ARGS+=(--prompt "$CURRENT_PROMPT" --json)
+
+    QC_JSON=$(python3 "$LIB_DIR/quality_check.py" "${QC_ARGS[@]}" 2>/dev/null || echo '{"passed":false,"reason":"qc_error","refinement_hint":null,"issues":["qc_error"]}')
+    QC_PASSED=$(echo "$QC_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['passed'])")
+    QC_REASON=$(echo "$QC_JSON"  | python3 -c "import sys,json; print(json.load(sys.stdin)['reason'])")
+    QC_HINT=$(echo "$QC_JSON"    | python3 -c "import sys,json; h=json.load(sys.stdin).get('refinement_hint'); print(h or '')")
+
+    if [[ "$QC_PASSED" == "True" ]]; then
+        FINAL_STATUS="PASS"
+        FINAL_HINT=""
+        info "Quality gate: PASS (attempt $ATTEMPT)"
+        break
+    fi
+
+    info "Quality gate: FAIL — $QC_REASON"
+    FINAL_HINT="$QC_HINT"
+
+    # Rule 6: max retries reached → stop and report
+    if [[ $ATTEMPT -gt $MAX_RETRIES ]]; then
+        info "Max retries ($MAX_RETRIES) exhausted. Last issue: $QC_REASON"
+        FINAL_STATUS="RETRY_EXHAUSTED"
+        break
+    fi
+
+    # Inject refinement hint into next attempt's prompt
+    if [[ -n "$QC_HINT" ]]; then
+        CURRENT_PROMPT="${QC_HINT}
+
+Original task:
+${PROMPT}"
+        info "Refined prompt injected for attempt $((ATTEMPT + 1))"
+    fi
+done
+
+# ── emit result ───────────────────────────────────────────────────────────────
+
+if [[ "$JSON_OUT" == "true" ]]; then
+    python3 -c "
+import json, sys
+print(json.dumps({
+    'status':      sys.argv[1],
+    'task_id':     sys.argv[2],
+    'output_file': sys.argv[3],
+    'attempts':    int(sys.argv[4]),
+    'hint':        sys.argv[5] or None,
+}))" "$FINAL_STATUS" "$FINAL_TASK_ID" "$FINAL_OUTPUT" "$ATTEMPT" "$FINAL_HINT"
+else
+    echo ""
+    echo "[aq-refine] ── Result ──────────────────────────────────────────────"
+    echo "[aq-refine] Status:      $FINAL_STATUS"
+    echo "[aq-refine] Attempts:    $ATTEMPT / $((MAX_RETRIES + 1))"
+    echo "[aq-refine] Task ID:     $FINAL_TASK_ID"
+    echo "[aq-refine] Output:      $FINAL_OUTPUT"
+    if [[ -n "$FINAL_OUTPUT" && -f "$FINAL_OUTPUT" ]]; then
+        echo "[aq-refine] ── Output content ─────────────────────────────────────"
+        cat "$FINAL_OUTPUT"
+        echo ""
+    fi
+fi
+
+# ── on-pass hook ──────────────────────────────────────────────────────────────
+if [[ "$FINAL_STATUS" == "PASS" && -n "$ON_PASS" ]]; then
+    CMD="${ON_PASS//\{output_file\}/$FINAL_OUTPUT}"
+    CMD="${CMD//\{task_id\}/$FINAL_TASK_ID}"
+    info "Running --on-pass hook: $CMD"
+    eval "$CMD"
+fi
+
+[[ "$FINAL_STATUS" == "PASS" ]]
