@@ -134,6 +134,46 @@ def _emit_training_event(
             continue
 
 
+# ── token budget heuristic ───────────────────────────────────────────────────
+
+_TINY_SIGNALS   = frozenset(["one-liner", "one line", "one sentence", "briefly",
+                              "in one word", "yes or no", "true or false", "reply with",
+                              "respond with exactly", "say:", "ping"])
+_SMALL_SIGNALS  = frozenset(["one paragraph", "short answer", "briefly explain",
+                              "summarize in", "list 3", "list three", "list 5",
+                              "list five", "in 2-3 sentences", "concisely"])
+_LARGE_SIGNALS  = frozenset(["full implementation", "complete the", "write all",
+                              "implement the entire", "detailed analysis",
+                              "comprehensive review", "multi-step", "full plan",
+                              "write a script", "write a function"])
+
+
+def classify_tokens(prompt: str, mode: str = "direct") -> Optional[int]:
+    """Return a suggested max_tokens budget from prompt size signals.
+
+    Returns None to defer to the env-var / mode-default chain in task_config.
+    Only overrides when the prompt contains explicit size signals — avoids
+    second-guessing the caller when no signal is present.
+
+    Budget tiers (at ~1-2 tok/s on Renoir APU):
+      tiny  : 150  — one-liners, pings, yes/no, exact-reply tasks
+      small : 400  — paragraph, short list, brief summary
+      medium: 800  — default for direct/hybrid without other signals
+      large : 2048 — full implementation, detailed analysis
+    """
+    p = prompt.lower()
+    if any(k in p for k in _TINY_SIGNALS):
+        return 150
+    if any(k in p for k in _SMALL_SIGNALS):
+        return 400
+    if any(k in p for k in _LARGE_SIGNALS):
+        return 2048
+    # Default override only for direct mode — other modes manage their own budget.
+    if mode == "direct":
+        return 800
+    return None
+
+
 # ── Phase 74E: mode auto-selection ───────────────────────────────────────────
 
 _AGENT_KEYWORDS = frozenset([
@@ -491,12 +531,16 @@ def main() -> int:
     assert args.subcmd == "delegate"
 
     resolved_mode = classify_mode(args.prompt) if args.mode == "auto" else args.mode
+    # When caller didn't pin max_tokens, apply the budget heuristic so simple
+    # tasks don't consume 4096-token slots trying to be clever.
+    resolved_tokens = args.max_tokens if args.max_tokens is not None \
+        else classify_tokens(args.prompt, resolved_mode)
 
     config = TaskConfig.from_args(
         mode=resolved_mode,
         role=args.role,
         timeout_secs=args.timeout,
-        max_tokens=args.max_tokens,
+        max_tokens=resolved_tokens,
         llama_url=args.llama_url,
         hybrid_url=args.hybrid_url,
         ralph_url=args.ralph_url,
