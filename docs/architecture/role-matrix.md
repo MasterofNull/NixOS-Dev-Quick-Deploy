@@ -130,3 +130,40 @@ Qwen's implementer eligibility contract must cite the implementer constraints ab
    - Record the open question in `.agent/collaboration/PULSE.log`.
    - Stop the affected slice and leave it in a clean partial state.
    - Do not proceed past an unresolved blocking escalation by guessing or expanding scope.
+
+---
+
+## AgentType × Role Matrix (Phase 73)
+
+**AgentType** = capability class (execution modality).
+**Role** = authority class (what the agent is authorised to do this session).
+These are orthogonal axes — neither replaces the other. Both must be tracked separately.
+
+### AgentType → Default Role Mapping (SSOT)
+
+This table is the single source of truth for auto-assignment in `agent_executor.py`.
+
+| AgentType | Execution shape | Default role | Eligible roles | Notes |
+|-----------|----------------|-------------|----------------|-------|
+| `AGENT` | full coding loop (tool use, file edits, git) | `implementer` | `implementer`, `reviewer` | Default for coding tasks |
+| `PLANNER` | synthesis + document production | `architect` | `architect`, `orchestrator`, `implementer` | PRDs, plans, risk docs |
+| `CHAT` | conversational / Q&A | `implementer` | `implementer` | No tool use |
+| `EMBEDDED` | retrieval only — no text generation | `None` | `[]` | Never receives role injection |
+
+### Role Injection Contract
+
+- Role is injected into the **system message** (`build_llama_payload(role=...)` in `shared/llm_config.py`).
+- Injection occurs when `task.role` is set (auto-assigned or explicit).
+- `EMBEDDED` agents: never injected — role would shift embedding vectors.
+- Token overhead: ~25–35 tokens per injection.
+- Implementation: `ai-stack/mcp-servers/shared/llm_config.py` → `ROLE_SYSTEM_PROMPTS` + `_inject_role()`.
+- CLI wiring: `scripts/ai/delegate-to-local --role <value>` → `aq-agent-loop --role <value>` → `Task.role`.
+
+### Role Blocks (injected verbatim into system prompt)
+
+| Role | Injected text |
+|------|--------------|
+| `orchestrator` | `[Role: orchestrator] Open/close sessions, assign slices, accept work, commit integration. You may route other agents.` |
+| `architect` | `[Role: architect] Draft architecture docs, flag risks, write PRDs. Requires orchestrator review before commit.` |
+| `implementer` | `[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.` |
+| `reviewer` | `[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work.` |
