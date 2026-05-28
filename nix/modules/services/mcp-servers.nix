@@ -2203,7 +2203,7 @@ in {
     # Both profiles drafted in .agent/collaboration/GEMINI-PHASE-65-REVIEW.md.
     (lib.mkIf active {
       security.apparmor.policies."ai-hybrid-coordinator" = {
-        state = "complain"; # Phase 66.3: audit mode — switch to "enforce" post-soak
+        state = "enforce"; # Phase 66.3: soak complete — enforced 2026-05-30
         profile = ''
           #include <tunables/global>
           # Phase 66.3 — ai-hybrid-coordinator: hybrid MCP + HTTP coordinator
@@ -2238,6 +2238,18 @@ in {
             /dev/null rw,
             /dev/urandom r,
 
+            # Process enumeration — health spider and process-manager use
+            # psutil which reads /proc/<pid>/cmdline for each process.
+            /proc/ r,
+            @{PROC}/@{pids}/cmdline r,
+            @{PROC}/@{pids}/stat r,
+            @{PROC}/@{pids}/status r,
+
+            # Hardware temperature sensors — coordinator telemetry health checks.
+            /sys/devices/**/hwmon/**/temp*_input r,
+            /sys/devices/**/hwmon/**/temp*_label r,
+            /sys/devices/**/hwmon/**/name r,
+
             # Unix socket (audit sidecar)
             /run/ai-audit-sidecar.sock rw,
 
@@ -2267,7 +2279,7 @@ in {
       };
 
       security.apparmor.policies."command-center-dashboard-api" = {
-        state = "complain"; # Phase 66.3: audit mode — switch to "enforce" post-soak
+        state = "enforce"; # Phase 66.3: soak complete — enforced 2026-05-30
         profile = ''
           #include <tunables/global>
           # Phase 66.3 — command-center-dashboard-api: dashboard FastAPI backend
@@ -2295,6 +2307,18 @@ in {
             /proc/meminfo r,
             /dev/null rw,
             /dev/urandom r,
+
+            # systemctl — dashboard service health panel calls systemctl is-active,
+            # status, and show to display live service state. Also allows the
+            # transitive nft/systemd-libs it loads via D-Bus activation.
+            /nix/store/**/bin/systemctl ix,
+            /run/current-system/sw/bin/systemctl ix,
+            /run/systemd/private/** r,
+            /run/systemd/units/** r,
+            /run/dbus/system_bus_socket rw,
+            network unix dgram,
+            /sys/fs/cgroup/** r,
+            /proc/@{pids}/cgroup r,
 
             # Network — localhost only (:8889) + outbound to coordinator loopback
             network inet stream,
