@@ -38,8 +38,8 @@ def _load() -> dict:
     return {"in_flight": [], "updated_at": ""}
 
 
-_MAX_COMPLETED = 100   # max completed/failed entries to retain in PENDING.json
-_MAX_HANDOFF_LINES = 50  # max delegation tracking lines to retain in HANDOFF.md
+_MAX_COMPLETED = 750   # max completed/failed entries to retain in PENDING.json
+_MAX_HANDOFF_LINES = 300  # max delegation tracking lines to retain in HANDOFF.md
 
 
 def _decay(data: dict) -> dict:
