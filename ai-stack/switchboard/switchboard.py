@@ -2119,15 +2119,15 @@ async def _call_upstream_with_resilience(
     
     async def _do_request():
         if stream:
-            return await client.request(
+            req = client.build_request(
                 method=method,
                 url=url,
                 headers=headers,
                 content=content,
                 json=json_body,
                 params=params,
-                stream=True,
             )
+            return await client.send(req, stream=True)
         else:
             return await client.request(
                 method=method,
