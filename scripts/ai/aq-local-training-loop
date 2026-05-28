@@ -695,16 +695,24 @@ def _pulse(msg: str) -> None:
 
 
 def _status(n: int = 10) -> None:
-    if not RESULTS_LOG.exists():
+    # Check both primary (telemetry) and fallback (delegation) results paths.
+    # TELEMETRY_DIR is mode 750 (ai-hybrid:ai-stack) — hyperd can't write there,
+    # so run_once() falls back to DELEGATION_DIR/training-loop-results.jsonl.
+    _fallback = DELEGATION_DIR / "training-loop-results.jsonl"
+    runs: dict = {}
+    for path in [RESULTS_LOG, _fallback]:
+        if not path.exists():
+            continue
+        for raw in open(path, encoding="utf-8", errors="replace"):
+            try:
+                run = json.loads(raw)
+                runs[run["run_id"]] = run  # deduplicates by run_id
+            except (json.JSONDecodeError, KeyError):
+                pass
+    if not runs:
         print("No results yet.")
         return
-    runs = []
-    for raw in open(RESULTS_LOG, encoding="utf-8", errors="replace"):
-        try:
-            runs.append(json.loads(raw))
-        except json.JSONDecodeError:
-            pass
-    for run in runs[-n:]:
+    for run in sorted(runs.values(), key=lambda r: r.get("timestamp", ""))[-n:]:
         dr = " [dry]" if run.get("dry_run") else ""
         print(
             f"{run['timestamp'][:19]}  {run['run_id']}"
