@@ -115,6 +115,9 @@ def build_llama_payload(
     }
     if stream:
         payload["stream"] = True
+        # Request usage stats in the final SSE chunk so callers can track token spend.
+        # llama.cpp emits a usage-only chunk after [DONE] when this is set.
+        payload["stream_options"] = {"include_usage": True}
     # Extra fields (stop sequences, tool schemas, cache flags, model name, etc.)
     # are forwarded without modification.
     payload.update(extra)
