@@ -423,8 +423,9 @@ case "$MODE" in
 esac
 
 case "$ROLE" in
-    plan|implement|review|research) ;;
-    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
+    orchestrator|architect|implementer|reviewer) ;;
+    plan|implement|review|research) ;;  # legacy aliases
+    *) die "Invalid --role '$ROLE'. Valid: orchestrator | architect | implementer | reviewer" ;;
 esac
 
 case "${SUBCMD:-}" in
