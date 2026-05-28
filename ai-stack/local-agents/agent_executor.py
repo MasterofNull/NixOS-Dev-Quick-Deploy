@@ -721,23 +721,15 @@ class LocalAgentExecutor:
             "- NEVER wrap the JSON in ```json``` code blocks.\n"
         )
 
+        # Compact workflow contract — kept short to avoid large prefill on constrained APU.
+        # Full operating contract: .agent/LOCAL-AGENT.md
         _workflow_contract = (
-            "\n\nWORKFLOW CONTRACT (7 steps — follow for every non-trivial task):\n"
-            "1. ORIENT: query coordinator hints before reading files:\n"
-            '   {"function": "run_command", "arguments": {"command": "curl -s \'http://localhost:8003/hints?q=<task>\'"}}\n'
-            "2. RESEARCH: use search_files + coordinator RAG, then read_file for confirmed paths.\n"
-            "3. PLAN: append [LOCAL PLAN] to .agent/collaboration/PULSE.log before any edit.\n"
-            "4. CHECKPOINT: POST task plan to http://localhost:8003/api/memory/facts.\n"
-            "5. EXECUTE: one file change at a time. Read before writing. Stay in assigned slice.\n"
-            "6. VALIDATE: call validate_before_commit. Must return success=true before git_add.\n"
-            "7. COMMIT: git_add specific files, then run_command git commit with Co-Authored-By footer.\n"
-            "\nBEHAVIORAL RULES (all agents):\n"
-            "- HARNESS-FIRST: query /hints and RAG before reading raw files.\n"
-            "- ONE SLICE: no unsolicited features, refactors, or cleanups.\n"
-            "- RETRY BUDGET: max 2 retries on inference-heavy ops.\n"
-            "- MEMORY: after completing work, POST facts to /api/memory/facts.\n"
-            "- SECURITY: no hardcoded ports/URLs — source of truth: nix/modules/core/options.nix.\n"
-            "- NEVER call validate_before_commit more than once — if it passes, proceed to git_add.\n"
+            "\n\nBEHAVIORAL CONTRACT:\n"
+            "- Read before writing. One change at a time. Stay in the assigned slice.\n"
+            "- validate_before_commit MUST pass before git_add. Call it once, then act on result.\n"
+            "- git commit message format: type(scope): desc + Co-Authored-By: <agent> <noreply@local>\n"
+            "- Harness: use run_command to query http://localhost:8003/hints?q=<task> before reading files.\n"
+            "- Memory: POST completed facts to http://localhost:8003/api/memory/facts when done.\n"
         )
 
         base_prompt = {

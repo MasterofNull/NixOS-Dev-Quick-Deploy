@@ -94,10 +94,10 @@ async def run_task(
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
 
-    # Pass timeout via env vars that agent_executor._call_llama reads.
-    # The streaming SSE implementation in agent_executor uses LLAMA_CHUNK_TIMEOUT
-    # (per-chunk read timeout) so long-reasoning tasks never hit a wall-clock cap.
-    os.environ["LLAMA_CHUNK_TIMEOUT"] = str(float(timeout_secs))
+    # LLAMA_CHUNK_TIMEOUT: per-SSE-chunk read timeout — must be at least 300s to
+    # survive prefill of large system prompts on CPU-heavy APU (Renoir, 12 GPU layers).
+    # Prefill for ~1000 tokens at ~10-30 tok/s = 33-100s; keep headroom above that.
+    os.environ["LLAMA_CHUNK_TIMEOUT"] = str(max(300.0, float(timeout_secs)))
     os.environ["LLAMA_MAX_TOKENS"] = os.environ.get("LLAMA_MAX_TOKENS", "4096")
 
     registry = build_registry()
