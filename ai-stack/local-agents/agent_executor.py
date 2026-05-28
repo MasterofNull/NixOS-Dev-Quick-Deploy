@@ -37,6 +37,9 @@ from tool_registry import ToolCall, ToolRegistry, get_registry
 
 logger = logging.getLogger(__name__)
 
+_TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
+_HYBRID_EVENTS = _TELEMETRY_DIR / "hybrid-events.jsonl"
+
 _CODE_TASK_RE = re.compile(
     r"\b(implement|write|code|script|function|class|patch|refactor|debug|fix|test)\b",
     re.IGNORECASE,
@@ -366,6 +369,40 @@ class LocalAgentExecutor:
             task.result = result
             task.status = TaskStatus.COMPLETED
             task.execution_time_ms = (time.time() - start_time) * 1000
+
+            # Write completed task fact to MemoryBroker
+            if self.fallback_endpoint:
+                try:
+                    async with httpx.AsyncClient() as _mb_client:
+                        await _mb_client.post(
+                            f"{self.fallback_endpoint.rstrip('/')}/api/memory/facts",
+                            json={
+                                "fact": f"Task {task.id} completed: {task.objective[:200]}",
+                                "source": "agent-executor",
+                                "session_id": task.id,
+                                "confidence": 0.8,
+                            },
+                            timeout=5.0,
+                        )
+                except Exception:
+                    pass
+
+            # Emit agent_step_complete event for training ingest pipeline
+            if task.result and _HYBRID_EVENTS.parent.exists():
+                try:
+                    _event = json.dumps({
+                        "event_type": "agent_step_complete",
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "query": task.objective,
+                        "response": task.result if isinstance(task.result, str) else json.dumps(task.result),
+                        "latency_ms": task.execution_time_ms,
+                        "session_id": task.id,
+                        "tool_calls": len(task.tool_calls_made),
+                    })
+                    with open(_HYBRID_EVENTS, "a", encoding="utf-8") as _hef:
+                        _hef.write(_event + "\n")
+                except Exception:
+                    pass
 
             logger.info(
                 f"Task {task.id} completed: {task.execution_time_ms:.1f}ms, "

@@ -78,17 +78,22 @@ async def embed_text_uncached(text: str) -> List[float]:
                 headers: Dict[str, str] = {}
                 if Config.EMBEDDING_API_KEY:
                     headers["X-API-Key"] = Config.EMBEDDING_API_KEY
-                try:
-                    # Phase 61: Use the specific local model ID instead of OpenAI hardcoding.
-                    return await _request_embedding(
-                        f"{Config.EMBEDDING_SERVICE_URL}/v1/embeddings",
-                        {"model": Config.EMBEDDING_MODEL, "input": text},
-                        headers=headers,
-                    )
-                except Exception:  # noqa: BLE001
-                    logger.error("Primary local embedding service failed. Fallbacks are deprecated in Phase 61.", exc_info=True)
-                    # We return the zero vector to signal a terminal retrieval failure.
-                    return [0.0] * Config.EMBEDDING_DIM
+                for _attempt in range(2):
+                    try:
+                        # Phase 61: Use the specific local model ID instead of OpenAI hardcoding.
+                        return await _request_embedding(
+                            f"{Config.EMBEDDING_SERVICE_URL}/v1/embeddings",
+                            {"model": Config.EMBEDDING_MODEL, "input": text},
+                            headers=headers,
+                        )
+                    except Exception as _emb_exc:  # noqa: BLE001
+                        if _attempt == 0:
+                            logger.warning("embed_text_uncached attempt 1 failed, retrying: %s", _emb_exc)
+                            import asyncio as _asyncio
+                            await _asyncio.sleep(1.0)
+                        else:
+                            logger.error("Primary local embedding service failed after retry. Fallbacks are deprecated in Phase 61.", exc_info=True)
+                            return [0.0] * Config.EMBEDDING_DIM
 
             # Fallbacks deprecated in Phase 61 for Local-First Dominance.
             return [0.0] * Config.EMBEDDING_DIM

@@ -1836,9 +1836,9 @@ async def run_http_mode(port: int) -> None:
         summary    = str(data.get("summary") or "")[:400]
         tags       = data.get("tags") or []
         try:
-            latency_ms = int(data.get("latency_ms") or 0)
+            latency_ms = int(float(data.get("latency_ms") or 0))
         except (ValueError, TypeError):
-            return web.json_response({"error": "latency_ms must be integer"}, status=400)
+            latency_ms = 0
         task_id    = str(data.get("task_id") or "")[:64]
         try:
             iteration = int(data.get("iteration") or 0)
