@@ -1,1 +1,13 @@
-{"status": "finalized_remediation_plan", "timestamp": "2026-05-27T08:30:00Z"}
+{
+  "in_flight": [
+    {
+      "id": "local-20260528-085016-y02yz2",
+      "agent": "local-hybrid",
+      "output_file": ".agents/delegation/outputs/local-20260528-085016-y02yz2.log",
+      "objective": "Role standardization debate \u2014 Qwen3 position + gap analysis JSON",
+      "dispatched_at": "2026-05-28T15:56:11.025687Z",
+      "status": "running"
+    }
+  ],
+  "updated_at": "2026-05-28T15:56:55.141580Z"
+}

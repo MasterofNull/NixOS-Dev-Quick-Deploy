@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""pending-update — Cross-session in-flight task persistence.
+
+Called by delegate-to-gemini and delegate-to-local at dispatch and completion.
+Updates PENDING.json (machine-readable) and HANDOFF.md (session-resume readable).
+
+Usage:
+  pending-update add   ID AGENT OUTPUT_FILE OBJECTIVE
+  pending-update done  ID
+  pending-update failed ID
+  pending-update partial-success ID
+  pending-update cancelled ID
+  pending-update list
+"""
+
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Discover repo root: this file lives at scripts/ai/lib/pending-update
+_HERE = Path(__file__).resolve().parent          # scripts/ai/lib/
+_REPO = _HERE.parent.parent.parent               # repo root
+_PENDING = _REPO / ".agent/collaboration/PENDING.json"
+_HANDOFF = _REPO / ".agent/collaboration/HANDOFF.md"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _load() -> dict:
+    if _PENDING.exists():
+        try:
+            return json.loads(_PENDING.read_text())
+        except Exception:
+            pass
+    return {"in_flight": [], "updated_at": ""}
+
+
+def _decay(data: dict) -> dict:
+    """Trim completed/failed tasks older than 48 hours. Keep all running tasks."""
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    def _keep(task: dict) -> bool:
+        if task.get("status") == "running":
+            return True
+        ts_str = task.get("completed_at") or task.get("dispatched_at", "")
+        if not ts_str:
+            return False
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            return ts > cutoff
+        except Exception:
+            return False
+    data["in_flight"] = [t for t in data.get("in_flight", []) if _keep(t)]
+    return data
+
+
+def _decay_handoff() -> None:
+    """Keep only the last 20 dispatch/done/failed lines in HANDOFF.md to prevent bloat."""
+    if not _HANDOFF.exists():
+        return
+    lines = _HANDOFF.read_text().splitlines()
+    # Split into non-delegation lines and delegation tracking lines
+    delegation_markers = ("[dispatch]", "[done]", "[failed]", "[partial-success]", "[cancelled]")
+    static_lines = [l for l in lines if not any(m in l for m in delegation_markers)]
+    tracking_lines = [l for l in lines if any(m in l for m in delegation_markers)]
+    # Keep only last 20 tracking lines
+    trimmed = tracking_lines[-20:]
+    _HANDOFF.write_text("\n".join(static_lines + trimmed) + "\n")
+
+
+def _save(data: dict) -> None:
+    data = _decay(data)
+    data["updated_at"] = _now()
+    _PENDING.parent.mkdir(parents=True, exist_ok=True)
+    _PENDING.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _handoff(line: str) -> None:
+    with open(_HANDOFF, "a") as fh:
+        fh.write(line + "\n")
+    _decay_handoff()
+
+
+def cmd_add(task_id: str, agent: str, output_file: str, objective: str) -> None:
+    ts = _now()
+    data = _load()
+    # Deduplicate — remove any prior entry for this id
+    data["in_flight"] = [t for t in data.get("in_flight", []) if t.get("id") != task_id]
+    data["in_flight"].append({
+        "id": task_id,
+        "agent": agent,
+        "output_file": output_file,
+        "objective": objective[:120],
+        "dispatched_at": ts,
+        "status": "running",
+    })
+    _save(data)
+    _handoff(
+        f'[{ts}] [dispatch] id={task_id} agent={agent} '
+        f'output={output_file} obj="{objective[:100]}"'
+    )
+
+
+def cmd_update(task_id: str, status: str) -> None:
+    ts = _now()
+    data = _load()
+    for task in data.get("in_flight", []):
+        if task.get("id") == task_id:
+            task["status"] = status
+            task["completed_at"] = ts
+            break
+    _save(data)
+    _handoff(f"[{ts}] [{status}] id={task_id}")
+
+
+def cmd_list() -> None:
+    data = _load()
+    tasks = data.get("in_flight", [])
+    if not tasks:
+        print("No in-flight tasks.")
+        return
+    for t in tasks:
+        status = t.get("status", "?")
+        agent = t.get("agent", "?")
+        output = t.get("output_file", "?")
+        obj = t.get("objective", "")[:80]
+        print(f"  {t['id']} [{status}] agent={agent}")
+        print(f"    output: {output}")
+        print(f"    obj:    {obj}")
+
+
+def main() -> None:
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
+
+    if cmd == "add":
+        if len(sys.argv) < 6:
+            print("Usage: pending-update add ID AGENT OUTPUT_FILE OBJECTIVE", file=sys.stderr)
+            sys.exit(1)
+        cmd_add(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+
+    elif cmd in ("done", "failed", "partial-success", "cancelled"):
+        if len(sys.argv) < 3:
+            print(f"Usage: pending-update {cmd} ID", file=sys.stderr)
+            sys.exit(1)
+        cmd_update(sys.argv[2], cmd)
+
+    elif cmd == "list":
+        cmd_list()
+
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
