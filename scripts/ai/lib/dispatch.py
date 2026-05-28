@@ -123,15 +123,17 @@ class DirectRunner:
                         break
                     try:
                         chunk = json.loads(data_str)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            full_text.append(content)
+                        # Usage chunk (include_usage=True) has choices:[] — handle independently
+                        choices = chunk.get("choices") or []
+                        if choices:
+                            content = choices[0].get("delta", {}).get("content", "")
+                            if content:
+                                full_text.append(content)
                         usage = chunk.get("usage") or {}
                         if usage:
                             tokens_in = usage.get("prompt_tokens", tokens_in)
                             tokens_out = usage.get("completion_tokens", tokens_out)
-                    except (json.JSONDecodeError, IndexError, KeyError):
+                    except (json.JSONDecodeError, KeyError):
                         pass
 
             result = "".join(full_text)
