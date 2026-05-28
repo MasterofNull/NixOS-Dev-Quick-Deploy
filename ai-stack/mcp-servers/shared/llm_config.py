@@ -30,6 +30,34 @@ Usage:
 import os
 from typing import Any
 
+# Compact role-authority blocks injected into the system prompt when task.role is set.
+# ~25-35 tokens each. Only injected when role is explicitly assigned — never for EMBEDDED.
+# Source of truth for role definitions: docs/architecture/role-matrix.md
+ROLE_SYSTEM_PROMPTS: dict[str, str] = {
+    "orchestrator": "[Role: orchestrator] Open/close sessions, assign slices, accept work, commit integration. You may route other agents.",
+    "architect":    "[Role: architect] Draft architecture docs, flag risks, write PRDs. Requires orchestrator review before commit.",
+    "implementer":  "[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.",
+    "reviewer":     "[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work.",
+}
+
+
+def _inject_role(messages: list, role: str) -> list:
+    """Prepend compact role block to the first system message, or insert one if absent."""
+    role_prefix = ROLE_SYSTEM_PROMPTS.get(role)
+    if not role_prefix:
+        return messages
+    msgs = list(messages)
+    sys_idx = next((i for i, m in enumerate(msgs) if m.get("role") == "system"), None)
+    if sys_idx is not None:
+        msgs[sys_idx] = {
+            "role": "system",
+            "content": role_prefix + "\n\n" + msgs[sys_idx]["content"],
+        }
+    else:
+        msgs.insert(0, {"role": "system", "content": role_prefix})
+    return msgs
+
+
 # Token budget constants — override at call site or via LLAMA_MAX_TOKENS env var.
 # At 1-2 tok/s on Renoir APU:
 #   512  tokens = 256-512s max generation
@@ -46,6 +74,7 @@ def build_llama_payload(
     max_tokens: int | None = None,
     temperature: float = 0.3,
     stream: bool = False,
+    role: str | None = None,
     **extra: Any,
 ) -> dict:
     """Build a llama.cpp-compatible chat completion payload.
@@ -61,6 +90,10 @@ def build_llama_payload(
         stream: Set True to request SSE streaming.
         **extra: Additional payload fields forwarded verbatim
                  (e.g. stop=["<|im_end|>"], tools=[...], cache_prompt=True).
+        role: Authority role for this call (orchestrator/architect/implementer/reviewer).
+              When set, injects a compact role block into the system prompt (~25-35 tokens).
+              None = no injection (implementer behaviour is the implicit default).
+              Never set for EMBEDDED agents — they have no text generation to guide.
 
     Returns:
         dict ready to POST to /v1/chat/completions.
@@ -70,8 +103,9 @@ def build_llama_payload(
         if max_tokens is not None
         else int(os.environ.get("LLAMA_MAX_TOKENS", str(AGENT_TASK_MAX_TOKENS)))
     )
+    _messages = _inject_role(messages, role) if role else messages
     payload: dict[str, Any] = {
-        "messages": messages,
+        "messages": _messages,
         "temperature": temperature,
         "max_tokens": _max_tokens,
         # ARCH CONSTRAINT: enable_thinking is a Jinja2 chat-template variable.
