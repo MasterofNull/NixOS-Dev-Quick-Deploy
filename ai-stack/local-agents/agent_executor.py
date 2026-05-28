@@ -753,7 +753,17 @@ class LocalAgentExecutor:
             ),
         }
 
-        tools_desc = "\n\nAvailable tools:\n" + json.dumps(tools, indent=2)
+        # Compact tool list: name(params): description — ~20 tokens/tool vs ~130 for full JSON schema.
+        # Full schemas are available via tool_registry for execution; the model only needs names+params.
+        def _compact_tool(t: Dict) -> str:
+            props = t.get("parameters", {}).get("properties", {})
+            req = t.get("parameters", {}).get("required", [])
+            params = ", ".join(
+                f"{k}*" if k in req else k for k in props
+            )
+            return f"  {t['name']}({params}): {t['description'][:80]}"
+
+        tools_desc = "\n\nAvailable tools (* = required):\n" + "\n".join(_compact_tool(t) for t in tools)
         extensions = self._load_prompt_extensions()
 
         # AGENT type gets the full workflow contract; other types get only tool call format
