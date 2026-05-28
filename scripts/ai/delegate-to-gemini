@@ -253,6 +253,8 @@ ${prompt}"
 
     # Register before launching so the task is findable even if we die
     registry_append "$id" "$prompt" "$rel_output" "" "$role"
+    # Persist dispatch to PENDING.json + HANDOFF.md — survives context summarization
+    "$SCRIPT_DIR/lib/pending-update" add "$id" "gemini" "$rel_output" "${prompt:0:120}" 2>/dev/null || true
     audit_event_start "gemini" "$id" "${prompt:0:200}"
 
     if [[ "$wait_mode" == "true" ]]; then
@@ -260,13 +262,23 @@ ${prompt}"
         info "Running in blocking mode..."
         "${cmd[@]}" 2>&1 | tee "$output_file"
         local exit_code="${PIPESTATUS[0]}"
+        local output_bytes; output_bytes="$(wc -c < "$output_file" 2>/dev/null || echo 0)"
         if [[ "$exit_code" -eq 0 ]]; then
             registry_update_status "$id" "done"
+            "$SCRIPT_DIR/lib/pending-update" "done" "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "success" "0" "completed: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id completed successfully."
+        elif [[ "$output_bytes" -gt 200 ]]; then
+            # Router error but response was generated — treat as partial-success
+            registry_update_status "$id" "partial-success"
+            "$SCRIPT_DIR/lib/pending-update" partial-success "$id" 2>/dev/null || true
+            audit_event_end "gemini" "$id" "partial-success" "0" "partial-success exit=${exit_code}: ${prompt:0:100}" "$role"
+            audit_save_session "gemini" "$id" "$prompt" "$output_file"
+            info "Task $id partial-success (exit $exit_code, output ${output_bytes}B)."
         else
             registry_update_status "$id" "failed"
+            "$SCRIPT_DIR/lib/pending-update" failed "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id failed (exit $exit_code)."
@@ -301,9 +313,12 @@ with open(rf) as f:
         except: lines.append(l)
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
+                \"$SCRIPT_DIR/lib/pending-update\" done \"$id\" 2>/dev/null || true
             else
-                bash \"$_audit_helper\" \"$_coord_url\" error_resolution gemini error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
-                python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
+                _output_bytes=\$(wc -c < \"$output_file\" 2>/dev/null || echo 0)
+                if [[ \$_output_bytes -gt 200 ]]; then
+                    bash \"$_audit_helper\" \"$_coord_url\" task_completed gemini partial-success \"\$_lat\" \"$id\" \"partial-success exit=\$exit_code: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
+                    python3 - \"$REGISTRY\" \"$id\" partial-success <<'PYEOF'
 import sys, json
 rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
 lines = []
@@ -318,6 +333,26 @@ with open(rf) as f:
         except: lines.append(l)
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
+                    \"$SCRIPT_DIR/lib/pending-update\" partial-success \"$id\" 2>/dev/null || true
+                else
+                    bash \"$_audit_helper\" \"$_coord_url\" error_resolution gemini error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
+                    python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
+import sys, json
+rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = []
+with open(rf) as f:
+    for l in f:
+        l = l.strip()
+        if not l: continue
+        try:
+            e = json.loads(l)
+            if e.get('id') == tid: e['status'] = ns
+            lines.append(json.dumps(e))
+        except: lines.append(l)
+with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
+PYEOF
+                    \"$SCRIPT_DIR/lib/pending-update\" failed \"$id\" 2>/dev/null || true
+                fi
             fi
         " > /dev/null 2>&1 &
         local pid=$!

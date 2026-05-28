@@ -492,6 +492,8 @@ ${prompt}"
     info "Output file:     $output_file"
 
     registry_append "$id" "$prompt" "$rel_output" "$mode" "$role"
+    # Persist dispatch to PENDING.json + HANDOFF.md — survives context summarization
+    "$SCRIPT_DIR/lib/pending-update" add "$id" "local-${mode}" "$rel_output" "${prompt:0:120}" 2>/dev/null || true
     audit_event_start "local" "$id" "${prompt:0:200}"
 
     # Build runner command
@@ -502,12 +504,14 @@ ${prompt}"
         if $runner_func "$full_prompt" "$output_file" "$timeout_secs"; then
             update_tokens "$id" "${output_file}.usage.json"
             update_status "$REGISTRY" "$id" "done"
+            "$SCRIPT_DIR/lib/pending-update" "done" "$id" 2>/dev/null || true
             audit_event_end "local" "$id" "success" "0" "completed mode=${mode}: ${prompt:0:100}" "$mode"
             audit_save_session "local-${mode}" "$id" "$prompt" "$output_file"
             info "Task $id completed."
             cat "$output_file"
         else
             update_status "$REGISTRY" "$id" "failed"
+            "$SCRIPT_DIR/lib/pending-update" failed "$id" 2>/dev/null || true
             audit_event_end "local" "$id" "error" "0" "failed mode=${mode}: ${prompt:0:100}" "$mode"
             audit_save_session "local-${mode}" "$id" "$prompt" "$output_file"
             info "Task $id failed. Output:"
@@ -542,6 +546,7 @@ with open(rf) as f:
         except: lines.append(l)
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
+                \"$SCRIPT_DIR/lib/pending-update\" done \"$id\" 2>/dev/null || true
             else
                 _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
                 _lat=\$(( _end_ms - _start_ms ))
@@ -561,6 +566,7 @@ with open(rf) as f:
         except: lines.append(l)
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
+                \"$SCRIPT_DIR/lib/pending-update\" failed \"$id\" 2>/dev/null || true
             fi
         " > /dev/null 2>&1 &
         local pid=$!
