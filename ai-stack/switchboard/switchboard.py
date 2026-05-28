@@ -2664,19 +2664,20 @@ async def proxy(path: str, request: Request):
                             content={"error": {"message": f"Upstream error: {exc}", "type": "bad_gateway"}},
                         )
 
-                    if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
-                        return JSONResponse(
-                            status_code=503,
-                            headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
-                            content=_loading_error_payload(),
+                    if not is_stream:
+                        if target_type == "local" and _is_local_loading_response(upstream.status_code, upstream.content):
+                            return JSONResponse(
+                                status_code=503,
+                                headers={"Retry-After": "20", "X-AI-Upstream-State": "loading"},
+                                content=_loading_error_payload(),
+                            )
+                        if target_type == "local" and path == "chat/completions":
+                            _record_local_completion(path, profile, upstream.status_code, upstream.content)
+                        response = Response(
+                            content=upstream.content,
+                            status_code=upstream.status_code,
+                            headers=_response_headers(dict(upstream.headers)),
                         )
-                    if target_type == "local" and path == "chat/completions":
-                        _record_local_completion(path, profile, upstream.status_code, upstream.content)
-                    response = Response(
-                        content=upstream.content,
-                        status_code=upstream.status_code,
-                        headers=_response_headers(dict(upstream.headers)),
-                    )
             finally:
                 if local_active_request_id and not retain_local_request_until_stream_close:
                     _clear_local_active_request(local_active_request_id)
