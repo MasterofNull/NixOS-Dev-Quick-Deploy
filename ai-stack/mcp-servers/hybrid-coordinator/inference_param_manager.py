@@ -34,6 +34,7 @@ class HardwareState:
     mtp_acceptance_rate: Optional[float] = None
     thermal_tier: str = "unknown"
     n_gpu_layers_current: Optional[int] = None
+    spec_decoding_active: Optional[bool] = None
     embed_busy_slots: float = 0.0
     reindex_status: Optional[Dict[str, Any]] = None
     slots: List[Dict[str, Any]] = field(default_factory=list)
@@ -246,6 +247,7 @@ class InferenceParamManager:
                     is_llama = any(b"llama-server" in arg or b"llama.cpp" in arg for arg in cmdline)
                     if not is_llama:
                         continue
+                    self._state.spec_decoding_active = (b"--spec-type" in cmdline)
                     # Skip embedding servers — they have a separate GPU layer budget
                     if b"--embedding" in cmdline:
                         continue

@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from config import Config
+from inference_param_manager import get_ipm
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -456,7 +457,9 @@ def build_harness_scorecard() -> Dict[str, Any]:
         },
         "inference_optimizations": {
             "prompt_cache_policy_enabled": Config.AI_PROMPT_CACHE_POLICY_ENABLED,
-            "speculative_decoding_enabled": Config.AI_SPECULATIVE_DECODING_ENABLED,
+            "speculative_decoding_enabled": (get_ipm()._state.spec_decoding_active
+                                             if get_ipm()._state.spec_decoding_active is not None
+                                             else Config.AI_SPECULATIVE_DECODING_ENABLED),
             "speculative_decoding_mode": Config.AI_SPECULATIVE_DECODING_MODE,
             "context_compression_enabled": Config.AI_CONTEXT_COMPRESSION_ENABLED,
         },
