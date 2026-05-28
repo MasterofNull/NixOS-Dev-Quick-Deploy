@@ -1,0 +1,316 @@
+"""
+task_registry — Unified task persistence for local delegation.
+
+Phase 74B — replaces 5 separate inline Python heredocs in delegate-to-local
+plus the pending-update subprocess calls for local dispatch.
+
+Handles three output formats from one code path:
+  1. .agents/delegation/registry.jsonl  — machine-readable task history
+  2. .agent/collaboration/PENDING.json  — cross-session in-flight tracker
+  3. .agent/collaboration/HANDOFF.md    — human-readable session resume
+
+File locking (fcntl.LOCK_EX) ensures concurrent background tasks don't
+corrupt the registry — a real concern when fanout dispatches 2–4 tasks in
+parallel.
+"""
+
+import fcntl
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+
+_MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
+_MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+class TaskRegistry:
+    """Unified registry for local task dispatch lifecycle."""
+
+    def __init__(self, delegation_dir: Path, repo_root: Optional[Path] = None):
+        self.delegation_dir = Path(delegation_dir)
+        self.repo_root = Path(repo_root) if repo_root else self.delegation_dir.parent.parent
+        self.registry_file = self.delegation_dir / "registry.jsonl"
+        self.pending_file = self.repo_root / ".agent" / "collaboration" / "PENDING.json"
+        self.handoff_file = self.repo_root / ".agent" / "collaboration" / "HANDOFF.md"
+
+    # ── file-locked write helpers ────────────────────────────────────────────
+
+    def _locked_rewrite(self, path: Path, lines: list[str]) -> None:
+        """Atomically rewrite a file under exclusive lock."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                fh.write("\n".join(lines) + "\n")
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+
+    def _locked_append(self, path: Path, line: str) -> None:
+        """Append a line under exclusive lock."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                fh.write(line + "\n")
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+
+    # ── registry.jsonl ───────────────────────────────────────────────────────
+
+    def _read_registry(self) -> list[dict]:
+        if not self.registry_file.exists():
+            return []
+        entries = []
+        with open(self.registry_file) as fh:
+            fcntl.flock(fh, fcntl.LOCK_SH)
+            try:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+        return entries
+
+    def _update_registry(self, task_id: str, updates: dict) -> None:
+        """Apply updates dict to the entry matching task_id."""
+        self.registry_file.parent.mkdir(parents=True, exist_ok=True)
+        # Read under shared lock, then rewrite under exclusive lock
+        entries = self._read_registry()
+        lines = []
+        for e in entries:
+            if e.get("id") == task_id:
+                e.update(updates)
+            lines.append(json.dumps(e))
+        self._locked_rewrite(self.registry_file, lines)
+
+    def append(
+        self,
+        task_id: str,
+        description: str,
+        output_file: str,
+        mode: str,
+        role: str,
+        pid: Optional[int] = None,
+    ) -> None:
+        """Append a new running task entry to registry.jsonl."""
+        self.registry_file.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "id": task_id,
+            "agent": f"local-{mode}",
+            "role": role,
+            "description": description[:500],
+            "output_file": output_file,
+            "pid": pid,
+            "status": "running",
+            "tokens_in": None,
+            "tokens_out": None,
+            "created": _now(),
+        }
+        self._locked_append(self.registry_file, json.dumps(entry))
+
+    def update_status(self, task_id: str, status: str) -> None:
+        self._update_registry(task_id, {"status": status})
+
+    def update_pid(self, task_id: str, pid: int) -> None:
+        self._update_registry(task_id, {"pid": pid})
+
+    def update_tokens(self, task_id: str, tokens_in: Optional[int], tokens_out: Optional[int]) -> None:
+        updates: dict = {}
+        if tokens_in is not None:
+            updates["tokens_in"] = tokens_in
+        if tokens_out is not None:
+            updates["tokens_out"] = tokens_out
+        if updates:
+            self._update_registry(task_id, updates)
+
+    def get(self, task_id: str) -> Optional[dict]:
+        for e in self._read_registry():
+            if e.get("id") == task_id:
+                return e
+        return None
+
+    def get_output_file(self, task_id: str) -> Optional[str]:
+        e = self.get(task_id)
+        return e.get("output_file") if e else None
+
+    def get_pid(self, task_id: str) -> Optional[int]:
+        e = self.get(task_id)
+        pid = e.get("pid") if e else None
+        if pid and pid != "None":
+            try:
+                return int(pid)
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def list_all(self) -> list[dict]:
+        return self._read_registry()
+
+    def list_running(self) -> list[dict]:
+        return [e for e in self._read_registry() if e.get("status") == "running"]
+
+    # ── PENDING.json + HANDOFF.md ────────────────────────────────────────────
+
+    def _load_pending(self) -> dict:
+        if self.pending_file.exists():
+            try:
+                return json.loads(self.pending_file.read_text())
+            except Exception:
+                pass
+        return {"in_flight": [], "updated_at": ""}
+
+    def _decay_pending(self, data: dict) -> dict:
+        running = [t for t in data.get("in_flight", []) if t.get("status") == "running"]
+        finished = [t for t in data.get("in_flight", []) if t.get("status") != "running"]
+        data["in_flight"] = running + finished[-_MAX_COMPLETED:]
+        return data
+
+    def _save_pending(self, data: dict) -> None:
+        data = self._decay_pending(data)
+        data["updated_at"] = _now()
+        self.pending_file.parent.mkdir(parents=True, exist_ok=True)
+        self._locked_rewrite(
+            self.pending_file,
+            [json.dumps(data, indent=2)],
+        )
+
+    def _handoff_append(self, line: str) -> None:
+        self._locked_append(self.handoff_file, line)
+        # Decay: keep last _MAX_HANDOFF_LINES tracking lines
+        if not self.handoff_file.exists():
+            return
+        lines = self.handoff_file.read_text().splitlines()
+        markers = ("[dispatch]", "[done]", "[failed]", "[partial-success]", "[cancelled]")
+        static = [l for l in lines if not any(m in l for m in markers)]
+        tracking = [l for l in lines if any(m in l for m in markers)]
+        if len(tracking) > _MAX_HANDOFF_LINES:
+            self._locked_rewrite(
+                self.handoff_file,
+                static + tracking[-_MAX_HANDOFF_LINES:],
+            )
+
+    def record_dispatch(
+        self,
+        task_id: str,
+        agent: str,
+        output_file: str,
+        objective: str,
+    ) -> None:
+        """Write dispatch entry to PENDING.json + HANDOFF.md."""
+        ts = _now()
+        data = self._load_pending()
+        data["in_flight"] = [t for t in data.get("in_flight", []) if t.get("id") != task_id]
+        data["in_flight"].append({
+            "id": task_id,
+            "agent": agent,
+            "output_file": output_file,
+            "objective": objective[:120],
+            "dispatched_at": ts,
+            "status": "running",
+        })
+        self._save_pending(data)
+        self._handoff_append(
+            f'[{ts}] [dispatch] id={task_id} agent={agent} '
+            f'output={output_file} obj="{objective[:100]}"'
+        )
+
+    def record_completion(self, task_id: str, status: str) -> None:
+        """Update PENDING.json + HANDOFF.md with completion status."""
+        ts = _now()
+        data = self._load_pending()
+        for task in data.get("in_flight", []):
+            if task.get("id") == task_id:
+                task["status"] = status
+                task["completed_at"] = ts
+                break
+        self._save_pending(data)
+        self._handoff_append(f"[{ts}] [{status}] id={task_id}")
+
+    # ── subcommand helpers (used by dispatch.py CLI) ─────────────────────────
+
+    def cmd_list(self) -> None:
+        entries = self.list_all()
+        if not entries:
+            print("No delegated tasks yet.")
+            return
+        fmt = "{:<32}  {:<8}  {:<12}  {:<10}  {:>6}  {:>7}  {}"
+        print(fmt.format("TASK ID", "STATUS", "AGENT", "ROLE", "TOK_IN", "TOK_OUT", "DESCRIPTION"))
+        print(fmt.format("-" * 32, "-" * 8, "-" * 12, "-" * 10, "-" * 6, "-" * 7, "-" * 11))
+        for e in entries:
+            desc = e.get("description", "")[:40]
+            ti = str(e.get("tokens_in") or "-")
+            to = str(e.get("tokens_out") or "-")
+            print(fmt.format(
+                e.get("id", "?"),
+                e.get("status", "?"),
+                e.get("agent", "?"),
+                e.get("role", "?"),
+                ti, to, desc,
+            ))
+
+    def cmd_status(self, task_id: str) -> int:
+        e = self.get(task_id)
+        if not e:
+            print(f"Task not found: {task_id}", file=sys.stderr)
+            return 1
+        print(json.dumps(e, indent=2))
+        return 0
+
+    def cmd_check(self, task_id: str, repo_root: Optional[Path] = None) -> int:
+        output_file = self.get_output_file(task_id)
+        if not output_file:
+            print(f"Task not found in registry: {task_id}", file=sys.stderr)
+            return 1
+        p = Path(output_file)
+        if not p.is_absolute():
+            root = Path(repo_root) if repo_root else self.repo_root
+            p = root / output_file
+        if not p.exists():
+            print(f"Output file not found: {p} (task may still be running)", file=sys.stderr)
+            return 1
+        print(p.read_text(), end="")
+        return 0
+
+    def cmd_cancel(self, task_id: str) -> int:
+        pid = self.get_pid(task_id)
+        if pid:
+            try:
+                os.kill(-(pid), 0)  # check group exists
+            except ProcessLookupError:
+                pass
+            try:
+                import signal
+                os.kill(pid, signal.SIGTERM)
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            print(f"[task_registry] Sent SIGTERM to pid {pid} for task {task_id}")
+        else:
+            print(f"[task_registry] No PID found for {task_id}")
+        self.update_status(task_id, "cancelled")
+        self.record_completion(task_id, "cancelled")
+        return 0
+
+    def cmd_kill_all(self) -> int:
+        killed = 0
+        for e in self.list_running():
+            self.cmd_cancel(e["id"])
+            killed += 1
+        print(f"[task_registry] Killed {killed} running tasks")
+        return 0

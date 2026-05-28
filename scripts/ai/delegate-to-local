@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # delegate-to-local — Delegate a task to the local Qwen model
 #
+# Phase 74F — thin bash shim; all dispatch logic lives in lib/dispatch.py.
+#
 # Modes:
 #   agent     — full coding agent loop (aq-agent-loop): read/write files, git, validate
 #   hybrid    — query through hybrid-coordinator (:8003) — research/analysis
@@ -20,9 +22,13 @@
 #   --prompt-file FILE Read prompt from file
 #   --mode MODE        Routing: agent|hybrid|direct|ralph  [default: hybrid]
 #   --timeout SECS     Request timeout in seconds  [default: 300]
+#   --role ROLE        Role: orchestrator|architect|implementer|reviewer  [default: implement]
+#   --wait             Block until task completes (default: background)
 #   --check ID         Print output of a completed task
 #   --status ID        Show task status
 #   --list             List all registered tasks
+#   --cancel ID        Cancel a running task
+#   --kill-all         Kill all running tasks
 #   --help             Show this help
 
 set -euo pipefail
@@ -30,593 +36,36 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
-OUTPUTS_DIR="$DELEGATION_DIR/outputs"
-REGISTRY="$DELEGATION_DIR/registry.jsonl"
+LIB_DIR="$SCRIPT_DIR/lib"
+DISPATCH="$LIB_DIR/dispatch.py"
 
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
-source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
+source "${LIB_DIR}/audit-write.sh" 2>/dev/null || true
 
 # Ports — read from env, fall back to harness defaults (source of truth: options.nix)
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 HYBRID_PORT="${HYBRID_PORT:-8003}"
 RALPH_PORT="${RALPH_PORT:-8004}"
-
-# Token limits — high default for production use; override with DIRECT_MAX_TOKENS
-# for eval/dev cycles where bounded responses speed up iteration.
-DIRECT_MAX_TOKENS="${DIRECT_MAX_TOKENS:-4096}"
-
-# ── helpers ─────────────────────────────────────────────────────────────────
+# DIRECT_MAX_TOKENS is read by task_config._resolve_tokens() from the environment;
+# export here so nohup subprocesses inherit it.
+export DIRECT_MAX_TOKENS="${DIRECT_MAX_TOKENS:-4096}"
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-local] $*"; }
 
-ensure_dirs() {
-    mkdir -p "$OUTPUTS_DIR"
-    touch "$REGISTRY"
-}
-
 task_id() {
-    # Use subshell with pipefail disabled — tr exits SIGPIPE when head closes the pipe,
-    # which with set -o pipefail would wrongly trigger the '|| xxxxxx' fallback.
+    # Subshell with pipefail disabled — tr exits SIGPIPE when head closes the pipe.
     local rand; rand="$(set +o pipefail; tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6)" || rand="xxxxxx"
     echo "local-$(date +%Y%m%d-%H%M%S)-${rand}"
 }
 
-registry_append() {
-    local id="$1" description="$2" output_file="$3" mode="$4" role="${5:-implement}"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"id":"%s","agent":"local-%s","role":"%s","description":%s,"output_file":"%s","pid":null,"status":"running","tokens_in":null,"tokens_out":null,"created":"%s"}\n' \
-        "$id" "$mode" "$role" \
-        "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
-        "$output_file" \
-        "$ts" >> "$REGISTRY"
-}
+ensure_dirs() { mkdir -p "$DELEGATION_DIR/outputs"; }
 
-update_status() {
-    python3 - "$1" "$2" "$3" <<'PYEOF'
-import sys, json
-rf, tid, new_status = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == tid: e["status"] = new_status
-            lines.append(json.dumps(e))
-        except Exception: lines.append(line)
-with open(rf, "w") as f:
-    f.write("\n".join(lines) + "\n")
-PYEOF
-}
-
-# Phase 33.3: read token usage sidecar written by run_direct/run_hybrid and update registry
-update_tokens() {
-    local id="$1" usage_file="$2"
-    [[ -f "$usage_file" ]] || return 0
-    python3 - "$REGISTRY" "$id" "$usage_file" <<'PYEOF'
-import sys, json
-rf, tid, uf = sys.argv[1], sys.argv[2], sys.argv[3]
-try:
-    with open(uf) as f: usage = json.load(f)
-    tokens_in  = usage.get("tokens_in")
-    tokens_out = usage.get("tokens_out")
-except Exception:
-    tokens_in = tokens_out = None
-lines = []
-with open(rf) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == tid:
-                if tokens_in  is not None: e["tokens_in"]  = tokens_in
-                if tokens_out is not None: e["tokens_out"] = tokens_out
-            lines.append(json.dumps(e))
-        except Exception: lines.append(line)
-with open(rf, "w") as f:
-    f.write("\n".join(lines) + "\n")
-PYEOF
-    rm -f "$usage_file"
-}
-
-check_service() {
-    local port="$1" name="$2"
-    curl -sf --max-time 3 "http://127.0.0.1:${port}/health" > /dev/null 2>&1 \
-        || die "$name is not reachable at :$port — start the harness first (aq-qa 0 to check)"
-}
-
-# ── subcommands ──────────────────────────────────────────────────────────────
-
-cmd_list() {
-    [[ -f "$REGISTRY" ]] || { info "No delegated tasks yet."; return; }
-    printf "%-32s  %-8s  %-12s  %-10s  %6s  %6s  %s\n" "TASK ID" "STATUS" "AGENT" "ROLE" "TOK_IN" "TOK_OUT" "DESCRIPTION"
-    printf "%-32s  %-8s  %-12s  %-10s  %6s  %6s  %s\n" "--------------------------------" "--------" "------------" "----------" "------" "-------" "-----------"
-    python3 - "$REGISTRY" <<'PYEOF'
-import sys, json
-with open(sys.argv[1]) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            desc = e.get("description","")[:40]
-            ti = str(e.get("tokens_in") or "-")
-            to = str(e.get("tokens_out") or "-")
-            print(f"{e['id']:<32}  {e.get('status','?'):<8}  {e.get('agent','?'):<12}  {e.get('role','?'):<10}  {ti:>6}  {to:>7}  {desc}")
-        except Exception: pass
-PYEOF
-}
-
-cmd_status() {
-    local id="$1"
-    [[ -f "$REGISTRY" ]] || die "No registry found at $REGISTRY"
-    python3 - "$REGISTRY" "$id" <<'PYEOF'
-import sys, json
-registry_file, task_id = sys.argv[1], sys.argv[2]
-found = False
-with open(registry_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == task_id:
-                found = True
-                print(json.dumps(e, indent=2))
-        except Exception: pass
-if not found:
-    print(f"Task not found: {task_id}", file=sys.stderr)
-    sys.exit(1)
-PYEOF
-}
-
-cmd_check() {
-    local id="$1"
-    local output_file; output_file=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
-import sys, json
-registry_file, task_id = sys.argv[1], sys.argv[2]
-with open(registry_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == task_id:
-                print(e.get("output_file",""))
-        except Exception: pass
-PYEOF
-)
-    [[ -n "$output_file" ]] || die "Task not found in registry: $id"
-    [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
-    [[ -f "$output_file" ]] || die "Output file not found: $output_file (task may still be running)"
-    cat "$output_file"
-}
-
-# ── lifecycle: cancel / kill-all ──────────────────────────────────────────────
-# Cancel a single running task: kill PID + children, mark registry "cancelled".
-cmd_cancel() {
-    local id="$1"
-    [[ -n "$id" ]] || die "--cancel requires a task ID"
-    [[ -f "$REGISTRY" ]] || die "No registry at $REGISTRY"
-
-    local pid; pid=$(python3 - "$REGISTRY" "$id" <<'PYEOF'
-import sys, json
-rf, tid = sys.argv[1], sys.argv[2]
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get("id") == tid:
-                print(e.get("pid",""))
-        except: pass
-PYEOF
-)
-    if [[ -n "$pid" && "$pid" != "None" ]]; then
-        # Kill children first (python3 sub-process making the HTTP call)
-        pkill -P "$pid" 2>/dev/null || true
-        kill "$pid" 2>/dev/null || true
-        info "Sent SIGTERM to pid $pid and its children for task $id"
-    else
-        info "No PID found for $id (may already be dead)"
-    fi
-
-    # Mark registry
-    python3 - "$REGISTRY" "$id" "cancelled" <<'PYEOF'
-import sys, json
-rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get("id") == tid: e["status"] = ns
-            lines.append(json.dumps(e))
-        except: lines.append(l)
-with open(rf, "w") as f: f.write("\n".join(lines) + "\n")
-PYEOF
-    info "Task $id marked cancelled"
-}
-
-# Kill all 'running' tasks — used before a fresh run or on session exit.
-cmd_kill_all() {
-    [[ -f "$REGISTRY" ]] || { info "No registry"; return; }
-    local killed=0
-    python3 - "$REGISTRY" <<'PYEOF' | while IFS=$'\t' read -r tid pid; do
-import sys, json
-rf = sys.argv[1]
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get("status") == "running" and e.get("pid"):
-                print(f"{e['id']}\t{e['pid']}")
-        except: pass
-PYEOF
-        pkill -P "$pid" 2>/dev/null || true
-        kill "$pid" 2>/dev/null || true
-        python3 - "$REGISTRY" "$tid" "cancelled" <<'PYEOF2'
-import sys, json
-rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get("id") == tid: e["status"] = ns
-            lines.append(json.dumps(e))
-        except: lines.append(l)
-with open(rf, "w") as f: f.write("\n".join(lines) + "\n")
-PYEOF2
-        info "Cancelled $tid (pid $pid)"
-        killed=$((killed+1))
-    done
-    info "Killed $killed running tasks"
-}
-
-run_agent() {
-    local prompt="$1" output_file="$2" timeout_secs="$3" _role="${4:-implement}"
-    # Use $SCRIPT_DIR (set at source time) — $0 is 'bash' in nohup subshells
-    local agent_loop; agent_loop="$SCRIPT_DIR/aq-agent-loop"
-    [[ -x "$agent_loop" ]] || die "aq-agent-loop not found at $agent_loop"
-    check_service "$LLAMA_PORT" "llama.cpp"
-
-    # Map legacy role aliases to role-matrix values
-    local mapped_role
-    case "$_role" in
-        plan)        mapped_role="architect"   ;;
-        implement)   mapped_role="implementer" ;;
-        review)      mapped_role="reviewer"    ;;
-        research)    mapped_role="implementer" ;;
-        orchestrator|architect|implementer|reviewer) mapped_role="$_role" ;;
-        *)           mapped_role="implementer" ;;
-    esac
-
-    # Run aq-agent-loop with output to persistent file; pass structured role
-    "$agent_loop" --task "$prompt" --output "$output_file" --timeout "$timeout_secs" --role "$mapped_role"
-}
-
-run_hybrid() {
-    local prompt="$1" output_file="$2" timeout_secs="$3" _role="${4:-implement}"
-    check_service "$HYBRID_PORT" "hybrid-coordinator"
-    python3 - "$prompt" "http://127.0.0.1:${HYBRID_PORT}" "$timeout_secs" "$output_file" "$_role" <<'PYEOF'
-import sys, json, urllib.request, urllib.error
-
-prompt, base_url, timeout_secs, output_file, role = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
-
-payload = json.dumps({
-    "query": prompt,
-    "mode": "auto",
-    "prefer_local": True,
-    "limit": 1,
-    "role": role if role else None,
-}).encode()
-
-req = urllib.request.Request(
-    f"{base_url}/query",
-    data=payload,
-    headers={"Content-Type": "application/json"},
-    method="POST"
-)
-try:
-    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
-        data = json.loads(resp.read().decode())
-        result = data.get("response") or data.get("answer") or data.get("result") or json.dumps(data, indent=2)
-        with open(output_file, "w") as f:
-            f.write(result)
-        # Phase 33.3: capture token counts if coordinator returns usage info
-        usage = data.get("usage") or data.get("token_usage") or {}
-        if usage:
-            with open(output_file + ".usage.json", "w") as uf:
-                json.dump({"tokens_in": usage.get("prompt_tokens") or usage.get("input_tokens"),
-                           "tokens_out": usage.get("completion_tokens") or usage.get("output_tokens")}, uf)
-    sys.exit(0)
-except urllib.error.HTTPError as e:
-    body = e.read().decode()
-    with open(output_file, "w") as f:
-        f.write(f"HTTP {e.code}: {body}")
-    sys.exit(1)
-except Exception as e:
-    with open(output_file, "w") as f:
-        f.write(f"Error: {e}")
-    sys.exit(1)
-PYEOF
-}
-
-run_direct() {
-    local prompt="$1" output_file="$2" timeout_secs="$3"
-    check_service "$LLAMA_PORT" "llama.cpp"
-    # Streaming mode: pre-polls /slots until free, then submits.
-    # SLOT_WAIT_S = full timeout_secs (slot is pre-confirmed free by poll).
-    # After first token, generation proceeds until EOS or max_tokens.
-    python3 - "$prompt" "http://127.0.0.1:${LLAMA_PORT}" "$timeout_secs" "$output_file" "${DIRECT_MAX_TOKENS}" <<'PYEOF'
-import sys, json, socket, urllib.request, urllib.error, time as _time
-
-prompt, base_url, timeout_secs, output_file, max_tokens = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], int(sys.argv[5])
-
-# Pre-flight: poll /slots until the slot is free before submitting.
-# This prevents SLOT_WAIT_S from firing during external request occupancy.
-_slot_poll_deadline = _time.monotonic() + timeout_secs
-while _time.monotonic() < _slot_poll_deadline:
-    try:
-        _sr = urllib.request.Request(f"{base_url}/slots")
-        with urllib.request.urlopen(_sr, timeout=5) as _resp:
-            _slots = json.loads(_resp.read())
-            if not _slots[0].get("is_processing", True):
-                break
-    except Exception:
-        break  # /slots unavailable — submit anyway, let SLOT_WAIT_S catch it
-    _time.sleep(3)
-
-# SLOT_WAIT_S: safety net only — slot should already be free from pre-poll.
-# Use full timeout so a slow slot acquisition after pre-poll doesn't abort us.
-SLOT_WAIT_S = int(timeout_secs)
-
-payload = json.dumps({
-    "model": "local",
-    "messages": [{"role": "user", "content": prompt}],
-    "stream": True,
-    # ARCH CONSTRAINT: thinking must be disabled for bounded eval tasks.
-    # enable_thinking is a Jinja2 chat-template variable — it must go inside
-    # chat_template_kwargs, NOT at the top level (top-level is silently ignored).
-    # Without this, Qwen3-35B fills all max_tokens with reasoning_content, leaving
-    # zero tokens for the actual response → empty output file.
-    "chat_template_kwargs": {"enable_thinking": False},
-    "max_tokens": max_tokens,
-}).encode()
-
-req = urllib.request.Request(
-    f"{base_url}/v1/chat/completions",
-    data=payload,
-    headers={"Content-Type": "application/json"},
-    method="POST"
-)
-try:
-    # Use SLOT_WAIT_S for connection + first byte; this detects queue saturation fast.
-    with urllib.request.urlopen(req, timeout=SLOT_WAIT_S) as resp:
-        full_text = []
-        tokens_in = tokens_out = 0
-        # Once the response object is open we have the slot — switch to a
-        # generous per-line timeout so slow generation doesn't abort us.
-        resp.fp.raw._sock.settimeout(int(timeout_secs))
-        for raw_line in resp:
-            line = raw_line.decode("utf-8", errors="replace").strip()
-            if not line.startswith("data: "):
-                continue
-            data_str = line[6:]
-            if data_str == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data_str)
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                content = delta.get("content", "")
-                if content:
-                    full_text.append(content)
-                usage = chunk.get("usage") or {}
-                if usage:
-                    tokens_in  = usage.get("prompt_tokens", tokens_in)
-                    tokens_out = usage.get("completion_tokens", tokens_out)
-            except (json.JSONDecodeError, IndexError, KeyError):
-                pass
-        result = "".join(full_text)
-        with open(output_file, "w") as f:
-            f.write(result)
-        if tokens_in or tokens_out:
-            with open(output_file + ".usage.json", "w") as uf:
-                json.dump({"tokens_in": tokens_in, "tokens_out": tokens_out}, uf)
-    sys.exit(0)
-except urllib.error.HTTPError as e:
-    body = e.read().decode()
-    with open(output_file, "w") as f:
-        f.write(f"HTTP {e.code}: {body}")
-    sys.exit(1)
-except Exception as e:
-    with open(output_file, "w") as f:
-        f.write(f"Error: {e}")
-    sys.exit(1)
-PYEOF
-}
-
-run_ralph() {
-    local prompt="$1" output_file="$2" timeout_secs="$3"
-    check_service "$RALPH_PORT" "ralph-wiggum"
-    # ralph-wiggum TaskRequest field is 'prompt' (not 'task')
-    python3 - "$prompt" "http://127.0.0.1:${RALPH_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
-import sys, json, urllib.request, urllib.error
-
-prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
-
-payload = json.dumps({"prompt": prompt}).encode()
-
-req = urllib.request.Request(
-    f"{base_url}/task",
-    data=payload,
-    headers={"Content-Type": "application/json"},
-    method="POST"
-)
-try:
-    with urllib.request.urlopen(req, timeout=timeout_secs) as resp:
-        data = json.loads(resp.read().decode())
-        result = data.get("response") or data.get("result") or json.dumps(data, indent=2)
-        with open(output_file, "w") as f:
-            f.write(result)
-    sys.exit(0)
-except urllib.error.HTTPError as e:
-    body = e.read().decode()
-    with open(output_file, "w") as f:
-        f.write(f"HTTP {e.code}: {body}")
-    sys.exit(1)
-except Exception as e:
-    with open(output_file, "w") as f:
-        f.write(f"Error: {e}")
-    sys.exit(1)
-PYEOF
-}
-
-cmd_delegate() {
-    local prompt="$1" mode="${2:-hybrid}" timeout_secs="${3:-300}" wait_mode="${4:-false}" role="${5:-implement}"
-
-    ensure_dirs
-
-    local id; id="$(task_id)"
-    local output_file="$OUTPUTS_DIR/${id}.log"
-    local rel_output=".agents/delegation/outputs/${id}.log"
-
-    # Phase 33.5: prepend role tag so the agent knows its specialization
-    local full_prompt="[ROLE: ${role}]
-
-${prompt}"
-
-    info "Delegating task: $id"
-    info "Routing mode:    $mode"
-    info "Role:            $role"
-    info "Output file:     $output_file"
-
-    registry_append "$id" "$prompt" "$rel_output" "$mode" "$role"
-    # Persist dispatch to PENDING.json + HANDOFF.md — survives context summarization
-    "$SCRIPT_DIR/lib/pending-update" add "$id" "local-${mode}" "$rel_output" "${prompt:0:120}" 2>/dev/null || true
-    audit_event_start "local" "$id" "${prompt:0:200}"
-
-    # Build runner command
-    local runner_func="run_${mode}"
-
-    if [[ "$wait_mode" == "true" ]]; then
-        info "Running in blocking mode (timeout: ${timeout_secs}s)..."
-        if $runner_func "$full_prompt" "$output_file" "$timeout_secs" "$role"; then
-            update_tokens "$id" "${output_file}.usage.json"
-            update_status "$REGISTRY" "$id" "done"
-            "$SCRIPT_DIR/lib/pending-update" "done" "$id" 2>/dev/null || true
-            audit_event_end "local" "$id" "success" "0" "completed mode=${mode}: ${prompt:0:100}" "$mode"
-            audit_save_session "local-${mode}" "$id" "$prompt" "$output_file"
-            info "Task $id completed."
-            cat "$output_file"
-        else
-            update_status "$REGISTRY" "$id" "failed"
-            "$SCRIPT_DIR/lib/pending-update" failed "$id" 2>/dev/null || true
-            audit_event_end "local" "$id" "error" "0" "failed mode=${mode}: ${prompt:0:100}" "$mode"
-            audit_save_session "local-${mode}" "$id" "$prompt" "$output_file"
-            info "Task $id failed. Output:"
-            cat "$output_file"
-            return 1
-        fi
-    else
-        local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
-        local _prompt_brief; _prompt_brief="${prompt:0:100}"
-        local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
-        # True background — nohup so it survives Claude session eviction
-        nohup bash -c "
-            _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-            source \"$SCRIPT_DIR/delegate-to-local\"
-            if $(printf '%q ' "$runner_func" "$full_prompt" "$output_file" "$timeout_secs" "$role") ; then
-                _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-                _lat=\$(( _end_ms - _start_ms ))
-                bash \"$_audit_helper\" \"$_coord_url\" task_completed local success \"\$_lat\" \"$id\" \"completed mode=$mode: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
-                update_tokens \"$id\" \"${output_file}.usage.json\"
-                python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
-import sys, json
-rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get('id') == tid: e['status'] = ns
-            lines.append(json.dumps(e))
-        except: lines.append(l)
-with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
-PYEOF
-                \"$SCRIPT_DIR/lib/pending-update\" done \"$id\" 2>/dev/null || true
-            else
-                _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-                _lat=\$(( _end_ms - _start_ms ))
-                bash \"$_audit_helper\" \"$_coord_url\" error_resolution local error \"\$_lat\" \"$id\" \"failed mode=$mode: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
-                python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
-import sys, json
-rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get('id') == tid: e['status'] = ns
-            lines.append(json.dumps(e))
-        except: lines.append(l)
-with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
-PYEOF
-                \"$SCRIPT_DIR/lib/pending-update\" failed \"$id\" 2>/dev/null || true
-            fi
-        " > /dev/null 2>&1 &
-        local pid=$!
-        disown "$pid"
-
-        # Update registry with pid
-        python3 - "$REGISTRY" "$id" "$pid" <<'PYEOF'
-import sys, json
-rf, tid, pid = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == tid:
-                try: e["pid"] = int(pid)
-                except (ValueError, TypeError): e["pid"] = pid
-            lines.append(json.dumps(e))
-        except Exception: lines.append(line)
-with open(rf, "w") as f:
-    f.write("\n".join(lines) + "\n")
-PYEOF
-
-        info "Task $id started in background (pid $pid)"
-        info "Check output:  delegate-to-local --check $id"
-        info "Check status:  delegate-to-local --status $id"
-        info "NOTE: Local model tasks take 90-300s. Check back in a few minutes."
-        echo "$id"
-    fi
-}
-
-# ── argument parsing (skip when sourced by nohup subshell) ───────────────────
-# Guard: only run CLI parsing when executed directly, not when sourced to load
-# functions into a background bash -c subshell.
+# ── guard: only run CLI parsing when executed directly, not when sourced ─────
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
+# ── argument parsing ──────────────────────────────────────────────────────────
 PROMPT=""
 PROMPT_FILE=""
 MODE="hybrid"
@@ -650,25 +99,92 @@ case "$MODE" in
 esac
 
 case "$ROLE" in
-    # Role-matrix values (canonical)
+    # Canonical role-matrix values
     orchestrator|architect|implementer|reviewer) ;;
-    # Legacy aliases (backwards-compatible)
+    # Legacy aliases (mapped to canonical in task_config.py)
     plan|implement|review|research) ;;
     *) die "Invalid --role '$ROLE'. Valid: orchestrator | architect | implementer | reviewer" ;;
 esac
 
+# ── subcommands ───────────────────────────────────────────────────────────────
 case "${SUBCMD:-}" in
-    list)     ensure_dirs; cmd_list ;;
-    status)   ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
-    check)    ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
-    cancel)   ensure_dirs; cmd_cancel "$SUBCMD_ARG" ;;
-    kill-all) ensure_dirs; cmd_kill_all ;;
+    list)
+        python3 "$DISPATCH" list --delegation-dir "$DELEGATION_DIR"
+        ;;
+    status)
+        python3 "$DISPATCH" status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
+        ;;
+    check)
+        python3 "$DISPATCH" check "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
+        ;;
+    cancel)
+        python3 "$DISPATCH" cancel "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
+        ;;
+    kill-all)
+        python3 "$DISPATCH" kill-all --delegation-dir "$DELEGATION_DIR"
+        ;;
     "")
+        # Resolve prompt from file if needed
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$MODE" "$TIMEOUT" "$WAIT" "$ROLE"
+
+        ensure_dirs
+        ID="$(task_id)"
+        OUTPUT_FILE="$DELEGATION_DIR/outputs/${ID}.log"
+
+        info "Delegating task: $ID"
+        info "Routing mode:    $MODE"
+        info "Role:            $ROLE"
+        info "Output file:     $OUTPUT_FILE"
+
+        audit_event_start "local" "$ID" "${PROMPT:0:200}"
+
+        # Build dispatch.py argument list (bash array preserves quoting for prompts
+        # containing spaces/special chars — never interpolate via printf '%q').
+        _DISPATCH_ARGS=(
+            python3 "$DISPATCH" delegate
+            --task-id        "$ID"
+            --output         "$OUTPUT_FILE"
+            --mode           "$MODE"
+            --role           "$ROLE"
+            --prompt         "$PROMPT"
+            --timeout        "$TIMEOUT"
+            --delegation-dir "$DELEGATION_DIR"
+            --llama-url      "http://127.0.0.1:${LLAMA_PORT}"
+            --hybrid-url     "http://127.0.0.1:${HYBRID_PORT}"
+            --ralph-url      "http://127.0.0.1:${RALPH_PORT}"
+            --script-dir     "$SCRIPT_DIR"
+        )
+
+        if [[ "$WAIT" == "true" ]]; then
+            info "Running in blocking mode (timeout: ${TIMEOUT}s)..."
+            if "${_DISPATCH_ARGS[@]}"; then
+                audit_event_end "local" "$ID" "success" "0" \
+                    "completed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
+                audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
+                info "Task $ID completed."
+                cat "$OUTPUT_FILE"
+            else
+                audit_event_end "local" "$ID" "error" "0" \
+                    "failed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
+                audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
+                info "Task $ID failed. Output:"
+                cat "$OUTPUT_FILE"
+                exit 1
+            fi
+        else
+            # Background: nohup dispatch.py directly — it owns registry + PENDING.json.
+            nohup "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
+            BG_PID=$!
+            disown "$BG_PID"
+            info "Task $ID started in background (pid $BG_PID)"
+            info "Check output:  delegate-to-local --check $ID"
+            info "Check status:  delegate-to-local --status $ID"
+            info "NOTE: Local model tasks take 90-300s. Check back in a few minutes."
+            echo "$ID"
+        fi
         ;;
 esac
