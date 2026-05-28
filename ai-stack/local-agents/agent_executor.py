@@ -67,11 +67,33 @@ def _env_float(name: str, default: float) -> float:
 
 
 class AgentType(Enum):
-    """Local agent types"""
-    AGENT = "agent"  # Task execution
+    """Local agent types — capability class (what the model CAN do).
+    Orthogonal to role (what the model is AUTHORISED to do this session).
+    AgentType routes execution shape; role injects authority context.
+    """
+    AGENT = "agent"      # Task execution (full tool-use loop)
     PLANNER = "planner"  # Strategy/planning
-    CHAT = "chat"  # User interaction
-    EMBEDDED = "embedded"  # Retrieval
+    CHAT = "chat"        # User interaction
+    EMBEDDED = "embedded"  # Retrieval only — no text generation, never gets role injection
+
+
+# Maps each AgentType to its default role when task.role is not explicitly set.
+# Roles defined in docs/architecture/role-matrix.md (SSOT).
+# EMBEDDED maps to None — no role injection for embedding-only agents.
+AGENT_TYPE_DEFAULT_ROLE: Dict[AgentType, Optional[str]] = {
+    AgentType.AGENT:    "implementer",
+    AgentType.PLANNER:  "architect",
+    AgentType.CHAT:     "implementer",
+    AgentType.EMBEDDED: None,
+}
+
+# Roles each AgentType is eligible for (authority ceiling per capability class).
+AGENT_TYPE_ELIGIBLE_ROLES: Dict[AgentType, List[str]] = {
+    AgentType.AGENT:    ["implementer", "reviewer"],
+    AgentType.PLANNER:  ["architect", "orchestrator", "implementer"],
+    AgentType.CHAT:     ["implementer"],
+    AgentType.EMBEDDED: [],
+}
 
 
 class TaskStatus(Enum):
@@ -107,6 +129,11 @@ class Task:
     assigned_agent: Optional[str] = None
     tool_calls_made: List[ToolCall] = field(default_factory=list)
 
+    # Role — authority class for this task (from role-matrix.md SSOT).
+    # None = auto-assign from AGENT_TYPE_DEFAULT_ROLE at dispatch.
+    # EMBEDDED agents always get None (no role injection).
+    role: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -124,6 +151,7 @@ class Task:
             "execution_time_ms": self.execution_time_ms,
             "assigned_agent": self.assigned_agent,
             "tool_calls_count": len(self.tool_calls_made),
+            "role": self.role,
         }
 
 
@@ -322,6 +350,11 @@ class LocalAgentExecutor:
         task.status = TaskStatus.RUNNING
         task.assigned_agent = f"local-{agent_type.value}"
 
+        # Auto-assign role from capability→default mapping if not explicitly set.
+        # EMBEDDED agents never get a role (no text generation to guide).
+        if task.role is None:
+            task.role = AGENT_TYPE_DEFAULT_ROLE.get(agent_type)
+
         # Route task
         use_local, route_reason = self.route_task(task)
 
@@ -364,6 +397,7 @@ class LocalAgentExecutor:
                 task,
                 agent_type,
                 max_tool_calls,
+                role=task.role,
             )
 
             task.result = result
@@ -433,6 +467,7 @@ class LocalAgentExecutor:
         task: Task,
         agent_type: AgentType,
         max_tool_calls: int,
+        role: Optional[str] = None,
     ) -> Any:
         """
         Execute task with tool use loop.
@@ -471,7 +506,7 @@ class LocalAgentExecutor:
 
         while tool_call_count < max_tool_calls:
             # Call model
-            response = await self._call_llama(messages)
+            response = await self._call_llama(messages, role=role)
 
             # Parse tool call
             tool_call = self.tool_registry.parse_tool_call_from_llama(response)
@@ -514,7 +549,7 @@ class LocalAgentExecutor:
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
         return f"Task incomplete: reached max tool calls ({max_tool_calls})"
 
-    async def _call_llama(self, messages: List[Dict]) -> str:
+    async def _call_llama(self, messages: List[Dict], role: Optional[str] = None) -> str:
         """
         Call local llama.cpp server using SSE streaming.
 
@@ -539,6 +574,7 @@ class LocalAgentExecutor:
             messages,
             max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
             temperature=0.2,
+            role=role,
         )
 
         if not use_streaming:
