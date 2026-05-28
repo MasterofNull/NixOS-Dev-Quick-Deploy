@@ -94,31 +94,11 @@ async def run_task(
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
 
-    # Patch timeout from command line (agent_executor uses its own http calls)
-    # We do this by monkey-patching the module-level httpx call inside _call_llama.
-    # Cleaner solution: LocalAgentExecutor accepts timeout param (Phase 33 TODO).
-    import agent_executor as _ae_mod
-    import httpx
-
-    _original_call_llama = _ae_mod.LocalAgentExecutor._call_llama
-
-    async def _patched_call_llama(self, messages):
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.llama_endpoint}/v1/chat/completions",
-                json={
-                    "messages": messages,
-                    "temperature": 0.2,
-                    "max_tokens": 4096,
-                },
-                timeout=float(timeout_secs),
-            )
-            if response.status_code != 200:
-                raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-
-    _ae_mod.LocalAgentExecutor._call_llama = _patched_call_llama
+    # Pass timeout via env vars that agent_executor._call_llama reads.
+    # The streaming SSE implementation in agent_executor uses LLAMA_CHUNK_TIMEOUT
+    # (per-chunk read timeout) so long-reasoning tasks never hit a wall-clock cap.
+    os.environ["LLAMA_CHUNK_TIMEOUT"] = str(float(timeout_secs))
+    os.environ["LLAMA_MAX_TOKENS"] = os.environ.get("LLAMA_MAX_TOKENS", "4096")
 
     registry = build_registry()
 

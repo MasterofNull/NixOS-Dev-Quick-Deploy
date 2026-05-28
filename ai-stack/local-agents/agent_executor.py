@@ -485,7 +485,10 @@ class LocalAgentExecutor:
             "messages": messages,
             "temperature": 0.2,
             "max_tokens": max_tokens,
-            "enable_thinking": False,  # thinking tokens → empty responses on Qwen3
+            # ARCH CONSTRAINT: enable_thinking is a Jinja2 chat-template variable.
+            # It MUST be in chat_template_kwargs — top-level is silently ignored by
+            # llama.cpp, causing Qwen3-35B to fill all tokens with reasoning_content.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
 
         if not use_streaming:
