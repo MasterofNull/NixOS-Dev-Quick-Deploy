@@ -2524,6 +2524,7 @@ async def proxy(path: str, request: Request):
     ):
         payload["stream"] = True
         body = json.dumps(payload).encode("utf-8")
+        logger.debug("switchboard: forced stream=True for local chat/completions profile=%s", profile)
 
     is_stream = bool(isinstance(payload, dict) and payload.get("stream") is True)
     local_tool_execution_used = False
@@ -2557,6 +2558,12 @@ async def proxy(path: str, request: Request):
         if not is_priority and (total_concurrency - active_slots <= reserved_slots):
             # Queueing logic: instead of fail-fast, allow wait but don't force-preempt
             pass
+
+    req_id = request.headers.get("X-Request-ID") or str(time.time_ns())
+    logger.debug(
+        "switchboard: route target=%s path=%s profile=%s stream=%s req_id=%s",
+        target_type, path, profile, is_stream, req_id,
+    )
 
     try:
         async with sem:
@@ -2659,9 +2666,19 @@ async def proxy(path: str, request: Request):
                         await client.aclose()
                         if local_active_request_id:
                             _clear_local_active_request(local_active_request_id)
+                        logger.error(
+                            "switchboard: upstream %s error target=%s path=%s req_id=%s: %s",
+                            type(exc).__name__, target_type, path, req_id, exc,
+                        )
                         return JSONResponse(
                             status_code=502,
-                            content={"error": {"message": f"Upstream error: {exc}", "type": "bad_gateway"}},
+                            content={"error": {
+                                "message": f"Upstream error: {exc}",
+                                "type": "bad_gateway",
+                                "target": target_type,
+                                "path": path,
+                                "req_id": req_id,
+                            }},
                         )
 
                     if not is_stream:
