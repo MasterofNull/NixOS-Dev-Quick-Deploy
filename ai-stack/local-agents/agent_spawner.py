@@ -344,7 +344,8 @@ async def run():
                     json={
                         "messages": messages,
                         "temperature": 0.3,
-                        "max_tokens": 4096,
+                        "max_tokens": int(os.environ.get("LLAMA_MAX_TOKENS", "1200")),
+                        "chat_template_kwargs": {"enable_thinking": False},
                     },
                     headers={"X-AI-Profile": f"local-{AGENT_ROLE}"},
                 )
@@ -367,7 +368,8 @@ async def run():
                 json={
                     "messages": messages,
                     "temperature": 0.3,
-                    "max_tokens": 4096,
+                    "max_tokens": int(os.environ.get("LLAMA_MAX_TOKENS", "1200")),
+                    "chat_template_kwargs": {"enable_thinking": False},
                 },
             )
             if resp.status_code == 200:
