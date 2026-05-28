@@ -1186,7 +1186,9 @@ def _check_clm(ctx: RunContext) -> list[CheckResult]:
             "_demote_to_cold": "_demote_to_cold" in text,
             "thermal_gate (AM-G4)": "critical" in text and "shutdown" in text,
             "compaction prompt load": "_load_compaction_prompt" in text,
-            "enable_thinking guard": "enable_thinking" in text,
+            # Guard applied either directly or via build_llama_payload() SSOT import.
+            # build_llama_payload always sets chat_template_kwargs.enable_thinking=False.
+            "enable_thinking guard": "enable_thinking" in text or "build_llama_payload" in text,
             "CLM_HOT_MAX_MB (256 default)": "256" in text,
         }
         missing = [k for k, v in checks.items() if not v]
