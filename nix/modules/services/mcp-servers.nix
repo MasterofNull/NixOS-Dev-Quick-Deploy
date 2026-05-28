@@ -2239,16 +2239,27 @@ in {
             /dev/urandom r,
 
             # Process enumeration — health spider and process-manager use
-            # psutil which reads /proc/<pid>/cmdline for each process.
+            # psutil which reads /proc/<pid>/cmdline, stat, limits for each process.
             /proc/ r,
             @{PROC}/@{pids}/cmdline r,
             @{PROC}/@{pids}/stat r,
             @{PROC}/@{pids}/status r,
+            @{PROC}/@{pids}/limits r,
 
             # Hardware temperature sensors — coordinator telemetry health checks.
             /sys/devices/**/hwmon/**/temp*_input r,
             /sys/devices/**/hwmon/**/temp*_label r,
             /sys/devices/**/hwmon/**/name r,
+
+            # Temporary files — Python stdlib tempfile.gettempdir() probes
+            # /tmp, /var/tmp, and the service data dir for a writable temp location.
+            /tmp/ rw,
+            /tmp/** rw,
+            /var/tmp/ rw,
+            /var/tmp/** rw,
+            # Base dataDir — tempfile fallback creates files directly here.
+            ${dataDir}/ rw,
+            ${dataDir}/* rw,
 
             # Unix socket (audit sidecar)
             /run/ai-audit-sidecar.sock rw,
