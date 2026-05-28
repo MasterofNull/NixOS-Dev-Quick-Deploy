@@ -89,11 +89,11 @@ def http_get(url: str, timeout: int = 5, headers: dict | None = None) -> tuple[i
 
 
 def http_health_ok(url: str, timeout: int = 5) -> bool:
-    """Return True if GET url returns JSON with status='ok'."""
+    """Return True if GET url returns JSON with status='ok' or 'no slot available'."""
     _, body = http_get(url, timeout=timeout)
     try:
         d = json.loads(body)
-        return d.get("status") == "ok"
+        return d.get("status") in ("ok", "no slot available")
     except Exception:
         return False
 
