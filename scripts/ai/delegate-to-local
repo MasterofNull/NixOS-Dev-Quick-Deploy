@@ -286,29 +286,41 @@ PYEOF2
 }
 
 run_agent() {
-    local prompt="$1" output_file="$2" timeout_secs="$3"
+    local prompt="$1" output_file="$2" timeout_secs="$3" _role="${4:-implement}"
     # Use $SCRIPT_DIR (set at source time) — $0 is 'bash' in nohup subshells
     local agent_loop; agent_loop="$SCRIPT_DIR/aq-agent-loop"
     [[ -x "$agent_loop" ]] || die "aq-agent-loop not found at $agent_loop"
     check_service "$LLAMA_PORT" "llama.cpp"
 
-    # Run aq-agent-loop with output to persistent file
-    "$agent_loop" --task "$prompt" --output "$output_file" --timeout "$timeout_secs"
+    # Map legacy role aliases to role-matrix values
+    local mapped_role
+    case "$_role" in
+        plan)        mapped_role="architect"   ;;
+        implement)   mapped_role="implementer" ;;
+        review)      mapped_role="reviewer"    ;;
+        research)    mapped_role="implementer" ;;
+        orchestrator|architect|implementer|reviewer) mapped_role="$_role" ;;
+        *)           mapped_role="implementer" ;;
+    esac
+
+    # Run aq-agent-loop with output to persistent file; pass structured role
+    "$agent_loop" --task "$prompt" --output "$output_file" --timeout "$timeout_secs" --role "$mapped_role"
 }
 
 run_hybrid() {
-    local prompt="$1" output_file="$2" timeout_secs="$3"
+    local prompt="$1" output_file="$2" timeout_secs="$3" _role="${4:-implement}"
     check_service "$HYBRID_PORT" "hybrid-coordinator"
-    python3 - "$prompt" "http://127.0.0.1:${HYBRID_PORT}" "$timeout_secs" "$output_file" <<'PYEOF'
+    python3 - "$prompt" "http://127.0.0.1:${HYBRID_PORT}" "$timeout_secs" "$output_file" "$_role" <<'PYEOF'
 import sys, json, urllib.request, urllib.error
 
-prompt, base_url, timeout_secs, output_file = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+prompt, base_url, timeout_secs, output_file, role = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
 
 payload = json.dumps({
     "query": prompt,
     "mode": "auto",
     "prefer_local": True,
-    "limit": 1
+    "limit": 1,
+    "role": role if role else None,
 }).encode()
 
 req = urllib.request.Request(
@@ -501,7 +513,7 @@ ${prompt}"
 
     if [[ "$wait_mode" == "true" ]]; then
         info "Running in blocking mode (timeout: ${timeout_secs}s)..."
-        if $runner_func "$full_prompt" "$output_file" "$timeout_secs"; then
+        if $runner_func "$full_prompt" "$output_file" "$timeout_secs" "$role"; then
             update_tokens "$id" "${output_file}.usage.json"
             update_status "$REGISTRY" "$id" "done"
             "$SCRIPT_DIR/lib/pending-update" "done" "$id" 2>/dev/null || true
@@ -526,7 +538,7 @@ ${prompt}"
         nohup bash -c "
             _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             source \"$SCRIPT_DIR/delegate-to-local\"
-            if $(printf '%q ' "$runner_func" "$full_prompt" "$output_file" "$timeout_secs") ; then
+            if $(printf '%q ' "$runner_func" "$full_prompt" "$output_file" "$timeout_secs" "$role") ; then
                 _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
                 _lat=\$(( _end_ms - _start_ms ))
                 bash \"$_audit_helper\" \"$_coord_url\" task_completed local success \"\$_lat\" \"$id\" \"completed mode=$mode: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
@@ -638,8 +650,11 @@ case "$MODE" in
 esac
 
 case "$ROLE" in
+    # Role-matrix values (canonical)
+    orchestrator|architect|implementer|reviewer) ;;
+    # Legacy aliases (backwards-compatible)
     plan|implement|review|research) ;;
-    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
+    *) die "Invalid --role '$ROLE'. Valid: orchestrator | architect | implementer | reviewer" ;;
 esac
 
 case "${SUBCMD:-}" in

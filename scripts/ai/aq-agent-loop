@@ -91,6 +91,7 @@ async def run_task(
     allow_fallback: bool,
     llama_url: str,
     timeout_secs: int,
+    role: str | None = None,
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
 
@@ -118,6 +119,7 @@ async def run_task(
         objective=task_text,
         complexity=0.7,  # treat coding tasks as moderately complex → prefer local
         quality_critical=False,
+        role=role,  # None = auto-assign from AGENT_TYPE_DEFAULT_ROLE mapping
     )
 
     print(f"[aq-agent-loop] Task: {task_id}")
@@ -180,6 +182,9 @@ def main() -> int:
     parser.add_argument("--fallback",   action="store_true", help="Allow remote fallback if local fails")
     parser.add_argument("--llama-url",  default=os.environ.get("LLAMA_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--timeout",    type=int, default=300, help="Per-inference timeout (seconds) [default: 300]")
+    parser.add_argument("--role",       default=None,
+                        choices=["orchestrator", "architect", "implementer", "reviewer"],
+                        help="Authority role injected into system prompt (default: auto from AgentType mapping)")
     parser.add_argument("--list-tools", action="store_true", help="List registered tools and exit")
 
     args = parser.parse_args()
@@ -198,6 +203,7 @@ def main() -> int:
         allow_fallback=args.fallback,
         llama_url=args.llama_url,
         timeout_secs=args.timeout,
+        role=args.role,
     ))
 
 
