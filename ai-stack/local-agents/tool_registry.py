@@ -557,8 +557,8 @@ class ToolRegistry:
             Parsed ToolCall or None if not a function call
         """
         try:
-            # Try to extract JSON from output
-            # llama.cpp may wrap in markdown code blocks
+            # Try to extract JSON from output.
+            # llama.cpp may wrap in markdown code blocks or prepend prose.
             output = model_output.strip()
 
             if output.startswith("```json"):
@@ -566,8 +566,21 @@ class ToolRegistry:
             if output.endswith("```"):
                 output = output[:-3]  # Remove ```
 
-            # Parse JSON
-            data = json.loads(output)
+            output = output.strip()
+
+            # Fast path: entire output is JSON.
+            try:
+                data = json.loads(output)
+            except json.JSONDecodeError:
+                # Fallback: model prepended prose before the JSON object.
+                # Find the last '{' that opens a valid JSON object so we skip
+                # any leading natural-language text.
+                brace = output.rfind('{"function"')
+                if brace == -1:
+                    brace = output.rfind("{")
+                if brace == -1:
+                    return None
+                data = json.loads(output[brace:])
 
             # Check if it's a function call
             if "function" not in data:
