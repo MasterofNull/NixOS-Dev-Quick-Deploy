@@ -379,7 +379,7 @@ let
   otlpCollectorUnit = "ai-otel-collector.service";
   otlpEndpoint = "http://127.0.0.1:${toString ports.otlpGrpc}";
   # Phase 21.1 — OTEL collector config with Tempo exporter for trace persistence.
-  # Traces are forwarded to Grafana Tempo for storage and querying.
+  # Traces are forwrded to Grafana Tempo for storage and querying.
   otelCollectorConfig = pkgs.writeText "ai-otel-collector.yaml" ''
     extensions:
       health_check:
@@ -722,7 +722,7 @@ in {
         description = "AI stack OpenTelemetry collector";
         wantedBy = ["ai-stack.target"];
         partOf = ["ai-stack.target"];
-        # Phase 21.1 — Wait for Tempo to be ready before forwarding traces.
+        # Phase 21.1 — Wait for Tempo to be ready before forwrding traces.
         after =
           ["network-online.target"]
           ++ lib.optional cfg.monitoring.tracing.enable "ai-tempo.service";
@@ -2079,7 +2079,7 @@ in {
     # ── Phase 12.4.1 — MCP process tree watchdog timer ───────────────────────
     # Scans each MCP service's cgroup for unexpected executables (non-Nix-store
     # binaries).  Alerts written to /var/log/ai-mcp-process-watch/alerts/ as
-    # JSONL and also forwarded to the system journal via logger(1).
+    # JSONL and also forwrded to the system journal via logger(1).
     (lib.mkIf active {
       systemd.services.ai-mcp-process-watch = {
         description = "AI stack MCP process tree watchdog";
@@ -2228,21 +2228,21 @@ in {
             ${mcp.repoPath}/** r,
 
             # === ReadWritePaths (from service unit) ===
-            # rwa: read, write/create (O_CREAT+truncate), append (O_APPEND)
+            # rw: read, write/create (O_CREAT+truncate), append (O_APPEND)
             /var/lib/ai-stack/ rw,
-            /var/lib/ai-stack/** rwa,
+            /var/lib/ai-stack/** rw,
             /var/lib/nixos-ai-stack/ rw,
-            /var/lib/nixos-ai-stack/** rwa,
+            /var/lib/nixos-ai-stack/** rw,
             /var/log/ai-audit-sidecar/ rw,
-            /var/log/ai-audit-sidecar/** rwa,
+            /var/log/ai-audit-sidecar/** rw,
             /var/log/nixos-ai-stack/ rw,
-            /var/log/nixos-ai-stack/** rwa,
+            /var/log/nixos-ai-stack/** rw,
 
             # === PrivateTmp=true — private tmpfs (from service unit) ===
-            /tmp/ rwa,
-            /tmp/** rwa,
-            /var/tmp/ rwa,
-            /var/tmp/** rwa,
+            /tmp/ rw,
+            /tmp/** rw,
+            /var/tmp/ rw,
+            /var/tmp/** rw,
 
             # === Secrets (agenix — real path after symlink resolution) ===
             /run/secrets/ r,
@@ -2358,12 +2358,12 @@ in {
       };
     })
 
-    # ── Phase 12.3.3 — Forward audit log to remote syslog when configured ────
+    # ── Phase 12.3.3 — Forwrd audit log to remote syslog when configured ────
     (lib.mkIf (active && cfg.logging.remoteSyslog.enable) {
       # rsyslogd imfile module tails the audit JSONL and feeds entries into the
-      # existing omfwd forwarding pipeline configured by logging.nix.
+      # existing omfwd forwrding pipeline configured by logging.nix.
       services.rsyslogd.extraConfig = lib.mkAfter ''
-        # Phase 12.3.3 — AI tool audit log forwarding
+        # Phase 12.3.3 — AI tool audit log forwrding
         module(load="imfile")
         input(type="imfile"
               File="/var/log/ai-audit-sidecar/tool-audit.jsonl"

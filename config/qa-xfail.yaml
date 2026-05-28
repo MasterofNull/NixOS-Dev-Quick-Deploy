@@ -67,7 +67,18 @@ xfail:
 
   - id: "0.7.2"
     reason: >
-      hybrid /query unreachable — coordinator down. Same root cause as 0.1.1.
+      hybrid /query returns 500 — AppArmor blocks coordinator writes (kernel profile
+      stale; reload failed twice due to rwac/rwa syntax errors). Fix deployed in
+      mcp-servers.nix (rw mode). Recovers on next nixos-rebuild.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.5.6"
+    reason: >
+      Continue/editor flow smoke hits coordinator /query which returns HTTP 500
+      due to AppArmor Permission Denied on write paths. Same root cause as 0.7.2.
+      Recovers on next nixos-rebuild with the rw AppArmor profile fix.
     created: "2026-05-28"
     expires: "2026-06-27"
     owner: hyperd
