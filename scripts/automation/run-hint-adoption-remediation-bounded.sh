@@ -125,7 +125,7 @@ while (( pass < MAX_PASSES )) && (( started_total < MAX_TOTAL_RUNS )); do
   cur_pct="$(printf '%s\n' "${current_json}" | adoption_pct)"
   cur_total="$(printf '%s\n' "${current_json}" | total_injected)"
   cur_acc="$(printf '%s\n' "${current_json}" | total_accepted)"
-  awk "BEGIN{exit !(${cur_pct} >= ${TARGET_PCT})}" && break
+  if awk "BEGIN{exit !(${cur_pct} >= ${TARGET_PCT})}"; then break; fi
 
   needed="$(need_runs_for_target "${cur_total}" "${cur_acc}" "${TARGET_PCT}")"
   remaining=$(( MAX_TOTAL_RUNS - started_total ))

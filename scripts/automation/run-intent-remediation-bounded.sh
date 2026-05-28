@@ -28,7 +28,7 @@ echo "[intent-remediation] start coverage=${start_cov}% target=${TARGET_COVERAGE
 
 while (( passes < MAX_PASSES )) && (( total_started < MAX_TOTAL_RUNS )); do
   current_cov="$(report_json | coverage_pct)"
-  awk "BEGIN{exit !(${current_cov} >= ${TARGET_COVERAGE_PCT})}" && break
+  if awk "BEGIN{exit !(${current_cov} >= ${TARGET_COVERAGE_PCT})}"; then break; fi
 
   remaining=$(( MAX_TOTAL_RUNS - total_started ))
   per_pass="${RUNS_PER_PASS}"
