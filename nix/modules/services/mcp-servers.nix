@@ -2228,8 +2228,12 @@ in {
             ${repoSource}/** r,
 
             # Secrets (read-only)
+            # /run/secrets/** covers symlink names; AppArmor also enforces on
+            # the real path (/run/secrets.d/<n>/**) after symlink resolution.
             /run/secrets/ r,
             /run/secrets/** r,
+            /run/secrets.d/ r,
+            /run/secrets.d/** r,
 
             # System resources needed by Python async runtime
             /proc/self/** r,
@@ -2240,11 +2244,14 @@ in {
 
             # Process enumeration — health spider and process-manager use
             # psutil which reads /proc/<pid>/cmdline, stat, limits for each process.
+            # fd/ is needed by Python tempfile and subprocess open-file checks.
             /proc/ r,
             @{PROC}/@{pids}/cmdline r,
             @{PROC}/@{pids}/stat r,
             @{PROC}/@{pids}/status r,
             @{PROC}/@{pids}/limits r,
+            @{PROC}/@{pids}/fd/ r,
+            @{PROC}/@{pids}/fd/** r,
 
             # Hardware temperature sensors — coordinator telemetry health checks.
             /sys/devices/**/hwmon/**/temp*_input r,
