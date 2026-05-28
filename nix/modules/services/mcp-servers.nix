@@ -2228,21 +2228,21 @@ in {
             ${mcp.repoPath}/** r,
 
             # === ReadWritePaths (from service unit) ===
-            # rw: read, write/create (O_CREAT+truncate), append (O_APPEND)
+            # rwk: read, write/create (O_CREAT+truncate), file lock (fcntl/flock)
             /var/lib/ai-stack/ rw,
-            /var/lib/ai-stack/** rw,
+            /var/lib/ai-stack/** rwk,
             /var/lib/nixos-ai-stack/ rw,
-            /var/lib/nixos-ai-stack/** rw,
+            /var/lib/nixos-ai-stack/** rwk,
             /var/log/ai-audit-sidecar/ rw,
-            /var/log/ai-audit-sidecar/** rw,
+            /var/log/ai-audit-sidecar/** rwk,
             /var/log/nixos-ai-stack/ rw,
-            /var/log/nixos-ai-stack/** rw,
+            /var/log/nixos-ai-stack/** rwk,
 
             # === PrivateTmp=true — private tmpfs (from service unit) ===
             /tmp/ rw,
-            /tmp/** rw,
+            /tmp/** rwk,
             /var/tmp/ rw,
-            /var/tmp/** rw,
+            /var/tmp/** rwk,
 
             # === Secrets (agenix — real path after symlink resolution) ===
             /run/secrets/ r,
@@ -2255,6 +2255,7 @@ in {
             /proc/ r,
             @{PROC}/@{pids}/cmdline r,
             @{PROC}/@{pids}/stat r,
+            @{PROC}/@{pids}/statm r,
             @{PROC}/@{pids}/status r,
             @{PROC}/@{pids}/limits r,
             @{PROC}/@{pids}/fd/ r,
