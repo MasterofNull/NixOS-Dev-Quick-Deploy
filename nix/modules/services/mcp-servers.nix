@@ -2266,12 +2266,12 @@ in {
             /dev/urandom r,
 
             # Hardware temperature sensors — coordinator telemetry
-            # /sys/class/hwmon/ is the sysfs class symlink directory
+            # /sys/class/hwmon/ entries are symlinks → real device paths hwmonN/
             /sys/class/hwmon/ r,
             /sys/class/hwmon/** r,
-            /sys/devices/**/hwmon/**/temp*_input r,
-            /sys/devices/**/hwmon/**/temp*_label r,
-            /sys/devices/**/hwmon/**/name r,
+            /sys/devices/**/hwmon*/temp*_input r,
+            /sys/devices/**/hwmon*/temp*_label r,
+            /sys/devices/**/hwmon*/name r,
 
             # Unix socket (audit sidecar)
             /run/ai-audit-sidecar.sock rw,
