@@ -479,7 +479,11 @@ class LocalAgentExecutor:
         """
         use_streaming = _env_flag("LLAMA_USE_STREAMING", default=True)
         chunk_timeout = _env_float("LLAMA_CHUNK_TIMEOUT", default=120.0)
-        max_tokens = int(os.getenv("LLAMA_MAX_TOKENS", "4096"))
+        # 512 tokens covers both tool call JSON (50-100 tokens) and final summaries
+        # (200-400 tokens). Files hold persistent data — inference responses are short.
+        # With 1-2 tok/s on Renoir APU, 512 tokens = 256-512s max generation time.
+        # 4096 would risk 68-minute slot locks when clients disconnect.
+        max_tokens = int(os.getenv("LLAMA_MAX_TOKENS", "512"))
 
         payload: Dict[str, Any] = {
             "messages": messages,
