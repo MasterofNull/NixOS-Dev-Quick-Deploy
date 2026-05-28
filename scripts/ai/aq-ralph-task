@@ -26,6 +26,21 @@ echo "Submitting task to Ralph-Wiggum..."
 echo "  Prompt: ${PROMPT:0:100}..."
 echo "  Backend: ${BACKEND}"
 
+# Wait for ralph HTTP to be ready (handles startup race when fired by systemd timer)
+_RALPH_READY=false
+for _i in 1 2 3 4 5; do
+    if curl -sf --connect-timeout 2 "${RALPH_URL}/health" > /dev/null 2>&1; then
+        _RALPH_READY=true
+        break
+    fi
+    echo "  Waiting for Ralph HTTP (attempt ${_i}/5)..."
+    sleep 3
+done
+if [[ "$_RALPH_READY" != "true" ]]; then
+    echo "Ralph-Wiggum HTTP not ready after 15s — aborting."
+    exit 7
+fi
+
 RESPONSE=$(curl -s -X POST "${RALPH_URL}/tasks" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: ${RALPH_KEY}" \
