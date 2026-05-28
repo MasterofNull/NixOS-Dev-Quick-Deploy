@@ -707,17 +707,28 @@ class LocalAgentExecutor:
         Appends learned gap rules from config/harness-prompt-extensions.yaml so
         the model gets trained gap patterns on every call (agent-agnostic portability).
         """
+        _tool_call_format = (
+            "\n\nTOOL USE PROTOCOL (strict — follow exactly):\n"
+            "When you need to call a tool, respond with ONLY this JSON and nothing else:\n"
+            '{"function": "<tool_name>", "arguments": {<param>: <value>, ...}}\n'
+            "Rules:\n"
+            "- No prose, no markdown, no explanation before or after the JSON.\n"
+            "- One tool call per response.\n"
+            "- After receiving the tool result, call the next tool or give your final answer.\n"
+            "- When the task is complete, respond with plain text (NOT JSON) summarising what was done.\n"
+            "- NEVER wrap the JSON in ```json``` code blocks.\n"
+        )
+
         base_prompt = {
             AgentType.AGENT: (
                 "You are AQ, an expert coding and systems developer embedded in the NixOS AI harness. "
                 "You are proficient in NixOS, Flakes, and declarative configuration. "
-                "Behavioral Mandate: CHECK-IN FIRST and show your work with proof (file reads, command outputs) "
-                "before making system changes."
+                "Behavioral Mandate: CHECK-IN FIRST — use read_file to confirm the current state before "
+                "making any changes. Use tools to validate and commit your work."
             ),
             AgentType.PLANNER: (
                 "You are an expert systems planner. Your role is to research the environment and produce "
-                "accurate, phased implementation plans for NixOS-based AI infrastructure. "
-                "Show your research evidence and get user approval before proceeding."
+                "accurate, phased implementation plans for NixOS-based AI infrastructure."
             ),
             AgentType.CHAT: (
                 "You are AQ, an expert developer helping the user interact with the NixOS AI stack. "
@@ -732,7 +743,7 @@ class LocalAgentExecutor:
         tools_desc = "\n\nAvailable tools:\n" + json.dumps(tools, indent=2)
         extensions = self._load_prompt_extensions()
 
-        return base_prompt[agent_type] + tools_desc + extensions
+        return base_prompt[agent_type] + _tool_call_format + tools_desc + extensions
 
     def _load_prompt_extensions(self) -> str:
         """Load learned gap rules from harness-prompt-extensions.yaml.
