@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,6 +27,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+# shared/ lives at ai-stack/mcp-servers/shared/ — add parent to path once.
+_MCP_SERVERS_PATH = str(Path(__file__).resolve().parents[1] / "mcp-servers")
+if _MCP_SERVERS_PATH not in sys.path:
+    sys.path.insert(0, _MCP_SERVERS_PATH)
+
+from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS  # noqa: E402
 from tool_registry import ToolCall, ToolRegistry, get_registry
 
 logger = logging.getLogger(__name__)
@@ -479,21 +486,15 @@ class LocalAgentExecutor:
         """
         use_streaming = _env_flag("LLAMA_USE_STREAMING", default=True)
         chunk_timeout = _env_float("LLAMA_CHUNK_TIMEOUT", default=120.0)
-        # 512 tokens covers both tool call JSON (50-100 tokens) and final summaries
-        # (200-400 tokens). Files hold persistent data — inference responses are short.
-        # With 1-2 tok/s on Renoir APU, 512 tokens = 256-512s max generation time.
-        # 4096 would risk 68-minute slot locks when clients disconnect.
-        max_tokens = int(os.getenv("LLAMA_MAX_TOKENS", "512"))
 
-        payload: Dict[str, Any] = {
-            "messages": messages,
-            "temperature": 0.2,
-            "max_tokens": max_tokens,
-            # ARCH CONSTRAINT: enable_thinking is a Jinja2 chat-template variable.
-            # It MUST be in chat_template_kwargs — top-level is silently ignored by
-            # llama.cpp, causing Qwen3-35B to fill all tokens with reasoning_content.
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
+        # Agent tool calls: 512 tokens (50-100 for JSON + 400 for summary).
+        # At 1-2 tok/s on Renoir APU, 512 tokens = 256-512s max generation.
+        # 4096 would risk 68-minute slot locks when clients disconnect.
+        payload = build_llama_payload(
+            messages,
+            max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
+            temperature=0.2,
+        )
 
         if not use_streaming:
             # Legacy non-streaming path — 300s wall-clock limit.

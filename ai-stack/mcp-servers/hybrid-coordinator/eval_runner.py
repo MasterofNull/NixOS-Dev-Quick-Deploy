@@ -36,9 +36,17 @@ import asyncio
 import logging
 import os
 import random
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# shared/ is at ai-stack/mcp-servers/shared/ — parents[1] from this file's location.
+_SHARED_PATH = str(Path(__file__).resolve().parents[1])
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
+from shared.llm_config import build_llama_payload  # noqa: E402
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -213,13 +221,12 @@ async def score_faithfulness_async(
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{_LLM_URL}/v1/chat/completions",
-                json={
-                    "model": "local",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 8,
-                    "temperature": 0.0,
-                    "chat_template_kwargs": {"enable_thinking": False},
-                },
+                json=build_llama_payload(
+                    [{"role": "user", "content": prompt}],
+                    max_tokens=8,
+                    temperature=0.0,
+                    model="local",
+                ),
                 timeout=aiohttp.ClientTimeout(total=15.0),
             ) as resp:
                 if resp.status == 200:

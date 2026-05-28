@@ -64,9 +64,14 @@ STATE_DIR = Path(os.environ.get("AGENT_STATE_DIR", "/tmp/agent-spawner"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 AGENTS_DIR = REPO_ROOT / "ai-stack" / "local-agents"
 
-# Add local-agents to path for imports
+# Add local-agents and shared/ to path for imports
 if str(AGENTS_DIR) not in sys.path:
     sys.path.insert(0, str(AGENTS_DIR))
+_MCP_SERVERS_PATH = str(REPO_ROOT / "ai-stack" / "mcp-servers")
+if _MCP_SERVERS_PATH not in sys.path:
+    sys.path.insert(0, _MCP_SERVERS_PATH)
+
+from shared.llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS  # noqa: E402
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -341,12 +346,7 @@ async def run():
             try:
                 resp = await client.post(
                     f"{os.environ.get('SWITCHBOARD_URL', LLAMA_URL)}/v1/chat/completions",
-                    json={
-                        "messages": messages,
-                        "temperature": 0.3,
-                        "max_tokens": int(os.environ.get("LLAMA_MAX_TOKENS", "1200")),
-                        "chat_template_kwargs": {"enable_thinking": False},
-                    },
+                    json=build_llama_payload(messages),
                     headers={"X-AI-Profile": f"local-{AGENT_ROLE}"},
                 )
                 if resp.status_code == 200:
@@ -365,12 +365,7 @@ async def run():
             # Fallback: call llama.cpp directly
             resp = await client.post(
                 f"{LLAMA_URL}/v1/chat/completions",
-                json={
-                    "messages": messages,
-                    "temperature": 0.3,
-                    "max_tokens": int(os.environ.get("LLAMA_MAX_TOKENS", "1200")),
-                    "chat_template_kwargs": {"enable_thinking": False},
-                },
+                json=build_llama_payload(messages),
             )
             if resp.status_code == 200:
                 data = resp.json()
