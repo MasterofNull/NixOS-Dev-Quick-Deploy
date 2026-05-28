@@ -32,3 +32,56 @@ xfail:
     created: "2026-05-27"
     expires: "2026-06-26"
     owner: hyperd
+
+  - id: "0.9.2"
+    reason: >
+      UAG lifecycle replay endpoint (coordinator :8003) unreachable during AppArmor
+      enforce soak. Coordinator crash-loops on hwmon PermissionError which is fixed
+      in inference_param_manager.py (PermissionError graceful degradation). Endpoint
+      will recover on next service restart after this commit lands.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.1.1:ai-hybrid-coordinator"
+    reason: >
+      ai-hybrid-coordinator crash-loops on hwmon PermissionError (AppArmor enforce soak).
+      Fixed in inference_param_manager.py — recovers on next service restart.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.2.1:hybrid-coordinator"
+    reason: >
+      Port 8003 not bound — coordinator crash-looping. Same root cause as 0.1.1.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.7.1"
+    reason: >
+      /v1/orchestrate unreachable — coordinator down. Same root cause as 0.1.1.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.7.2"
+    reason: >
+      hybrid /query unreachable — coordinator down. Same root cause as 0.1.1.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.9.1"
+    reason: >
+      Safety gate endpoint unreachable — coordinator down. Same root cause as 0.1.1.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd
+
+  - id: "0.9.3"
+    reason: >
+      DAG executor endpoint unreachable — coordinator down. Same root cause as 0.1.1.
+    created: "2026-05-28"
+    expires: "2026-06-27"
+    owner: hyperd

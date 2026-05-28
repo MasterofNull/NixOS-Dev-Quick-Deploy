@@ -151,3 +151,10 @@ CONTEXT: aq-report shows 'Continuation-"
 [2026-05-28T18:55:13.280203Z] [done] id=local-20260528-114139-xuraeu
 [2026-05-28T19:00:59.594924Z] [dispatch] id=local-20260528-120059-my61s3 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120059-my61s3.log obj="Write a Python one-liner that prints the first 10 Fibonacci numbers."
 [2026-05-28T19:01:29.055870Z] [done] id=local-20260528-120059-my61s3
+[2026-05-28T19:02:40.174691Z] [dispatch] id=local-20260528-120240-skey1h agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120240-skey1h.log obj="In exactly one sentence (no more), state what role an 'architect' plays in this AI stack."
+[2026-05-28T19:03:03.438482Z] [done] id=local-20260528-120240-skey1h
+
+## 2026-05-28T19:44:54Z — hwmon graceful degradation
+- inference_param_manager.py: wrap iterdir() in PermissionError handler
+- Coordinator crashes on hwmon enumeration when AppArmor confinement active
+- Fix: log debug + return on PermissionError — thermal data is optional telemetry

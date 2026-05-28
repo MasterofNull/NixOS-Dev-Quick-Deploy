@@ -57,7 +57,12 @@ class InferenceParamManager:
         if not hwmon_root.exists():
             return
 
-        for hwmon_dir in hwmon_root.iterdir():
+        try:
+            entries = list(hwmon_root.iterdir())
+        except PermissionError:
+            logger.debug("hwmon enumeration unavailable (confined environment)")
+            return
+        for hwmon_dir in entries:
             try:
                 name_file = hwmon_dir / "name"
                 if not name_file.exists():
