@@ -47,6 +47,9 @@ FINE_TUNING_DATASET = Path(os.getenv(
 OPTIMIZATION_PROPOSALS = TELEMETRY_DIR / "optimization_proposals.jsonl"
 DELEGATION_FEEDBACK    = TELEMETRY_DIR / "delegation-feedback.jsonl"
 HYBRID_EVENTS          = TELEMETRY_DIR / "hybrid-events.jsonl"
+# User-space spool written by delegate-to-local (DirectRunner) when the service
+# telemetry dir isn't writable by the invoking user. Merged at ingest time.
+USER_EVENTS_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
 
 # ── quality thresholds ────────────────────────────────────────────────────────
 
@@ -198,8 +201,14 @@ class TrainingIngestor:
         return sum(1 for _ in open(self.dataset_path, encoding="utf-8", errors="replace"))
 
     def _ingest_hybrid_events(self, since: datetime) -> int:
-        """Extract positive training pairs from hybrid-events.jsonl."""
+        """Extract positive training pairs from hybrid-events.jsonl.
+
+        Reads both the service telemetry file and the user-space spool written
+        by delegate-to-local (DirectRunner) when the service dir isn't writable.
+        """
         events = _read_jsonl(HYBRID_EVENTS, since=since)
+        if USER_EVENTS_SPOOL.exists():
+            events = events + _read_jsonl(USER_EVENTS_SPOOL, since=since)
         added = 0
 
         self.dataset_path.parent.mkdir(parents=True, exist_ok=True)

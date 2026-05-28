@@ -81,6 +81,59 @@ from task_registry import TaskRegistry  # type: ignore  # noqa: E402
 from slot_scheduler import wait_for_slot  # type: ignore  # noqa: E402
 
 
+# ── training telemetry ────────────────────────────────────────────────────────
+
+_TELEMETRY_DIR = Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
+_HYBRID_EVENTS = _TELEMETRY_DIR / "hybrid-events.jsonl"
+# User-writable spool for agent_step_complete events emitted by delegate-to-local.
+# The service telemetry dir is owned by the systemd user — user-space dispatches
+# write here instead. training_ingest.py reads both paths.
+_USER_EVENTS_SPOOL = _HERE.parent.parent.parent / ".agents" / "telemetry" / "hybrid-events.jsonl"
+
+
+def _emit_training_event(
+    query: str,
+    response: str,
+    tokens_in: int,
+    tokens_out: int,
+    role: Optional[str],
+) -> None:
+    """Append an agent_step_complete event so training_ingest.py can pick it up.
+
+    Writes to the service telemetry dir when writable (systemd context), otherwise
+    falls back to the user-space spool at .agents/telemetry/hybrid-events.jsonl.
+    training_ingest.py reads both paths.
+    """
+    if not response:
+        return
+    import datetime
+    event = json.dumps({
+        "event_type": "agent_step_complete",
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "query": query,
+        "response": response,
+        "latency_ms": tokens_out * 600 if tokens_out else 1000,  # ~600ms/tok estimate
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "role": role,
+        "source": "delegate-direct",
+    })
+    # Try service telemetry dir first (production), fall back to user spool.
+    targets = [_HYBRID_EVENTS, _USER_EVENTS_SPOOL]
+    for target in targets:
+        # Skip only when parent exists but isn't writable — we can't create it.
+        # When parent is absent, attempt mkdir inside the try block.
+        if target.parent.exists() and not os.access(str(target.parent), os.W_OK):
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "a", encoding="utf-8") as fh:
+                fh.write(event + "\n")
+            return
+        except Exception:
+            continue
+
+
 # ── runners ──────────────────────────────────────────────────────────────────
 
 class DirectRunner:
@@ -142,6 +195,10 @@ class DirectRunner:
                 Path(str(output_file) + ".usage.json").write_text(
                     json.dumps({"tokens_in": tokens_in, "tokens_out": tokens_out})
                 )
+            # Emit agent_step_complete to feed training ingest pipeline.
+            # training_ingest.py reads this event type from hybrid-events.jsonl;
+            # without it samples_added stays 0 for direct-mode dispatches.
+            _emit_training_event(prompt, result, tokens_in, tokens_out, config.role)
             return True
 
         except urllib.error.HTTPError as e:

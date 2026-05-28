@@ -1,0 +1,1 @@
+{"event_type": "agent_step_complete", "timestamp": "2026-05-28T18:14:11.863954Z", "query": "test query", "response": "A meaningful response for training ingest with sufficient length to pass quality checks", "latency_ms": 18000, "tokens_in": 50, "tokens_out": 30, "role": "implementer", "source": "delegate-direct"}
