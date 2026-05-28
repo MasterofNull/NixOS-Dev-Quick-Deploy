@@ -757,17 +757,20 @@ class LocalAgentExecutor:
             ),
         }
 
-        # Compact tool list: name(params): description — ~20 tokens/tool vs ~130 for full JSON schema.
-        # Full schemas are available via tool_registry for execution; the model only needs names+params.
-        def _compact_tool(t: Dict) -> str:
+        # Progressive disclosure: tool names + required params only (~8 tok/tool).
+        # Full schemas live in tool_registry for server-side validation — the model
+        # doesn't need them. Context is served on demand via hints/RAG/session-start.
+        def _minimal_tool(t: Dict) -> str:
             props = t.get("parameters", {}).get("properties", {})
             req = t.get("parameters", {}).get("required", [])
+            all_params = list(props.keys())
+            # Show required params starred, optional params unstarred; cap at 4 params
             params = ", ".join(
-                f"{k}*" if k in req else k for k in props
-            )
-            return f"  {t['name']}({params}): {t['description'][:80]}"
+                f"{k}*" if k in req else k for k in all_params[:4]
+            ) + ("..." if len(all_params) > 4 else "")
+            return f"{t['name']}({params})"
 
-        tools_desc = "\n\nAvailable tools (* = required):\n" + "\n".join(_compact_tool(t) for t in tools)
+        tools_desc = "\n\nTools: " + "  ".join(_minimal_tool(t) for t in tools)
         extensions = self._load_prompt_extensions()
 
         # AGENT type gets the full workflow contract; other types get only tool call format
