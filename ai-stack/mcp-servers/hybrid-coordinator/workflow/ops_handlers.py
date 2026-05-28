@@ -12,6 +12,8 @@ import logging
 import os
 import re
 import socket
+
+from inference_param_manager import get_ipm
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -167,7 +169,9 @@ async def handle_health(_request: web.Request) -> web.Response:
             "autonomy_max_external_calls": _config.AI_AUTONOMY_MAX_EXTERNAL_CALLS,
             "autonomy_max_retrieval_results": _config.AI_AUTONOMY_MAX_RETRIEVAL_RESULTS,
             "prompt_cache_policy_enabled": _config.AI_PROMPT_CACHE_POLICY_ENABLED,
-            "speculative_decoding_enabled": _config.AI_SPECULATIVE_DECODING_ENABLED,
+            "speculative_decoding_enabled": (get_ipm()._state.spec_decoding_active
+                                             if get_ipm()._state.spec_decoding_active is not None
+                                             else _config.AI_SPECULATIVE_DECODING_ENABLED),
             "speculative_decoding_mode": _config.AI_SPECULATIVE_DECODING_MODE,
             "context_compression_enabled": _config.AI_CONTEXT_COMPRESSION_ENABLED,
         },
