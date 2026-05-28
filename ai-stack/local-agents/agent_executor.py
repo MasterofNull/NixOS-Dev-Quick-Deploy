@@ -704,8 +704,10 @@ class LocalAgentExecutor:
     def _get_system_prompt(self, agent_type: AgentType, tools: List[Dict]) -> str:
         """Get system prompt for agent type with tool descriptions.
 
-        Appends learned gap rules from config/harness-prompt-extensions.yaml so
-        the model gets trained gap patterns on every call (agent-agnostic portability).
+        Injects the LOCAL-AGENT.md canonical operating contract (behavioral rules,
+        7-step workflow, harness-first principle) so the model runs with its full
+        operating instructions, then appends learned gap rules from
+        config/harness-prompt-extensions.yaml.
         """
         _tool_call_format = (
             "\n\nTOOL USE PROTOCOL (strict — follow exactly):\n"
@@ -719,23 +721,42 @@ class LocalAgentExecutor:
             "- NEVER wrap the JSON in ```json``` code blocks.\n"
         )
 
+        _workflow_contract = (
+            "\n\nWORKFLOW CONTRACT (7 steps — follow for every non-trivial task):\n"
+            "1. ORIENT: query coordinator hints before reading files:\n"
+            '   {"function": "run_command", "arguments": {"command": "curl -s \'http://localhost:8003/hints?q=<task>\'"}}\n'
+            "2. RESEARCH: use search_files + coordinator RAG, then read_file for confirmed paths.\n"
+            "3. PLAN: append [LOCAL PLAN] to .agent/collaboration/PULSE.log before any edit.\n"
+            "4. CHECKPOINT: POST task plan to http://localhost:8003/api/memory/facts.\n"
+            "5. EXECUTE: one file change at a time. Read before writing. Stay in assigned slice.\n"
+            "6. VALIDATE: call validate_before_commit. Must return success=true before git_add.\n"
+            "7. COMMIT: git_add specific files, then run_command git commit with Co-Authored-By footer.\n"
+            "\nBEHAVIORAL RULES (all agents):\n"
+            "- HARNESS-FIRST: query /hints and RAG before reading raw files.\n"
+            "- ONE SLICE: no unsolicited features, refactors, or cleanups.\n"
+            "- RETRY BUDGET: max 2 retries on inference-heavy ops.\n"
+            "- MEMORY: after completing work, POST facts to /api/memory/facts.\n"
+            "- SECURITY: no hardcoded ports/URLs — source of truth: nix/modules/core/options.nix.\n"
+            "- NEVER call validate_before_commit more than once — if it passes, proceed to git_add.\n"
+        )
+
         base_prompt = {
             AgentType.AGENT: (
-                "You are AQ, an expert coding and systems developer embedded in the NixOS AI harness. "
-                "You are proficient in NixOS, Flakes, and declarative configuration. "
-                "Behavioral Mandate: CHECK-IN FIRST — use read_file to confirm the current state before "
-                "making any changes. Use tools to validate and commit your work."
+                "You are AQ, an expert coding and systems developer on NixOS. "
+                "You have full tool access: file read/write, shell commands, git operations. "
+                "The harness is your force multiplier — use RAG, hints, and memory to extend "
+                "your effective reasoning beyond what fits in context."
             ),
             AgentType.PLANNER: (
-                "You are an expert systems planner. Your role is to research the environment and produce "
+                "You are an expert systems planner. Research the environment and produce "
                 "accurate, phased implementation plans for NixOS-based AI infrastructure."
             ),
             AgentType.CHAT: (
                 "You are AQ, an expert developer helping the user interact with the NixOS AI stack. "
-                "Stay grounded in the actual system state. Use tools to verify facts before answering."
+                "Stay grounded in actual system state. Use tools to verify facts before answering."
             ),
             AgentType.EMBEDDED: (
-                "You are an expert retrieval agent. Your role is to find precise evidence in the "
+                "You are an expert retrieval agent. Find precise evidence in the "
                 "NixOS codebase, documentation, and agentic memory to support architectural decisions."
             ),
         }
@@ -743,6 +764,9 @@ class LocalAgentExecutor:
         tools_desc = "\n\nAvailable tools:\n" + json.dumps(tools, indent=2)
         extensions = self._load_prompt_extensions()
 
+        # AGENT type gets the full workflow contract; other types get only tool call format
+        if agent_type == AgentType.AGENT:
+            return base_prompt[agent_type] + _workflow_contract + _tool_call_format + tools_desc + extensions
         return base_prompt[agent_type] + _tool_call_format + tools_desc + extensions
 
     def _load_prompt_extensions(self) -> str:
