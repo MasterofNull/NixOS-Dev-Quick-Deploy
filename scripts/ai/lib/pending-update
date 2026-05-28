@@ -38,36 +38,29 @@ def _load() -> dict:
     return {"in_flight": [], "updated_at": ""}
 
 
+_MAX_COMPLETED = 100   # max completed/failed entries to retain in PENDING.json
+_MAX_HANDOFF_LINES = 50  # max delegation tracking lines to retain in HANDOFF.md
+
+
 def _decay(data: dict) -> dict:
-    """Trim completed/failed tasks older than 48 hours. Keep all running tasks."""
-    from datetime import timedelta
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
-    def _keep(task: dict) -> bool:
-        if task.get("status") == "running":
-            return True
-        ts_str = task.get("completed_at") or task.get("dispatched_at", "")
-        if not ts_str:
-            return False
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-            return ts > cutoff
-        except Exception:
-            return False
-    data["in_flight"] = [t for t in data.get("in_flight", []) if _keep(t)]
+    """Cap completed/failed tasks at _MAX_COMPLETED (newest first). Never drops running tasks."""
+    running = [t for t in data.get("in_flight", []) if t.get("status") == "running"]
+    finished = [t for t in data.get("in_flight", []) if t.get("status") != "running"]
+    # Keep the most recent finished entries
+    finished = finished[-_MAX_COMPLETED:]
+    data["in_flight"] = running + finished
     return data
 
 
 def _decay_handoff() -> None:
-    """Keep only the last 20 dispatch/done/failed lines in HANDOFF.md to prevent bloat."""
+    """Cap delegation tracking lines at _MAX_HANDOFF_LINES (newest first)."""
     if not _HANDOFF.exists():
         return
     lines = _HANDOFF.read_text().splitlines()
-    # Split into non-delegation lines and delegation tracking lines
     delegation_markers = ("[dispatch]", "[done]", "[failed]", "[partial-success]", "[cancelled]")
     static_lines = [l for l in lines if not any(m in l for m in delegation_markers)]
     tracking_lines = [l for l in lines if any(m in l for m in delegation_markers)]
-    # Keep only last 20 tracking lines
-    trimmed = tracking_lines[-20:]
+    trimmed = tracking_lines[-_MAX_HANDOFF_LINES:]
     _HANDOFF.write_text("\n".join(static_lines + trimmed) + "\n")
 
 
