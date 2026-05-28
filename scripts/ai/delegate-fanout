@@ -159,9 +159,9 @@ with open(rf) as f:
         except: pass
 PYEOF
 )
-                [[ "$st" == "running" ]] && all_done=false && break
+                if [[ "$st" == "running" ]]; then all_done=false; break; fi
             done
-            [[ "$all_done" == "true" ]] && break
+            if [[ "$all_done" == "true" ]]; then break; fi
             sleep 15
             elapsed=$((elapsed + 15))
         done

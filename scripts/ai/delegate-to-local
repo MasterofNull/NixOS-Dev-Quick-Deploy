@@ -74,7 +74,7 @@ registry_append() {
 }
 
 update_status() {
-    python3 - "$REGISTRY" "$1" "$2" <<'PYEOF'
+    python3 - "$1" "$2" "$3" <<'PYEOF'
 import sys, json
 rf, tid, new_status = sys.argv[1], sys.argv[2], sys.argv[3]
 lines = []

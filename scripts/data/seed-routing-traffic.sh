@@ -146,7 +146,7 @@ ACTIVE_JOBS=0
 
 for ((r=1; r<=REPLAY_COUNT; r++)); do
   for i in "${!QUERIES[@]}"; do
-    [[ $i -ge $QUERY_COUNT ]] && break
+    if [[ $i -ge $QUERY_COUNT ]]; then break; fi
     Q="${QUERIES[$i]}"
     
     (
