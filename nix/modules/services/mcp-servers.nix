@@ -2228,21 +2228,21 @@ in {
             ${mcp.repoPath}/** r,
 
             # === ReadWritePaths (from service unit) ===
-            # rwac: read, write (truncate), append (O_APPEND), create (O_CREAT)
+            # rwa: read, write/create (O_CREAT+truncate), append (O_APPEND)
             /var/lib/ai-stack/ rw,
-            /var/lib/ai-stack/** rwac,
+            /var/lib/ai-stack/** rwa,
             /var/lib/nixos-ai-stack/ rw,
-            /var/lib/nixos-ai-stack/** rwac,
+            /var/lib/nixos-ai-stack/** rwa,
             /var/log/ai-audit-sidecar/ rw,
-            /var/log/ai-audit-sidecar/** rwac,
+            /var/log/ai-audit-sidecar/** rwa,
             /var/log/nixos-ai-stack/ rw,
-            /var/log/nixos-ai-stack/** rwac,
+            /var/log/nixos-ai-stack/** rwa,
 
             # === PrivateTmp=true — private tmpfs (from service unit) ===
-            /tmp/ rwac,
-            /tmp/** rwac,
-            /var/tmp/ rwac,
-            /var/tmp/** rwac,
+            /tmp/ rwa,
+            /tmp/** rwa,
+            /var/tmp/ rwa,
+            /var/tmp/** rwa,
 
             # === Secrets (agenix — real path after symlink resolution) ===
             /run/secrets/ r,
