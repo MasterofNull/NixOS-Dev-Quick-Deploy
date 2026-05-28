@@ -134,6 +134,46 @@ def _emit_training_event(
             continue
 
 
+# ── Phase 74E: mode auto-selection ───────────────────────────────────────────
+
+_AGENT_KEYWORDS = frozenset([
+    "create file", "edit file", "write file", "delete file",
+    "git commit", "git add", "git push", "commit ", "push branch",
+    "run tests", "run the test", "execute ", "install ", "write to file",
+])
+_HYBRID_KEYWORDS = frozenset([
+    "what is the current", "current state", "current status",
+    "retrieve from", "search for", "look up", "rag ", " rag?",
+    "what does the codebase", "find in the repo",
+])
+_RALPH_KEYWORDS = frozenset([
+    "return as json", "output as json", "json schema", "structured output",
+    "strict format", "output format:", "respond with json",
+])
+
+
+def classify_mode(prompt: str) -> str:
+    """Auto-select dispatch mode from prompt intent heuristics (Phase 74E).
+
+    Priority: ralph > agent > hybrid > direct.
+    Errors toward direct (fastest) — only escalates when clear signals present.
+
+    Examples:
+        classify_mode("Write a sort function") -> "direct"
+        classify_mode("What is the current hybrid-coordinator status?") -> "hybrid"
+        classify_mode("Create file main.py and add this code") -> "agent"
+        classify_mode("Return the config as JSON schema") -> "ralph"
+    """
+    p = prompt.lower()
+    if any(k in p for k in _RALPH_KEYWORDS):
+        return "ralph"
+    if any(k in p for k in _AGENT_KEYWORDS):
+        return "agent"
+    if any(k in p for k in _HYBRID_KEYWORDS):
+        return "hybrid"
+    return "direct"
+
+
 # ── runners ──────────────────────────────────────────────────────────────────
 
 class DirectRunner:
@@ -398,7 +438,9 @@ def _build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("delegate", help="Dispatch a local task")
     d.add_argument("--task-id",       required=True)
     d.add_argument("--output",        required=True)
-    d.add_argument("--mode",          required=True, choices=["agent", "hybrid", "direct", "ralph"])
+    d.add_argument("--mode",          default="auto",
+                   choices=["auto", "agent", "hybrid", "direct", "ralph"],
+                   help="Routing mode; 'auto' runs classify_mode() heuristic (default)")
     d.add_argument("--role",          required=True)
     d.add_argument("--prompt",        required=True)
     d.add_argument("--timeout",       type=int, default=300)
@@ -448,8 +490,10 @@ def main() -> int:
     # delegate subcommand
     assert args.subcmd == "delegate"
 
+    resolved_mode = classify_mode(args.prompt) if args.mode == "auto" else args.mode
+
     config = TaskConfig.from_args(
-        mode=args.mode,
+        mode=resolved_mode,
         role=args.role,
         timeout_secs=args.timeout,
         max_tokens=args.max_tokens,
