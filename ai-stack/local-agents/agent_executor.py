@@ -415,6 +415,7 @@ class LocalAgentExecutor:
                                 "source": "agent-executor",
                                 "session_id": task.id,
                                 "confidence": 0.8,
+                                "role": task.role,
                             },
                             timeout=5.0,
                         )
