@@ -18,12 +18,20 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
+
+# shared/ is at ai-stack/mcp-servers/shared/ — parents[2] from this file's location.
+_SHARED_PATH = str(Path(__file__).resolve().parents[2])
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
+from shared.llm_config import build_llama_payload, PROBE_MAX_TOKENS  # noqa: E402
 
 logger = logging.getLogger("model-probe")
 
@@ -133,12 +141,11 @@ async def _probe_speed(client: httpx.AsyncClient, base_url: str) -> float:
         t0 = time.perf_counter()
         resp = await client.post(
             f"{base_url}/v1/chat/completions",
-            json={
-                "messages": [{"role": "user", "content": "List the numbers 1 through 20 separated by commas."}],
-                "max_tokens": _SPEED_PROBE_TOKENS,
-                "temperature": 0,
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
+            json=build_llama_payload(
+                [{"role": "user", "content": "List the numbers 1 through 20 separated by commas."}],
+                max_tokens=_SPEED_PROBE_TOKENS,
+                temperature=0,
+            ),
             timeout=_PROBE_TIMEOUT,
         )
         elapsed = time.perf_counter() - t0

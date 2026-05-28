@@ -33,10 +33,18 @@ import gzip
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+# shared/ is at ai-stack/mcp-servers/shared/ — parents[2] from this file's location.
+_SHARED_PATH = str(Path(__file__).resolve().parents[2])
+if _SHARED_PATH not in sys.path:
+    sys.path.insert(0, _SHARED_PATH)
+
+from shared.llm_config import build_llama_payload  # noqa: E402
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -398,14 +406,12 @@ class ContextLifecycleManager:
             async with aiohttp.ClientSession() as sess:
                 async with sess.post(
                     f"{self._llm_url}/v1/chat/completions",
-                    json={
-                        "model": "local",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 512,
-                        "temperature": 0.1,
-                        "stream": False,
-                        "chat_template_kwargs": {"enable_thinking": False},
-                    },
+                    json=build_llama_payload(
+                        [{"role": "user", "content": prompt}],
+                        max_tokens=512,
+                        temperature=0.1,
+                        model="local",
+                    ),
                     timeout=aiohttp.ClientTimeout(total=30.0),
                 ) as resp:
                     if resp.status == 200:

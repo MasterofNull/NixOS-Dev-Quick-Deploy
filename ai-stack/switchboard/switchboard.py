@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 # Stability Backbone (Phase 55.2)
 from shared.circuit_breaker import CircuitBreakerRegistry, CircuitBreakerError, CircuitState, CircuitBreakerOpenError
+from shared.llm_config import build_llama_payload
 from shared.retry_backoff import retry_with_backoff
 
 # Configuration from Environment
@@ -2262,14 +2263,13 @@ def _startup_prefix_warm_messages(profile: str) -> list[dict]:
 async def _warm_local_profile_prefix(profile: str) -> None:
     if not STARTUP_PREFIX_WARM_ENABLED:
         return
-    payload = {
-        "model": "AUTODETECT",
-        "messages": _startup_prefix_warm_messages(profile),
-        "temperature": 0,
-        "max_tokens": 4,
-        "cache_prompt": True,
-        "chat_template_kwargs": {"enable_thinking": False},
-    }
+    payload = build_llama_payload(
+        _startup_prefix_warm_messages(profile),
+        max_tokens=4,
+        temperature=0,
+        model="AUTODETECT",
+        cache_prompt=True,
+    )
     try:
         await asyncio.sleep(1.0)
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=20.0, write=5.0, pool=2.0)) as client:

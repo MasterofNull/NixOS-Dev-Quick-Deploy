@@ -37,6 +37,14 @@ import time
 
 import httpx
 
+# shared/ lives at ai-stack/mcp-servers/shared/ — resolve from this file's location.
+# ai-stack/agents/runtimes/ -> parents[2] = ai-stack/
+_MCP_SERVERS_PATH = str(pathlib.Path(__file__).resolve().parents[2] / "mcp-servers")
+if _MCP_SERVERS_PATH not in sys.path:
+    sys.path.insert(0, _MCP_SERVERS_PATH)
+
+from shared.llm_config import build_llama_payload  # noqa: E402
+
 AGENT_ID = os.environ["AGENT_ID"]
 AGENT_ROLE = os.environ["AGENT_ROLE"]
 SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
@@ -170,19 +178,16 @@ def _write_state(state: dict) -> None:
 
 
 def _build_inference_payload(messages: list[dict]) -> dict:
-    payload: dict = {
-        "messages": messages,
-        "temperature": TEMPERATURE,
-        "max_tokens": MAX_TOKENS,
-        "stream": False,
-        "stop": STOP_SEQUENCES,
-    }
-    if not _thinking_on:
-        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    extra: dict = {"stop": STOP_SEQUENCES}
     if TOOLS_ENABLED:
-        payload["tools"] = TOOL_SCHEMAS
-        payload["tool_choice"] = "auto"
-    return payload
+        extra["tools"] = TOOL_SCHEMAS
+        extra["tool_choice"] = "auto"
+    return build_llama_payload(
+        messages,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+        **extra,
+    )
 
 
 def _resolve_bash_binary() -> str:
@@ -477,16 +482,13 @@ async def _post_completion_with_fallback(
 
 
 def _streaming_payload(messages: list[dict]) -> dict:
-    payload = {
-        "messages": messages,
-        "temperature": TEMPERATURE,
-        "max_tokens": MAX_TOKENS,
-        "stream": True,
-        "stop": STOP_SEQUENCES,
-    }
-    if not _thinking_on:
-        payload["chat_template_kwargs"] = {"enable_thinking": False}
-    return payload
+    return build_llama_payload(
+        messages,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+        stream=True,
+        stop=STOP_SEQUENCES,
+    )
 
 
 def _compress_tool_output(output: str, max_chars: int = TOOL_OUTPUT_MAX_CHARS) -> str:
