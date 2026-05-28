@@ -454,13 +454,21 @@ class LocalAgentExecutor:
             # Format result for model
             formatted_result = self.tool_registry.format_tool_result(result)
 
-            # Append to messages
+            # Extract the clean JSON from the response so the assistant turn
+            # contains only the tool call object, not any leading prose.
+            # Qwen3's chat template strips unknown roles — "function" is not
+            # in its vocabulary; "tool" is the correct role for tool results.
+            brace = response.rfind('{"function"')
+            if brace == -1:
+                brace = response.rfind("{")
+            clean_call = response[brace:].strip() if brace != -1 else response.strip()
+
             messages.append({
                 "role": "assistant",
-                "content": response,
+                "content": clean_call,
             })
             messages.append({
-                "role": "function",
+                "role": "tool",
                 "name": result.tool_name,
                 "content": formatted_result,
             })
