@@ -2228,16 +2228,21 @@ in {
             ${mcp.repoPath}/** r,
 
             # === ReadWritePaths (from service unit) ===
-            /var/lib/ai-stack/** rw,
-            /var/lib/nixos-ai-stack/** rw,
-            /var/log/ai-audit-sidecar/** rw,
-            /var/log/nixos-ai-stack/** rw,
+            # rwac: read, write (truncate), append (O_APPEND), create (O_CREAT)
+            /var/lib/ai-stack/ rw,
+            /var/lib/ai-stack/** rwac,
+            /var/lib/nixos-ai-stack/ rw,
+            /var/lib/nixos-ai-stack/** rwac,
+            /var/log/ai-audit-sidecar/ rw,
+            /var/log/ai-audit-sidecar/** rwac,
+            /var/log/nixos-ai-stack/ rw,
+            /var/log/nixos-ai-stack/** rwac,
 
             # === PrivateTmp=true — private tmpfs (from service unit) ===
-            /tmp/ rw,
-            /tmp/** rw,
-            /var/tmp/ rw,
-            /var/tmp/** rw,
+            /tmp/ rwac,
+            /tmp/** rwac,
+            /var/tmp/ rwac,
+            /var/tmp/** rwac,
 
             # === Secrets (agenix — real path after symlink resolution) ===
             /run/secrets/ r,
@@ -2260,6 +2265,9 @@ in {
             /dev/urandom r,
 
             # Hardware temperature sensors — coordinator telemetry
+            # /sys/class/hwmon/ is the sysfs class symlink directory
+            /sys/class/hwmon/ r,
+            /sys/class/hwmon/** r,
             /sys/devices/**/hwmon/**/temp*_input r,
             /sys/devices/**/hwmon/**/temp*_label r,
             /sys/devices/**/hwmon/**/name r,
