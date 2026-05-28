@@ -2207,44 +2207,46 @@ in {
         profile = ''
           #include <tunables/global>
           # Phase 66.3 — ai-hybrid-coordinator: hybrid MCP + HTTP coordinator
-          # Confinement: Nix store read, service data rw, loopback network only.
-          # Deny: raw sockets, admin capabilities, external filesystem writes.
+          # Profile paths are derived directly from the NixOS service unit
+          # declarations (ReadWritePaths, ReadOnlyPaths, PrivateTmp).
+          # Confinement: declared paths only, loopback network, no raw sockets.
           profile ai-hybrid-coordinator flags=(attach_disconnected) {
             #include <abstractions/base>
+            #include <abstractions/nameservice>
+            #include <abstractions/python>
 
-            # Nix store — read-only execution
+            # Nix store — read-only execution (covers Python stdlib, certifi SSL, libs)
             /nix/store/** r,
             /nix/store/**/*.so* mr,
             /nix/store/**/bin/python3* ix,
             /run/current-system/sw/** r,
             /run/current-system/sw/**/*.so* mr,
 
-            # Runtime state
-            ${dataDir}/hybrid/** rw,
-            /var/log/ai-audit-sidecar/** rw,
-            /tmp/ai-hybrid-** rw,
-
-            # Repo path (config files, scripts — read-only)
+            # === ReadOnlyPaths (from service unit) ===
+            # Repo source tree — config files, scripts (NixOS: ReadOnlyPaths=)
             ${repoSource}/** r,
+            ${mcp.repoPath}/** r,
 
-            # Secrets (read-only)
-            # /run/secrets/** covers symlink names; AppArmor also enforces on
-            # the real path (/run/secrets.d/<n>/**) after symlink resolution.
+            # === ReadWritePaths (from service unit) ===
+            /var/lib/ai-stack/** rw,
+            /var/lib/nixos-ai-stack/** rw,
+            /var/log/ai-audit-sidecar/** rw,
+            /var/log/nixos-ai-stack/** rw,
+
+            # === PrivateTmp=true — private tmpfs (from service unit) ===
+            /tmp/ rw,
+            /tmp/** rw,
+            /var/tmp/ rw,
+            /var/tmp/** rw,
+
+            # === Secrets (agenix — real path after symlink resolution) ===
             /run/secrets/ r,
             /run/secrets/** r,
             /run/secrets.d/ r,
             /run/secrets.d/** r,
 
-            # System resources needed by Python async runtime
+            # === System resources (Python async runtime + psutil) ===
             /proc/self/** r,
-            /proc/sys/kernel/osrelease r,
-            /proc/meminfo r,
-            /dev/null rw,
-            /dev/urandom r,
-
-            # Process enumeration — health spider and process-manager use
-            # psutil which reads /proc/<pid>/cmdline, stat, limits for each process.
-            # fd/ is needed by Python tempfile and subprocess open-file checks.
             /proc/ r,
             @{PROC}/@{pids}/cmdline r,
             @{PROC}/@{pids}/stat r,
@@ -2252,21 +2254,15 @@ in {
             @{PROC}/@{pids}/limits r,
             @{PROC}/@{pids}/fd/ r,
             @{PROC}/@{pids}/fd/** r,
+            /proc/sys/kernel/osrelease r,
+            /proc/meminfo r,
+            /dev/null rw,
+            /dev/urandom r,
 
-            # Hardware temperature sensors — coordinator telemetry health checks.
+            # Hardware temperature sensors — coordinator telemetry
             /sys/devices/**/hwmon/**/temp*_input r,
             /sys/devices/**/hwmon/**/temp*_label r,
             /sys/devices/**/hwmon/**/name r,
-
-            # Temporary files — Python stdlib tempfile.gettempdir() probes
-            # /tmp, /var/tmp, and the service data dir for a writable temp location.
-            /tmp/ rw,
-            /tmp/** rw,
-            /var/tmp/ rw,
-            /var/tmp/** rw,
-            # Base dataDir — tempfile fallback creates files directly here.
-            ${dataDir}/ rw,
-            ${dataDir}/* rw,
 
             # Unix socket (audit sidecar)
             /run/ai-audit-sidecar.sock rw,
@@ -2284,12 +2280,7 @@ in {
             deny capability net_admin,
             deny capability net_raw,
 
-            # Allow runtime repo reads (repoPath is under /home on dev machines).
-            # flakeRepoPath evaluates to a Nix store path and is already covered by
-            # /nix/store/** r above; this covers the live mutable source tree.
-            ${mcp.repoPath}/** r,
-
-            # Deny writes/exec to home/root; reads allowed for repo config above.
+            # Deny writes/exec to home/root; reads allowed for repo paths above.
             deny /home/** wx,
             deny /root/** rwx,
           }
