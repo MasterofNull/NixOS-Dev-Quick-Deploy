@@ -68,7 +68,7 @@ ensure_dirs() { mkdir -p "$DELEGATION_DIR/outputs"; }
 # ── argument parsing ──────────────────────────────────────────────────────────
 PROMPT=""
 PROMPT_FILE=""
-MODE="hybrid"
+MODE="auto"   # Phase 74E: auto runs classify_mode() heuristic in dispatch.py
 TIMEOUT=300
 ROLE="implement"
 WAIT=false
@@ -94,8 +94,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$MODE" in
-    agent|hybrid|direct|ralph) ;;
-    *) die "Invalid --mode '$MODE'. Valid: agent | hybrid | direct | ralph" ;;
+    auto|agent|hybrid|direct|ralph) ;;
+    *) die "Invalid --mode '$MODE'. Valid: auto | agent | hybrid | direct | ralph" ;;
 esac
 
 case "$ROLE" in

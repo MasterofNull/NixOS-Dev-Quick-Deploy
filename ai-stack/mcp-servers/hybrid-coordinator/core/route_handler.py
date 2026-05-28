@@ -1813,6 +1813,23 @@ async def route_search(
                             _distill_and_store(query, response_text, interaction_id)
                         )
 
+                    # Emit local_inference event for training ingest pipeline.
+                    # training_ingest.py picks up event_type="local_inference" from
+                    # hybrid-events.jsonl to build positive training samples.
+                    if (
+                        selected_backend == "local"
+                        and str(response_text or "").strip()
+                        and _record_telemetry is not None
+                    ):
+                        _record_telemetry("local_inference", {
+                            "query": query,
+                            "response": str(response_text)[:4000],
+                            "latency_ms": round(max(0.0, time.perf_counter() - _llm_start) * 1000, 1),
+                            "profile": local_inference_lane or "default",
+                            "tokens_in": usage.get("prompt_tokens") if usage else None,
+                            "tokens_out": usage.get("completion_tokens") if usage else None,
+                        })
+
                 except Exception as exc:  # noqa: BLE001
                     response = getattr(exc, "response", None)
                     status_code = getattr(response, "status_code", None)

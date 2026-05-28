@@ -134,3 +134,16 @@ Make two targeted file"
 [2026-05-28T18:00:21.409021Z] [done] id=local-20260528-110013-2fhmag
 [2026-05-28T18:09:00.527420Z] [dispatch] id=local-20260528-110900-zoabwj agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-110900-zoabwj.log obj="List three specific improvements to make the local model dispatch chain more reliable. Be concrete."
 [2026-05-28T18:12:04.306572Z] [done] id=local-20260528-110900-zoabwj
+[2026-05-28T18:27:07.399477Z] [dispatch] id=local-20260528-112707-mtxbgm agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112707-mtxbgm.log obj="You are an architect reviewing ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py.
+
+TASK:"
+[2026-05-28T18:27:22.013800Z] [dispatch] id=local-20260528-112721-7vngql agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112721-7vngql.log obj="You are an architect for the NixOS-Dev-Quick-Deploy AI stack.
+
+TASK: Design the mode auto-selection "
+[2026-05-28T18:27:37.333120Z] [dispatch] id=local-20260528-112737-vgm741 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112737-vgm741.log obj="You are a reviewer for the NixOS-Dev-Quick-Deploy AI stack.
+
+CONTEXT: aq-report shows 'Continuation-"
+[2026-05-28T18:27:52.397430Z] [cancelled] id=gemini-20260528-102727-6jfxeq
+[2026-05-28T18:28:19.568998Z] [done] id=local-20260528-112707-mtxbgm
+[2026-05-28T18:29:55.394430Z] [done] id=local-20260528-112721-7vngql
+[2026-05-28T18:32:32.726193Z] [done] id=local-20260528-112737-vgm741
