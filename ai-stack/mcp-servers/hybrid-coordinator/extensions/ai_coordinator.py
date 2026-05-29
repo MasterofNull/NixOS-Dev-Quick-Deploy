@@ -404,11 +404,12 @@ _STRICT_REPLY_ONLY_RE = re.compile(
 )
 # Qwen3-35B at 1-2 tok/s; 210s delegate budget → hard ceiling keeps generation
 # within budget window. Applied when archetype-based cap is undefined (cap=0).
+# 180 tok: at 1.0 tok/s floor → 180s; leaves 30s buffer before 210s timeout.
 _LOCAL_PROFILE_NAMES: frozenset = frozenset({
     "default", "continue-local", "embedded-assist", "local-tool-calling",
     "local-agent", "embedding-local", "coordinator-internal",
 })
-_LOCAL_MAX_TOKENS_HARD_CEILING = 256
+_LOCAL_MAX_TOKENS_HARD_CEILING = 180
 
 
 def _record_routing_decision(decision: Dict[str, Any]) -> None:
