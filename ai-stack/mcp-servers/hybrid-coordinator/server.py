@@ -440,7 +440,7 @@ async def hybrid_search(
     collections: Optional[List[str]] = None,
     limit: int = 5,
     keyword_limit: int = 5,
-    score_threshold: float = 0.7,
+    score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
     keyword_pool: int = 60,
 ) -> Dict[str, Any]:
     return await _search_router.hybrid_search(
@@ -455,7 +455,7 @@ async def tree_search(
     collections: Optional[List[str]] = None,
     limit: int = 5,
     keyword_limit: int = 5,
-    score_threshold: float = 0.7,
+    score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
 ) -> Dict[str, Any]:
     return await _search_router.tree_search(
         query, collections=collections, limit=limit,
@@ -487,7 +487,7 @@ async def route_search(
     context: Optional[Dict[str, Any]] = None,
     limit: int = 5,
     keyword_limit: int = 5,
-    score_threshold: float = 0.7,
+    score_threshold: float = Config.AI_SEARCH_SCORE_THRESHOLD,
     generate_response: bool = False,
     max_tokens_override: Optional[int] = None,
 ) -> Dict[str, Any]:
