@@ -158,3 +158,9 @@ CONTEXT: aq-report shows 'Continuation-"
 - inference_param_manager.py: wrap iterdir() in PermissionError handler
 - Coordinator crashes on hwmon enumeration when AppArmor confinement active
 - Fix: log debug + return on PermissionError — thermal data is optional telemetry
+[2026-05-29T00:39:10.494016Z] [dispatch] id=local-20260528-173910-g55b33 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173910-g55b33.log obj="Reply with exactly three words: AGENT_LOOP_OK"
+[2026-05-29T00:39:30.698246Z] [done] id=local-20260528-173910-g55b33
+[2026-05-29T00:39:35.440937Z] [dispatch] id=local-20260528-173935-jld1cl agent=local-hybrid output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173935-jld1cl.log obj="/no_think Reply with exactly: HYBRID_OK"
+[2026-05-29T00:39:37.414585Z] [done] id=local-20260528-173935-jld1cl
+[2026-05-29T00:47:37.427325Z] [dispatch] id=local-20260528-174737-i28gyt agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-174737-i28gyt.log obj="/no_think List the GPU layer ceiling and RAM ceiling for this NixOS stack in JSON: {"gpu_layers": N,"
+[2026-05-29T00:48:20.572628Z] [done] id=local-20260528-174737-i28gyt
