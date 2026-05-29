@@ -1290,7 +1290,7 @@ async def _execute_query_search(
         context=request_context,
         limit=int(data.get("limit", 5)),
         keyword_limit=int(data.get("keyword_limit", 5)),
-        score_threshold=float(data.get("score_threshold", 0.7)),
+        score_threshold=float(data.get("score_threshold", Config.AI_SEARCH_SCORE_THRESHOLD)),
         generate_response=generate_response,
         max_tokens_override=_max_tokens_override,
     )
@@ -1330,7 +1330,7 @@ async def _execute_query_search(
                 context=request_context,
                 limit=int(data.get("limit", 5)),
                 keyword_limit=int(data.get("keyword_limit", 5)),
-                score_threshold=float(data.get("score_threshold", 0.7)),
+                score_threshold=float(data.get("score_threshold", Config.AI_SEARCH_SCORE_THRESHOLD)),
                 generate_response=False,
             )
         else:
@@ -2403,7 +2403,7 @@ async def run_http_mode(port: int) -> None:
                 collections=data.get("collections"),
                 limit=int(data.get("limit", 5)),
                 keyword_limit=int(data.get("keyword_limit", 5)),
-                score_threshold=float(data.get("score_threshold", 0.7)),
+                score_threshold=float(data.get("score_threshold", Config.AI_SEARCH_SCORE_THRESHOLD)),
             )
             async with _agent_lessons_lock:
                 lesson_registry = await _load_agent_lessons_registry()
