@@ -305,3 +305,45 @@ dashboard routing stats survive service restarts.
 - `nix/modules/services/data-retention.nix`: `aiLogs.routingDecisionsDays` option + env var
 
 **Requires**: switchboard restart (Python-only) + nixos-rebuild for NixOS option.
+
+## System Review — Parity Gaps & Improvement Queue (2026-05-29)
+
+Discovered during session-wide review. Prioritized for pickup in upcoming phases.
+
+### P1 — AppArmor exec chain coverage (immediate rebuild trigger)
+Every `nixos-rebuild switch` that changes the Python env hash will break the dashboard
+until the AppArmor profile is updated. The glob pattern `/nix/store/**/bin/uvicorn ix`
+and `/nix/store/**/bin/.uvicorn-wrapped ix` mitigate this, but the root hardening gap
+is that AppArmor profile maintenance is manual. Consider:
+- Adding a post-rebuild AppArmor smoke test (check `aa-status` for DENIED in journal)
+- Adding a QA check: `journalctl -k --since "boot" | grep DENIED | grep ai-` → assert empty
+- Current workaround: both uvicorn paths now use hash-independent `**` globs
+
+### P2 — Forward-declaration bindings in mcp-servers.nix (in-progress)
+Five bindings declared but not yet wired to service environment:
+- `osintRuntimePackages` (line ~70) — OSINT service runtime deps
+- `workflowBlueprintsJson` (line ~155) — workflow blueprints JSON for coordinator
+- `runtimeSafetyModes` (line ~166) — safety mode dispatch table
+- `redisPasswordSecret` (line ~371) — Redis auth wiring
+- `nixosDocsApiKeySecret` (line ~373) — NixOS docs MCP auth wiring
+- `aiderPython` has empty `with ps; []` placeholder for future packages
+These are intentional forward declarations. Wire them as each service implementation completes.
+
+### P3 — Routing local_pct/remote_pct baseline is zero (expected, time-based)
+The switchboard routing ring (`_routing_ring`) starts empty after restart. `routing-decisions.jsonl`
+will accumulate data as LLM calls flow through. Dashboard routing panel will show real percentages
+after ~10 chat/completions calls. Metric is working correctly — just needs traffic.
+
+### P3 — RAGAS faithfulness_avg still null (expected, sample rate)
+5 pre-faithfulness-enable rows in DB all have NULL faithfulness. New queries post-rebuild
+score at 10% rate. Need ~10 queries for first score to appear statistically. No action needed.
+
+### P3 — harness.scorecard.acceptance.ok null
+`/aistack/harness/scorecard` returns `acceptance.ok: null`. QA harness has not been run
+since last rebuild. Run `aq-qa 0` to populate. Consider wiring scorecard to run automatically
+post-rebuild in `ai-post-deploy-converge.service`.
+
+### P3 — feedback_pipeline.files.query_gaps.last_event_at null
+Query gaps file has no recent events. May indicate the query gap detection pipeline is not
+emitting events. Investigate: does `ai-gap-auto-remediate.service` emit gap events on run?
+Check: `journalctl -u ai-gap-auto-remediate.service --since "7d" | grep gap`
