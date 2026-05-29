@@ -149,6 +149,17 @@ _CONTINUATION_QUERY_MARKERS = (
     "left off",
     "remaining work",
     "current work",
+    # Multi-turn / sequence markers — multi-word only to avoid false positives
+    "next step",
+    "proceed",
+    "go ahead",
+    "what next",
+    "then what",
+    "what about that",
+    "on that note",
+    "building on",
+    "as mentioned",
+    "from there",
 )
 
 _CAPABILITY_DISCOVERY_QUERY_MARKERS = (

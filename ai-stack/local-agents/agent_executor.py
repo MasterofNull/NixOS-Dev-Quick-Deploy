@@ -392,8 +392,9 @@ class LocalAgentExecutor:
         logger.info(f"Task {task.id} executing locally: {route_reason}")
 
         # Execute with tool use loop
+        _task_tokens_used = 0
         try:
-            result = await self._execute_with_tools(
+            result, _task_tokens_used = await self._execute_with_tools(
                 task,
                 agent_type,
                 max_tool_calls,
@@ -433,6 +434,8 @@ class LocalAgentExecutor:
                         "latency_ms": task.execution_time_ms,
                         "session_id": task.id,
                         "tool_calls": len(task.tool_calls_made),
+                        "model": os.getenv("LLAMA_MODEL_NAME", "local"),
+                        "tokens_used": _task_tokens_used,
                     })
                     with open(_HYBRID_EVENTS, "a", encoding="utf-8") as _hef:
                         _hef.write(_event + "\n")
@@ -469,7 +472,7 @@ class LocalAgentExecutor:
         agent_type: AgentType,
         max_tool_calls: int,
         role: Optional[str] = None,
-    ) -> Any:
+    ) -> Tuple[Any, int]:
         """
         Execute task with tool use loop.
 
@@ -504,17 +507,19 @@ class LocalAgentExecutor:
 
         # Tool use loop
         tool_call_count = 0
+        total_tokens = 0
 
         while tool_call_count < max_tool_calls:
             # Call model
-            response = await self._call_llama(messages, role=role)
+            response, tok = await self._call_llama(messages, role=role)
+            total_tokens += tok
 
             # Parse tool call
             tool_call = self.tool_registry.parse_tool_call_from_llama(response)
 
             if not tool_call:
                 # No tool call, return response as final answer
-                return response
+                return response, total_tokens
 
             # Execute tool call
             tool_call.model_id = f"local-{agent_type.value}"
@@ -548,9 +553,9 @@ class LocalAgentExecutor:
 
         # Max tool calls reached, return current state
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
-        return f"Task incomplete: reached max tool calls ({max_tool_calls})"
+        return f"Task incomplete: reached max tool calls ({max_tool_calls})", total_tokens
 
-    async def _call_llama(self, messages: List[Dict], role: Optional[str] = None) -> str:
+    async def _call_llama(self, messages: List[Dict], role: Optional[str] = None) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
 
@@ -563,7 +568,7 @@ class LocalAgentExecutor:
             messages: Conversation messages
 
         Returns:
-            Model response
+            (response_text, tokens_used) — tokens_used is total_tokens from the usage chunk.
         """
         use_streaming = _env_flag("LLAMA_USE_STREAMING", default=True)
         chunk_timeout = _env_float("LLAMA_CHUNK_TIMEOUT", default=120.0)
@@ -571,15 +576,15 @@ class LocalAgentExecutor:
         # Agent tool calls: 512 tokens (50-100 for JSON + 400 for summary).
         # At 1-2 tok/s on Renoir APU, 512 tokens = 256-512s max generation.
         # 4096 would risk 68-minute slot locks when clients disconnect.
-        payload = build_llama_payload(
-            messages,
-            max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
-            temperature=0.2,
-            role=role,
-        )
 
         if not use_streaming:
             # Legacy non-streaming path — 300s wall-clock limit.
+            payload = build_llama_payload(
+                messages,
+                max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
+                temperature=0.2,
+                role=role,
+            )
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.llama_endpoint}/v1/chat/completions",
@@ -589,15 +594,24 @@ class LocalAgentExecutor:
                 if response.status_code != 200:
                     raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return data["choices"][0]["message"]["content"], tokens
 
         # Streaming path: collect SSE delta chunks.
+        # Pass stream=True so build_llama_payload includes stream_options.include_usage=True,
+        # which causes llama.cpp to emit a final usage-only chunk for token tracking.
         # httpx.Timeout(read=chunk_timeout) is per-read-operation (per chunk), not total.
-        # A 10-minute generation succeeds as long as tokens keep arriving within chunk_timeout.
+        payload = build_llama_payload(
+            messages,
+            max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
+            temperature=0.2,
+            role=role,
+            stream=True,
+        )
         timeout = httpx.Timeout(connect=10.0, read=chunk_timeout, write=10.0, pool=5.0)
-        payload["stream"] = True
 
         collected: List[str] = []
+        tokens_used = 0
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(
@@ -619,12 +633,19 @@ class LocalAgentExecutor:
                         chunk = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    choices = chunk.get("choices", [{}])
+                    if not choices:
+                        # Usage-only chunk emitted when stream_options.include_usage=True
+                        usage = chunk.get("usage", {})
+                        if usage:
+                            tokens_used = usage.get("total_tokens", 0)
+                        continue
+                    delta = choices[0].get("delta", {})
                     token = delta.get("content") or ""
                     if token:
                         collected.append(token)
 
-        return "".join(collected)
+        return "".join(collected), tokens_used
 
     async def _fallback_to_remote(self, task: Task) -> Task:
         """
