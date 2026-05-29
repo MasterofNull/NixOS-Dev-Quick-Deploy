@@ -42,7 +42,7 @@ TELEMETRY_DIR = Path(os.getenv(
 ))
 FINE_TUNING_DATASET = Path(os.getenv(
     "FINE_TUNING_DATASET",
-    str(Path.home() / ".local/share/nixos-ai-stack/fine-tuning/dataset.jsonl"),
+    "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl",
 ))
 OPTIMIZATION_PROPOSALS = TELEMETRY_DIR / "optimization_proposals.jsonl"
 DELEGATION_FEEDBACK    = TELEMETRY_DIR / "delegation-feedback.jsonl"
