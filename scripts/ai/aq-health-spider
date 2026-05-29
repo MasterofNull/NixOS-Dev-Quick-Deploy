@@ -193,6 +193,37 @@ def _update_handoff(entry: str) -> None:
         logger.debug(f"HANDOFF.md update failed: {e}")
 
 
+def _push_memory_fact(anomaly_type: str, zone: str, detail: str, resolution: str) -> None:
+    """
+    Push health observation to coordinator /api/memory/facts via loopback.
+    No API key required — 127.0.0.1 requests use loopback-agent auth.
+    Makes health history available to all agents via memory recall.
+    """
+    try:
+        fact = (
+            f"Health spider ({zone}): {anomaly_type}. {detail} "
+            f"Resolution: {resolution}"
+        )
+        payload = json.dumps({
+            "content": fact,
+            "category": "system_health",
+            "scope": f"health_spider_{zone}",
+            "tags": ["health-spider", anomaly_type, zone],
+            "confidence": 0.9,
+            "source": "health-spider",
+        }).encode()
+        req = urllib.request.Request(
+            f"{COORDINATOR_URL}/api/memory/facts",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            r.read()
+    except Exception as e:
+        logger.debug(f"memory fact push failed: {e}")
+
+
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
@@ -256,13 +287,20 @@ class HealthSpider:
             key = f"service_down:{svc}"
             if key not in self._known_issues:
                 self._known_issues.add(key)
+                resolution = f"Check: journalctl -u {svc} -n 50. Restart: sudo systemctl restart {svc}. If AppArmor: run apparmor-fix-agent and rebuild."
                 await asyncio.to_thread(
                     _seed_rag,
                     "service_down",
                     f"Service {svc} ({zone}) state='{anomaly.get('state')}'",
                     f"Health spider detected during {zone} zone scan",
-                    f"Check: journalctl -u {svc} -n 50. Restart: sudo systemctl restart {svc}. If AppArmor: run apparmor-fix-agent and rebuild.",
+                    resolution,
                     ["service-down", zone, "health-spider"],
+                )
+                await asyncio.to_thread(
+                    _push_memory_fact,
+                    "service_down", zone,
+                    f"Service {svc} is {anomaly.get('state', 'unknown')}.",
+                    resolution,
                 )
             await self._queue_prsi(anomaly)
 
@@ -270,13 +308,20 @@ class HealthSpider:
             key = f"http_failure:{zone}"
             if key not in self._known_issues:
                 self._known_issues.add(key)
+                resolution = f"Check service logs: journalctl -u {ZONES[zone].get('service', zone)} -n 50"
                 await asyncio.to_thread(
                     _seed_rag,
                     "http_failure",
                     f"HTTP health check failed for zone '{zone}' at {anomaly.get('url')}",
                     f"Service state: {anomaly.get('service_state', 'unknown')}",
-                    f"Check service logs: journalctl -u {ZONES[zone].get('service', zone)} -n 50",
+                    resolution,
                     ["http-failure", zone, "health-spider"],
+                )
+                await asyncio.to_thread(
+                    _push_memory_fact,
+                    "http_failure", zone,
+                    f"HTTP check failed at {anomaly.get('url')} (service state: {anomaly.get('service_state', 'unknown')}).",
+                    resolution,
                 )
 
     async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> None:
