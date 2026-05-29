@@ -2416,18 +2416,10 @@ in {
             # Allow runtime repo reads (repoPath is under /home on dev machines).
             ${mcp.repoPath}/** r,
 
+            # ptrace read — psutil reads /proc/<pid>/ for CPU/mem/net metrics
+            ptrace read peer=unconfined,
+
             # Deny writes/exec to home/root; reads allowed for repo above.
-            # auto-added by apparmor-fix-agent 2026-05-29
-            /var/lib/nixos-system-dashboard/telemetry/deployments-context.db k,  # file_lock
-            /tmp/nixos-dashboard-context.db rw,  # mknod
-            /tmp/workflow-store.db rw,  # open
-            /run/secrets.d/49/hybrid_coordinator_api_key r,  # open
-            /run/secrets.d/49/aidb_api_key r,  # open
-            /run/secrets.d/49/aider_wrapper_api_key r,  # open
-            /var/log/nixos-ai-stack/tool-audit.jsonl r,  # open
-            /run/secrets.d/49/postgres_password r,  # open
-            /var/log/nixos-ai-stack/hint-feedback.jsonl r,  # open
-            /var/log/nixos-ai-stack/query-gaps.jsonl r,  # open
             deny /home/** wx,
             deny /root/** rwx,
           }

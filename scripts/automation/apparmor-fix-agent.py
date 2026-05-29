@@ -52,14 +52,34 @@ def _op_to_perm(operation: str, mask: str) -> str:
     return "r"
 
 
-def _make_rule(operation: str, path: str, mask: str) -> Optional[Tuple[str, str]]:
+def _make_rule(operation: str, path: str, mask: str, peer: str = "") -> Optional[Tuple[str, str]]:
     """
     Returns (rule_line, comment) or None if the path should be handled by a
     broader rule (e.g. /sys/devices/**).
     rule_line uses 12-space indent matching mcp-servers.nix style.
+
+    Non-file operations (ptrace, signal) are handled here when path is empty.
     """
     INDENT = "            "
 
+    # ── Non-file operations ────────────────────────────────────────────────────
+    # ptrace: psutil reads /proc/<pid>/ of other processes for CPU/mem/net stats.
+    if operation == "ptrace":
+        peer_val = peer if peer else "unconfined"
+        perm = mask if mask in ("read", "trace", "readby", "tracedby") else "read"
+        return f"{INDENT}ptrace {perm} peer={peer_val},", f"ptrace {perm} (psutil/proc metrics)"
+
+    # signal: process signalling (e.g. uvicorn → worker)
+    if operation == "signal":
+        peer_val = peer if peer else "unconfined"
+        sig = mask if mask else "term kill"
+        return f"{INDENT}signal ({sig}) peer={peer_val},", f"signal {sig}"
+
+    # Skip non-file ops with no path (e.g. network class, capability — handled by other rules)
+    if not path:
+        return None
+
+    # ── File path operations ───────────────────────────────────────────────────
     # Nix store — generalize hash-prefixed derivation name.
     # Path: /nix/store/<hash-name>/sub/path
     # parts: [nix, store, hash-name, sub, path, ...]
@@ -95,14 +115,25 @@ def _consolidate(denials: List[Dict[str, str]]) -> Tuple[List[Tuple[str, str]], 
     """
     Returns (rules, needs_sys_devices_broad_rule).
     Consolidates /sys/devices/* variants into one broad rule.
+    Deduplicates ptrace/signal rules by rule text.
     """
     rules: List[Tuple[str, str]] = []
     has_sys_devices = False
+    seen_non_file: set = set()  # dedup ptrace/signal by rule text
     for d in denials:
-        result = _make_rule(d["operation"], d["path"], d["mask"])
+        result = _make_rule(
+            d["operation"], d.get("path", ""), d.get("mask", ""), d.get("peer", "")
+        )
         if result is None:
-            has_sys_devices = True  # Handled by broad rule
+            if d.get("path", "").startswith("/sys/devices/"):
+                has_sys_devices = True
         else:
+            rule_line = result[0]
+            # Dedup non-file rules (ptrace/signal) immediately — 446 identical ptrace lines
+            if not rule_line.strip().startswith("/") and not rule_line.strip().startswith("#"):
+                if rule_line.strip() in seen_non_file:
+                    continue
+                seen_non_file.add(rule_line.strip())
             rules.append(result)
     if has_sys_devices:
         rules.append(("            /sys/devices/** r,", "/sys/devices subtree (hwmon/thermal/ACPI)"))
@@ -183,15 +214,25 @@ def _apparmor_glob_covers(pattern: str, candidate: str) -> bool:
 
 def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> bool:
     """
-    Check whether the candidate rule's path is already handled by the profile block.
-    Uses two strategies:
-      1. Literal/prefix match (fast) — catches identical rules and path prefixes
-      2. AppArmor glob coverage — catches cases where an existing wildcard rule
-         (e.g. /run/secrets.d/** or /sys/devices/**) already covers the candidate
-         path even though the literal strings differ.
+    Check whether the candidate rule is already handled by the profile block.
+    For non-file rules (ptrace, signal): check if the rule text appears verbatim.
+    For file path rules: uses literal match + AppArmor glob coverage.
     """
+    rule_stripped = candidate_rule.strip()
+
+    # Non-file rules (ptrace, signal): simple verbatim check
+    if not rule_stripped.startswith("/"):
+        lines = nix_text.splitlines()
+        deny_idx, _ = _find_profile_block(lines, profile)
+        if deny_idx == -1:
+            return False
+        block = "\n".join(lines[max(0, deny_idx - 200):deny_idx + 1])
+        # Match on the key verb+peer, ignoring leading whitespace
+        key = rule_stripped.rstrip(",")
+        return key in block
+
     # Extract the path portion from the rule
-    m = re.search(r"(/[^\s]+)\s+[a-z,]+,$", candidate_rule.strip())
+    m = re.search(r"(/[^\s]+)\s+[a-z,]+,$", rule_stripped)
     if not m:
         return False
     candidate_path = m.group(1).rstrip("/")
@@ -338,11 +379,11 @@ def _scan_journalctl(profile: str, since_seconds: int) -> List[Dict[str, str]]:
                 return ""
             s = line.index(marker) + len(marker)
             return line[s:line.index('"', s)]
-        op, path, mask = _f("operation"), _f("name"), _f("requested_mask")
-        key = (op, path)
-        if key not in seen and path:
+        op, path, mask, peer = _f("operation"), _f("name"), _f("requested_mask"), _f("peer")
+        key = (op, path, peer)
+        if key not in seen and (path or op in ("ptrace", "signal")):
             seen.add(key)
-            denials.append({"operation": op, "path": path, "mask": mask})
+            denials.append({"operation": op, "path": path, "mask": mask, "peer": peer})
     return denials
 
 
