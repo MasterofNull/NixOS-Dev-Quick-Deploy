@@ -47,9 +47,11 @@ def _default_policy() -> Dict[str, Any]:
         "keyword_exempt_tools": [],
         "blocked_endpoint_patterns": ["/control/*", "*/reload-model", "*/session/*/mode"],
         # Tools listed here bypass endpoint-pattern blocking (still subject to
-        # blocked_tools / keyword checks). Used for trusted internal coordination tools
-        # whose endpoints happen to fall under a blocked namespace (e.g. /control/*).
-        "endpoint_exempt_tools": ["ai_coordinator_delegate"],
+        # blocked_tools / keyword checks). Used for trusted internal tools whose
+        # endpoints fall under a blocked namespace (e.g. /control/*).
+        # danger_tool is intentionally excluded — it is a security test fixture
+        # used to verify blocking logic and must remain fully restricted.
+        "endpoint_exempt_tools": ["ai_coordinator_delegate", "impeccable_audit"],
         "blocked_reason_keywords": [
             "exec",
             "shell",
