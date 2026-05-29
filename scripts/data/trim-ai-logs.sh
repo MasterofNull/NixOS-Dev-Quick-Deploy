@@ -16,6 +16,7 @@
 #   AI_LOGS_USER_SPOOL_DAYS        — user-space hybrid-events spool TTL (default: 14)
 #   AI_LOGS_AIDB_EVENTS_DAYS       — aidb-events.jsonl TTL (default: 7)
 #   AI_LOGS_WORKFLOW_SESSIONS_DAYS — workflow-sessions.json TTL per session last_active (default: 30)
+#   AI_LOGS_ROUTING_DECISIONS_DAYS — .agents/telemetry/routing-decisions.jsonl TTL (default: 14)
 #   REPO_ROOT                      — repo root path (default: auto-detected)
 
 set -euo pipefail
@@ -38,6 +39,7 @@ DELEGATION_OUTPUTS_DAYS="${AI_LOGS_DELEGATION_OUTPUTS_DAYS:-14}"
 USER_SPOOL_DAYS="${AI_LOGS_USER_SPOOL_DAYS:-14}"
 AIDB_EVENTS_DAYS="${AI_LOGS_AIDB_EVENTS_DAYS:-7}"
 WORKFLOW_SESSIONS_DAYS="${AI_LOGS_WORKFLOW_SESSIONS_DAYS:-30}"
+ROUTING_DECISIONS_DAYS="${AI_LOGS_ROUTING_DECISIONS_DAYS:-14}"
 
 # ── JSONL trimmer ─────────────────────────────────────────────────────────────
 # Reuses the same timestamp-aware trim logic as trim-snapshots.sh.
@@ -276,5 +278,11 @@ trim_workflow_sessions \
     "/var/lib/ai-stack/hybrid/workflow-sessions.json" \
     "$WORKFLOW_SESSIONS_DAYS" \
     "workflow-sessions.json"
+
+# 9. Switchboard routing decisions (JSONL — persisted for cross-restart routing stats)
+trim_jsonl \
+    "$REPO_ROOT/.agents/telemetry/routing-decisions.jsonl" \
+    "$ROUTING_DECISIONS_DAYS" \
+    "routing-decisions.jsonl"
 
 echo "[trim-ai-logs] done"

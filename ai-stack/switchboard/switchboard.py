@@ -12,6 +12,7 @@ if _SHARED_PATH not in sys.path:
 import asyncio
 import collections
 import hashlib
+import threading
 import os
 import json
 import re
@@ -492,10 +493,13 @@ _remote_sem = None
 _local_active_request = None
 _local_last_completion = None
 # Routing decision ring buffer — last 500 chat/completions decisions (local vs remote).
-# In-memory only; survives the request lifetime but not restarts.
+# Backed by routing-decisions.jsonl for persistence across restarts.
 # Exposed via /health as routing_stats for dashboard routing panel.
 _ROUTING_RING_MAXLEN = 500
 _routing_ring: collections.deque = collections.deque(maxlen=_ROUTING_RING_MAXLEN)
+_routing_log_lock = threading.Lock()
+# Resolved at startup (see _routing_log_init).
+_ROUTING_LOG_PATH: pathlib.Path | None = None
 _hints_client: httpx.AsyncClient | None = None
 _embed_client: httpx.AsyncClient | None = None
 _local_health_client: httpx.AsyncClient | None = None
@@ -2301,6 +2305,7 @@ async def _startup():
         timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)
     )
     asyncio.create_task(_warm_local_profile_prefix("continue-local"))
+    await asyncio.to_thread(_routing_log_init)
 
 @app.on_event("shutdown")
 async def _shutdown():
@@ -2316,6 +2321,47 @@ async def _shutdown():
     _hints_client = _embed_client = _local_health_client = None
 
 # --- Health ---
+
+def _routing_log_init() -> None:
+    """Resolve log path, create parent dir, and warm the ring from existing records."""
+    global _ROUTING_LOG_PATH
+    repo_root = os.getenv("REPO_PATH", "").strip()
+    if not repo_root:
+        return
+    log_path = pathlib.Path(repo_root) / ".agents" / "telemetry" / "routing-decisions.jsonl"
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        _ROUTING_LOG_PATH = log_path
+        # Warm ring from persisted records (skip lines older than ring window).
+        if log_path.exists():
+            cutoff = time.time() - 7 * 86400  # only load last 7 days into ring
+            with open(log_path, encoding="utf-8", errors="replace") as fh:
+                for raw in fh:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        rec = json.loads(raw)
+                        if rec.get("ts", 0) >= cutoff:
+                            _routing_ring.append(rec)
+                    except Exception:
+                        pass
+    except Exception as exc:
+        print(f"[switchboard] routing_log_init failed: {exc}", file=sys.stderr)
+
+
+def _routing_log_append(ts: float, local: bool, profile: str) -> None:
+    """Append one routing decision to the JSONL log. Threadsafe; no-op if path unset."""
+    if _ROUTING_LOG_PATH is None:
+        return
+    record = json.dumps({"ts": ts, "local": local, "profile": profile, "event_type": "routing_decision"})
+    try:
+        with _routing_log_lock:
+            with open(_ROUTING_LOG_PATH, "a", encoding="utf-8") as fh:
+                fh.write(record + "\n")
+    except Exception as exc:
+        print(f"[switchboard] routing_log_append failed: {exc}", file=sys.stderr)
+
 
 def _routing_stats_snapshot() -> dict:
     """Compute local/remote percentages from the in-memory routing ring."""
@@ -2397,11 +2443,11 @@ async def proxy(path: str, request: Request):
     target = REMOTE_URL if target_type == "remote" and REMOTE_URL else LLAMA_URL
     # Record routing decision for dashboard stats (chat/completions only — skip health polls).
     if path == "chat/completions":
-        _routing_ring.append({
-            "ts": time.time(),
-            "local": target_type == "local",
-            "profile": profile,
-        })
+        _ts = time.time()
+        _rec = {"ts": _ts, "local": target_type == "local", "profile": profile}
+        _routing_ring.append(_rec)
+        # Persist asynchronously — survives restarts, trimmed by data-retention (14d TTL).
+        asyncio.create_task(asyncio.to_thread(_routing_log_append, _ts, target_type == "local", profile))
     if profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
         return JSONResponse(
             status_code=503,
