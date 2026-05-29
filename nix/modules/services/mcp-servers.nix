@@ -2352,6 +2352,9 @@ in {
             # not /proc/self symlink — AppArmor resolves symlinks before matching).
             /proc/@{pids}/net/dev r,
             /proc/@{pids}/net/** r,
+            # psutil.net_connections() walks /proc/<pid>/fd/ for ALL pids to count
+            # open sockets — requires read access to other processes' fd directories.
+            /proc/@{pids}/fd/ r,
             /dev/null rw,
             /dev/urandom r,
 
@@ -2368,8 +2371,10 @@ in {
             /sys/devices/** r,
 
             # ip — psutil/netifaces execs ip for network interface enumeration.
-            # Use **/bin/ip (not iproute2*/bin/ip) because store path starts with hash.
+            # nft — dashboard reads firewall rules_count via nft list ruleset.
+            # Use **/bin/<cmd> (not pkg*/bin/) because store path starts with hash.
             /nix/store/**/bin/ip ix,
+            /nix/store/**/bin/nft ix,
 
             # Secrets — NixOS mounts secrets at /run/secrets/ AND /run/secrets.d/<N>/
             /run/secrets/ r,

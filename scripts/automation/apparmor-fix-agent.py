@@ -60,10 +60,13 @@ def _make_rule(operation: str, path: str, mask: str) -> Optional[Tuple[str, str]
     """
     INDENT = "            "
 
-    # Nix store — generalize hash prefix
+    # Nix store — generalize hash-prefixed derivation name.
+    # Path: /nix/store/<hash-name>/sub/path
+    # parts: [nix, store, hash-name, sub, path, ...]
+    # We want: /nix/store/**/sub/path  (skip parts[0..2])
     if path.startswith("/nix/store/"):
         parts = path.lstrip("/").split("/")
-        rest = "/".join(parts[2:])   # drop nix/store/<hash-name>
+        rest = "/".join(parts[3:])   # skip nix, store, hash-name
         perm = "ix" if "exec" in operation else "r"
         return f"{INDENT}/nix/store/**/{rest} {perm},", f"nix store {operation}"
 
@@ -255,7 +258,8 @@ def _update_handoff(profile: str, rules: List[str], commit: str, denial_paths: L
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def _scan_journalctl(profile: str, since_seconds: int) -> List[Dict[str, str]]:
-    since = datetime.fromtimestamp(time.time() - since_seconds, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    # journalctl --since expects local time (not UTC)
+    since = datetime.fromtimestamp(time.time() - since_seconds).strftime("%Y-%m-%d %H:%M:%S")
     try:
         r = subprocess.run(
             ["journalctl", "-k", f"--since={since}", "--no-pager", "-q"],
