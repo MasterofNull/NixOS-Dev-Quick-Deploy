@@ -1,73 +1,377 @@
 #!/usr/bin/env python3
 """
-aq-health-spider — Stochastic telemetry sampling and autonomous remediation engine.
+aq-health-spider — Real service health sampling + autonomous fix pipeline.
+
+Per cycle (default 7200s / 2h — configurable via --interval):
+  1. HTTP health check each zone (5s timeout, non-blocking)
+  2. Systemd service active-state check (on HTTP failure only, to save bandwidth)
+  3. AppArmor denial scan since last cycle (kernel journal, deduped)
+  4. Anomaly classification → fix pipeline dispatch
+
+Fix pipeline (no sudo — user gates nixos-rebuild):
+  apparmor_denial  → apparmor-fix-agent.py → commit rules → notify via HANDOFF.md
+  service_down     → PRSI cycle (low-risk restart request)
+  http_failure     → emit event + seed RAG error-solutions
+
+Knowledge loop:
+  Novel issues seeded to Qdrant error-solutions via llama-embed + Qdrant PUT.
+  Structured events appended to .agents/telemetry/hybrid-events.jsonl.
+  Fix summaries appended to .agent/collaboration/HANDOFF.md.
 """
 
+import argparse
 import asyncio
 import json
 import logging
 import os
-import random
-import time
+import subprocess
 import sys
+import time
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
-# Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("health-spider")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-HOTSPOTS_ENDPOINT = "http://127.0.0.1:8003/api/telemetry/hotspots"
+TELEMETRY_SPOOL = REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
+HANDOFF_MD      = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
+COORDINATOR_URL = os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003")
+EMBED_URL       = os.environ.get("LLAMA_EMBED_URL",        "http://127.0.0.1:8081")
+QDRANT_URL      = os.environ.get("QDRANT_URL",             "http://127.0.0.1:6333")
+
+# Zone definitions: url, systemd service, AppArmor profile (None = no profile)
+ZONES: Dict[str, Dict[str, Any]] = {
+    "hybrid-coordinator": {
+        "url":             f"{COORDINATOR_URL}/health",
+        "service":         "ai-hybrid-coordinator.service",
+        "apparmor_profile": "ai-hybrid-coordinator",
+    },
+    "switchboard": {
+        "url":             "http://127.0.0.1:8085/health",
+        "service":         "ai-switchboard.service",
+        "apparmor_profile": None,
+    },
+    "aidb": {
+        "url":             "http://127.0.0.1:8002/health",
+        "service":         "ai-aidb.service",
+        "apparmor_profile": None,
+    },
+    "dashboard": {
+        "url":             "http://127.0.0.1:8889/api/health",
+        "service":         "command-center-dashboard-api.service",
+        "apparmor_profile": "command-center-dashboard-api",
+    },
+}
+
+# ── Sync helpers (run in thread via asyncio.to_thread) ─────────────────────────
+
+def _http_check(url: str, timeout: int = 5) -> Tuple[bool, Optional[float]]:
+    """Returns (ok, latency_ms). ok=False on error or HTTP>=500."""
+    try:
+        t0 = time.monotonic()
+        resp = urllib.request.urlopen(url, timeout=timeout)
+        ms = (time.monotonic() - t0) * 1000
+        resp.close()
+        return True, round(ms, 1)
+    except Exception:
+        return False, None
+
+
+def _service_check(service: str) -> str:
+    """Returns systemctl is-active output: active/inactive/failed/unknown."""
+    try:
+        r = subprocess.run(
+            ["systemctl", "is-active", service],
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _apparmor_scan(profile: str, since_ts: float) -> List[Dict[str, str]]:
+    """Returns deduplicated list of {operation, path, mask} DENIED for profile since since_ts."""
+    since = datetime.fromtimestamp(since_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        r = subprocess.run(
+            ["journalctl", "-k", f"--since={since}", "--no-pager", "-q"],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception as e:
+        logger.debug(f"AppArmor scan error: {e}")
+        return []
+
+    seen: set = set()
+    denials: List[Dict[str, str]] = []
+    for line in r.stdout.splitlines():
+        if f'profile="{profile}"' not in line or 'apparmor="DENIED"' not in line:
+            continue
+        def _f(key: str) -> str:
+            marker = f'{key}="'
+            if marker not in line:
+                return ""
+            s = line.index(marker) + len(marker)
+            return line[s:line.index('"', s)]
+        op, path, mask = _f("operation"), _f("name"), _f("requested_mask")
+        key = (op, path)
+        if key not in seen and path:
+            seen.add(key)
+            denials.append({"operation": op, "path": path, "mask": mask})
+    return denials
+
+
+def _emit_event(event_type: str, payload: Dict[str, Any]) -> None:
+    """Append JSON event to user-space telemetry spool (non-fatal)."""
+    try:
+        TELEMETRY_SPOOL.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": event_type,
+            "event_type": event_type,
+            "source": "health-spider",
+            **payload,
+        }
+        with open(TELEMETRY_SPOOL, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception as e:
+        logger.debug(f"emit_event error: {e}")
+
+
+def _seed_rag(error_type: str, error_msg: str, context: str, solution: str, tags: List[str]) -> bool:
+    """Seed one entry to Qdrant error-solutions via llama-embed. Returns True on success."""
+    try:
+        text = f"Error: {error_type} - {error_msg} Context: {context} Solution: {solution}"
+        embed_req = urllib.request.Request(
+            f"{EMBED_URL}/v1/embeddings",
+            data=json.dumps({"input": text, "model": "bge-m3"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(embed_req, timeout=10) as r:
+            vector = json.loads(r.read())["data"][0]["embedding"]
+
+        import uuid
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"health-spider:{error_type}:{error_msg[:60]}"))
+        upsert_req = urllib.request.Request(
+            f"{QDRANT_URL}/collections/error-solutions/points",
+            data=json.dumps({"points": [{
+                "id": point_id,
+                "vector": vector,
+                "payload": {
+                    "error_type": error_type,
+                    "error_message": error_msg,
+                    "context": context,
+                    "solution": solution,
+                    "tags": tags,
+                    "source": "health-spider",
+                    "seeded_at": datetime.now(timezone.utc).isoformat(),
+                },
+            }]}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="PUT",
+        )
+        with urllib.request.urlopen(upsert_req, timeout=10) as r:
+            r.read()
+        return True
+    except Exception as e:
+        logger.debug(f"RAG seed failed: {e}")
+        return False
+
+
+def _update_handoff(entry: str) -> None:
+    """Append timestamped entry to HANDOFF.md."""
+    try:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(HANDOFF_MD, "a", encoding="utf-8") as f:
+            f.write(f"\n### [{ts}] health-spider\n{entry}\n")
+    except Exception as e:
+        logger.debug(f"HANDOFF.md update failed: {e}")
+
+
+# ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
-    def __init__(self, interval: int = 60):
+    def __init__(self, interval: int = 7200):
         self.interval = interval
-        self.seen_samples = set() # Avoid repeating samples in a cycle
+        self._apparmor_last: Dict[str, float] = {}
+        self._known_issues: set = set()   # Dedup RAG seeding
 
-    async def get_hotspots(self) -> List[str]:
-        # Simulated hotspot fetch
-        return ["hybrid-coordinator", "switchboard", "aidb", "dashboard"]
+    async def sample_zone(self, zone: str) -> List[Dict[str, Any]]:
+        """Real health checks for one zone. Returns list of anomaly dicts."""
+        cfg = ZONES[zone]
+        anomalies: List[Dict[str, Any]] = []
 
-    async def sample_zone(self, zone: str):
-        logger.info(f"Sampling hotspot: {zone}")
-        # Run specialized health check/sampling
-        # In reality: aq-qa --service <zone> --json
-        await asyncio.sleep(0.5)
-        
-        # Simulate detection of anomaly (for demo)
-        if random.random() < 0.2:
-            anomaly = {"zone": zone, "issue": "high_latency", "timestamp": time.time()}
-            await self.trigger_remediation(anomaly)
+        # 1. HTTP health check (fast, async)
+        ok, ms = await asyncio.to_thread(_http_check, cfg["url"])
+        if ok:
+            logger.info(f"[{zone}] HTTP OK {ms}ms")
+        else:
+            logger.warning(f"[{zone}] HTTP FAILED {cfg['url']}")
+            # 2. Service check only on HTTP failure (saves bandwidth)
+            svc = cfg.get("service")
+            state = await asyncio.to_thread(_service_check, svc) if svc else "unknown"
+            if state not in ("active", "activating"):
+                anomalies.append({
+                    "type": "service_down", "zone": zone,
+                    "service": svc, "state": state,
+                    "timestamp": time.time(),
+                })
+            else:
+                anomalies.append({
+                    "type": "http_failure", "zone": zone,
+                    "url": cfg["url"], "service_state": state,
+                    "timestamp": time.time(),
+                })
 
-    async def trigger_remediation(self, anomaly: Dict[str, Any]):
-        logger.warning(f"ANOMALY DETECTED: {anomaly}")
-        python_bin = sys.executable
-        orchestrator = os.path.join(REPO_ROOT, "scripts", "automation", "prsi-orchestrator.py")
+        # 3. AppArmor denial scan (only zones with a profile)
+        profile = cfg.get("apparmor_profile")
+        if profile:
+            since = self._apparmor_last.get(profile, time.time() - self.interval * 1.5)
+            denials = await asyncio.to_thread(_apparmor_scan, profile, since)
+            self._apparmor_last[profile] = time.time()
+            if denials:
+                logger.warning(f"[{zone}] AppArmor: {len(denials)} denial(s) → profile '{profile}'")
+                anomalies.append({
+                    "type": "apparmor_denial", "zone": zone,
+                    "profile": profile, "denials": denials,
+                    "timestamp": time.time(),
+                })
 
-        # Sync pending PRSI actions from coordinator, auto-approve low-risk, execute one.
-        # 'cycle' = sync + auto-approve-low-risk + execute in one pass.
-        proc = await asyncio.create_subprocess_exec(
-            python_bin, orchestrator, "cycle"
-        )
-        await proc.wait()
-        logger.info("Autonomous remediation triggered via PRSI.")
+        return anomalies
+
+    async def handle_anomaly(self, anomaly: Dict[str, Any]) -> None:
+        atype, zone = anomaly["type"], anomaly["zone"]
+        _emit_event(f"health_spider_{atype}", anomaly)
+
+        if atype == "apparmor_denial":
+            await self._fix_apparmor(anomaly)
+
+        elif atype == "service_down":
+            svc = anomaly.get("service", zone)
+            key = f"service_down:{svc}"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                await asyncio.to_thread(
+                    _seed_rag,
+                    "service_down",
+                    f"Service {svc} ({zone}) state='{anomaly.get('state')}'",
+                    f"Health spider detected during {zone} zone scan",
+                    f"Check: journalctl -u {svc} -n 50. Restart: sudo systemctl restart {svc}. If AppArmor: run apparmor-fix-agent and rebuild.",
+                    ["service-down", zone, "health-spider"],
+                )
+            await self._queue_prsi(anomaly)
+
+        elif atype == "http_failure":
+            key = f"http_failure:{zone}"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                await asyncio.to_thread(
+                    _seed_rag,
+                    "http_failure",
+                    f"HTTP health check failed for zone '{zone}' at {anomaly.get('url')}",
+                    f"Service state: {anomaly.get('service_state', 'unknown')}",
+                    f"Check service logs: journalctl -u {ZONES[zone].get('service', zone)} -n 50",
+                    ["http-failure", zone, "health-spider"],
+                )
+
+    async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> None:
+        """Invoke apparmor-fix-agent to commit rule fixes and notify via HANDOFF."""
+        profile = anomaly["profile"]
+        denials = anomaly["denials"]
+        fix_agent = REPO_ROOT / "scripts" / "automation" / "apparmor-fix-agent.py"
+        if not fix_agent.exists():
+            logger.warning(f"apparmor-fix-agent.py not found: {fix_agent}")
+            return
+
+        denial_json = json.dumps({"profile": profile, "denials": denials}).encode()
+        logger.info(f"[{anomaly['zone']}] Running apparmor-fix-agent ({len(denials)} denials)")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, str(fix_agent),
+                "--profile", profile, "--input-json", "-",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(denial_json), timeout=90)
+            if proc.returncode == 0:
+                result = json.loads(stdout) if stdout.strip() else {}
+                commit = result.get("commit_hash", "unknown")
+                rules = result.get("rules_added", [])
+                logger.info(f"[{anomaly['zone']}] Fix committed: {commit} ({len(rules)} rules)")
+                _update_handoff(
+                    f"**AppArmor fix auto-committed** `{commit}` — profile `{profile}`  \n"
+                    f"Rules added ({len(rules)}): {rules[:5]}  \n"
+                    f"Denied paths: {[d['path'] for d in denials[:5]]}  \n"
+                    f"⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**"
+                )
+                _emit_event("apparmor_fix_committed", {
+                    "zone": anomaly["zone"], "profile": profile,
+                    "commit_hash": commit, "rules_added": rules,
+                })
+            elif proc.returncode == 2:
+                logger.info(f"[{anomaly['zone']}] AppArmor: all paths already covered")
+            else:
+                logger.error(f"[{anomaly['zone']}] fix-agent failed (rc={proc.returncode}): {stderr.decode()[:300]}")
+        except asyncio.TimeoutError:
+            logger.error(f"[{anomaly['zone']}] apparmor-fix-agent timed out")
+        except Exception as e:
+            logger.error(f"[{anomaly['zone']}] fix-agent error: {e}")
+
+    async def _queue_prsi(self, anomaly: Dict[str, Any]) -> None:
+        orchestrator = REPO_ROOT / "scripts" / "automation" / "prsi-orchestrator.py"
+        if not orchestrator.exists():
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, str(orchestrator), "cycle",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(proc.wait(), timeout=30)
+        except Exception as e:
+            logger.debug(f"PRSI cycle error: {e}")
+
+    async def run_once(self) -> int:
+        """Single cycle — returns anomaly count."""
+        total = 0
+        for zone in ZONES:
+            try:
+                anomalies = await self.sample_zone(zone)
+                for a in anomalies:
+                    await self.handle_anomaly(a)
+                total += len(anomalies)
+            except Exception as e:
+                logger.error(f"[{zone}] error: {e}")
+        return total
 
     async def run(self):
-        logger.info("Health Spider scanning...")
+        logger.info(f"Health Spider online — interval={self.interval}s, zones={list(ZONES)}")
+        _emit_event("health_spider_started", {"zones": list(ZONES), "interval_s": self.interval})
         while True:
-            hotspots = await self.get_hotspots()
-            random.shuffle(hotspots)
-            
-            for zone in hotspots:
-                if zone not in self.seen_samples:
-                    await self.sample_zone(zone)
-                    self.seen_samples.add(zone)
-            
-            # Reset after full pass
-            self.seen_samples.clear()
+            t0 = time.time()
+            n = await self.run_once()
+            elapsed = round(time.time() - t0, 1)
+            _emit_event("health_spider_cycle", {
+                "zones_checked": len(ZONES), "anomalies": n, "cycle_seconds": elapsed,
+            })
+            logger.info(f"Cycle complete: {n} anomaly(ies) in {elapsed}s — sleeping {self.interval}s")
             await asyncio.sleep(self.interval)
 
+
 if __name__ == "__main__":
-    spider = HealthSpider()
-    asyncio.run(spider.run())
+    parser = argparse.ArgumentParser(description="Health Spider — real service monitoring")
+    parser.add_argument("--interval", type=int, default=7200,
+                        help="Scan interval in seconds (default: 7200 = 2h)")
+    parser.add_argument("--once", action="store_true", help="Run one cycle then exit")
+    args = parser.parse_args()
+
+    spider = HealthSpider(interval=args.interval)
+    if args.once:
+        result = asyncio.run(spider.run_once())
+        sys.exit(0 if result == 0 else 1)
+    else:
+        asyncio.run(spider.run())
