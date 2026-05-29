@@ -2342,7 +2342,10 @@ in {
             /tmp/*.db-* rwk,
 
             # System resources (Python async runtime + psutil)
+            /proc/ r,
             /proc/self/** r,
+            /proc/stat r,
+            /proc/uptime r,
             /proc/sys/kernel/osrelease r,
             /proc/meminfo r,
             # psutil reads network stats via /proc/<pid>/net/dev (real pid path,
@@ -2351,6 +2354,22 @@ in {
             /proc/@{pids}/net/** r,
             /dev/null rw,
             /dev/urandom r,
+
+            # Hardware monitoring — GPU (DRM/AMDGPU), hwmon, thermal, platform devices.
+            # psutil and custom GPU stat readers walk these sysfs trees.
+            /sys/class/drm/ r,
+            /sys/class/drm/** r,
+            /sys/class/hwmon/ r,
+            /sys/class/hwmon/** r,
+            /sys/class/thermal/ r,
+            /sys/class/thermal/** r,
+            /sys/devices/platform/ r,
+            /sys/devices/platform/** r,
+            /sys/devices/**/hwmon/ r,
+            /sys/devices/**/hwmon/** r,
+
+            # ip — psutil/netifaces may exec ip for interface enumeration
+            /nix/store/**/iproute2*/bin/ip ix,
 
             # Secrets — NixOS mounts secrets at /run/secrets/ AND /run/secrets.d/<N>/
             /run/secrets/ r,
