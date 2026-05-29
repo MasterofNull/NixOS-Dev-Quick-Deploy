@@ -15,6 +15,7 @@
 #   AI_LOGS_DELEGATION_OUTPUTS_DAYS  — .agents/delegation/outputs/*.log TTL (default: 14)
 #   AI_LOGS_USER_SPOOL_DAYS        — user-space hybrid-events spool TTL (default: 14)
 #   AI_LOGS_AIDB_EVENTS_DAYS       — aidb-events.jsonl TTL (default: 7)
+#   AI_LOGS_WORKFLOW_SESSIONS_DAYS — workflow-sessions.json TTL per session last_active (default: 30)
 #   REPO_ROOT                      — repo root path (default: auto-detected)
 
 set -euo pipefail
@@ -36,6 +37,7 @@ DELEGATION_FEEDBACK_DAYS="${AI_LOGS_DELEGATION_FEEDBACK_DAYS:-30}"
 DELEGATION_OUTPUTS_DAYS="${AI_LOGS_DELEGATION_OUTPUTS_DAYS:-14}"
 USER_SPOOL_DAYS="${AI_LOGS_USER_SPOOL_DAYS:-14}"
 AIDB_EVENTS_DAYS="${AI_LOGS_AIDB_EVENTS_DAYS:-7}"
+WORKFLOW_SESSIONS_DAYS="${AI_LOGS_WORKFLOW_SESSIONS_DAYS:-30}"
 
 # ── JSONL trimmer ─────────────────────────────────────────────────────────────
 # Reuses the same timestamp-aware trim logic as trim-snapshots.sh.
@@ -123,6 +125,79 @@ except Exception as e:
 PYEOF
 }
 
+# ── Workflow sessions cleanup ─────────────────────────────────────────────────
+# workflow-sessions.json is a flat JSON dict {uuid: session} where each session
+# has an `updated_at` Unix float. Stale sessions (>30d default) are evicted.
+trim_workflow_sessions() {
+    local file="$1"
+    local days="$2"
+    local label="${3:-workflow-sessions.json}"
+
+    if [[ ! -f "$file" ]]; then
+        return 0
+    fi
+    if [[ ! -w "$file" ]]; then
+        echo "[trim-ai-logs] SKIP $label — not writable (check group permissions)"
+        return 0
+    fi
+
+    local cutoff_epoch
+    cutoff_epoch=$(date -d "$days days ago" +%s 2>/dev/null || date -v "-${days}d" +%s)
+
+    python3 - "$file" "$cutoff_epoch" "$DRY_RUN" "$label" <<'PYEOF'
+import json, sys, os, stat as _stat
+
+path, cutoff_str, dry_run_str, label = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+cutoff = int(cutoff_str)
+dry_run = dry_run_str.lower() == "true"
+
+try:
+    with open(path, encoding="utf-8", errors="replace") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        sys.exit(0)
+except Exception as e:
+    print(f"[trim-ai-logs] ERROR reading {label}: {e}", file=sys.stderr)
+    sys.exit(1)
+
+before = len(data)
+kept = {
+    sid: s for sid, s in data.items()
+    if not isinstance(s, dict)  # keep unparseable entries (conservative)
+    or float(s.get("updated_at") or s.get("created_at") or cutoff) >= cutoff
+}
+removed = before - len(kept)
+
+if dry_run:
+    print(f"[trim-ai-logs] DRY-RUN {label}: would remove {removed}/{before} sessions")
+    sys.exit(0)
+if removed == 0:
+    sys.exit(0)
+
+st = os.stat(path)
+orig_uid, orig_gid = st.st_uid, st.st_gid
+orig_mode = _stat.S_IMODE(st.st_mode)
+
+tmp = path + ".trim.tmp"
+try:
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(kept, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, path)
+    try:
+        os.chown(path, orig_uid, orig_gid)
+        os.chmod(path, orig_mode)
+    except PermissionError:
+        pass
+    print(f"[trim-ai-logs] {label}: removed {removed}/{before} sessions, kept {len(kept)}")
+except Exception as e:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+    print(f"[trim-ai-logs] ERROR writing {label}: {e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+}
+
 # ── Delegation outputs cleanup ────────────────────────────────────────────────
 trim_delegation_outputs() {
     local dir="$1"
@@ -195,5 +270,11 @@ trim_jsonl \
 trim_delegation_outputs \
     "$REPO_ROOT/.agents/delegation/outputs" \
     "$DELEGATION_OUTPUTS_DAYS"
+
+# 8. Workflow sessions (flat JSON dict — stale sessions bloat sync parse on every multi-turn)
+trim_workflow_sessions \
+    "/var/lib/ai-stack/hybrid/workflow-sessions.json" \
+    "$WORKFLOW_SESSIONS_DAYS" \
+    "workflow-sessions.json"
 
 echo "[trim-ai-logs] done"
