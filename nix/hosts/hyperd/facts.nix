@@ -88,6 +88,7 @@
       switchboard.remoteModelAliases = {
         opencode = "qwen/qwen3-coder-32b";
       };
+      aiHarness.eval.faithfulnessEnabled = true;
     };
   };
 }
