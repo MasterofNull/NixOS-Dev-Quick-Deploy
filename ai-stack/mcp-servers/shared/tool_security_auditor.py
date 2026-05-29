@@ -46,6 +46,10 @@ def _default_policy() -> Dict[str, Any]:
         "blocked_tools": ["shell_exec", "remote_ssh_exec", "raw_system_command"],
         "keyword_exempt_tools": [],
         "blocked_endpoint_patterns": ["/control/*", "*/reload-model", "*/session/*/mode"],
+        # Tools listed here bypass endpoint-pattern blocking (still subject to
+        # blocked_tools / keyword checks). Used for trusted internal coordination tools
+        # whose endpoints happen to fall under a blocked namespace (e.g. /control/*).
+        "endpoint_exempt_tools": ["ai_coordinator_delegate"],
         "blocked_reason_keywords": [
             "exec",
             "shell",
@@ -203,11 +207,17 @@ class ToolSecurityAuditor:
         if name in blocked_tools:
             reasons.append("blocked_tool_name")
 
-        for pattern in policy.get("blocked_endpoint_patterns", []):
-            p = str(pattern).strip().lower()
-            if p and endpoint and fnmatch.fnmatch(endpoint, p):
-                reasons.append(f"blocked_endpoint_pattern:{p}")
-                break
+        endpoint_exempt_tools = {
+            str(t).strip().lower()
+            for t in policy.get("endpoint_exempt_tools", [])
+            if str(t).strip()
+        }
+        if name not in endpoint_exempt_tools:
+            for pattern in policy.get("blocked_endpoint_patterns", []):
+                p = str(pattern).strip().lower()
+                if p and endpoint and fnmatch.fnmatch(endpoint, p):
+                    reasons.append(f"blocked_endpoint_pattern:{p}")
+                    break
 
         keyword_exempt_tools = {
             str(t).strip().lower()

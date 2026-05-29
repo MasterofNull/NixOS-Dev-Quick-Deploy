@@ -402,6 +402,13 @@ _STRICT_REPLY_ONLY_RE = re.compile(
     r"\b(reply|respond|return)\b[\s\S]{0,80}\bonly\b",
     re.IGNORECASE,
 )
+# Qwen3-35B at 1-2 tok/s; 210s delegate budget → hard ceiling keeps generation
+# within budget window. Applied when archetype-based cap is undefined (cap=0).
+_LOCAL_PROFILE_NAMES: frozenset = frozenset({
+    "default", "continue-local", "embedded-assist", "local-tool-calling",
+    "local-agent", "embedding-local", "coordinator-internal",
+})
+_LOCAL_MAX_TOKENS_HARD_CEILING = 256
 
 
 def _record_routing_decision(decision: Dict[str, Any]) -> None:
@@ -690,6 +697,12 @@ def delegated_response_budget(
         cap = 256
     else:
         cap = 0
+
+    # Hard ceiling for local profiles: prevent unbounded token generation that
+    # exceeds the 210s delegate timeout window. Remote profiles have no ceiling
+    # here — they return tokens fast enough for the caller's explicit budget.
+    if cap == 0 and profile_name in _LOCAL_PROFILE_NAMES:
+        cap = _LOCAL_MAX_TOKENS_HARD_CEILING
 
     if explicit_budget > 0 and cap > 0:
         return min(explicit_budget, cap)
