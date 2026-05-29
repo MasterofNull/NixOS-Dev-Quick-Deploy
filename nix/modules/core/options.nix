@@ -1896,12 +1896,13 @@
 
           searchScoreThreshold = lib.mkOption {
             type = lib.types.float;
-            default = 0.55;
+            default = 0.45;
             description = ''
               Minimum cosine similarity score for vector retrieval results (0.0–1.0).
-              Lower values surface more results from general knowledge collections
-              (best-practices, knowledge, skills-patterns). 0.7 is precise for
-              code-context; 0.55 works better with bge-m3 on explanation queries.
+              Calibrated for BGE-M3 (embed-bge-m3-Q8_0): typical top scores are
+              0.45–0.67 across collections. At 0.55 the error-solutions (max 0.44)
+              and skills-patterns (max 0.41) collections never return semantic hits.
+              0.45 enables all five AIDB collections while still rejecting noise.
             '';
           };
         };
