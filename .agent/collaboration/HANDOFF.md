@@ -249,3 +249,21 @@ Dashboard `ragFaithfulness` element will show a real value instead of `--`.
 bounded; sync-parse latency drops from 64ms toward ~6ms (active-session count expected ~20).
 
 **Requires**: nixos-rebuild switch to activate the new NixOS option.
+
+## Phase 78 — Fix async blocking in workflow session I/O
+
+**Change**: `_load_workflow_sessions()` and `_save_workflow_sessions()` used synchronous
+`path.read_text()` / `path.write_text()` / `path.exists()` / `mkdir()` inside `async def`
+handlers — blocking the aiohttp event loop on every multi-turn session load/save.
+
+**Fix**: Extracted sync work into `_sync_load_workflow_sessions()` and
+`_sync_save_workflow_sessions()`, dispatched via `asyncio.to_thread()`. Added `asyncio`
+import. The public async API is unchanged — callers require no modification.
+
+**File changed**: `workflow/workflow_session_handlers.py`
+
+**Impact**: Event loop no longer stalls during session I/O. With 16 sessions post-trim
+the latency is negligible, but the fix is correct regardless of file size — prevents
+regression as sessions accumulate between daily trim runs.
+
+**Requires**: coordinator service restart (Python-only change, no rebuild needed).
