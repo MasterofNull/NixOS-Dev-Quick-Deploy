@@ -8,8 +8,10 @@ Created: 2026-04-09
 Purpose: Enable real workflow execution with LLM APIs
 """
 
+import datetime
 import os
 import sys
+import time
 from pathlib import Path
 
 # Stability Backbone (Phase 55.2): Ensure shared utilities are on path
@@ -487,6 +489,7 @@ class LLMClient:
         }
         headers.setdefault("X-AI-Profile", "coordinator-internal")
 
+        _t0 = time.perf_counter()
         try:
             response = await self.client.post(
                 f"{self.base_url}/chat/completions",
@@ -498,7 +501,32 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Local switchboard API error: {e}", exc_info=True)
             raise RuntimeError(f"Failed to create local message: {e}")
-        return self._build_openai_compatible_response(body, fallback_model=model)
+        _latency_ms = round((time.perf_counter() - _t0) * 1000, 1)
+        llm_res = self._build_openai_compatible_response(body, fallback_model=model)
+
+        # Emit local_inference event for training ingest pipeline.
+        # LLMClient is the workflow-execution path; route_handler covers the chat path.
+        _tel_dir = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
+        _tel_file = _tel_dir / "hybrid-events.jsonl"
+        if _tel_file.parent.exists():
+            try:
+                _usage = body.get("usage", {})
+                _evt = json.dumps({
+                    "event_type": "local_inference",
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "query": prompt[:4000],
+                    "response": (llm_res.content or "")[:4000],
+                    "model": llm_res.model,
+                    "latency_ms": _latency_ms,
+                    "tokens_in": _usage.get("prompt_tokens"),
+                    "tokens_out": _usage.get("completion_tokens"),
+                })
+                with open(_tel_file, "a", encoding="utf-8") as _f:
+                    _f.write(_evt + "\n")
+            except Exception:
+                pass
+
+        return llm_res
 
 
 class PromptBuilder:

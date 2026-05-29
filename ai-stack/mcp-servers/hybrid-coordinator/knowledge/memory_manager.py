@@ -318,84 +318,95 @@ async def store_agent_memory(
     if sanitized_metadata:
         payload.update(sanitized_metadata)
 
-    embedding = await _embed(f"{normalized_type}\n{normalized_summary}\n{sanitized_content}")
+    # Fire-and-forget: schedule the blocking embed+dedup+upsert as a background task.
+    # The embedding RPC to llama-embed blocks 7s P50; callers don't need confirmation.
+    # memory_id is pre-generated so callers can reference it before storage completes.
+    asyncio.create_task(
+        _persist_agent_memory(
+            memory_id=memory_id,
+            collection=collection,
+            normalized_type=normalized_type,
+            payload=payload,
+            embed_text=f"{normalized_type}\n{normalized_summary}\n{sanitized_content}",
+        )
+    )
+    return {
+        "status": "queued",
+        "memory_id": memory_id,
+        "memory_type": normalized_type,
+    }
 
-    # Batch 2.1: Deduplication check
-    is_duplicate = await _check_memory_duplicate(collection, embedding)
-    if is_duplicate:
-        _memory_metrics.dedup_skips += 1
-        elapsed_ms = (time.time() - start_time) * 1000
-        _memory_metrics.store_latencies.append(elapsed_ms)
-        return {
-            "status": "skipped",
-            "reason": "duplicate",
-            "memory_type": normalized_type,
-            "latency_ms": round(elapsed_ms, 1),
-        }
 
-    # Batch 2.1: Retry logic with exponential backoff
-    last_exception = None
-    for attempt in range(MEMORY_RETRY_ATTEMPTS):
-        try:
-            _qdrant.upsert(
-                collection_name=collection,
-                points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
-            )
-            # Success!
-            if attempt > 0:
-                _memory_metrics.retry_successes += 1
-                logger.info(f"Memory store succeeded on retry attempt {attempt + 1}")
+async def _persist_agent_memory(
+    *,
+    memory_id: str,
+    collection: str,
+    normalized_type: str,
+    payload: Dict[str, Any],
+    embed_text: str,
+) -> None:
+    """Background coroutine: embed, dedup-check, and upsert a memory point."""
+    start_time = time.time()
+    try:
+        embedding = await _embed(embed_text)
 
-            elapsed_ms = (time.time() - start_time) * 1000
-            _memory_metrics.store_latencies.append(elapsed_ms)
+        # Batch 2.1: Deduplication check
+        is_duplicate = await _check_memory_duplicate(collection, embedding)
+        if is_duplicate:
+            _memory_metrics.dedup_skips += 1
+            return
 
-            _record_telemetry(
-                "agent_memory_store",
-                {
-                    "memory_id": memory_id,
-                    "memory_type": normalized_type,
-                    "collection": collection,
-                    "latency_ms": round(elapsed_ms, 1),
-                    "retry_attempt": attempt,
-                },
-            )
-            return {
-                "status": "stored",
-                "memory_id": memory_id,
-                "memory_type": normalized_type,
-                "latency_ms": round(elapsed_ms, 1),
-            }
+        # Batch 2.1: Retry logic with exponential backoff
+        last_exception = None
+        for attempt in range(MEMORY_RETRY_ATTEMPTS):
+            try:
+                _qdrant.upsert(
+                    collection_name=collection,
+                    points=[PointStruct(id=memory_id, vector=embedding, payload=payload)],
+                )
+                if attempt > 0:
+                    _memory_metrics.retry_successes += 1
+                    logger.info(f"Memory store succeeded on retry attempt {attempt + 1}")
 
-        except Exception as exc:
-            error_text = str(exc)
-            if "Vector dimension error" in error_text:
-                logger.warning(
-                    "Agent memory storage disabled due to embedding/collection dimension mismatch",
-                    extra={
+                elapsed_ms = (time.time() - start_time) * 1000
+                _memory_metrics.store_latencies.append(elapsed_ms)
+                _record_telemetry(
+                    "agent_memory_store",
+                    {
+                        "memory_id": memory_id,
                         "memory_type": normalized_type,
                         "collection": collection,
-                        "memory_id": memory_id,
+                        "latency_ms": round(elapsed_ms, 1),
+                        "retry_attempt": attempt,
                     },
                 )
-                return {
-                    "status": "disabled",
-                    "reason": "embedding_dimension_mismatch",
-                    "memory_type": normalized_type,
-                }
+                return
 
-            last_exception = exc
-            if attempt < MEMORY_RETRY_ATTEMPTS - 1:
-                delay = MEMORY_RETRY_BASE_DELAY * (2 ** attempt)
-                logger.warning(
-                    f"Memory store failed on attempt {attempt + 1}/{MEMORY_RETRY_ATTEMPTS}, retrying in {delay}s: {exc}"
-                )
-                await asyncio.sleep(delay)
-            else:
-                _memory_metrics.retry_failures += 1
-                logger.error(f"Memory store failed after {MEMORY_RETRY_ATTEMPTS} attempts: {exc}")
+            except Exception as exc:
+                error_text = str(exc)
+                if "Vector dimension error" in error_text:
+                    logger.warning(
+                        "Agent memory storage disabled due to embedding/collection dimension mismatch",
+                        extra={"memory_type": normalized_type, "collection": collection, "memory_id": memory_id},
+                    )
+                    return
 
-    # All retries exhausted
-    raise last_exception
+                last_exception = exc
+                if attempt < MEMORY_RETRY_ATTEMPTS - 1:
+                    delay = MEMORY_RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"Memory store failed on attempt {attempt + 1}/{MEMORY_RETRY_ATTEMPTS}, retrying in {delay}s: {exc}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    _memory_metrics.retry_failures += 1
+                    logger.error(f"Memory store failed after {MEMORY_RETRY_ATTEMPTS} attempts: {exc}")
+
+        if last_exception:
+            raise last_exception
+
+    except Exception as exc:
+        logger.error(f"Background memory persist failed for {memory_id}: {exc}")
 
 
 async def recall_agent_memory(
@@ -442,7 +453,7 @@ async def recall_agent_memory(
             collections=collections,
             limit=limit_value,
             keyword_limit=limit_value,
-            score_threshold=0.6,
+            score_threshold=Config.AI_SEARCH_SCORE_THRESHOLD,
         )
     else:
         search_result = await _hybrid_search(
@@ -450,7 +461,7 @@ async def recall_agent_memory(
             collections=collections,
             limit=limit_value,
             keyword_limit=limit_value,
-            score_threshold=0.6,
+            score_threshold=Config.AI_SEARCH_SCORE_THRESHOLD,
         )
 
     raw_results = search_result.get("combined_results", [])
@@ -467,7 +478,7 @@ async def recall_agent_memory(
                     collections=collections,
                     limit=limit_value,
                     keyword_limit=limit_value,
-                    score_threshold=0.6,
+                    score_threshold=Config.AI_SEARCH_SCORE_THRESHOLD,
                 )
             else:
                 return await _hybrid_search(
@@ -475,7 +486,7 @@ async def recall_agent_memory(
                     collections=collections,
                     limit=limit_value,
                     keyword_limit=limit_value,
-                    score_threshold=0.6,
+                    score_threshold=Config.AI_SEARCH_SCORE_THRESHOLD,
                 )
 
         # Apply reflection loop

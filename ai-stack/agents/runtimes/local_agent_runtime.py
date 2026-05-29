@@ -453,6 +453,23 @@ def _payload_for_direct_llama(payload: dict) -> dict:
     return sanitized
 
 
+async def _wait_for_llama_slot(
+    client: httpx.AsyncClient,
+    timeout: float = AGENT_TIMEOUT,
+    poll_interval: float = 3.0,
+) -> None:
+    """Poll llama.cpp /health until a slot is available or timeout is reached."""
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        try:
+            r = await client.get(f"{LLAMA_CPP_URL}/health", timeout=5.0)
+            if r.status_code == 200:
+                return
+        except Exception:
+            pass
+        await asyncio.sleep(poll_interval)
+
+
 async def _post_completion_with_fallback(
     client: httpx.AsyncClient,
     *,
@@ -692,7 +709,9 @@ async def run() -> None:
                     except Exception:
                         err_body = {}
                     if (err_body.get("error") or {}).get("type") == "local_slot_busy":
-                        raise RuntimeError("local_slot_busy")
+                        # Wait for a free slot then retry this round instead of failing.
+                        await _wait_for_llama_slot(client)
+                        continue
                 resp.raise_for_status()
                 data = resp.json()
                 msg = data["choices"][0]["message"]
