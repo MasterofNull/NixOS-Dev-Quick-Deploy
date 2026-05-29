@@ -35,6 +35,7 @@
     export AI_LOGS_DELEGATION_OUTPUTS_DAYS="${toString cfg.aiLogs.delegationOutputsDays}"
     export AI_LOGS_USER_SPOOL_DAYS="${toString cfg.aiLogs.userSpoolDays}"
     export AI_LOGS_AIDB_EVENTS_DAYS="${toString cfg.aiLogs.aidbEventsDays}"
+    export AI_LOGS_WORKFLOW_SESSIONS_DAYS="${toString cfg.aiLogs.workflowSessionsDays}"
     exec ${pkgs.bash}/bin/bash ${cfg.scriptsDir}/data/trim-ai-logs.sh
   '';
 
@@ -134,6 +135,12 @@ in {
         type = lib.types.int;
         default = 7;
         description = "Days to retain entries in /var/lib/ai-stack/aidb/telemetry/aidb-events.jsonl. Kept short to prevent the file from exceeding the 50 MB rotation threshold that would trigger a cross-service permission error.";
+      };
+
+      workflowSessionsDays = lib.mkOption {
+        type = lib.types.int;
+        default = 30;
+        description = "Days to retain workflow sessions in /var/lib/ai-stack/hybrid/workflow-sessions.json (keyed by updated_at). 894-session / 6 MB bloat causes 64ms sync parse on every multi-turn load — trim aggressively.";
       };
     };
 

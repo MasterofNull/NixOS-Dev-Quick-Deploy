@@ -230,3 +230,22 @@ after the first few `/query` calls post-rebuild (10% sample → need ~10 queries
 Dashboard `ragFaithfulness` element will show a real value instead of `--`.
 
 **Requires**: nixos-rebuild switch to activate.
+
+## Phase 77.x — workflow-sessions.json TTL trim
+
+**Change**: Add daily decay for `/var/lib/ai-stack/hybrid/workflow-sessions.json`.
+- 894-session file was 6MB, 88% older than 2 months
+- Synchronous JSON parse on every multi-turn `/workflow/session/load` → 64ms blocking
+- Root cause: no TTL trim existed for the flat-dict session store
+
+**Files changed**:
+- `scripts/data/trim-ai-logs.sh`: added `trim_workflow_sessions()` function (reads flat JSON
+  dict, evicts sessions where `updated_at` or `created_at` < cutoff, atomic replace + chown);
+  wired as target #8
+- `nix/modules/services/data-retention.nix`: added `aiLogs.workflowSessionsDays` option
+  (default 30) and wired `AI_LOGS_WORKFLOW_SESSIONS_DAYS` env var
+
+**Expected result**: daily retention run evicts sessions older than 30 days; file stays
+bounded; sync-parse latency drops from 64ms toward ~6ms (active-session count expected ~20).
+
+**Requires**: nixos-rebuild switch to activate the new NixOS option.
