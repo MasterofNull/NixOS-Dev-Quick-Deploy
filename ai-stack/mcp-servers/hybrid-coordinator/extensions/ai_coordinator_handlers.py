@@ -1281,11 +1281,18 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 elif isinstance(msg, dict) and msg.get("role") == "user":
                     user_task = msg.get("content", task)
 
+            # Use delegated_max_tokens (ceiling-enforced) rather than raw request max_tokens.
+            # delegated_response_budget() applies _LOCAL_MAX_TOKENS_HARD_CEILING=180 for local
+            # profiles; bypassing it here caused 504s at 240s (768 tok × ~1 tok/s > 210s budget).
+            _effective_max_tokens = (
+                delegated_max_tokens if delegated_max_tokens > 0
+                else int(data.get("max_tokens", 768))
+            )
             _spawn_kwargs = dict(
                 role=agent_role,
                 task_text=user_task,
                 system_prompt=system_prompt or f"You are a {agent_role} agent. Execute the task using available tools.",
-                max_tokens=int(data.get("max_tokens", 768)),
+                max_tokens=_effective_max_tokens,
                 temperature=float(data.get("temperature", 0.3)),
                 timeout_sec=timeout_s,
                 agent_timeout_sec=local_agent_timeout_s,
