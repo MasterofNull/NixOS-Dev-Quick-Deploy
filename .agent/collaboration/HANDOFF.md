@@ -179,3 +179,14 @@ CONTEXT: aq-report shows 'Continuation-"
 - Fix: added `path = with pkgs; [ python3 bash coreutils findutils ]` to service definition
 - Requires nixos-rebuild switch to activate
 - data-retention.timer is now activated and will run daily + on boot
+
+## Phase 76.x — Fix delegated_max_tokens bypass (ai_coordinator_handlers.py:1288)
+- **Root cause**: `_spawn_kwargs` used `data.get("max_tokens", 768)` (raw caller value) instead of
+  `delegated_max_tokens` computed by `_ai_coordinator_delegated_response_budget()`. The
+  `_LOCAL_MAX_TOKENS_HARD_CEILING=180` ceiling added in Phase 76 was set correctly in the HTTP
+  payload but never reached the local agent runtime spawn call — 504s continued at 240s latency.
+- **Fix**: `ai_coordinator_handlers.py` line 1288 now uses `delegated_max_tokens` when > 0,
+  falling back to `data.get("max_tokens", 768)` only when the budget function returns 0.
+- **Expected effect**: Local agent spawns capped at 180 tokens → 180s generation max → fits 210s
+  delegate budget (30s margin). 504 frequency should drop significantly.
+- **No rebuild required**: Python-only change; coordinator service restart suffices.
