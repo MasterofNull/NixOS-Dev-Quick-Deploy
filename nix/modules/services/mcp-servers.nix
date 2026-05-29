@@ -2417,6 +2417,8 @@ in {
             ${mcp.repoPath}/** r,
 
             # ptrace read — psutil reads /proc/<pid>/ for CPU/mem/net metrics
+            # capability sys_ptrace needed for net_connections() reading other pids' /proc/<pid>/fd/
+            capability sys_ptrace,
             ptrace read peer=unconfined,
 
             # Deny writes/exec to home/root; reads allowed for repo above.
