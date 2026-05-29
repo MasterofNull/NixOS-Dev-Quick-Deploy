@@ -93,6 +93,12 @@ if dry_run:
 if removed == 0:
     sys.exit(0)
 
+import stat as _stat
+# Capture original ownership + mode before replacing.
+st = os.stat(path)
+orig_uid, orig_gid = st.st_uid, st.st_gid
+orig_mode = _stat.S_IMODE(st.st_mode)
+
 tmp = path + ".trim.tmp"
 try:
     with open(tmp, "w", encoding="utf-8") as f:
@@ -100,6 +106,12 @@ try:
         if lines_kept:
             f.write("\n")
     os.replace(tmp, path)
+    # Restore ownership + mode lost by os.replace (new inode is owned by writer).
+    try:
+        os.chown(path, orig_uid, orig_gid)
+        os.chmod(path, orig_mode)
+    except PermissionError:
+        pass  # Not root — file already has correct ownership from same-user write
     print(f"[trim-ai-logs] {label}: removed {removed}/{lines_before} lines, kept {len(lines_kept)}")
 except Exception as e:
     if os.path.exists(tmp):
