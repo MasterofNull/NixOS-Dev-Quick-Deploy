@@ -4576,7 +4576,27 @@ async def get_routing_summary() -> Dict[str, Any]:
         category = _classify_routing_failure(row, remote_configured)
         if category:
             category_mix[category] = category_mix.get(category, 0) + 1
-    routing_windows = _routing_windows(recent_decisions, now=datetime.now(timezone.utc), remote_configured=remote_configured)
+    # Prefer routing_stats from switchboard ring buffer (has real routed_local data).
+    # Fall back to audit-log derived windows (routed_local always None there — gives count
+    # but null percentages, which is correct — don't fabricate numbers).
+    swb_routing_stats = (switchboard_health.get("routing_stats") or {}) if isinstance(switchboard_health, dict) else {}
+    if swb_routing_stats:
+        routing_windows = {
+            "available": True,
+            "source": "switchboard_ring",
+            "windows": {
+                label: {
+                    "count": window.get("count", 0),
+                    "local_pct": window.get("local_pct"),
+                    "remote_pct": window.get("remote_pct"),
+                    "latest_failure_categories": [],
+                }
+                for label, window in swb_routing_stats.items()
+                if label != "all"
+            },
+        }
+    else:
+        routing_windows = _routing_windows(recent_decisions, now=datetime.now(timezone.utc), remote_configured=remote_configured)
     recent_decisions_enriched = _recent_routing_decisions(
         recent_decisions,
         remote_configured=remote_configured,
@@ -4609,8 +4629,16 @@ async def get_routing_summary() -> Dict[str, Any]:
         },
         "classification": {
             "total_classified": task_stats.get("total_classified"),
-            "local_pct": task_stats.get("local_pct"),
-            "remote_pct": task_stats.get("remote_pct"),
+            # local_pct / remote_pct come from the switchboard routing ring (last 500
+            # chat/completions decisions). tool-audit.jsonl does not carry routing labels.
+            "local_pct": (
+                (switchboard_health.get("routing_stats") or {}).get("all", {}).get("local_pct")
+                if isinstance(switchboard_health, dict) else None
+            ),
+            "remote_pct": (
+                (switchboard_health.get("routing_stats") or {}).get("all", {}).get("remote_pct")
+                if isinstance(switchboard_health, dict) else None
+            ),
             "by_task_type": task_stats.get("by_task_type") or {},
         },
         "routing_windows": routing_windows,

@@ -267,3 +267,24 @@ the latency is negligible, but the fix is correct regardless of file size — pr
 regression as sessions accumulate between daily trim runs.
 
 **Requires**: coordinator service restart (Python-only change, no rebuild needed).
+
+## Phase 79 — Fix routing local_pct/remote_pct always null
+
+**Root cause**: `get_routing_summary()` read `local_pct`/`remote_pct` from
+`get_task_classification_stats()` which reads `tool-audit.jsonl`. The audit log
+schema has no `routed_local` field — the comment on line 4378 of aistack.py said so
+explicitly. `local_n` and `remote_n` were always 0 → percentages always null.
+
+**Fix**:
+- `switchboard.py`: added `_routing_ring` deque (maxlen=500). Each `chat/completions`
+  call appends `{ts, local: bool, profile}`. `_routing_stats_snapshot()` computes
+  `local_pct`/`remote_pct` for 1h/24h/7d/all windows. Exposed as `routing_stats` in
+  `/health` response.
+- `dashboard/backend/api/routes/aistack.py`: `get_routing_summary()` reads
+  `routing_stats` from switchboard health for `classification.local_pct/remote_pct`
+  and `routing_windows`. Falls back to audit-log path if switchboard ring unavailable.
+
+**Tradeoff**: ring is in-memory (resets on switchboard restart). Provides accurate
+real-time stats. Historical persistence not needed — 1h/24h windows are actionable.
+
+**Requires**: switchboard restart + dashboard backend restart (Python-only changes).
