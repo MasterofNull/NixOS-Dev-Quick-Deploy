@@ -117,11 +117,11 @@ def _apparmor_scan(profile: str, since_ts: float) -> List[Dict[str, str]]:
                 return ""
             s = line.index(marker) + len(marker)
             return line[s:line.index('"', s)]
-        op, path, mask = _f("operation"), _f("name"), _f("requested_mask")
-        key = (op, path)
-        if key not in seen and path:
+        op, path, mask, peer = _f("operation"), _f("name"), _f("requested_mask"), _f("peer")
+        key = (op, path, peer)
+        if key not in seen and (path or op in ("ptrace", "signal")):
             seen.add(key)
-            denials.append({"operation": op, "path": path, "mask": mask})
+            denials.append({"operation": op, "path": path, "mask": mask, "peer": peer})
     return denials
 
 
