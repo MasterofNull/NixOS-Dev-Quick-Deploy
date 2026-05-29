@@ -2262,6 +2262,33 @@ in {
       };
     })
 
+    # Log decay — daily trim of unbounded AI audit/telemetry JSONL files.
+    # Prevents tool-audit.jsonl (372 MB+), hybrid-events.jsonl (203 MB+), etc.
+    # from growing indefinitely and wasting context tokens on resolved errors.
+    (lib.mkIf roleEnabled {
+      services.data-retention = {
+        enable = true;
+        user = "root";
+        scriptsDir = "${cfg.mcpServers.repoPath}/scripts";
+        repoRoot = cfg.mcpServers.repoPath;
+        temporalFactsFile = "${cfg.mcpServers.repoPath}/.aidb/temporal_facts.json";
+        snapshotsDir = "${cfg.mcpServers.repoPath}/ai-stack/snapshots";
+        temporalFactsDays = 30;
+        snapshotsDays = 7;
+        aiLogs = {
+          enable = true;
+          auditSidecarDays = 7;
+          hintAuditDays = 7;
+          hybridEventsDays = 14;
+          delegationFeedbackDays = 30;
+          delegationOutputsDays = 14;
+          userSpoolDays = 14;
+        };
+        interval = "daily";
+        onBoot = true;
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {

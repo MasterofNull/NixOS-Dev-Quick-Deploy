@@ -25,10 +25,23 @@
     exec ${pkgs.bash}/bin/bash ${cfg.scriptsDir}/data/trim-snapshots.sh
   '';
 
+  trimAiLogsScript = pkgs.writeShellScript "data-retention-trim-ai-logs" ''
+    set -euo pipefail
+    export REPO_ROOT="${cfg.repoRoot}"
+    export AI_LOGS_AUDIT_SIDECAR_DAYS="${toString cfg.aiLogs.auditSidecarDays}"
+    export AI_LOGS_HINT_AUDIT_DAYS="${toString cfg.aiLogs.hintAuditDays}"
+    export AI_LOGS_HYBRID_EVENTS_DAYS="${toString cfg.aiLogs.hybridEventsDays}"
+    export AI_LOGS_DELEGATION_FEEDBACK_DAYS="${toString cfg.aiLogs.delegationFeedbackDays}"
+    export AI_LOGS_DELEGATION_OUTPUTS_DAYS="${toString cfg.aiLogs.delegationOutputsDays}"
+    export AI_LOGS_USER_SPOOL_DAYS="${toString cfg.aiLogs.userSpoolDays}"
+    exec ${pkgs.bash}/bin/bash ${cfg.scriptsDir}/data/trim-ai-logs.sh
+  '';
+
   combinedScript = pkgs.writeShellScript "data-retention-run" ''
     set -euo pipefail
     ${trimFactsScript}
     ${trimSnapshotsScript}
+    ${lib.optionalString cfg.aiLogs.enable "${trimAiLogsScript}"}
   '';
 in {
   options.services.data-retention = {
@@ -68,6 +81,53 @@ in {
       type = lib.types.int;
       default = 7;
       description = "Retain snapshot entries from the last N days.";
+    };
+
+    repoRoot = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "Absolute path to the repo root (required for aiLogs user-spool and delegation output cleanup).";
+      example = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy";
+    };
+
+    aiLogs = {
+      enable = lib.mkEnableOption "AI stack log decay (audit sidecar, hint-audit, hybrid-events, delegation outputs)";
+
+      auditSidecarDays = lib.mkOption {
+        type = lib.types.int;
+        default = 7;
+        description = "Days to retain entries in /var/log/ai-audit-sidecar/tool-audit.jsonl.";
+      };
+
+      hintAuditDays = lib.mkOption {
+        type = lib.types.int;
+        default = 7;
+        description = "Days to retain entries in /var/log/nixos-ai-stack/hint-audit.jsonl.";
+      };
+
+      hybridEventsDays = lib.mkOption {
+        type = lib.types.int;
+        default = 14;
+        description = "Days to retain entries in /var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl.";
+      };
+
+      delegationFeedbackDays = lib.mkOption {
+        type = lib.types.int;
+        default = 30;
+        description = "Days to retain entries in delegation-feedback.jsonl (longer — used for failure analysis).";
+      };
+
+      delegationOutputsDays = lib.mkOption {
+        type = lib.types.int;
+        default = 14;
+        description = "Days to retain per-task output files in .agents/delegation/outputs/.";
+      };
+
+      userSpoolDays = lib.mkOption {
+        type = lib.types.int;
+        default = 14;
+        description = "Days to retain entries in .agents/telemetry/hybrid-events.jsonl (user-space spool).";
+      };
     };
 
     interval = lib.mkOption {
