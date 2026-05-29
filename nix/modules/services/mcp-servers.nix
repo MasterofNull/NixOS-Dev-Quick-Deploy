@@ -2333,7 +2333,12 @@ in {
 
             # Dashboard data (telemetry snapshots — read only from data dir)
             ${dataDir}/** r,
-            /var/lib/nixos-system-dashboard/** rw,
+            # rwk: SQLite requires file_lock (k) in addition to rw; without k the
+            # context-store candidate fails and startup falls back to repo path.
+            /var/lib/nixos-system-dashboard/** rwk,
+            # /tmp fallback for context.db when all other candidates fail (needs c+k).
+            /tmp/nixos-dashboard-context.db rwkc,
+            /tmp/nixos-dashboard-context.db-* rwkc,
 
             # System resources
             /proc/self/** r,
