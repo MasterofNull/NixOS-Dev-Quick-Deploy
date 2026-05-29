@@ -31,11 +31,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-REPO_ROOT   = Path(__file__).resolve().parent.parent.parent
-NIX_FILE    = REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
-HANDOFF_MD  = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
-EMBED_URL   = os.environ.get("LLAMA_EMBED_URL", "http://127.0.0.1:8081")
-QDRANT_URL  = os.environ.get("QDRANT_URL",       "http://127.0.0.1:6333")
+REPO_ROOT        = Path(__file__).resolve().parent.parent.parent
+NIX_FILE         = REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
+HANDOFF_MD       = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
+HYBRID_EVENTS    = Path("/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl")
+USER_EVENTS      = REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
+EMBED_URL        = os.environ.get("LLAMA_EMBED_URL",      "http://127.0.0.1:8081")
+QDRANT_URL       = os.environ.get("QDRANT_URL",           "http://127.0.0.1:6333")
+COORDINATOR_URL  = os.environ.get("HYBRID_COORDINATOR_URL","http://127.0.0.1:8003")
 
 # Insertion anchor — rules added BEFORE the deny-home line in each profile block
 DENY_HOME_PATTERN = re.compile(r"^\s+deny /home/\*\* wx,")
@@ -355,6 +358,72 @@ def _update_handoff(profile: str, rules: List[str], commit: str, denial_paths: L
         sys.stderr.write(f"HANDOFF update warning: {e}\n")
 
 
+# ── Coordinator memory + training telemetry ────────────────────────────────────
+
+def _push_memory_fact(profile: str, rules: List[str], commit: str, denial_paths: List[str]) -> None:
+    """
+    Push an institutional fact to the coordinator /api/memory/facts endpoint
+    via loopback (no API key required for 127.0.0.1).
+    This surfaces AppArmor fix history to all agents via memory recall.
+    """
+    try:
+        ops = list({d.split("/")[0] for d in denial_paths if "/" in d} or ["file"])
+        fact = (
+            f"AppArmor auto-fix committed ({commit}) for profile '{profile}'. "
+            f"Added {len(rules)} rule(s): {rules[:3]}. "
+            f"Triggered by {len(denial_paths)} denial(s) on paths: {denial_paths[:3]}. "
+            f"Pending: sudo nixos-rebuild switch --flake .#hyperd-ai-dev"
+        )
+        payload = json.dumps({
+            "content": fact,
+            "category": "system_health",
+            "scope": "apparmor_fix",
+            "tags": ["apparmor", "auto-fix", profile, "health-spider", commit],
+            "confidence": 0.95,
+            "source": "apparmor-fix-agent",
+        }).encode()
+        req = urllib.request.Request(
+            f"{COORDINATOR_URL}/api/memory/facts",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as r:
+            r.read()
+    except Exception as e:
+        sys.stderr.write(f"memory fact push warning: {e}\n")
+
+
+def _emit_training_event(profile: str, rules: List[str], denials: List[Dict[str, str]],
+                         commit: str, latency_ms: float) -> None:
+    """
+    Emit agent_step_complete event to the hybrid-events spool so the training
+    ingest pipeline can learn from auto-fix cycles.
+    Writes to user-space spool (no root required).
+    """
+    try:
+        USER_EVENTS.parent.mkdir(parents=True, exist_ok=True)
+        event = json.dumps({
+            "event_type": "agent_step_complete",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "query": f"AppArmor denial fix: profile={profile} denials={len(denials)}",
+            "response": f"Committed {len(rules)} rule(s) as {commit}: {rules[:3]}",
+            "latency_ms": round(latency_ms),
+            "session_id": f"apparmor-fix-{commit}",
+            "tool_calls": 3,  # journalctl scan + nix edit + git commit
+            "model": "apparmor-fix-agent",
+            "tokens_used": 0,
+            "source": "apparmor-fix-agent",
+            "profile": profile,
+            "rules_added": len(rules),
+            "denials_resolved": len(denials),
+        })
+        with open(USER_EVENTS, "a", encoding="utf-8") as f:
+            f.write(event + "\n")
+    except Exception as e:
+        sys.stderr.write(f"training event emit warning: {e}\n")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def _scan_journalctl(profile: str, since_seconds: int) -> List[Dict[str, str]]:
@@ -463,13 +532,17 @@ def main() -> int:
         f"Requires: sudo nixos-rebuild switch --flake .#hyperd-ai-dev\n\n"
         f"Co-Authored-By: health-spider <noreply@local>"
     )
+    t_start = time.time()
     _update_handoff(args.profile, rule_lines, "pending-commit", denial_paths)
     commit_hash = _git_commit(msg)
     if not commit_hash:
         return 1
+    latency_ms = (time.time() - t_start) * 1000
 
-    # --- Knowledge injection ---
+    # --- Knowledge + mesh injection ---
     _seed_rag(args.profile, denials, rule_lines)
+    _push_memory_fact(args.profile, rule_lines, commit_hash, denial_paths)
+    _emit_training_event(args.profile, rule_lines, denials, commit_hash, latency_ms)
 
     json.dump({
         "rules_added": rule_lines,

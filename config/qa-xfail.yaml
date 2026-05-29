@@ -23,17 +23,6 @@ xfail:
     expires: "2026-06-26"
     owner: hyperd
 
-  - id: "0.7.1"
-    reason: >
-      /v1/orchestrate endpoint not yet wired to coordinator HTTP server.
-      The orchestrate route is defined but returns HTTP 000 (connection refused)
-      under the current coordinator build. Non-blocking — all other coordinator
-      routes (/query, /health, /api/*) are healthy.
-      Fix: wire POST /v1/orchestrate in http_server_impl.py route table.
-    created: "2026-05-29"
-    expires: "2026-06-28"
-    owner: hyperd
-
   - id: "0.8.1"
     reason: >
       Delegate 24h success rate is below 50% due to historical failures and
