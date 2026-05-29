@@ -7,6 +7,7 @@ while core planner/runtime helpers remain in http_server.py and are injected
 via init().
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -219,15 +220,25 @@ def _internal_error(exc: Exception) -> web.Response:
     return web.json_response(_error_payload("internal_error", exc), status=500)
 
 
-async def _load_workflow_sessions() -> Dict[str, Any]:
-    path = _workflow_sessions_path()
+def _sync_load_workflow_sessions(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
+    raw = path.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    return data if isinstance(data, dict) else {}
+
+
+def _sync_save_workflow_sessions(path: Path, data: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+async def _load_workflow_sessions() -> Dict[str, Any]:
+    path = _workflow_sessions_path()
     try:
-        raw = path.read_text(encoding="utf-8")
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            return {}
+        data = await asyncio.to_thread(_sync_load_workflow_sessions, path)
         backfill_count = 0
         for session in data.values():
             if not isinstance(session, dict):
@@ -246,10 +257,7 @@ async def _load_workflow_sessions() -> Dict[str, Any]:
 
 async def _save_workflow_sessions(data: Dict[str, Any]) -> None:
     path = _workflow_sessions_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    await asyncio.to_thread(_sync_save_workflow_sessions, path, data)
 
 
 async def handle_workflow_plan(request: web.Request) -> web.Response:
