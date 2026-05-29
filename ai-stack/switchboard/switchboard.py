@@ -10,6 +10,7 @@ if _SHARED_PATH not in sys.path:
     sys.path.insert(0, _SHARED_PATH)
 
 import asyncio
+import collections
 import hashlib
 import os
 import json
@@ -490,6 +491,11 @@ _local_sem = None
 _remote_sem = None
 _local_active_request = None
 _local_last_completion = None
+# Routing decision ring buffer — last 500 chat/completions decisions (local vs remote).
+# In-memory only; survives the request lifetime but not restarts.
+# Exposed via /health as routing_stats for dashboard routing panel.
+_ROUTING_RING_MAXLEN = 500
+_routing_ring: collections.deque = collections.deque(maxlen=_ROUTING_RING_MAXLEN)
 _hints_client: httpx.AsyncClient | None = None
 _embed_client: httpx.AsyncClient | None = None
 _local_health_client: httpx.AsyncClient | None = None
@@ -2311,6 +2317,26 @@ async def _shutdown():
 
 # --- Health ---
 
+def _routing_stats_snapshot() -> dict:
+    """Compute local/remote percentages from the in-memory routing ring."""
+    now = time.time()
+    windows = {"1h": 3600, "24h": 86400, "7d": 604800, "all": None}
+    result: dict = {}
+    for label, seconds in windows.items():
+        subset = [r for r in _routing_ring if seconds is None or (now - r["ts"]) <= seconds]
+        total = len(subset)
+        local_n = sum(1 for r in subset if r.get("local") is True)
+        remote_n = total - local_n
+        result[label] = {
+            "count": total,
+            "local_count": local_n,
+            "remote_count": remote_n,
+            "local_pct": round(100 * local_n / total, 1) if total else None,
+            "remote_pct": round(100 * remote_n / total, 1) if total else None,
+        }
+    return result
+
+
 @app.get("/health")
 async def health():
     local_runtime = await _local_runtime_health_snapshot()
@@ -2342,6 +2368,7 @@ async def health():
             "local": LOCAL_CIRCUIT_BREAKERS.get_all_states(),
             "remote": REMOTE_CIRCUIT_BREAKERS.get_all_states()
         },
+        "routing_stats": _routing_stats_snapshot(),
     }
 
 # --- Main Proxy Route ---
@@ -2368,6 +2395,13 @@ async def proxy(path: str, request: Request):
     profile = _effective_profile(request)
     target_type = _route_target(request, payload, profile)
     target = REMOTE_URL if target_type == "remote" and REMOTE_URL else LLAMA_URL
+    # Record routing decision for dashboard stats (chat/completions only — skip health polls).
+    if path == "chat/completions":
+        _routing_ring.append({
+            "ts": time.time(),
+            "local": target_type == "local",
+            "profile": profile,
+        })
     if profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
         return JSONResponse(
             status_code=503,
