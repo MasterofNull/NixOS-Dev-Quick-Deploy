@@ -190,3 +190,23 @@ CONTEXT: aq-report shows 'Continuation-"
 - **Expected effect**: Local agent spawns capped at 180 tokens → 180s generation max → fits 210s
   delegate budget (30s margin). 504 frequency should drop significantly.
 - **No rebuild required**: Python-only change; coordinator service restart suffices.
+
+## Phase 76.y — Fix continuous_learning permission error + aidb-events TTL
+
+**Root cause**: `continuous_learning._rotate_telemetry_if_oversized()` calls `archive_dir.mkdir()`
+(synchronous blocking call) on `/var/lib/ai-stack/aidb/telemetry/archive`. The coordinator runs
+as `ai-hybrid`; that dir is owned by `ai-aidb:ai-stack` with mode 750 (group has r-x, not w).
+`mkdir` raises `PermissionError` which propagates as `learning_loop_error`, trips the circuit
+breaker after 3 failures, and causes concurrent `/control/ai-coordinator/delegate` calls to
+return 500 with empty body.
+
+**Fixes**:
+1. `continuous_learning.py` — catch `PermissionError` from `archive_dir.mkdir()`, log warning,
+   return False (skip rotation). Data-retention daily timer trims the file by TTL instead.
+2. `scripts/data/trim-ai-logs.sh` — added `aidb-events.jsonl` as target #6 with 7-day TTL
+   (`AI_LOGS_AIDB_EVENTS_DAYS`, default 7). Prevents file from reaching the 50 MB threshold.
+3. `nix/modules/services/data-retention.nix` — added `aiLogs.aidbEventsDays` option (default 7)
+   and wired `AI_LOGS_AIDB_EVENTS_DAYS` env var into the trim script invocation.
+
+**No rebuild required for coordinator fix** — Python-only change, restart coordinator to pick up.
+**Rebuild required** for `data-retention.nix` change to activate `aidb-events.jsonl` trim.

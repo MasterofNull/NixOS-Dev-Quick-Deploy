@@ -14,6 +14,7 @@
 #   AI_LOGS_DELEGATION_FEEDBACK_DAYS — delegation-feedback.jsonl TTL (default: 30)
 #   AI_LOGS_DELEGATION_OUTPUTS_DAYS  — .agents/delegation/outputs/*.log TTL (default: 14)
 #   AI_LOGS_USER_SPOOL_DAYS        — user-space hybrid-events spool TTL (default: 14)
+#   AI_LOGS_AIDB_EVENTS_DAYS       — aidb-events.jsonl TTL (default: 7)
 #   REPO_ROOT                      — repo root path (default: auto-detected)
 
 set -euo pipefail
@@ -34,6 +35,7 @@ HYBRID_EVENTS_DAYS="${AI_LOGS_HYBRID_EVENTS_DAYS:-14}"
 DELEGATION_FEEDBACK_DAYS="${AI_LOGS_DELEGATION_FEEDBACK_DAYS:-30}"
 DELEGATION_OUTPUTS_DAYS="${AI_LOGS_DELEGATION_OUTPUTS_DAYS:-14}"
 USER_SPOOL_DAYS="${AI_LOGS_USER_SPOOL_DAYS:-14}"
+AIDB_EVENTS_DAYS="${AI_LOGS_AIDB_EVENTS_DAYS:-7}"
 
 # ── JSONL trimmer ─────────────────────────────────────────────────────────────
 # Reuses the same timestamp-aware trim logic as trim-snapshots.sh.
@@ -183,7 +185,13 @@ trim_jsonl \
     "$USER_SPOOL_DAYS" \
     "user-spool/hybrid-events.jsonl"
 
-# 6. Delegation task output files
+# 6. AIDB events log (read by continuous_learning — trim to prevent 50MB rotation attempt)
+trim_jsonl \
+    "/var/lib/ai-stack/aidb/telemetry/aidb-events.jsonl" \
+    "$AIDB_EVENTS_DAYS" \
+    "aidb-events.jsonl"
+
+# 7. Delegation task output files
 trim_delegation_outputs \
     "$REPO_ROOT/.agents/delegation/outputs" \
     "$DELEGATION_OUTPUTS_DAYS"

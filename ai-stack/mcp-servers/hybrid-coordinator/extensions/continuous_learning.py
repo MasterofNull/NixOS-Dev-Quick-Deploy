@@ -681,13 +681,27 @@ class ContinuousLearningPipeline:
         return False
 
     def _rotate_telemetry_if_oversized(self, path: Path) -> bool:
-        """Rotate *path* if it is >= 50 MB. Compresses with zstd; falls back to plain rename."""
+        """Rotate *path* if it is >= 50 MB. Compresses with zstd; falls back to plain rename.
+
+        Skips gracefully when the archive directory cannot be created (e.g. the file is
+        owned by a different service user such as ai-aidb).  The data-retention timer
+        trims all telemetry files by TTL, so rotation of foreign-owned files is never
+        strictly necessary.
+        """
         if not path.exists():
             return False
         if path.stat().st_size < 50 * 1024 * 1024:
             return False
         archive_dir = path.parent / "archive"
-        archive_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            logger.warning(
+                "telemetry_rotation_skipped path=%s reason=permission_denied archive_dir=%s",
+                path,
+                archive_dir,
+            )
+            return False
         archive_name = (
             path.stem
             + "-"
