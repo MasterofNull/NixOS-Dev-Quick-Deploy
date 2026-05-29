@@ -141,16 +141,60 @@ def _find_profile_block(lines: List[str], profile: str) -> Tuple[int, int]:
     return -1, -1
 
 
+def _apparmor_glob_covers(pattern: str, candidate: str) -> bool:
+    """
+    Return True if AppArmor glob pattern covers candidate path.
+    AppArmor glob rules:
+      **     matches any path including directory separators
+      *      matches anything except '/'
+      @{var} expands to a set (e.g. @{pids} = one or more digits)
+    Variables are emitted as raw regex so they are NOT escaped.
+    """
+    # Known AppArmor variable expansions (raw regex strings)
+    _VARS = {"pids": r"[0-9]+"}
+    regex_parts: List[str] = []
+    i = 0
+    while i < len(pattern):
+        if pattern[i:i+2] == "**":
+            regex_parts.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            regex_parts.append("[^/]*")
+            i += 1
+        elif pattern[i] == "@" and pattern[i+1:i+2] == "{":
+            # Find closing brace
+            end = pattern.find("}", i + 2)
+            if end == -1:
+                regex_parts.append(re.escape(pattern[i]))
+                i += 1
+            else:
+                var_name = pattern[i+2:end]
+                regex_parts.append(_VARS.get(var_name, re.escape(pattern[i:end+1])))
+                i = end + 1
+        else:
+            regex_parts.append(re.escape(pattern[i]))
+            i += 1
+    regex = "".join(regex_parts)
+    try:
+        return bool(re.fullmatch(regex, candidate))
+    except re.error:
+        return False
+
+
 def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> bool:
     """
-    Rough check: if the literal path from the rule already appears in the profile
-    block text, skip it. Handles wildcards by extracting the path prefix.
+    Check whether the candidate rule's path is already handled by the profile block.
+    Uses two strategies:
+      1. Literal/prefix match (fast) — catches identical rules and path prefixes
+      2. AppArmor glob coverage — catches cases where an existing wildcard rule
+         (e.g. /run/secrets.d/** or /sys/devices/**) already covers the candidate
+         path even though the literal strings differ.
     """
     # Extract the path portion from the rule
     m = re.search(r"(/[^\s]+)\s+[a-z,]+,$", candidate_rule.strip())
     if not m:
         return False
-    path = m.group(1).rstrip("/")
+    candidate_path = m.group(1).rstrip("/")
 
     # Find the profile block: 200 lines around the deny /home/** line for this profile
     lines = nix_text.splitlines()
@@ -159,9 +203,24 @@ def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> b
         return False
     block = "\n".join(lines[max(0, deny_idx - 200):deny_idx + 1])
 
-    # If path (with any trailing **) is already present, consider covered
-    path_base = path.replace("/**", "").replace("/*", "")
-    return path_base in block or path in block
+    # 1. Literal / prefix match (handles identical rules and base-path inclusion)
+    path_base = candidate_path.replace("/**", "").replace("/*", "")
+    if path_base in block or candidate_path in block:
+        return True
+
+    # 2. Glob coverage: does any existing rule pattern cover the candidate path?
+    #    Extract rule paths from the profile block. Require the path to start with
+    #    /[a-z@_] to exclude Nix interpolation fragments like ${var}/** which the
+    #    regex would otherwise capture as standalone /** patterns.
+    for existing_match in re.finditer(r"(/[a-zA-Z@_][^\s\"]*)\s+[a-z,]+,", block):
+        existing_pattern = existing_match.group(1).rstrip("/")
+        # Only check patterns that contain wildcards or AppArmor variables
+        if "*" not in existing_pattern and "@{" not in existing_pattern:
+            continue
+        if _apparmor_glob_covers(existing_pattern, candidate_path):
+            return True
+
+    return False
 
 
 # ── Git helpers ────────────────────────────────────────────────────────────────
