@@ -2322,7 +2322,13 @@ in {
             /nix/store/** r,
             /nix/store/**/*.so* mr,
             /nix/store/**/bin/python3* ix,
+            # uvicorn is executed directly by the service start script (not via python3).
+            # Must be re-allowed after each rebuild that changes the Python env hash.
+            /nix/store/**/bin/uvicorn ix,
             /run/current-system/sw/** r,
+
+            # tty — uvicorn checks for interactive terminal on startup
+            /dev/tty r,
 
             # Dashboard data (telemetry snapshots — read only from data dir)
             ${dataDir}/** r,
