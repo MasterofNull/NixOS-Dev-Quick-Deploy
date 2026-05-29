@@ -493,11 +493,15 @@ def _wants_brief_local_response(query: str) -> bool:
 
 
 def _looks_like_continuation_query(query: str, context: Optional[Dict[str, Any]] = None) -> bool:
-    """Detect continuation-style queries that should stay on the compact local path."""
+    """Detect continuation-style queries that should stay on the compact local path.
+
+    NOTE: prior_memory/memory_recall presence alone does NOT indicate a continuation
+    query — those fields signal that memory was recalled, but the current query may be
+    on a completely different topic. Continuation is detected from query TEXT only so
+    that has_memory remains an independent signal in collection selection.
+    """
     query_lower = str(query or "").lower()
     if any(token in query_lower for token in _CONTINUATION_QUERY_MARKERS):
-        return True
-    if isinstance(context, dict) and (context.get("prior_memory") or context.get("memory_recall")):
         return True
     has_previous_ref = any(token in query_lower for token in ("previous", "prior", "last"))
     has_resume_target = any(
