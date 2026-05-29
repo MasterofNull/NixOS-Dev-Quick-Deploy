@@ -181,6 +181,42 @@ ERROR_SOLUTIONS = [
         "last_used": NOW,
         "confidence_score": 0.95,
     },
+    {
+        "error_type": "dashboard_js_syntax_error",
+        "error_message": "Dashboard renders blank screen with no errors in browser network tab",
+        "context": "Syntax error in dashboard.js or panel init code (e.g. trailing comma, missing bracket) blocks JS execution before any XHR/fetch is attempted. Network tab appears clean because no requests are made.",
+        "solution": "Use chromium --headless=new --enable-logging=stderr --log-level=0 http://127.0.0.1:8889 2>&1 | grep CONSOLE to capture SyntaxError on first paint. --screenshot is useless (first paint precedes data load). Fix the syntax error in dashboard.js.",
+        "solution_verified": True,
+        "success_count": 3,
+        "failure_count": 0,
+        "first_seen": NOW - 86400 * 5,
+        "last_used": NOW,
+        "confidence_score": 0.98,
+    },
+    {
+        "error_type": "coverage_gap_silent_breakage",
+        "error_message": "Service or feature breaks in production but all existing tests appear green",
+        "context": "New service/feature deployed without aq-qa health check AND dashboard panel. Fails silently with no monitoring or observability. Discovered days later by accident. Seen with ralph-wiggum, aider-wrapper, local_agent_runtime.",
+        "solution": "Governance contract: every new feature or service MUST have (1) an aq-qa check entry and (2) a dashboard panel before it is considered 'done'. Both required — one without the other still leaves a blind spot.",
+        "solution_verified": True,
+        "success_count": 2,
+        "failure_count": 0,
+        "first_seen": NOW - 86400 * 10,
+        "last_used": NOW,
+        "confidence_score": 0.95,
+    },
+    {
+        "error_type": "bash_set_e_and_break",
+        "error_message": "set -e kills loop when [[ cond ]] && ... && break evaluates false branch",
+        "context": "Under set -e, the compound expression [[ cond ]] && cmd1 && break returns exit 1 when cond is false (because && short-circuits), which triggers set -e and kills the enclosing loop or script. Discovered in 4 delegation scripts (bf684853).",
+        "solution": "Replace [[ cond ]] && cmd1 && break with if/then/fi form: if [[ cond ]]; then cmd1; break; fi. The if-form always exits 0 regardless of branch taken, so set -e is not triggered.",
+        "solution_verified": True,
+        "success_count": 4,
+        "failure_count": 0,
+        "first_seen": NOW - 86400 * 2,
+        "last_used": NOW,
+        "confidence_score": 0.99,
+    },
 ]
 
 SKILLS_PATTERNS = [
@@ -414,13 +450,25 @@ def upsert_points(collection: str, points: list, dry_run: bool = False) -> int:
 
 
 def _text_for_embed(record: dict, collection: str) -> str:
-    """Build the text that should be embedded for semantic search."""
+    """Build the text that should be embedded for semantic search.
+    Includes examples/anti_patterns to improve BGE-M3 recall for natural
+    language queries (Gemini review amendment 2026-05-28).
+    """
     if collection == "error-solutions":
-        return f"{record['error_type']}: {record['error_message']} Context: {record['context']} Solution: {record['solution']}"
+        return (
+            f"Error: {record['error_type']} - {record['error_message']} "
+            f"Context: {record['context']} Solution: {record['solution']}"
+        )
     if collection == "skills-patterns":
-        return f"{record['skill_name']}: {record['description']} Usage: {record['usage_pattern']}"
+        text = f"Skill: {record['skill_name']} - {record['description']} Usage: {record['usage_pattern']}"
+        if record.get("success_examples"):
+            text += f" Examples: {' '.join(record['success_examples'])}"
+        return text
     if collection == "best-practices":
-        return f"{record['title']} Category: {record['category']} {record['description']}"
+        text = f"Best Practice: {record['title']} ({record['category']}) {record['description']}"
+        if record.get("examples"):
+            text += f" Examples: {' '.join(record['examples'])}"
+        return text
     return json.dumps(record)
 
 
