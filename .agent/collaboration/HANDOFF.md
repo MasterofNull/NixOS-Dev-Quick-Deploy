@@ -95,6 +95,17 @@ TASK: Agent "
 Make two targeted file"
 
 ## CONTEXT (inlined — do not try to read fil"
+
+TASK:"
+
+TASK: Design the mode auto-selection "
+
+CONTEXT: aq-report shows 'Continuation-"
+
+## 2026-05-28T19:44:54Z — hwmon graceful degradation
+- inference_param_manager.py: wrap iterdir() in PermissionError handler
+- Coordinator crashes on hwmon enumeration when AppArmor confinement active
+- Fix: log debug + return on PermissionError — thermal data is optional telemetry
 [2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
 [2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
 [2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
@@ -135,14 +146,8 @@ Make two targeted file"
 [2026-05-28T18:09:00.527420Z] [dispatch] id=local-20260528-110900-zoabwj agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-110900-zoabwj.log obj="List three specific improvements to make the local model dispatch chain more reliable. Be concrete."
 [2026-05-28T18:12:04.306572Z] [done] id=local-20260528-110900-zoabwj
 [2026-05-28T18:27:07.399477Z] [dispatch] id=local-20260528-112707-mtxbgm agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112707-mtxbgm.log obj="You are an architect reviewing ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py.
-
-TASK:"
 [2026-05-28T18:27:22.013800Z] [dispatch] id=local-20260528-112721-7vngql agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112721-7vngql.log obj="You are an architect for the NixOS-Dev-Quick-Deploy AI stack.
-
-TASK: Design the mode auto-selection "
 [2026-05-28T18:27:37.333120Z] [dispatch] id=local-20260528-112737-vgm741 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112737-vgm741.log obj="You are a reviewer for the NixOS-Dev-Quick-Deploy AI stack.
-
-CONTEXT: aq-report shows 'Continuation-"
 [2026-05-28T18:27:52.397430Z] [cancelled] id=gemini-20260528-102727-6jfxeq
 [2026-05-28T18:28:19.568998Z] [done] id=local-20260528-112707-mtxbgm
 [2026-05-28T18:29:55.394430Z] [done] id=local-20260528-112721-7vngql
@@ -153,14 +158,24 @@ CONTEXT: aq-report shows 'Continuation-"
 [2026-05-28T19:01:29.055870Z] [done] id=local-20260528-120059-my61s3
 [2026-05-28T19:02:40.174691Z] [dispatch] id=local-20260528-120240-skey1h agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120240-skey1h.log obj="In exactly one sentence (no more), state what role an 'architect' plays in this AI stack."
 [2026-05-28T19:03:03.438482Z] [done] id=local-20260528-120240-skey1h
-
-## 2026-05-28T19:44:54Z — hwmon graceful degradation
-- inference_param_manager.py: wrap iterdir() in PermissionError handler
-- Coordinator crashes on hwmon enumeration when AppArmor confinement active
-- Fix: log debug + return on PermissionError — thermal data is optional telemetry
 [2026-05-29T00:39:10.494016Z] [dispatch] id=local-20260528-173910-g55b33 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173910-g55b33.log obj="Reply with exactly three words: AGENT_LOOP_OK"
 [2026-05-29T00:39:30.698246Z] [done] id=local-20260528-173910-g55b33
 [2026-05-29T00:39:35.440937Z] [dispatch] id=local-20260528-173935-jld1cl agent=local-hybrid output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173935-jld1cl.log obj="/no_think Reply with exactly: HYBRID_OK"
 [2026-05-29T00:39:37.414585Z] [done] id=local-20260528-173935-jld1cl
 [2026-05-29T00:47:37.427325Z] [dispatch] id=local-20260528-174737-i28gyt agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-174737-i28gyt.log obj="/no_think List the GPU layer ceiling and RAM ceiling for this NixOS stack in JSON: {"gpu_layers": N,"
 [2026-05-29T00:48:20.572628Z] [done] id=local-20260528-174737-i28gyt
+[2026-05-29T02:25:16.577534Z] [dispatch] id=local-20260528-192516-6qhob4 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-192516-6qhob4.log obj="Review the seeded error-solutions collection in Qdrant. Use curl to POST to http://127.0.0.1:6333/co"
+[2026-05-29T02:28:34.845674Z] [dispatch] id=gemini-20260528-192834-8ykjce agent=gemini output=.agents/delegation/outputs/gemini-20260528-192834-8ykjce.log obj="Review scripts/data/seed-rag-knowledge.py in the NixOS-Dev-Quick-Deploy repo. Check: (1) Are the 12 "
+[2026-05-29T02:28:47.943785Z] [done] id=local-20260528-192516-6qhob4
+[2026-05-29T02:29:59.092822Z] [done] id=gemini-20260528-192834-8ykjce
+[2026-05-29T02:55:53.908275Z] [dispatch] id=gemini-20260528-195553-8cmbf8 agent=gemini output=.agents/delegation/outputs/gemini-20260528-195553-8cmbf8.log obj="Analyze these 5 production issues in NixOS-Dev-Quick-Deploy AI stack and design fixes. Return APPROV"
+[2026-05-29T02:56:59.494040Z] [done] id=gemini-20260528-195553-8cmbf8
+[2026-05-29T03:55:52.105348Z] [dispatch] id=gemini-20260528-205551-2o4o66 agent=gemini output=.agents/delegation/outputs/gemini-20260528-205551-2o4o66.log obj="/no_think Review these two fixes just applied to the NixOS-Dev-Quick-Deploy AI stack (commit a6dc260"
+[2026-05-29T03:57:27.146858Z] [done] id=gemini-20260528-205551-2o4o66
+
+## data-retention service PATH fix (2026-05-29)
+- Fixed `python3: command not found` in `data-retention.service`
+- Root cause: systemd runs with empty PATH; trim scripts call `python3` directly
+- Fix: added `path = with pkgs; [ python3 bash coreutils findutils ]` to service definition
+- Requires nixos-rebuild switch to activate
+- data-retention.timer is now activated and will run daily + on boot
