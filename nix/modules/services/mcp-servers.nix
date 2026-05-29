@@ -2341,12 +2341,31 @@ in {
             /tmp/*.db rwk,
             /tmp/*.db-* rwk,
 
-            # System resources
+            # System resources (Python async runtime + psutil)
             /proc/self/** r,
             /proc/sys/kernel/osrelease r,
             /proc/meminfo r,
+            # psutil reads network stats via /proc/<pid>/net/dev (real pid path,
+            # not /proc/self symlink — AppArmor resolves symlinks before matching).
+            /proc/@{pids}/net/dev r,
+            /proc/@{pids}/net/** r,
             /dev/null rw,
             /dev/urandom r,
+
+            # Secrets — NixOS mounts secrets at /run/secrets/ AND /run/secrets.d/<N>/
+            /run/secrets/ r,
+            /run/secrets/** r,
+            /run/secrets.d/ r,
+            /run/secrets.d/** r,
+
+            # DNS resolution config read by Python's socket/urllib on first connect
+            /run/systemd/resolve/stub-resolv.conf r,
+
+            # AI stack logs — dashboard reads tool-audit and hint-audit for analytics
+            /var/log/nixos-ai-stack/ r,
+            /var/log/nixos-ai-stack/** r,
+            /var/log/ai-audit-sidecar/ r,
+            /var/log/ai-audit-sidecar/** r,
 
             # systemctl — dashboard service health panel calls systemctl is-active,
             # status, and show to display live service state. Also allows the
