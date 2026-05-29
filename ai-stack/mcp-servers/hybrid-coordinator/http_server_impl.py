@@ -1150,7 +1150,7 @@ async def _inject_semantic_tooling(
             request["audit_metadata"]["memory_recall_attempted"] = True
             memory_result = await asyncio.wait_for(
                 _recall_memory(query=query, memory_types=None, limit=3, retrieval_mode="hybrid"),
-                timeout=2.0,
+                timeout=5.0,  # Increased from 2.0: reflection loop (5 collections × 2 retries) needs headroom
             )
             memory_rows = memory_result.get("results", []) if isinstance(memory_result, dict) else []
             memory_summaries = [
