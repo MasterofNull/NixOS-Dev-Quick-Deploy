@@ -829,8 +829,8 @@ class SearchRouter:
             except Exception as exc:
                 logger.warning("semantic_search_failed collection=%s error=%s", collection, exc)
 
-            # Keyword search
-            if expanded_tokens:
+            # Keyword search (skip when pool=0, e.g. semantic-only mode — scroll limit=0 is invalid)
+            if expanded_tokens and effective_keyword_pool > 0:
                 try:
                     async def _scroll_points() -> Any:
                         return self._qdrant.scroll(
