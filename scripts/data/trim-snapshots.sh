@@ -66,12 +66,22 @@ if dry_run:
 if removed == 0:
     sys.exit(0)
 
+import stat as _stat
+st = os.stat(path)
+orig_uid, orig_gid = st.st_uid, st.st_gid
+orig_mode = _stat.S_IMODE(st.st_mode)
+
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
     f.write("\n".join(lines_kept))
     if lines_kept:
         f.write("\n")
 os.replace(tmp, path)
+try:
+    os.chown(path, orig_uid, orig_gid)
+    os.chmod(path, orig_mode)
+except PermissionError:
+    pass
 print(f"[trim-snapshots] {fname}: removed {removed}/{lines_before} lines, kept {len(lines_kept)}")
 PYEOF
 }

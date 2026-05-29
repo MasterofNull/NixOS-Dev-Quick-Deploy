@@ -646,6 +646,7 @@ in {
           "d ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
           "z ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
           "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
+          "z ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/continuous_learning_stats.json 0640 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset_export.jsonl 0660 ${hybridUser} ${aiGroup} - -"
@@ -667,11 +668,13 @@ in {
           # Use z-only to override ownership/mode so ai-stack services can traverse the directory.
           "z ${mutableLogDir}                       0770 ${svcUser} ${aiGroup} -"
           "f ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
+          "z ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
           "f ${mutableLogDir}/query-gaps.jsonl 0660 ${svcUser} ${aiGroup} - -"
           # Audit sidecar log dir — coordinator (ai-stack group) needs rw to append Phase 56 events.
           "d /var/log/ai-audit-sidecar              0750 ${auditUser} ${aiGroup} -"
           "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0660 ${auditUser} ${aiGroup} - -"
+          "z /var/log/ai-audit-sidecar/tool-audit.jsonl 0660 ${auditUser} ${aiGroup} - -"
           "d ${dataDir}/aider-wrapper               0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/aider-wrapper/workspace     0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs           0750 ${docsUser} ${aiGroup} -"
