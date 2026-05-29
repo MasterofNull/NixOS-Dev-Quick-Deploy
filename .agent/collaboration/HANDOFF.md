@@ -288,3 +288,20 @@ explicitly. `local_n` and `remote_n` were always 0 → percentages always null.
 real-time stats. Historical persistence not needed — 1h/24h windows are actionable.
 
 **Requires**: switchboard restart + dashboard backend restart (Python-only changes).
+
+## Phase 79.x — Persist routing decisions across restarts
+
+**Change**: Switchboard now appends each `chat/completions` routing decision to
+`.agents/telemetry/routing-decisions.jsonl` (user-space spool, writable by `hyperd`).
+
+On startup, the ring buffer is warmed from the last 7 days of persisted records so
+dashboard routing stats survive service restarts.
+
+**Files changed**:
+- `switchboard.py`: added `threading`, `_routing_log_lock`, `_ROUTING_LOG_PATH`,
+  `_routing_log_init()` (warm ring from file on startup), `_routing_log_append()`
+  (threadsafe JSONL append); wired into `@startup` event and proxy ring-append site
+- `scripts/data/trim-ai-logs.sh`: target #9 — routing-decisions.jsonl, 14d TTL
+- `nix/modules/services/data-retention.nix`: `aiLogs.routingDecisionsDays` option + env var
+
+**Requires**: switchboard restart (Python-only) + nixos-rebuild for NixOS option.

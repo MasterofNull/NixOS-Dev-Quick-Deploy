@@ -36,6 +36,7 @@
     export AI_LOGS_USER_SPOOL_DAYS="${toString cfg.aiLogs.userSpoolDays}"
     export AI_LOGS_AIDB_EVENTS_DAYS="${toString cfg.aiLogs.aidbEventsDays}"
     export AI_LOGS_WORKFLOW_SESSIONS_DAYS="${toString cfg.aiLogs.workflowSessionsDays}"
+    export AI_LOGS_ROUTING_DECISIONS_DAYS="${toString cfg.aiLogs.routingDecisionsDays}"
     exec ${pkgs.bash}/bin/bash ${cfg.scriptsDir}/data/trim-ai-logs.sh
   '';
 
@@ -141,6 +142,12 @@ in {
         type = lib.types.int;
         default = 30;
         description = "Days to retain workflow sessions in /var/lib/ai-stack/hybrid/workflow-sessions.json (keyed by updated_at). 894-session / 6 MB bloat causes 64ms sync parse on every multi-turn load — trim aggressively.";
+      };
+
+      routingDecisionsDays = lib.mkOption {
+        type = lib.types.int;
+        default = 14;
+        description = "Days to retain entries in .agents/telemetry/routing-decisions.jsonl. Written by the switchboard on every chat/completions call to provide cross-restart routing stats for the dashboard routing panel.";
       };
     };
 
