@@ -2363,13 +2363,13 @@ in {
             /sys/class/hwmon/** r,
             /sys/class/thermal/ r,
             /sys/class/thermal/** r,
-            /sys/devices/platform/ r,
-            /sys/devices/platform/** r,
-            /sys/devices/**/hwmon/ r,
-            /sys/devices/**/hwmon/** r,
+            # Full sysfs device tree: covers ACPI (LNXSYSTM), PCI, NVMe, virtual/thermal.
+            # psutil walks /sys/devices/** for hwmon, thermal, battery, and GPU stats.
+            /sys/devices/** r,
 
-            # ip — psutil/netifaces may exec ip for interface enumeration
-            /nix/store/**/iproute2*/bin/ip ix,
+            # ip — psutil/netifaces execs ip for network interface enumeration.
+            # Use **/bin/ip (not iproute2*/bin/ip) because store path starts with hash.
+            /nix/store/**/bin/ip ix,
 
             # Secrets — NixOS mounts secrets at /run/secrets/ AND /run/secrets.d/<N>/
             /run/secrets/ r,
