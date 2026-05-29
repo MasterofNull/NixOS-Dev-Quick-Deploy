@@ -99,7 +99,7 @@ class ContextStore:
             conn.commit()
             conn.close()
             return True
-        except sqlite3.Error:
+        except (sqlite3.Error, OSError):
             return False
 
     def _resolve_db_path(self) -> str:
