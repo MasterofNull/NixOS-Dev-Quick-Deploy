@@ -210,3 +210,23 @@ return 500 with empty body.
 
 **No rebuild required for coordinator fix** — Python-only change, restart coordinator to pick up.
 **Rebuild required** for `data-retention.nix` change to activate `aidb-events.jsonl` trim.
+
+## Phase 77 — Enable RAGAS faithfulness scoring
+
+**Change**: Enable `RAGAS_FAITHFULNESS_ENABLED=true` in the hybrid coordinator service.
+Faithfulness scoring measures how well LLM responses are grounded in retrieved context
+(hallucination detection). Was disabled because of a stale comment ("adds 3-8s inline").
+The scorer is async, 10% sample rate, max_tokens=8, 15s timeout — never on the response path.
+
+**Files changed**:
+- `nix/modules/core/options.nix`: added `aiHarness.eval.faithfulnessEnabled` (default false)
+  and `aiHarness.eval.faithfulnessSampleRate` (default 0.10) options
+- `nix/modules/services/mcp-servers.nix`: wired `RAGAS_FAITHFULNESS_ENABLED` and
+  `RAGAS_FAITHFULNESS_SAMPLE_RATE` env vars from the new options
+- `nix/hosts/hyperd/facts.nix`: set `aiHarness.eval.faithfulnessEnabled = true` for this host
+
+**Expected result**: `faithfulness_avg` field in `/eval/trend` will start populating
+after the first few `/query` calls post-rebuild (10% sample → need ~10 queries).
+Dashboard `ragFaithfulness` element will show a real value instead of `--`.
+
+**Requires**: nixos-rebuild switch to activate.

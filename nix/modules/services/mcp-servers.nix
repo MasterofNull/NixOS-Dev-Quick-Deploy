@@ -1147,6 +1147,12 @@ in {
                 "AI_HARNESS_MAX_LATENCY_MS=${toString ai.aiHarness.eval.maxLatencyMs}"
                 "AI_HARNESS_EVAL_TIMEOUT_S=${toString ai.aiHarness.eval.timeoutSeconds}"
                 "AI_HARNESS_EVAL_TIMEOUT_HARD_CAP_S=${toString ai.aiHarness.eval.timeoutHardCapSeconds}"
+                "RAGAS_FAITHFULNESS_ENABLED=${
+                  if ai.aiHarness.eval.faithfulnessEnabled
+                  then "true"
+                  else "false"
+                }"
+                "RAGAS_FAITHFULNESS_SAMPLE_RATE=${toString ai.aiHarness.eval.faithfulnessSampleRate}"
                 # Keep tool-oriented retrieval probes aligned with harness phase
                 # maintenance and dashboard operator workflows.
                 "AI_CAPABILITY_DISCOVERY_ENABLED=true"

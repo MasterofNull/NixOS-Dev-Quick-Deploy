@@ -1944,6 +1944,24 @@
               runtime timeout values are misconfigured.
             '';
           };
+
+          faithfulnessEnabled = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Enable async RAGAS faithfulness scoring (Qwen-as-judge).
+              Samples 10% of queries in the background (never inline).
+              Each scored query calls llama.cpp with max_tokens=8 and a 15s
+              timeout.  Safe on the Renoir APU — adds ~8s background latency
+              at 1 tok/s but does not block the response path.
+            '';
+          };
+
+          faithfulnessSampleRate = lib.mkOption {
+            type = lib.types.float;
+            default = 0.10;
+            description = "Fraction of eval queries to score for faithfulness (0.0–1.0).";
+          };
         };
 
         runtime = {
