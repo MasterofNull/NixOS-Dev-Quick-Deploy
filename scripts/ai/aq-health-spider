@@ -45,17 +45,12 @@ class HealthSpider:
         python_bin = sys.executable
         orchestrator = os.path.join(REPO_ROOT, "scripts", "automation", "prsi-orchestrator.py")
 
-        # Trigger autonomous remediation via the newly created orchestrator loop
+        # Sync pending PRSI actions from coordinator, auto-approve low-risk, execute one.
+        # 'cycle' = sync + auto-approve-low-risk + execute in one pass.
         proc = await asyncio.create_subprocess_exec(
-            python_bin, orchestrator, "queue", "--type", "remediation", "--risk", "medium",
-            "--summary", f"Health Spider Alert: {anomaly.get('issue')}",
-            "--details", json.dumps(anomaly)
+            python_bin, orchestrator, "cycle"
         )
         await proc.wait()
-        proc2 = await asyncio.create_subprocess_exec(
-            python_bin, orchestrator, "execute", "--limit", "1"
-        )
-        await proc2.wait()
         logger.info("Autonomous remediation triggered via PRSI.")
 
     async def run(self):
