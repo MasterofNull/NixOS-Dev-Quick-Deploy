@@ -2336,9 +2336,10 @@ in {
             # rwk: SQLite requires file_lock (k) in addition to rw; without k the
             # context-store candidate fails and startup falls back to repo path.
             /var/lib/nixos-system-dashboard/** rwk,
-            # /tmp fallback for context.db when all other candidates fail (needs c+k).
-            /tmp/nixos-dashboard-context.db rwkc,
-            /tmp/nixos-dashboard-context.db-* rwkc,
+            # /tmp fallback for context.db when all other candidates fail.
+            # w covers file creation (mknod); k is required for SQLite file lock.
+            /tmp/nixos-dashboard-context.db rwk,
+            /tmp/nixos-dashboard-context.db-* rwk,
 
             # System resources
             /proc/self/** r,
