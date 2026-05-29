@@ -162,6 +162,10 @@ in {
     systemd.services.data-retention = {
       description = "AI harness data retention (trim temporal facts and snapshots)";
 
+      # Inject minimal PATH so shell scripts can call python3 / date / find.
+      # Systemd services run with an empty PATH — without this, python3 is not found.
+      path = with pkgs; [ python3 bash coreutils findutils ];
+
       serviceConfig = {
         Type = "oneshot";
         User = cfg.user;
