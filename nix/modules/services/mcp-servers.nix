@@ -2322,13 +2322,14 @@ in {
             /nix/store/** r,
             /nix/store/**/*.so* mr,
             /nix/store/**/bin/python3* ix,
-            # uvicorn is executed directly by the service start script (not via python3).
-            # Must be re-allowed after each rebuild that changes the Python env hash.
+            # uvicorn exec chain: start script → uvicorn wrapper → .uvicorn-wrapped binary.
+            # Both live in separate Nix store derivations; glob covers any hash.
             /nix/store/**/bin/uvicorn ix,
+            /nix/store/**/bin/.uvicorn-wrapped ix,
             /run/current-system/sw/** r,
 
-            # tty — uvicorn checks for interactive terminal on startup
-            /dev/tty r,
+            # tty — uvicorn probes for interactive terminal on startup (needs rw)
+            /dev/tty rw,
 
             # Dashboard data (telemetry snapshots — read only from data dir)
             ${dataDir}/** r,
