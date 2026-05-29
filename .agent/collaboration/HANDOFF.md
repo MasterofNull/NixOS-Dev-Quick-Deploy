@@ -347,3 +347,19 @@ post-rebuild in `ai-post-deploy-converge.service`.
 Query gaps file has no recent events. May indicate the query gap detection pipeline is not
 emitting events. Investigate: does `ai-gap-auto-remediate.service` emit gap events on run?
 Check: `journalctl -u ai-gap-auto-remediate.service --since "7d" | grep gap`
+
+### [2026-05-29T18:24:56Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-commit` — profile `command-center-dashboard-api`  
+Rules added (10):
+  - `/var/lib/nixos-system-dashboard/telemetry/deployments-context.db k,`
+  - `/tmp/nixos-dashboard-context.db rw,`
+  - `/tmp/workflow-store.db rw,`
+  - `/run/secrets.d/49/hybrid_coordinator_api_key r,`
+  - `/run/secrets.d/49/aidb_api_key r,`
+  - `/run/secrets.d/49/aider_wrapper_api_key r,`
+  - `/var/log/nixos-ai-stack/tool-audit.jsonl r,`
+  - `/run/secrets.d/49/postgres_password r,`
+  - `/var/log/nixos-ai-stack/hint-feedback.jsonl r,`
+  - `/var/log/nixos-ai-stack/query-gaps.jsonl r,`
+Denied paths that triggered: ['/dev/tty', '/nix/store/cyr8pbss92g8fzsy2jlckl8r653bzv4h-python3-3.13.12-env/bin/uvicorn', '/nix/store/sahqyj4v0za2cwcnrbcjyndyk8ka8a9y-python3.13-uvicorn-0.35.0/bin/.uvicorn-wrapped', '/var/lib/nixos-system-dashboard/telemetry/deployments-context.db', '/tmp/nixos-dashboard-context.db']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
