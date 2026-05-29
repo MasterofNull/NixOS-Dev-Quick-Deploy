@@ -32,7 +32,7 @@ prompts:
       Provide a concise response using the context.
     tags: [rag, synthesis, route_search, systems]
     mean_score: 0.667
-    last_evaluated: 2026-05-13
+    last_evaluated: 2026-05-27
 
   - id: gap_detection_score
     name: Query Gap Detection
