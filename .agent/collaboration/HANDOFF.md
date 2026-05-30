@@ -1,3 +1,20 @@
+# HANDOFF MEMO — 2026-05-30 (updated Phase 82 — 8-step workflow standardization complete)
+
+## Phase 82 — Agent .md Standardization — 8-step workflow fan-out
+
+All live agent instruction files updated to 8-step workflow (ORIENT → RESEARCH → PRD/PLAN → MEMORY → EXECUTE → VALIDATE → DOC-UPDATE → COMMIT):
+- `.agent/CODEX.md` — section header "7-Step" → "8-Step"
+- `ai-stack/local-orchestrator/system-prompt.md` — both references updated; DOC-UPDATE added to step list
+- `.claude/CLAUDE.md` — table description updated
+- Domain-specific `*-INSTRUCTIONS.md` files confirmed workflow-step-free (defer to WORKFLOW-CANON.md)
+- Historical PRDs/phase plans (phase-31, PROJECT-WORKFLOW-PARITY-PRD) retain 7-step references as accurate historical records — no change needed
+
+Files updated this session (commits da859931 + this):
+- CLAUDE.md, AGENTS.md, .agent/WORKFLOW-CANON.md, .agent/GEMINI.md, .agent/CODEX.md, .agent/LOCAL-AGENT.md, .claude/CLAUDE.md, ai-stack/local-orchestrator/system-prompt.md
+
+**Next step**: No open items. Standardization complete.
+
+---
 # HANDOFF MEMO — 2026-05-30 (updated Phase 82 — training loop + gap pipeline fixes)
 
 ## Phase 82 Fixes — 2026-05-30

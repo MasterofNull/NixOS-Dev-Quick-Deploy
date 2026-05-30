@@ -132,7 +132,7 @@ When unassigned, Codex defaults to the role constraints declared in the canonica
 
 ---
 
-## The 7-Step Canonical Workflow
+## The 8-Step Canonical Workflow
 
 Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
 
