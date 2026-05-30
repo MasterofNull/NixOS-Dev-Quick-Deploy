@@ -45,8 +45,29 @@ aq-qa 0                                               # health check
 aq-report                                             # full system report
 aq-insights                                           # Qwen3 analysis of latest aq-report snapshot
 aq-commit-facts                                       # extract institutional memory
+aq-skill-suggest "<task description>"                 # suggest relevant skills before starting
+aq-skill-suggest --list                               # list all available skills
+aq-skill-suggest --show <skill-name>                  # print full skill content
 scripts/governance/tier0-validation-gate.sh --pre-commit  # required before every commit
 ```
+
+## Skill Index
+
+Skills are lazy-loaded knowledge modules for agents. Always check for a relevant skill before reading raw files.
+
+```bash
+# Quick routing — suggest skills before starting any non-trivial task:
+aq-skill-suggest "your task description"
+aq-skill-suggest "apparmor rule"          # → apparmor-rules, nixos-system
+aq-skill-suggest "async handler"          # → python-async
+aq-skill-suggest "gemini prompt"          # → agent-tool-map, multi-agent-collab
+
+# Full index: .agent/SKILL_INDEX.md (always-in-context routing table)
+# Skill files: .agent/skills/<name>/SKILL.md
+```
+
+**Skill loading rule**: load max 2-3 skills per task. Pass skill names (not content) to sub-agents.
+Agent-specific filter: `aq-skill-suggest "<query>" --agent gemini|claude|codex|local`
 
 ## Tool-First Approach
 

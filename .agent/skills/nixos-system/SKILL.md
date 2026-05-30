@@ -1,4 +1,9 @@
 # NixOS System Skill — NixOS-Dev-Quick-Deploy Harness
+## Tags
+nix, nixos, flake, rebuild, module, options.nix, systemd, AppArmor, python-env, secrets, port
+## When to Use
+Adding/changing a Nix module or service option; triggering nixos-rebuild; wiring ports from options.nix;
+Python env in Nix; secrets via deploy-options.local.nix; AppArmor NixOS integration.
 
 ## Purpose
 Authoritative guide for NixOS module authoring, service declaration, AppArmor integration,

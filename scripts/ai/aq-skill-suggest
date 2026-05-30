@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""aq-skill-suggest — agent-agnostic skill routing CLI.
+
+Usage:
+  aq-skill-suggest "task description"     # suggest skills for a task
+  aq-skill-suggest --list                 # list all skills with tags
+  aq-skill-suggest --show <skill-name>    # print full SKILL.md content
+  aq-skill-suggest --agent gemini         # filter skills compatible with gemini
+  aq-skill-suggest "apparmor deny"        # keyword match against tags + descriptions
+
+Exit codes:
+  0 = matched ≥1 skill
+  1 = no match found
+  2 = usage error
+
+Design:
+- No network calls, no coordinator dependency — works offline and in sub-agents
+- Reads SKILL_INDEX.md + individual SKILL.md Tags lines for matching
+- Outputs ranked suggestions sorted by match score
+- Token-efficient: default output is just names + when-to-use (not full content)
+"""
+
+import argparse
+import os
+import sys
+import re
+from pathlib import Path
+
+# Locate repo root relative to this script
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent.parent
+SKILLS_DIR = REPO_ROOT / ".agent" / "skills"
+SKILL_INDEX = REPO_ROOT / ".agent" / "SKILL_INDEX.md"
+
+# Skills that work differently per agent — filtering hints
+AGENT_CONSTRAINTS = {
+    "gemini": {
+        "unsupported_tags": ["bash", "shell-only"],
+        "note": "Gemini has no run_shell_command in auto_edit mode",
+    },
+    "local": {
+        "max_skills": 2,
+        "note": "Local model: keep to 1-2 skills max (3500 token input budget)",
+    },
+    "codex": {
+        "note": "Codex: pass skill names in prompt, not full content",
+    },
+    "claude": {
+        "note": "Full tool access — all skills available",
+    },
+}
+
+
+def load_skill_meta(skill_dir: Path) -> dict:
+    """Load Tags and When to Use from a SKILL.md file."""
+    skill_md = skill_dir / "SKILL.md"
+    if not skill_md.exists():
+        return {}
+
+    name = skill_dir.name
+    tags = []
+    when_to_use = ""
+    title = ""
+
+    try:
+        text = skill_md.read_text()
+        lines = text.splitlines()
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("# ") and not title:
+                title = stripped[2:].strip()
+            elif stripped == "## Tags" and i + 1 < len(lines):
+                tags_line = lines[i + 1].strip()
+                tags = [t.strip() for t in tags_line.split(",") if t.strip()]
+            elif stripped == "## When to Use" and i + 1 < len(lines):
+                # Collect non-empty lines until next section
+                when_parts = []
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    next_line = lines[j].strip()
+                    if next_line.startswith("#") or next_line.startswith("---"):
+                        break
+                    if next_line:
+                        when_parts.append(next_line)
+                when_to_use = " ".join(when_parts)
+    except Exception:
+        pass
+
+    return {
+        "name": name,
+        "title": title or name,
+        "tags": tags,
+        "when_to_use": when_to_use,
+        "path": str(skill_md.relative_to(REPO_ROOT)),
+    }
+
+
+def load_all_skills() -> list[dict]:
+    """Load metadata for all skills in .agent/skills/."""
+    if not SKILLS_DIR.exists():
+        return []
+    skills = []
+    for skill_dir in sorted(SKILLS_DIR.iterdir()):
+        if skill_dir.is_dir():
+            meta = load_skill_meta(skill_dir)
+            if meta:
+                skills.append(meta)
+    return skills
+
+
+def score_skill(skill: dict, query_words: list[str]) -> int:
+    """Score a skill against query words. Higher = better match."""
+    score = 0
+    query_lower = [w.lower() for w in query_words]
+
+    # Tag exact match: high weight
+    for tag in skill.get("tags", []):
+        tag_lower = tag.lower()
+        for word in query_lower:
+            if word == tag_lower:
+                score += 10
+            elif word in tag_lower or tag_lower in word:
+                score += 5
+
+    # When-to-use match: medium weight
+    when_lower = skill.get("when_to_use", "").lower()
+    for word in query_lower:
+        if word in when_lower:
+            score += 3
+
+    # Name/title match: medium weight
+    name_lower = skill["name"].lower()
+    title_lower = skill.get("title", "").lower()
+    for word in query_lower:
+        if word in name_lower or word in title_lower:
+            score += 4
+
+    return score
+
+
+def suggest(query: str, agent: str = None, top_n: int = 5) -> list[dict]:
+    """Return top-N skill suggestions for a query."""
+    skills = load_all_skills()
+    query_words = re.findall(r"\w+", query.lower())
+
+    if not query_words:
+        return skills[:top_n]
+
+    scored = [(score_skill(s, query_words), s) for s in skills]
+    scored = [(sc, s) for sc, s in scored if sc > 0]
+    scored.sort(key=lambda x: -x[0])
+
+    # Agent filtering
+    if agent and agent in AGENT_CONSTRAINTS:
+        constraints = AGENT_CONSTRAINTS[agent]
+        unsupported = constraints.get("unsupported_tags", [])
+        if unsupported:
+            scored = [
+                (sc, s) for sc, s in scored
+                if not any(ut in s.get("tags", []) for ut in unsupported)
+            ]
+        max_skills = constraints.get("max_skills")
+        if max_skills:
+            scored = scored[:max_skills]
+
+    return [s for _, s in scored[:top_n]]
+
+
+def print_suggestions(results: list[dict], agent: str = None, verbose: bool = False):
+    """Print suggestions in a token-efficient format."""
+    if not results:
+        print("No matching skills found.", file=sys.stderr)
+        return
+
+    if agent and agent in AGENT_CONSTRAINTS:
+        note = AGENT_CONSTRAINTS[agent].get("note", "")
+        if note:
+            print(f"[{agent}] {note}\n")
+
+    for skill in results:
+        print(f"  {skill['name']}")
+        print(f"    Tags: {', '.join(skill['tags'][:6])}")
+        if skill.get("when_to_use"):
+            # Truncate for token efficiency
+            when = skill["when_to_use"][:120]
+            if len(skill["when_to_use"]) > 120:
+                when += "..."
+            print(f"    Use: {when}")
+        if verbose:
+            print(f"    Path: {skill['path']}")
+        print()
+
+
+def show_skill(name: str):
+    """Print full SKILL.md content for a skill."""
+    skill_dir = SKILLS_DIR / name
+    skill_md = skill_dir / "SKILL.md"
+    if not skill_md.exists():
+        print(f"Skill '{name}' not found.", file=sys.stderr)
+        sys.exit(1)
+    print(skill_md.read_text())
+
+
+def list_all(agent: str = None):
+    """List all skills with tags."""
+    skills = load_all_skills()
+    if agent and agent in AGENT_CONSTRAINTS:
+        constraints = AGENT_CONSTRAINTS[agent]
+        note = constraints.get("note", "")
+        unsupported = constraints.get("unsupported_tags", [])
+        if note:
+            print(f"[{agent}] {note}\n")
+        if unsupported:
+            skills = [s for s in skills if not any(ut in s.get("tags", []) for ut in unsupported)]
+
+    for skill in skills:
+        tags_str = ", ".join(skill["tags"][:6])
+        print(f"  {skill['name']:<28} [{tags_str}]")
+    print(f"\n{len(skills)} skills total. Use --show <name> to read full content.")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Suggest relevant skills for a task. Agent-agnostic."
+    )
+    parser.add_argument("query", nargs="?", help="Task description or keywords")
+    parser.add_argument("--list", action="store_true", help="List all skills")
+    parser.add_argument("--show", metavar="NAME", help="Print full SKILL.md for skill")
+    parser.add_argument("--agent", metavar="AGENT", help="Filter/annotate for agent: claude|gemini|codex|local")
+    parser.add_argument("--top", type=int, default=5, help="Max suggestions to show (default: 5)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show file paths")
+    args = parser.parse_args()
+
+    if args.show:
+        show_skill(args.show)
+        return
+
+    if args.list:
+        list_all(agent=args.agent)
+        return
+
+    if not args.query:
+        parser.print_help()
+        sys.exit(2)
+
+    results = suggest(args.query, agent=args.agent, top_n=args.top)
+    if not results:
+        print(f"No skills matched '{args.query}'", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Skills for: {args.query!r}\n")
+    print_suggestions(results, agent=args.agent, verbose=args.verbose)
+
+    # Machine-readable: last line is comma-separated skill names for scripting
+    names = ",".join(s["name"] for s in results)
+    print(f"SKILLS={names}")
+
+
+if __name__ == "__main__":
+    main()
