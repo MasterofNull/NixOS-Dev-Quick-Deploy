@@ -1,31 +1,21 @@
 {
   "schema_version": "2",
-  "written_at": "2026-05-30T01:05:00Z",
+  "written_at": "2026-05-30T01:25:00Z",
   "written_by": "claude-sonnet-4-6",
 
-  "current_objective": "Compaction-durability: fast session recovery after context compaction or 401 summarization failure",
-  "phase": "Phase 81 — Compaction Durability",
-  "last_known_commit": "a6b7a214",
+  "current_objective": "Fix query-gaps pipeline silence",
+  "phase": "Phase 82 — Training loop + gap remediation",
+  "last_known_commit": "48edcc36",
 
   "todo_snapshot": [
-    "completed: Fix routing telemetry (switchboard ReadWritePaths for .agents/telemetry)",
-    "in_progress: Design + implement compaction-durability system",
-    "pending: Dispatch Gemini — orphan audit + training loop ingest fix",
-    "pending: Fix query-gaps pipeline silence",
-    "pending: Fix training loop samples_added=0"
+    "completed: Fix routing telemetry (switchboard ReadWritePaths)",
+    "completed: Phase 81 compaction-durability (RESUME.json + aq-resume + Stop hook)",
+    "completed: Standardize all agent payloads (remote + local)",
+    "completed: Fix training loop samples_added=0 (is_structured base 0.40→0.50; agent_step_complete floor 0.40)",
+    "pending: Fix query-gaps pipeline silence (coordinator /api/query-gaps returns 401)"
   ],
 
-  "uncommitted_changes": [
-    "nix/modules/services/switchboard.nix — ReadWritePaths fix",
-    ".agent/collaboration/RULES.md — Atomic Resume rule",
-    "AGENTS.md — aq-resume in ORIENT step",
-    "scripts/ai/aq-prime — runs aq-resume at session start",
-    "scripts/ai/aq-resume — NEW: recovery aggregation tool",
-    ".agent/collaboration/RESUME.json — NEW: this file"
-  ],
+  "uncommitted_changes": [],
 
-  "resume_hint": "Read HANDOFF.md §2026-05-29T19:30:00Z for Phase 80 completion state. Current work is Phase 81 compaction durability — Gemini created aq-resume + schema, Claude is hardening the schema and wiring CLAUDE.md.",
-
-  "pending_rebuild": false,
-  "pending_rebuild_note": ""
+  "resume_hint": "training_ingest.py quality fix done — samples_added now 1 (was 0). Next: query-gaps pipeline silence. coordinator /api/query-gaps returns 401 unauthorized; query_gap_count: None in dashboard. Check auth middleware exemptions and the gap-detection logic in hybrid-coordinator."
 }

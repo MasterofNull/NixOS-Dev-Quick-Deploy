@@ -217,6 +217,30 @@ ERROR_SOLUTIONS = [
         "last_used": NOW,
         "confidence_score": 0.99,
     },
+    {
+        "error_type": "psycopg3_row_mapping_silent_failure",
+        "error_message": "AttributeError: 'tuple' object has no attribute '_mapping' swallowed silently — psycopg3 rows are plain tuples",
+        "context": "psycopg2 row objects had ._mapping for dict conversion. psycopg3 returns plain tuples. dict(row._mapping) raises AttributeError. With bare 'except Exception: return []' this is invisible — every call returns empty results. Hit aq-report read_query_gaps(): 657 rows in DB silently returned as [] for many sessions. psycopg version on this system: 3.2.12.",
+        "solution": "Replace dict(row._mapping) with: cols=[d.name for d in cur.description]; rows=[dict(zip(cols,r)) for r in cur.fetchall()]. Or connect with row_factory: psycopg.connect(dsn, row_factory=psycopg.rows.dict_row). Check version: import psycopg; psycopg.__version__.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW - 86400 * 1,
+        "last_used": NOW,
+        "confidence_score": 0.99,
+    },
+    {
+        "error_type": "training_ingest_quality_score_structured_outputs",
+        "error_message": "samples_added=0 every training ingest run — quality score filters all structured/agent responses",
+        "context": "training_ingest._quality_score() uses keyword coverage (query terms found in response). Code/structured/agent responses don't repeat query terms so coverage is near 0. is_structured path base was 0.40 — still below DEFAULT_MIN_QUALITY=0.65 for short responses. agent_step_complete events are verified DirectRunner outputs but used same 0.65 floor.",
+        "solution": "Raise is_structured base 0.40→0.50. For agent_step_complete events apply floor=0.40 not 0.65: floor = 0.40 if event.get('event_type')=='agent_step_complete' else self.min_quality. These are known-good inference completions; keyword coverage is a poor quality signal for them.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW - 86400 * 1,
+        "last_used": NOW,
+        "confidence_score": 0.95,
+    },
 ]
 
 SKILLS_PATTERNS = [

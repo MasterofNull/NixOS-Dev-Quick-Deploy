@@ -41,7 +41,11 @@ For non-trivial work, Codex should:
 3. frame meaningful tradeoffs before acting when intent matters,
 4. maintain the collaboration artifacts,
 5. execute one bounded slice at a time,
-6. validate before proposing or committing work.
+6. **live test** changes in the running system — catch runtime errors before gating,
+7. **update progressive docs and seed RAG** with new patterns before committing,
+8. validate with `tier0-validation-gate.sh --pre-commit` then commit.
+
+Full 8-step sequence: ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE → VALIDATE → DOC-UPDATE → COMMIT. See `.agent/WORKFLOW-CANON.md`.
 
 ## Required artifacts
 

@@ -14,16 +14,17 @@ Full policy: `docs/AGENTS.md` · Quick start: `docs/agent-guides/01-QUICK-START.
 
 **Full contract → `.agent/WORKFLOW-CANON.md`** (SSOT for all agents)
 
-Every non-trivial task follows this 7-step sequence:
+Every non-trivial task follows this 8-step sequence:
 ```
-ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VALIDATE → COMMIT
+ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VALIDATE → DOC-UPDATE → COMMIT
 ```
 - **ORIENT**: `aq-prime` · `aq-resume` (for recovery) · `aq-session-start --task "<task>"` · recall memory (`mcp_server_get_working_memory`)
 - **RESEARCH**: Agentic CLI Tools (`agrep`, `als`, `acat`, `asum`) + web search + OWASP
 - **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
 - **MEMORY-CHECKPOINT**: `mcp_server_store_memory` + **Intent Lock** (`.agent/collaboration/PENDING.json`) + **Atomic Resume** (`.agent/collaboration/RESUME.json`)
 - **EXECUTE**: one slice at a time; read before editing; **Atomic Pulse** (`.agent/collaboration/PULSE.log`)
-- **VALIDATE**: `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist
+- **VALIDATE**: (1) **Live test** in the running system — catch runtime errors and friction; (2) fix issues found; (3) `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist
+- **DOC-UPDATE**: update progressive docs (AGENTS.md, HANDOFF.md, agent .md files, CLAUDE.md); seed RAG collections (`error-solutions`, `best-practices`, `skills-patterns`) with new patterns; keep all references current and system hygienic
 - **COMMIT**: atomic commit + **Handoff Memo** (`.agent/collaboration/HANDOFF.md`)
 
 ## Collaboration & Handoff (Multi-Agent Resilience)
