@@ -2228,6 +2228,13 @@ in {
             /nix/store/** r,
             /nix/store/**/*.so* mr,
             /nix/store/**/bin/python3* ix,
+            # Phase 84: allow shell subprocess execution (qa_check runner, continuous-learning daemon).
+            # Ux = unconfined child; safe because service user has no elevated capabilities and
+            # the scripts run from the Nix store (immutable). Covers bash, dash, sh.
+            /nix/store/**/bin/bash Ux,
+            /nix/store/**/bin/dash Ux,
+            /run/current-system/sw/bin/bash Ux,
+            /run/current-system/sw/bin/sh   Ux,
             /run/current-system/sw/** r,
             /run/current-system/sw/**/*.so* mr,
 
