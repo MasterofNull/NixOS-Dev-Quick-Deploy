@@ -2157,7 +2157,9 @@ def read_query_gaps(since: datetime, limit: int = 10) -> List[dict]:
             "ORDER BY occurrences DESC, score ASC LIMIT %s",
             (since, limit),
         )
-        rows = [dict(r._mapping) for r in cur.fetchall()]
+        # psycopg3 returns plain tuples; build dicts from cursor.description.
+        cols = [d.name for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         conn.close()
         return rows
     except ImportError:
