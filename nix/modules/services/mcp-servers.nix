@@ -2228,13 +2228,38 @@ in {
             /nix/store/** r,
             /nix/store/**/*.so* mr,
             /nix/store/**/bin/python3* ix,
-            # Phase 84: allow shell subprocess execution (qa_check runner, continuous-learning daemon).
-            # Ux = unconfined child; safe because service user has no elevated capabilities and
-            # the scripts run from the Nix store (immutable). Covers bash, dash, sh.
-            /nix/store/**/bin/bash Ux,
-            /nix/store/**/bin/dash Ux,
-            /run/current-system/sw/bin/bash Ux,
-            /run/current-system/sw/bin/sh   Ux,
+            # Phase 84 (rev2): shell subprocess execution for qa_check + continuous-learning daemon.
+            # NoNewPrivileges=true blocks Ux/Px profile transitions (EPERM). Must use ix (inherit).
+            # Children inherit this profile — add explicit rules for what aq-qa spawns.
+            /nix/store/**/bin/bash   ix,
+            /nix/store/**/bin/dash   ix,
+            /nix/store/**/bin/sh     ix,
+            /run/current-system/sw/bin/bash ix,
+            /run/current-system/sw/bin/sh   ix,
+            # systemctl is-active — reads unit state via D-Bus / /run/systemd/
+            /nix/store/**/bin/systemctl ix,
+            /run/current-system/sw/bin/systemctl ix,
+            /run/systemd/           r,
+            /run/systemd/**         r,
+            /run/dbus/system_bus_socket rw,
+            # curl — loopback HTTP health probes (network already inet stream)
+            /nix/store/**/bin/curl  ix,
+            /run/current-system/sw/bin/curl ix,
+            /etc/ssl/**             r,
+            /etc/resolv.conf        r,
+            # jq, coreutils (used in _aq-qa-bash output formatting)
+            /nix/store/**/bin/jq    ix,
+            /nix/store/**/bin/cat   ix,
+            /nix/store/**/bin/grep  ix,
+            /nix/store/**/bin/sed   ix,
+            /nix/store/**/bin/awk   ix,
+            /nix/store/**/bin/date  ix,
+            /nix/store/**/bin/printf ix,
+            /nix/store/**/bin/wc    ix,
+            /nix/store/**/bin/sort  ix,
+            /nix/store/**/bin/head  ix,
+            /nix/store/**/bin/tail  ix,
+            /run/current-system/sw/bin/jq  ix,
             /run/current-system/sw/** r,
             /run/current-system/sw/**/*.so* mr,
 
