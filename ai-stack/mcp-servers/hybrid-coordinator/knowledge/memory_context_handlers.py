@@ -270,13 +270,15 @@ async def handle_qa_check(request: web.Request) -> web.Response:
     try:
         data = await request.json()
         
-        # Phase 55.2 — Schedule QA check as batch task
+        # Phase 84 — QA runs subprocess health checks, not LLM inference.
+        # Use background (level 1) so thermal pressure at critical tier doesn't block it.
+        # batch (level 2) is rejected when thermal_tier=="critical" (CPU ≥80°C).
         from mlfq_scheduler import get_scheduler, WorkloadDescriptor
         workload = WorkloadDescriptor(
             task_id=f"qa-{uuid4()}",
-            task_class="batch",
-            priority=int(data.get("priority", 9)),  # QA is lowest priority batch work
-            token_budget=100,  # QA doesn't consume LLM tokens directly but is heavy on CPU
+            task_class="background",
+            priority=int(data.get("priority", 7)),
+            token_budget=1,  # no LLM tokens consumed — minimum to pass admission gate
             agent_id=data.get("agent_id"),
             x_maeah=data.get("x_maeah", {}),
         )
