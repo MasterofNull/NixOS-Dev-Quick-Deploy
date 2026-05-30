@@ -5173,3 +5173,61 @@ async def get_drops_status() -> Dict[str, Any]:
         "drops_dir": str(drops_dir),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.get("/alerts/status")
+async def get_alerts_status() -> Dict[str, Any]:
+    """Return Phase 86 Human-in-the-Loop attention queue status.
+
+    Response:
+      pending        int     — pending human_gate / rebuild_required alerts
+      oldest_severity str|None — severity of oldest pending alert
+      oldest_title   str|None — title of oldest pending alert (≤60 chars)
+      oldest_age_s   int|None — seconds since oldest alert was created
+      queue_file_exists bool  — whether ATTENTION.json exists
+    """
+    repo = _repo_root()
+    _lib = repo / "scripts" / "ai" / "lib"
+    if str(_lib) not in sys.path:
+        sys.path.insert(0, str(_lib))
+
+    def _read_alerts():
+        try:
+            from attention_queue import get_pending  # type: ignore
+            return get_pending()
+        except Exception:
+            return []
+
+    def _queue_exists():
+        return (repo / ".agents" / "attention" / "ATTENTION.json").exists()
+
+    alerts, exists = await asyncio.gather(
+        asyncio.to_thread(_read_alerts),
+        asyncio.to_thread(_queue_exists),
+    )
+
+    import time as _time
+
+    oldest_severity: Optional[str] = None
+    oldest_title: Optional[str] = None
+    oldest_age_s: Optional[int] = None
+
+    if alerts:
+        oldest = min(alerts, key=lambda a: a.get("created_at", ""))
+        oldest_severity = oldest.get("severity")
+        oldest_title = (oldest.get("title", "")[:60] or None)
+        try:
+            import datetime as _dt
+            created = _dt.datetime.fromisoformat(oldest["created_at"].replace("Z", "+00:00"))
+            oldest_age_s = int((_dt.datetime.now(_dt.timezone.utc) - created).total_seconds())
+        except Exception:
+            pass
+
+    return {
+        "pending": len(alerts),
+        "oldest_severity": oldest_severity,
+        "oldest_title": oldest_title,
+        "oldest_age_s": oldest_age_s,
+        "queue_file_exists": exists,
+        "generated_at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+    }

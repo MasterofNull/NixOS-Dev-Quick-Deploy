@@ -570,6 +570,46 @@ async function loadDropZone() {
   }
 }
 
+// ─── OVERVIEW: ATTENTION REQUIRED (Phase 86 HITL) ────────────────────────────
+async function loadAlerts() {
+  try {
+    const d = await apiFetch('/alerts/status');
+    if (!d) return;
+
+    const badge   = document.getElementById('alertsBadge');
+    const details = document.getElementById('alertsDetails');
+    const pending = d.pending || 0;
+
+    if (badge) {
+      badge.textContent = pending > 0 ? `${pending} PENDING` : 'Clear';
+      badge.className   = `card-badge ${pending > 0 ? 'badge-err' : 'badge-ok'}`;
+    }
+
+    if (details) {
+      const rows = [fwRow('Pending', String(pending), pending > 0 ? 'err' : 'ok')];
+      if (pending > 0 && d.oldest_severity) {
+        rows.push(fwRow('Severity', d.oldest_severity, d.oldest_severity === 'critical' ? 'err' : 'warn'));
+      }
+      if (d.oldest_title) {
+        rows.push(fwRow('Alert', d.oldest_title.slice(0, 60), 'info'));
+      }
+      if (d.oldest_age_s != null) {
+        const age = d.oldest_age_s < 3600
+          ? `${Math.round(d.oldest_age_s / 60)}m`
+          : `${Math.round(d.oldest_age_s / 3600)}h`;
+        rows.push(fwRow('Age', age, d.oldest_age_s > 86400 ? 'err' : 'info'));
+      }
+      if (pending > 0) {
+        rows.push(`<div style="margin-top:.4rem;font-size:.55rem;color:var(--fg3)">Run: <code>aq-alerts</code></div>`);
+      }
+      details.innerHTML = rows.join('');
+    }
+  } catch (err) {
+    const badge = document.getElementById('alertsBadge');
+    if (badge) { badge.textContent = '--'; badge.className = 'card-badge badge-warn'; }
+  }
+}
+
 // ─── OVERVIEW: DATABASE METRICS ───────────────────────────────────────────────
 async function loadDatabase() {
   const aiM = window._aiMetrics || await apiFetch('/ai/metrics');
@@ -3635,7 +3675,7 @@ async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add('overview');
   window._aiMetrics = null;
-  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState(), loadDropZone()]);
+  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState(), loadDropZone(), loadAlerts()]);
   // Dependents
   loadInferenceSlots();
   loadAIDB();
@@ -3650,7 +3690,7 @@ window.addEventListener('error', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
   // Immediate: fast data (hardware state included — thermal is real-time critical)
-  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState(), loadDropZone()]).then(() => {
+  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState(), loadDropZone(), loadAlerts()]).then(() => {
     loadInferenceSlots();
     loadAIDB();
   });
@@ -3662,6 +3702,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(loadSystem,        30_000);
   setInterval(loadServices,      30_000);
   setInterval(loadDropZone,      30_000);
+  setInterval(loadAlerts,        30_000);
   setInterval(loadDatabase,      60_000);
   setInterval(() => { 
     loadHardwareState().then(() => {

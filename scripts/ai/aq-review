@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""
+aq-review <id> — Phase 86 alert detail viewer.
+
+Shows full detail, payload, proposed action, and executor for one alert.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE / "lib"))
+
+from attention_queue import get_by_id  # noqa: E402
+
+_RESET = "\033[0m"
+_BOLD  = "\033[1m"
+_RED   = "\033[0;31m"
+_YEL   = "\033[0;33m"
+_GRN   = "\033[0;32m"
+_CYN   = "\033[0;36m"
+
+_SEV_COLOR = {"critical": _RED, "high": _RED, "medium": _YEL, "low": _GRN}
+
+
+def _c(text: str, color: str) -> str:
+    return f"{color}{text}{_RESET}" if sys.stdout.isatty() else text
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: aq-review <alert-id>")
+        return 1
+
+    alert_id = sys.argv[1]
+    alert = get_by_id(alert_id)
+
+    if not alert:
+        print(f"Alert {alert_id!r} not found in active queue.", file=sys.stderr)
+        return 1
+
+    sev = alert.get("severity", "?")
+    boundary = alert.get("autonomy_boundary", "?")
+    status = alert.get("status", "?")
+
+    print()
+    print(_c(f"  Alert: {alert['id']}", _BOLD))
+    print(f"  Status:   {status}")
+    print(f"  Severity: {_c(sev.upper(), _SEV_COLOR.get(sev, ''))}")
+    print(f"  Boundary: {_c(boundary, _CYN)}")
+    print(f"  Source:   {alert.get('source', '?')}")
+    print(f"  Created:  {alert.get('created_at', '?')}")
+    print(f"  Expires:  {alert.get('expires_at', '?')}")
+    print()
+    print(_c("  TITLE", _BOLD))
+    print(f"    {alert.get('title', '')}")
+    print()
+    print(_c("  DETAIL", _BOLD))
+    for line in alert.get("detail", "").splitlines():
+        print(f"    {line}")
+    print()
+    print(_c("  PROPOSED ACTION", _BOLD))
+    for line in alert.get("proposed_action", "").splitlines():
+        print(f"    {line}")
+
+    payload = alert.get("payload")
+    if payload:
+        print()
+        print(_c("  PAYLOAD", _BOLD))
+        for line in json.dumps(payload, indent=4).splitlines():
+            print(f"    {line}")
+
+    executor = alert.get("executor")
+    if executor:
+        print()
+        print(_c("  EXECUTOR (runs on approve)", _BOLD))
+        print(f"    {executor}")
+
+    print()
+    if status == "pending":
+        print(f"  Approve: aq-approve {alert_id}")
+        print(f"  Reject:  aq-reject {alert_id} --reason \"...\"")
+        print(f"  Defer:   aq-defer {alert_id} --hours 4")
+    else:
+        print(f"  Resolved at {alert.get('resolved_at', '?')} by {alert.get('resolved_by', '?')}")
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

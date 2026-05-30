@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "alerts": [
+    {
+      "id": "attn-4f9a9f2b",
+      "source": "apparmor-fix-agent",
+      "severity": "high",
+      "autonomy_boundary": "human_gate",
+      "title": "AppArmor rules for command-center-dashboard-api",
+      "detail": "Detected 1 denials. Proposed 1 rules for profile 'command-center-dashboard-api'.",
+      "payload": {
+        "profile": "command-center-dashboard-api",
+        "rules_proposed": [
+          "            /var/lib/llama-cpp/models/ r,"
+        ],
+        "denial_paths": [
+          "/var/lib/llama-cpp/models/"
+        ]
+      },
+      "proposed_action": "Approve and commit rules to mcp-servers.nix",
+      "executor": "apparmor_fix",
+      "status": "pending",
+      "created_at": "2026-05-30T17:32:22Z",
+      "expires_at": "2026-05-31T17:32:22Z",
+      "resolved_at": null,
+      "resolved_by": "system"
+    },
+    {
+      "id": "attn-b9d1b738",
+      "source": "health-spider",
+      "severity": "high",
+      "autonomy_boundary": "human_gate",
+      "title": "HTTP Failure in zone hybrid-coordinator",
+      "detail": "HTTP health check failed at http://127.0.0.1:8003/health. Service state: active.",
+      "payload": {
+        "type": "http_failure",
+        "zone": "hybrid-coordinator",
+        "url": "http://127.0.0.1:8003/health",
+        "service_state": "active",
+        "timestamp": 1780164119.2421105
+      },
+      "proposed_action": "Check service logs and restart if hung: journalctl -u ai-hybrid-coordinator.service -n 50",
+      "executor": null,
+      "status": "pending",
+      "created_at": "2026-05-30T18:01:59Z",
+      "expires_at": "2026-05-31T18:01:59Z",
+      "resolved_at": null,
+      "resolved_by": "system"
+    },
+    {
+      "id": "attn-9e1b932f",
+      "source": "health-spider",
+      "severity": "high",
+      "autonomy_boundary": "human_gate",
+      "title": "HTTP Failure in zone switchboard",
+      "detail": "HTTP health check failed at http://127.0.0.1:8085/health. Service state: active.",
+      "payload": {
+        "type": "http_failure",
+        "zone": "switchboard",
+        "url": "http://127.0.0.1:8085/health",
+        "service_state": "active",
+        "timestamp": 1780164119.9469619
+      },
+      "proposed_action": "Check service logs and restart if hung: journalctl -u ai-switchboard.service -n 50",
+      "executor": null,
+      "status": "pending",
+      "created_at": "2026-05-30T18:01:59Z",
+      "expires_at": "2026-05-31T18:01:59Z",
+      "resolved_at": null,
+      "resolved_by": "system"
+    },
+    {
+      "id": "attn-95c2e65b",
+      "source": "health-spider",
+      "severity": "high",
+      "autonomy_boundary": "human_gate",
+      "title": "HTTP Failure in zone aidb",
+      "detail": "HTTP health check failed at http://127.0.0.1:8002/health. Service state: active.",
+      "payload": {
+        "type": "http_failure",
+        "zone": "aidb",
+        "url": "http://127.0.0.1:8002/health",
+        "service_state": "active",
+        "timestamp": 1780164120.1673944
+      },
+      "proposed_action": "Check service logs and restart if hung: journalctl -u ai-aidb.service -n 50",
+      "executor": null,
+      "status": "pending",
+      "created_at": "2026-05-30T18:02:00Z",
+      "expires_at": "2026-05-31T18:02:00Z",
+      "resolved_at": null,
+      "resolved_by": "system"
+    },
+    {
+      "id": "attn-88cc50cb",
+      "source": "health-spider",
+      "severity": "high",
+      "autonomy_boundary": "human_gate",
+      "title": "HTTP Failure in zone dashboard",
+      "detail": "HTTP health check failed at http://127.0.0.1:8889/api/health. Service state: active.",
+      "payload": {
+        "type": "http_failure",
+        "zone": "dashboard",
+        "url": "http://127.0.0.1:8889/api/health",
+        "service_state": "active",
+        "timestamp": 1780164120.3752384
+      },
+      "proposed_action": "Check service logs and restart if hung: journalctl -u command-center-dashboard-api.service -n 50",
+      "executor": null,
+      "status": "pending",
+      "created_at": "2026-05-30T18:02:00Z",
+      "expires_at": "2026-05-31T18:02:00Z",
+      "resolved_at": null,
+      "resolved_by": "system"
+    }
+  ]
+}
