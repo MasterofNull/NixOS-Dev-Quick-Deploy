@@ -1,4 +1,9 @@
 # AppArmor Rules Skill — NixOS-Dev-Quick-Deploy Harness
+## Tags
+apparmor, profile, ix, Ux, NoNewPrivileges, deny, rule, parse-error, EPERM, enforce, complain
+## When to Use
+Writing AppArmor rules for NixOS services; diagnosing EPERM/EACCES denials; profile reload after rebuild;
+denial-to-rule workflow; NoNewPrivileges constraint; mode reference (r/w/a/k/ix/Ux).
 
 ## Purpose
 Authoritative AppArmor rule authoring guide for this stack. Prevents the recurring parse

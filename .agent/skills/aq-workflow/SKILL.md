@@ -1,4 +1,9 @@
 # AQ Workflow Skill — NixOS-Dev-Quick-Deploy Harness
+## Tags
+aq-resume, aq-qa, aq-health, HITL, drop-zone, delegation, session, commit-gate, validation, aq-hints
+## When to Use
+Session start/resume after compaction; running health/QA checks; HITL alert queue; drop zone task dispatch;
+choosing delegation mode (direct/agent/hybrid/auto); understanding aq-* CLI commands.
 
 ## Purpose
 Canonical reference for all harness CLI tools, delegation modes, QA commands, and

@@ -1,4 +1,9 @@
 # System Dev Skill — NixOS-Dev-Quick-Deploy Harness
+## Tags
+pre-commit, doc-sync, rule11, issue-logging, tier0, RAG-seed, PULSE, RESUME, commit-gate, OWASP
+## When to Use
+Before any commit; keeping docs in sync after code changes; writing issues to issues-backlog.md;
+any workflow sequencing question; understanding the mandatory 6-step commit sequence.
 
 ## Purpose
 Enforce development discipline: correct workflow sequence, documentation sync, issue logging,
