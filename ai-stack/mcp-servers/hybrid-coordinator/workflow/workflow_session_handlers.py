@@ -22,6 +22,18 @@ from workflow.runtime_manager import provision_run_workspace, teardown_run_works
 
 logger = logging.getLogger("hybrid-coordinator")
 
+# Phase 83 — DAG session memory (optional; graceful no-op if unavailable)
+_DAG_MANAGER = None
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "ai-stack" / "agent-memory"))
+    from dag_manager import DAGSessionManager as _DAGSessionManager  # type: ignore
+    _DAG_SESSION_DIR = Path(__file__).resolve().parents[4] / ".agents" / "dag-sessions"
+    _DAG_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+    _DAG_MANAGER = _DAGSessionManager(_DAG_SESSION_DIR)
+except Exception as _dag_import_err:  # pragma: no cover
+    logger.debug("dag_manager unavailable — DAG session tracing disabled: %s", _dag_import_err)
+
 _build_workflow_plan: Optional[Callable[..., Dict[str, Any]]] = None
 _error_payload: Optional[Callable[[str, Exception], Dict[str, Any]]] = None
 _audit_planned_tools: Optional[Callable[..., Any]] = None
@@ -432,6 +444,17 @@ async def handle_workflow_session_start(request: web.Request) -> web.Response:
             sessions = await _load_workflow_sessions()
             sessions[session_id] = session
             await _save_workflow_sessions(sessions)
+        # Phase 83 — record session start in DAG (non-blocking, best-effort)
+        if _DAG_MANAGER is not None:
+            try:
+                await asyncio.to_thread(
+                    _DAG_MANAGER.create_entry,
+                    session_id, "message", None, "system",
+                    {"event": "session_start", "objective": query},
+                    {"plan_phase_count": len(phases)},
+                )
+            except Exception as _dag_err:
+                logger.debug("dag record failed for %s: %s", session_id, _dag_err)
         lesson_refs = await _active_lesson_refs(limit=2)
         if lesson_refs:
             session["active_lesson_refs"] = lesson_refs
