@@ -237,6 +237,9 @@ cmd_delegate() {
    Run py_compile on every Python file you touch before declaring work complete.
 8. ATOMIC PULSE: Append one line to .agent/collaboration/PULSE.log after every file write:
    [ISO-timestamp] [gemini] [write]: <file> — <what changed>
+9. ATOMIC RESUME: At every phase start and on task completion, update
+   .agent/collaboration/RESUME.json with: current_objective, phase, todo_snapshot[],
+   uncommitted_changes[], resume_hint. This is the compaction anchor for all agents.
 === END CONSTRAINTS ===
 
 ${prompt}"

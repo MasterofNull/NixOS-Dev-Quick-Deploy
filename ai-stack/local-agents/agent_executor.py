@@ -838,6 +838,8 @@ class LocalAgentExecutor:
             "- git commit message format: type(scope): desc + Co-Authored-By: <agent> <noreply@local>\n"
             "- Harness: use run_command to query http://localhost:8003/hints?q=<task> before reading files.\n"
             "- Memory: POST completed facts to http://localhost:8003/api/memory/facts when done.\n"
+            "- ATOMIC PULSE: append one line to .agent/collaboration/PULSE.log after every file write.\n"
+            "- ATOMIC RESUME: update .agent/collaboration/RESUME.json at phase start and task end.\n"
         )
 
         base_prompt = {
