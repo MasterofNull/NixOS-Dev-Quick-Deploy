@@ -68,8 +68,20 @@ except ImportError:
                     msgs[sys_idx] = {"role": "system", "content": prefix + "\n\n" + msgs[sys_idx]["content"]}
                 else:
                     msgs.insert(0, {"role": "system", "content": prefix})
-        payload = {"messages": msgs, "temperature": temperature, "max_tokens": _max,
-                   "chat_template_kwargs": {"enable_thinking": False}}
+        payload = {
+            "messages": msgs,
+            "temperature": temperature,
+            "max_tokens": _max,
+            "chat_template_kwargs": {"enable_thinking": False},
+            # Anti-loop guardrails: penalise token repetition so the model
+            # doesn't get stuck cycling the same phrase.  Values are mild —
+            # enough to prevent runaway loops without distorting reasoning.
+            "repeat_penalty": 1.08,
+            "repeat_last_n": 64,
+            "frequency_penalty": 0.05,
+            # Always request usage stats so callers can observe actual spend.
+            "stream_options": {"include_usage": True},
+        }
         if stream:
             payload["stream"] = True
         payload.update(extra)
@@ -142,24 +154,33 @@ _TINY_SIGNALS   = frozenset(["one-liner", "one line", "one sentence", "briefly",
 _SMALL_SIGNALS  = frozenset(["one paragraph", "short answer", "briefly explain",
                               "summarize in", "list 3", "list three", "list 5",
                               "list five", "in 2-3 sentences", "concisely"])
-_LARGE_SIGNALS  = frozenset(["full implementation", "complete the", "write all",
-                              "implement the entire", "detailed analysis",
-                              "comprehensive review", "multi-step", "full plan",
-                              "write a script", "write a function"])
+_LARGE_SIGNALS  = frozenset([
+    "full implementation", "complete the", "write all",
+    "implement the entire", "detailed analysis", "comprehensive review",
+    "multi-step", "full plan", "write a script", "write a function",
+    # design / prd / report tasks — these require full document output
+    "design document", "design doc", "produce a complete", "opinionated design",
+    "complete design", "full design", "expert review", "architecture review",
+    "complete report", "full report", "detailed report", "map every",
+    "all sections", "every file", "every section", "phase 8",
+])
 
 
 def classify_tokens(prompt: str, mode: str = "direct") -> Optional[int]:
     """Return a suggested max_tokens budget from prompt size signals.
 
     Returns None to defer to the env-var / mode-default chain in task_config.
-    Only overrides when the prompt contains explicit size signals — avoids
-    second-guessing the caller when no signal is present.
+    Only overrides when the prompt contains explicit size signals.
 
     Budget tiers (at ~1-2 tok/s on Renoir APU):
-      tiny  : 150  — one-liners, pings, yes/no, exact-reply tasks
-      small : 400  — paragraph, short list, brief summary
-      medium: 800  — default for direct/hybrid without other signals
-      large : 2048 — full implementation, detailed analysis
+      tiny  : 150   — one-liners, pings, yes/no, exact-reply tasks
+      small : 400   — paragraph, short list, brief summary
+      large : 4096  — full implementation, design docs, detailed analysis
+      none  : None  — no signal detected; defer to DIRECT_MAX_TOKENS env → mode default
+
+    IMPORTANT: Returns None when no signal is present so that an explicit
+    DIRECT_MAX_TOKENS env var (set by the caller) is honoured rather than
+    being silently overridden by a hardcoded 800-token default.
     """
     p = prompt.lower()
     if any(k in p for k in _TINY_SIGNALS):
@@ -167,10 +188,10 @@ def classify_tokens(prompt: str, mode: str = "direct") -> Optional[int]:
     if any(k in p for k in _SMALL_SIGNALS):
         return 400
     if any(k in p for k in _LARGE_SIGNALS):
-        return 2048
-    # Default override only for direct mode — other modes manage their own budget.
-    if mode == "direct":
-        return 800
+        return 4096
+    # No signal detected — return None so task_config reads DIRECT_MAX_TOKENS
+    # or falls back to the mode default (direct=4096).  Never hard-code 800
+    # here: that caps design-doc tasks without the caller knowing.
     return None
 
 
@@ -531,10 +552,16 @@ def main() -> int:
     assert args.subcmd == "delegate"
 
     resolved_mode = classify_mode(args.prompt) if args.mode == "auto" else args.mode
-    # When caller didn't pin max_tokens, apply the budget heuristic so simple
-    # tasks don't consume 4096-token slots trying to be clever.
+    # Token budget resolution:
+    #   1. Explicit --max-tokens CLI flag → absolute override
+    #   2. classify_tokens() signal match (tiny/small/large) → task-appropriate budget
+    #   3. None from classify_tokens → pass None so TaskConfig reads DIRECT_MAX_TOKENS
+    #      env var (set by the caller shell) then falls back to mode default.
+    # This ensures that `DIRECT_MAX_TOKENS=8192 delegate-to-local ...` is always
+    # honoured and not silently capped by the heuristic's 800-token default.
     resolved_tokens = args.max_tokens if args.max_tokens is not None \
         else classify_tokens(args.prompt, resolved_mode)
+    # resolved_tokens=None means TaskConfig._resolve_tokens() will read env vars.
 
     config = TaskConfig.from_args(
         mode=resolved_mode,

@@ -112,6 +112,14 @@ def build_llama_payload(
         # It MUST be in chat_template_kwargs — top-level is silently ignored by
         # llama.cpp, causing Qwen3-35B to fill all tokens with reasoning_content.
         "chat_template_kwargs": {"enable_thinking": False},
+        # Anti-loop guardrails: mild repetition penalties prevent the model from
+        # cycling the same phrase or stopping prematurely on structured patterns.
+        # repeat_penalty=1.08 and frequency_penalty=0.05 are conservative — they
+        # reduce degenerate loops without distorting reasoning or coherence.
+        # repeat_last_n=64 scans the last 64 tokens for repetition (not full ctx).
+        "repeat_penalty": 1.08,
+        "repeat_last_n": 64,
+        "frequency_penalty": 0.05,
     }
     if stream:
         payload["stream"] = True
