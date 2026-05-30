@@ -190,3 +190,4 @@ config/rocm-promotion-state.json
 .agents/drops/*.drop.yaml
 .agents/drops/archive/*.drop.yaml
 .agents/drops/failed/*.drop.yaml
+.agents/drops/.lock
