@@ -1713,6 +1713,32 @@ in {
         };
       };
 
+      # Phase 85 — Drop Zone Daemon: watches .agents/drops/*.drop.yaml and dispatches
+      # via dispatch_task() (Python import, no shell-out).  Provides AFK autonomous intake.
+      systemd.services.ai-drop-daemon = {
+        description = "AI Drop Zone Daemon — watches .agents/drops/ for task files";
+        wantedBy = ["ai-stack.target"];
+        partOf = ["ai-stack.target"];
+        after = ["network-online.target" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
+        path = with pkgs; [ bash coreutils python3 ];
+        serviceConfig = {
+          Type = "simple";
+          User = svcUser;
+          Group = aiGroup;
+          WorkingDirectory = mcp.repoPath;
+          ExecStart = "${pkgs.python3}/bin/python3 ${mcp.repoPath}/scripts/ai/aq-drop-daemon";
+          Restart = "on-failure";
+          RestartSec = "5s";
+          Environment = [
+            "LLAMA_URL=http://127.0.0.1:${toString ports.llamaCpp}"
+            "HYBRID_URL=http://127.0.0.1:${toString ports.mcpHybrid}"
+            "RALPH_URL=http://127.0.0.1:${toString ports.mcpRalph}"
+            "DROP_DAEMON_TIMEOUT=300"
+          ];
+        };
+      };
+
       systemd.services.ai-auto-remediate = {
         description = "AI stack autonomous remediation loop";
         restartIfChanged = false;

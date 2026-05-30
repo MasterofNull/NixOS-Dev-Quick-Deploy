@@ -239,6 +239,94 @@ class TaskRegistry:
         self._save_pending(data)
         self._handoff_append(f"[{ts}] [{status}] id={task_id}")
 
+    # ── Intent Lock v2 (Phase 85) ────────────────────────────────────────────
+
+    def acquire_lock(self, task_id: str, agent_id: str, ttl_s: int = 3600) -> bool:
+        """Try to claim a task lock.  Returns True if acquired, False if already held.
+
+        A lock is acquirable when:
+          - The entry has no 'claimed_by', OR
+          - now > heartbeat_at + ttl_s * 1.5  (stale/dead agent)
+        """
+        import socket
+        if not agent_id:
+            agent_id = f"{socket.gethostname()}-{os.getpid()}"
+
+        ts = _now()
+        data = self._load_pending()
+        acquired = False
+        for task in data.get("in_flight", []):
+            if task.get("id") != task_id:
+                continue
+            claimed_by = task.get("claimed_by")
+            heartbeat_at = task.get("heartbeat_at") or task.get("claimed_at")
+            if not claimed_by:
+                acquired = True
+            elif heartbeat_at:
+                # Parse ISO timestamp to check staleness
+                try:
+                    from datetime import datetime, timezone
+                    hb = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - hb).total_seconds()
+                    if age > ttl_s * 1.5:
+                        acquired = True  # stale lock — take it
+                except Exception:
+                    acquired = True  # parse failure → assume stale
+            if acquired:
+                task["claimed_by"] = agent_id
+                task["claimed_at"] = ts
+                task["ttl_s"] = ttl_s
+                task["heartbeat_at"] = ts
+            break
+        if acquired:
+            self._save_pending(data)
+        return acquired
+
+    def release_expired_locks(self) -> list:
+        """Release PENDING.json entries whose heartbeat has expired.
+
+        Returns list of task IDs that were released.
+        """
+        data = self._load_pending()
+        released = []
+        changed = False
+        for task in data.get("in_flight", []):
+            if task.get("status") != "running":
+                continue
+            heartbeat_at = task.get("heartbeat_at")
+            ttl_s = task.get("ttl_s", 3600)
+            if not heartbeat_at or not task.get("claimed_by"):
+                continue
+            try:
+                from datetime import datetime, timezone
+                hb = datetime.fromisoformat(heartbeat_at.replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - hb).total_seconds()
+                if age > ttl_s * 1.5:
+                    task.pop("claimed_by", None)
+                    task.pop("claimed_at", None)
+                    task.pop("heartbeat_at", None)
+                    task.pop("ttl_s", None)
+                    released.append(task["id"])
+                    changed = True
+            except Exception:
+                pass
+        if changed:
+            self._save_pending(data)
+        return released
+
+    def heartbeat(self, task_id: str, agent_id: str) -> bool:
+        """Update heartbeat_at for a claimed task.  Returns True if updated."""
+        data = self._load_pending()
+        updated = False
+        for task in data.get("in_flight", []):
+            if task.get("id") == task_id and task.get("claimed_by") == agent_id:
+                task["heartbeat_at"] = _now()
+                updated = True
+                break
+        if updated:
+            self._save_pending(data)
+        return updated
+
     # ── subcommand helpers (used by dispatch.py CLI) ─────────────────────────
 
     def cmd_list(self) -> None:

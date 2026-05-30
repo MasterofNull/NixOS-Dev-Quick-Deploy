@@ -185,3 +185,8 @@ tmp/
 
 # Phase 57 — per-host runtime state (not committed; contains host-specific promotion results)
 config/rocm-promotion-state.json
+
+# Phase 85 — Drop Zone task files (runtime intake; .gitkeep anchors track the dirs)
+.agents/drops/*.drop.yaml
+.agents/drops/archive/*.drop.yaml
+.agents/drops/failed/*.drop.yaml

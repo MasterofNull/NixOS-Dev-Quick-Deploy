@@ -540,6 +540,36 @@ async function loadServices() {
   }
 }
 
+// ─── OVERVIEW: DROP ZONE STATUS (Phase 85) ────────────────────────────────────
+async function loadDropZone() {
+  try {
+    const d = await apiFetch('/drops/status');
+    if (!d) return;
+
+    const badge = document.getElementById('dropZoneBadge');
+    const details = document.getElementById('dropZoneDetails');
+
+    const ok = d.daemon_active;
+    if (badge) {
+      badge.textContent = ok ? 'active' : 'inactive';
+      badge.className = `card-badge ${ok ? 'badge-ok' : 'badge-err'}`;
+    }
+
+    if (details) {
+      const failCls = d.failed > 0 ? 'err' : 'ok';
+      details.innerHTML =
+        fwRow('Daemon',   ok ? 'active' : 'inactive', ok ? 'ok' : 'err') +
+        fwRow('Queued',   String(d.queued),   'info') +
+        fwRow('Archived', String(d.archived), 'info') +
+        fwRow('Failed',   String(d.failed),   failCls) +
+        (d.last_error ? fwRow('Last Error', d.last_error, 'err') : '');
+    }
+  } catch (err) {
+    const badge = document.getElementById('dropZoneBadge');
+    if (badge) { badge.textContent = '--'; badge.className = 'card-badge badge-warn'; }
+  }
+}
+
 // ─── OVERVIEW: DATABASE METRICS ───────────────────────────────────────────────
 async function loadDatabase() {
   const aiM = window._aiMetrics || await apiFetch('/ai/metrics');
@@ -3605,7 +3635,7 @@ async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add('overview');
   window._aiMetrics = null;
-  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState()]);
+  await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState(), loadDropZone()]);
   // Dependents
   loadInferenceSlots();
   loadAIDB();
@@ -3620,7 +3650,7 @@ window.addEventListener('error', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
   // Immediate: fast data (hardware state included — thermal is real-time critical)
-  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState()]).then(() => {
+  Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadHardwareState(), loadDropZone()]).then(() => {
     loadInferenceSlots();
     loadAIDB();
   });
@@ -3631,6 +3661,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(loadRagQuality,    60_000);
   setInterval(loadSystem,        30_000);
   setInterval(loadServices,      30_000);
+  setInterval(loadDropZone,      30_000);
   setInterval(loadDatabase,      60_000);
   setInterval(() => { 
     loadHardwareState().then(() => {

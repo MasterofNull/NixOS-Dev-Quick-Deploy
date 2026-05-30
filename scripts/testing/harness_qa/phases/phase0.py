@@ -1157,6 +1157,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_phase67_dashboard(ctx))
     results.extend(_check_phase66_wasmtime(ctx))
     results.extend(_check_phase83_dag_context(ctx))
+    results.extend(_check_phase85_drop_zone(ctx))
     return results
 
 
@@ -1818,5 +1819,80 @@ def _check_phase83_dag_context(ctx: RunContext) -> list[CheckResult]:
         results.append(passed(4, "83.4", "dag_manager wired into workflow_session_handlers"))
     else:
         results.append(failed(4, "83.4", "dag_manager wiring", "DAGSessionManager import not found in workflow_session_handlers.py"))
+
+    return results
+
+
+def _check_phase85_drop_zone(ctx: RunContext) -> list[CheckResult]:
+    """Phase 85: Drop Zone Daemon + Intent Lock v2 (PAEA Phase 2)."""
+    results: list[CheckResult] = []
+
+    # 85.1 — aq-drop-daemon script exists and is syntax-clean
+    daemon = ctx.repo_root / "scripts" / "ai" / "aq-drop-daemon"
+    if not daemon.exists():
+        results.append(failed(4, "85.1", "aq-drop-daemon", "script not found at scripts/ai/aq-drop-daemon"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-m", "py_compile", str(daemon)],
+            capture_output=True, text=True,
+        )
+        if rc.returncode != 0:
+            results.append(failed(4, "85.1", "aq-drop-daemon syntax", rc.stderr.strip()))
+        else:
+            results.append(passed(4, "85.1", "aq-drop-daemon: exists and syntax-clean"))
+
+    # 85.2 — DropSpec schema validator exists and passes injection test
+    drop_spec = ctx.repo_root / "scripts" / "ai" / "lib" / "drop_spec.py"
+    if not drop_spec.exists():
+        results.append(failed(4, "85.2", "drop_spec.py", "file not found at scripts/ai/lib/drop_spec.py"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-c",
+             "import sys; sys.path.insert(0,'scripts/ai/lib'); "
+             "from drop_spec import DropSpec, DropSpecError; "
+             "s=DropSpec(objective='ok',prompt='do useful work'); s._validate(); "
+             "raised=False\n"
+             "try:\n  DropSpec(objective='$(rm -rf /)',prompt='x')._validate()\nexcept DropSpecError: raised=True\n"
+             "assert raised, 'injection not blocked'\nprint('ok')"],
+            capture_output=True, text=True, cwd=str(ctx.repo_root),
+        )
+        if rc.returncode != 0 or "ok" not in rc.stdout:
+            results.append(failed(4, "85.2", "drop_spec.py injection guard", rc.stderr.strip() or rc.stdout.strip()))
+        else:
+            results.append(passed(4, "85.2", "drop_spec.py: schema validator + injection guard pass"))
+
+    # 85.3 — Intent Lock v2 methods present in task_registry.py
+    registry = ctx.repo_root / "scripts" / "ai" / "lib" / "task_registry.py"
+    if not registry.exists():
+        results.append(failed(4, "85.3", "task_registry.py", "file not found"))
+    else:
+        text = registry.read_text()
+        required = ["def acquire_lock", "def release_expired_locks", "def heartbeat"]
+        missing = [m for m in required if m not in text]
+        if missing:
+            results.append(failed(4, "85.3", "Intent Lock v2 methods", f"missing: {missing}"))
+        else:
+            results.append(passed(4, "85.3", "Intent Lock v2: acquire_lock + release_expired_locks + heartbeat present"))
+
+    # 85.4 — drop zone directories exist
+    drops_dir = ctx.repo_root / ".agents" / "drops"
+    archive_dir = drops_dir / "archive"
+    failed_dir = drops_dir / "failed"
+    missing_dirs = [str(d) for d in [drops_dir, archive_dir, failed_dir] if not d.is_dir()]
+    if missing_dirs:
+        results.append(failed(1, "85.4", "drop zone directories", f"missing: {missing_dirs}"))
+    else:
+        results.append(passed(1, "85.4", "drop zone directories: .agents/drops/{,archive/,failed/} exist"))
+
+    # 85.5 — ai-drop-daemon.service wired in mcp-servers.nix
+    nix_path = ctx.repo_root / "nix" / "modules" / "services" / "mcp-servers.nix"
+    if not nix_path.exists():
+        results.append(skipped(4, "85.5", "ai-drop-daemon NixOS service", "mcp-servers.nix not found"))
+    else:
+        text = nix_path.read_text()
+        if "ai-drop-daemon" in text and "aq-drop-daemon" in text:
+            results.append(passed(4, "85.5", "ai-drop-daemon service wired in mcp-servers.nix"))
+        else:
+            results.append(failed(4, "85.5", "ai-drop-daemon NixOS service", "not found in mcp-servers.nix"))
 
     return results
