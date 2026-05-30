@@ -5112,3 +5112,64 @@ async def get_tool_execution_heatmap() -> Dict[str, Any]:
         "window_entries": min(len(heatmap) * 1000, 1000),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 85 — Drop Zone status
+# ---------------------------------------------------------------------------
+
+@router.get("/drops/status")
+async def get_drops_status() -> Dict[str, Any]:
+    """Return Drop Zone daemon status and drop file counts.
+
+    Response:
+      daemon_active  bool    — whether ai-drop-daemon.service is active
+      queued         int     — *.drop.yaml files in .agents/drops/
+      archived       int     — files in .agents/drops/archive/
+      failed         int     — files in .agents/drops/failed/
+      last_error     str|None — name of most recent failed drop file (if any)
+    """
+    repo = _repo_root()
+    drops_dir   = repo / ".agents" / "drops"
+    archive_dir = drops_dir / "archive"
+    failed_dir  = drops_dir / "failed"
+
+    def _count(d: Path) -> int:
+        try:
+            return len(list(d.glob("*.drop.yaml")))
+        except OSError:
+            return 0
+
+    queued   = _count(drops_dir)
+    archived = _count(archive_dir)
+    failed   = _count(failed_dir)
+
+    last_error: Optional[str] = None
+    try:
+        fails = sorted(failed_dir.glob("*.drop.yaml"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if fails:
+            last_error = fails[0].name
+    except OSError:
+        pass
+
+    # Check systemd unit status (non-blocking)
+    daemon_active = False
+    try:
+        rc = await asyncio.to_thread(
+            subprocess.run,
+            ["systemctl", "is-active", "--quiet", "ai-drop-daemon.service"],
+            capture_output=True, timeout=3,
+        )
+        daemon_active = (rc.returncode == 0)
+    except Exception:
+        pass
+
+    return {
+        "daemon_active": daemon_active,
+        "queued": queued,
+        "archived": archived,
+        "failed": failed,
+        "last_error": last_error,
+        "drops_dir": str(drops_dir),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }

@@ -1,25 +1,20 @@
 {
   "schema_version": "2",
-  "written_at": "2026-05-30T06:08:06Z",
+  "written_at": "2026-05-30T00:10Z",
   "written_by": "claude-sonnet-4-6",
-  "current_objective": "Phase 83 complete \u2014 agentic mind activation",
-  "phase": "Phase 83 \u2014 DAG Context Wiring + PAEA Phase 1 Production Activation",
-  "last_known_commit": "pending-83",
+  "current_objective": "Phase 84 — qa_check hardening + Phase 85 PAEA Phase 2 prep",
+  "phase": "Phase 84 — AppArmor ix fix committed; awaiting nixos-rebuild to verify",
+  "last_known_commit": "9337821f",
   "todo_snapshot": [
-    "completed: Phase 83.1 \u2014 dag_manager wired into workflow_session_handlers",
-    "completed: Phase 83.2 \u2014 context-merger wired into aq-session-start",
-    "completed: Phase 83.4 \u2014 aq-qa Phase 1 coverage checks added (4/4 PASS)",
-    "deferred: Phase 83.3 Rust pre-flight (user: research only, not yet)",
-    "next: Phase 84 \u2014 Phase 2 PAEA (Drop Zone daemon + Skill Factory)"
+    "completed: Phase 84.1 — auth fix /qa/ → LOOPBACK_AGENT_PREFIXES (066ffc6f)",
+    "completed: Phase 84.2 — scheduler fix batch→background token_budget=1 (2e5bd4ac)",
+    "completed: Phase 84.3 — AppArmor Ux→ix + subprocess deps (9337821f)",
+    "pending: REBUILD + verify aq-qa 0 passes 67/67",
+    "pending: Phase 85 PRD from Gemini architect output (gemini-20260529-235526-ut1gch.log)",
+    "pending: Execute Phase 85 — Drop Zone Daemon + Intent Lock v2",
+    "pending: Fix downshift metric denominator (aq-report ~line 1754)",
+    "pending: Commit harness-prompt-extensions.yaml dataset_size 26→28"
   ],
-  "uncommitted_changes": [
-    "ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_session_handlers.py",
-    "scripts/ai/aq-session-start",
-    "scripts/testing/harness_qa/phases/phase0.py",
-    ".gitignore",
-    ".agent/PROJECT-PHASE83-PRD.md",
-    ".agents/plans/phase-83-dag-context-wiring.md",
-    ".agent/collaboration/HANDOFF.md"
-  ],
-  "resume_hint": "Phase 83 complete. All 4 checks pass. Ready to commit then proceed to Phase 2 PAEA (Drop Zones + Skill Factory) after user authorization."
+  "uncommitted_changes": [],
+  "resume_hint": "AppArmor ix revision committed 9337821f. Request nixos-rebuild then run aq-qa 0 to confirm 67/67. Gemini architect design for Drop Zone + Intent Lock v2 at .agents/delegation/outputs/gemini-20260529-235526-ut1gch.log — ready to build PRD."
 }

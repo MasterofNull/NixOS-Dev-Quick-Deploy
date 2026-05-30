@@ -1106,6 +1106,69 @@ print('ok' if ok else 'fail')
   else
     _fail 4 "0.9.2" "UAG lifecycle replay endpoint reachable" "HTTP ${replay_http:-ERR}: ${replay_out:0:80}"
   fi
+
+  # ── Phase 85: Drop Zone Daemon + Intent Lock v2 (PAEA Phase 2) ──────────────
+
+  # 85.1 — aq-drop-daemon script exists and is syntax-clean
+  local daemon="${REPO_ROOT}/scripts/ai/aq-drop-daemon"
+  if [[ ! -f "$daemon" ]]; then
+    _fail 4 "85.1" "aq-drop-daemon" "script not found at scripts/ai/aq-drop-daemon"
+  elif python3 -m py_compile "$daemon" 2>/dev/null; then
+    _pass 4 "85.1" "aq-drop-daemon: exists and syntax-clean"
+  else
+    _fail 4 "85.1" "aq-drop-daemon syntax" "py_compile failed"
+  fi
+
+  # 85.2 — drop_spec.py injection guard
+  local drop_spec="${REPO_ROOT}/scripts/ai/lib/drop_spec.py"
+  if [[ ! -f "$drop_spec" ]]; then
+    _fail 4 "85.2" "drop_spec.py" "file not found at scripts/ai/lib/drop_spec.py"
+  else
+    local ds_out
+    ds_out=$(python3 -c "
+import sys; sys.path.insert(0,'${REPO_ROOT}/scripts/ai/lib')
+from drop_spec import DropSpec, DropSpecError
+s=DropSpec(objective='ok',prompt='do useful work'); s._validate()
+raised=False
+try:
+    DropSpec(objective='\$(rm -rf /)',prompt='x')._validate()
+except DropSpecError:
+    raised=True
+assert raised, 'injection not blocked'
+print('ok')
+" 2>&1)
+    if [[ "$ds_out" == *"ok"* ]]; then
+      _pass 4 "85.2" "drop_spec.py: schema validator + injection guard pass"
+    else
+      _fail 4 "85.2" "drop_spec.py injection guard" "${ds_out:0:120}"
+    fi
+  fi
+
+  # 85.3 — Intent Lock v2 methods in task_registry.py
+  local registry="${REPO_ROOT}/scripts/ai/lib/task_registry.py"
+  if [[ ! -f "$registry" ]]; then
+    _fail 4 "85.3" "task_registry.py" "file not found"
+  elif grep -q "def acquire_lock" "$registry" && grep -q "def release_expired_locks" "$registry" && grep -q "def heartbeat" "$registry"; then
+    _pass 4 "85.3" "Intent Lock v2: acquire_lock + release_expired_locks + heartbeat present"
+  else
+    _fail 4 "85.3" "Intent Lock v2 methods" "one or more methods missing in task_registry.py"
+  fi
+
+  # 85.4 — drop zone directories exist
+  local drops_dir="${REPO_ROOT}/.agents/drops"
+  if [[ -d "${drops_dir}" && -d "${drops_dir}/archive" && -d "${drops_dir}/failed" ]]; then
+    _pass 1 "85.4" "drop zone directories: .agents/drops/{,archive/,failed/} exist"
+  else
+    _fail 1 "85.4" "drop zone directories" "one or more of .agents/drops/{,archive/,failed/} missing"
+  fi
+
+  # 85.5 — ai-drop-daemon service wired in mcp-servers.nix
+  local nix_path="${REPO_ROOT}/nix/modules/services/mcp-servers.nix"
+  if grep -q "ai-drop-daemon" "$nix_path" && grep -q "aq-drop-daemon" "$nix_path" 2>/dev/null; then
+    _pass 4 "85.5" "ai-drop-daemon service wired in mcp-servers.nix"
+  else
+    _fail 4 "85.5" "ai-drop-daemon NixOS service" "not found in mcp-servers.nix"
+  fi
 }
 
 # ---------------------------------------------------------------------------

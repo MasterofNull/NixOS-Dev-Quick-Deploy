@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# aq-drop — Phase 85 PAEA Drop Zone CLI helper.
+#
+# Writes a *.drop.yaml to .agents/drops/ so aq-drop-daemon picks it up.
+#
+# Usage:
+#   aq-drop "Do something useful"
+#   aq-drop "Refactor X" --role architect --mode direct --priority 3
+#   aq-drop "Write tests for Y" --ttl 7200
+#
+# Options:
+#   --role       implementer|architect|reviewer|orchestrator  (default: implementer)
+#   --mode       auto|agent|hybrid|direct                    (default: auto)
+#   --priority   1-10                                        (default: 5)
+#   --ttl        60-86400 (seconds)                          (default: 3600)
+#   --tags       comma-separated tag list                    (default: none)
+#   -h, --help   Show this help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+DROPS_DIR="${REPO_ROOT}/.agents/drops"
+
+# ── defaults ──────────────────────────────────────────────────────────────────
+_ROLE="implementer"
+_MODE="auto"
+_PRIORITY=5
+_TTL=3600
+_TAGS=""
+_PROMPT=""
+
+# ── argument parsing ──────────────────────────────────────────────────────────
+show_help() {
+    grep '^#' "$0" | grep -v '#!/' | sed 's/^# //' | sed 's/^#//'
+    exit 0
+}
+
+if [[ $# -eq 0 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    show_help
+fi
+
+_PROMPT="$1"; shift
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --role)      _ROLE="$2";     shift 2 ;;
+        --mode)      _MODE="$2";     shift 2 ;;
+        --priority)  _PRIORITY="$2"; shift 2 ;;
+        --ttl)       _TTL="$2";      shift 2 ;;
+        --tags)      _TAGS="$2";     shift 2 ;;
+        -h|--help)   show_help ;;
+        *) echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+done
+
+# ── validation ────────────────────────────────────────────────────────────────
+_VALID_ROLES="implementer architect reviewer orchestrator"
+_VALID_MODES="auto agent hybrid direct"
+
+if [[ -z "$_PROMPT" ]]; then
+    echo "Error: prompt is required as the first positional argument." >&2
+    exit 1
+fi
+
+if ! echo "$_VALID_ROLES" | grep -qw "$_ROLE"; then
+    echo "Error: --role must be one of: $_VALID_ROLES" >&2
+    exit 1
+fi
+
+if ! echo "$_VALID_MODES" | grep -qw "$_MODE"; then
+    echo "Error: --mode must be one of: $_VALID_MODES" >&2
+    exit 1
+fi
+
+# ── write drop file ───────────────────────────────────────────────────────────
+mkdir -p "$DROPS_DIR"
+
+DROP_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+DROP_FILE="${DROPS_DIR}/${DROP_ID}.drop.yaml"
+
+# Build optional tags YAML list
+if [[ -n "$_TAGS" ]]; then
+    TAGS_YAML="$(echo "$_TAGS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/.*/  - "&"/')"
+    TAGS_BLOCK="tags:
+${TAGS_YAML}"
+else
+    TAGS_BLOCK="tags: []"
+fi
+
+cat > "$DROP_FILE" <<EOF
+objective: "${_PROMPT}"
+prompt: "${_PROMPT}"
+role: "${_ROLE}"
+mode: "${_MODE}"
+priority: ${_PRIORITY}
+ttl_s: ${_TTL}
+${TAGS_BLOCK}
+EOF
+
+echo "Dropped: ${DROP_FILE}"
+echo "  role=${_ROLE} mode=${_MODE} priority=${_PRIORITY} ttl=${_TTL}s"
+echo "  aq-drop-daemon will pick this up within 2s"

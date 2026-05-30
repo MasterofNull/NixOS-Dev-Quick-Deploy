@@ -1,184 +1,198 @@
 #!/usr/bin/env python3
 """
-aq-drop-daemon — Event-driven autonomous task intake.
-                  Monitors drops.yaml paths and triggers agent workflows.
-"""
+aq-drop-daemon — Phase 85 PAEA Drop Zone Daemon.
 
-import argparse
-import asyncio
-import json
+Watches .agents/drops/*.drop.yaml for task files, validates them via
+DropSpec, dispatches via dispatch_task(), then archives processed files.
+
+Designed to run as a long-lived systemd service (ai-drop-daemon.service).
+
+Security: DropSpec rejects injection patterns before any dispatch.
+          All dispatch is via Python import — no shell-out.
+          fcntl.LOCK_NB prevents double-dispatch if two instances run.
+"""
+from __future__ import annotations
+
+import fcntl
 import logging
 import os
-import subprocess
+import signal
+import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Set, Any
 
-import yaml
+# ── path resolution ───────────────────────────────────────────────────────────
+_HERE = Path(__file__).resolve().parent        # scripts/ai/
+_LIB = _HERE / "lib"
+_REPO_ROOT = _HERE.parent.parent               # repo root
+for _p in [str(_LIB), str(_REPO_ROOT)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("drop-daemon")
+from drop_spec import DropSpec, DropSpecError              # noqa: E402
+from task_config import TaskConfig                         # noqa: E402
+from task_registry import TaskRegistry                     # noqa: E402
+from dispatch import classify_mode, dispatch_task          # noqa: E402
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-CONFIG_PATH = REPO_ROOT / "config" / "drops.yaml"
-LOCK_PATH = REPO_ROOT / ".agent" / "collaboration" / "PENDING.json"
+# ── config ────────────────────────────────────────────────────────────────────
+_DROPS_DIR      = _REPO_ROOT / ".agents" / "drops"
+_ARCHIVE_DIR    = _DROPS_DIR / "archive"
+_FAILED_DIR     = _DROPS_DIR / "failed"
+_LOCK_FILE      = _DROPS_DIR / ".lock"
+_DELEGATION_DIR = _REPO_ROOT / ".agents" / "delegation"
+_OUTPUTS_DIR    = _DELEGATION_DIR / "outputs"
 
-class IntentLock:
-    """Manages the PENDING.json intent lock to prevent agent collisions (v2 with TTL)."""
-    
-    @staticmethod
-    def get_lock() -> Dict[str, Any]:
-        if not LOCK_PATH.exists():
-            return {}
-        try:
-            with open(LOCK_PATH, "r") as f:
-                data = json.load(f)
-                
-            # Check TTL (v2)
-            timestamp = data.get("timestamp", 0)
-            ttl = data.get("ttl_seconds", 300) # Default 5 minutes
-            if time.time() - timestamp > ttl:
-                logger.info(f"Stale lock detected and ignored (expired by {time.time() - timestamp - ttl:.1f}s)")
-                return {}
-                
-            return data
-        except Exception:
-            return {}
+_POLL_INTERVAL_S  = 2
+_GC_EVERY_N_CYCLES = 60   # run expired-lock GC every ~120s
 
-    @staticmethod
-    def set_lock(agent_id: str, session_id: str, intended_changes: List[Dict[str, Any]], locks: List[str], ttl_seconds: int = 300):
-        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        lock_data = {
-            "session_id": session_id,
-            "active_agent": agent_id,
-            "intended_changes": intended_changes,
-            "locks": locks,
-            "timestamp": time.time(),
-            "ttl_seconds": ttl_seconds
-        }
-        with open(LOCK_PATH, "w") as f:
-            json.dump(lock_data, f, indent=2)
+_LLAMA_URL  = os.environ.get("LLAMA_URL",  "http://127.0.0.1:8080")
+_HYBRID_URL = os.environ.get("HYBRID_URL", "http://127.0.0.1:8003")
+_RALPH_URL  = os.environ.get("RALPH_URL",  "http://127.0.0.1:8004")
+_TIMEOUT_S  = int(os.environ.get("DROP_DAEMON_TIMEOUT", "300"))
 
-    @staticmethod
-    def clear_lock():
-        if LOCK_PATH.exists():
-            LOCK_PATH.unlink()
+# ── logging ───────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+    stream=sys.stdout,
+)
+log = logging.getLogger("aq-drop-daemon")
 
-class DropDaemon:
-    def __init__(self, config_path: Path):
-        self.config_path = config_path
-        self.state: Dict[str, Dict[str, float]] = {} # zone_name -> {file_path -> mtime}
-        self.running = True
+# ── graceful shutdown ─────────────────────────────────────────────────────────
+_running = True
 
-    def load_config(self) -> List[Dict[str, Any]]:
-        if not self.config_path.exists():
-            logger.warning(f"Config not found: {self.config_path}")
-            return []
-        try:
-            with open(self.config_path, "r") as f:
-                return yaml.safe_load(f).get("drop_zones", [])
-        except Exception as e:
-            logger.error(f"Error loading config: {e}")
-            return []
+def _handle_signal(signum, frame):  # noqa: ARG001
+    global _running
+    log.info("signal %d received — shutting down cleanly", signum)
+    _running = False
 
-    async def scan_zone(self, zone: Dict[str, Any]):
-        name = zone["name"]
-        watch_patterns = zone["watch"]
-        triggers = zone.get("trigger", ["created"])
-        
-        # Expand directory patterns
-        expanded_patterns = []
-        for p in watch_patterns:
-            full_path = REPO_ROOT / p
-            if full_path.is_dir():
-                expanded_patterns.append(str(Path(p) / "*"))
-                expanded_patterns.append(str(Path(p) / "**" / "*"))
-            else:
-                expanded_patterns.append(p)
+signal.signal(signal.SIGTERM, _handle_signal)
+signal.signal(signal.SIGINT, _handle_signal)
 
-        if name not in self.state:
-            self.state[name] = {}
-            # Initial baseline
-            for pattern in expanded_patterns:
-                for file_path in REPO_ROOT.glob(pattern):
-                    if file_path.is_file():
-                        self.state[name][str(file_path)] = file_path.stat().st_mtime
-            return
 
-        for pattern in expanded_patterns:
-            for file_path in REPO_ROOT.glob(pattern):
-                if not file_path.is_file():
-                    continue
-                    
-                path_str = str(file_path)
-                mtime = file_path.stat().st_mtime
-                
-                if path_str not in self.state[name]:
-                    # New file
-                    if "created" in triggers:
-                        logger.info(f"Trigger [created] in zone '{name}': {file_path}")
-                        await self.trigger_workflow(zone, file_path)
-                    self.state[name][path_str] = mtime
-                elif mtime > self.state[name][path_str]:
-                    # Modified file
-                    if "modified" in triggers:
-                        logger.info(f"Trigger [modified] in zone '{name}': {file_path}")
-                        await self.trigger_workflow(zone, file_path)
-                    self.state[name][path_str] = mtime
+# ── helpers ───────────────────────────────────────────────────────────────────
 
-    async def trigger_workflow(self, zone: Dict[str, Any], file_path: Path):
-        """Trigger an agent workflow using aq-session-start."""
-        name = zone["name"]
-        skill = zone["skill"]
-        team = zone["team"]
-        
-        logger.info(f"Workflow '{name}' starting with team {team} for {file_path}")
-        
-        session_id = f"auto-{int(time.time())}"
-        IntentLock.set_lock(
-            agent_id=team[0],
-            session_id=session_id,
-            intended_changes=[{"file": str(file_path), "action": "analyze", "reason": f"Drop zone trigger: {name}"}],
-            locks=[str(file_path)]
+def _ensure_dirs() -> None:
+    for d in (_DROPS_DIR, _ARCHIVE_DIR, _FAILED_DIR, _OUTPUTS_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
+
+def _scan_drops() -> list[Path]:
+    """Return *.drop.yaml files in .agents/drops/, sorted oldest-first."""
+    return sorted(_DROPS_DIR.glob("*.drop.yaml"), key=lambda p: p.stat().st_mtime)
+
+
+def _archive(path: Path) -> None:
+    os.rename(path, _ARCHIVE_DIR / path.name)
+    log.info("archived drop=%s", path.name)
+
+
+def _fail(path: Path, reason: str) -> None:
+    os.rename(path, _FAILED_DIR / path.name)
+    log.error("failed drop=%s reason=%s", path.name, reason)
+
+
+def _process_drop(drop_path: Path, registry: TaskRegistry) -> None:
+    """Validate → dispatch → archive/fail a single drop file."""
+    try:
+        spec = DropSpec.from_file(drop_path)
+    except DropSpecError as exc:
+        _fail(drop_path, str(exc))
+        return
+
+    # Resolve "auto" mode via heuristic classifier
+    resolved_mode = classify_mode(spec.prompt) if spec.mode == "auto" else spec.mode
+
+    try:
+        config = TaskConfig.from_args(
+            mode=resolved_mode,
+            role=spec.role,
+            timeout_secs=_TIMEOUT_S,
+            max_tokens=None,
+            llama_url=_LLAMA_URL,
+            hybrid_url=_HYBRID_URL,
+            ralph_url=_RALPH_URL,
         )
-        
-        # Actually spawn the background workflow
-        task_desc = f"Handle drop zone event '{name}' for file {file_path}. Use skill {skill}."
-        cmd = [
-            str(REPO_ROOT / "scripts" / "ai" / "aq-session-start"),
-            "--task", task_desc,
-        ]
-        
+    except ValueError as exc:
+        _fail(drop_path, f"TaskConfig error: {exc}")
+        return
+
+    task_id = f"drop-{spec.drop_id[:8]}"
+    output_file = _OUTPUTS_DIR / f"{task_id}.log"
+
+    log.info(
+        "dispatching drop=%s task=%s mode=%s role=%s priority=%d",
+        drop_path.name, task_id, resolved_mode, spec.role, spec.priority,
+    )
+
+    try:
+        success = dispatch_task(
+            config=config,
+            prompt=spec.prompt,
+            task_id=task_id,
+            output_file=output_file,
+            registry=registry,
+            script_dir=_HERE,
+        )
+    except Exception as exc:
+        log.exception("dispatch_task raised for drop=%s: %s", drop_path.name, exc)
+        _fail(drop_path, f"dispatch exception: {exc}")
+        return
+
+    if success:
+        _archive(drop_path)
+    else:
+        _fail(drop_path, "dispatch_task returned False")
+
+
+def _gc_expired_locks(registry: TaskRegistry) -> None:
+    """Release PENDING.json entries whose heartbeat has expired (Intent Lock v2)."""
+    try:
+        released = registry.release_expired_locks()
+        if released:
+            log.info("GC released expired locks: %s", released)
+    except Exception as exc:
+        log.warning("GC pass failed: %s", exc)
+
+
+# ── main loop ─────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    _ensure_dirs()
+    registry = TaskRegistry(_DELEGATION_DIR, _REPO_ROOT)
+    log.info("aq-drop-daemon started watching %s", _DROPS_DIR)
+
+    cycle = 0
+    while _running:
         try:
-            logger.info(f"Spawning background process: {' '.join(cmd)}")
-            # Fire and forget
-            subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=str(REPO_ROOT)
-            )
-        except Exception as e:
-            logger.error(f"Failed to spawn workflow process: {e}")
+            with open(_LOCK_FILE, "w") as lock_fh:
+                try:
+                    fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    # Another instance holds the scan lock — skip this cycle
+                    log.debug("scan lock held by another instance, skipping cycle")
+                    time.sleep(_POLL_INTERVAL_S)
+                    continue
+                try:
+                    drops = _scan_drops()
+                    for drop_path in drops:
+                        if not _running:
+                            break
+                        _process_drop(drop_path, registry)
+                    cycle += 1
+                    if cycle % _GC_EVERY_N_CYCLES == 0:
+                        _gc_expired_locks(registry)
+                finally:
+                    fcntl.flock(lock_fh, fcntl.LOCK_UN)
+        except Exception as exc:
+            log.exception("unexpected error in main loop: %s", exc)
 
-        # IntentLock is cleared by the agent when done
+        time.sleep(_POLL_INTERVAL_S)
 
-    async def run(self, interval: int = 5):
-        logger.info(f"Drop Daemon started (polling every {interval}s)...")
-        while self.running:
-            zones = self.load_config()
-            for zone in zones:
-                await self.scan_zone(zone)
-            await asyncio.sleep(interval)
+    log.info("aq-drop-daemon stopped")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Drop Zone Daemon")
-    parser.add_argument("--interval", type=int, default=5, help="Polling interval in seconds")
-    args = parser.parse_args()
-
-    daemon = DropDaemon(CONFIG_PATH)
-    try:
-        asyncio.run(daemon.run(args.interval))
-    except KeyboardInterrupt:
-        logger.info("Daemon stopping...")
+    main()
