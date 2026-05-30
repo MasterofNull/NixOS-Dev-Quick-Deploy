@@ -68,14 +68,19 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _parse_ts(ts_str: str) -> Optional[datetime]:
-    """Parse ISO-8601 timestamp, return None on parse failure."""
+def _parse_ts(ts_str) -> Optional[datetime]:
+    """Parse ISO-8601 string or Unix float/int timestamp. Return None on failure."""
     if not ts_str:
         return None
+    # Health-spider and some telemetry producers emit Unix float timestamps.
+    if isinstance(ts_str, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(ts_str), tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
     try:
         # Python 3.7+ fromisoformat handles most ISO-8601 but not trailing Z
-        ts_str = ts_str.replace("Z", "+00:00")
-        return datetime.fromisoformat(ts_str)
+        return datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
     except ValueError:
         return None
 
@@ -140,7 +145,9 @@ def _quality_score(response: str, query: str) -> float:
         or response.count("\n") > 5
     )
     if is_structured:
-        return min(1.0, 0.40 + length_bonus + coverage * 0.30)
+        # Structured/code/agent outputs score 0.50 base — higher than prose
+        # with zero coverage, since they typically don't repeat query terms.
+        return min(1.0, 0.50 + length_bonus + coverage * 0.30)
     return min(1.0, coverage * 0.7 + length_bonus)
 
 
@@ -260,7 +267,12 @@ class TrainingIngestor:
                 continue
 
             score = _quality_score(response, query)
-            if score < self.min_quality:
+            # agent_step_complete events are verified direct model outputs from
+            # DirectRunner — apply a lower quality floor since we know the
+            # inference completed successfully (keyword coverage is a poor
+            # signal for structured/code agent responses).
+            floor = 0.40 if event.get("event_type") == "agent_step_complete" else self.min_quality
+            if score < floor:
                 continue
 
             # Deduplicate by content hash.

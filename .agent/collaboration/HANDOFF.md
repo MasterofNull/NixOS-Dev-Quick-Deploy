@@ -1,3 +1,19 @@
+# HANDOFF MEMO — 2026-05-30 (updated Phase 82 — training loop + gap pipeline fixes)
+
+## Phase 82 Fixes — 2026-05-30
+
+### training_ingest.py — quality score fix (samples_added: 0 → 1+)
+- `is_structured` base raised `0.40 → 0.50`: structured/code responses don't repeat query terms verbatim; old score was too low
+- `agent_step_complete` events now use quality floor `0.40` (down from `0.65`): these are verified direct model outputs from DirectRunner, keyword coverage is a poor signal for them
+- Verified: `--dry-run` now shows `samples_added: 1` (was 0 every run)
+
+### aq-report — psycopg3 compatibility fix (query_gaps: [] → real gaps)
+- `read_query_gaps()` used `dict(r._mapping)` — psycopg2 API, not available in psycopg3 (returns plain tuples)
+- `except Exception: return []` silently swallowed `AttributeError`, returning empty list every run
+- Fix: `cols = [d.name for d in cur.description]; rows = [dict(zip(cols, r)) for r in cur.fetchall()]`
+- `query_gaps` table has **657 rows**, **10 non-stale gaps** in 7d window now visible in dashboard
+
+---
 # HANDOFF MEMO — 2026-05-27 (updated Phase 72.z + agent-loop validation)
 ## Status
 Phase 72.z complete. Training loop 12/12 PASS baseline. Local coding agent validated end-to-end.
@@ -106,72 +122,6 @@ CONTEXT: aq-report shows 'Continuation-"
 - inference_param_manager.py: wrap iterdir() in PermissionError handler
 - Coordinator crashes on hwmon enumeration when AppArmor confinement active
 - Fix: log debug + return on PermissionError — thermal data is optional telemetry
-[2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
-[2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
-[2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
-[2026-05-28T16:01:44.397446Z] [dispatch] id=local-20260528-090144-pv73a4 agent=local-direct output=.agents/delegation/outputs/local-20260528-090144-pv73a4.log obj="Role standardization debate — your turn (Qwen3/local-agent position).
-[2026-05-28T16:01:54.248015Z] [done] id=local-20260528-085016-y02yz2
-[2026-05-28T16:07:20.885024Z] [done] id=local-20260528-090144-pv73a4
-[2026-05-28T16:08:38.116758Z] [cancelled] id=local-20260528-090144-pv73a4
-[2026-05-28T16:11:17.538513Z] [dispatch] id=gemini-20260528-091117-1ki09u agent=gemini output=.agents/delegation/outputs/gemini-20260528-091117-1ki09u.log obj="You are a full cross-functional product team convened to produce a spec-driven PRD for agent role st"
-[2026-05-28T16:12:26.838457Z] [done] id=gemini-20260528-091117-1ki09u
-[2026-05-28T16:50:28.700372Z] [failed] id=gemini-20260528-091117-1ki09u
-[2026-05-28T16:51:15.375623Z] [dispatch] id=gemini-20260528-095115-lh0s8h agent=gemini output=.agents/delegation/outputs/gemini-20260528-095115-lh0s8h.log obj="You are a cross-functional product team. Speak as each specialist, then produce a PRD.
-[2026-05-28T16:52:22.178146Z] [done] id=gemini-20260528-095115-lh0s8h
-[2026-05-28T17:14:04.497437Z] [dispatch] id=local-20260528-101404-h1g9sf agent=local-direct output=.agents/delegation/outputs/local-20260528-101404-h1g9sf.log obj="Reply with exactly: SMOKE_OK"
-[2026-05-28T17:14:15.771015Z] [done] id=local-20260528-101404-h1g9sf
-[2026-05-28T17:18:28.881646Z] [dispatch] id=local-20260528-101828-ikdqnz agent=local-direct output=.agents/delegation/outputs/local-20260528-101828-ikdqnz.log obj="Say: FIXED"
-[2026-05-28T17:18:32.802330Z] [done] id=local-20260528-101828-ikdqnz
-[2026-05-28T17:27:27.215757Z] [dispatch] id=gemini-20260528-102727-6jfxeq agent=gemini output=.agents/delegation/outputs/gemini-20260528-102727-6jfxeq.log obj="You are an implementer agent for NixOS-Dev-Quick-Deploy.
-[2026-05-28T17:27:46.272301Z] [dispatch] id=local-20260528-102746-z2rtm1 agent=local-direct output=.agents/delegation/outputs/local-20260528-102746-z2rtm1.log obj="BOUNDED TASK: Write a Python snippet (no external imports, just stdlib) that reads the last 20 lines"
-[2026-05-28T17:27:46.470725Z] [dispatch] id=local-20260528-102746-v5raum agent=local-direct output=.agents/delegation/outputs/local-20260528-102746-v5raum.log obj="BOUNDED TASK: In ai-stack/local-agents/agent_executor.py, find the code that runs after task complet"
-[2026-05-28T17:29:46.075290Z] [done] id=local-20260528-102746-z2rtm1
-[2026-05-28T17:31:18.409585Z] [done] id=local-20260528-102746-v5raum
-[2026-05-28T17:34:33.312014Z] [dispatch] id=gemini-20260528-103433-ic8rvr agent=gemini output=.agents/delegation/outputs/gemini-20260528-103433-ic8rvr.log obj="You are an architect agent for NixOS-Dev-Quick-Deploy.
-[2026-05-28T17:34:48.528946Z] [dispatch] id=local-20260528-103448-h2vifl agent=local-direct output=.agents/delegation/outputs/local-20260528-103448-h2vifl.log obj="What is your role? Reply with exactly: ROLE=implementer"
-[2026-05-28T17:34:57.407461Z] [done] id=local-20260528-103448-h2vifl
-[2026-05-28T17:34:57.595628Z] [dispatch] id=local-20260528-103457-qruig5 agent=local-direct output=.agents/delegation/outputs/local-20260528-103457-qruig5.log obj="What is your role? Reply with exactly: ROLE=architect"
-[2026-05-28T17:35:02.689649Z] [done] id=local-20260528-103457-qruig5
-[2026-05-28T17:35:22.588689Z] [done] id=gemini-20260528-103433-ic8rvr
-[2026-05-28T17:54:11.681048Z] [dispatch] id=local-20260528-105411-pesr03 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105411-pesr03.log obj="In one sentence, confirm you received a role-injected system message and state what role you were as"
-[2026-05-28T17:54:29.991555Z] [done] id=local-20260528-105411-pesr03
-[2026-05-28T17:54:57.411279Z] [dispatch] id=local-20260528-105457-17oac7 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105457-17oac7.log obj="In one sentence, state your assigned role and one primary responsibility it carries."
-[2026-05-28T17:55:14.321974Z] [done] id=local-20260528-105457-17oac7
-[2026-05-28T17:55:23.794011Z] [dispatch] id=local-20260528-105523-7age5r agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105523-7age5r.log obj="Reply with exactly: BACKGROUND_OK"
-[2026-05-28T17:55:31.680904Z] [done] id=local-20260528-105523-7age5r
-[2026-05-28T17:55:33.452417Z] [dispatch] id=local-20260528-105533-1jfx40 agent=local-hybrid output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105533-1jfx40.log obj="What is the default llama.cpp port used in this harness? Answer in one line."
-[2026-05-28T17:55:38.658617Z] [done] id=local-20260528-105533-1jfx40
-[2026-05-28T18:00:13.179236Z] [dispatch] id=local-20260528-110013-2fhmag agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-110013-2fhmag.log obj="Reply: TOKEN_TEST_OK"
-[2026-05-28T18:00:21.409021Z] [done] id=local-20260528-110013-2fhmag
-[2026-05-28T18:09:00.527420Z] [dispatch] id=local-20260528-110900-zoabwj agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-110900-zoabwj.log obj="List three specific improvements to make the local model dispatch chain more reliable. Be concrete."
-[2026-05-28T18:12:04.306572Z] [done] id=local-20260528-110900-zoabwj
-[2026-05-28T18:27:07.399477Z] [dispatch] id=local-20260528-112707-mtxbgm agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112707-mtxbgm.log obj="You are an architect reviewing ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py.
-[2026-05-28T18:27:22.013800Z] [dispatch] id=local-20260528-112721-7vngql agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112721-7vngql.log obj="You are an architect for the NixOS-Dev-Quick-Deploy AI stack.
-[2026-05-28T18:27:37.333120Z] [dispatch] id=local-20260528-112737-vgm741 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112737-vgm741.log obj="You are a reviewer for the NixOS-Dev-Quick-Deploy AI stack.
-[2026-05-28T18:27:52.397430Z] [cancelled] id=gemini-20260528-102727-6jfxeq
-[2026-05-28T18:28:19.568998Z] [done] id=local-20260528-112707-mtxbgm
-[2026-05-28T18:29:55.394430Z] [done] id=local-20260528-112721-7vngql
-[2026-05-28T18:32:32.726193Z] [done] id=local-20260528-112737-vgm741
-[2026-05-28T18:41:40.015948Z] [dispatch] id=local-20260528-114139-xuraeu agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-114139-xuraeu.log obj="Write a Python one-liner that prints the first 10 Fibonacci numbers."
-[2026-05-28T18:55:13.280203Z] [done] id=local-20260528-114139-xuraeu
-[2026-05-28T19:00:59.594924Z] [dispatch] id=local-20260528-120059-my61s3 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120059-my61s3.log obj="Write a Python one-liner that prints the first 10 Fibonacci numbers."
-[2026-05-28T19:01:29.055870Z] [done] id=local-20260528-120059-my61s3
-[2026-05-28T19:02:40.174691Z] [dispatch] id=local-20260528-120240-skey1h agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120240-skey1h.log obj="In exactly one sentence (no more), state what role an 'architect' plays in this AI stack."
-[2026-05-28T19:03:03.438482Z] [done] id=local-20260528-120240-skey1h
-[2026-05-29T00:39:10.494016Z] [dispatch] id=local-20260528-173910-g55b33 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173910-g55b33.log obj="Reply with exactly three words: AGENT_LOOP_OK"
-[2026-05-29T00:39:30.698246Z] [done] id=local-20260528-173910-g55b33
-[2026-05-29T00:39:35.440937Z] [dispatch] id=local-20260528-173935-jld1cl agent=local-hybrid output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173935-jld1cl.log obj="/no_think Reply with exactly: HYBRID_OK"
-[2026-05-29T00:39:37.414585Z] [done] id=local-20260528-173935-jld1cl
-[2026-05-29T00:47:37.427325Z] [dispatch] id=local-20260528-174737-i28gyt agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-174737-i28gyt.log obj="/no_think List the GPU layer ceiling and RAM ceiling for this NixOS stack in JSON: {"gpu_layers": N,"
-[2026-05-29T00:48:20.572628Z] [done] id=local-20260528-174737-i28gyt
-[2026-05-29T02:25:16.577534Z] [dispatch] id=local-20260528-192516-6qhob4 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-192516-6qhob4.log obj="Review the seeded error-solutions collection in Qdrant. Use curl to POST to http://127.0.0.1:6333/co"
-[2026-05-29T02:28:34.845674Z] [dispatch] id=gemini-20260528-192834-8ykjce agent=gemini output=.agents/delegation/outputs/gemini-20260528-192834-8ykjce.log obj="Review scripts/data/seed-rag-knowledge.py in the NixOS-Dev-Quick-Deploy repo. Check: (1) Are the 12 "
-[2026-05-29T02:28:47.943785Z] [done] id=local-20260528-192516-6qhob4
-[2026-05-29T02:29:59.092822Z] [done] id=gemini-20260528-192834-8ykjce
-[2026-05-29T02:55:53.908275Z] [dispatch] id=gemini-20260528-195553-8cmbf8 agent=gemini output=.agents/delegation/outputs/gemini-20260528-195553-8cmbf8.log obj="Analyze these 5 production issues in NixOS-Dev-Quick-Deploy AI stack and design fixes. Return APPROV"
-[2026-05-29T02:56:59.494040Z] [done] id=gemini-20260528-195553-8cmbf8
-[2026-05-29T03:55:52.105348Z] [dispatch] id=gemini-20260528-205551-2o4o66 agent=gemini output=.agents/delegation/outputs/gemini-20260528-205551-2o4o66.log obj="/no_think Review these two fixes just applied to the NixOS-Dev-Quick-Deploy AI stack (commit a6dc260"
-[2026-05-29T03:57:27.146858Z] [done] id=gemini-20260528-205551-2o4o66
 
 ## data-retention service PATH fix (2026-05-29)
 - Fixed `python3: command not found` in `data-retention.service`
@@ -363,3 +313,101 @@ Rules added (10):
   - `/var/log/nixos-ai-stack/query-gaps.jsonl r,`
 Denied paths that triggered: ['/dev/tty', '/nix/store/cyr8pbss92g8fzsy2jlckl8r653bzv4h-python3-3.13.12-env/bin/uvicorn', '/nix/store/sahqyj4v0za2cwcnrbcjyndyk8ka8a9y-python3.13-uvicorn-0.35.0/bin/.uvicorn-wrapped', '/var/lib/nixos-system-dashboard/telemetry/deployments-context.db', '/tmp/nixos-dashboard-context.db']  
 ⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-29T18:25:08Z] health-spider
+**AppArmor fix auto-committed** `4e1ce271` — profile `command-center-dashboard-api`  
+Rules added (10): ['            /var/lib/nixos-system-dashboard/telemetry/deployments-context.db k,', '            /tmp/nixos-dashboard-context.db rw,', '            /tmp/workflow-store.db rw,', '            /run/secrets.d/49/hybrid_coordinator_api_key r,', '            /run/secrets.d/49/aidb_api_key r,']  
+Denied paths: ['/dev/tty', '/nix/store/cyr8pbss92g8fzsy2jlckl8r653bzv4h-python3-3.13.12-env/bin/uvicorn', '/nix/store/sahqyj4v0za2cwcnrbcjyndyk8ka8a9y-python3.13-uvicorn-0.35.0/bin/.uvicorn-wrapped', '/var/lib/nixos-system-dashboard/telemetry/deployments-context.db', '/tmp/nixos-dashboard-context.db']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-29T19:30:00Z] Phase 80 — Session completion
+
+**AppArmor enforcement fully clean — 0 denials post-rebuild**
+
+Commits this session:
+- `29d211c9` fix(apparmor-fix-agent): glob coverage dedup (Nix fragment false-positive fix)
+- `9373f3de` fix(apparmor): ptrace rule + fix-agent handles ptrace/signal denial types
+- `6559f492` fix(apparmor): capability sys_ptrace + xfail 0.7.1 documented
+- `a6b7a214` feat(mesh): health/fix pipeline wired to coordinator memory + training loop
+
+**Agentic mesh gaps closed:**
+- `apparmor-fix-agent` now pushes `POST /api/memory/facts` (loopback, no API key) after each auto-commit
+- `apparmor-fix-agent` now emits `agent_step_complete` to `.agents/telemetry/hybrid-events.jsonl`
+- `aq-health-spider` pushes memory facts for `service_down` + `http_failure` anomalies (novel only)
+- 6 new AppArmor fix patterns seeded to `error-solutions` Qdrant (scores 0.60–0.71)
+- QA: 66/67 PASS (0.8.1 xfail, self-healing)
+
+**Permanent null metric:** `security.firewall.rules_count` — requires root, not fixable
+**All other 33 dashboard metrics:** populated ✓
+
+⚠️  No pending rebuilds required.
+
+You are architect for the NixOS-Dev-Quick-Deploy AI harness. Claude Code is the primary o"
+[2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
+[2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
+[2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
+[2026-05-28T16:01:44.397446Z] [dispatch] id=local-20260528-090144-pv73a4 agent=local-direct output=.agents/delegation/outputs/local-20260528-090144-pv73a4.log obj="Role standardization debate — your turn (Qwen3/local-agent position).
+[2026-05-28T16:01:54.248015Z] [done] id=local-20260528-085016-y02yz2
+[2026-05-28T16:07:20.885024Z] [done] id=local-20260528-090144-pv73a4
+[2026-05-28T16:08:38.116758Z] [cancelled] id=local-20260528-090144-pv73a4
+[2026-05-28T16:11:17.538513Z] [dispatch] id=gemini-20260528-091117-1ki09u agent=gemini output=.agents/delegation/outputs/gemini-20260528-091117-1ki09u.log obj="You are a full cross-functional product team convened to produce a spec-driven PRD for agent role st"
+[2026-05-28T16:12:26.838457Z] [done] id=gemini-20260528-091117-1ki09u
+[2026-05-28T16:50:28.700372Z] [failed] id=gemini-20260528-091117-1ki09u
+[2026-05-28T16:51:15.375623Z] [dispatch] id=gemini-20260528-095115-lh0s8h agent=gemini output=.agents/delegation/outputs/gemini-20260528-095115-lh0s8h.log obj="You are a cross-functional product team. Speak as each specialist, then produce a PRD.
+[2026-05-28T16:52:22.178146Z] [done] id=gemini-20260528-095115-lh0s8h
+[2026-05-28T17:14:04.497437Z] [dispatch] id=local-20260528-101404-h1g9sf agent=local-direct output=.agents/delegation/outputs/local-20260528-101404-h1g9sf.log obj="Reply with exactly: SMOKE_OK"
+[2026-05-28T17:14:15.771015Z] [done] id=local-20260528-101404-h1g9sf
+[2026-05-28T17:18:28.881646Z] [dispatch] id=local-20260528-101828-ikdqnz agent=local-direct output=.agents/delegation/outputs/local-20260528-101828-ikdqnz.log obj="Say: FIXED"
+[2026-05-28T17:18:32.802330Z] [done] id=local-20260528-101828-ikdqnz
+[2026-05-28T17:27:27.215757Z] [dispatch] id=gemini-20260528-102727-6jfxeq agent=gemini output=.agents/delegation/outputs/gemini-20260528-102727-6jfxeq.log obj="You are an implementer agent for NixOS-Dev-Quick-Deploy.
+[2026-05-28T17:27:46.272301Z] [dispatch] id=local-20260528-102746-z2rtm1 agent=local-direct output=.agents/delegation/outputs/local-20260528-102746-z2rtm1.log obj="BOUNDED TASK: Write a Python snippet (no external imports, just stdlib) that reads the last 20 lines"
+[2026-05-28T17:27:46.470725Z] [dispatch] id=local-20260528-102746-v5raum agent=local-direct output=.agents/delegation/outputs/local-20260528-102746-v5raum.log obj="BOUNDED TASK: In ai-stack/local-agents/agent_executor.py, find the code that runs after task complet"
+[2026-05-28T17:29:46.075290Z] [done] id=local-20260528-102746-z2rtm1
+[2026-05-28T17:31:18.409585Z] [done] id=local-20260528-102746-v5raum
+[2026-05-28T17:34:33.312014Z] [dispatch] id=gemini-20260528-103433-ic8rvr agent=gemini output=.agents/delegation/outputs/gemini-20260528-103433-ic8rvr.log obj="You are an architect agent for NixOS-Dev-Quick-Deploy.
+[2026-05-28T17:34:48.528946Z] [dispatch] id=local-20260528-103448-h2vifl agent=local-direct output=.agents/delegation/outputs/local-20260528-103448-h2vifl.log obj="What is your role? Reply with exactly: ROLE=implementer"
+[2026-05-28T17:34:57.407461Z] [done] id=local-20260528-103448-h2vifl
+[2026-05-28T17:34:57.595628Z] [dispatch] id=local-20260528-103457-qruig5 agent=local-direct output=.agents/delegation/outputs/local-20260528-103457-qruig5.log obj="What is your role? Reply with exactly: ROLE=architect"
+[2026-05-28T17:35:02.689649Z] [done] id=local-20260528-103457-qruig5
+[2026-05-28T17:35:22.588689Z] [done] id=gemini-20260528-103433-ic8rvr
+[2026-05-28T17:54:11.681048Z] [dispatch] id=local-20260528-105411-pesr03 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105411-pesr03.log obj="In one sentence, confirm you received a role-injected system message and state what role you were as"
+[2026-05-28T17:54:29.991555Z] [done] id=local-20260528-105411-pesr03
+[2026-05-28T17:54:57.411279Z] [dispatch] id=local-20260528-105457-17oac7 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105457-17oac7.log obj="In one sentence, state your assigned role and one primary responsibility it carries."
+[2026-05-28T17:55:14.321974Z] [done] id=local-20260528-105457-17oac7
+[2026-05-28T17:55:23.794011Z] [dispatch] id=local-20260528-105523-7age5r agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105523-7age5r.log obj="Reply with exactly: BACKGROUND_OK"
+[2026-05-28T17:55:31.680904Z] [done] id=local-20260528-105523-7age5r
+[2026-05-28T17:55:33.452417Z] [dispatch] id=local-20260528-105533-1jfx40 agent=local-hybrid output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-105533-1jfx40.log obj="What is the default llama.cpp port used in this harness? Answer in one line."
+[2026-05-28T17:55:38.658617Z] [done] id=local-20260528-105533-1jfx40
+[2026-05-28T18:00:13.179236Z] [dispatch] id=local-20260528-110013-2fhmag agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-110013-2fhmag.log obj="Reply: TOKEN_TEST_OK"
+[2026-05-28T18:00:21.409021Z] [done] id=local-20260528-110013-2fhmag
+[2026-05-28T18:09:00.527420Z] [dispatch] id=local-20260528-110900-zoabwj agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-110900-zoabwj.log obj="List three specific improvements to make the local model dispatch chain more reliable. Be concrete."
+[2026-05-28T18:12:04.306572Z] [done] id=local-20260528-110900-zoabwj
+[2026-05-28T18:27:07.399477Z] [dispatch] id=local-20260528-112707-mtxbgm agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112707-mtxbgm.log obj="You are an architect reviewing ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py.
+[2026-05-28T18:27:22.013800Z] [dispatch] id=local-20260528-112721-7vngql agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112721-7vngql.log obj="You are an architect for the NixOS-Dev-Quick-Deploy AI stack.
+[2026-05-28T18:27:37.333120Z] [dispatch] id=local-20260528-112737-vgm741 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-112737-vgm741.log obj="You are a reviewer for the NixOS-Dev-Quick-Deploy AI stack.
+[2026-05-28T18:27:52.397430Z] [cancelled] id=gemini-20260528-102727-6jfxeq
+[2026-05-28T18:28:19.568998Z] [done] id=local-20260528-112707-mtxbgm
+[2026-05-28T18:29:55.394430Z] [done] id=local-20260528-112721-7vngql
+[2026-05-28T18:32:32.726193Z] [done] id=local-20260528-112737-vgm741
+[2026-05-28T18:41:40.015948Z] [dispatch] id=local-20260528-114139-xuraeu agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-114139-xuraeu.log obj="Write a Python one-liner that prints the first 10 Fibonacci numbers."
+[2026-05-28T18:55:13.280203Z] [done] id=local-20260528-114139-xuraeu
+[2026-05-28T19:00:59.594924Z] [dispatch] id=local-20260528-120059-my61s3 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120059-my61s3.log obj="Write a Python one-liner that prints the first 10 Fibonacci numbers."
+[2026-05-28T19:01:29.055870Z] [done] id=local-20260528-120059-my61s3
+[2026-05-28T19:02:40.174691Z] [dispatch] id=local-20260528-120240-skey1h agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-120240-skey1h.log obj="In exactly one sentence (no more), state what role an 'architect' plays in this AI stack."
+[2026-05-28T19:03:03.438482Z] [done] id=local-20260528-120240-skey1h
+[2026-05-29T00:39:10.494016Z] [dispatch] id=local-20260528-173910-g55b33 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173910-g55b33.log obj="Reply with exactly three words: AGENT_LOOP_OK"
+[2026-05-29T00:39:30.698246Z] [done] id=local-20260528-173910-g55b33
+[2026-05-29T00:39:35.440937Z] [dispatch] id=local-20260528-173935-jld1cl agent=local-hybrid output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-173935-jld1cl.log obj="/no_think Reply with exactly: HYBRID_OK"
+[2026-05-29T00:39:37.414585Z] [done] id=local-20260528-173935-jld1cl
+[2026-05-29T00:47:37.427325Z] [dispatch] id=local-20260528-174737-i28gyt agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-174737-i28gyt.log obj="/no_think List the GPU layer ceiling and RAM ceiling for this NixOS stack in JSON: {"gpu_layers": N,"
+[2026-05-29T00:48:20.572628Z] [done] id=local-20260528-174737-i28gyt
+[2026-05-29T02:25:16.577534Z] [dispatch] id=local-20260528-192516-6qhob4 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-192516-6qhob4.log obj="Review the seeded error-solutions collection in Qdrant. Use curl to POST to http://127.0.0.1:6333/co"
+[2026-05-29T02:28:34.845674Z] [dispatch] id=gemini-20260528-192834-8ykjce agent=gemini output=.agents/delegation/outputs/gemini-20260528-192834-8ykjce.log obj="Review scripts/data/seed-rag-knowledge.py in the NixOS-Dev-Quick-Deploy repo. Check: (1) Are the 12 "
+[2026-05-29T02:28:47.943785Z] [done] id=local-20260528-192516-6qhob4
+[2026-05-29T02:29:59.092822Z] [done] id=gemini-20260528-192834-8ykjce
+[2026-05-29T02:55:53.908275Z] [dispatch] id=gemini-20260528-195553-8cmbf8 agent=gemini output=.agents/delegation/outputs/gemini-20260528-195553-8cmbf8.log obj="Analyze these 5 production issues in NixOS-Dev-Quick-Deploy AI stack and design fixes. Return APPROV"
+[2026-05-29T02:56:59.494040Z] [done] id=gemini-20260528-195553-8cmbf8
+[2026-05-29T03:55:52.105348Z] [dispatch] id=gemini-20260528-205551-2o4o66 agent=gemini output=.agents/delegation/outputs/gemini-20260528-205551-2o4o66.log obj="/no_think Review these two fixes just applied to the NixOS-Dev-Quick-Deploy AI stack (commit a6dc260"
+[2026-05-29T03:57:27.146858Z] [done] id=gemini-20260528-205551-2o4o66
+[2026-05-30T00:36:14.567991Z] [dispatch] id=gemini-20260529-173614-9tylak agent=gemini output=.agents/delegation/outputs/gemini-20260529-173614-9tylak.log obj="/no_think
+[2026-05-30T00:38:16.784866Z] [done] id=gemini-20260529-173614-9tylak
