@@ -1737,6 +1737,7 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
             _rf("response_generation_downshift_reason", "") or ""
         ).strip().lower()
         retrieval_strategy_mode = str(_rf("retrieval_strategy_mode", "") or "").strip().lower()
+        retrieval_strategy_active = bool(_rf("retrieval_strategy_active"))
         task_complexity_type = str(_rf("task_complexity_type", "") or "").strip().lower()
         local_inference_lane = str(_rf("local_inference_lane", "") or "").strip().lower()
         local_inference_lane_reason = str(_rf("local_inference_lane_reason", "") or "").strip().lower()
@@ -1754,7 +1755,12 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
                 synthesis_latencies.append(latency_value)
             elif generate_response is False:
                 retrieval_only_latencies.append(latency_value)
-            if generate_response_requested is True:
+            if generate_response_requested is True and retrieval_strategy_active:
+                # Only count routes where the downshift evaluator actually ran
+                # (retrieval_strategy_active=True). Routes where the strategy was
+                # inactive could never be downshifted — they inflate the denominator
+                # and make "0/N candidates" look broken when the strategy just wasn't
+                # triggered. Field emitted by http_server_impl.py audit_metadata.
                 continuation_candidates += 1
             if response_generation_downshifted and generate_response is False:
                 continuation_downshift_latencies.append(latency_value)
