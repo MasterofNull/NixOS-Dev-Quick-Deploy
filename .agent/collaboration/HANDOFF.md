@@ -381,6 +381,12 @@ You are architect for the NixOS-Dev-Quick-Deploy AI harness. Claude Code is the 
 You are the Architect for NixOS-Dev-Quick-Deploy. Claude (orchestrator) is convening the "
 
 You are an Implementer for NixOS-Dev-Quick-Deploy. Analyze the current production gaps an"
+
+## Phase 84 — Produ"
+You are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.
+
+CONTEXT:
+- aq-qa: 6"
 [2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
 [2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
 [2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
@@ -457,3 +463,24 @@ You are an Implementer for NixOS-Dev-Quick-Deploy. Analyze the current productio
 [2026-05-30T05:49:38.391772Z] [done] id=gemini-20260529-224911-kws2or
 [2026-05-30T05:50:17.755205Z] [done] id=local-20260529-224743-qyhqi4
 [2026-05-30T05:52:20.671229Z] [done] id=local-20260529-224903-c0q6ak
+[2026-05-30T06:13:33.296955Z] [dispatch] id=gemini-20260529-231333-acecsb agent=gemini output=.agents/delegation/outputs/gemini-20260529-231333-acecsb.log obj="/no_think You are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.
+[2026-05-30T06:16:15.384650Z] [done] id=gemini-20260529-231333-acecsb
+[2026-05-30T06:18:54.928151Z] [dispatch] id=gemini-20260529-231854-ue1mpq agent=gemini output=.agents/delegation/outputs/gemini-20260529-231854-ue1mpq.log obj="/no_think
+[2026-05-30T06:19:45.367424Z] [done] id=gemini-20260529-231854-ue1mpq
+
+---
+## Phase 84 — Production Hardening (2026-05-30) [IN-PROGRESS]
+
+**Root causes fixed:**
+1. `qa_check 0.0% success`: `/qa/check` was missing from `LOOPBACK_AGENT_PREFIXES` in `middleware/auth.py` → all loopback calls got 401. Added `"/qa/"` prefix. Coordinator restart required to activate.
+2. `continuation-query downshift 0/26`: Added debug logging (`downshift_skipped reasons=...`) to `_apply_query_response_mode` in `http_server_impl.py`. After coordinator restart, `journalctl -u ai-hybrid-coordinator | grep downshift_skipped` shows skip reasons per query.
+
+**Auth fix scope**: `core/auth_middleware.py` is a re-export shim (R2.7) — only `middleware/auth.py` patch needed.
+
+**Pending (requires user action):**
+- `sudo systemctl restart ai-hybrid-coordinator.service` to activate auth fix
+- Then verify: `curl -sf -X POST http://127.0.0.1:8003/qa/check -H 'Content-Type: application/json' -d '{"phase":"0"}' | python3 -m json.tool`
+
+**ai_coordinator_delegate P95=244s**: Inherent to Qwen3-35B at 1 tok/s floor × 180-token ceiling. Not a bug. Ceiling already enforced via `_LOCAL_MAX_TOKENS_HARD_CEILING=180`.
+
+**P2 PAEA (Gemini priority):** Drop Zone Daemon (`aq-drop-daemon`) → highest autonomy-per-day. Intent Lock v2 second. Skill Factory third.
