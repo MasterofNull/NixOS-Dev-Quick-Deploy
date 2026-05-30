@@ -1159,6 +1159,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_phase83_dag_context(ctx))
     results.extend(_check_phase85_drop_zone(ctx))
     results.extend(_check_phase86_attention_queue(ctx))
+    results.extend(_check_phase87_training_ingest(ctx))
     return results
 
 
@@ -2010,5 +2011,51 @@ def _check_phase86_attention_queue(ctx: RunContext) -> list[CheckResult]:
             results.append(failed(5, "86.7", "dashboard /api/aistack/alerts/status", f"HTTP {status_code}"))
     except Exception as e:
         results.append(failed(5, "86.7", "dashboard /api/aistack/alerts/status", str(e)))
+
+    return results
+
+
+def _check_phase87_training_ingest(ctx: RunContext) -> list[CheckResult]:
+    """Phase 87.3: training_ingest.py exists + ai-training-ingest timer wired."""
+    results: list[CheckResult] = []
+
+    # 87.3.1 — training_ingest.py exists at expected path
+    ingest_script = ctx.repo_root / "ai-stack" / "local-agents" / "training_ingest.py"
+    if not ingest_script.exists():
+        results.append(failed(4, "87.3.1", "training_ingest.py", "not found at ai-stack/local-agents/training_ingest.py"))
+    else:
+        results.append(passed(4, "87.3.1", "training_ingest.py: exists at ai-stack/local-agents/"))
+
+    # 87.3.2 — ai-training-ingest timer wired in mcp-servers.nix
+    mcp_nix = ctx.repo_root / "nix" / "modules" / "services" / "mcp-servers.nix"
+    if not mcp_nix.exists():
+        results.append(skipped(4, "87.3.2", "ai-training-ingest timer", "mcp-servers.nix not found"))
+    else:
+        nix_text = mcp_nix.read_text()
+        if "ai-training-ingest" in nix_text:
+            results.append(passed(4, "87.3.2", "ai-training-ingest service+timer wired in mcp-servers.nix"))
+        else:
+            results.append(failed(4, "87.3.2", "ai-training-ingest timer", "not found in mcp-servers.nix"))
+
+    # 87.3.3 — fine-tuning dataset exists and has ≥1 row (xfail on first run)
+    dataset = ctx.repo_root / "ai-stack" / "hybrid" / "fine-tuning" / "dataset.jsonl"
+    # Also check the runtime path that training_ingest uses by default
+    runtime_dataset = "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
+    import pathlib
+    runtime_path = pathlib.Path(runtime_dataset)
+    if dataset.exists():
+        line_count = sum(1 for _ in dataset.open())
+        if line_count >= 1:
+            results.append(passed(4, "87.3.3", f"fine-tuning/dataset.jsonl: {line_count} rows"))
+        else:
+            results.append(failed(4, "87.3.3", "fine-tuning/dataset.jsonl", "file exists but is empty — timer has not run yet"))
+    elif runtime_path.exists():
+        line_count = sum(1 for _ in runtime_path.open())
+        if line_count >= 1:
+            results.append(passed(4, "87.3.3", f"fine-tuning/dataset.jsonl (runtime): {line_count} rows"))
+        else:
+            results.append(skipped(4, "87.3.3", "fine-tuning/dataset.jsonl", "empty — timer has not run yet (xfail first run)"))
+    else:
+        results.append(skipped(4, "87.3.3", "fine-tuning/dataset.jsonl", "not yet created — run ai-training-ingest.service or wait for daily timer"))
 
     return results

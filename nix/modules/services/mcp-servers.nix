@@ -1744,6 +1744,39 @@ in {
         };
       };
 
+      # ── Phase 87.3 — Daily training ingest timer ─────────────────────────────
+      # Reads hybrid-events.jsonl, delegation-feedback.jsonl, and
+      # optimization_proposals.jsonl (last 24h) and writes structured fine-tuning
+      # samples to fine-tuning/dataset.jsonl so the local model can learn from
+      # its own production traffic.  Requires nixos-rebuild to activate.
+      systemd.services.ai-training-ingest = {
+        description = "AI training data ingest — telemetry → fine-tuning dataset";
+        restartIfChanged = false;
+        path = with pkgs; [ bash coreutils python3 ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = svcUser;
+          Group = aiGroup;
+          WorkingDirectory = mcp.repoPath;
+          ExecStart = "${pkgs.python3}/bin/python3 ${mcp.repoPath}/ai-stack/local-agents/training_ingest.py --hours 24";
+          Environment = [
+            "TELEMETRY_DIR=/var/lib/ai-stack/hybrid/telemetry"
+            "FINE_TUNING_DATASET=/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
+          ];
+        };
+      };
+
+      systemd.timers.ai-training-ingest = {
+        description = "Daily AI training data ingest timer";
+        wantedBy = ["timers.target"];
+        partOf = ["ai-stack.target"];
+        timerConfig = {
+          OnCalendar = "*-*-* 03:00:00";
+          Persistent = true;
+          RandomizedDelaySec = "10min";
+        };
+      };
+
       systemd.services.ai-auto-remediate = {
         description = "AI stack autonomous remediation loop";
         restartIfChanged = false;
