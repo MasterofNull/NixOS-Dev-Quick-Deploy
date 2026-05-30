@@ -387,6 +387,41 @@ You are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.
 
 CONTEXT:
 - aq-qa: 6"
+
+---
+## Phase 84 — Production Hardening (2026-05-30) [IN-PROGRESS]
+
+**Root causes fixed:**
+1. `qa_check 0.0% success`: `/qa/check` was missing from `LOOPBACK_AGENT_PREFIXES` in `middleware/auth.py` → all loopback calls got 401. Added `"/qa/"` prefix. Coordinator restart required to activate.
+2. `continuation-query downshift 0/26`: Added debug logging (`downshift_skipped reasons=...`) to `_apply_query_response_mode` in `http_server_impl.py`. After coordinator restart, `journalctl -u ai-hybrid-coordinator | grep downshift_skipped` shows skip reasons per query.
+
+**Auth fix scope**: `core/auth_middleware.py` is a re-export shim (R2.7) — only `middleware/auth.py` patch needed.
+
+**Pending (requires user action):**
+- `sudo systemctl restart ai-hybrid-coordinator.service` to activate auth fix
+- Then verify: `curl -sf -X POST http://127.0.0.1:8003/qa/check -H 'Content-Type: application/json' -d '{"phase":"0"}' | python3 -m json.tool`
+
+**ai_coordinator_delegate P95=244s**: Inherent to Qwen3-35B at 1 tok/s floor × 180-token ceiling. Not a bug. Ceiling already enforced via `_LOCAL_MAX_TOKENS_HARD_CEILING=180`.
+
+**P2 PAEA (Gemini priority):** Drop Zone Daemon (`aq-drop-daemon`) → highest autonomy-per-day. Intent Lock v2 second. Skill Factory third.
+You are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.
+
+SYSTEM CONTEXT:
+- L"
+You are Implementer for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.
+
+TASK: Analyse the"
+
+## Project Context
+Local-first AI "
+
+## Project Context
+Local-first AI "
+
+## Project Context
+Local-first AI "
+
+You are acting as team facilitator. Thre"
 [2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
 [2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
 [2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
@@ -467,20 +502,24 @@ CONTEXT:
 [2026-05-30T06:16:15.384650Z] [done] id=gemini-20260529-231333-acecsb
 [2026-05-30T06:18:54.928151Z] [dispatch] id=gemini-20260529-231854-ue1mpq agent=gemini output=.agents/delegation/outputs/gemini-20260529-231854-ue1mpq.log obj="/no_think
 [2026-05-30T06:19:45.367424Z] [done] id=gemini-20260529-231854-ue1mpq
+[2026-05-30T06:55:27.014107Z] [dispatch] id=gemini-20260529-235526-ut1gch agent=gemini output=.agents/delegation/outputs/gemini-20260529-235526-ut1gch.log obj="/no_think
+[2026-05-30T06:55:45.443960Z] [dispatch] id=local-20260529-235545-fsz9rj agent=local-agent output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260529-235545-fsz9rj.log obj="/no_think
+[2026-05-30T06:55:48.939407Z] [done] id=gemini-20260529-235526-ut1gch
+[2026-05-30T07:03:46.922791Z] [failed] id=local-20260529-235545-fsz9rj
+[2026-05-30T14:35:45.612259Z] [dispatch] id=local-20260530-073545-bof9b5 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-073545-bof9b5.log obj="=== NixOS-Dev-Quick-Deploy AI Stack — Phase 86 Expert Review ===
+[2026-05-30T14:36:03.605753Z] [dispatch] id=gemini-20260530-073603-jgot6y agent=gemini output=.agents/delegation/outputs/gemini-20260530-073603-jgot6y.log obj="=== NixOS-Dev-Quick-Deploy AI Stack — Phase 86 Expert Review ===
+[2026-05-30T14:37:45.593756Z] [done] id=gemini-20260530-073603-jgot6y
+[2026-05-30T14:41:03.363687Z] [done] id=local-20260530-073545-bof9b5
+[2026-05-30T14:54:11.374060Z] [dispatch] id=local-20260530-075411-b8lytm agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-075411-b8lytm.log obj="=== NixOS-Dev-Quick-Deploy AI Stack — Phase 86 Expert Review ===
+[2026-05-30T14:54:25.706031Z] [dispatch] id=gemini-20260530-075425-9mmzvp agent=gemini output=.agents/delegation/outputs/gemini-20260530-075425-9mmzvp.log obj="=== Phase 86 Team Convergence — Expert Panel Synthesis ===
+[2026-05-30T14:57:47.829965Z] [done] id=local-20260530-075411-b8lytm
 
----
-## Phase 84 — Production Hardening (2026-05-30) [IN-PROGRESS]
-
-**Root causes fixed:**
-1. `qa_check 0.0% success`: `/qa/check` was missing from `LOOPBACK_AGENT_PREFIXES` in `middleware/auth.py` → all loopback calls got 401. Added `"/qa/"` prefix. Coordinator restart required to activate.
-2. `continuation-query downshift 0/26`: Added debug logging (`downshift_skipped reasons=...`) to `_apply_query_response_mode` in `http_server_impl.py`. After coordinator restart, `journalctl -u ai-hybrid-coordinator | grep downshift_skipped` shows skip reasons per query.
-
-**Auth fix scope**: `core/auth_middleware.py` is a re-export shim (R2.7) — only `middleware/auth.py` patch needed.
-
-**Pending (requires user action):**
-- `sudo systemctl restart ai-hybrid-coordinator.service` to activate auth fix
-- Then verify: `curl -sf -X POST http://127.0.0.1:8003/qa/check -H 'Content-Type: application/json' -d '{"phase":"0"}' | python3 -m json.tool`
-
-**ai_coordinator_delegate P95=244s**: Inherent to Qwen3-35B at 1 tok/s floor × 180-token ceiling. Not a bug. Ceiling already enforced via `_LOCAL_MAX_TOKENS_HARD_CEILING=180`.
-
-**P2 PAEA (Gemini priority):** Drop Zone Daemon (`aq-drop-daemon`) → highest autonomy-per-day. Intent Lock v2 second. Skill Factory third.
+### [2026-05-30T14:58:01Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-commit` — profile `command-center-dashboard-api`  
+Rules added (4):
+  - `/proc/@{pids}/comm r,`
+  - `/run/log/journal/ r,`
+  - `/var/log/journal/ r,`
+  - `/proc/sys/kernel/random/boot_id r,`
+Denied paths that triggered: ['/proc/1264539/comm', '/run/log/journal/', '/var/log/journal/', '/proc/sys/kernel/random/boot_id']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
