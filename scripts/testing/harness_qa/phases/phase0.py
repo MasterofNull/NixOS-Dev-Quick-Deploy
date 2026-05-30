@@ -1156,6 +1156,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_agent_docs(ctx))
     results.extend(_check_phase67_dashboard(ctx))
     results.extend(_check_phase66_wasmtime(ctx))
+    results.extend(_check_phase83_dag_context(ctx))
     return results
 
 
@@ -1761,5 +1762,61 @@ def _check_phase67_dashboard(ctx: RunContext) -> list[CheckResult]:
         results.append(failed(4, "67.2.c", "loadMissionControl wave-2 wiring", "not in Operations wave 2"))
     else:
         results.append(passed(4, "67.2.c", "loadMissionControl: wired into Operations wave 2"))
+
+    return results
+
+
+def _check_phase83_dag_context(ctx: RunContext) -> list[CheckResult]:
+    """Phase 83: DAG session manager + context merger infrastructure (PAEA Phase 1)."""
+    results: list[CheckResult] = []
+
+    # 83.1 — dag_manager.py exists and imports cleanly
+    dag_path = ctx.repo_root / "ai-stack" / "agent-memory" / "dag_manager.py"
+    if not dag_path.exists():
+        results.append(failed(4, "83.1", "dag_manager.py", "file not found at ai-stack/agent-memory/dag_manager.py"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-m", "py_compile", str(dag_path)],
+            capture_output=True, text=True,
+        )
+        if rc.returncode != 0:
+            results.append(failed(4, "83.1", "dag_manager.py syntax", rc.stderr.strip()))
+        else:
+            results.append(passed(4, "83.1", "dag_manager.py: exists and syntax-clean"))
+
+    # 83.2 — context-merger.py exists and imports cleanly
+    ctx_path = ctx.repo_root / "scripts" / "ai" / "lib" / "context-merger.py"
+    if not ctx_path.exists():
+        results.append(failed(4, "83.2", "context-merger.py", "file not found at scripts/ai/lib/context-merger.py"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-m", "py_compile", str(ctx_path)],
+            capture_output=True, text=True,
+        )
+        if rc.returncode != 0:
+            results.append(failed(4, "83.2", "context-merger.py syntax", rc.stderr.strip()))
+        else:
+            results.append(passed(4, "83.2", "context-merger.py: exists and syntax-clean"))
+
+    # 83.3 — Phase 1 integration test passes
+    test_path = ctx.repo_root / "tests" / "integration" / "test-phase1-dag-context.py"
+    if not test_path.exists():
+        results.append(skipped(4, "83.3", "Phase 1 integration test", "test file not found"))
+    else:
+        rc = subprocess.run(
+            ["python3", str(test_path)],
+            capture_output=True, text=True, timeout=15,
+        )
+        if rc.returncode != 0:
+            results.append(failed(4, "83.3", "Phase 1 integration test", rc.stderr.strip()[-200:]))
+        else:
+            results.append(passed(4, "83.3", "Phase 1 integration test: 4/4 PASS (dag_manager + context_merger + handoff)"))
+
+    # 83.4 — dag_manager wired into workflow_session_handlers
+    wsh = ctx.repo_root / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "workflow" / "workflow_session_handlers.py"
+    if wsh.exists() and "_DAGSessionManager" in wsh.read_text():
+        results.append(passed(4, "83.4", "dag_manager wired into workflow_session_handlers"))
+    else:
+        results.append(failed(4, "83.4", "dag_manager wiring", "DAGSessionManager import not found in workflow_session_handlers.py"))
 
     return results

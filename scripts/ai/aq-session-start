@@ -56,8 +56,12 @@ bootstrap_out="$(_curl_json -X POST "${COORD_URL}/api/context/bootstrap" \
 printf '[2/3] Ranked hints...\n'
 hints_out="$(_curl_json "${COORD_URL}/hints?q=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$task")&format=json&limit=5")" || true
 
-# ── 3. Promoted lessons ───────────────────────────────────────────────────────
-printf '[3/3] Lesson registry...\n'
+# ── 3. Hierarchical context (AGENTS.md cascade) ───────────────────────────────
+printf '[3/4] Hierarchical context...\n'
+hier_context="$(python3 "${SCRIPT_DIR}/lib/context-merger.py" "${REPO_ROOT}" 2>/dev/null)" || true
+
+# ── 4. Promoted lessons ───────────────────────────────────────────────────────
+printf '[4/4] Lesson registry...\n'
 lessons_out="$(_curl_json "${COORD_URL}/control/ai-coordinator/lessons")" || true
 # Also pull active constraints from procedural memory (Gemini recommendation: 56.8)
 constraints_out="$(_curl_json "${COORD_URL}/api/memory/facts?scope=procedural&limit=5")" || true
@@ -122,6 +126,13 @@ except Exception:
 PYEOF
     else
         printf '(lessons unavailable)\n'
+    fi
+
+    printf '\n## Hierarchical Context (AGENTS.md cascade)\n'
+    if [[ -n "$hier_context" ]]; then
+        printf '%s\n' "$hier_context" | head -40
+    else
+        printf '(no AGENTS.md files found in path)\n'
     fi
 
     printf '\n## Active Constraints (procedural memory)\n'

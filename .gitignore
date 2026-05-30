@@ -170,6 +170,8 @@ nix/hosts/*/.sops.yaml
 # Agent delegation task output logs (runtime; registry.jsonl is tracked)
 .agents/delegation/outputs/
 .agents/delegation/fanout/
+# Phase 83 — DAG session traces (runtime; large JSONL, not for version control)
+.agents/dag-sessions/
 tmp/
 
 # Impeccable skill runtime cache (auto-populated from upstream skill definitions;
