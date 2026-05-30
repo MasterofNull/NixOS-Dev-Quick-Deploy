@@ -486,6 +486,37 @@ def generate_prompt_extensions(
     return {"rules_added": added, "total_rules": len(rules), "file": str(extensions_path)}
 
 
+# ── HITL alert push ───────────────────────────────────────────────────────────
+
+def _push_review_alerts(proposals: List[Dict]) -> None:
+    """Push each proposal needing human review onto the HITL attention queue."""
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(_REPO_ROOT / "scripts" / "ai" / "lib"))
+        from attention_queue import push as _push
+    except ImportError:
+        return  # attention_queue not available — skip silently
+
+    for p in proposals:
+        proposal_id = p.get("proposal_id", "unknown")
+        ptype = p.get("type", "unknown")
+        title = f"Training proposal needs review: {ptype}"[:80]
+        detail = p.get("rationale") or f"Proposal {proposal_id} of type '{ptype}' flagged by training_ingest"
+        _push(
+            source="training-ingest",
+            severity="medium",
+            autonomy_boundary="human_gate",
+            title=title,
+            detail=detail,
+            proposed_action=(
+                f"Review proposal {proposal_id} in "
+                f".agents/telemetry/optimization_proposals.jsonl, "
+                f"then run: scripts/ai/aq-approve <alert-id>"
+            ),
+            payload=p,
+        )
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def _cli() -> None:
@@ -525,6 +556,8 @@ def _cli() -> None:
         print(f"  Auto-approved proposals: {len(report['proposals_auto_approved'])}")
     if report["proposals_needing_review"]:
         print(f"  Needs human review     : {len(report['proposals_needing_review'])}")
+        if not args.dry_run:
+            _push_review_alerts(report["proposals_needing_review"])
     print(f"  Prompt extensions      : +{ext_summary['rules_added']} rules → {ext_summary['file']}")
 
 
