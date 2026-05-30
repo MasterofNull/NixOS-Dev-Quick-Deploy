@@ -1720,23 +1720,26 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
     continuation_downshift_reasons: Dict[str, int] = {}
     for entry in route_events:
         metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        # route_search events store fields at the top level; fall back to metadata for older formats
+        def _rf(key, default=None):
+            return entry.get(key) if key in entry else metadata.get(key, default)
         latency = entry.get("latency_ms")
         latency_value = float(latency or 0.0)
         overall_latencies.append(latency_value)
         outcome = str(entry.get("outcome", "") or "").strip().lower()
-        backend = str(metadata.get("backend", "") or "unknown").strip().lower() or "unknown"
-        fallback_reason = str(metadata.get("fallback_reason", "") or "").strip().lower()
-        status_code = metadata.get("http_status")
-        generate_response = metadata.get("generate_response")
-        generate_response_requested = metadata.get("generate_response_requested")
-        response_generation_downshifted = bool(metadata.get("response_generation_downshifted"))
+        backend = str(_rf("backend", "") or _rf("route", "unknown") or "unknown").strip().lower() or "unknown"
+        fallback_reason = str(_rf("fallback_reason", "") or "").strip().lower()
+        status_code = _rf("http_status")
+        generate_response = _rf("generate_response")
+        generate_response_requested = _rf("generate_response_requested")
+        response_generation_downshifted = bool(_rf("response_generation_downshifted"))
         response_generation_downshift_reason = str(
-            metadata.get("response_generation_downshift_reason", "") or ""
+            _rf("response_generation_downshift_reason", "") or ""
         ).strip().lower()
-        retrieval_strategy_mode = str(metadata.get("retrieval_strategy_mode", "") or "").strip().lower()
-        task_complexity_type = str(metadata.get("task_complexity_type", "") or "").strip().lower()
-        local_inference_lane = str(metadata.get("local_inference_lane", "") or "").strip().lower()
-        local_inference_lane_reason = str(metadata.get("local_inference_lane_reason", "") or "").strip().lower()
+        retrieval_strategy_mode = str(_rf("retrieval_strategy_mode", "") or "").strip().lower()
+        task_complexity_type = str(_rf("task_complexity_type", "") or "").strip().lower()
+        local_inference_lane = str(_rf("local_inference_lane", "") or "").strip().lower()
+        local_inference_lane_reason = str(_rf("local_inference_lane_reason", "") or "").strip().lower()
         is_client_error = outcome == "client_error" or (isinstance(status_code, int) and 400 <= status_code < 500)
         is_actionable = not is_client_error
         if is_client_error:
@@ -1839,12 +1842,13 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
         "retrieval_only_p50_ms": _percentile(retrieval_only_latencies, 50),
         "retrieval_only_p95_ms": _percentile(retrieval_only_latencies, 95),
         "continuation_downshift": {
-            "available": True,
+            # available=False when coordinator has never emitted downshift instrumentation fields
+            "available": continuation_candidates > 0 or len(continuation_downshift_latencies) > 0,
             "candidate_calls": continuation_candidates,
             "downshifted_calls": len(continuation_downshift_latencies),
             "downshift_pct": (
                 round(100 * len(continuation_downshift_latencies) / continuation_candidates, 1)
-                if continuation_candidates else 0.0
+                if continuation_candidates else None
             ),
             "p50_ms": continuation_downshift_p50,
             "p95_ms": continuation_downshift_p95,
