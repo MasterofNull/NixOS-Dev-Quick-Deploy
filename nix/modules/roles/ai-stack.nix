@@ -1659,6 +1659,8 @@ in {
         pkgs.holehe
         pkgs.sherlock
         pkgs.bbot-placeholder
+        # Phase 86: desktop notifications for human-gate alerts
+        pkgs.libnotify
       ];
 
       # Agent-agnostic environment variables for tool discovery.
@@ -1845,6 +1847,34 @@ in {
             printf '────────────────────\n\n'
           }
           _aq_motd
+        '';
+      };
+    })
+
+    # Phase 86 — Alert queue shell hook: warn once at terminal open if human_gate alerts pending.
+    (lib.mkIf roleEnabled {
+      environment.etc."profile.d/aq-alert-hook.sh" = {
+        mode = "0644";
+        text = let
+          repoPath = cfg.mcpServers.repoPath;
+        in ''
+          # Phase 86 — attention queue check on terminal open (runs once, not on every prompt)
+          _aq_alert_check() {
+            local aq_alerts="${repoPath}/scripts/ai/aq-alerts"
+            [[ -x "$aq_alerts" ]] || return 0
+            local count
+            count=$("$aq_alerts" --count 2>/dev/null) || true
+            [[ "$count" =~ ^[0-9]+$ ]] || return 0
+            (( count == 0 )) && return 0
+            printf '\n[aq] %s pending alert(s) require attention — run: aq-alerts\n\n' "$count" >&2
+            if command -v notify-send &>/dev/null; then
+              notify-send -u normal -t 8000 \
+                "AI Stack: $count Alert(s) Pending" \
+                "Run 'aq-alerts' to review. Use 'aq-approve <id>' or 'aq-reject <id> --reason ...' to act." \
+                2>/dev/null || true
+            fi
+          }
+          _aq_alert_check
         '';
       };
     })
