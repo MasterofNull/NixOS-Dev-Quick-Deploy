@@ -1,23 +1,23 @@
 # WORKFLOW-CANON — Canonical Agent Workflow
 **SSOT for all agents: Claude, Gemini, Codex, local Qwen, remote lanes**
-Maintained by: hyperd | Updated: 2026-05-13
+Maintained by: hyperd | Updated: 2026-05-30
 
 > "The gap between models matters less than the gap between workflows."
 > — Addy Osmani, AI Coding Workflow 2026
 
 ---
 
-## The 7-Step Workflow
+## The 8-Step Workflow
 
 Every non-trivial task (any change touching > 1 file or > 10 lines) MUST follow this sequence.
-Trivial single-line fixes may skip to VALIDATE, but never skip COMMIT.
+Trivial single-line fixes may skip to VALIDATE, but never skip DOC-UPDATE or COMMIT.
 
 ```
 1. ORIENT      →  2. RESEARCH    →  3. PRD/PLAN
                                           ↓
-6. COMMIT      ←  5. VALIDATE    ←  4. EXECUTE(slice)
-                                 ↑
-                        [loop per slice]
+8. COMMIT      ←  7. DOC-UPDATE  ←  4. EXECUTE(slice)
+                       ↑                  ↓
+               6. VALIDATE    ←    5. [loop per slice]
 ```
 
 ---
@@ -175,13 +175,36 @@ aq-qa 0                                     # harness health still green
 
 ---
 
-### Step 7: COMMIT
+### Step 7: DOC-UPDATE
+
+**Purpose**: Keep the system current, maintainable, and hygienic. Every code change must be reflected in docs and the vector knowledge base — otherwise the system drifts and future agents operate on stale context.
+
+#### Progressive documentation:
+- Update **AGENTS.md** / **WORKFLOW-CANON.md** if workflow rules changed
+- Update **HANDOFF.md** with what changed and any open follow-ups
+- Update agent instruction files (`.agent/GEMINI.md`, `.agent/LOCAL-AGENT.md`, `CLAUDE.md`) if their operating parameters changed
+- Add new **promoted bug patterns** to `memory/MEMORY.md` if a silent bug hit 2+ sessions
+
+#### RAG knowledge base (Qdrant collections):
+```bash
+# Seed error-solutions with the new bug pattern
+python3 scripts/data/seed-rag-knowledge.py --collection error-solutions --text "..."
+
+# Seed best-practices or skills-patterns if a new pattern was discovered
+python3 scripts/data/seed-rag-knowledge.py --collection best-practices --text "..."
+```
+
+**Rule**: No commit without updating at least HANDOFF.md. No code change without checking whether a new error pattern should be seeded to RAG.
+
+---
+
+### Step 8: COMMIT
 
 **Purpose**: Record atomic, auditable evidence and prepare handoff for the next agent.
 
 ```bash
 git add <specific files — never git add -A>
-scripts/governance/tier0-validation-gate.sh --pre-commit   # final gate
+scripts/governance/tier0-validation-gate.sh --pre-commit   # gate must pass (after DOC-UPDATE)
 git commit -m "$(cat <<'EOF'
 ...
 EOF

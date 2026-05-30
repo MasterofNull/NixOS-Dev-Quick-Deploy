@@ -233,7 +233,7 @@ Workspace boundary: all file tools scoped to repo root. Use coordinator APIs for
 
 ---
 
-## The 7-Step Canonical Workflow
+## The 8-Step Canonical Workflow
 
 Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
 
@@ -276,6 +276,9 @@ run_command "curl -s -X POST http://localhost:8003/api/memory/facts
 - No "while I'm here" additions — stay in the slice
 
 ### Step 6 — VALIDATE
+1. **Live test** changes — run the changed component in the actual system to catch runtime errors
+2. Fix issues found
+3. Run gates:
 ```bash
 validate_before_commit
 run_command "python3 -m py_compile <changed files>"
@@ -283,15 +286,24 @@ run_command "bash -n <changed shell scripts>"
 ```
 Do NOT run `aq-qa 0` inline — it takes 40+ seconds and blocks the event loop. Leave QA to orchestrator.
 
-### Step 7 — COMMIT PROPOSAL + MEMORY WRITE
+### Step 7 — DOC-UPDATE + MEMORY WRITE
+After every code/config change:
+- Report to orchestrator what changed and any new patterns discovered
+- POST completed-task fact to MemoryBroker:
+```bash
+run_command "curl -s -X POST http://localhost:8003/api/memory/facts \
+  -H 'Content-Type: application/json' \
+  -d '{\"content\":\"COMPLETED: <task> | KEY LEARNING: <1 sentence>\",\"memory_type\":\"semantic\"}'"
+```
+- Append to `.agent/collaboration/PULSE.log` and `.agent/collaboration/RESUME.json`
+- Note any new bug patterns for orchestrator to seed to RAG
+
+### Step 8 — COMMIT PROPOSAL
 ```bash
 validate_before_commit
 git_add <specific files>
-run_command "curl -s -X POST http://localhost:8003/api/memory/facts 
-  -H 'Content-Type: application/json' 
-  -d '{"content":"COMPLETED: <task> | KEY LEARNING: <1 sentence>","memory_type":"semantic"}'"
 ```
-Propose commit to orchestrator. Format: `type(scope): description`
+Propose commit to orchestrator. Format: `type(scope): description`. Do NOT self-commit without orchestrator review.
 
 ---
 
@@ -430,7 +442,7 @@ Do not ask "how can I help?" or "what would you like to do?" — those are failu
 
 ---
 
-## The 7-Step Canonical Workflow
+## The 8-Step Canonical Workflow
 
 Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
 
@@ -500,6 +512,9 @@ Checkpoint before executing any slice. If context exceeds ~60% of model window, 
 - **Review gate required** for any code/config/architecture/destructive/dual-use/external-account work — see `docs/architecture/gemini-review-gate.md` for full contract
 
 ### Step 6 — VALIDATE
+1. **Live test** changes in the running system — catch runtime errors and friction
+2. Fix issues found
+3. Run gates:
 ```bash
 scripts/governance/tier0-validation-gate.sh --pre-commit
 bash -n <changed shell scripts>
@@ -515,15 +530,23 @@ aq-qa 0
 - If auth middleware added — verify it is wired into the request path
 - Change does not acquire more permissions than necessary
 
-### Step 7 — COMMIT
+### Step 7 — DOC-UPDATE
+After every code/config change, keep the system current and hygienic:
+- Update **HANDOFF.md** with what changed and any open follow-ups
+- Update relevant agent .md files if operating parameters changed
+- Seed RAG collections with new patterns: `python3 scripts/data/seed-rag-knowledge.py --collection error-solutions`
+- Add new promoted bug patterns to `memory/MEMORY.md` if a silent bug hit 2+ sessions
+No commit without at least updating HANDOFF.md.
+
+### Step 8 — COMMIT
 ```bash
 git add <specific files>
-scripts/governance/tier0-validation-gate.sh --pre-commit
+scripts/governance/tier0-validation-gate.sh --pre-commit   # runs after DOC-UPDATE
 git commit -m "..."
 # COLLABORATION: Update .agent/collaboration/HANDOFF.md
 ```
-Replace `<active-agent-name>` with the model generating the work (e.g. Claude 3.7 Sonnet, Gemini 2.0 Pro).
-Never commit without validation evidence. Never use `--no-verify`.
+Replace `<active-agent-name>` with the model generating the work.
+Never commit without live testing + doc update evidence. Never use `--no-verify`.
 
 ---
 

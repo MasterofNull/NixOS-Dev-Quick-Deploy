@@ -56,7 +56,7 @@ Do not ask "how can I help?" or "what would you like to do?" — those are failu
 
 ---
 
-## The 7-Step Canonical Workflow
+## The 8-Step Canonical Workflow
 
 Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md`.
 
@@ -126,6 +126,9 @@ Checkpoint before executing any slice. If context exceeds ~60% of model window, 
 - **Review gate required** for any code/config/architecture/destructive/dual-use/external-account work — see `docs/architecture/gemini-review-gate.md` for full contract
 
 ### Step 6 — VALIDATE
+1. **Live test** changes in the running system — catch runtime errors and friction
+2. Fix any issues found
+3. Run gates:
 ```bash
 scripts/governance/tier0-validation-gate.sh --pre-commit
 bash -n <changed shell scripts>
@@ -141,15 +144,24 @@ aq-qa 0
 - If auth middleware added — verify it is wired into the request path
 - Change does not acquire more permissions than necessary
 
-### Step 7 — COMMIT
+### Step 7 — DOC-UPDATE
+After every code/config change, keep the system current and hygienic:
+- Update **HANDOFF.md** with what changed and any open follow-ups
+- Update **AGENTS.md** / **WORKFLOW-CANON.md** if workflow rules changed
+- Update relevant agent .md files (GEMINI.md, CODEX.md, LOCAL-AGENT.md, CLAUDE.md) if operating parameters changed
+- Add new **promoted bug patterns** to `memory/MEMORY.md` if a silent bug hit 2+ sessions
+- **Seed RAG** collections with new patterns: `python3 scripts/data/seed-rag-knowledge.py --collection error-solutions`
+No commit without at least updating HANDOFF.md. No code change without checking if a new error pattern should be seeded.
+
+### Step 8 — COMMIT
 ```bash
 git add <specific files>
-scripts/governance/tier0-validation-gate.sh --pre-commit
+scripts/governance/tier0-validation-gate.sh --pre-commit   # runs after DOC-UPDATE
 git commit -m "..."
 # COLLABORATION: Update .agent/collaboration/HANDOFF.md
 ```
 Replace `<active-agent-name>` with the model generating the work (e.g. Claude 3.7 Sonnet, Gemini 2.0 Pro).
-Never commit without validation evidence. Never use `--no-verify`.
+Never commit without live testing + doc update evidence. Never use `--no-verify`.
 
 ---
 
