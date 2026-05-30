@@ -2490,6 +2490,8 @@ in {
             /run/log/journal/ r,  # open
             /var/log/journal/ r,  # open
             /proc/sys/kernel/random/boot_id r,  # open
+            # auto-added by apparmor-fix-agent 2026-05-30
+            /var/lib/llama-cpp/models/ r,  # open
             deny /home/** wx,
             deny /root/** rwx,
           }
