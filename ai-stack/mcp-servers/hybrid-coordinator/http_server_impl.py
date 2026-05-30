@@ -1221,16 +1221,29 @@ def _apply_query_response_mode(
             "describe",
         )
         explicit_search_markers = ("search", "find", "lookup", "retrieve", "grep", "rg ", "query")
-        if (
-            has_recalled_memory
-            and _is_continuation_query(query)
-            and not any(marker in normalized for marker in explanation_markers)
-            and not any(marker in normalized for marker in explicit_search_markers)
-        ):
+        is_continuation = _is_continuation_query(query)
+        has_explanation = any(marker in normalized for marker in explanation_markers)
+        has_search = any(marker in normalized for marker in explicit_search_markers)
+        if has_recalled_memory and is_continuation and not has_explanation and not has_search:
             effective_generate_response = False
             request_context["response_generation_downshifted"] = True
             request_context["response_generation_downshift_reason"] = "continuation_memory_first"
             request_context["response_generation_downshift_evidence"] = retrieval_strategy.get("evidence", {})
+        else:
+            # Phase 84: debug log so aq-report can surface skip reasons
+            skip_reasons = []
+            if not has_recalled_memory:
+                skip_reasons.append("no_recalled_memory")
+            if not is_continuation:
+                skip_reasons.append("not_continuation_query")
+            if has_explanation:
+                skip_reasons.append("explanation_marker")
+            if has_search:
+                skip_reasons.append("search_marker")
+            logger.debug(
+                "downshift_skipped reasons=%s strategy=%s q=%.80r",
+                skip_reasons, retrieval_strategy.get("reasons"), query,
+            )
 
     if isinstance(request.get("audit_metadata"), dict):
         request["audit_metadata"]["generate_response"] = effective_generate_response
