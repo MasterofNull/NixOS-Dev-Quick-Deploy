@@ -1,3 +1,25 @@
+# HANDOFF MEMO — 2026-05-30 (updated Phase 87/88 — Observability + Hygiene)
+
+## Phase 87/88 — Stabilization — COMPLETE (commits b20af826, 59e253d8, 304bfd62)
+
+### Delivered
+- **87.1**: `scripts/ai/aq-report` downshift denominator fixed — `continuation_candidates` now gates on `retrieval_strategy_active=True`. "0/N candidates" was inflated denominator, not broken downshift.
+- **87.2**: P95=244s RESOLVED — `_LOCAL_MAX_TOKENS_HARD_CEILING=180` confirmed at `ai_coordinator.py:412,706` + `ai_coordinator_handlers.py:1285-1288`. Hardware-bound, not a code bug. `issues-backlog.md` updated.
+- **87.3**: `ai-training-ingest.service` + `ai-training-ingest.timer` wired in `mcp-servers.nix`. Daily at 03:00 UTC, reads last 24h of telemetry, writes to `fine-tuning/dataset.jsonl`. QA checks 87.3.1-87.3.3 added to `phase0.py`. **PENDING-REBUILD**.
+- **88.1**: `aq-integrity-scan` baseline check: 4 doc-only ghost commands (PAEA aspirational), 0 new logical orphans vs 81-entry baseline. All candidates are referenced entrypoints/skills — none deleted. Acceptance criterion met.
+- **88.2**: Phase 87/88 PRD committed. All other 88.2 items (RUST artifacts, skills, harness-prompt-extensions.yaml) were committed in prior session.
+
+### PENDING-REBUILD required
+`nixos-rebuild switch --flake .#hyperd-ai-dev` needed to activate:
+- ai-drop-daemon.service (Phase 85, commit c84958b8)
+- alert hook + libnotify (Phase 86)
+- **ai-training-ingest.timer** (Phase 87.3, commit 59e253d8)
+
+### What's next (Phase 88.5)
+- ACCELERATE PRD hardware validation: ROCm perf benchmark + concurrency integration test
+- Rust refactor Phase 89 (blocked until hardware validation complete)
+
+---
 # HANDOFF MEMO — 2026-05-30 (updated Phase 86 — Human-in-the-Loop Alert Queue)
 
 ## Phase 86 — HITL Alert Queue — COMPLETE (commits c88d2ed6, 05f0965b, 4236f19a)
@@ -468,6 +490,26 @@ You are joining a mu"
 You are the implementer for Slice 5 "
 
 You are the implementer for Slice"
+
+### [2026-05-30T17:32:22Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (1):
+  - `/var/lib/llama-cpp/models/ r,`
+Denied paths that triggered: ['/var/lib/llama-cpp/models/']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-30T17:32:24Z] health-spider
+**AppArmor fix auto-committed** `unknown` — profile `command-center-dashboard-api`  
+Rules added (1): ['            /var/lib/llama-cpp/models/ r,']  
+Denied paths: ['/var/lib/llama-cpp/models/']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+Your task"
+
+Your task"
+This is a RESEARCH-ONLY task. Use gr"
+You are the **Architect** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening a "
+You are the **Implementer** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening "
 [2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
 [2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
 [2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
@@ -569,16 +611,25 @@ You are the implementer for Slice"
 [2026-05-30T16:11:25.241182Z] [dispatch] id=gemini-20260530-091125-thh0oy agent=gemini output=.agents/delegation/outputs/gemini-20260530-091125-thh0oy.log obj="=== Phase 86 Slice 3: Agent Integration — Implementation Task ===
 [2026-05-30T16:11:33.551131Z] [done] id=gemini-20260530-083405-0yom4d
 [2026-05-30T16:13:29.799917Z] [done] id=gemini-20260530-091125-thh0oy
+[2026-05-30T20:14:24.931824Z] [dispatch] id=gemini-20260530-131424-hdaj2t agent=gemini output=.agents/delegation/outputs/gemini-20260530-131424-hdaj2t.log obj="You are acting as a **reviewer and architect** for the NixOS-Dev-Quick-Deploy AI harness.
+[2026-05-30T20:14:25.079363Z] [dispatch] id=local-20260530-131424-yd5av1 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-131424-yd5av1.log obj="You are acting as a **reviewer and architect** for the NixOS-Dev-Quick-Deploy AI harness.
+[2026-05-30T20:18:12.939954Z] [done] id=local-20260530-131424-yd5av1
+[2026-05-30T21:17:07.500566Z] [dispatch] id=gemini-20260530-141707-4hcc6u agent=gemini output=.agents/delegation/outputs/gemini-20260530-141707-4hcc6u.log obj="You are the Gemini agent on the NixOS-Dev-Quick-Deploy harness.
+[2026-05-30T21:17:40.976826Z] [done] id=gemini-20260530-141707-4hcc6u
+[2026-05-30T21:30:49.493772Z] [dispatch] id=gemini-20260530-143049-ykrit0 agent=gemini output=.agents/delegation/outputs/gemini-20260530-143049-ykrit0.log obj="/no_think
+[2026-05-30T21:31:00.282563Z] [dispatch] id=local-20260530-143059-my6eix agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-143059-my6eix.log obj="/no_think
+[2026-05-30T21:31:57.650750Z] [done] id=gemini-20260530-143049-ykrit0
+[2026-05-30T21:33:40.951216Z] [done] id=local-20260530-143059-my6eix
 
-### [2026-05-30T17:32:22Z] apparmor-fix-agent
+### [2026-05-30T22:02:03Z] apparmor-fix-agent
 **Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
 Rules added (1):
-  - `/var/lib/llama-cpp/models/ r,`
-Denied paths that triggered: ['/var/lib/llama-cpp/models/']  
+  - `/etc/machine-id r,`
+Denied paths that triggered: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/etc/machine-id']  
 ⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
 
-### [2026-05-30T17:32:24Z] health-spider
-**AppArmor fix auto-committed** `unknown` — profile `command-center-dashboard-api`  
-Rules added (1): ['            /var/lib/llama-cpp/models/ r,']  
-Denied paths: ['/var/lib/llama-cpp/models/']  
+### [2026-05-30T22:02:03Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (1): ['            /etc/machine-id r,']  
+Denied paths: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/etc/machine-id']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
