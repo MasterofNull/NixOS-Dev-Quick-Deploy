@@ -43,13 +43,18 @@ _LOCK_FILE      = _DROPS_DIR / ".lock"
 _DELEGATION_DIR = _REPO_ROOT / ".agents" / "delegation"
 _OUTPUTS_DIR    = _DELEGATION_DIR / "outputs"
 
-_POLL_INTERVAL_S  = 2
+_POLL_INTERVAL_S   = 2
 _GC_EVERY_N_CYCLES = 60   # run expired-lock GC every ~120s
 
 _LLAMA_URL  = os.environ.get("LLAMA_URL",  "http://127.0.0.1:8080")
 _HYBRID_URL = os.environ.get("HYBRID_URL", "http://127.0.0.1:8003")
 _RALPH_URL  = os.environ.get("RALPH_URL",  "http://127.0.0.1:8004")
 _TIMEOUT_S  = int(os.environ.get("DROP_DAEMON_TIMEOUT", "300"))
+
+# Rate limit: max dispatches per cycle window (prevents flooding)
+_MAX_DISPATCHES_PER_CYCLE = int(os.environ.get("DROP_MAX_PER_CYCLE", "3"))
+# Hard cap on total queued files at any time
+_MAX_QUEUED = int(os.environ.get("DROP_MAX_QUEUED", "20"))
 
 # ── logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -177,6 +182,15 @@ def main() -> None:
                     continue
                 try:
                     drops = _scan_drops()
+                    # Hard cap: refuse to queue more than _MAX_QUEUED files at once
+                    if len(drops) > _MAX_QUEUED:
+                        log.warning(
+                            "drop queue depth %d exceeds limit %d — oldest %d will be processed, rest left for next cycle",
+                            len(drops), _MAX_QUEUED, _MAX_DISPATCHES_PER_CYCLE,
+                        )
+                        drops = drops[:_MAX_DISPATCHES_PER_CYCLE]
+                    else:
+                        drops = drops[:_MAX_DISPATCHES_PER_CYCLE]
                     for drop_path in drops:
                         if not _running:
                             break

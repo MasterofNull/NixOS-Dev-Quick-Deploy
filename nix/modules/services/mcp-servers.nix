@@ -1721,13 +1721,13 @@ in {
         partOf = ["ai-stack.target"];
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
-        path = with pkgs; [ bash coreutils python3 ];
+        path = with pkgs; [ bash coreutils ];
         serviceConfig = {
           Type = "simple";
           User = svcUser;
           Group = aiGroup;
           WorkingDirectory = mcp.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${mcp.repoPath}/scripts/ai/aq-drop-daemon";
+          ExecStart = "${hybridPython}/bin/python3 ${mcp.repoPath}/scripts/ai/aq-drop-daemon";
           Restart = "on-failure";
           RestartSec = "5s";
           Environment = [
@@ -1735,6 +1735,11 @@ in {
             "HYBRID_URL=http://127.0.0.1:${toString ports.mcpHybrid}"
             "RALPH_URL=http://127.0.0.1:${toString ports.mcpRalph}"
             "DROP_DAEMON_TIMEOUT=300"
+            # Security: agent mode (run_shell_command) is blocked by default.
+            # Set to "true" in deploy-options.local.nix only after deliberate review.
+            "DROP_ALLOW_AGENT=false"
+            "DROP_MAX_PER_CYCLE=3"
+            "DROP_MAX_QUEUED=20"
           ];
         };
       };

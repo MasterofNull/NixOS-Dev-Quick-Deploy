@@ -4,6 +4,7 @@ Parses and validates *.drop.yaml files before dispatch.
 """
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -19,6 +20,30 @@ _VALID_ROLES = {"implementer", "architect", "reviewer", "orchestrator"}
 _VALID_MODES = {"auto", "agent", "hybrid", "direct"}
 _MAX_TTL_S = 86400  # 24h cap — no zombie locks
 _MAX_PROMPT_LEN = 8192
+
+# mode: agent dispatches to aq-agent-loop which has run_shell_command capability.
+# Blocked by default — requires DROP_ALLOW_AGENT=true env var to enable.
+# This prevents semantic prompt injection from triggering code execution.
+_AGENT_MODE_BLOCKED = os.environ.get("DROP_ALLOW_AGENT", "").lower() not in ("1", "true", "yes")
+
+# Semantic content policy — phrases that, if present in a prompt, indicate
+# destructive intent regardless of shell metacharacter absence.
+_DESTRUCTIVE_PATTERNS = re.compile(
+    r"(?:"
+    r"\brm\s+-[rf]+"           # rm -rf / rm -fr / rm -r / rm -f
+    r"|\bgit\s+reset\s+--hard"
+    r"|\bgit\s+push\s+--force"
+    r"|\bdrop\s+table\b"
+    r"|\btruncate\s+table\b"
+    r"|\bdelete\s+from\b"
+    r"|\bmkfs\."
+    r"|\bdd\s+if="
+    r"|\bchmod\s+-R\s+777\b"
+    r"|\bsudo\s+rm\b"
+    r"|\bshred\s+-[uz]"
+    r")",
+    re.IGNORECASE,
+)
 
 
 class DropSpecError(ValueError):
@@ -67,6 +92,10 @@ class DropSpec:
                 raise DropSpecError(
                     f"Injection pattern detected in '{field_name}' field — drop rejected"
                 )
+            if _DESTRUCTIVE_PATTERNS.search(value):
+                raise DropSpecError(
+                    f"Destructive command pattern detected in '{field_name}' field — drop rejected"
+                )
             if len(value) > _MAX_PROMPT_LEN:
                 raise DropSpecError(
                     f"'{field_name}' exceeds {_MAX_PROMPT_LEN} chars ({len(value)})"
@@ -79,6 +108,12 @@ class DropSpec:
             raise DropSpecError(f"'role' must be one of {sorted(_VALID_ROLES)}, got {self.role!r}")
         if self.mode not in _VALID_MODES:
             raise DropSpecError(f"'mode' must be one of {sorted(_VALID_MODES)}, got {self.mode!r}")
+        # Block agent mode unless explicitly opted in (run_shell_command capability)
+        if self.mode == "agent" and _AGENT_MODE_BLOCKED:
+            raise DropSpecError(
+                "mode: agent is disabled by default (shell execution capability). "
+                "Set DROP_ALLOW_AGENT=true to enable."
+            )
         if not (1 <= self.priority <= 10):
             raise DropSpecError(f"'priority' must be 1–10, got {self.priority}")
         if not (60 <= self.ttl_s <= _MAX_TTL_S):
