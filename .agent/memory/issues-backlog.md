@@ -2,3 +2,18 @@
   Severity: medium
   Action: Confirm aiHarnessCliWrappers exposes aq-session-start or document the supported absolute path fallback for Codex sessions.
   File: nix/modules/roles/ai-stack.nix ~line 240
+
+[OPEN] role-enforcement — AGENT_TYPE_ELIGIBLE_ROLES never validated at dispatch — Matrix is defined in agent_executor.py but no runtime check blocks ineligible role assignments. Any AgentType can receive any role without error.
+  Severity: low (aspirational per role-matrix.md §7 — enforcement is a future capability)
+  Action: Phase 58A.5 TODO — add eligibility validator in dispatch_task() before TaskConfig is finalized. Until then, policy is doc-only.
+  File: ai-stack/mcp-servers/coordinator/agent_executor.py ~line 356
+
+[OPEN] role-enforcement — no reviewer_id tracking, self-review prevention aspirational — Role-matrix.md §8 states "a reviewer may not review their own work" but no reviewer_id field exists in Task/TaskConfig; self-review cannot be enforced at runtime.
+  Severity: low (process-enforced via orchestrator discipline, not technically blocked)
+  Action: Add reviewer_id to TaskConfig + check in dispatch that reviewer != original implementer task id. Phase 58A.5 candidate.
+  File: ai-stack/mcp-servers/coordinator/agent_executor.py, ai-stack/mcp-servers/shared/task_config.py
+
+[OPEN] role-enforcement — domain-role eligibility not validated at task dispatch — DOMAIN-ROLE-MATRIX.md defines which agents may fill which roles per domain, but no enforcement exists at dispatch. Cross-domain mis-routing (e.g., Gemini as security reviewer for its own security implementation) is doc-only blocked.
+  Severity: low (policy gap, not immediate production risk)
+  Action: Long-term: pass domain_shell in TaskConfig and validate against DOMAIN-ROLE-MATRIX at dispatch. Immediate: document constraint in delegation prompts.
+  File: .agent/DOMAIN-ROLE-MATRIX.md (new), ai-stack/mcp-servers/coordinator/agent_executor.py
