@@ -33,6 +33,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# ── path resolution ───────────────────────────────────────────────────────────
+_HERE = Path(__file__).resolve().parent
+_LIB = _HERE / "lib"
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+
+try:
+    from attention_queue import push
+except ImportError:
+    def push(*args, **kwargs): return None
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("health-spider")
 
@@ -241,6 +252,15 @@ class HealthSpider:
         ok, ms = await asyncio.to_thread(_http_check, cfg["url"])
         if ok:
             logger.info(f"[{zone}] HTTP OK {ms}ms")
+            # auto_ok (informational only, goes straight to archive)
+            push(
+                source="health-spider",
+                severity="low",
+                autonomy_boundary="auto_ok",
+                title=f"Zone {zone} health check passing",
+                detail=f"HTTP OK at {cfg['url']} ({ms}ms)",
+                proposed_action="None (automated check)"
+            )
         else:
             logger.warning(f"[{zone}] HTTP FAILED {cfg['url']}")
             # 2. Service check only on HTTP failure (saves bandwidth)
@@ -284,6 +304,16 @@ class HealthSpider:
 
         elif atype == "service_down":
             svc = anomaly.get("service", zone)
+            # human_gate, severity=high
+            push(
+                source="health-spider",
+                severity="high",
+                autonomy_boundary="human_gate",
+                title=f"Service {svc} is DOWN in zone {zone}",
+                detail=f"Service state: {anomaly.get('state', 'unknown')}. HTTP health check failed.",
+                proposed_action=f"Investigate and restart {svc} via systemctl.",
+                payload=anomaly
+            )
             key = f"service_down:{svc}"
             if key not in self._known_issues:
                 self._known_issues.add(key)
@@ -305,6 +335,16 @@ class HealthSpider:
             await self._queue_prsi(anomaly)
 
         elif atype == "http_failure":
+            # human_gate, severity=high (Service down from user perspective)
+            push(
+                source="health-spider",
+                severity="high",
+                autonomy_boundary="human_gate",
+                title=f"HTTP Failure in zone {zone}",
+                detail=f"HTTP health check failed at {anomaly.get('url')}. Service state: {anomaly.get('service_state', 'unknown')}.",
+                proposed_action=f"Check service logs and restart if hung: journalctl -u {ZONES[zone].get('service', zone)} -n 50",
+                payload=anomaly
+            )
             key = f"http_failure:{zone}"
             if key not in self._known_issues:
                 self._known_issues.add(key)
@@ -346,18 +386,31 @@ class HealthSpider:
             stdout, stderr = await asyncio.wait_for(proc.communicate(denial_json), timeout=90)
             if proc.returncode == 0:
                 result = json.loads(stdout) if stdout.strip() else {}
-                commit = result.get("commit_hash", "unknown")
+                commit = result.get("commit_hash", "pending")
                 rules = result.get("rules_added", [])
-                logger.info(f"[{anomaly['zone']}] Fix committed: {commit} ({len(rules)} rules)")
+                logger.info(f"[{anomaly['zone']}] Fix staged (alert: {result.get('alert_id', 'unknown')})")
+                
+                # rebuild_required after fix is staged (even if not committed yet, 
+                # as nixos-rebuild will pick up the local file changes if run)
+                push(
+                    source="health-spider",
+                    severity="medium",
+                    autonomy_boundary="rebuild_required",
+                    title=f"Nix rebuild required for AppArmor fix ({profile})",
+                    detail=f"apparmor-fix-agent staged {len(rules)} rules for {profile}. Nix file modified.",
+                    proposed_action="Run: sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
+                    payload={"profile": profile, "rules_added": rules}
+                )
+                
                 _update_handoff(
-                    f"**AppArmor fix auto-committed** `{commit}` — profile `{profile}`  \n"
+                    f"**AppArmor fix staged** — profile `{profile}`  \n"
                     f"Rules added ({len(rules)}): {rules[:5]}  \n"
                     f"Denied paths: {[d['path'] for d in denials[:5]]}  \n"
                     f"⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**"
                 )
-                _emit_event("apparmor_fix_committed", {
+                _emit_event("apparmor_fix_staged", {
                     "zone": anomaly["zone"], "profile": profile,
-                    "commit_hash": commit, "rules_added": rules,
+                    "rules_added": rules,
                 })
             elif proc.returncode == 2:
                 logger.info(f"[{anomaly['zone']}] AppArmor: all paths already covered")

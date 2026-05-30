@@ -31,6 +31,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# ── path resolution ───────────────────────────────────────────────────────────
+_HERE = Path(__file__).resolve().parent
+_LIB = _HERE.parent / "ai" / "lib"
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+
+try:
+    from attention_queue import push, resolve
+except ImportError:
+    # Fallback for environments where attention_queue is not yet available
+    def push(*args, **kwargs): return None
+    def resolve(*args, **kwargs): return False
+
 REPO_ROOT        = Path(__file__).resolve().parent.parent.parent
 NIX_FILE         = REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
 HANDOFF_MD       = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
@@ -458,13 +471,35 @@ def _scan_journalctl(profile: str, since_seconds: int) -> List[Dict[str, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="AppArmor fix agent")
-    parser.add_argument("--profile", required=True, help="AppArmor profile name")
+    parser.add_argument("--profile", help="AppArmor profile name (required unless --commit-staged)")
     parser.add_argument("--input-json", metavar="FILE",
                         help="Read denial JSON from file or '-' for stdin")
     parser.add_argument("--since", type=int, default=120,
                         help="Scan journalctl for denials in last N seconds (default: 120)")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--commit-staged", action="store_true",
+                        help="Commit staged changes (called by aq-approve)")
+    parser.add_argument("--alert-id", help="Alert ID to resolve after commit")
     args = parser.parse_args()
+
+    # --- Mode: Commit Staged (Human approved) ---
+    if args.commit_staged:
+        # We need a message for the commit. If we don't have denials context here,
+        # we'll use a generic message or try to reconstruct it.
+        msg = "fix(apparmor): commit human-approved rule changes\n\nApproved via attention queue."
+        if args.alert_id:
+            msg += f"\n\nAlert-Id: {args.alert_id}"
+        
+        commit_hash = _git_commit(msg)
+        if commit_hash:
+            if args.alert_id:
+                resolve(args.alert_id, "approved")
+            print(json.dumps({"status": "committed", "hash": commit_hash}))
+            return 0
+        return 1
+
+    if not args.profile:
+        parser.error("--profile is required unless using --commit-staged")
 
     # --- Load denials ---
     if args.input_json:
@@ -522,33 +557,41 @@ def main() -> int:
     lines.insert(deny_idx, insert_block)
     NIX_FILE.write_text("".join(lines), encoding="utf-8")
 
-    # --- Commit ---
+    # --- Push to Attention Queue instead of direct commit ---
     denial_paths = [d["path"] for d in denials]
     rule_lines = [r for r, _ in deduped]
-    msg = (
-        f"fix(apparmor): auto-add {len(deduped)} rule(s) to {args.profile} profile\n\n"
-        f"AppArmor-fix-agent detected {len(denials)} denial(s) and generated rules.\n"
-        f"Paths: {denial_paths[:5]}\n"
-        f"Requires: sudo nixos-rebuild switch --flake .#hyperd-ai-dev\n\n"
-        f"Co-Authored-By: health-spider <noreply@local>"
-    )
+    
     t_start = time.time()
-    _update_handoff(args.profile, rule_lines, "pending-commit", denial_paths)
-    commit_hash = _git_commit(msg)
-    if not commit_hash:
-        return 1
+    _update_handoff(args.profile, rule_lines, "pending-human-approval", denial_paths)
+    
+    alert_id = push(
+        source="apparmor-fix-agent",
+        severity="high",
+        autonomy_boundary="human_gate",
+        title=f"AppArmor rules for {args.profile}",
+        detail=f"Detected {len(denials)} denials. Proposed {len(rule_lines)} rules for profile '{args.profile}'.",
+        proposed_action=f"Approve and commit rules to mcp-servers.nix",
+        payload={
+            "profile": args.profile,
+            "rules_proposed": rule_lines,
+            "denial_paths": denial_paths[:10]
+        },
+        executor="apparmor_fix"
+    )
+    
     latency_ms = (time.time() - t_start) * 1000
 
-    # --- Knowledge + mesh injection ---
+    # --- Knowledge + mesh injection (best effort since not committed yet) ---
     _seed_rag(args.profile, denials, rule_lines)
-    _push_memory_fact(args.profile, rule_lines, commit_hash, denial_paths)
-    _emit_training_event(args.profile, rule_lines, denials, commit_hash, latency_ms)
+    _push_memory_fact(args.profile, rule_lines, "pending", denial_paths)
+    _emit_training_event(args.profile, rule_lines, denials, "pending", latency_ms)
 
     json.dump({
         "rules_added": rule_lines,
-        "commit_hash": commit_hash,
+        "alert_id": alert_id,
         "profile": args.profile,
         "denial_count": len(denials),
+        "status": "pending_approval"
     }, sys.stdout)
     sys.stdout.write("\n")
     return 0

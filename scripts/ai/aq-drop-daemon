@@ -35,6 +35,12 @@ from task_config import TaskConfig                         # noqa: E402
 from task_registry import TaskRegistry                     # noqa: E402
 from dispatch import classify_mode, dispatch_task          # noqa: E402
 
+try:
+    from attention_queue import push
+except ImportError:
+    # Fallback for environments where attention_queue is not yet available
+    def push(*args, **kwargs): return None
+
 # ── config ────────────────────────────────────────────────────────────────────
 _DROPS_DIR      = _REPO_ROOT / ".agents" / "drops"
 _ARCHIVE_DIR    = _DROPS_DIR / "archive"
@@ -109,6 +115,34 @@ def _process_drop(drop_path: Path, registry: TaskRegistry) -> None:
 
     # Resolve "auto" mode via heuristic classifier
     resolved_mode = classify_mode(spec.prompt) if spec.mode == "auto" else spec.mode
+
+    # Slice 3: Attention Queue Integration
+    # mode=agent → human_gate (has shell execution capability)
+    # mode=direct|hybrid → auto_ok for inference-only drops
+    if resolved_mode == "agent":
+        boundary = "human_gate"
+    else:
+        boundary = "auto_ok"
+
+    push(
+        source="drop_dispatch",
+        severity="medium",
+        autonomy_boundary=boundary,
+        title=f"Drop Dispatch: {spec.role} ({resolved_mode})",
+        detail=f"Objective: {spec.prompt[:100]}...\nFile: {drop_path.name}",
+        proposed_action=f"Approve dispatch of drop {drop_path.name}",
+        payload={
+            "drop_path": str(drop_path),
+            "mode": resolved_mode,
+            "role": spec.role,
+            "prompt": spec.prompt
+        },
+        executor="drop_dispatch"
+    )
+
+    if boundary == "human_gate":
+        log.info("drop=%s gated for human approval (mode=agent)", drop_path.name)
+        return
 
     try:
         config = TaskConfig.from_args(

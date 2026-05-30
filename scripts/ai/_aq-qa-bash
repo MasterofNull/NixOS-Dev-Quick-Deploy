@@ -1169,6 +1169,66 @@ print('ok')
   else
     _fail 4 "85.5" "ai-drop-daemon NixOS service" "not found in mcp-servers.nix"
   fi
+
+  # ── Phase 86: Human-in-the-Loop Alert System ──────────────────────────────
+
+  # 86.1 — attention_queue.py importable
+  if python3 -c "import sys; sys.path.insert(0,'${REPO_ROOT}/scripts/ai/lib'); from attention_queue import push, get_pending, resolve, pending_count" 2>/dev/null; then
+    _pass 1 "86.1" "attention_queue.py importable (push/get_pending/resolve/pending_count)"
+  else
+    _fail 1 "86.1" "attention_queue.py" "import failed — check scripts/ai/lib/attention_queue.py"
+  fi
+
+  # 86.2 — auto_ok push creates ATTENTION_ARCHIVE.jsonl
+  local attn_dir="${REPO_ROOT}/.agents/attention"
+  python3 -c "
+import sys; sys.path.insert(0,'${REPO_ROOT}/scripts/ai/lib')
+from attention_queue import push
+push('qa-check','low','auto_ok',title='QA 86.2 probe',detail='auto_ok test',proposed_action='none')
+" 2>/dev/null
+  if [[ -f "${attn_dir}/ATTENTION_ARCHIVE.jsonl" ]]; then
+    _pass 1 "86.2" "auto_ok push creates .agents/attention/ATTENTION_ARCHIVE.jsonl"
+  else
+    _fail 1 "86.2" "ATTENTION_ARCHIVE.jsonl" "not created after auto_ok push"
+  fi
+
+  # 86.3 — aq-alerts CLI exists and is executable
+  if [[ -x "${REPO_ROOT}/scripts/ai/aq-alerts" ]]; then
+    _pass 1 "86.3" "aq-alerts CLI exists and is executable"
+  else
+    _fail 1 "86.3" "aq-alerts" "not found or not executable at scripts/ai/aq-alerts"
+  fi
+
+  # 86.4 — aq-alerts --count outputs a valid integer (may be >0 if alerts are pending)
+  local _aq_count
+  _aq_count=$("${REPO_ROOT}/scripts/ai/aq-alerts" --count 2>/dev/null) || true
+  if [[ "$_aq_count" =~ ^[0-9]+$ ]]; then
+    _pass 1 "86.4" "aq-alerts --count: numeric output (${_aq_count} pending)"
+  else
+    _fail 2 "86.4" "aq-alerts --count" "non-numeric output: '${_aq_count}'"
+  fi
+
+  # 86.5 — aq-approve CLI exists and is executable
+  if [[ -x "${REPO_ROOT}/scripts/ai/aq-approve" ]]; then
+    _pass 1 "86.5" "aq-approve CLI exists and is executable"
+  else
+    _fail 1 "86.5" "aq-approve" "not found or not executable at scripts/ai/aq-approve"
+  fi
+
+  # 86.6 — aq-reject CLI exists and is executable
+  if [[ -x "${REPO_ROOT}/scripts/ai/aq-reject" ]]; then
+    _pass 1 "86.6" "aq-reject CLI exists and is executable"
+  else
+    _fail 1 "86.6" "aq-reject" "not found or not executable at scripts/ai/aq-reject"
+  fi
+
+  # 86.7 — dashboard /alerts/status endpoint responds 200
+  local dash_port="${DASHBOARD_PORT:-8889}"
+  if curl -sf --max-time 3 "http://127.0.0.1:${dash_port}/api/aistack/alerts/status" >/dev/null 2>&1; then
+    _pass 3 "86.7" "dashboard GET /api/aistack/alerts/status returns 200"
+  else
+    _fail 3 "86.7" "dashboard /alerts/status" "curl failed — dashboard may be down or route not wired"
+  fi
 }
 
 # ---------------------------------------------------------------------------

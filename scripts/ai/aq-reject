@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""
+aq-reject <id> --reason "..." — Phase 86 alert rejection CLI.
+
+Usage:
+  aq-reject attn-a3f8c2b1 --reason "false positive"
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE / "lib"))
+
+from attention_queue import get_by_id, resolve  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Reject a pending alert")
+    parser.add_argument("id", help="Alert ID (e.g. attn-a3f8c2b1)")
+    parser.add_argument("--reason", required=True, help="Reason for rejection (required)")
+    args = parser.parse_args()
+
+    alert = get_by_id(args.id)
+    if not alert:
+        print(f"Alert {args.id!r} not found.", file=sys.stderr)
+        return 1
+
+    if alert.get("status") != "pending":
+        print(f"Alert {args.id} is already {alert.get('status')!r}.")
+        return 0
+
+    # Embed reason in resolved_by for the archive record
+    ok = resolve(args.id, "rejected", resolved_by=f"human: {args.reason}")
+    if ok:
+        print(f"  Rejected: {alert.get('title', args.id)}")
+        print(f"  Reason:   {args.reason}")
+        print(f"  Alert archived.")
+        return 0
+    print(f"  resolve() failed.", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

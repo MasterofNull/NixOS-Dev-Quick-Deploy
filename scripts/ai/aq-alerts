@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""
+aq-alerts — Phase 86 Human-in-the-Loop alert viewer.
+
+Lists pending alerts from .agents/attention/ATTENTION.json.
+Exit code 0 = no pending alerts, 1 = pending alerts exist.
+Used by the shell hook to show alert count on terminal open.
+
+Usage:
+  aq-alerts               # table of pending alerts
+  aq-alerts --all         # include resolved/expired
+  aq-alerts --count       # print count only, exit 1 if pending > 0
+  aq-alerts --source apparmor-fix-agent
+  aq-alerts --severity critical
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE / "lib"))
+
+from attention_queue import get_pending, get_all  # noqa: E402
+
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+_SEVERITY_COLOR = {
+    "critical": "\033[1;31m",  # bold red
+    "high":     "\033[0;31m",  # red
+    "medium":   "\033[0;33m",  # yellow
+    "low":      "\033[0;32m",  # green
+}
+_RESET = "\033[0m"
+_BOUNDARY_LABEL = {
+    "human_gate":       "[GATE]    ",
+    "rebuild_required": "[REBUILD] ",
+    "auto_ok":          "[AUTO]    ",
+}
+
+
+def _col(text: str, color: str) -> str:
+    if sys.stdout.isatty():
+        return f"{color}{text}{_RESET}"
+    return text
+
+
+def _fmt_age(iso: str) -> str:
+    from datetime import datetime, timezone
+    try:
+        t = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        secs = int((datetime.now(timezone.utc) - t).total_seconds())
+        if secs < 3600:
+            return f"{secs // 60}m ago"
+        if secs < 86400:
+            return f"{secs // 3600}h ago"
+        return f"{secs // 86400}d ago"
+    except (ValueError, TypeError):
+        return "?"
+
+
+def _print_table(alerts: list) -> None:
+    if not alerts:
+        print("No pending alerts.")
+        return
+
+    # Sort by severity then age
+    alerts = sorted(alerts, key=lambda a: (_SEVERITY_ORDER.get(a.get("severity", "low"), 99), a.get("created_at", "")))
+
+    hdr = f"{'ID':<16}  {'SEV':<8}  {'BOUNDARY':<12}  {'SOURCE':<22}  {'TITLE':<40}  {'AGE'}"
+    print(_col(hdr, "\033[1m"))
+    print("-" * len(hdr))
+    for a in alerts:
+        sev = a.get("severity", "?")
+        color = _SEVERITY_COLOR.get(sev, "")
+        boundary = _BOUNDARY_LABEL.get(a.get("autonomy_boundary", ""), a.get("autonomy_boundary", "")[:12])
+        row = (
+            f"{a['id']:<16}  "
+            f"{sev:<8}  "
+            f"{boundary:<12}  "
+            f"{a.get('source','?')[:22]:<22}  "
+            f"{a.get('title','?')[:40]:<40}  "
+            f"{_fmt_age(a.get('created_at',''))}"
+        )
+        print(_col(row, color))
+    print()
+    print(f"  Review:  aq-review <id>")
+    print(f"  Approve: aq-approve <id>")
+    print(f"  Reject:  aq-reject <id> --reason \"...\"")
+    print(f"  Defer:   aq-defer <id> --hours 4")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="View pending AI stack alerts")
+    parser.add_argument("--all", action="store_true", help="include resolved/expired alerts")
+    parser.add_argument("--count", action="store_true", help="print count only, exit 1 if >0")
+    parser.add_argument("--source", help="filter by source")
+    parser.add_argument("--severity", help="filter by severity (critical|high|medium|low)")
+    args = parser.parse_args()
+
+    alerts = get_all() if args.all else get_pending()
+
+    if args.source:
+        alerts = [a for a in alerts if a.get("source") == args.source]
+    if args.severity:
+        alerts = [a for a in alerts if a.get("severity") == args.severity]
+
+    if args.count:
+        pending = [a for a in alerts if a.get("status") == "pending"]
+        print(len(pending))
+        return 1 if pending else 0
+
+    _print_table(alerts)
+    pending = [a for a in alerts if a.get("status") == "pending"]
+    return 1 if pending else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

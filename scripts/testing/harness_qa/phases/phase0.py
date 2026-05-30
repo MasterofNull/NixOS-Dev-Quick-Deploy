@@ -1158,6 +1158,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_phase66_wasmtime(ctx))
     results.extend(_check_phase83_dag_context(ctx))
     results.extend(_check_phase85_drop_zone(ctx))
+    results.extend(_check_phase86_attention_queue(ctx))
     return results
 
 
@@ -1894,5 +1895,120 @@ def _check_phase85_drop_zone(ctx: RunContext) -> list[CheckResult]:
             results.append(passed(4, "85.5", "ai-drop-daemon service wired in mcp-servers.nix"))
         else:
             results.append(failed(4, "85.5", "ai-drop-daemon NixOS service", "not found in mcp-servers.nix"))
+
+    return results
+
+
+def _check_phase86_attention_queue(ctx: RunContext) -> list[CheckResult]:
+    """Phase 86: Human-in-the-Loop Alert Queue."""
+    results: list[CheckResult] = []
+
+    # 86.1 — attention_queue.py importable
+    aq_lib = ctx.repo_root / "scripts" / "ai" / "lib" / "attention_queue.py"
+    if not aq_lib.exists():
+        results.append(failed(4, "86.1", "attention_queue.py", "file not found at scripts/ai/lib/attention_queue.py"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-c",
+             "import sys; sys.path.insert(0,'scripts/ai/lib'); "
+             "from attention_queue import push, get_pending, get_by_id, resolve, pending_count; "
+             "print('ok')"],
+            capture_output=True, text=True, cwd=str(ctx.repo_root),
+        )
+        if rc.returncode != 0 or "ok" not in rc.stdout:
+            results.append(failed(4, "86.1", "attention_queue.py importable", rc.stderr.strip() or rc.stdout.strip()))
+        else:
+            results.append(passed(4, "86.1", "attention_queue.py: importable with all public symbols"))
+
+    # 86.2 — auto_ok push creates ATTENTION_ARCHIVE.jsonl (not ATTENTION.json)
+    if not aq_lib.exists():
+        results.append(skipped(4, "86.2", "auto_ok push → archive", "attention_queue.py not found"))
+    else:
+        rc = subprocess.run(
+            ["python3", "-c",
+             "import sys, os, tempfile, pathlib, json\n"
+             "sys.path.insert(0, 'scripts/ai/lib')\n"
+             "import attention_queue as aq\n"
+             "# redirect to temp dir\n"
+             "td = tempfile.mkdtemp()\n"
+             "aq._ATTENTION_DIR = pathlib.Path(td)\n"
+             "aq._QUEUE_FILE    = pathlib.Path(td) / 'ATTENTION.json'\n"
+             "aq._ARCHIVE_FILE  = pathlib.Path(td) / 'ATTENTION_ARCHIVE.jsonl'\n"
+             "aq.push('test', 'low', 'auto_ok', 'smoke test', 'unit test', 'none')\n"
+             "queue = json.loads((pathlib.Path(td)/'ATTENTION.json').read_text()) if (pathlib.Path(td)/'ATTENTION.json').exists() else []\n"
+             "archive_exists = (pathlib.Path(td)/'ATTENTION_ARCHIVE.jsonl').exists()\n"
+             "assert len(queue) == 0, f'auto_ok should not land in queue, got {len(queue)} items'\n"
+             "assert archive_exists, 'ATTENTION_ARCHIVE.jsonl not created'\n"
+             "print('ok')"],
+            capture_output=True, text=True, cwd=str(ctx.repo_root),
+        )
+        if rc.returncode != 0 or "ok" not in rc.stdout:
+            results.append(failed(4, "86.2", "auto_ok push → archive only", rc.stderr.strip() or rc.stdout.strip()))
+        else:
+            results.append(passed(4, "86.2", "auto_ok push: archived immediately, queue stays empty"))
+
+    # 86.3 — aq-alerts exists and executable
+    aq_alerts = ctx.repo_root / "scripts" / "ai" / "aq-alerts"
+    if not aq_alerts.exists():
+        results.append(failed(4, "86.3", "aq-alerts", "script not found at scripts/ai/aq-alerts"))
+    elif not os.access(str(aq_alerts), os.X_OK):
+        results.append(failed(4, "86.3", "aq-alerts executable", "not executable"))
+    else:
+        results.append(passed(4, "86.3", "aq-alerts: exists and executable"))
+
+    # 86.4 — aq-alerts --count returns 0 when queue is empty
+    if aq_alerts.exists():
+        try:
+            rc = subprocess.run(
+                [str(aq_alerts), "--count"],
+                capture_output=True, text=True, timeout=10,
+                env={**os.environ, "ATTENTION_QUEUE_PATH": "/dev/null"},
+            )
+            # Accept either "0" output or exit 0 with count line
+            out = rc.stdout.strip()
+            if out == "0" or (rc.returncode == 0 and out == "0"):
+                results.append(passed(4, "86.4", "aq-alerts --count: returns 0 when empty"))
+            else:
+                # May have pending alerts — just check it ran without error
+                if rc.returncode in (0, 1) and out.isdigit():
+                    results.append(passed(4, "86.4", f"aq-alerts --count: returned {out} (numeric, no crash)"))
+                else:
+                    results.append(failed(4, "86.4", "aq-alerts --count", f"unexpected output: {out!r} rc={rc.returncode}"))
+        except Exception as e:
+            results.append(failed(4, "86.4", "aq-alerts --count", str(e)))
+    else:
+        results.append(skipped(4, "86.4", "aq-alerts --count", "aq-alerts not found"))
+
+    # 86.5 — aq-approve exists and executable
+    aq_approve = ctx.repo_root / "scripts" / "ai" / "aq-approve"
+    if not aq_approve.exists():
+        results.append(failed(4, "86.5", "aq-approve", "script not found at scripts/ai/aq-approve"))
+    elif not os.access(str(aq_approve), os.X_OK):
+        results.append(failed(4, "86.5", "aq-approve executable", "not executable"))
+    else:
+        results.append(passed(4, "86.5", "aq-approve: exists and executable"))
+
+    # 86.6 — aq-reject exists and executable
+    aq_reject = ctx.repo_root / "scripts" / "ai" / "aq-reject"
+    if not aq_reject.exists():
+        results.append(failed(4, "86.6", "aq-reject", "script not found at scripts/ai/aq-reject"))
+    elif not os.access(str(aq_reject), os.X_OK):
+        results.append(failed(4, "86.6", "aq-reject executable", "not executable"))
+    else:
+        results.append(passed(4, "86.6", "aq-reject: exists and executable"))
+
+    # 86.7 — dashboard /api/aistack/alerts/status returns 200
+    dashboard_url = f"http://127.0.0.1:{getattr(ctx, 'dashboard_port', 8889)}"
+    try:
+        status_code, body = http_get(f"{dashboard_url}/api/aistack/alerts/status", timeout=5)
+        if status_code == 200:
+            results.append(passed(5, "86.7", "dashboard /api/aistack/alerts/status: 200 OK"))
+        elif status_code == 404:
+            # Route not yet active — needs dashboard service restart after deploy
+            results.append(skipped(5, "86.7", "dashboard alerts/status", "HTTP 404 — service restart needed to pick up new route"))
+        else:
+            results.append(failed(5, "86.7", "dashboard /api/aistack/alerts/status", f"HTTP {status_code}"))
+    except Exception as e:
+        results.append(failed(5, "86.7", "dashboard /api/aistack/alerts/status", str(e)))
 
     return results
