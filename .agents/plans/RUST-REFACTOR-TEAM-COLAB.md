@@ -1,5 +1,17 @@
 # Phase 0: Python-to-Rust Refactor Team Collaboration Plan
 
+## Status: DEFERRED — 2026-05-30
+
+**Decision**: Rust refactor is explicitly deferred until the Python AI stack is feature-mature.
+Rationale: the system is newly operational; core capabilities, training loop, and HITL workflows
+are still being built out. A large rewrite now would refactor a moving target and interrupt
+capability development. Revisit when: (1) training loop is producing samples, (2) HITL queue
+is validated in production, (3) ACCELERATE PRD hardware criteria are green.
+
+**Do not start Phase 0 execution until orchestrator explicitly lifts this deferral.**
+
+---
+
 ## Overview
 This document outlines the multi-agent collaboration strategy for the upcoming massive Python-to-Rust refactoring effort within the NixOS-Dev-Quick-Deploy harness. **Note: This is a planning and alignment document. No code is to be refactored until the Orchestrator explicitly transitions to execution mode.**
 
