@@ -1,6 +1,203 @@
 {
   "in_flight": [
     {
+      "id": "gemini-20260530-075425-9mmzvp",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260530-075425-9mmzvp.log",
+      "objective": "=== Phase 86 Team Convergence \u2014 Expert Panel Synthesis ===\n\nYou are acting as team facilitator. Three independent expert",
+      "dispatched_at": "2026-05-30T14:54:25.706031Z",
+      "status": "running"
+    },
+    {
+      "id": "gemini-20260530-091125-thh0oy",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260530-091125-thh0oy.log",
+      "objective": "=== Phase 86 Slice 3: Agent Integration \u2014 Implementation Task ===\n\nYou are the implementer for Slice 3 of the Phase 86 H",
+      "dispatched_at": "2026-05-30T16:11:25.241182Z",
+      "status": "done",
+      "completed_at": "2026-05-30T16:13:29.799917Z"
+    },
+    {
+      "id": "gemini-20260530-083405-0yom4d",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260530-083405-0yom4d.log",
+      "objective": "=== Phase 86 Slice 3: Agent Integration \u2014 Implementation Task ===\n\nYou are the implementer for Slice 3 of the Phase 86 H",
+      "dispatched_at": "2026-05-30T15:34:05.231682Z",
+      "status": "done",
+      "completed_at": "2026-05-30T16:11:33.551131Z"
+    },
+    {
+      "id": "local-20260530-083405-syysz9",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-083405-syysz9.log",
+      "objective": "=== Phase 86 Slice 5: Dashboard + QA \u2014 Implementation Task ===\n\nYou are the implementer for Slice 5 of the Phase 86 Huma",
+      "dispatched_at": "2026-05-30T15:34:05.320856Z",
+      "status": "done",
+      "completed_at": "2026-05-30T16:11:10.158247Z"
+    },
+    {
+      "id": "gemini-20260530-083405-nna7u1",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260530-083405-nna7u1.log",
+      "objective": "=== NixOS-Dev-Quick-Deploy AI Stack \u2014 Phase 86 Expert Review (Codex Panel) ===\n\nYou are joining a multi-agent expert tea",
+      "dispatched_at": "2026-05-30T15:34:05.232465Z",
+      "status": "done",
+      "completed_at": "2026-05-30T15:35:31.021903Z"
+    },
+    {
+      "id": "local-20260530-081202-oohuwu",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-081202-oohuwu.log",
+      "objective": "Phase 86 design document: produce a complete design covering: (1) ATTENTION.json schema, (2) CLI interface for aq-alerts",
+      "dispatched_at": "2026-05-30T15:12:02.250080Z",
+      "status": "done",
+      "completed_at": "2026-05-30T15:24:47.566314Z"
+    },
+    {
+      "id": "local-20260530-075411-b8lytm",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-075411-b8lytm.log",
+      "objective": "=== NixOS-Dev-Quick-Deploy AI Stack \u2014 Phase 86 Expert Review ===\n\n## Project Context\nLocal-first AI agent stack on NixOS",
+      "dispatched_at": "2026-05-30T14:54:11.374060Z",
+      "status": "done",
+      "completed_at": "2026-05-30T14:57:47.829965Z"
+    },
+    {
+      "id": "local-20260530-073545-bof9b5",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-073545-bof9b5.log",
+      "objective": "=== NixOS-Dev-Quick-Deploy AI Stack \u2014 Phase 86 Expert Review ===\n\n## Project Context\nLocal-first AI agent stack on NixOS",
+      "dispatched_at": "2026-05-30T14:35:45.612259Z",
+      "status": "done",
+      "completed_at": "2026-05-30T14:41:03.363687Z"
+    },
+    {
+      "id": "gemini-20260530-073603-jgot6y",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260530-073603-jgot6y.log",
+      "objective": "=== NixOS-Dev-Quick-Deploy AI Stack \u2014 Phase 86 Expert Review ===\n\n## Project Context\nLocal-first AI agent stack on NixOS",
+      "dispatched_at": "2026-05-30T14:36:03.605753Z",
+      "status": "done",
+      "completed_at": "2026-05-30T14:37:45.593756Z"
+    },
+    {
+      "id": "local-20260529-235545-fsz9rj",
+      "agent": "local-agent",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260529-235545-fsz9rj.log",
+      "objective": "/no_think\nYou are Implementer for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.\n\nTASK: Analyse the existing dispatch c",
+      "dispatched_at": "2026-05-30T06:55:45.443960Z",
+      "status": "failed",
+      "completed_at": "2026-05-30T07:03:46.922791Z"
+    },
+    {
+      "id": "gemini-20260529-235526-ut1gch",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260529-235526-ut1gch.log",
+      "objective": "/no_think\nYou are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.\n\nSYSTEM CONTEXT:\n- Local-first AI stack:",
+      "dispatched_at": "2026-05-30T06:55:27.014107Z",
+      "status": "done",
+      "completed_at": "2026-05-30T06:55:48.939407Z"
+    },
+    {
+      "id": "gemini-20260529-231854-ue1mpq",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260529-231854-ue1mpq.log",
+      "objective": "/no_think\nYou are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.\n\nCONTEXT:\n- aq-qa: 67/67 PASS. Phase 83 ",
+      "dispatched_at": "2026-05-30T06:18:54.928151Z",
+      "status": "done",
+      "completed_at": "2026-05-30T06:19:45.367424Z"
+    },
+    {
+      "id": "gemini-20260529-231333-acecsb",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260529-231333-acecsb.log",
+      "objective": "/no_think You are Architect for NixOS-Dev-Quick-Deploy. Claude is Orchestrator.\n\n## Phase 84 \u2014 Production Hardening + Ph",
+      "dispatched_at": "2026-05-30T06:13:33.296955Z",
+      "status": "done",
+      "completed_at": "2026-05-30T06:16:15.384650Z"
+    },
+    {
+      "id": "local-20260529-224903-c0q6ak",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260529-224903-c0q6ak.log",
+      "objective": "/no_think You are an Implementer for NixOS-Dev-Quick-Deploy. Analyze production gaps and Rust pre-flight.\n\nProduction is",
+      "dispatched_at": "2026-05-30T05:49:03.904657Z",
+      "status": "done",
+      "completed_at": "2026-05-30T05:52:20.671229Z"
+    },
+    {
+      "id": "local-20260529-224743-qyhqi4",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260529-224743-qyhqi4.log",
+      "objective": "/no_think\n\nYou are an Implementer for NixOS-Dev-Quick-Deploy. Analyze the current production gaps and the Rust refactori",
+      "dispatched_at": "2026-05-30T05:47:43.387550Z",
+      "status": "done",
+      "completed_at": "2026-05-30T05:50:17.755205Z"
+    },
+    {
+      "id": "gemini-20260529-224911-kws2or",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260529-224911-kws2or.log",
+      "objective": "/no_think You are the Architect for NixOS-Dev-Quick-Deploy. Claude (orchestrator) is planning Phase 83.\n\nPAEA v3.1 phase",
+      "dispatched_at": "2026-05-30T05:49:11.887238Z",
+      "status": "done",
+      "completed_at": "2026-05-30T05:49:38.391772Z"
+    },
+    {
+      "id": "gemini-20260529-224741-gsvktg",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260529-224741-gsvktg.log",
+      "objective": "/no_think\n\nYou are the Architect for NixOS-Dev-Quick-Deploy. Claude (orchestrator) is convening the team to plan the nex",
+      "dispatched_at": "2026-05-30T05:47:41.123802Z",
+      "status": "done",
+      "completed_at": "2026-05-30T05:48:16.244663Z"
+    },
+    {
+      "id": "gemini-20260529-173614-9tylak",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260529-173614-9tylak.log",
+      "objective": "/no_think\n\nYou are architect for the NixOS-Dev-Quick-Deploy AI harness. Claude Code is the primary orchestrator.\n\n## PRO",
+      "dispatched_at": "2026-05-30T00:36:14.567991Z",
+      "status": "done",
+      "completed_at": "2026-05-30T00:38:16.784866Z"
+    },
+    {
+      "id": "gemini-20260528-205551-2o4o66",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260528-205551-2o4o66.log",
+      "objective": "/no_think Review these two fixes just applied to the NixOS-Dev-Quick-Deploy AI stack (commit a6dc260a) and assess whethe",
+      "dispatched_at": "2026-05-29T03:55:52.105348Z",
+      "status": "done",
+      "completed_at": "2026-05-29T03:57:27.146858Z"
+    },
+    {
+      "id": "gemini-20260528-195553-8cmbf8",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260528-195553-8cmbf8.log",
+      "objective": "Analyze these 5 production issues in NixOS-Dev-Quick-Deploy AI stack and design fixes. Return APPROVE-WITH-AMENDMENTS (p",
+      "dispatched_at": "2026-05-29T02:55:53.908275Z",
+      "status": "done",
+      "completed_at": "2026-05-29T02:56:59.494040Z"
+    },
+    {
+      "id": "gemini-20260528-192834-8ykjce",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260528-192834-8ykjce.log",
+      "objective": "Review scripts/data/seed-rag-knowledge.py in the NixOS-Dev-Quick-Deploy repo. Check: (1) Are the 12 error-solutions entr",
+      "dispatched_at": "2026-05-29T02:28:34.845674Z",
+      "status": "done",
+      "completed_at": "2026-05-29T02:29:59.092822Z"
+    },
+    {
+      "id": "local-20260528-192516-6qhob4",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-192516-6qhob4.log",
+      "objective": "Review the seeded error-solutions collection in Qdrant. Use curl to POST to http://127.0.0.1:6333/collections/error-solu",
+      "dispatched_at": "2026-05-29T02:25:16.577534Z",
+      "status": "done",
+      "completed_at": "2026-05-29T02:28:47.943785Z"
+    },
+    {
       "id": "local-20260528-174737-i28gyt",
       "agent": "local-direct",
       "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260528-174737-i28gyt.log",
@@ -244,5 +441,5 @@
       "completed_at": "2026-05-28T16:01:54.248015Z"
     }
   ],
-  "updated_at": "2026-05-29T00:48:20.572962Z"
+  "updated_at": "2026-05-30T16:13:29.800331Z"
 }
