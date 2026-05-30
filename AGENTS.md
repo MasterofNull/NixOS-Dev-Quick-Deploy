@@ -142,6 +142,26 @@ curl -s http://127.0.0.1:8889/api/<route> | python3 -m json.tool  # live data
 - Permanent references: `memory/infra-constraints.md`, `memory/agent-coordination.md`
 - Archive: `memory/archive/<topic>.md`
 
+## Issue Logging (Mandatory — Rule 11)
+
+**Any discovered error, friction, misconfiguration, or system limitation MUST be recorded.**
+This applies whether the issue is fixed immediately or deferred. Never silently discard a finding.
+
+**When to log:** root cause found during investigation · workaround used instead of root fix ·
+known hardware/config limitation hit · auth/AppArmor/scheduler block encountered · metric
+anomaly spotted · any "we'll fix this later" moment.
+
+**How to log:** append to `memory/issues-backlog.md` (create if missing):
+```
+[STATUS] SCOPE — Description — Root cause / fix notes
+  Severity: low|medium|high|critical
+  Action: specific next step
+  File: path/to/file ~line N
+```
+Statuses: `[OPEN]` · `[PENDING-REBUILD]` · `[IN-FLIGHT]` · `[DONE]`
+
+**Then:** update the `## Issues Backlog` index entry in `MEMORY.md`.
+
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`
 - Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
