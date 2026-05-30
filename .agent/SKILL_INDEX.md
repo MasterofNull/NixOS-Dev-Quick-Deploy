@@ -27,6 +27,19 @@
 
 ---
 
+## Role, Persona & Delegation Skills
+
+| Skill | Tags (excerpt) | When to Use |
+|-------|----------------|-------------|
+| `role-contracts` | role, orchestrator, architect, implementer, reviewer | Any multi-agent session; what you're allowed to do; escalation triggers |
+| `slice-authoring` | slice, delegation, context, acceptance-criteria, scope | Writing delegation prompts; scoping sub-agent context; verdict request format |
+| `reviewer-gate` | reviewer, verdict, PASS, FAIL, revision, Gemini, self-review | Acting as reviewer; verdict format; Gemini review-gate contract; consuming verdicts |
+| `escalation-protocol` | escalation, stop, surface, blocking, out-of-scope, destructive | When to stop vs continue; surfacing blockers; PULSE.log escalation entries |
+| `task-eligibility` | eligibility, routing, local, gemini, thermal, batch, MLFQ | Which agent can take which task; thermal gates; mode selection; lane cost routing |
+| `domain-shells` | domain, persona, security, systems, data-eng, SRE, SDET | Activating a domain persona; RAG namespace per domain; multi-domain task composition |
+
+---
+
 ## Agent Coordination Skills
 
 | Skill | Tags (excerpt) | When to Use |
