@@ -3,6 +3,8 @@
   Action: Confirm aiHarnessCliWrappers exposes aq-session-start or document the supported absolute path fallback for Codex sessions.
   File: nix/modules/roles/ai-stack.nix ~line 240
 
+[RESOLVED 2026-05-30] ai_coordinator_delegate P95=244s — ceiling is enforced at ai_coordinator.py:706 (_LOCAL_MAX_TOKENS_HARD_CEILING=180). P95=244s is hardware-bound: 180 tok × ~1.35 tok/s on Renoir APU. Not a code bug. Anti-loop guardrails (repeat_penalty=1.08, repeat_last_n=64) confirmed in dispatch.py:79-80. No fix needed.
+
 [OPEN] role-enforcement — AGENT_TYPE_ELIGIBLE_ROLES never validated at dispatch — Matrix is defined in agent_executor.py but no runtime check blocks ineligible role assignments. Any AgentType can receive any role without error.
   Severity: low (aspirational per role-matrix.md §7 — enforcement is a future capability)
   Action: Phase 58A.5 TODO — add eligibility validator in dispatch_task() before TaskConfig is finalized. Until then, policy is doc-only.
