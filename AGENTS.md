@@ -27,6 +27,32 @@ ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VA
 - **DOC-UPDATE**: update progressive docs (AGENTS.md, HANDOFF.md, agent .md files, CLAUDE.md); seed RAG collections (`error-solutions`, `best-practices`, `skills-patterns`) with new patterns; keep all references current and system hygienic
 - **COMMIT**: atomic commit + **Handoff Memo** (`.agent/collaboration/HANDOFF.md`)
 
+## Skill Index — Lazy-Loaded Knowledge Modules
+
+Before starting any non-trivial task, check for a relevant skill. Skills are agent-agnostic
+knowledge modules that provide the right context without bloating conversation history.
+
+```bash
+# Claude / Codex / shell-capable agents:
+aq-skill-suggest "<task description>"           # suggest by keyword
+aq-skill-suggest --list                         # list all skills
+aq-skill-suggest --agent gemini "delegation"    # filter for agent constraints
+
+# Gemini (auto_edit) / Local (MCP):
+read_file(".agent/SKILL_INDEX.md")              # scan routing table
+read_file(".agent/skills/<name>/SKILL.md")      # load specific skill
+```
+
+**Skill loading rule**: load max 2-3 skills per task. Pass skill names (not content) to sub-agents.
+**Routing table**: `.agent/SKILL_INDEX.md` — always-in-context compact index.
+**Skill files**: `.agent/skills/<name>/SKILL.md`
+
+Key harness skills: `system-dev` · `nixos-system` · `apparmor-rules` · `aq-workflow` ·
+`coordinator-api` · `llm-config` · `python-async` · `agent-tool-map` · `multi-agent-collab` ·
+`rag-operations` · `context-efficiency` · `testing-patterns`
+
+---
+
 ## Collaboration & Handoff (Multi-Agent Resilience)
 
 **Full rules → `.agent/collaboration/RULES.md`**

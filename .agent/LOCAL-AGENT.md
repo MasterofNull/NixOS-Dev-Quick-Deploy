@@ -64,6 +64,29 @@ They apply regardless of which model is loaded. Hitting them causes OOM kills or
 
 ---
 
+## Skill Index
+
+Before starting any task, check for a relevant skill. Skills save context by putting
+the right knowledge in view without loading the full codebase.
+
+**Scan** (MCP tool): `hybrid_search` query "skill <topic>" in `skills-patterns` collection
+**Or read**: `.agent/SKILL_INDEX.md` then load `.agent/skills/<name>/SKILL.md`
+
+**Token budget constraint**: local model input = 3500 tokens (`local-agent` profile).
+**Load max 2 skills per task.** Each SKILL.md ≈ 400-1000 tokens.
+
+**Critical local-agent skills** (load for applicable work):
+- `llm-config` — mandatory: `enable_thinking` in chat_template_kwargs, build_llama_payload SSOT
+- `rag-operations` — RAG queries via :8003, collection names, BGE-M3 threshold 0.45
+- `coordinator-api` — auth, loopback exemptions, key routes
+- `context-efficiency` — RESUME.json authoring, sub-agent slicing, compaction recovery
+- `python-async` — async handler patterns, asyncio.to_thread for blocking I/O
+
+**In `--mode direct`** (no tool access): reasoning/analysis only. Cannot query live services.
+Reference skills by name for the orchestrator to load — don't claim to have called a tool.
+
+---
+
 ## Current Model Config
 
 > **This section changes when the model changes. Everything else in this file stays.**

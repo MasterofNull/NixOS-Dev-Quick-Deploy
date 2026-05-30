@@ -47,6 +47,31 @@ For non-trivial work, Codex should:
 
 Full 8-step sequence: ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE → VALIDATE → DOC-UPDATE → COMMIT. See `.agent/WORKFLOW-CANON.md`.
 
+## Skill Index
+
+Before starting any non-trivial task, check the skill index for relevant knowledge modules.
+
+**Scan**: `read_file(".agent/SKILL_INDEX.md")` — tags column identifies relevant skills.
+**Load**: `read_file(".agent/skills/<name>/SKILL.md")` — full detail when needed.
+
+When writing `--prompt-file` tasks for other agents, reference skills by name only:
+```
+reference_skills: ["apparmor-rules", "python-async"]
+# Sub-agent reads .agent/skills/<name>/SKILL.md — do NOT inline content
+```
+
+**Critical Codex skills** (load for applicable work):
+- `system-dev` — mandatory pre-commit sequence, doc sync, issue logging (Rule 11)
+- `multi-agent-collab` — orchestrator/implementer/reviewer role contracts, RESUME schema
+- `agent-tool-map` — tool name differences across agents; Codex uses `apply_patch` for edits
+- `coordinator-api` — API contracts when touching coordinator-adjacent code
+- `testing-patterns` — QA check authoring, http_get tuple, phase registration
+
+**Skill loading rule**: max 2-3 per task. Large prompts (`--prompt-file`) can include skill
+names in a `reference_skills:` list; don't paste full skill content inline.
+
+---
+
 ## Required artifacts
 
 When Codex is acting as **orchestrator** on a non-trivial slice, it must maintain:
