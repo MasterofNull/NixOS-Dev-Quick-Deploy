@@ -251,7 +251,9 @@ ${prompt}"
 
     # Build command — use -p for headless (NOT 'gemini print ...')
     # NO_COLOR=1 + TERM=dumb suppress "256-color not detected" and ANSI noise in log files
-    local cmd=(env NO_COLOR=1 TERM=dumb "$GEMINI_BIN" "-p" "$full_prompt" "--approval-mode" "$mode")
+    # Inject /run/current-system/sw/bin so Gemini tool calls can find rg, fd, jq, etc.
+    local _augmented_path="/run/current-system/sw/bin:${PATH}"
+    local cmd=(env NO_COLOR=1 TERM=dumb "PATH=${_augmented_path}" "$GEMINI_BIN" "-p" "$full_prompt" "--approval-mode" "$mode")
     [[ -n "$model_flag" ]] && cmd+=("--model" "$model_flag")
 
     # Register before launching so the task is findable even if we die
