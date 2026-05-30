@@ -38,6 +38,33 @@ Do not ask "how can I help?" or "what would you like to do?" — those are failu
 
 ---
 
+## Skill Index
+
+Before starting any non-trivial task, check the skill index for relevant knowledge modules.
+Skills are lazy-loaded — read only what the current slice needs.
+
+**Skill index**: `.agent/SKILL_INDEX.md` — scan tags column to find relevant skill.
+**Full skill content**: `.agent/skills/<name>/SKILL.md` — read when you need the detail.
+
+In `auto_edit` mode, use `read_file` to load skill content (no shell available):
+```
+read_file(".agent/SKILL_INDEX.md")                        # scan routing table
+read_file(".agent/skills/apparmor-rules/SKILL.md")        # load specific skill
+read_file(".agent/skills/agent-tool-map/SKILL.md")        # critical: Gemini tool name map
+```
+
+**Critical Gemini skills** (load at task start for applicable work):
+- `agent-tool-map` — tool name mapping, auto_edit mode constraints, validation without shell
+- `multi-agent-collab` — RESUME.json schema, handoff protocol, slice acceptance criteria
+- `context-efficiency` — sub-agent slicing rules, what NOT to include in prompts
+- `apparmor-rules` — if any NixOS service work is in scope
+- `testing-patterns` — if writing or fixing QA checks
+
+**Skill loading rule**: load max 2-3 skills per task. Pass skill names (not content) when
+writing delegation prompts for other agents.
+
+---
+
 ## Behavioral Rules (Canonical — all agents)
 
 | # | Rule | Contract |
