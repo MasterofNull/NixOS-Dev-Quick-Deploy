@@ -2,6 +2,12 @@
 
 These rules ensure state continuity across multiple agents (Gemini, Codex, Qwen) and resilience against API rate limits or context resets.
 
+## 0. The Atomic Resume (AR) — NEW
+**Mandatory at the start of every session and every phase transition.**
+- **Action:** Write/Update `.agent/collaboration/RESUME.json`.
+- **Content:** `{"session_id": "...", "objective": "...", "phase": "...", "next_steps": ["..."], "last_update": "ISO-8601"}`
+- **Purpose:** Surrounding Claude Code compaction failures (401/Lossy). Claude reads this file FIRST on every wake-up to reconstruct its brain state in 1 tool call.
+
 ## 1. The Intent Lock (IL)
 **Mandatory before any multi-file edit or complex `replace`.**
 - **Action:** Write the intended change set to `.agent/collaboration/PENDING.json`.
@@ -11,7 +17,7 @@ These rules ensure state continuity across multiple agents (Gemini, Codex, Qwen)
 ## 2. The Atomic Pulse (AP)
 **Mandatory after every successful tool execution that modifies the state.**
 - **Action:** Append a one-line entry to `.agent/collaboration/PULSE.log`.
-- **Format:** `[TIMESTAMP] [AGENT_ID] SUCCESS: wrote <file_path> | <brief_summary>`
+- **Format:** `[TIMESTAMP] [AGENT_ID] [write/exec/commit]: <target> — <brief_summary>`
 - **Purpose:** Provides a "Black Box" flight recorder. Teammates read the last 5 lines of this file to orient themselves instantly without scraping verbose session logs.
 
 ## 3. The Handoff Memo (HM)
@@ -32,5 +38,6 @@ If a `429` or `Invalid Content` error is detected:
 ---
 
 ## Tooling Integration
-- **aq-prime:** Must read `HANDOFF.md` and `RECOVERY.md` during initialization.
-- **aq-session-stop:** Must verify `HANDOFF.md` is current.
+- **aq-resume:** Reads `RESUME.json` + `PULSE.log` + `HANDOFF.md` to reconstruct state.
+- **aq-prime:** Must call `aq-resume` during initialization.
+- **aq-session-stop:** Must verify `HANDOFF.md` and `RESUME.json` are current.

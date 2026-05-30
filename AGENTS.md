@@ -18,10 +18,10 @@ Every non-trivial task follows this 7-step sequence:
 ```
 ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VALIDATE → COMMIT
 ```
-- **ORIENT**: `aq-prime` · `aq-session-start --task "<task>"` · recall memory (`mcp_server_get_working_memory`)
+- **ORIENT**: `aq-prime` · `aq-resume` (for recovery) · `aq-session-start --task "<task>"` · recall memory (`mcp_server_get_working_memory`)
 - **RESEARCH**: Agentic CLI Tools (`agrep`, `als`, `acat`, `asum`) + web search + OWASP
 - **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
-- **MEMORY-CHECKPOINT**: `mcp_server_store_memory` + **Intent Lock** (`.agent/collaboration/PENDING.json`)
+- **MEMORY-CHECKPOINT**: `mcp_server_store_memory` + **Intent Lock** (`.agent/collaboration/PENDING.json`) + **Atomic Resume** (`.agent/collaboration/RESUME.json`)
 - **EXECUTE**: one slice at a time; read before editing; **Atomic Pulse** (`.agent/collaboration/PULSE.log`)
 - **VALIDATE**: `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist
 - **COMMIT**: atomic commit + **Handoff Memo** (`.agent/collaboration/HANDOFF.md`)
@@ -31,6 +31,7 @@ ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VA
 **Full rules → `.agent/collaboration/RULES.md`**
 
 To prevent state loss during rate limits or model switches, all agents MUST:
+0. **Atomic Resume**: Update `RESUME.json` at every phase start. Read it via `aq-resume` on wake-up.
 1. **Intent Lock**: Write intended changes to `PENDING.json` before a complex `replace`.
 2. **Atomic Pulse**: Append a success line to `PULSE.log` after every file write.
 3. **Handoff Memo**: Update `HANDOFF.md` when finishing a slice or hitting a limit.

@@ -475,7 +475,7 @@ in {
         ProtectSystem = "strict";
         ProtectHome = "read-only";
         ReadOnlyPaths = [repoPath];
-        ReadWritePaths = [localAgentStateDir];
+        ReadWritePaths = [localAgentStateDir "${repoPath}/.agents/telemetry"];
         PrivateTmp = true;
         CapabilityBoundingSet = "";
         RestrictSUIDSGID = true;

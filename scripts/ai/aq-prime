@@ -347,6 +347,35 @@ def format_text_output(data: dict[str, Any]) -> str:
     lines.append("=" * 60)
     lines.append("")
 
+    # Session Resume (L0) - NEW
+    lines.append("## 🔄 Session Resume Signal")
+    try:
+        resume_proc = subprocess.run(
+            [str(REPO_ROOT / "scripts" / "ai" / "aq-resume")],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if resume_proc.returncode == 0:
+            # Strip the redundant headers from aq-resume output
+            raw_out = resume_proc.stdout
+            if "SESSION RESUME SIGNAL" in raw_out:
+                # Content between the first two '=' bars blocks
+                parts = raw_out.split("="*60)
+                if len(parts) >= 3:
+                    resume_content = parts[2].strip()
+                    lines.append(resume_content)
+                else:
+                    lines.append("  Parsing error in recovery signal.")
+            else:
+                lines.append("  No active session state found.")
+        else:
+            lines.append("  No active session state found.")
+    except Exception:
+        lines.append("  Recovery system offline.")
+    lines.append("")
+
     # Project Identity (L0)
     lines.append("## Project Identity")
     identity = data["identity"]
