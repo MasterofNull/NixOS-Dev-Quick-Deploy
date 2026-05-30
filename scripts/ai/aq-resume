@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""
+aq-resume — Session recovery and state reconstruction tool.
+
+Reads .agent/collaboration/RESUME.json, .agent/collaboration/PULSE.log,
+and .agent/collaboration/HANDOFF.md to provide a high-signal summary
+for an agent resuming a session after context compaction or failure.
+"""
+
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+COLLAB_DIR = REPO_ROOT / ".agent" / "collaboration"
+RESUME_FILE = COLLAB_DIR / "RESUME.json"
+PULSE_FILE = COLLAB_DIR / "PULSE.log"
+HANDOFF_FILE = COLLAB_DIR / "HANDOFF.md"
+
+def get_resume_state():
+    if not RESUME_FILE.exists():
+        return None
+    try:
+        return json.loads(RESUME_FILE.read_text())
+    except Exception:
+        return None
+
+def get_last_pulse_lines(n=5):
+    if not PULSE_FILE.exists():
+        return []
+    try:
+        lines = PULSE_FILE.read_text().splitlines()
+        return lines[-n:]
+    except Exception:
+        return []
+
+def get_handoff_summary():
+    if not HANDOFF_FILE.exists():
+        return "No HANDOFF.md found."
+    try:
+        content = HANDOFF_FILE.read_text()
+        # Extract the last few lines or a specific section if possible
+        lines = content.splitlines()
+        # Find the last "Next Step" or similar marker
+        for line in reversed(lines):
+            if "Next Step:" in line or "Next steps:" in line:
+                return line
+        return lines[-3:] if len(lines) > 3 else lines
+    except Exception:
+        return "Error reading HANDOFF.md"
+
+def main():
+    state = get_resume_state()
+    pulse = get_last_pulse_lines()
+    handoff = get_handoff_summary()
+
+    print("=" * 60)
+    print("SESSION RESUME SIGNAL")
+    print("=" * 60)
+
+    if state:
+        obj = state.get('current_objective') or state.get('objective', 'N/A')
+        ts = state.get('written_at') or state.get('last_update', 'N/A')
+        print(f"Objective: {obj}")
+        print(f"Phase:     {state.get('phase', 'N/A')}")
+        print(f"Written:   {ts}")
+        uncommitted = state.get('uncommitted_changes', [])
+        if uncommitted:
+            print(f"\nUncommitted ({len(uncommitted)} files):")
+            for f in uncommitted[:6]:
+                print(f"  {f}")
+        print("\nPlanned Next Steps:")
+        for step in state.get("next_steps", state.get("todo_snapshot", [])):
+            print(f"  - {step}")
+    else:
+        print("WARN: No RESUME.json found. System state is cold.")
+
+    print("\nRecent Activity (PULSE.log):")
+    if pulse:
+        for line in pulse:
+            print(f"  {line}")
+    else:
+        print("  No recent activity recorded.")
+
+    print("\nHandoff Context:")
+    if isinstance(handoff, list):
+        for line in handoff:
+            print(f"  {line}")
+    else:
+        print(f"  {handoff}")
+
+    print("\n" + "=" * 60)
+    print("INSTRUCTIONS:")
+    print("1. Verify if the above matches your expected state.")
+    print("2. If state is cold/stale, query PENDING.json for in-flight tasks.")
+    print("3. Execute the next planned step.")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    main()

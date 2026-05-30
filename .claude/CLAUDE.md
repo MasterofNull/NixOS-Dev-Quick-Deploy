@@ -25,9 +25,16 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 ## Session Start (Every Session)
 
 ```bash
+aq-resume                         # FIRST: check for active task state after compaction
 aq-prime                          # progressive disclosure onboarding
 aq-session-start --task "<task>"  # mandatory context hydration
 ```
+
+**After compaction / 401 failure recovery**: `aq-resume` outputs the last-known objective,
+phase, todo snapshot, and uncommitted changes. Read it before doing anything else.
+
+**When starting a new task**: immediately write/update `.agent/collaboration/RESUME.json`
+with the current objective, phase, and todo snapshot. This is the compaction anchor point.
 
 ## Key Commands
 
@@ -82,6 +89,7 @@ Use direct implementation only after:
 | 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
 | 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
 | 8a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
+| 8b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task AND after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. This is the compaction anchor — survives 401 summarization failures. |
 | 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
 | 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
 
