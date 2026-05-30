@@ -111,6 +111,14 @@ Use direct implementation only after:
 
 ## Commit Discipline (Mandatory)
 
+Full operating sequence before any commit:
+1. **Live test** changes in the running system — catch runtime errors and friction
+2. **Fix** any issues found
+3. **Update docs**: HANDOFF.md + any changed agent .md files + AGENTS.md if workflow changed
+4. **Seed RAG** with new bug/fix patterns (`error-solutions`, `best-practices`, `skills-patterns`)
+5. **Gate**: `scripts/governance/tier0-validation-gate.sh --pre-commit`
+6. **Commit**
+
 ```bash
 git add <files>
 scripts/governance/tier0-validation-gate.sh --pre-commit
@@ -120,7 +128,7 @@ Co-Authored-By: <active-agent-name> <noreply@anthropic.com>"
 ```
 
 - Replace `<active-agent-name>` with the model/agent that generated the work (e.g. the model shown in your current session).
-- Never commit without validation evidence.
+- Never commit without live testing + doc update evidence.
 - Run `scripts/governance/tier0-validation-gate.sh --pre-commit` every time.
 
 ## Validation
@@ -165,7 +173,7 @@ Never hardcode these values in Python or shell — always read from injected env
 | Gemini CLI | `.agent/GEMINI.md` | Gemini CLI, delegate-to-gemini |
 | Codex CLI | `.agent/CODEX.md` | Codex CLI, delegate-to-codex |
 | Local Agent | `.agent/LOCAL-AGENT.md` | aq-agent-loop, delegate-to-local (model-agnostic; current: Qwen3-35B) |
-| Canonical workflow | `.agent/WORKFLOW-CANON.md` | Shared 7-step contract for all agents |
+| Canonical workflow | `.agent/WORKFLOW-CANON.md` | Shared 8-step contract for all agents |
 
 ## On-Demand Context
 
