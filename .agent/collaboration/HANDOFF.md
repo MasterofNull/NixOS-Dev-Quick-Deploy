@@ -1,3 +1,25 @@
+# HANDOFF MEMO — 2026-05-30 (updated Phase 86 — Human-in-the-Loop Alert Queue)
+
+## Phase 86 — HITL Alert Queue — COMPLETE (commits c88d2ed6, 05f0965b, 4236f19a)
+
+### All 4 slices delivered
+- **Slice 1**: `scripts/ai/lib/attention_queue.py` — fcntl-locked queue, auto_ok→archive, dedup, notify-send
+- **Slice 2**: `aq-alerts/aq-approve/aq-reject/aq-defer/aq-review` CLI suite with hardcoded executor dispatch
+- **Slice 3**: apparmor-fix-agent → human_gate; health-spider http_failure → queue; drop-daemon agent drops → queue
+- **Slice 4**: `environment.etc."profile.d/aq-alert-hook.sh"` in ai-stack.nix + pkgs.libnotify
+- **Slice 5**: GET /api/aistack/alerts/status; dashboard Attention Required card; 86.1-86.7 QA checks
+- **79/79 QA PASS · tier0 17/17 · 5 live alerts cleared**
+
+### PENDING-REBUILD required
+`nixos-rebuild switch` needed to activate: ai-drop-daemon.service (Phase 85), alert hook, libnotify.
+
+### Open mesh issues (work in progress — yolo mode)
+- downshift metric misleading denominator — aq-report ~line 1754
+- ai_coordinator_delegate P95=244s dispatch ceiling bypass
+- Gemini delegate rg unavailable in exec context
+- harness-prompt-extensions.yaml trivial timestamp bump (committed in housekeeping)
+
+---
 # HANDOFF MEMO — 2026-05-29 (updated Phase 83 — Agentic Mind Activation)
 
 ## Phase 83 — DAG Context Wiring + PAEA Phase 1 Production Activation
