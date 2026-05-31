@@ -1,4 +1,26 @@
 {
   "schema_version": "1.0",
-  "alerts": []
+  "alerts": [
+    {
+      "id": "attn-fea22a05",
+      "source": "training-ingest",
+      "severity": "medium",
+      "autonomy_boundary": "human_gate",
+      "title": "Training proposal needs review: training_loop_finding",
+      "detail": "Proposal loop-loop-20260527-204849-0 of type 'training_loop_finding' flagged by training_ingest",
+      "payload": {
+        "proposal_id": "loop-loop-20260527-204849-0",
+        "type": "training_loop_finding",
+        "title": "{'raw': '{\\n  \"route\": \"hybrid\",\\n  \"backend\": \"local\",\\n  \"",
+        "rationale": ""
+      },
+      "proposed_action": "Review proposal loop-loop-20260527-204849-0 in .agents/telemetry/optimization_proposals.jsonl, then run: scripts/ai/aq-approve <alert-id>",
+      "executor": null,
+      "status": "pending",
+      "created_at": "2026-05-31T14:51:49Z",
+      "expires_at": "2026-06-01T14:51:49Z",
+      "resolved_at": null,
+      "resolved_by": "system"
+    }
+  ]
 }
