@@ -124,15 +124,42 @@ def _append_archive(alert: dict) -> None:
         af.write(json.dumps(alert) + "\n")
 
 
+def _emit_contention_event(attempt: int, duration_ms: float, error_code: str | None) -> None:
+    """Emit queue_lock_contention to hybrid-events.jsonl for Rust threshold gate (92.5)."""
+    telemetry_path = _REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
+    try:
+        event = {
+            "event_type": "queue_lock_contention",
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "attention_queue.py",
+            "details": {
+                "lock_operation": "fcntl.flock",
+                "attempt_count": attempt,
+                "duration_ms": round(duration_ms, 2),
+                "error_code": error_code,
+            },
+        }
+        with open(telemetry_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except OSError:
+        pass  # telemetry is best-effort
+
+
 def _acquire_lock(fh, exclusive: bool = True) -> bool:
     """Try to acquire fcntl lock with retries. Returns True on success."""
     lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-    for _ in range(_LOCK_RETRY):
+    t_start = time.monotonic()
+    for attempt in range(1, _LOCK_RETRY + 1):
         try:
             fcntl.flock(fh, lock_type | fcntl.LOCK_NB)
+            if attempt > 1:
+                # Emit contention event only when retries were needed
+                _emit_contention_event(attempt, (time.monotonic() - t_start) * 1000, None)
             return True
-        except BlockingIOError:
+        except BlockingIOError as e:
             time.sleep(_LOCK_RETRY_DELAY_S)
+            if attempt == _LOCK_RETRY:
+                _emit_contention_event(attempt, (time.monotonic() - t_start) * 1000, str(e.errno))
     return False
 
 

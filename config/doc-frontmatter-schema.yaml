@@ -1,0 +1,95 @@
+# doc-frontmatter-schema.yaml
+# Schema for mandatory YAML frontmatter in agentic documentation.
+
+globals:
+  allowed_status: [active, draft, deprecated, research, in-progress, complete]
+  allowed_severity: [low, medium, high, critical]
+
+doc_types:
+  skill:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+      - tags
+    optional:
+      - version
+      - last_reviewed
+    examples:
+      doc_type: skill
+      id: strict-json-output-contract
+      title: Strict JSON Output Contract
+      status: active
+      tags: [json, prompt-contract, validation]
+
+  prd:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+      - owner
+    optional:
+      - phase
+      - priority
+    examples:
+      doc_type: prd
+      id: technical-analysis-prd
+      title: Technical Analysis PRD
+      status: active
+      owner: hyperd
+
+  plan:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+      - parent_prd
+    optional:
+      - phase
+      - objective
+    examples:
+      doc_type: plan
+      id: phase-92-doc-frontmatter
+      title: "Phase 92.1: Doc Frontmatter"
+      status: in-progress
+      parent_prd: technical-analysis-prd
+
+  handoff:
+    required:
+      - doc_type
+      - date
+      - status
+    optional:
+      - phase
+      - commit
+    examples:
+      doc_type: handoff
+      date: "2026-05-31"
+      status: complete
+
+  memory:
+    required:
+      - doc_type
+      - id
+      - title
+    optional:
+      - tags
+      - last_updated
+    examples:
+      doc_type: memory
+      id: memory-index
+      title: Private Project Memory Index
+
+  reference:
+    required:
+      - doc_type
+      - title
+    optional:
+      - source
+      - tags
+    examples:
+      doc_type: reference
+      title: System Overview

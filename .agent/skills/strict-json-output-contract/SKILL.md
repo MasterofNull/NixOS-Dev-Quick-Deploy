@@ -1,3 +1,11 @@
+---
+doc_type: skill
+id: strict-json-output-contract
+title: Strict JSON Output Contract
+status: active
+tags: [json, prompt-contract, validation]
+---
+
 # Skill: strict-json-output-contract
 
 ## Origin

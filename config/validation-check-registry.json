@@ -753,6 +753,22 @@
       "timeout_seconds": 15
     },
     {
+      "id": "doc-frontmatter",
+      "description": "YAML frontmatter schema validation for agentic docs",
+      "trigger_paths": [
+        ".agent/",
+        ".agents/plans/",
+        "memory/"
+      ],
+      "command": [
+        "python3",
+        "scripts/governance/check-doc-frontmatter.py"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "osint-tools-mcp-contract",
       "description": "OSINT MCP wrapper lists tools and avoids insecure Maigret/MOSAIC activation",
       "trigger_paths": [
