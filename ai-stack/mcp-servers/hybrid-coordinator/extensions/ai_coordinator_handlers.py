@@ -1460,7 +1460,12 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         headers=headers,
                         json=delegate_payload or payload,
                     )
-                    response.raise_for_status()
+                    # Only raise for 5xx (transient server errors worth retrying).
+                    # 4xx client errors are returned directly so the downstream
+                    # failover chain (400/401/402/403/429 block) can handle them
+                    # without burning 5 retry attempts on a deterministic failure.
+                    if response.status_code >= 500:
+                        response.raise_for_status()
                     return response
 
             # Retry on 503 Service Unavailable, and network errors. 
