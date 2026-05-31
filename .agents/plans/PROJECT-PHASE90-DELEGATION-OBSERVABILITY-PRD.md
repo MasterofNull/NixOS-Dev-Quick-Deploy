@@ -1,5 +1,5 @@
 # Phase 90 — Delegation Observability & Metric Hygiene
-**Status**: IN PROGRESS | **Owner**: claude-sonnet-4-6 | **Started**: 2026-05-31
+**Status**: COMPLETE (PENDING-REBUILD for 90.2) | **Owner**: claude-sonnet-4-6 | **Started**: 2026-05-31
 
 ---
 
@@ -35,13 +35,14 @@
       `_TERMINAL_OUTCOMES` check in `/stats/delegate`. The 51.6% vs 82.4% gap is real historical
       errors, not orphaned entries — no TTL sweep needed. Revised scope: `failure_reason` on new
       entries; existing stale entries unaffected (correct behaviour).
-- [x] **90.2**: `failure_reason` field added to audit entries via `_classify_failure_reason()`.
-      Values: `backend_500`, `empty_response`, `timeout`, `context_overflow`, `unknown`.
-      `/stats/delegate` includes `failure_breakdown` map; falls back to classifier for legacy entries.
+- [x] **90.2**: `failure_reason` field written to audit entries via `_classify_failure_reason()`
+      in `http_server_impl.py`. `/stats/delegate` `failure_breakdown` map implemented in
+      `core/status_service.py` (the live R2.2 handler — initial patch was in the R2.2 fallback,
+      which is dead code; fixed in commit bcf554db). Requires coordinator restart.
 - [x] **90.3**: aq-report Section 8 (Recent Health Snapshot) shows `24h: X%  |  7d: Y%` for
       `ai_coordinator_delegate`. Computed via `_compute_delegate_rate()` from audit log; no HTTP call
       needed. Both `format_md` and `format_text` updated.
-- [ ] **tier0**: 17/17 pass. Coordinator restart required for 90.2 changes.
+- [x] **tier0**: 78/79 pass (1 skipped). Coordinator restart pending for 90.2 failure_breakdown.
 
 ## 5. Slices
 
