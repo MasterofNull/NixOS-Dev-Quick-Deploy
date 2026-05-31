@@ -347,4 +347,4 @@ Orchestrator: `scripts/automation/prsi-orchestrator.py [sync|list|verify|approve
 | ~~Hint injection at wrong position~~ | switchboard N-4 | Medium | **RESOLVED** — now injects at FIRST system message |
 | ~~Auth probe treats 401/403/404 as healthy~~ | agent_executor.py C-2 | High | **RESOLVED** — status_code < 400 threshold |
 
-See [ARCH-REVAMP-PRD.md](../../.agents/plans/ARCH-REVAMP-PRD.md) for full revamp history.
+See `.agents/archive/20260531-plans/ARCH-REVAMP-PRD.md` for full revamp history (archived 2026-05-31).
