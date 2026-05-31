@@ -114,6 +114,38 @@ def main() -> int:
         "reviewer-gated workflow runs are completing cleanly" in "\n".join(workflow_context),
         "expected workflow reliability contextualization for reviewer-gated starts",
     )
+    delegate_latency_context = aq_report.build_recommendations(
+        {
+            "ai_coordinator_delegate": {
+                "calls": 464,
+                "success_pct": 51.9,
+                "error_count": 223,
+                "client_error_count": 0,
+                "p95_ms": 244167.0,
+            }
+        },
+        route,
+        cache,
+        {"available": False},
+        [],
+        recent_tool_stats={
+            "ai_coordinator_delegate": {
+                "calls": 3,
+                "error_count": 0,
+                "client_error_count": 0,
+                "p95_ms": 134428.5,
+            }
+        },
+    )
+    joined_delegate_latency = "\n".join(delegate_latency_context)
+    assert_true(
+        "local delegated-response budget ceiling" in joined_delegate_latency,
+        "expected delegate latency to be classified as hardware/output-budget bound",
+    )
+    assert_true(
+        "connection pooling" not in joined_delegate_latency and "model size reduction" not in joined_delegate_latency,
+        "expected delegate latency to avoid generic tuning guidance",
+    )
 
     actions = aq_report.build_structured_actions(
         {},

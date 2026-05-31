@@ -1,19 +1,19 @@
 {
-  "current_objective": "Continue system improvement and parity gap work; fix stale delegated prompt-failure remediation signals.",
-  "phase": "aq-report delegated-failure freshness slice",
+  "current_objective": "Continue system improvement and parity gap work; contextualize hardware-bound delegate latency signals.",
+  "phase": "aq-report delegate latency hardware-context slice",
   "todo_snapshot": [
-    "DONE: aq-prime and aq-session-start run for continuation context",
-    "DONE: selected next stale-remediation signal: delegated prompt failures are 0 in 1h/24h but 124 in 7d",
-    "DONE: wired delegated failure windows into aq-report recommendations and structured actions",
-    "DONE: py_compile, delegated failure history/trend tests, aq-report --machine JSON parse, tier0 17/17",
-    "NEXT: if continuing, address ai_coordinator_delegate latency wording/hardware context or run live delegate smoke"
+    "DONE: aq-session-start run for continuation context",
+    "DONE: selected next report parity gap: ai_coordinator_delegate P95 is hardware/output-budget bound but aq-report still recommends generic cache/pool/model tuning",
+    "DONE: updated aq-report slow-tool recommendation path and runtime regression coverage",
+    "DONE: py_compile, runtime-action regression, aq-report --machine smoke, and tier0 pre-commit gate all passed",
+    "NEXT: if continuing, tackle the remaining stale continuation-query downshift smoke/rebuild gap or another live dashboard parity gap"
   ],
   "uncommitted_changes": [
     "Existing dirty telemetry/collaboration files were present before this slice; do not revert",
     "scripts/ai/aq-report",
-    "scripts/testing/test-delegated-prompt-failure-history.py",
+    "scripts/testing/test-aq-report-runtime-actions.py",
     ".agent/memory/issues-backlog.md",
-    ".agent/collaboration/PENDING.json"
+    ".agent/collaboration/RESUME.json"
   ],
-  "resume_hint": "Delegated-failure freshness slice validated. aq-report now treats OpenRouter failures as historical-only when 24h failures are zero and suppresses active prompt-contract actions."
+  "resume_hint": "Delegate latency context slice validated. aq-report now reports ai_coordinator_delegate P95 as matching the local delegated-response budget ceiling when recent calls are slow but healthy."
 }

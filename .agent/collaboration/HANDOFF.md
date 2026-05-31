@@ -447,6 +447,17 @@ Rules added (10): ['            /var/lib/nixos-system-dashboard/telemetry/deploy
 Denied paths: ['/dev/tty', '/nix/store/cyr8pbss92g8fzsy2jlckl8r653bzv4h-python3-3.13.12-env/bin/uvicorn', '/nix/store/sahqyj4v0za2cwcnrbcjyndyk8ka8a9y-python3.13-uvicorn-0.35.0/bin/.uvicorn-wrapped', '/var/lib/nixos-system-dashboard/telemetry/deployments-context.db', '/tmp/nixos-dashboard-context.db']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
 
+### [2026-05-31T05:36:00Z] codex
+**Completed delegate latency context slice** — `aq-report` no longer frames healthy `ai_coordinator_delegate` P95 latency as generic cache/connection/model tuning. The recommendation now identifies the local delegated-response ceiling (`_LOCAL_MAX_TOKENS_HARD_CEILING=180`) and advises bounded asks or lower local `max_tokens` when latency matters.
+
+Validation:
+- `python3 -m py_compile scripts/ai/aq-report scripts/testing/test-aq-report-runtime-actions.py`
+- `python3 scripts/testing/test-aq-report-runtime-actions.py`
+- `aq-report --machine | jq '.recommendations[:6], .recent_health.slow_tools'`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — 17/17 PASS
+
+Next likely slice: stale continuation-query downshift smoke/rebuild validation remains the top report recommendation.
+
 ### [2026-05-31T05:05:00Z] codex
 **CLI parity slice complete** — fixed documented workflow command drift discovered during continuation bootstrap.
 
