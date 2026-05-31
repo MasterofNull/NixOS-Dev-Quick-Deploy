@@ -2000,8 +2000,22 @@ def _check_phase86_attention_queue(ctx: RunContext) -> list[CheckResult]:
 
     # 86.7 — dashboard /api/aistack/alerts/status returns 200
     dashboard_url = f"http://127.0.0.1:{getattr(ctx, 'dashboard_port', 8889)}"
+    status_code = None
+    body = ""
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            status_code, body = http_get(f"{dashboard_url}/api/aistack/alerts/status", timeout=5)
+            last_error = None
+            break
+        except Exception as e:
+            last_error = e
+            if attempt < 3:
+                time.sleep(2)
+
     try:
-        status_code, body = http_get(f"{dashboard_url}/api/aistack/alerts/status", timeout=5)
+        if last_error is not None:
+            raise last_error
         if status_code == 200:
             results.append(passed(5, "86.7", "dashboard /api/aistack/alerts/status: 200 OK"))
         elif status_code == 404:
