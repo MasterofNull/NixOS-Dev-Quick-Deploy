@@ -24,6 +24,8 @@
 | `rag-operations` | rag, qdrant, 8003, collection, embedding, seed | RAG queries; seeding knowledge; collection names; threshold tuning |
 | `testing-patterns` | qa, harness_qa, http_get, check, phase, mock, timeout | Writing QA checks; debugging check failures; http_get tuple unpacking; xfail |
 | `context-efficiency` | context, tokens, RESUME, PULSE, sub-agent, slicing | Compaction recovery; sub-agent context slicing; RESUME.json authoring; token budget |
+| `provider-request-error-recovery` | delegation, error-handling, llama-cpp, provider, retry | Provider call fails (empty response, 4xx, timeout, thinking bleed); simplify payload; single retry |
+| `strict-json-output-contract` | json, prompt-contract, validation, output-format | Model returns prose instead of JSON; aq-qa probe format failures; parse-before-accept pattern |
 
 ---
 
