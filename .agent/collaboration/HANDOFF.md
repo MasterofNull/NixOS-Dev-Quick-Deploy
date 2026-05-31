@@ -1,3 +1,27 @@
+# HANDOFF MEMO — 2026-05-31 (updated Phase 89 — Learning Loop Maturity)
+
+## Phase 89 — Learning Loop Maturity — COMPLETE (commits f53ce213…fbc68d5a)
+
+### Delivered (6/6 slices)
+- **89.1**: AIDB shared-skills ownership fixed declaratively (tmpfiles `d`+`Z` rules). All 16 missing + 37 additional skill namespaces registered and approved. aq-report: 54/53 healthy.
+- **89.2**: `aq-session-start` Active Constraints section now reads from `lessons_out.constraints` (lessons endpoint) instead of a separate redundant `api/memory/facts` call. One HTTP round-trip saved.
+- **89.3**: `audit-post.sh` now forwards `prompt` field to `/api/agent-events`; `http_server_impl.py` uses `prompt or summary` for `task.prompt` in CL event (vs duplicate summary). Coordinator requires nixos-rebuild to activate.
+- **89.4**: Downshift gate changed from narrow `_is_continuation_query` to `memory_recall_priority`. Root cause: 0/14 candidates blocked by is_continuation=False despite memory recall succeeding. Coordinator requires nixos-rebuild to activate.
+- **89.5**: `scripts/ai/aq-skill-factory` created — reads gap_patterns from training_ingest, generates `.agent/skills/auto-generated/` stubs for human review. 2 stubs generated from current gap data (count 110–124).
+- **89.6**: Dashboard AIDB health verified green (54/53 skills after seeding). No code change needed.
+
+### PENDING-REBUILD required
+`nixos-rebuild switch --flake .#hyperd-ai-dev` to activate:
+- 89.3: `http_server_impl.py` prompt field in CL event (ai-hybrid-coordinator)
+- 89.4: Downshift gate `memory_recall_priority` fix (ai-hybrid-coordinator)
+- Carry-forward from Ph85: ai-drop-daemon.service
+- Carry-forward from Ph87.3: ai-training-ingest.timer
+
+### What's next
+- 88.5: ACCELERATE PRD hardware validation (ROCm perf benchmark + concurrency test) — separate session
+- Review + promote auto-generated skill stubs: `.agent/skills/auto-generated/`
+
+---
 # HANDOFF MEMO — 2026-05-30 (updated Phase 87/88 — Observability + Hygiene)
 
 ## Phase 87/88 — Stabilization — COMPLETE (commits b20af826, 59e253d8, 304bfd62)
