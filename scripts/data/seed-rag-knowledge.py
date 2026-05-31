@@ -429,6 +429,134 @@ BEST_PRACTICES = [
         "endorsement_count": 5,
         "last_validated": NOW,
     },
+    {
+        "category": "coordinator_api",
+        "title": "Coordinator HTTP API: authentication and core endpoints",
+        "description": "Coordinator runs on port 8003 (HYBRID_COORDINATOR_URL env var). Authentication: X-API-Key header with value from /run/secrets/hybrid_coordinator_api_key. Loopback requests (127.0.0.1) checked via _is_loopback_agent_request() in http_server.py AND auth_middleware.py — patch BOTH if adding loopback exemptions. Key endpoints: POST /workflow/plan (planning), POST /workflow/run/start (execution), GET /stats/delegate (delegation rate), GET /status (health), POST /hybrid_search (RAG).",
+        "examples": [
+            "API_KEY=$(cat /run/secrets/hybrid_coordinator_api_key); curl -H 'X-API-Key: $API_KEY' http://localhost:8003/status",
+            "POST /workflow/plan — body: {\"query\": \"...\", \"context\": {...}} → returns plan JSON",
+        ],
+        "anti_patterns": [
+            "Hardcoding http://127.0.0.1:8003 instead of reading HYBRID_COORDINATOR_URL env var",
+            "Patching only auth_middleware.py for loopback — http_server.py has a second auth check at ~line 1412",
+        ],
+        "references": ["ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py", "ai-stack/mcp-servers/hybrid-coordinator/core/status_service.py"],
+        "endorsement_count": 3,
+        "last_validated": NOW,
+    },
+    {
+        "category": "multi_agent_collaboration",
+        "title": "RESUME.json and HANDOFF.md: agent state handoff protocol",
+        "description": "RESUME.json at .agent/collaboration/RESUME.json is the compaction anchor — write it on new task start AND after each completed todo. Fields: current_objective (str), phase (str), todo_snapshot (list of {id, text, status}), uncommitted_changes (list of file paths), resume_hint (str). HANDOFF.md is the human-readable status memo — update at each phase completion. aq-resume reads RESUME.json first on session start.",
+        "examples": [
+            "RESUME.json todo_snapshot: [{\"id\":\"1\",\"text\":\"Add failure_reason field\",\"status\":\"done\"}, ...]",
+            "aq-resume on session start — outputs last objective, phase, todos, uncommitted changes",
+        ],
+        "anti_patterns": [
+            "Skipping RESUME.json update after completing a todo — breaks context recovery after compaction",
+            "Writing full file contents into RESUME.json — use file paths, not contents",
+        ],
+        "references": [".agent/collaboration/RESUME.json", ".agent/collaboration/HANDOFF.md", "CLAUDE.md §8b"],
+        "endorsement_count": 4,
+        "last_validated": NOW,
+    },
+    {
+        "category": "llama_cpp_config",
+        "title": "Local LLM request config: enable_thinking and token ceilings",
+        "description": "For Qwen3-35B (llama.cpp port 8080): enable_thinking MUST be false and placed in chat_template_kwargs, NOT at the top level. Top-level enable_thinking is silently ignored; placing it only in chat_template_kwargs is required. Token ceiling: local delegate max_tokens hard ceiling = 180 (Qwen3 at ~1 tok/s floor, 300s timeout). Context window safe zone: <8192 tokens. Stop tokens: use <|im_end|> in chat template. Minimum timeout for local calls: 300s.",
+        "examples": [
+            "payload = {\"messages\": [...], \"chat_template_kwargs\": {\"enable_thinking\": false}, \"max_tokens\": 180}",
+            "_LOCAL_MAX_TOKENS_HARD_CEILING = 180  # 180s budget at 1 tok/s floor",
+        ],
+        "anti_patterns": [
+            "{\"enable_thinking\": false, \"messages\": [...]} — top-level silently ignored by llama.cpp",
+            "max_tokens > 256 for local delegate — causes 504 at 211s when model generates slowly",
+        ],
+        "references": [".agent/LOCAL-AGENT.md", "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py"],
+        "endorsement_count": 5,
+        "last_validated": NOW,
+    },
+    {
+        "category": "python_async",
+        "title": "aiohttp/FastAPI async patterns: to_thread, switchboard logging, MLFQ tasks",
+        "description": "Three critical patterns: (1) All synchronous file I/O inside async def handlers must use asyncio.to_thread(sync_fn, ...) — never open()/readlines() directly. (2) switchboard.py uses print(..., file=sys.stderr) NOT logging.getLogger() — inject logging module causes protocol errors. (3) Background MLFQ tasks spawned via asyncio.create_task() must be stored in a set and discarded on completion to avoid dangling tasks during graceful shutdown.",
+        "examples": [
+            "result = await asyncio.to_thread(_read_file_sync, path)  # correct pattern",
+            "print(json.dumps(response), file=sys.stderr)  # switchboard stdout is the protocol channel",
+        ],
+        "anti_patterns": [
+            "async def handler(): data = open(audit_log).read()  # blocks event loop",
+            "import logging; logging.info(msg) in switchboard.py  # corrupts MCP protocol stdout",
+        ],
+        "references": ["ai-stack/mcp-servers/hybrid-coordinator/core/status_service.py", "CLAUDE.md bug patterns"],
+        "endorsement_count": 4,
+        "last_validated": NOW,
+    },
+    {
+        "category": "rag_operations",
+        "title": "AIDB RAG operations: search thresholds, schema differences, test teardown",
+        "description": "AIDB runs on port 8002. Hybrid search via coordinator (port 8003) POST /hybrid_search with X-API-Key header. Score thresholds: search=0.45, retrieval=0.50. Schema: memory insert uses {content, metadata, collection} while skill retrieval uses {query, collection, limit} — different payloads. For test teardown: use the collection-specific clear endpoint, NEVER wipe global knowledge collections (skills-patterns, best-practices, error-solutions). Always seed collections before testing retrieval quality.",
+        "examples": [
+            "Search: POST :8003/hybrid_search {\"query\":\"...\",\"collection\":\"best-practices\",\"limit\":5,\"score_threshold\":0.45}",
+            "Memory insert: POST :8002/api/memory {\"content\":\"...\",\"metadata\":{\"type\":\"lesson\"}}",
+        ],
+        "anti_patterns": [
+            "Deleting all points from error-solutions during test teardown — wipes production knowledge",
+            "score_threshold=0.7 — too high for sparse collections; 0.45 is the calibrated default",
+        ],
+        "references": ["ai-stack/mcp-servers/hybrid-coordinator/knowledge/search_router.py", "nix/modules/core/options.nix"],
+        "endorsement_count": 3,
+        "last_validated": NOW,
+    },
+    {
+        "category": "context_efficiency",
+        "title": "Sub-agent context slicing and PULSE.log/RESUME.json compaction rules",
+        "description": "Sub-agents must receive only slice-relevant context — not full session history. Pass: (1) the slice objective, (2) relevant file paths (not content), (3) skill names to load on demand. PULSE.log is gitignored (append-only, runtime log) — never commit it. RESUME.json should be committed after each phase. Compact aggressively: when approaching context limits, summarize prior phases to 1-line pointers in MEMORY.md. Full MEMORY.md hard limit = 150 lines.",
+        "examples": [
+            "Sub-agent prompt: 'Implement slice 90.2. Files to edit: http_server_impl.py. Skill: coordinator-api'",
+            "RESUME.json on compact: update current_objective + todo_snapshot, keep uncommitted_changes accurate",
+        ],
+        "anti_patterns": [
+            "Passing full HANDOFF.md content to sub-agent — 400+ lines, wastes context",
+            "Committing PULSE.log — it's gitignored, high-churn runtime log",
+        ],
+        "references": ["CLAUDE.md context engineering rules", ".agent/collaboration/RESUME.json"],
+        "endorsement_count": 3,
+        "last_validated": NOW,
+    },
+    {
+        "category": "testing_patterns",
+        "title": "aq-qa layer registration, http_get() quirks, and mocking boundary",
+        "description": "aq-qa phases: layer 0 = smoke tests (import/file existence), layer 1 = service health, layer 2 = API integration, layer 3 = end-to-end. Register new checks by adding test functions matching check_NN_description() naming convention in scripts/testing/harness_qa/phases/phaseN.py. http_get() utility: raises on non-2xx, timeout default=10s (raises requests.Timeout, NOT returns None — callers must catch). Mocking boundary: local Qdrant + coordinator tested against LIVE instances; external inference endpoints (OpenAI, Gemini API) must be mocked.",
+        "examples": [
+            "def check_86_7_dashboard_alerts_endpoint(): resp = http_get('http://localhost:8889/api/aistack/alerts/status'); assert resp.status_code == 200",
+            "# Mock: responses.add(POST, 'https://api.openai.com/...', ...) — never hit external inference in CI",
+        ],
+        "anti_patterns": [
+            "Registering QA check without a corresponding dashboard panel — service breaks silently",
+            "Using http_get() without try/except requests.Timeout — unhandled timeout crashes test run",
+        ],
+        "references": ["scripts/testing/harness_qa/phases/", "CLAUDE.md §coverage-gap-silent-breakage"],
+        "endorsement_count": 2,
+        "last_validated": NOW,
+    },
+    {
+        "category": "nixos_architecture",
+        "title": "Nix overlays, flake targets, and store immutability patterns",
+        "description": "Flake target: .#hyperd-ai-dev (NOT .#hyperd — doesn't exist). Nix overlays: defined in nix/overlays/ and applied in flake.nix. Pattern: overlays = [ (final: prev: { pkg = prev.pkg.override {...}; }) ]. Store is immutable — service edits in /nix/store/* require nixos-rebuild switch to activate. Nix store path wildcards: use /nix/store/**/subpath (parts[3:] after split) — parts[2:] incorrectly includes hash. Feature flags: profile-driven via nix/modules/profiles/ai-dev.nix.",
+        "examples": [
+            "sudo nixos-rebuild switch --flake .#hyperd-ai-dev  # rebuild + activate",
+            "Nix path wildcard: /nix/store/**/bin/python3 (not /nix/store/hash-name/bin/python3)",
+        ],
+        "anti_patterns": [
+            "nixos-rebuild switch --flake .#hyperd — wrong target, build fails",
+            "Editing files under /nix/store — immutable, changes lost on rebuild",
+        ],
+        "references": ["flake.nix", "nix/modules/profiles/ai-dev.nix", "nix/modules/core/options.nix"],
+        "endorsement_count": 4,
+        "last_validated": NOW,
+    },
 ]
 
 # ---------------------------------------------------------------------------
