@@ -154,6 +154,7 @@ When unassigned, Codex defaults to the role constraints declared in the canonica
 | 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
 | 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
 | 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+| 11 | **NO DELETE — ARCHIVE** | Never use `rm`/`rmdir` to delete files or directories. Move to a timestamped path instead: `mv <path> .agent/archive/<YYYYMMDD>-<name>`. Use a context-appropriate archive dir (`.agent/archive/`, `.agents/archive/`, etc.) if a closer one exists. |
 
 ---
 

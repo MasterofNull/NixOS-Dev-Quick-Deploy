@@ -220,6 +220,7 @@ run_command "curl -s -X POST http://localhost:8003/query
 | 8 | **PRD GATE** | No coding without a written plan. Log `[LOCAL PLAN]` to PULSE.log first. |
 | 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker (POST /api/memory/facts). Read HANDOFF.md on resume. |
 | 10 | **SECURITY GATE** | OWASP check before proposing commit. No hardcoded secrets, ports, or credentials. |
+| 11 | **NO DELETE — ARCHIVE** | Never use `rm`/`rmdir` to delete files or directories. Move to a timestamped path instead: `mv <path> .agent/archive/<YYYYMMDD>-<name>`. Use a context-appropriate archive dir (`.agent/archive/`, `.agents/archive/`, etc.) if a closer one exists. |
 
 > **Local-model allowances**: Rules 4, 5, 6 are tightened relative to the canonical remote-model values
 > to account for context window size and APU thermal constraints. These apply to ANY locally hosted
@@ -462,6 +463,7 @@ Do not ask "how can I help?" or "what would you like to do?" — those are failu
 | 9 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
 | 10 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
 | 11 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+| 12 | **NO DELETE — ARCHIVE** | Never use `rm`/`rmdir` to delete files or directories. Move to a timestamped path instead: `mv <path> .agent/archive/<YYYYMMDD>-<name>`. Use a context-appropriate archive dir (`.agent/archive/`, `.agents/archive/`, etc.) if a closer one exists. |
 
 ---
 
