@@ -1,20 +1,19 @@
 {
-  "current_objective": "Phase 86 COMPLETE — yolo mode: fixing open system issues (downshift metric, dispatch P95, mesh gaps)",
-  "phase": "86-post / housekeeping",
+  "current_objective": "Continue system improvement and parity gap work; close local CLI contract drift found in aq-prime workflow.",
+  "phase": "CLI parity slice",
   "todo_snapshot": [
-    "DONE: Phase 86 all 4 slices committed (c88d2ed6, 05f0965b, 4236f19a)",
-    "DONE: Attention queue cleared (AppArmor approved, HTTP failures rejected)",
-    "PENDING-REBUILD: nixos-rebuild needed for Phase 85+86 to fully activate",
-    "NEXT: downshift metric denominator fix (aq-report ~line 1754)",
-    "NEXT: dispatch P95=244s ceiling bypass investigation",
-    "NEXT: Gemini rg availability in exec context"
+    "DONE: aq-prime and aq-session-start run for continuation context",
+    "DONE: identified CLI contract drift: aq-hints --query rejected, aq-report --machine rejected",
+    "DONE: added backwards-compatible aliases",
+    "DONE: py_compile, aq-hints --query smoke, aq-report --machine JSON parse, tier0 17/17",
+    "NEXT: continue Phase 90 delegation reliability investigation if requested"
   ],
   "uncommitted_changes": [
-    "config/harness-prompt-extensions.yaml (timestamp bump)",
-    ".agent/memory/issues-backlog.md (new)",
-    ".agent/phase73-expert-panel-response.md (moved from prd.md)",
-    ".agents/delegation/training-loop-checkpoint.json",
-    ".agents/telemetry/routing-decisions.jsonl"
+    "Existing dirty telemetry/collaboration files were present before this slice; do not revert",
+    "scripts/ai/aq-hints",
+    "scripts/ai/aq-report",
+    ".agent/memory/issues-backlog.md",
+    ".agent/collaboration/PENDING.json"
   ],
-  "resume_hint": "In yolo mode. nixos-rebuild needed before testing Phase 85+86. Next: downshift metric fix in scripts/ai/aq-report ~line 1754"
+  "resume_hint": "CLI parity slice validated. Continue from aq-report recommendations: active ai_coordinator_delegate failures and continuation downshift still merit follow-up."
 }

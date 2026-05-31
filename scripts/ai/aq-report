@@ -12,7 +12,7 @@ Prometheus counters into a human-readable report that surfaces:
   - Workflow recommendations based on the above data
 
 Usage:
-  aq-report [--since=7d] [--format=md|text|json] [--aidb-import]
+  aq-report [--since=7d] [--format=md|text|json] [--machine] [--aidb-import]
 
 Environment variables (all optional — uses sensible defaults):
   TOOL_AUDIT_LOG_PATH    Path to tool-audit.jsonl
@@ -201,6 +201,10 @@ def parse_args() -> argparse.Namespace:
         dest="fmt", help="Output format (default: text)"
     )
     p.add_argument(
+        "--machine", action="store_true",
+        help="Emit JSON output for automation; equivalent to --format=json",
+    )
+    p.add_argument(
         "--aidb-import", action="store_true",
         help="Ingest the generated report into AIDB after printing"
     )
@@ -208,7 +212,10 @@ def parse_args() -> argparse.Namespace:
         "--summarize", action="store_true",
         help="Use local model to generate a high-level executive summary"
     )
-    return p.parse_args()
+    args = p.parse_args()
+    if args.machine:
+        args.fmt = "json"
+    return args
 
 
 # ---------------------------------------------------------------------------

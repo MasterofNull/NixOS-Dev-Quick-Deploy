@@ -447,6 +447,22 @@ Rules added (10): ['            /var/lib/nixos-system-dashboard/telemetry/deploy
 Denied paths: ['/dev/tty', '/nix/store/cyr8pbss92g8fzsy2jlckl8r653bzv4h-python3-3.13.12-env/bin/uvicorn', '/nix/store/sahqyj4v0za2cwcnrbcjyndyk8ka8a9y-python3.13-uvicorn-0.35.0/bin/.uvicorn-wrapped', '/var/lib/nixos-system-dashboard/telemetry/deployments-context.db', '/tmp/nixos-dashboard-context.db']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
 
+### [2026-05-31T05:05:00Z] codex
+**CLI parity slice complete** — fixed documented workflow command drift discovered during continuation bootstrap.
+
+Changed:
+  - `scripts/ai/aq-hints`: added `--query` alias for positional query.
+  - `scripts/ai/aq-report`: added `--machine` alias for `--format=json`.
+  - `.agent/memory/issues-backlog.md`: logged/resolved the CLI contract issue.
+
+Validation:
+  - `python3 -m py_compile scripts/ai/aq-hints scripts/ai/aq-report`
+  - `aq-hints --query "cli parity smoke" --format json --max 1`
+  - `aq-report --machine` parsed with `python3 -m json.tool`
+  - `scripts/governance/tier0-validation-gate.sh --pre-commit` → 17/17 PASS, QA phase 0 77 checks
+
+Unrelated dirty files remain in the worktree and were not reverted.
+
 ### [2026-05-29T19:30:00Z] Phase 80 — Session completion
 
 **AppArmor enforcement fully clean — 0 denials post-rebuild**
