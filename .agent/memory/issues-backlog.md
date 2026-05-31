@@ -1,3 +1,13 @@
+[OPEN] workspace-isolation — cleanup_workspace() requires force=True for active workspaces — `WorkspaceManager.cleanup_workspace()` returns False and logs "Cannot cleanup active workspace" unless `force=True` is passed. Default cleanup in integration tests silently fails.
+  Severity: low (no data loss; worktrees accumulate in /tmp/aq-worktree-test until manually cleared)
+  Action: Pass `force=True` in cleanup calls, or add auto-deactivate before cleanup. File: ai-stack/orchestration/workspace_isolation.py
+  File: ai-stack/orchestration/workspace_isolation.py (cleanup_workspace method)
+
+[OPEN] hardware — ROCm not available on Renoir APU (gfx90c) — ACCELERATE PRD assumed ROCm availability. Renoir iGPU is not a supported ROCm target. `rocminfo` absent. llama-cpp runs Vulkan only. Baseline: 2.71 tok/s.
+  Severity: info (hardware constraint, not a bug — requires discrete RDNA2+ GPU for ROCm)
+  Action: Document in hardware-profiles.json; remove ROCm acceptance criterion from ACCELERATE PRD. No code fix possible without hardware upgrade.
+  File: .agent/PROJECT-ACCELERATE-PRD.md
+
 [OPEN] workflow — aq-session-start missing from Codex shell PATH — Session initialization command returned `command not found`; likely PATH/wrapper deployment gap for current execution environment.
   Severity: medium
   Action: Confirm aiHarnessCliWrappers exposes aq-session-start or document the supported absolute path fallback for Codex sessions.

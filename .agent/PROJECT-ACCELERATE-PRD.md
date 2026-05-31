@@ -40,8 +40,8 @@ Phase A (Hardening) established a stable foundation for the AI stack. However, t
 - [x] **DSL Validation**: JSON schema at `config/schemas/workflow-dsl.schema.json`; `aq-workflow validate` passes on example workflows; 98 unit tests green.
 - [x] **Checkpoint/Resume**: `ai-stack/workflows/persistence.py` persists execution state; `graph.py` retries from checkpoint.
 - [x] **Graph Engine**: DAG executor with parallel execution, error recovery, and loop support delivered in `ai-stack/workflows/graph.py`.
-- [ ] **ROCm Performance**: Benchmark token throughput vs Vulkan (requires `nixos-rebuild` deploy + hardware run).
-- [ ] **Concurrency Integration Test**: 5 parallel agents on separate worktrees (requires running coordinator).
+- [N/A] **ROCm Performance**: Renoir APU (gfx90c) is not a supported ROCm target — iGPU only. `rocminfo` absent. llama-cpp confirmed on Vulkan backend (radeon_icd). Vulkan baseline measured: **2.71 tok/s** (30 tokens / 11.1s, n_gpu_layers=12). ROCm path requires discrete AMD RDNA2+ GPU; not achievable on this hardware. Criterion closed as hardware-constrained — no code change possible.
+- [x] **Concurrency Integration Test**: 5/5 parallel agents created on separate worktrees (TEMP_DIR mode), file isolation verified — each agent's workspace contains only its own writes. Test passed 2026-05-31. Note: `cleanup_workspace()` requires `force=True` for active workspaces — logged to issues-backlog.
 
 ## 6. Slices (Implementation Overview)
 1. **Slice 1: Flake Integration** ✓ - `nixified-ai` + `nixos-rocm` added to `flake.nix`.

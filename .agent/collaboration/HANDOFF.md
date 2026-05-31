@@ -18,8 +18,12 @@
 - Carry-forward from Ph87.3: ai-training-ingest.timer
 
 ### What's next
-- 88.5: ACCELERATE PRD hardware validation (ROCm perf benchmark + concurrency test) — separate session
-- Review + promote auto-generated skill stubs: `.agent/skills/auto-generated/`
+- ~~88.5: ACCELERATE PRD hardware validation~~ — COMPLETE 2026-05-31
+  - ROCm: N/A on Renoir APU (gfx90c not supported); Vulkan baseline = 2.71 tok/s; documented
+  - Concurrency test: 5/5 parallel worktrees, isolation PASS
+- ~~Review + promote auto-generated skill stubs~~ — COMPLETE 2026-05-31
+  - Promoted: `provider-request-error-recovery`, `strict-json-output-contract`; AIDB approved; stubs archived
+- Next: No active phase. System stable. Candidates: 88.5 cleanup (force=True fix), new phase planning
 
 ---
 # HANDOFF MEMO — 2026-05-30 (updated Phase 87/88 — Observability + Hygiene)
