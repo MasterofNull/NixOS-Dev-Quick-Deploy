@@ -727,6 +727,18 @@ in {
       fi
 
       [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+      # Phase 86 — HITL alert indicator
+      # Prints "[ ATTN: N PENDING ALERT(S) ]" before each prompt if human_gate
+      # items are waiting in the attention queue.
+      _aq_alert_precmd() {
+        local _attn="$HOME/Documents/NixOS-Dev-Quick-Deploy/.agents/attention/ATTENTION.json"
+        [[ -f "$_attn" ]] || return 0
+        local _n
+        _n=$(jq '[.alerts[] | select(.status=="pending")] | length' "$_attn" 2>/dev/null) || return 0
+        (( _n > 0 )) && print -P "%F{red}%B[ ATTN: $_n PENDING ALERT(S) — run aq-alerts ]%b%f"
+      }
+      precmd_functions+=(_aq_alert_precmd)
     '';
   };
 
