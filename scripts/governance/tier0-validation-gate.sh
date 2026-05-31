@@ -8,10 +8,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-MODE="${1:---pre-commit}"
+# Parse args: --pre-commit | --pre-deploy set MODE; --tap enables TAP output.
+# --tap may appear in any position and does not override MODE.
+MODE="--pre-commit"
+TAP_MODE=0
+TAP_JSON_FILE="${TIER0_TAP_JSON:-}"
+for arg in "$@"; do
+  case "$arg" in
+    --pre-commit|--pre-deploy) MODE="$arg" ;;
+    --tap) TAP_MODE=1 ;;
+  esac
+done
 
 pass_count=0
 fail_count=0
+tap_index=0
+declare -a _tap_results=()  # accumulate "ok|not ok|skip:description" entries
 
 collect_changed_files() {
   if [[ "$MODE" == "--pre-commit" ]]; then
@@ -30,13 +42,26 @@ log() {
 }
 
 pass() {
+  ((pass_count++)) || true
+  ((tap_index++)) || true
   printf '[tier0] PASS: %s\n' "$*"
-  ((pass_count++))
+  [[ $TAP_MODE -eq 1 ]] && printf 'ok %d - %s\n' "$tap_index" "$*"
+  _tap_results+=("ok:${tap_index}:$*")
 }
 
 fail() {
+  ((fail_count++)) || true
+  ((tap_index++)) || true
   printf '[tier0] FAIL: %s\n' "$*" >&2
-  ((fail_count++))
+  [[ $TAP_MODE -eq 1 ]] && printf 'not ok %d - %s\n' "$tap_index" "$*"
+  _tap_results+=("not_ok:${tap_index}:$*")
+}
+
+skip() {
+  ((tap_index++)) || true
+  printf '[tier0] SKIP: %s\n' "$*"
+  [[ $TAP_MODE -eq 1 ]] && printf 'ok %d - # SKIP %s\n' "$tap_index" "$*"
+  _tap_results+=("skip:${tap_index}:$*")
 }
 
 # Gate 1: Python syntax validation
@@ -315,7 +340,35 @@ print(f'Parsed {len(stmts)} statement(s) OK')
   return $failed
 }
 
-# Gate 10: Repo structure validation
+# Gate 10: Raw ANSI color echo lint
+gate_color_echo() {
+  log "Checking for raw ANSI echo usage..."
+  local files=()
+  while IFS= read -r f; do
+    [[ -f "$f" ]] && [[ "$f" == *.sh ]] && files+=("$f")
+  done < <(collect_changed_files)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    pass "No shell script changes detected (color-echo)"
+    return 0
+  fi
+
+  local found=0
+  for f in "${files[@]}"; do
+    if grep -nP 'echo\s+-[eE]\s+["'"'"'].*\\033\[|printf\s+["'"'"'].*\\033\[' "$f" 2>/dev/null | grep -v '# ok-raw-echo'; then
+      found=1
+    fi
+  done
+
+  if [[ $found -eq 1 ]]; then
+    fail "Raw ANSI color codes found — use info()/warn()/die() wrappers instead. Add '# ok-raw-echo' to intentional exceptions."
+    return 1
+  fi
+
+  pass "No raw ANSI echo usage (${#files[@]} files checked)"
+}
+
+# Gate 11: Repo structure validation
 gate_repo_structure() {
   log "Checking repo structure..."
   if "${SCRIPT_DIR}/repo-structure-lint.sh" --staged 2>&1 | grep -q "PASS"; then
@@ -544,6 +597,8 @@ log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
 
+[[ $TAP_MODE -eq 1 ]] && printf 'TAP version 14\n'
+
 # Always-run gates
 gate_python_syntax || true
 gate_bash_syntax || true
@@ -554,6 +609,7 @@ gate_toml_syntax || true
 gate_js_syntax || true
 gate_ts_syntax || true
 gate_sql_syntax || true
+gate_color_echo || true
 gate_repo_structure || true
 gate_script_headers || true
 gate_config_dir_lint || true
@@ -569,10 +625,59 @@ if [[ "$MODE" == "--pre-deploy" ]]; then
   gate_unattended_sudo_readiness || true
 fi
 
+# tier0.d/ extension checks — drop executable scripts here to add new gates
+# without editing this file. Each script receives MODE as $1 and must exit 0
+# (pass) or exit 1 (fail). stdout line prefix "[tier0.d/<name>]" is recommended.
+TIER0D="${SCRIPT_DIR}/tier0.d"
+if [[ -d "$TIER0D" ]]; then
+  shopt -s nullglob
+  for ext_check in "${TIER0D}"/*.sh; do
+    check_name="$(basename "$ext_check" .sh)"
+    log "Running tier0.d extension: ${check_name}..."
+    if bash "$ext_check" "${MODE}" 2>&1; then
+      pass "tier0.d/${check_name}"
+    else
+      fail "tier0.d/${check_name}"
+    fi
+  done
+  shopt -u nullglob
+fi
+
 log ""
 log "=== Summary ==="
 log "Passed: ${pass_count}"
 log "Failed: ${fail_count}"
+
+# Emit TAP plan line now that we know the total count
+if [[ $TAP_MODE -eq 1 ]]; then
+  printf '1..%d\n' "$tap_index"
+fi
+
+# Emit machine-readable JSON results if TIER0_TAP_JSON is set
+if [[ -n "$TAP_JSON_FILE" ]]; then
+  python3 - "$TAP_JSON_FILE" "${_tap_results[@]+"${_tap_results[@]}"}" <<'PY'
+import json, sys, datetime
+out_file = sys.argv[1]
+entries = sys.argv[2:]
+results = []
+for e in entries:
+    parts = e.split(":", 2)
+    if len(parts) == 3:
+        status, idx, desc = parts
+        results.append({"index": int(idx), "status": status, "description": desc})
+data = {
+    "generated_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "total": len(results),
+    "passed": sum(1 for r in results if r["status"] == "ok"),
+    "failed": sum(1 for r in results if r["status"] == "not_ok"),
+    "skipped": sum(1 for r in results if r["status"] == "skip"),
+    "checks": results,
+}
+with open(out_file, "w") as f:
+    json.dump(data, f, indent=2)
+print(f"[tier0] JSON results written to {out_file}")
+PY
+fi
 
 if [[ ${fail_count} -gt 0 ]]; then
   log ""

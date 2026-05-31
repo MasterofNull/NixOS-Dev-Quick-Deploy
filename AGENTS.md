@@ -295,3 +295,11 @@ Prefer 3-5 repo-only slices before `nixos-quick-deploy.sh`. Deploy earlier only 
 - `scripts/ai/` — harness CLIs (`aq-insights` for local model harness analysis)
 - `.agent/CODEX.md` — Codex-specific instruction projection
 - `.agent/LOCAL-AGENT.md` — local inference agent (model-agnostic; current model + swap checklist)
+
+## Archiving Files — Required SOP
+- Before ANY `mv <file>` to `.agent/archive/` or `.agents/archive/`:
+  1. Run: `scripts/governance/pre-archive-scan.sh <file>`
+  2. If exit 1: update or remove all inbound references first
+  3. `git add <file>` to stage the deletion
+  4. The pre-archive-scan-hook will auto-block commits with broken refs
+- Never use `rm`/`rmdir` (Rule 12 — archive instead)

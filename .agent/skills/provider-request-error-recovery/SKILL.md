@@ -1,3 +1,11 @@
+---
+doc_type: skill
+id: provider-request-error-recovery
+title: Provider Request Error Recovery
+status: active
+tags: [delegation, error-handling, llama-cpp, provider, retry]
+---
+
 # Skill: provider-request-error-recovery
 
 ## Origin

@@ -1,3 +1,11 @@
+---
+doc_type: skill
+id: aq-workflow
+title: AQ Workflow Skill
+status: active
+tags: [aq-resume, aq-qa, aq-health, HITL, drop-zone, delegation, session, commit-gate, validation, aq-hints]
+---
+
 # AQ Workflow Skill — NixOS-Dev-Quick-Deploy Harness
 ## Tags
 aq-resume, aq-qa, aq-health, HITL, drop-zone, delegation, session, commit-gate, validation, aq-hints

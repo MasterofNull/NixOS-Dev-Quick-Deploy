@@ -7,6 +7,14 @@ repos:
         language: script
         pass_filenames: false
         stages: [commit]
+      - id: pre-archive-scan
+        name: Pre-archive inbound-link scan
+        entry: scripts/governance/pre-archive-scan-hook.sh
+        language: script
+        pass_filenames: false
+        types: []
+        files: '\.(md|nix|py|sh|yaml|json)$'
+        stages: [commit]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
