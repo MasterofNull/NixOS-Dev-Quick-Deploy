@@ -1221,10 +1221,14 @@ def _apply_query_response_mode(
             "describe",
         )
         explicit_search_markers = ("search", "find", "lookup", "retrieve", "grep", "rg ", "query")
-        is_continuation = _is_continuation_query(query)
         has_explanation = any(marker in normalized for marker in explanation_markers)
         has_search = any(marker in normalized for marker in explicit_search_markers)
-        if has_recalled_memory and is_continuation and not has_explanation and not has_search:
+        # Phase 89.4: use memory_recall_priority (broad signal: already used to decide strategy)
+        # instead of the narrow _is_continuation_query — audit showed 0/14 because the narrow
+        # check rejected all queries that triggered memory-first via the broader heuristics.
+        # retrieval_strategy_active=True already implies the strategy fired; aligning the
+        # downshift gate with that same signal prevents the double-gating.
+        if has_recalled_memory and memory_recall_priority and not has_explanation and not has_search:
             effective_generate_response = False
             request_context["response_generation_downshifted"] = True
             request_context["response_generation_downshift_reason"] = "continuation_memory_first"
@@ -1234,8 +1238,8 @@ def _apply_query_response_mode(
             skip_reasons = []
             if not has_recalled_memory:
                 skip_reasons.append("no_recalled_memory")
-            if not is_continuation:
-                skip_reasons.append("not_continuation_query")
+            if not memory_recall_priority:
+                skip_reasons.append("memory_recall_not_prioritized")
             if has_explanation:
                 skip_reasons.append("explanation_marker")
             if has_search:
