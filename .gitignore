@@ -191,3 +191,4 @@ config/rocm-promotion-state.json
 .agents/drops/archive/*.drop.yaml
 .agents/drops/failed/*.drop.yaml
 .agents/drops/.lock
+.agent/archive/tool-audit-*.jsonl
