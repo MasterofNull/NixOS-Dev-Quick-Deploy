@@ -60,11 +60,10 @@ hints_out="$(_curl_json "${COORD_URL}/hints?q=$(python3 -c "import urllib.parse,
 printf '[3/4] Hierarchical context...\n'
 hier_context="$(python3 "${SCRIPT_DIR}/lib/context-merger.py" "${REPO_ROOT}" 2>/dev/null)" || true
 
-# ── 4. Promoted lessons ───────────────────────────────────────────────────────
+# ── 4. Promoted lessons + constraints ────────────────────────────────────────
 printf '[4/4] Lesson registry...\n'
+# lessons endpoint returns both agent_lessons registry and constraints array (Phase 65.3)
 lessons_out="$(_curl_json "${COORD_URL}/control/ai-coordinator/lessons")" || true
-# Also pull active constraints from procedural memory (Gemini recommendation: 56.8)
-constraints_out="$(_curl_json "${COORD_URL}/api/memory/facts?scope=procedural&limit=5")" || true
 
 # ── Build context document ────────────────────────────────────────────────────
 {
@@ -135,18 +134,18 @@ PYEOF
         printf '(no AGENTS.md files found in path)\n'
     fi
 
-    printf '\n## Active Constraints (procedural memory)\n'
-    if [[ -n "$constraints_out" ]]; then
+    printf '\n## Active Constraints (lesson registry)\n'
+    if [[ -n "$lessons_out" ]]; then
         python3 - <<PYEOF
 import json
 try:
-    d = json.loads("""$constraints_out""")
-    facts = d.get('facts') or []
-    if facts:
-        for f in facts[:5]:
-            print(f"- {str(f.get('fact',''))[:200]}")
+    d = json.loads("""$lessons_out""")
+    constraints = d.get('constraints') or []
+    if constraints:
+        for c in constraints[:10]:
+            print(f"- {str(c)[:200]}")
     else:
-        print("(none stored)")
+        print("(none — no lessons tagged constraint or state=active_constraint yet)")
 except Exception:
     print("(unavailable)")
 PYEOF
