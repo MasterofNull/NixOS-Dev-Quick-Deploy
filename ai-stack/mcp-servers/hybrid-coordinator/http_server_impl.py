@@ -1663,7 +1663,9 @@ async def run_http_mode(port: int) -> None:
         total = 0
         ok = 0
         skipped_probes = 0
+        failure_breakdown: dict = {}
         error_msg = None
+        _TERMINAL_OUTCOMES = {"success", "error", "timeout", "failed"}
         try:
             with open(audit_log, "r", encoding="utf-8", errors="replace") as fh:
                 for raw in fh:
@@ -1701,12 +1703,15 @@ async def run_http_mode(port: int) -> None:
                     # delegate script wrote a final outcome — counting them as
                     # failures would skew the rate against incomplete-but-harmless
                     # background tasks.
-                    _TERMINAL_OUTCOMES = {"success", "error", "timeout", "failed"}
                     if outcome not in _TERMINAL_OUTCOMES:
                         continue
                     total += 1
                     if outcome == "success":
                         ok += 1
+                    else:
+                        # Use stored failure_reason if present; fall back to classifier
+                        reason = entry.get("failure_reason") or _classify_failure_reason(err_msg_e)
+                        failure_breakdown[reason] = failure_breakdown.get(reason, 0) + 1
         except OSError as exc:
             error_msg = str(exc)
         except Exception as exc:
@@ -1724,6 +1729,7 @@ async def run_http_mode(port: int) -> None:
             "success_rate": success_rate,
             "window_s": window_s,
             "skipped_probes": skipped_probes,
+            "failure_breakdown": failure_breakdown,
         })
 
     # Phase 56.4 — Commit Fact Ingest
@@ -1826,6 +1832,20 @@ async def run_http_mode(port: int) -> None:
             "window_size":      20,
         })
 
+    # Phase 90 — failure_reason classifier
+    def _classify_failure_reason(error_message: str) -> str:
+        """Map a raw error_message string to a structured failure_reason enum value."""
+        msg = (error_message or "").lower()
+        if not msg.strip():
+            return "empty_response"
+        if "timeout" in msg or "504" in msg or "408" in msg or "timed out" in msg:
+            return "timeout"
+        if "context" in msg or "413" in msg or "too long" in msg or "context_length" in msg:
+            return "context_overflow"
+        if "500" in msg or "internal server" in msg or "backend" in msg:
+            return "backend_500"
+        return "unknown"
+
     # Phase 56.6 — Agent Event Bus
     _VALID_EVENT_TYPES = frozenset({
         "task_completed", "error_resolution", "lesson", "decision",
@@ -1889,6 +1909,7 @@ async def run_http_mode(port: int) -> None:
                 "tags": tags,
             },
             "error_message": "" if outcome == "success" else summary[:120],
+            "failure_reason": None if outcome == "success" else _classify_failure_reason(summary),
         }
         audit_log = os.getenv(
             "TOOL_AUDIT_LOG_PATH",

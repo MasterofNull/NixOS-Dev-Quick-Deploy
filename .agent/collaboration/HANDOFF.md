@@ -1,3 +1,24 @@
+# HANDOFF MEMO — 2026-05-31 (updated Phase 90 — Delegation Observability)
+
+## Phase 90 — Delegation Observability & Metric Hygiene — COMPLETE
+
+### Delivered (2/3 slices + 1 N/A)
+- **90.1 (N/A)**: TTL expiry not needed — stale `running` entries already excluded by `_TERMINAL_OUTCOMES` check in `/stats/delegate`. Rate gap (51.6% 7d vs 82.4% 24h) is real historical errors, not orphans. No TTL sweep needed.
+- **90.2**: `_classify_failure_reason()` added to `http_server_impl.py`. New audit entries now carry `failure_reason: backend_500|empty_response|timeout|context_overflow|unknown`. `/stats/delegate` response includes `failure_breakdown` map. **Requires coordinator restart to activate.**
+- **90.3**: `aq-report` Section 8 (Recent Health Snapshot) now shows `ai_coordinator_delegate: 24h: X%  |  7d: Y%` side-by-side. `_compute_delegate_rate()` helper added; both `format_md` and `format_text` updated. No restart needed.
+
+### PENDING-REBUILD required
+`nixos-rebuild switch --flake .#hyperd-ai-dev` to activate:
+- **90.2**: `http_server_impl.py` — `_classify_failure_reason` + `failure_breakdown` in coordinator
+- Carry-forward from Ph89.3+89.4: `http_server_impl.py` CL event + downshift gate
+- Carry-forward from Ph85: ai-drop-daemon.service
+- Carry-forward from Ph87.3: ai-training-ingest.timer
+
+### What's next
+- System stable. No active phase. aq-report 90.3 change is live on next `aq-report` run.
+- 90.2 live after coordinator restart.
+
+---
 # HANDOFF MEMO — 2026-05-31 (updated Phase 89 — Learning Loop Maturity)
 
 ## Phase 89 — Learning Loop Maturity — COMPLETE (commits f53ce213…fbc68d5a)

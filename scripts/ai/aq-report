@@ -5135,6 +5135,41 @@ def recent_health_snapshot(
     return snapshot
 
 
+def _compute_delegate_rate(audit_entries: List[dict], now: datetime, window_s: int) -> Optional[float]:
+    """Compute ai_coordinator_delegate success rate from audit_entries over window_s seconds.
+
+    Returns a float 0.0–1.0, or None if there are no terminal-outcome entries in the window.
+    Probe entries (504 latency<15s, blocked_endpoint_pattern) are excluded, matching /stats/delegate.
+    """
+    _TERMINAL = {"success", "error", "timeout", "failed"}
+    cutoff_ts = now.timestamp() - window_s
+    total = 0
+    ok = 0
+    for entry in audit_entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("tool_name", "") or "").strip().lower() != "ai_coordinator_delegate":
+            continue
+        ts_obj = _entry_ts_utc(entry)
+        if ts_obj is None or ts_obj.timestamp() < cutoff_ts:
+            continue
+        latency_ms = float(entry.get("latency_ms") or 0)
+        err_msg = str(entry.get("error_message") or "")
+        is_probe = (
+            (entry.get("outcome") == "error" and err_msg == "http_status_504" and latency_ms < 15000)
+            or err_msg.startswith("blocked_endpoint_pattern:")
+        )
+        if is_probe:
+            continue
+        outcome = str(entry.get("outcome") or "")
+        if outcome not in _TERMINAL:
+            continue
+        total += 1
+        if outcome == "success":
+            ok += 1
+    return round(ok / total, 3) if total > 0 else None
+
+
 def historical_watchlist(tool_stats: Dict[str, dict], recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
     """Summarize longer-window issues that are not active in the recent window."""
     watch: Dict[str, Any] = {
@@ -5469,6 +5504,14 @@ def format_md(
     lines.append("")
 
     lines += [f"## 8. Recent Health Snapshot ({recent_health.get('window', '1h')})", ""]
+    # Phase 90.3 — delegation health: 24h vs 7d side-by-side
+    _d24 = recent_health.get("delegate_24h_rate")
+    _d7 = recent_health.get("delegate_7d_rate")
+    if _d24 is not None or _d7 is not None:
+        _d24_str = f"{_d24 * 100:.1f}%" if _d24 is not None else "--"
+        _d7_str = f"{_d7 * 100:.1f}%" if _d7 is not None else "--"
+        lines.append(f"- `ai_coordinator_delegate` success:  **24h: {_d24_str}  |  7d: {_d7_str}**")
+        lines.append("")
     if recent_health.get("healthy"):
         lines.append("*No active slow or flaky tools in the recent window.*")
     else:
@@ -6331,6 +6374,13 @@ def format_text(
     lines.append("")
 
     lines += [f"[ 8. Recent Health Snapshot ({recent_health.get('window', '1h')}) ]"]
+    # Phase 90.3 — delegation health: 24h vs 7d side-by-side
+    _d24 = recent_health.get("delegate_24h_rate")
+    _d7 = recent_health.get("delegate_7d_rate")
+    if _d24 is not None or _d7 is not None:
+        _d24_str = f"{_d24 * 100:.1f}%" if _d24 is not None else "--"
+        _d7_str = f"{_d7 * 100:.1f}%" if _d7 is not None else "--"
+        lines.append(f"  ai_coordinator_delegate: 24h: {_d24_str}  |  7d: {_d7_str}")
     if recent_health.get("healthy"):
         lines.append("  No active slow or flaky tools in the recent window.")
     else:
@@ -7162,6 +7212,9 @@ def main() -> None:
     semantic_autorun = semantic_autorun_health(audit_entries)
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats, recent_provider_fallbacks)
+    # Phase 90.3 — attach 24h and 7d delegate rates to recent_health for side-by-side display
+    recent_health["delegate_24h_rate"] = _compute_delegate_rate(audit_entries, now, window_s=86400)
+    recent_health["delegate_7d_rate"] = _compute_delegate_rate(audit_entries, now, window_s=7 * 86400)
     continue_editor = continue_editor_health()
     append_continue_editor_snapshot(continue_editor, timestamp=now)
     continue_editor_window_summary = continue_editor_windows(now=now, report_since=since_dt)
