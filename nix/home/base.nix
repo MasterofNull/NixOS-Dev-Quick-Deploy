@@ -936,8 +936,17 @@ in {
   # `vscodeProfiles` writes its generated settings late in activation, so this
   # must run after it as a final convergence pass or the active color theme can
   # disappear even though the preferred-theme keys remain present.
+  #
+  # WARNING: if VSCodium is running during home-manager switch it will overwrite
+  # settings.json from its in-memory state after this patch executes, losing the
+  # colorTheme key again.  Close VSCodium before running `nrs` or `hms`.
   home.activation.enforceVSCodiumTheme = lib.hm.dag.entryAfter ["vscodeProfiles"] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
+    if pgrep -x "codium" >/dev/null 2>&1; then
+      echo "[home-manager] WARNING: VSCodium is running — theme patch applied but may be" >&2
+      echo "               overwritten when VSCodium saves settings. Restart VSCodium after" >&2
+      echo "               this switch to apply the Cyberpunk/SCARLET theme." >&2
+    fi
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
       if jq '

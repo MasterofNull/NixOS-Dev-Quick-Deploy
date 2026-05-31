@@ -2397,6 +2397,8 @@ in {
             deny capability net_raw,
 
             # Deny writes/exec to home/root; reads allowed for repo paths above.
+            # auto-added by apparmor-fix-agent 2026-05-31
+            /proc/@{pids}/cgroup r,  # /proc/<pid> → @{pids}
             deny /home/** wx,
             deny /root/** rwx,
           }
@@ -2529,6 +2531,8 @@ in {
             /var/lib/llama-cpp/models/ r,  # open
             # auto-added by apparmor-fix-agent 2026-05-30
             /etc/machine-id r,  # open
+            # auto-added by apparmor-fix-agent 2026-05-31
+            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/ r,  # open
             deny /home/** wx,
             deny /root/** rwx,
           }
