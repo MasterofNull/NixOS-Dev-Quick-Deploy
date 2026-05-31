@@ -58,6 +58,27 @@ require_gemini() {
   Or set:  export GEMINI_BIN=/path/to/gemini"
 }
 
+ensure_gemini_rg() {
+    # Gemini CLI uses a bundled ripgrep binary (rg-linux-x64), not the system rg.
+    # The npm package does not ship the binary — symlink the system rg into the
+    # expected vendor path so Gemini finds it instead of falling back to GrepTool.
+    # GEMINI_BIN symlinks to bundle/gemini.js; vendor/ripgrep is a sibling of that dir.
+    local _gemini_real; _gemini_real="$(realpath "$GEMINI_BIN" 2>/dev/null)" || return 0
+    local _rg_bundle_dir; _rg_bundle_dir="$(dirname "$_gemini_real")/vendor/ripgrep"
+    local _arch; _arch="$(uname -m)"
+    [[ "$_arch" == "x86_64" ]] && _arch="x64"
+    [[ "$_arch" == "aarch64" ]] && _arch="arm64"
+    local _rg_bundle_path="${_rg_bundle_dir}/rg-linux-${_arch}"
+    if [[ ! -x "$_rg_bundle_path" ]]; then
+        local _system_rg; _system_rg="$(command -v rg 2>/dev/null || echo "/run/current-system/sw/bin/rg")"
+        if [[ -x "$_system_rg" ]]; then
+            mkdir -p "$_rg_bundle_dir"
+            ln -sf "$_system_rg" "$_rg_bundle_path"
+            info "Linked system rg → Gemini vendor bundle: $_rg_bundle_path"
+        fi
+    fi
+}
+
 ensure_dirs() {
     mkdir -p "$OUTPUTS_DIR"
     touch "$REGISTRY"
@@ -209,6 +230,7 @@ cmd_delegate() {
     local prompt="$1" mode="${2:-yolo}" model_flag="${3:-}" wait_mode="${4:-false}" role="${5:-implement}"
 
     require_gemini
+    ensure_gemini_rg
     ensure_dirs
 
     local id; id="$(task_id)"

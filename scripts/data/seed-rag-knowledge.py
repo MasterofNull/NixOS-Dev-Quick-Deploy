@@ -557,6 +557,31 @@ BEST_PRACTICES = [
         "endorsement_count": 4,
         "last_validated": NOW,
     },
+    {
+        "id": "gemini_rg_bundle",
+        "category": "multi_agent_collaboration",
+        "title": "Gemini CLI Bundled ripgrep Pre-flight",
+        "description": (
+            "Gemini CLI uses a platform-specific bundled ripgrep binary (rg-linux-x64 on x86_64) "
+            "at bundle/vendor/ripgrep/ relative to the resolved bundle/gemini.js entrypoint. "
+            "The npm package does NOT ship this binary — without it Gemini falls back to GrepTool "
+            "and fails with 'rg unavailable in exec context'. Fix: symlink the system rg into the "
+            "expected vendor path before invoking Gemini (ensure_gemini_rg function in "
+            "delegate-to-gemini). Key: use realpath on GEMINI_BIN to get the true bundle dir path, "
+            "then compute vendor/ripgrep/rg-linux-{arch}. x86_64 → x64, aarch64 → arm64."
+        ),
+        "examples": [
+            "realpath $GEMINI_BIN → .../bundle/gemini.js; dirname → bundle/; +/vendor/ripgrep/rg-linux-x64",
+            "ln -sf /run/current-system/sw/bin/rg bundle/vendor/ripgrep/rg-linux-x64",
+        ],
+        "anti_patterns": [
+            "Using dirname twice on realpath result — doubles the package path",
+            "Injecting system rg via PATH — Gemini uses absolute bundled path, ignores PATH",
+        ],
+        "references": ["scripts/ai/delegate-to-gemini"],
+        "endorsement_count": 1,
+        "last_validated": NOW,
+    },
 ]
 
 # ---------------------------------------------------------------------------
