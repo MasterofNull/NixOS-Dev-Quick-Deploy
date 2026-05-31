@@ -266,6 +266,15 @@ class WorkspaceManager:
         logger.info("Cleaned up workspace %s", workspace_id)
         return True
 
+    async def release_workspace(self, workspace_id: str) -> bool:
+        """Mark a workspace as inactive (agent done), enabling cleanup without force=True."""
+        workspace = self.workspaces.get(workspace_id)
+        if not workspace:
+            return False
+        workspace.is_active = False
+        logger.info("Released workspace %s (agent=%s)", workspace_id, workspace.agent_id)
+        return True
+
     async def cleanup_session_workspaces(self, session_id: str) -> int:
         """Clean up all workspaces for a session."""
         to_cleanup = [
