@@ -641,6 +641,8 @@ in {
           "d ${dataDir}/aidb/logs          0750 ${aidbUser} ${aiGroup} -"
           "d ${dataDir}/aidb/telemetry     0750 ${aidbUser} ${aiGroup} -"
           "f ${dataDir}/aidb/telemetry/aidb-events.jsonl 0640 ${aidbUser} ${aiGroup} - -"
+          "d ${dataDir}/aidb/shared-skills 0750 ${aidbUser} ${aiGroup} -"
+          "Z ${dataDir}/aidb/shared-skills 0750 ${aidbUser} ${aiGroup} -"
           "d ${dataDir}/hybrid             0750 ${hybridUser} ${aiGroup} -"
           "d ${dataDir}/hybrid/telemetry   0750 ${hybridUser} ${aiGroup} -"
           "d ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
@@ -2525,6 +2527,8 @@ in {
             /proc/sys/kernel/random/boot_id r,  # open
             # auto-added by apparmor-fix-agent 2026-05-30
             /var/lib/llama-cpp/models/ r,  # open
+            # auto-added by apparmor-fix-agent 2026-05-30
+            /etc/machine-id r,  # open
             deny /home/** wx,
             deny /root/** rwx,
           }
