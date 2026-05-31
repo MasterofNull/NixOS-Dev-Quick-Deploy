@@ -21,12 +21,12 @@ _log_file="${10:-}"
 # is a code-injection surface when summary/task fields contain quotes or backslashes.
 payload="$(python3 -c "
 import json, sys
-event_type, sub_type, agent, outcome, latency_raw, task_id, summary = sys.argv[1:8]
+event_type, sub_type, agent, outcome, latency_raw, task_id, summary, prompt = sys.argv[1:9]
 try:
     latency_ms = int(latency_raw) if latency_raw.isdigit() else 0
 except (ValueError, TypeError):
     latency_ms = 0
-print(json.dumps({
+d = {
     'event_type': event_type,
     'sub_type':   sub_type,
     'agent':      agent,
@@ -34,8 +34,11 @@ print(json.dumps({
     'latency_ms': latency_ms,
     'task_id':    task_id,
     'summary':    summary[:400],
-}))
-" "$_event_type" "$_sub_type" "$_agent" "$_outcome" "$_latency_ms" "$_task_id" "$_summary" 2>/dev/null)" || exit 0
+}
+if prompt:
+    d['prompt'] = prompt[:1000]
+print(json.dumps(d))
+" "$_event_type" "$_sub_type" "$_agent" "$_outcome" "$_latency_ms" "$_task_id" "$_summary" "$_prompt" 2>/dev/null)" || exit 0
 
 curl -sf -X POST "${_coord_url}/api/agent-events" \
     -H 'Content-Type: application/json' \

@@ -1847,6 +1847,7 @@ async def run_http_mode(port: int) -> None:
         agent      = str(data.get("agent") or "unknown").strip()
         outcome    = str(data.get("outcome") or "success").strip()
         summary    = str(data.get("summary") or "")[:400]
+        prompt     = str(data.get("prompt") or "")[:1000]
         tags       = data.get("tags") or []
         try:
             latency_ms = int(float(data.get("latency_ms") or 0))
@@ -1906,7 +1907,7 @@ async def run_http_mode(port: int) -> None:
                         "timestamp": ts,
                         "task": {
                             "task_id": task_id,
-                            "prompt": summary,
+                            "prompt": prompt or summary,
                             "output": summary,
                             "backend": agent,
                             "iteration": iteration,
