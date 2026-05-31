@@ -186,6 +186,20 @@ async def handle_hardware_state(request: web.Request) -> web.Response:
 _DELEGATE_TAIL_BYTES = 256 * 1024 * 1024  # read last 256 MB max (covers multi-day windows)
 
 
+def _classify_failure_reason(error_message: str) -> str:
+    """Map a raw error_message string to a structured failure_reason enum value."""
+    msg = (error_message or "").lower()
+    if not msg.strip():
+        return "empty_response"
+    if "timeout" in msg or "504" in msg or "408" in msg or "timed out" in msg:
+        return "timeout"
+    if "context" in msg or "413" in msg or "too long" in msg or "context_length" in msg:
+        return "context_overflow"
+    if "500" in msg or "internal server" in msg or "backend" in msg:
+        return "backend_500"
+    return "unknown"
+
+
 def _read_delegate_stats_sync(audit_log: str, window_s: int, now: float):
     """Sync helper: parse audit log for delegation stats. Runs in a thread pool."""
     from datetime import datetime as _dt, timezone as _tz
@@ -193,6 +207,7 @@ def _read_delegate_stats_sync(audit_log: str, window_s: int, now: float):
     total = 0
     ok = 0
     skipped_probes = 0
+    failure_breakdown: dict = {}
     _TERMINAL_OUTCOMES = {"success", "error", "timeout", "failed"}
 
     with open(audit_log, "r", encoding="utf-8", errors="replace") as fh:
@@ -237,8 +252,11 @@ def _read_delegate_stats_sync(audit_log: str, window_s: int, now: float):
         total += 1
         if outcome == "success":
             ok += 1
+        else:
+            reason = entry.get("failure_reason") or _classify_failure_reason(err_msg_e)
+            failure_breakdown[reason] = failure_breakdown.get(reason, 0) + 1
 
-    return total, ok, skipped_probes
+    return total, ok, skipped_probes, failure_breakdown
 
 
 async def handle_delegate_stats(request: web.Request) -> web.Response:
@@ -266,8 +284,9 @@ async def handle_delegate_stats(request: web.Request) -> web.Response:
     now = time.time()
     error_msg = None
     total = ok = skipped_probes = 0
+    failure_breakdown: dict = {}
     try:
-        total, ok, skipped_probes = await asyncio.to_thread(
+        total, ok, skipped_probes, failure_breakdown = await asyncio.to_thread(
             _read_delegate_stats_sync, audit_log, window_s, now
         )
     except OSError as exc:
@@ -287,6 +306,7 @@ async def handle_delegate_stats(request: web.Request) -> web.Response:
         "success_rate": success_rate,
         "window_s": window_s,
         "skipped_probes": skipped_probes,
+        "failure_breakdown": failure_breakdown,
     })
 
 
