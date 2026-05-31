@@ -4392,6 +4392,14 @@ def build_recommendations(
                 "this looks like timeout/outlier behavior. Inspect raw tool-audit latency entries "
                 f"and timeout settings before tuning caching/model size. Latency context: {_tool_latency_context(stats, fresh)}."
             )
+        elif _is_hardware_bound_delegate_latency(tool, stats, fresh):
+            recs.append(
+                f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
+                "this matches the local delegated-response budget ceiling "
+                "(_LOCAL_MAX_TOKENS_HARD_CEILING=180) on current hardware, not a cache or connection-pool defect. "
+                "Keep delegated asks bounded or lower local max_tokens when latency matters. "
+                f"Latency context: {_tool_latency_context(stats, fresh)}."
+            )
         else:
             recs.append(
                 f"Tool `{tool}` P95 latency is {stats['p95_ms']:.0f}ms — "
@@ -4901,6 +4909,26 @@ def _tool_latency_context(stats: Dict[str, Any], fresh: Optional[Dict[str, Any]]
         f"last hour p95={_na(fresh.get('p95_ms'), '.0f', 'ms')} across "
         f"{int(fresh.get('calls', 0) or 0)} calls"
     )
+
+
+def _is_hardware_bound_delegate_latency(
+    tool: str,
+    stats: Dict[str, Any],
+    fresh: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if str(tool or "").strip().lower() != "ai_coordinator_delegate":
+        return False
+    p95_ms = float(stats.get("p95_ms", 0.0) or 0.0)
+    if p95_ms < 60000.0 or p95_ms >= 300000.0:
+        return False
+    if fresh is None or int(fresh.get("calls", 0) or 0) == 0:
+        return False
+    fresh_p95_ms = float(fresh.get("p95_ms", 0.0) or 0.0)
+    fresh_errors = int(fresh.get("error_count", 0) or 0)
+    fresh_client_errors = int(fresh.get("client_error_count", 0) or 0)
+    fresh_success_pct = fresh.get("success_pct")
+    fresh_success_ok = fresh_success_pct is None or float(fresh_success_pct or 0.0) >= 80.0
+    return fresh_p95_ms >= 60000.0 and fresh_errors == 0 and fresh_client_errors == 0 and fresh_success_ok
 
 
 def _autorun_block_context(recent_semantic_autorun: Optional[Dict[str, Any]] = None) -> str:
