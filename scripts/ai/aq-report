@@ -1694,7 +1694,12 @@ def remote_profile_utilization_windows(
     }
 
 
-def route_search_latency_decomposition(entries: List[dict], *, window: str = "") -> Dict[str, Any]:
+def route_search_latency_decomposition(
+    entries: List[dict],
+    *,
+    window: str = "",
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """Break route_search latency into backend and recovery classes."""
     route_events: List[Dict[str, Any]] = []
     for entry in entries:
@@ -1721,10 +1726,27 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
     synthesis_latencies: List[float] = []
     retrieval_only_latencies: List[float] = []
     continuation_downshift_latencies: List[float] = []
+    continuation_downshift_recent_latencies: List[float] = []
     client_error_count = 0
     backend_unclassified_count = 0
     continuation_candidates = 0
+    continuation_candidates_with_timestamp = 0
+    continuation_candidates_24h = 0
     continuation_downshift_reasons: Dict[str, int] = {}
+    last_continuation_candidate_at: Optional[str] = None
+    last_continuation_downshift_at: Optional[str] = None
+    now = now or datetime.now(tz=timezone.utc)
+    recent_cutoff = now - timedelta(hours=24)
+
+    def _mark_latest(current: Optional[str], entry: Dict[str, Any]) -> Optional[str]:
+        ts = _entry_ts_utc(entry)
+        if ts is None:
+            return current
+        text = ts.isoformat().replace("+00:00", "Z")
+        if current is None or text > current:
+            return text
+        return current
+
     for entry in route_events:
         metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
         # route_search events store fields at the top level; fall back to metadata for older formats
@@ -1769,8 +1791,18 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
                 # and make "0/N candidates" look broken when the strategy just wasn't
                 # triggered. Field emitted by http_server_impl.py audit_metadata.
                 continuation_candidates += 1
+                last_continuation_candidate_at = _mark_latest(last_continuation_candidate_at, entry)
+                entry_ts = _entry_ts_utc(entry)
+                if entry_ts is not None:
+                    continuation_candidates_with_timestamp += 1
+                    if entry_ts >= recent_cutoff:
+                        continuation_candidates_24h += 1
             if response_generation_downshifted and generate_response is False:
                 continuation_downshift_latencies.append(latency_value)
+                last_continuation_downshift_at = _mark_latest(last_continuation_downshift_at, entry)
+                entry_ts = _entry_ts_utc(entry)
+                if entry_ts is not None and entry_ts >= recent_cutoff:
+                    continuation_downshift_recent_latencies.append(latency_value)
                 if response_generation_downshift_reason:
                     continuation_downshift_reasons[response_generation_downshift_reason] = (
                         continuation_downshift_reasons.get(response_generation_downshift_reason, 0) + 1
@@ -1858,10 +1890,24 @@ def route_search_latency_decomposition(entries: List[dict], *, window: str = "")
             # available=False when coordinator has never emitted downshift instrumentation fields
             "available": continuation_candidates > 0 or len(continuation_downshift_latencies) > 0,
             "candidate_calls": continuation_candidates,
+            "candidate_calls_with_timestamp": continuation_candidates_with_timestamp,
+            "candidate_calls_24h": continuation_candidates_24h,
             "downshifted_calls": len(continuation_downshift_latencies),
+            "downshifted_calls_24h": len(continuation_downshift_recent_latencies),
             "downshift_pct": (
                 round(100 * len(continuation_downshift_latencies) / continuation_candidates, 1)
                 if continuation_candidates else None
+            ),
+            "downshift_pct_24h": (
+                round(100 * len(continuation_downshift_recent_latencies) / continuation_candidates_24h, 1)
+                if continuation_candidates_24h else None
+            ),
+            "last_candidate_at": last_continuation_candidate_at,
+            "last_downshifted_at": last_continuation_downshift_at,
+            "stale_candidate_window": bool(
+                continuation_candidates > 0
+                and continuation_candidates_with_timestamp > 0
+                and continuation_candidates_24h == 0
             ),
             "p50_ms": continuation_downshift_p50,
             "p95_ms": continuation_downshift_p95,
@@ -4067,12 +4113,26 @@ def build_recommendations(
                 )
         if continuation_downshift.get("available"):
             candidate_calls = int(continuation_downshift.get("candidate_calls", 0) or 0)
+            candidate_calls_24h = int(
+                continuation_downshift.get("candidate_calls_24h", candidate_calls) or 0
+            )
             downshifted_calls = int(continuation_downshift.get("downshifted_calls", 0) or 0)
+            downshifted_calls_24h = int(
+                continuation_downshift.get("downshifted_calls_24h", downshifted_calls) or 0
+            )
             downshift_pct = continuation_downshift.get("downshift_pct")
             avoided_ms = continuation_downshift.get("estimated_synthesis_ms_avoided")
-            if candidate_calls >= 3 and downshifted_calls == 0:
+            stale_candidate_window = bool(continuation_downshift.get("stale_candidate_window", False))
+            if candidate_calls >= 3 and downshifted_calls == 0 and stale_candidate_window:
+                last_candidate_at = continuation_downshift.get("last_candidate_at") or "unknown"
                 recs.append(
-                    f"Continuation-query downshift has not activated yet ({downshifted_calls}/{candidate_calls} recent candidates). "
+                    f"Continuation-query downshift has {downshifted_calls}/{candidate_calls} historical activations, "
+                    f"but no candidate traffic in the last 24h (last candidate: {last_candidate_at}). "
+                    "Run a live continuation smoke after the next coordinator rebuild before tuning route_search synthesis."
+                )
+            elif candidate_calls_24h >= 3 and downshifted_calls_24h == 0:
+                recs.append(
+                    f"Continuation-query downshift has not activated yet ({downshifted_calls_24h}/{candidate_calls_24h} recent candidates). "
                     "Check whether resume-style requests are reaching memory recall successfully before tuning route_search synthesis further."
                 )
             elif downshifted_calls > 0 and avoided_ms is not None:
@@ -5081,8 +5141,27 @@ def rag_posture(
         "continuation_downshift": {
             "available": bool(continuation_downshift.get("available", False)),
             "candidate_calls": int(continuation_downshift.get("candidate_calls", 0) or 0),
+            "candidate_calls_with_timestamp": int(
+                continuation_downshift.get("candidate_calls_with_timestamp", 0) or 0
+            ),
+            "candidate_calls_24h": int(
+                continuation_downshift.get(
+                    "candidate_calls_24h",
+                    continuation_downshift.get("candidate_calls", 0),
+                ) or 0
+            ),
             "downshifted_calls": int(continuation_downshift.get("downshifted_calls", 0) or 0),
+            "downshifted_calls_24h": int(
+                continuation_downshift.get(
+                    "downshifted_calls_24h",
+                    continuation_downshift.get("downshifted_calls", 0),
+                ) or 0
+            ),
             "downshift_pct": continuation_downshift.get("downshift_pct"),
+            "downshift_pct_24h": continuation_downshift.get("downshift_pct_24h"),
+            "last_candidate_at": continuation_downshift.get("last_candidate_at"),
+            "last_downshifted_at": continuation_downshift.get("last_downshifted_at"),
+            "stale_candidate_window": bool(continuation_downshift.get("stale_candidate_window", False)),
             "p50_ms": continuation_downshift.get("p50_ms"),
             "p95_ms": continuation_downshift.get("p95_ms"),
             "estimated_synthesis_ms_avoided": continuation_downshift.get("estimated_synthesis_ms_avoided"),
@@ -7208,7 +7287,7 @@ def main() -> None:
         now=now,
         report_since=since_dt,
     )
-    route_latency_decomposition = route_search_latency_decomposition(audit_entries, window=since_label)
+    route_latency_decomposition = route_search_latency_decomposition(audit_entries, window=since_label, now=now)
     cache = cache_hit_rate(recent_audit_entries)
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
