@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,14 @@ def load_helpers() -> Dict[str, Any]:
         "_rag_prewarm_candidates": lambda *args, **kwargs: [],
         "_is_synthetic_gap": lambda query: False,
         "_is_curated_stale_gap": lambda query: False,
+        "datetime": datetime,
+        "timedelta": timedelta,
+        "timezone": timezone,
+        "_entry_ts_utc": lambda entry: (
+            datetime.fromisoformat(str(entry.get("timestamp")).rstrip("Z")).replace(tzinfo=timezone.utc)
+            if entry.get("timestamp")
+            else None
+        ),
     }
     exec(compile(module, str(AQ_REPORT_PATH), "exec"), namespace)
     return namespace
@@ -64,6 +73,8 @@ def main() -> int:
                 "http_status": 200,
                 "generate_response": True,
                 "generate_response_requested": True,
+                "retrieval_strategy_active": True,
+                "retrieval_strategy_mode": "memory-first",
                 "task_complexity_type": "synthesize",
             },
         },
@@ -79,6 +90,7 @@ def main() -> int:
                 "generate_response_requested": True,
                 "response_generation_downshifted": True,
                 "response_generation_downshift_reason": "continuation_memory_first",
+                "retrieval_strategy_active": True,
                 "retrieval_strategy_mode": "memory-first",
             },
         },
@@ -89,6 +101,7 @@ def main() -> int:
     assert_true(downshift.get("downshifted_calls") == 1, "expected one continuation downshifted call")
     assert_true(downshift.get("candidate_calls") == 2, "expected two response-request candidates")
     assert_true(downshift.get("estimated_synthesis_ms_avoided") == 119650.0, "expected avoided latency estimate")
+    assert_true(downshift.get("stale_candidate_window") is False, "untimestamped fixtures should not be marked stale")
 
     rag_posture = helpers["rag_posture"](
         {"route_search": {"calls": 10}, "recall_agent_memory": {"calls": 3}, "tree_search": {"calls": 0}},
@@ -106,6 +119,49 @@ def main() -> int:
         any("continuation downshift avoided synthesis on 1 recent calls" in str(reason) for reason in rag_posture.get("reasons", [])),
         "rag posture reasons should mention the downshift savings",
     )
+
+    stale_entries = [
+        {
+            "timestamp": "2026-05-24T05:00:00Z",
+            "tool_name": "route_search",
+            "service": "ai-hybrid-coordinator",
+            "latency_ms": 120000.0,
+            "outcome": "success",
+            "metadata": {
+                "backend": "local",
+                "http_status": 200,
+                "generate_response": True,
+                "generate_response_requested": True,
+                "retrieval_strategy_active": True,
+                "retrieval_strategy_mode": "memory-first",
+            },
+        },
+        {
+            "timestamp": "2026-05-24T06:00:00Z",
+            "tool_name": "route_search",
+            "service": "ai-hybrid-coordinator",
+            "latency_ms": 121000.0,
+            "outcome": "success",
+            "metadata": {
+                "backend": "local",
+                "http_status": 200,
+                "generate_response": True,
+                "generate_response_requested": True,
+                "retrieval_strategy_active": True,
+                "retrieval_strategy_mode": "memory-first",
+            },
+        },
+    ]
+    stale_route_latency = helpers["route_search_latency_decomposition"](
+        stale_entries,
+        window="7d",
+        now=datetime(2026, 5, 31, tzinfo=timezone.utc),
+    )
+    stale_downshift = stale_route_latency.get("continuation_downshift", {})
+    assert_true(stale_downshift.get("candidate_calls") == 2, "expected historical candidate count")
+    assert_true(stale_downshift.get("candidate_calls_24h") == 0, "expected no recent candidates")
+    assert_true(stale_downshift.get("stale_candidate_window") is True, "expected stale candidate window")
+    assert_true(stale_downshift.get("last_candidate_at") == "2026-05-24T06:00:00Z", "expected latest candidate timestamp")
     return 0
 
 

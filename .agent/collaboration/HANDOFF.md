@@ -463,6 +463,29 @@ Validation:
 
 Unrelated dirty files remain in the worktree and were not reverted.
 
+### [2026-05-31T05:15:00Z] codex
+**Downshift freshness slice complete** — fixed misleading continuation-downshift parity signal.
+
+Finding:
+  - `aq-report` said continuation downshift was `0/14 recent candidates`, but all 14 candidate events were historical (`2026-05-24` through `2026-05-27`).
+  - Current 24h candidate traffic is `0`; this is not an active downshift gate failure.
+
+Changed:
+  - `scripts/ai/aq-report`: added `candidate_calls_24h`, `downshifted_calls_24h`, `candidate_calls_with_timestamp`, `last_candidate_at`, `last_downshifted_at`, and `stale_candidate_window`.
+  - `scripts/ai/aq-report`: recommendation now distinguishes stale historical candidates from active recent failures.
+  - `ai-stack/mcp-servers/hybrid-coordinator/knowledge/hints_engine_impl.py`: runtime hints use 24h freshness before emitting sparse downshift warnings.
+  - `ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py`: explicit compatibility re-exports for underscored gap-filter helpers used by tests.
+  - `scripts/testing/test-aq-report-continuation-downshift.py`: regression coverage for stale candidate windows.
+
+Validation:
+  - `python3 -m py_compile scripts/ai/aq-report ai-stack/mcp-servers/hybrid-coordinator/knowledge/hints_engine_impl.py ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py scripts/testing/test-aq-report-continuation-downshift.py`
+  - `python3 scripts/testing/test-aq-report-continuation-downshift.py`
+  - `python3 scripts/testing/test-hints-runtime-batch.py`
+  - `aq-report --machine` parsed with `python3 -m json.tool`
+  - `scripts/governance/tier0-validation-gate.sh --pre-commit` → 17/17 PASS, QA phase 0 77 checks
+
+Next highest active issue: `ai_coordinator_delegate` recent backend failures remain visible in `recent_health`.
+
 ### [2026-05-29T19:30:00Z] Phase 80 — Session completion
 
 **AppArmor enforcement fully clean — 0 denials post-rebuild**

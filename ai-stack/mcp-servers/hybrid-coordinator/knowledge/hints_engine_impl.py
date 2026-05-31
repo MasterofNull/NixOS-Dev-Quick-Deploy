@@ -2181,10 +2181,39 @@ class HintsEngine:
                     )
                 )
             continuation_candidates = int(continuation_downshift.get("candidate_calls", 0) or 0)
+            continuation_candidates_24h = int(
+                continuation_downshift.get("candidate_calls_24h", continuation_candidates) or 0
+            )
             continuation_downshifted = int(continuation_downshift.get("downshifted_calls", 0) or 0)
+            continuation_downshifted_24h = int(
+                continuation_downshift.get("downshifted_calls_24h", continuation_downshifted) or 0
+            )
             continuation_avoided_ms = continuation_downshift.get("estimated_synthesis_ms_avoided")
             continuation_downshift_pct = continuation_downshift.get("downshift_pct")
-            if continuation_focus and continuation_candidates >= 3 and continuation_downshifted == 0:
+            stale_candidate_window = bool(continuation_downshift.get("stale_candidate_window", False))
+            if (
+                continuation_focus
+                and stale_candidate_window
+                and continuation_candidates >= 3
+                and continuation_downshifted == 0
+            ):
+                last_candidate_at = str(continuation_downshift.get("last_candidate_at") or "unknown")
+                hints.append(
+                    Hint(
+                        id="runtime_continuation_downshift_stale",
+                        type="runtime_signal",
+                        title="Continuation downshift candidate traffic is stale",
+                        score=0.68,
+                        snippet=(
+                            f"Historical continuation candidates are {continuation_downshifted}/{continuation_candidates} downshifted, "
+                            f"but no candidates appeared in the last 24h; last candidate: {last_candidate_at}."
+                        )[:220],
+                        reason="Derived from live aq-report continuation downshift freshness metadata",
+                        tags=["runtime", "rag", "memory", "continuation", "latency"],
+                        agent_hints={},
+                    )
+                )
+            elif continuation_focus and continuation_candidates_24h >= 3 and continuation_downshifted_24h == 0:
                 hints.append(
                     Hint(
                         id="runtime_continuation_downshift_sparse",
@@ -2192,7 +2221,7 @@ class HintsEngine:
                         title="Continuation downshift has not activated on recent candidate traffic",
                         score=0.76,
                         snippet=(
-                            f"Recent continuation-style candidate calls are {continuation_downshifted}/{continuation_candidates} downshifted. "
+                            f"Recent continuation-style candidate calls are {continuation_downshifted_24h}/{continuation_candidates_24h} downshifted. "
                             "Confirm resume-style requests are reaching memory recall successfully before widening route_search synthesis tuning."
                         )[:220],
                         reason="Derived from live aq-report continuation downshift coverage showing no recent activations",
