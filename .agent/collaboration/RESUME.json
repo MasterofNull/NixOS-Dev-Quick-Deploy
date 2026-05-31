@@ -1,21 +1,19 @@
 {
-  "current_objective": "Continue system improvement and parity gap work; fix stale continuation-downshift metric interpretation.",
-  "phase": "aq-report downshift freshness slice",
+  "current_objective": "Continue system improvement and parity gap work; fix stale delegated prompt-failure remediation signals.",
+  "phase": "aq-report delegated-failure freshness slice",
   "todo_snapshot": [
     "DONE: aq-prime and aq-session-start run for continuation context",
-    "DONE: selected highest-value live hint: continuation downshift 0/14",
-    "DONE: found candidate events are historical (2026-05-24..2026-05-27), not current 24h traffic",
-    "DONE: added downshift freshness fields and stale-history recommendation wording",
-    "DONE: py_compile, aq-report continuation test, hints runtime batch test, aq-report --machine JSON parse, tier0 17/17",
-    "NEXT: highest remaining active issue is ai_coordinator_delegate recent backend failures if continuing"
+    "DONE: selected next stale-remediation signal: delegated prompt failures are 0 in 1h/24h but 124 in 7d",
+    "DONE: wired delegated failure windows into aq-report recommendations and structured actions",
+    "DONE: py_compile, delegated failure history/trend tests, aq-report --machine JSON parse, tier0 17/17",
+    "NEXT: if continuing, address ai_coordinator_delegate latency wording/hardware context or run live delegate smoke"
   ],
   "uncommitted_changes": [
     "Existing dirty telemetry/collaboration files were present before this slice; do not revert",
     "scripts/ai/aq-report",
-    "scripts/testing/test-aq-report-continuation-downshift.py",
-    "ai-stack/mcp-servers/hybrid-coordinator/knowledge/hints_engine_impl.py",
+    "scripts/testing/test-delegated-prompt-failure-history.py",
     ".agent/memory/issues-backlog.md",
     ".agent/collaboration/PENDING.json"
   ],
-  "resume_hint": "Downshift freshness slice validated. aq-report now reports no 24h candidate traffic; continue with ai_coordinator_delegate active backend failures if requested."
+  "resume_hint": "Delegated-failure freshness slice validated. aq-report now treats OpenRouter failures as historical-only when 24h failures are zero and suppresses active prompt-contract actions."
 }
