@@ -15,7 +15,7 @@ CLAUDE.md workflow rules. Consumed by any agent over stdout:
 Falls back to REST GET /hints?q= on HYBRID_URL if local engine is unavailable.
 
 Usage:
-  aq-hints [QUERY] [--format=json|text|shell-complete]
+  aq-hints [QUERY] [--query=QUERY] [--format=json|text|shell-complete]
            [--context=EXT] [--max=N] [--agent=TYPE]
 
 Environment:
@@ -154,6 +154,12 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("query", nargs="?", default="", help="Task description or partial query")
     p.add_argument(
+        "--query",
+        dest="query_flag",
+        default="",
+        help="Task description or partial query; alias for the positional query",
+    )
+    p.add_argument(
         "--format", dest="fmt", default="text",
         choices=["json", "text", "shell-complete"],
         help="Output format (default: text)",
@@ -188,7 +194,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Request expanded context - suspends token limits for deep dives",
     )
-    return p.parse_args()
+    args = p.parse_args()
+    if args.query_flag:
+        args.query = args.query_flag
+    delattr(args, "query_flag")
+    return args
 
 
 # ---------------------------------------------------------------------------
