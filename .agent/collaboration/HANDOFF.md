@@ -486,6 +486,27 @@ Validation:
 
 Next highest active issue: `ai_coordinator_delegate` recent backend failures remain visible in `recent_health`.
 
+### [2026-05-31T05:24:00Z] codex
+**Delegated failure freshness slice complete** — stopped stale OpenRouter failures from creating active remediation pressure.
+
+Finding:
+  - `delegated_prompt_failure_windows` showed `0` failures in both 1h and 24h.
+  - `aq-report` still emitted active remediation from 124 historical 7d failures and produced the `tighten_openrouter_delegation_contract` structured action.
+
+Changed:
+  - `scripts/ai/aq-report`: `build_recommendations()` now accepts delegated failure windows.
+  - `scripts/ai/aq-report`: `build_structured_actions()` suppresses active prompt-contract actions when 24h failures are zero.
+  - `scripts/testing/test-delegated-prompt-failure-history.py`: regression coverage for historical-only delegated failures.
+
+Validation:
+  - `python3 -m py_compile scripts/ai/aq-report scripts/testing/test-delegated-prompt-failure-history.py`
+  - `python3 scripts/testing/test-delegated-prompt-failure-history.py`
+  - `python3 scripts/testing/test-delegated-prompt-failure-trend.py`
+  - `aq-report --machine` parsed with `python3 -m json.tool`
+  - `scripts/governance/tier0-validation-gate.sh --pre-commit` → 17/17 PASS, QA phase 0 77 checks
+
+Current report now says OpenRouter failures are historical-only and emits no active prompt-contract structured action while 24h failures remain zero.
+
 ### [2026-05-29T19:30:00Z] Phase 80 — Session completion
 
 **AppArmor enforcement fully clean — 0 denials post-rebuild**

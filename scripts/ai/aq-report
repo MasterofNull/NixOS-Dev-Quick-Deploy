@@ -3913,6 +3913,7 @@ def build_recommendations(
     recent_provider_fallbacks: Optional[Dict[str, Any]] = None,
     recent_retrieval_breadth: Optional[Dict[str, Any]] = None,
     cache_prewarm: Optional[Dict[str, Any]] = None,
+    delegated_prompt_failure_windows: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
     """Derive actionable workflow recommendations from measured data."""
     recs: List[str] = []
@@ -4447,12 +4448,28 @@ def build_recommendations(
         if total_failures > 0:
             top_failure_classes = delegated_prompt_failures.get("top_failure_classes") or []
             top_text = ", ".join(f"{name}={count}" for name, count in top_failure_classes[:3]) or "unknown"
-            recs.append(
-                f"Delegated OpenRouter prompt failures recorded ({total_failures} in-window; {top_text}). "
-                "Treat these as local prompt-contract failures and tighten scope, output schema, and repo-grounding before retry."
+            window_map = (
+                delegated_prompt_failure_windows.get("windows", {})
+                if isinstance(delegated_prompt_failure_windows, dict)
+                else {}
             )
+            failures_24h = None
+            if isinstance(window_map, dict) and isinstance(window_map.get("24h"), dict):
+                failures_24h = int(window_map["24h"].get("total_failures", 0) or 0)
+            if failures_24h == 0:
+                recs.append(
+                    f"Delegated OpenRouter prompt failures are historical only ({total_failures} over the report window; "
+                    f"0 in the last 24h; {top_text}). "
+                    "Keep the tightened delegation contract, but avoid spending active remediation time unless failures recur."
+                )
+            else:
+                recs.append(
+                    f"Delegated OpenRouter prompt failures recorded ({failures_24h or total_failures} recent; "
+                    f"{total_failures} in-window; {top_text}). "
+                    "Treat these as local prompt-contract failures and tighten scope, output schema, and repo-grounding before retry."
+                )
             salvageable_pct = delegated_prompt_failures.get("salvageable_pct")
-            if salvageable_pct is not None and float(salvageable_pct) > 0:
+            if salvageable_pct is not None and float(salvageable_pct) > 0 and failures_24h != 0:
                 recs.append(
                     f"Delegated failure salvage rate is {_na(salvageable_pct, '.1f', '%')}. "
                     "Digest useful commands, paths, and excerpts from failed responses before spending more orchestration tokens."
@@ -4499,6 +4516,7 @@ def build_structured_actions(
     route_latency_decomposition: Optional[Dict[str, Any]] = None,
     historical_hint_watch: Optional[Dict[str, Any]] = None,
     gap_remediation: Optional[Dict[str, Any]] = None,
+    delegated_prompt_failure_windows: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
     """Machine-readable optimization actions for aq-optimizer."""
     actions: List[dict] = []
@@ -4584,7 +4602,15 @@ def build_structured_actions(
     if delegated_prompt_failures and delegated_prompt_failures.get("available"):
         total_failures = int(delegated_prompt_failures.get("total_failures", 0) or 0)
         top_failure_classes = delegated_prompt_failures.get("top_failure_classes") or []
-        if total_failures >= 2 and top_failure_classes:
+        window_map = (
+            delegated_prompt_failure_windows.get("windows", {})
+            if isinstance(delegated_prompt_failure_windows, dict)
+            else {}
+        )
+        failures_24h = None
+        if isinstance(window_map, dict) and isinstance(window_map.get("24h"), dict):
+            failures_24h = int(window_map["24h"].get("total_failures", 0) or 0)
+        if total_failures >= 2 and top_failure_classes and failures_24h != 0:
             reason = ",".join(f"{name}:{count}" for name, count in top_failure_classes[:3])
             actions.append({
                 "type": "prompt",
@@ -7367,6 +7393,7 @@ def main() -> None:
         recent_provider_fallbacks,
         recent_retrieval_breadth,
         cache_prewarm,
+        delegated_failure_windows,
     )
     structured_actions = build_structured_actions(
         tool_stats,
@@ -7379,6 +7406,7 @@ def main() -> None:
         route_latency_decomposition,
         historical_hint_watch,
         gap_remediation,
+        delegated_failure_windows,
     )
 
     # Render
