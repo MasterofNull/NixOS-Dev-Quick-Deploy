@@ -1,18 +1,20 @@
 {
-  "current_objective": "Correct Phase 93 PRD and parity plans with full Pi observability video-description context.",
-  "phase": "amending",
+  "current_objective": "Implement Phase 93.1 agent-run event envelope for Pi-style replayable observability.",
+  "phase": "implementation",
   "todo_snapshot": [
-    "DONE: extracted YouTube description metadata with Markdown vs HTML vs visual HTML comparison, Pi observability dashboard, useful-token framing, event stream/server/DB/UI architecture, swimlane/single-agent/race views, system prompt/tool/token/trace visibility",
-    "DONE: sent corrected context to available agents and spawned additional specialist reviewers",
-    "IN-PROGRESS: amend Phase 93 PRD, technical HTML analysis, parity index, and parity integration plan",
-    "PENDING: validate docs/frontmatter/tier0 and commit corrected parity-gap plan"
+    "DONE: Phase 93 PRD and parity plans corrected with Pi observability parity gaps",
+    "DONE: started implementation session for Slice 93.1",
+    "DONE: added config/schemas/maeah/agent-run-event.schema.json",
+    "DONE: added scripts/ai/lib/agent_run_events.py helper",
+    "DONE: added focused regression test and validation registry entry",
+    "IN-PROGRESS: validate focused CI/tier0 and commit"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
-    ".agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md",
-    ".agents/plans/TECHNICAL-ANALYSIS-PRD.md",
-    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
-    "docs/architecture/agent-behavior-parity-index.md"
+    "config/schemas/maeah/agent-run-event.schema.json",
+    "scripts/ai/lib/agent_run_events.py",
+    "scripts/testing/test-agent-run-event-envelope.py",
+    "config/validation-check-registry.json"
   ],
-  "resume_hint": "Validate amended PRD/parity docs, update handoff, then commit corrected Pi observability parity gap plan."
+  "resume_hint": "Stage Slice 93.1 files, run focused CI/tier0, then commit. Next slice is 93.2 Central Agent Event API."
 }

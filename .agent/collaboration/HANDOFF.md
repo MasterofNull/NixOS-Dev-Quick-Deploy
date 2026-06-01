@@ -651,6 +651,29 @@ Validation:
 - `python3 -m json.tool .agent/collaboration/RESUME.json`
 - `scripts/governance/tier0-validation-gate.sh --pre-commit` — 18/18 PASS
 
+[2026-06-01T16:36:00Z] codex
+**Phase 93.1 agent-run event envelope implemented** — added the first repo-only substrate for Pi-style replayable agent observability.
+
+Files:
+- `config/schemas/maeah/agent-run-event.schema.json`
+- `scripts/ai/lib/agent_run_events.py`
+- `scripts/testing/test-agent-run-event-envelope.py`
+- `config/validation-check-registry.json`
+
+Capabilities:
+- Canonical `maeah.agent-run-event.v1` schema for prompt/spec/system-prompt/memory/skill/model/tool/token/artifact/validation/review/human-control/final-outcome events.
+- Dependency-free Python helper for event construction, validation, secret-field redaction, useful-token ratio derivation, JSONL append/load, and replay timeline sorting.
+- Focused-CI registry entry `agent-run-event-envelope`.
+
+Validation:
+- `python3 scripts/testing/test-agent-run-event-envelope.py`
+- `python3 -m py_compile scripts/ai/lib/agent_run_events.py scripts/testing/test-agent-run-event-envelope.py`
+- `python3 -m json.tool config/schemas/maeah/agent-run-event.schema.json`
+- `python3 -m json.tool config/validation-check-registry.json`
+
+Next slice:
+- 93.2 Central Agent Event API. Explorer recommendation: start as a read-only dashboard proxy/normalizer over existing workflow replay and telemetry sources before adding DB storage.
+
 [2026-06-01T16:23:03Z] codex
 **Phase 93 PRD corrected with full Pi observability video-description context** — user flagged that the first pass missed the video's description and core point. Extracted YouTube `shortDescription` and re-ran all available working agents plus specialist reviewers with corrected context.
 

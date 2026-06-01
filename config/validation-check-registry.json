@@ -769,6 +769,23 @@
       "enabled": true
     },
     {
+      "id": "agent-run-event-envelope",
+      "description": "Phase 93 agent-run event envelope schema and replay contract",
+      "trigger_paths": [
+        "config/schemas/maeah/agent-run-event.schema.json",
+        "scripts/ai/lib/agent_run_events.py",
+        "scripts/testing/test-agent-run-event-envelope.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-agent-run-event-envelope.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true
+    },
+    {
       "id": "osint-tools-mcp-contract",
       "description": "OSINT MCP wrapper lists tools and avoids insecure Maigret/MOSAIC activation",
       "trigger_paths": [
