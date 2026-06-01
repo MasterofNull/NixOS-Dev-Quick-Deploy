@@ -173,6 +173,15 @@ LLAMA_BENCHMARK_RUNS_DIR = Path(
     os.getenv("AQ_LLAMA_BENCHMARK_RUNS_DIR", "~/.local/share/nixos-ai-stack/llama-benchmarks")
 ).expanduser()
 
+# Phase 93.5 — agent-run event JSONL for useful-token metrics
+AGENT_RUN_EVENTS_PATH = Path(
+    os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
+)
+# Phase 93.10 — latest focused-CI diagnostic JSON artifact
+FOCUSED_CI_JSON_PATH = Path(
+    os.getenv("AQ_FOCUSED_CI_JSON_PATH", "/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json")
+)
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -7095,6 +7104,208 @@ def format_text(
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Phase 93.5 — useful-token metrics aggregated from agent-run events
+# ---------------------------------------------------------------------------
+
+WASTE_BUCKET_KEYS = (
+    "abandoned_context",
+    "failed_retries",
+    "rejected_output",
+    "duplicate_search",
+    "dead_end_tool_calls",
+)
+
+
+def useful_token_metrics(since_dt: Optional[datetime] = None) -> Dict[str, Any]:
+    """Aggregate useful-token attribution from agent-run event JSONL.
+
+    Returns no_data when the events file is absent or has no token events in
+    the requested window. Waste buckets are reported if attribution is present.
+    """
+    if not _safe_exists(AGENT_RUN_EVENTS_PATH):
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"agent-run events file not found: {AGENT_RUN_EVENTS_PATH}",
+        }
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+    try:
+        import agent_run_events as _are
+    except ImportError:
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": "agent_run_events helper not importable",
+        }
+
+    try:
+        records = _are.load_jsonl(AGENT_RUN_EVENTS_PATH)
+    except Exception as exc:
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"failed to load agent-run events: {exc}",
+        }
+
+    if not records:
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": "agent-run events file is empty",
+        }
+
+    # Filter to window
+    if since_dt is not None:
+        cutoff_str = since_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        records = [r for r in records if r.get("timestamp", "") >= cutoff_str]
+
+    # Extract token events
+    token_events = [
+        r for r in records
+        if r.get("event_type") == "token_usage" and r.get("tokens")
+    ]
+    if not token_events:
+        # Fallback: any event that carries token data
+        token_events = [
+            r for r in records
+            if r.get("tokens") and any(
+                r["tokens"].get(k) is not None
+                for k in ("total", "input", "output", "accepted_artifact")
+            )
+        ]
+
+    if not token_events:
+        return {
+            "available": True,
+            "status": "no_data",
+            "reason": "no token attribution found in agent-run events for this window",
+            "events_in_window": len(records),
+        }
+
+    total_tokens = 0
+    context_tokens = 0
+    tool_output_tokens = 0
+    final_output_tokens = 0
+    accepted_artifact_tokens = 0
+    rework_tokens = 0
+    useful_ratios: List[float] = []
+
+    for ev in token_events:
+        tok = ev.get("tokens") or {}
+        total_tokens += tok.get("total") or 0
+        context_tokens += tok.get("context") or 0
+        tool_output_tokens += tok.get("tool_output") or 0
+        final_output_tokens += tok.get("output") or 0
+        accepted_artifact_tokens += tok.get("accepted_artifact") or 0
+        rework_tokens += tok.get("rework") or 0
+        if tok.get("useful_ratio") is not None:
+            useful_ratios.append(tok["useful_ratio"])
+
+    # Derive aggregate useful_ratio if per-event ratios exist
+    aggregate_useful_ratio: Optional[float] = None
+    if useful_ratios:
+        aggregate_useful_ratio = round(sum(useful_ratios) / len(useful_ratios), 4)
+    elif total_tokens > 0 and accepted_artifact_tokens > 0:
+        aggregate_useful_ratio = round(
+            min(max(accepted_artifact_tokens / total_tokens, 0), 1), 4
+        )
+
+    # Waste buckets: sum payload fields named for waste types when present
+    waste_buckets: Dict[str, Any] = {k: None for k in WASTE_BUCKET_KEYS}
+    for ev in token_events:
+        payload = ev.get("payload") or {}
+        for key in WASTE_BUCKET_KEYS:
+            val = payload.get(key)
+            if isinstance(val, int):
+                waste_buckets[key] = (waste_buckets[key] or 0) + val
+
+    # Per-run cost/time breakdown
+    run_ids = list({ev.get("run_id") for ev in token_events if ev.get("run_id")})
+    per_run: List[Dict[str, Any]] = []
+    for run_id in run_ids[:10]:
+        run_evs = [e for e in token_events if e.get("run_id") == run_id]
+        run_toks = sum((e.get("tokens") or {}).get("total") or 0 for e in run_evs)
+        run_accepted = sum(
+            (e.get("tokens") or {}).get("accepted_artifact") or 0 for e in run_evs
+        )
+        run_dur = sum(
+            (e.get("duration_ms") or 0) for e in records if e.get("run_id") == run_id
+        )
+        per_run.append({
+            "run_id": run_id,
+            "total_tokens": run_toks or None,
+            "accepted_artifact_tokens": run_accepted or None,
+            "duration_ms": run_dur or None,
+        })
+
+    return {
+        "available": True,
+        "status": "ok" if aggregate_useful_ratio is not None else "no_data",
+        "window_events": len(records),
+        "token_events": len(token_events),
+        "runs": len(run_ids),
+        "total_tokens": total_tokens or None,
+        "context_tokens": context_tokens or None,
+        "tool_output_tokens": tool_output_tokens or None,
+        "final_output_tokens": final_output_tokens or None,
+        "accepted_artifact_tokens": accepted_artifact_tokens or None,
+        "rework_tokens": rework_tokens or None,
+        "useful_ratio": aggregate_useful_ratio,
+        "waste_buckets": waste_buckets,
+        "per_run": per_run,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 93.11 — validation health from latest focused-CI diagnostic JSON
+# ---------------------------------------------------------------------------
+
+
+def validation_health() -> Dict[str, Any]:
+    """Surface latest focused-CI/Tier0 diagnostic summary for aq-report --machine."""
+    if not _safe_exists(FOCUSED_CI_JSON_PATH):
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"focused-CI artifact not found: {FOCUSED_CI_JSON_PATH}",
+        }
+
+    try:
+        raw = FOCUSED_CI_JSON_PATH.read_text(encoding="utf-8")
+        doc = json.loads(raw)
+    except Exception as exc:
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"failed to read focused-CI artifact: {exc}",
+        }
+
+    overall = doc.get("overall_status", "unknown")
+    failures = [
+        {
+            "check_id": c["check_id"],
+            "description": c["description"],
+            "command": c.get("command", []),
+            "exit_code": c.get("exit_code"),
+            "stderr_tail": c.get("stderr_tail", ""),
+        }
+        for c in doc.get("checks", [])
+        if c.get("status") in ("fail", "timeout")
+    ]
+    return {
+        "available": True,
+        "status": overall,
+        "generated_at": doc.get("generated_at"),
+        "checks_ran": doc.get("checks_ran", 0),
+        "checks_passed": doc.get("checks_passed", 0),
+        "checks_failed": doc.get("checks_failed", 0),
+        "checks_skipped": doc.get("checks_skipped", 0),
+        "top_failures": failures[:5],
+    }
+
+
 def format_json(
     since_label: str,
     tool_stats: Dict[str, dict],
@@ -7136,6 +7347,8 @@ def format_json(
     feedback_acceleration: Optional[Dict[str, Any]] = None,
     gap_remediation: Optional[Dict[str, Any]] = None,
     structured_actions: Optional[List[dict]] = None,
+    useful_tokens: Optional[Dict[str, Any]] = None,
+    validation_health_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -7188,6 +7401,8 @@ def format_json(
         "feedback_acceleration": feedback_acceleration or {"available": False},
         "gap_remediation": gap_remediation or {"available": False},
         "structured_actions": structured_actions or [],
+        "useful_tokens": useful_tokens or {"available": False, "status": "no_data", "reason": "not computed"},
+        "validation_health": validation_health_summary or {"available": False, "status": "no_data", "reason": "not computed"},
     }
     return json.dumps(doc, indent=2, default=str)
 
@@ -7398,6 +7613,10 @@ def main() -> None:
     )
     gap_remediation = gap_remediation_summary(gaps)
     llama_benchmark_summary = summarize_llama_benchmark_runs(read_llama_benchmark_runs(since_dt))
+    # Phase 93.5 — useful-token attribution and waste buckets
+    useful_tokens_summary = useful_token_metrics(since_dt)
+    # Phase 93.11 — validation health from latest focused-CI artifact
+    validation_health_summary = validation_health()
     recs = build_recommendations(
         tool_stats,
         route,
@@ -7480,7 +7699,12 @@ def main() -> None:
         gap_remediation,
         llama_benchmark_summary,
     )
-    json_output = format_json(*fmt_args[:-1], structured_actions=structured_actions)
+    json_output = format_json(
+        *fmt_args[:-1],
+        structured_actions=structured_actions,
+        useful_tokens=useful_tokens_summary,
+        validation_health_summary=validation_health_summary,
+    )
     _persist_latest_report_json(json_output)
 
     summary_text = ""

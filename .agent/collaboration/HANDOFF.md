@@ -1,3 +1,35 @@
+# HANDOFF MEMO — 2026-06-01 (Phase 93 — Effectiveness-Centered Observability)
+
+## Phase 93.4–93.10 — COMPLETE (4 slices)
+
+### Delivered
+- **93.4 Race Harness**: `scripts/ai/race-harness` — multi-agent spec-variant runner; dry-run/fixture mode records Markdown/HTML/visual-HTML runs with agent-run event envelopes; correctness-gated winner; `AQ_RACE_RUNS_PATH` env var output.
+- **93.5 Useful-Token Metrics**: `scripts/ai/aq-report` — `useful_token_metrics()` aggregates token attribution from agent-run events JSONL; `aq-report --machine` now includes `useful_tokens` (ratio, waste_buckets, per_run) with `no_data` fallback. `validation_health()` reads latest focused-CI artifact into `validation_health` key.
+- **93.9 Doc-Frontmatter Validation Real**: `scripts/governance/run-focused-ci-checks.sh` + registry — `pass_staged_files: true` flag on `doc-frontmatter` check; runner now appends matched staged files as positional args to the command; staging invalid `.agents/plans/*.md` now actually fails focused CI.
+- **93.10 Focused-CI Diagnostic JSON**: `scripts/governance/run-focused-ci-checks.sh` — `FOCUSED_CI_JSON=<path>` env var triggers structured per-check output (id, status, trigger_paths_matched, command, duration_ms, exit_code, stdout_tail, stderr_tail); human text output unchanged; `AQ_FOCUSED_CI_JSON_PATH` in aq-report reads artifact for `validation_health`.
+
+### New env vars (all optional with defaults)
+- `AQ_AGENT_RUN_EVENTS_PATH` — JSONL for useful-token aggregation (default: `/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl`)
+- `AQ_FOCUSED_CI_JSON_PATH` — last focused-CI artifact for validation_health (default: `/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json`)
+- `AQ_RACE_RUNS_PATH` — race run record JSONL output (default: `/var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl`)
+- `FOCUSED_CI_JSON` — transient path for a focused-CI diagnostic JSON run (set at call-site, not persistent)
+
+### Tests (20/20 pass)
+- `scripts/testing/test-useful-token-metrics.py` — 6/6
+- `scripts/testing/test-focused-ci-diagnostic-json.py` — 4/4
+- `scripts/testing/test-doc-frontmatter-staged-files.py` — 5/5
+- `scripts/testing/test-race-harness.py` — 5/5
+
+### Remaining Phase 93 slices
+- 93.6 Single-agent replay view (dashboard)
+- 93.7 Swimlane and race dashboard views
+- 93.8 Closed-loop human-agent controls
+- 93.11 Validation health in aq-report (delivered as part of 93.5/93.10)
+- 93.12 Effectiveness scorecard prototype
+- 93.13 Dashboard effectiveness card
+- 93.14 Attention queue contention instrumentation
+
+---
 # HANDOFF MEMO — 2026-05-31 (Phase 90 — post-rebuild fix)
 
 ## Phase 90 — Delegation Observability — COMPLETE (commit bcf554db)
@@ -929,3 +961,25 @@ The team agreed: Rust m"
 [2026-05-31T16:29:10.918434Z] [dispatch] id=local-20260531-092910-rpgfx2 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260531-092910-rpgfx2.log obj="PHASE 92 SLICE 92.5 EVIDENCE GATE — Rust attention_queue viability analysis
 [2026-05-31T16:30:37.586446Z] [done] id=gemini-20260531-092827-7c3iek
 [2026-05-31T16:33:20.358147Z] [done] id=local-20260531-092910-rpgfx2
+
+### [2026-06-01T17:09:50Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (10):
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001221f4e7-000652f839b08ee0.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012144672-000652e59b3b2e84.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121f4c13-000652ed90272a0c.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001229b6f0-000652fc5a926581.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000122c6c65-000653000ccd4e83.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012417144-0006530fee0aa071.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001211ca8d-000652e58fd8f5fa.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@0006530cc12dc39d-a240bbe320e0d110.journal~ r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001231df41-000653043df1445f.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001219c1a1-000652e8b6cef425.journal r,`
+Denied paths that triggered: ['/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001221f4e7-000652f839b08ee0.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012144672-000652e59b3b2e84.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121f4c13-000652ed90272a0c.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001229b6f0-000652fc5a926581.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000122c6c65-000653000ccd4e83.journal']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-01T17:09:50Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (10): ['            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001221f4e7-000652f839b08ee0.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012144672-000652e59b3b2e84.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121f4c13-000652ed90272a0c.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001229b6f0-000652fc5a926581.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000122c6c65-000653000ccd4e83.journal r,']  
+Denied paths: ['/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001221f4e7-000652f839b08ee0.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012144672-000652e59b3b2e84.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121f4c13-000652ed90272a0c.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001229b6f0-000652fc5a926581.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000122c6c65-000653000ccd4e83.journal']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**

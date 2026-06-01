@@ -1,0 +1,375 @@
+#!/usr/bin/env python3
+"""race-harness — Phase 93.4 multi-agent spec-variant race runner.
+
+Records comparable runs of the same prompt across Markdown, HTML, and
+visual-HTML spec variants. Dry-run and fixture modes produce canned event
+records without invoking real agents, making the harness safe to use in
+CI and exploratory sessions.
+
+Usage:
+  race-harness --prompt "Build a login form" [options]
+
+Options:
+  --prompt TEXT            Prompt text to race (required)
+  --experiment-id ID       Stable experiment ID (auto-generated if omitted)
+  --variants VARS          Comma-separated variant list (default: markdown,html,visual_html)
+  --agents AGENTS          Comma-separated agent/profile IDs (default: local,gemini,codex)
+  --dry-run                Emit fixture events without delegating to real agents
+  --fixture                Alias for --dry-run
+  --output PATH            JSONL path to append race run records
+                           (default: AQ_RACE_RUNS_PATH env var or
+                            /var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl)
+  --format text|json       Output format for race summary (default: text)
+
+Environment:
+  AQ_RACE_RUNS_PATH        Default JSONL output path for race run records
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+# ---------------------------------------------------------------------------
+# Path resolution
+# ---------------------------------------------------------------------------
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_SCRIPT_DIR / "lib"))
+
+try:
+    import agent_run_events as _are
+except ImportError:
+    _are = None  # type: ignore[assignment]
+
+DEFAULT_RACE_RUNS_PATH = Path(
+    os.getenv(
+        "AQ_RACE_RUNS_PATH",
+        "/var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl",
+    )
+)
+
+SUPPORTED_VARIANTS = ("markdown", "html", "visual_html")
+SUPPORTED_AGENTS = ("local", "gemini", "codex")
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Multi-agent spec-variant race harness (Phase 93.4)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    p.add_argument("--prompt", required=True, help="Prompt text to race")
+    p.add_argument("--experiment-id", default=None, help="Stable experiment ID")
+    p.add_argument(
+        "--variants",
+        default=",".join(SUPPORTED_VARIANTS),
+        help="Comma-separated variants (default: all supported)",
+    )
+    p.add_argument(
+        "--agents",
+        default=",".join(SUPPORTED_AGENTS),
+        help="Comma-separated agent/profile IDs",
+    )
+    p.add_argument(
+        "--dry-run", "--fixture",
+        dest="dry_run",
+        action="store_true",
+        help="Emit fixture events without real delegation",
+    )
+    p.add_argument(
+        "--output",
+        default=str(DEFAULT_RACE_RUNS_PATH),
+        help="JSONL path to append race run records",
+    )
+    p.add_argument(
+        "--format",
+        dest="fmt",
+        default="text",
+        choices=["text", "json"],
+        help="Output format for race summary",
+    )
+    return p.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Fixture run generation
+# ---------------------------------------------------------------------------
+
+_FIXTURE_OUTCOMES = {
+    "markdown": {"status": "succeeded", "accepted": True, "useful_ratio": 0.71},
+    "html": {"status": "succeeded", "accepted": True, "useful_ratio": 0.75},
+    "visual_html": {"status": "succeeded", "accepted": False, "useful_ratio": 0.58},
+}
+
+_FIXTURE_AGENT_TIMES_MS = {
+    "local": 18500,
+    "gemini": 6200,
+    "codex": 9800,
+}
+
+_FIXTURE_TOKEN_TOTALS = {
+    "local": 4200,
+    "gemini": 3800,
+    "codex": 4100,
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _make_fixture_run(
+    *,
+    experiment_id: str,
+    prompt: str,
+    variant: str,
+    agent_id: str,
+    run_id: str,
+) -> dict[str, Any]:
+    outcome = _FIXTURE_OUTCOMES.get(variant, {"status": "succeeded", "accepted": True, "useful_ratio": 0.65})
+    duration = _FIXTURE_AGENT_TIMES_MS.get(agent_id, 10000)
+    total_toks = _FIXTURE_TOKEN_TOTALS.get(agent_id, 4000)
+    accepted_toks = int(total_toks * outcome["useful_ratio"])
+    prompt_hash = (_are.stable_digest(prompt) if _are else "fixture")[:16]
+
+    events: list[dict[str, Any]] = []
+
+    def _ev(event_type: str, **kwargs: Any) -> dict[str, Any]:
+        base = dict(
+            event_type=event_type,
+            source="race-harness-fixture",
+            run_id=run_id,
+            experiment_id=experiment_id,
+            agent_id=agent_id,
+            lane_id=f"{agent_id}-{variant}",
+            spec={"variant": variant},
+        )
+        base.update(kwargs)
+        if _are:
+            return _are.make_event(**base)
+        base["schema_version"] = "maeah.agent-run-event.v1"
+        base["event_id"] = str(uuid.uuid4())
+        base["timestamp"] = _now_iso()
+        base["status"] = base.pop("status", "succeeded")
+        base.setdefault("redaction", {"payload_redacted": False, "secret_fields": []})
+        return base
+
+    events.append(_ev(
+        "prompt_load",
+        status="succeeded",
+        payload={"prompt_hash": prompt_hash, "prompt_length": len(prompt)},
+    ))
+    events.append(_ev(
+        "spec_variant",
+        status="succeeded",
+        spec={"variant": variant, "source_hash": f"fixture-{variant[:4]}"},
+        payload={"variant": variant},
+    ))
+    events.append(_ev(
+        "model_call",
+        status=outcome["status"],
+        model="fixture-model",
+        duration_ms=duration,
+        tokens={
+            "input": int(total_toks * 0.4),
+            "output": int(total_toks * 0.4),
+            "tool_output": int(total_toks * 0.2),
+            "accepted_artifact": accepted_toks,
+            "total": total_toks,
+            "useful_ratio": outcome["useful_ratio"],
+        },
+    ))
+    events.append(_ev(
+        "validation",
+        status="succeeded" if outcome["accepted"] else "failed",
+        payload={"gate": "fixture-gate", "verdict": "pass" if outcome["accepted"] else "fail"},
+    ))
+    events.append(_ev(
+        "final_outcome",
+        status="succeeded" if outcome["accepted"] else "failed",
+        payload={"accepted": outcome["accepted"], "variant": variant},
+    ))
+
+    return {
+        "run_id": run_id,
+        "experiment_id": experiment_id,
+        "variant": variant,
+        "agent_id": agent_id,
+        "prompt_hash": prompt_hash,
+        "started_at": _now_iso(),
+        "duration_ms": duration,
+        "total_tokens": total_toks,
+        "accepted_artifact_tokens": accepted_toks,
+        "useful_ratio": outcome["useful_ratio"],
+        "status": outcome["status"],
+        "accepted": outcome["accepted"],
+        "fixture": True,
+        "events": events,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Live run stub (no real delegation yet — placeholder for future slices)
+# ---------------------------------------------------------------------------
+
+
+def _make_live_run(
+    *,
+    experiment_id: str,
+    prompt: str,
+    variant: str,
+    agent_id: str,
+    run_id: str,
+) -> dict[str, Any]:
+    # Live delegation is out of scope for 93.4 (no production behavior rewrite).
+    # Return a no_data record so race results show the slot without erroring.
+    return {
+        "run_id": run_id,
+        "experiment_id": experiment_id,
+        "variant": variant,
+        "agent_id": agent_id,
+        "prompt_hash": (_are.stable_digest(prompt) if _are else "live")[:16],
+        "started_at": _now_iso(),
+        "duration_ms": None,
+        "total_tokens": None,
+        "accepted_artifact_tokens": None,
+        "useful_ratio": None,
+        "status": "no_data",
+        "accepted": None,
+        "fixture": False,
+        "events": [],
+        "no_data_reason": "live delegation not yet implemented in 93.4",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Race summary helpers
+# ---------------------------------------------------------------------------
+
+
+def _race_winner(runs: list[dict[str, Any]]) -> str | None:
+    """Correctness-gated winner: highest useful_ratio among accepted runs."""
+    accepted = [r for r in runs if r.get("accepted") is True and r.get("useful_ratio") is not None]
+    if not accepted:
+        return None
+    best = max(accepted, key=lambda r: r["useful_ratio"])
+    return f"{best['agent_id']}/{best['variant']}"
+
+
+def _format_text_summary(runs: list[dict[str, Any]], experiment_id: str) -> str:
+    sep = "-" * 60
+    lines = [sep, f"Race Harness — experiment {experiment_id}", sep]
+    for r in runs:
+        fixture_tag = " [fixture]" if r.get("fixture") else ""
+        accepted_tag = " ACCEPTED" if r.get("accepted") else (" REJECTED" if r.get("accepted") is False else "")
+        useful_str = f"{r['useful_ratio']:.2%}" if r.get("useful_ratio") is not None else "no_data"
+        dur_str = f"{r['duration_ms']}ms" if r.get("duration_ms") is not None else "no_data"
+        tokens_str = str(r.get("total_tokens") or "no_data")
+        lines.append(
+            f"  {r['agent_id']:8s} / {r['variant']:12s} | {r['status']:10s}{accepted_tag:9s}"
+            f" | useful={useful_str:7s} | tokens={tokens_str:6s} | dur={dur_str}{fixture_tag}"
+        )
+    winner = _race_winner(runs)
+    lines.append(sep)
+    lines.append(f"  Winner (correctness-gated): {winner or 'none'}")
+    lines.append(sep)
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    args = parse_args()
+
+    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    agents = [a.strip() for a in args.agents.split(",") if a.strip()]
+
+    for v in variants:
+        if v not in SUPPORTED_VARIANTS:
+            print(f"[race-harness] ERROR: unsupported variant '{v}'. Supported: {SUPPORTED_VARIANTS}", file=sys.stderr)
+            sys.exit(1)
+    for a in agents:
+        if a not in SUPPORTED_AGENTS:
+            print(f"[race-harness] WARN: unknown agent/profile '{a}' — will produce no_data", file=sys.stderr)
+
+    experiment_id = args.experiment_id or f"exp-{uuid.uuid4().hex[:8]}"
+    output_path = Path(args.output)
+    dry_run = args.dry_run
+
+    runs: list[dict[str, Any]] = []
+    all_events: list[dict[str, Any]] = []
+
+    for variant in variants:
+        for agent_id in agents:
+            run_id = f"race-{experiment_id}-{agent_id}-{variant}-{uuid.uuid4().hex[:6]}"
+            if dry_run:
+                run = _make_fixture_run(
+                    experiment_id=experiment_id,
+                    prompt=args.prompt,
+                    variant=variant,
+                    agent_id=agent_id,
+                    run_id=run_id,
+                )
+            else:
+                run = _make_live_run(
+                    experiment_id=experiment_id,
+                    prompt=args.prompt,
+                    variant=variant,
+                    agent_id=agent_id,
+                    run_id=run_id,
+                )
+            all_events.extend(run.pop("events", []))
+            runs.append(run)
+
+    # Persist race run records (without nested events — events go to agent-run-events.jsonl)
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("a", encoding="utf-8") as fh:
+            for run in runs:
+                fh.write(json.dumps(run, sort_keys=True, default=str) + "\n")
+    except Exception as exc:
+        print(f"[race-harness] WARN: could not write runs to {output_path}: {exc}", file=sys.stderr)
+
+    # Persist events to the canonical agent-run events path
+    if all_events and _are:
+        events_path = Path(
+            os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
+        )
+        try:
+            for ev in all_events:
+                _are.append_jsonl(events_path, ev)
+        except Exception as exc:
+            print(f"[race-harness] WARN: could not append events to {events_path}: {exc}", file=sys.stderr)
+
+    # Output
+    if args.fmt == "json":
+        doc = {
+            "experiment_id": experiment_id,
+            "prompt_length": len(args.prompt),
+            "variants": variants,
+            "agents": agents,
+            "dry_run": dry_run,
+            "runs": runs,
+            "winner": _race_winner(runs),
+        }
+        print(json.dumps(doc, indent=2, default=str))
+    else:
+        print(_format_text_summary(runs, experiment_id))
+
+
+if __name__ == "__main__":
+    main()
