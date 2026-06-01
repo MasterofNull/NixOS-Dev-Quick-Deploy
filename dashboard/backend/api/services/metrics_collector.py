@@ -1,4 +1,5 @@
 """Metrics collection service."""
+import asyncio
 import json
 import logging
 import os
@@ -19,10 +20,22 @@ logger = logging.getLogger(__name__)
 class MetricsCollector:
     """Collects host and service metrics."""
 
+    # TTL for values that are expensive to collect but change rarely
+    _SLOW_CACHE_TTL = 30.0
+
     def __init__(self):
         self.history: Dict[str, List[Any]] = {}
         self.max_history = 1000
         self._gpu_name_cache: Dict[str, str] = {}
+        # Prime the cpu_percent measurement so first call is non-zero
+        psutil.cpu_percent(interval=None)
+        # TTL caches for slow-changing data (avoid subprocess storm every second)
+        self._security_signals_cache: Dict[str, Any] | None = None
+        self._security_signals_ts: float = 0.0
+        self._net_interface_cache: str | None = None
+        self._net_interface_ts: float = 0.0
+        self._net_neighbors_cache: List[Dict[str, str]] | None = None
+        self._net_neighbors_ts: float = 0.0
         self._lspci_bin: str | None = self._resolve_lspci_bin()
         self._hostname_alias = os.getenv("DASHBOARD_HOSTNAME_ALIAS", "local-node")
         self._expose_hostname = os.getenv("DASHBOARD_EXPOSE_HOSTNAME", "false").lower() == "true"
@@ -40,17 +53,48 @@ class MetricsCollector:
         }
 
     async def get_system_metrics(self) -> Dict[str, Any]:
-        cpu_percent = psutil.cpu_percent(interval=1)
+        # cpu_percent(interval=None) is non-blocking — uses ticks since last call.
+        # The instance is primed in __init__ so the first real call returns a
+        # meaningful value instead of 0.0.
+        cpu_percent = psutil.cpu_percent(interval=None)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
         net_io = psutil.net_io_counters()
-        primary_iface = self._get_primary_network_interface()
+
+        import time as _time
+        now = _time.monotonic()
+
+        async def _cached_or_refresh(cache_val, cache_ts, fn):
+            """Return cached value if still fresh, else run fn() in thread and cache result."""
+            if now - cache_ts <= self._SLOW_CACHE_TTL and cache_val is not None:
+                return cache_val
+            return await asyncio.to_thread(fn)
+
+        # Run blocking helpers off the event loop.  Slow-changing data
+        # (network topology, firewall state) uses a 30-second TTL cache to
+        # avoid spawning subprocesses on every 1-second broadcast cycle.
+        primary_iface, active_conns, neighbors, cpu_temp, gpu_info, security = await asyncio.gather(
+            _cached_or_refresh(self._net_interface_cache, self._net_interface_ts, self._get_primary_network_interface),
+            asyncio.to_thread(self._count_active_connections),
+            _cached_or_refresh(self._net_neighbors_cache, self._net_neighbors_ts, self._get_network_neighbors),
+            self._get_cpu_temperature(),
+            self._get_gpu_info(),
+            _cached_or_refresh(self._security_signals_cache, self._security_signals_ts, self._get_security_signals),
+        )
+
+        # Update slow-data caches
+        self._net_interface_cache = primary_iface
+        self._net_interface_ts = now
+        self._net_neighbors_cache = neighbors
+        self._net_neighbors_ts = now
+        self._security_signals_cache = security
+        self._security_signals_ts = now
 
         return {
             "cpu": {
                 "usage_percent": cpu_percent,
                 "count": psutil.cpu_count(),
-                "temperature": await self._get_cpu_temperature(),
+                "temperature": cpu_temp,
                 "model": self._get_cpu_model(),
                 "arch": platform.machine(),
             },
@@ -70,11 +114,11 @@ class MetricsCollector:
                 "bytes_sent": net_io.bytes_sent,
                 "bytes_recv": net_io.bytes_recv,
                 "interface": primary_iface,
-                "active_connections": self._count_active_connections(),
-                "neighbors": self._get_network_neighbors(),
+                "active_connections": active_conns,
+                "neighbors": neighbors,
             },
-            "gpu": await self._get_gpu_info(),
-            "security": self._get_security_signals(),
+            "gpu": gpu_info,
+            "security": security,
             "uptime": self._get_uptime(),
             "load_average": self._get_load_average(),
             "hostname": self._get_hostname(),
