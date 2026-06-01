@@ -1,23 +1,18 @@
 {
-  "current_objective": "Delegate reliability slice: include local-tool-calling in local slot-busy retry handling.",
+  "current_objective": "Deploy automation slice: add non-interactive model-selection bypass after deploy prompt blocker.",
   "phase": "validated",
   "todo_snapshot": [
-    "DONE: Phase 92.3a Tier0 modularization committed as 02afcbd6",
-    "DONE: aq-report still shows recent ai_coordinator_delegate backend failures; explorer traced one to local-tool-calling local backend unavailability",
-    "DONE: patched coordinator HTTP delegate path to return local_slot_busy 503 to bounded retry wrapper before raise_for_status",
-    "DONE: added local-tool-calling to retryable local profiles and refreshed local-slot-busy regression",
-    "DONE: refreshed adjacent delegate static tests to current extensions/workflow paths after they surfaced as stale",
-    "DONE: py_compile, targeted delegate/local-slot tests, aq-report smoke, and tier0 pre-commit gate passed",
-    "NEXT: commit scoped runtime reliability files; after deploy/restart, rerun aq-report to confirm delegate failures do not recur"
+    "DONE: Phase 92.3a committed as 02afcbd6 and delegate reliability committed as f9d09fdb",
+    "DONE: deploy attempt passed roadmap/readiness then stopped at interactive Phase 1 model selection read",
+    "DONE: added --skip-model-selection flag plus SKIP_MODEL_SELECTION env default to keep current facts.nix selections",
+    "DONE: bash -n, help surface check, self-check with --skip-model-selection, and tier0 pre-commit gate passed",
+    "NEXT: commit deploy automation slice, then retry deploy with --skip-model-selection"
   ],
   "uncommitted_changes": [
     "Existing dirty telemetry/collaboration files were present before this slice; do not revert",
     ".agent/collaboration/RESUME.json",
     ".agent/memory/issues-backlog.md",
-    "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
-    "scripts/testing/test-local-slot-busy-fast-fail.py",
-    "scripts/testing/test-delegate-routing-profile-honoring.py",
-    "scripts/testing/test-delegate-response-budget-wiring.py"
+    "nixos-quick-deploy.sh"
   ],
-  "resume_hint": "Delegate local-tool-calling slot-busy retry slice validated. Preserve existing attention/delegation/telemetry dirty files; commit only runtime handler, regressions, issue log, and resume."
+  "resume_hint": "Deploy automation slice validated. Preserve existing attention/delegation/telemetry dirty files; commit only quick-deploy flag, issue log, and resume."
 }

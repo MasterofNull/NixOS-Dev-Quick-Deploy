@@ -68,6 +68,7 @@ RUN_FLATPAK_SYNC=true
 RUN_READINESS_ANALYSIS=true
 RUN_AI_SECRETS_BOOTSTRAP=true
 FORCE_AI_SECRETS_BOOTSTRAP=false
+SKIP_MODEL_SELECTION="${SKIP_MODEL_SELECTION:-false}"
 ENFORCE_PRE_DEPLOY_DRY_RUN=true
 ENFORCE_PRE_DEPLOY_HOME_DRY_RUN=true
 PRE_DEPLOY_PREFLIGHT_ONLY=false
@@ -173,6 +174,7 @@ Options:
   --skip-discovery        Skip hardware facts discovery
   --skip-flatpak-sync     Skip declarative Flatpak profile sync
   --skip-readiness-check  Skip bootstrap/deploy readiness analysis preflight
+  --skip-model-selection  Keep current model selections; do not prompt in Phase 1
   --skip-ai-secrets-bootstrap
                           Skip interactive AI stack secrets bootstrap prompt
   --ai-secrets-bootstrap  Enable interactive AI stack secrets bootstrap prompt
@@ -231,6 +233,9 @@ Environment overrides:
                             Skip rediscovery when host/profile facts were refreshed recently
   PRECHECK_SHADOW_WITH_SUDO_PROMPT=false
                             Allow password prompt for /etc/shadow prechecks
+  SKIP_MODEL_SELECTION=false
+                            Keep current model selections and skip the Phase 1
+                            interactive prompt when set to true.
   MIN_ACTIVATION_MEM_AVAILABLE_MB=1024
                             Warn in readiness analysis when available memory falls
                             below this threshold before live activation.
@@ -3049,6 +3054,10 @@ while [[ $# -gt 0 ]]; do
       RUN_READINESS_ANALYSIS=false
       shift
       ;;
+    --skip-model-selection)
+      SKIP_MODEL_SELECTION=true
+      shift
+      ;;
     --skip-ai-secrets-bootstrap)
       RUN_AI_SECRETS_BOOTSTRAP=false
       shift
@@ -3870,9 +3879,11 @@ PYEOF
 
 run_phase1_model_selection() {
   ensure_host_facts_access
-  if [[ "${SKIP_MODEL_SELECTION:-}" != true ]]; then
-    prompt_model_selection
+  if [[ "${SKIP_MODEL_SELECTION}" == true ]]; then
+    log "Skipping model selection; keeping current facts.nix model choices"
+    return 0
   fi
+  prompt_model_selection
 }
 
 resolve_deploy_targets() {

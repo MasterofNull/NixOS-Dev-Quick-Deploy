@@ -45,6 +45,11 @@
   Action: Return local_slot_busy 503 responses to the bounded retry wrapper before `raise_for_status`, include `local-tool-calling` in retryable local profiles, and refresh stale delegate static regressions to the current extension/workflow paths.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py ~line 1467
 
+[DONE] deploy — quick deploy interactive model prompt blocked non-interactive automation — `./nixos-quick-deploy.sh` preflight passed but deployment stopped at `read -r new_chat_key` because Phase 1 model selection prompted on non-interactive stdin.
+  Severity: medium
+  Action: Added documented `--skip-model-selection` flag and `SKIP_MODEL_SELECTION=true` env support to keep current facts.nix model choices during automated deploys.
+  File: nixos-quick-deploy.sh ~line 70
+
 [OPEN] role-enforcement — AGENT_TYPE_ELIGIBLE_ROLES never validated at dispatch — Matrix is defined in agent_executor.py but no runtime check blocks ineligible role assignments. Any AgentType can receive any role without error.
   Severity: low (aspirational per role-matrix.md §7 — enforcement is a future capability)
   Action: Phase 58A.5 TODO — add eligibility validator in dispatch_task() before TaskConfig is finalized. Until then, policy is doc-only.
