@@ -3910,6 +3910,169 @@ async def get_evaluation_trends() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _normalize_orchestration_event(session_id: str, raw: Dict[str, Any], index: int) -> Dict[str, Any]:
+    """Normalize workflow trajectory rows into the Phase 93 agent-event API shape."""
+    timestamp = raw.get("timestamp") or raw.get("created_at") or raw.get("ts")
+    event_type = str(raw.get("event_type") or raw.get("event") or "unknown")
+    token_delta = raw.get("token_delta")
+    tool_call_delta = raw.get("tool_call_delta")
+    payload = {
+        "detail": raw.get("detail"),
+        "phase_id": raw.get("phase_id"),
+        "risk_class": raw.get("risk_class"),
+        "approved": raw.get("approved"),
+        "tool_call_delta": tool_call_delta,
+        "raw_event_type": raw.get("event_type"),
+    }
+    return {
+        "schema_version": "maeah.agent-run-event.v1",
+        "event_id": str(raw.get("event_id") or raw.get("id") or f"{session_id}:{index}"),
+        "event_type": event_type,
+        "timestamp": timestamp,
+        "source": "workflow-trajectory",
+        "run_id": str(raw.get("run_id") or session_id),
+        "experiment_id": raw.get("experiment_id"),
+        "session_id": session_id,
+        "task_id": raw.get("task_id"),
+        "slice_id": raw.get("slice_id") or raw.get("phase_id"),
+        "agent_id": raw.get("agent_id") or raw.get("agent"),
+        "role": raw.get("role"),
+        "autonomy_boundary": raw.get("autonomy_boundary"),
+        "lane_id": raw.get("lane_id") or raw.get("phase_id"),
+        "parent_event_id": raw.get("parent_event_id"),
+        "trace_id": raw.get("trace_id"),
+        "duration_ms": raw.get("duration_ms") or raw.get("latency_ms"),
+        "status": raw.get("status") or raw.get("outcome") or "running",
+        "route_profile": raw.get("route_profile") or raw.get("profile"),
+        "model": raw.get("model"),
+        "tool_name": raw.get("tool_name") or raw.get("tool"),
+        "tokens": {
+            "input": raw.get("tokens_in"),
+            "output": raw.get("tokens_out"),
+            "context": raw.get("context_tokens"),
+            "tool_output": raw.get("tool_output_tokens"),
+            "accepted_artifact": raw.get("accepted_artifact_tokens"),
+            "rework": raw.get("rework_tokens"),
+            "total": token_delta if isinstance(token_delta, int) and token_delta >= 0 else None,
+            "useful_ratio": raw.get("useful_ratio"),
+        },
+        "cost": {
+            "amount": raw.get("cost"),
+            "currency": raw.get("currency"),
+        },
+        "artifact": raw.get("artifact") if isinstance(raw.get("artifact"), dict) else {},
+        "redaction": {
+            "payload_redacted": True,
+            "secret_fields": [],
+        },
+        "payload": payload,
+        "no_data_reason": None if timestamp else "missing_timestamp",
+    }
+
+
+async def _fetch_workflow_replay_events(
+    session_id: str,
+    *,
+    event_type: Optional[str],
+    phase: Optional[str],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    params: list[str] = []
+    if event_type:
+        params.append(f"event_type={quote(event_type)}")
+    if phase:
+        params.append(f"phase={quote(phase)}")
+    suffix = ("?" + "&".join(params)) if params else ""
+    payload = await _hybrid_get(f"/workflow/run/{quote(session_id)}/replay{suffix}")
+    raw_events = payload.get("events") if isinstance(payload, dict) else []
+    if not isinstance(raw_events, list):
+        raw_events = []
+    normalized = [
+        _normalize_orchestration_event(session_id, item if isinstance(item, dict) else {}, idx)
+        for idx, item in enumerate(raw_events[:limit])
+    ]
+    return normalized
+
+
+@router.get("/orchestration/events")
+async def get_orchestration_events(
+    session_id: Optional[str] = None,
+    event_type: Optional[str] = None,
+    phase: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=500),
+) -> Dict[str, Any]:
+    """Return normalized workflow trajectory events for replay/swimlane/race views."""
+    filters = {
+        "session_id": session_id,
+        "event_type": event_type,
+        "phase": phase,
+        "limit": limit,
+    }
+    try:
+        if session_id:
+            events = await _fetch_workflow_replay_events(
+                session_id,
+                event_type=event_type,
+                phase=phase,
+                limit=limit,
+            )
+        else:
+            sessions_payload = await _hybrid_get("/workflow/sessions")
+            sessions = sessions_payload.get("sessions") if isinstance(sessions_payload, dict) else []
+            if not isinstance(sessions, list):
+                sessions = []
+            events = []
+            for session in sessions[:5]:
+                sid = str((session or {}).get("session_id") or "")
+                if not sid:
+                    continue
+                try:
+                    events.extend(
+                        await _fetch_workflow_replay_events(
+                            sid,
+                            event_type=event_type,
+                            phase=phase,
+                            limit=max(limit - len(events), 0),
+                        )
+                    )
+                except (aiohttp.ClientError, HTTPException, asyncio.TimeoutError) as exc:
+                    logger.warning("orchestration/events replay fetch failed for %s: %s", sid, exc)
+                if len(events) >= limit:
+                    break
+            events = events[:limit]
+        events.sort(key=lambda item: str(item.get("timestamp") or ""), reverse=True)
+        return {
+            "available": True,
+            "source": "workflow-trajectory",
+            "count": len(events),
+            "truncated": len(events) >= limit,
+            "filters": filters,
+            "events": events,
+        }
+    except (aiohttp.ClientError, HTTPException, asyncio.TimeoutError) as exc:
+        logger.warning("orchestration/events unavailable: %s", exc)
+        return {
+            "available": False,
+            "source": "workflow-trajectory",
+            "count": 0,
+            "truncated": False,
+            "filters": filters,
+            "events": [],
+            "no_data_reason": str(exc),
+        }
+    except Exception as exc:
+        logger.warning("orchestration/events error: %s", exc)
+        return {
+            "available": False,
+            "source": "workflow-trajectory",
+            "count": 0,
+            "truncated": False,
+            "filters": filters,
+            "events": [],
+            "no_data_reason": str(exc),
+        }
+
+
 # ---------------------------------------------------------------------------
 # Phase 68.2-68.3 — MCP JSON-RPC 2.0 proxy
 # ---------------------------------------------------------------------------
