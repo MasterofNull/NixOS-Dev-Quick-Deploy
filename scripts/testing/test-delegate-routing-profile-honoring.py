@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HANDLERS_PATH = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator_handlers.py"
+HANDLERS_PATH = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -21,7 +21,7 @@ def main() -> None:
         "expected delegate handler to normalize explicit requested profiles before routing",
     )
     assert_true(
-        'auto_prefer_local = not requested_profile and not tools_present and timeout_s <= 10.0' in handlers_text,
+        'auto_prefer_local = not requested_profile and not tools_present and timeout_s <= _AUTO_PREFER_LOCAL_MAX_TIMEOUT_S' in handlers_text,
         "expected short-timeout delegate calls without tools to prefer local routing",
     )
     assert_true(

@@ -5,10 +5,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SWITCHBOARD_NIX = REPO_ROOT / "nix/modules/services/switchboard.nix"
+SWITCHBOARD_PATH = REPO_ROOT / "ai-stack/switchboard/switchboard.py"
 MCP_SERVERS_NIX = REPO_ROOT / "nix/modules/services/mcp-servers.nix"
 RUNTIME_PATH = REPO_ROOT / "ai-stack/agents/runtimes/local_agent_runtime.py"
-HANDLERS_PATH = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator_handlers.py"
+HANDLERS_PATH = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -17,7 +17,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> None:
-    swb_text = SWITCHBOARD_NIX.read_text(encoding="utf-8")
+    swb_text = SWITCHBOARD_PATH.read_text(encoding="utf-8")
     mcp_servers_text = MCP_SERVERS_NIX.read_text(encoding="utf-8")
     runtime_text = RUNTIME_PATH.read_text(encoding="utf-8")
     handlers_text = HANDLERS_PATH.read_text(encoding="utf-8")
@@ -28,33 +28,29 @@ def main() -> None:
         "expected LOCAL_CONCURRENCY default to be 1 (matches llama --parallel 1)",
     )
 
-    # Switchboard: fast-fail check uses semaphore value peek
+    # Switchboard: local runtime health uses semaphore value peek.
     assert_true(
-        "_local_sem._value <= 0" in swb_text,
-        "expected switchboard to fast-fail when local semaphore is exhausted",
+        "local_slot_available = int(_local_sem._value)" in swb_text,
+        "expected switchboard to surface local semaphore availability",
     )
 
-    # Switchboard: fast-fail returns a named local_slot_busy error type
-    assert_true(
-        '"type": "local_slot_busy"' in swb_text,
-        "expected switchboard fast-fail to emit local_slot_busy error type",
-    )
-
-    # Switchboard: fast-fail only applies to chat/completions on local target
+    # Switchboard: local semaphore applies to chat/completions on local target.
     assert_true(
         'path == "chat/completions"' in swb_text
-        and 'target_type == "local"' in swb_text,
-        "expected fast-fail gate to be scoped to chat/completions on local target",
+        and 'target_type == "local"' in swb_text
+        and "_begin_local_active_request(path, profile, payload, is_stream)" in swb_text,
+        "expected local active-request tracking to be scoped to chat/completions on local target",
     )
 
-    # Runtime: detects 503 local_slot_busy before raise_for_status
+    # Runtime: detects 503 local_slot_busy before raise_for_status and waits for a slot.
     assert_true(
         'resp.status_code == 503' in runtime_text,
         "expected local agent runtime to check for 503 before raise_for_status",
     )
     assert_true(
-        'raise RuntimeError("local_slot_busy")' in runtime_text,
-        "expected local agent runtime to raise named local_slot_busy error",
+        'await _wait_for_llama_slot(client)' in runtime_text
+        and "continue" in runtime_text,
+        "expected local agent runtime to wait and retry on named local_slot_busy error",
     )
 
     # Coordinator: translates local_slot_busy into a 503 response (not 500)
@@ -106,8 +102,12 @@ def main() -> None:
         "expected delegate handler to wrap HTTP delegate calls with local slot retry",
     )
     assert_true(
-        'retryable_local_profiles = {"default", "continue-local", "embedded-assist"}' in handlers_text,
-        "expected bounded local slot retry to target lightweight local profiles",
+        'if response.status_code == 503 and _response_error_type(response) == "local_slot_busy":' in handlers_text,
+        "expected HTTP delegate path to return local_slot_busy 503 to the bounded retry wrapper before raise_for_status",
+    )
+    assert_true(
+        'retryable_local_profiles = {"default", "continue-local", "embedded-assist", "local-tool-calling"}' in handlers_text,
+        "expected bounded local slot retry to cover all local HTTP profiles including local-tool-calling",
     )
     assert_true(
         'AI_DELEGATE_LOCAL_SLOT_BUSY_MAX_RETRIES' in handlers_text

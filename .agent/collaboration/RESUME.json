@@ -1,24 +1,23 @@
 {
-  "current_objective": "Phase 92.3a: prove tier0.d modularization by moving color-echo lint into an extension check.",
+  "current_objective": "Delegate reliability slice: include local-tool-calling in local slot-busy retry handling.",
   "phase": "validated",
   "todo_snapshot": [
-    "DONE: aq-prime and aq-session-start ran for continuation context",
-    "DONE: active PRD reviewed; Phase 92 foundations already committed in 661252b0",
-    "DONE: selected bounded Tier0 modularization slice instead of starting Rust work without evidence",
-    "DONE: moved color-echo lint from tier0-validation-gate.sh into scripts/governance/tier0.d/check-color-echo.sh",
-    "DONE: reviewer identified partial-stage risk; extension now reads staged blob content in --pre-commit mode",
-    "DONE: added scripts/testing/test-tier0-color-echo-extension.sh for staged-blob regression coverage",
-    "DONE: bash syntax, direct extension checks, staged-blob regression, tier0 --tap JSON, and tier0 pre-commit gate all passed",
-    "NEXT: commit scoped Tier0 modularization files, then consider local-tool-calling delegate 500 retry/logging only if failures recur"
+    "DONE: Phase 92.3a Tier0 modularization committed as 02afcbd6",
+    "DONE: aq-report still shows recent ai_coordinator_delegate backend failures; explorer traced one to local-tool-calling local backend unavailability",
+    "DONE: patched coordinator HTTP delegate path to return local_slot_busy 503 to bounded retry wrapper before raise_for_status",
+    "DONE: added local-tool-calling to retryable local profiles and refreshed local-slot-busy regression",
+    "DONE: refreshed adjacent delegate static tests to current extensions/workflow paths after they surfaced as stale",
+    "DONE: py_compile, targeted delegate/local-slot tests, aq-report smoke, and tier0 pre-commit gate passed",
+    "NEXT: commit scoped runtime reliability files; after deploy/restart, rerun aq-report to confirm delegate failures do not recur"
   ],
   "uncommitted_changes": [
     "Existing dirty telemetry/collaboration files were present before this slice; do not revert",
-    ".agent/collaboration/PULSE.log",
     ".agent/collaboration/RESUME.json",
-    "scripts/governance/tier0-validation-gate.sh",
-    "scripts/governance/tier0.d/check-color-echo.sh",
-    "scripts/governance/tier0.d/README.md",
-    "scripts/testing/test-tier0-color-echo-extension.sh"
+    ".agent/memory/issues-backlog.md",
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
+    "scripts/testing/test-local-slot-busy-fast-fail.py",
+    "scripts/testing/test-delegate-routing-profile-honoring.py",
+    "scripts/testing/test-delegate-response-budget-wiring.py"
   ],
-  "resume_hint": "Tier0 modularization slice validated. Preserve existing attention/delegation/telemetry dirty files; only commit the tier0.d color-echo migration and collaboration anchors."
+  "resume_hint": "Delegate local-tool-calling slot-busy retry slice validated. Preserve existing attention/delegation/telemetry dirty files; commit only runtime handler, regressions, issue log, and resume."
 }
