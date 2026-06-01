@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/maeah/spec-variant-pack.schema.json",
+  "title": "MAEAH SpecVariantPack",
+  "description": "Derived spec pack metadata for controlled Markdown vs HTML vs visual HTML agent experiments.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "pack_id",
+    "canonical_path",
+    "canonical_hash",
+    "generated_at",
+    "generator",
+    "variants"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "maeah.spec-variant-pack.v1"
+    },
+    "pack_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonical_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonical_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generator": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "variant",
+          "derived_path",
+          "derived_hash",
+          "canonical_hash",
+          "label",
+          "canonical"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "variant": {
+            "type": "string",
+            "enum": ["markdown", "html", "visual_html"]
+          },
+          "derived_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "derived_hash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "canonical_hash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonical": {
+            "type": "boolean",
+            "const": false
+          },
+          "mockup_assets": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}

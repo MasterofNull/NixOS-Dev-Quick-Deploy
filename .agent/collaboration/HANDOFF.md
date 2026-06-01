@@ -651,6 +651,30 @@ Validation:
 - `python3 -m json.tool .agent/collaboration/RESUME.json`
 - `scripts/governance/tier0-validation-gate.sh --pre-commit` — 18/18 PASS
 
+[2026-06-01T16:47:00Z] codex
+**Phase 93.3 spec variant pack contract implemented** — added source-hash-checked derived spec packs so Markdown remains SSOT while Markdown/HTML/visual HTML become controlled experiment inputs.
+
+Files:
+- `config/schemas/maeah/spec-variant-pack.schema.json`
+- `scripts/ai/lib/spec_variant_packs.py`
+- `scripts/testing/test-spec-variant-packs.py`
+- `config/validation-check-registry.json`
+
+Capabilities:
+- Generates derived Markdown, HTML, and visual HTML artifacts from a canonical Markdown source.
+- Every variant records `canonical_hash`, `derived_hash`, variant type, generator, provenance, and explicit "not canonical" labeling.
+- Visual HTML variants retain mockup asset provenance for future multimodal agent experiments.
+- Drift validation fails if the canonical source hash changes after derived artifacts are generated.
+
+Validation:
+- `python3 scripts/testing/test-spec-variant-packs.py`
+- `python3 -m py_compile scripts/ai/lib/spec_variant_packs.py scripts/testing/test-spec-variant-packs.py`
+- `python3 -m json.tool config/schemas/maeah/spec-variant-pack.schema.json`
+- `python3 -m json.tool config/validation-check-registry.json`
+
+Next slice:
+- 93.5 Useful-token instrumentation, now that run events and spec variants have a schema.
+
 [2026-06-01T16:43:00Z] codex
 **Phase 93.2 central agent event API implemented** — added read-only dashboard proxy `/api/aistack/orchestration/events` over existing hybrid workflow replay data.
 

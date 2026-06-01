@@ -802,6 +802,23 @@
       "enabled": true
     },
     {
+      "id": "spec-variant-packs",
+      "description": "derived Markdown/HTML/visual HTML spec packs remain non-canonical and source-hash checked",
+      "trigger_paths": [
+        "config/schemas/maeah/spec-variant-pack.schema.json",
+        "scripts/ai/lib/spec_variant_packs.py",
+        "scripts/testing/test-spec-variant-packs.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-spec-variant-packs.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true
+    },
+    {
       "id": "osint-tools-mcp-contract",
       "description": "OSINT MCP wrapper lists tools and avoids insecure Maigret/MOSAIC activation",
       "trigger_paths": [

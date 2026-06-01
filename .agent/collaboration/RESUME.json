@@ -1,5 +1,5 @@
 {
-  "current_objective": "Implement Phase 93.2 read-only central agent event API over workflow replay.",
+  "current_objective": "Implement Phase 93.3 spec variant pack contract for Markdown/HTML/visual HTML experiments.",
   "phase": "implementation",
   "todo_snapshot": [
     "DONE: Phase 93 PRD and parity plans corrected with Pi observability parity gaps",
@@ -8,8 +8,9 @@
     "DONE: added scripts/ai/lib/agent_run_events.py helper",
     "DONE: added focused regression test and validation registry entry",
     "DONE: committed Slice 93.1 as 0b21a78f",
-    "IN-PROGRESS: add /api/aistack/orchestration/events read-only normalized replay proxy",
-    "PENDING: validate dashboard orchestration event test, focused CI/tier0, and commit"
+    "DONE: committed Slice 93.2 as 2d665aca",
+    "DONE: added spec variant pack schema/helper/test",
+    "IN-PROGRESS: validate focused CI/tier0 and commit"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
@@ -18,7 +19,10 @@
     "scripts/testing/test-agent-run-event-envelope.py",
     "config/validation-check-registry.json",
     "dashboard/backend/api/routes/aistack.py",
-    "scripts/testing/test-dashboard-orchestration-events.py"
+    "scripts/testing/test-dashboard-orchestration-events.py",
+    "config/schemas/maeah/spec-variant-pack.schema.json",
+    "scripts/ai/lib/spec_variant_packs.py",
+    "scripts/testing/test-spec-variant-packs.py"
   ],
-  "resume_hint": "Continue Slice 93.2: validate the dashboard orchestration events proxy, then commit if tier0 passes."
+  "resume_hint": "Stage Slice 93.3 files, run focused CI/tier0, then commit. Next candidate: useful-token instrumentation."
 }
