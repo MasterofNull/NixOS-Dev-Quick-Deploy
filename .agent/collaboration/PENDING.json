@@ -1,6 +1,42 @@
 {
   "in_flight": [
     {
+      "id": "local-20260531-092910-rpgfx2",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260531-092910-rpgfx2.log",
+      "objective": "PHASE 92 SLICE 92.5 EVIDENCE GATE \u2014 Rust attention_queue viability analysis\n\nThe team agreed: Rust migration of attentio",
+      "dispatched_at": "2026-05-31T16:29:10.918434Z",
+      "status": "done",
+      "completed_at": "2026-05-31T16:33:20.358147Z"
+    },
+    {
+      "id": "gemini-20260531-092827-7c3iek",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260531-092827-7c3iek.log",
+      "objective": "PHASE 92 SLICE 92.1 \u2014 Mandatory YAML Frontmatter Schema for Agentic Docs\n\nContext: This NixOS AI agent stack has ~200 ac",
+      "dispatched_at": "2026-05-31T16:28:27.839869Z",
+      "status": "done",
+      "completed_at": "2026-05-31T16:30:37.586446Z"
+    },
+    {
+      "id": "local-20260531-091004-1xwvv9",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260531-091004-1xwvv9.log",
+      "objective": "DEBATE + CRITIQUE TASK \u2014 HTML docs migration and Rust scaffolding migration\n\nYou are a senior systems architect acting a",
+      "dispatched_at": "2026-05-31T16:10:04.642051Z",
+      "status": "done",
+      "completed_at": "2026-05-31T16:12:47.800876Z"
+    },
+    {
+      "id": "gemini-20260531-090901-c7yjg3",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260531-090901-c7yjg3.log",
+      "objective": "RESEARCH + PRD AUTHORING TASK \u2014 Multi-domain technical analysis\n\nYou are the architect agent. Produce a comprehensive re",
+      "dispatched_at": "2026-05-31T16:09:01.213298Z",
+      "status": "done",
+      "completed_at": "2026-05-31T16:11:28.213610Z"
+    },
+    {
       "id": "gemini-20260530-075425-9mmzvp",
       "agent": "gemini",
       "output_file": ".agents/delegation/outputs/gemini-20260530-075425-9mmzvp.log",
@@ -489,5 +525,5 @@
       "completed_at": "2026-05-28T16:01:54.248015Z"
     }
   ],
-  "updated_at": "2026-05-30T21:33:40.951740Z"
+  "updated_at": "2026-05-31T16:33:20.358821Z"
 }
