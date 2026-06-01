@@ -5,9 +5,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COORDINATOR = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator.py"
-HANDLERS = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/ai_coordinator_handlers.py"
-DELEGATION = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/delegation_handlers.py"
+COORDINATOR = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py"
+HANDLERS = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py"
+DELEGATION = REPO_ROOT / "ai-stack/mcp-servers/hybrid-coordinator/workflow/delegation_handlers.py"
 
 
 def assert_true(condition: bool, message: str) -> None:

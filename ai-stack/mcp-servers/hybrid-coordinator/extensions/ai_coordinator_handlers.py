@@ -1464,6 +1464,8 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     # 4xx client errors are returned directly so the downstream
                     # failover chain (400/401/402/403/429 block) can handle them
                     # without burning 5 retry attempts on a deterministic failure.
+                    if response.status_code == 503 and _response_error_type(response) == "local_slot_busy":
+                        return response
                     if response.status_code >= 500:
                         response.raise_for_status()
                     return response
@@ -1486,7 +1488,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             delegate_payload: Optional[Dict[str, Any]] = None,
         ) -> httpx.Response:
             response = await _post_delegate(profile_name, delegate_payload)
-            retryable_local_profiles = {"default", "continue-local", "embedded-assist"}
+            retryable_local_profiles = {"default", "continue-local", "embedded-assist", "local-tool-calling"}
             if profile_name not in retryable_local_profiles:
                 return response
             if response.status_code != 503 or _response_error_type(response) != "local_slot_busy":

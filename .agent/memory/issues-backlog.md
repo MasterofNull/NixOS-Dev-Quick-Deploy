@@ -40,6 +40,11 @@
   Action: Added delegate-specific latency contextualization and regression coverage so healthy high-P95 delegate calls point to bounded prompts/max_tokens rather than cache or connection-pool work.
   File: scripts/ai/aq-report ~line 4395
 
+[DONE] delegation — local-tool-calling was excluded from coordinator local slot-busy retry — recent delegate 500s traced to transient local backend unavailability around `local-tool-calling`; coordinator local HTTP retry logic covered default/continue-local/embedded-assist but not local-tool-calling, and raised before the local_slot_busy wrapper could inspect 503 responses.
+  Severity: medium
+  Action: Return local_slot_busy 503 responses to the bounded retry wrapper before `raise_for_status`, include `local-tool-calling` in retryable local profiles, and refresh stale delegate static regressions to the current extension/workflow paths.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py ~line 1467
+
 [OPEN] role-enforcement — AGENT_TYPE_ELIGIBLE_ROLES never validated at dispatch — Matrix is defined in agent_executor.py but no runtime check blocks ineligible role assignments. Any AgentType can receive any role without error.
   Severity: low (aspirational per role-matrix.md §7 — enforcement is a future capability)
   Action: Phase 58A.5 TODO — add eligibility validator in dispatch_task() before TaskConfig is finalized. Until then, policy is doc-only.
