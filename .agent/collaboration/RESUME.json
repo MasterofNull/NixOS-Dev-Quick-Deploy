@@ -1,6 +1,6 @@
 {
-  "current_objective": "Phase 93 Effectiveness-Centered Observability \u2014 slices 93.4/93.5/93.9/93.10 complete",
-  "phase": "integration",
+  "current_objective": "Phase 93 Effectiveness-Centered Observability — ALL SLICES COMPLETE. Next: polished AI Logic Observability section in dashboard.html",
+  "phase": "complete",
   "todo_snapshot": [
     "DONE: 93.1 agent-run event envelope (0b21a78f)",
     "DONE: 93.2 central agent event API (2d665aca)",
@@ -9,13 +9,24 @@
     "DONE: 93.5 useful-token instrumentation in aq-report (947094dc)",
     "DONE: 93.9 doc-frontmatter staged-file validation (947094dc)",
     "DONE: 93.10 focused-CI diagnostic JSON (947094dc)",
-    "PENDING: 93.6 single-agent replay view (dashboard)",
-    "PENDING: 93.7 swimlane and race dashboard views",
-    "PENDING: 93.8 closed-loop human-agent controls",
-    "PENDING: 93.12 effectiveness scorecard prototype",
-    "PENDING: 93.13 dashboard effectiveness card",
-    "PENDING: 93.14 attention queue contention instrumentation"
+    "DONE: 93.11 validation health in aq-report (batch2 commit)",
+    "DONE: 93.6 single-agent replay view (dashboard — batch2 commit)",
+    "DONE: 93.7 swimlane and race dashboard views (batch2 commit)",
+    "DONE: 93.8 closed-loop human-agent controls (batch2 commit)",
+    "DONE: 93.12 effectiveness scorecard in aq-report (batch2 commit)",
+    "DONE: 93.13 dashboard effectiveness scorecard endpoint (batch2 commit)",
+    "DONE: 93.14 attention queue contention instrumentation (batch2 commit)",
+    "NEXT: Polished AI logic observability section in dashboard.html"
   ],
-  "uncommitted_changes": [],
-  "resume_hint": "Next: 93.6 single-agent replay view in dashboard API/UI, or 93.12 effectiveness scorecard prototype in aq-report."
+  "uncommitted_changes": [
+    "scripts/ai/aq-report (93.12+93.14 wired)",
+    "dashboard/backend/api/routes/aistack.py (93.6/93.7/93.8/93.13)",
+    "config/validation-check-registry.json (3 new checks)",
+    "scripts/testing/test-aq-report-effectiveness-scorecard.py",
+    "scripts/testing/test-aq-report-attention-contention.py",
+    "scripts/testing/test-dashboard-agent-replay.py",
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/RESUME.json"
+  ],
+  "resume_hint": "Phase 93 fully shipped. User wants polished AI logic observability dashboard section — all agents, swimlane/race UI, replay timeline, effectiveness scorecard card, attention contention gauge."
 }

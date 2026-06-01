@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-05-20"
+    "last_updated": "2026-06-01"
   },
   "_comment": "Validation check registry \u2014 SSOT for all path-gated CI checks. Edit this file to add/modify behavioral checks. See scripts/governance/run-focused-ci-checks.sh for the runner.",
   "version": "1.0",
@@ -900,6 +900,54 @@
       "command": [
         "python3",
         "scripts/testing/test-race-harness.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "effectiveness-scorecard",
+      "description": "Phase 93.12 effectiveness scorecard dimensions, blocking rules, and format_json wiring",
+      "trigger_paths": [
+        "scripts/ai/aq-report",
+        "scripts/testing/test-aq-report-effectiveness-scorecard.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-report-effectiveness-scorecard.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "attention-contention",
+      "description": "Phase 93.14 attention queue lock contention telemetry aggregation and threshold logic",
+      "trigger_paths": [
+        "scripts/ai/aq-report",
+        "scripts/testing/test-aq-report-attention-contention.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-report-attention-contention.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "dashboard-agent-replay",
+      "description": "Phase 93.6-93.8 and 93.13 dashboard agent-run replay, swimlane, human controls, and scorecard endpoints",
+      "trigger_paths": [
+        "dashboard/backend/api/routes/aistack.py",
+        "scripts/testing/test-dashboard-agent-replay.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-dashboard-agent-replay.py"
       ],
       "tier": "behavioral",
       "timeout_seconds": 30,

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
+import hashlib
 import logging
 import ast
 import asyncio
@@ -3822,6 +3823,23 @@ async def _hybrid_get(path: str) -> Any:
         raise HTTPException(status_code=504, detail=f"Coordinator timeout: {path}") from exc
 
 
+async def _hybrid_post(path: str, body: dict) -> Any:
+    """POST JSON body to hybrid-coordinator. Returns parsed JSON or None on error."""
+    session = await get_http_session()
+    url = f"{SERVICES['hybrid']}{path}"
+    try:
+        async with session.post(
+            url,
+            json=body,
+            headers=_hybrid_auth_headers(),
+            timeout=REQUEST_TIMEOUT,
+        ) as resp:
+            resp.raise_for_status()
+            return await resp.json()
+    except Exception:
+        return None
+
+
 # Orchestration Visibility Endpoints (Operator Dashboard)
 @router.get("/orchestration/sessions")
 async def get_orchestration_sessions() -> Dict[str, Any]:
@@ -4071,6 +4089,776 @@ async def get_orchestration_events(
             "events": [],
             "no_data_reason": str(exc),
         }
+
+
+# ---------------------------------------------------------------------------
+# Phase 93.6/93.7/93.8/93.13 — Agent observability: replay, swimlane, race, controls
+# ---------------------------------------------------------------------------
+
+_AGENT_RUN_EVENTS_PATH = Path(
+    os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
+)
+_RACE_RUNS_PATH = Path(
+    os.getenv("AQ_RACE_RUNS_PATH", "/var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl")
+)
+_FOCUSED_CI_JSON_PATH = Path(
+    os.getenv("AQ_FOCUSED_CI_JSON_PATH", "/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json")
+)
+
+# Pydantic model for human control actions (93.8)
+class AgentControlAction(BaseModel):
+    action: str = Field(
+        ...,
+        description="pause | resume | redirect | approve | reject | request_review | promote_artifact | terminate",
+    )
+    reason: Optional[str] = Field(None, description="Human-readable reason for the action")
+    redirect_prompt: Optional[str] = Field(None, description="New prompt when action=redirect")
+    artifact_path: Optional[str] = Field(None, description="Artifact to promote when action=promote_artifact")
+    operator_id: Optional[str] = Field(None, description="Operator identity for audit trail")
+
+
+_VALID_CONTROL_ACTIONS = frozenset(
+    {"pause", "resume", "redirect", "approve", "reject", "request_review", "promote_artifact", "terminate"}
+)
+
+
+def _load_agent_run_events(
+    *,
+    run_id: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    spec_variant: Optional[str] = None,
+    event_type: Optional[str] = None,
+    limit: int = 500,
+) -> tuple[list[dict], str]:
+    """Load agent-run events from JSONL with optional filters. Returns (events, source_label)."""
+    if not _AGENT_RUN_EVENTS_PATH.exists():
+        return [], "no_data"
+    events: list[dict] = []
+    try:
+        with _AGENT_RUN_EVENTS_PATH.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if run_id and record.get("run_id") != run_id:
+                    continue
+                if experiment_id and record.get("experiment_id") != experiment_id:
+                    continue
+                if agent_id and record.get("agent_id") != agent_id:
+                    continue
+                if event_type and record.get("event_type") != event_type:
+                    continue
+                if spec_variant:
+                    spec = record.get("spec") or {}
+                    if spec.get("variant") != spec_variant:
+                        continue
+                events.append(record)
+        events = sorted(events, key=lambda e: (str(e.get("timestamp") or ""), str(e.get("event_id") or "")))
+        return events[-limit:], "agent-run-events"
+    except OSError as exc:
+        logger.warning("agent-run-events read error: %s", exc)
+        return [], "no_data"
+
+
+def _load_race_runs(
+    *,
+    experiment_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    spec_variant: Optional[str] = None,
+    limit: int = 100,
+) -> list[dict]:
+    """Load race run records from JSONL."""
+    if not _RACE_RUNS_PATH.exists():
+        return []
+    runs: list[dict] = []
+    try:
+        with _RACE_RUNS_PATH.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if experiment_id and record.get("experiment_id") != experiment_id:
+                    continue
+                if agent_id and record.get("agent_id") != agent_id:
+                    continue
+                if spec_variant and record.get("variant") != spec_variant:
+                    continue
+                runs.append(record)
+        return runs[-limit:]
+    except OSError as exc:
+        logger.warning("race-runs read error: %s", exc)
+        return []
+
+
+def _run_summary(run_id: str, events: list[dict]) -> dict:
+    """Summarise one run from its events for swimlane/race views."""
+    run_events = [e for e in events if e.get("run_id") == run_id]
+    if not run_events:
+        return {"run_id": run_id, "status": "no_data", "event_count": 0}
+
+    timestamps = [e.get("timestamp") for e in run_events if e.get("timestamp")]
+    start_ts = min(timestamps) if timestamps else None
+    end_ts = max(timestamps) if timestamps else None
+
+    total_duration_ms = sum(e.get("duration_ms") or 0 for e in run_events)
+    token_totals: dict[str, int] = {}
+    useful_ratios: list[float] = []
+    for e in run_events:
+        tok = e.get("tokens") or {}
+        for key in ("input", "output", "context", "tool_output", "accepted_artifact", "rework", "total"):
+            val = tok.get(key)
+            if isinstance(val, int):
+                token_totals[key] = token_totals.get(key, 0) + val
+        ur = tok.get("useful_ratio")
+        if isinstance(ur, float):
+            useful_ratios.append(ur)
+
+    # Final outcome: last final_outcome event or last event status
+    final_events = [e for e in run_events if e.get("event_type") == "final_outcome"]
+    final_status = (final_events[-1].get("status") if final_events else run_events[-1].get("status")) or "unknown"
+
+    # Accepted: any artifact event with accepted=True
+    artifact_events = [e for e in run_events if e.get("event_type") == "artifact"]
+    accepted = any((e.get("artifact") or {}).get("accepted") for e in artifact_events) or None
+
+    return {
+        "run_id": run_id,
+        "experiment_id": (run_events[0].get("experiment_id") if run_events else None),
+        "agent_id": (run_events[0].get("agent_id") if run_events else None),
+        "lane_id": (run_events[0].get("lane_id") if run_events else None),
+        "spec_variant": (run_events[0].get("spec") or {}).get("variant"),
+        "route_profile": (run_events[0].get("route_profile") if run_events else None),
+        "model": next((e.get("model") for e in run_events if e.get("model")), None),
+        "start_ts": start_ts,
+        "end_ts": end_ts,
+        "duration_ms": total_duration_ms or None,
+        "event_count": len(run_events),
+        "final_status": final_status,
+        "accepted": accepted,
+        "tokens": token_totals or None,
+        "useful_ratio": round(sum(useful_ratios) / len(useful_ratios), 4) if useful_ratios else None,
+    }
+
+
+# 93.6 — Single-agent replay view
+@router.get("/agent-runs/{run_id}")
+async def get_agent_run_replay(
+    run_id: str,
+    event_type: Optional[str] = None,
+    include_payload: bool = Query(False, description="Include redacted payload fields"),
+    limit: int = Query(500, ge=1, le=2000),
+) -> Dict[str, Any]:
+    """Return a full event timeline for a single agent run.
+
+    This is the Pi-style single-agent replay view: every event in the run's
+    lifecycle — prompt load, spec variant, system prompt metadata, memory
+    recall, skill loads, tool calls, token usage, artifacts, validation,
+    review, human controls, and final outcome — sorted in replay order.
+    Sensitive payload fields are redacted.
+    """
+    events, source = _load_agent_run_events(run_id=run_id, event_type=event_type, limit=limit)
+
+    # Fallback to workflow-trajectory if no native events found
+    if not events:
+        try:
+            workflow_events = await _fetch_workflow_replay_events(
+                run_id, event_type=event_type, phase=None, limit=limit
+            )
+            if workflow_events:
+                events = workflow_events
+                source = "workflow-trajectory-fallback"
+        except Exception as exc:
+            logger.debug("run-replay workflow fallback failed for %s: %s", run_id, exc)
+
+    if not events:
+        return {
+            "available": False,
+            "run_id": run_id,
+            "source": "no_data",
+            "event_count": 0,
+            "timeline": [],
+            "summary": None,
+            "no_data_reason": f"no events found for run_id={run_id}",
+        }
+
+    # Compute per-event display — strip raw payload unless requested
+    timeline = []
+    for ev in events:
+        entry = {k: v for k, v in ev.items() if k != "payload"}
+        if include_payload:
+            entry["payload"] = ev.get("payload") or {}
+        else:
+            # Surface a safe excerpt: keys only, values replaced by type hint
+            raw_payload = ev.get("payload") or {}
+            entry["payload_keys"] = list(raw_payload.keys()) if raw_payload else []
+        timeline.append(entry)
+
+    # Run-level summary
+    summary = _run_summary(run_id, events)
+
+    # Tool-call heatmap (tool_name → count)
+    tool_heatmap: dict[str, int] = {}
+    for ev in events:
+        tn = ev.get("tool_name")
+        if tn:
+            tool_heatmap[tn] = tool_heatmap.get(tn, 0) + 1
+
+    # Human controls in this run
+    human_controls = [
+        ev for ev in events if ev.get("event_type") == "human_control"
+    ]
+
+    return {
+        "available": True,
+        "run_id": run_id,
+        "source": source,
+        "event_count": len(timeline),
+        "truncated": len(events) >= limit,
+        "summary": summary,
+        "tool_heatmap": sorted(tool_heatmap.items(), key=lambda x: -x[1]),
+        "human_control_count": len(human_controls),
+        "timeline": timeline,
+    }
+
+
+# 93.7 — Agent runs list
+@router.get("/agent-runs")
+async def list_agent_runs(
+    experiment_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    spec_variant: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+) -> Dict[str, Any]:
+    """List agent run summaries with filtering.
+
+    Each entry is a compact run summary: agent_id, lane_id, spec_variant,
+    start/end timestamps, final_status, accepted, useful_ratio, token totals.
+    """
+    events, source = _load_agent_run_events(
+        agent_id=agent_id,
+        experiment_id=experiment_id,
+        spec_variant=spec_variant,
+        limit=5000,
+    )
+
+    # Group by run_id
+    run_ids_seen: list[str] = []
+    seen_set: set[str] = set()
+    for ev in events:
+        rid = ev.get("run_id")
+        if rid and rid not in seen_set:
+            run_ids_seen.append(rid)
+            seen_set.add(rid)
+
+    # Also include runs from race-runs JSONL (they may have no native events yet)
+    race_runs = _load_race_runs(
+        experiment_id=experiment_id,
+        agent_id=agent_id,
+        spec_variant=spec_variant,
+    )
+    for r in race_runs:
+        rid = r.get("run_id")
+        if rid and rid not in seen_set:
+            run_ids_seen.append(rid)
+            seen_set.add(rid)
+
+    summaries = []
+    for rid in run_ids_seen:
+        s = _run_summary(rid, events)
+        # Merge race run record fields if available
+        race_record = next((r for r in race_runs if r.get("run_id") == rid), None)
+        if race_record:
+            s.setdefault("accepted", race_record.get("accepted"))
+            s.setdefault("useful_ratio", race_record.get("useful_ratio"))
+            s.setdefault("total_tokens", race_record.get("total_tokens"))
+            s["fixture"] = race_record.get("fixture", False)
+        if status and s.get("final_status") != status:
+            continue
+        summaries.append(s)
+
+    summaries = summaries[:limit]
+    if not summaries and not events:
+        source = "no_data"
+
+    return {
+        "available": bool(summaries) or bool(events),
+        "source": source,
+        "count": len(summaries),
+        "truncated": len(summaries) >= limit,
+        "filters": {
+            "experiment_id": experiment_id,
+            "agent_id": agent_id,
+            "spec_variant": spec_variant,
+            "status": status,
+        },
+        "runs": summaries,
+    }
+
+
+# 93.7 — Swimlane view
+@router.get("/agent-runs/swimlane")
+async def get_agent_runs_swimlane(
+    experiment_id: Optional[str] = None,
+    limit_lanes: int = Query(10, ge=1, le=30),
+    limit_events_per_lane: int = Query(100, ge=1, le=500),
+) -> Dict[str, Any]:
+    """Swimlane view: one lane per agent/session/spec-variant on a shared time axis.
+
+    Returns lanes sorted by start_ts. Each lane contains a compact event stream
+    showing tool calls, waits, validations, reviews, and human interventions.
+    """
+    events, source = _load_agent_run_events(experiment_id=experiment_id, limit=10000)
+
+    if not events:
+        return {
+            "available": False,
+            "source": "no_data",
+            "lane_count": 0,
+            "lanes": [],
+            "time_range": None,
+        }
+
+    # Group events by lane_id (fallback: run_id)
+    lanes_map: dict[str, list[dict]] = {}
+    for ev in events:
+        lane = ev.get("lane_id") or ev.get("run_id") or "unknown"
+        lanes_map.setdefault(lane, []).append(ev)
+
+    all_timestamps = [e.get("timestamp") for e in events if e.get("timestamp")]
+    time_range = {
+        "start": min(all_timestamps) if all_timestamps else None,
+        "end": max(all_timestamps) if all_timestamps else None,
+    }
+
+    lanes = []
+    for lane_id, lane_events in list(lanes_map.items())[:limit_lanes]:
+        lane_events_sorted = sorted(
+            lane_events, key=lambda e: str(e.get("timestamp") or "")
+        )
+        # Compact lane: keep only display-relevant fields
+        compact = [
+            {
+                "event_id": e.get("event_id"),
+                "event_type": e.get("event_type"),
+                "timestamp": e.get("timestamp"),
+                "duration_ms": e.get("duration_ms"),
+                "status": e.get("status"),
+                "tool_name": e.get("tool_name"),
+                "agent_id": e.get("agent_id"),
+                "model": e.get("model"),
+                "tokens": e.get("tokens"),
+            }
+            for e in lane_events_sorted[:limit_events_per_lane]
+        ]
+        run_id = lane_events_sorted[0].get("run_id") if lane_events_sorted else None
+        summary = _run_summary(run_id or lane_id, lane_events_sorted) if run_id else {}
+        lanes.append({
+            "lane_id": lane_id,
+            "run_id": run_id,
+            "agent_id": (lane_events_sorted[0].get("agent_id") if lane_events_sorted else None),
+            "spec_variant": ((lane_events_sorted[0].get("spec") or {}).get("variant") if lane_events_sorted else None),
+            "start_ts": (lane_events_sorted[0].get("timestamp") if lane_events_sorted else None),
+            "end_ts": (lane_events_sorted[-1].get("timestamp") if lane_events_sorted else None),
+            "event_count": len(lane_events_sorted),
+            "summary": summary,
+            "events": compact,
+        })
+
+    # Sort lanes by start_ts
+    lanes.sort(key=lambda ln: str(ln.get("start_ts") or ""))
+
+    return {
+        "available": True,
+        "source": source,
+        "lane_count": len(lanes),
+        "time_range": time_range,
+        "experiment_id": experiment_id,
+        "lanes": lanes,
+    }
+
+
+# 93.7 — Race view
+@router.get("/agent-runs/race")
+async def get_agent_runs_race(
+    experiment_id: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+) -> Dict[str, Any]:
+    """Race view: compare agents/profiles/spec-variants on the same prompt.
+
+    Winner requires correctness/operator-trust gates (accepted + useful_ratio),
+    not cost or speed alone. Returns runs sorted by correctness-gated score,
+    then useful_ratio, then latency.
+    """
+    events, source = _load_agent_run_events(experiment_id=experiment_id, limit=10000)
+    race_runs = _load_race_runs(experiment_id=experiment_id, limit=limit)
+
+    # Collect all run IDs across both sources
+    all_run_ids: list[str] = []
+    seen: set[str] = set()
+    for r in race_runs:
+        rid = r.get("run_id")
+        if rid and rid not in seen:
+            all_run_ids.append(rid)
+            seen.add(rid)
+    for ev in events:
+        rid = ev.get("run_id")
+        if rid and rid not in seen:
+            all_run_ids.append(rid)
+            seen.add(rid)
+
+    if not all_run_ids:
+        return {
+            "available": False,
+            "source": "no_data",
+            "experiment_id": experiment_id,
+            "winner": None,
+            "runs": [],
+        }
+
+    # Build run comparison records
+    compared: list[dict] = []
+    for rid in all_run_ids[:limit]:
+        s = _run_summary(rid, events)
+        # Enrich from race_runs record
+        race_record = next((r for r in race_runs if r.get("run_id") == rid), None)
+        if race_record:
+            s["accepted"] = race_record.get("accepted") if s.get("accepted") is None else s["accepted"]
+            s["useful_ratio"] = race_record.get("useful_ratio") if s.get("useful_ratio") is None else s["useful_ratio"]
+            s["fixture"] = race_record.get("fixture", False)
+            if s.get("tokens") is None and race_record.get("total_tokens"):
+                s["tokens"] = {"total": race_record["total_tokens"]}
+
+        # Validation gate fields
+        s["correctness_gate"] = s.get("accepted") is True
+        s["trust_gate"] = s.get("accepted") is True and s.get("useful_ratio") is not None
+        compared.append(s)
+
+    # Sort: accepted+useful_ratio first, then speed
+    def _sort_key(r: dict) -> tuple:
+        accepted_score = 0 if r.get("accepted") is True else 1
+        ur = -(r.get("useful_ratio") or 0)
+        dur = r.get("duration_ms") or float("inf")
+        return (accepted_score, ur, dur)
+
+    compared.sort(key=_sort_key)
+
+    # Winner: highest useful_ratio among accepted runs
+    winner = next(
+        (r["run_id"] for r in compared if r.get("accepted") is True and r.get("useful_ratio") is not None),
+        None,
+    )
+    winner_detail = next((r for r in compared if r.get("run_id") == winner), None) if winner else None
+
+    return {
+        "available": True,
+        "source": source,
+        "experiment_id": experiment_id,
+        "run_count": len(compared),
+        "winner": winner,
+        "winner_detail": winner_detail,
+        "winner_criterion": "accepted=true + max(useful_ratio); correctness over speed",
+        "runs": compared,
+    }
+
+
+# 93.8 — Human-agent control endpoint
+@router.post("/agent-runs/{run_id}/control")
+async def post_agent_run_control(
+    run_id: str,
+    body: AgentControlAction,
+) -> Dict[str, Any]:
+    """Emit a human_control event for a run.
+
+    Actions: pause | resume | redirect | approve | reject | request_review |
+             promote_artifact | terminate
+
+    Each action is written to the agent-run events JSONL as a human_control
+    event, forming an auditable chain. For approve/reject, the control also
+    writes to the attention queue if the run has a pending alert.
+
+    The event is audit-only in this slice — live agent pause/resume requires
+    coordinator integration (Phase 93.8.2).
+    """
+    if body.action not in _VALID_CONTROL_ACTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid action '{body.action}'. Valid: {sorted(_VALID_CONTROL_ACTIONS)}",
+        )
+
+    # Build human_control event envelope
+    event_id = f"ctrl-{run_id[:16]}-{body.action}-{int(time.time())}"
+    control_payload: dict = {"action": body.action}
+    if body.reason:
+        control_payload["reason"] = body.reason
+    if body.redirect_prompt:
+        control_payload["redirect_prompt_hash"] = hashlib.sha256(
+            body.redirect_prompt.encode()
+        ).hexdigest()[:16]
+    if body.artifact_path:
+        control_payload["artifact_path"] = body.artifact_path
+    if body.operator_id:
+        control_payload["operator_id"] = body.operator_id
+
+    now_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    event = {
+        "schema_version": "maeah.agent-run-event.v1",
+        "event_id": event_id,
+        "event_type": "human_control",
+        "timestamp": now_iso,
+        "source": "dashboard-operator",
+        "run_id": run_id,
+        "experiment_id": None,
+        "session_id": None,
+        "task_id": None,
+        "slice_id": None,
+        "agent_id": None,
+        "role": "operator",
+        "autonomy_boundary": "human_gate",
+        "lane_id": None,
+        "parent_event_id": None,
+        "trace_id": None,
+        "duration_ms": None,
+        "status": "succeeded",
+        "route_profile": None,
+        "model": None,
+        "tool_name": None,
+        "spec": {"variant": None, "canonical_path": None, "derived_path": None, "source_hash": None, "generator": None},
+        "tokens": {"input": None, "output": None, "context": None, "tool_output": None, "accepted_artifact": None, "rework": None, "total": None, "useful_ratio": None},
+        "cost": {"amount": None, "currency": None},
+        "artifact": {"path": body.artifact_path, "kind": None, "hash": None, "accepted": None},
+        "redaction": {"payload_redacted": False, "secret_fields": []},
+        "payload": control_payload,
+        "no_data_reason": None,
+    }
+
+    # Persist event
+    persisted = False
+    try:
+        _AGENT_RUN_EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _AGENT_RUN_EVENTS_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, sort_keys=True) + "\n")
+        persisted = True
+    except OSError as exc:
+        logger.warning("agent-run control event persist failed: %s", exc)
+
+    # Coordinator integration stub: forward to coordinator workflow/control if it exists
+    coordinator_notified = False
+    try:
+        ctrl_url = f"/workflow/run/{quote(run_id)}/control"
+        resp = await _hybrid_post(ctrl_url, {"action": body.action, "event_id": event_id})
+        coordinator_notified = bool(resp)
+    except Exception:
+        pass  # coordinator control endpoint is optional in this slice
+
+    return {
+        "run_id": run_id,
+        "action": body.action,
+        "event_id": event_id,
+        "timestamp": now_iso,
+        "persisted": persisted,
+        "coordinator_notified": coordinator_notified,
+        "audit_note": "human_control event written to agent-run events JSONL",
+    }
+
+
+# 93.13 — Dashboard effectiveness scorecard endpoint
+@router.get("/effectiveness/scorecard")
+async def get_effectiveness_scorecard() -> Dict[str, Any]:
+    """Return the latest effectiveness scorecard from aq-report.
+
+    Reads from the latest-aq-report.json artifact written by aq-report.
+    Falls back to no_data with a reason when the artifact is absent or stale.
+
+    Scorecard dimensions:
+      - outcome_correctness: eval pass rate, useful_ratio, delegation success
+      - completion_reliability: delegation completion rate, repair success
+      - operator_trust: intent compliance, trace completeness, validation_health
+      - regression_containment: aq-qa pass rate, recurring QA failures
+      - context_quality: hint adoption, query gap closure, memory recall precision
+      - efficiency_inputs: latency P95, cache hit rate, local routing %, tokens/call
+
+    overall_status cannot be 'pass' if outcome_correctness or operator_trust is failing.
+    """
+    aq_report_latest = Path(
+        os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+    )
+
+    if not aq_report_latest.exists():
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"aq-report artifact not found: {aq_report_latest}",
+            "effectiveness_scorecard": None,
+        }
+
+    try:
+        raw = aq_report_latest.read_text(encoding="utf-8")
+        report = json.loads(raw)
+    except Exception as exc:
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"failed to read aq-report artifact: {exc}",
+            "effectiveness_scorecard": None,
+        }
+
+    # Check age — warn if older than 24h
+    generated_at = report.get("generated_at", "")
+    stale = False
+    try:
+        report_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+        age_hours = (datetime.now(timezone.utc) - report_dt).total_seconds() / 3600
+        stale = age_hours > 24
+    except (ValueError, AttributeError):
+        stale = True
+
+    scorecard = report.get("effectiveness_scorecard")
+    if not scorecard:
+        # Synthesize minimal scorecard from available report fields
+        scorecard = _synthesize_scorecard_from_report(report)
+
+    return {
+        "available": True,
+        "status": scorecard.get("overall_status", "no_data") if scorecard else "no_data",
+        "stale": stale,
+        "report_generated_at": generated_at,
+        "effectiveness_scorecard": scorecard,
+    }
+
+
+def _synthesize_scorecard_from_report(report: dict) -> dict:
+    """Build a minimal scorecard from existing aq-report fields when full scorecard absent."""
+    blocking: list[str] = []
+
+    # --- outcome_correctness ---
+    eval_trend = report.get("eval_trend") or {}
+    recent_pass_rate = eval_trend.get("recent_pass_rate") or eval_trend.get("pass_rate")
+    useful_tokens = report.get("useful_tokens") or {}
+    useful_ratio = useful_tokens.get("useful_ratio")
+    delegation = report.get("delegated_prompt_failures") or {}
+    del_total = delegation.get("total", 0) or 0
+    del_failures = delegation.get("failures", 0) or 0
+    del_success_rate: Optional[float] = None
+    if del_total > 0:
+        del_success_rate = round(1 - (del_failures / del_total), 4)
+    oc_status = "no_data"
+    if recent_pass_rate is not None:
+        oc_status = "pass" if recent_pass_rate >= 0.8 else ("warn" if recent_pass_rate >= 0.6 else "fail")
+        if oc_status == "fail":
+            blocking.append(f"outcome_correctness: eval pass rate {recent_pass_rate:.0%} < 80%")
+    outcome_correctness = {
+        "status": oc_status,
+        "eval_pass_rate": recent_pass_rate,
+        "useful_token_ratio": useful_ratio,
+        "delegation_success_rate": del_success_rate,
+    }
+
+    # --- completion_reliability ---
+    cr_status = "no_data"
+    if del_success_rate is not None:
+        cr_status = "pass" if del_success_rate >= 0.9 else ("warn" if del_success_rate >= 0.7 else "fail")
+    completion_reliability = {
+        "status": cr_status,
+        "delegation_success_rate": del_success_rate,
+        "delegation_total": del_total,
+        "delegation_failures": del_failures,
+    }
+
+    # --- operator_trust ---
+    intent = report.get("intent_contract_compliance") or {}
+    intent_coverage = intent.get("coverage_pct") or intent.get("compliance_pct")
+    vh = report.get("validation_health") or {}
+    vh_status = vh.get("status")
+    ot_status = "no_data"
+    if intent_coverage is not None:
+        ot_status = "pass" if intent_coverage >= 0.8 else ("warn" if intent_coverage >= 0.6 else "fail")
+        if ot_status == "fail":
+            blocking.append(f"operator_trust: intent coverage {intent_coverage:.0%} < 80%")
+    elif vh_status == "fail":
+        ot_status = "warn"
+    operator_trust = {
+        "status": ot_status,
+        "intent_coverage": intent_coverage,
+        "validation_health_status": vh_status,
+        "validation_checks_failed": vh.get("checks_failed"),
+    }
+
+    # --- regression_containment ---
+    recent_health = report.get("recent_health") or {}
+    qa_pass_rate = recent_health.get("pass_rate") or recent_health.get("qa_pass_rate")
+    rc_status = "no_data"
+    if qa_pass_rate is not None:
+        rc_status = "pass" if qa_pass_rate >= 0.95 else ("warn" if qa_pass_rate >= 0.8 else "fail")
+    regression_containment = {
+        "status": rc_status,
+        "qa_pass_rate": qa_pass_rate,
+    }
+
+    # --- context_quality ---
+    adoption = report.get("hint_adoption") or {}
+    adoption_pct = adoption.get("adoption_pct")
+    gaps = report.get("query_gaps") or []
+    cq_status = "no_data"
+    if adoption_pct is not None:
+        cq_status = "pass" if adoption_pct >= 0.6 else ("warn" if adoption_pct >= 0.4 else "fail")
+    context_quality = {
+        "status": cq_status,
+        "hint_adoption_pct": adoption_pct,
+        "open_query_gaps": len(gaps),
+    }
+
+    # --- efficiency_inputs (never blocks) ---
+    cache = report.get("cache") or {}
+    cache_hit_rate = cache.get("hit_rate") or cache.get("semantic_hit_rate")
+    route = report.get("routing") or {}
+    local_pct = route.get("local_pct") or route.get("local_routing_pct")
+    efficiency_inputs = {
+        "status": "ok",
+        "cache_hit_rate": cache_hit_rate,
+        "local_routing_pct": local_pct,
+        "useful_token_ratio": useful_ratio,
+    }
+
+    # --- overall ---
+    sub_statuses = [
+        outcome_correctness["status"],
+        completion_reliability["status"],
+        operator_trust["status"],
+        regression_containment["status"],
+        context_quality["status"],
+    ]
+    if blocking:
+        overall = "fail"
+    elif all(s == "no_data" for s in sub_statuses):
+        overall = "no_data"
+    elif any(s == "fail" for s in sub_statuses):
+        overall = "fail"
+    elif any(s == "warn" for s in sub_statuses):
+        overall = "warn"
+    elif all(s == "pass" for s in sub_statuses if s != "no_data"):
+        overall = "pass"
+    else:
+        overall = "no_data"
+
+    return {
+        "overall_status": overall,
+        "outcome_correctness": outcome_correctness,
+        "completion_reliability": completion_reliability,
+        "operator_trust": operator_trust,
+        "regression_containment": regression_containment,
+        "context_quality": context_quality,
+        "efficiency_inputs": efficiency_inputs,
+        "blocking_reasons": blocking,
+        "synthesized": True,
+    }
 
 
 # ---------------------------------------------------------------------------
