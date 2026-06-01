@@ -9,6 +9,8 @@
 ## 2. Topic 1 Analysis + Recommendation (HTML vs MD)
 **Research Question:** Should this harness migrate agentic reference docs (PRDs, plans, skill files, handoff docs) from `.md` to `.html` format?
 
+**2026-06-01 Correction:** This section correctly rejects a full canonical Markdown-to-HTML migration, but it under-analyzes the stronger claim from the Pi observability video description. The useful comparison is not only Markdown token overhead vs HTML token overhead. It is whether Markdown, plain HTML, or enhanced visual HTML produces more accepted work for the same prompt when observed in a controlled multi-agent race. HTML/visual HTML should be evaluated as derived, hash-checked implementation briefs for UI/product-agent slices, while Markdown/YAML remains the canonical source of truth.
+
 **Analysis:**
 - **LLM Token Efficiency:** HTML introduces substantial structural overhead (`<div>`, `<span data-agent="...">`). This bloats the context window. Markdown uses structural whitespace and minimal syntax (`#`, `-`), making it highly token-efficient.
 - **Semantic Richness:** While HTML allows for rich metadata via `schema.org` or `data-*` attributes, this same semantic richness can be achieved in Markdown by enforcing strict JSON/YAML frontmatter blocks at the head of the file.
@@ -16,6 +18,7 @@
 - **Hybrid Approach:** We can use Markdown for the body (token efficiency, readability) and YAML frontmatter for structured metadata (agent roles, routing tags, status). 
 
 **Recommendation:** Do NOT migrate to HTML. Retain the existing ~200+ `.md` files. Standardize a strict YAML frontmatter schema to capture agent-readable metadata. 
+**Amended Recommendation:** Also add a controlled spec-format experiment: run the same UI/product task across Markdown, plain HTML, and enhanced visual HTML spec variants, measure useful-token ratio, first-pass acceptance, visual fidelity, review burden, cost, latency, and validation result, then decide whether visual HTML packs become a generated implementation aid for UI-heavy slices.
 **Migration Cost Estimate:** Minimal (~2-4 hours). Requires writing a Python script to enforce frontmatter schema across `.agents/**/*.md`.
 
 ## 3. Topic 2 Analysis + Phased Migration Plan (Rust vs Python)
