@@ -1,33 +1,41 @@
-# HANDOFF MEMO — 2026-06-01 (Phase 93 — Effectiveness-Centered Observability)
+# HANDOFF MEMO — 2026-06-01 (Phase 93 — Effectiveness-Centered Observability, Batch 2)
 
-## Phase 93.4–93.10 — COMPLETE (4 slices)
+## Phase 93 — ALL SLICES COMPLETE
 
-### Delivered
+### Delivered (Batch 1: 93.4, 93.5, 93.9, 93.10, 93.11)
 - **93.4 Race Harness**: `scripts/ai/race-harness` — multi-agent spec-variant runner; dry-run/fixture mode records Markdown/HTML/visual-HTML runs with agent-run event envelopes; correctness-gated winner; `AQ_RACE_RUNS_PATH` env var output.
-- **93.5 Useful-Token Metrics**: `scripts/ai/aq-report` — `useful_token_metrics()` aggregates token attribution from agent-run events JSONL; `aq-report --machine` now includes `useful_tokens` (ratio, waste_buckets, per_run) with `no_data` fallback. `validation_health()` reads latest focused-CI artifact into `validation_health` key.
-- **93.9 Doc-Frontmatter Validation Real**: `scripts/governance/run-focused-ci-checks.sh` + registry — `pass_staged_files: true` flag on `doc-frontmatter` check; runner now appends matched staged files as positional args to the command; staging invalid `.agents/plans/*.md` now actually fails focused CI.
-- **93.10 Focused-CI Diagnostic JSON**: `scripts/governance/run-focused-ci-checks.sh` — `FOCUSED_CI_JSON=<path>` env var triggers structured per-check output (id, status, trigger_paths_matched, command, duration_ms, exit_code, stdout_tail, stderr_tail); human text output unchanged; `AQ_FOCUSED_CI_JSON_PATH` in aq-report reads artifact for `validation_health`.
+- **93.5 Useful-Token Metrics**: `scripts/ai/aq-report` — `useful_token_metrics()` aggregates token attribution from agent-run events JSONL; `aq-report --machine` now includes `useful_tokens` (ratio, waste_buckets, per_run) with `no_data` fallback.
+- **93.9 Doc-Frontmatter Validation Real**: `scripts/governance/run-focused-ci-checks.sh` + registry — `pass_staged_files: true` flag; runner appends matched staged files as positional args.
+- **93.10 Focused-CI Diagnostic JSON**: `FOCUSED_CI_JSON=<path>` env var → structured per-check output.
+- **93.11 Validation Health**: `validation_health()` reads latest focused-CI artifact into `validation_health` key in aq-report.
 
-### New env vars (all optional with defaults)
-- `AQ_AGENT_RUN_EVENTS_PATH` — JSONL for useful-token aggregation (default: `/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl`)
-- `AQ_FOCUSED_CI_JSON_PATH` — last focused-CI artifact for validation_health (default: `/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json`)
-- `AQ_RACE_RUNS_PATH` — race run record JSONL output (default: `/var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl`)
-- `FOCUSED_CI_JSON` — transient path for a focused-CI diagnostic JSON run (set at call-site, not persistent)
+### Delivered (Batch 2: 93.6, 93.7, 93.8, 93.12, 93.13, 93.14)
+- **93.6 Single-Agent Replay**: `GET /api/aistack/agent-runs/{run_id}` — full event timeline with tool heatmap, human_control count, run summary. Falls back to workflow-trajectory when no native events.
+- **93.7 Swimlane + Race Views**: `GET /api/aistack/agent-runs` (list+filter), `GET /api/aistack/agent-runs/swimlane` (cross-agent timeline), `GET /api/aistack/agent-runs/race` (correctness-gated variant comparison).
+- **93.8 Human Controls**: `POST /api/aistack/agent-runs/{run_id}/control` — accepts 8 actions (pause/resume/redirect/approve/reject/request_review/promote_artifact/terminate); writes `human_control` event to JSONL (audit-only; coordinator integration in 93.8.2).
+- **93.12 Effectiveness Scorecard**: `effectiveness_scorecard()` in aq-report — 6 dimensions: outcome_correctness, completion_reliability, operator_trust, regression_containment, context_quality, efficiency_inputs. Blocking rule: overall_status cannot be `pass` if outcome_correctness or operator_trust fails. efficiency_inputs never blocks.
+- **93.13 Dashboard Scorecard Endpoint**: `GET /api/aistack/effectiveness/scorecard` — reads latest aq-report artifact, falls back to `_synthesize_scorecard_from_report()` when scorecard key absent. Staleness flag when artifact >24h old.
+- **93.14 Attention Contention**: `attention_contention_summary()` — reads `queue_lock_contention` events from hybrid-events JSONL; `exceeds_threshold=True` when >3/hr; wired into `efficiency_inputs` dimension and `format_json` output.
 
-### Tests (20/20 pass)
+### All env vars (optional with defaults)
+- `AQ_AGENT_RUN_EVENTS_PATH` — agent-run events JSONL (default: `/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl`)
+- `AQ_FOCUSED_CI_JSON_PATH` — last focused-CI artifact (default: `/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json`)
+- `AQ_RACE_RUNS_PATH` — race run record JSONL (default: `/var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl`)
+- `AQ_ATTENTION_TELEMETRY_PATH` — hybrid events for contention (default: `.agents/telemetry/hybrid-events.jsonl`)
+- `AQ_REPORT_LATEST_JSON` — dashboard reads aq-report artifact (default: `/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json`)
+- `FOCUSED_CI_JSON` — transient path for a focused-CI diagnostic JSON run
+
+### Tests (40/40 pass across 8 test files)
 - `scripts/testing/test-useful-token-metrics.py` — 6/6
 - `scripts/testing/test-focused-ci-diagnostic-json.py` — 4/4
 - `scripts/testing/test-doc-frontmatter-staged-files.py` — 5/5
 - `scripts/testing/test-race-harness.py` — 5/5
+- `scripts/testing/test-aq-report-effectiveness-scorecard.py` — 7/7
+- `scripts/testing/test-aq-report-attention-contention.py` — 5/5
+- `scripts/testing/test-dashboard-agent-replay.py` — 8/8
 
-### Remaining Phase 93 slices
-- 93.6 Single-agent replay view (dashboard)
-- 93.7 Swimlane and race dashboard views
-- 93.8 Closed-loop human-agent controls
-- 93.11 Validation health in aq-report (delivered as part of 93.5/93.10)
-- 93.12 Effectiveness scorecard prototype
-- 93.13 Dashboard effectiveness card
-- 93.14 Attention queue contention instrumentation
+### Next: AI Logic Observability Dashboard Section
+User request: polished, production-grade observability section in dashboard.html for all agents — comparing logic, metrics, and internal processes. Candidates: agent-run replay timeline UI, swimlane comparison panel, attention contention gauge, effectiveness scorecard card, race-winner display.
 
 ---
 # HANDOFF MEMO — 2026-05-31 (Phase 90 — post-rebuild fix)

@@ -7105,6 +7105,283 @@ def format_text(
 
 
 # ---------------------------------------------------------------------------
+# Phase 93.14 — Attention queue lock contention telemetry
+# ---------------------------------------------------------------------------
+
+_ATTENTION_TELEMETRY_PATH = Path(
+    os.getenv(
+        "AQ_ATTENTION_TELEMETRY_PATH",
+        str(Path(__file__).resolve().parents[2] / ".agents" / "telemetry" / "hybrid-events.jsonl"),
+    )
+)
+
+
+def attention_contention_summary(since_dt: Optional[datetime] = None) -> Dict[str, Any]:
+    """Summarise attention queue lock contention events for the report window.
+
+    Reads queue_lock_contention events emitted by attention_queue.py and reports:
+    - total contention events
+    - max and mean retry counts
+    - max and mean elapsed_ms
+    - events_per_hour rate
+    - exceeds_threshold: True when rate > 3/hour (Rust gate criterion)
+    - top error codes
+    """
+    if not _safe_exists(_ATTENTION_TELEMETRY_PATH):
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"attention telemetry file not found: {_ATTENTION_TELEMETRY_PATH}",
+        }
+
+    events: List[Dict[str, Any]] = []
+    try:
+        with _ATTENTION_TELEMETRY_PATH.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("event_type") != "queue_lock_contention":
+                    continue
+                ts = record.get("timestamp", "")
+                if since_dt is not None:
+                    cutoff = since_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+                    if ts < cutoff:
+                        continue
+                events.append(record)
+    except OSError as exc:
+        return {
+            "available": False,
+            "status": "no_data",
+            "reason": f"failed to read attention telemetry: {exc}",
+        }
+
+    if not events:
+        return {
+            "available": True,
+            "status": "ok",
+            "total_contention_events": 0,
+            "max_retries": 0,
+            "mean_retries": 0.0,
+            "max_elapsed_ms": 0.0,
+            "mean_elapsed_ms": 0.0,
+            "events_per_hour": 0.0,
+            "exceeds_threshold": False,
+            "top_error_codes": [],
+        }
+
+    retry_counts: List[int] = []
+    elapsed_ms_list: List[float] = []
+    error_codes: Counter = Counter()
+
+    for ev in events:
+        details = ev.get("details") or {}
+        attempts = details.get("attempt_count")
+        elapsed = details.get("duration_ms")
+        err = details.get("error_code")
+        if isinstance(attempts, int):
+            retry_counts.append(attempts)
+        if isinstance(elapsed, (int, float)):
+            elapsed_ms_list.append(float(elapsed))
+        if err:
+            error_codes[str(err)] += 1
+
+    # Compute rate: events per hour over the window
+    timestamps = [ev.get("timestamp", "") for ev in events if ev.get("timestamp")]
+    events_per_hour = 0.0
+    if len(timestamps) >= 2:
+        try:
+            first = datetime.fromisoformat(min(timestamps).replace("Z", "+00:00"))
+            last = datetime.fromisoformat(max(timestamps).replace("Z", "+00:00"))
+            span_hours = max((last - first).total_seconds() / 3600, 0.01)
+            events_per_hour = round(len(events) / span_hours, 2)
+        except (ValueError, AttributeError):
+            pass
+
+    return {
+        "available": True,
+        "status": "warn" if events_per_hour > 3 else "ok",
+        "total_contention_events": len(events),
+        "max_retries": max(retry_counts) if retry_counts else 0,
+        "mean_retries": round(statistics.mean(retry_counts), 2) if retry_counts else 0.0,
+        "max_elapsed_ms": round(max(elapsed_ms_list), 2) if elapsed_ms_list else 0.0,
+        "mean_elapsed_ms": round(statistics.mean(elapsed_ms_list), 2) if elapsed_ms_list else 0.0,
+        "events_per_hour": events_per_hour,
+        "exceeds_threshold": events_per_hour > 3,
+        "top_error_codes": error_codes.most_common(5),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 93.12 — Effectiveness scorecard prototype
+# ---------------------------------------------------------------------------
+
+_SCORECARD_OUTCOME_PASS_THRESHOLD = float(os.getenv("AQ_SCORECARD_OUTCOME_PASS", "0.8"))
+_SCORECARD_OUTCOME_WARN_THRESHOLD = float(os.getenv("AQ_SCORECARD_OUTCOME_WARN", "0.6"))
+_SCORECARD_TRUST_PASS_THRESHOLD = float(os.getenv("AQ_SCORECARD_TRUST_PASS", "0.8"))
+_SCORECARD_TRUST_WARN_THRESHOLD = float(os.getenv("AQ_SCORECARD_TRUST_WARN", "0.6"))
+_SCORECARD_QA_PASS_THRESHOLD = float(os.getenv("AQ_SCORECARD_QA_PASS", "0.95"))
+_SCORECARD_QA_WARN_THRESHOLD = float(os.getenv("AQ_SCORECARD_QA_WARN", "0.8"))
+
+
+def _scorecard_status(value: Optional[float], pass_t: float, warn_t: float) -> str:
+    if value is None:
+        return "no_data"
+    if value >= pass_t:
+        return "pass"
+    if value >= warn_t:
+        return "warn"
+    return "fail"
+
+
+def effectiveness_scorecard(
+    tool_stats: Dict[str, dict],
+    route: Dict[str, Any],
+    cache: Dict[str, Any],
+    eval_trend: Dict[str, Any],
+    gaps: List[dict],
+    adoption: Optional[Dict[str, Any]],
+    intent_compliance: Optional[Dict[str, Any]],
+    delegation_feedback: Optional[Dict[str, Any]],
+    recent_health: Optional[Dict[str, Any]],
+    useful_tokens_summary: Optional[Dict[str, Any]],
+    validation_health_summary: Optional[Dict[str, Any]],
+    attention_contention: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Assemble the Phase 93.12 effectiveness scorecard.
+
+    Dimensions:
+      outcome_correctness — eval pass rate, useful_ratio, delegation success
+      completion_reliability — delegation success rate, workflow completion
+      operator_trust — intent coverage, trace completeness, validation health
+      regression_containment — aq-qa pass rate, recurring QA failures
+      context_quality — hint adoption, query gap closure
+      efficiency_inputs — cache hit rate, local routing, tokens, lock contention
+
+    Blocking rule: overall_status cannot be 'pass' when outcome_correctness
+    or operator_trust is 'fail'.  Efficiency inputs never block.
+    """
+    blocking: List[str] = []
+
+    # ── outcome_correctness ────────────────────────────────────────────────
+    eval_pass_rate = eval_trend.get("recent_pass_rate") or eval_trend.get("pass_rate")
+    useful_ratio = (useful_tokens_summary or {}).get("useful_ratio")
+    del_stats = delegation_feedback or {}
+    del_total = del_stats.get("total", 0) or 0
+    del_failures = del_stats.get("failures", 0) or 0
+    del_success_rate: Optional[float] = None
+    if del_total > 0:
+        del_success_rate = round(1 - del_failures / del_total, 4)
+    oc_rate = eval_pass_rate if eval_pass_rate is not None else del_success_rate
+    oc_status = _scorecard_status(oc_rate, _SCORECARD_OUTCOME_PASS_THRESHOLD, _SCORECARD_OUTCOME_WARN_THRESHOLD)
+    if oc_status == "fail":
+        blocking.append(f"outcome_correctness fail: rate={oc_rate}")
+    outcome_correctness = {
+        "status": oc_status,
+        "eval_pass_rate": eval_pass_rate,
+        "useful_token_ratio": useful_ratio,
+        "delegation_success_rate": del_success_rate,
+    }
+
+    # ── completion_reliability ─────────────────────────────────────────────
+    cr_status = _scorecard_status(del_success_rate, 0.9, 0.7)
+    completion_reliability = {
+        "status": cr_status,
+        "delegation_success_rate": del_success_rate,
+        "delegation_total": del_total,
+        "delegation_failures": del_failures,
+    }
+
+    # ── operator_trust ─────────────────────────────────────────────────────
+    ic = intent_compliance or {}
+    intent_cov = ic.get("coverage_pct") or ic.get("compliance_pct")
+    vh = validation_health_summary or {}
+    vh_checks_failed = vh.get("checks_failed") or 0
+    trace_available = (useful_tokens_summary or {}).get("token_events", 0) > 0
+    trust_value = intent_cov
+    ot_status = _scorecard_status(trust_value, _SCORECARD_TRUST_PASS_THRESHOLD, _SCORECARD_TRUST_WARN_THRESHOLD)
+    if ot_status == "no_data" and vh_checks_failed > 0:
+        ot_status = "warn"
+    if ot_status == "fail":
+        blocking.append(f"operator_trust fail: intent_coverage={intent_cov}")
+    operator_trust = {
+        "status": ot_status,
+        "intent_coverage": intent_cov,
+        "validation_health_status": vh.get("status"),
+        "validation_checks_failed": vh_checks_failed,
+        "trace_completeness": "available" if trace_available else "no_data",
+    }
+
+    # ── regression_containment ─────────────────────────────────────────────
+    rh = recent_health or {}
+    qa_pass_rate = rh.get("pass_rate") or rh.get("qa_pass_rate")
+    rc_status = _scorecard_status(qa_pass_rate, _SCORECARD_QA_PASS_THRESHOLD, _SCORECARD_QA_WARN_THRESHOLD)
+    regression_containment = {
+        "status": rc_status,
+        "qa_pass_rate": qa_pass_rate,
+        "validation_health_status": vh.get("status"),
+    }
+
+    # ── context_quality ────────────────────────────────────────────────────
+    adop = adoption or {}
+    adoption_pct = adop.get("adoption_pct")
+    cq_status = _scorecard_status(adoption_pct, 0.6, 0.4)
+    context_quality = {
+        "status": cq_status,
+        "hint_adoption_pct": adoption_pct,
+        "open_query_gaps": len(gaps),
+    }
+
+    # ── efficiency_inputs (never blocks) ──────────────────────────────────
+    cache_hit_rate = cache.get("hit_rate") or cache.get("semantic_hit_rate")
+    local_pct = route.get("local_pct") or route.get("local_routing_pct")
+    contention = attention_contention or {}
+    efficiency_inputs = {
+        "status": "ok",
+        "cache_hit_rate": cache_hit_rate,
+        "local_routing_pct": local_pct,
+        "useful_token_ratio": useful_ratio,
+        "lock_contention_events_per_hour": contention.get("events_per_hour"),
+        "lock_contention_status": contention.get("status"),
+    }
+
+    # ── overall_status ─────────────────────────────────────────────────────
+    sub_statuses = [
+        outcome_correctness["status"],
+        completion_reliability["status"],
+        operator_trust["status"],
+        regression_containment["status"],
+        context_quality["status"],
+    ]
+    if blocking:
+        overall = "fail"
+    elif all(s == "no_data" for s in sub_statuses):
+        overall = "no_data"
+    elif any(s == "fail" for s in sub_statuses):
+        overall = "fail"
+    elif any(s == "warn" for s in sub_statuses):
+        overall = "warn"
+    elif all(s in ("pass", "no_data") for s in sub_statuses) and any(s == "pass" for s in sub_statuses):
+        overall = "pass"
+    else:
+        overall = "no_data"
+
+    return {
+        "overall_status": overall,
+        "outcome_correctness": outcome_correctness,
+        "completion_reliability": completion_reliability,
+        "operator_trust": operator_trust,
+        "regression_containment": regression_containment,
+        "context_quality": context_quality,
+        "efficiency_inputs": efficiency_inputs,
+        "blocking_reasons": blocking,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Phase 93.5 — useful-token metrics aggregated from agent-run events
 # ---------------------------------------------------------------------------
 
@@ -7349,6 +7626,8 @@ def format_json(
     structured_actions: Optional[List[dict]] = None,
     useful_tokens: Optional[Dict[str, Any]] = None,
     validation_health_summary: Optional[Dict[str, Any]] = None,
+    effectiveness_scorecard_summary: Optional[Dict[str, Any]] = None,
+    attention_contention_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -7403,6 +7682,8 @@ def format_json(
         "structured_actions": structured_actions or [],
         "useful_tokens": useful_tokens or {"available": False, "status": "no_data", "reason": "not computed"},
         "validation_health": validation_health_summary or {"available": False, "status": "no_data", "reason": "not computed"},
+        "effectiveness_scorecard": effectiveness_scorecard_summary or {"overall_status": "no_data", "blocking_reasons": []},
+        "attention_contention": attention_contention_summary or {"available": False, "status": "no_data", "reason": "not computed"},
     }
     return json.dumps(doc, indent=2, default=str)
 
@@ -7617,6 +7898,23 @@ def main() -> None:
     useful_tokens_summary = useful_token_metrics(since_dt)
     # Phase 93.11 — validation health from latest focused-CI artifact
     validation_health_summary = validation_health()
+    # Phase 93.14 — attention queue lock contention
+    attention_contention = attention_contention_summary(since_dt)
+    # Phase 93.12 — effectiveness scorecard (computed after all inputs are ready)
+    effectiveness_scorecard_result = effectiveness_scorecard(
+        tool_stats,
+        route,
+        cache,
+        eval_trend,
+        gaps,
+        adoption,
+        intent_compliance,
+        delegation_feedback,
+        recent_health,
+        useful_tokens_summary,
+        validation_health_summary,
+        attention_contention,
+    )
     recs = build_recommendations(
         tool_stats,
         route,
@@ -7704,6 +8002,8 @@ def main() -> None:
         structured_actions=structured_actions,
         useful_tokens=useful_tokens_summary,
         validation_health_summary=validation_health_summary,
+        effectiveness_scorecard_summary=effectiveness_scorecard_result,
+        attention_contention_summary=attention_contention,
     )
     _persist_latest_report_json(json_output)
 
