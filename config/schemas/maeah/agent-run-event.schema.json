@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/maeah/agent-run-event.schema.json",
+  "title": "MAEAH AgentRunEvent",
+  "description": "Replayable agent-run event envelope for Pi-style observability, swimlane views, race comparisons, useful-token attribution, and human-agent control.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "timestamp",
+    "source",
+    "run_id",
+    "status",
+    "redaction"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "maeah.agent-run-event.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "prompt_load",
+        "spec_variant",
+        "system_prompt",
+        "memory_recall",
+        "skill_load",
+        "model_call",
+        "tool_call",
+        "tool_result",
+        "token_usage",
+        "artifact",
+        "validation",
+        "review",
+        "human_control",
+        "final_outcome"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "experiment_id": {
+      "type": ["string", "null"]
+    },
+    "session_id": {
+      "type": ["string", "null"]
+    },
+    "task_id": {
+      "type": ["string", "null"]
+    },
+    "slice_id": {
+      "type": ["string", "null"]
+    },
+    "agent_id": {
+      "type": ["string", "null"]
+    },
+    "role": {
+      "type": ["string", "null"]
+    },
+    "autonomy_boundary": {
+      "type": ["string", "null"]
+    },
+    "lane_id": {
+      "type": ["string", "null"]
+    },
+    "parent_event_id": {
+      "type": ["string", "null"]
+    },
+    "trace_id": {
+      "type": ["string", "null"]
+    },
+    "duration_ms": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "started",
+        "running",
+        "succeeded",
+        "failed",
+        "blocked",
+        "skipped",
+        "no_data"
+      ]
+    },
+    "route_profile": {
+      "type": ["string", "null"]
+    },
+    "model": {
+      "type": ["string", "null"]
+    },
+    "tool_name": {
+      "type": ["string", "null"]
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "variant": {
+          "type": ["string", "null"],
+          "enum": ["markdown", "html", "visual_html", null]
+        },
+        "canonical_path": {
+          "type": ["string", "null"]
+        },
+        "derived_path": {
+          "type": ["string", "null"]
+        },
+        "source_hash": {
+          "type": ["string", "null"]
+        },
+        "generator": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input": {"type": ["integer", "null"], "minimum": 0},
+        "output": {"type": ["integer", "null"], "minimum": 0},
+        "context": {"type": ["integer", "null"], "minimum": 0},
+        "tool_output": {"type": ["integer", "null"], "minimum": 0},
+        "accepted_artifact": {"type": ["integer", "null"], "minimum": 0},
+        "rework": {"type": ["integer", "null"], "minimum": 0},
+        "total": {"type": ["integer", "null"], "minimum": 0},
+        "useful_ratio": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {"type": ["number", "null"], "minimum": 0},
+        "currency": {"type": ["string", "null"]}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": ["string", "null"]},
+        "kind": {"type": ["string", "null"]},
+        "hash": {"type": ["string", "null"]},
+        "accepted": {"type": ["boolean", "null"]}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["payload_redacted", "secret_fields"],
+      "additionalProperties": false,
+      "properties": {
+        "payload_redacted": {"type": "boolean"},
+        "secret_fields": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "no_data_reason": {
+      "type": ["string", "null"]
+    }
+  }
+}
