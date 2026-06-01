@@ -12,7 +12,9 @@ let activeLens = 'overview';
 const lazyLoaded  = new Set();
 const histCpu     = [], histGpu = [], histMem = [], histNet = [];
 window._layerData = {};
-window._aiMetrics = null;   // cached /ai/metrics
+window._aiMetrics = null;        // cached /ai/metrics
+window._aiMetricsFetchedAt = 0;  // epoch ms — for 90s TTL
+window._wsSystemMetrics = null;  // hardware-only WS broadcast (no AI fields)
 
 // ─── CORE FETCH ─────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}, ms = T_FAST) {
@@ -213,14 +215,15 @@ function toggleDrawer() { document.getElementById('drawer').classList.toggle('op
 
 // ─── KPI RIBBON ──────────────────────────────────────────────────────────────
 async function loadKPIs() {
+  const _aiCacheFresh = window._aiMetrics && (Date.now() - window._aiMetricsFetchedAt) < 90_000;
   const [metrics, aiM, hs, analytics] = await Promise.all([
     apiFetch('/metrics'),
-    // Use cached aiM if fresh (<90s old) to avoid competing with tab loads; T_SLOW for resilience
-    window._aiMetrics ? Promise.resolve(window._aiMetrics) : apiFetch('/ai/metrics', {}, T_SLOW),
+    // Use cached aiM only if fresh (<90s); re-fetch otherwise so KPI ribbon stays live.
+    _aiCacheFresh ? Promise.resolve(window._aiMetrics) : apiFetch('/ai/metrics', {}, T_SLOW),
     apiFetch('/metrics/health-score'),
     apiFetch('/insights/routing/analytics'),
   ]);
-  if (aiM) window._aiMetrics = aiM;  // only update cache if fresh data arrived
+  if (aiM) { window._aiMetrics = aiM; window._aiMetricsFetchedAt = Date.now(); }
 
   // Populate header health score immediately (before OSI layer health completes)
   if (hs && hs.score != null) {
@@ -3676,6 +3679,7 @@ async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add('overview');
   window._aiMetrics = null;
+  window._aiMetricsFetchedAt = 0;
   await Promise.allSettled([loadKPIs(), loadRagQuality(), loadSystem(), loadServices(), loadDatabase(), loadOSI(), loadRemediations(), loadAuditLog(), loadHardwareState(), loadDropZone(), loadAlerts()]);
   // Dependents
   loadInferenceSlots();
@@ -4201,18 +4205,12 @@ async function loadObservability() {
     _ws.onmessage = (msg) => {
       try {
         const pkt = JSON.parse(msg.data);
-        console.log('Metrics WS received packet type:', pkt.type);
         if (pkt.type === 'metrics_update' && pkt.data) {
-          window._aiMetrics = pkt.data;
-          console.log('Metrics WS data updated:', window._aiMetrics);
-          if (typeof loadDatabase === 'function') {
-            console.log('Calling loadDatabase()');
-            loadDatabase();
-          } else {
-            console.warn('loadDatabase is not a function');
-          }
-        } else {
-          console.log('Metrics WS unhandled packet:', pkt);
+          // WS broadcasts hardware metrics only (CPU/RAM/disk/network).
+          // Do NOT overwrite window._aiMetrics — that cache is fed exclusively
+          // by /api/ai/metrics and contains infra_probes + services that the
+          // hardware broadcast does not include.
+          window._wsSystemMetrics = pkt.data;
         }
       } catch (e) {
         console.error('Error parsing metrics packet:', e);
