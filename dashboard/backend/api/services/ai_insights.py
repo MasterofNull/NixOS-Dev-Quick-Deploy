@@ -270,6 +270,7 @@ class AIInsightsService:
         persisted = self._load_persisted_report()
         if persisted is None:
             return
+        self._update_cache(persisted, timestamp=datetime.now(timezone.utc), persist=False)
         logger.info("Seeded dashboard insights cache from %s", self._persisted_report_path)
 
     def _load_persisted_report(self) -> Optional[Dict[str, Any]]:
@@ -1424,7 +1425,7 @@ class AIInsightsService:
         """Summarize dashboard/operator security and compliance controls."""
         audit_log = get_operator_audit_log()
         rate_limiter = get_dashboard_rate_limiter()
-        audit_summary = audit_log.summary(limit=500)
+        audit_summary = await asyncio.to_thread(audit_log.summary, limit=50)
         integrity = audit_summary.get("integrity") or {}
         csp = str(
             os.getenv(

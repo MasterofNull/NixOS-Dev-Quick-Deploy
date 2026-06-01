@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import logging
 import json
+import os
 import shlex
 import subprocess
 import asyncio
@@ -15,7 +16,8 @@ from pathlib import Path
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.home() / '.local/share/nixos-system-dashboard'
+# Prefer DASHBOARD_DATA_DIR (NixOS service env); fall back to legacy ~/.local path
+DATA_DIR = Path(os.getenv("DASHBOARD_DATA_DIR", "")) or (Path.home() / ".local/share/nixos-system-dashboard")
 
 
 class ActionRequest(BaseModel):
