@@ -629,6 +629,65 @@ Your task"
 This is a RESEARCH-ONLY task. Use gr"
 You are the **Architect** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening a "
 You are the **Implementer** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening "
+
+[2026-06-01T00:22:00Z] codex
+**Phase 92.3a Tier0 modularization slice validated** — moved raw ANSI color-echo lint out of `tier0-validation-gate.sh` and into `scripts/governance/tier0.d/check-color-echo.sh`, proving the extension contract with a real gate. The extension preserves `--pre-commit`/`--pre-deploy` changed-file behavior and now reads staged blob content in `--pre-commit` mode to avoid partial-stage false passes/blocks.
+
+Validation:
+- `bash -n scripts/governance/tier0-validation-gate.sh scripts/governance/tier0.d/check-color-echo.sh scripts/testing/test-tier0-color-echo-extension.sh`
+- `scripts/testing/test-tier0-color-echo-extension.sh`
+- `scripts/governance/tier0.d/check-color-echo.sh --pre-deploy`
+- `TIER0_TAP_JSON=$(mktemp) scripts/governance/tier0-validation-gate.sh --pre-commit --tap` — 18/18 PASS
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — 18/18 PASS
+
+Delegate reliability watch: one recent `ai_coordinator_delegate` 500 traced to transient local backend unavailability (`/slots` 503, switchboard 502) for `local-tool-calling`. Treat as low-sample unless it recurs; follow-up slice would add `local-tool-calling` to slot-busy retry/error classification.
+
+### [2026-05-30T22:02:03Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (1):
+  - `/etc/machine-id r,`
+Denied paths that triggered: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/etc/machine-id']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-30T22:02:03Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (1): ['            /etc/machine-id r,']  
+Denied paths: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/etc/machine-id']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-31T16:06:39Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `ai-hybrid-coordinator`  
+Rules added (1):
+  - `/proc/@{pids}/cgroup r,`
+Denied paths that triggered: ['/proc/778166/cgroup', '/proc/926707/cgroup']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-31T16:06:39Z] health-spider
+**AppArmor fix staged** — profile `ai-hybrid-coordinator`  
+Rules added (1): ['            /proc/@{pids}/cgroup r,']  
+Denied paths: ['/proc/778166/cgroup', '/proc/926707/cgroup']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-31T16:06:41Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (1):
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/ r,`
+Denied paths that triggered: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/nix/store/k3wiv3qqa4y0im5v1iq2jy4h9cm32dfc-gnugrep-3.12/bin/grep', '/home/hyperd/.local/share/nixos-system-dashboard/keyword-signals.json', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-05-31T16:06:41Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (1): ['            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/ r,']  
+Denied paths: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/nix/store/k3wiv3qqa4y0im5v1iq2jy4h9cm32dfc-gnugrep-3.12/bin/grep', '/home/hyperd/.local/share/nixos-system-dashboard/keyword-signals.json', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+You are the architect agent. Produc"
+
+You are a senior system"
+
+Context: This NixOS AI age"
+
+The team agreed: Rust m"
 [2026-05-28T15:56:11Z] [dispatch] id=local-20260528-085016-y02yz2 agent=local-hybrid output=.agents/delegation/outputs/local-20260528-085016-y02yz2.log obj="Role standardization debate — Qwen3 position + gap analysis JSON"
 [2026-05-28T15:56:55.062084Z] [dispatch] id=test-smoke-001 agent=gemini output=.agents/delegation/outputs/test-smoke-001.log obj="smoke test objective"
 [2026-05-28T15:56:55.141301Z] [done] id=test-smoke-001
@@ -739,16 +798,11 @@ You are the **Implementer** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is 
 [2026-05-30T21:31:00.282563Z] [dispatch] id=local-20260530-143059-my6eix agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260530-143059-my6eix.log obj="/no_think
 [2026-05-30T21:31:57.650750Z] [done] id=gemini-20260530-143049-ykrit0
 [2026-05-30T21:33:40.951216Z] [done] id=local-20260530-143059-my6eix
-
-### [2026-05-30T22:02:03Z] apparmor-fix-agent
-**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
-Rules added (1):
-  - `/etc/machine-id r,`
-Denied paths that triggered: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/etc/machine-id']  
-⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
-
-### [2026-05-30T22:02:03Z] health-spider
-**AppArmor fix staged** — profile `command-center-dashboard-api`  
-Rules added (1): ['            /etc/machine-id r,']  
-Denied paths: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/etc/machine-id']  
-⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+[2026-05-31T16:09:01.213298Z] [dispatch] id=gemini-20260531-090901-c7yjg3 agent=gemini output=.agents/delegation/outputs/gemini-20260531-090901-c7yjg3.log obj="RESEARCH + PRD AUTHORING TASK — Multi-domain technical analysis
+[2026-05-31T16:10:04.642051Z] [dispatch] id=local-20260531-091004-1xwvv9 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260531-091004-1xwvv9.log obj="DEBATE + CRITIQUE TASK — HTML docs migration and Rust scaffolding migration
+[2026-05-31T16:11:28.213610Z] [done] id=gemini-20260531-090901-c7yjg3
+[2026-05-31T16:12:47.800876Z] [done] id=local-20260531-091004-1xwvv9
+[2026-05-31T16:28:27.839869Z] [dispatch] id=gemini-20260531-092827-7c3iek agent=gemini output=.agents/delegation/outputs/gemini-20260531-092827-7c3iek.log obj="PHASE 92 SLICE 92.1 — Mandatory YAML Frontmatter Schema for Agentic Docs
+[2026-05-31T16:29:10.918434Z] [dispatch] id=local-20260531-092910-rpgfx2 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260531-092910-rpgfx2.log obj="PHASE 92 SLICE 92.5 EVIDENCE GATE — Rust attention_queue viability analysis
+[2026-05-31T16:30:37.586446Z] [done] id=gemini-20260531-092827-7c3iek
+[2026-05-31T16:33:20.358147Z] [done] id=local-20260531-092910-rpgfx2
