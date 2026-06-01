@@ -1,5 +1,5 @@
 {
-  "current_objective": "Phase 93 Effectiveness-Centered Observability — ALL SLICES COMPLETE. Next: polished AI Logic Observability section in dashboard.html",
+  "current_objective": "Phase 93 Effectiveness-Centered Observability — ALL SLICES COMPLETE + Dashboard issues fixed",
   "phase": "complete",
   "todo_snapshot": [
     "DONE: 93.1 agent-run event envelope (0b21a78f)",
@@ -16,17 +16,9 @@
     "DONE: 93.12 effectiveness scorecard in aq-report (batch2 commit)",
     "DONE: 93.13 dashboard effectiveness scorecard endpoint (batch2 commit)",
     "DONE: 93.14 attention queue contention instrumentation (batch2 commit)",
-    "NEXT: Polished AI logic observability section in dashboard.html"
+    "DONE: Polished AI Logic Observability dashboard section (cd074774)",
+    "DONE: Dashboard route order fix + 3 missing routes (1a9dc6ce)"
   ],
-  "uncommitted_changes": [
-    "scripts/ai/aq-report (93.12+93.14 wired)",
-    "dashboard/backend/api/routes/aistack.py (93.6/93.7/93.8/93.13)",
-    "config/validation-check-registry.json (3 new checks)",
-    "scripts/testing/test-aq-report-effectiveness-scorecard.py",
-    "scripts/testing/test-aq-report-attention-contention.py",
-    "scripts/testing/test-dashboard-agent-replay.py",
-    ".agent/collaboration/HANDOFF.md",
-    ".agent/collaboration/RESUME.json"
-  ],
-  "resume_hint": "Phase 93 fully shipped. User wants polished AI logic observability dashboard section — all agents, swimlane/race UI, replay timeline, effectiveness scorecard card, attention contention gauge."
+  "uncommitted_changes": [],
+  "resume_hint": "Phase 93 fully shipped and dashboard issues resolved. All routes verified live. Next: investigate offline services (aidb/Qdrant, llama-embed, ai-training-ingest) or start Phase 94."
 }

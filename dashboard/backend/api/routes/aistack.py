@@ -1846,7 +1846,7 @@ async def get_discovery_signals() -> Dict[str, Any]:
     """Return keyword/discovery signal data from the current local source when available."""
     payload = _load_keyword_signals()
     if payload is None:
-        raise HTTPException(status_code=404, detail="keyword signals unavailable")
+        return {"available": False, "signals": [], "reason": "keyword signals not yet generated"}
     return payload
 
 
