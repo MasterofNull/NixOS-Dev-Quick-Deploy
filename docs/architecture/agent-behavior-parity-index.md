@@ -85,5 +85,7 @@ When using reference material, quote or summarize only the section needed for th
 | P1 | Runtime bounded delegation envelopes for agent identity/delegation | Partial per `PARITY-INTEGRATION-PLAN.md` |
 | P1 | MCP tool-boundary profile enforcement | Partial per `PARITY-INTEGRATION-PLAN.md` |
 | P1 | Trace path view: prompt -> route -> memory -> tools -> response -> review | Partial per `PARITY-INTEGRATION-PLAN.md` |
+| P1 | Pi-style agent run observability: single-agent replay, swimlane view, race mode | Planned; see `.agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md` Phase 93 |
+| P1 | Spec-format experiment parity: Markdown vs HTML vs visual HTML with useful-token/outcome metrics | Planned; canonical Markdown/YAML remains SSOT |
+| P1 | Useful-token accounting: cost/speed tied to accepted artifacts, validation, and review outcome | Planned |
 | P2 | Historical PRD/plan retirement and archive hygiene | Active; governed by `docs/operations/document-lifecycle-hygiene.md` |
-

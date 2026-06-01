@@ -651,6 +651,34 @@ Validation:
 - `python3 -m json.tool .agent/collaboration/RESUME.json`
 - `scripts/governance/tier0-validation-gate.sh --pre-commit` — 18/18 PASS
 
+[2026-06-01T16:23:03Z] codex
+**Phase 93 PRD corrected with full Pi observability video-description context** — user flagged that the first pass missed the video's description and core point. Extracted YouTube `shortDescription` and re-ran all available working agents plus specialist reviewers with corrected context.
+
+Key correction:
+- Prior analysis framed HTML mostly as document-format migration and token overhead.
+- Correct framing: controlled same-prompt agent experiments across Markdown, HTML, and enhanced visual HTML specs; Pi-style observability captures useful tokens, tool calls, token counts, system prompt/context/skill bloat, traces, and replayable race/swimlane/single-agent views.
+
+Files amended:
+- `.agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md`
+- `.agents/plans/TECHNICAL-ANALYSIS-PRD.md`
+- `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md`
+- `docs/architecture/agent-behavior-parity-index.md`
+- `.agent/memory/issues-backlog.md`
+
+New Phase 93 priority:
+1. Agent run event envelope
+2. Central event API
+3. Spec variant pack contract
+4. Multi-agent race harness
+5. Useful-token instrumentation
+6. Single-agent replay view
+7. Swimlane/race dashboard views
+8. Closed-loop human-agent controls
+
+Canonical-source decision:
+- Markdown/YAML remains SSOT.
+- HTML and visual HTML become derived, hash-checked experiment variants and implementation briefs for UI/product-agent work.
+
 This is a RESEARCH-ONLY task. Use gr"
 You are the **Architect** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening a "
 You are the **Implementer** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening "

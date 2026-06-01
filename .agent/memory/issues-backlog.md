@@ -3,6 +3,11 @@
   Action: Wired delegated failure windows into recommendations/actions; historical-only failures now produce passive context and suppress active salvage/action guidance unless failures recur in 24h.
   File: scripts/ai/aq-report ~line 3893; scripts/testing/test-delegated-prompt-failure-history.py
 
+[DONE] planning — Phase 93 PRD under-read Pi observability video context — First pass relied on title/oEmbed and adjacent references after transcript fetch failed, missing the YouTube description's core details: Markdown vs HTML vs visual HTML same-prompt races, useful-token framing, Pi observability event stream/server/DB/UI, swimlane/single-agent/race views, and full tool/system-prompt/token/trace visibility.
+  Severity: medium
+  Action: Extracted YouTube `shortDescription`, re-ran available agent reviews with the corrected context, amended Phase 93 PRD and parity plans to add Pi-style observability parity gaps and controlled spec-variant race slices.
+  File: .agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md; .agents/plans/TECHNICAL-ANALYSIS-PRD.md
+
 [DONE] hints-engine — compatibility wrapper did not re-export underscored filter helpers — `scripts/testing/test-hints-runtime-batch.py` imports `hints_engine` and expects `_is_synthetic_gap` / `_is_curated_stale_gap`; the top-level wrapper used `import *`, which omits underscored names even though `knowledge.hints_engine` exposes the helpers explicitly.
   Severity: low
   Action: Added explicit `_is_synthetic_gap` and `_is_curated_stale_gap` re-exports in `ai-stack/mcp-servers/hybrid-coordinator/hints_engine.py`.

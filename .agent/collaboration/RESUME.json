@@ -1,19 +1,18 @@
 {
-  "current_objective": "Create an effectiveness-centered system improvement PRD and action plan informed by the Pi coding-agent observability video and expert-agent review.",
-  "phase": "planning",
+  "current_objective": "Correct Phase 93 PRD and parity plans with full Pi observability video-description context.",
+  "phase": "amending",
   "todo_snapshot": [
-    "DONE: clean-slate state commit 589eb901 captured generated post-deploy collaboration, telemetry, prompt-ingest, and host discovery state",
-    "DONE: resolved video metadata via YouTube oEmbed: Pi Coding Agent Observability: HTML Specs with Gemini 3.5 Flash and GPT Image 2 by IndyDevDan",
-    "DONE: gathered architecture, QA/observability, collaboration reliability, and implementation strategy perspectives from spawned expert agents",
-    "IN-PROGRESS: authored .agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md with effectiveness-first decisions and bounded slices",
-    "PENDING: validate frontmatter/tier0 and commit the PRD/action plan"
+    "DONE: extracted YouTube description metadata with Markdown vs HTML vs visual HTML comparison, Pi observability dashboard, useful-token framing, event stream/server/DB/UI architecture, swimlane/single-agent/race views, system prompt/tool/token/trace visibility",
+    "DONE: sent corrected context to available agents and spawned additional specialist reviewers",
+    "IN-PROGRESS: amend Phase 93 PRD, technical HTML analysis, parity index, and parity integration plan",
+    "PENDING: validate docs/frontmatter/tier0 and commit corrected parity-gap plan"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
-    ".agent/collaboration/PULSE.log",
-    ".agents/attention/ATTENTION_ARCHIVE.jsonl",
-    ".agents/telemetry/routing-decisions.jsonl",
-    ".agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md"
+    ".agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md",
+    ".agents/plans/TECHNICAL-ANALYSIS-PRD.md",
+    ".agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md",
+    "docs/architecture/agent-behavior-parity-index.md"
   ],
-  "resume_hint": "Wait for spawned expert agents, synthesize their perspectives into the new effectiveness-centered PRD, then validate and commit."
+  "resume_hint": "Validate amended PRD/parity docs, update handoff, then commit corrected Pi observability parity gap plan."
 }
