@@ -4247,87 +4247,6 @@ def _run_summary(run_id: str, events: list[dict]) -> dict:
     }
 
 
-# 93.6 — Single-agent replay view
-@router.get("/agent-runs/{run_id}")
-async def get_agent_run_replay(
-    run_id: str,
-    event_type: Optional[str] = None,
-    include_payload: bool = Query(False, description="Include redacted payload fields"),
-    limit: int = Query(500, ge=1, le=2000),
-) -> Dict[str, Any]:
-    """Return a full event timeline for a single agent run.
-
-    This is the Pi-style single-agent replay view: every event in the run's
-    lifecycle — prompt load, spec variant, system prompt metadata, memory
-    recall, skill loads, tool calls, token usage, artifacts, validation,
-    review, human controls, and final outcome — sorted in replay order.
-    Sensitive payload fields are redacted.
-    """
-    events, source = _load_agent_run_events(run_id=run_id, event_type=event_type, limit=limit)
-
-    # Fallback to workflow-trajectory if no native events found
-    if not events:
-        try:
-            workflow_events = await _fetch_workflow_replay_events(
-                run_id, event_type=event_type, phase=None, limit=limit
-            )
-            if workflow_events:
-                events = workflow_events
-                source = "workflow-trajectory-fallback"
-        except Exception as exc:
-            logger.debug("run-replay workflow fallback failed for %s: %s", run_id, exc)
-
-    if not events:
-        return {
-            "available": False,
-            "run_id": run_id,
-            "source": "no_data",
-            "event_count": 0,
-            "timeline": [],
-            "summary": None,
-            "no_data_reason": f"no events found for run_id={run_id}",
-        }
-
-    # Compute per-event display — strip raw payload unless requested
-    timeline = []
-    for ev in events:
-        entry = {k: v for k, v in ev.items() if k != "payload"}
-        if include_payload:
-            entry["payload"] = ev.get("payload") or {}
-        else:
-            # Surface a safe excerpt: keys only, values replaced by type hint
-            raw_payload = ev.get("payload") or {}
-            entry["payload_keys"] = list(raw_payload.keys()) if raw_payload else []
-        timeline.append(entry)
-
-    # Run-level summary
-    summary = _run_summary(run_id, events)
-
-    # Tool-call heatmap (tool_name → count)
-    tool_heatmap: dict[str, int] = {}
-    for ev in events:
-        tn = ev.get("tool_name")
-        if tn:
-            tool_heatmap[tn] = tool_heatmap.get(tn, 0) + 1
-
-    # Human controls in this run
-    human_controls = [
-        ev for ev in events if ev.get("event_type") == "human_control"
-    ]
-
-    return {
-        "available": True,
-        "run_id": run_id,
-        "source": source,
-        "event_count": len(timeline),
-        "truncated": len(events) >= limit,
-        "summary": summary,
-        "tool_heatmap": sorted(tool_heatmap.items(), key=lambda x: -x[1]),
-        "human_control_count": len(human_controls),
-        "timeline": timeline,
-    }
-
-
 # 93.7 — Agent runs list
 @router.get("/agent-runs")
 async def list_agent_runs(
@@ -4566,6 +4485,63 @@ async def get_agent_runs_race(
         "winner_detail": winner_detail,
         "winner_criterion": "accepted=true + max(useful_ratio); correctness over speed",
         "runs": compared,
+    }
+
+
+# 93.6 — Single-agent replay view (registered after static sub-paths to avoid shadowing)
+@router.get("/agent-runs/{run_id}")
+async def get_agent_run_replay(
+    run_id: str,
+    event_type: Optional[str] = None,
+    include_payload: bool = Query(False, description="Include redacted payload fields"),
+    limit: int = Query(500, ge=1, le=2000),
+) -> Dict[str, Any]:
+    """Return a full event timeline for a single agent run."""
+    events, source = _load_agent_run_events(run_id=run_id, event_type=event_type, limit=limit)
+    if not events:
+        try:
+            workflow_events = await _fetch_workflow_replay_events(run_id, event_type=event_type, phase=None, limit=limit)
+            if workflow_events:
+                events = workflow_events
+                source = "workflow-trajectory-fallback"
+        except Exception as exc:
+            logger.debug("run-replay workflow fallback failed for %s: %s", run_id, exc)
+    if not events:
+        return {
+            "available": False,
+            "run_id": run_id,
+            "source": "no_data",
+            "event_count": 0,
+            "timeline": [],
+            "summary": None,
+            "no_data_reason": f"no events found for run_id={run_id}",
+        }
+    timeline = []
+    for ev in events:
+        entry = {k: v for k, v in ev.items() if k != "payload"}
+        if include_payload:
+            entry["payload"] = ev.get("payload") or {}
+        else:
+            raw_payload = ev.get("payload") or {}
+            entry["payload_keys"] = list(raw_payload.keys()) if raw_payload else []
+        timeline.append(entry)
+    summary = _run_summary(run_id, events)
+    tool_heatmap: dict[str, int] = {}
+    for ev in events:
+        tn = ev.get("tool_name")
+        if tn:
+            tool_heatmap[tn] = tool_heatmap.get(tn, 0) + 1
+    human_controls = [ev for ev in events if ev.get("event_type") == "human_control"]
+    return {
+        "available": True,
+        "run_id": run_id,
+        "source": source,
+        "event_count": len(timeline),
+        "truncated": len(events) >= limit,
+        "summary": summary,
+        "tool_heatmap": sorted(tool_heatmap.items(), key=lambda x: -x[1]),
+        "human_control_count": len(human_controls),
+        "timeline": timeline,
     }
 
 
@@ -6181,4 +6157,116 @@ async def get_alerts_status() -> Dict[str, Any]:
         "oldest_age_s": oldest_age_s,
         "queue_file_exists": exists,
         "generated_at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+    }
+
+
+# ── Missing-route stubs: JS expects these endpoints ──────────────────────────
+
+@router.get("/fleet/status")
+async def get_fleet_status() -> Dict[str, Any]:
+    """Agent fleet status — agents list + active sessions.
+
+    Proxies coordinator fleet/summary and enriches with per-agent entries
+    so the dashboard Fleet panel can render agent cards and session rows.
+    Falls back to empty lists when coordinator is unreachable.
+    """
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+
+    try:
+        summary = await fetch_with_fallback(
+            f"{SERVICES['hybrid']}/control/fleet/summary",
+            {"total_runtimes": 0, "runtimes": [], "available": False},
+            headers=headers,
+        )
+    except Exception:
+        summary = {"total_runtimes": 0, "runtimes": [], "available": False}
+
+    # Build per-agent entries from runtimes list
+    runtimes = summary.get("runtimes") or []
+    agents = [
+        {
+            "agent_id": r.get("runtime_id") or r.get("id"),
+            "profile": r.get("profile"),
+            "status": r.get("status"),
+            "task": r.get("current_task"),
+            "started_at": r.get("started_at"),
+        }
+        for r in runtimes
+    ]
+
+    # Sessions: lightweight stub — coordinator does not expose sessions directly yet
+    sessions: list[dict] = []
+
+    return {
+        "available": summary.get("available", False),
+        "agent_count": len(agents),
+        "agents": agents,
+        "sessions": sessions,
+        "total_runtimes": summary.get("total_runtimes", 0),
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+@router.get("/telemetry/anomalies")
+async def get_telemetry_anomalies() -> Dict[str, Any]:
+    """Health-spider anomaly feed for the Anomaly Radar panel.
+
+    Derives anomalies from the /health/aggregate probe: any service that is
+    not healthy becomes an anomaly entry with zone (service name) + issue
+    (status + optional HTTP status).  Returns empty list when all healthy.
+    """
+
+    # Call health/aggregate logic inline to derive anomalies
+    try:
+        health = await get_health_aggregate()
+    except Exception:
+        health = {}
+
+    anomalies: list[dict] = []
+    for svc_name, svc in (health.get("services") or {}).items():
+        if not isinstance(svc, dict):
+            continue
+        status = svc.get("status", "unknown")
+        if status not in ("healthy",):
+            details = svc.get("details") or {}
+            http_err = details.get("http_error")
+            anomalies.append(
+                {
+                    "zone": svc_name,
+                    "issue": status + (f" — {http_err}" if http_err else ""),
+                    "severity": "critical" if status == "down" else "warn",
+                }
+            )
+
+    return {
+        "available": True,
+        "anomaly_count": len(anomalies),
+        "anomalies": anomalies,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+@router.get("/collaboration/locks")
+async def get_collaboration_locks() -> Dict[str, Any]:
+    """Return active intent locks from the coordinator collaboration layer.
+
+    Proxies coordinator /control/collab/locks when available.
+    Falls back to an empty list so the Fleet panel renders cleanly.
+    """
+    api_key = _load_hybrid_api_key()
+    headers = {"X-API-Key": api_key} if api_key else None
+
+    result = await fetch_with_fallback(
+        f"{SERVICES['hybrid']}/control/collab/locks",
+        {"locks": [], "available": False},
+        headers=headers,
+    )
+
+    locks = result.get("locks") or []
+    return {
+        "available": result.get("available", False),
+        "lock_count": len(locks),
+        "locks": locks,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
