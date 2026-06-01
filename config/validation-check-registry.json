@@ -764,6 +764,7 @@
         "python3",
         "scripts/governance/check-doc-frontmatter.py"
       ],
+      "pass_staged_files": true,
       "tier": "structural",
       "timeout_seconds": 30,
       "enabled": true
@@ -835,6 +836,74 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 15
+    },
+    {
+      "id": "useful-token-metrics",
+      "description": "Phase 93.5 useful-token aggregation in aq-report --machine",
+      "trigger_paths": [
+        "scripts/ai/aq-report",
+        "scripts/ai/lib/agent_run_events.py",
+        "scripts/testing/test-useful-token-metrics.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-useful-token-metrics.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "focused-ci-diagnostic-json",
+      "description": "Phase 93.10 focused-CI JSON diagnostic output and validation health reader",
+      "trigger_paths": [
+        "scripts/governance/run-focused-ci-checks.sh",
+        "scripts/ai/aq-report",
+        "scripts/testing/test-focused-ci-diagnostic-json.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-focused-ci-diagnostic-json.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
+      "id": "doc-frontmatter-staged-files",
+      "description": "Phase 93.9 doc-frontmatter staged-file scoped validation",
+      "trigger_paths": [
+        "scripts/governance/run-focused-ci-checks.sh",
+        "scripts/governance/check-doc-frontmatter.py",
+        "config/validation-check-registry.json",
+        "scripts/testing/test-doc-frontmatter-staged-files.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-doc-frontmatter-staged-files.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
+      "id": "race-harness",
+      "description": "Phase 93.4 multi-agent spec-variant race harness fixture mode",
+      "trigger_paths": [
+        "scripts/ai/race-harness",
+        "scripts/ai/lib/agent_run_events.py",
+        "scripts/testing/test-race-harness.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-race-harness.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
