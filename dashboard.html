@@ -281,6 +281,7 @@
     <button class="tab"    onclick="setLens('spider')"      id="tab-spider">Health Spider</button>
     <button class="tab"    onclick="setLens('map')"         id="tab-map">Neural Map</button>
     <button class="tab"    onclick="setLens('logic')"       id="tab-logic">Logic DAG</button>
+    <button class="tab"    onclick="setLens('observe')"     id="tab-observe">Agent Observability</button>
     <button class="tab"    onclick="setLens('logs')"        id="tab-logs">Logs</button>
   </div>
 </header>
@@ -1003,6 +1004,93 @@
 <div class="panel" id="panel-logs">
   <div class="log-panel" id="logPanel">
     <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-type">[INIT]</span>Awaiting log stream...</div>
+  </div>
+</div>
+
+<!-- ── AGENT OBSERVABILITY ── -->
+<div class="panel" id="panel-observe">
+  <div class="panel-grid g2">
+
+    <!-- Effectiveness Scorecard — full width -->
+    <div class="card full" id="section-effectiveness-scorecard">
+      <div class="card-hd">
+        <span class="card-title">Effectiveness Scorecard</span>
+        <span class="card-badge badge-info" id="effScoreBadge">--</span>
+      </div>
+      <div id="effScoreDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+
+    <!-- Agent Run Replay — full width -->
+    <div class="card full" id="section-agent-replay">
+      <div class="card-hd">
+        <span class="card-title">Agent Run Replay</span>
+        <span class="card-badge badge-info" id="agentReplayBadge">--</span>
+      </div>
+      <div style="display:flex;gap:.45rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
+        <input type="text" id="replayRunId" placeholder="run_id (blank = latest)" style="font-family:var(--hud);font-size:.62rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.25rem .5rem;flex:1;min-width:12rem;border-radius:2px">
+        <select id="replayEventFilter" style="font-family:var(--hud);font-size:.62rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.25rem .4rem;border-radius:2px">
+          <option value="">All events</option>
+          <option value="tool_call">tool_call</option>
+          <option value="artifact">artifact</option>
+          <option value="token_usage">token_usage</option>
+          <option value="human_control">human_control</option>
+          <option value="run_start">run_start</option>
+          <option value="run_end">run_end</option>
+        </select>
+        <button class="mini-btn" onclick="loadAgentReplay()">Load Replay</button>
+      </div>
+      <div id="agentReplayDetails"><div style="color:var(--fg3);font-size:.6rem">Enter a run_id or click Load to fetch the latest agent run.</div></div>
+    </div>
+
+    <!-- Multi-Agent Swimlane — full width -->
+    <div class="card full" id="section-swimlane">
+      <div class="card-hd">
+        <span class="card-title">Multi-Agent Swimlane</span>
+        <span class="card-badge badge-info" id="swimlaneBadge">--</span>
+      </div>
+      <div id="swimlaneDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+
+    <!-- Spec Variant Race -->
+    <div class="card" id="section-race-comparison">
+      <div class="card-hd">
+        <span class="card-title">Spec Variant Race</span>
+        <span class="card-badge badge-info" id="raceBadge">--</span>
+      </div>
+      <div id="raceDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+
+    <!-- Token Efficiency & Attention Contention -->
+    <div class="card" id="section-token-contention">
+      <div class="card-hd">
+        <span class="card-title">Token Efficiency &amp; Lock Contention</span>
+        <span class="card-badge badge-info" id="tokenContentionBadge">--</span>
+      </div>
+      <div id="tokenContentionDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
+
+    <!-- Human Controls -->
+    <div class="card" id="section-human-controls">
+      <div class="card-hd">
+        <span class="card-title">Human Controls</span>
+        <span class="card-badge badge-info">operator gate</span>
+      </div>
+      <div style="font-size:.58rem;color:var(--fg3);margin-bottom:.45rem">
+        Active run: <span id="controlRunId" style="color:var(--cyan);font-family:var(--hud)">none selected</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem">
+        <button class="mini-btn" onclick="sendControl('approve')" title="Mark run output as approved">Approve</button>
+        <button class="mini-btn" onclick="sendControl('reject')" title="Reject run output">Reject</button>
+        <button class="mini-btn" onclick="sendControl('pause')" title="Signal agent to pause">Pause</button>
+        <button class="mini-btn" onclick="sendControl('resume')" title="Signal agent to resume">Resume</button>
+        <button class="mini-btn" onclick="sendControl('request_review')" title="Flag for human review">Request Review</button>
+        <button class="mini-btn" onclick="sendControl('promote_artifact')" title="Promote artifact to canonical">Promote Artifact</button>
+        <button class="mini-btn" onclick="sendControl('terminate')" title="Terminate the run">Terminate</button>
+        <button class="mini-btn" onclick="sendControl('redirect')" title="Redirect agent with new prompt">Redirect</button>
+      </div>
+      <div id="controlResult" style="margin-top:.5rem;font-size:.58rem;font-family:var(--hud);color:var(--fg3)"></div>
+    </div>
+
   </div>
 </div>
 
