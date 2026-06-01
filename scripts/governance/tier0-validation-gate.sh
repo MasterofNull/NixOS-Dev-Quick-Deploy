@@ -340,35 +340,7 @@ print(f'Parsed {len(stmts)} statement(s) OK')
   return $failed
 }
 
-# Gate 10: Raw ANSI color echo lint
-gate_color_echo() {
-  log "Checking for raw ANSI echo usage..."
-  local files=()
-  while IFS= read -r f; do
-    [[ -f "$f" ]] && [[ "$f" == *.sh ]] && files+=("$f")
-  done < <(collect_changed_files)
-
-  if [[ ${#files[@]} -eq 0 ]]; then
-    pass "No shell script changes detected (color-echo)"
-    return 0
-  fi
-
-  local found=0
-  for f in "${files[@]}"; do
-    if grep -nP 'echo\s+-[eE]\s+["'"'"'].*\\033\[|printf\s+["'"'"'].*\\033\[' "$f" 2>/dev/null | grep -v '# ok-raw-echo'; then
-      found=1
-    fi
-  done
-
-  if [[ $found -eq 1 ]]; then
-    fail "Raw ANSI color codes found — use info()/warn()/die() wrappers instead. Add '# ok-raw-echo' to intentional exceptions."
-    return 1
-  fi
-
-  pass "No raw ANSI echo usage (${#files[@]} files checked)"
-}
-
-# Gate 11: Repo structure validation
+# Gate 10: Repo structure validation
 gate_repo_structure() {
   log "Checking repo structure..."
   if "${SCRIPT_DIR}/repo-structure-lint.sh" --staged 2>&1 | grep -q "PASS"; then
@@ -609,7 +581,6 @@ gate_toml_syntax || true
 gate_js_syntax || true
 gate_ts_syntax || true
 gate_sql_syntax || true
-gate_color_echo || true
 gate_repo_structure || true
 gate_script_headers || true
 gate_config_dir_lint || true

@@ -10,6 +10,8 @@ pipeline **without editing `tier0-validation-gate.sh`**.
 - Exit 1 → fail (logged as `[tier0] FAIL: tier0.d/<name>`, blocks commit)
 - Prefix stdout/stderr with `[tier0.d/<name>]` for traceability
 - Use `REPO_ROOT="$(git rev-parse --show-toplevel)"` to find repo paths
+- In `--pre-commit` mode, inspect staged blob content with `git show ":$path"`
+  when validating file contents; do not read the working tree for staged paths.
 - Must be idempotent and fast (< 5s)
 
 ## Example
@@ -29,4 +31,4 @@ exit 1
 
 ## Current extension checks
 
-(none yet — add .sh files here)
+- `check-color-echo.sh` — blocks raw ANSI color escape sequences in changed shell scripts.
