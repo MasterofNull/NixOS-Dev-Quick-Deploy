@@ -7269,12 +7269,13 @@ def effectiveness_scorecard(
     # ── outcome_correctness ────────────────────────────────────────────────
     eval_pass_rate = eval_trend.get("recent_pass_rate") or eval_trend.get("pass_rate")
     useful_ratio = (useful_tokens_summary or {}).get("useful_ratio")
-    del_stats = delegation_feedback or {}
-    del_total = del_stats.get("total", 0) or 0
-    del_failures = del_stats.get("failures", 0) or 0
-    del_success_rate: Optional[float] = None
-    if del_total > 0:
-        del_success_rate = round(1 - del_failures / del_total, 4)
+    rh = recent_health or {}
+    # delegate_24h_rate is the fraction of ai_coordinator_delegate calls that
+    # succeeded in the last 24 h — the best available proxy for delegation
+    # success rate when no separate total/failure counter is maintained.
+    del_success_rate: Optional[float] = rh.get("delegate_24h_rate")
+    del_total = 0
+    del_failures = 0
     oc_rate = eval_pass_rate if eval_pass_rate is not None else del_success_rate
     oc_status = _scorecard_status(oc_rate, _SCORECARD_OUTCOME_PASS_THRESHOLD, _SCORECARD_OUTCOME_WARN_THRESHOLD)
     if oc_status == "fail":
@@ -7297,7 +7298,16 @@ def effectiveness_scorecard(
 
     # ── operator_trust ─────────────────────────────────────────────────────
     ic = intent_compliance or {}
-    intent_cov = ic.get("coverage_pct") or ic.get("compliance_pct")
+    # read_workflow_sessions() uses "contract_coverage_pct" not "coverage_pct"
+    intent_cov = (
+        ic.get("contract_coverage_pct")
+        or ic.get("coverage_pct")
+        or ic.get("compliance_pct")
+    )
+    # When total_runs == 0 the session file exists but no runs have been
+    # recorded yet — treat as no_data rather than 0% coverage.
+    if intent_cov is None and ic.get("total_runs", 0) == 0 and ic.get("available"):
+        intent_cov = None  # stays no_data; 0-run coverage is uninformative
     vh = validation_health_summary or {}
     vh_checks_failed = vh.get("checks_failed") or 0
     trace_available = (useful_tokens_summary or {}).get("token_events", 0) > 0
@@ -7316,8 +7326,10 @@ def effectiveness_scorecard(
     }
 
     # ── regression_containment ─────────────────────────────────────────────
-    rh = recent_health or {}
-    qa_pass_rate = rh.get("pass_rate") or rh.get("qa_pass_rate")
+    # Use delegate_7d_rate as a proxy for harness stability; healthy tool
+    # success rate across 7 days is the most meaningful available signal until
+    # a dedicated aq-qa pass-rate time series is wired in.
+    qa_pass_rate = rh.get("delegate_7d_rate") or rh.get("delegate_24h_rate")
     rc_status = _scorecard_status(qa_pass_rate, _SCORECARD_QA_PASS_THRESHOLD, _SCORECARD_QA_WARN_THRESHOLD)
     regression_containment = {
         "status": rc_status,
