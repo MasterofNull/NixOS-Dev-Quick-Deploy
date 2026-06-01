@@ -111,6 +111,7 @@ function loadLens(id) {
   else if (id === 'logic')        initLogic();
   else if (id === 'fleet')        loadFleet();
   else if (id === 'spider')       loadSpider();
+  else if (id === 'observe')      loadObservability();
   else if (id === 'logs')         loadLogs();
 }
 
@@ -3840,6 +3841,348 @@ async function loadFactChainTimeline() {
     </div>`;
 }
 
+// ─── Phase 93 — Agent Observability Panel ─────────────────────────────────────
+
+const _OBS_STATUS_COLOR = { pass:'var(--grn)', warn:'var(--yel)', fail:'var(--red)', ok:'var(--grn)', no_data:'var(--fg3)' };
+const _OBS_EVENT_COLOR  = { tool_call:'var(--cyan)', artifact:'var(--grn)', human_control:'var(--yel)', token_usage:'#7b9ee0', run_start:'var(--fg0)', run_end:'var(--fg0)', default:'var(--fg3)' };
+let _obsActiveRunId = null;
+
+function _obsStatusBadge(status) {
+  const cls = { pass:'badge-ok', warn:'badge-warn', fail:'badge-err', ok:'badge-ok', no_data:'badge-info' };
+  return `<span class="card-badge ${cls[status]||'badge-info'}">${(status||'--').toUpperCase()}</span>`;
+}
+
+function _obsScoreDim(label, dim) {
+  if (!dim) return '';
+  const color = _OBS_STATUS_COLOR[dim.status] || 'var(--fg3)';
+  const metrics = Object.entries(dim)
+    .filter(([k]) => k !== 'status')
+    .filter(([,v]) => v !== null && v !== undefined)
+    .map(([k, v]) => {
+      const display = typeof v === 'number' ? (v <= 1 && v >= 0 && k.includes('rate') || k.includes('pct') || k.includes('ratio') ? (v*100).toFixed(0)+'%' : v.toFixed ? v.toFixed(2) : v) : String(v);
+      return `<span style="color:var(--fg3)">${k.replace(/_/g,' ')}: </span><span style="color:var(--fg0)">${display}</span>`;
+    }).join(' &nbsp;·&nbsp; ');
+  return `<div style="padding:.4rem .5rem;background:var(--bg3);border-radius:3px;border-left:2px solid ${color}">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.2rem">
+      <span style="font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.04em">${label}</span>
+      <span style="font-size:.65rem;font-weight:700;color:${color}">${(dim.status||'--').toUpperCase()}</span>
+    </div>
+    <div style="font-size:.55rem;line-height:1.7">${metrics || '<span style="color:var(--fg3)">no data</span>'}</div>
+  </div>`;
+}
+
+async function loadEffectivenessScorecard() {
+  const el = document.getElementById('effScoreDetails');
+  const badge = document.getElementById('effScoreBadge');
+  if (!el) return;
+  const d = await apiFetch('/aistack/effectiveness/scorecard', {}, 15000).catch(() => null);
+  if (!d || !d.available) {
+    const reason = (d && d.reason) || 'no scorecard artifact — run aq-report --fmt json first';
+    if (badge) { badge.textContent = 'NO DATA'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = `<div style="color:var(--fg3);font-size:.6rem">${reason}</div>`;
+    return;
+  }
+  const sc = d.effectiveness_scorecard || {};
+  const overall = sc.overall_status || 'no_data';
+  const color = _OBS_STATUS_COLOR[overall] || 'var(--fg3)';
+  if (badge) {
+    badge.textContent = overall.toUpperCase() + (d.stale ? ' · STALE' : '');
+    badge.className = overall === 'pass' ? 'card-badge badge-ok' : overall === 'warn' ? 'card-badge badge-warn' : overall === 'fail' ? 'card-badge badge-err' : 'card-badge badge-info';
+  }
+
+  const blocking = sc.blocking_reasons || [];
+  const blockHtml = blocking.length
+    ? `<div style="margin-top:.5rem;padding:.35rem .5rem;background:rgba(207,97,97,.12);border:1px solid var(--red);border-radius:3px">
+        <div style="font-size:.58rem;font-weight:700;color:var(--red);margin-bottom:.2rem">BLOCKING ISSUES</div>
+        ${blocking.map(r => `<div style="font-size:.55rem;color:var(--red)">▸ ${r}</div>`).join('')}
+       </div>`
+    : '';
+
+  const dims = [
+    ['Outcome Correctness', sc.outcome_correctness],
+    ['Completion Reliability', sc.completion_reliability],
+    ['Operator Trust', sc.operator_trust],
+    ['Regression Containment', sc.regression_containment],
+    ['Context Quality', sc.context_quality],
+    ['Efficiency Inputs', sc.efficiency_inputs],
+  ];
+
+  const dimGrid = dims.map(([label, dim]) => _obsScoreDim(label, dim)).join('');
+  const ts = d.report_generated_at ? `<span style="color:var(--fg3)">Report: ${d.report_generated_at.slice(0,16).replace('T',' ')}Z</span>` : '';
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem">
+      <span style="font-size:.85rem;font-weight:700;color:${color}">${overall.toUpperCase()}</span>
+      ${ts}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-bottom:.4rem">
+      ${dimGrid}
+    </div>
+    ${blockHtml}`;
+}
+
+async function loadAgentReplay(runId) {
+  const el = document.getElementById('agentReplayDetails');
+  const badge = document.getElementById('agentReplayBadge');
+  if (!el) return;
+  const inputEl = document.getElementById('replayRunId');
+  const filterEl = document.getElementById('replayEventFilter');
+  const rid = runId || (inputEl && inputEl.value.trim()) || '';
+  const eventType = filterEl && filterEl.value ? `&event_type=${filterEl.value}` : '';
+  const path = rid ? `/aistack/agent-runs/${encodeURIComponent(rid)}?include_payload=false${eventType}` : '/aistack/agent-runs?limit=50';
+
+  el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">Loading...</div>';
+  if (badge) { badge.textContent = '…'; badge.className = 'card-badge badge-info'; }
+
+  const d = await apiFetch(path, {}, 15000).catch(() => null);
+
+  // If we fetched the list, pick the most recent run
+  if (d && d.runs !== undefined) {
+    const runs = d.runs || [];
+    if (!runs.length) {
+      if (badge) badge.textContent = '0 runs';
+      el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No agent runs found in events file.</div>';
+      return;
+    }
+    const latest = runs[0];
+    if (inputEl) inputEl.value = latest.run_id;
+    return loadAgentReplay(latest.run_id);
+  }
+
+  if (!d || !d.available) {
+    const reason = (d && d.no_data_reason) || 'no events file — agent runs not yet recorded';
+    if (badge) { badge.textContent = 'NO DATA'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = `<div style="color:var(--fg3);font-size:.6rem">${reason}</div>`;
+    return;
+  }
+
+  _obsActiveRunId = d.run_id;
+  const controlRunEl = document.getElementById('controlRunId');
+  if (controlRunEl) controlRunEl.textContent = d.run_id;
+
+  const sum = d.summary || {};
+  const total = d.event_count || 0;
+  if (badge) {
+    badge.textContent = `${total} events · ${(sum.agent_id||'?')} · ${(sum.spec_variant||'?')}`;
+    badge.className = sum.status === 'succeeded' ? 'card-badge badge-ok' : 'card-badge badge-warn';
+  }
+
+  const heatmap = (d.tool_heatmap || []).slice(0, 8);
+  const heatHtml = heatmap.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem">
+        ${heatmap.map(([name,cnt]) => `<span style="font-size:.55rem;background:rgba(100,180,255,.1);border:1px solid rgba(100,180,255,.25);padding:.1rem .35rem;border-radius:2px;color:var(--cyan)">${name}&nbsp;<strong>${cnt}</strong></span>`).join('')}
+       </div>`
+    : '';
+
+  const EVENT_ICON = { tool_call:'⚙', artifact:'📦', human_control:'👤', token_usage:'🪙', run_start:'▶', run_end:'⏹', default:'·' };
+
+  const timeline = (d.timeline || []).slice(0, 80).map(ev => {
+    const color = _OBS_EVENT_COLOR[ev.event_type] || _OBS_EVENT_COLOR.default;
+    const icon = EVENT_ICON[ev.event_type] || EVENT_ICON.default;
+    const ts = (ev.timestamp || '').slice(11, 19);
+    const tool = ev.tool_name ? ` <span style="color:var(--cyan)">${ev.tool_name}</span>` : '';
+    const status = ev.status ? ` <span style="color:${ev.status==='succeeded'?'var(--grn)':ev.status==='failed'?'var(--red)':'var(--yel)'}">${ev.status}</span>` : '';
+    const tokens = (ev.tokens && ev.tokens.total) ? ` <span style="color:var(--fg3)">${ev.tokens.total}t</span>` : '';
+    return `<div style="display:flex;align-items:baseline;gap:.3rem;padding:.15rem 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <span style="font-size:.55rem;color:var(--fg3);min-width:4rem;font-family:var(--hud)">${ts}</span>
+      <span style="font-size:.65rem;color:${color}">${icon}</span>
+      <span style="font-size:.58rem;color:${color}">${ev.event_type||'?'}</span>
+      ${tool}${status}${tokens}
+    </div>`;
+  }).join('');
+
+  const truncNote = d.truncated ? `<div style="color:var(--yel);font-size:.55rem;margin-top:.3rem">⚠ Timeline truncated — showing first 80 events</div>` : '';
+
+  el.innerHTML = `
+    <div style="display:flex;gap:1.2rem;margin-bottom:.5rem;flex-wrap:wrap">
+      ${fwRow('Agent', sum.agent_id||'--')}
+      ${fwRow('Variant', sum.spec_variant||'--')}
+      ${fwRow('Status', sum.status||'--', sum.status==='succeeded'?'ok':sum.status==='failed'?'err':'warn')}
+      ${fwRow('Accepted', sum.accepted!=null ? String(sum.accepted) : '--', sum.accepted?'ok':'warn')}
+      ${fwRow('Useful ratio', sum.useful_ratio!=null ? (sum.useful_ratio*100).toFixed(0)+'%' : '--')}
+      ${fwRow('Tokens', sum.total_tokens||'--')}
+      ${fwRow('Tool calls', sum.tool_calls||'--')}
+      ${fwRow('Human controls', d.human_control_count||0)}
+    </div>
+    ${heatHtml}
+    <div style="max-height:260px;overflow-y:auto;padding-right:.2rem">${timeline}</div>
+    ${truncNote}`;
+}
+
+async function loadSwimlane() {
+  const el = document.getElementById('swimlaneDetails');
+  const badge = document.getElementById('swimlaneBadge');
+  if (!el) return;
+  const d = await apiFetch('/aistack/agent-runs/swimlane?limit=200', {}, 15000).catch(() => null);
+  if (!d || !d.available) {
+    if (badge) { badge.textContent = 'NO DATA'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No swimlane data — run race-harness or trigger agent runs with a shared experiment_id.</div>';
+    return;
+  }
+  const lanes = d.lanes || [];
+  if (!lanes.length) {
+    if (badge) { badge.textContent = '0 lanes'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No lanes in swimlane data.</div>';
+    return;
+  }
+  if (badge) { badge.textContent = `${lanes.length} lanes · exp ${(d.experiment_id||'?').slice(0,8)}`; badge.className = 'card-badge badge-info'; }
+
+  const rows = lanes.map(lane => {
+    const agentLabel = `${lane.agent_id||'?'}/${lane.spec_variant||'?'}`;
+    const runs = lane.runs || [];
+    const runBars = runs.slice(0, 10).map(r => {
+      const color = r.accepted ? 'var(--grn)' : r.status === 'failed' ? 'var(--red)' : 'var(--yel)';
+      const ratio = r.useful_ratio != null ? ` ${(r.useful_ratio*100).toFixed(0)}%` : '';
+      return `<span style="display:inline-block;padding:.1rem .35rem;background:rgba(0,0,0,.3);border-left:3px solid ${color};font-size:.53rem;color:${color};margin-right:.2rem;border-radius:0 2px 2px 0" title="${r.run_id}">${r.status||'?'}${ratio}</span>`;
+    }).join('');
+    return `<tr>
+      <td style="font-size:.58rem;font-family:var(--hud);padding:.3rem .5rem;color:var(--cyan);white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.06)">${agentLabel}</td>
+      <td style="font-size:.55rem;color:var(--fg3);padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${lane.total_events||0} events</td>
+      <td style="padding:.25rem .4rem;border-bottom:1px solid rgba(255,255,255,.06)">${runBars}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th style="font-size:.55rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Agent / Variant</th>
+      <th style="font-size:.55rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Events</th>
+      <th style="font-size:.55rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Runs</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+async function loadRaceComparison() {
+  const el = document.getElementById('raceDetails');
+  const badge = document.getElementById('raceBadge');
+  if (!el) return;
+  const d = await apiFetch('/aistack/agent-runs/race?limit=50', {}, 15000).catch(() => null);
+  if (!d || !d.available) {
+    if (badge) { badge.textContent = 'NO DATA'; badge.className = 'card-badge badge-info'; }
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No race data — run race-harness to generate spec-variant comparison runs.</div>';
+    return;
+  }
+  const runs = d.runs || [];
+  const winner = d.winner;
+  if (badge) {
+    badge.textContent = winner ? `winner: ${(d.winner_agent||'?')}/${(d.winner_variant||'?')}` : `${runs.length} runs`;
+    badge.className = winner ? 'card-badge badge-ok' : 'card-badge badge-info';
+  }
+
+  if (!runs.length) { el.innerHTML = '<div style="color:var(--fg3);font-size:.6rem">No runs in race data yet.</div>'; return; }
+
+  const rows = runs.map(r => {
+    const isWinner = r.run_id === winner;
+    const color = isWinner ? 'var(--grn)' : r.accepted ? 'var(--cyan)' : 'var(--fg3)';
+    const rowBg = isWinner ? 'rgba(76,175,80,.08)' : 'transparent';
+    const winMark = isWinner ? '<span style="color:var(--grn);margin-right:.3rem">★</span>' : '';
+    const ratio = r.useful_ratio != null ? (r.useful_ratio*100).toFixed(0)+'%' : '--';
+    return `<tr style="background:${rowBg}">
+      <td style="font-size:.58rem;color:${color};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${winMark}${r.agent_id||'?'}</td>
+      <td style="font-size:.55rem;color:var(--fg3);padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${r.spec_variant||'?'}</td>
+      <td style="font-size:.58rem;color:${r.status==='succeeded'?'var(--grn)':r.status==='failed'?'var(--red)':'var(--yel)'};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${r.status||'--'}</td>
+      <td style="font-size:.55rem;color:${r.accepted?'var(--grn)':'var(--fg3)'};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${r.accepted!=null?String(r.accepted):'--'}</td>
+      <td style="font-size:.58rem;font-weight:700;color:${color};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${ratio}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th style="font-size:.54rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Agent</th>
+      <th style="font-size:.54rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Variant</th>
+      <th style="font-size:.54rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Status</th>
+      <th style="font-size:.54rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Accepted</th>
+      <th style="font-size:.54rem;color:var(--fg3);text-align:left;padding:.25rem .5rem">Useful ratio</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+async function loadTokenContention() {
+  const el = document.getElementById('tokenContentionDetails');
+  const badge = document.getElementById('tokenContentionBadge');
+  if (!el) return;
+  const d = await apiFetch('/aistack/effectiveness/scorecard', {}, 15000).catch(() => null);
+  const sc = (d && d.effectiveness_scorecard) || {};
+  const ei = sc.efficiency_inputs || {};
+  const oc = sc.outcome_correctness || {};
+
+  const ratio = oc.useful_token_ratio != null ? oc.useful_token_ratio : ei.useful_token_ratio;
+  const cacheHit = ei.cache_hit_rate;
+  const localPct = ei.local_routing_pct;
+  const contention = ei.lock_contention_events_per_hour;
+  const contentionStatus = ei.lock_contention_status;
+
+  const gaugeBar = (val, warn, err, label) => {
+    if (val == null) return fwRow(label, '--');
+    const pct = Math.min(100, Math.round(val * 100));
+    const color = val >= err ? 'var(--red)' : val >= warn ? 'var(--yel)' : 'var(--grn)';
+    return `<div style="margin-bottom:.4rem">
+      <div style="display:flex;justify-content:space-between;font-size:.57rem;margin-bottom:.15rem">
+        <span style="color:var(--fg3)">${label}</span><span style="color:${color};font-weight:700">${(val*100).toFixed(0)}%</span>
+      </div>
+      <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${color};border-radius:2px"></div>
+      </div>
+    </div>`;
+  };
+
+  const contentionColor = contentionStatus === 'warn' ? 'var(--yel)' : contentionStatus === 'ok' ? 'var(--grn)' : 'var(--fg3)';
+
+  if (badge) {
+    badge.textContent = ratio != null ? `ratio ${(ratio*100).toFixed(0)}%` : 'no data';
+    badge.className = ratio != null && ratio >= 0.6 ? 'card-badge badge-ok' : ratio != null && ratio >= 0.4 ? 'card-badge badge-warn' : 'card-badge badge-info';
+  }
+
+  el.innerHTML = `
+    ${gaugeBar(ratio, 0.6, 0.4, 'Useful token ratio')}
+    ${gaugeBar(cacheHit, 0.7, 0.4, 'Cache hit rate')}
+    ${gaugeBar(localPct, 0.5, 0.2, 'Local routing %')}
+    <div style="margin-top:.4rem;padding:.3rem .5rem;background:var(--bg3);border-radius:3px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:.57rem;color:var(--fg3)">Lock contention / hr</span>
+      <span style="font-size:.65rem;font-weight:700;color:${contentionColor}">${contention != null ? contention.toFixed(1) : '--'}</span>
+    </div>`;
+}
+
+async function sendControl(action) {
+  const runId = _obsActiveRunId;
+  const resultEl = document.getElementById('controlResult');
+  if (!runId) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--yel)">No run selected — load a replay first</span>';
+    return;
+  }
+  if (resultEl) resultEl.innerHTML = `<span style="color:var(--fg3)">Sending ${action}…</span>`;
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const r = await fetch(`${BASE}/api/aistack/agent-runs/${encodeURIComponent(runId)}/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, reason: 'dashboard-operator', operator_id: 'hyperd' }),
+      signal: ctrl.signal,
+      cache: 'no-store',
+    });
+    const body = await r.json();
+    if (resultEl) {
+      const color = r.ok ? 'var(--grn)' : 'var(--red)';
+      const msg = r.ok ? `✓ ${action} → event ${(body.event_id||'').slice(0,20)} persisted=${body.persisted}` : `✗ ${r.status}: ${JSON.stringify(body).slice(0,80)}`;
+      resultEl.innerHTML = `<span style="color:${color}">${msg}</span>`;
+    }
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+async function loadObservability() {
+  await Promise.allSettled([
+    loadEffectivenessScorecard(),
+    loadSwimlane(),
+    loadRaceComparison(),
+    loadTokenContention(),
+  ]);
+  loadAgentReplay(); // deferred — triggers list then auto-loads latest
+}
+
 // ─── Metrics Feed (WebSocket /ws/metrics) ──────────────────────────────────
 (function initMetricsFeed() {
   let _ws = null;
@@ -3892,6 +4235,8 @@ window.drillLayer    = drillLayer;
 window.forceSync     = forceSync;
 window.forceLayerRefresh = forceLayerRefresh;
 window.refreshAll    = refreshAll;
-window.mlPromote     = mlPromote;
-window.mlCancel      = mlCancel;
-window.mlRollback    = mlRollback;
+window.mlPromote        = mlPromote;
+window.mlCancel         = mlCancel;
+window.mlRollback       = mlRollback;
+window.loadAgentReplay  = loadAgentReplay;
+window.sendControl      = sendControl;
