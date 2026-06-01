@@ -1,28 +1,21 @@
 {
-  "current_objective": "Implement Phase 93.3 spec variant pack contract for Markdown/HTML/visual HTML experiments.",
-  "phase": "implementation",
+  "current_objective": "Phase 93 Effectiveness-Centered Observability \u2014 slices 93.4/93.5/93.9/93.10 complete",
+  "phase": "integration",
   "todo_snapshot": [
-    "DONE: Phase 93 PRD and parity plans corrected with Pi observability parity gaps",
-    "DONE: started implementation session for Slice 93.1",
-    "DONE: added config/schemas/maeah/agent-run-event.schema.json",
-    "DONE: added scripts/ai/lib/agent_run_events.py helper",
-    "DONE: added focused regression test and validation registry entry",
-    "DONE: committed Slice 93.1 as 0b21a78f",
-    "DONE: committed Slice 93.2 as 2d665aca",
-    "DONE: added spec variant pack schema/helper/test",
-    "IN-PROGRESS: validate focused CI/tier0 and commit"
+    "DONE: 93.1 agent-run event envelope (0b21a78f)",
+    "DONE: 93.2 central agent event API (2d665aca)",
+    "DONE: 93.3 spec variant pack contract (013189f0)",
+    "DONE: 93.4 multi-agent race harness (947094dc)",
+    "DONE: 93.5 useful-token instrumentation in aq-report (947094dc)",
+    "DONE: 93.9 doc-frontmatter staged-file validation (947094dc)",
+    "DONE: 93.10 focused-CI diagnostic JSON (947094dc)",
+    "PENDING: 93.6 single-agent replay view (dashboard)",
+    "PENDING: 93.7 swimlane and race dashboard views",
+    "PENDING: 93.8 closed-loop human-agent controls",
+    "PENDING: 93.12 effectiveness scorecard prototype",
+    "PENDING: 93.13 dashboard effectiveness card",
+    "PENDING: 93.14 attention queue contention instrumentation"
   ],
-  "uncommitted_changes": [
-    ".agent/collaboration/RESUME.json",
-    "config/schemas/maeah/agent-run-event.schema.json",
-    "scripts/ai/lib/agent_run_events.py",
-    "scripts/testing/test-agent-run-event-envelope.py",
-    "config/validation-check-registry.json",
-    "dashboard/backend/api/routes/aistack.py",
-    "scripts/testing/test-dashboard-orchestration-events.py",
-    "config/schemas/maeah/spec-variant-pack.schema.json",
-    "scripts/ai/lib/spec_variant_packs.py",
-    "scripts/testing/test-spec-variant-packs.py"
-  ],
-  "resume_hint": "Stage Slice 93.3 files, run focused CI/tier0, then commit. Next candidate: useful-token instrumentation."
+  "uncommitted_changes": [],
+  "resume_hint": "Next: 93.6 single-agent replay view in dashboard API/UI, or 93.12 effectiveness scorecard prototype in aq-report."
 }
