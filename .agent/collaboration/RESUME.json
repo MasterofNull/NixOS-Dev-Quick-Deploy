@@ -1,18 +1,19 @@
 {
-  "current_objective": "Deploy automation slice: add non-interactive model-selection bypass after deploy prompt blocker.",
-  "phase": "validated",
+  "current_objective": "Create an effectiveness-centered system improvement PRD and action plan informed by the Pi coding-agent observability video and expert-agent review.",
+  "phase": "planning",
   "todo_snapshot": [
-    "DONE: Phase 92.3a committed as 02afcbd6 and delegate reliability committed as f9d09fdb",
-    "DONE: deploy attempt passed roadmap/readiness then stopped at interactive Phase 1 model selection read",
-    "DONE: added --skip-model-selection flag plus SKIP_MODEL_SELECTION env default to keep current facts.nix selections",
-    "DONE: bash -n, help surface check, self-check with --skip-model-selection, and tier0 pre-commit gate passed",
-    "NEXT: commit deploy automation slice, then retry deploy with --skip-model-selection"
+    "DONE: clean-slate state commit 589eb901 captured generated post-deploy collaboration, telemetry, prompt-ingest, and host discovery state",
+    "DONE: resolved video metadata via YouTube oEmbed: Pi Coding Agent Observability: HTML Specs with Gemini 3.5 Flash and GPT Image 2 by IndyDevDan",
+    "DONE: gathered architecture, QA/observability, collaboration reliability, and implementation strategy perspectives from spawned expert agents",
+    "IN-PROGRESS: authored .agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md with effectiveness-first decisions and bounded slices",
+    "PENDING: validate frontmatter/tier0 and commit the PRD/action plan"
   ],
   "uncommitted_changes": [
-    "Existing dirty telemetry/collaboration files were present before this slice; do not revert",
     ".agent/collaboration/RESUME.json",
-    ".agent/memory/issues-backlog.md",
-    "nixos-quick-deploy.sh"
+    ".agent/collaboration/PULSE.log",
+    ".agents/attention/ATTENTION_ARCHIVE.jsonl",
+    ".agents/telemetry/routing-decisions.jsonl",
+    ".agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md"
   ],
-  "resume_hint": "Deploy automation slice validated. Preserve existing attention/delegation/telemetry dirty files; commit only quick-deploy flag, issue log, and resume."
+  "resume_hint": "Wait for spawned expert agents, synthesize their perspectives into the new effectiveness-centered PRD, then validate and commit."
 }

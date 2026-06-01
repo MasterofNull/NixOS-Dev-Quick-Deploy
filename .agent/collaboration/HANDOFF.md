@@ -626,6 +626,31 @@ Denied paths: ['/var/lib/llama-cpp/models/']
 Your task"
 
 Your task"
+[2026-06-01T16:18:00Z] codex
+**Effectiveness-centered system improvement PRD authored** — created `.agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md` as the successor decision record to `.agents/plans/TECHNICAL-ANALYSIS-PRD.md`.
+
+Context:
+- Clean baseline commit before planning: `589eb901 chore(state): capture post-deploy generated state`.
+- Video reviewed as external inspiration: <https://www.youtube.com/watch?v=o4KZH_KSqYQ> (`Pi Coding Agent Observability: HTML Specs with Gemini 3.5 Flash and GPT Image 2`, IndyDevDan). Transcript retrieval was unavailable, so the PRD uses source-labeled metadata plus adjacent observability/spec-workflow references rather than transcript-specific claims.
+- Expert reviews gathered from architecture, QA/observability, collaboration reliability, and implementation strategy roles.
+
+Decision:
+- Phase 93 should optimize effectiveness first: correctness, completion reliability, operator trust, regression containment, context quality, and reviewability.
+- Efficiency remains measured under `efficiency_inputs`; it is not a success criterion by itself.
+- No Rust rewrite next; instrument contention and correlate with workflow degradation first.
+- No canonical HTML migration; Markdown/YAML remains SSOT, with generated HTML/spec views allowed only as read-only observability surfaces.
+
+Next highest-value slice:
+1. Fix `doc-frontmatter` focused-CI coverage so changed agentic docs are actually validated.
+2. Add focused-CI diagnostic JSON.
+3. Surface validation health in `aq-report`.
+4. Prototype `effectiveness_scorecard`.
+
+Validation:
+- `python3 scripts/governance/check-doc-frontmatter.py .agents/plans/EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md`
+- `python3 -m json.tool .agent/collaboration/RESUME.json`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — 18/18 PASS
+
 This is a RESEARCH-ONLY task. Use gr"
 You are the **Architect** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening a "
 You are the **Implementer** on NixOS-Dev-Quick-Deploy. Claude (Orchestrator) is convening "
