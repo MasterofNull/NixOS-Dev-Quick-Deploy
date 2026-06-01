@@ -786,6 +786,22 @@
       "enabled": true
     },
     {
+      "id": "dashboard-orchestration-events",
+      "description": "dashboard proxies workflow replay as normalized agent-run events",
+      "trigger_paths": [
+        "dashboard/backend/api/routes/aistack.py",
+        "scripts/testing/test-dashboard-orchestration-events.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-dashboard-orchestration-events.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 20,
+      "enabled": true
+    },
+    {
       "id": "osint-tools-mcp-contract",
       "description": "OSINT MCP wrapper lists tools and avoids insecure Maigret/MOSAIC activation",
       "trigger_paths": [

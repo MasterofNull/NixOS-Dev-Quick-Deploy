@@ -651,6 +651,29 @@ Validation:
 - `python3 -m json.tool .agent/collaboration/RESUME.json`
 - `scripts/governance/tier0-validation-gate.sh --pre-commit` — 18/18 PASS
 
+[2026-06-01T16:43:00Z] codex
+**Phase 93.2 central agent event API implemented** — added read-only dashboard proxy `/api/aistack/orchestration/events` over existing hybrid workflow replay data.
+
+Files:
+- `dashboard/backend/api/routes/aistack.py`
+- `scripts/testing/test-dashboard-orchestration-events.py`
+- `config/validation-check-registry.json`
+- `.agent/collaboration/RESUME.json`
+
+Behavior:
+- With `session_id`, fetches `/workflow/run/{session_id}/replay` and normalizes trajectory events into `maeah.agent-run-event.v1`-shaped records.
+- Without `session_id`, fetches recent `/workflow/sessions`, samples up to five sessions, merges replay events, and sorts by timestamp.
+- Returns `{available:false, source:"workflow-trajectory", count:0, events:[], no_data_reason}` instead of surfacing raw coordinator failure to the UI.
+- Preserves tool name, phase/slice, risk/approval, token delta, profile, agent, role, and detail payload for future replay/swimlane/race views.
+
+Validation:
+- `python3 scripts/testing/test-dashboard-orchestration-events.py`
+- `python3 -m py_compile dashboard/backend/api/routes/aistack.py scripts/testing/test-dashboard-orchestration-events.py`
+- `python3 -m json.tool config/validation-check-registry.json`
+
+Next slice:
+- 93.3 Spec Variant Pack Contract, or 93.5 Useful-Token instrumentation if we want report-visible value before generated spec artifacts.
+
 [2026-06-01T16:36:00Z] codex
 **Phase 93.1 agent-run event envelope implemented** — added the first repo-only substrate for Pi-style replayable agent observability.
 

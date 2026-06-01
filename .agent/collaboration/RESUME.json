@@ -1,5 +1,5 @@
 {
-  "current_objective": "Implement Phase 93.1 agent-run event envelope for Pi-style replayable observability.",
+  "current_objective": "Implement Phase 93.2 read-only central agent event API over workflow replay.",
   "phase": "implementation",
   "todo_snapshot": [
     "DONE: Phase 93 PRD and parity plans corrected with Pi observability parity gaps",
@@ -7,14 +7,18 @@
     "DONE: added config/schemas/maeah/agent-run-event.schema.json",
     "DONE: added scripts/ai/lib/agent_run_events.py helper",
     "DONE: added focused regression test and validation registry entry",
-    "IN-PROGRESS: validate focused CI/tier0 and commit"
+    "DONE: committed Slice 93.1 as 0b21a78f",
+    "IN-PROGRESS: add /api/aistack/orchestration/events read-only normalized replay proxy",
+    "PENDING: validate dashboard orchestration event test, focused CI/tier0, and commit"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
     "config/schemas/maeah/agent-run-event.schema.json",
     "scripts/ai/lib/agent_run_events.py",
     "scripts/testing/test-agent-run-event-envelope.py",
-    "config/validation-check-registry.json"
+    "config/validation-check-registry.json",
+    "dashboard/backend/api/routes/aistack.py",
+    "scripts/testing/test-dashboard-orchestration-events.py"
   ],
-  "resume_hint": "Stage Slice 93.1 files, run focused CI/tier0, then commit. Next slice is 93.2 Central Agent Event API."
+  "resume_hint": "Continue Slice 93.2: validate the dashboard orchestration events proxy, then commit if tier0 passes."
 }
