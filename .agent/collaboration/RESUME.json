@@ -1,19 +1,10 @@
 {
-  "current_objective": "Phase 94 — Dashboard agent observability + scorecard + AppArmor hardening",
-  "phase": "94.4-complete",
+  "current_objective": "Phase 95 — Training pipeline unblock + RAG gap seeding",
+  "phase": "95.2-complete",
   "todo_snapshot": [
-    "DONE: Phase 94.1 — effectiveness_scorecard key-name fixes (9cb174d6)",
-    "DONE: Phase 94.2 — AppArmor journal wildcard generalization (87b2aff5)",
-    "DONE: Phase 94.3 — focused-CI artifact wiring; validation_health now live",
-    "DONE: Phase 94.4 — GEMINI.md aq-session-start + orient rules sync"
+    "DONE: Phase 95.1 — delegation-feedback.jsonl tmpfiles f+z rules (dfc4be56)",
+    "DONE: Phase 95.2 — Seed 6 new RAG entries for top query gaps (d9116e24)"
   ],
-  "uncommitted_changes": [
-    "scripts/governance/tier0-validation-gate.sh",
-    "scripts/governance/run-focused-ci-checks.sh",
-    "scripts/automation/post-deploy-converge.sh",
-    "scripts/ai/aq-report",
-    "nix/modules/services/mcp-servers.nix",
-    ".agent/GEMINI.md"
-  ],
-  "resume_hint": "Phase 94 complete. AppArmor wildcard + scorecard fixes committed. Focused-CI artifact now writes to ~/.cache/nixos-ai-stack/latest-focused-ci.json (fallback) or telemetry dir after rebuild. validation_health: available=True, status=skip. Pending human action: sudo nixos-rebuild switch --flake .#hyperd-ai-dev (AppArmor ph94.2 + tmpfiles ph94.3 take effect)."
+  "uncommitted_changes": [],
+  "resume_hint": "Phase 95.1 + 95.2 committed. delegation-feedback.jsonl fix requires nixos-rebuild switch OR terminal sudo chown ai-hybrid:ai-stack /var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl && sudo chmod 640 _$ to activate immediately. delegate_24h_rate at 57.1% due to pre-rebuild failures polluting 24h window — will self-correct as window ages. No uncommitted changes remain."
 }
