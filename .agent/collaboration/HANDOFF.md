@@ -1,3 +1,27 @@
+# HANDOFF MEMO — 2026-06-02 (Phase 94 — Dashboard KPI Fixes + Scorecard Hydration)
+
+## Phase 94 — ALL SLICES COMPLETE
+
+### Delivered
+- **94.1 Scorecard Hydration** (9cb174d6): Fixed 3 key-name mismatches in `effectiveness_scorecard()`. 5/6 dimensions now show real data. `operator_trust` correctly `no_data` until workflow sessions recorded.
+- **94.2 AppArmor Wildcard Generalization** (87b2aff5): Dashboard profile: 20+ specific journal paths → `/var/log/journal/**`. Hash-bound sudo → `/run/wrappers/bin/sudo`. Added missing aq-qa, lspci, grep exec rules + keyword-signals.json read. Coordinator profile: specific cgroup paths → `/sys/fs/cgroup/**`. **Requires nixos-rebuild switch.**
+- **94.3 Focused-CI Artifact Wiring** (a739b1de): tmpfiles.d rule creates `latest-focused-ci.json` (660 hyperd ai-stack). Tier0 gate writes FOCUSED_CI_JSON when file writable. post-deploy-converge adds `focused_ci_artifact` step with home-dir fallback. `validation_health` will show real CI status after rebuild.
+- **94.4 GEMINI.md doc fix**: Stale model names (`Claude 3.7 Sonnet`, `Gemini 2.0 Pro`) updated to current IDs.
+
+### Also completed this session (pre-94)
+- **KPI N/A root cause** (3c397938): WS broadcast poisoned `window._aiMetrics` every 1s. Fix: hardware → `window._wsSystemMetrics`; 90s TTL for `window._aiMetrics`.
+- **PG/Redis probe latency** (bbfdff9d): asyncpg pool (min=1, max=2) → sub-5ms PG; 30s TTL cache for Redis probe.
+
+### Pending human actions
+- `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — activates:
+  - AppArmor journal wildcard + stable sudo + missing exec rules (94.2)
+  - Coordinator cgroup wildcard (94.2)
+  - tmpfiles.d creates latest-focused-ci.json with correct perms (94.3)
+
+### Open operational issue
+- `delegate_24h_rate = 40%` — 3 failures (2x backend_500 ~2s, 1x 504 timeout 240s) in 24h window. Too small a sample (5 calls) to isolate root cause. Monitor over next 48h. QA 0.8.1 is xfail'd in qa-xfail.yaml.
+
+---
 # HANDOFF MEMO — 2026-06-01 (Phase 93 — Effectiveness-Centered Observability, Batch 2)
 
 ## Phase 93 — ALL SLICES COMPLETE
@@ -990,4 +1014,56 @@ Denied paths that triggered: ['/var/log/journal/89cc3b6db776404baa5b92d606a856e3
 **AppArmor fix staged** — profile `command-center-dashboard-api`  
 Rules added (10): ['            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001221f4e7-000652f839b08ee0.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012144672-000652e59b3b2e84.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121f4c13-000652ed90272a0c.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001229b6f0-000652fc5a926581.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000122c6c65-000653000ccd4e83.journal r,']  
 Denied paths: ['/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001221f4e7-000652f839b08ee0.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012144672-000652e59b3b2e84.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121f4c13-000652ed90272a0c.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001229b6f0-000652fc5a926581.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000122c6c65-000653000ccd4e83.journal']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-01T19:09:51Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `ai-hybrid-coordinator`  
+Rules added (2):
+  - `/sys/fs/cgroup/system.slice/ai-hybrid-coordinator.service/cpu.max r,`
+  - `/sys/fs/cgroup/system.slice/cpu.max r,`
+Denied paths that triggered: ['/sys/fs/cgroup/system.slice/ai-hybrid-coordinator.service/cpu.max', '/sys/fs/cgroup/system.slice/cpu.max']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-01T19:09:51Z] health-spider
+**AppArmor fix staged** — profile `ai-hybrid-coordinator`  
+Rules added (2): ['            /sys/fs/cgroup/system.slice/ai-hybrid-coordinator.service/cpu.max r,', '            /sys/fs/cgroup/system.slice/cpu.max r,']  
+Denied paths: ['/sys/fs/cgroup/system.slice/ai-hybrid-coordinator.service/cpu.max', '/sys/fs/cgroup/system.slice/cpu.max']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-01T19:09:52Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (13):
+  - `/run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,`
+  - `/nix/var/nix/profiles/ r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000120a579e-000652e56dcb83c5.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001216dd82-000652e6225b61d2.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001234a327-00065306799f3e9d.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000123eb846-0006530e33c81514.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001226e94a-000652f91defd1b9.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012247499-000652f8bd72c726.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000121c846d-000652eb595b28ca.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000120f4f22-000652e584751fd4.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-0000000012376736-00065308a01f91b4.journal r,`
+  - `/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001249ca1c-000653338a0182d4.journal r,`
+Denied paths that triggered: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciutils-3.14.0/bin/lspci', '/nix/store/k3wiv3qqa4y0im5v1iq2jy4h9cm32dfc-gnugrep-3.12/bin/grep', '/home/hyperd/.local/share/nixos-system-dashboard/keyword-signals.json', '/run/wrappers/wrappers.Dwtm5xGLLW/sudo']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-01T19:09:53Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (13): ['            /run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,', '            /nix/var/nix/profiles/ r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-00000000120a579e-000652e56dcb83c5.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001216dd82-000652e6225b61d2.journal r,', '            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/system.journal r,']  
+Denied paths: ['/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciutils-3.14.0/bin/lspci', '/nix/store/k3wiv3qqa4y0im5v1iq2jy4h9cm32dfc-gnugrep-3.12/bin/grep', '/home/hyperd/.local/share/nixos-system-dashboard/keyword-signals.json', '/run/wrappers/wrappers.Dwtm5xGLLW/sudo']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-02T19:17:52Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (1):
+  - `/run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,`
+Denied paths that triggered: ['/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciutils-3.14.0/bin/lspci', '/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001216dd82-000652e6225b61d2.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001234a327-00065306799f3e9d.journal']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-02T19:17:53Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (1): ['            /run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,']  
+Denied paths: ['/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciutils-3.14.0/bin/lspci', '/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001216dd82-000652e6225b61d2.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001234a327-00065306799f3e9d.journal']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**

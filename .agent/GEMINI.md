@@ -188,7 +188,7 @@ scripts/governance/tier0-validation-gate.sh --pre-commit   # runs after DOC-UPDA
 git commit -m "..."
 # COLLABORATION: Update .agent/collaboration/HANDOFF.md
 ```
-Replace `<active-agent-name>` with the model generating the work (e.g. Claude 3.7 Sonnet, Gemini 2.0 Pro).
+Replace `<active-agent-name>` with the model generating the work (e.g. claude-sonnet-4-6, gemini-2.5-pro).
 Never commit without live testing + doc update evidence. Never use `--no-verify`.
 
 ---
