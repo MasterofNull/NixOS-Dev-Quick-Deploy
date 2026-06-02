@@ -650,6 +650,10 @@ in {
           "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "z ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/continuous_learning_stats.json 0640 ${hybridUser} ${aiGroup} - -"
+          # Phase 95.1 — delegation-feedback.jsonl was root:root; coordinator (ai-hybrid) needs rw.
+          # f creates if absent; z relabels if already present (root:root from prior session).
+          "f ${dataDir}/hybrid/telemetry/delegation-feedback.jsonl 0640 ${hybridUser} ${aiGroup} - -"
+          "z ${dataDir}/hybrid/telemetry/delegation-feedback.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset_export.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/aidb-reindex-latest.json 0660 ${svcUser} ${aiGroup} - -"
