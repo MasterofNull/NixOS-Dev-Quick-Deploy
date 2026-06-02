@@ -2399,6 +2399,7 @@ in {
             # Deny writes/exec to home/root; reads allowed for repo paths above.
             # auto-added by apparmor-fix-agent 2026-05-31
             /proc/@{pids}/cgroup r,  # /proc/<pid> → @{pids}
+            /sys/fs/cgroup/** r,
             deny /home/** wx,
             deny /root/** rwx,
           }
@@ -2531,8 +2532,19 @@ in {
             /var/lib/llama-cpp/models/ r,  # open
             # auto-added by apparmor-fix-agent 2026-05-30
             /etc/machine-id r,  # open
-            # auto-added by apparmor-fix-agent 2026-05-31
-            /var/log/journal/89cc3b6db776404baa5b92d606a856e3/ r,  # open
+            # journal — wildcard covers all machine-id subdirs, rotated archives, and .journal~ tmps.
+            # Replaces 20+ per-file rules accumulated by apparmor-fix-agent (Phase 94.2).
+            /var/log/journal/** r,
+            /run/log/journal/** r,
+            # sudo — /run/wrappers/bin/sudo is the stable NixOS path; hash-bound wrappers.*/sudo breaks on rebuild.
+            /run/wrappers/bin/sudo ix,
+            /nix/var/nix/profiles/ r,
+            # CLI tools invoked by health probes and aq-qa
+            /nix/store/**/bin/aq-qa ix,
+            /nix/store/**/bin/lspci ix,
+            /nix/store/**/bin/grep ix,
+            # Dashboard keyword signals
+            /home/hyperd/.local/share/nixos-system-dashboard/** r,
             deny /home/** wx,
             deny /root/** rwx,
           }
