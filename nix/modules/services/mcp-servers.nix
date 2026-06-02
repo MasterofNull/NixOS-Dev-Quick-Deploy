@@ -2553,8 +2553,6 @@ in {
             /nix/store/**/bin/grep ix,
             # Dashboard keyword signals
             /home/hyperd/.local/share/nixos-system-dashboard/** r,
-            # auto-added by apparmor-fix-agent 2026-06-02
-            /run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,  # exec
             deny /home/** wx,
             deny /root/** rwx,
           }
