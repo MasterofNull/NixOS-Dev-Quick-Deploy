@@ -188,8 +188,10 @@ for check in registry.get("checks", []):
 if not ran_any:
     print("[focused-ci] SKIP: no CI-sensitive changed paths detected")
 
-# Write JSON diagnostic output if requested (93.10)
-if json_out_path and check_results:
+# Write JSON diagnostic output if requested (93.10 / 94.3).
+# Always write when json_out_path is set — even on skip — so validation_health
+# in aq-report reflects the latest gate result rather than staying no_data.
+if json_out_path:
     import datetime
     doc = {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),

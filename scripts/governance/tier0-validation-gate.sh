@@ -376,14 +376,20 @@ gate_config_dir_lint() {
 # Gate 13: Path-aware focused CI checks
 gate_focused_ci_checks() {
   log "Running focused CI-sensitive checks..."
-  # Phase 94.3: write diagnostic artifact if the telemetry file already exists
-  # (file is created by tmpfiles.d on boot; gate updates it on every commit).
-  local _ci_artifact="/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json"
-  local _ci_env=""
-  if [[ -w "${_ci_artifact}" ]]; then
-    _ci_env="FOCUSED_CI_JSON=${_ci_artifact}"
+  # Phase 94.3: write focused-CI diagnostic artifact so validation_health in
+  # aq-report reflects the latest gate result.  Primary path is the shared
+  # telemetry dir (available after nixos-rebuild activates tmpfiles.d rule);
+  # fall back to ~/.cache so the artifact is written immediately without root.
+  local _ci_primary="/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json"
+  local _ci_fallback="${HOME}/.cache/nixos-ai-stack/latest-focused-ci.json"
+  local _ci_artifact=""
+  if [[ -w "${_ci_primary}" ]]; then
+    _ci_artifact="${_ci_primary}"
+  else
+    mkdir -p "$(dirname "${_ci_fallback}")"
+    _ci_artifact="${_ci_fallback}"
   fi
-  if env ${_ci_env} bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
+  if FOCUSED_CI_JSON="${_ci_artifact}" bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
     pass "Focused CI-sensitive checks passed"
   else
     fail "Focused CI-sensitive checks failed"

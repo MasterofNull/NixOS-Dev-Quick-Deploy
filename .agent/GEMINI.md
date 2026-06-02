@@ -90,12 +90,16 @@ Follow this for every non-trivial task. Full contract: `.agent/WORKFLOW-CANON.md
 
 ### Step 1 — ORIENT
 ```bash
-aq-prime                                # progressive disclosure onboarding
-aq-hints "<task>" --format=json         # ranked workflow guidance
-aq-qa 0                                 # harness health check
-aq-context-bootstrap --task "<task>"    # minimal context + entrypoint
+aq-prime                                     # progressive disclosure onboarding
+aq-session-start --task "<task>"             # MANDATORY: context hydration (lessons + hints + memory)
+aq-hints "<task>" --format=json              # ranked workflow guidance
+aq-qa 0                                      # harness health check
+aq-context-bootstrap --task "<task>"         # minimal context + entrypoint
 ```
-If resuming: `mcp_server_get_working_memory` → `mcp_server_recall_memory` FIRST.
+**Rules**:
+- Never run raw `ls` on repo root — use `als` or targeted grep/glob
+- Never guess file locations — search first (`agrep`), read what search returns
+- If resuming: `mcp_server_get_working_memory` → `mcp_server_recall_memory` FIRST, before any other action
 
 ### Step 2 — RESEARCH
 **Codebase** (always use Agentic CLI Tools):

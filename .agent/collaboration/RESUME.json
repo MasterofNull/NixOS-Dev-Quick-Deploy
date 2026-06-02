@@ -1,24 +1,19 @@
 {
-  "current_objective": "Phase 93 Effectiveness-Centered Observability — ALL SLICES COMPLETE + Dashboard issues fixed",
-  "phase": "complete",
+  "current_objective": "Phase 94 — Dashboard agent observability + scorecard + AppArmor hardening",
+  "phase": "94.4-complete",
   "todo_snapshot": [
-    "DONE: 93.1 agent-run event envelope (0b21a78f)",
-    "DONE: 93.2 central agent event API (2d665aca)",
-    "DONE: 93.3 spec variant pack contract (013189f0)",
-    "DONE: 93.4 multi-agent race harness (947094dc)",
-    "DONE: 93.5 useful-token instrumentation in aq-report (947094dc)",
-    "DONE: 93.9 doc-frontmatter staged-file validation (947094dc)",
-    "DONE: 93.10 focused-CI diagnostic JSON (947094dc)",
-    "DONE: 93.11 validation health in aq-report (batch2 commit)",
-    "DONE: 93.6 single-agent replay view (dashboard — batch2 commit)",
-    "DONE: 93.7 swimlane and race dashboard views (batch2 commit)",
-    "DONE: 93.8 closed-loop human-agent controls (batch2 commit)",
-    "DONE: 93.12 effectiveness scorecard in aq-report (batch2 commit)",
-    "DONE: 93.13 dashboard effectiveness scorecard endpoint (batch2 commit)",
-    "DONE: 93.14 attention queue contention instrumentation (batch2 commit)",
-    "DONE: Polished AI Logic Observability dashboard section (cd074774)",
-    "DONE: Dashboard route order fix + 3 missing routes (1a9dc6ce)"
+    "DONE: Phase 94.1 — effectiveness_scorecard key-name fixes (9cb174d6)",
+    "DONE: Phase 94.2 — AppArmor journal wildcard generalization (87b2aff5)",
+    "DONE: Phase 94.3 — focused-CI artifact wiring; validation_health now live",
+    "DONE: Phase 94.4 — GEMINI.md aq-session-start + orient rules sync"
   ],
-  "uncommitted_changes": [],
-  "resume_hint": "Phase 93 fully shipped and dashboard issues resolved. All routes verified live. Next: investigate offline services (aidb/Qdrant, llama-embed, ai-training-ingest) or start Phase 94."
+  "uncommitted_changes": [
+    "scripts/governance/tier0-validation-gate.sh",
+    "scripts/governance/run-focused-ci-checks.sh",
+    "scripts/automation/post-deploy-converge.sh",
+    "scripts/ai/aq-report",
+    "nix/modules/services/mcp-servers.nix",
+    ".agent/GEMINI.md"
+  ],
+  "resume_hint": "Phase 94 complete. AppArmor wildcard + scorecard fixes committed. Focused-CI artifact now writes to ~/.cache/nixos-ai-stack/latest-focused-ci.json (fallback) or telemetry dir after rebuild. validation_health: available=True, status=skip. Pending human action: sudo nixos-rebuild switch --flake .#hyperd-ai-dev (AppArmor ph94.2 + tmpfiles ph94.3 take effect)."
 }
