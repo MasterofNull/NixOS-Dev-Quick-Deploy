@@ -28,9 +28,15 @@ def _load_aq_report():
 
 def test_no_data_when_all_empty() -> None:
     mod = _load_aq_report()
-    result = mod.effectiveness_scorecard(
-        {}, {}, {}, {}, [], None, None, None, None, None, None, None
-    )
+    # Suppress real QA results file so regression_containment stays no_data.
+    _orig = mod._LATEST_QA_RESULTS_PATH
+    mod._LATEST_QA_RESULTS_PATH = Path("/nonexistent/qa-results.json")
+    try:
+        result = mod.effectiveness_scorecard(
+            {}, {}, {}, {}, [], None, None, None, None, None, None, None
+        )
+    finally:
+        mod._LATEST_QA_RESULTS_PATH = _orig
     assert_true("overall_status" in result, "overall_status key present")
     assert_true(result["overall_status"] == "no_data", f"all-empty → no_data, got {result['overall_status']}")
     assert_true("blocking_reasons" in result, "blocking_reasons key present")

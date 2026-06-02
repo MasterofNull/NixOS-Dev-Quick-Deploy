@@ -1807,6 +1807,25 @@ PYEOF
   fi
   printf '\n%b%d passed%b · %b%d failed%b · %d skipped · %ds\n\n' \
     "${GREEN}" "${PASS}" "${NC}" "${RED}" "${FAIL}" "${NC}" "${SKIP}" "${duration}"
+
+  # Persist summary for aq-report regression_containment proxy (Phase 96.1).
+  local _qa_json="${REPO_ROOT}/data/hybrid/telemetry/latest-qa-results.json"
+  mkdir -p "$(dirname "${_qa_json}")" 2>/dev/null || true
+  python3 - "$PHASE" "$PASS" "$FAIL" "$SKIP" "$duration" "${RESULTS[@]}" > "${_qa_json}" 2>/dev/null <<'PYEOF' || true
+import sys, json
+from datetime import datetime, timezone
+phase, passed, failed, skipped, duration = sys.argv[1:6]
+items = []
+for entry in sys.argv[6:]:
+    status, layer, id_, desc = entry.split('|', 3)
+    items.append({"layer": int(layer), "id": id_, "status": status, "description": desc})
+print(json.dumps({
+    "phase": phase, "passed": int(passed), "failed": int(failed),
+    "skipped": int(skipped), "duration_s": int(duration),
+    "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+    "tests": items,
+}, indent=2))
+PYEOF
 }
 
 # ---------------------------------------------------------------------------

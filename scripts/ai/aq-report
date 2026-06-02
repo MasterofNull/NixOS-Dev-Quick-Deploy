@@ -5332,6 +5332,41 @@ def _compute_delegate_rate(audit_entries: List[dict], now: datetime, window_s: i
     return round(ok / total, 3) if total > 0 else None
 
 
+def _compute_delegate_counts(audit_entries: List[dict], now: datetime, window_s: int = 86400) -> tuple:
+    """Return (total, failures) for ai_coordinator_delegate calls in window.
+
+    Mirrors _compute_delegate_rate's probe-exclusion logic.
+    Returns (0, 0) when no terminal entries found.
+    """
+    _TERMINAL = {"success", "error", "timeout", "failed"}
+    cutoff_ts = now.timestamp() - window_s
+    total = 0
+    failures = 0
+    for entry in audit_entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("tool_name", "") or "").strip().lower() != "ai_coordinator_delegate":
+            continue
+        ts_obj = _entry_ts_utc(entry)
+        if ts_obj is None or ts_obj.timestamp() < cutoff_ts:
+            continue
+        latency_ms = float(entry.get("latency_ms") or 0)
+        err_msg = str(entry.get("error_message") or "")
+        is_probe = (
+            (entry.get("outcome") == "error" and err_msg == "http_status_504" and latency_ms < 15000)
+            or err_msg.startswith("blocked_endpoint_pattern:")
+        )
+        if is_probe:
+            continue
+        outcome = str(entry.get("outcome") or "")
+        if outcome not in _TERMINAL:
+            continue
+        total += 1
+        if outcome != "success":
+            failures += 1
+    return total, failures
+
+
 def historical_watchlist(tool_stats: Dict[str, dict], recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
     """Summarize longer-window issues that are not active in the recent window."""
     watch: Dict[str, Any] = {
@@ -7250,6 +7285,35 @@ def _scorecard_status(value: Optional[float], pass_t: float, warn_t: float) -> s
     return "fail"
 
 
+_LATEST_QA_RESULTS_PATH = Path(os.getenv(
+    "AQ_LATEST_QA_RESULTS_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                 "data", "hybrid", "telemetry", "latest-qa-results.json")
+))
+
+
+def _read_latest_qa_results(max_age_s: int = 86400) -> Optional[Dict[str, Any]]:
+    """Read latest-qa-results.json written by aq-qa after each run.
+
+    Returns None when file is absent, unreadable, or older than max_age_s.
+    Primary path: data/hybrid/telemetry/latest-qa-results.json (repo-relative,
+    written by _aq-qa-bash Phase 96.1).  Override via AQ_LATEST_QA_RESULTS_PATH.
+    """
+    p = _LATEST_QA_RESULTS_PATH
+    try:
+        if not p.exists():
+            return None
+        age_s = (datetime.now(tz=timezone.utc) - datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)).total_seconds()
+        if age_s > max_age_s:
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        return data
+    except Exception:
+        return None
+
+
 def effectiveness_scorecard(
     tool_stats: Dict[str, dict],
     route: Dict[str, Any],
@@ -7263,6 +7327,7 @@ def effectiveness_scorecard(
     useful_tokens_summary: Optional[Dict[str, Any]],
     validation_health_summary: Optional[Dict[str, Any]],
     attention_contention: Optional[Dict[str, Any]],
+    audit_entries: Optional[List[dict]] = None,
 ) -> Dict[str, Any]:
     """Assemble the Phase 93.12 effectiveness scorecard.
 
@@ -7283,12 +7348,9 @@ def effectiveness_scorecard(
     eval_pass_rate = eval_trend.get("recent_pass_rate") or eval_trend.get("pass_rate")
     useful_ratio = (useful_tokens_summary or {}).get("useful_ratio")
     rh = recent_health or {}
-    # delegate_24h_rate is the fraction of ai_coordinator_delegate calls that
-    # succeeded in the last 24 h — the best available proxy for delegation
-    # success rate when no separate total/failure counter is maintained.
     del_success_rate: Optional[float] = rh.get("delegate_24h_rate")
-    del_total = 0
-    del_failures = 0
+    _sc_now = datetime.now(tz=timezone.utc)
+    del_total, del_failures = _compute_delegate_counts(audit_entries or [], _sc_now, window_s=86400)
     oc_rate = eval_pass_rate if eval_pass_rate is not None else del_success_rate
     oc_status = _scorecard_status(oc_rate, _SCORECARD_OUTCOME_PASS_THRESHOLD, _SCORECARD_OUTCOME_WARN_THRESHOLD)
     if oc_status == "fail":
@@ -7339,14 +7401,22 @@ def effectiveness_scorecard(
     }
 
     # ── regression_containment ─────────────────────────────────────────────
-    # Use delegate_7d_rate as a proxy for harness stability; healthy tool
-    # success rate across 7 days is the most meaningful available signal until
-    # a dedicated aq-qa pass-rate time series is wired in.
-    qa_pass_rate = rh.get("delegate_7d_rate") or rh.get("delegate_24h_rate")
+    # Prefer actual aq-qa suite results (written by _aq-qa-bash after every run,
+    # Phase 96.1) when the file is fresh (<24 h).  Fall back to delegate rate
+    # when QA results are absent or stale.
+    _qa = _read_latest_qa_results()
+    if _qa and isinstance(_qa.get("passed"), int) and isinstance(_qa.get("failed"), int):
+        _qa_total = _qa["passed"] + _qa.get("failed", 0)
+        qa_pass_rate: Optional[float] = round(_qa["passed"] / _qa_total, 3) if _qa_total > 0 else None
+        _qa_source = "aq_qa_results"
+    else:
+        qa_pass_rate = rh.get("delegate_7d_rate") or rh.get("delegate_24h_rate")
+        _qa_source = "delegate_rate_proxy"
     rc_status = _scorecard_status(qa_pass_rate, _SCORECARD_QA_PASS_THRESHOLD, _SCORECARD_QA_WARN_THRESHOLD)
     regression_containment = {
         "status": rc_status,
         "qa_pass_rate": qa_pass_rate,
+        "qa_source": _qa_source,
         "validation_health_status": vh.get("status"),
     }
 
@@ -7939,6 +8009,7 @@ def main() -> None:
         useful_tokens_summary,
         validation_health_summary,
         attention_contention,
+        audit_entries=audit_entries,
     )
     recs = build_recommendations(
         tool_stats,
