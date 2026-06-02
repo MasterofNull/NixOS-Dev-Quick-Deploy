@@ -1,3 +1,35 @@
+# HANDOFF MEMO — 2026-06-02 (Phases 96–97 — Scorecard QA Wiring + AppArmor Cleanup)
+
+## Phases 96–97 — ALL SLICES COMPLETE
+
+### Delivered
+- **96.1 QA results persistence** (`dbe9ea55`): `_aq-qa-bash` now writes `data/hybrid/telemetry/latest-qa-results.json` after every `aq-qa` run. Contains phase, passed, failed, skipped, duration, generated_at.
+- **96.2 Scorecard regression_containment** (`dbe9ea55`): `aq-report` `_read_latest_qa_results()` reads QA file with 24h TTL. `regression_containment` uses real pass rate (1.0 = 79/79) when file is fresh; falls back to delegate rate proxy when absent/stale. `qa_source` field indicates which signal was used. Status flipped from `fail` → `pass`.
+- **96.3 Completion reliability counts** (`dbe9ea55`): `_compute_delegate_counts()` added to `aq-report`. `completion_reliability.delegation_total/failures` now shows real 24h values (was hardcoded 0).
+- **97.1 AppArmor hash-bound sudo cleanup** (`ff54549a`): Removed `auto-added by apparmor-fix-agent 2026-06-02 /run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,` from `command-center-dashboard-api` profile (was duplicate of stable `/run/wrappers/bin/sudo ix,` already present). Committed via `aq-approve attn-af1198a3`.
+- **97.2 Attention queue cleared**: Approved and archived all 3 pending alerts (AppArmor fix, rebuild-required notice, training loop finding from May 27).
+
+### Current scorecard state (post-rebuild, June 2)
+- `overall_status: warn` — no blocking reasons
+- `outcome_correctness: warn` — delegate_24h_rate=77.8% (2 failures: 1×pre-rebuild 504, 1×post-rebuild 500). Will recover as window ages.
+- `completion_reliability: warn` — 9 calls, 2 failures in 24h. Real counts now shown.
+- `regression_containment: pass` — qa_pass_rate=1.0 from aq_qa_results (79/79) ✓
+- `context_quality: pass` — hint adoption 100%, 7 query gaps (historical)
+- `operator_trust: no_data` — no workflow sessions (correct)
+- `efficiency_inputs: ok`
+
+### Data durability confirmed
+State directories (`/var/lib/ai-stack/`) are durable across rebuilds. Qdrant: 11K+ points persist. PostgreSQL: query_gaps, lessons, etc. persist. delegation-feedback.jsonl: now `ai-hybrid:ai-stack 0640` — writable by coordinator (Phase 95.1).
+
+### Pending human actions
+- Note: AppArmor profile for `command-center-dashboard-api` was updated (removed hash-bound sudo duplicate). **Requires nixos-rebuild to take effect.** Profile is currently running with the old version in kernel — no denials, just a cleanup for rebuild safety.
+
+### Open issues (no code action warranted)
+- `completion_reliability: warn` — 2 failures aging out of 24h window (~1h for older failure, ~26h for newer). Self-corrects.
+- CPU thermal tier = critical persistent (Renoir APU, 81°C) — `batch` task class unusable. See issues-backlog.md.
+- `delegate_7d_rate = 79.3%` — recovering; old provider failures aging out of 7d window.
+
+---
 # HANDOFF MEMO — 2026-06-02 (Phase 95 — Training Pipeline Unblock + RAG Gap Seeding)
 
 ## Phase 95 — ALL SLICES COMPLETE
