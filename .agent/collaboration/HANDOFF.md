@@ -1,3 +1,26 @@
+# HANDOFF MEMO — 2026-06-02 (Phase 95 — Training Pipeline Unblock + RAG Gap Seeding)
+
+## Phase 95 — ALL SLICES COMPLETE
+
+### Delivered
+- **95.1 delegation-feedback.jsonl ownership fix** (dfc4be56): Added `f` + `z` tmpfiles.d rules for `delegation-feedback.jsonl` in `nix/modules/services/mcp-servers.nix`. File was `root:root 644`; coordinator (`ai-hybrid`) needs write access to record training events. `f` creates absent file; `z` relabels existing file. **Requires nixos-rebuild switch to activate**, OR immediate terminal: `sudo chown ai-hybrid:ai-stack /var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl && sudo chmod 640 $_`
+
+- **95.2 RAG gap seeding** (d9116e24): Added 6 new entries to `scripts/data/seed-rag-knowledge.py` targeting 5 recurring `[ROLE: implement]` query gaps (2x each) and 1 Continue context-limit error (9x). Collections updated:
+  - `error-solutions` (18 pts): +1 `continue_context_limit` diagnosis
+  - `skills-patterns` (7 pts): +2 `agent_workflow_phases`, `tool_call_representation`
+  - `best-practices` (18 pts): +3 `aiohttp_concurrent_handlers`, `exponential_backoff_retry`, `nix_package_override`
+  - All 43 records re-embedded and upserted to Qdrant. Gaps cleared from 5 → 0 actionable.
+
+### Pending human actions
+- `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — activates Phase 95.1 tmpfiles rule; also activates Phase 94.2 AppArmor if not yet done.
+  - After rebuild: verify with `ls -la /var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl` (should show `ai-hybrid:ai-stack 0640`)
+
+### Open issues (no code action warranted)
+- `delegate_24h_rate = 57.1%` — pre-rebuild failures polluting the 24h window; post-rebuild calls are 100% successful. Will self-correct as window advances (failures from June 1).
+- `operator_trust: no_data` — correct; no workflow sessions recorded yet.
+- CPU thermal tier = critical persistent (Renoir APU, 81°C) — see issues-backlog.md; `batch` task class unusable.
+
+---
 # HANDOFF MEMO — 2026-06-02 (Phase 94 — Scorecard + AppArmor + Observability)
 
 ## Phase 94 — ALL SLICES COMPLETE
