@@ -653,6 +653,7 @@ in {
           "f ${dataDir}/hybrid/fine-tuning/dataset.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset_export.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/aidb-reindex-latest.json 0660 ${svcUser} ${aiGroup} - -"
+          "f ${dataDir}/hybrid/telemetry/latest-focused-ci.json 0660 ${svcUser} ${aiGroup} - -"
           "d ${dataDir}/ralph              0750 ${ralphUser} ${aiGroup} -"
           "d ${dataDir}/ralph/state        0750 ${ralphUser} ${aiGroup} -"
           "d ${dataDir}/ralph/telemetry    0750 ${ralphUser} ${aiGroup} -"
@@ -1691,6 +1692,9 @@ in {
         "d ${dataDir}/hybrid/telemetry 0755 ${svcUser} ${aiGroup} -"
         "z ${dataDir}/hybrid/telemetry/latest-aq-report.json 0644 ${svcUser} ${aiGroup} -"
         "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0644 ${svcUser} ${aiGroup} -"
+        # Phase 94.3 — focused-CI artifact: created on boot so hyperd can overwrite it
+        # after every tier0 gate run; populates validation_health in aq-report.
+        "f ${dataDir}/hybrid/telemetry/latest-focused-ci.json 0664 ${svcUser} ${aiGroup} -"
         "d ${mutableStateDir} 0755 ${svcUser} ${aiGroup} -"
         "d ${mutableOptimizerDir} 0755 ${svcUser} ${aiGroup} -"
         "d ${mutableLogDir} 0755 ${svcUser} ${aiGroup} -"
@@ -2545,6 +2549,8 @@ in {
             /nix/store/**/bin/grep ix,
             # Dashboard keyword signals
             /home/hyperd/.local/share/nixos-system-dashboard/** r,
+            # auto-added by apparmor-fix-agent 2026-06-02
+            /run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,  # exec
             deny /home/** wx,
             deny /root/** rwx,
           }

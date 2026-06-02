@@ -14,6 +14,7 @@ AUTO_REMEDIATE_SUMMARY_OUT="${POST_DEPLOY_AUTO_REMEDIATE_OUT:-${DATA_DIR}/hybrid
 LEARNING_PROCESS_OUT="${POST_DEPLOY_LEARNING_PROCESS_OUT:-${DATA_DIR}/hybrid/telemetry/learning-process-latest.json}"
 LEARNING_EXPORT_OUT="${POST_DEPLOY_LEARNING_EXPORT_OUT:-${DATA_DIR}/hybrid/telemetry/learning-export-latest.json}"
 AQ_QA_PHASE0_OUT="${POST_DEPLOY_AQ_QA_PHASE0_OUT:-${DATA_DIR}/hybrid/telemetry/aq-qa-phase0-latest.json}"
+FOCUSED_CI_OUT="${POST_DEPLOY_FOCUSED_CI_OUT:-${DATA_DIR}/hybrid/telemetry/latest-focused-ci.json}"
 AGENT_INSTRUCTIONS_IMPORT_OUT="${POST_DEPLOY_AGENT_INSTRUCTIONS_IMPORT_OUT:-${DATA_DIR}/hybrid/telemetry/agent-instructions-import-latest.txt}"
 RAG_PREWARM_OUT="${POST_DEPLOY_RAG_PREWARM_OUT:-${DATA_DIR}/hybrid/telemetry/rag-prewarm-latest.json}"
 HINT_FEEDBACK_LOG_PATH="${HINT_FEEDBACK_LOG_PATH:-/var/log/nixos-ai-stack/hint-feedback.jsonl}"
@@ -122,6 +123,14 @@ run_phase0_qa() {
   [[ -x "${REPO_ROOT}/scripts/ai/aq-qa" ]] || return 0
   run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
     "${BASH_BIN}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 --json > "${AQ_QA_PHASE0_OUT}"
+}
+
+run_focused_ci() {
+  local ci_gate="${REPO_ROOT}/scripts/governance/run-focused-ci-checks.sh"
+  [[ -x "${ci_gate}" ]] || return 0
+  [[ -w "${FOCUSED_CI_OUT}" ]] || return 0
+  run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
+    env FOCUSED_CI_JSON="${FOCUSED_CI_OUT}" "${BASH_BIN}" "${ci_gate}" --pre-commit
 }
 
 run_agent_instructions_import() {
@@ -287,6 +296,8 @@ fi
 if [[ -x "${REPO_ROOT}/scripts/ai/aq-qa" ]]; then
   run_step "aq_qa_phase0" run_phase0_qa || true
 fi
+
+run_step "focused_ci_artifact" run_focused_ci || true
 
 run_step "hints_feedback_endpoint_probe" probe_hints_feedback_endpoint || true
 
