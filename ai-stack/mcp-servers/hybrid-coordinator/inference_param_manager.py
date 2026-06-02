@@ -152,17 +152,23 @@ class InferenceParamManager:
                 logger.error(f"Error in IPM poll loop: {e}")
                 await asyncio.sleep(5.0)
 
+    # Renoir APU (Ryzen 4xxx) Tctl reads ~2-4°C above Tdie; safe_max is 95°C.
+    # Defaults calibrated for the harness hardware. Override via env to tune.
+    _THERMAL_SHUTDOWN_C: float = float(os.getenv("THERMAL_SHUTDOWN_C", "88"))
+    _THERMAL_CRITICAL_C: float = float(os.getenv("THERMAL_CRITICAL_C", "83"))
+    _THERMAL_WARN_C: float = float(os.getenv("THERMAL_WARN_C", "73"))
+
     def _determine_thermal_tier(self) -> str:
         temps = [t for t in [self._state.temp_cpu_c, self._state.temp_gpu_c] if t is not None]
         if not temps:
             return "unknown"
-        
+
         max_t = max(temps)
-        if max_t >= 88:
+        if max_t >= self._THERMAL_SHUTDOWN_C:
             return "shutdown"
-        if max_t >= 80:
+        if max_t >= self._THERMAL_CRITICAL_C:
             return "critical"
-        if max_t >= 70:
+        if max_t >= self._THERMAL_WARN_C:
             return "warn"
         return "optimal"
 

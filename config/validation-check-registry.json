@@ -952,6 +952,22 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "ipm-thermal-thresholds",
+      "description": "Phase 99.1 IPM thermal tier env-var thresholds — critical/warn/shutdown calibrated for Renoir APU",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py",
+        "scripts/testing/test-ipm-thermal-thresholds.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-ipm-thermal-thresholds.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

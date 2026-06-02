@@ -69,3 +69,9 @@
   Severity: low (policy gap, not immediate production risk)
   Action: Long-term: pass domain_shell in TaskConfig and validate against DOMAIN-ROLE-MATRIX at dispatch. Immediate: document constraint in delegation prompts.
   File: .agent/DOMAIN-ROLE-MATRIX.md (new), ai-stack/mcp-servers/coordinator/agent_executor.py
+
+[RESOLVED 2026-06-02] hardware — CPU thermal tier = critical persistent (Renoir APU Tctl 81°C) — MLFQ level-2 (batch task class) was permanently blocked because _determine_thermal_tier() used a hardcoded critical threshold of 80°C and Renoir APU Tctl sensor reads ~81°C at idle.
+  Severity: medium → resolved
+  Action: Phase 99.1 — raised critical threshold from 80→83°C, warn from 70→73°C. Added THERMAL_CRITICAL_C / THERMAL_WARN_C / THERMAL_SHUTDOWN_C env var overrides. Shutdown stays at 88°C (safety boundary). 6/6 regression tests pass.
+  File: ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py ~line 155
+  Test: scripts/testing/test-ipm-thermal-thresholds.py
