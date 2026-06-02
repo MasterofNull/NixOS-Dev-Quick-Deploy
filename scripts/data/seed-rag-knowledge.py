@@ -241,6 +241,18 @@ ERROR_SOLUTIONS = [
         "last_used": NOW,
         "confidence_score": 0.95,
     },
+    {
+        "error_type": "continue_context_limit",
+        "error_message": "Continue agent mode: message exceeds context limit",
+        "context": "Continue IDE extension shows 'message exceeds context limit' when the active session JSON in ~/.continue/sessions/ grows past the model's token budget (~8-16k tokens for local model). Diagnosis: check session file size with du -sh ~/.continue/sessions/*.json; identify largest file.",
+        "solution": "Compact the session: (1) identify bloated session via du -sh ~/.continue/sessions/*.json, (2) archive session file: mv ~/.continue/sessions/<id>.json .agents/archive/$(date +%Y%m%d)-continue-session.json, (3) restart Continue in IDE. Preventive: keep sessions under 8.0 MiB; aq-report §8a shows Continue session budget health. If recurring: reduce context window in Continue settings (contextLength in config.json).",
+        "solution_verified": True,
+        "success_count": 2,
+        "failure_count": 0,
+        "first_seen": NOW - 86400 * 3,
+        "last_used": NOW,
+        "confidence_score": 0.90,
+    },
 ]
 
 SKILLS_PATTERNS = [
@@ -328,6 +340,40 @@ SKILLS_PATTERNS = [
         "prerequisites": ["chromium installed", "dashboard service running on :8889"],
         "related_skills": ["frontend_debug", "async_fetch_patterns"],
         "value_score": 0.82,
+        "last_updated": NOW,
+    },
+    {
+        "skill_name": "agent_workflow_phases",
+        "description": "Phases of an agent workflow session: orient, research, plan, execute, validate, doc, commit",
+        "usage_pattern": "8-step canonical workflow: (1) ORIENT — aq-prime + aq-session-start + aq-qa 0. (2) RESEARCH — agrep/als/acat; never guess paths. (3) PRD/PLAN — write .agents/plans/ doc before coding. (4) MEMORY CHECKPOINT — store plan + write PENDING.json. (5) EXECUTE — one slice, one concern, PULSE.log after each write. (6) VALIDATE — live test + tier0-validation-gate.sh. (7) DOC-UPDATE — HANDOFF.md + agent .md files. (8) COMMIT — git add specific files + tier0 gate + conventional commit with Co-Authored-By.",
+        "success_examples": [
+            "Phase 94 — each of 94.1-94.4 followed orient→execute→validate→commit exactly",
+            "Phase 89.2 — plan written in .agents/plans/ before any file edit; gate passed before commit",
+        ],
+        "failure_examples": [
+            "Coding without a written plan (violates PRD GATE rule) — commit rejected by reviewer",
+            "Skipping VALIDATE step — runtime error found in production instead of pre-commit",
+        ],
+        "prerequisites": ["aq-prime run", "RESUME.json current"],
+        "related_skills": ["multi-agent-collab", "context-efficiency"],
+        "value_score": 0.92,
+        "last_updated": NOW,
+    },
+    {
+        "skill_name": "tool_call_representation",
+        "description": "How a tool-call in an LLM agent is represented: name, input parameters, and output",
+        "usage_pattern": "Tool call structure in llama.cpp/OpenAI-compatible agents: (1) model emits JSON with keys 'function' → {name: str, arguments: dict}. (2) Host extracts call via rfind('{\"function\"') to strip prose preamble. (3) Host executes tool, wraps result in role:'tool' message (NOT role:'function' — silently dropped). (4) Result injected into conversation as {role:'tool', content:str(result)}. (5) Next model turn sees tool result and continues. Field names: OpenAI uses 'tool_calls'[].function.{name,arguments}; llama.cpp native uses top-level 'function':{name,arguments}.",
+        "success_examples": [
+            "tool_registry.parse_tool_call_from_llama: rfind('{\"function\"') extracts from prose-wrapped output",
+            "Agent loop: role='tool' for results, role='assistant' for model output, role='user' for inputs",
+        ],
+        "failure_examples": [
+            "json.loads(full_response) — fails when model prepends prose before JSON call",
+            "role:'function' for tool result — silently dropped by Qwen3 chat template",
+        ],
+        "prerequisites": ["llama.cpp or OpenAI-compatible inference endpoint"],
+        "related_skills": ["agent_role_injection", "local_agent_dispatch"],
+        "value_score": 0.90,
         "last_updated": NOW,
     },
 ]
@@ -580,6 +626,57 @@ BEST_PRACTICES = [
         ],
         "references": ["scripts/ai/delegate-to-gemini"],
         "endorsement_count": 1,
+        "last_validated": NOW,
+    },
+    {
+        "category": "python_async",
+        "title": "aiohttp concurrent HTTP request handling: connection pool, semaphore, to_thread",
+        "description": "aiohttp handles concurrent HTTP requests via an async event loop — each request is a coroutine. Concurrent pattern: aiohttp.ClientSession is reusable (create once per server lifetime, not per request). For bounded concurrency: asyncio.Semaphore(N) to cap parallel outbound requests. For CPU-bound or sync I/O inside handlers: asyncio.to_thread(sync_fn, *args). aiohttp server handles thousands of concurrent connections via single event loop; never block in async def (no time.sleep, no open(), no requests.get). For parallel fan-out: asyncio.gather(*[coro1, coro2, ...], return_exceptions=True).",
+        "examples": [
+            "async with aiohttp.ClientSession() as s: resp = await s.get(url)  # single session reuse",
+            "sem = asyncio.Semaphore(10); async with sem: result = await fetch(url)  # bounded concurrency",
+            "results = await asyncio.gather(*[fetch(u) for u in urls], return_exceptions=True)  # fan-out",
+        ],
+        "anti_patterns": [
+            "aiohttp.ClientSession() inside each request handler — creates new TCP pool every call",
+            "time.sleep(1) inside async def handler — blocks entire event loop for all requests",
+            "requests.get(url) inside async def — synchronous, blocks event loop; use aiohttp or to_thread",
+        ],
+        "references": ["ai-stack/mcp-servers/hybrid-coordinator/http_server.py", "CLAUDE.md §async-blocking"],
+        "endorsement_count": 3,
+        "last_validated": NOW,
+    },
+    {
+        "category": "resilience_patterns",
+        "title": "Exponential backoff retry: max_attempts, backoff_factor, and jitter",
+        "description": "Exponential backoff pattern for retrying transient failures: wait = backoff_factor * (2 ** attempt). With jitter: wait += random.uniform(0, 0.5 * wait). Standard parameters: max_attempts=3 (or configured via RETRY_MAX_ATTEMPTS env), backoff_factor=0.5 (gives 0.5s, 1.0s, 2.0s). Only retry on transient errors (5xx, timeout, ConnectionError) — never retry 4xx (client error) or auth failures. Pattern in this codebase: aq-qa phase0.py uses 3-attempt retry; delegate-to-gemini has 3-attempt backoff; dispatch.py has max 3 retries then report to orchestrator.",
+        "examples": [
+            "for attempt in range(max_attempts):\\n    try: return call()\\n    except TransientError: time.sleep(backoff_factor * 2**attempt)",
+            "RETRY_BUDGET = 3  # max retries; 3rd failure → stop and report to orchestrator (CLAUDE.md rule 6)",
+        ],
+        "anti_patterns": [
+            "Retrying on 401/403/404 — these are deterministic failures; retrying wastes budget",
+            "No jitter — all retries hit at same time under load (thundering herd)",
+            "Unlimited retries — always cap at max_attempts (3 in this codebase)",
+        ],
+        "references": ["scripts/ai/lib/dispatch.py", "scripts/testing/harness_qa/phases/phase0.py", "CLAUDE.md retry-budget"],
+        "endorsement_count": 3,
+        "last_validated": NOW,
+    },
+    {
+        "category": "nixos_architecture",
+        "title": "Nix package overrides and overlays: override, overrideAttrs, flake overlay pattern",
+        "description": "Three override mechanisms: (1) pkg.override {arg = val;} — replaces build-time arguments (e.g. python3 version, stdenv). (2) pkg.overrideAttrs (old: { patches = old.patches ++ [./fix.patch]; }) — modifies derivation attrs. (3) Flake overlay: overlays = [(final: prev: { pkg = prev.pkg.override {...}; })]; applied in nixpkgs.overlays in flake.nix. Pattern in this repo: overlays in nix/overlays/, referenced from flake.nix. Package resolution order: overlays run first (left to right), then nixpkgs defaults. To add a new package not in nixpkgs: use pkgs.callPackage ./nix/pkgs/mypkg/default.nix {} then expose in overlay.",
+        "examples": [
+            "overlays = [(final: prev: { myPkg = prev.myPkg.overrideAttrs (_: { version = \"2.0\"; }); })]",
+            "pkgs.callPackage ./nix/pkgs/mycli/default.nix {}  # custom package from local derivation",
+        ],
+        "anti_patterns": [
+            "Editing pkgs in /nix/store — immutable, changes are lost on next nixos-rebuild",
+            "Using override without overrideAttrs when changing source — override only changes inputs",
+        ],
+        "references": ["nix/overlays/", "flake.nix", "nix/modules/profiles/ai-dev.nix"],
+        "endorsement_count": 2,
         "last_validated": NOW,
     },
 ]
