@@ -376,7 +376,14 @@ gate_config_dir_lint() {
 # Gate 13: Path-aware focused CI checks
 gate_focused_ci_checks() {
   log "Running focused CI-sensitive checks..."
-  if bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
+  # Phase 94.3: write diagnostic artifact if the telemetry file already exists
+  # (file is created by tmpfiles.d on boot; gate updates it on every commit).
+  local _ci_artifact="/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json"
+  local _ci_env=""
+  if [[ -w "${_ci_artifact}" ]]; then
+    _ci_env="FOCUSED_CI_JSON=${_ci_artifact}"
+  fi
+  if env ${_ci_env} bash "${SCRIPT_DIR}/run-focused-ci-checks.sh" "${MODE}" >/dev/null 2>&1; then
     pass "Focused CI-sensitive checks passed"
   else
     fail "Focused CI-sensitive checks failed"
