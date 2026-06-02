@@ -73,12 +73,15 @@ except ImportError:
             "temperature": temperature,
             "max_tokens": _max,
             "chat_template_kwargs": {"enable_thinking": False},
-            # Anti-loop guardrails: penalise token repetition so the model
-            # doesn't get stuck cycling the same phrase.  Values are mild —
-            # enough to prevent runaway loops without distorting reasoning.
+            # Anti-loop guardrails: repeat_penalty + repeat_last_n guard the
+            # 64-token sliding window against stuck phrases without touching
+            # global token counts.  frequency_penalty is intentionally 0 —
+            # cumulative per-token penalties cause early EOS on dense JSON/code
+            # output where structural tokens ('"', ':', '{') appear hundreds of
+            # times, causing logit penalty overflow and truncation at ~59-61 lines.
             "repeat_penalty": 1.08,
             "repeat_last_n": 64,
-            "frequency_penalty": 0.05,
+            "frequency_penalty": 0.0,
             # Always request usage stats so callers can observe actual spend.
             "stream_options": {"include_usage": True},
         }
