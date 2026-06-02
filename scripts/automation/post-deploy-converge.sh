@@ -128,9 +128,14 @@ run_phase0_qa() {
 run_focused_ci() {
   local ci_gate="${REPO_ROOT}/scripts/governance/run-focused-ci-checks.sh"
   [[ -x "${ci_gate}" ]] || return 0
-  [[ -w "${FOCUSED_CI_OUT}" ]] || return 0
+  local _out="${FOCUSED_CI_OUT}"
+  if [[ ! -w "${_out}" ]]; then
+    # Primary telemetry path not yet writable (pre-nixos-rebuild); use home cache.
+    _out="${HOME}/.cache/nixos-ai-stack/latest-focused-ci.json"
+    mkdir -p "$(dirname "${_out}")"
+  fi
   run_with_timeout "${AQ_REPORT_TIMEOUT_SECONDS}" \
-    env FOCUSED_CI_JSON="${FOCUSED_CI_OUT}" "${BASH_BIN}" "${ci_gate}" --pre-commit
+    env FOCUSED_CI_JSON="${_out}" "${BASH_BIN}" "${ci_gate}" --pre-commit
 }
 
 run_agent_instructions_import() {

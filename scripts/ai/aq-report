@@ -177,10 +177,23 @@ LLAMA_BENCHMARK_RUNS_DIR = Path(
 AGENT_RUN_EVENTS_PATH = Path(
     os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 )
-# Phase 93.10 — latest focused-CI diagnostic JSON artifact
-FOCUSED_CI_JSON_PATH = Path(
-    os.getenv("AQ_FOCUSED_CI_JSON_PATH", "/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json")
-)
+# Phase 93.10 — latest focused-CI diagnostic JSON artifact.
+# Primary path: shared telemetry dir (writable after nixos-rebuild activates tmpfiles.d rule).
+# Fallback path: ~/.cache (always writable; used by tier0 gate before first rebuild).
+def _resolve_focused_ci_path() -> Path:
+    _override = os.getenv("AQ_FOCUSED_CI_JSON_PATH", "").strip()
+    if _override:
+        return Path(_override)
+    _primary = Path("/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json")
+    if _primary.exists():
+        return _primary
+    _fallback = Path(os.path.expanduser("~/.cache/nixos-ai-stack/latest-focused-ci.json"))
+    if _fallback.exists():
+        return _fallback
+    return _primary  # default even if absent — validation_health will return no_data
+
+
+FOCUSED_CI_JSON_PATH = _resolve_focused_ci_path()
 
 # ---------------------------------------------------------------------------
 # Argument parsing

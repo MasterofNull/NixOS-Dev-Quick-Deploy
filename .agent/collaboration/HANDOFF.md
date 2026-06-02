@@ -1,25 +1,25 @@
-# HANDOFF MEMO — 2026-06-02 (Phase 94 — Dashboard KPI Fixes + Scorecard Hydration)
+# HANDOFF MEMO — 2026-06-02 (Phase 94 — Scorecard + AppArmor + Observability)
 
 ## Phase 94 — ALL SLICES COMPLETE
 
 ### Delivered
-- **94.1 Scorecard Hydration** (9cb174d6): Fixed 3 key-name mismatches in `effectiveness_scorecard()`. 5/6 dimensions now show real data. `operator_trust` correctly `no_data` until workflow sessions recorded.
-- **94.2 AppArmor Wildcard Generalization** (87b2aff5): Dashboard profile: 20+ specific journal paths → `/var/log/journal/**`. Hash-bound sudo → `/run/wrappers/bin/sudo`. Added missing aq-qa, lspci, grep exec rules + keyword-signals.json read. Coordinator profile: specific cgroup paths → `/sys/fs/cgroup/**`. **Requires nixos-rebuild switch.**
-- **94.3 Focused-CI Artifact Wiring** (a739b1de): tmpfiles.d rule creates `latest-focused-ci.json` (660 hyperd ai-stack). Tier0 gate writes FOCUSED_CI_JSON when file writable. post-deploy-converge adds `focused_ci_artifact` step with home-dir fallback. `validation_health` will show real CI status after rebuild.
-- **94.4 GEMINI.md doc fix**: Stale model names (`Claude 3.7 Sonnet`, `Gemini 2.0 Pro`) updated to current IDs.
+- **94.1 Scorecard Hydration** (9cb174d6): Fixed 3 key-name mismatches in `effectiveness_scorecard()` in `scripts/ai/aq-report`. 5/6 dimensions now show real data; `operator_trust` correctly `no_data` (no workflow sessions yet).
+- **94.2 AppArmor Wildcard Generalization** (87b2aff5): Dashboard: 20+ specific journal paths → `/var/log/journal/**`. Hash-bound sudo → `/run/wrappers/bin/sudo`. Added aq-qa, lspci, grep exec rules + keyword-signals.json read. Coordinator: specific cgroup paths → `/sys/fs/cgroup/**`. **Requires nixos-rebuild.**
+- **94.3 Focused-CI Artifact Wiring** (pending commit): `run-focused-ci-checks.sh` now always writes JSON artifact even when no CI-sensitive changes (was gated on `check_results` being non-empty). Tier0 gate passes `FOCUSED_CI_JSON` to focused-CI script; falls back to `~/.cache/nixos-ai-stack/` if telemetry dir not yet writable. `aq-report` `_resolve_focused_ci_path()` checks primary then fallback path. Nix tmpfiles.d rule added so file is created with correct perms on next rebuild. Result: `validation_health` now `available=True, status=skip`.
+- **94.4 GEMINI.md orient fix** (pending commit): Added `aq-session-start --task` (mandatory) to Step 1, added orient Rules block (never raw ls, never guess paths, resume memory order).
 
-### Also completed this session (pre-94)
-- **KPI N/A root cause** (3c397938): WS broadcast poisoned `window._aiMetrics` every 1s. Fix: hardware → `window._wsSystemMetrics`; 90s TTL for `window._aiMetrics`.
+### Also completed this session (pre-94, committed)
+- **KPI N/A root cause** (3c397938): WS broadcast poisoned `window._aiMetrics` every 1s. Fix: hardware → `window._wsSystemMetrics`; 90s TTL on `_aiMetrics`.
 - **PG/Redis probe latency** (bbfdff9d): asyncpg pool (min=1, max=2) → sub-5ms PG; 30s TTL cache for Redis probe.
 
 ### Pending human actions
 - `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — activates:
   - AppArmor journal wildcard + stable sudo + missing exec rules (94.2)
   - Coordinator cgroup wildcard (94.2)
-  - tmpfiles.d creates latest-focused-ci.json with correct perms (94.3)
+  - `tmpfiles.d` creates `latest-focused-ci.json 0664 hyperd ai-stack` (94.3, moves fallback to primary path)
 
 ### Open operational issue
-- `delegate_24h_rate = 40%` — 3 failures (2x backend_500 ~2s, 1x 504 timeout 240s) in 24h window. Too small a sample (5 calls) to isolate root cause. Monitor over next 48h. QA 0.8.1 is xfail'd in qa-xfail.yaml.
+- `delegate_24h_rate = 25%` — 3 failures (2x backend_500 ~2.2s, 1x 504 timeout 240s) in 24h window. Small sample (4 calls total). QA 0.8.1 xfail'd. Monitor next 48h; quick 500s may be from prompt format errors or model OOM during heavy load.
 
 ---
 # HANDOFF MEMO — 2026-06-01 (Phase 93 — Effectiveness-Centered Observability, Batch 2)
