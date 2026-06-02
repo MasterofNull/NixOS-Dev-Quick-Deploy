@@ -1,15 +1,12 @@
 {
-  "current_objective": "Phase 97 — AppArmor hash-bound sudo cleanup + attention queue clear",
-  "phase": "97-complete",
+  "current_objective": "Phases 98-99 — Dashboard observability frontend + system fixes",
+  "phase": "99.2-complete",
   "todo_snapshot": [
-    "DONE: Phase 95.1 — delegation-feedback.jsonl tmpfiles f+z rules (dfc4be56)",
-    "DONE: Phase 95.2 — Seed 6 new RAG entries for top query gaps (d9116e24)",
-    "DONE: Phase 96.1 — aq-qa-bash writes latest-qa-results.json (dbe9ea55)",
-    "DONE: Phase 96.2 — aq-report regression_containment uses real QA pass rate (dbe9ea55)",
-    "DONE: Phase 96.3 — completion_reliability shows real delegate counts (dbe9ea55)",
-    "DONE: Phase 97.1 — AppArmor hash-bound sudo duplicate removed from mcp-servers.nix (ff54549a)",
-    "DONE: Phase 97.2 — All 3 attention alerts approved and archived"
+    "DONE: Phase 98 — slice-93-15 dashboard.js loadAgentReplay/sendControl/swimlane/race (5ba6c929)",
+    "DONE: Phase 93 PRD fully complete — all 15 slices verified",
+    "DONE: Phase 99.1 — thermal critical threshold 80→83°C, batch task class unblocked (dc517a45)",
+    "DONE: Phase 99.2 — frequency_penalty=0 fixes Qwen3 JSON truncation at 59-61 lines (65449c02)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phases 95-97 complete. All commits pushed. Scorecard overall_status=warn (no blocking reasons). regression_containment=pass (79/79 QA). completion_reliability=warn (2 failures aging out of 24h window — self-corrects). AppArmor command-center-dashboard-api hash-bound sudo removed from source; requires next nixos-rebuild to activate in kernel (no urgency — no denials). Data durability confirmed: /var/lib/ai-stack/ persists across rebuilds."
+  "resume_hint": "Phases 98-99 complete. Scorecard overall_status=pass. MLFQ thermal now optimal. Qwen3 JSON truncation fixed. All Phase 93 slices complete. No pending rebuilds or human actions. Next work: check if aq-session-start PATH gap affects Codex sessions (OPEN medium issue), or pull next feature from TECHNICAL-ANALYSIS-PRD.md."
 }
