@@ -1,3 +1,29 @@
+# HANDOFF MEMO — 2026-06-02 (Phases 98–99 — Dashboard Observability + System Fixes)
+
+## Phases 98–99 — ALL SLICES COMPLETE
+
+### Delivered
+- **98: slice-93-15 dashboard observability frontend** (`5ba6c929`): Implemented `loadAgentReplay()`, `sendControl()`, swimlane and race comparison rendering in `assets/dashboard.js`. All Phase 93.6-93.13 backend routes wired to `#panel-observe` DOM. 8/8 backend regression tests pass. Plan files for completed slices 93.5 and 93.15 committed.
+- **Phase 93 PRD fully complete**: All 15 slices (93.1–93.15) verified complete. Race harness 5/5, scorecard 7/7, agent replay 8/8 all passing.
+- **99.1: CPU thermal threshold fix** (`dc517a45`): Raised MLFQ critical threshold 80→83°C in `inference_param_manager.py`. Added `THERMAL_CRITICAL_C` / `THERMAL_WARN_C` / `THERMAL_SHUTDOWN_C` env vars. Renoir APU Tctl (81°C idle) now correctly classified as `warn` not `critical`. `batch` task class (MLFQ L2) is now admissible. Coordinator restarted — `thermal tier changed normal -> optimal` confirmed in logs. 6/6 regression tests pass.
+- **99.2: Qwen3 JSON truncation fix** (`65449c02`): Root cause — `frequency_penalty=0.05` in `build_llama_payload` applies cumulative penalty by token occurrence count. Dense JSON where `"` appears 300+ times → logit penalty 15.0 → model emits EOS at ~59-61 lines. Fixed by setting `frequency_penalty=0.0`; loop protection preserved via `repeat_penalty=1.08 + repeat_last_n=64` (sliding window only).
+
+### Current scorecard (post-rebuild, June 2 evening)
+- `overall_status: pass` — no blocking reasons
+- All dimensions: outcome_correctness/completion_reliability/regression_containment/context_quality: **pass**
+- `operator_trust: no_data` (correct — no workflow sessions)
+- MLFQ thermal: `optimal` (was perpetually `critical`)
+
+### Pending human actions
+- None required. All changes are code-level, committed, and activated (coordinator restarted).
+
+### Open issues (no code action warranted)
+- `delegate_7d_rate = 81.2%` — historical provider failures aging out of 7d window. Self-corrects.
+- AppArmor Ux scope review (OPEN P3) — periodic, not urgent.
+- Training loop samples_added (OPEN P3) — monitor after ingest runs.
+- ROCm unavailable on Renoir APU — hardware constraint, no fix.
+
+---
 # HANDOFF MEMO — 2026-06-02 (Phases 96–97 — Scorecard QA Wiring + AppArmor Cleanup)
 
 ## Phases 96–97 — ALL SLICES COMPLETE
