@@ -1,3 +1,19 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 58A.5 — Role Eligibility Enforcement)
+
+## Phase 58A.5 — COMPLETE (`63944c4c`)
+
+### Delivered
+- **`ai-stack/local-agents/agent_executor.py`**: `LocalAgentExecutor.execute_task()` now validates `task.role` against `AGENT_TYPE_ELIGIBLE_ROLES` after auto-assignment. Ineligible roles are clamped to `AGENT_TYPE_DEFAULT_ROLE` with a warning log. Upgrades role policy from doc-only to runtime enforcement.
+- **`scripts/testing/test-agent-executor-role-eligibility.py`**: 6 regression tests covering eligible passthrough, ineligible clamp (CHAT→orchestrator clamped to implementer), None auto-assign, EMBEDDED stays None, and matrix non-empty invariants.
+- **`config/validation-check-registry.json`**: Registered `agent-executor-role-eligibility` focused-CI check.
+- **`memory/issues-backlog.md`**: Marked RESOLVED.
+
+### Open role-enforcement issues (remaining aspirational)
+- reviewer_id tracking + self-review prevention (requires reviewer_id in Task dataclass + historical lookup)
+- domain-role eligibility at dispatch (requires domain_shell concept in TaskConfig)
+- Both remain low severity / process-enforced
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 92.2 — Pre-Archive Safety Check)
 
 ## Phase 92.2 — COMPLETE (`8613b691`)
