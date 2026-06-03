@@ -33,10 +33,9 @@
   Action: Document in hardware-profiles.json; remove ROCm acceptance criterion from ACCELERATE PRD. No code fix possible without hardware upgrade.
   File: .agent/PROJECT-ACCELERATE-PRD.md
 
-[OPEN] workflow — aq-session-start missing from Codex shell PATH — Session initialization command returned `command not found`; likely PATH/wrapper deployment gap for current execution environment.
-  Severity: medium
-  Action: Confirm aiHarnessCliWrappers exposes aq-session-start or document the supported absolute path fallback for Codex sessions.
-  File: nix/modules/roles/ai-stack.nix ~line 240
+[RESOLVED 2026-06-02] workflow — aq-session-start (and 8 others) missing from Codex/agent shell PATH — aiHarnessCliWrappers in ai-stack.nix did not include aq-session-start, aq-resume, aq-insights, aq-commit-facts, aq-skill-suggest, aq-alerts, aq-approve, aq-reject, aq-integrity-scan.
+  Action: Added all 9 wrappers to aiHarnessCliWrappers (Phase 100.1). Requires nixos-rebuild to activate.
+  File: nix/modules/roles/ai-stack.nix ~line 439
 
 [RESOLVED 2026-05-30] ai_coordinator_delegate P95=244s — ceiling is enforced at ai_coordinator.py:706 (_LOCAL_MAX_TOKENS_HARD_CEILING=180). P95=244s is hardware-bound: 180 tok × ~1.35 tok/s on Renoir APU. Not a code bug. Anti-loop guardrails (repeat_penalty=1.08, repeat_last_n=64) confirmed in dispatch.py:79-80. No fix needed.
 
