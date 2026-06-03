@@ -48,10 +48,33 @@ class ConsensusArbiter:
             result = self._best_of_n(candidates)
             
         # Global Homeostasis: If consensus is too low, escalate to Expert Synthesis
-        if result.get("consensus_score", 1.0) < self._MIN_CONSENSUS_SCORE and strategy != "synthesis":
-            logger.warning("consensus_arbiter: low consensus score (%.3f). Escalating to Expert Synthesis.", result.get("consensus_score"))
+        score = result.get("consensus_score", 1.0)
+        if score < self._MIN_CONSENSUS_SCORE and strategy != "synthesis":
+            logger.warning("consensus_arbiter: low consensus score (%.3f). Escalating to Expert Synthesis.", score)
+            # Phase 103: severe divergence (< 0.5) pushed to attention archive so operators
+            # can see which tasks produced contradictory agent outputs without synthesis silently burying them.
+            if score < 0.5:
+                try:
+                    from attention_queue import push
+                    push(
+                        source="consensus-arbiter",
+                        severity="medium",
+                        autonomy_boundary="auto_ok",
+                        title=f"Consensus divergence (score={score:.2f}): {len(candidates)} agents",
+                        detail=(
+                            f"Agent outputs diverged significantly (consensus_score={score:.3f} < 0.5). "
+                            f"Task: {task[:120]}. Escalated to synthesis. "
+                            f"Candidates: {len(candidates)}, strategy={strategy}."
+                        ),
+                        proposed_action=(
+                            "Review synthesis output for accuracy. If agents disagreed on facts, "
+                            "check which agent's response was correct and seed the correct answer via aq-commit-facts."
+                        ),
+                    )
+                except Exception:
+                    pass
             return await self._synthesize(candidates, task)
-            
+
         return result
 
     async def _synthesize(self, candidates: List[Dict[str, Any]], task: str) -> Dict[str, Any]:
