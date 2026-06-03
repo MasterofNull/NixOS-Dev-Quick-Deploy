@@ -54,10 +54,9 @@
   Action: Added documented `--skip-model-selection` flag and `SKIP_MODEL_SELECTION=true` env support to keep current facts.nix model choices during automated deploys.
   File: nixos-quick-deploy.sh ~line 70
 
-[OPEN] role-enforcement — AGENT_TYPE_ELIGIBLE_ROLES never validated at dispatch — Matrix is defined in agent_executor.py but no runtime check blocks ineligible role assignments. Any AgentType can receive any role without error.
-  Severity: low (aspirational per role-matrix.md §7 — enforcement is a future capability)
-  Action: Phase 58A.5 TODO — add eligibility validator in dispatch_task() before TaskConfig is finalized. Until then, policy is doc-only.
-  File: ai-stack/mcp-servers/coordinator/agent_executor.py ~line 356
+[RESOLVED 2026-06-03] role-enforcement — AGENT_TYPE_ELIGIBLE_ROLES never validated at dispatch — Phase 58A.5 implemented: ineligible role assignments are now clamped to the agent_type default in LocalAgentExecutor.execute_task(). Logs warning on clamp. 6/6 regression tests pass.
+  Action: Added eligibility check after auto-assign in execute_task(); added test-agent-executor-role-eligibility.py; registered in validation-check-registry.json.
+  File: ai-stack/local-agents/agent_executor.py ~line 356; scripts/testing/test-agent-executor-role-eligibility.py
 
 [OPEN] role-enforcement — no reviewer_id tracking, self-review prevention aspirational — Role-matrix.md §8 states "a reviewer may not review their own work" but no reviewer_id field exists in Task/TaskConfig; self-review cannot be enforced at runtime.
   Severity: low (process-enforced via orchestrator discipline, not technically blocked)
