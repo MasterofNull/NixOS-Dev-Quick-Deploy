@@ -1,3 +1,20 @@
+# HANDOFF MEMO — 2026-06-03 (RAG seeding: context-limit + AppArmor ptrace gaps)
+
+## RAG seeding — persistent query gap fill
+
+### Records seeded
+- **error-solutions** (2): "ContextLimitExceeded — Continue agent mode message exceeds context limit" + "AppArmorDenied — apparmor DENIED operation=ptrace req_label=ai-hybrid-coordinator"
+- **best-practices** (1): "Continue IDE agent mode — efficient use with context limits"
+
+### Query gaps addressed
+- "Continue agent mode message exceeds context limit" — 221 hits, score=0 before seeding
+- "AppArmor ptrace/sys_ptrace denial psutil" — 8 hits, score=0 before seeding
+
+### Pending
+- `nixos-rebuild switch` still required for Phase 101.1 (`ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention`).
+  After rebuild: circuit breaker trips appear in `.agents/attention/ATTENTION_ARCHIVE.jsonl` (auto_ok boundary).
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 101 fix: ATTENTION_QUEUE_DIR live path)
 
 ## Phase 101.1 — Nix path fix
@@ -1273,3 +1290,16 @@ Denied paths: ['/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciutils-3.14.0/bin/
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
 [2026-06-03T02:06:26.484043Z] [dispatch] id=local-20260602-190626-r6ho2z agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260602-190626-r6ho2z.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
 [2026-06-03T02:08:27.206186Z] [done] id=local-20260602-190626-r6ho2z
+
+### [2026-06-03T03:22:29Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (1):
+  - `/run/wrappers/wrappers.Yp3dH5WrJ6/sudo ix,`
+Denied paths that triggered: ['/run/wrappers/wrappers.Yp3dH5WrJ6/sudo', '/nix/store/d0y2xi6x65npxy2rh3jp1x7p31c9gk83-systemd-258.7/bin/journalctl']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-03T03:22:30Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (1): ['            /run/wrappers/wrappers.Yp3dH5WrJ6/sudo ix,']  
+Denied paths: ['/run/wrappers/wrappers.Yp3dH5WrJ6/sudo', '/nix/store/d0y2xi6x65npxy2rh3jp1x7p31c9gk83-systemd-258.7/bin/journalctl']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
