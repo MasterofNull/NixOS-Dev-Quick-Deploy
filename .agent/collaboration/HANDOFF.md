@@ -1,3 +1,20 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 101 fix: ATTENTION_QUEUE_DIR live path)
+
+## Phase 101.1 — Nix path fix
+
+### Problem
+`ATTENTION_QUEUE_DIR=${toString repoSource}/.agents/attention` resolved to the read-only Nix store
+(`/nix/store/<hash>-source/.agents/attention`). Circuit breaker push() silently failed.
+
+### Fix
+Changed to `ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention` where `mcp.repoPath` is the
+live string path (`/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`). Requires nixos-rebuild switch.
+
+After rebuild: circuit breaker trips will write to `.agents/attention/ATTENTION_ARCHIVE.jsonl`
+(auto_ok boundary, so they bypass the queue and appear in the archive). Verify with:
+`aq-alerts --count` after triggering a test trip, or watch ATTENTION_ARCHIVE.jsonl.
+
+---
 # HANDOFF MEMO — 2026-06-03 (Post-Rebuild: qdrant fix + 93.15 closed)
 
 ## Post-Rebuild Session — ALL P1 SLICES COMPLETE
