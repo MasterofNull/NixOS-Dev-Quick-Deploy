@@ -1,13 +1,20 @@
 {
-  "current_objective": "Phase 107.3 complete — stream_options.include_usage + all SSE parse sites fixed",
+  "current_objective": "Phase 108 — retry_backoff infinite loop fix + CL rotation detection",
   "phase": "active",
   "todo_snapshot": [
     "DONE: Phase 106.1 — checkpoint tmpfiles + async qdrant upsert (0a099081) — LIVE",
     "DONE: Phase 107.1 — token_usage event emission per delegation (31428fd2) — LIVE",
     "DONE: Phase 107.2 — SSE body reconstruction initial_body+body sites (61040dfb) — LIVE",
-    "DONE: Phase 107.3 — stream_options.include_usage + local fallback SSE (d7919601)",
-    "PENDING-REBUILD: d7919601 — stream_options + local fallback fix needs restart"
+    "DONE: Phase 107.3 — stream_options.include_usage + local fallback SSE (d7919601) — LIVE",
+    "DONE: Phase 108.1 — continuous_learning.py rotation detection (uncommitted)",
+    "DONE: Phase 108.2 — shared/retry_backoff.py infinite loop fix (uncommitted)",
+    "PENDING: coordinator restart to pick up retry_backoff fix (no rebuild needed)",
+    "PENDING: smoke delegation to verify 107.3 token data",
+    "PENDING: nixos-rebuild switch for 108.1 (continuous_learning.py coordinator module)"
   ],
-  "uncommitted_changes": [],
-  "resume_hint": "Phase 107.3 complete. Root cause chain fully addressed: (1) switchboard forces stream=True for local, (2) SSE reconstruction now applied at all 3 parse sites, (3) stream_options.include_usage ensures llama.cpp includes usage in final SSE chunk. Needs nixos-rebuild switch. After rebuild: smoke delegation + aq-report should show useful_token_ratio populated."
+  "uncommitted_changes": [
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py",
+    "ai-stack/mcp-servers/shared/retry_backoff.py"
+  ],
+  "resume_hint": "Phase 108 fixes ready. (1) shared/retry_backoff.py infinite loop fixed — recursion→continue. Coordinator restart needed (no rebuild): sudo systemctl restart ai-hybrid-coordinator.service. (2) continuous_learning.py rotation detection — requires nixos-rebuild switch. After coordinator restart: run smoke delegation, check agent-run-events.jsonl for populated tokens, check aq-report useful_token_ratio."
 }
