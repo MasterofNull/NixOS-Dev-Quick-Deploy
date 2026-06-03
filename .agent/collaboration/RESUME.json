@@ -1,15 +1,17 @@
 {
-  "current_objective": "Post-rebuild validation + all open bugs resolved",
-  "phase": "post-rebuild-clean",
+  "current_objective": "Post-101.1 housekeeping — RAG seeding done, awaiting nixos-rebuild for ATTENTION_QUEUE_DIR fix",
+  "phase": "post-rebuild-pending",
   "todo_snapshot": [
-    "DONE: Verified 9 CLI wrappers in PATH post-rebuild",
-    "DONE: 79/79 QA pass, no new AppArmor denials, 0 pending alerts",
-    "DONE: Phase 92.2 — pre-archive safety gate (8613b691)",
-    "DONE: Phase 58A.5 — role eligibility enforcement (63944c4c)",
-    "DONE: MAEAH parity plan updated (238529a7)",
-    "DONE: RAG seeded 43 records covering 7 query gap topics",
-    "DONE: continuous_learning qdrant upsert TypeError fix (0bf3dee0) — coordinator rebuild needed"
+    "DONE: qdrant_upsert TypeError fix (0bf3dee0)",
+    "DONE: slice-93-15 dashboard observability JS closed (2b66fb50)",
+    "DONE: Phase 101 — circuit breaker _trip() → attention queue push (09737504)",
+    "DONE: Phase 101.1 — ATTENTION_QUEUE_DIR live path fix in mcp-servers.nix (5228239b)",
+    "DONE: RAG seeding — 3 records for 2 persistent query gaps (context limit, AppArmor ptrace)",
+    "PENDING-REBUILD: mcp-servers.nix 101.1 — coordinator must be rebuilt to get live ATTENTION_QUEUE_DIR"
   ],
-  "uncommitted_changes": [],
-  "resume_hint": "System healthy. All bugs fixed. Coordinator Python change (0bf3dee0) requires nixos-rebuild switch to activate in Nix store. Remaining aspirational: reviewer_id tracking (complex), domain-role eligibility (complex), live workflow session tracking for operator_trust. Check HANDOFF.md for full context."
+  "uncommitted_changes": [
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/RESUME.json"
+  ],
+  "resume_hint": "Phase 101.1 mcp-servers.nix change is committed (5228239b) but requires nixos-rebuild switch. After rebuild: verify circuit breaker trips write to .agents/attention/ATTENTION_ARCHIVE.jsonl (not Nix store). RAG seeding complete — 3 records in error-solutions and best-practices for 'Continue context limit' and 'AppArmor ptrace/psutil' gaps. Remaining P2: cross-agent contradiction detection."
 }
