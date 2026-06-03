@@ -1,5 +1,5 @@
 {
-  "current_objective": "Post-rebuild validation + governance hardening complete",
+  "current_objective": "Post-rebuild validation + all open bugs resolved",
   "phase": "post-rebuild-clean",
   "todo_snapshot": [
     "DONE: Verified 9 CLI wrappers in PATH post-rebuild",
@@ -7,8 +7,9 @@
     "DONE: Phase 92.2 — pre-archive safety gate (8613b691)",
     "DONE: Phase 58A.5 — role eligibility enforcement (63944c4c)",
     "DONE: MAEAH parity plan updated (238529a7)",
-    "DONE: RAG seeded 43 records covering 7 query gap topics"
+    "DONE: RAG seeded 43 records covering 7 query gap topics",
+    "DONE: continuous_learning qdrant upsert TypeError fix (0bf3dee0) — coordinator rebuild needed"
   ],
-  "uncommitted_changes": [".agent/collaboration/HANDOFF.md"],
-  "resume_hint": "System in healthy state post-rebuild. Scorecard warn from historical delegate failures (self-correcting). 79/79 QA pass. Tier0: 19/19. All aspirational role-enforcement items are low severity and complex. Remaining work: reviewer_id tracking (complex), domain-role eligibility (complex), live workflow session tracking for operator_trust. No rebuild needed. If starting fresh, check HANDOFF.md for full context."
+  "uncommitted_changes": [],
+  "resume_hint": "System healthy. All bugs fixed. Coordinator Python change (0bf3dee0) requires nixos-rebuild switch to activate in Nix store. Remaining aspirational: reviewer_id tracking (complex), domain-role eligibility (complex), live workflow session tracking for operator_trust. Check HANDOFF.md for full context."
 }
