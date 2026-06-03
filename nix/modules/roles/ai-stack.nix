@@ -436,6 +436,36 @@ let
       (pkgs.writeShellScriptBin "aq-prsi-review" ''
         exec "${pkgs.python3}/bin/python3" "${cfg.mcpServers.repoPath}/scripts/ai/aq-prsi-review" "$@"
       '')
+      # --- Session lifecycle & attention queue ---
+      (pkgs.writeShellScriptBin "aq-session-start" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-session-start" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-resume" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-resume" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-alerts" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-alerts" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-approve" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-approve" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-reject" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-reject" "$@"
+      '')
+      # --- Knowledge & skill discovery ---
+      (pkgs.writeShellScriptBin "aq-insights" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-insights" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-commit-facts" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-commit-facts" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-skill-suggest" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-skill-suggest" "$@"
+      '')
+      # --- Governance & integrity ---
+      (pkgs.writeShellScriptBin "aq-integrity-scan" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-integrity-scan" "$@"
+      '')
     ];
   };
 
