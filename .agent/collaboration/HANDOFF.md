@@ -1,3 +1,30 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 105: query_gap role-prefix + knowledge seeding)
+
+## Phase 105 — coordinator gap cleanup + knowledge seeding
+
+### Changes (commit 891f362d)
+- `route_handler.py`: strips `[ROLE: X]` prefix before storing query_text in query_gaps.
+  Prevents delegate-to-claude/gemini role prefix from polluting gap records.
+  Also adds `/no_think` and `reply with just` to synthetic gap prefix filter.
+- `seed-rag-knowledge.py`: added hwmon/k10temp thermal sensor and systemd DynamicUser
+  best-practice records (20 total). Seeded to Qdrant best-practices collection.
+- DB gap cleanup: deleted ~400 stale role-prefixed + noise entries → 0 open query gaps.
+- **Requires nixos-rebuild switch** (coordinator Python change)
+
+### Session commits this session
+- 7ea924e2: fix(prompts): gap_detection_score 0.333 → 1.000 (mechanically explicit template)
+- 891f362d: fix(coordinator): role prefix strip + thermal/DynamicUser seeding
+
+### System health (2026-06-03)
+- 79/79 QA pass, 0 AppArmor denials post-rebuild
+- 0 pending alerts, 0 open query gaps
+- overall_status=warn (operator_trust=no_data — data gap, not code bug)
+- delegation 24h rate: 81.5% (5/27 failures) — hardware-bound latency likely cause
+
+### Pending rebuild
+Phase 105 route_handler.py change requires nixos-rebuild switch.
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 103: cross-agent contradiction detection)
 
 ## Phase 103 — Cross-agent contradiction → attention archive
