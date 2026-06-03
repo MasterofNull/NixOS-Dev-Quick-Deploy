@@ -1,3 +1,34 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 107.1: token_usage event emission wired to delegate handler)
+
+## Phase 107.1 — useful_token_ratio null → populated
+
+### Root cause
+`useful_token_metrics()` in `aq-report` returned `no_data` because the events file
+`/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl` did not exist. Slice 93.5
+only implemented the aggregation reader (`aq-report`); no production code ever called
+`agent_run_events.append_jsonl()` with `token_usage` events.
+
+### Fix
+`extensions/ai_coordinator_handlers.py`: after each successful `handle_ai_coordinator_delegate`
+call, fire `asyncio.create_task(_emit_token_event())` to write a `token_usage` event:
+- `tokens.input` = prompt_tokens from delegate response usage
+- `tokens.output` = completion_tokens
+- `tokens.total` = input + output
+- `tokens.accepted_artifact` = output tokens when `delegated_quality.passed` is True
+- `tokens.useful_ratio` = auto-computed by `agent_run_events._normalize_tokens()` as
+  `accepted_artifact / total` — gives a real ratio after quality-passing delegations
+- Emission is best-effort (exceptions are silently swallowed; never blocks delegation)
+- Import guard: `try: import agent_run_events as _are` — safe no-op if lib unavailable
+
+### Requires nixos-rebuild switch
+`ai_coordinator_handlers.py` is in the coordinator Python package. The change won't
+take effect until `nixos-rebuild switch` restarts the `ai-hybrid` service.
+
+### Changes
+- `extensions/ai_coordinator_handlers.py`: import guard, `_AGENT_RUN_EVENTS_PATH` constant,
+  `_emit_token_event` coroutine created + fired per delegate call
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 106.1: checkpoint permission fix + upsert async fix)
 
 ## Phase 106.1 — continuous_learning bugs

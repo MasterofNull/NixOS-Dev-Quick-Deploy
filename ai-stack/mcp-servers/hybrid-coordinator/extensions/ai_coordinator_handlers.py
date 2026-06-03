@@ -45,6 +45,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "progressive-disclo
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "capability-gap"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "real-time-learning"))
 
+try:
+    import agent_run_events as _are
+    _AGENT_RUN_EVENTS_AVAILABLE = True
+except ImportError:
+    _are = None  # type: ignore[assignment]
+    _AGENT_RUN_EVENTS_AVAILABLE = False
+
 from agent_pool_manager import RemoteAgent
 from config import Config
 from metrics import (
@@ -125,6 +132,10 @@ from skill_usage_tracker import (
 )
 
 logger = logging.getLogger("hybrid-coordinator")
+
+_AGENT_RUN_EVENTS_PATH = Path(
+    os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
+)
 
 # ---------------------------------------------------------------------------
 # Routing policy — loaded from AI_ROUTING_POLICY_FILE or inline defaults
@@ -2042,6 +2053,47 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             fallback_used=fallback_applied,
             fallback_from=next(iter(excluded_profiles), "") if fallback_applied else "",
         ))
+
+        if _AGENT_RUN_EVENTS_AVAILABLE and _are is not None:
+            _are_run_id = str(data.get("task_id") or request.get("request_id", "") or id(request))
+            _are_tok_in = int((body.get("usage") or {}).get("prompt_tokens", 0) or 0)
+            _are_tok_out = int((body.get("usage") or {}).get("completion_tokens", 0) or 0)
+            _are_total = _are_tok_in + _are_tok_out
+            _are_ok = response.status_code < 400
+            # accepted_artifact = output tokens when quality gate passed; None when unavailable or failed
+            _are_accepted = _are_tok_out if (
+                _are_ok and delegated_quality.get("passed") and _are_tok_out > 0
+            ) else None
+            _are_model = _delegate_model_id
+            _are_profile = effective_profile
+            _are_dur = _delegate_latency_ms
+
+            async def _emit_token_event(
+                _run_id=_are_run_id, _tok_in=_are_tok_in, _tok_out=_are_tok_out,
+                _total=_are_total, _accepted=_are_accepted, _model=_are_model,
+                _profile=_are_profile, _dur=_are_dur, _ok=_are_ok,
+            ):
+                try:
+                    ev = _are.make_event(
+                        "token_usage",
+                        source="hybrid-coordinator",
+                        run_id=_run_id or "unknown",
+                        status="succeeded" if _ok else "failed",
+                        model=_model or None,
+                        route_profile=_profile or None,
+                        duration_ms=max(0.0, _dur) if _dur is not None else None,
+                        tokens={
+                            "input": _tok_in if _tok_in else None,
+                            "output": _tok_out if _tok_out else None,
+                            "total": _total if _total else None,
+                            "accepted_artifact": _accepted,
+                        },
+                    )
+                    await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+                except Exception:
+                    pass  # telemetry is best-effort; never block delegation
+
+            asyncio.create_task(_emit_token_event())
 
         _record_capability_gap_outcomes(
             capability_gaps,
