@@ -1070,6 +1070,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         payload: Dict[str, Any] = {
             "messages": messages,
             "stream": False,
+            # Switchboard overrides stream→True for local targets; include_usage
+            # ensures llama.cpp streams the usage object in the final SSE chunk.
+            "stream_options": {"include_usage": True},
         }
         if "model" in data:
             payload["model"] = str(data.get("model") or "").strip()
@@ -1921,7 +1924,12 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             local_payload = dict(payload)
             local_payload.pop("model", None)
             local_response = await _post_delegate(local_profile, delegate_payload=local_payload)
-            local_body = local_response.json()
+            try:
+                local_body = local_response.json()
+            except Exception:
+                local_body = _parse_sse_response_body(local_response.text) or {
+                    "error": {"message": local_response.text[:200], "code": local_response.status_code}
+                }
             local_classification = classify_delegated_response(
                 task=task,
                 messages=messages,

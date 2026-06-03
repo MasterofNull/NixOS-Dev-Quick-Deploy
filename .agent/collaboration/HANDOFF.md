@@ -1,3 +1,29 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 107.3: stream_options.include_usage + local fallback SSE fix)
+
+## Phase 107.3 — token data now populated in all local delegation paths
+
+### Root cause
+Even after Phase 107.2 (SSE reconstruction), tokens were null because llama.cpp only
+includes `usage` in the streaming final chunk when `stream_options: {include_usage: true}`
+is set. Without it the final SSE chunk is just `{"delta":{},"finish_reason":"stop"}`.
+
+Additionally, the local-fallback path (`local_fallback_needed` block, line ~1917) had
+`local_body = local_response.json()` with no SSE fallback — same parse failure as before.
+
+### Fix
+1. Added `"stream_options": {"include_usage": True}` to the main delegate `payload` dict.
+   Inherited by `local_payload = dict(payload)` in the local fallback path.
+2. Applied `_parse_sse_response_body` to `local_response.json()` failure site (3rd call site).
+
+After this patch + rebuild, `body.get("usage")` will contain `prompt_tokens` and
+`completion_tokens` for all local model delegations, making `useful_token_ratio` live.
+
+### Changes
+- `extensions/ai_coordinator_handlers.py`: `stream_options.include_usage` + local fallback SSE fix
+
+### Requires nixos-rebuild switch
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 107.2: SSE body reconstruction for local delegate responses)
 
 ## Phase 107.2 — coordinator SSE parse fix + token_usage populated
