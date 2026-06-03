@@ -5,14 +5,14 @@ title: Multi-Agent Edge Harness Parity Integration Plan
 status: active
 owner: AI Stack Maintainers
 parent_prd: multi-agent-edge-harness-combined-prd
-last_updated: "2026-05-31"
+last_updated: "2026-06-03"
 ---
 
 # Multi-Agent Edge Harness — Parity Integration Plan
 
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-05-31
+Last Updated: 2026-06-03
 
 ## Purpose
 
@@ -28,9 +28,10 @@ companion to `COMBINED-PRD.md`.
 | P1 | Runtime bounded delegation envelopes for agent identity/delegation | Partial |
 | P1 | MCP tool-boundary profile enforcement | Partial |
 | P1 | Trace path view: prompt → route → memory → tools → response → review | Partial |
-| P1 | Agent run event stream with replayable single-agent, swimlane, and race views | Planned |
-| P1 | Controlled spec-format race: Markdown vs HTML vs enhanced visual HTML | Planned |
-| P1 | Useful-token accounting tied to accepted outcome and reviewer/eval verdict | Planned |
+| P1 | Agent run event stream with replayable single-agent, swimlane, and race views | **COMPLETE** (Phase 93.1/93.6/93.7 — 2026-06-02) |
+| P1 | Controlled spec-format race: Markdown vs HTML vs enhanced visual HTML | **COMPLETE** (Phase 93.4 — 2026-06-02) |
+| P1 | Useful-token accounting tied to accepted outcome and reviewer/eval verdict | **COMPLETE** (Phase 93.5 — 2026-06-02) |
+| P1 | Role eligibility enforcement at agent dispatch | **COMPLETE** (Phase 58A.5 — 2026-06-03) |
 | P2 | Cross-agent contradiction detection and escalation | Planned |
 | P2 | Attention queue integration for all agent boundaries | Planned |
 
