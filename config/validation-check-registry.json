@@ -1049,6 +1049,21 @@
       "tier": "behavioral",
       "timeout_seconds": 60,
       "enabled": true
+    },
+    {
+      "id": "agent-executor-reviewer-id",
+      "description": "Phase 104 \u2014 reviewer_id field + self-review warning in execute_task()",
+      "trigger_paths": [
+        "ai-stack/local-agents/agent_executor.py",
+        "scripts/testing/test-agent-executor-reviewer-id.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-agent-executor-reviewer-id.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
