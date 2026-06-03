@@ -1229,7 +1229,9 @@ class ContinuousLearningPipeline:
                 qdrant_breaker = self.circuit_breakers.get("qdrant")
                 try:
                     async def _upsert():
-                        return await self.qdrant.upsert(
+                        # self.qdrant is the sync QdrantClient (server.py); upsert()
+                        # returns UpdateResult directly — do not await.
+                        return self.qdrant.upsert(
                             collection_name="skills-patterns",
                             points=points,
                             wait=True,
