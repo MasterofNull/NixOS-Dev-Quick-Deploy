@@ -41,16 +41,20 @@ prompts:
       represents a genuine knowledge gap that should be recorded in the
       query_gaps table and surfaced in the weekly aq-report digest.
     template: |
-      Query: {{ query }}
-      Retrieval score: {{ score }} (threshold: 0.35 — scores below this indicate a knowledge gap)
-      Collection: {{ collection }}
+      You are a mechanical threshold checker. Compare one number to a fixed threshold.
 
-      Based ONLY on the retrieval score above (do not use your own training knowledge),
-      does this score indicate a gap in the knowledge base for this query?
-      Scores below 0.35 should be flagged YES. Scores 0.35 or above should be NO.
-      Reply YES or NO followed by a one-line reason.
+      Match score: {{ score }} (0.0 = no match, 1.0 = perfect match)
+      Threshold:   0.35
+      Query:       {{ query }}
+      Collection:  {{ collection }}
+
+      RULE: If match score < 0.35 → the knowledge base lacks adequate answers → reply YES (gap).
+      RULE: If match score >= 0.35 → the knowledge base has adequate answers → reply NO (not a gap).
+
+      Do NOT use your knowledge about the query topic. The query is context only.
+      Apply the RULE above to {{ score }} vs 0.35 and reply YES or NO with one sentence.
     tags: [gap_detection, retrieval, monitoring]
-    mean_score: 0.333
+    mean_score: 1.000
     last_evaluated: 2026-06-03
 
   - id: memory_recall_contextualise
