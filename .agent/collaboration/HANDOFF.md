@@ -1,3 +1,24 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 92.2 — Pre-Archive Safety Check)
+
+## Phase 92.2 — COMPLETE (`8613b691`)
+
+### Delivered
+- **`scripts/governance/tier0.d/check-deleted-links.sh`**: New tier0 extension that detects staged deletions of `.agent/`, `.agents/plans/`, and `docs/` markdown files, then checks all remaining tracked files for inbound references (Markdown links or plain path mentions). Blocks the commit if references exist. Integration tested: staging TECHNICAL-ANALYSIS-PRD.md deletion correctly surfaced 5 inbound references.
+- **`config/validation-check-registry.json`**: Registered `deleted-links` check (id, trigger_paths, command, tier=structural).
+- **TECHNICAL-ANALYSIS-PRD.md**: Marked slice 92.2 COMPLETE with date.
+- Tier0 gate now 19/19 (was 18).
+
+### Phase 92 completion status
+- 92.1 DONE: YAML frontmatter schema + enforcer
+- 92.2 DONE: pre-archive check wired into tier0
+- 92.3 DONE: tier0.d/ structure + TAP output (existing)
+- 92.4 DONE: check-color-echo.sh (existing)
+- 92.5 DEFERRED: Rust attention_queue (indefinitely deferred by user)
+
+### Pending human actions
+- **nixos-rebuild switch** required for Phase 100.1 CLI wrappers to activate in PATH.
+
+---
 # HANDOFF MEMO — 2026-06-02 (Phase 100.1 — MAEAH Contract Artifacts + CLI Wrappers)
 
 ## Phase 100.1 — COMPLETE (`731c681e`)
