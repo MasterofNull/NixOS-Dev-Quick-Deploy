@@ -1,3 +1,22 @@
+# HANDOFF MEMO — 2026-06-02 (Phase 100.1 — MAEAH Contract Artifacts + CLI Wrappers)
+
+## Phase 100.1 — COMPLETE (`731c681e`)
+
+### Delivered
+- **9 missing CLI wrappers in aiHarnessCliWrappers** (`nix/modules/roles/ai-stack.nix`): Added `aq-session-start`, `aq-resume`, `aq-alerts`, `aq-approve`, `aq-reject`, `aq-insights`, `aq-commit-facts`, `aq-skill-suggest`, `aq-integrity-scan`. Resolves `command not found` for Codex/agent shell sessions.
+- **MAEAH COMBINED-PRD.md**: Added `## API Surface Contract (AM-C1/AM-C2)` section documenting `POST /v1/responses` (responses-compat shim) and `/admin/v1/models` (auth rules). Added `title` field to frontmatter. Satisfies `test-maeah-api-surface-contract.py`.
+- **LIVE-VALIDATION-RUNBOOK.md**: New reference doc (Phase 0–4 validation sequence, promotion criteria, failure handling). All 7 contract sections present. Satisfies `test-maeah-live-runbook-contract.py`.
+- All 13 focused-CI gates pass. edgeai CLI contract gate now fully green.
+
+### Pending human actions
+- **nixos-rebuild switch** required to activate the 9 new CLI wrappers in PATH.
+
+### Open issues
+- `role-enforcement` — AGENT_TYPE_ELIGIBLE_ROLES not validated at dispatch (aspirational, Phase 58A.5)
+- `role-enforcement` — no reviewer_id tracking, self-review prevention aspirational
+- ROCm unavailable on Renoir APU — hardware constraint
+
+---
 # HANDOFF MEMO — 2026-06-02 (Phases 98–99 — Dashboard Observability + System Fixes)
 
 ## Phases 98–99 — ALL SLICES COMPLETE

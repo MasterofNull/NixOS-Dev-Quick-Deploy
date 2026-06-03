@@ -1,12 +1,13 @@
 {
-  "current_objective": "Phases 98-99 — Dashboard observability frontend + system fixes",
-  "phase": "99.2-complete",
+  "current_objective": "Phase 100 — MAEAH contract artifacts + CLI wrappers",
+  "phase": "100.1-complete",
   "todo_snapshot": [
     "DONE: Phase 98 — slice-93-15 dashboard.js loadAgentReplay/sendControl/swimlane/race (5ba6c929)",
     "DONE: Phase 93 PRD fully complete — all 15 slices verified",
     "DONE: Phase 99.1 — thermal critical threshold 80→83°C, batch task class unblocked (dc517a45)",
-    "DONE: Phase 99.2 — frequency_penalty=0 fixes Qwen3 JSON truncation at 59-61 lines (65449c02)"
+    "DONE: Phase 99.2 — frequency_penalty=0 fixes Qwen3 JSON truncation at 59-61 lines (65449c02)",
+    "DONE: Phase 100.1 — 9 missing CLI wrappers + MAEAH contract artifacts (731c681e)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phases 98-99 complete. Scorecard overall_status=pass. MLFQ thermal now optimal. Qwen3 JSON truncation fixed. All Phase 93 slices complete. No pending rebuilds or human actions. Next work: check if aq-session-start PATH gap affects Codex sessions (OPEN medium issue), or pull next feature from TECHNICAL-ANALYSIS-PRD.md."
+  "resume_hint": "Phase 100.1 complete. nixos-rebuild switch required to activate 9 new CLI wrappers (aq-session-start, aq-resume, aq-alerts, aq-approve, aq-reject, aq-insights, aq-commit-facts, aq-skill-suggest, aq-integrity-scan). All focused-CI gates pass. edgeai CLI contract fully green. Next: post-rebuild validation, then pull next feature from TECHNICAL-ANALYSIS-PRD.md or check open issues in issues-backlog.md."
 }
