@@ -1,3 +1,25 @@
+# HANDOFF MEMO — 2026-06-03 (Post-Rebuild: qdrant fix + 93.15 closed)
+
+## Post-Rebuild Session — ALL P1 SLICES COMPLETE
+
+### Delivered
+- **qdrant_upsert TypeError fix** (`0bf3dee0`): `continuous_learning.py` erroneously awaited sync `QdrantClient.upsert()`. Removed `await`. 2/2 regression tests. Learning pipeline now functional.
+- **Slice 93.15 closed**: `loadAgentReplay`, `loadObservability`, `sendControl`, `loadSwimlane`, `loadRaceComparison`, `loadEffectivenessScorecard`, `loadTokenContention` all implemented in `assets/dashboard.js`. Plan marked Complete.
+
+### Current system state (2026-06-03)
+- 79/79 QA pass · 0 AppArmor denials · All 38 ai-* units healthy
+- `completion_reliability: warn` — 4 delegate failures in 24h: 2x 500 (transient), 2x 504 (hardware-bound 240s timeout, same call retry). Expected at current hardware.
+- `useful_tokens: no_data` — agent-run-events.jsonl not yet written (requires live workflow session)
+- `context_quality: 7 open query gaps` — count=0 (not recently queried), content seeded last session
+
+### P2 items (not started — no PRD slice yet)
+- Cross-agent contradiction detection and escalation
+- Attention queue at all agent boundaries — coordinator needs `scripts/ai/lib` added to PYTHONPATH (Nix change + rebuild required)
+
+### No pending human actions
+- No rebuild needed for current changes
+
+---
 # HANDOFF MEMO — 2026-06-03 (Post-Rebuild: 92.2 + 58A.5 + Validation)
 
 ## Post-Rebuild Session — ALL ITEMS COMPLETE
