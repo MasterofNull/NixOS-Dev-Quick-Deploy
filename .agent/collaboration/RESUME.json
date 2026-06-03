@@ -1,20 +1,18 @@
 {
-  "current_objective": "Phase 108 — retry_backoff infinite loop fix + CL rotation detection",
+  "current_objective": "Phase 109 — SSE stream fix + token usage validation",
   "phase": "active",
   "todo_snapshot": [
     "DONE: Phase 106.1 — checkpoint tmpfiles + async qdrant upsert (0a099081) — LIVE",
     "DONE: Phase 107.1 — token_usage event emission per delegation (31428fd2) — LIVE",
     "DONE: Phase 107.2 — SSE body reconstruction initial_body+body sites (61040dfb) — LIVE",
     "DONE: Phase 107.3 — stream_options.include_usage + local fallback SSE (d7919601) — LIVE",
-    "DONE: Phase 108.1 — continuous_learning.py rotation detection (uncommitted)",
-    "DONE: Phase 108.2 — shared/retry_backoff.py infinite loop fix (uncommitted)",
-    "PENDING: coordinator restart to pick up retry_backoff fix (no rebuild needed)",
-    "PENDING: smoke delegation to verify 107.3 token data",
-    "PENDING: nixos-rebuild switch for 108.1 (continuous_learning.py coordinator module)"
+    "DONE: Phase 108.1 — continuous_learning.py rotation detection (847c58d2) — committed",
+    "DONE: Phase 108.2 — shared/retry_backoff.py infinite loop fix (847c58d2) — LIVE (restarted)",
+    "DONE: Phase 109.1 — explicit stream:true for local profiles in _post_delegate (97ca8c94) — committed",
+    "PENDING: nixos-rebuild switch — picks up 108.1 (continuous_learning.py) + 109.1 (ai_coordinator_handlers.py)",
+    "PENDING: smoke delegation via embedded-assist to verify usage chunk populated in agent-run-events.jsonl",
+    "PENDING: aq-report check — useful_token_ratio should be non-null after rebuild + smoke test"
   ],
-  "uncommitted_changes": [
-    "ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py",
-    "ai-stack/mcp-servers/shared/retry_backoff.py"
-  ],
-  "resume_hint": "Phase 108 fixes ready. (1) shared/retry_backoff.py infinite loop fixed — recursion→continue. Coordinator restart needed (no rebuild): sudo systemctl restart ai-hybrid-coordinator.service. (2) continuous_learning.py rotation detection — requires nixos-rebuild switch. After coordinator restart: run smoke delegation, check agent-run-events.jsonl for populated tokens, check aq-report useful_token_ratio."
+  "uncommitted_changes": [],
+  "resume_hint": "Phase 109.1 committed (97ca8c94). Requires nixos-rebuild switch to go live (coordinator module). After rebuild: run 'curl -s -X POST http://localhost:8003/ai/coordinator/delegate -H Content-Type:application/json -d {\"task\":\"reply ok\",\"profile\":\"embedded-assist\"}' then check /var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl for last token_usage event — tokens.input/output should be non-null. Then run aq-report and check useful_token_ratio."
 }

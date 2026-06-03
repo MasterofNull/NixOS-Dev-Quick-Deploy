@@ -1,3 +1,45 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 109.1: explicit stream:true for local profiles)
+
+## Phase 109.1 — explicit stream:true in _post_delegate for local profiles
+
+### Root cause
+Switchboard's stream:false→true override for local targets (switchboard.py lines 2598-2607)
+produces a truncated 2-chunk SSE response — no finish_reason chunk, no usage chunk, no [DONE].
+When stream:true is sent explicitly by the caller, switchboard returns the full 5-chunk SSE
+including chunk 4: `{"choices":[],"usage":{...}}`. The difference is in how switchboard tracks
+`is_stream` at line 2609 — it reads `payload.get("stream") is True`, so the override happens
+AFTER that flag is set, meaning httpx still uses the non-streaming response accumulation path.
+
+### Fix
+In `_post_delegate()` (ai_coordinator_handlers.py ~line 1524), added:
+```python
+actual_payload = delegate_payload or payload
+if profile_name in local_profiles:
+    headers["X-AI-Route"] = "local"
+    if not actual_payload.get("stream"):
+        actual_payload = {**actual_payload, "stream": True}
+```
+`_parse_sse_response_body` already extracts usage from the usage-only chunk (line 174:
+`if chunk.get("usage"): usage = chunk["usage"]`). All three parse sites (initial_body,
+body, local_body) use this function. Token emission at lines 2128-2140 reads
+`body.get("usage")` — now populated with real prompt_tokens + completion_tokens.
+
+### Changes
+- `extensions/ai_coordinator_handlers.py`: explicit stream:true in _post_delegate for local profiles
+- Commit: 97ca8c94
+- Requires nixos-rebuild switch (coordinator module)
+
+### Validation (post-rebuild)
+```bash
+curl -s -X POST http://localhost:8003/ai/coordinator/delegate \
+  -H 'Content-Type: application/json' \
+  -d '{"task":"reply ok","profile":"embedded-assist"}'
+tail -1 /var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl | python3 -c \
+  "import sys,json; e=json.load(sys.stdin); print(e.get('tokens',{}))"
+# Expect: {'input': N, 'output': M, 'total': N+M, 'accepted_artifact': M or None}
+```
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 108.2: retry_backoff infinite loop fix + CL rotation detection)
 
 ## Phase 108.2 — shared/retry_backoff.py infinite loop fix
