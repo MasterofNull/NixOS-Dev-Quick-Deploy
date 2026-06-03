@@ -1,13 +1,13 @@
 {
-  "current_objective": "Phase 92 complete — governance hardening + MAEAH contracts",
-  "phase": "92.2-complete",
+  "current_objective": "Governance hardening + role enforcement cleanup",
+  "phase": "58A.5-complete",
   "todo_snapshot": [
+    "DONE: Phase 58A.5 — AGENT_TYPE_ELIGIBLE_ROLES enforced at dispatch (63944c4c)",
+    "DONE: Phase 92.2 — tier0.d/check-deleted-links.sh pre-archive gate (8613b691)",
     "DONE: Phase 100.1 — 9 missing CLI wrappers + MAEAH contract artifacts (731c681e)",
-    "DONE: Phase 92.2 — tier0.d/check-deleted-links.sh pre-archive safety gate (8613b691)",
     "DONE: Phase 99.1 — thermal critical threshold 80→83°C (dc517a45)",
-    "DONE: Phase 99.2 — frequency_penalty=0 fixes Qwen3 JSON truncation (65449c02)",
-    "DONE: Phase 98 — slice-93-15 dashboard.js observability frontend (5ba6c929)"
+    "DONE: Phase 99.2 — frequency_penalty=0 fixes Qwen3 JSON truncation (65449c02)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 92 fully complete (92.1-92.4; 92.5 deferred). Phase 100.1 complete. All Phase 93 slices complete. PENDING: nixos-rebuild switch to activate 9 new CLI wrappers (aq-session-start etc.) in PATH. Tier0 gate: 19/19. Next work: check open issues (role-enforcement Phase 58A.5 is the main aspirational item), or pull from EFFECTIVENESS-CENTERED PRD for any Phase 94+ work."
+  "resume_hint": "Phase 58A.5 (role eligibility enforcement) and Phase 92.2 (pre-archive gate) complete. All Phase 93 slices complete. 79/79 QA pass. Scorecard warn from historical delegate failures (self-correcting). Open aspirational items: reviewer_id tracking (low severity) and domain-role eligibility (low severity). No pending rebuilds. Next: check if there are any new focus areas in EFFECTIVENESS-CENTERED PRD or other PRDs, or address open queries in context_quality dimension (7 open query gaps)."
 }
