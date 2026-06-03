@@ -2547,13 +2547,18 @@ in {
             # Replaces 20+ per-file rules accumulated by apparmor-fix-agent (Phase 94.2).
             /var/log/journal/** r,
             /run/log/journal/** r,
-            # sudo — /run/wrappers/bin/sudo is the stable NixOS path; hash-bound wrappers.*/sudo breaks on rebuild.
+            # sudo — AppArmor resolves symlinks, so /run/wrappers/bin/sudo (symlink)
+            # resolves to /run/wrappers/wrappers.<hash>/sudo before the rule is checked.
+            # Wildcard glob covers both the symlink and any hash after rebuild.
             /run/wrappers/bin/sudo ix,
+            /run/wrappers/wrappers.*/sudo ix,
             /nix/var/nix/profiles/ r,
             # CLI tools invoked by health probes and aq-qa
             /nix/store/**/bin/aq-qa ix,
             /nix/store/**/bin/lspci ix,
             /nix/store/**/bin/grep ix,
+            # journalctl — dashboard reads journal logs via subprocess exec
+            /nix/store/**/bin/journalctl ix,
             # Dashboard keyword signals
             /home/hyperd/.local/share/nixos-system-dashboard/** r,
             deny /home/** wx,
