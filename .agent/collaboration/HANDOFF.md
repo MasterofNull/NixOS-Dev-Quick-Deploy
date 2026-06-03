@@ -1,3 +1,28 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 106.1: checkpoint permission fix + upsert async fix)
+
+## Phase 106.1 — continuous_learning bugs
+
+### Root cause analysis
+- **checkpoint_save_failed** [Errno 13]: `/var/lib/ai-stack/hybrid/checkpoints/` dir was
+  `hyperd:users` (init code ran as user). Coordinator (ai-hybrid) can't write. Fix:
+  added `d` + `Z` tmpfiles rules to mcp-servers.nix for this path. **Requires rebuild.**
+- **qdrant_upsert_failed** `object UpdateResult can't be used in 'await' expression`:
+  `extensions/continuous_learning_daemon.py` passes `AsyncQdrantClient` to
+  `ContinuousLearningPipeline`, but `_upsert()` returned the coroutine without awaiting it.
+  Fixed: `asyncio.iscoroutine()` guard + `await` when needed.
+- Both 500 errors on `local-tool-calling` delegate: llama.cpp (port 8080) was returning
+  503 pre-rebuild at 01:26 UTC and 13:36 UTC. Subprocess agent raised on `resp.raise_for_status()`.
+  Not a code bug — transient model unavailability. Post-rebuild llama.cpp is healthy.
+
+### Changes
+- `nix/modules/services/mcp-servers.nix`: added tmpfiles rules for hybrid/checkpoints
+- `extensions/continuous_learning.py`: _upsert handles async client; traceback logging added
+
+### Pending rebuild
+mcp-servers.nix tmpfiles change requires `nixos-rebuild switch` to create checkpoints dir
+with ai-hybrid ownership. Manual workaround: `sudo chown -R ai-hybrid:ai-stack /var/lib/ai-stack/hybrid/checkpoints`
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 105: query_gap role-prefix + knowledge seeding)
 
 ## Phase 105 — coordinator gap cleanup + knowledge seeding

@@ -81,7 +81,8 @@ class Checkpointer:
             logger.info("checkpoint_saved", state_keys=list(state.keys()))
 
         except Exception as e:
-            logger.error("checkpoint_save_failed", error=str(e))
+            import traceback as _tb
+            logger.error("checkpoint_save_failed", error=str(e), traceback=_tb.format_exc())
             # Clean up temp file on failure
             if temp_path.exists():
                 temp_path.unlink()
@@ -1229,19 +1230,24 @@ class ContinuousLearningPipeline:
                 qdrant_breaker = self.circuit_breakers.get("qdrant")
                 try:
                     async def _upsert():
-                        # self.qdrant is the sync QdrantClient (server.py); upsert()
-                        # returns UpdateResult directly — do not await.
-                        return self.qdrant.upsert(
+                        # Handle both sync QdrantClient (returns UpdateResult) and
+                        # AsyncQdrantClient (returns coroutine). The daemon passes
+                        # AsyncQdrantClient; server.py passes sync QdrantClient.
+                        result = self.qdrant.upsert(
                             collection_name="skills-patterns",
                             points=points,
                             wait=True,
                         )
+                        if asyncio.iscoroutine(result) or asyncio.isfuture(result):
+                            return await result
+                        return result
 
                     await qdrant_breaker.call(_upsert)
                     logger.info("patterns_indexed", count=len(points))
 
                 except Exception as e:
-                    logger.error("qdrant_upsert_failed", error=str(e), circuit_state=qdrant_breaker.state.value)
+                    import traceback as _tb
+                    logger.error("qdrant_upsert_failed", error=str(e), circuit_state=qdrant_breaker.state.value, traceback=_tb.format_exc())
 
         except Exception as e:
             logger.error("pattern_indexing_failed", error=str(e))

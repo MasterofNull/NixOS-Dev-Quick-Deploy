@@ -646,6 +646,10 @@ in {
           "d ${dataDir}/hybrid             0750 ${hybridUser} ${aiGroup} -"
           "d ${dataDir}/hybrid/telemetry   0750 ${hybridUser} ${aiGroup} -"
           "d ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
+          # Phase 106.1 — checkpoints dir was hyperd:users (created by init mkdir); coordinator (ai-hybrid) needs rw.
+          # Z recursively relabels existing dir/files to ai-hybrid:ai-stack ownership.
+          "d ${dataDir}/hybrid/checkpoints 0750 ${hybridUser} ${aiGroup} -"
+          "Z ${dataDir}/hybrid/checkpoints 0750 ${hybridUser} ${aiGroup} -"
           "z ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
           "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "z ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
