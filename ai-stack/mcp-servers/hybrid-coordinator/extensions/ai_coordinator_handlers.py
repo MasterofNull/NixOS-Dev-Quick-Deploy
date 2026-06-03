@@ -1521,8 +1521,15 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 "Content-Type": "application/json",
                 "X-AI-Profile": "continue-local" if profile_name == "default" else profile_name,
             }
+            actual_payload = delegate_payload or payload
             if profile_name in local_profiles:
                 headers["X-AI-Route"] = "local"
+                # Explicit stream:true for local profiles — switchboard's stream:false→true
+                # override produces truncated 2-chunk SSE (no usage, no [DONE]).
+                # Explicit stream:true from the caller yields the full 5-chunk response
+                # including the usage chunk that token accounting requires.
+                if not actual_payload.get("stream"):
+                    actual_payload = {**actual_payload, "stream": True}
             else:
                 headers["X-AI-Route"] = "remote"
 
@@ -1531,7 +1538,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     response = await client.post(
                         f"{Config.SWITCHBOARD_URL.rstrip('/')}/v1/chat/completions",
                         headers=headers,
-                        json=delegate_payload or payload,
+                        json=actual_payload,
                     )
                     # Only raise for 5xx (transient server errors worth retrying).
                     # 4xx client errors are returned directly so the downstream
