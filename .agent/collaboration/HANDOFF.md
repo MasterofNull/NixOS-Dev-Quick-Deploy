@@ -1,3 +1,45 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 108.2: retry_backoff infinite loop fix + CL rotation detection)
+
+## Phase 108.2 — shared/retry_backoff.py infinite loop fix
+
+### Root cause
+`retry_with_backoff` made RECURSIVE calls on 429/402 responses with Retry-After headers,
+resetting the attempt counter to 0 on each iteration → infinite loop. The coordinator
+was stuck processing a delegation forever: every 30s a 402 (Payment Required) came back
+from the remote API with Retry-After:30, triggering another recursive call. Journal showed
+"Exception requested backoff. Sleeping for 30.0s" every 30s indefinitely.
+
+The same recursion bug existed in the exception handler path (lines 93-99 in original).
+
+### Fix
+Replaced the recursive `return await retry_with_backoff(...)` pattern with `continue`
+statements that use the existing attempt counter:
+- 429 handling: `if attempt < max_attempts - 1: await sleep(retry_after); continue`
+- Exception Retry-After: same pattern
+- 402 (Payment Required): removed from retry-after list entirely — it's not transient
+
+### Changes
+- `ai-stack/mcp-servers/shared/retry_backoff.py`: recursion → loop continuation
+- No rebuild needed (file is in live PYTHONPATH); requires coordinator restart
+
+## Phase 108.1 — continuous_learning.py stale checkpoint rotation detection
+
+### Root cause
+`_process_telemetry_file()` has no rotation detection. `hybrid-events.jsonl` was rotated
+(size shrank to 40MB) but checkpoint still held pos=52MB. `f.seek(52MB)` on a 40MB file
+seeks past EOF → `f.readline()` returns empty immediately → 0 patterns extracted per batch.
+All three files (ralph/aidb/hybrid) showed `patterns=0` per batch indefinitely.
+
+### Fix
+Before `f.seek(last_pos)`, check `os.path.getsize(telemetry_path)`. If `last_pos > file_size`,
+log `telemetry_file_rotated`, reset `last_pos = 0` in both local var and `self.last_positions`.
+OSError on getsize → safe reset to 0.
+
+### Changes
+- `extensions/continuous_learning.py`: rotation detection in `_process_telemetry_file()`
+- Requires nixos-rebuild switch (coordinator module, not live PYTHONPATH)
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 107.3: stream_options.include_usage + local fallback SSE fix)
 
 ## Phase 107.3 — token data now populated in all local delegation paths
@@ -1489,3 +1531,5 @@ Denied paths that triggered: ['/run/wrappers/wrappers.Yp3dH5WrJ6/sudo', '/nix/st
 Rules added (1): ['            /run/wrappers/wrappers.Yp3dH5WrJ6/sudo ix,']  
 Denied paths: ['/run/wrappers/wrappers.Yp3dH5WrJ6/sudo', '/nix/store/d0y2xi6x65npxy2rh3jp1x7p31c9gk83-systemd-258.7/bin/journalctl']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+[2026-06-03T20:50:13.078869Z] [dispatch] id=local-20260603-135012-1eseyy agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260603-135012-1eseyy.log obj="Say: hello world"
+[2026-06-03T20:50:23.385594Z] [done] id=local-20260603-135012-1eseyy

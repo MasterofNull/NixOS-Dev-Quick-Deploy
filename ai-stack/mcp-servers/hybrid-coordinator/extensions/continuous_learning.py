@@ -862,6 +862,21 @@ class ContinuousLearningPipeline:
         # Get last processed position from checkpoint
         last_pos = self.last_positions.get(str(telemetry_path), 0)
 
+        # Detect file rotation: stale checkpoint position exceeds current file size
+        try:
+            file_size = os.path.getsize(telemetry_path)
+            if last_pos > file_size:
+                logger.info(
+                    "telemetry_file_rotated",
+                    file=telemetry_path.name,
+                    stale_pos=last_pos,
+                    file_size=file_size,
+                )
+                last_pos = 0
+                self.last_positions[str(telemetry_path)] = 0
+        except OSError:
+            last_pos = 0
+
         events_since_checkpoint = 0
 
         with open(telemetry_path, "r", encoding="utf-8") as f:

@@ -66,37 +66,35 @@ async def retry_with_backoff(
                 actual_config.retry_exceptions = list(retry_on_exceptions)
 
     last_exception = None
-    
+
     for attempt in range(actual_config.max_attempts):
         try:
             result = await func(*args, **kwargs)
-            
-            # If the result is an httpx.Response, check for rate limits
-            if hasattr(result, "status_code"):
-                if result.status_code in (429, 402):
-                    retry_after = _get_retry_after(result)
-                    if retry_after > 0:
-                        if breaker and hasattr(breaker, "throttle"):
-                            await breaker.throttle(retry_after)
-                        
-                        logger.warning(f"Service requested backoff: {result.status_code}. Sleeping for {retry_after:.1f}s")
-                        await asyncio.sleep(retry_after)
-                        # Retry after sleep
-                        return await retry_with_backoff(func, *args, config=actual_config, breaker=breaker, **kwargs)
-            
+
+            # For 429 (rate limit) respect Retry-After and retry within the attempt budget.
+            # 402 (Payment Required) is not transient — return it immediately so the
+            # caller's failover chain can handle it without burning retry attempts.
+            if hasattr(result, "status_code") and result.status_code == 429:
+                retry_after = _get_retry_after(result)
+                if retry_after > 0 and attempt < actual_config.max_attempts - 1:
+                    if breaker and hasattr(breaker, "throttle"):
+                        await breaker.throttle(retry_after)
+                    logger.warning(f"Service requested backoff: 429. Sleeping for {retry_after:.1f}s")
+                    await asyncio.sleep(retry_after)
+                    continue  # use the existing attempt counter, no reset
+
             return result
         except Exception as e:
             last_exception = e
-            
-            # Check for rate limit info in common LLM client exceptions
+
+            # Respect Retry-After from exception (e.g. httpx.HTTPStatusError)
             retry_after = _get_exception_retry_after(e)
-            if retry_after > 0:
+            if retry_after > 0 and attempt < actual_config.max_attempts - 1:
                 if breaker and hasattr(breaker, "throttle"):
                     await breaker.throttle(retry_after)
-                
                 logger.warning(f"Exception requested backoff. Sleeping for {retry_after:.1f}s")
                 await asyncio.sleep(retry_after)
-                return await retry_with_backoff(func, *args, config=actual_config, breaker=breaker, **kwargs)
+                continue  # use the existing attempt counter, no reset
 
             # Check if this exception should be retried
             should_retry = False
@@ -104,31 +102,31 @@ async def retry_with_backoff(
                 if isinstance(e, exc_type):
                     should_retry = True
                     break
-            
+
             # Check if this exception should be excluded from retry
             for exc_type in actual_config.exclude_exceptions:
                 if isinstance(e, exc_type):
                     should_retry = False
                     break
-            
+
             if not should_retry or attempt == actual_config.max_attempts - 1:
                 raise e
-            
+
             delay = min(
                 actual_config.base_delay * (actual_config.backoff_factor ** attempt),
                 actual_config.max_delay
             )
-            
+
             if actual_config.jitter:
                 delay *= (0.5 + random.random() * 0.5)
-            
+
             logger.warning(
                 f"Attempt {attempt + 1}/{actual_config.max_attempts} failed: {e}. "
                 f"Retrying in {delay:.2f}s..."
             )
-            
+
             await asyncio.sleep(delay)
-    
+
     raise last_exception
 
 
