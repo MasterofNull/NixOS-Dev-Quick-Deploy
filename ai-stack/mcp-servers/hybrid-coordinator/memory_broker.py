@@ -356,6 +356,7 @@ class MemoryBroker:
 
         sub_type='contradiction_detected' allows ContinuousLearning to cluster and surface
         memory conflicts in the dashboard Tool Execution Heatmap / Agent Events panel.
+        Phase 103: blocked contradictions also push to attention archive (auto_ok, passive).
         Silently skips if coordinator event bus is unreachable.
         """
         try:
@@ -376,6 +377,28 @@ class MemoryBroker:
                 )
         except Exception:
             pass  # Non-critical — never block memory writes on event bus failures
+
+        # Phase 103: blocked (hard) contradictions are surfaced to attention archive so
+        # operators can investigate without polling the dashboard event bus.
+        if blocked:
+            try:
+                from attention_queue import push
+                push(
+                    source="memory-broker",
+                    severity="medium",
+                    autonomy_boundary="auto_ok",
+                    title=f"Memory contradiction blocked: {old_id[:24]}",
+                    detail=(
+                        f"New content contradicts existing institutional memory and was blocked. "
+                        f"old_id={old_id[:32]} | new={new_content[:120]}"
+                    ),
+                    proposed_action=(
+                        "Review conflicting memory entries. Resolve via aq-commit-facts if one "
+                        "entry is stale. No immediate action required."
+                    ),
+                )
+            except Exception:
+                pass
 
     def check_contradiction(self, existing: str, candidate: str) -> bool:
         """

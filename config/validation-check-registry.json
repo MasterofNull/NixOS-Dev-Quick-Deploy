@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-06-01"
+    "last_updated": "2026-06-03"
   },
   "_comment": "Validation check registry \u2014 SSOT for all path-gated CI checks. Edit this file to add/modify behavioral checks. See scripts/governance/run-focused-ci-checks.sh for the runner.",
   "version": "1.0",
@@ -151,13 +151,12 @@
         "ai-stack/mcp-servers/hybrid-coordinator/tests/test_cognitive_intelligence_l5_l6.py"
       ],
       "command": [
-        "python",
-        "-m",
         "pytest",
         "ai-stack/mcp-servers/hybrid-coordinator/tests/test_cognitive_intelligence_l5_l6.py"
       ],
       "tier": "behavioral",
-      "timeout_seconds": 60
+      "timeout_seconds": 60,
+      "require_tool": "pytest"
     },
     {
       "id": "intent-mapping-spec",
@@ -955,7 +954,7 @@
     },
     {
       "id": "ipm-thermal-thresholds",
-      "description": "Phase 99.1 IPM thermal tier env-var thresholds — critical/warn/shutdown calibrated for Renoir APU",
+      "description": "Phase 99.1 IPM thermal tier env-var thresholds \u2014 critical/warn/shutdown calibrated for Renoir APU",
       "trigger_paths": [
         "ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py",
         "scripts/testing/test-ipm-thermal-thresholds.py",
@@ -971,7 +970,7 @@
     },
     {
       "id": "deleted-links",
-      "description": "Phase 92.2 — block deletion of agent docs still referenced by other tracked files",
+      "description": "Phase 92.2 \u2014 block deletion of agent docs still referenced by other tracked files",
       "trigger_paths": [
         ".agent/",
         ".agents/plans/",
@@ -988,7 +987,7 @@
     },
     {
       "id": "agent-executor-role-eligibility",
-      "description": "Phase 58A.5 — AGENT_TYPE_ELIGIBLE_ROLES enforced at execute_task dispatch",
+      "description": "Phase 58A.5 \u2014 AGENT_TYPE_ELIGIBLE_ROLES enforced at execute_task dispatch",
       "trigger_paths": [
         "ai-stack/local-agents/agent_executor.py",
         "scripts/testing/test-agent-executor-role-eligibility.py"
@@ -1018,7 +1017,7 @@
     },
     {
       "id": "attention-queue-env-override",
-      "description": "Phase 101 — ATTENTION_QUEUE_DIR env var redirects attention_queue writes; circuit breaker _trip() pushes alert",
+      "description": "Phase 101 \u2014 ATTENTION_QUEUE_DIR env var redirects attention_queue writes; circuit breaker _trip() pushes alert",
       "trigger_paths": [
         "scripts/ai/lib/attention_queue.py",
         "ai-stack/mcp-servers/hybrid-coordinator/core/circuit_breaker.py",
@@ -1032,6 +1031,23 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "cross-agent-contradiction-detection",
+      "description": "Phase 103 \u2014 memory broker blocked contradictions + consensus arbiter severe divergence push to attention archive",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/memory_broker.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/consensus_arbiter.py",
+        "scripts/ai/lib/attention_queue.py",
+        "scripts/testing/test-cross-agent-contradiction-detection.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-cross-agent-contradiction-detection.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
       "enabled": true
     }
   ]
