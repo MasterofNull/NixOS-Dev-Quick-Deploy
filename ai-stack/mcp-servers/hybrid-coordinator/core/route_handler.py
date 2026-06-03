@@ -124,9 +124,11 @@ _SYNTHETIC_GAP_PREFIXES = (
     "curl http://localhost",
     # Frontdoor / smoke-test probe patterns
     "reply with exactly ",
+    "reply with just",
     "respond with exactly ",
     "test harness connectivity",
     "test harness ",
+    "/no_think ",
 )
 _SYNTHETIC_GAP_SOURCE_MARKERS = {
     "gap-eval-pack",
@@ -136,6 +138,8 @@ _SYNTHETIC_GAP_SOURCE_MARKERS = {
     "parity-smoke",
     "synthetic-test",
 }
+# Strip [ROLE: ...] prefix injected by delegate-to-claude/gemini before gap storage.
+_ROLE_PREFIX_RE = re.compile(r"^\[ROLE:[^\]]*\]\s*", re.IGNORECASE)
 
 _CONTINUATION_QUERY_MARKERS = (
     "resume",
@@ -1489,7 +1493,8 @@ async def route_search(
                 r.get("collection", "") for r in _all_combined if isinstance(r, dict)
             ))) or "unknown"
             asyncio.create_task(_record_query_gap(
-                query_hash=_query_hash, query_text=query[:500],
+                query_hash=_query_hash,
+                query_text=_ROLE_PREFIX_RE.sub("", query)[:500],
                 score=_best_score, collection=_collections_hit,
             ))
 
@@ -1934,8 +1939,9 @@ async def route_search(
                         ):
                             _t_hash = hashlib.sha256(query.encode()).hexdigest()[:64]
                             asyncio.create_task(_record_query_gap(
-                                query_hash=_t_hash, query_text=query[:500], score=-1.0,
-                                collection="inference_timeout",
+                                query_hash=_t_hash,
+                                query_text=_ROLE_PREFIX_RE.sub("", query)[:500],
+                                score=-1.0, collection="inference_timeout",
                             ))
 
         if selected_backend in {"", "none", "unknown"} and not generate_response:

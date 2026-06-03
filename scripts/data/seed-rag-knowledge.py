@@ -679,6 +679,45 @@ BEST_PRACTICES = [
         "endorsement_count": 2,
         "last_validated": NOW,
     },
+    {
+        "category": "nixos_architecture",
+        "title": "hwmon/k10temp thermal sensor: reading CPU temp from sysfs on NixOS",
+        "description": "On AMD Renoir/Ryzen systems, CPU temperature is exposed via hwmon subsystem. Sensor path: /sys/class/hwmon/hwmonN/temp1_input (millidegrees Celsius — divide by 1000). Sensor name file: /sys/class/hwmon/hwmonN/name — look for 'k10temp'. Dynamic scan: glob /sys/class/hwmon/hwmon*/name and match 'k10temp'. On Renoir APU, Tctl reads ~81°C at idle (includes offset) — thermal_margin = Tctl - Tccd. AppArmor rule for hwmon reads: /sys/class/hwmon/ r, /sys/class/hwmon/** r, /sys/devices/pci*/**/hwmon/** r (NOT /sys/devices/pci*/**/hwmon/**/). NixOS dashboard profile critical threshold raised to 83°C (Phase 99.1) via THERMAL_CRITICAL_C env var.",
+        "examples": [
+            "import glob; sensors = {open(p.replace('name','temp1_input')).read().strip() for p in glob.glob('/sys/class/hwmon/hwmon*/name') if open(p).read().strip() == 'k10temp'}",
+            "THERMAL_CRITICAL_C=83 python3 inference_param_manager.py  # override default 80°C",
+        ],
+        "anti_patterns": [
+            "Hardcoding /sys/class/hwmon/hwmon2/ — sensor index varies by kernel and boot order",
+            "Using hwmon/** in AppArmor without the parent /sys/class/hwmon/ r rule — d access needed for directory",
+        ],
+        "references": [
+            "ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py",
+            "nix/modules/services/mcp-servers.nix",
+        ],
+        "endorsement_count": 2,
+        "last_validated": NOW,
+    },
+    {
+        "category": "nixos_architecture",
+        "title": "systemd DynamicUser: what it does and when NOT to use it in NixOS services",
+        "description": "DynamicUser=true allocates a transient UID/GID at service startup (freed on stop). It sandboxes services without a fixed user account. Benefits: automatic /run/user, tmpfs, no /home pollution. Critical constraint: DynamicUser is INCOMPATIBLE with NoNewPrivileges=false in the same unit for AppArmor profile transitions — setuid wrappers (sudo, ping) fail with EPERM even with Ux rules. Do NOT use DynamicUser when the service needs: (1) persistent /var/lib/<service> state owned by fixed UID, (2) sudo or setuid binary execution, (3) AppArmor Ux/Px profile transitions, (4) socket activation with fixed ownership. NixOS pattern: use User = 'aidb'; Group = 'aidb'; with StateDirectory = 'ai-stack/aidb'; for services that own persistent state. For readonly/stateless services DynamicUser is fine.",
+        "examples": [
+            "User = \"aidb\"; Group = \"aidb\"; StateDirectory = \"ai-stack/aidb\";  # fixed user, persistent state",
+            "DynamicUser = true; RuntimeDirectory = \"myservice\";  # OK for stateless/sandboxed services",
+        ],
+        "anti_patterns": [
+            "DynamicUser = true + sudo exec — EPERM because setuid requires fixed UID",
+            "DynamicUser = true + AppArmor Ux/Px — NoNewPrivileges=true (implied by DynamicUser) blocks profile transitions",
+            "DynamicUser + /var/lib/<name> — directory ownership is ephemeral; use StateDirectory instead",
+        ],
+        "references": [
+            "nix/modules/services/mcp-servers.nix",
+            "nix/modules/services/command-center-dashboard.nix",
+        ],
+        "endorsement_count": 2,
+        "last_validated": NOW,
+    },
 ]
 
 # ---------------------------------------------------------------------------
