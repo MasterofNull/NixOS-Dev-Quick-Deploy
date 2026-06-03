@@ -73,3 +73,9 @@
   Action: Phase 99.1 — raised critical threshold from 80→83°C, warn from 70→73°C. Added THERMAL_CRITICAL_C / THERMAL_WARN_C / THERMAL_SHUTDOWN_C env var overrides. Shutdown stays at 88°C (safety boundary). 6/6 regression tests pass.
   File: ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py ~line 155
   Test: scripts/testing/test-ipm-thermal-thresholds.py
+
+[RESOLVED 2026-06-03] coordinator — qdrant_upsert_failed TypeError on skills-patterns indexing — continuous_learning.py _upsert() inner function used `return await self.qdrant.upsert(...)` but server.py passes the sync QdrantClient whose upsert() returns UpdateResult directly (not a coroutine). Caused `TypeError: object UpdateResult can't be used in 'await' expression` on every _index_patterns() call, silently dropping all Qdrant pattern indexing.
+  Severity: medium (learning pipeline silently non-functional)
+  Action: Removed spurious `await`; _upsert() now calls self.qdrant.upsert() directly. 2/2 regression tests pass.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py ~line 1231
+  Test: scripts/testing/test-continuous-learning-qdrant-upsert.py

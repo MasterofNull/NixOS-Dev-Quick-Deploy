@@ -1000,6 +1000,21 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "continuous-learning-qdrant-upsert",
+      "description": "Regression: continuous_learning._upsert() must not await sync QdrantClient.upsert()",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py",
+        "scripts/testing/test-continuous-learning-qdrant-upsert.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-continuous-learning-qdrant-upsert.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
