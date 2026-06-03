@@ -1,3 +1,31 @@
+# HANDOFF MEMO — 2026-06-03 (Post-Rebuild: 92.2 + 58A.5 + Validation)
+
+## Post-Rebuild Session — ALL ITEMS COMPLETE
+
+### Delivered
+- **9 CLI wrappers activated**: `aq-session-start`, `aq-resume`, `aq-alerts`, `aq-approve`, `aq-reject`, `aq-insights`, `aq-commit-facts`, `aq-skill-suggest`, `aq-integrity-scan` — all in PATH at `/run/current-system/sw/bin/`.
+- **Phase 92.2** (`8613b691`): `tier0.d/check-deleted-links.sh` blocks commits that delete doc files still referenced elsewhere. Tier0 gate: 19/19.
+- **Phase 58A.5** (`63944c4c`): Role eligibility enforcement in `LocalAgentExecutor.execute_task()`. Ineligible roles clamped to default with warning log. 6/6 regression tests. Marks AGENT_TYPE_ELIGIBLE_ROLES as runtime-enforced (was doc-only).
+- **MAEAH parity plan** (`238529a7`): Parity table updated — agent run event stream, spec-variant race, useful-token accounting, role eligibility all marked COMPLETE.
+- **RAG seeded**: 43 records across all 3 collections. Covers all 7 query gap topics (aiohttp, backoff, Nix overlays, agent workflow phases, tool-call representation, GPU layers, FastAPI patterns).
+- **aq-commit-facts**: Institutional memory extracted and committed to MemoryBroker.
+
+### Current scorecard (2026-06-03)
+- `overall_status: warn` — no blocking reasons
+- `completion_reliability: warn` — 2 historical delegate failures in 24h window (self-correcting)
+- All other dimensions: pass/ok/no_data (no_data correct — requires live workflow sessions)
+- 79/79 QA pass
+
+### System health
+- AppArmor: no new denials post-rebuild. Historical denials in telemetry are pre-rebuild; all rules now in profile.
+- Attention queue: 0 pending alerts.
+
+### Remaining aspirational items (no action needed)
+- reviewer_id tracking + self-review prevention (low — requires historical task lookup)
+- domain-role eligibility (low — requires domain_shell concept in TaskConfig)
+- trace_completeness / useful_token_ratio (requires live agent-run-events.jsonl from workflow sessions)
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 58A.5 — Role Eligibility Enforcement)
 
 ## Phase 58A.5 — COMPLETE (`63944c4c`)
@@ -1204,3 +1232,5 @@ Denied paths that triggered: ['/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciut
 Rules added (1): ['            /run/wrappers/wrappers.Dwtm5xGLLW/sudo ix,']  
 Denied paths: ['/nix/store/c9923nbvga0yvxpcrsm36xz03z1231ph-pciutils-3.14.0/bin/lspci', '/nix/store/h2y46l7q8fwqwqfjwn874ajgpryqkx2p-aq-qa/bin/aq-qa', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001216dd82-000652e6225b61d2.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system.journal', '/var/log/journal/89cc3b6db776404baa5b92d606a856e3/system@d6279bf126b147518d53f333d34d245d-000000001234a327-00065306799f3e9d.journal']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+[2026-06-03T02:06:26.484043Z] [dispatch] id=local-20260602-190626-r6ho2z agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260602-190626-r6ho2z.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-03T02:08:27.206186Z] [done] id=local-20260602-190626-r6ho2z
