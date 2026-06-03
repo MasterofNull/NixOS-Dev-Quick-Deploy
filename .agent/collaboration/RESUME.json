@@ -1,5 +1,5 @@
 {
-  "current_objective": "Phase 105 complete — query_gap role-prefix fix + knowledge seeding",
+  "current_objective": "Phase 106.1 complete — checkpoint permission + async qdrant upsert fix",
   "phase": "active",
   "todo_snapshot": [
     "DONE: Phase 94.2 AppArmor rebuild verified — 0 denials post-reload",
@@ -8,8 +8,9 @@
     "DONE: Phase 105 — role-prefix strip in route_handler gap storage (891f362d)",
     "DONE: Phase 105 — thermal/DynamicUser knowledge seeded to best-practices (891f362d)",
     "DONE: query_gaps DB cleaned — 0 open gaps, noise entries removed",
-    "SYSTEM: 79/79 QA pass, 0 alerts, 0 AppArmor denials, overall_status=warn (operator_trust=no_data)"
+    "DONE: Phase 106.1 — checkpoint tmpfiles fix + async qdrant upsert (0a099081)",
+    "PENDING-REBUILD: mcp-servers.nix tmpfiles change for hybrid/checkpoints dir ownership"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 105 complete. All code changes committed. Next: phase 105 coordinator changes (route_handler) require nixos-rebuild switch to take effect. Open issues: operator_trust=no_data (intent_coverage null, trace_completeness no_data) — this is a data gap not a code bug. delegation_success_rate=81.5% (5/27 failures in 24h) — investigate failure reasons if this persists."
+  "resume_hint": "Phase 106.1 complete. PENDING: nixos-rebuild switch needed for tmpfiles checkpoints rule. Both 500 errors on local-tool-calling traced to pre-rebuild llama.cpp 503 — not a recurring issue. Open: operator_trust=no_data (data gap), delegation 24h rate 81.5% (pre-rebuild failures). Next: run aq-qa, check dashboard, investigate operator_trust gap."
 }
