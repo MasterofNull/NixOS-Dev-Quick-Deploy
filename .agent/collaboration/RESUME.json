@@ -1,17 +1,12 @@
 {
-  "current_objective": "Phase 107.1 complete — token_usage event emission wired to delegate handler",
+  "current_objective": "Phase 107.2 complete — SSE body reconstruction for local delegate responses",
   "phase": "active",
   "todo_snapshot": [
-    "DONE: Phase 94.2 AppArmor rebuild verified — 0 denials post-reload",
-    "DONE: Phase 104 — reviewer_id tracking + self-review detection (22ef9e4a)",
-    "DONE: gap_detection_score prompt rewrite — 0.333 → 1.000 (7ea924e2)",
-    "DONE: Phase 105 — role-prefix strip + RAG seeding (891f362d)",
-    "DONE: query_gaps DB cleaned — 0 open gaps",
-    "DONE: Phase 106.1 — checkpoint tmpfiles fix + async qdrant upsert (0a099081)",
-    "DONE: Phase 107.1 — token_usage event emission per delegation (31428fd2)",
-    "PENDING-REBUILD: mcp-servers.nix tmpfiles change (Phase 106.1) for hybrid/checkpoints dir",
-    "PENDING-REBUILD: ai_coordinator_handlers.py (Phase 107.1) — token_usage events need rebuild to activate"
+    "DONE: Phase 106.1 — checkpoint tmpfiles + async qdrant upsert (0a099081) — REBUILD APPLIED",
+    "DONE: Phase 107.1 — token_usage event emission per delegation (31428fd2) — REBUILD APPLIED",
+    "DONE: Phase 107.2 — SSE body reconstruction for local delegate responses (61040dfb)",
+    "PENDING-REBUILD: ai_coordinator_handlers.py (Phase 107.2) — SSE fix + token data need rebuild to activate"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 107.1 complete. Two pending rebuilds: (1) 106.1 tmpfiles for checkpoints dir ownership, (2) 107.1 coordinator token_usage emission. Both need nixos-rebuild switch. After rebuild: verify agent-run-events.jsonl is written on next delegation, then check aq-report useful_token_ratio is populated. Open: operator_trust=no_data (data gap — workflow session events not emitted during delegations)."
+  "resume_hint": "Phase 107.2 complete. Root cause found: switchboard forces stream=True for local targets; coordinator's response.json() failed on SSE body; all downstream (quality, token logging, text extraction) worked on error dict. Fix: _parse_sse_response_body() reassembles SSE → chat.completion JSON. Needs nixos-rebuild switch to restart coordinator. After rebuild, delegation smoke test + aq-report should show populated useful_token_ratio."
 }
