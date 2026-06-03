@@ -105,7 +105,20 @@ class CircuitBreaker:
         """Trip the circuit breaker to OPEN state."""
         self.state = CircuitState.OPEN
         self.failure_count = 0
+        name = getattr(self, "name", "unknown")
         logger.warning(f"Circuit breaker TRIPPED after {self.failure_threshold} failures")
+        try:
+            from attention_queue import push
+            push(
+                source="circuit-breaker",
+                severity="high",
+                autonomy_boundary="auto_ok",
+                title=f"Circuit breaker tripped: {name}",
+                detail=f"Service '{name}' tripped after {self.failure_threshold} consecutive failures. Calls are now blocked until the reset timeout elapses.",
+                proposed_action=f"Monitor recovery. Check service health and coordinator logs. The breaker auto-resets after the configured timeout.",
+            )
+        except Exception:
+            pass
     
     def reset(self):
         """Manually reset the circuit breaker."""

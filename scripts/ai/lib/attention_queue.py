@@ -38,7 +38,8 @@ from typing import List, Optional
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent.parent
-_ATTENTION_DIR = _REPO_ROOT / ".agents" / "attention"
+# Allow processes (e.g. coordinator running from Nix store) to set the live path.
+_ATTENTION_DIR = Path(os.environ["ATTENTION_QUEUE_DIR"]) if "ATTENTION_QUEUE_DIR" in os.environ else _REPO_ROOT / ".agents" / "attention"
 _QUEUE_FILE = _ATTENTION_DIR / "ATTENTION.json"
 _ARCHIVE_FILE = _ATTENTION_DIR / "ATTENTION_ARCHIVE.jsonl"
 

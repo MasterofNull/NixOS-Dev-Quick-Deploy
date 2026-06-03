@@ -1015,6 +1015,24 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "attention-queue-env-override",
+      "description": "Phase 101 — ATTENTION_QUEUE_DIR env var redirects attention_queue writes; circuit breaker _trip() pushes alert",
+      "trigger_paths": [
+        "scripts/ai/lib/attention_queue.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/core/circuit_breaker.py",
+        "ai-stack/mcp-servers/shared/circuit_breaker.py",
+        "nix/modules/services/mcp-servers.nix",
+        "scripts/testing/test-attention-queue-env-override.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-attention-queue-env-override.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

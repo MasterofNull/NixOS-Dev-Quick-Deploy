@@ -1299,7 +1299,9 @@ in {
                 "AI_LOCAL_FRONTDOOR_REASONING_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.reasoningProfile}"
                 "AI_LOCAL_FRONTDOOR_TOOL_CALLING_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.toolCallingProfile}"
                 "AI_LOCAL_FRONTDOOR_CONTINUATION_PROFILE=${ai.aiHarness.runtime.localFrontdoorRouting.continuationProfile}"
-                "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator:${repoAiStack}:${repoAiStack}/capability-gap:${repoAiStack}/efficiency:${repoAiStack}/offloading:${repoAiStack}/observability:${repoAiStack}/world-model:${repoAiStack}/progressive-disclosure:${repoAiStack}/affective-engine:${repoAiStack}/autoresearch:${repoAiStack}/identity-kernel:${repoAiStack}/local-agents:${repoAiStack}/model-optimization:${repoAiStack}/real-time-learning"
+                "PYTHONPATH=${workflowHandlersPkg}/${pkgs.python3.sitePackages}:${repoMcp}:${repoMcp}/hybrid-coordinator:${repoAiStack}:${repoAiStack}/capability-gap:${repoAiStack}/efficiency:${repoAiStack}/offloading:${repoAiStack}/observability:${repoAiStack}/world-model:${repoAiStack}/progressive-disclosure:${repoAiStack}/affective-engine:${repoAiStack}/autoresearch:${repoAiStack}/identity-kernel:${repoAiStack}/local-agents:${repoAiStack}/model-optimization:${repoAiStack}/real-time-learning:${toString repoSource}/scripts/ai/lib"
+                # Phase 101 — attention_queue writable path (coordinator runs from Nix store; env var overrides _REPO_ROOT computation)
+                "ATTENTION_QUEUE_DIR=${toString repoSource}/.agents/attention"
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
                 # Phase A.1 fix: point hints_engine at sidecar audit log (group-readable by ai-stack)

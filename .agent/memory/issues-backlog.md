@@ -74,6 +74,12 @@
   File: ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py ~line 155
   Test: scripts/testing/test-ipm-thermal-thresholds.py
 
+[RESOLVED 2026-06-03] coordinator — circuit breaker trips logged but not surfaced to operator attention queue — core/circuit_breaker.py and shared/circuit_breaker.py both logged a warning on _trip() but never pushed to the attention queue, making silent qdrant/postgres/llm outages invisible to operators until they checked logs manually.
+  Severity: medium → resolved
+  Action: Phase 101 — added attention_queue.push(auto_ok, high) in both _trip() implementations; added ATTENTION_QUEUE_DIR env var override in attention_queue.py (Nix store path safety); wired ATTENTION_QUEUE_DIR + scripts/ai/lib into coordinator PYTHONPATH in mcp-servers.nix. 6/6 regression tests pass. Requires nixos-rebuild switch.
+  File: scripts/ai/lib/attention_queue.py ~line 41; ai-stack/mcp-servers/hybrid-coordinator/core/circuit_breaker.py ~line 104; ai-stack/mcp-servers/shared/circuit_breaker.py ~line 228; nix/modules/services/mcp-servers.nix ~line 1302
+  Test: scripts/testing/test-attention-queue-env-override.py
+
 [RESOLVED 2026-06-03] coordinator — qdrant_upsert_failed TypeError on skills-patterns indexing — continuous_learning.py _upsert() inner function used `return await self.qdrant.upsert(...)` but server.py passes the sync QdrantClient whose upsert() returns UpdateResult directly (not a coroutine). Caused `TypeError: object UpdateResult can't be used in 'await' expression` on every _index_patterns() call, silently dropping all Qdrant pattern indexing.
   Severity: medium (learning pipeline silently non-functional)
   Action: Removed spurious `await`; _upsert() now calls self.qdrant.upsert() directly. 2/2 regression tests pass.

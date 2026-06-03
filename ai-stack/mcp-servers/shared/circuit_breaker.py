@@ -235,6 +235,18 @@ class CircuitBreaker:
         self._record_state_transition(old_state, self.state)
         self._update_state_metric()
         logger.warning(f"Circuit breaker TRIPPED after {self.config.failure_threshold} failures")
+        try:
+            from attention_queue import push
+            push(
+                source="circuit-breaker",
+                severity="high",
+                autonomy_boundary="auto_ok",
+                title=f"Circuit breaker tripped: {self.service_name}",
+                detail=f"Service '{self.service_name}' tripped after {self.config.failure_threshold} consecutive failures. Calls are now blocked until the reset timeout ({self.config.reset_timeout}s) elapses.",
+                proposed_action="Monitor recovery via coordinator logs. The breaker auto-resets; manual check: systemctl status ai-hybrid-coordinator",
+            )
+        except Exception:
+            pass
 
     async def _close(self):
         """Close the circuit breaker from HALF_OPEN state."""
