@@ -985,6 +985,21 @@
       "tier": "structural",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "agent-executor-role-eligibility",
+      "description": "Phase 58A.5 — AGENT_TYPE_ELIGIBLE_ROLES enforced at execute_task dispatch",
+      "trigger_paths": [
+        "ai-stack/local-agents/agent_executor.py",
+        "scripts/testing/test-agent-executor-role-eligibility.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-agent-executor-role-eligibility.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

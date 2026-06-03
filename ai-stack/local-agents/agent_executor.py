@@ -355,6 +355,15 @@ class LocalAgentExecutor:
         if task.role is None:
             task.role = AGENT_TYPE_DEFAULT_ROLE.get(agent_type)
 
+        # Phase 58A.5: validate role eligibility — clamp ineligible assignments to default.
+        eligible_roles = AGENT_TYPE_ELIGIBLE_ROLES.get(agent_type)
+        if task.role is not None and eligible_roles is not None and task.role not in eligible_roles:
+            logger.warning(
+                "Task %s: agent_type=%s is not eligible for role=%s (eligible: %s); clamping to default",
+                task.id, agent_type.value, task.role, eligible_roles,
+            )
+            task.role = AGENT_TYPE_DEFAULT_ROLE.get(agent_type)
+
         # Route task
         use_local, route_reason = self.route_task(task)
 
