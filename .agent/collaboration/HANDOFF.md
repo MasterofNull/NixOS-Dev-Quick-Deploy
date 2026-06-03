@@ -1,3 +1,29 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 102: AppArmor dashboard fix — wildcard sudo + journalctl)
+
+## Phase 102 — AppArmor dashboard-api fix
+
+### Problem
+`aq-approve` executor applied fix-agent's hash-bound rule `/run/wrappers/wrappers.Yp3dH5WrJ6/sudo ix`. AppArmor resolves symlinks — `/run/wrappers/bin/sudo` alone doesn't match. Hash-bound rule breaks each rebuild.
+Additionally, fix-agent missed a second denial: `journalctl` exec from systemd store path.
+
+### Fix (commit de98c98a)
+- Replaced hash-bound rule with `/run/wrappers/wrappers.*/sudo ix` (wildcard, survives rebuild)
+- Kept `/run/wrappers/bin/sudo ix` for forward compat
+- Added `/nix/store/**/bin/journalctl ix`
+- **Requires nixos-rebuild switch**
+
+### Alert queue cleared
+- attn-cc7aebb5 (AppArmor sudo fix): approved + executor committed
+- attn-1ef20938 (rebuild required): rejected (rebuild already done, fix superseded by Phase 102)
+- attn-c3b7befd (training_loop_finding): rejected — malformed raw JSON blob, stale 7d
+- attn-659f392b (timeout_adjustment 31 failures): rejected — hardware-bound, ceiling already set
+
+### Training ingest ran (2026-06-03)
+- `dataset_size` 38 → 170 (+132 samples ingested)
+- `auto_approved_proposals`: 2 iteration_limit_increase proposals auto-approved
+- `ai-prompt-eval` completed: 5 prompts re-evaluated, last_evaluated updated to 2026-06-03
+
+---
 # HANDOFF MEMO — 2026-06-03 (RAG seeding: context-limit + AppArmor ptrace gaps)
 
 ## RAG seeding — persistent query gap fill
