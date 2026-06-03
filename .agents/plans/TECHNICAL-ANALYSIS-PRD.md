@@ -158,7 +158,7 @@ Codex analysis of HTML migration blast radius:
 | # | Slice | Owner | Gate |
 |---|-------|-------|------|
 | 92.1 | Mandatory YAML frontmatter schema + enforcer script | Claude | PRD approved |
-| 92.2 | `pre-archive-scan.sh` wired into pre-commit + SOP doc | Claude | Already written by Codex |
+| 92.2 | `pre-archive-scan.sh` wired into pre-commit + SOP doc | Claude | COMPLETE — `tier0.d/check-deleted-links.sh` (2026-06-02) |
 | 92.3 | Tier0 modularize into `tier0.d/` + TAP output | Claude | Requires slice 92.1 complete |
 | 92.4 | `color-echo` lint rule in tier0 | Claude | Requires 92.3 |
 | 92.5 | Rust `attention_queue` — CONTINGENT on profiling evidence | TBD | Requires contention metric ≥ threshold |
