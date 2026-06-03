@@ -1,3 +1,34 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 107.2: SSE body reconstruction for local delegate responses)
+
+## Phase 107.2 — coordinator SSE parse fix + token_usage populated
+
+### Root cause
+`_post_delegate` sends `stream: false` but the switchboard forces `stream: true` for all
+local chat/completions targets (switchboard.py lines 2598-2607, by design). httpx buffers
+the full SSE body; `response.json()` then fails → fallback to
+`{"error": {"message": sse_text[:200], "code": 200}}`. Downstream:
+- `_extract_delegated_response_text(body)` returns empty — quality assessment has no text
+- `body.get("usage")` returns None — token logging emits null tokens
+- `classify_delegated_response` works on a synthetic error body
+
+### Fix
+Added `_parse_sse_response_body(text)` helper (~60 lines, module-level) that:
+- Splits SSE text into `data: {...}` chunks, parses each
+- Merges `delta.content` fields into `choices[0].message.content`
+- Extracts `usage` from the final usage-bearing chunk
+- Returns a synthetic `chat.completion` JSON dict (or None on parse failure)
+
+Both `initial_body` and `body` parse-failure sites now try `_parse_sse_response_body`
+before falling back to the error dict. This makes usage data available to token logging,
+quality assessment, and response text extraction for all local model delegations.
+
+### Changes
+- `extensions/ai_coordinator_handlers.py`: `_parse_sse_response_body` + two parse sites
+
+### Requires nixos-rebuild switch
+Coordinator Python package change; `ai-hybrid-coordinator.service` needs restart.
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 107.1: token_usage event emission wired to delegate handler)
 
 ## Phase 107.1 — useful_token_ratio null → populated
