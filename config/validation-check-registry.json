@@ -968,6 +968,23 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "deleted-links",
+      "description": "Phase 92.2 — block deletion of agent docs still referenced by other tracked files",
+      "trigger_paths": [
+        ".agent/",
+        ".agents/plans/",
+        "docs/",
+        "scripts/governance/tier0.d/check-deleted-links.sh"
+      ],
+      "command": [
+        "bash",
+        "scripts/governance/tier0.d/check-deleted-links.sh"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
