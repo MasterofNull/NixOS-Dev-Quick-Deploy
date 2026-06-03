@@ -62,10 +62,11 @@
   Action: Added eligibility check after auto-assign in execute_task(); added test-agent-executor-role-eligibility.py; registered in validation-check-registry.json.
   File: ai-stack/local-agents/agent_executor.py ~line 356; scripts/testing/test-agent-executor-role-eligibility.py
 
-[OPEN] role-enforcement — no reviewer_id tracking, self-review prevention aspirational — Role-matrix.md §8 states "a reviewer may not review their own work" but no reviewer_id field exists in Task/TaskConfig; self-review cannot be enforced at runtime.
-  Severity: low (process-enforced via orchestrator discipline, not technically blocked)
-  Action: Add reviewer_id to TaskConfig + check in dispatch that reviewer != original implementer task id. Phase 58A.5 candidate.
-  File: ai-stack/mcp-servers/coordinator/agent_executor.py, ai-stack/mcp-servers/shared/task_config.py
+[RESOLVED 2026-06-03] role-enforcement — no reviewer_id tracking, self-review prevention aspirational — Role-matrix.md §8 states "a reviewer may not review their own work" but no reviewer_id field exists in Task/TaskConfig; self-review cannot be enforced at runtime.
+  Severity: low → resolved
+  Action: Phase 104 — added reviewer_id: Optional[str] = None to Task dataclass; execute_task() logs WARNING when reviewer_id == assigned_agent. Advisory check (no block) — orchestrator is responsible for not assigning self-reviews. 6/6 regression tests pass.
+  File: ai-stack/local-agents/agent_executor.py ~line 140
+  Test: scripts/testing/test-agent-executor-reviewer-id.py
 
 [OPEN] role-enforcement — domain-role eligibility not validated at task dispatch — DOMAIN-ROLE-MATRIX.md defines which agents may fill which roles per domain, but no enforcement exists at dispatch. Cross-domain mis-routing (e.g., Gemini as security reviewer for its own security implementation) is doc-only blocked.
   Severity: low (policy gap, not immediate production risk)

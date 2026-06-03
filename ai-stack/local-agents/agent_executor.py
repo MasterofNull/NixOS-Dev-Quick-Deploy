@@ -134,6 +134,11 @@ class Task:
     # EMBEDDED agents always get None (no role injection).
     role: Optional[str] = None
 
+    # Phase 104 — reviewer_id: the assigned_agent of the original implementation task.
+    # Set by the orchestrator when dispatching a review; used to detect self-review
+    # (role-matrix.md §8: a reviewer may not review their own work).
+    reviewer_id: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -152,6 +157,7 @@ class Task:
             "assigned_agent": self.assigned_agent,
             "tool_calls_count": len(self.tool_calls_made),
             "role": self.role,
+            "reviewer_id": self.reviewer_id,
         }
 
 
@@ -363,6 +369,18 @@ class LocalAgentExecutor:
                 task.id, agent_type.value, task.role, eligible_roles,
             )
             task.role = AGENT_TYPE_DEFAULT_ROLE.get(agent_type)
+
+        # Phase 104: self-review guard — role-matrix.md §8 prohibits reviewing own work.
+        # reviewer_id holds the assigned_agent of the original implementation task.
+        # This is advisory (warning, not block) — blocking is the orchestrator's responsibility.
+        if task.role == "reviewer" and task.reviewer_id is not None:
+            if task.reviewer_id == task.assigned_agent:
+                logger.warning(
+                    "Task %s: self-review detected — reviewer_id=%r matches assigned_agent=%r. "
+                    "Role matrix §8: a reviewer may not review their own work. "
+                    "Proceeding — orchestrator should reassign to a different agent.",
+                    task.id, task.reviewer_id, task.assigned_agent,
+                )
 
         # Route task
         use_local, route_reason = self.route_task(task)
