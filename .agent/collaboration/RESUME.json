@@ -1,19 +1,17 @@
 {
-  "current_objective": "Phase 102 complete — AppArmor dashboard wildcard sudo + journalctl fix",
-  "phase": "post-rebuild-pending",
+  "current_objective": "Phase 103 complete — cross-agent contradiction detection → attention archive",
+  "phase": "post-work-pending-rebuild",
   "todo_snapshot": [
-    "DONE: Phase 101 — circuit breaker _trip() → attention queue push (09737504)",
-    "DONE: Phase 101.1 — ATTENTION_QUEUE_DIR live path fix (5228239b)",
-    "DONE: RAG seeding — context-limit + AppArmor ptrace gaps (d1d05aa4)",
-    "DONE: Phase 102 — AppArmor wildcard sudo + journalctl fix (de98c98a)",
-    "DONE: Alert triage — 4 alerts processed (2 rejected training, 1 approved AppArmor, 1 rejected stale)",
-    "PENDING-REBUILD: mcp-servers.nix Phase 102 — wildcard sudo + journalctl needs nixos-rebuild switch"
+    "DONE: Phase 101.1 verified — ATTENTION_QUEUE_DIR=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/attention (6/6 tests)",
+    "DONE: Alert triage — 4 alerts processed, queue clear",
+    "DONE: Phase 102 — AppArmor wildcard sudo + journalctl fix (de98c98a) — awaiting rebuild",
+    "DONE: Phase 103 — cross-agent contradiction detection (1ceec0a4) — awaiting rebuild",
+    "DONE: CI fix — L5/L6 pytest command fixed (python -m pytest → pytest)",
+    "PENDING-REBUILD: Phase 102 + 103 coordinator changes need nixos-rebuild switch"
   ],
   "uncommitted_changes": [
-    "ai-stack/prompts/registry.yaml (last_evaluated dates updated by prompt-eval)",
-    "config/harness-prompt-extensions.json (dataset_size 38→170, 2 auto_approved_proposals)",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/RESUME.json"
   ],
-  "resume_hint": "Phase 102 (AppArmor dashboard fix — wildcard sudo + journalctl) committed but needs nixos-rebuild. Training dataset grew 38→170 samples. Remaining P2: cross-agent contradiction detection (needs PRD slice). Aspirational: reviewer_id tracking, domain-role eligibility at dispatch."
+  "resume_hint": "Two coordinator changes pending rebuild: Phase 102 (AppArmor wildcard sudo + journalctl, de98c98a) and Phase 103 (cross-agent contradiction → attention archive, 1ceec0a4). After rebuild: verify no AppArmor denials for dashboard and check ATTENTION_ARCHIVE.jsonl for 'consensus-arbiter' or 'memory-broker' entries on next fanout. Remaining aspirational: reviewer_id tracking, domain-role eligibility at dispatch."
 }

@@ -1,3 +1,23 @@
+# HANDOFF MEMO — 2026-06-03 (Phase 103: cross-agent contradiction detection)
+
+## Phase 103 — Cross-agent contradiction → attention archive
+
+### Changes (commit 1ceec0a4)
+- `memory_broker._emit_contradiction_event(blocked=True)`: pushes auto_ok medium alert to archive
+- `consensus_arbiter.resolve()`: when score < 0.5, pushes auto_ok medium alert with task context
+- Both are passive archive entries (auto_ok, no queue items requiring approval)
+- 4/4 regression tests pass
+- **Requires nixos-rebuild switch** (coordinator Python change)
+
+### CI fix (same commit)
+- L5/L6 cognitive intelligence regressions: `python -m pytest` → `pytest` (uses nix-profile binary)
+- Was silently blocking any commit to memory_broker.py. 8/8 tests now pass.
+
+### Pending rebuilds needed (stacked)
+1. Phase 102: AppArmor wildcard sudo + journalctl (de98c98a)
+2. Phase 103: cross-agent contradiction detection (1ceec0a4)
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 102: AppArmor dashboard fix — wildcard sudo + journalctl)
 
 ## Phase 102 — AppArmor dashboard-api fix
