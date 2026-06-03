@@ -1,17 +1,19 @@
 {
-  "current_objective": "Post-101.1 housekeeping — RAG seeding done, awaiting nixos-rebuild for ATTENTION_QUEUE_DIR fix",
+  "current_objective": "Phase 102 complete — AppArmor dashboard wildcard sudo + journalctl fix",
   "phase": "post-rebuild-pending",
   "todo_snapshot": [
-    "DONE: qdrant_upsert TypeError fix (0bf3dee0)",
-    "DONE: slice-93-15 dashboard observability JS closed (2b66fb50)",
     "DONE: Phase 101 — circuit breaker _trip() → attention queue push (09737504)",
-    "DONE: Phase 101.1 — ATTENTION_QUEUE_DIR live path fix in mcp-servers.nix (5228239b)",
-    "DONE: RAG seeding — 3 records for 2 persistent query gaps (context limit, AppArmor ptrace)",
-    "PENDING-REBUILD: mcp-servers.nix 101.1 — coordinator must be rebuilt to get live ATTENTION_QUEUE_DIR"
+    "DONE: Phase 101.1 — ATTENTION_QUEUE_DIR live path fix (5228239b)",
+    "DONE: RAG seeding — context-limit + AppArmor ptrace gaps (d1d05aa4)",
+    "DONE: Phase 102 — AppArmor wildcard sudo + journalctl fix (de98c98a)",
+    "DONE: Alert triage — 4 alerts processed (2 rejected training, 1 approved AppArmor, 1 rejected stale)",
+    "PENDING-REBUILD: mcp-servers.nix Phase 102 — wildcard sudo + journalctl needs nixos-rebuild switch"
   ],
   "uncommitted_changes": [
+    "ai-stack/prompts/registry.yaml (last_evaluated dates updated by prompt-eval)",
+    "config/harness-prompt-extensions.json (dataset_size 38→170, 2 auto_approved_proposals)",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/RESUME.json"
   ],
-  "resume_hint": "Phase 101.1 mcp-servers.nix change is committed (5228239b) but requires nixos-rebuild switch. After rebuild: verify circuit breaker trips write to .agents/attention/ATTENTION_ARCHIVE.jsonl (not Nix store). RAG seeding complete — 3 records in error-solutions and best-practices for 'Continue context limit' and 'AppArmor ptrace/psutil' gaps. Remaining P2: cross-agent contradiction detection."
+  "resume_hint": "Phase 102 (AppArmor dashboard fix — wildcard sudo + journalctl) committed but needs nixos-rebuild. Training dataset grew 38→170 samples. Remaining P2: cross-agent contradiction detection (needs PRD slice). Aspirational: reviewer_id tracking, domain-role eligibility at dispatch."
 }
