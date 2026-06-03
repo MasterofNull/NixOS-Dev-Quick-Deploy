@@ -133,6 +133,65 @@ from skill_usage_tracker import (
 
 logger = logging.getLogger("hybrid-coordinator")
 
+
+def _parse_sse_response_body(text: str) -> Optional[Dict[str, Any]]:
+    """Reconstruct an OpenAI-style JSON response from a buffered SSE stream.
+
+    The switchboard forces stream=True for local chat/completions (performance
+    optimisation).  httpx buffers the full SSE body, so response.json() fails.
+    This function reassembles the stream into a single synthetic response that
+    downstream code (quality checks, classification, token logging) can consume.
+
+    Returns None when the text contains no parseable SSE data events.
+    """
+    content_parts: List[str] = []
+    usage: Optional[Dict[str, Any]] = None
+    finish_reason: Optional[str] = None
+    first_chunk: Optional[Dict[str, Any]] = None
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload_str = line[5:].strip()
+        if payload_str == "[DONE]":
+            continue
+        try:
+            chunk = json.loads(payload_str)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if first_chunk is None:
+            first_chunk = chunk
+        choices = chunk.get("choices") or []
+        if choices:
+            delta = (choices[0].get("delta") or {})
+            piece = delta.get("content")
+            if isinstance(piece, str) and piece:
+                content_parts.append(piece)
+            fr = choices[0].get("finish_reason")
+            if fr:
+                finish_reason = fr
+        if chunk.get("usage"):
+            usage = chunk["usage"]
+
+    if first_chunk is None:
+        return None
+
+    merged_content = "".join(content_parts)
+    return {
+        "id": first_chunk.get("id", ""),
+        "object": "chat.completion",
+        "created": first_chunk.get("created", 0),
+        "model": first_chunk.get("model", ""),
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": merged_content},
+            "finish_reason": finish_reason or "stop",
+        }],
+        "usage": usage or {},
+    }
+
+
 _AGENT_RUN_EVENTS_PATH = Path(
     os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 )
@@ -1550,10 +1609,13 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         initial_response = response
         # Guard against non-JSON upstream responses (e.g. Cloudflare HTML 400 errors)
         # that would otherwise raise JSONDecodeError before the failover logic runs.
+        # Switchboard forces stream=True for local targets, so responses may be SSE.
         try:
             initial_body = response.json()
         except Exception:
-            initial_body = {"error": {"message": response.text[:200], "code": response.status_code}}
+            initial_body = _parse_sse_response_body(response.text) or {
+                "error": {"message": response.text[:200], "code": response.status_code}
+            }
 
         # Phase 20.2: Enhanced failover chain for 402/429 errors + 401/403 auth/policy
         # Also handle 400 from upstream WAF/auth rejections (e.g. Cloudflare 400 = invalid key).
@@ -1651,10 +1713,13 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     fallback_applied = True
                     fallback_reason = f"remote profile returned {response.status_code} (auth/rate-limit); no failover chain available, retried on remote-free"
         # Guard against non-JSON upstream bodies (Cloudflare WAF HTML, etc.)
+        # Switchboard forces stream=True for local targets, so responses may be SSE.
         try:
             body = response.json()
         except Exception:
-            body = {"error": {"message": response.text[:200], "code": response.status_code}}
+            body = _parse_sse_response_body(response.text) or {
+                "error": {"message": response.text[:200], "code": response.status_code}
+            }
 
         initial_classification = classify_delegated_response(
             task=task,
