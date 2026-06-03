@@ -1,13 +1,14 @@
 {
-  "current_objective": "Governance hardening + role enforcement cleanup",
-  "phase": "58A.5-complete",
+  "current_objective": "Post-rebuild validation + governance hardening complete",
+  "phase": "post-rebuild-clean",
   "todo_snapshot": [
-    "DONE: Phase 58A.5 — AGENT_TYPE_ELIGIBLE_ROLES enforced at dispatch (63944c4c)",
-    "DONE: Phase 92.2 — tier0.d/check-deleted-links.sh pre-archive gate (8613b691)",
-    "DONE: Phase 100.1 — 9 missing CLI wrappers + MAEAH contract artifacts (731c681e)",
-    "DONE: Phase 99.1 — thermal critical threshold 80→83°C (dc517a45)",
-    "DONE: Phase 99.2 — frequency_penalty=0 fixes Qwen3 JSON truncation (65449c02)"
+    "DONE: Verified 9 CLI wrappers in PATH post-rebuild",
+    "DONE: 79/79 QA pass, no new AppArmor denials, 0 pending alerts",
+    "DONE: Phase 92.2 — pre-archive safety gate (8613b691)",
+    "DONE: Phase 58A.5 — role eligibility enforcement (63944c4c)",
+    "DONE: MAEAH parity plan updated (238529a7)",
+    "DONE: RAG seeded 43 records covering 7 query gap topics"
   ],
-  "uncommitted_changes": [],
-  "resume_hint": "Phase 58A.5 (role eligibility enforcement) and Phase 92.2 (pre-archive gate) complete. All Phase 93 slices complete. 79/79 QA pass. Scorecard warn from historical delegate failures (self-correcting). Open aspirational items: reviewer_id tracking (low severity) and domain-role eligibility (low severity). No pending rebuilds. Next: check if there are any new focus areas in EFFECTIVENESS-CENTERED PRD or other PRDs, or address open queries in context_quality dimension (7 open query gaps)."
+  "uncommitted_changes": [".agent/collaboration/HANDOFF.md"],
+  "resume_hint": "System in healthy state post-rebuild. Scorecard warn from historical delegate failures (self-correcting). 79/79 QA pass. Tier0: 19/19. All aspirational role-enforcement items are low severity and complex. Remaining work: reviewer_id tracking (complex), domain-role eligibility (complex), live workflow session tracking for operator_trust. No rebuild needed. If starting fresh, check HANDOFF.md for full context."
 }
