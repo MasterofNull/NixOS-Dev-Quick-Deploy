@@ -111,6 +111,7 @@ PROMETHEUS_URL = os.getenv(
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('PROMETHEUS_PORT', '9090')}",
 )
 AIDB_URL = os.getenv("AIDB_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('AIDB_PORT', '8002')}")
+COORDINATOR_URL = os.getenv("HYBRID_COORDINATOR_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('COORDINATOR_PORT', '8003')}")
 WORKFLOW_SESSIONS_PATH = Path(
     os.getenv("WORKFLOW_SESSIONS_PATH", "/var/lib/ai-stack/hybrid/workflow-sessions.json")
 )
@@ -2010,6 +2011,34 @@ def read_eval_scores(since: datetime) -> List[dict]:
         return []
 
 
+def fetch_coordinator_eval_trend() -> Dict[str, Any]:
+    """Fetch RAGAS eval metrics from coordinator /eval/trend endpoint.
+
+    Returns dict with ragas_metrics on success, empty dict on failure.
+    Used as fallback when scores.sqlite is stale (no recent promptfoo rows).
+    """
+    key = os.getenv("COORDINATOR_API_KEY", "").strip()
+    if not key:
+        key_file = os.getenv("COORDINATOR_API_KEY_FILE", "/run/secrets/coordinator_api_key")
+        try:
+            p = Path(key_file)
+            if p.exists():
+                key = p.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    headers: Dict[str, str] = {}
+    if key:
+        headers["X-API-Key"] = key
+    try:
+        url = f"{COORDINATOR_URL.rstrip('/')}/eval/trend"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def strategy_leaderboard(rows: List[dict]) -> List[dict]:
     """Group eval rows by strategy_tag and compute mean pct_passed per tag."""
     from collections import defaultdict
@@ -3898,6 +3927,25 @@ def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> 
             if isinstance(score, (int, float)):
                 pcts.append(round(float(score) * 100.0, 2))
     if not pcts:
+        # Fall back to RAGAS answer_relevance from coordinator when scores.sqlite is stale.
+        ragas = fetch_coordinator_eval_trend()
+        rm = ragas.get("ragas_metrics") or {}
+        ar = rm.get("answer_relevance_avg")
+        sample_n = rm.get("sample_count") or 0
+        if ar is not None and sample_n > 0:
+            ar_pct = round(float(ar) * 100.0, 1)
+            return {
+                "available": True,
+                "source": "ragas",
+                "latest_pct": ar_pct,
+                "mean_pct": ar_pct,
+                "min_pct": ar_pct,
+                "max_pct": ar_pct,
+                "trend": "stable",
+                "n_runs": sample_n,
+                "pass_rate": round(float(ar), 3),
+                "recent_pass_rate": round(float(ar), 3),
+            }
         return {"available": False}
     return {
         "available": True,
@@ -3909,6 +3957,8 @@ def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> 
         "trend": "rising" if len(pcts) >= 2 and pcts[-1] > pcts[0] else
                  "falling" if len(pcts) >= 2 and pcts[-1] < pcts[0] else "stable",
         "n_runs": len(pcts),
+        "pass_rate": round(pcts[-1] / 100.0, 3),
+        "recent_pass_rate": round(pcts[-1] / 100.0, 3),
     }
 
 
