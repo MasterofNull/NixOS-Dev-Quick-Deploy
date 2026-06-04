@@ -237,6 +237,15 @@ if [[ "$no_write" -eq 0 ]]; then
 fi
 rm -f /tmp/aq-session-context-$$.md
 
+# Phase 117.3 — mirror RESUME.json to /var/lib telemetry so ai-system-state
+# (runs as ai-hybrid, cannot traverse /home/hyperd/ DAC 700) can read agent state.
+# Silent no-op until nixos-rebuild activates the 0770 telemetry dir tmpfiles rule.
+_RESUME_SRC="${REPO_ROOT}/.agent/collaboration/RESUME.json"
+_RESUME_MIRROR="/var/lib/ai-stack/hybrid/telemetry/agent-resume.json"
+if [[ -f "$_RESUME_SRC" ]]; then
+    cp "$_RESUME_SRC" "$_RESUME_MIRROR" 2>/dev/null || true
+fi
+
 # Brief summary to stdout
 printf '\n--- Session Brief ---\n'
 printf 'Task : %s\n' "$task"
