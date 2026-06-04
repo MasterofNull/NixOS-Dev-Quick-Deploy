@@ -69,9 +69,65 @@ printf '[3/4] Hierarchical context...\n'
 hier_context="$(python3 "${SCRIPT_DIR}/lib/context-merger.py" "${REPO_ROOT}" 2>/dev/null)" || true
 
 # ── 4. Promoted lessons + constraints ────────────────────────────────────────
-printf '[4/4] Lesson registry...\n'
+printf '[4/5] Lesson registry...\n'
 # lessons endpoint returns both agent_lessons registry and constraints array (Phase 65.3)
 lessons_out="$(_curl_json "${COORD_URL}/control/ai-coordinator/lessons")" || true
+
+# ── 5. System intelligence artifact (Phase 115.5) ────────────────────────────
+printf '[5/5] System state snapshot...\n'
+_ARTIFACT_PATH="${SYSTEM_STATE_ARTIFACT_PATH:-/var/lib/ai-stack/hybrid/telemetry/latest-system-state.json}"
+system_state_out=""
+if [[ -r "$_ARTIFACT_PATH" ]]; then
+    system_state_out="$(python3 - "$_ARTIFACT_PATH" <<'PYEOF'
+import json, sys, time
+from datetime import datetime, timezone
+try:
+    snap = json.loads(open(sys.argv[1]).read())
+    gen_str = snap.get("generated_at", "")
+    gen_ts = datetime.fromisoformat(gen_str.replace("Z", "+00:00"))
+    age_s = int((datetime.now(timezone.utc) - gen_ts).total_seconds())
+    if age_s > 900:
+        print(f"STALE:{age_s}")
+    else:
+        # Summary text — compact single-line representation
+        svcs = snap.get("services") or []
+        active = sum(1 for s in svcs if s.get("status") == "active")
+        failed_svcs = [s["name"] for s in svcs if s.get("status") in ("failed", "inactive") and s.get("sub_state") != "dead"]
+        git = snap.get("git") or {}
+        errors = snap.get("errors") or []
+        agent = snap.get("agent") or {}
+        val = snap.get("validation") or {}
+        attn = snap.get("attention") or {}
+        qa = (val.get("aq_qa") or {})
+        open_tasks = agent.get("open_tasks") or []
+
+        lines = []
+        ts = gen_str[:19].replace("T", " ")
+        partial = " [partial]" if snap.get("partial") else ""
+        lines.append(f"Generated: {ts} UTC (age {age_s}s){partial}")
+        if svcs:
+            lines.append(f"Services: {active}/{len(svcs)} active" + (f", FAILED: {','.join(failed_svcs[:3])}" if failed_svcs else ""))
+        if git:
+            lines.append(f"Git: branch={git.get('branch','?')} uncommitted={len(git.get('uncommitted_files') or [])}")
+        if qa.get("available"):
+            lines.append(f"QA: {qa.get('passed',0)}/{qa.get('total',0)} pass")
+        if errors:
+            top = errors[0]
+            lines.append(f"Errors(1h): {len(errors)} types, top={top.get('service','?')}/{top.get('type','?')} x{top.get('count',0)}")
+        if agent.get("current_objective"):
+            lines.append(f"Agent phase: {agent.get('phase','?')} | open tasks: {len(open_tasks)}")
+            lines.append(f"Objective: {str(agent['current_objective'])[:80]}")
+            for t in open_tasks[:3]:
+                lines.append(f"  - {str(t)[:80]}")
+        pending_gate = attn.get("pending_human_gate", 0)
+        if pending_gate:
+            lines.append(f"ATTENTION: {pending_gate} items pending human gate")
+        print("\n".join(lines))
+except Exception as e:
+    print(f"ERROR:{e}")
+PYEOF
+    )" 2>/dev/null || true
+fi
 
 # ── Build context document ────────────────────────────────────────────────────
 {
@@ -140,6 +196,18 @@ PYEOF
         printf '%s\n' "$hier_context" | head -40
     else
         printf '(no AGENTS.md files found in path)\n'
+    fi
+
+    printf '\n## System State (Phase 115)\n'
+    if [[ -z "$system_state_out" ]]; then
+        printf '(artifact not found — run aq-system-state or wait for ai-system-state.timer)\n'
+    elif [[ "$system_state_out" == STALE:* ]]; then
+        age="${system_state_out#STALE:}"
+        printf '(artifact stale: %ss old — next refresh within 15min)\n' "$age"
+    elif [[ "$system_state_out" == ERROR:* ]]; then
+        printf '(artifact read error — %s)\n' "${system_state_out#ERROR:}"
+    else
+        printf '%s\n' "$system_state_out"
     fi
 
     printf '\n## Active Constraints (lesson registry)\n'
