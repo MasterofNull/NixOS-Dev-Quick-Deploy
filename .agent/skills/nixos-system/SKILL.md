@@ -109,28 +109,45 @@ systemd.services."ai-my-oneshot" = {
 are not in the `hyperd` group. `/home/hyperd` is `700`. Without ProtectHome, `WorkingDirectory`
 under the repo path fails with `CHDIR: Permission denied` (status=200).
 
-**`noexec` on ProtectHome — critical pattern for scripts under /home**:
-`ProtectHome = "read-only"` bind-mounts `/home` with `noexec` on newer systemd versions. This
-means **you cannot use a shebang script under `/home` as `ExecStart`** — it will fail with
-`EXEC: Permission denied` (status=203). Always use an explicit Nix store interpreter:
+**Two layered restrictions for non-hyperd service users accessing scripts under /home**:
+
+**Layer 1 — DAC (mode 700)**: `/home/hyperd/` is `drwx------`. Non-hyperd service users
+(ai-hybrid, ai-aidb, etc.) cannot traverse this directory — `open()` returns `[Errno 13]`.
+**Fix: use `${toString repoSource}` (Nix store copy), not `${mcp.repoPath}` (live home path).**
+`ReadOnlyPaths = [repoSource]` in `commonServiceConfig` already grants read access to the Nix
+store copy. The live repo is still reachable at runtime via `REPO_ROOT` env var.
+
+**Layer 2 — noexec mount**: `ProtectHome = "read-only"` bind-mounts `/home` with `noexec` on
+newer systemd versions. Even if DAC were open, a shebang script under `/home` fails with
+`EXEC: Permission denied` (status=203). Fix: use an explicit Nix store interpreter.
 
 ```nix
-# WRONG — shebang script under /home, killed by noexec
+# WRONG — mcp.repoPath is /home/hyperd/...: DAC-blocked for non-hyperd users
 ExecStart = "${mcp.repoPath}/scripts/ai/my-script";
 
-# CORRECT — interpreter from Nix store, script read as file arg (no execve on the script)
+# WRONG — interpreter is right, but script path is still DAC-blocked
 ExecStart = lib.escapeShellArgs [
   "${pkgs.python3}/bin/python3"
   "${mcp.repoPath}/scripts/ai/my-script"
 ];
+
+# CORRECT — Nix store interpreter (no noexec) + Nix store script path (world-readable)
+ExecStart = lib.escapeShellArgs [
+  "${pkgs.python3}/bin/python3"
+  "${toString repoSource}/scripts/ai/my-script"
+];
 # For shell scripts:
 ExecStart = lib.escapeShellArgs [
   "${pkgs.bash}/bin/bash"
-  "${mcp.repoPath}/scripts/ai/my-script.sh"
+  "${toString repoSource}/scripts/ai/my-script.sh"
 ];
 ```
 
-Python reads the script via file I/O (not execve), so `noexec` does not apply.
+Use `REPO_ROOT = mcp.repoPath` in `Environment` so the script can access the live repo
+at runtime (git, config files) without needing execve access to its own source path.
+
+Python reads the script file via file I/O (not execve), so `noexec` does not apply to the
+script file — only to the interpreter binary (which lives in `/nix/store/`, safe).
 
 **Working directory rule**: Use `WorkingDirectory = dataDir` (from commonServiceConfig) unless the
 service specifically needs to be in the repo root. Pass the repo path as `REPO_ROOT` env var instead.

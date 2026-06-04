@@ -2240,13 +2240,17 @@ in {
             User = hybridUser;
             # Do not restart oneshot services; the timer handles re-invocation
             Restart = "no";
-            # ProtectHome="read-only" bind-mounts /home with noexec on newer systemd,
-            # blocking shebang execution of scripts under /home. Use an explicit Nix
-            # store interpreter (not subject to noexec) and pass the live script as an
-            # argument — Python reads it via file I/O, no execve() on the script itself.
+            # Two layered restrictions block scripts under /home for non-hyperd users:
+            # 1) /home/hyperd/ is mode 700 — DAC blocks ai-hybrid from traversing it.
+            # 2) ProtectHome="read-only" bind-mounts /home with noexec on newer systemd,
+            #    blocking execve() on shebang scripts even if DAC were open.
+            # Fix: use explicit Nix store interpreter (not subject to noexec) and point
+            # at the Nix store copy (repoSource) which is in ReadOnlyPaths and is
+            # world-readable. Python reads the script via file I/O — no execve().
+            # The live repo is still accessible via REPO_ROOT env var at runtime.
             ExecStart = lib.escapeShellArgs [
               "${pkgs.python3}/bin/python3"
-              "${mcp.repoPath}/scripts/ai/aq-system-state"
+              "${toString repoSource}/scripts/ai/aq-system-state"
             ];
             TimeoutStartSec = "120s";
             Environment = [
