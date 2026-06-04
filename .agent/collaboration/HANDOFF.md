@@ -1,11 +1,34 @@
-# HANDOFF MEMO — 2026-06-04 (Phase 117: P3 system fixes — committed, pending rebuild)
+# HANDOFF MEMO — 2026-06-04 (Phase 118: housekeeping sweep — plans archive, cache prewarm, RAG seed)
 
-## Phase 117 — P3 System Fixes: COMMITTED (cb818317)
+## Phase 118 — Housekeeping Sweep
 
 ### Status
-All slices committed. **Pending `nixos-rebuild switch`** to activate:
-- Telemetry dir 0770 (hyperd can write mirror artifacts)
-- Mirror file stubs: attention-snapshot.json (0664), agent-resume.json (0640)
+COMPLETE. No code changes (all verified fixes already live).
+
+### Work done this session
+| Item | Result |
+|------|--------|
+| Phase 117 fully live | rebuild confirmed; failed_domains=None; artifact freshness=10s |
+| 3 plan files archived | slice-93-15, slice-93-5, slice-103 → .agents/archive/20260604/ |
+| Cache prewarm | 32.5% → 84.0% hit rate (aq-cache-prewarm + aq-rag-prewarm) |
+| RAG seed | seed-rag-knowledge.py: 49 records across 3 collections; aq-commit-facts: 3 facts |
+| delegate rate | 68.4% (12 failures) — all isolated coordinator 500s from intensive ops; aging out |
+| Continue health | 6/7: accurate (6 pass + 1 skip for recursion guard) — not a bug |
+| nvd-sync | running correctly (last success 2026-06-04 00:13 PDT, timer active) |
+| slice-103 | confirmed fully implemented: 4/4 tests pass |
+
+### Open items
+- **OPEN P3**: completion_reliability fail (68.4%) — 12 isolated coordinator 500s during ops; will age out ~24h
+- **OPEN**: useful_token_ratio=19.9% — inherent COT overhead, not actionable
+- **ACTIVE PRD**: EFFECTIVENESS-CENTERED-SYSTEM-IMPROVEMENT-PRD.md — open slices 93.1-93.4, 93.6-93.8, 93.10, 93.14
+
+---
+# HANDOFF MEMO — 2026-06-04 (Phase 117: P3 system fixes — LIVE)
+
+## Phase 117 — P3 System Fixes: LIVE (rebuild complete ✓)
+
+### Status
+All slices live. Rebuild complete. failed_domains=None, artifact freshness=10s.
 
 ### Changes (cb818317)
 | Slice | File | Change |
@@ -1842,3 +1865,9 @@ You are contribut"
 
 You are contribut"
 [2026-06-04T15:59:36.857866Z] [done] id=local-20260604-084515-botrzq
+[2026-06-04T21:24:16.120054Z] [dispatch] id=local-20260604-142415-lojr0t agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-142415-lojr0t.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-04T21:26:35.440097Z] [done] id=local-20260604-142415-lojr0t
+[2026-06-04T23:31:59.059673Z] [dispatch] id=local-20260604-163158-hp5z34 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-163158-hp5z34.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-04T23:33:48.294165Z] [done] id=local-20260604-163158-hp5z34
+[2026-06-04T23:33:54.051717Z] [dispatch] id=local-20260604-163353-3yrarp agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-163353-3yrarp.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-04T23:34:56.217743Z] [done] id=local-20260604-163353-3yrarp
