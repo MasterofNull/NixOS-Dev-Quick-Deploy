@@ -51,6 +51,26 @@
     "fzf"
     # fd: fast, intuitive find replacement; used in repo scripts and agent tooling.
     "fd"
+    # bat: cat with syntax highlighting, line numbers, and git integration.
+    "bat"
+    # tokei: fast code statistics (line counts, language breakdown).
+    "tokei"
+    # hyperfine: CLI benchmarking tool; useful for measuring inference latency.
+    "hyperfine"
+    # bottom: modern htop/system monitor with CPU/mem/disk/process views.
+    "bottom"
+    # tealdeer: fast tldr client — quick command reference pages.
+    "tealdeer"
+    # procs: modern ps replacement with color output and tree view.
+    "procs"
+    # dust: intuitive du replacement with visual disk usage tree.
+    "dust"
+    # sd: fast, simple find-and-replace (modern sed); useful for bulk edits.
+    "sd"
+    # xh: fast HTTP client (curl/httpie alternative) with clean output.
+    "xh"
+    # watchexec: run commands on file change; useful during development.
+    "watchexec"
   ];
 
   gaming = [
