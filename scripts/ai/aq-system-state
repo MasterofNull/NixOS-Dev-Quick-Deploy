@@ -1,0 +1,695 @@
+#!/usr/bin/env python3
+"""
+aq-system-state — System Intelligence Hub snapshot (Phase 115.1)
+
+Synthesises service health, git metadata, validation status, error patterns,
+data topology, agent coordination state, and performance summary into a single
+refreshable JSON artifact + human-readable summary.
+
+Usage:
+  aq-system-state                    Write artifact + print summary
+  aq-system-state --fmt json         Print JSON only (also writes artifact)
+  aq-system-state --fmt text         Print human-readable summary (also writes artifact)
+  aq-system-state --diff             Show delta from previous artifact
+  aq-system-state --domain DOMAIN    Focus on one domain:
+                                       git | services | validation | errors |
+                                       attention | data | agent | performance
+
+Environment:
+  SYSTEM_STATE_ARTIFACT_PATH   Output path (default: /var/lib/ai-stack/hybrid/telemetry/latest-system-state.json)
+  QDRANT_URL                   Qdrant base URL (default: http://127.0.0.1:6333)
+  POSTGRES_DSN                 PostgreSQL DSN
+  POSTGRES_HOST / _PORT / _DB / _USER / _PASSWORD
+  HYBRID_COORDINATOR_URL       Coordinator URL (default: http://127.0.0.1:8003)
+  REPO_ROOT                    Repo root (default: script's grandparent dir)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = Path(os.getenv("REPO_ROOT", Path(__file__).resolve().parent.parent.parent))
+ARTIFACT_PATH = Path(
+    os.getenv(
+        "SYSTEM_STATE_ARTIFACT_PATH",
+        "/var/lib/ai-stack/hybrid/telemetry/latest-system-state.json",
+    )
+)
+QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
+COORDINATOR_URL = os.getenv(
+    "HYBRID_COORDINATOR_URL",
+    f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('COORDINATOR_PORT', '8003')}",
+)
+
+_AI_SERVICES = [
+    "ai-hybrid-coordinator",
+    "ai-switchboard",
+    "ai-aidb",
+    "ai-drop-daemon",
+    "ai-health-spider",
+    "ai-ralph-wiggum",
+    "ai-training-ingest",
+    "ai-aider-wrapper",
+    "ai-audit-sidecar",
+    "ai-otel-collector",
+    "ai-tempo",
+    "ai-throttler",
+    "llama-cpp",
+    "llama-cpp-embed",
+    "postgresql",
+    "qdrant",
+    "redis-mcp",
+]
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_NOW = datetime.now(tz=timezone.utc)
+
+
+def _run(cmd: List[str], timeout: int = 10) -> str:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def _http_get(url: str, timeout: int = 5) -> Optional[Dict[str, Any]]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def _pg_dsn() -> str:
+    dsn = os.getenv("POSTGRES_DSN", "")
+    if dsn:
+        return dsn
+    host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    db = os.getenv("POSTGRES_DB", os.getenv("AIDB_PG_DB", "aidb"))
+    user = os.getenv("POSTGRES_USER", os.getenv("AIDB_PG_USER", "aidb"))
+    pw = os.getenv("POSTGRES_PASSWORD", os.getenv("AIDB_PG_PASSWORD", ""))
+    return f"host={host} port={port} dbname={db} user={user} password={pw} connect_timeout=5"
+
+
+def _pg_query(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
+    try:
+        import psycopg  # type: ignore
+        conn = psycopg.connect(_pg_dsn(), connect_timeout=5)
+        cur = conn.execute(sql, params)
+        cols = [d.name for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Domain collectors
+# ---------------------------------------------------------------------------
+
+def collect_git() -> Dict[str, Any]:
+    branch = _run(["git", "-C", str(REPO_ROOT), "rev-parse", "--abbrev-ref", "HEAD"])
+    log_raw = _run(
+        ["git", "-C", str(REPO_ROOT), "log", "--oneline", "-10", "--format=%H|%s|%ai|%an"]
+    )
+    commits = []
+    for line in log_raw.splitlines():
+        parts = line.split("|", 3)
+        if len(parts) == 4:
+            commits.append({"hash": parts[0][:12], "message": parts[1], "date": parts[2], "author": parts[3]})
+    status_raw = _run(["git", "-C", str(REPO_ROOT), "status", "--short"])
+    uncommitted = [l.strip() for l in status_raw.splitlines() if l.strip()]
+    ahead = _run(["git", "-C", str(REPO_ROOT), "rev-list", "--count", "HEAD@{u}..HEAD"])
+    churn_raw = _run(
+        ["git", "-C", str(REPO_ROOT), "log", "--since=7 days ago", "--name-only", "--format="]
+    )
+    churn: Dict[str, int] = {}
+    for line in churn_raw.splitlines():
+        line = line.strip()
+        if line:
+            churn[line] = churn.get(line, 0) + 1
+    churn_hotspots = sorted(churn.items(), key=lambda x: -x[1])[:10]
+    return {
+        "branch": branch or "unknown",
+        "commits_ahead_upstream": int(ahead) if ahead.isdigit() else None,
+        "recent_commits": commits,
+        "uncommitted_files": uncommitted,
+        "churn_hotspots_7d": [{"file": f, "changes": c} for f, c in churn_hotspots],
+    }
+
+
+def collect_services() -> List[Dict[str, Any]]:
+    results = []
+    for svc in _AI_SERVICES:
+        name = f"{svc}.service"
+        show = _run(["systemctl", "show", name, "--property=ActiveState,SubState,ExecMainStartTimestamp,MainPID,NRestarts"])
+        props: Dict[str, str] = {}
+        for line in show.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                props[k] = v
+        active = props.get("ActiveState", "unknown")
+        sub = props.get("SubState", "unknown")
+        pid = props.get("MainPID", "0")
+        restarts = props.get("NRestarts", "0")
+        start_ts = props.get("ExecMainStartTimestamp", "")
+        results.append({
+            "name": svc,
+            "status": active,
+            "sub_state": sub,
+            "pid": int(pid) if pid.isdigit() else None,
+            "restarts": int(restarts) if restarts.isdigit() else 0,
+            "active_since": start_ts or None,
+        })
+    return results
+
+
+def collect_validation() -> Dict[str, Any]:
+    registry_path = REPO_ROOT / "config" / "validation-check-registry.json"
+    try:
+        registry = json.loads(registry_path.read_text())
+        checks = registry.get("checks", [])
+        total = len(checks)
+        enabled = sum(1 for c in checks if c.get("enabled", True))
+    except Exception:
+        total = 0
+        enabled = 0
+        checks = []
+
+    # Read latest focused-CI JSON artifact if available
+    focused_path = Path(os.getenv("FOCUSED_CI_JSON", "/tmp/focused-ci-latest.json"))
+    focused_summary: Dict[str, Any] = {"available": False}
+    if focused_path.exists():
+        try:
+            focused_data = json.loads(focused_path.read_text())
+            results = focused_data if isinstance(focused_data, list) else focused_data.get("checks", [])
+            passed = sum(1 for r in results if r.get("status") == "pass")
+            failed = sum(1 for r in results if r.get("status") == "fail")
+            generated = focused_data.get("generated_at") if isinstance(focused_data, dict) else None
+            focused_summary = {
+                "available": True,
+                "checks_ran": len(results),
+                "passed": passed,
+                "failed": failed,
+                "generated_at": generated,
+                "top_failures": [r.get("check_id") for r in results if r.get("status") == "fail"][:5],
+            }
+        except Exception:
+            pass
+
+    # Read aq-qa results if available
+    qa_results_path = Path(os.getenv("AQ_QA_RESULTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/aq-qa-results.json"))
+    qa_summary: Dict[str, Any] = {"available": False}
+    if qa_results_path.exists():
+        try:
+            qa_data = json.loads(qa_results_path.read_text())
+            qa_summary = {
+                "available": True,
+                "passed": qa_data.get("passed", 0),
+                "failed": qa_data.get("failed", 0),
+                "total": qa_data.get("total", 0),
+                "generated_at": qa_data.get("generated_at"),
+            }
+        except Exception:
+            pass
+
+    return {
+        "registry_checks_total": total,
+        "registry_checks_enabled": enabled,
+        "focused_ci": focused_summary,
+        "aq_qa": qa_summary,
+    }
+
+
+def collect_errors() -> List[Dict[str, Any]]:
+    since_ts = (_NOW - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    logs = _run(
+        ["journalctl", "--since", since_ts, "-p", "err..warning", "--no-pager",
+         "-u", "ai-hybrid-coordinator", "-u", "ai-ralph-wiggum", "-u", "ai-aidb",
+         "-u", "ai-switchboard", "--output=short-monotonic"],
+        timeout=15,
+    )
+    error_counts: Dict[str, Dict[str, Any]] = {}
+    for line in logs.splitlines():
+        line_lower = line.lower()
+        svc = "coordinator" if "hybrid-coord" in line else \
+              "ralph" if "ralph" in line else \
+              "aidb" if "aidb" in line else \
+              "switchboard" if "switchboard" in line else "system"
+        err_type = "unknown"
+        if "500" in line or "backend_500" in line_lower:
+            err_type = "backend_500"
+        elif "timeout" in line_lower or "504" in line:
+            err_type = "timeout"
+        elif "apparmor" in line_lower or "denied" in line_lower:
+            err_type = "apparmor_denial"
+        elif "connection refused" in line_lower or "connect" in line_lower:
+            err_type = "connection_refused"
+        elif "exception" in line_lower or "traceback" in line_lower:
+            err_type = "python_exception"
+        elif "error" in line_lower:
+            err_type = "general_error"
+        else:
+            continue
+        key = f"{svc}:{err_type}"
+        if key not in error_counts:
+            error_counts[key] = {"service": svc, "type": err_type, "count": 0, "last_line": ""}
+        error_counts[key]["count"] += 1
+        error_counts[key]["last_line"] = line[:120]
+    return sorted(error_counts.values(), key=lambda x: -x["count"])[:10]
+
+
+def collect_attention() -> Dict[str, Any]:
+    attn_path = REPO_ROOT / ".agents" / "attention" / "ATTENTION.json"
+    archive_path = REPO_ROOT / ".agents" / "attention" / "ATTENTION_ARCHIVE.jsonl"
+
+    pending = 0
+    pending_items: List[str] = []
+    if attn_path.exists():
+        try:
+            d = json.loads(attn_path.read_text())
+            items = d.get("items") or []
+            pending = len(items)
+            pending_items = [(it.get("title") or it.get("message", "?"))[:60] for it in items[:5]]
+        except Exception:
+            pass
+
+    recent_auto_ok = 0
+    if archive_path.exists():
+        cutoff = (_NOW - timedelta(hours=24)).isoformat()
+        try:
+            with archive_path.open() as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line)
+                        if ev.get("autonomy_boundary") == "auto_ok" and ev.get("created_at", "") >= cutoff:
+                            recent_auto_ok += 1
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    return {
+        "pending_human_gate": pending,
+        "pending_items": pending_items,
+        "recent_auto_ok_24h": recent_auto_ok,
+    }
+
+
+def collect_data_topology() -> Dict[str, Any]:
+    # Qdrant collections
+    qdrant_result = _http_get(f"{QDRANT_URL}/collections")
+    qdrant_collections = []
+    if qdrant_result:
+        for col in (qdrant_result.get("result", {}).get("collections") or []):
+            name = col.get("name", "?")
+            info = _http_get(f"{QDRANT_URL}/collections/{name}")
+            pts = 0
+            if info:
+                pts = (info.get("result", {}).get("points_count") or
+                       info.get("result", {}).get("indexed_vectors_count") or 0)
+            qdrant_collections.append({"name": name, "point_count": pts})
+
+    # PostgreSQL tables
+    pg_tables = []
+    rows = _pg_query(
+        "SELECT relname AS table_name, n_live_tup AS row_count "
+        "FROM pg_stat_user_tables ORDER BY n_live_tup DESC LIMIT 15"
+    )
+    for r in rows:
+        pg_tables.append({"table": r.get("table_name"), "rows": r.get("row_count")})
+
+    # Redis INFO
+    redis_info: Dict[str, Any] = {"available": False}
+    try:
+        import subprocess
+        redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
+        redis_port = os.getenv("REDIS_PORT", os.getenv("MCP_REDIS_PORT", "6380"))
+        info_raw = subprocess.run(
+            ["redis-cli", "-h", redis_host, "-p", redis_port, "INFO", "memory", "keyspace"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+        mem_line = next((l for l in info_raw.splitlines() if l.startswith("used_memory_human:")), "")
+        mem = mem_line.split(":", 1)[-1].strip() if mem_line else "unknown"
+        keys_line = next((l for l in info_raw.splitlines() if l.startswith("db")), "")
+        key_count = 0
+        if keys_line:
+            import re
+            m = re.search(r"keys=(\d+)", keys_line)
+            key_count = int(m.group(1)) if m else 0
+        redis_info = {"available": True, "used_memory_human": mem, "key_count": key_count}
+    except Exception:
+        pass
+
+    return {
+        "qdrant": qdrant_collections,
+        "postgres": pg_tables,
+        "redis": redis_info,
+    }
+
+
+def collect_agent_state() -> Dict[str, Any]:
+    resume_path = REPO_ROOT / ".agent" / "collaboration" / "RESUME.json"
+    handoff_path = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
+    pending_path = REPO_ROOT / ".agent" / "collaboration" / "PENDING.json"
+
+    objective = None
+    phase = None
+    open_tasks: List[str] = []
+    if resume_path.exists():
+        try:
+            r = json.loads(resume_path.read_text())
+            objective = r.get("current_objective")
+            phase = r.get("phase")
+            open_tasks = [t for t in (r.get("todo_snapshot") or []) if not t.startswith("DONE")][:5]
+        except Exception:
+            pass
+
+    handoff_snippet = None
+    if handoff_path.exists():
+        try:
+            lines = handoff_path.read_text().splitlines()[:50]
+            handoff_snippet = "\n".join(lines)
+        except Exception:
+            pass
+
+    pending_count = 0
+    if pending_path.exists():
+        try:
+            d = json.loads(pending_path.read_text())
+            tasks = d.get("tasks") or []
+            pending_count = sum(1 for t in tasks if t.get("status") not in ("done", "accepted", "cancelled"))
+        except Exception:
+            pass
+
+    return {
+        "current_objective": objective,
+        "phase": phase,
+        "open_tasks": open_tasks,
+        "pending_delegations": pending_count,
+        "handoff_snippet": handoff_snippet,
+    }
+
+
+def collect_performance() -> Dict[str, Any]:
+    aq_report_path = Path(
+        os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+    )
+    if not aq_report_path.exists():
+        return {"available": False, "reason": "aq-report artifact not found"}
+
+    try:
+        report = json.loads(aq_report_path.read_text())
+    except Exception as exc:
+        return {"available": False, "reason": str(exc)}
+
+    generated_at = report.get("generated_at", "")
+    stale = False
+    if generated_at:
+        try:
+            gen_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+            stale = (_NOW - gen_dt).total_seconds() > 7 * 86400
+        except Exception:
+            pass
+
+    sc = report.get("effectiveness_scorecard") or {}
+    routing = report.get("routing") or {}
+    cache = report.get("cache") or {}
+    ut = report.get("useful_tokens") or {}
+
+    return {
+        "available": True,
+        "stale": stale,
+        "report_generated_at": generated_at,
+        "scorecard_status": sc.get("overall_status"),
+        "completion_reliability": (sc.get("completion_reliability") or {}).get("delegation_success_rate"),
+        "local_routing_pct": routing.get("local_pct") or routing.get("local_routing_pct"),
+        "cache_hit_pct": cache.get("hit_pct"),
+        "useful_token_ratio": ut.get("useful_ratio"),
+        "waste_buckets": ut.get("waste_buckets"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Synthesis
+# ---------------------------------------------------------------------------
+
+def build_snapshot(domains: Optional[List[str]] = None) -> Dict[str, Any]:
+    all_domains = domains or ["git", "services", "validation", "errors", "attention", "data", "agent", "performance"]
+    snap: Dict[str, Any] = {
+        "generated_at": _NOW.isoformat(),
+        "freshness_seconds": 0,
+        "domains_collected": all_domains,
+    }
+    collectors = {
+        "git": collect_git,
+        "services": collect_services,
+        "validation": collect_validation,
+        "errors": collect_errors,
+        "attention": collect_attention,
+        "data": collect_data_topology,
+        "agent": collect_agent_state,
+        "performance": collect_performance,
+    }
+    for domain in all_domains:
+        fn = collectors.get(domain)
+        if fn:
+            try:
+                snap[domain] = fn()
+            except Exception as exc:
+                snap[domain] = {"_error": str(exc)}
+    snap["freshness_seconds"] = 0  # just generated
+    return snap
+
+
+def persist_artifact(snap: Dict[str, Any]) -> None:
+    try:
+        ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = ARTIFACT_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
+        tmp.replace(ARTIFACT_PATH)
+    except Exception as exc:
+        print(f"[aq-system-state] WARN: could not write artifact: {exc}", file=sys.stderr)
+
+
+def format_summary(snap: Dict[str, Any]) -> str:
+    sep = "─" * 60
+    lines = [
+        sep,
+        f"  SYSTEM STATE SNAPSHOT",
+        f"  Generated: {snap.get('generated_at', '')[:19].replace('T', ' ')} UTC",
+        sep,
+        "",
+    ]
+
+    # Services
+    svcs = snap.get("services") or []
+    if svcs:
+        active = sum(1 for s in svcs if s.get("status") == "active")
+        failed = [s["name"] for s in svcs if s.get("status") in ("failed", "inactive") and s.get("sub_state") != "dead"]
+        restarted = [s["name"] for s in svcs if (s.get("restarts") or 0) > 0]
+        lines += ["[ Services ]"]
+        lines.append(f"  Active: {active}/{len(svcs)}   Failed: {len(failed)}   With restarts: {len(restarted)}")
+        for f in failed[:3]:
+            lines.append(f"  ✗ {f}")
+        if restarted:
+            lines.append(f"  Restarts: {', '.join(restarted[:3])}")
+        lines.append("")
+
+    # Git
+    git = snap.get("git") or {}
+    if git:
+        lines += ["[ Git ]"]
+        branch = git.get("branch", "?")
+        uncommitted = len(git.get("uncommitted_files") or [])
+        ahead = git.get("commits_ahead_upstream")
+        hotspots = git.get("churn_hotspots_7d") or []
+        ahead_str = f"   Ahead: {ahead}" if ahead else ""
+        lines.append(f"  Branch: {branch}   Uncommitted: {uncommitted}{ahead_str}")
+        if git.get("recent_commits"):
+            last = git["recent_commits"][0]
+            lines.append(f"  Latest: {last['hash']} {last['message'][:60]}")
+        if hotspots:
+            lines.append(f"  Churn hotspots (7d): {hotspots[0]['file']} ({hotspots[0]['changes']}x)")
+        lines.append("")
+
+    # Validation
+    val = snap.get("validation") or {}
+    if val:
+        lines += ["[ Validation ]"]
+        total = val.get("registry_checks_total", 0)
+        enabled = val.get("registry_checks_enabled", 0)
+        qa = val.get("aq_qa") or {}
+        fci = val.get("focused_ci") or {}
+        lines.append(f"  Registry: {enabled}/{total} enabled")
+        if qa.get("available"):
+            lines.append(f"  aq-qa: {qa.get('passed', 0)}/{qa.get('total', 0)} pass")
+        if fci.get("available"):
+            p, f = fci.get("passed", 0), fci.get("failed", 0)
+            lines.append(f"  Focused CI: {p} pass, {f} fail")
+            for fail_id in (fci.get("top_failures") or [])[:3]:
+                lines.append(f"    ✗ {fail_id}")
+        lines.append("")
+
+    # Errors
+    errors = snap.get("errors") or []
+    if errors:
+        lines += ["[ Recent Errors (1h) ]"]
+        for e in errors[:5]:
+            lines.append(f"  {e['service']} / {e['type']}: {e['count']}x")
+        lines.append("")
+
+    # Data topology
+    data = snap.get("data") or {}
+    if data:
+        lines += ["[ Data Topology ]"]
+        qdrant = data.get("qdrant") or []
+        pg = data.get("postgres") or []
+        redis = data.get("redis") or {}
+        if qdrant:
+            lines.append(f"  Qdrant: {len(qdrant)} collections — " + ", ".join(f"{c['name']}({c['point_count']})" for c in qdrant[:5]))
+        if pg:
+            lines.append(f"  PostgreSQL: {len(pg)} tables — " + ", ".join(f"{r['table']}({r['rows']})" for r in pg[:5]))
+        if redis.get("available"):
+            lines.append(f"  Redis: {redis.get('used_memory_human', '?')}   keys: {redis.get('key_count', '?')}")
+        lines.append("")
+
+    # Agent state
+    agent = snap.get("agent") or {}
+    if agent and agent.get("current_objective"):
+        lines += ["[ Agent State ]"]
+        lines.append(f"  Objective: {agent['current_objective'][:80]}")
+        lines.append(f"  Phase: {agent.get('phase', '?')}")
+        open_tasks = agent.get("open_tasks") or []
+        if open_tasks:
+            lines.append(f"  Open tasks: {len(open_tasks)}")
+        pending = agent.get("pending_delegations", 0)
+        if pending:
+            lines.append(f"  Pending delegations: {pending}")
+        lines.append("")
+
+    # Performance
+    perf = snap.get("performance") or {}
+    if perf.get("available"):
+        lines += ["[ Performance ]"]
+        stale_note = " (STALE)" if perf.get("stale") else ""
+        lines.append(f"  Scorecard: {perf.get('scorecard_status', '?')}{stale_note}")
+        rel = perf.get("completion_reliability")
+        ratio = perf.get("useful_token_ratio")
+        local = perf.get("local_routing_pct")
+        cache = perf.get("cache_hit_pct")
+        if rel is not None:
+            lines.append(f"  Delegation success: {rel:.1%}   Useful token ratio: {ratio:.1%}" if ratio is not None else f"  Delegation success: {rel:.1%}")
+        if local is not None:
+            lines.append(f"  Local routing: {local:.1f}%   Cache hit: {cache:.1f}%" if cache is not None else f"  Local routing: {local:.1f}%")
+        lines.append("")
+
+    # Attention
+    attn = snap.get("attention") or {}
+    pending_gate = attn.get("pending_human_gate", 0)
+    auto_ok = attn.get("recent_auto_ok_24h", 0)
+    if pending_gate or auto_ok:
+        lines += ["[ Attention Queue ]"]
+        lines.append(f"  Pending human gate: {pending_gate}   Auto-OK (24h): {auto_ok}")
+        for item in (attn.get("pending_items") or [])[:3]:
+            lines.append(f"  → {item}")
+        lines.append("")
+
+    lines.append(f"  Artifact: {ARTIFACT_PATH}")
+    lines.append(sep)
+    return "\n".join(lines)
+
+
+def format_diff(current: Dict[str, Any], previous: Dict[str, Any]) -> str:
+    lines = ["=== SYSTEM STATE DELTA ===", ""]
+
+    def _flat(obj: Any, prefix: str = "") -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                out.update(_flat(v, f"{prefix}.{k}" if prefix else k))
+        elif isinstance(obj, list):
+            out[prefix] = f"[{len(obj)} items]"
+        else:
+            out[prefix] = obj
+        return out
+
+    cur_flat = _flat(current)
+    prev_flat = _flat(previous)
+    all_keys = set(cur_flat) | set(prev_flat)
+    changed = []
+    for k in sorted(all_keys):
+        cv = cur_flat.get(k)
+        pv = prev_flat.get(k)
+        if cv != pv:
+            changed.append((k, pv, cv))
+
+    if not changed:
+        lines.append("  No changes detected.")
+    else:
+        for k, old, new in changed[:30]:
+            lines.append(f"  {k}")
+            lines.append(f"    before: {str(old)[:80]}")
+            lines.append(f"    after:  {str(new)[:80]}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="aq-system-state — system intelligence snapshot")
+    parser.add_argument("--fmt", choices=["text", "json", "summary"], default="summary",
+                        help="Output format (default: summary)")
+    parser.add_argument("--diff", action="store_true", help="Show delta from previous artifact")
+    parser.add_argument("--domain", help="Collect only this domain (git|services|validation|errors|attention|data|agent|performance)")
+    parser.add_argument("--no-persist", action="store_true", help="Do not write artifact to disk")
+    args = parser.parse_args()
+
+    domains = [args.domain] if args.domain else None
+    snap = build_snapshot(domains)
+
+    # Diff mode
+    if args.diff and ARTIFACT_PATH.exists() and not args.domain:
+        try:
+            prev = json.loads(ARTIFACT_PATH.read_text())
+            print(format_diff(snap, prev))
+        except Exception:
+            pass
+
+    # Persist
+    if not args.no_persist and not args.domain:
+        persist_artifact(snap)
+
+    # Output
+    if args.fmt == "json":
+        print(json.dumps(snap, indent=2, default=str))
+    else:
+        print(format_summary(snap))
+
+
+if __name__ == "__main__":
+    main()

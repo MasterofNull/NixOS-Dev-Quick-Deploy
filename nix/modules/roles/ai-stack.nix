@@ -462,6 +462,10 @@ let
       (pkgs.writeShellScriptBin "aq-skill-suggest" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-skill-suggest" "$@"
       '')
+      # --- System intelligence ---
+      (pkgs.writeShellScriptBin "aq-system-state" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-system-state" "$@"
+      '')
       # --- Governance & integrity ---
       (pkgs.writeShellScriptBin "aq-integrity-scan" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-integrity-scan" "$@"
