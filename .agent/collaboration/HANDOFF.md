@@ -1,3 +1,58 @@
+# HANDOFF MEMO — 2026-06-04 (Phase 114: waste bucket telemetry + Phase 113: eval pipeline fix)
+
+## Phase 114 — waste bucket token classification in _emit_token_event
+
+### Context
+`useful_token_ratio = ~0.20` with all waste buckets null in aq-report. Could not classify
+WHERE tokens were being wasted (quality gate failures vs backend 5xx failures).
+
+### Fix
+Added waste bucket classification to `_emit_token_event()` in `ai_coordinator_handlers.py`:
+- `_are_rejected`: output tokens when backend succeeded but quality gate returned `passed=False`
+  → emitted as `payload.rejected_output`
+- `_are_failed_retry`: total tokens when backend returned 5xx (not `_are_ok`)
+  → emitted as `payload.failed_retries`
+- `accepted_artifact` field continues to track tokens from quality-passed delegations only.
+
+### Changes
+- `extensions/ai_coordinator_handlers.py`: `_emit_token_event` — added `_rejected`/`_failed_retry`
+  params; `make_event()` call includes `payload={"rejected_output": ..., "failed_retries": ...}`
+- Requires nixos-rebuild switch (coordinator module)
+
+### Validation (post-rebuild)
+```bash
+# Trigger a delegation, check latest token_usage event
+tail -1 /var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl | \
+  python3 -c "import sys,json; e=json.load(sys.stdin); print(e.get('payload',{}))"
+# Expect: payload dict with rejected_output / failed_retries keys (may be null if quality passed)
+# aq-report waste_buckets section should show non-null values after quality gate failures
+```
+
+---
+# HANDOFF MEMO — 2026-06-04 (Phase 113: eval_pass_rate pipeline fix + RAGAS fallback)
+
+## Phase 113 — eval_score_trend() missing pass_rate fields
+
+### Root cause
+`eval_score_trend()` returned `latest_pct` / `mean_pct` (0-100 scale) but not
+`pass_rate` / `recent_pass_rate` (0.0-1.0 scale). The effectiveness scorecard reads
+`eval_trend.get("recent_pass_rate")` → was always `None` → `eval_pass_rate` always `None`.
+
+### Fix
+Added `pass_rate` and `recent_pass_rate` to both return paths in `eval_score_trend()`:
+- promptfoo/tool_audit path: `pass_rate = round(pcts[-1] / 100.0, 3)`
+- RAGAS fallback path: `pass_rate = round(float(ar), 3)` (answer_relevance_avg from /eval/trend)
+
+Also added `fetch_coordinator_eval_trend()` function: calls coordinator `/eval/trend` for
+RAGAS metrics when scores.sqlite is stale (>7d) and no tool_audit entries exist.
+Added `COORDINATOR_URL` constant (reads `HYBRID_COORDINATOR_URL` env var).
+
+### Validation
+`aq-report` shows `eval_pass_rate: 1.0` (4 aq-qa runs at 100% from tool_audit — correct,
+RAGAS fallback not reached). Field is now non-null.
+- Commit: 67fa6791
+
+---
 # HANDOFF MEMO — 2026-06-04 (nvd-sync service dep fix + Phase 110+111+112 LIVE)
 
 ## nvd-sync.service — wrong AIDB unit name in `after` dependency

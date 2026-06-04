@@ -2150,9 +2150,18 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             _are_tok_out = int((body.get("usage") or {}).get("completion_tokens", 0) or 0)
             _are_total = _are_tok_in + _are_tok_out
             _are_ok = response.status_code < 400
+            _are_quality_available = delegated_quality.get("available")
+            _are_quality_passed = bool(delegated_quality.get("passed")) if _are_quality_available else None
             # accepted_artifact = output tokens when quality gate passed; None when unavailable or failed
             _are_accepted = _are_tok_out if (
-                _are_ok and delegated_quality.get("passed") and _are_tok_out > 0
+                _are_ok and _are_quality_passed and _are_tok_out > 0
+            ) else None
+            # waste buckets: classify token spend that produced no accepted artifact
+            _are_rejected = _are_tok_out if (
+                _are_ok and _are_quality_available and not _are_quality_passed and _are_tok_out > 0
+            ) else None
+            _are_failed_retry = _are_total if (
+                not _are_ok and _are_total > 0
             ) else None
             _are_model = _delegate_model_id
             _are_profile = effective_profile
@@ -2162,6 +2171,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 _run_id=_are_run_id, _tok_in=_are_tok_in, _tok_out=_are_tok_out,
                 _total=_are_total, _accepted=_are_accepted, _model=_are_model,
                 _profile=_are_profile, _dur=_are_dur, _ok=_are_ok,
+                _rejected=_are_rejected, _failed_retry=_are_failed_retry,
             ):
                 try:
                     ev = _are.make_event(
@@ -2177,6 +2187,10 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                             "output": _tok_out if _tok_out else None,
                             "total": _total if _total else None,
                             "accepted_artifact": _accepted,
+                        },
+                        payload={
+                            "rejected_output": _rejected,
+                            "failed_retries": _failed_retry,
                         },
                     )
                     await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
