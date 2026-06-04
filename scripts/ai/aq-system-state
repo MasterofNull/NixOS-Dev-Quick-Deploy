@@ -27,6 +27,7 @@ Environment:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import subprocess
@@ -49,6 +50,7 @@ ARTIFACT_PATH = Path(
     )
 )
 QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
+LOCK_PATH = ARTIFACT_PATH.parent / ".system-state.lock"
 COORDINATOR_URL = os.getenv(
     "HYBRID_COORDINATOR_URL",
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('COORDINATOR_PORT', '8003')}",
@@ -485,11 +487,24 @@ def build_snapshot(domains: Optional[List[str]] = None) -> Dict[str, Any]:
 
 
 def persist_artifact(snap: Dict[str, Any]) -> None:
+    """Write artifact atomically (.tmp → rename). Uses fcntl exclusive lock to
+    prevent concurrent writers from producing corrupted output."""
     try:
         ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = ARTIFACT_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
-        tmp.replace(ARTIFACT_PATH)
+        lock_fh = open(LOCK_PATH, "w")
+        try:
+            fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("[aq-system-state] INFO: refresh already in progress, skipping write", file=sys.stderr)
+            lock_fh.close()
+            return
+        try:
+            tmp = ARTIFACT_PATH.with_suffix(".tmp")
+            tmp.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
+            tmp.replace(ARTIFACT_PATH)
+        finally:
+            fcntl.flock(lock_fh, fcntl.LOCK_UN)
+            lock_fh.close()
     except Exception as exc:
         print(f"[aq-system-state] WARN: could not write artifact: {exc}", file=sys.stderr)
 
