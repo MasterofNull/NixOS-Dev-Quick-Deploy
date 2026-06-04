@@ -59,33 +59,58 @@ service config. In Python: `int(os.environ.get("HYBRID_URL", "").split(":")[-1])
 ## 3. Module Authoring Patterns
 
 ### Service declaration (mcp-servers.nix pattern)
+
+**ALWAYS use `commonServiceConfig // { ... }` as the base.** Never write a bare `serviceConfig { }`.
+`commonServiceConfig` provides the full hardening baseline declared in mcp-servers.nix:
+- `ProtectHome = "read-only"` — REQUIRED: allows the service user to enter /home/hyperd/ (repo lives there)
+- `WorkingDirectory = dataDir` — `/var/lib/ai-stack`, owned by the service user
+- `ReadOnlyPaths = [repoSource]` — read access to the Nix store copy of the repo
+- `ReadWritePaths = serviceWritablePaths` — write access to /var/lib/ai-stack/**
+- `NoNewPrivileges`, `PrivateTmp`, `SystemCallFilter`, `RestrictAddressFamilies` — full hardening
+
 ```nix
 systemd.services."ai-my-service" = lib.mkIf roleEnabled {
   description = "My service description";
-  wantedBy = [ "multi-user.target" ];
-  after = [ "network-online.target" "postgresql.service" ];
-  wants = [ "network-online.target" ];  # Don't omit — service starts before network without it
+  wantedBy = [ "ai-stack.target" ];
+  after = hybridDeps;  # or appropriate deps list
+  wants = [ "network-online.target" ];
 
-  serviceConfig = {
-    Type = "simple";
-    User = "ai-stack";                   # Use service user, not root
-    Group = "ai-stack";
-    WorkingDirectory = cfg.repoPath;     # Repo root, NOT a subdirectory (unless required)
-    ExecStart = "${python3Env}/bin/python3 path/to/service.py";
-    Restart = "on-failure";
-    RestartSec = "5s";
-    NoNewPrivileges = true;              # Always set — affects AppArmor transitions (see §4)
-    PrivateTmp = true;
-    # AppArmor profile — see §4
-    AppArmorProfile = "ai-my-service";
-  };
+  serviceConfig =
+    commonServiceConfig          # <-- MANDATORY base: inherits all hardening
+    // {
+      User = hybridUser;         # or appropriate service user var (hybridUser, aidbUser, etc.)
+      ExecStart = "${python3Env}/bin/python3 path/to/service.py";
+      Restart = "always";        # or "on-failure" or "no" for oneshot
+      RestartSec = "5s";
+      AppArmorProfile = "ai-my-service";  # if profile exists; see §4
+      Environment = [
+        "PORT=${toString ports.myService}"
+        # Never hardcode — always use ports.* vars from options.nix
+      ];
+    };
+};
 
-  environment = {
-    SERVICE_PORT = toString cfg.ports.myService;
-    # Never hardcode URLs — always use cfg.ports.*
-  };
+# For oneshot services (timers, one-time tasks):
+systemd.services."ai-my-oneshot" = {
+  serviceConfig =
+    commonServiceConfig
+    // {
+      Type = "oneshot";
+      User = hybridUser;
+      Restart = "no";            # Oneshot: timer handles re-invocation, not systemd restart
+      ExecStart = "${mcp.repoPath}/scripts/ai/my-script";
+      TimeoutStartSec = "120s";
+      Environment = [ "REPO_ROOT=${mcp.repoPath}" ];
+    };
 };
 ```
+
+**Why `ProtectHome = "read-only"` is non-negotiable here**: service users (ai-hybrid, ai-aidb, etc.)
+are not in the `hyperd` group. `/home/hyperd` is `700`. Without ProtectHome, `WorkingDirectory`
+under the repo path fails with `CHDIR: Permission denied` (status=200).
+
+**Working directory rule**: Use `WorkingDirectory = dataDir` (from commonServiceConfig) unless the
+service specifically needs to be in the repo root. Pass the repo path as `REPO_ROOT` env var instead.
 
 ### Using lib.mkIf for conditional activation
 ```nix
