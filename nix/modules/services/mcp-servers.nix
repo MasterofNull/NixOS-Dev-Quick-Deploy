@@ -1114,6 +1114,7 @@ in {
                 "CONTINUOUS_LEARNING_STATS_PATH=${dataDir}/hybrid/telemetry/continuous_learning_stats.json"
                 "HYBRID_TELEMETRY_PATH=${dataDir}/hybrid/telemetry/hybrid-events.jsonl"
                 "HYBRID_TELEMETRY_ENABLED=true"
+                "THERMAL_CRITICAL_C=85"
                 "OPTIMIZATION_PROPOSALS_PATH=${dataDir}/hybrid/telemetry/optimization_proposals.jsonl"
                 "CONTINUOUS_LEARNING_CHECKPOINT_DIR=${dataDir}/hybrid/checkpoints"
                 "FINETUNE_DATA_PATH=${dataDir}/hybrid/fine-tuning/dataset.jsonl"
