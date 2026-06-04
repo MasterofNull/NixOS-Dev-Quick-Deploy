@@ -1,15 +1,17 @@
 {
-  "current_objective": "Phase 111 — session registration + learning pipeline events",
-  "phase": "active",
+  "current_objective": "Phase 112 complete — all learning pipeline phases LIVE",
+  "phase": "complete",
   "todo_snapshot": [
     "DONE: Phase 107-109 — token usage end-to-end — LIVE",
     "DONE: Phase 108.1+108.2 — CL rotation fix + retry_backoff fix — LIVE",
     "DONE: Phase 109.1 — explicit stream:true for local profiles (97ca8c94) — LIVE",
-    "DONE: Phase 110 — emit local_inference events + CL pattern extraction (9dbd2341) — committed",
+    "DONE: Phase 110 — emit local_inference events + CL pattern extraction (9dbd2341) — LIVE",
     "DONE: Phase 111.1 — workflow session registration in aq-session-start (ba053995) — LIVE",
-    "PENDING: nixos-rebuild switch for Phase 110 (ai_coordinator_handlers.py + continuous_learning.py)",
-    "PENDING: after rebuild — run 'aq-session-start --task test' then check local_inference events in hybrid-events.jsonl and patterns>0 in CL journal"
+    "DONE: Phase 112 — THERMAL_CRITICAL_C=85 (bd18ac52) — LIVE",
+    "DONE: post-rebuild validation — local_inference event emitted, CL patterns_by_type={'local_inference':1}",
+    "OPEN P3: delegation_success_rate=0.583 — OpenRouter billing (external, not code)",
+    "OPEN P3: orphan audit backlog — 221 handler gaps + 187 zero-import modules"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 111.1 live (aq-session-start now registers workflow sessions). Phase 110 committed but needs nixos-rebuild switch for coordinator module. After rebuild: run aq-session-start --task 'test', then delegate via embedded-assist, check hybrid-events.jsonl for local_inference events, check CL journal for patterns>0. Check aq-report useful_tokens + effectiveness_scorecard."
+  "resume_hint": "All learning pipeline phases 107-112 LIVE. CL producing local_inference patterns. operator_trust=pass, useful_ratio=0.1993. Only remaining scorecard fail is completion_reliability due to OpenRouter credits (external). Next: top up OpenRouter credits to fix delegation_success_rate. Consider: adding rg/ripgrep and other CLI tools to NixOS packages."
 }

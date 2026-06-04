@@ -1,3 +1,55 @@
+# HANDOFF MEMO — 2026-06-04 (Phase 110+111: local_inference pipeline + session registration LIVE)
+
+## Phase 110 — local_inference event emission + CL pattern extraction
+
+### Context
+`training_ingest.py` reads `hybrid-events.jsonl` for `local_inference`/`agent_step_complete` events.
+The coordinator routes through switchboard/httpx (not `llm_client.py`), so these events were never
+emitted. All telemetry queries were SHA256-hashed → CL could not extract any patterns.
+`samples_added=0` on every training run.
+
+### Fix
+`handle_ai_coordinator_delegate` now emits `local_inference` events to `hybrid-events.jsonl`
+after every successful local delegation (embedded-assist/default/continue-local/local-tool-calling).
+Events contain plain-text `query` + `response` up to 4000 chars, latency_ms, token counts.
+`continuous_learning._extract_pattern_from_event` extended to handle `local_inference` event type.
+
+### Validation (post-rebuild at 23:54 PDT 2026-06-03)
+```
+local_inference events in hybrid-events.jsonl: 1 (first event ts=2026-06-04T06:56:02Z)
+CL stats: total_patterns_learned=1, patterns_by_type={'local_inference': 1}
+```
+- Commit: 9dbd2341
+- Nix store: a7qa38hmc1qgsrc3h5j6qppm54c2saph (coordinator restarted 23:54:35 PDT)
+
+## Phase 111.1 — workflow session registration in aq-session-start
+
+### Context
+`operator_trust` in effectiveness_scorecard was `no_data` because `workflow-sessions.json` had
+10 entries all >13 days old. `aq-session-start` never called `/workflow/run/start`.
+
+### Fix
+Added step 0 to `aq-session-start`: POST to `/workflow/run/start` with task+agent+role.
+Silent on failure — never blocks hydration.
+
+### Validation
+`operator_trust: pass`, `intent_coverage: 100.0` confirmed in aq-report.
+- Commit: ba053995
+
+## Phase 112 — THERMAL_CRITICAL_C=85
+
+### Context
+Renoir APU hits 81°C under normal load; default MLFQ critical threshold was 83°C, causing
+batch tasks to be rejected unnecessarily. Tctl safe_max for Renoir is 95°C.
+
+### Fix
+Added `THERMAL_CRITICAL_C=85` to coordinator service Environment in `nix/modules/services/mcp-servers.nix`.
+
+### Validation
+`THERMAL_CRITICAL_C=85` confirmed in running coordinator environment.
+- Commit: bd18ac52
+
+---
 # HANDOFF MEMO — 2026-06-03 (Phase 109.1: explicit stream:true for local profiles)
 
 ## Phase 109.1 — explicit stream:true in _post_delegate for local profiles
