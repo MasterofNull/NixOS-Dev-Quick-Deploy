@@ -1,17 +1,13 @@
 {
-  "current_objective": "Post-rebuild cleanup + scorecard quality improvements",
-  "phase": "complete",
+  "current_objective": "Phase 114: waste bucket telemetry — commit + rebuild",
+  "phase": "Phase 114 committed, rebuild pending",
   "todo_snapshot": [
-    "DONE: Phase 107-112 LIVE (CL pipeline, thermal, session registration)",
-    "DONE: nvd-sync startup race fix (e4719f75) \u2014 awaiting rebuild to activate",
-    "DONE: CLI toolset expansion (13 tools added to ai-dev profile)",
-    "DONE: RAG prewarm triggered (memory_recall_contextualise + gap_detection_score)",
-    "DONE: eval sampling triggered (3 runs, RAGAS metrics flowing: answer_relevance=0.644)",
-    "DONE: aq-report RAGAS fallback + pass_rate fields (67fa6791)",
-    "OPEN: completion_reliability fail (0.617) \u2014 OpenRouter credits exhausted + pre-rebuild artifacts",
-    "OPEN: nvd-sync fix needs rebuild to activate \u2014 next rebuild will apply",
-    "OPEN: AppArmor Ux scope review (P3 periodic task)"
+    "DONE: Phase 107-113 LIVE (CL pipeline, eval pipeline, scorecard fixes)",
+    "DONE: nvd-sync startup race fix (e4719f75)",
+    "DONE: Phase 114 waste bucket tracking (rejected_output + failed_retries in _emit_token_event)",
+    "PENDING-REBUILD: Phase 114 coordinator change + nvd-sync fix → sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
+    "OPEN: completion_reliability fail (0.617) — OpenRouter credits exhausted + pre-rebuild artifacts aging out"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Scorecard: outcome_correctness=pass, regression_containment=pass, operator_trust=pass, context_quality=pass. Only fail: completion_reliability (OpenRouter billing). Pre-rebuild 500s will age out ~16h. Next: request rebuild for nvd-sync fix, top up OpenRouter credits."
+  "resume_hint": "Phase 114 waste bucket commit in this session. Rebuild needed to deploy. After rebuild: validate agent-run-events.jsonl payload dict has rejected_output/failed_retries keys. Scorecard: all dimensions pass except completion_reliability (billing issue)."
 }
