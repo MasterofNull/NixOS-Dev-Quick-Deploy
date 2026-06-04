@@ -1,3 +1,8 @@
+---
+name: nixos-system
+description: "NixOS System Skill — NixOS-Dev-Quick-Deploy Harness"
+---
+
 # NixOS System Skill — NixOS-Dev-Quick-Deploy Harness
 ## Tags
 nix, nixos, flake, rebuild, module, options.nix, systemd, AppArmor, python-env, secrets, port

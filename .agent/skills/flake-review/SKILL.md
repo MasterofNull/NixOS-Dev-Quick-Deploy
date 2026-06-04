@@ -1,3 +1,8 @@
+---
+name: flake-review
+description: "Skill: Flake Supply-Chain Review"
+---
+
 # Skill: Flake Supply-Chain Review
 
 - **Purpose**: Autonomously audit and validate changes to `flake.lock` to prevent supply-chain attacks and ensure system stability.

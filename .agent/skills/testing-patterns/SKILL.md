@@ -1,3 +1,8 @@
+---
+name: testing-patterns
+description: "Testing Patterns Skill"
+---
+
 # Testing Patterns Skill
 ## Tags
 qa, testing, harness_qa, http_get, check, phase, smoke, unit, mock, qdrant, coordinator, timeout

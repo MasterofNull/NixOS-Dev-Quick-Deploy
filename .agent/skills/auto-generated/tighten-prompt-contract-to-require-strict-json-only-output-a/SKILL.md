@@ -5,6 +5,8 @@
 # Pattern count: 110
 # Failure class: provider_request_error
 # Status: DRAFT — do not use until reviewed and promoted
+description: "Skill: tighten-prompt-contract-to-require-strict-json-only-output-a"
+
 ---
 
 # Skill: tighten-prompt-contract-to-require-strict-json-only-output-a

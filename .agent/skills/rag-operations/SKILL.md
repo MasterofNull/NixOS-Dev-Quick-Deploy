@@ -1,3 +1,8 @@
+---
+name: rag-operations
+description: "RAG Operations Skill"
+---
+
 # RAG Operations Skill
 ## Tags
 rag, aidb, qdrant, search, seed, collection, embedding, threshold, hybrid_search, 8003, 8002

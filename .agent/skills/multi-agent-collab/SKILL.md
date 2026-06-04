@@ -1,3 +1,8 @@
+---
+name: multi-agent-collab
+description: "Multi-Agent Collaboration Skill"
+---
+
 # Multi-Agent Collaboration Skill
 ## Tags
 orchestrator, multi-agent, review, handoff, delegation, RESUME, PULSE, role, slice

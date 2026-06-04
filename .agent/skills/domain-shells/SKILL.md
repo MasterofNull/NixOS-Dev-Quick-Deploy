@@ -1,3 +1,8 @@
+---
+name: domain-shells
+description: "Domain Shells Skill"
+---
+
 # Domain Shells Skill
 ## Tags
 domain, persona, shell, security, systems, data-eng, frontend, ml-ai, SRE, SDET, namespace, context

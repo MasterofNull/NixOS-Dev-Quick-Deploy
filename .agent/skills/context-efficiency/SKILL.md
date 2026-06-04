@@ -1,3 +1,8 @@
+---
+name: context-efficiency
+description: "Context Efficiency Skill"
+---
+
 # Context Efficiency Skill
 ## Tags
 context, tokens, compaction, RESUME, PULSE, sub-agent, slicing, grep_search, scoping, budget, MEMORY

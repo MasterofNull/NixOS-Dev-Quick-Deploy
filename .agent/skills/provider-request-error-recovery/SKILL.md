@@ -4,6 +4,8 @@ id: provider-request-error-recovery
 title: Provider Request Error Recovery
 status: active
 tags: [delegation, error-handling, llama-cpp, provider, retry]
+description: "Provider Request Error Recovery"
+
 ---
 
 # Skill: provider-request-error-recovery

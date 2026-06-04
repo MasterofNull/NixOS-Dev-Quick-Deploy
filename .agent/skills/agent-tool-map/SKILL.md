@@ -1,3 +1,8 @@
+---
+name: agent-tool-map
+description: "Agent Tool Map Skill"
+---
+
 # Agent Tool Map Skill
 ## Tags
 gemini, codex, claude, tools, tool-names, grep_search, run_shell_command, read_file, replace

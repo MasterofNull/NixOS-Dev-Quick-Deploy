@@ -1,3 +1,8 @@
+---
+name: reviewer-gate
+description: "Reviewer Gate Skill"
+---
+
 # Reviewer Gate Skill
 ## Tags
 reviewer, review, verdict, pass, fail, revision, acceptance-criteria, gate, self-review, Gemini

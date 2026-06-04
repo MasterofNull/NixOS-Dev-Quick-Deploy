@@ -1,3 +1,8 @@
+---
+name: test-remediation
+description: "Skill: Test Failure Auto-Remediation"
+---
+
 # Skill: Test Failure Auto-Remediation
 
 - **Purpose**: Automatically diagnose and fix code bugs that cause test suites to fail in CI/CD or local runs.

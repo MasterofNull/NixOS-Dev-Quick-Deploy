@@ -1,3 +1,8 @@
+---
+name: apparmor-rules
+description: "AppArmor Rules Skill — NixOS-Dev-Quick-Deploy Harness"
+---
+
 # AppArmor Rules Skill — NixOS-Dev-Quick-Deploy Harness
 ## Tags
 apparmor, profile, ix, Ux, NoNewPrivileges, deny, rule, parse-error, EPERM, enforce, complain

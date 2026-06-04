@@ -1,3 +1,8 @@
+---
+name: escalation-protocol
+description: "Escalation Protocol Skill"
+---
+
 # Escalation Protocol Skill
 ## Tags
 escalation, stop, surface, blocking, ambiguity, out-of-scope, destructive, irreversible, PULSE
