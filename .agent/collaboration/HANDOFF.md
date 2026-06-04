@@ -1,3 +1,31 @@
+# HANDOFF MEMO — 2026-06-04 (Phase 117: P3 system fixes — committed, pending rebuild)
+
+## Phase 117 — P3 System Fixes: COMMITTED (cb818317)
+
+### Status
+All slices committed. **Pending `nixos-rebuild switch`** to activate:
+- Telemetry dir 0770 (hyperd can write mirror artifacts)
+- Mirror file stubs: attention-snapshot.json (0664), agent-resume.json (0640)
+
+### Changes (cb818317)
+| Slice | File | Change |
+|-------|------|--------|
+| 117.1 | mcp-servers.nix | telemetry dir 0750→0770 + z-relabel + mirror file stubs |
+| 117.2 | attention_queue.py | _write_mirror_snapshot() after push/resolve |
+| 117.3 | aq-session-start | mirror RESUME.json to /var/lib on each session start |
+| 117.4 | aq-system-state | fallback reads from /var/lib mirrors for attention + agent domains |
+
+### Effect after rebuild
+- `aq-system-state` timer (ai-hybrid): attention + agent domains will populate from mirrors → `failed_domains=[]`
+- `aq-system-state` interactive (hyperd): will write artifact directly to telemetry dir
+- System Navigator diagnostics card: will show 0 failed domains
+
+### Other improvements this session
+- Cache prewarm: hit rate 53.6% → 80.4% (aq-cache-prewarm + aq-rag-prewarm)
+- Closed stale P2 items: Codex frontmatter (all 56 skills already OK), defaultMode (None, not bypass)
+- Phase 116 rebuild verified: all 8 migrated services active/success, 0 failures
+
+---
 # HANDOFF MEMO — 2026-06-04 (Phase 116: NixOS service hardening audit — COMPLETE)
 
 ## Phase 116 — Service Hardening Audit: COMPLETE (cdcd4f42)
