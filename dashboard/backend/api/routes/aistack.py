@@ -6351,10 +6351,11 @@ async def get_system_navigator() -> Dict[str, Any]:
 
     stale = freshness_s is not None and freshness_s > 1800
 
-    # services card
+    # services card — "inactive/dead" is normal for completed oneshot timer services;
+    # only count "failed" as truly dead to avoid false alarms.
     svcs = snap.get("services") or []
     active = sum(1 for s in svcs if s.get("status") == "active")
-    dead = sum(1 for s in svcs if s.get("status") in ("failed", "inactive"))
+    dead = sum(1 for s in svcs if s.get("status") == "failed")
     degraded = len(svcs) - active - dead
     top_restarts = sorted(
         [{"name": s["name"], "restarts": s.get("restarts", 0)} for s in svcs if s.get("restarts", 0) > 0],
