@@ -2225,20 +2225,29 @@ in {
       # Interactive terminal runs (as hyperd) skip artifact persistence gracefully.
       systemd.services.ai-system-state = {
         description = "AI System Intelligence Hub state snapshot";
+        # path entries are available as bare commands to ExecStart scripts
         path = with pkgs; [ bash coreutils git python3 jq curl systemd ];
-        serviceConfig = {
-          Type = "oneshot";
-          User = hybridUser;
-          Group = aiGroup;
-          WorkingDirectory = mcp.repoPath;
-          ExecStart = "${mcp.repoPath}/scripts/ai/aq-system-state";
-          TimeoutStartSec = "120s";
-          Environment = [
-            "SYSTEM_STATE_ARTIFACT_PATH=${dataDir}/hybrid/telemetry/latest-system-state.json"
-            "QDRANT_URL=${qdrantUrl}"
-            "REPO_ROOT=${mcp.repoPath}"
-          ];
-        };
+        serviceConfig =
+          # Inherit all hardening directives from commonServiceConfig:
+          #   ProtectHome="read-only"   — allows entering /home/hyperd/ (repo lives there)
+          #   WorkingDirectory=dataDir  — ai-hybrid owns /var/lib/ai-stack
+          #   ReadWritePaths            — includes the telemetry dir for artifact writes
+          #   ReadOnlyPaths=[repoSource]— allows reading repo scripts in Nix store
+          #   NoNewPrivileges, etc.     — full systemd hardening baseline
+          commonServiceConfig
+          // {
+            Type = "oneshot";
+            User = hybridUser;
+            # Do not restart oneshot services; the timer handles re-invocation
+            Restart = "no";
+            ExecStart = "${mcp.repoPath}/scripts/ai/aq-system-state";
+            TimeoutStartSec = "120s";
+            Environment = [
+              "SYSTEM_STATE_ARTIFACT_PATH=${dataDir}/hybrid/telemetry/latest-system-state.json"
+              "QDRANT_URL=${qdrantUrl}"
+              "REPO_ROOT=${mcp.repoPath}"
+            ];
+          };
       };
 
       systemd.timers.ai-system-state = {
