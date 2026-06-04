@@ -7481,7 +7481,7 @@ def effectiveness_scorecard(
     }
 
     # ── efficiency_inputs (never blocks) ──────────────────────────────────
-    cache_hit_rate = cache.get("hit_rate") or cache.get("semantic_hit_rate")
+    cache_hit_rate = cache.get("hit_rate") or cache.get("semantic_hit_rate") or cache.get("hit_pct")
     local_pct = route.get("local_pct") or route.get("local_routing_pct")
     contention = attention_contention or {}
     efficiency_inputs = {
