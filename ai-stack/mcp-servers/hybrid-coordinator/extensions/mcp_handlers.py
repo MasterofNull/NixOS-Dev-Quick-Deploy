@@ -1064,6 +1064,35 @@ TOOL_DEFINITIONS: List[Tool] = [
             "required": ["target"]
         },
     ),
+    # Phase 115.4 — System Intelligence Hub
+    Tool(
+        name="context_system_state",
+        description=(
+            "Return a compressed snapshot of the AI system intelligence artifact for agent context. "
+            "domain='summary' (default) returns a ≤200-token text digest of services, git, errors, "
+            "agent state, and attention items. domain=<name> returns the full dict for a single "
+            "domain (services|git|errors|validation|data|agent|performance|attention). "
+            "Artifact is refreshed every 15 min by ai-system-state.timer; stale flag is set if "
+            "the snapshot is older than max_age_s. Never blocks the event loop to refresh."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "description": "Domain to return: summary|services|git|errors|validation|data|agent|performance|attention",
+                    "enum": ["summary", "services", "git", "errors", "validation", "data", "agent", "performance", "attention"],
+                    "default": "summary",
+                },
+                "max_age_s": {
+                    "type": "integer",
+                    "description": "Staleness threshold in seconds. Default 900 (15 min matches timer interval).",
+                    "default": 900,
+                },
+            },
+            "required": [],
+        },
+    ),
 ]
 
 
@@ -1760,6 +1789,15 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             else:
                 result = {"status": "error", "error": f"unknown action '{action}'", "valid_actions": ["approve", "reject", "execute", "sync"]}
             _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "context_system_state":
+            from extensions import system_state_tool as _sst
+            result = await _sst.context_system_state(
+                domain=arguments.get("domain", "summary"),
+                max_age_s=int(arguments.get("max_age_s", 900)),
+            )
+            _write_audit(name, "success", None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         # Check for bridged local tools
