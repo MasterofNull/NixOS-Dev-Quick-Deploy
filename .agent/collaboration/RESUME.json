@@ -1,18 +1,22 @@
 {
-  "current_objective": "Phase 115: System Intelligence Hub — multi-agent consolidated SSOT plan active",
-  "phase": "Phase 115 — implementing slices per consolidated plan",
+  "current_objective": "Phase 115 COMPLETE — System Intelligence Hub fully operational. Next: Phase 116 NixOS hardening audit (P3) or Slice 115.6 Dashboard.",
+  "phase": "Phase 115 — all slices deployed and verified (artifact confirmed 5.5K, 11 domains, ai-system-state exit=0)",
   "todo_snapshot": [
-    "DONE: Slice 115.1 aq-system-state CLI + Nix wrapper (393e6bf1)",
-    "DONE: SKILL.md YAML frontmatter fix — Codex no longer skill-blind (887b1293)",
-    "DONE: Slice 115.2 systemd timer + tmpfiles (9dd9a780) — awaiting nixos-rebuild",
-    "DONE: Multi-agent PRD collection + consolidation (.agents/plans/phase-115-consolidated-plan.md)",
-    "NEXT: Slice 115.3 lockfile in aq-system-state (concurrency safety)",
-    "NEXT: Slice 115.4 context_system_state MCP tool in coordinator",
-    "NEXT: Slice 115.5 aq-session-start artifact injection",
-    "DEFERRED: Slice 115.6 Dashboard System Navigator (after MCP tool validated)",
-    "PENDING-REBUILD: nixos-rebuild switch (batched to end-of-cycle for user review)",
-    "OPEN: Token efficiency review — agent config overhead audit"
+    "DONE: Slice 115.1 aq-system-state CLI (393e6bf1)",
+    "DONE: Slice 115.2 systemd timer + tmpfiles (9dd9a780)",
+    "DONE: Slice 115.3 fcntl lockfile (3eddbe3e)",
+    "DONE: Slice 115.4 context_system_state MCP tool (05053085)",
+    "DONE: Slice 115.5 aq-session-start injection (1e193ee0)",
+    "DONE: Token efficiency — LOCAL-AGENT.md stripped ~4300 tokens (da575b1f)",
+    "DONE: nixos-system skill updated — 3-layer hardening documented (9558cc3b)",
+    "DONE: NixOS fix 1 — commonServiceConfig base for ai-system-state (92a45e81)",
+    "DONE: NixOS fix 2 — explicit Nix store interpreter, noexec bypass (1df76f2e)",
+    "DONE: NixOS fix 3 — repoSource path, DAC 700 bypass (9558cc3b)",
+    "DONE: Artifact verified — 5.5K, 11 domains, partial=None, ai-hybrid writes correctly",
+    "DONE: Coordinator verified — context_system_state registered at mcp_handlers.py:1069+1794",
+    "DEFERRED: Slice 115.6 Dashboard System Navigator (after ≥1 day of artifact data)",
+    "OPEN P3: Phase 116 — 18 services in mcp-servers.nix use bare serviceConfig (hardening audit)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Consolidated plan at .agents/plans/phase-115-consolidated-plan.md. Priority: 115.3 (lockfile, small) → 115.4 (MCP tool, coordinator extension) → 115.5 (session-start). Dashboard deferred. End-of-cycle requires nixos-rebuild approval."
+  "resume_hint": "Phase 115 fully deployed. Three successive NixOS rebuild cycles resolved: (1) missing commonServiceConfig, (2) noexec on ProtectHome shebang, (3) DAC 700 on /home/hyperd blocking repoPath reads — fixed via repoSource. All three layers documented in nixos-system SKILL.md §3. Next task is either 115.6 Dashboard or Phase 116 audit."
 }
