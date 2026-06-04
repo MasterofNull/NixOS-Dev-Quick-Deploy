@@ -359,6 +359,55 @@
     </div>
   </div>
 
+  <!-- ── System Navigator (Phase 115) ── -->
+  <div style="margin:.55rem 0 .35rem;display:flex;align-items:center;gap:.5rem">
+    <span style="font-family:var(--hud);font-size:.62rem;color:var(--mag);letter-spacing:.1em;text-transform:uppercase">System Navigator</span>
+    <span id="sysNavAge" style="font-size:.56rem;color:var(--fg3)">--</span>
+    <span id="sysNavStale" style="display:none;font-size:.56rem;padding:.08rem .3rem;background:rgba(255,165,0,.15);color:orange;border-radius:2px">STALE</span>
+  </div>
+  <div class="panel-grid g4" style="margin-bottom:.9rem" id="sysNavGrid">
+    <!-- State Hub -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">State Hub</span>
+        <span class="card-badge badge-info" id="sysNavHubBadge">--</span>
+      </div>
+      <div id="sysNavHub" style="font-size:.6rem;color:var(--fg2)">
+        <div style="color:var(--fg3)">loading...</div>
+      </div>
+    </div>
+    <!-- Service Health -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Service Health</span>
+        <span class="card-badge badge-info" id="sysNavSvcBadge">--/--</span>
+      </div>
+      <div id="sysNavSvc" style="font-size:.6rem;color:var(--fg2)">
+        <div style="color:var(--fg3)">loading...</div>
+      </div>
+    </div>
+    <!-- Knowledge Collections -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Knowledge Collections</span>
+        <span class="card-badge badge-info" id="sysNavCollBadge">--</span>
+      </div>
+      <div id="sysNavColl" style="font-size:.6rem;color:var(--fg2);max-height:160px;overflow-y:auto">
+        <div style="color:var(--fg3)">loading...</div>
+      </div>
+    </div>
+    <!-- Diagnostics -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-title">Diagnostics</span>
+        <span class="card-badge badge-ok" id="sysNavDiagBadge">clean</span>
+      </div>
+      <div id="sysNavDiag" style="font-size:.6rem;color:var(--fg2)">
+        <div style="color:var(--fg3)">loading...</div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel-grid g2">
     <!-- Services -->
     <div class="card">

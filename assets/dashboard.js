@@ -6459,6 +6459,110 @@ async function loadInferenceSlots() {
     .join("");
 }
 
+// ─── Phase 115.6 — System Navigator ──────────────────────────────────────────
+async function loadSystemNavigator() {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 8000);
+  let d;
+  try {
+    const r = await fetch("/api/system-navigator", { signal: ctrl.signal });
+    d = await r.json();
+  } catch (_) {
+    d = { available: false };
+  } finally {
+    clearTimeout(tid);
+  }
+
+  const ageEl = document.getElementById("sysNavAge");
+  const staleEl = document.getElementById("sysNavStale");
+
+  if (!d.available) {
+    if (ageEl) ageEl.textContent = "artifact unavailable";
+    return;
+  }
+
+  // freshness header
+  if (ageEl && d.hub) {
+    const fs = d.hub.freshness_s;
+    ageEl.textContent = fs != null
+      ? (fs < 60 ? `${fs}s ago` : fs < 3600 ? `${Math.round(fs/60)}m ago` : `${Math.round(fs/3600)}h ago`)
+      : "";
+  }
+  if (staleEl) staleEl.style.display = d.stale ? "inline" : "none";
+
+  // Hub card
+  const hubEl = document.getElementById("sysNavHub");
+  const hubBadge = document.getElementById("sysNavHubBadge");
+  if (hubEl && d.hub) {
+    const h = d.hub;
+    const ts = h.generated_at ? h.generated_at.replace("T", " ").substring(0, 19) + "Z" : "--";
+    hubEl.innerHTML = `
+      <div class="fw-row"><span style="color:var(--fg3)">Generated</span><span>${ts}</span></div>
+      <div class="fw-row"><span style="color:var(--fg3)">Domains</span><span>${h.domains_collected || 0}</span></div>
+      <div class="fw-row"><span style="color:var(--fg3)">Services tracked</span><span>${h.service_count || 0}</span></div>`;
+    if (hubBadge) hubBadge.textContent = d.stale ? "stale" : "fresh";
+    if (hubBadge) hubBadge.className = `card-badge ${d.stale ? "badge-warn" : "badge-ok"}`;
+  }
+
+  // Services card
+  const svcEl = document.getElementById("sysNavSvc");
+  const svcBadge = document.getElementById("sysNavSvcBadge");
+  if (svcEl && d.services) {
+    const s = d.services;
+    const restartRows = (s.top_restarts || []).map(r =>
+      `<div class="fw-row"><span style="color:var(--fg3)">${r.name}</span><span style="color:var(--yel)">${r.restarts}↺</span></div>`
+    ).join("") || `<div style="color:var(--fg3);padding:.2rem 0">no restarts</div>`;
+    svcEl.innerHTML = `
+      <div style="display:flex;gap:.6rem;margin-bottom:.5rem">
+        <span style="color:var(--grn)">●&nbsp;${s.active} active</span>
+        ${s.degraded > 0 ? `<span style="color:var(--yel)">●&nbsp;${s.degraded} degraded</span>` : ""}
+        ${s.dead > 0 ? `<span style="color:var(--red)">●&nbsp;${s.dead} dead</span>` : ""}
+      </div>
+      <div style="color:var(--fg3);font-size:.56rem;margin-bottom:.2rem;letter-spacing:.06em">RESTARTS</div>
+      ${restartRows}`;
+    if (svcBadge) svcBadge.textContent = `${s.active}/${s.total}`;
+    if (svcBadge) svcBadge.className = `card-badge ${s.dead > 0 ? "badge-warn" : "badge-ok"}`;
+  }
+
+  // Collections card
+  const collEl = document.getElementById("sysNavColl");
+  const collBadge = document.getElementById("sysNavCollBadge");
+  if (collEl && d.collections) {
+    const maxPts = Math.max(1, ...d.collections.map(c => c.points));
+    collEl.innerHTML = d.collections.map(c => {
+      const pct = Math.max(2, Math.round((c.points / maxPts) * 100));
+      return `<div class="fw-row" style="align-items:center;gap:.4rem">
+        <span style="color:var(--fg3);min-width:120px;overflow:hidden;text-overflow:ellipsis">${c.name}</span>
+        <div style="flex:1;height:4px;background:rgba(255,255,255,.07);border-radius:2px">
+          <div style="width:${pct}%;height:4px;background:var(--cyan);border-radius:2px"></div>
+        </div>
+        <span style="min-width:32px;text-align:right">${c.points.toLocaleString()}</span>
+      </div>`;
+    }).join("") || `<div style="color:var(--fg3);padding:.2rem 0">no collections</div>`;
+    const total = d.collections.reduce((s, c) => s + c.points, 0);
+    if (collBadge) collBadge.textContent = `${d.collections.length} colls · ${total.toLocaleString()} pts`;
+  }
+
+  // Diagnostics card
+  const diagEl = document.getElementById("sysNavDiag");
+  const diagBadge = document.getElementById("sysNavDiagBadge");
+  if (diagEl && d.diagnostics) {
+    const diag = d.diagnostics;
+    const issues = diag.error_count + diag.attention_items + (diag.failed_domains || []).length;
+    const failedRows = (diag.failed_domains || []).map(fd =>
+      `<div class="fw-row"><span style="color:var(--red)">⚠ ${fd}</span><span style="color:var(--fg3)">perm denied</span></div>`
+    ).join("");
+    diagEl.innerHTML = `
+      <div class="fw-row"><span style="color:var(--fg3)">Errors</span><span style="color:${diag.error_count > 0 ? "var(--red)" : "var(--grn)"}">${diag.error_count}</span></div>
+      <div class="fw-row"><span style="color:var(--fg3)">Attention items</span><span style="color:${diag.attention_items > 0 ? "var(--yel)" : "var(--grn)"}">${diag.attention_items}</span></div>
+      ${failedRows}`;
+    if (diagBadge) {
+      diagBadge.textContent = issues === 0 ? "clean" : `${issues} issue${issues > 1 ? "s" : ""}`;
+      diagBadge.className = `card-badge ${issues === 0 ? "badge-ok" : "badge-warn"}`;
+    }
+  }
+}
+
 async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add("overview");
@@ -6476,6 +6580,7 @@ async function refreshAll() {
     loadHardwareState(),
     loadDropZone(),
     loadAlerts(),
+    loadSystemNavigator(),
   ]);
   // Dependents
   loadInferenceSlots();
@@ -6502,6 +6607,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadHardwareState(),
     loadDropZone(),
     loadAlerts(),
+    loadSystemNavigator(),
   ]).then(() => {
     loadInferenceSlots();
     loadAIDB();
@@ -6521,6 +6627,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(loadDropZone, 30_000);
   setInterval(loadAlerts, 30_000);
   setInterval(loadDatabase, 60_000);
+  setInterval(loadSystemNavigator, 120_000); // artifact refreshes every 15m; poll every 2m
   setInterval(() => {
     loadHardwareState().then(() => {
       loadInferenceSlots();

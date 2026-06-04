@@ -6309,6 +6309,102 @@ async def get_telemetry_anomalies() -> Dict[str, Any]:
     }
 
 
+@router.get("/system-navigator")
+async def get_system_navigator() -> Dict[str, Any]:
+    """Return structured data from the latest-system-state.json artifact for dashboard cards.
+
+    Reads the artifact written by the ai-system-state timer (every 15 min).
+    Returns four card payloads: hub (freshness), services, collections, diagnostics.
+    Never blocks to generate a fresh snapshot — returns stale flag if artifact is old.
+    """
+    _ARTIFACT = Path(
+        os.environ.get(
+            "SYSTEM_STATE_ARTIFACT_PATH",
+            "/var/lib/ai-stack/hybrid/telemetry/latest-system-state.json",
+        )
+    )
+
+    def _read() -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads(_ARTIFACT.read_text())
+        except Exception:
+            return None
+
+    snap = await asyncio.to_thread(_read)
+    now = datetime.now(timezone.utc)
+
+    if snap is None:
+        return {
+            "available": False,
+            "hub": {"freshness_s": None, "generated_at": None, "domains_collected": 0},
+            "services": {"active": 0, "degraded": 0, "dead": 0, "top_restarts": []},
+            "collections": [],
+            "diagnostics": {"error_count": 0, "failed_domains": [], "attention_items": 0},
+        }
+
+    # freshness
+    try:
+        gen_ts = datetime.fromisoformat(snap["generated_at"].replace("Z", "+00:00"))
+        freshness_s = int((now - gen_ts).total_seconds())
+    except Exception:
+        freshness_s = None
+
+    stale = freshness_s is not None and freshness_s > 1800
+
+    # services card
+    svcs = snap.get("services") or []
+    active = sum(1 for s in svcs if s.get("status") == "active")
+    dead = sum(1 for s in svcs if s.get("status") in ("failed", "inactive"))
+    degraded = len(svcs) - active - dead
+    top_restarts = sorted(
+        [{"name": s["name"], "restarts": s.get("restarts", 0)} for s in svcs if s.get("restarts", 0) > 0],
+        key=lambda x: x["restarts"],
+        reverse=True,
+    )[:5]
+
+    # collections card
+    qdrant_raw = (snap.get("data") or {}).get("qdrant") or []
+    collections = sorted(
+        [{"name": c["name"], "points": c.get("point_count", 0)} for c in qdrant_raw],
+        key=lambda x: x["points"],
+        reverse=True,
+    )
+
+    # diagnostics card
+    errors_raw = snap.get("errors") or []
+    error_count = len(errors_raw) if isinstance(errors_raw, list) else 0
+    attention_raw = snap.get("attention") or {}
+    attention_items = len(attention_raw.get("items") or []) if isinstance(attention_raw, dict) else 0
+    failed_domains = [
+        k for k, v in snap.items()
+        if isinstance(v, dict) and "_error" in v
+    ]
+
+    return {
+        "available": True,
+        "stale": stale,
+        "hub": {
+            "freshness_s": freshness_s,
+            "generated_at": snap.get("generated_at"),
+            "domains_collected": len(snap.get("domains_collected") or []),
+            "service_count": len(svcs),
+        },
+        "services": {
+            "active": active,
+            "degraded": degraded,
+            "dead": dead,
+            "total": len(svcs),
+            "top_restarts": top_restarts,
+        },
+        "collections": collections,
+        "diagnostics": {
+            "error_count": error_count,
+            "attention_items": attention_items,
+            "failed_domains": failed_domains,
+        },
+    }
+
+
 @router.get("/collaboration/locks")
 async def get_collaboration_locks() -> Dict[str, Any]:
     """Return active intent locks from the coordinator collaboration layer.

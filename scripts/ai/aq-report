@@ -1241,6 +1241,12 @@ def _persist_latest_report_json(payload: str) -> None:
                 tmp_path = tf.name
             shutil.copy2(tmp_path, AQ_REPORT_LATEST_JSON)
             Path(tmp_path).unlink(missing_ok=True)
+        # Make world-readable so ai-hybrid (running aq-system-state) can read it.
+        # The file contains system metrics — no secrets.
+        try:
+            AQ_REPORT_LATEST_JSON.chmod(0o644)
+        except OSError:
+            pass
     except OSError:
         return
 
