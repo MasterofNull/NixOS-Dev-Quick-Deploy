@@ -1,18 +1,17 @@
 {
-  "current_objective": "Phase 117 committed (cb818317). Pending: nixos-rebuild switch to activate telemetry 0770 + mirror files.",
-  "phase": "Phase 117 — P3 system fixes: COMMITTED, pending rebuild",
+  "current_objective": "Phase 118 housekeeping sweep complete. System clean.",
+  "phase": "Phase 118 — housekeeping sweep: COMPLETE",
   "todo_snapshot": [
-    "DONE: Phase 116 — 8 service hardening migrations (cdcd4f42) + rebuild verified",
-    "DONE: Phase 117.1 — telemetry dir 0770 tmpfiles fix (cb818317, pending rebuild)",
-    "DONE: Phase 117.2 — attention_queue.py mirror snapshot writes (cb818317)",
-    "DONE: Phase 117.3 — aq-session-start RESUME.json mirror write (cb818317)",
-    "DONE: Phase 117.4 — aq-system-state fallback reads from /var/lib mirrors (cb818317)",
-    "DONE: QA 79/79 pass, aq-report clean, cache prewarm 53.6%→80.4% hit rate",
-    "DONE: Issues backlog — closed stale P2 items (Codex frontmatter, defaultMode)",
-    "PENDING-REBUILD: nixos-rebuild switch to activate 0770 telemetry dir + mirror stubs",
-    "OPEN P3: delegation_success_rate pre-rebuild artifacts (self-resolve as old events age out)",
-    "OPEN: aq-report useful_token_ratio=19.9% — inherent to delegation COT overhead, not actionable"
+    "DONE: Phase 117 fully live (rebuild complete, failed_domains=None)",
+    "DONE: Archive 3 completed plan files (slice-93-15, slice-93-5, slice-103)",
+    "DONE: Cache prewarm 32.5% → 84.0% hit rate",
+    "DONE: RAG seed — 49 records across 3 collections, aq-commit-facts 3 facts",
+    "DONE: Validated nvd-sync running (last success 00:13 PDT, timer active)",
+    "DONE: Validated slice-103 fully implemented (4/4 tests pass)",
+    "DONE: Confirmed Continue health 6/7 = 6-pass + 1-skip (not a bug)",
+    "OPEN P3: completion_reliability=68.4% — isolated coordinator 500s aging out naturally",
+    "ACTIVE PRD: EFFECTIVENESS-CENTERED — open slices 93.1-93.4, 93.6-93.8, 93.10, 93.14"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 117 fully committed. Run nixos-rebuild switch to activate 0770 telemetry dir. After rebuild: aq-session-start will start mirroring RESUME.json, attention_queue.py will mirror snapshots, ai-system-state will use fallbacks and show 0 failed_domains."
+  "resume_hint": "System clean. 79/79 QA. Cache 84%. Next session: new task or continue EFFECTIVENESS-CENTERED PRD open slices."
 }

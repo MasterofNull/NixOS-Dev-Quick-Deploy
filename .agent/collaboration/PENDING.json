@@ -8,6 +8,50 @@
   "status": "accepted",
   "in_flight": [
     {
+      "id": "gemini-20260604-084514-3795s7",
+      "agent": "gemini",
+      "output_file": ".agents/delegation/outputs/gemini-20260604-084514-3795s7.log",
+      "objective": "# Phase 115 \u2014 System Intelligence Hub: Agent PRD Brief\n\n## Context for All Agents\n\nYou are contributing to a multi-agent",
+      "dispatched_at": "2026-06-04T15:45:14.532159Z",
+      "status": "running"
+    },
+    {
+      "id": "local-20260604-163353-3yrarp",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-163353-3yrarp.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-04T23:33:54.051717Z",
+      "status": "done",
+      "completed_at": "2026-06-04T23:34:56.217743Z"
+    },
+    {
+      "id": "local-20260604-163158-hp5z34",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-163158-hp5z34.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-04T23:31:59.059673Z",
+      "status": "done",
+      "completed_at": "2026-06-04T23:33:48.294165Z"
+    },
+    {
+      "id": "local-20260604-142415-lojr0t",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-142415-lojr0t.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-04T21:24:16.120054Z",
+      "status": "done",
+      "completed_at": "2026-06-04T21:26:35.440097Z"
+    },
+    {
+      "id": "local-20260604-084515-botrzq",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-084515-botrzq.log",
+      "objective": "# Phase 115 \u2014 System Intelligence Hub: Agent PRD Brief\n\n## Context for All Agents\n\nYou are contributing to a multi-agent",
+      "dispatched_at": "2026-06-04T15:45:16.140283Z",
+      "status": "done",
+      "completed_at": "2026-06-04T15:59:36.857866Z"
+    },
+    {
       "id": "local-20260603-135012-1eseyy",
       "agent": "local-direct",
       "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260603-135012-1eseyy.log",
@@ -26,7 +70,7 @@
       "completed_at": "2026-06-03T02:08:27.206186Z"
     }
   ],
-  "updated_at": "2026-06-03T20:50:23.385809Z",
+  "updated_at": "2026-06-04T23:34:56.218096Z",
   "validated_at": "2026-06-04T07:52:36.208799+00:00",
   "validation_notes": "loadAgentReplay, swimlane, race, sendControl all wired and returning data. scorecard/agent-runs endpoints healthy."
 }
