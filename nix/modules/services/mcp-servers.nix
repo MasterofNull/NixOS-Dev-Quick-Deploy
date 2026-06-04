@@ -1724,15 +1724,22 @@ in {
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
         path = with pkgs; [ bash coreutils curl gnugrep python3 ];
-        serviceConfig = {
-          Type = "simple";
-          User = svcUser;
-          Group = aiGroup;
-          WorkingDirectory = dataDir;
-          ExecStart = "${mcp.repoPath}/scripts/ai/aq-health-spider";
-          Restart = "always";
-          RestartSec = "10s";
-        };
+        serviceConfig =
+          commonServiceConfig
+          // {
+            Type = "simple";
+            User = svcUser;
+            # aq-health-spider is a Python script; explicit interpreter bypasses the
+            # noexec bind-mount ProtectHome="read-only" places on /home.
+            # Script from repoSource (Nix store copy) — world-readable, in ReadOnlyPaths.
+            ExecStart = lib.escapeShellArgs [
+              "${pkgs.python3}/bin/python3"
+              "${toString repoSource}/scripts/ai/aq-health-spider"
+            ];
+            Restart = "always";
+            RestartSec = "10s";
+            Environment = [ "REPO_ROOT=${mcp.repoPath}" ];
+          };
       };
 
       # Phase 85 — Drop Zone Daemon: watches .agents/drops/*.drop.yaml and dispatches
@@ -1744,26 +1751,35 @@ in {
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
         path = with pkgs; [ bash coreutils ];
-        serviceConfig = {
-          Type = "simple";
-          User = svcUser;
-          Group = aiGroup;
-          WorkingDirectory = mcp.repoPath;
-          ExecStart = "${hybridPython}/bin/python3 ${mcp.repoPath}/scripts/ai/aq-drop-daemon";
-          Restart = "on-failure";
-          RestartSec = "5s";
-          Environment = [
-            "LLAMA_URL=http://127.0.0.1:${toString ports.llamaCpp}"
-            "HYBRID_URL=http://127.0.0.1:${toString ports.mcpHybrid}"
-            "RALPH_URL=http://127.0.0.1:${toString ports.mcpRalph}"
-            "DROP_DAEMON_TIMEOUT=300"
-            # Security: agent mode (run_shell_command) is blocked by default.
-            # Set to "true" in deploy-options.local.nix only after deliberate review.
-            "DROP_ALLOW_AGENT=false"
-            "DROP_MAX_PER_CYCLE=3"
-            "DROP_MAX_QUEUED=20"
-          ];
-        };
+        serviceConfig =
+          commonServiceConfig
+          // {
+            Type = "simple";
+            User = svcUser;
+            # WorkingDirectory override: drop-daemon watches live .agents/drops/ in the repo.
+            WorkingDirectory = mcp.repoPath;
+            # Script from repoSource (Nix store copy, world-readable, in ReadOnlyPaths).
+            # Explicit interpreter bypasses noexec bind-mount from ProtectHome="read-only".
+            ExecStart = lib.escapeShellArgs [
+              "${hybridPython}/bin/python3"
+              "${toString repoSource}/scripts/ai/aq-drop-daemon"
+            ];
+            Restart = "on-failure";
+            RestartSec = "5s";
+            # ReadWritePaths override: daemon moves/archives files in the live repo drops dir.
+            ReadWritePaths = serviceWritablePaths ++ [mcp.repoPath];
+            Environment = [
+              "LLAMA_URL=http://127.0.0.1:${toString ports.llamaCpp}"
+              "HYBRID_URL=http://127.0.0.1:${toString ports.mcpHybrid}"
+              "RALPH_URL=http://127.0.0.1:${toString ports.mcpRalph}"
+              "DROP_DAEMON_TIMEOUT=300"
+              # Security: agent mode (run_shell_command) is blocked by default.
+              # Set to "true" in deploy-options.local.nix only after deliberate review.
+              "DROP_ALLOW_AGENT=false"
+              "DROP_MAX_PER_CYCLE=3"
+              "DROP_MAX_QUEUED=20"
+            ];
+          };
       };
 
       # ── Phase 87.3 — Daily training ingest timer ─────────────────────────────
@@ -1775,17 +1791,23 @@ in {
         description = "AI training data ingest — telemetry → fine-tuning dataset";
         restartIfChanged = false;
         path = with pkgs; [ bash coreutils python3 ];
-        serviceConfig = {
-          Type = "oneshot";
-          User = svcUser;
-          Group = aiGroup;
-          WorkingDirectory = mcp.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${mcp.repoPath}/ai-stack/local-agents/training_ingest.py --hours 24";
-          Environment = [
-            "TELEMETRY_DIR=/var/lib/ai-stack/hybrid/telemetry"
-            "FINE_TUNING_DATASET=/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
-          ];
-        };
+        serviceConfig =
+          commonServiceConfig
+          // {
+            Type = "oneshot";
+            User = svcUser;
+            Restart = "no";
+            ExecStart = lib.escapeShellArgs [
+              "${pkgs.python3}/bin/python3"
+              "${toString repoSource}/ai-stack/local-agents/training_ingest.py"
+              "--hours"
+              "24"
+            ];
+            Environment = [
+              "TELEMETRY_DIR=/var/lib/ai-stack/hybrid/telemetry"
+              "FINE_TUNING_DATASET=/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
+            ];
+          };
       };
 
       systemd.timers.ai-training-ingest = {
@@ -1803,13 +1825,18 @@ in {
         description = "AI stack autonomous remediation loop";
         restartIfChanged = false;
         path = with pkgs; [ bash coreutils curl gnugrep python3 ];
-        serviceConfig = {
-          Type = "oneshot";
-          User = svcUser;
-          Group = aiGroup;
-          WorkingDirectory = dataDir;
-          ExecStart = "${mcp.repoPath}/scripts/automation/auto-remediate.sh";
-        };
+        serviceConfig =
+          commonServiceConfig
+          // {
+            Type = "oneshot";
+            User = svcUser;
+            Restart = "no";
+            ExecStart = lib.escapeShellArgs [
+              "${pkgs.bash}/bin/bash"
+              "${toString repoSource}/scripts/automation/auto-remediate.sh"
+            ];
+            Environment = ["REPO_ROOT=${mcp.repoPath}"];
+          };
       };
 
       systemd.services.ai-throttler = {
@@ -1819,15 +1846,18 @@ in {
         after = ["network-online.target" "ai-hybrid-coordinator.service" "llama-cpp.service"];
         wants = ["network-online.target"];
         path = with pkgs; [ bash coreutils curl (python3.withPackages (ps: with ps; [ httpx ])) ];
-        serviceConfig = {
-          Type = "simple";
-          User = svcUser;
-          Group = aiGroup;
-          WorkingDirectory = dataDir;
-          ExecStart = "${mcp.repoPath}/scripts/ai/aq-throttler";
-          Restart = "always";
-          RestartSec = "10s";
-        };
+        serviceConfig =
+          commonServiceConfig
+          // {
+            Type = "simple";
+            User = svcUser;
+            ExecStart = lib.escapeShellArgs [
+              "${(pkgs.python3.withPackages (ps: with ps; [ httpx ]))}/bin/python3"
+              "${toString repoSource}/scripts/ai/aq-throttler"
+            ];
+            Restart = "always";
+            RestartSec = "10s";
+          };
       };
 
       systemd.timers.ai-auto-remediate = {
@@ -1867,7 +1897,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/automation/aidb-reindex.sh"
+            "${toString repoSource}/scripts/automation/aidb-reindex.sh"
           ];
           ReadOnlyPaths = ["/"];
           ReadWritePaths = ["${dataDir}"];
@@ -1924,7 +1954,7 @@ in {
           WorkingDirectory = "/home/hyperd";
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/ai/aq-crystallize"
+            "${toString repoSource}/scripts/ai/aq-crystallize"
             "--session-dir"
             "/home/hyperd/.continue/sessions"
             "--since-hours"
@@ -1986,7 +2016,7 @@ in {
           WorkingDirectory = dataDir;
           ExecStart = lib.escapeShellArgs [
             "${pkgs.bash}/bin/bash"
-            "${mcp.repoPath}/scripts/automation/post-deploy-converge.sh"
+            "${toString repoSource}/scripts/automation/post-deploy-converge.sh"
           ];
           ReadOnlyPaths = ["/"];
           ReadWritePaths = ["${dataDir}"];
