@@ -101,15 +101,15 @@ in {
           DeferReactivation = true;
         }
         // lib.optionalAttrs cfg.onBoot {
-          OnBootSec = "5min";
+          OnBootSec = "10min";
         };
     };
 
     # Service for sync execution
     systemd.services.nvd-sync = {
       description = "NVD CVE synchronization";
-      after = ["network-online.target" "aidb-mcp-server.service"];
-      wants = ["network-online.target"];
+      after = ["network-online.target" "ai-aidb.service"];
+      wants = ["network-online.target" "ai-aidb.service"];
 
       serviceConfig = {
         Type = "oneshot";

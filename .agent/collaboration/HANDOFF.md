@@ -1,3 +1,20 @@
+# HANDOFF MEMO — 2026-06-04 (nvd-sync service dep fix + Phase 110+111+112 LIVE)
+
+## nvd-sync.service — wrong AIDB unit name in `after` dependency
+
+### Root cause
+`nvd-sync.service` had `after = ["aidb-mcp-server.service"]` which references a non-existent
+unit name. The actual AIDB service is `ai-aidb.service`. Since systemd doesn't warn on
+missing `after` targets (only `requires`/`wants`), the sync always started immediately after
+network-online without waiting for AIDB. Any rebuild or boot that restarted AIDB would
+cause the sync to fire before AIDB was ready → exit 1.
+
+### Fix
+- `after` and `wants` updated to `ai-aidb.service`
+- `OnBootSec` bumped from `5min` to `10min` as belt-and-suspenders delay
+- File: `nix/modules/services/nvd-sync.nix`
+
+---
 # HANDOFF MEMO — 2026-06-04 (Phase 110+111: local_inference pipeline + session registration LIVE)
 
 ## Phase 110 — local_inference event emission + CL pattern extraction
