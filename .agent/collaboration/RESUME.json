@@ -1,22 +1,22 @@
 {
-  "current_objective": "Phase 115 COMPLETE — System Intelligence Hub fully operational. Next: Phase 116 NixOS hardening audit (P3) or Slice 115.6 Dashboard.",
-  "phase": "Phase 115 — all slices deployed and verified (artifact confirmed 5.5K, 11 domains, ai-system-state exit=0)",
+  "current_objective": "Phase 116 COMPLETE. All 8 service migrations committed (cdcd4f42). Pending: nixos-rebuild switch to activate.",
+  "phase": "Phase 116 — NixOS service hardening audit: DONE",
   "todo_snapshot": [
-    "DONE: Slice 115.1 aq-system-state CLI (393e6bf1)",
-    "DONE: Slice 115.2 systemd timer + tmpfiles (9dd9a780)",
-    "DONE: Slice 115.3 fcntl lockfile (3eddbe3e)",
-    "DONE: Slice 115.4 context_system_state MCP tool (05053085)",
-    "DONE: Slice 115.5 aq-session-start injection (1e193ee0)",
-    "DONE: Token efficiency — LOCAL-AGENT.md stripped ~4300 tokens (da575b1f)",
-    "DONE: nixos-system skill updated — 3-layer hardening documented (9558cc3b)",
-    "DONE: NixOS fix 1 — commonServiceConfig base for ai-system-state (92a45e81)",
-    "DONE: NixOS fix 2 — explicit Nix store interpreter, noexec bypass (1df76f2e)",
-    "DONE: NixOS fix 3 — repoSource path, DAC 700 bypass (9558cc3b)",
-    "DONE: Artifact verified — 5.5K, 11 domains, partial=None, ai-hybrid writes correctly",
-    "DONE: Coordinator verified — context_system_state registered at mcp_handlers.py:1069+1794",
-    "DEFERRED: Slice 115.6 Dashboard System Navigator (after ≥1 day of artifact data)",
-    "OPEN P3: Phase 116 — 18 services in mcp-servers.nix use bare serviceConfig (hardening audit)"
+    "DONE: Phase 115 fully complete including 115.6 Dashboard (512d0f1b, 056fd4e6)",
+    "DONE: Phase 116 — ai-health-spider full migration (prev session)",
+    "DONE: Phase 116 — ai-drop-daemon full commonServiceConfig + repoSource (cdcd4f42)",
+    "DONE: Phase 116 — ai-training-ingest full commonServiceConfig + repoSource (cdcd4f42)",
+    "DONE: Phase 116 — ai-auto-remediate full commonServiceConfig + repoSource (cdcd4f42)",
+    "DONE: Phase 116 — ai-throttler full commonServiceConfig + repoSource (cdcd4f42)",
+    "DONE: Phase 116 — ai-aidb-reindex ExecStart path fix (cdcd4f42)",
+    "DONE: Phase 116 — ai-crystallize-sessions ExecStart path fix (cdcd4f42)",
+    "DONE: Phase 116 — ai-post-deploy-converge ExecStart path fix (cdcd4f42)",
+    "OPEN P3: aq-system-state telemetry dir write-blocked for interactive use (hyperd in ai-stack group but no write)",
+    "OPEN P3: aq-system-state attention + agent domains permission-denied (ai-hybrid cannot read /home/hyperd/)",
+    "OPEN P3: delegation_success_rate=0.617 — OpenRouter credits; self-resolve after top-up",
+    "OPEN P2: Codex skill-loading: all SKILL.md files missing YAML frontmatter (26 files)",
+    "OPEN P2: Claude Code defaultMode=bypassPermissions — awaiting user decision"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 115 fully deployed. Three successive NixOS rebuild cycles resolved: (1) missing commonServiceConfig, (2) noexec on ProtectHome shebang, (3) DAC 700 on /home/hyperd blocking repoPath reads — fixed via repoSource. All three layers documented in nixos-system SKILL.md §3. Next task is either 115.6 Dashboard or Phase 116 audit."
+  "resume_hint": "Phase 116 fully committed (cdcd4f42). Awaiting nixos-rebuild switch to activate. Skip candidates confirmed: ai-mutable-path-bootstrap, ai-pgvector-bootstrap, ai-auth-selftest, ai-otel-collector, ai-security-audit, ai-npm-security-monitor. All mcp.repoPath exec paths now migrated to repoSource."
 }
