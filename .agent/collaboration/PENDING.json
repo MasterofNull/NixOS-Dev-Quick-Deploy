@@ -5,7 +5,7 @@
   "target_files": [
     "assets/dashboard.js"
   ],
-  "status": "validation_pending",
+  "status": "accepted",
   "in_flight": [
     {
       "id": "local-20260603-135012-1eseyy",
@@ -26,5 +26,7 @@
       "completed_at": "2026-06-03T02:08:27.206186Z"
     }
   ],
-  "updated_at": "2026-06-03T20:50:23.385809Z"
+  "updated_at": "2026-06-03T20:50:23.385809Z",
+  "validated_at": "2026-06-04T07:52:36.208799+00:00",
+  "validation_notes": "loadAgentReplay, swimlane, race, sendControl all wired and returning data. scorecard/agent-runs endpoints healthy."
 }
