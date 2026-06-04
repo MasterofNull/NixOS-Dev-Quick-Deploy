@@ -2240,7 +2240,14 @@ in {
             User = hybridUser;
             # Do not restart oneshot services; the timer handles re-invocation
             Restart = "no";
-            ExecStart = "${mcp.repoPath}/scripts/ai/aq-system-state";
+            # ProtectHome="read-only" bind-mounts /home with noexec on newer systemd,
+            # blocking shebang execution of scripts under /home. Use an explicit Nix
+            # store interpreter (not subject to noexec) and pass the live script as an
+            # argument — Python reads it via file I/O, no execve() on the script itself.
+            ExecStart = lib.escapeShellArgs [
+              "${pkgs.python3}/bin/python3"
+              "${mcp.repoPath}/scripts/ai/aq-system-state"
+            ];
             TimeoutStartSec = "120s";
             Environment = [
               "SYSTEM_STATE_ARTIFACT_PATH=${dataDir}/hybrid/telemetry/latest-system-state.json"

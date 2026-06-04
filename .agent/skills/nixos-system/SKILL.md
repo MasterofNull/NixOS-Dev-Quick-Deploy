@@ -109,6 +109,29 @@ systemd.services."ai-my-oneshot" = {
 are not in the `hyperd` group. `/home/hyperd` is `700`. Without ProtectHome, `WorkingDirectory`
 under the repo path fails with `CHDIR: Permission denied` (status=200).
 
+**`noexec` on ProtectHome — critical pattern for scripts under /home**:
+`ProtectHome = "read-only"` bind-mounts `/home` with `noexec` on newer systemd versions. This
+means **you cannot use a shebang script under `/home` as `ExecStart`** — it will fail with
+`EXEC: Permission denied` (status=203). Always use an explicit Nix store interpreter:
+
+```nix
+# WRONG — shebang script under /home, killed by noexec
+ExecStart = "${mcp.repoPath}/scripts/ai/my-script";
+
+# CORRECT — interpreter from Nix store, script read as file arg (no execve on the script)
+ExecStart = lib.escapeShellArgs [
+  "${pkgs.python3}/bin/python3"
+  "${mcp.repoPath}/scripts/ai/my-script"
+];
+# For shell scripts:
+ExecStart = lib.escapeShellArgs [
+  "${pkgs.bash}/bin/bash"
+  "${mcp.repoPath}/scripts/ai/my-script.sh"
+];
+```
+
+Python reads the script via file I/O (not execve), so `noexec` does not apply.
+
 **Working directory rule**: Use `WorkingDirectory = dataDir` (from commonServiceConfig) unless the
 service specifically needs to be in the repo root. Pass the repo path as `REPO_ROOT` env var instead.
 
