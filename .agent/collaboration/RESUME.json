@@ -1,13 +1,18 @@
 {
-  "current_objective": "Phase 114: waste bucket telemetry — commit + rebuild",
-  "phase": "Phase 114 committed, rebuild pending",
+  "current_objective": "Phase 115: System Intelligence Hub — multi-agent consolidated SSOT plan active",
+  "phase": "Phase 115 — implementing slices per consolidated plan",
   "todo_snapshot": [
-    "DONE: Phase 107-113 LIVE (CL pipeline, eval pipeline, scorecard fixes)",
-    "DONE: nvd-sync startup race fix (e4719f75)",
-    "DONE: Phase 114 waste bucket tracking (rejected_output + failed_retries in _emit_token_event)",
-    "PENDING-REBUILD: Phase 114 coordinator change + nvd-sync fix → sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
-    "OPEN: completion_reliability fail (0.617) — OpenRouter credits exhausted + pre-rebuild artifacts aging out"
+    "DONE: Slice 115.1 aq-system-state CLI + Nix wrapper (393e6bf1)",
+    "DONE: SKILL.md YAML frontmatter fix — Codex no longer skill-blind (887b1293)",
+    "DONE: Slice 115.2 systemd timer + tmpfiles (9dd9a780) — awaiting nixos-rebuild",
+    "DONE: Multi-agent PRD collection + consolidation (.agents/plans/phase-115-consolidated-plan.md)",
+    "NEXT: Slice 115.3 lockfile in aq-system-state (concurrency safety)",
+    "NEXT: Slice 115.4 context_system_state MCP tool in coordinator",
+    "NEXT: Slice 115.5 aq-session-start artifact injection",
+    "DEFERRED: Slice 115.6 Dashboard System Navigator (after MCP tool validated)",
+    "PENDING-REBUILD: nixos-rebuild switch (batched to end-of-cycle for user review)",
+    "OPEN: Token efficiency review — agent config overhead audit"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 114 waste bucket commit in this session. Rebuild needed to deploy. After rebuild: validate agent-run-events.jsonl payload dict has rejected_output/failed_retries keys. Scorecard: all dimensions pass except completion_reliability (billing issue)."
+  "resume_hint": "Consolidated plan at .agents/plans/phase-115-consolidated-plan.md. Priority: 115.3 (lockfile, small) → 115.4 (MCP tool, coordinator extension) → 115.5 (session-start). Dashboard deferred. End-of-cycle requires nixos-rebuild approval."
 }
