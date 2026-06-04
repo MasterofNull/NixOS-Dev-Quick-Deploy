@@ -1,22 +1,18 @@
 {
-  "current_objective": "Phase 116 COMPLETE. All 8 service migrations committed (cdcd4f42). Pending: nixos-rebuild switch to activate.",
-  "phase": "Phase 116 — NixOS service hardening audit: DONE",
+  "current_objective": "Phase 117 committed (cb818317). Pending: nixos-rebuild switch to activate telemetry 0770 + mirror files.",
+  "phase": "Phase 117 — P3 system fixes: COMMITTED, pending rebuild",
   "todo_snapshot": [
-    "DONE: Phase 115 fully complete including 115.6 Dashboard (512d0f1b, 056fd4e6)",
-    "DONE: Phase 116 — ai-health-spider full migration (prev session)",
-    "DONE: Phase 116 — ai-drop-daemon full commonServiceConfig + repoSource (cdcd4f42)",
-    "DONE: Phase 116 — ai-training-ingest full commonServiceConfig + repoSource (cdcd4f42)",
-    "DONE: Phase 116 — ai-auto-remediate full commonServiceConfig + repoSource (cdcd4f42)",
-    "DONE: Phase 116 — ai-throttler full commonServiceConfig + repoSource (cdcd4f42)",
-    "DONE: Phase 116 — ai-aidb-reindex ExecStart path fix (cdcd4f42)",
-    "DONE: Phase 116 — ai-crystallize-sessions ExecStart path fix (cdcd4f42)",
-    "DONE: Phase 116 — ai-post-deploy-converge ExecStart path fix (cdcd4f42)",
-    "OPEN P3: aq-system-state telemetry dir write-blocked for interactive use (hyperd in ai-stack group but no write)",
-    "OPEN P3: aq-system-state attention + agent domains permission-denied (ai-hybrid cannot read /home/hyperd/)",
-    "OPEN P3: delegation_success_rate=0.617 — OpenRouter credits; self-resolve after top-up",
-    "OPEN P2: Codex skill-loading: all SKILL.md files missing YAML frontmatter (26 files)",
-    "OPEN P2: Claude Code defaultMode=bypassPermissions — awaiting user decision"
+    "DONE: Phase 116 — 8 service hardening migrations (cdcd4f42) + rebuild verified",
+    "DONE: Phase 117.1 — telemetry dir 0770 tmpfiles fix (cb818317, pending rebuild)",
+    "DONE: Phase 117.2 — attention_queue.py mirror snapshot writes (cb818317)",
+    "DONE: Phase 117.3 — aq-session-start RESUME.json mirror write (cb818317)",
+    "DONE: Phase 117.4 — aq-system-state fallback reads from /var/lib mirrors (cb818317)",
+    "DONE: QA 79/79 pass, aq-report clean, cache prewarm 53.6%→80.4% hit rate",
+    "DONE: Issues backlog — closed stale P2 items (Codex frontmatter, defaultMode)",
+    "PENDING-REBUILD: nixos-rebuild switch to activate 0770 telemetry dir + mirror stubs",
+    "OPEN P3: delegation_success_rate pre-rebuild artifacts (self-resolve as old events age out)",
+    "OPEN: aq-report useful_token_ratio=19.9% — inherent to delegation COT overhead, not actionable"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 116 fully committed (cdcd4f42). Awaiting nixos-rebuild switch to activate. Skip candidates confirmed: ai-mutable-path-bootstrap, ai-pgvector-bootstrap, ai-auth-selftest, ai-otel-collector, ai-security-audit, ai-npm-security-monitor. All mcp.repoPath exec paths now migrated to repoSource."
+  "resume_hint": "Phase 117 fully committed. Run nixos-rebuild switch to activate 0770 telemetry dir. After rebuild: aq-session-start will start mirroring RESUME.json, attention_queue.py will mirror snapshots, ai-system-state will use fallbacks and show 0 failed_domains."
 }
