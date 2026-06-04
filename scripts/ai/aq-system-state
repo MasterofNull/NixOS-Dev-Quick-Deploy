@@ -50,7 +50,9 @@ ARTIFACT_PATH = Path(
     )
 )
 QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
-LOCK_PATH = ARTIFACT_PATH.parent / ".system-state.lock"
+# Lock in /tmp so both hyperd (interactive) and ai-hybrid (timer) can acquire it
+# without ownership conflicts. Artifact dir may be owned by ai-hybrid:ai-stack.
+LOCK_PATH = Path("/tmp/.ai-system-state.lock")
 COORDINATOR_URL = os.getenv(
     "HYBRID_COORDINATOR_URL",
     f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('COORDINATOR_PORT', '8003')}",
