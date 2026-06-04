@@ -49,6 +49,16 @@ _MAX_ACTIVE = 50            # overflow cap — oldest get auto-deferred
 _LOCK_RETRY = 3
 _LOCK_RETRY_DELAY_S = 0.05  # 50ms
 
+# Phase 117.2 — mirror snapshot for ai-system-state (runs as ai-hybrid, can't read
+# live repo path when /home/hyperd is 700). Written by the calling process (ai-hybrid
+# or hyperd); ai-system-state reads it as a fallback. Silent no-op if path unwritable.
+_MIRROR_PATH = Path(
+    os.environ.get(
+        "ATTENTION_MIRROR_PATH",
+        "/var/lib/ai-stack/hybrid/telemetry/attention-snapshot.json",
+    )
+)
+
 
 # ── data types ────────────────────────────────────────────────────────────────
 
@@ -116,6 +126,25 @@ def _save_queue(fh, data: dict) -> None:
     fh.write(json.dumps(data, indent=2))
     fh.flush()
     os.fsync(fh.fileno())
+
+
+def _write_mirror_snapshot(alerts: list) -> None:
+    """Write a lightweight snapshot to the /var/lib mirror path for ai-system-state.
+
+    Called after any queue mutation. Silent no-op when path is unwritable (before
+    tmpfiles 0770 fix is deployed, or when running without write access).
+    """
+    pending = [a for a in alerts if a.get("status") == "pending"]
+    cutoff = (datetime.now(timezone.utc).replace(microsecond=0).isoformat()[:16]).replace("T", " ")
+    snapshot = {
+        "pending_human_gate": len(pending),
+        "pending_items": [(a.get("title") or "?")[:60] for a in pending[:5]],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        _MIRROR_PATH.write_text(json.dumps(snapshot))
+    except OSError:
+        pass
 
 
 def _append_archive(alert: dict) -> None:
@@ -277,7 +306,9 @@ def push(
                         a["expires_at"] = _expires_iso(3600)  # defer 1h
 
             alerts.append(alert)
-            _save_queue(fh, {**data, "alerts": alerts})
+            updated = {**data, "alerts": alerts}
+            _save_queue(fh, updated)
+            _write_mirror_snapshot(updated["alerts"])
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
@@ -351,6 +382,7 @@ def resolve(alert_id: str, new_status: str, resolved_by: str = "human") -> bool:
             # Move resolved alert to archive, remove from active queue
             data["alerts"] = [a for a in alerts if a.get("id") != alert_id]
             _save_queue(fh, data)
+            _write_mirror_snapshot(data["alerts"])
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
 

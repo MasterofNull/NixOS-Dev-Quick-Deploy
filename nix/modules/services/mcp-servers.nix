@@ -644,7 +644,11 @@ in {
           "d ${dataDir}/aidb/shared-skills 0750 ${aidbUser} ${aiGroup} -"
           "Z ${dataDir}/aidb/shared-skills 0750 ${aidbUser} ${aiGroup} -"
           "d ${dataDir}/hybrid             0750 ${hybridUser} ${aiGroup} -"
-          "d ${dataDir}/hybrid/telemetry   0750 ${hybridUser} ${aiGroup} -"
+          # Phase 117.1 — 0770 lets hyperd (in ai-stack group) write mirror artifacts
+          # (attention-snapshot.json, agent-resume.json) from aq-session-start and
+          # attention_queue.py so ai-system-state can read them as ai-hybrid.
+          "d ${dataDir}/hybrid/telemetry   0770 ${hybridUser} ${aiGroup} -"
+          "z ${dataDir}/hybrid/telemetry   0770 ${hybridUser} ${aiGroup} -"
           "d ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
           # Phase 106.1 — checkpoints dir was hyperd:users (created by init mkdir); coordinator (ai-hybrid) needs rw.
           # Z recursively relabels existing dir/files to ai-hybrid:ai-stack ownership.
@@ -1711,6 +1715,13 @@ in {
         # readable by ai-stack group (0640) so dashboard + coordinator MCP tool can read it.
         "f ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
         "z ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
+        # Phase 117.2/117.3 — mirror files for ai-system-state fallback reads.
+        # attention-snapshot: written by attention_queue.py (various callers); 0664 so both
+        #   ai-hybrid and hyperd can write; ai-stack group can read.
+        # agent-resume: written by aq-session-start (runs as hyperd); 0640 so ai-hybrid
+        #   (in ai-stack group) can read it.
+        "f ${dataDir}/hybrid/telemetry/attention-snapshot.json 0664 ${hybridUser} ${aiGroup} -"
+        "f ${dataDir}/hybrid/telemetry/agent-resume.json 0640 ${svcUser} ${aiGroup} -"
         "d ${mutableStateDir} 0755 ${svcUser} ${aiGroup} -"
         "d ${mutableOptimizerDir} 0755 ${svcUser} ${aiGroup} -"
         "d ${mutableLogDir} 0755 ${svcUser} ${aiGroup} -"

@@ -283,15 +283,28 @@ def collect_errors() -> List[Dict[str, Any]]:
 def collect_attention() -> Dict[str, Any]:
     attn_path = REPO_ROOT / ".agents" / "attention" / "ATTENTION.json"
     archive_path = REPO_ROOT / ".agents" / "attention" / "ATTENTION_ARCHIVE.jsonl"
+    # Phase 117.4 — fallback mirror written by attention_queue.py from the calling
+    # process (ai-hybrid or hyperd). Used when live REPO_ROOT is DAC-blocked (mode 700).
+    mirror_path = Path(
+        os.getenv("ATTENTION_MIRROR_PATH", "/var/lib/ai-stack/hybrid/telemetry/attention-snapshot.json")
+    )
 
     pending = 0
     pending_items: List[str] = []
     if attn_path.exists():
         try:
             d = json.loads(attn_path.read_text())
-            items = d.get("items") or []
-            pending = len(items)
-            pending_items = [(it.get("title") or it.get("message", "?"))[:60] for it in items[:5]]
+            alerts = d.get("alerts") or d.get("items") or []
+            pending_alerts = [a for a in alerts if a.get("status") == "pending"]
+            pending = len(pending_alerts)
+            pending_items = [(a.get("title") or a.get("message", "?"))[:60] for a in pending_alerts[:5]]
+        except Exception:
+            pass
+    elif mirror_path.exists():
+        try:
+            snap = json.loads(mirror_path.read_text())
+            pending = snap.get("pending_human_gate", 0)
+            pending_items = snap.get("pending_items") or []
         except Exception:
             pass
 
@@ -376,13 +389,17 @@ def collect_agent_state() -> Dict[str, Any]:
     resume_path = REPO_ROOT / ".agent" / "collaboration" / "RESUME.json"
     handoff_path = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
     pending_path = REPO_ROOT / ".agent" / "collaboration" / "PENDING.json"
+    # Phase 117.4 — fallback mirror written by aq-session-start at session start.
+    # Used when live REPO_ROOT is DAC-blocked (mode 700 on /home/hyperd/).
+    mirror_path = Path("/var/lib/ai-stack/hybrid/telemetry/agent-resume.json")
 
     objective = None
     phase = None
     open_tasks: List[str] = []
-    if resume_path.exists():
+    resume_source = resume_path if resume_path.exists() else (mirror_path if mirror_path.exists() else None)
+    if resume_source is not None:
         try:
-            r = json.loads(resume_path.read_text())
+            r = json.loads(resume_source.read_text())
             objective = r.get("current_objective")
             phase = r.get("phase")
             open_tasks = [t for t in (r.get("todo_snapshot") or []) if not t.startswith("DONE")][:5]
