@@ -1644,3 +1644,42 @@ Denied paths: ['/run/wrappers/wrappers.Yp3dH5WrJ6/sudo', '/nix/store/d0y2xi6x65n
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
 [2026-06-03T20:50:13.078869Z] [dispatch] id=local-20260603-135012-1eseyy agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260603-135012-1eseyy.log obj="Say: hello world"
 [2026-06-03T20:50:23.385594Z] [done] id=local-20260603-135012-1eseyy
+
+---
+
+## Phase 113 — Scorecard Quality + Eval Pipeline (2026-06-04)
+
+### eval_score_trend RAGAS fallback (67fa6791)
+- aq-report `eval_score_trend()` now falls back to coordinator `/eval/trend` RAGAS metrics when:
+  - `scores.sqlite` has no rows in the report window (stale promptfoo), AND
+  - `tool_audit` has no `run_harness_eval` entries
+- Adds `pass_rate` + `recent_pass_rate` fields to all code paths so `effectiveness_scorecard`
+  can read `eval_trend.get("recent_pass_rate")` (was silently returning None before)
+- New constant: `COORDINATOR_URL`, new function: `fetch_coordinator_eval_trend()`
+
+### Eval sampling
+- Ran two batches: 3+8 domain-specific queries via `POST /eval/run`
+- RAGAS metrics now present: `answer_relevance_avg=0.644`, `context_precision_avg=1.0`, `sample_count=5`
+- Note: `eval/run` runs checks against 0 assertions → score=0.0 per run (not a bug)
+- The tool_audit already had 4 `run_harness_eval` entries at 100% → `eval_pass_rate=1.0`
+
+### RAG prewarm
+- `aq-cache-prewarm` completed: memory_recall_contextualise + gap_detection_score warmed
+
+### CL pipeline status
+- After coordinator restart: `total_patterns_learned=0` (in-memory counter reset)
+- `finetuning_dataset_size=224` (up from 222 before rebuild — 2 new examples persisted)
+- The single `local_inference` event at line 59664 was ALREADY processed (byte offset < checkpoint)
+- CL working correctly; counter resets are cosmetic
+
+### Scorecard status (2026-06-04T07:44 UTC)
+- outcome_correctness: PASS (eval_pass_rate=1.0, useful_ratio=0.1993)
+- completion_reliability: FAIL (0.617 — OpenRouter billing 11 provider_request_error + pre-rebuild)
+- operator_trust: PASS
+- regression_containment: PASS (qa_pass_rate=1.0)
+- context_quality: PASS
+- efficiency_inputs: OK (99.5% local routing)
+
+### Pending
+- nvd-sync fix (e4719f75) needs rebuild to activate
+- completion_reliability will self-resolve: pre-rebuild 500s age out ~16h + top up OpenRouter credits
