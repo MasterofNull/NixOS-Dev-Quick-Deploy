@@ -6509,14 +6509,15 @@ async function loadSystemNavigator() {
   const svcBadge = document.getElementById("sysNavSvcBadge");
   if (svcEl && d.services) {
     const s = d.services;
+    const idle = s.total - s.active - s.dead;
     const restartRows = (s.top_restarts || []).map(r =>
       `<div class="fw-row"><span style="color:var(--fg3)">${r.name}</span><span style="color:var(--yel)">${r.restarts}↺</span></div>`
     ).join("") || `<div style="color:var(--fg3);padding:.2rem 0">no restarts</div>`;
     svcEl.innerHTML = `
       <div style="display:flex;gap:.6rem;margin-bottom:.5rem">
         <span style="color:var(--grn)">●&nbsp;${s.active} active</span>
-        ${s.degraded > 0 ? `<span style="color:var(--yel)">●&nbsp;${s.degraded} degraded</span>` : ""}
-        ${s.dead > 0 ? `<span style="color:var(--red)">●&nbsp;${s.dead} dead</span>` : ""}
+        ${idle > 0 ? `<span style="color:var(--fg3)">●&nbsp;${idle} idle</span>` : ""}
+        ${s.dead > 0 ? `<span style="color:var(--red)">●&nbsp;${s.dead} failed</span>` : ""}
       </div>
       <div style="color:var(--fg3);font-size:.56rem;margin-bottom:.2rem;letter-spacing:.06em">RESTARTS</div>
       ${restartRows}`;
