@@ -182,7 +182,7 @@ aq-qa 0                                     # harness health still green
 #### Progressive documentation:
 - Update **AGENTS.md** / **WORKFLOW-CANON.md** if workflow rules changed
 - Update **HANDOFF.md** with what changed and any open follow-ups
-- Update agent instruction files (`.agent/GEMINI.md`, `.agent/LOCAL-AGENT.md`, `CLAUDE.md`) if their operating parameters changed
+- Update agent instruction files (`.agent/GEMINI.md`, `.agent/LOCAL-AGENT.md`, `CLAUDE.md`) if their operating parameters changed — **NEVER append context-discovery results or other agent files' content into instruction files. Instruction files contain only stable operating guidance, not session-discovered context.**
 - Add new **promoted bug patterns** to `memory/MEMORY.md` if a silent bug hit 2+ sessions
 
 #### RAG knowledge base (Qdrant collections):
