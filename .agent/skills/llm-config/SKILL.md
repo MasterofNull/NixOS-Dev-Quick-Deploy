@@ -1,3 +1,8 @@
+---
+name: llm-config
+description: "LLM Config Skill"
+---
+
 # LLM Config Skill
 ## Tags
 llm, llama, qwen3, build_llama_payload, enable_thinking, chat_template_kwargs, max_tokens,

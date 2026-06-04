@@ -1,3 +1,8 @@
+---
+name: system-dev
+description: "System Dev Skill — NixOS-Dev-Quick-Deploy Harness"
+---
+
 # System Dev Skill — NixOS-Dev-Quick-Deploy Harness
 ## Tags
 pre-commit, doc-sync, rule11, issue-logging, tier0, RAG-seed, PULSE, RESUME, commit-gate, OWASP

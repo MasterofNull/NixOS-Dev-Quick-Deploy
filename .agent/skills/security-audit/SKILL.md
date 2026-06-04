@@ -1,3 +1,8 @@
+---
+name: security-audit
+description: "Skill: security-audit"
+---
+
 # Skill: security-audit
 
 - **Purpose**: Automate the identification of security vulnerabilities, insecure coding patterns, and compliance regressions in the codebase.

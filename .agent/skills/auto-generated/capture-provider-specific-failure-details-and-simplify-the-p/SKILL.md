@@ -5,6 +5,8 @@
 # Pattern count: 124
 # Failure class: provider_request_error
 # Status: DRAFT — do not use until reviewed and promoted
+description: "Skill: capture-provider-specific-failure-details-and-simplify-the-p"
+
 ---
 
 # Skill: capture-provider-specific-failure-details-and-simplify-the-p

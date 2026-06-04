@@ -1,3 +1,8 @@
+---
+name: task-eligibility
+description: "Task Eligibility Skill"
+---
+
 # Task Eligibility Skill
 ## Tags
 eligibility, task-class, routing, local, gemini, codex, claude, thermal, batch, background, MLFQ

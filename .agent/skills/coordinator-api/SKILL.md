@@ -1,3 +1,8 @@
+---
+name: coordinator-api
+description: "Coordinator API Skill"
+---
+
 # Coordinator API Skill
 ## Tags
 http, api, auth, coordinator, routes, 8003, loopback, query, memory, control, workflow

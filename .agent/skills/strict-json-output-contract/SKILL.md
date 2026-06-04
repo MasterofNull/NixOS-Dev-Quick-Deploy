@@ -4,6 +4,8 @@ id: strict-json-output-contract
 title: Strict JSON Output Contract
 status: active
 tags: [json, prompt-contract, validation]
+description: "Strict JSON Output Contract"
+
 ---
 
 # Skill: strict-json-output-contract

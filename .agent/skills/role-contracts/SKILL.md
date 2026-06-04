@@ -1,3 +1,8 @@
+---
+name: role-contracts
+description: "Role Contracts Skill"
+---
+
 # Role Contracts Skill
 ## Tags
 role, orchestrator, architect, implementer, reviewer, may, must, may-not, escalation, authority

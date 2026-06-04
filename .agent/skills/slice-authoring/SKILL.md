@@ -1,3 +1,8 @@
+---
+name: slice-authoring
+description: "Slice Authoring Skill"
+---
+
 # Slice Authoring Skill
 ## Tags
 slice, delegation, context, prompt, handoff, acceptance-criteria, scope, sub-agent, implementer

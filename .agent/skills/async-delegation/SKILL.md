@@ -1,3 +1,8 @@
+---
+name: async-delegation
+description: "Skill: Asynchronous Delegation"
+---
+
 # Skill: Asynchronous Delegation
 
 - **Purpose**: Autonomously execute arbitrary tasks dropped into the `tasks_inbox/` directory by users or other agents.

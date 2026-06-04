@@ -1,3 +1,8 @@
+---
+name: system-recovery
+description: "Skill: System Recovery"
+---
+
 # Skill: System Recovery
 
 - **Purpose**: Autonomously diagnose and remediate system health failures detected by `aq-qa` or internal telemetry.

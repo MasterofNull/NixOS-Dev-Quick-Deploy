@@ -1,3 +1,8 @@
+---
+name: rust-ecosystem
+description: "Rust Ecosystem Skill"
+---
+
 # Rust Ecosystem Skill
 
 ## Overview
