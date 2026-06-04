@@ -1,18 +1,15 @@
 {
-  "current_objective": "Phase 109 — SSE stream fix + token usage validation",
+  "current_objective": "Phase 111 — session registration + learning pipeline events",
   "phase": "active",
   "todo_snapshot": [
-    "DONE: Phase 106.1 — checkpoint tmpfiles + async qdrant upsert (0a099081) — LIVE",
-    "DONE: Phase 107.1 — token_usage event emission per delegation (31428fd2) — LIVE",
-    "DONE: Phase 107.2 — SSE body reconstruction initial_body+body sites (61040dfb) — LIVE",
-    "DONE: Phase 107.3 — stream_options.include_usage + local fallback SSE (d7919601) — LIVE",
-    "DONE: Phase 108.1 — continuous_learning.py rotation detection (847c58d2) — committed",
-    "DONE: Phase 108.2 — shared/retry_backoff.py infinite loop fix (847c58d2) — LIVE (restarted)",
-    "DONE: Phase 109.1 — explicit stream:true for local profiles in _post_delegate (97ca8c94) — committed",
-    "PENDING: nixos-rebuild switch — picks up 108.1 (continuous_learning.py) + 109.1 (ai_coordinator_handlers.py)",
-    "PENDING: smoke delegation via embedded-assist to verify usage chunk populated in agent-run-events.jsonl",
-    "PENDING: aq-report check — useful_token_ratio should be non-null after rebuild + smoke test"
+    "DONE: Phase 107-109 — token usage end-to-end — LIVE",
+    "DONE: Phase 108.1+108.2 — CL rotation fix + retry_backoff fix — LIVE",
+    "DONE: Phase 109.1 — explicit stream:true for local profiles (97ca8c94) — LIVE",
+    "DONE: Phase 110 — emit local_inference events + CL pattern extraction (9dbd2341) — committed",
+    "DONE: Phase 111.1 — workflow session registration in aq-session-start (ba053995) — LIVE",
+    "PENDING: nixos-rebuild switch for Phase 110 (ai_coordinator_handlers.py + continuous_learning.py)",
+    "PENDING: after rebuild — run 'aq-session-start --task test' then check local_inference events in hybrid-events.jsonl and patterns>0 in CL journal"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 109.1 committed (97ca8c94). Requires nixos-rebuild switch to go live (coordinator module). After rebuild: run 'curl -s -X POST http://localhost:8003/ai/coordinator/delegate -H Content-Type:application/json -d {\"task\":\"reply ok\",\"profile\":\"embedded-assist\"}' then check /var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl for last token_usage event — tokens.input/output should be non-null. Then run aq-report and check useful_token_ratio."
+  "resume_hint": "Phase 111.1 live (aq-session-start now registers workflow sessions). Phase 110 committed but needs nixos-rebuild switch for coordinator module. After rebuild: run aq-session-start --task 'test', then delegate via embedded-assist, check hybrid-events.jsonl for local_inference events, check CL journal for patterns>0. Check aq-report useful_tokens + effectiveness_scorecard."
 }
