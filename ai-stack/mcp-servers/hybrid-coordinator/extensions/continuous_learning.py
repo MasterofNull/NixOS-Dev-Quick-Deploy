@@ -1020,6 +1020,35 @@ class ContinuousLearningPipeline:
                 ),
             )
 
+        elif event_type == "local_inference":
+            # Successful local delegation via coordinator — emitted by Phase 110.1.
+            # query/response are plain-text (not hashed), suitable for pattern extraction.
+            query = self._sanitize_pattern_text(
+                event.get("query") or event.get("prompt") or "",
+                field_name="query",
+                max_chars=MAX_PATTERN_PROMPT_CHARS,
+            )
+            response = self._sanitize_pattern_text(
+                event.get("response") or event.get("output") or "",
+                field_name="response",
+                max_chars=MAX_PATTERN_RESPONSE_CHARS,
+            )
+            latency_ms = float(event.get("latency_ms") or 0.0)
+            if query and response and latency_ms > 0:
+                return InteractionPattern(
+                    pattern_id=f"local_inference_{hash(query + response) & 0xFFFFFF:06x}",
+                    interaction_type="local_inference",
+                    prompt=query,
+                    response=response,
+                    context=self._sanitize_pattern_context({"profile": event.get("profile", ""), "model": event.get("model", "")}),
+                    success_metrics={"latency_ms": latency_ms},
+                    iterations=1,
+                    timestamp=datetime.fromisoformat(
+                        event.get("timestamp", datetime.now(timezone.utc).isoformat())
+                    ),
+                    backend=event.get("model") or "local",
+                )
+
         return None
 
     async def _filter_quality_patterns(

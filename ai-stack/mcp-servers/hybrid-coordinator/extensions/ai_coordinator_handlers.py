@@ -196,6 +196,16 @@ _AGENT_RUN_EVENTS_PATH = Path(
     os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 )
 
+_HYBRID_EVENTS_PATH = Path(
+    os.getenv("HYBRID_TELEMETRY_PATH")
+    or os.getenv("TELEMETRY_PATH")
+    or str(
+        Path(os.getenv("CONTINUOUS_LEARNING_TELEMETRY_DIR",
+                       os.getenv("DATA_DIR", "/var/lib/ai-stack/hybrid") + "/telemetry"))
+        / "hybrid-events.jsonl"
+    )
+)
+
 # ---------------------------------------------------------------------------
 # Routing policy — loaded from AI_ROUTING_POLICY_FILE or inline defaults
 # ---------------------------------------------------------------------------
@@ -2174,6 +2184,52 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     pass  # telemetry is best-effort; never block delegation
 
             asyncio.create_task(_emit_token_event())
+
+        # Phase 110.1: Emit local_inference event for successful local delegations.
+        # training_ingest.py reads hybrid-events.jsonl for positive training pairs;
+        # the coordinator's switchboard path never went through llm_client.py so
+        # these events were never emitted. Emit here with plain-text task + response
+        # so training_ingest can extract (query→response) pairs for fine-tuning.
+        _li_local_profiles = {"default", "continue-local", "embedded-assist", "local-tool-calling"}
+        _li_response_text = (_extract_delegated_response_text(body) or "").strip()
+        if (
+            response.status_code < 400
+            and effective_profile in _li_local_profiles
+            and _li_response_text
+            and not final_classification.get("is_failure")
+        ):
+            _li_tok_in = int((body.get("usage") or {}).get("prompt_tokens", 0) or 0)
+            _li_tok_out = int((body.get("usage") or {}).get("completion_tokens", 0) or 0)
+            _li_latency = _delegate_latency_ms
+
+            async def _emit_local_inference_event(
+                _query=task, _response=_li_response_text,
+                _model=_delegate_model_id, _latency=_li_latency,
+                _tok_in=_li_tok_in, _tok_out=_li_tok_out, _profile=effective_profile,
+            ):
+                try:
+                    import datetime as _dt
+                    _evt = json.dumps({
+                        "event_type": "local_inference",
+                        "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+                        "query": _query[:4000],
+                        "response": _response[:4000],
+                        "model": _model or "local",
+                        "latency_ms": _latency,
+                        "tokens_in": _tok_in or None,
+                        "tokens_out": _tok_out or None,
+                        "profile": _profile,
+                    })
+
+                    def _write(_path: Path, _line: str) -> None:
+                        with open(_path, "a", encoding="utf-8") as _f:
+                            _f.write(_line + "\n")
+
+                    await asyncio.to_thread(_write, _HYBRID_EVENTS_PATH, _evt)
+                except Exception:
+                    pass  # telemetry is best-effort
+
+            asyncio.create_task(_emit_local_inference_event())
 
         _record_capability_gap_outcomes(
             capability_gaps,
