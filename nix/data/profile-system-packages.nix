@@ -43,6 +43,14 @@
     # security-systems domain: lightweight security linting always available.
     # semgrep and bandit are in the security dev shell (too large for system profile).
     "trivy"
+
+    # ── Developer productivity CLI tools ──────────────────────────────────────
+    # delta: git diff pager with syntax highlighting and side-by-side view.
+    "delta"
+    # fzf: fuzzy finder for shell history (Ctrl-R), file picker, pipe filtering.
+    "fzf"
+    # fd: fast, intuitive find replacement; used in repo scripts and agent tooling.
+    "fd"
   ];
 
   gaming = [
