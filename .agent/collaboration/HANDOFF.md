@@ -1,3 +1,30 @@
+# HANDOFF MEMO — 2026-06-04 (Phase 116: NixOS service hardening audit — COMPLETE)
+
+## Phase 116 — Service Hardening Audit: COMPLETE (cdcd4f42)
+
+### Migrations applied (7 services, 1 commit)
+
+| Service | Change | Commit |
+|---------|--------|--------|
+| ai-health-spider | full commonServiceConfig + repoSource | prev session |
+| ai-drop-daemon | full commonServiceConfig + repoSource + ReadWritePaths += repoPath | cdcd4f42 |
+| ai-training-ingest | full commonServiceConfig + repoSource, Restart=no | cdcd4f42 |
+| ai-auto-remediate | full commonServiceConfig + repoSource, Restart=no | cdcd4f42 |
+| ai-throttler | full commonServiceConfig + repoSource | cdcd4f42 |
+| ai-aidb-reindex | ExecStart path: mcp.repoPath → repoSource | cdcd4f42 |
+| ai-crystallize-sessions | ExecStart path: mcp.repoPath → repoSource | cdcd4f42 |
+| ai-post-deploy-converge | ExecStart path: mcp.repoPath → repoSource | cdcd4f42 |
+
+### Skipped (6 services, intentional)
+- `ai-mutable-path-bootstrap`, `ai-pgvector-bootstrap`: root bootstrap via `script =` (chown/psql)
+- `ai-auth-selftest`: inline script, no mcp.repoPath exec
+- `ai-otel-collector`: Nix-store binary only
+- `ai-security-audit`, `ai-npm-security-monitor`: already using repoSource
+
+### Pending rebuild
+`sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — activates all 8 migrated services.
+
+---
 # HANDOFF MEMO — 2026-06-04 (Phase 115: System Intelligence Hub — COMPLETE)
 
 ## Phase 115 — System Intelligence Hub: FULLY OPERATIONAL
