@@ -1707,6 +1707,10 @@ in {
         # Phase 94.3 — focused-CI artifact: created on boot so hyperd can overwrite it
         # after every tier0 gate run; populates validation_health in aq-report.
         "f ${dataDir}/hybrid/telemetry/latest-focused-ci.json 0664 ${svcUser} ${aiGroup} -"
+        # Phase 115.2 — system-state artifact: written by ai-hybrid (hybridUser owns telemetry dir);
+        # readable by ai-stack group (0640) so dashboard + coordinator MCP tool can read it.
+        "f ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
+        "z ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
         "d ${mutableStateDir} 0755 ${svcUser} ${aiGroup} -"
         "d ${mutableOptimizerDir} 0755 ${svcUser} ${aiGroup} -"
         "d ${mutableLogDir} 0755 ${svcUser} ${aiGroup} -"
@@ -2213,6 +2217,41 @@ in {
           // lib.optionalAttrs (lib.versionAtLeast lib.version "25.11") {
             DeferReactivation = true;
           };
+      };
+
+      # ── Phase 115.2 — System Intelligence Hub refresh timer ──────────────────
+      # Runs aq-system-state every 15 minutes as ai-hybrid (owner of telemetry dir)
+      # to write /var/lib/ai-stack/hybrid/telemetry/latest-system-state.json.
+      # Interactive terminal runs (as hyperd) skip artifact persistence gracefully.
+      systemd.services.ai-system-state = {
+        description = "AI System Intelligence Hub state snapshot";
+        path = with pkgs; [ bash coreutils git python3 jq curl systemd ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = hybridUser;
+          Group = aiGroup;
+          WorkingDirectory = mcp.repoPath;
+          ExecStart = "${mcp.repoPath}/scripts/ai/aq-system-state";
+          TimeoutStartSec = "120s";
+          Environment = [
+            "SYSTEM_STATE_ARTIFACT_PATH=${dataDir}/hybrid/telemetry/latest-system-state.json"
+            "QDRANT_URL=${qdrantUrl}"
+            "REPO_ROOT=${mcp.repoPath}"
+          ];
+        };
+      };
+
+      systemd.timers.ai-system-state = {
+        description = "System Intelligence Hub 15-minute refresh timer";
+        wantedBy = ["timers.target"];
+        partOf = ["ai-stack.target"];
+        timerConfig = {
+          OnBootSec = "3min";
+          OnUnitActiveSec = "15min";
+          RandomizedDelaySec = "30s";
+          Persistent = true;
+          Unit = "ai-system-state.service";
+        };
       };
     })
 
