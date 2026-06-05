@@ -474,7 +474,7 @@ class AIDBClient:
         # Vector search
         results = await client.vector_search(
             query="NixOS configuration",
-            collection="documents",
+            collection="nixos_docs",
             limit=5
         )
 
@@ -527,7 +527,7 @@ class AIDBClient:
     async def vector_search(
         self,
         query: str,
-        collection: str = "documents",
+        collection: str = "solved_issues",
         limit: int = 5,
         score_threshold: float = 0.7
     ) -> List[Dict[str, Any]]:
@@ -536,7 +536,7 @@ class AIDBClient:
 
         Args:
             query: Search query
-            collection: Collection name
+            collection: Collection name (solved_issues, skill_embeddings, nixos_docs, etc.)
             limit: Max results
             score_threshold: Minimum similarity score
 
@@ -548,11 +548,11 @@ class AIDBClient:
                 'query': query,
                 'collection': collection,
                 'limit': limit,
-                'score_threshold': score_threshold
+                'min_score': score_threshold,
             }
 
             response = await self._client.post(
-                f"{self.base_url}/aidb/search",
+                f"{self.base_url}/vector/search",
                 json=payload
             )
             response.raise_for_status()
