@@ -119,18 +119,40 @@ def test_race_harness_dry_run_output() -> None:
         assert_true(len(lines) == len(doc["runs"]), "JSONL line count matches run count")
 
 
-def test_live_run_returns_no_data() -> None:
+def test_live_run_unknown_agent_returns_no_data() -> None:
     rh = _import_race_harness()
     run = rh._make_live_run(
         experiment_id="exp-live",
         prompt="live prompt",
         variant="markdown",
-        agent_id="local",
+        agent_id="__unknown_agent__",
         run_id="run-live-001",
     )
-    assert_true(run["status"] == "no_data", "live run returns no_data before implementation")
+    assert_true(run["status"] == "no_data", "unknown agent returns no_data gracefully")
     assert_true(run["fixture"] is False, "live run is not a fixture")
-    assert_true(run.get("no_data_reason") is not None, "live run has no_data_reason")
+    assert_true(run.get("no_data_reason") is not None, "no_data reason present for unknown agent")
+
+
+def test_live_run_structure() -> None:
+    rh = _import_race_harness()
+    required_fields = (
+        "run_id", "experiment_id", "variant", "agent_id", "prompt_hash",
+        "started_at", "duration_ms", "total_tokens", "accepted_artifact_tokens",
+        "useful_ratio", "status", "accepted", "fixture", "events",
+    )
+    valid_statuses = {"succeeded", "failed", "no_data"}
+    run = rh._make_live_run(
+        experiment_id="exp-struct",
+        prompt="structure test prompt",
+        variant="html",
+        agent_id="__unknown_agent__",
+        run_id="run-struct-001",
+    )
+    for field in required_fields:
+        assert_true(field in run, f"live run has required field: {field}")
+    assert_true(run["status"] in valid_statuses, f"status is valid: {run['status']}")
+    assert_true(run["fixture"] is False, "live run fixture=False")
+    assert_true(isinstance(run["events"], list), "events is a list")
 
 
 if __name__ == "__main__":
@@ -139,7 +161,8 @@ if __name__ == "__main__":
         ("all variants and agents", test_fixture_all_variants_and_agents),
         ("race winner correctness gate", test_race_winner_correctness_gate),
         ("dry-run subprocess output", test_race_harness_dry_run_output),
-        ("live run returns no_data", test_live_run_returns_no_data),
+        ("live run unknown agent no_data", test_live_run_unknown_agent_returns_no_data),
+        ("live run structure", test_live_run_structure),
     ]
     failed = 0
     for name, fn in tests:

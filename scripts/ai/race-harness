@@ -30,7 +30,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -220,8 +222,44 @@ def _make_fixture_run(
 
 
 # ---------------------------------------------------------------------------
-# Live run stub (no real delegation yet — placeholder for future slices)
+# Live run — real delegation via delegate-to-{local,gemini,codex}
 # ---------------------------------------------------------------------------
+
+_VARIANT_PREFIXES: dict[str, str] = {
+    "markdown": "Respond in Markdown format.\n\n",
+    "html": "Respond as a complete HTML document.\n\n",
+    "visual_html": "Respond as a visually styled HTML document with inline CSS.\n\n",
+}
+
+_LIVE_TIMEOUTS_S: dict[str, int] = {
+    "local": 240,
+    "gemini": 120,
+    "codex": 120,
+}
+
+_DELEGATE_SCRIPTS: dict[str, str] = {
+    "local": "delegate-to-local",
+    "gemini": "delegate-to-gemini",
+    "codex": "delegate-to-codex",
+}
+
+
+def _resolve_delegate_script(agent_id: str) -> Path | None:
+    name = _DELEGATE_SCRIPTS.get(agent_id)
+    if not name:
+        return None
+    path = _SCRIPT_DIR / name
+    return path if path.exists() else None
+
+
+def _build_delegate_cmd(agent_id: str, script: Path, prompt: str, timeout_s: int) -> list[str]:
+    if agent_id == "local":
+        return [str(script), "--mode", "direct", "--wait", "--timeout", str(timeout_s), "--prompt", prompt]
+    return [str(script), "--wait", "--prompt", prompt]
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
 
 
 def _make_live_run(
@@ -232,25 +270,127 @@ def _make_live_run(
     agent_id: str,
     run_id: str,
 ) -> dict[str, Any]:
-    # Live delegation is out of scope for 93.4 (no production behavior rewrite).
-    # Return a no_data record so race results show the slot without erroring.
-    return {
+    prompt_hash = (_are.stable_digest(prompt) if _are else "live")[:16]
+    started_at = _now_iso()
+
+    script = _resolve_delegate_script(agent_id)
+    if script is None:
+        return {
+            "run_id": run_id,
+            "experiment_id": experiment_id,
+            "variant": variant,
+            "agent_id": agent_id,
+            "prompt_hash": prompt_hash,
+            "started_at": started_at,
+            "duration_ms": None,
+            "total_tokens": None,
+            "accepted_artifact_tokens": None,
+            "useful_ratio": None,
+            "status": "no_data",
+            "accepted": None,
+            "fixture": False,
+            "events": [],
+            "no_data_reason": f"delegate script not found for agent '{agent_id}'",
+        }
+
+    variant_prefix = _VARIANT_PREFIXES.get(variant, "")
+    full_prompt = variant_prefix + prompt
+    timeout_s = _LIVE_TIMEOUTS_S.get(agent_id, 120)
+    cmd = _build_delegate_cmd(agent_id, script, full_prompt, timeout_s)
+
+    t0 = time.perf_counter()
+    status = "succeeded"
+    output_text = ""
+    error_detail: str | None = None
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s + 10,
+        )
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        if result.returncode == 0:
+            output_text = result.stdout.strip() or result.stderr.strip()
+        else:
+            status = "failed"
+            error_detail = (result.stderr or result.stdout or "")[:500].strip()
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        status = "failed"
+        error_detail = f"delegate timeout after {timeout_s}s"
+    except Exception as exc:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        status = "failed"
+        error_detail = str(exc)[:300]
+
+    input_toks = _estimate_tokens(full_prompt)
+    output_toks = _estimate_tokens(output_text) if output_text else 0
+    total_toks = input_toks + output_toks
+    accepted = status == "succeeded" and len(output_text) >= 50
+    accepted_toks = output_toks if accepted else 0
+    useful_ratio = round(accepted_toks / total_toks, 4) if total_toks > 0 else 0.0
+
+    events: list[dict[str, Any]] = []
+    if _are:
+        def _ev(event_type: str, ev_status: str, **kwargs: Any) -> dict[str, Any]:
+            return _are.make_event(
+                event_type,
+                source="race-harness-live",
+                run_id=run_id,
+                experiment_id=experiment_id,
+                agent_id=agent_id,
+                lane_id=f"{agent_id}-{variant}",
+                spec={"variant": variant},
+                status=ev_status,
+                **kwargs,
+            )
+
+        events.append(_ev("prompt_load", "succeeded",
+            payload={"prompt_hash": prompt_hash, "prompt_length": len(prompt)}))
+        events.append(_ev("spec_variant", "succeeded",
+            payload={"variant": variant, "prefix_length": len(variant_prefix)}))
+        events.append(_ev("model_call", status,
+            model=agent_id,
+            duration_ms=float(duration_ms),
+            tokens={
+                "input": input_toks,
+                "output": output_toks,
+                "accepted_artifact": accepted_toks,
+                "total": total_toks,
+                "useful_ratio": useful_ratio,
+            },
+            payload={"error": error_detail} if error_detail else None,
+        ))
+        events.append(_ev("final_outcome", status,
+            payload={
+                "accepted": accepted,
+                "variant": variant,
+                "output_length": len(output_text),
+                **({"error": error_detail} if error_detail else {}),
+            },
+        ))
+
+    run: dict[str, Any] = {
         "run_id": run_id,
         "experiment_id": experiment_id,
         "variant": variant,
         "agent_id": agent_id,
-        "prompt_hash": (_are.stable_digest(prompt) if _are else "live")[:16],
-        "started_at": _now_iso(),
-        "duration_ms": None,
-        "total_tokens": None,
-        "accepted_artifact_tokens": None,
-        "useful_ratio": None,
-        "status": "no_data",
-        "accepted": None,
+        "prompt_hash": prompt_hash,
+        "started_at": started_at,
+        "duration_ms": duration_ms,
+        "total_tokens": total_toks,
+        "accepted_artifact_tokens": accepted_toks,
+        "useful_ratio": useful_ratio if accepted else None,
+        "status": status,
+        "accepted": accepted,
         "fixture": False,
-        "events": [],
-        "no_data_reason": "live delegation not yet implemented in 93.4",
+        "events": events,
     }
+    if error_detail:
+        run["error"] = error_detail
+    return run
 
 
 # ---------------------------------------------------------------------------
