@@ -1229,6 +1229,55 @@ push('qa-check','low','auto_ok',title='QA 86.2 probe',detail='auto_ok test',prop
   else
     _fail 3 "86.7" "dashboard /alerts/status" "curl failed — dashboard may be down or route not wired"
   fi
+
+  # 93.3 — spec_variant_packs.py importable with core API (Slice 93.3)
+  if python3 -c "
+from pathlib import Path
+import importlib.util, sys
+p = Path('${REPO_ROOT}/scripts/ai/lib/spec_variant_packs.py')
+spec = importlib.util.spec_from_file_location('svp', p)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+for fn in ('build_spec_variant_pack', 'validate_spec_variant_pack', 'VARIANTS', 'SCHEMA_VERSION'):
+    if not hasattr(m, fn):
+        print(f'missing: {fn}', file=sys.stderr)
+        sys.exit(1)
+" 2>/dev/null; then
+    _pass 1 "93.3" "spec_variant_packs.py importable (build + validate + VARIANTS + SCHEMA_VERSION)"
+  else
+    _fail 1 "93.3" "spec_variant_packs.py" "import or attribute check failed"
+  fi
+
+  # 93.6 — single-agent replay + run list API (Slice 93.6)
+  local _ar_out
+  _ar_out=$(curl -sf --max-time 5 "http://127.0.0.1:${dash_port}/api/aistack/agent-runs?limit=1" 2>/dev/null || true)
+  if echo "${_ar_out}" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'available' in d else 1)" 2>/dev/null; then
+    _pass 3 "93.6" "dashboard GET /api/aistack/agent-runs returns run list with available field"
+  else
+    _fail 3 "93.6" "dashboard /agent-runs" "missing available field or curl failed"
+  fi
+
+  # 93.7 — swimlane + race views (Slice 93.7)
+  local _sw_ok=0 _rc_ok=0
+  curl -sf --max-time 5 "http://127.0.0.1:${dash_port}/api/aistack/agent-runs/swimlane" >/dev/null 2>&1 && _sw_ok=1
+  curl -sf --max-time 5 "http://127.0.0.1:${dash_port}/api/aistack/agent-runs/race" >/dev/null 2>&1 && _rc_ok=1
+  if [[ "${_sw_ok}" -eq 1 && "${_rc_ok}" -eq 1 ]]; then
+    _pass 3 "93.7" "dashboard swimlane + race views return 200 (/agent-runs/swimlane, /agent-runs/race)"
+  else
+    _fail 3 "93.7" "dashboard swimlane/race" "swimlane=${_sw_ok} race=${_rc_ok} — routes may not be wired"
+  fi
+
+  # 93.8 — human-agent control endpoint rejects invalid action (Slice 93.8)
+  local _ctrl_status
+  _ctrl_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+    -X POST "http://127.0.0.1:${dash_port}/api/aistack/agent-runs/probe-run-id/control" \
+    -H "Content-Type: application/json" \
+    -d '{"action":"__invalid_action__"}' 2>/dev/null || echo "000")
+  if [[ "${_ctrl_status}" == "422" ]]; then
+    _pass 3 "93.8" "human-agent control endpoint validates action (POST /agent-runs/{id}/control returns 422 on invalid)"
+  else
+    _fail 3 "93.8" "human-agent control endpoint" "expected 422 for invalid action, got ${_ctrl_status}"
+  fi
 }
 
 # ---------------------------------------------------------------------------
