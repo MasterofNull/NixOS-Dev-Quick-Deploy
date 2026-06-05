@@ -2,10 +2,11 @@
 doc_type: prd
 id: effectiveness-centered-system-improvement-prd
 title: Effectiveness-Centered System Improvement PRD
-status: active
+status: complete
 owner: codex
 phase: "Phase 93"
 priority: high
+completed_at: "2026-06-04"
 ---
 
 # Effectiveness-Centered System Improvement PRD
