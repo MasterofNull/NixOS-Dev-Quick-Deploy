@@ -1,3 +1,27 @@
+# HANDOFF MEMO — 2026-06-04 (Phase 119: Slice 93.4 live delegation — race-harness)
+
+## Phase 119 — Slice 93.4: Multi-Agent Race Harness Live Delegation
+
+### Status
+COMPLETE. Committed fbd15382.
+
+### Work done
+| Item | Result |
+|------|--------|
+| `_make_live_run()` stub replaced | Real subprocess delegation to delegate-to-{local,gemini,codex} |
+| Variant prompt wrapping | markdown/html/visual_html spec prefixes injected before delegation |
+| Token estimation | 4-char heuristic; input+output; useful_ratio computed |
+| Agent-run events | prompt_load, spec_variant, model_call, final_outcome emitted |
+| Unknown agent fallback | no_data with no_data_reason (graceful; CI-safe) |
+| Tests | 5→6 tests; renamed `test_live_run_returns_no_data` + added `test_live_run_structure` |
+| Focused CI | 6/6 pass; tier-0 gate 19/19 pass |
+
+### Open items
+- **OPEN**: Slice 93.3 (spec variant pack contract document)
+- **OPEN**: Slices 93.6-93.8 (swimlane/replay/human-controls dashboard views)
+- **OPEN P3**: completion_reliability=68.4% — coordinator 500s aging out naturally
+
+---
 # HANDOFF MEMO — 2026-06-04 (Phase 118: housekeeping sweep — plans archive, cache prewarm, RAG seed)
 
 ## Phase 118 — Housekeeping Sweep
