@@ -1,17 +1,15 @@
 {
-  "current_objective": "Phase 118 housekeeping sweep complete. System clean.",
-  "phase": "Phase 118 — housekeeping sweep: COMPLETE",
+  "current_objective": "Slice 93.4 live delegation complete. System clean.",
+  "phase": "Phase 119 — Slice 93.4 race-harness live delegation: COMPLETE",
   "todo_snapshot": [
-    "DONE: Phase 117 fully live (rebuild complete, failed_domains=None)",
-    "DONE: Archive 3 completed plan files (slice-93-15, slice-93-5, slice-103)",
-    "DONE: Cache prewarm 32.5% → 84.0% hit rate",
-    "DONE: RAG seed — 49 records across 3 collections, aq-commit-facts 3 facts",
-    "DONE: Validated nvd-sync running (last success 00:13 PDT, timer active)",
-    "DONE: Validated slice-103 fully implemented (4/4 tests pass)",
-    "DONE: Confirmed Continue health 6/7 = 6-pass + 1-skip (not a bug)",
-    "OPEN P3: completion_reliability=68.4% — isolated coordinator 500s aging out naturally",
-    "ACTIVE PRD: EFFECTIVENESS-CENTERED — open slices 93.1-93.4, 93.6-93.8, 93.10, 93.14"
+    "DONE: Phase 118 housekeeping sweep (cache 84%, RAG 49 recs, slice-103 4/4)",
+    "DONE: Slice 93.4 — _make_live_run() real subprocess delegation (fbd15382)",
+    "DONE: Tests 6/6 pass; tier-0 gate 19/19 pass",
+    "OPEN P3: completion_reliability=68.4% — coordinator 500s aging out naturally",
+    "OPEN: Slice 93.3 (spec variant pack contract doc)",
+    "OPEN: Slices 93.6-93.8 (swimlane/replay/human-controls dashboard views)",
+    "ACTIVE PRD: EFFECTIVENESS-CENTERED — open slices 93.3, 93.6-93.8"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System clean. 79/79 QA. Cache 84%. Next session: new task or continue EFFECTIVENESS-CENTERED PRD open slices."
+  "resume_hint": "System clean. 79/79 QA. Slice 93.4 done. Next: Slice 93.3 (contract doc) or 93.6-93.8 (dashboard views)."
 }
