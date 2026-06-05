@@ -591,12 +591,12 @@ class AIDBClient:
                 'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
-            response = await self._client.post(
-                f"{self.base_url}/aidb/interactions",
+            http_response = await self._client.post(
+                f"{self.base_url}/history/record",
                 json=payload
             )
-            response.raise_for_status()
-            return response.json()
+            http_response.raise_for_status()
+            return http_response.json()
         
         if self.enable_circuit_breaker:
             return await self.circuit_breaker.call(_make_request)
@@ -612,7 +612,7 @@ class AIDBClient:
         """
         async def _make_request():
             response = await self._client.get(
-                f"{self.base_url}/aidb/health"
+                f"{self.base_url}/health"
             )
             response.raise_for_status()
             return response.json()
