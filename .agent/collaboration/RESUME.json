@@ -1,16 +1,15 @@
 {
-  "current_objective": "Phase 120 complete. Effectiveness-centered PRD fully implemented. Pending rebuild for tmpfiles 0664 fix.",
-  "phase": "Phase 120 — observability sweep: COMPLETE",
+  "current_objective": "Phase 121: ralph-wiggum AIDB endpoint fixes — committed, pending nixos-rebuild",
+  "phase": "Phase 121 — ralph-wiggum AIDB stale endpoint audit: COMPLETE",
   "todo_snapshot": [
-    "DONE: Slice 93.4 live delegation (fbd15382)",
-    "DONE: aq-qa checks for 93.3/93.6-93.8 — 83/83 pass (18c08423)",
-    "DONE: PRD EFFECTIVENESS-CENTERED all 14 slices complete",
-    "DONE: Race winner_detail agent_id/spec_variant enrichment from race_record (9e91c547)",
-    "DONE: Memory + issues-backlog updated; aq-commit-facts ran",
-    "PENDING-REBUILD: agent-run-events.jsonl 0664 tmpfiles rule (9e91c547)",
-    "PENDING-RESTART: dashboard aistack.py winner_detail fix (no sudo in Claude shell)",
-    "OPEN P3: completion_reliability=69.8% — 13 coordinator 500s aging out, oldest expires ~3h"
+    "DONE: EFFECTIVENESS-CENTERED PRD all 14 slices complete (Phase 120)",
+    "DONE: 83/83 QA pass",
+    "DONE: AIDBClient /aidb/search→/vector/search (bf7e75b1)",
+    "DONE: AIDBClient /aidb/interactions→/history/record, /aidb/health→/health (280ae6c9)",
+    "DONE: ralph-wiggum collection 'documents'→'solved_issues'",
+    "PENDING-REBUILD: ralph-wiggum AIDB fixes (bf7e75b1, 280ae6c9)",
+    "OPEN P3: completion_reliability=65.3% — new 504s from race-harness + background 500s (self-resolving ~24h)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System clean. 83/83 QA. EFFECTIVENESS-CENTERED PRD complete. Next: nixos-rebuild switch to activate 0664 tmpfiles fix, then verify race events write. Scorecard will flip to pass once 500s age out (~24h from last failure)."
+  "resume_hint": "System clean. 83/83 QA. Fixed 3 stale /aidb/* endpoints in hybrid_client.py causing ralph-wiggum circuit-breaker trips. Pending nixos-rebuild to activate. P3: completion_reliability still failing (504s from local model timeouts, 500s from coordinator overload — all aging out over 24h)."
 }

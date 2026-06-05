@@ -1,3 +1,36 @@
+# HANDOFF MEMO — 2026-06-05 (Phase 121: ralph-wiggum AIDB stale endpoint audit)
+
+## Phase 121 — ralph-wiggum AIDB endpoint fixes
+
+### Status
+COMPLETE. Commits: bf7e75b1, 280ae6c9. Pending nixos-rebuild to activate.
+
+### Work done
+| Item | Result |
+|------|--------|
+| AIDBClient /aidb/search → /vector/search | Fixed in hybrid_client.py (bf7e75b1) |
+| collection "documents" → "solved_issues" | Fixed in hybrid_client.py + orchestrator.py |
+| payload score_threshold → min_score | Fixed (AIDB VectorSearchRequest uses min_score) |
+| /aidb/interactions → /history/record | Fixed in store_interaction() (280ae6c9) |
+| /aidb/health → /health | Fixed in health_check() (280ae6c9) |
+| variable shadowing fix | store_interaction inner `response` var renamed http_response |
+| Bug pattern promoted to MEMORY.md | AIDBClient stale /aidb/* endpoints pattern |
+| issues-backlog.md updated | RESOLVED entry added |
+
+### Pending rebuild
+- All hybrid_client.py + orchestrator.py fixes (ralph-wiggum runs from Nix store)
+
+### Open items
+- **OPEN P3**: completion_reliability=65.3% — 504s from local model timeouts + 500s from
+  coordinator overload during intensive sessions. Newest failure expires in ~24h. Self-resolving.
+- **OBSERVATION**: The 504s from race-harness (local model taking >240s) and background
+  ralph-wiggum delegations are genuine quality signals, not noise to exclude.
+
+### Next session
+- nixos-rebuild switch to activate AIDB endpoint fixes
+- Monitor ralph-wiggum logs for reduced 404 errors after rebuild
+
+---
 # HANDOFF MEMO — 2026-06-04 (Phase 120: observability sweep — 93.3-93.8 QA, parity, PRD complete)
 
 ## Phase 120 — Observability + Parity Sweep
@@ -1925,3 +1958,5 @@ You are contribut"
 [2026-06-04T23:34:56.217743Z] [done] id=local-20260604-163353-3yrarp
 [2026-06-05T00:47:47.357708Z] [dispatch] id=local-20260604-174747-iptrl8 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-174747-iptrl8.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
 [2026-06-05T00:49:52.072504Z] [done] id=local-20260604-174747-iptrl8
+[2026-06-05T02:29:57.014151Z] [dispatch] id=local-20260604-192956-5b6kbn agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-192956-5b6kbn.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-05T02:31:53.769143Z] [done] id=local-20260604-192956-5b6kbn

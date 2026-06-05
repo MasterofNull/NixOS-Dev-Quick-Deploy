@@ -672,6 +672,31 @@ except Exception:
         _fail 6 "0.7.4" "AIDB vector search returns results" "out: ${search_out:0:80}"
       fi
     fi
+
+    # 0.7.5 ralph-wiggum health + AIDB solved_issues collection (Phase 121 regression guard)
+    if _should_run 4; then
+      local _rw_url="${RALPH_WIGGUM_URL:-http://127.0.0.1:8004}"
+      local rw_health_out
+      rw_health_out=$(curl -sf --max-time 5 "${_rw_url}/health" 2>/dev/null || echo "err")
+      if [[ "$rw_health_out" != "err" ]] && \
+         python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if d.get('status') in ('ok','healthy') else 1)" "$rw_health_out" 2>/dev/null; then
+        _pass 4 "0.7.5" "ralph-wiggum /health returns ok"
+      else
+        _fail 4 "0.7.5" "ralph-wiggum /health returns ok" "out: ${rw_health_out:0:80}"
+      fi
+
+      local solved_out
+      solved_out=$(curl -sf --max-time 5 \
+        -H "Content-Type: application/json" \
+        -d '{"query":"agent delegation","collection":"solved_issues","limit":1}' \
+        "${AIDB_URL}/vector/search" 2>/dev/null || echo "err")
+      if [[ "$solved_out" != "err" ]] && \
+         python3 -c "import json,sys; d=json.loads(sys.argv[1]); raise SystemExit(0 if 'results' in d else 1)" "$solved_out" 2>/dev/null; then
+        _pass 4 "0.7.5b" "AIDB /vector/search solved_issues collection valid"
+      else
+        _fail 4 "0.7.5b" "AIDB /vector/search solved_issues collection valid" "out: ${solved_out:0:80}"
+      fi
+    fi
   fi
 
   # 0.8.1 ai_coordinator_delegate success rate (last 24h) — Phase 9.3 gate
