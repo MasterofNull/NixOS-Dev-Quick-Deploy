@@ -16,6 +16,24 @@
       "status": "running"
     },
     {
+      "id": "local-20260604-192956-5b6kbn",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-192956-5b6kbn.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-05T02:29:57.014151Z",
+      "status": "done",
+      "completed_at": "2026-06-05T02:31:53.769143Z"
+    },
+    {
+      "id": "local-20260604-174747-iptrl8",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-174747-iptrl8.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-05T00:47:47.357708Z",
+      "status": "done",
+      "completed_at": "2026-06-05T00:49:52.072504Z"
+    },
+    {
       "id": "local-20260604-163353-3yrarp",
       "agent": "local-direct",
       "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-163353-3yrarp.log",
@@ -70,7 +88,7 @@
       "completed_at": "2026-06-03T02:08:27.206186Z"
     }
   ],
-  "updated_at": "2026-06-04T23:34:56.218096Z",
+  "updated_at": "2026-06-05T02:31:53.770198Z",
   "validated_at": "2026-06-04T07:52:36.208799+00:00",
   "validation_notes": "loadAgentReplay, swimlane, race, sendControl all wired and returning data. scorecard/agent-runs endpoints healthy."
 }

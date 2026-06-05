@@ -498,3 +498,9 @@
 {"ts": 1780610559.4716697, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780610589.4394896, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780614917.9511542, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780618046.8878477, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780618998.2713277, "local": false, "profile": "remote-reasoning", "event_type": "routing_decision"}
+{"ts": 1780624511.6584978, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780624822.2663097, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780624856.6657114, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780624882.543593, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
