@@ -1,3 +1,31 @@
+# HANDOFF MEMO — 2026-06-04 (Phase 120: observability sweep — 93.3-93.8 QA, parity, PRD complete)
+
+## Phase 120 — Observability + Parity Sweep
+
+### Status
+COMPLETE. Commits: 18c08423, 9e91c547. Dashboard restart pending (needs sudo/rebuild).
+
+### Work done
+| Item | Result |
+|------|--------|
+| PRD EFFECTIVENESS-CENTERED | All 14 slices confirmed implemented; status→complete |
+| aq-qa checks 93.3/93.6-93.8 | 83/83 pass (was 79) |
+| Race winner_detail agent_id null | Enriched from race_record in list_agent_runs + get_agent_runs_race |
+| agent-run-events.jsonl perms | tmpfiles z rule 0644→0664; pending rebuild |
+| race-harness dry-run smoke | exp-qa-smoke-120: 9 runs, winner=local/html ratio=0.75 |
+| Scorecard completion_reliability | fail — 13 http_status_500 aging out (oldest 3.3h, newest 23.5h) |
+| Memory + aq-commit-facts | 2 new bug patterns + 3 facts stored |
+
+### Pending rebuild
+- `agent-run-events.jsonl` 0664 tmpfiles rule (9e91c547)
+- Dashboard aistack.py winner_detail fix (needs service restart)
+
+### Next session
+- Scorecard should show pass (13 failures aged out)
+- `nixos-rebuild switch` to activate tmpfiles fix
+- Verify race-harness events write after rebuild
+
+---
 # HANDOFF MEMO — 2026-06-04 (Phase 119: Slice 93.4 live delegation — race-harness)
 
 ## Phase 119 — Slice 93.4: Multi-Agent Race Harness Live Delegation
@@ -1895,3 +1923,5 @@ You are contribut"
 [2026-06-04T23:33:48.294165Z] [done] id=local-20260604-163158-hp5z34
 [2026-06-04T23:33:54.051717Z] [dispatch] id=local-20260604-163353-3yrarp agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-163353-3yrarp.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
 [2026-06-04T23:34:56.217743Z] [done] id=local-20260604-163353-3yrarp
+[2026-06-05T00:47:47.357708Z] [dispatch] id=local-20260604-174747-iptrl8 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-174747-iptrl8.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-05T00:49:52.072504Z] [done] id=local-20260604-174747-iptrl8

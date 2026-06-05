@@ -1,15 +1,16 @@
 {
-  "current_objective": "Slice 93.4 live delegation complete. System clean.",
-  "phase": "Phase 119 — Slice 93.4 race-harness live delegation: COMPLETE",
+  "current_objective": "Phase 120 complete. Effectiveness-centered PRD fully implemented. Pending rebuild for tmpfiles 0664 fix.",
+  "phase": "Phase 120 — observability sweep: COMPLETE",
   "todo_snapshot": [
-    "DONE: Phase 118 housekeeping sweep (cache 84%, RAG 49 recs, slice-103 4/4)",
-    "DONE: Slice 93.4 — _make_live_run() real subprocess delegation (fbd15382)",
-    "DONE: Tests 6/6 pass; tier-0 gate 19/19 pass",
-    "OPEN P3: completion_reliability=68.4% — coordinator 500s aging out naturally",
-    "OPEN: Slice 93.3 (spec variant pack contract doc)",
-    "OPEN: Slices 93.6-93.8 (swimlane/replay/human-controls dashboard views)",
-    "ACTIVE PRD: EFFECTIVENESS-CENTERED — open slices 93.3, 93.6-93.8"
+    "DONE: Slice 93.4 live delegation (fbd15382)",
+    "DONE: aq-qa checks for 93.3/93.6-93.8 — 83/83 pass (18c08423)",
+    "DONE: PRD EFFECTIVENESS-CENTERED all 14 slices complete",
+    "DONE: Race winner_detail agent_id/spec_variant enrichment from race_record (9e91c547)",
+    "DONE: Memory + issues-backlog updated; aq-commit-facts ran",
+    "PENDING-REBUILD: agent-run-events.jsonl 0664 tmpfiles rule (9e91c547)",
+    "PENDING-RESTART: dashboard aistack.py winner_detail fix (no sudo in Claude shell)",
+    "OPEN P3: completion_reliability=69.8% — 13 coordinator 500s aging out, oldest expires ~3h"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System clean. 79/79 QA. Slice 93.4 done. Next: Slice 93.3 (contract doc) or 93.6-93.8 (dashboard views)."
+  "resume_hint": "System clean. 83/83 QA. EFFECTIVENESS-CENTERED PRD complete. Next: nixos-rebuild switch to activate 0664 tmpfiles fix, then verify race events write. Scorecard will flip to pass once 500s age out (~24h from last failure)."
 }
