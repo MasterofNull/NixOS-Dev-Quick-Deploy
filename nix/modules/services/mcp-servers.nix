@@ -662,6 +662,10 @@ in {
           # f creates if absent; z relabels if already present (root:root from prior session).
           "f ${dataDir}/hybrid/telemetry/delegation-feedback.jsonl 0640 ${hybridUser} ${aiGroup} - -"
           "z ${dataDir}/hybrid/telemetry/delegation-feedback.jsonl 0640 ${hybridUser} ${aiGroup} - -"
+          # Phase 120 — agent-run-events.jsonl written by both ai-hybrid (coordinator events)
+          # and hyperd (race-harness). 0640→0664 so group (ai-stack, which includes hyperd) can append.
+          "f ${dataDir}/hybrid/telemetry/agent-run-events.jsonl 0664 ${hybridUser} ${aiGroup} - -"
+          "z ${dataDir}/hybrid/telemetry/agent-run-events.jsonl 0664 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/fine-tuning/dataset_export.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/aidb-reindex-latest.json 0660 ${svcUser} ${aiGroup} - -"

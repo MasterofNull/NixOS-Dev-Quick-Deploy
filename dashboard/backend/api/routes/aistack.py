@@ -4361,6 +4361,10 @@ async def list_agent_runs(
             s.setdefault("useful_ratio", race_record.get("useful_ratio"))
             s.setdefault("total_tokens", race_record.get("total_tokens"))
             s["fixture"] = race_record.get("fixture", False)
+            if s.get("agent_id") is None:
+                s["agent_id"] = race_record.get("agent_id")
+            if s.get("spec_variant") is None:
+                s["spec_variant"] = race_record.get("variant")
         if status and s.get("final_status") != status:
             continue
         summaries.append(s)
@@ -4516,6 +4520,11 @@ async def get_agent_runs_race(
             s["fixture"] = race_record.get("fixture", False)
             if s.get("tokens") is None and race_record.get("total_tokens"):
                 s["tokens"] = {"total": race_record["total_tokens"]}
+            # Enrich agent_id + spec_variant from race_record when events didn't provide them
+            if s.get("agent_id") is None:
+                s["agent_id"] = race_record.get("agent_id")
+            if s.get("spec_variant") is None:
+                s["spec_variant"] = race_record.get("variant")
 
         # Validation gate fields
         s["correctness_gate"] = s.get("accepted") is True
