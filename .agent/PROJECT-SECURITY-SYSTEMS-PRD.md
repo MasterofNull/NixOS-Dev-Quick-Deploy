@@ -1,6 +1,7 @@
 ---
 doc_type: prd
 id: security-systems-prd
+title: Security Systems Domain PRD
 status: active
 owner: AI Stack Maintainers
 last_updated: "2026-05-31"

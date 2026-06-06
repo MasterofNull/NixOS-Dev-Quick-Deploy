@@ -761,9 +761,11 @@
       ],
       "command": [
         "python3",
-        "scripts/governance/check-doc-frontmatter.py"
+        "scripts/governance/check-doc-frontmatter.py",
+        "--all"
       ],
       "pass_staged_files": true,
+      "always_run": true,
       "tier": "structural",
       "timeout_seconds": 30,
       "enabled": true
