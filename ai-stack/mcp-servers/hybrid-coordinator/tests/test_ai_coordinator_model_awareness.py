@@ -110,11 +110,12 @@ def test_delegated_response_budget_caps_strict_reply_only_tasks():
 
 
 def test_delegated_response_budget_keeps_tool_calling_lanes_bounded_but_larger():
+    # local-tool-calling capped at 150 (hard ceiling — 210s timeout ÷ 1 tok/s floor needs headroom)
     assert delegated_response_budget(
         "Use tools to inspect runtime status and return TOOL_READY only.",
         "local-tool-calling",
         tools_present=True,
-    ) == 220
+    ) == 150
     assert delegated_response_budget(
         "Use tools to inspect runtime status and return TOOL_READY only.",
         "remote-tool-calling",

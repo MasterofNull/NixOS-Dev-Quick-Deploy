@@ -409,7 +409,7 @@ _LOCAL_PROFILE_NAMES: frozenset = frozenset({
     "default", "continue-local", "embedded-assist", "local-tool-calling",
     "local-agent", "embedding-local", "coordinator-internal",
 })
-_LOCAL_MAX_TOKENS_HARD_CEILING = 180
+_LOCAL_MAX_TOKENS_HARD_CEILING = 150  # 210s delegate timeout ÷ ~1 tok/s floor = 210 max; 150 gives 60s headroom
 
 
 def _record_routing_decision(decision: Dict[str, Any]) -> None:
@@ -699,10 +699,10 @@ def delegated_response_budget(
     else:
         cap = 0
 
-    # Hard ceiling for local profiles: prevent unbounded token generation that
-    # exceeds the 210s delegate timeout window. Remote profiles have no ceiling
-    # here — they return tokens fast enough for the caller's explicit budget.
-    if cap == 0 and profile_name in _LOCAL_PROFILE_NAMES:
+    # Hard ceiling for local profiles: at 1 tok/s floor, any cap > 150 risks the 210s
+    # delegate timeout. Apply unconditionally for local — cap=220 (tools) or cap=192
+    # (implementation) would otherwise exceed the window.
+    if profile_name in _LOCAL_PROFILE_NAMES and (cap == 0 or cap > _LOCAL_MAX_TOKENS_HARD_CEILING):
         cap = _LOCAL_MAX_TOKENS_HARD_CEILING
 
     if explicit_budget > 0 and cap > 0:
