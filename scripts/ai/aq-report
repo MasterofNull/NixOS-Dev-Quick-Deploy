@@ -7402,17 +7402,22 @@ def attention_contention_summary(since_dt: Optional[datetime] = None) -> Dict[st
     elapsed_ms_list: List[float] = []
     error_codes: Counter = Counter()
 
+    operations: Counter = Counter()
     for ev in events:
+        # Support both legacy nested structure (details.attempt_count) and
+        # new flat structure (retry_count, elapsed_ms) added in Slice 93.14.
         details = ev.get("details") or {}
-        attempts = details.get("attempt_count")
-        elapsed = details.get("duration_ms")
-        err = details.get("error_code")
+        attempts = ev.get("retry_count") if "retry_count" in ev else details.get("attempt_count")
+        elapsed = ev.get("elapsed_ms") if "elapsed_ms" in ev else details.get("duration_ms")
+        err = ev.get("error_code") or details.get("error_code")
+        op = ev.get("operation", "unknown")
         if isinstance(attempts, int):
             retry_counts.append(attempts)
         if isinstance(elapsed, (int, float)):
             elapsed_ms_list.append(float(elapsed))
         if err:
             error_codes[str(err)] += 1
+        operations[op] += 1
 
     # Compute rate: events per hour over the window
     timestamps = [ev.get("timestamp", "") for ev in events if ev.get("timestamp")]
@@ -7426,6 +7431,10 @@ def attention_contention_summary(since_dt: Optional[datetime] = None) -> Dict[st
         except (ValueError, AttributeError):
             pass
 
+    # Extract queue_path from the most recent event (all should be the same path)
+    queue_paths = [ev.get("queue_path") for ev in events if ev.get("queue_path")]
+    queue_path = queue_paths[-1] if queue_paths else None
+
     return {
         "available": True,
         "status": "warn" if events_per_hour > 3 else "ok",
@@ -7437,6 +7446,8 @@ def attention_contention_summary(since_dt: Optional[datetime] = None) -> Dict[st
         "events_per_hour": events_per_hour,
         "exceeds_threshold": events_per_hour > 3,
         "top_error_codes": error_codes.most_common(5),
+        "operations_breakdown": dict(operations.most_common()),
+        "queue_path": queue_path,
     }
 
 

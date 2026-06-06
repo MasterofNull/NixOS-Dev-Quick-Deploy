@@ -1303,6 +1303,44 @@ for fn in ('build_spec_variant_pack', 'validate_spec_variant_pack', 'VARIANTS', 
   else
     _fail 3 "93.8" "human-agent control endpoint" "expected 422 for invalid action, got ${_ctrl_status}"
   fi
+
+  # 93.14 — Attention queue lock contention event schema (Slice 93.14)
+  if python3 - <<PY 2>/dev/null
+import sys, json, tempfile, os
+from pathlib import Path
+
+sys.path.insert(0, '${REPO_ROOT}/scripts/ai/lib')
+import attention_queue as aq
+
+# Emit a contention event with known values to a temp telemetry file
+with tempfile.TemporaryDirectory() as d:
+    telemetry = Path(d) / 'hybrid-events.jsonl'
+    aq._REPO_ROOT = Path(d).parent  # redirect telemetry writes to temp dir
+    # Temp-patch telemetry path
+    orig_repo_root = aq._REPO_ROOT
+    Path(d).joinpath('.agents', 'telemetry').mkdir(parents=True, exist_ok=True)
+    aq._REPO_ROOT = Path(d)
+    aq._emit_contention_event(2, 55.3, None, 'push')
+
+    ev_path = Path(d) / '.agents' / 'telemetry' / 'hybrid-events.jsonl'
+    if not ev_path.exists():
+        print('event file not created', file=sys.stderr)
+        sys.exit(1)
+    ev = json.loads(ev_path.read_text().strip().splitlines()[-1])
+    required = {'event_type', 'operation', 'retry_count', 'elapsed_ms', 'queue_path', 'timestamp'}
+    missing = required - set(ev.keys())
+    if missing:
+        print(f'missing fields: {missing}', file=sys.stderr)
+        sys.exit(1)
+    if ev['operation'] != 'push' or ev['retry_count'] != 1 or ev['acquired'] is not True:
+        print(f'unexpected values: op={ev["operation"]} retry={ev["retry_count"]} acquired={ev["acquired"]}', file=sys.stderr)
+        sys.exit(1)
+PY
+  then
+    _pass 1 "93.14" "attention queue contention event has operation, retry_count, elapsed_ms, queue_path fields"
+  else
+    _fail 1 "93.14" "attention_queue contention schema" "event missing required fields or has wrong values"
+  fi
 }
 
 # ---------------------------------------------------------------------------
