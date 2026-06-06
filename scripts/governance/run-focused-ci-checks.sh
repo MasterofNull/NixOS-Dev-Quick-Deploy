@@ -80,6 +80,7 @@ for check in registry.get("checks", []):
     timeout = check.get("timeout_seconds", 0) or None
     require_tool = check.get("require_tool")
     pass_staged = check.get("pass_staged_files", False)
+    always_run = check.get("always_run", False)
 
     # Check tool availability
     if require_tool:
@@ -118,7 +119,7 @@ for check in registry.get("checks", []):
             unique_matched.append(p)
     matched_paths = unique_matched
 
-    if not matched_paths:
+    if not matched_paths and not always_run:
         continue
 
     ran_any = True
