@@ -1355,11 +1355,12 @@ PY
   fi
 
   # 132.1 — local-coding switchboard profile exists with expected fields
+  # Profiles are served from /health, not /v1/models
   if _should_run 1; then
-    local _swb_catalog
-    _swb_catalog=$(curl -sf --max-time 5 "http://localhost:${SWITCHBOARD_PORT:-8085}/v1/models" 2>/dev/null || true)
+    local _swb_health
+    _swb_health=$(curl -sf --max-time 5 "http://localhost:${SWITCHBOARD_PORT:-8085}/health" 2>/dev/null || true)
     local _lc_ok=false
-    if [[ -n "$_swb_catalog" ]]; then
+    if [[ -n "$_swb_health" ]]; then
       _lc_ok=$(python3 -c "
 import sys,json
 d=json.loads(sys.stdin.read())
@@ -1367,14 +1368,14 @@ profs=d.get('profiles',{}) or {}
 lc=profs.get('local-coding',{}) or {}
 ok=lc.get('maxOutputTokens',0)>=2048 and lc.get('forceProvider','')=='local' and lc.get('injectHints',False)
 print('true' if ok else 'false')
-" <<< "$_swb_catalog" 2>/dev/null || echo "false")
+" <<< "$_swb_health" 2>/dev/null || echo "false")
     fi
     if [[ "$_lc_ok" == "true" ]]; then
       _pass 1 "132.1" "switchboard local-coding profile exists (maxOutputTokens≥2048, forceProvider=local, injectHints=true)"
-    elif [[ -z "$_swb_catalog" ]]; then
+    elif [[ -z "$_swb_health" ]]; then
       _skip 1 "132.1" "switchboard local-coding profile" "switchboard unreachable"
     else
-      _skip 1 "132.1" "switchboard local-coding profile" "profile pending nixos-rebuild (PENDING-REBUILD)"
+      _fail 1 "132.1" "switchboard local-coding profile" "profile missing from /health catalog after rebuild"
     fi
   fi
 
