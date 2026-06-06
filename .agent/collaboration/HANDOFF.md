@@ -1,3 +1,32 @@
+# HANDOFF MEMO — 2026-06-05 (Phase 122: system sweep post-rebuild)
+
+## Phase 122 — Post-rebuild system sweep
+
+### Status
+COMPLETE. Commits: 724a0072, 9421b3dd, 3c0b5ddc. nixos-rebuild required for coordinator fix.
+
+### Work done
+| Item | Result |
+|------|--------|
+| Dashboard workflows PermissionError | Fixed: TemplateManager/WorkflowExecutor → DASHBOARD_DATA_DIR (724a0072) |
+| memory/facts POST stored=0 | Fixed: added "queued" to accepted statuses in memory_service.py + fallback (9421b3dd) |
+| AppArmor llama-cpp /var/lib rw→rwk | Fixed: mesa shader cache SQLite locking (3c0b5ddc) |
+| VSCodium stale AI marker | Cleared: geminicodeassist-2.81.0 stale .obsolete entry removed |
+| QA: 85/85 passing (was 185/2 fail) | 0.8.1 still xfail (self-resolving); 1.2.10 fixed pending rebuild |
+| Editor state budget: 5/5 healthy | Was degraded after stale marker removal |
+
+### Pending rebuild
+- coordinator memory_service.py fix (QA 1.2.10 — stored=0 bug)
+- AppArmor llama-cpp file_lock fix (3c0b5ddc)
+
+### Open items
+- **OPEN P3**: completion_reliability — still aging out, check at session start
+
+### Next session
+- Verify QA 1.2.10 passes after nixos-rebuild (coordinator restart)
+- Monitor: AppArmor llama-cpp denials should stop after rebuild
+
+---
 # HANDOFF MEMO — 2026-06-05 (Phase 121: ralph-wiggum AIDB stale endpoint audit)
 
 ## Phase 121 — ralph-wiggum AIDB endpoint fixes
