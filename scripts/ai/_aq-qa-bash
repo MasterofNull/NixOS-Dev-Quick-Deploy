@@ -532,6 +532,7 @@ try:
 except Exception:
     print(0)
 " "${QDRANT_URL}" 2>/dev/null || echo 0)
+    points_count="$(printf '%s\n' "$points_count" | tail -n 1)"
     if [[ "$points_count" -gt 0 ]]; then
       _pass 5 "0.2.3" "Qdrant has ${points_count} points across all collections"
     else
@@ -1390,6 +1391,30 @@ sys.exit(0 if not ok else 1)
       _pass 1 "132.2" "domain-role enforcement blocks gemini as security reviewer"
     else
       _fail 1 "132.2" "domain-role enforcement" "validate_role_eligibility not blocking gemini in security/reviewer"
+    fi
+  fi
+
+  # 132.3 — _validate_code_blocks catches Python syntax errors and passes valid code
+  if _should_run 1; then
+    local _vcb_ok
+    _vcb_ok=$(python3 -c "
+import sys
+sys.path.insert(0, '${SCRIPTS_DIR:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai}/lib')
+try:
+    from dispatch import _validate_code_blocks
+    # Bad Python should surface an error report
+    bad = _validate_code_blocks('\`\`\`python\ndef foo(\n\`\`\`')
+    # Valid Bash should pass
+    good = _validate_code_blocks('\`\`\`bash\necho hello\n\`\`\`')
+    ok = ('ERROR' in bad or 'syntax' in bad.lower()) and 'ERROR' not in good
+    print('true' if ok else 'false')
+except Exception as e:
+    print('false')
+" 2>/dev/null || echo "false")
+    if [[ "$_vcb_ok" == "true" ]]; then
+      _pass 1 "132.3" "_validate_code_blocks detects Python syntax errors, passes valid Bash"
+    else
+      _fail 1 "132.3" "_validate_code_blocks" "validation logic not catching syntax errors or raising false positives"
     fi
   fi
 }

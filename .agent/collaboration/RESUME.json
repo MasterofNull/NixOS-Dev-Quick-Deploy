@@ -1,15 +1,14 @@
 {
-  "current_objective": "Phase 132 complete. Domain-role enforcement, local-coding profile, embedded-assist pre-context, training ingest fix, Nix cleanup. Pending rebuild for local-coding switchboard profile.",
-  "phase": "Phase 132 — Local agent performance + domain-role enforcement: COMPLETE",
+  "current_objective": "Phase 133 complete. MCP agent-connectivity fix committed. Pending: switchboard restart (for QA 132.1) + nixos-rebuild (for HM activation).",
+  "phase": "Phase 133 — MCP bridge fix + local-coding routing: COMPLETE",
   "todo_snapshot": [
-    "DONE: domain-role enforcement — validate_role_eligibility() in core/domain_router.py; Gemini blocked as security reviewer; 8/8 tests pass (f11e21f6)",
-    "DONE: local-coding switchboard profile — maxInput=5500, maxOutput=2048, injectHints, code-accuracy card (nix rebuild needed)",
-    "DONE: embedded-assist pre-context injection in dispatch.py — quick skill/pattern prefetch before direct-mode inference",
-    "DONE: code validation post-generation — py_compile + bash -n on code blocks",
-    "DONE: training_ingest rule retention — YAML/JSON fallback read; restored 2 lost rules",
-    "DONE: Nix static analysis cleanup — Phase 131 committed (1d971f30)",
-    "PENDING-REBUILD: local-coding switchboard profile (QA 132.1 SKIP until rebuild)"
+    "DONE: Phase 132 — domain-role enforcement, local-coding profile, embedded-assist pre-context, code validation (f11e21f6)",
+    "DONE: Phase 132.1 — YAML catalog + Nix validation + language-aware prefetch + local-coding routing in ai_coordinator.py (bfd65459)",
+    "DONE: DNS resilience — NM dispatcher + nameservers + nix.settings.fallback (db03c080)",
+    "DONE: Phase 133 — MCP agent-connectivity fix — base.nix HM activation + smoke tests (6525d706)",
+    "PENDING-RESTART: `sudo systemctl restart ai-switchboard.service` → activates local-coding YAML profile → QA 132.1 PASS",
+    "PENDING-REBUILD: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` → activates HM MCP config fix + DNS NM dispatcher + local-coding Nix profile"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "88 passed / 1 skipped (132.1 pending rebuild). Run nixos-rebuild to activate local-coding profile. Phase 132 committed f11e21f6. Coordinator restart not needed (domain-role enforcement in ai_coordinator_handlers.py loads at service restart). Next session: nixos-rebuild to activate local-coding, verify 132.1 PASS, test embedded-assist pre-context with a real coding delegation."
+  "resume_hint": "88 passed / 0 failed / 1 skipped (132.1). All code changes committed. Two operator actions needed: (1) sudo systemctl restart ai-switchboard.service — fixes QA 132.1 without rebuild; (2) sudo nixos-rebuild switch --flake .#hyperd-ai-dev — activates HM MCP fix, DNS fix, and local-coding Nix profile. System is healthy, no regression. Next development: verify embedded-assist pre-context with a real coding delegation after restart."
 }
