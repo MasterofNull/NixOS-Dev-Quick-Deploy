@@ -1837,6 +1837,10 @@ in {
               # without this, _push_review_alerts() → _ensure_dirs() → EROFS.
               "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
             ];
+            # commonServiceConfig sets ProtectHome="read-only" which blocks writes to
+            # /home/hyperd/... even when REPO_ROOT points there.  Add explicit ReadWritePaths
+            # so training_ingest.py can write harness-prompt-extensions.json.
+            ReadWritePaths = serviceWritablePaths ++ ["${mcp.repoPath}/config" "${mcp.repoPath}/.agents/attention"];
           };
       };
 
