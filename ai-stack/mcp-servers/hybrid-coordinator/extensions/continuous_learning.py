@@ -1020,9 +1020,10 @@ class ContinuousLearningPipeline:
                 ),
             )
 
-        elif event_type == "local_inference":
-            # Successful local delegation via coordinator — emitted by Phase 110.1.
-            # query/response are plain-text (not hashed), suitable for pattern extraction.
+        elif event_type in ("local_inference", "agent_step_complete"):
+            # local_inference: emitted by Phase 110.1 for successful local coordinator delegations.
+            # agent_step_complete: emitted by ralph-agent loop for completed agent steps.
+            # Both carry query/response/latency_ms and are suitable for pattern extraction.
             query = self._sanitize_pattern_text(
                 event.get("query") or event.get("prompt") or "",
                 field_name="query",
@@ -1035,18 +1036,22 @@ class ContinuousLearningPipeline:
             )
             latency_ms = float(event.get("latency_ms") or 0.0)
             if query and response and latency_ms > 0:
+                pattern_id = f"{event_type}_{hash(query + response) & 0xFFFFFF:06x}"
                 return InteractionPattern(
-                    pattern_id=f"local_inference_{hash(query + response) & 0xFFFFFF:06x}",
-                    interaction_type="local_inference",
+                    pattern_id=pattern_id,
+                    interaction_type=event_type,
                     prompt=query,
                     response=response,
-                    context=self._sanitize_pattern_context({"profile": event.get("profile", ""), "model": event.get("model", "")}),
+                    context=self._sanitize_pattern_context({
+                        "profile": event.get("profile") or event.get("role", ""),
+                        "model": event.get("model") or event.get("source", ""),
+                    }),
                     success_metrics={"latency_ms": latency_ms},
                     iterations=1,
                     timestamp=datetime.fromisoformat(
                         event.get("timestamp", datetime.now(timezone.utc).isoformat())
                     ),
-                    backend=event.get("model") or "local",
+                    backend=event.get("model") or event.get("source") or "local",
                 )
 
         return None
