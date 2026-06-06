@@ -439,11 +439,24 @@ def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float 
     if not switchboard_url:
         return ""
     lang = _detect_code_lang(prompt)
-    lang_hint = f" Focus on {lang.upper()} coding rules and patterns." if lang else ""
-    query = (
-        f"Identify 2 critical coding rules or recent error patterns most relevant to this task.{lang_hint} "
-        f"Be concise (≤80 words total):\n{prompt[:200]}"
-    )
+    prompt_lower = prompt[:300].lower()
+    is_debug = any(k in prompt_lower for k in ("debug", "error", "traceback", "fail", "broken", "fix"))
+    if is_debug:
+        lang_hint = f" ({lang.upper()} context)" if lang else ""
+        query = (
+            f"For this debugging task{lang_hint}: state (1) the most likely root cause and (2) the first diagnostic step. "
+            f"≤80 words:\n{prompt[:200]}"
+        )
+    elif lang:
+        query = (
+            f"For this {lang.upper()} task: state (1) the critical constraint to respect and (2) the first concrete step. "
+            f"≤80 words:\n{prompt[:200]}"
+        )
+    else:
+        query = (
+            f"Identify 2 critical rules or patterns most relevant to this task. "
+            f"Be concise (≤80 words total):\n{prompt[:200]}"
+        )
     payload = {
         "messages": [{"role": "user", "content": query}],
         "max_tokens": 120,
