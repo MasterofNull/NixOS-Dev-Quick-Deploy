@@ -253,14 +253,17 @@ class HealthSpider:
         if ok:
             logger.info(f"[{zone}] HTTP OK {ms}ms")
             # auto_ok (informational only, goes straight to archive)
-            push(
-                source="health-spider",
-                severity="low",
-                autonomy_boundary="auto_ok",
-                title=f"Zone {zone} health check passing",
-                detail=f"HTTP OK at {cfg['url']} ({ms}ms)",
-                proposed_action="None (automated check)"
-            )
+            try:
+                push(
+                    source="health-spider",
+                    severity="low",
+                    autonomy_boundary="auto_ok",
+                    title=f"Zone {zone} health check passing",
+                    detail=f"HTTP OK at {cfg['url']} ({ms}ms)",
+                    proposed_action="None (automated check)"
+                )
+            except Exception:
+                pass  # attention queue write failure is non-fatal for health checks
         else:
             logger.warning(f"[{zone}] HTTP FAILED {cfg['url']}")
             # 2. Service check only on HTTP failure (saves bandwidth)
@@ -305,15 +308,18 @@ class HealthSpider:
         elif atype == "service_down":
             svc = anomaly.get("service", zone)
             # human_gate, severity=high
-            push(
-                source="health-spider",
-                severity="high",
-                autonomy_boundary="human_gate",
-                title=f"Service {svc} is DOWN in zone {zone}",
-                detail=f"Service state: {anomaly.get('state', 'unknown')}. HTTP health check failed.",
-                proposed_action=f"Investigate and restart {svc} via systemctl.",
-                payload=anomaly
-            )
+            try:
+                push(
+                    source="health-spider",
+                    severity="high",
+                    autonomy_boundary="human_gate",
+                    title=f"Service {svc} is DOWN in zone {zone}",
+                    detail=f"Service state: {anomaly.get('state', 'unknown')}. HTTP health check failed.",
+                    proposed_action=f"Investigate and restart {svc} via systemctl.",
+                    payload=anomaly
+                )
+            except Exception:
+                pass
             key = f"service_down:{svc}"
             if key not in self._known_issues:
                 self._known_issues.add(key)
@@ -336,15 +342,18 @@ class HealthSpider:
 
         elif atype == "http_failure":
             # human_gate, severity=high (Service down from user perspective)
-            push(
-                source="health-spider",
-                severity="high",
-                autonomy_boundary="human_gate",
-                title=f"HTTP Failure in zone {zone}",
-                detail=f"HTTP health check failed at {anomaly.get('url')}. Service state: {anomaly.get('service_state', 'unknown')}.",
-                proposed_action=f"Check service logs and restart if hung: journalctl -u {ZONES[zone].get('service', zone)} -n 50",
-                payload=anomaly
-            )
+            try:
+                push(
+                    source="health-spider",
+                    severity="high",
+                    autonomy_boundary="human_gate",
+                    title=f"HTTP Failure in zone {zone}",
+                    detail=f"HTTP health check failed at {anomaly.get('url')}. Service state: {anomaly.get('service_state', 'unknown')}.",
+                    proposed_action=f"Check service logs and restart if hung: journalctl -u {ZONES[zone].get('service', zone)} -n 50",
+                    payload=anomaly
+                )
+            except Exception:
+                pass
             key = f"http_failure:{zone}"
             if key not in self._known_issues:
                 self._known_issues.add(key)
@@ -390,17 +399,20 @@ class HealthSpider:
                 rules = result.get("rules_added", [])
                 logger.info(f"[{anomaly['zone']}] Fix staged (alert: {result.get('alert_id', 'unknown')})")
                 
-                # rebuild_required after fix is staged (even if not committed yet, 
+                # rebuild_required after fix is staged (even if not committed yet,
                 # as nixos-rebuild will pick up the local file changes if run)
-                push(
-                    source="health-spider",
-                    severity="medium",
-                    autonomy_boundary="rebuild_required",
-                    title=f"Nix rebuild required for AppArmor fix ({profile})",
-                    detail=f"apparmor-fix-agent staged {len(rules)} rules for {profile}. Nix file modified.",
-                    proposed_action="Run: sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
-                    payload={"profile": profile, "rules_added": rules}
-                )
+                try:
+                    push(
+                        source="health-spider",
+                        severity="medium",
+                        autonomy_boundary="rebuild_required",
+                        title=f"Nix rebuild required for AppArmor fix ({profile})",
+                        detail=f"apparmor-fix-agent staged {len(rules)} rules for {profile}. Nix file modified.",
+                        proposed_action="Run: sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
+                        payload={"profile": profile, "rules_added": rules}
+                    )
+                except Exception:
+                    pass
                 
                 _update_handoff(
                     f"**AppArmor fix staged** — profile `{profile}`  \n"
