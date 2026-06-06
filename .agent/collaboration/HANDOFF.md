@@ -1,3 +1,24 @@
+# HANDOFF MEMO — 2026-06-06 (Phase 133: MCP agent-connectivity fix — pending hms/nixos-rebuild)
+
+## Phase 133 — MCP agent-connectivity fix
+
+### Status
+COMMITTED. Pending `home-manager switch` or `nixos-rebuild switch` to activate HM activation script.
+
+### Work done
+| Item | Result |
+|------|--------|
+| nix/home/base.nix — MCP activation rewrite | Drops npx/nix-run/github-placeholder entries; writes hybrid-coordinator + osint-tools bridge; repairs legacy configs on HM activation ✓ |
+| scripts/testing/smoke-ide-adapter-compat.sh — IDE smoke | Added 4 checks: Claude settings + shared ~/.mcp/config.json, each for bridge presence and unsafe-entry absence ✓ |
+| ai-stack/continue/config.json — port literal fix | Was `${HYBRID_COORDINATOR_PORT:-8003}` (literal string in JSON); fixed to `8003` (canonical port) ✓ |
+| issues-backlog.md | mcp/agent-connectivity marked RESOLVED ✓ |
+
+### Pending
+- `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` (or `home-manager switch`) to run HM activation and repair live MCP configs
+- After rebuild: `scripts/testing/smoke-ide-adapter-compat.sh` to verify 4 new checks pass
+- QA 132.1 (local-coding profile) will also pass after rebuild
+
+---
 # HANDOFF MEMO — 2026-06-05 (Phase 124: EROFS sweep complete — all fixes deployed + verified)
 
 ## Phase 124 — EROFS sweep final verification
@@ -2049,3 +2070,5 @@ You are contribut"
 [2026-06-05T00:49:52.072504Z] [done] id=local-20260604-174747-iptrl8
 [2026-06-05T02:29:57.014151Z] [dispatch] id=local-20260604-192956-5b6kbn agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260604-192956-5b6kbn.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
 [2026-06-05T02:31:53.769143Z] [done] id=local-20260604-192956-5b6kbn
+[2026-06-06T13:01:55.786694Z] [dispatch] id=local-20260606-060155-6jtg56 agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-060155-6jtg56.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
+[2026-06-06T13:08:18.987126Z] [done] id=local-20260606-060155-6jtg56

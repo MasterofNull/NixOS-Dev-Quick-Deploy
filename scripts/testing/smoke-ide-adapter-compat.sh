@@ -160,11 +160,84 @@ sys.exit(0 if mcps else 1)
 " 2>/dev/null; then
         MCP_COUNT=$(python3 -c "import json; d=json.load(open('$MCP_CONFIG')); print(len(d.get('mcpServers',{})))" 2>/dev/null || echo 0)
         pass "MCP servers configured in settings.json: ${MCP_COUNT}"
+        if python3 -c "
+import json, sys
+d = json.load(open('$MCP_CONFIG'))
+mcps = d.get('mcpServers', {})
+args = mcps.get('hybrid-coordinator', {}).get('args') or []
+sys.exit(0 if args and args[0].endswith('/scripts/ai/mcp-bridge-hybrid.py') else 1)
+" 2>/dev/null; then
+            pass "Claude settings expose local hybrid-coordinator MCP bridge"
+        else
+            fail "Claude settings missing local hybrid-coordinator MCP bridge"
+        fi
+        if python3 -c "
+import json, sys
+d = json.load(open('$MCP_CONFIG'))
+bad = []
+for name, cfg in (d.get('mcpServers') or {}).items():
+    command = cfg.get('command', '')
+    args = cfg.get('args') or []
+    env = cfg.get('env') or {}
+    if command == 'npx':
+        bad.append(name)
+    if command == 'nix' and any(str(arg).startswith('github:') for arg in args):
+        bad.append(name)
+    if env.get('GITHUB_PERSONAL_ACCESS_TOKEN') == 'set-me':
+        bad.append(name)
+if bad:
+    print(','.join(bad))
+    sys.exit(1)
+" 2>/dev/null; then
+            pass "Claude settings MCP entries avoid startup package fetches/placeholders"
+        else
+            fail "Claude settings contain startup-fetching or placeholder MCP entries"
+        fi
     else
         warn "No mcpServers entries in Claude Code settings.json"
     fi
 else
     warn "Claude Code settings.json not found at ${MCP_CONFIG}"
+fi
+
+SHARED_MCP_CONFIG="${primary_home}/.mcp/config.json"
+if [[ -f "$SHARED_MCP_CONFIG" ]]; then
+    pass "Shared MCP config present: ${SHARED_MCP_CONFIG}"
+    if python3 -c "
+import json, sys
+d = json.load(open('$SHARED_MCP_CONFIG'))
+mcps = d.get('mcpServers', {})
+args = mcps.get('hybrid-coordinator', {}).get('args') or []
+sys.exit(0 if args and args[0].endswith('/scripts/ai/mcp-bridge-hybrid.py') else 1)
+" 2>/dev/null; then
+        pass "Shared MCP config exposes local hybrid-coordinator MCP bridge"
+    else
+        fail "Shared MCP config missing local hybrid-coordinator MCP bridge"
+    fi
+    if python3 -c "
+import json, sys
+d = json.load(open('$SHARED_MCP_CONFIG'))
+bad = []
+for name, cfg in (d.get('mcpServers') or {}).items():
+    command = cfg.get('command', '')
+    args = cfg.get('args') or []
+    env = cfg.get('env') or {}
+    if command == 'npx':
+        bad.append(name)
+    if command == 'nix' and any(str(arg).startswith('github:') for arg in args):
+        bad.append(name)
+    if env.get('GITHUB_PERSONAL_ACCESS_TOKEN') == 'set-me':
+        bad.append(name)
+if bad:
+    print(','.join(bad))
+    sys.exit(1)
+" 2>/dev/null; then
+        pass "Shared MCP entries avoid startup package fetches/placeholders"
+    else
+        fail "Shared MCP config contains startup-fetching or placeholder MCP entries"
+    fi
+else
+    warn "Shared MCP config not found at ${SHARED_MCP_CONFIG}"
 fi
 
 # ── Summary ────────────────────────────────────────────────────────────────────

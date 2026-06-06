@@ -151,7 +151,7 @@
         "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-bridge-hybrid.py"
       ],
       "env": {
-        "HYBRID_URL": "http://127.0.0.1:${HYBRID_COORDINATOR_PORT:-8003}",
+        "HYBRID_URL": "http://127.0.0.1:8003",
         "AIDB_URL": "http://127.0.0.1:8002",
         "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key",
         "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"

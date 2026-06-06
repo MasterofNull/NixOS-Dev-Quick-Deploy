@@ -1835,61 +1835,62 @@ in {
   # ~/.mcp/config.json and ~/.config/claude/mcp.json.
   home.activation.createMcpConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
         mkdir -p "$HOME/.mcp"
-        if [ ! -f "$HOME/.mcp/config.json" ]; then
-          cat > "$HOME/.mcp/config.json" << 'MCP_EOF'
+        mcp_config="$HOME/.mcp/config.json"
+
+        write_harness_mcp_config() {
+          cat > "$mcp_config" << 'MCP_EOF'
     {
       "mcpServers": {
-        "mcp-nixos": {
-          "command": "nix",
-          "args": ["run", "github:utensils/mcp-nixos"]
-        },
-        "filesystem": {
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-filesystem", "${repoPath}"]
-        },
-        "git": {
-          "command": "npx",
-          "args": ["-y", "@cyanheads/git-mcp-server"]
-        },
-        "fetch": {
-          "command": "npx",
-          "args": ["-y", "mcp-server-fetch-typescript"]
-        },
-        "memory": {
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-memory"]
+        "hybrid-coordinator": {
+          "command": "python3",
+          "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],
+          "env": {
+            "HYBRID_URL": "http://127.0.0.1:8003",
+            "AIDB_URL": "http://127.0.0.1:8002",
+            "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
+            "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
+          }
         },
         "osint-tools": {
           "command": "python3",
           "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"]
-        },
-        "postgres": {
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://mcp@127.0.0.1:${toString aiPostgresPort}/mcp"]
-        },
-        "github": {
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-github"],
-          "env": {
-            "GITHUB_PERSONAL_ACCESS_TOKEN": "set-me"
-          }
         }
       }
     }
     MCP_EOF
+        }
+
+        needs_mcp_repair=0
+        if [ ! -f "$mcp_config" ]; then
+          needs_mcp_repair=1
+        elif ! ${pkgs.jq}/bin/jq -e '.mcpServers["hybrid-coordinator"]' "$mcp_config" >/dev/null 2>&1; then
+          needs_mcp_repair=1
+        elif ${pkgs.jq}/bin/jq -e '
+          .mcpServers
+          | to_entries
+          | any(
+              (.value.command // "") == "npx"
+              or ((.value.command // "") == "nix" and ((.value.args // []) | index("github:utensils/mcp-nixos")))
+              or (((.value.env // {}).GITHUB_PERSONAL_ACCESS_TOKEN // "") == "set-me")
+            )
+        ' "$mcp_config" >/dev/null 2>&1; then
+          needs_mcp_repair=1
         fi
+
+        if [ "$needs_mcp_repair" = "1" ]; then
+          if [ -f "$mcp_config" ]; then
+            cp "$mcp_config" "$HOME/.mcp/config.json.legacy.$(date -u +%Y%m%d%H%M%S)"
+          fi
+          write_harness_mcp_config
+        fi
+        unset needs_mcp_repair
 
         if [ ! -f "$HOME/.mcp/registry.json" ]; then
           cat > "$HOME/.mcp/registry.json" << 'MCP_REGISTRY_EOF'
     {
       "servers": [
-        { "id": "mcp-nixos", "category": "nixos", "description": "NixOS package and option discovery" },
-        { "id": "filesystem", "category": "project", "description": "Project file read/write/search tools" },
-        { "id": "git", "category": "project", "description": "Repository status, diff, and commit tooling" },
-        { "id": "fetch", "category": "web", "description": "HTTP fetch for docs, APIs, and release notes" },
-        { "id": "memory", "category": "agent", "description": "Cross-session lightweight memory store" },
-        { "id": "postgres", "category": "database", "description": "PostgreSQL access for AIDB and ops data" },
-        { "id": "github", "category": "remote", "description": "GitHub repo/issue/PR automation" }
+        { "id": "hybrid-coordinator", "category": "harness", "description": "Local harness MCP bridge for coordinator, AIDB, memory, workflow, and QA tools" },
+        { "id": "osint-tools", "category": "domain", "description": "Local OSINT MCP wrapper" }
       ]
     }
     MCP_REGISTRY_EOF
@@ -1897,6 +1898,7 @@ in {
 
         mkdir -p "$HOME/.config/claude"
         ln -sfn "$HOME/.mcp/config.json" "$HOME/.config/claude/mcp.json"
+        unset mcp_config
   '';
 
   # Make skills catalog agent-agnostic: Claude and Codex both read the same
@@ -1952,6 +1954,21 @@ in {
         tmp="$(mktemp)"
         ${pkgs.jq}/bin/jq --slurpfile mcp "$mcp_cfg" \
           '. * {"mcpServers": $mcp[0].mcpServers}' "$settings" > "$tmp" \
+          && mv "$tmp" "$settings" \
+          || rm -f "$tmp"
+        unset tmp
+      elif ${pkgs.jq}/bin/jq -e '
+        .mcpServers
+        | to_entries
+        | any(
+            (.value.command // "") == "npx"
+            or ((.value.command // "") == "nix" and ((.value.args // []) | index("github:utensils/mcp-nixos")))
+            or (((.value.env // {}).GITHUB_PERSONAL_ACCESS_TOKEN // "") == "set-me")
+          )
+      ' "$settings" > /dev/null 2>&1; then
+        tmp="$(mktemp)"
+        ${pkgs.jq}/bin/jq --slurpfile mcp "$mcp_cfg" \
+          '.mcpServers = $mcp[0].mcpServers' "$settings" > "$tmp" \
           && mv "$tmp" "$settings" \
           || rm -f "$tmp"
         unset tmp
