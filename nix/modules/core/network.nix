@@ -1,8 +1,4 @@
-{
-  lib,
-  config,
-  ...
-}:
+{lib, ...}:
 # ---------------------------------------------------------------------------
 # Core network module — DNS resolution, resolved, NetworkManager integration.
 #

@@ -31,7 +31,7 @@ MemoryMax defaults per tier
   medium →  2G     (workstation)
   large  →  4G     (high-end workstation / server)
 */
-{lib}: {
+{...}: {
   tier ? "medium",
   memoryMax ? null,
   # tasksMax: maximum number of kernel tasks (threads + processes) for this unit.

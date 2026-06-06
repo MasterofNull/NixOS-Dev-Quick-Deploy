@@ -7,7 +7,6 @@
 with lib; let
   cfg = config.mySystem.aiStack.llamaRouter;
   llamaCppCfg = config.mySystem.aiStack.llamaCpp;
-  hybridCoordinatorPort = config.mySystem.ports.hybridCoordinator;
 in {
   options.mySystem.aiStack.llamaRouter = {
     enable = mkEnableOption "llama.cpp router service";

@@ -6,7 +6,6 @@
   cfg = config.mySystem;
   sec = cfg.secrets;
   swb = cfg.aiStack.switchboard;
-  secretsOwner = cfg.primaryUser;
   secretsGroup = lib.attrByPath ["users" "users" cfg.primaryUser "group"] "users" config;
   # External string paths (for strict zero-secrets-in-repo) cannot be
   # reliably validated at flake evaluation time. Validate only when this is

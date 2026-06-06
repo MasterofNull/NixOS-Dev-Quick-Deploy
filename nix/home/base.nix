@@ -43,13 +43,10 @@ let
     (throw "Missing centralized port registry entry: mySystem.ports.${portName}")
     portRegistry;
   aiSwitchboardPort = lib.attrByPath ["mySystem" "aiStack" "switchboard" "port"] (getRegistryPort "switchboard") systemConfig;
-  aiLlamaPort = lib.attrByPath ["mySystem" "aiStack" "llamaCpp" "port"] (getRegistryPort "llamaCpp") systemConfig;
   aiLlamaModel = lib.attrByPath ["mySystem" "aiStack" "llamaCpp" "model"] "local-model" systemConfig;
   aiLlamaCtxSize = lib.attrByPath ["mySystem" "aiStack" "llamaCpp" "ctxSize"] 16384 systemConfig;
   aiHybridPort = lib.attrByPath ["mySystem" "mcpServers" "hybridPort"] (getRegistryPort "mcpHybrid") systemConfig;
   aiAidbPort = lib.attrByPath ["mySystem" "mcpServers" "aidbPort"] (getRegistryPort "mcpAidb") systemConfig;
-  aiRalphPort = lib.attrByPath ["mySystem" "mcpServers" "ralphPort"] (getRegistryPort "mcpRalph") systemConfig;
-  aiAiderPort = lib.attrByPath ["mySystem" "mcpServers" "aiderWrapperPort"] (getRegistryPort "aiderWrapper") systemConfig;
   aiPostgresPort = lib.attrByPath ["mySystem" "ports" "postgres"] (getRegistryPort "postgres") systemConfig;
   switchboardProfiles = lib.attrByPath ["mySystem" "aiStack" "switchboard" "profiles"] {} systemConfig;
   continueLocalProfile = lib.attrByPath ["continue-local"] {} switchboardProfiles;

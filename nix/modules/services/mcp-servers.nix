@@ -67,7 +67,6 @@ let
   repoAiStack = "${toString repoSource}/ai-stack";
   # Keep active OSINT service evaluation secure. Maigret/MOSAIC remain excluded
   # until local derivations no longer pull insecure PyPDF2.
-  osintRuntimePackages = [pkgs.bash pkgs.coreutils pkgs.jq pkgs.curl];
 
   # ── Phase 2.4: YAML workflow handlers + workflows package (Nix store) ───
   # Packages the workflows engine and YAML workflow HTTP handlers into the
@@ -152,8 +151,6 @@ let
     pkgs.writeText "runtime-safety-policy.json" (builtins.toJSON ai.aiHarness.runtime.safetyPolicy);
   runtimeIsolationProfilesJson =
     pkgs.writeText "runtime-isolation-profiles.json" (builtins.toJSON ai.aiHarness.runtime.isolationProfiles);
-  workflowBlueprintsJson =
-    pkgs.writeText "workflow-blueprints.json" (builtins.toJSON ai.aiHarness.runtime.workflowBlueprints);
   runtimeSchedulerPolicyJson =
     pkgs.writeText "runtime-scheduler-policy.json" (builtins.toJSON ai.aiHarness.runtime.schedulerPolicy);
   parityScorecardJson =
@@ -162,14 +159,6 @@ let
     pkgs.writeText "runtime-tool-security-policy.json" (builtins.toJSON ai.aiHarness.runtime.toolSecurity.policy);
   auditSidecarScript =
     pkgs.writeText "audit_sidecar.py" (builtins.readFile ../../../ai-stack/mcp-servers/shared/audit_sidecar.py);
-
-  runtimeSafetyModes =
-    if
-      builtins.isAttrs ai.aiHarness.runtime.safetyPolicy
-      && builtins.hasAttr "modes" ai.aiHarness.runtime.safetyPolicy
-      && builtins.isAttrs ai.aiHarness.runtime.safetyPolicy.modes
-    then ai.aiHarness.runtime.safetyPolicy.modes
-    else {};
 
   runtimeIsolationProfiles =
     if
@@ -368,9 +357,7 @@ let
   hybridApiKeySecret = sec.names.hybridApiKey;
   embeddingsApiKeySecret = sec.names.embeddingsApiKey;
   postgresPasswordSecret = sec.names.postgresPassword;
-  redisPasswordSecret = sec.names.redisPassword;
   aiderWrapperApiKeySecret = sec.names.aiderWrapperApiKey;
-  nixosDocsApiKeySecret = sec.names.nixosDocsApiKey;
 
   embedEnabled = ai.embeddingServer.enable;
   redisUnit = "redis-mcp.service";
@@ -1738,7 +1725,7 @@ in {
         partOf = ["ai-stack.target"];
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
-        path = with pkgs; [ bash coreutils curl gnugrep python3 ];
+        path = with pkgs; [bash coreutils curl gnugrep python3];
         serviceConfig =
           commonServiceConfig
           // {
@@ -1769,7 +1756,7 @@ in {
         partOf = ["ai-stack.target"];
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
-        path = with pkgs; [ bash coreutils ];
+        path = with pkgs; [bash coreutils];
         serviceConfig =
           commonServiceConfig
           // {
@@ -1815,7 +1802,7 @@ in {
       systemd.services.ai-training-ingest = {
         description = "AI training data ingest — telemetry → fine-tuning dataset";
         restartIfChanged = false;
-        path = with pkgs; [ bash coreutils python3 ];
+        path = with pkgs; [bash coreutils python3];
         serviceConfig =
           commonServiceConfig
           // {
@@ -1858,7 +1845,7 @@ in {
       systemd.services.ai-auto-remediate = {
         description = "AI stack autonomous remediation loop";
         restartIfChanged = false;
-        path = with pkgs; [ bash coreutils curl gnugrep python3 ];
+        path = with pkgs; [bash coreutils curl gnugrep python3];
         serviceConfig =
           commonServiceConfig
           // {
@@ -1879,14 +1866,14 @@ in {
         partOf = ["ai-stack.target"];
         after = ["network-online.target" "ai-hybrid-coordinator.service" "llama-cpp.service"];
         wants = ["network-online.target"];
-        path = with pkgs; [ bash coreutils curl (python3.withPackages (ps: with ps; [ httpx ])) ];
+        path = with pkgs; [bash coreutils curl (python3.withPackages (ps: with ps; [httpx]))];
         serviceConfig =
           commonServiceConfig
           // {
             Type = "simple";
             User = svcUser;
             ExecStart = lib.escapeShellArgs [
-              "${(pkgs.python3.withPackages (ps: with ps; [ httpx ]))}/bin/python3"
+              "${(pkgs.python3.withPackages (ps: with ps; [httpx]))}/bin/python3"
               "${toString repoSource}/scripts/ai/aq-throttler"
             ];
             Restart = "always";
@@ -2290,7 +2277,7 @@ in {
       systemd.services.ai-system-state = {
         description = "AI System Intelligence Hub state snapshot";
         # path entries are available as bare commands to ExecStart scripts
-        path = with pkgs; [ bash coreutils git python3 jq curl systemd ];
+        path = with pkgs; [bash coreutils git python3 jq curl systemd];
         serviceConfig =
           # Inherit all hardening directives from commonServiceConfig:
           #   ProtectHome="read-only"   — allows entering /home/hyperd/ (repo lives there)

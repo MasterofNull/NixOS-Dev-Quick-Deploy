@@ -33,10 +33,8 @@
 let
   cfg = config.mySystem;
   isAdreno = cfg.hardware.gpuVendor == "adreno";
-
   # Turnip is Mesa's Adreno Vulkan driver — part of main Mesa since 21.0.
-  # freedreno is the OpenGL driver (always part of Mesa).
-  hasTurnip = builtins.hasAttr "mesa" pkgs; # Turnip ships inside Mesa on NixOS
+  # freedreno is the OpenGL driver (always part of Mesa). # Turnip ships inside Mesa on NixOS
 in {
   config = lib.mkIf isAdreno {
     # ---- Mesa / Graphics stack ---------------------------------------------
