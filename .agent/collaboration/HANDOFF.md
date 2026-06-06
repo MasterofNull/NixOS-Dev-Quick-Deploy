@@ -1,3 +1,32 @@
+# HANDOFF MEMO — 2026-06-05 (Phase 124: EROFS sweep complete — all fixes deployed + verified)
+
+## Phase 124 — EROFS sweep final verification
+
+### Status
+COMPLETE. 1 commit: c44e6daf. Pending rebuild for apparmor-fix-agent + health-spider + auto-remediate fixes.
+
+### Work done
+| Item | Result |
+|------|--------|
+| All 4 previous EROFS commits confirmed deployed | REPO_ROOT + ATTENTION_QUEUE_DIR in all 3 service units ✓ |
+| Drop-daemon EROFS flood confirmed stopped | Watching live repo, 0 errors since 22:18:49 ✓ |
+| apparmor-fix-agent.py rc=1 EROFS fixed | Use REPO_ROOT env var (c44e6daf) |
+| health-spider REPO_ROOT for TELEMETRY_SPOOL/HANDOFF_MD | Use env var — silent EROFS eliminated (c44e6daf) |
+| auto-remediate aq-qa: command not found | Absolute path /run/current-system/sw/bin/aq-qa (c44e6daf) |
+| Journal scan: 0 EROFS/EPERM errors from new hash | Clean ✓ |
+| QA: 187/0, 0 journal errors | System clean ✓ |
+
+### Pending rebuild (c44e6daf)
+- apparmor-fix-agent.py REPO_ROOT env var fix
+- health-spider REPO_ROOT for telemetry/HANDOFF writes
+- auto-remediate absolute aq-qa path
+
+### Verified clean post-rebuild
+- drop-daemon: no EROFS since 22:18:49
+- health-spider: no zone [error] lines from push()
+- All services: 0 err-level journal entries
+
+---
 # HANDOFF MEMO — 2026-06-05 (Phase 123: post-rebuild sweep + EROFS attention-queue audit)
 
 ## Phase 123 — EROFS sweep + attention-queue fix
