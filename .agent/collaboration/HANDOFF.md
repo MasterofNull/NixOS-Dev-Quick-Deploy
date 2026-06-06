@@ -1,3 +1,28 @@
+# HANDOFF MEMO — 2026-06-06 (Phase 134: DNS resilience + nix fallback — pending nixos-rebuild)
+
+## Phase 134 — DNS resilience on bad-router wifi
+
+### Status
+COMMITTED. Pending `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`.
+
+### Problem
+Bad wifi router (10.147.197.1) returned NXDOMAIN for external hostnames. `systemd-resolved` fallbackDns only fires on timeout/SERVFAIL — not NXDOMAIN. nixos-rebuild + Anthropic API + VSCodium all broke.
+
+### Work done
+| Item | Result |
+|------|--------|
+| nix/modules/core/network.nix — NM dispatcher script | After wifi `up`/`dhcp4-change`, overrides link DNS to 1.1.1.1 via `resolvectl` + `~.` routing domain ✓ |
+| nix/modules/core/network.nix — `networking.nameservers` | Adds 1.1.1.1/8.8.8.8 as global fallback (SERVFAIL path) ✓ |
+| nix/modules/core/base.nix — `nix.settings.fallback=true` | Nix builds from source when binary cache unreachable ✓ |
+
+### Pending
+- `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` (also activates Phase 132 + 133)
+- Verify on bad wifi: `resolvectl query cache.nixos.org` succeeds
+
+### Why Gemini blocked (Phase 132)
+`validate_role_eligibility()` in `domain_router.py` — security-systems domain reviewer = local only. External API would send sensitive security content (AppArmor, auth configs) to third-party cloud.
+
+---
 # HANDOFF MEMO — 2026-06-06 (Phase 133: MCP agent-connectivity fix — pending hms/nixos-rebuild)
 
 ## Phase 133 — MCP agent-connectivity fix
