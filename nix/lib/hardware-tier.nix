@@ -32,7 +32,8 @@ Usage in base.nix:
 {lib}: {
   systemRamGb ? 4,
   hasDiscreteGpu ? false,
-  cpuArchitecture ? "x86_64",
+  # cpuArchitecture passed by callers but not used in tier computation — absorbed by ...
+  ...
 }: let
   # Base tier determined solely by RAM.
   ramTier =

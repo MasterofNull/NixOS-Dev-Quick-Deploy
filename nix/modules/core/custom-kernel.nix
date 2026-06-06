@@ -20,23 +20,6 @@
   hardeningCfg = cfg.hardening;
 
   # Kernel source fetching based on source type
-  kernelSource = {
-    "mainline" = {
-      owner = "torvalds";
-      repo = "linux";
-      branch = "master";
-    };
-    "stable" = {
-      owner = "gregkh";
-      repo = "linux";
-      branch = "linux-${customCfg.majorMinor}.y";
-    };
-    "longterm" = {
-      owner = "gregkh";
-      repo = "linux";
-      branch = "linux-${customCfg.majorMinor}.y";
-    };
-  };
 
   # Parse major.minor from version string
   versionParts = lib.splitString "." customCfg.version;

@@ -29,7 +29,7 @@ GPU Support:
   enableRocm ? false,
   enableCuda ? false,
   rocmGpuTargets ? [],
-}: final: prev: let
+}: _final: prev: let
   # Read the pin file
   pins = builtins.fromJSON (builtins.readFile pinFile);
 

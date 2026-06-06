@@ -29,7 +29,8 @@ Container export:
 */
 {
   lib,
-  pkgs ? null,
+  # pkgs passed by callers for future use; not currently needed
+  ...
 }: let
   # Load hardware profiles from JSON (portable config)
   profilesPath = ../../config/ai-stack-hardware-profiles.json;
@@ -162,7 +163,7 @@ in {
     # Substitute template variables
     substituteEnv = env:
       builtins.mapAttrs (
-        name: value:
+        _name: value:
           builtins.replaceStrings
           ["\${device_index:-0}" "\${device_index}" "\${icd_path}" "\${gfx_version}" "\${cpu_threads}" "\${state_dir}"]
           [
@@ -228,7 +229,7 @@ in {
   */
   getHardwareTier = {systemRamGb}: let
     tiers = profiles.hardware_tiers;
-    findTier = name: tier:
+    findTier = _name: tier:
       systemRamGb
       >= (builtins.elemAt tier.ram_range 0)
       && systemRamGb < (builtins.elemAt tier.ram_range 1);

@@ -10,7 +10,6 @@
   ...
 }: let
   cfg = config.services.nvd-sync;
-  aidbCfg = config.mySystem.mcpServers;
 
   syncScript = pkgs.writeShellScript "nvd-cve-sync" ''
     set -euo pipefail

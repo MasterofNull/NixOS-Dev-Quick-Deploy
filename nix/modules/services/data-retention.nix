@@ -185,7 +185,7 @@ in {
 
       # Inject minimal PATH so shell scripts can call python3 / date / find.
       # Systemd services run with an empty PATH — without this, python3 is not found.
-      path = with pkgs; [ python3 bash coreutils findutils ];
+      path = with pkgs; [python3 bash coreutils findutils];
 
       serviceConfig = {
         Type = "oneshot";

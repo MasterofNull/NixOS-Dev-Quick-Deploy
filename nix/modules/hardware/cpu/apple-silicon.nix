@@ -1,7 +1,6 @@
 {
   lib,
   config,
-  pkgs,
   ...
 }:
 # ---------------------------------------------------------------------------
@@ -39,7 +38,6 @@
 let
   cfg = config.mySystem;
   isApple = cfg.hardware.cpuVendor == "apple";
-  isMobile = cfg.hardware.isMobile;
 in {
   config = lib.mkIf isApple {
     # ---- CPU frequency scaling -----------------------------------------------

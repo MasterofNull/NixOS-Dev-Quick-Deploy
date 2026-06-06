@@ -15,7 +15,7 @@ Usage (in a NixOS module or flake):
   nixpkgs.overlays = lib.optional pkgs.stdenv.hostPlatform.isAarch64
     (import ../../nix/lib/overlays/llama-cpp-aarch64.nix);
 */
-final: prev: let
+_final: prev: let
   # Flags that must be removed before adding the new values.
   aarch64Patterns = ["GGML_NEON" "GGML_METAL" "GGML_OPENCL"];
   stripConflicts = flags:

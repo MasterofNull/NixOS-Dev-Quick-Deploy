@@ -24,16 +24,6 @@
     linux-hardening = "lore.kernel.org/linux-hardening";
     linux-mm = "lore.kernel.org/linux-mm";
   };
-
-  # Kernel subsystem to mailing list mapping
-  subsystemToList = {
-    drm = "dri-devel";
-    net = "netdev";
-    fs = "linux-fsdevel";
-    mm = "linux-mm";
-    security = "linux-security";
-    hardening = "linux-hardening";
-  };
 in rec {
   # Fetch a patch from a URL with validation
   fetchKernelPatch = {
@@ -188,9 +178,7 @@ in rec {
     version,
     fromVersion,
     sha256,
-  }: let
-    majorMinor = builtins.concatStringsSep "." (lib.take 2 (lib.splitString "." version));
-  in
+  }:
     fetchKernelPatch {
       name = "stable-${fromVersion}-to-${version}";
       url = "https://cdn.kernel.org/pub/linux/kernel/v${builtins.head (lib.splitString "." version)}.x/patch-${version}.xz";

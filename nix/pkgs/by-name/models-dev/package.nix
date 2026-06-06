@@ -2,7 +2,6 @@
   lib,
   stdenvNoCC,
   bun,
-  fetchgit,
   fetchFromGitHub,
   nix-update-script,
   writableTmpDirAsHomeHook,
@@ -64,7 +63,7 @@
     outputHashMode = "recursive";
   };
 in
-  stdenvNoCC.mkDerivation (finalAttrs: {
+  stdenvNoCC.mkDerivation (_finalAttrs: {
     inherit
       pname
       version
