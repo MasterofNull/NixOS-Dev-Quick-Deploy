@@ -8,6 +8,7 @@ generation, optimization, templates, adaptation, prediction, and execution.
 import asyncio
 import json
 import logging
+import os
 from typing import Dict, List, Optional, Any
 import aiohttp
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -38,12 +39,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 # Initialize components
+_data_dir = os.getenv("DASHBOARD_DATA_DIR", "/var/lib/nixos-system-dashboard")
 workflow_generator = WorkflowGenerator()
 workflow_optimizer = WorkflowOptimizer()
-template_manager = TemplateManager()
+template_manager = TemplateManager(storage_path=f"{_data_dir}/workflow-templates")
 workflow_adapter = WorkflowAdapter()
 success_predictor = SuccessPredictor()
-workflow_executor = WorkflowExecutor()
+workflow_executor = WorkflowExecutor(state_dir=f"{_data_dir}/workflow-state")
 workflow_store = WorkflowStore()
 
 # WebSocket connections for real-time log streaming
