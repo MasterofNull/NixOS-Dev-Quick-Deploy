@@ -1,14 +1,14 @@
 {
-  "current_objective": "Phase 128 complete. Training-ingest verified working (dataset=248). Max_tokens ceiling lowered 180→150 and applied universally for local profiles. Slice 93.14 (attention queue contention instrumentation) complete, 86/86 QA pass.",
-  "phase": "Phase 128 — timeout ceiling + contention instrumentation: COMPLETE",
+  "current_objective": "Phase 129-130 complete. All outstanding slices done. 87/87 QA pass.",
+  "phase": "Phase 130 — continuous-learning fix + RAG seeding: COMPLETE",
   "todo_snapshot": [
-    "DONE: ai-training-ingest ReadWritePaths fix verified working — +1 sample, dataset=248 (c97b0705)",
-    "DONE: QA 0.5.7 obsolete marker cleared — 86/86 pass",
-    "DONE: Local delegate max_tokens ceiling 180→150, applied universally for local profiles (0b6a564f)",
-    "DONE: Slice 93.14 contention instrumentation — operation, retry_count, elapsed_ms, queue_path fields (9623ae78)",
-    "PENDING: coordinator restart to activate 0b6a564f ceiling fix (module-level const; needs terminal sudo)",
-    "OPEN P3: continuous_learning extracts 0 patterns — event type mismatch (streaming body missing choices) — filed in issues-backlog"
+    "DONE: coordinator restart verified (10:31:53 PDT) — 0b6a564f ceiling fix active",
+    "DONE: Slice 93.13 — effectiveness scorecard auto-load in DOMContentLoaded/refreshAll (b3ee9301)",
+    "DONE: Slice 93.9 — doc-frontmatter always_run + --all flag; security-systems PRD title fixed (9c34b7e3)",
+    "DONE: P3 continuous_learning — agent_step_complete handler + SSE fallback for local_inference emit (8605d1fd)",
+    "DONE: RAG seeding — 49 records across error-solutions/skills-patterns/best-practices",
+    "DONE: issues-backlog P3 continuous_learning marked RESOLVED"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System clean, 86/86 QA pass, scorecard=pass. Key outstanding: (1) coordinator restart for 0b6a564f ceiling fix; (2) continuous_learning 0-patterns issue (P3, non-critical, RAG seeding stalled). PENDING-REBUILD item from issues-backlog (4 commits 2026-06-05 EROFS sweep) is NOW ACTIVE — rebuild completed. Drop-daemon: 0 EROFS in last 30min."
+  "resume_hint": "System clean. 87/87 QA pass. All Phase 129-130 work committed. Coordinator running with 0b6a564f ceiling (150 tok). Dashboard effectiveness card auto-loads. doc-frontmatter runs unconditionally. continuous_learning now handles agent_step_complete events — RAG seeding should resume. No open P1/P2 issues. Next session: verify continuous_learning is extracting patterns from live telemetry."
 }
