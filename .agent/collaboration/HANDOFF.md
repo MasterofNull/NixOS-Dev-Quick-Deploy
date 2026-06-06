@@ -1,3 +1,34 @@
+# HANDOFF MEMO — 2026-06-05 (Phase 123: post-rebuild sweep + EROFS attention-queue audit)
+
+## Phase 123 — EROFS sweep + attention-queue fix
+
+### Status
+COMPLETE. 1 commit: 1102f125. Pending nixos-rebuild for all 4 EROFS-fix commits.
+
+### Work done
+| Item | Result |
+|------|--------|
+| Confirmed 3c0b5ddc AppArmor k-fix active | AppArmor reloaded, 0 llama-cpp denials ✓ |
+| Confirmed 9421b3dd memory/facts fix active | QA 1.2.10 passes ✓ |
+| delegation_success_rate P3 self-resolved | 75% (12/16), aq-qa 0.8.1 pass ✓ |
+| Drop-daemon EROFS still active | 7e76b9fb not yet in deployed unit — needs rebuild |
+| Health-spider attention push() → zone abort | Fixed: all 4 push() calls wrapped try/except (1102f125) |
+| Drop-daemon + training-ingest ATTENTION_QUEUE_DIR missing | Added in mcp-servers.nix (1102f125) |
+| auto-remediate aq-qa PATH blind | Logged P3, not blocking |
+
+### Pending rebuild (4 commits)
+- c47e2e5b: health-spider ATTENTION_QUEUE_DIR
+- 28367d5c: training-ingest REPO_ROOT  
+- 7e76b9fb: drop-daemon REPO_ROOT (stops 16k EROFS/7d flood)
+- 1102f125: health-spider push() try/except + drop-daemon/training-ingest ATTENTION_QUEUE_DIR
+
+### Post-rebuild verification
+1. `journalctl -u ai-drop-daemon` — no EROFS errors
+2. `journalctl -u ai-health-spider` — no [zone] error lines from push()
+3. `journalctl -u ai-training-ingest` — successful run at 03:00
+4. QA 187/0 maintained
+
+---
 # HANDOFF MEMO — 2026-06-05 (Phase 122: system sweep post-rebuild)
 
 ## Phase 122 — Post-rebuild system sweep
