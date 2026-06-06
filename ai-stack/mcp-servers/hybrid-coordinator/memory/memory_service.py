@@ -81,8 +81,8 @@ async def handle_memory_facts_post(request: web.Request) -> web.Response:
                     "origin":     "commit_facts",
                 },
             )
-            # "skipped" (dedup) means content already in memory — count as stored
-            if result.get("status") in {"stored", "skipped"}:
+            # "skipped" (dedup) = already present; "queued" = fire-and-forget accepted
+            if result.get("status") in {"stored", "skipped", "queued"}:
                 stored += 1
         except Exception as _exc:
             logger.debug("memory_facts_store_skip err=%s", _exc)
