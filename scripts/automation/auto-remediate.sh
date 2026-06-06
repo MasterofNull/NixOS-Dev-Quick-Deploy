@@ -17,7 +17,9 @@ log() {
 log "Starting remediation pass."
 
 # 1. Run full health check, ignoring the remediation service itself in the failure report
-if aq-qa 0 | grep -v "ai-auto-remediate" | grep -E '✗|failed' > /dev/null; then
+# aq-qa not in service PATH; /run/current-system/sw/bin is the stable symlink.
+AQ_QA="${AQ_QA:-/run/current-system/sw/bin/aq-qa}"
+if "$AQ_QA" 0 | grep -v "ai-auto-remediate" | grep -E '✗|failed' > /dev/null; then
   log "Failures detected in aq-qa 0."
   # ... rest of remediation logic ...
 else
