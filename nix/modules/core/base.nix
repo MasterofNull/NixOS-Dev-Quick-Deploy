@@ -162,6 +162,8 @@ in {
       # root is trusted after a generation switch.
       trusted-users = ["root" "@wheel" cfg.primaryUser];
       allowed-users = ["@wheel" cfg.primaryUser];
+      # Build from source when binary cache is unreachable (DNS outage, network change).
+      fallback = lib.mkDefault true;
       substituters = lib.mkDefault cfg.deployment.nixBinaryCaches;
       # Phase 11.2.1 — audited cache keys (verified in-repo on 2026-02-26)
       # cache.nixos.org: official NixOS binary cache

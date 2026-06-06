@@ -1,4 +1,8 @@
-{lib, ...}:
+{
+  lib,
+  pkgs,
+  ...
+}:
 # ---------------------------------------------------------------------------
 # Core network module — DNS resolution, resolved, NetworkManager integration.
 #
@@ -39,6 +43,42 @@
   # Reduce Realtek roaming/power-save related disconnects on unstable APs.
   networking.networkmanager.wifi.powersave = lib.mkDefault false;
   networking.firewall.enable = lib.mkDefault true;
+
+  # Belt-and-suspenders: add reliable public DNS as global resolved.conf servers.
+  # These are tried when per-link DNS fails completely (timeout/SERVFAIL).
+  networking.nameservers = lib.mkDefault [
+    "1.1.1.1"
+    "1.0.0.1"
+    "8.8.8.8"
+    "8.8.4.4"
+  ];
+
+  # Override DHCP-provided DNS on wifi after NM pushes it to systemd-resolved.
+  #
+  # WHY: systemd-resolved's fallbackDns only fires on timeout/SERVFAIL, NOT on
+  # NXDOMAIN. A router that answers queries but returns wrong results for external
+  # hosts (NXDOMAIN for cache.nixos.org etc.) trips nix builds and API connections
+  # even though fallbackDns is configured. Running after NM's DNS push guarantees
+  # 1.1.1.1 handles all wifi queries.
+  networking.networkmanager.dispatcherScripts = lib.mkDefault [
+    {
+      source = pkgs.writeScript "10-wifi-reliable-dns" ''
+        #!/bin/sh
+        IFACE=$1
+        ACTION=$2
+        case "$ACTION" in
+          up|dhcp4-change)
+            if [ -d "/sys/class/net/$IFACE/wireless" ]; then
+              /run/current-system/sw/bin/resolvectl dns "$IFACE" \
+                1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4
+              /run/current-system/sw/bin/resolvectl domain "$IFACE" "~."
+            fi
+            ;;
+        esac
+      '';
+      type = "basic";
+    }
+  ];
 
   # Captive portal + internet connectivity detection.
   # NM checks this URI periodically; a 204 response means CONNECTIVITY_FULL,
