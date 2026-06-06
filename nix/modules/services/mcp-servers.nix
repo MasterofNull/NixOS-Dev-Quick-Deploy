@@ -1753,7 +1753,11 @@ in {
             ];
             Restart = "always";
             RestartSec = "10s";
-            Environment = [ "REPO_ROOT=${mcp.repoPath}" ];
+            Environment = [
+              "REPO_ROOT=${mcp.repoPath}"
+              # Phase 101 pattern: repoSource is Nix store (read-only); live path needed for writes.
+              "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
+            ];
           };
       };
 
