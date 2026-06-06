@@ -1800,6 +1800,9 @@ in {
               # REPO_ROOT required: script resolves paths from __file__ (Nix store, read-only)
               # Without this, .agents/drops/.lock → EROFS on every cycle.
               "REPO_ROOT=${mcp.repoPath}"
+              # ATTENTION_QUEUE_DIR: attention_queue.py resolves from __file__ (Nix store)
+              # without this env var → _ensure_dirs() mkdir on Nix store → EROFS.
+              "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
             ];
           };
       };
@@ -1830,6 +1833,9 @@ in {
               "FINE_TUNING_DATASET=/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
               # REPO_ROOT needed so _REPO_ROOT resolves to live checkout (not read-only Nix store)
               "REPO_ROOT=${mcp.repoPath}"
+              # ATTENTION_QUEUE_DIR: attention_queue.py resolves from __file__ (Nix store)
+              # without this, _push_review_alerts() → _ensure_dirs() → EROFS.
+              "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
             ];
           };
       };
