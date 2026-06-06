@@ -6586,6 +6586,7 @@ async function refreshAll() {
   // Dependents
   loadInferenceSlots();
   loadAIDB();
+  loadObservability();
   loadLens(activeLens);
 }
 
@@ -6613,12 +6614,13 @@ document.addEventListener("DOMContentLoaded", () => {
     loadInferenceSlots();
     loadAIDB();
   });
-  // Deferred: DB metrics + slow OSI health + audit
+  // Deferred: DB metrics + slow OSI health + audit + observability panels
   setTimeout(() => {
     loadDatabase();
     loadOSI();
     loadRemediations();
     loadAuditLog();
+    loadObservability();
   }, 400);
   // Periodic refresh
   setInterval(loadKPIs, 30_000);

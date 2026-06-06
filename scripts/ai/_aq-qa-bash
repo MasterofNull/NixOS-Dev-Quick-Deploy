@@ -1341,6 +1341,17 @@ PY
   else
     _fail 1 "93.14" "attention_queue contention schema" "event missing required fields or has wrong values"
   fi
+
+  # 93.13 — Effectiveness scorecard API endpoint returns overall_status (Slice 93.13)
+  if _should_run 1; then
+    local eff_body eff_status
+    eff_body=$(curl -sf --max-time 5 "http://localhost:${DASHBOARD_PORT:-8889}/api/aistack/effectiveness/scorecard" 2>/dev/null || true)
+    if [[ -n "$eff_body" ]] && python3 -c "import sys,json; d=json.loads(sys.stdin.read()); sys.exit(0 if 'overall_status' in d.get('effectiveness_scorecard',{}) or 'overall_status' in d else 1)" <<< "$eff_body" 2>/dev/null; then
+      _pass 1 "93.13" "effectiveness scorecard endpoint returns overall_status"
+    else
+      _fail 1 "93.13" "effectiveness scorecard endpoint returns overall_status" "endpoint unavailable or missing overall_status field"
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------
