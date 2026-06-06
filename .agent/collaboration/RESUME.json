@@ -1,17 +1,18 @@
 {
-  "current_objective": "Phase 122 complete. System sweep post-rebuild. 3 fixes committed. Pending nixos-rebuild for coordinator and AppArmor fixes.",
-  "phase": "Phase 122 — Post-rebuild system sweep: COMPLETE",
+  "current_objective": "Phase 123 complete. EROFS/attention-queue sweep done. 1 commit pending rebuild. 4 EROFS-fix commits total need nixos-rebuild to activate.",
+  "phase": "Phase 123 — EROFS attention-queue sweep: COMPLETE",
   "todo_snapshot": [
-    "DONE: Dashboard workflows PermissionError fixed (DASHBOARD_DATA_DIR paths, 724a0072)",
-    "DONE: memory/facts POST stored=0 fixed (queued status, 9421b3dd — pending rebuild)",
-    "DONE: AppArmor llama-cpp rw→rwk for mesa_shader_cache locking (3c0b5ddc — pending rebuild)",
-    "DONE: VSCodium stale AI marker cleared (geminicodeassist-2.81.0)",
-    "DONE: Editor state budget restored to 5/5 healthy",
-    "DONE: HANDOFF.md + RESUME.json updated",
-    "PENDING-REBUILD: coordinator memory_service.py fix (QA 1.2.10)",
-    "PENDING-REBUILD: AppArmor llama-cpp file_lock fix",
-    "OPEN P3: completion_reliability — still aging out, expect pass next session"
+    "DONE: Confirmed AppArmor k-fix + memory/facts fix deployed in current build",
+    "DONE: delegation_success_rate P3 self-resolved (75% pass)",
+    "DONE: health-spider push() calls wrapped try/except (1102f125)",
+    "DONE: drop-daemon + training-ingest ATTENTION_QUEUE_DIR added to mcp-servers.nix (1102f125)",
+    "DONE: auto-remediate aq-qa PATH issue logged P3",
+    "DONE: QA 187/0 confirmed",
+    "PENDING-REBUILD: c47e2e5b (health-spider ATTENTION_QUEUE_DIR)",
+    "PENDING-REBUILD: 28367d5c (training-ingest REPO_ROOT)",
+    "PENDING-REBUILD: 7e76b9fb (drop-daemon REPO_ROOT — stops 16k EROFS/7d)",
+    "PENDING-REBUILD: 1102f125 (health-spider push() + drop-daemon/training-ingest ATTENTION_QUEUE_DIR)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System sweep complete. QA 185/2 (0.8.1 xfail self-resolving, 1.2.10 fixed pending rebuild). Dashboard workflows crash fixed. memory/facts stored=0 bug fixed. AppArmor llama-cpp file_lock denial fixed. VSCodium stale extension marker cleaned. Next: nixos-rebuild switch to activate coordinator + AppArmor fixes."
+  "resume_hint": "System sweep complete. QA 187/0 clean. AppArmor k-fix + memory/facts fix confirmed live. 4 EROFS-fix commits (c47e2e5b, 28367d5c, 7e76b9fb, 1102f125) staged, need nixos-rebuild switch to activate. Drop-daemon still flooding EROFS at 2s interval until rebuilt. Next: nixos-rebuild switch, then verify drop-daemon EROFS stops."
 }
