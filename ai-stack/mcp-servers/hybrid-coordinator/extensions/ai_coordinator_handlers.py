@@ -2205,7 +2205,12 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         # these events were never emitted. Emit here with plain-text task + response
         # so training_ingest can extract (query→response) pairs for fine-tuning.
         _li_local_profiles = {"default", "continue-local", "embedded-assist", "local-tool-calling"}
+        # _extract_delegated_response_text works on the _parse_sse_response_body synthetic dict.
+        # Fallback: parse response.text directly in case body is an error stub (SSE parse failed).
         _li_response_text = (_extract_delegated_response_text(body) or "").strip()
+        if not _li_response_text:
+            _sse_body = _parse_sse_response_body(response.text)
+            _li_response_text = (_extract_delegated_response_text(_sse_body) or "").strip() if _sse_body else ""
         if (
             response.status_code < 400
             and effective_profile in _li_local_profiles
