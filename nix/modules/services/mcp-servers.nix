@@ -1825,6 +1825,8 @@ in {
             Environment = [
               "TELEMETRY_DIR=/var/lib/ai-stack/hybrid/telemetry"
               "FINE_TUNING_DATASET=/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
+              # REPO_ROOT needed so _REPO_ROOT resolves to live checkout (not read-only Nix store)
+              "REPO_ROOT=${mcp.repoPath}"
             ];
           };
       };
