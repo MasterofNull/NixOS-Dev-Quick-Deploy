@@ -1,3 +1,6 @@
+[PENDING-REBUILD 2026-06-06] local-coding — switchboard local-coding profile needs nixos-rebuild to deploy — QA 132.1 FAILs until rebuild. Profile defined in switchboard.nix. Also deploys embedded-assist pre-context injection (dispatch.py) and code validation. Run `nixos-rebuild switch --flake .#hyperd-ai-dev` to activate.
+  Severity: low (new feature, no regression)
+  Files: nix/modules/services/switchboard.nix, scripts/ai/lib/dispatch.py
 [RESOLVED 2026-06-03] ci — L5/L6 cognitive intelligence regression test fails on any memory_broker.py change — pytest not in Nix Python env
   Severity: medium (blocks commits that touch memory_broker.py or intent_classifier.py)
   Action: Added require_tool=pytest to cognitive-intelligence-regressions check in validation-check-registry.json. Check now SKIPs (not FAILs) when pytest absent. Long-term: add pytest to Nix Python env package set.
@@ -68,7 +71,9 @@
   File: ai-stack/local-agents/agent_executor.py ~line 140
   Test: scripts/testing/test-agent-executor-reviewer-id.py
 
-[OPEN] role-enforcement — domain-role eligibility not validated at task dispatch — DOMAIN-ROLE-MATRIX.md defines which agents may fill which roles per domain, but no enforcement exists at dispatch. Cross-domain mis-routing (e.g., Gemini as security reviewer for its own security implementation) is doc-only blocked.
+[RESOLVED 2026-06-06] role-enforcement — domain-role eligibility not validated at task dispatch — DOMAIN-ROLE-MATRIX.md defines which agents may fill which roles per domain, but no enforcement exists at dispatch. Cross-domain mis-routing (e.g., Gemini as security reviewer for its own security implementation) is doc-only blocked.
+  Action: Phase 132 — added _DOMAIN_ROLE_RESTRICTIONS table + validate_role_eligibility() to core/domain_router.py. Enforcement injected into handle_ai_coordinator_delegate() after profile selection. Security domain: Gemini blocked as reviewer, redirected to local fallback. 8/8 unit tests pass.
+  Files: core/domain_router.py, extensions/ai_coordinator_handlers.py, tests/test_domain_role_enforcement.py
   Severity: low (policy gap, not immediate production risk)
   Action: Long-term: pass domain_shell in TaskConfig and validate against DOMAIN-ROLE-MATRIX at dispatch. Immediate: document constraint in delegation prompts.
   File: .agent/DOMAIN-ROLE-MATRIX.md (new), ai-stack/mcp-servers/coordinator/agent_executor.py

@@ -413,6 +413,131 @@ def _service_ok(url: str, name: str) -> bool:
         return False
 
 
+# ── embedded-assist pre-context ──────────────────────────────────────────────
+
+def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float = 8.0) -> str:
+    """Query embedded-assist for relevant skill/pattern context before main inference.
+
+    Makes a compact call to the switchboard with the embedded-assist profile.
+    Returns a formatted context block, or "" on any failure (never blocks main task).
+
+    Called automatically when mode="direct" to inject coding pattern context.
+    Short timeout (8s) — if the model is busy, we skip and proceed without.
+    """
+    if not switchboard_url:
+        return ""
+    # Compact query — 50-token budget, expect a 1-3 bullet answer.
+    query = (
+        f"Identify 2 critical coding rules or recent error patterns most relevant to this task "
+        f"(be concise, ≤80 words total):\n{prompt[:200]}"
+    )
+    payload = {
+        "messages": [{"role": "user", "content": query}],
+        "max_tokens": 120,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "frequency_penalty": 0.0,
+    }
+    try:
+        req = urllib.request.Request(
+            f"{switchboard_url}/v1/chat/completions",
+            data=json.dumps(payload).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "X-AI-Profile": "embedded-assist",
+                "X-AI-Route": "local",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read())
+        text = (body.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+        if not text:
+            return ""
+        return f"[embedded-assist context]\n{text}\n[/embedded-assist context]\n\n"
+    except Exception:
+        return ""
+
+
+# ── code validation ───────────────────────────────────────────────────────────
+
+def _validate_code_blocks(result_text: str) -> str:
+    """Extract and syntax-validate Python and Bash code blocks from result.
+
+    Returns a compact validation report appended to the output, or "".
+    Uses py_compile for Python blocks and bash -n for Bash blocks.
+    """
+    import re, tempfile
+    lines = result_text.splitlines()
+    blocks: list[tuple[str, str]] = []
+    in_block = False
+    lang = ""
+    buf: list[str] = []
+
+    for line in lines:
+        if not in_block:
+            m = re.match(r"^```(\w+)", line)
+            if m:
+                lang = m.group(1).lower()
+                in_block = True
+                buf = []
+        else:
+            if line.startswith("```"):
+                if buf:
+                    blocks.append((lang, "\n".join(buf)))
+                in_block = False
+                buf = []
+                lang = ""
+            else:
+                buf.append(line)
+
+    if not blocks:
+        return ""
+
+    reports: list[str] = []
+    for lang, code in blocks:
+        if lang in ("python", "py"):
+            with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+                f.write(code)
+                fname = f.name
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "py_compile", fname],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode != 0:
+                    err = (result.stderr or "unknown error").strip()[:200]
+                    reports.append(f"Python syntax ERROR: {err}")
+                else:
+                    reports.append("Python syntax: OK")
+            except Exception as e:
+                reports.append(f"Python syntax check failed: {e}")
+            finally:
+                Path(fname).unlink(missing_ok=True)
+        elif lang in ("bash", "sh", "shell"):
+            with tempfile.NamedTemporaryFile(suffix=".sh", mode="w", delete=False) as f:
+                f.write(code)
+                fname = f.name
+            try:
+                result = subprocess.run(
+                    ["bash", "-n", fname],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode != 0:
+                    err = (result.stderr or "unknown error").strip()[:200]
+                    reports.append(f"Bash syntax ERROR: {err}")
+                else:
+                    reports.append("Bash syntax: OK")
+            except Exception as e:
+                reports.append(f"Bash syntax check failed: {e}")
+            finally:
+                Path(fname).unlink(missing_ok=True)
+
+    if not reports:
+        return ""
+    return "\n\n---\n[code-validation]\n" + "\n".join(reports) + "\n[/code-validation]"
+
+
 # ── dispatch core ─────────────────────────────────────────────────────────────
 
 def dispatch_task(
@@ -462,6 +587,15 @@ def dispatch_task(
         registry.record_completion(task_id, "failed")
         return False
 
+    # Embedded-assist pre-context for direct/coding tasks.
+    # Makes a short embedded-assist call to inject relevant skill/pattern context
+    # before the main inference. Skips gracefully if switchboard is unavailable.
+    swb_url = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+    if config.mode == "direct":
+        ea_context = _embedded_assist_prefetch(prompt, swb_url)
+        if ea_context:
+            prompt = ea_context + prompt
+
     # Select and run runner
     runners = {
         "direct": DirectRunner(),
@@ -471,6 +605,16 @@ def dispatch_task(
     }
     runner = runners[config.mode]
     success = runner.run(config, prompt, output_file)
+
+    # Code validation: append syntax check report to output for direct-mode tasks.
+    if success and config.mode == "direct" and output_file.exists():
+        try:
+            result_text = output_file.read_text()
+            validation = _validate_code_blocks(result_text)
+            if validation:
+                output_file.write_text(result_text + validation)
+        except Exception:
+            pass
 
     # Update token usage sidecar if present
     usage_file = Path(str(output_file) + ".usage.json")

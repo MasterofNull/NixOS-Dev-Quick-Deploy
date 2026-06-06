@@ -241,9 +241,59 @@ def route(
     }
 
 
+# ---------------------------------------------------------------------------
+# Domain-role eligibility restrictions
+# Source: docs/architecture/role-matrix.md + DOMAIN-ROLE-MATRIX.md
+# Each entry: domain → role → set of blocked switchboard profile substrings.
+# A profile matches if any blocked substring is contained in the profile name.
+# ---------------------------------------------------------------------------
+
+_DOMAIN_ROLE_RESTRICTIONS: Dict[str, Dict[str, Dict]] = {
+    "security": {
+        "reviewer": {
+            "blocked_profiles": {"gemini"},
+            "reason": (
+                "Security review must be Claude-only per DOMAIN-ROLE-MATRIX.md. "
+                "Gemini may not review security implementations it produced."
+            ),
+        },
+    },
+}
+
+
+def validate_role_eligibility(
+    domain: str,
+    role: str,
+    selected_profile: str,
+) -> Tuple[bool, str]:
+    """Check whether selected_profile is eligible to fill role in domain.
+
+    Returns (is_eligible, reason).  When is_eligible is False, caller should
+    redirect to a local/Claude profile and attach the reason to the routing
+    rationale.
+    """
+    if not domain or not role or not selected_profile:
+        return True, ""
+
+    restrictions = _DOMAIN_ROLE_RESTRICTIONS.get(domain, {}).get(role)
+    if not restrictions:
+        return True, ""
+
+    profile_lower = selected_profile.lower()
+    for blocked in restrictions["blocked_profiles"]:
+        if blocked.lower() in profile_lower:
+            return False, restrictions["reason"]
+
+    return True, ""
+
+
 def describe() -> Dict[str, Any]:
     """Summary for API/MCP responses."""
     return {
         "domains": list(_TEAM_COMPOSITIONS.keys()),
         "teams": {d: asdict(t) for d, t in _TEAM_COMPOSITIONS.items()},
+        "role_restrictions": {
+            domain: list(roles.keys())
+            for domain, roles in _DOMAIN_ROLE_RESTRICTIONS.items()
+        },
     }

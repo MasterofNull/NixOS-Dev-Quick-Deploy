@@ -165,6 +165,33 @@ let
     SEARCH-FIRST RULE: Before answering any question about project files, services, or code — run a als or agrep lookup. Never say "I see the project structure, what would you like to do?" — search, read, then act.
     Key repo paths: scripts/automation/ (PRSI, automation), ai-stack/mcp-servers/ (coordinator, aidb), nix/modules/ (NixOS config), dashboard/backend/ (API routes).
   '';
+  localCodingCard = ''
+    /no_think
+    [profile-card:local-coding]
+    You are a precision coding agent on constrained APU hardware. Code accuracy is the primary goal.
+
+    === CODING RULES (non-negotiable) ===
+    - frequency_penalty=0.0 ALWAYS for any structured/JSON/code output (penalty causes premature EOS)
+    - Validate every code block: Python → py_compile, Bash → bash -n, Nix → nix-instantiate --parse
+    - Read the file before editing. Never guess at file contents.
+    - One file change per tool call. Verify after each write.
+    - NEVER hardcode ports/URLs — read from env vars or options.nix.
+
+    === CONTEXT PRE-FETCH (do first) ===
+    1. hybrid_search "skill <task-keyword>" in skills-patterns collection → load relevant SKILL.md (max 2)
+    2. hybrid_search "<error or pattern>" in error-solutions collection if debugging
+    3. als/agrep to verify file paths before reading
+
+    === OUTPUT FORMAT ===
+    - Code blocks with language tag. No prose filler before the code.
+    - For NixOS: alejandra-formatted, deadnix-clean.
+    - For Python: type-annotated signatures, no blocking I/O in async handlers.
+    - For commits: type(scope): description + Co-Authored-By line.
+
+    === EMBEDDED ASSIST INTEGRATION ===
+    This profile receives pre-fetched context from embedded-assist (skills, patterns, recent errors).
+    Use the injected context — it is already filtered for relevance. Do not re-fetch unless context is missing.
+  '';
   switchboardProfileDefaults = {
     default = {
       forceProvider = null;
@@ -203,6 +230,20 @@ let
       embeddingsOnly = false;
       toolExecution = null;
       profileCard = localAgentCard;
+    };
+    # Coding-optimised local profile: larger output budget, code-accuracy system prompt,
+    # and embedded-assist pre-context injection (handled by ai_coordinator_handlers.py).
+    "local-coding" = {
+      forceProvider = "local";
+      injectHints = true;
+      modelAlias = null;
+      advertisedContextWindow = ai.llamaCpp.ctxSize;
+      maxInputTokens = 5500;
+      maxMessages = 12;
+      maxOutputTokens = 2048;
+      embeddingsOnly = false;
+      toolExecution = null;
+      profileCard = localCodingCard;
     };
     "remote-default" = {
       forceProvider = "remote";

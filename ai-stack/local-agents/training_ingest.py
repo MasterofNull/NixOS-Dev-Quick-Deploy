@@ -426,13 +426,22 @@ def generate_prompt_extensions(
     import hashlib
 
     existing: Dict[str, Any] = {}
-    if extensions_path.exists():
+    # Try YAML path first, then JSON sibling — handles runtime without pyyaml.
+    _candidates = [extensions_path, extensions_path.with_suffix(".json")]
+    for _cand in _candidates:
+        if not _cand.exists():
+            continue
         try:
-            import yaml as _yaml
-            raw = _yaml.safe_load(extensions_path.read_text()) or {}
+            if _cand.suffix == ".json":
+                import json as _json
+                raw = _json.loads(_cand.read_text()) or {}
+            else:
+                import yaml as _yaml
+                raw = _yaml.safe_load(_cand.read_text()) or {}
             existing = raw if isinstance(raw, dict) else {}
+            break  # use first readable file
         except Exception:
-            pass  # start fresh if file is corrupt
+            pass  # try next candidate or start fresh
 
     rules: List[Dict] = existing.get("rules", [])
     existing_patterns = {r.get("pattern", "") for r in rules}
