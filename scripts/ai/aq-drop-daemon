@@ -25,7 +25,10 @@ from pathlib import Path
 # ── path resolution ───────────────────────────────────────────────────────────
 _HERE = Path(__file__).resolve().parent        # scripts/ai/
 _LIB = _HERE / "lib"
-_REPO_ROOT = _HERE.parent.parent               # repo root
+# Use REPO_ROOT env var when set (systemd unit, Nix store script) — __file__ resolves
+# to the read-only Nix store copy which causes EROFS on any write attempt.
+import os as _os
+_REPO_ROOT = Path(_os.environ["REPO_ROOT"]) if "REPO_ROOT" in _os.environ else _HERE.parent.parent
 for _p in [str(_LIB), str(_REPO_ROOT)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
