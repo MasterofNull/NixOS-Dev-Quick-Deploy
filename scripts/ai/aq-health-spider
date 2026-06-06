@@ -47,7 +47,9 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("health-spider")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Use REPO_ROOT env var when set (systemd unit injects live path); __file__ resolves
+# to read-only Nix store copy — writes to TELEMETRY_SPOOL/HANDOFF_MD would EROFS.
+REPO_ROOT = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else Path(__file__).resolve().parent.parent.parent
 TELEMETRY_SPOOL = REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
 HANDOFF_MD      = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
 COORDINATOR_URL = os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003")

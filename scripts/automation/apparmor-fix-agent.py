@@ -44,7 +44,9 @@ except ImportError:
     def push(*args, **kwargs): return None
     def resolve(*args, **kwargs): return False
 
-REPO_ROOT        = Path(__file__).resolve().parent.parent.parent
+# Use REPO_ROOT env var when set (inherited from health-spider systemd env); __file__
+# resolves to read-only Nix store when spawned from the health-spider service.
+REPO_ROOT        = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else Path(__file__).resolve().parent.parent.parent
 NIX_FILE         = REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
 HANDOFF_MD       = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
 HYBRID_EVENTS    = Path("/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl")
