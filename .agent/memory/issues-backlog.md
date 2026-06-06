@@ -1,6 +1,6 @@
 [RESOLVED 2026-06-06] mcp/agent-connectivity — Claude/shared MCP config retained stale external-fetching server entries (`npx`, `nix run github:*`) and a placeholder GitHub token, causing startup-time MCP socket/API failures and noisy model-agent connection errors.
   Severity: high → resolved
-  Action: Replaced bootstrap defaults with local `hybrid-coordinator` bridge + `osint-tools`. HM activation now repairs legacy configs (backup + rewrite). Added IDE smoke coverage for unsafe MCP entries. Requires nixos-rebuild (hms) to deploy activation script.
+  Action: Replaced bootstrap defaults with local `hybrid-coordinator` bridge + `osint-tools`. HM activation now repairs legacy configs (backup + rewrite). Repaired live `~/.mcp/config.json` and Claude settings. Added IDE smoke coverage for unsafe MCP entries. Validation: IDE adapter smoke 19 PASS / 0 FAIL; aq-qa phase 0 87 PASS / 0 FAIL / 3 SKIP. Requires home-manager switch to deploy activation script persistently.
   Files: nix/home/base.nix ~line 1835; scripts/testing/smoke-ide-adapter-compat.sh ~line 150; ai-stack/continue/config.json
 
 [PENDING-REBUILD 2026-06-06] local-coding — switchboard local-coding profile needs nixos-rebuild to deploy — QA 132.1 FAILs until rebuild. Profile defined in switchboard.nix. Also deploys embedded-assist pre-context injection (dispatch.py) and code validation. Run `nixos-rebuild switch --flake .#hyperd-ai-dev` to activate.
