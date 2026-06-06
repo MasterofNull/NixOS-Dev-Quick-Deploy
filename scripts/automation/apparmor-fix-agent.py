@@ -557,7 +557,14 @@ def main() -> int:
         + "\n"
     )
     lines.insert(deny_idx, insert_block)
-    NIX_FILE.write_text("".join(lines), encoding="utf-8")
+    try:
+        NIX_FILE.write_text("".join(lines), encoding="utf-8")
+    except OSError as e:
+        # Running as ai-hybrid (health-spider service user); mcp-servers.nix is owned
+        # hyperd:hyperd 644 — write will fail with EPERM. This is expected. The attention
+        # queue human_gate alert below carries the proposed rules for human application.
+        sys.stderr.write(f"[apparmor-fix-agent] warn: could not write {NIX_FILE}: {e}\n")
+        sys.stderr.write("[apparmor-fix-agent] Proceeding to attention queue for human review.\n")
 
     # --- Push to Attention Queue instead of direct commit ---
     denial_paths = [d["path"] for d in denials]
