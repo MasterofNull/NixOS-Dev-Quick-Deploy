@@ -3,9 +3,9 @@
   Action: Replaced bootstrap defaults with local `hybrid-coordinator` bridge + `osint-tools`. HM activation now repairs legacy configs (backup + rewrite). Repaired live `~/.mcp/config.json` and Claude settings. Added IDE smoke coverage for unsafe MCP entries. Validation: IDE adapter smoke 19 PASS / 0 FAIL; aq-qa phase 0 87 PASS / 0 FAIL / 3 SKIP. Requires home-manager switch to deploy activation script persistently.
   Files: nix/home/base.nix ~line 1835; scripts/testing/smoke-ide-adapter-compat.sh ~line 150; ai-stack/continue/config.json
 
-[PENDING-REBUILD 2026-06-06] local-coding — switchboard local-coding profile needs nixos-rebuild to deploy — QA 132.1 FAILs until rebuild. Profile defined in switchboard.nix. Also deploys embedded-assist pre-context injection (dispatch.py) and code validation. Run `nixos-rebuild switch --flake .#hyperd-ai-dev` to activate.
-  Severity: low (new feature, no regression)
-  Files: nix/modules/services/switchboard.nix, scripts/ai/lib/dispatch.py
+[RESOLVED 2026-06-06] local-coding — switchboard local-coding profile deployed. QA 132.1 PASS. Also active: embedded-assist pre-context injection, adaptive query (debug/coding/general), Nix code validation, local-coding routing for implementation archetypes, adaptive embedded-assist.
+  Severity: low → resolved
+  Files: nix/modules/services/switchboard.nix, scripts/ai/lib/dispatch.py, config/switchboard-profiles.yaml
 [RESOLVED 2026-06-03] ci — L5/L6 cognitive intelligence regression test fails on any memory_broker.py change — pytest not in Nix Python env
   Severity: medium (blocks commits that touch memory_broker.py or intent_classifier.py)
   Action: Added require_tool=pytest to cognitive-intelligence-regressions check in validation-check-registry.json. Check now SKIPs (not FAILs) when pytest absent. Long-term: add pytest to Nix Python env package set.
