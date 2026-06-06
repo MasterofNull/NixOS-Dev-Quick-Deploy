@@ -5388,6 +5388,81 @@ def _compute_delegate_rate(audit_entries: List[dict], now: datetime, window_s: i
     return round(ok / total, 3) if total > 0 else None
 
 
+def _compute_delegate_breakdown(audit_entries: List[dict], now: datetime, window_s: int) -> Dict[str, Any]:
+    """Classify ai_coordinator_delegate failures into distinct failure modes.
+
+    Failure categories:
+      infra_startup_500  — coordinator returned HTTP 500 with no delegation_failure_class set;
+                           characteristic of service restarts during nixos-rebuild. These are
+                           infrastructure transients, not model or provider failures.
+      provider_error     — delegation_failure_class is provider_request_error, OR upstream
+                           HTTP status 429/402/503 (quota exhausted / model unavailable).
+      timeout            — 504/timeout from local model (hardware-bound).
+      other_failure      — remaining errors (logic bugs, malformed responses, etc).
+
+    adjusted_rate excludes infra_startup_500 and provider_error from the denominator so the
+    scorecard reflects only failures actionable by the AI stack operators.
+    """
+    _TERMINAL = {"success", "error", "timeout", "failed"}
+    _PROVIDER_CLASSES = {"provider_request_error", "provider_unavailable", "quota_exhausted"}
+    cutoff_ts = now.timestamp() - window_s
+    total = ok = infra_500 = provider_err = timeout_n = other_fail = 0
+    for entry in audit_entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("tool_name", "") or "").strip().lower() != "ai_coordinator_delegate":
+            continue
+        ts_obj = _entry_ts_utc(entry)
+        if ts_obj is None or ts_obj.timestamp() < cutoff_ts:
+            continue
+        latency_ms = float(entry.get("latency_ms") or 0)
+        err_msg = str(entry.get("error_message") or "")
+        is_probe = (
+            (entry.get("outcome") == "error" and err_msg == "http_status_504" and latency_ms < 15000)
+            or err_msg.startswith("blocked_endpoint_pattern:")
+        )
+        if is_probe:
+            continue
+        outcome = str(entry.get("outcome") or "")
+        if outcome not in _TERMINAL:
+            continue
+        total += 1
+        if outcome == "success":
+            ok += 1
+            continue
+        meta = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        fc = str(meta.get("delegation_failure_class") or "").strip()
+        fcs = [str(c) for c in (meta.get("delegation_failure_classes") or [])]
+        http_up = int(meta.get("delegated_http_status") or 0)
+        http_stat = int(meta.get("http_status") or 0)
+        # provider_error: explicit failure class or provider-side HTTP codes
+        if fc in _PROVIDER_CLASSES or any(c in _PROVIDER_CLASSES for c in fcs) or http_up in {429, 402, 503}:
+            provider_err += 1
+        # infra_startup_500: coordinator 500 with no delegation metadata (died before handler ran)
+        elif http_stat == 500 and err_msg == "http_status_500" and not fc and not fcs and not meta.get("agent_pool_provider"):
+            infra_500 += 1
+        # timeout: hardware-bound local model timeout
+        elif "timeout" in err_msg or "504" in err_msg or outcome == "timeout":
+            timeout_n += 1
+        else:
+            other_fail += 1
+    excluded = infra_500 + provider_err
+    adjusted_total = total - excluded
+    adjusted_rate = round(ok / adjusted_total, 3) if adjusted_total > 0 else None
+    raw_rate = round(ok / total, 3) if total > 0 else None
+    return {
+        "total": total,
+        "ok": ok,
+        "raw_rate": raw_rate,
+        "adjusted_rate": adjusted_rate,
+        "infra_startup_500": infra_500,
+        "provider_error": provider_err,
+        "timeout": timeout_n,
+        "other_failure": other_fail,
+        "excluded_from_adjusted": excluded,
+    }
+
+
 def _compute_delegate_counts(audit_entries: List[dict], now: datetime, window_s: int = 86400) -> tuple:
     """Return (total, failures) for ai_coordinator_delegate calls in window.
 
@@ -6634,7 +6709,26 @@ def format_text(
     if _d24 is not None or _d7 is not None:
         _d24_str = f"{_d24 * 100:.1f}%" if _d24 is not None else "--"
         _d7_str = f"{_d7 * 100:.1f}%" if _d7 is not None else "--"
-        lines.append(f"  ai_coordinator_delegate: 24h: {_d24_str}  |  7d: {_d7_str}")
+        _b24 = recent_health.get("delegate_24h_breakdown") or {}
+        _b7 = recent_health.get("delegate_7d_breakdown") or {}
+        _adj24 = _b24.get("adjusted_rate")
+        _adj7 = _b7.get("adjusted_rate")
+        _adj24_str = f" (adj {_adj24*100:.1f}%)" if _adj24 is not None and _adj24 != _d24 else ""
+        _adj7_str = f" (adj {_adj7*100:.1f}%)" if _adj7 is not None and _adj7 != _d7 else ""
+        lines.append(f"  ai_coordinator_delegate: 24h: {_d24_str}{_adj24_str}  |  7d: {_d7_str}{_adj7_str}")
+        # Show failure mode breakdown when there are failures to classify
+        for label, bd in (("24h", _b24), ("7d", _b7)):
+            infra = int(bd.get("infra_startup_500") or 0)
+            prov = int(bd.get("provider_error") or 0)
+            tout = int(bd.get("timeout") or 0)
+            other = int(bd.get("other_failure") or 0)
+            if infra + prov + tout + other > 0:
+                parts = []
+                if infra: parts.append(f"infra-restart-500={infra}")
+                if prov: parts.append(f"provider-unavail={prov}")
+                if tout: parts.append(f"local-timeout={tout}")
+                if other: parts.append(f"other={other}")
+                lines.append(f"  Failure breakdown ({label}): " + ", ".join(parts))
     if recent_health.get("healthy"):
         lines.append("  No active slow or flaky tools in the recent window.")
     else:
@@ -7446,12 +7540,22 @@ def effectiveness_scorecard(
     }
 
     # ── completion_reliability ─────────────────────────────────────────────
-    cr_status = _scorecard_status(del_success_rate, 0.9, 0.7)
+    # Use adjusted_rate (excludes infra startup-500s and provider unavailability) when
+    # available so that nixos-rebuild restart transients don't penalise the scorecard.
+    # Raw rate is preserved for display alongside the adjusted figure.
+    _24h_breakdown = rh.get("delegate_24h_breakdown") or {}
+    _adj_rate = _24h_breakdown.get("adjusted_rate")
+    cr_rate = _adj_rate if _adj_rate is not None else del_success_rate
+    cr_status = _scorecard_status(cr_rate, 0.9, 0.7)
     completion_reliability = {
         "status": cr_status,
         "delegation_success_rate": del_success_rate,
+        "delegation_success_rate_adjusted": _adj_rate,
         "delegation_total": del_total,
         "delegation_failures": del_failures,
+        "infra_startup_500_excluded": _24h_breakdown.get("infra_startup_500", 0),
+        "provider_errors_excluded": _24h_breakdown.get("provider_error", 0),
+        "timeout_failures": _24h_breakdown.get("timeout", 0),
     }
 
     # ── operator_trust ─────────────────────────────────────────────────────
@@ -8029,6 +8133,9 @@ def main() -> None:
     # Phase 90.3 — attach 24h and 7d delegate rates to recent_health for side-by-side display
     recent_health["delegate_24h_rate"] = _compute_delegate_rate(audit_entries, now, window_s=86400)
     recent_health["delegate_7d_rate"] = _compute_delegate_rate(audit_entries, now, window_s=7 * 86400)
+    # Phase 126 — failure-mode breakdown: separates infra transients from real failures
+    recent_health["delegate_24h_breakdown"] = _compute_delegate_breakdown(audit_entries, now, window_s=86400)
+    recent_health["delegate_7d_breakdown"] = _compute_delegate_breakdown(audit_entries, now, window_s=7 * 86400)
     continue_editor = continue_editor_health()
     append_continue_editor_snapshot(continue_editor, timestamp=now)
     continue_editor_window_summary = continue_editor_windows(now=now, report_since=since_dt)
