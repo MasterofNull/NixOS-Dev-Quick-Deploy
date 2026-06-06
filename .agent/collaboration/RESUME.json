@@ -1,17 +1,17 @@
 {
-  "current_objective": "Phase 121 complete. All fixes committed. Pending nixos-rebuild for ralph-wiggum AIDB endpoint fixes.",
-  "phase": "Phase 121 — ralph-wiggum AIDB stale endpoint audit: COMPLETE",
+  "current_objective": "Phase 122 complete. System sweep post-rebuild. 3 fixes committed. Pending nixos-rebuild for coordinator and AppArmor fixes.",
+  "phase": "Phase 122 — Post-rebuild system sweep: COMPLETE",
   "todo_snapshot": [
-    "DONE: EFFECTIVENESS-CENTERED PRD all 14 slices complete (Phase 120)",
-    "DONE: 85/85 QA pass (was 83, added checks 0.7.5 + 0.7.5b)",
-    "DONE: AIDBClient /aidb/search→/vector/search, min_score param fix (bf7e75b1)",
-    "DONE: collection 'documents'→'solved_issues', variable shadowing fix",
-    "DONE: /aidb/interactions→/history/record, /aidb/health→/health (280ae6c9)",
-    "DONE: QA checks 0.7.5 ralph-wiggum health, 0.7.5b solved_issues collection (0f6ba427)",
-    "DONE: MEMORY.md + issues-backlog updated, RAG seeded",
-    "PENDING-REBUILD: ralph-wiggum AIDB fixes (bf7e75b1, 280ae6c9)",
-    "OPEN P3: completion_reliability=65.3% — 504s from local model timeouts (newest expires ~23h)"
+    "DONE: Dashboard workflows PermissionError fixed (DASHBOARD_DATA_DIR paths, 724a0072)",
+    "DONE: memory/facts POST stored=0 fixed (queued status, 9421b3dd — pending rebuild)",
+    "DONE: AppArmor llama-cpp rw→rwk for mesa_shader_cache locking (3c0b5ddc — pending rebuild)",
+    "DONE: VSCodium stale AI marker cleared (geminicodeassist-2.81.0)",
+    "DONE: Editor state budget restored to 5/5 healthy",
+    "DONE: HANDOFF.md + RESUME.json updated",
+    "PENDING-REBUILD: coordinator memory_service.py fix (QA 1.2.10)",
+    "PENDING-REBUILD: AppArmor llama-cpp file_lock fix",
+    "OPEN P3: completion_reliability — still aging out, expect pass next session"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System clean. 85/85 QA. Phase 121 fixes: 3 stale /aidb/* endpoints in AIDBClient corrected (ralph-wiggum was getting 404+circuit-breaker-trip on every task). Pending nixos-rebuild to activate. P3: completion_reliability fail from 504/500s aging out over ~24h. Next: nixos-rebuild switch, then verify ralph-wiggum no longer logs aidb_context_fetch_failed."
+  "resume_hint": "System sweep complete. QA 185/2 (0.8.1 xfail self-resolving, 1.2.10 fixed pending rebuild). Dashboard workflows crash fixed. memory/facts stored=0 bug fixed. AppArmor llama-cpp file_lock denial fixed. VSCodium stale extension marker cleaned. Next: nixos-rebuild switch to activate coordinator + AppArmor fixes."
 }
