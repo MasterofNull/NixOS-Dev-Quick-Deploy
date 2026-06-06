@@ -1,14 +1,12 @@
 {
-  "current_objective": "Phase 129-130 complete. All outstanding slices done. 87/87 QA pass.",
-  "phase": "Phase 130 — continuous-learning fix + RAG seeding: COMPLETE",
+  "current_objective": "Phase 131 complete. Nix static analysis sweep: alejandra formatting + deadnix cleanup committed.",
+  "phase": "Phase 131 — Nix static analysis cleanup: COMPLETE",
   "todo_snapshot": [
-    "DONE: coordinator restart verified (10:31:53 PDT) — 0b6a564f ceiling fix active",
-    "DONE: Slice 93.13 — effectiveness scorecard auto-load in DOMContentLoaded/refreshAll (b3ee9301)",
-    "DONE: Slice 93.9 — doc-frontmatter always_run + --all flag; security-systems PRD title fixed (9c34b7e3)",
-    "DONE: P3 continuous_learning — agent_step_complete handler + SSE fallback for local_inference emit (8605d1fd)",
-    "DONE: RAG seeding — 49 records across error-solutions/skills-patterns/best-practices",
-    "DONE: issues-backlog P3 continuous_learning marked RESOLVED"
+    "DONE: alejandra formatting — adreno.nix, network.nix, nixos/default.nix + all deadnix-edited files",
+    "DONE: deadnix cleanup — 23 nix files, removed unused let bindings and lambda args",
+    "DONE: doc metadata fix — IMPROVEMENT-DISCOVERY-REPORT-2026-06-06.md missing Status/Owner/Last Updated",
+    "DONE: commit 1d971f30 — 24 files, 435 ins / 144 del, all tier0 gates + focused-CI pass"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "System clean. 87/87 QA pass. All Phase 129-130 work committed. Coordinator running with 0b6a564f ceiling (150 tok). Dashboard effectiveness card auto-loads. doc-frontmatter runs unconditionally. continuous_learning now handles agent_step_complete events — RAG seeding should resume. No open P1/P2 issues. Next session: verify continuous_learning is extracting patterns from live telemetry."
+  "resume_hint": "System clean. 85/85 QA pass (gate reports). Phase 131 Nix sweep committed 1d971f30. No open P1/P2 issues. All nix/ files pass alejandra (excluding generated hardware-configuration.nix). deadnix clean for all non-generated files. Next session: verify nixos-rebuild still evaluates cleanly with removed unused bindings; continue any remaining backlog items."
 }
