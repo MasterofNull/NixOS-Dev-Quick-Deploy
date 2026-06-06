@@ -34,7 +34,9 @@ from typing import Any, Dict, List, Optional, Tuple
 # ── paths ─────────────────────────────────────────────────────────────────────
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _SCRIPT_DIR.parent.parent
+# Use REPO_ROOT env var (set by systemd unit) so writes go to the live repo,
+# not the Nix store copy which is read-only (OSError EROFS).
+_REPO_ROOT = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else _SCRIPT_DIR.parent.parent
 
 TELEMETRY_DIR = Path(os.getenv(
     "TELEMETRY_DIR",
