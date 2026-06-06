@@ -415,6 +415,18 @@ def _service_ok(url: str, name: str) -> bool:
 
 # ── embedded-assist pre-context ──────────────────────────────────────────────
 
+def _detect_code_lang(prompt: str) -> str:
+    """Return primary code language detected from prompt keywords, or '' for general."""
+    p = prompt[:400].lower()
+    if any(k in p for k in ("nix ", ".nix", "nixos", "flake", "pkgs.", "lib.", "mkmodule")):
+        return "nix"
+    if any(k in p for k in ("def ", "class ", "import ", "async def", ".py", "python")):
+        return "python"
+    if any(k in p for k in ("#!/bin/bash", "#!/usr/bin/env bash", ".sh", "systemd", "nixos-rebuild")):
+        return "bash"
+    return ""
+
+
 def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float = 8.0) -> str:
     """Query embedded-assist for relevant skill/pattern context before main inference.
 
@@ -426,10 +438,11 @@ def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float 
     """
     if not switchboard_url:
         return ""
-    # Compact query — 50-token budget, expect a 1-3 bullet answer.
+    lang = _detect_code_lang(prompt)
+    lang_hint = f" Focus on {lang.upper()} coding rules and patterns." if lang else ""
     query = (
-        f"Identify 2 critical coding rules or recent error patterns most relevant to this task "
-        f"(be concise, ≤80 words total):\n{prompt[:200]}"
+        f"Identify 2 critical coding rules or recent error patterns most relevant to this task.{lang_hint} "
+        f"Be concise (≤80 words total):\n{prompt[:200]}"
     )
     payload = {
         "messages": [{"role": "user", "content": query}],
@@ -530,6 +543,26 @@ def _validate_code_blocks(result_text: str) -> str:
                     reports.append("Bash syntax: OK")
             except Exception as e:
                 reports.append(f"Bash syntax check failed: {e}")
+            finally:
+                Path(fname).unlink(missing_ok=True)
+        elif lang == "nix":
+            with tempfile.NamedTemporaryFile(suffix=".nix", mode="w", delete=False) as f:
+                f.write(code)
+                fname = f.name
+            try:
+                result = subprocess.run(
+                    ["nix-instantiate", "--parse", fname],
+                    capture_output=True, text=True, timeout=8,
+                )
+                if result.returncode != 0:
+                    err = (result.stderr or "unknown error").strip()[:200]
+                    reports.append(f"Nix syntax ERROR: {err}")
+                else:
+                    reports.append("Nix syntax: OK")
+            except FileNotFoundError:
+                pass  # nix-instantiate not available, skip silently
+            except Exception as e:
+                reports.append(f"Nix syntax check failed: {e}")
             finally:
                 Path(fname).unlink(missing_ok=True)
 

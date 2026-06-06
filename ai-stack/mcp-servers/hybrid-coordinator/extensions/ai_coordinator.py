@@ -33,6 +33,7 @@ except ImportError:
 _ALLOWED_ROUTING_PROFILES = {
     "default",
     "local-tool-calling",
+    "local-coding",
     "embedded-assist",
     "remote-gemini",
     "remote-free",
@@ -155,6 +156,22 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
             note=(
                 "Local agent lane with subprocess spawning. Delegates to switchboard "
                 "for tool-augmented execution via llama.cpp."
+            ),
+            service_unit="ai-switchboard.service",
+            healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
+            now=now_ts,
+        ),
+        _runtime_record(
+            "local-coding",
+            name="Local Coding Agent",
+            profile="local-coding",
+            runtime_class="local-agent",
+            tags=["local", "coding", "code-accuracy", "llama.cpp", "implementation"],
+            status="ready",
+            note=(
+                "Code-accuracy-optimised local lane. frequency_penalty=0.0, "
+                "embedded-assist pre-context injection, code block validation. "
+                "Routed automatically for implementation archetypes."
             ),
             service_unit="ai-switchboard.service",
             healthcheck_url=f"{Config.SWITCHBOARD_URL.rstrip('/')}/health",
@@ -407,7 +424,7 @@ _STRICT_REPLY_ONLY_RE = re.compile(
 # 180 tok: at 1.0 tok/s floor → 180s; leaves 30s buffer before 210s timeout.
 _LOCAL_PROFILE_NAMES: frozenset = frozenset({
     "default", "continue-local", "embedded-assist", "local-tool-calling",
-    "local-agent", "embedding-local", "coordinator-internal",
+    "local-coding", "local-agent", "embedding-local", "coordinator-internal",
 })
 _LOCAL_MAX_TOKENS_HARD_CEILING = 150  # 210s delegate timeout ÷ ~1 tok/s floor = 210 max; 150 gives 60s headroom
 
@@ -661,6 +678,8 @@ def local_fallback_profile(
 
     if task_archetype in {"planning", "retrieval", "continuation", "general"}:
         return "embedded-assist"
+    if task_archetype == "implementation":
+        return "local-coding"
     if complexity in {"simple", "medium"}:
         return "embedded-assist"
     return "default"
