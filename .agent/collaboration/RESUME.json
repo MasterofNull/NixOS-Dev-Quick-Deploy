@@ -1,16 +1,14 @@
 {
-  "current_objective": "Phase 124 complete. EROFS sweep fully verified. System clean: QA 187/0, 0 journal errors, drop-daemon flood stopped. 1 commit pending rebuild (c44e6daf: fix-agent + health-spider + auto-remediate).",
-  "phase": "Phase 124 — EROFS sweep verification: COMPLETE",
+  "current_objective": "Phase 128 complete. Training-ingest verified working (dataset=248). Max_tokens ceiling lowered 180→150 and applied universally for local profiles. Slice 93.14 (attention queue contention instrumentation) complete, 86/86 QA pass.",
+  "phase": "Phase 128 — timeout ceiling + contention instrumentation: COMPLETE",
   "todo_snapshot": [
-    "DONE: All 4 previous EROFS commits confirmed deployed in service units",
-    "DONE: Drop-daemon EROFS flood confirmed stopped (watching live repo since 22:18:49)",
-    "DONE: apparmor-fix-agent EROFS rc=1 fixed via REPO_ROOT env var (c44e6daf)",
-    "DONE: health-spider REPO_ROOT for TELEMETRY_SPOOL/HANDOFF_MD (c44e6daf)",
-    "DONE: auto-remediate aq-qa absolute path fix (c44e6daf)",
-    "DONE: Journal scan: 0 EROFS from new hash, system clean",
-    "DONE: QA 187/0 confirmed",
-    "PENDING-REBUILD: c44e6daf (apparmor-fix-agent + health-spider + auto-remediate fixes)"
+    "DONE: ai-training-ingest ReadWritePaths fix verified working — +1 sample, dataset=248 (c97b0705)",
+    "DONE: QA 0.5.7 obsolete marker cleared — 86/86 pass",
+    "DONE: Local delegate max_tokens ceiling 180→150, applied universally for local profiles (0b6a564f)",
+    "DONE: Slice 93.14 contention instrumentation — operation, retry_count, elapsed_ms, queue_path fields (9623ae78)",
+    "PENDING: coordinator restart to activate 0b6a564f ceiling fix (module-level const; needs terminal sudo)",
+    "OPEN P3: continuous_learning extracts 0 patterns — event type mismatch (streaming body missing choices) — filed in issues-backlog"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "EROFS sweep complete and verified. QA 187/0, 0 journal errors. Drop-daemon flood stopped. All EROFS fixes live. Only c44e6daf pending next rebuild (apparmor-fix-agent REPO_ROOT, health-spider telemetry writes, auto-remediate aq-qa path). System is in clean state — no active blockers."
+  "resume_hint": "System clean, 86/86 QA pass, scorecard=pass. Key outstanding: (1) coordinator restart for 0b6a564f ceiling fix; (2) continuous_learning 0-patterns issue (P3, non-critical, RAG seeding stalled). PENDING-REBUILD item from issues-backlog (4 commits 2026-06-05 EROFS sweep) is NOW ACTIVE — rebuild completed. Drop-daemon: 0 EROFS in last 30min."
 }
