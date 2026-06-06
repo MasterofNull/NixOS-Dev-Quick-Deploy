@@ -37,6 +37,7 @@ from aiohttp import web
 
 # Match http_server.py path bootstrap so this module can import from
 # sibling capability/efficiency helpers when loaded under systemd.
+sys.path.insert(0, str(Path(__file__).parent.parent))          # hybrid-coordinator/ — for core.*
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "observability"))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "offloading"))
@@ -51,6 +52,12 @@ try:
 except ImportError:
     _are = None  # type: ignore[assignment]
     _AGENT_RUN_EVENTS_AVAILABLE = False
+
+try:
+    from core.domain_router import classify_domain as _classify_domain, validate_role_eligibility as _validate_role_eligibility
+    _DOMAIN_ROLE_ENFORCEMENT = True
+except ImportError:
+    _DOMAIN_ROLE_ENFORCEMENT = False
 
 from agent_pool_manager import RemoteAgent
 from config import Config
@@ -957,6 +964,35 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 routing_decision = dict(routing_decision)
                 routing_decision["recommended_profile"] = selected_profile
                 routing_decision["rationale"] = routing_decision.get("rationale", "") + " [local-fallback:remote-cached-unavailable]"
+
+        # Phase 132: Domain-role eligibility enforcement.
+        # If caller specifies a role (e.g., "reviewer") and the classified domain has
+        # restrictions on which profiles may fill that role, redirect to local fallback.
+        _req_role = str(data.get("role") or "").strip().lower()
+        if _DOMAIN_ROLE_ENFORCEMENT and _req_role:
+            _req_domain = str(data.get("domain") or "").strip().lower()
+            if not _req_domain:
+                _req_domain = _classify_domain(task)
+            _eligible, _restriction_reason = _validate_role_eligibility(
+                _req_domain, _req_role, selected_profile
+            )
+            if not _eligible:
+                _restricted_profile = _ai_coordinator_local_fallback_profile(
+                    task,
+                    tools_present=tools_present,
+                    requested_profile="",
+                )
+                logger.warning(
+                    "domain_role_enforcement: domain=%s role=%s profile=%s blocked — redirecting to %s. Reason: %s",
+                    _req_domain, _req_role, selected_profile, _restricted_profile, _restriction_reason,
+                )
+                selected_profile = _restricted_profile
+                routing_decision = dict(routing_decision)
+                routing_decision["recommended_profile"] = selected_profile
+                routing_decision["rationale"] = (
+                    f"{routing_decision.get('rationale', '')} "
+                    f"[domain-role-enforcement:domain={_req_domain},role={_req_role}]"
+                ).strip()
 
         selected_runtime_id = _ai_coordinator_default_runtime_id_for_profile(selected_profile)
         # Phase 8.11 — Propagate thinking mode recommendation unless caller overrides

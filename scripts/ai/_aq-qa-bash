@@ -1352,6 +1352,46 @@ PY
       _fail 1 "93.13" "effectiveness scorecard endpoint returns overall_status" "endpoint unavailable or missing overall_status field"
     fi
   fi
+
+  # 132.1 — local-coding switchboard profile exists with expected fields
+  if _should_run 1; then
+    local _swb_catalog
+    _swb_catalog=$(curl -sf --max-time 5 "http://localhost:${SWITCHBOARD_PORT:-8085}/v1/models" 2>/dev/null || true)
+    local _lc_ok=false
+    if [[ -n "$_swb_catalog" ]]; then
+      _lc_ok=$(python3 -c "
+import sys,json
+d=json.loads(sys.stdin.read())
+profs=d.get('profiles',{}) or {}
+lc=profs.get('local-coding',{}) or {}
+ok=lc.get('maxOutputTokens',0)>=2048 and lc.get('forceProvider','')=='local' and lc.get('injectHints',False)
+print('true' if ok else 'false')
+" <<< "$_swb_catalog" 2>/dev/null || echo "false")
+    fi
+    if [[ "$_lc_ok" == "true" ]]; then
+      _pass 1 "132.1" "switchboard local-coding profile exists (maxOutputTokens≥2048, forceProvider=local, injectHints=true)"
+    elif [[ -z "$_swb_catalog" ]]; then
+      _skip 1 "132.1" "switchboard local-coding profile" "switchboard unreachable"
+    else
+      _skip 1 "132.1" "switchboard local-coding profile" "profile pending nixos-rebuild (PENDING-REBUILD)"
+    fi
+  fi
+
+  # 132.2 — domain-role enforcement: validate_role_eligibility blocks gemini as security reviewer
+  if _should_run 1; then
+    python3 -c "
+import sys
+sys.path.insert(0, '${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator')
+from core.domain_router import validate_role_eligibility
+ok, reason = validate_role_eligibility('security', 'reviewer', 'gemini-orchestrator')
+sys.exit(0 if not ok else 1)
+" 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+      _pass 1 "132.2" "domain-role enforcement blocks gemini as security reviewer"
+    else
+      _fail 1 "132.2" "domain-role enforcement" "validate_role_eligibility not blocking gemini in security/reviewer"
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------
