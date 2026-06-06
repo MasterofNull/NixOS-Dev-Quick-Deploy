@@ -1628,7 +1628,8 @@ in {
 
             # --- Log and state directories (write) --------------------------
             /var/log/llama-cpp/** rw,
-            /var/lib/llama-cpp/** rw,
+            # rwk: mesa_shader_cache/*.tmp SQLite-style locking requires k (file_lock)
+            /var/lib/llama-cpp/** rwk,
             /run/llama-cpp/ rw,
             /run/llama-cpp/** rw,
 
