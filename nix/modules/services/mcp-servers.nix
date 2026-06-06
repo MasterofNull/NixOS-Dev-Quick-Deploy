@@ -1797,6 +1797,9 @@ in {
               "DROP_ALLOW_AGENT=false"
               "DROP_MAX_PER_CYCLE=3"
               "DROP_MAX_QUEUED=20"
+              # REPO_ROOT required: script resolves paths from __file__ (Nix store, read-only)
+              # Without this, .agents/drops/.lock → EROFS on every cycle.
+              "REPO_ROOT=${mcp.repoPath}"
             ];
           };
       };
