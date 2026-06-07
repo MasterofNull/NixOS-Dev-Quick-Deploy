@@ -68,17 +68,11 @@ FAILURES=$(
 log "Extracted failures:
 $FAILURES"
 
-# 4. Trigger PRSI remediation
-# Note: Uses Python interpreter directly since prsi-orchestrator wrapper is missing
+# 4. Trigger PRSI remediation.
+# Note: Uses Python interpreter directly since prsi-orchestrator wrapper is missing.
 if [[ -f "${REPO_ROOT}/scripts/automation/prsi-orchestrator.py" ]]; then
   log "Orchestrating remediation via PRSI..."
-  # Queue remediation action based on failure log
-  python3 "${REPO_ROOT}/scripts/automation/prsi-orchestrator.py" queue --type remediation --risk medium \
-    --summary "Auto-remediate aq-qa 0 failure" \
-    --details "$(printf '%s' "$FAILURES")"
-
-  # Trigger execution
-  python3 "${REPO_ROOT}/scripts/automation/prsi-orchestrator.py" execute --limit 1
+  python3 "${REPO_ROOT}/scripts/automation/prsi-orchestrator.py" cycle --since=1d --execute-limit=1
   log "Remediation triggered."
 else
   log "ERROR: prsi-orchestrator.py not found. Manual intervention required."

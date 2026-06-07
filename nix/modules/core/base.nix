@@ -239,10 +239,10 @@ in {
     systemd.tmpfiles.rules = lib.mkIf cfg.deployment.mutableSpaces.enable (
       (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserPaths)
       ++ (map (path: "d ${path} 0711 root root -") mutableSharedTraversePaths)
-      ++ (map (path: "d ${path} 0750 root root -") mutableRootProgramPaths)
-      ++ (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths)
       ++ (map (path: "z ${path} 0711 root root -") mutableSharedTraversePaths)
+      ++ (map (path: "d ${path} 0750 root root -") mutableRootProgramPaths)
       ++ (map (path: "z ${path} 0750 root root -") mutableRootProgramPaths)
+      ++ (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths)
       ++ (map (path: "z ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths)
     );
 

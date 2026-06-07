@@ -9,6 +9,9 @@ BASE = ROOT / "nix" / "modules" / "core" / "base.nix"
 SYNC = ROOT / "scripts" / "data" / "sync-aidb-library-catalog.sh"
 P14S = ROOT / "nix" / "modules" / "host-classes" / "p14s-amd-ai-workstation.nix"
 MONITORING = ROOT / "nix" / "modules" / "services" / "monitoring.nix"
+MCP_SERVERS = ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
+AUTO_REMEDIATE = ROOT / "scripts" / "automation" / "auto-remediate.sh"
+HEALTH_SPIDER = ROOT / "scripts" / "ai" / "aq-health-spider"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -21,13 +24,16 @@ def main() -> int:
     sync_text = SYNC.read_text(encoding="utf-8")
     p14s_text = P14S.read_text(encoding="utf-8")
     monitoring_text = MONITORING.read_text(encoding="utf-8")
+    mcp_servers_text = MCP_SERVERS.read_text(encoding="utf-8")
+    auto_remediate_text = AUTO_REMEDIATE.read_text(encoding="utf-8")
+    health_spider_text = HEALTH_SPIDER.read_text(encoding="utf-8")
 
     assert_true(
-        'mutableUserServicePaths = lib.unique [ mutableOptimizerDir mutableLogDir ];' in base_text,
+        'mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];' in base_text,
         "base module should identify user-writable service workdirs separately from root-owned state roots",
     )
     assert_true(
-        'mutableSharedTraversePaths = [ mutableStateDir ];' in base_text,
+        'mutableSharedTraversePaths = [mutableStateDir];' in base_text,
         "base module should isolate shared traverse-only parents for user-run services",
     )
     assert_true(
@@ -41,6 +47,11 @@ def main() -> int:
     assert_true(
         'map (path: "z ${path} 0711 root root -") mutableSharedTraversePaths' in base_text,
         "tmpfiles should repair the shared traverse-only state root during activation",
+    )
+    assert_true(
+        base_text.index('map (path: "z ${path} 0711 root root -") mutableSharedTraversePaths')
+        < base_text.index('map (path: "d ${path} 0750 root root -") mutableRootProgramPaths'),
+        "tmpfiles should repair shared parent ownership before processing child paths",
     )
     assert_true(
         'map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserServicePaths' in base_text,
@@ -85,6 +96,42 @@ def main() -> int:
     assert_true(
         '${pkgs.coreutils}/bin/chmod 0644 "$tmp_file"' in monitoring_text,
         "AMD GPU exporter should make the emitted textfile world-readable for node_exporter",
+    )
+    assert_true(
+        'prsi-orchestrator.py" queue' not in auto_remediate_text,
+        "auto-remediate should not call removed PRSI queue subcommand",
+    )
+    assert_true(
+        'prsi-orchestrator.py" cycle --since=1d --execute-limit=1' in auto_remediate_text,
+        "auto-remediate should use the supported PRSI cycle command",
+    )
+    assert_true(
+        '"d ${dataDir} 0755 ${svcUser} ${aiGroup} -"' not in mcp_servers_text,
+        "post-deploy tmpfiles block should not duplicate the main /var/lib/ai-stack declaration",
+    )
+    assert_true(
+        '"d ${mutableStateDir} 0755 ${svcUser} ${aiGroup} -"' not in mcp_servers_text,
+        "post-deploy tmpfiles block should not fight base.nix ownership for mutable state root",
+    )
+    assert_true(
+        '"f ${dataDir}/hybrid/telemetry/latest-aq-report.json 0664 ${svcUser} ${aiGroup} - -"' in mcp_servers_text,
+        "latest aq-report artifact should be explicitly created with group-writable telemetry permissions",
+    )
+    assert_true(
+        '"z ${mutableLogDir}                       0770 root ${aiGroup} -"' in mcp_servers_text,
+        "AI log parent should be root-owned to avoid unsafe transitions to service-owned log files",
+    )
+    assert_true(
+        "/tmp/ r," in mcp_servers_text and "/tmp/*.db rwk," in mcp_servers_text,
+        "dashboard AppArmor profile should allow reading /tmp directory before opening tmp SQLite files",
+    )
+    assert_true(
+        'return await self._fix_apparmor(anomaly) != "covered"' in health_spider_text,
+        "health spider should not fail a cycle for AppArmor denials when rules are already covered",
+    )
+    assert_true(
+        "total += len(anomalies)" not in health_spider_text,
+        "health spider should count unresolved anomalies after remediation handling",
     )
 
     print("PASS: boot stability regressions are covered")

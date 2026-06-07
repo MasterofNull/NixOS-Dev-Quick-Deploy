@@ -334,12 +334,13 @@ class HealthSpider:
 
         return anomalies
 
-    async def handle_anomaly(self, anomaly: Dict[str, Any]) -> None:
+    async def handle_anomaly(self, anomaly: Dict[str, Any]) -> bool:
+        """Handle anomaly and return True when it should count as unresolved."""
         atype, zone = anomaly["type"], anomaly["zone"]
         _emit_event(f"health_spider_{atype}", anomaly)
 
         if atype == "apparmor_denial":
-            await self._fix_apparmor(anomaly)
+            return await self._fix_apparmor(anomaly) != "covered"
 
         elif atype == "service_down":
             svc = anomaly.get("service", zone)
@@ -375,6 +376,7 @@ class HealthSpider:
                     resolution,
                 )
             await self._queue_prsi(anomaly)
+            return True
 
         elif atype == "http_failure":
             # human_gate, severity=high (Service down from user perspective)
@@ -408,6 +410,7 @@ class HealthSpider:
                     f"HTTP check failed at {anomaly.get('url')} (service state: {anomaly.get('service_state', 'unknown')}).",
                     resolution,
                 )
+            return True
 
         elif atype == "dashboard_degraded":
             probe = anomaly.get("probe", "unknown")
@@ -442,15 +445,17 @@ class HealthSpider:
                     f"Probe {probe} failed: {reason}.",
                     resolution,
                 )
+            return True
+        return True
 
-    async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> None:
+    async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> str:
         """Invoke apparmor-fix-agent to commit rule fixes and notify via HANDOFF."""
         profile = anomaly["profile"]
         denials = anomaly["denials"]
         fix_agent = REPO_ROOT / "scripts" / "automation" / "apparmor-fix-agent.py"
         if not fix_agent.exists():
             logger.warning(f"apparmor-fix-agent.py not found: {fix_agent}")
-            return
+            return "missing_agent"
 
         denial_json = json.dumps({"profile": profile, "denials": denials}).encode()
         logger.info(f"[{anomaly['zone']}] Running apparmor-fix-agent ({len(denials)} denials)")
@@ -494,14 +499,19 @@ class HealthSpider:
                     "zone": anomaly["zone"], "profile": profile,
                     "rules_added": rules,
                 })
+                return "staged"
             elif proc.returncode == 2:
                 logger.info(f"[{anomaly['zone']}] AppArmor: all paths already covered")
+                return "covered"
             else:
                 logger.error(f"[{anomaly['zone']}] fix-agent failed (rc={proc.returncode}): {stderr.decode()[:300]}")
+                return "failed"
         except asyncio.TimeoutError:
             logger.error(f"[{anomaly['zone']}] apparmor-fix-agent timed out")
+            return "timeout"
         except Exception as e:
             logger.error(f"[{anomaly['zone']}] fix-agent error: {e}")
+            return "error"
 
     async def _queue_prsi(self, anomaly: Dict[str, Any]) -> None:
         orchestrator = REPO_ROOT / "scripts" / "automation" / "prsi-orchestrator.py"
@@ -523,8 +533,8 @@ class HealthSpider:
             try:
                 anomalies = await self.sample_zone(zone)
                 for a in anomalies:
-                    await self.handle_anomaly(a)
-                total += len(anomalies)
+                    if await self.handle_anomaly(a):
+                        total += 1
             except Exception as e:
                 logger.error(f"[{zone}] error: {e}")
         return total

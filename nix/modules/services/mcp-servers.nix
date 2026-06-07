@@ -671,8 +671,9 @@ in {
           "f /var/log/ai-stack/agent-commands.jsonl 0660 ${svcUser} ${aiGroup} - -"
           # base.nix creates mutableLogDir via its mutableUserServicePaths d-rule (0750 primaryUser users).
           # We must NOT add a second d-rule here (systemd-tmpfiles warns on duplicate paths).
-          # Use z-only to override ownership/mode so ai-stack services can traverse the directory.
-          "z ${mutableLogDir}                       0770 ${svcUser} ${aiGroup} -"
+          # Use z-only to override ownership/mode so service-owned child logs are not
+          # unsafe transitions under a user-owned parent.
+          "z ${mutableLogDir}                       0770 root ${aiGroup} -"
           "f ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "z ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
@@ -718,11 +719,11 @@ in {
       };
 
       # base.nix generates a z-rule for mutableLogDir (= mutableUserServicePaths)
-      # that resets the group to primaryGroup (= "users"), overriding the ai-stack
-      # group set above.  Using lib.mkAfter ensures this z-rule is appended AFTER
-      # base.nix's rule in the merged tmpfiles list so coordinator can traverse the dir.
+      # that resets owner/group to primaryUser:primaryGroup. Using lib.mkAfter ensures
+      # this z-rule is appended AFTER base.nix's rule so service-owned child logs are
+      # not unsafe transitions under a user-owned parent.
       systemd.tmpfiles.rules = lib.mkAfter [
-        "z ${mutableLogDir} 0770 ${svcUser} ${aiGroup} -"
+        "z ${mutableLogDir} 0770 root ${aiGroup} -"
       ];
     })
 
@@ -1694,14 +1695,11 @@ in {
       };
 
       systemd.tmpfiles.rules = [
-        "d ${dataDir} 0755 ${svcUser} ${aiGroup} -"
-        "d ${dataDir}/hybrid 0755 ${svcUser} ${aiGroup} -"
-        "d ${dataDir}/hybrid/telemetry 0755 ${svcUser} ${aiGroup} -"
-        "z ${dataDir}/hybrid/telemetry/latest-aq-report.json 0644 ${svcUser} ${aiGroup} -"
-        "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0644 ${svcUser} ${aiGroup} -"
-        # Phase 94.3 — focused-CI artifact: created on boot so hyperd can overwrite it
-        # after every tier0 gate run; populates validation_health in aq-report.
-        "f ${dataDir}/hybrid/telemetry/latest-focused-ci.json 0664 ${svcUser} ${aiGroup} -"
+        # Parent dirs and shared telemetry files are declared in the main state
+        # tmpfiles block above. Keep this block to extra post-deploy artifacts only
+        # so activation does not emit duplicate or unsafe ownership transitions.
+        "f ${dataDir}/hybrid/telemetry/latest-aq-report.json 0664 ${svcUser} ${aiGroup} - -"
+        "z ${dataDir}/hybrid/telemetry/latest-aq-report.json 0664 ${svcUser} ${aiGroup} -"
         # Phase 115.2 — system-state artifact: written by ai-hybrid (hybridUser owns telemetry dir);
         # readable by ai-stack group (0640) so dashboard + coordinator MCP tool can read it.
         "f ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
@@ -1713,9 +1711,6 @@ in {
         #   (in ai-stack group) can read it.
         "f ${dataDir}/hybrid/telemetry/attention-snapshot.json 0664 ${hybridUser} ${aiGroup} -"
         "f ${dataDir}/hybrid/telemetry/agent-resume.json 0640 ${svcUser} ${aiGroup} -"
-        "d ${mutableStateDir} 0755 ${svcUser} ${aiGroup} -"
-        "d ${mutableOptimizerDir} 0755 ${svcUser} ${aiGroup} -"
-        "d ${mutableLogDir} 0755 ${svcUser} ${aiGroup} -"
       ];
 
       # ── Autonomous Remediation Loop ───────────────────────────────────────
@@ -2567,6 +2562,7 @@ in {
             /var/lib/nixos-system-dashboard/** rwk,
             # /tmp SQLite databases: context.db fallback, workflow-store.db, and any
             # other SQLite temp files. w covers file creation; k required for file lock.
+            /tmp/ r,
             /tmp/*.db rwk,
             /tmp/*.db-* rwk,
 
