@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-06-03"
+    "last_updated": "2026-06-07"
   },
   "_comment": "Validation check registry \u2014 SSOT for all path-gated CI checks. Edit this file to add/modify behavioral checks. See scripts/governance/run-focused-ci-checks.sh for the runner.",
   "version": "1.0",
@@ -1062,6 +1062,22 @@
       "command": [
         "python3",
         "scripts/testing/test-agent-executor-reviewer-id.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "ragas-autoscoring-wiring",
+      "description": "Phase 137 \u2014 RAGAS auto-scoring (20% sample) wired into handle_query as fire-and-forget create_task before trace commit",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py",
+        "scripts/testing/test-ragas-autoscoring-wiring.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-ragas-autoscoring-wiring.py"
       ],
       "tier": "behavioral",
       "timeout_seconds": 30,

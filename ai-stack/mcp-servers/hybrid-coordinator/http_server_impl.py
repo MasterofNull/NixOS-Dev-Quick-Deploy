@@ -2319,6 +2319,32 @@ async def run_http_mode(port: int) -> None:
                 result["homeostasis"] = _stability["remediation"]
                 logger.info("homeostasis: applied remediation for intent=%s", _detected_intent)
 
+            # Phase 137 — RAGAS auto-scoring (fire-and-forget, 20% sample)
+            import random as _random_ragas
+            if result.get("response") and _random_ragas.random() < 0.20:
+                _q_ragas = query
+                _r_ragas = result["response"]
+                _i_ragas = _detected_intent
+                _m_ragas = str(result.get("backend", "")) or os.getenv("ACTIVE_LLM_MODEL", "")
+                _inner_ragas = result.get("results") or {}
+                _docs_ragas = (
+                    _inner_ragas.get("combined_results") or
+                    _inner_ragas.get("semantic_results") or
+                    _inner_ragas.get("keyword_results") or []
+                )
+                async def _ragas_score(q=_q_ragas, r=_r_ragas, intent=_i_ragas,
+                                       model=_m_ragas, docs=_docs_ragas):
+                    try:
+                        ar = await eval_runner.score_answer_relevance(q, r)
+                        cp = eval_runner.score_context_precision(docs)
+                        await eval_runner.record_query_metrics(
+                            query_text=q, intent=intent, llm_model=model,
+                            answer_relevance=ar, context_precision=cp, faithfulness=None,
+                        )
+                    except Exception as _ragas_exc:
+                        logger.debug("ragas_autoscore_failed: %s", _ragas_exc)
+                asyncio.create_task(_ragas_score())
+
             # Phase 54.5 — commit trace span
             asyncio.create_task(_trace._commit(
                 int((time.perf_counter() - _trace._start) * 1000)
