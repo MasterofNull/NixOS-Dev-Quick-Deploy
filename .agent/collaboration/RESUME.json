@@ -1,6 +1,6 @@
 {
-  "current_objective": "Phase 147 complete. Dashboard degradation monitoring/remediation gap fixed in repo; rebuild required to activate.",
-  "phase": "Phase 148 — next improvement slices",
+  "current_objective": "Phase 148 research pass in progress: map agentic config/workflow/model degradation and desktop input rollback incident before implementation.",
+  "phase": "Phase 148 — agentic mind standardization research",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
     "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
@@ -9,11 +9,14 @@
     "DONE: Phase 145 — dashboard caller identity coverage panel in query traces widget (2ed34de8)",
     "DONE: Phase 146 — aq-qa identity coverage checks 146.1-146.4 in phase0.py + _aq-qa-bash",
     "DONE: Phase 147 — dashboard health-spider semantic probes + auto-remediate health-spider pass + passive firewall sudo suppression",
-    "PENDING: nixos-rebuild required to activate Phase 147 AppArmor/service/dashboard code",
-    "PENDING: next improvement slices — candidates: P1 MCP tool-boundary enforcement, switchboard ingress identity validation"
+    "DONE: Phase 147 rebuild was attempted by user; user then reverted a later build due desktop cursor/text input instability",
+    "DONE: Phase 148 research pass identified aq-chat enable_thinking=true contradiction, thin golden eval coverage, stale parity/routing docs, local-agent-config multi-doc YAML trap, and COSMIC input log signals",
+    "PENDING: implement repo-only agentic standardization fixes after research review; avoid another Nix activation until desktop input diagnostic checklist exists"
   ],
   "uncommitted_changes": [
-    "Commit requested for all current repo changes, including generated telemetry/training-ingest state"
+    "Research doc .agents/plans/phase-148-agentic-mind-research.md",
+    "Issue backlog desktop-input entry",
+    "Generated routing telemetry from session start/hints"
   ],
-  "resume_hint": "Phase 147 diagnosis: dashboard /api/health stayed green while command-center-dashboard-api AppArmor denials accumulated for /proc/<pid>/stat and passive firewall/status sudo reads. aq-health-spider only checked /api/health every 7200s and auto-remediate only parsed aq-qa, so dashboard degradation was not caught promptly. Repo fixes: aq-health-spider now runs every 900s, probes /api/health/aggregate, /api/aistack/effectiveness/scorecard, /api/aistack/agent-runs?limit=1, and /api/traces/summary, removes success attention spam, and emits dashboard_degraded anomalies. auto-remediate runs health-spider --once before aq-qa and saves logs. firewall.py disables sudo for passive read endpoints by default. mcp-servers.nix includes /proc/@{pids}/stat AppArmor rule and explicit --interval 900. Validation performed: py_compile aq-health-spider/firewall.py; bash -n auto-remediate.sh; nix-instantiate --parse mcp-servers.nix; health-spider --once shows probes OK and existing AppArmor debt all paths covered. Need sudo nixos-rebuild switch --flake .#hyperd-ai-dev to activate."
+  "resume_hint": "Do not start with a rebuild. User asked for research passes before implementation after reverting a build due erratic cursor/text input. Research finding: scripts/ai/aq-chat currently advertises and sends enable_thinking=true for local Qwen paths, contradicting shared llm_config.py and likely causing local chat/tool-output degradation. switchboard only sets enable_thinking=false if caller omitted chat_template_kwargs. config/local-agent-config.yaml has two YAML documents and breaks yaml.safe_load. data/harness-golden-evals.json has only 2 cases and does not gate workflow adherence. docs/architecture/agent-behavior-parity-index.md and routing-profile-inventory.md have stale references/findings. COSMIC logs show missing input/cursor config keys and invalid shortcut parsing; no obvious synthetic input process is currently active. See .agents/plans/phase-148-agentic-mind-research.md."
 }
