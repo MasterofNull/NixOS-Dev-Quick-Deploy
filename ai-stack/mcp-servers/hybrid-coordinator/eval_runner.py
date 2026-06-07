@@ -186,10 +186,17 @@ def score_context_precision(retrieved_docs: List[Any]) -> float:
     """
     if not retrieved_docs:
         return 0.0
-    non_empty = sum(
-        1 for d in retrieved_docs
-        if isinstance(d, dict) and d.get("content", "").strip()
-    )
+    def _doc_text(d: dict) -> str:
+        # Phase 141: docs nest content under payload (Qdrant result structure)
+        top = d.get("content") or d.get("text") or d.get("snippet") or ""
+        if top:
+            return str(top)
+        p = d.get("payload") or {}
+        return str(
+            p.get("content") or p.get("solution") or p.get("text") or
+            p.get("context") or p.get("snippet") or ""
+        )
+    non_empty = sum(1 for d in retrieved_docs if isinstance(d, dict) and _doc_text(d).strip())
     return round(non_empty / len(retrieved_docs), 4)
 
 

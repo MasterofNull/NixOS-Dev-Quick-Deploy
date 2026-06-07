@@ -96,6 +96,31 @@ class TestRagasAutoscoringWiring(unittest.TestCase):
         src = (COORDINATOR / "http_server_impl.py").read_text(encoding="utf-8")
         self.assertIn("faithfulness=fs", src, "faithfulness=fs not passed to record_query_metrics")
 
+    def test_phase141_context_precision_payload_nested(self):
+        """Unit (Phase 141): score_context_precision handles Qdrant payload-nested docs."""
+        import eval_runner  # noqa: PLC0415
+        docs = [
+            {"collection": "c", "score": 2.1, "payload": {"solution": "fix: use payload-nested"}},
+            {"collection": "c", "score": 1.5, "payload": {"content": "some content"}},
+            {"collection": "c", "score": 0.5, "payload": {}},
+        ]
+        cp = eval_runner.score_context_precision(docs)
+        self.assertAlmostEqual(cp, 2 / 3, places=3, msg="2/3 docs have non-empty payload content")
+
+    def test_phase141_context_precision_top_level_still_works(self):
+        """Unit (Phase 141): score_context_precision still handles top-level content field."""
+        import eval_runner  # noqa: PLC0415
+        docs = [{"content": "hello"}, {"text": "world"}, {"content": ""}]
+        cp = eval_runner.score_context_precision(docs)
+        self.assertAlmostEqual(cp, 2 / 3, places=3)
+
+    def test_phase141_faithfulness_context_uses_payload(self):
+        """Static (Phase 141): faithfulness _doc_ctx helper references payload field."""
+        src = (COORDINATOR / "http_server_impl.py").read_text(encoding="utf-8")
+        self.assertIn("Phase 139/141", src)
+        self.assertIn('d.get("payload")', src)
+        self.assertIn('p.get("solution")', src)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
