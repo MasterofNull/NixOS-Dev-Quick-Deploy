@@ -138,6 +138,39 @@ def test_faithfulness_disabled_label():
     print("PASS  faithfulness disabled label")
 
 
+def test_format_json_ragas_metrics_kwarg():
+    """Phase 144: format_json accepts ragas_metrics kwarg and emits it in the JSON doc."""
+    import json as _json
+    mod = _load_aq_report()
+    rm = {
+        "sample_count": 22,
+        "answer_relevance_avg": 0.5194,
+        "context_precision_avg": 0.2662,
+        "faithfulness_avg": None,
+        "faithfulness_enabled": True,
+    }
+    # format_json takes *fmt_args[:-1] positionally — same as minimal_args minus last
+    args = _minimal_args(mod)
+    output = mod.format_json(*args, ragas_metrics=rm)
+    doc = _json.loads(output)
+    assert_true("ragas_metrics" in doc, "ragas_metrics key missing from format_json output")
+    assert_true(doc["ragas_metrics"].get("sample_count") == 22, "sample_count wrong in format_json")
+    assert_true(doc["ragas_metrics"].get("answer_relevance_avg") == 0.5194, "AR avg wrong in format_json")
+    print("PASS  format_json ragas_metrics kwarg")
+
+
+def test_format_json_ragas_metrics_no_data():
+    """Phase 144: format_json emits empty ragas_metrics when kwarg is None."""
+    import json as _json
+    mod = _load_aq_report()
+    args = _minimal_args(mod)
+    output = mod.format_json(*args, ragas_metrics=None)
+    doc = _json.loads(output)
+    assert_true("ragas_metrics" in doc, "ragas_metrics key missing when None passed")
+    assert_true(doc["ragas_metrics"] == {}, "ragas_metrics should be empty dict when None")
+    print("PASS  format_json ragas_metrics no data")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -147,6 +180,8 @@ if __name__ == "__main__":
         test_format_md_ragas_panel_with_data,
         test_format_md_ragas_panel_no_data,
         test_faithfulness_disabled_label,
+        test_format_json_ragas_metrics_kwarg,
+        test_format_json_ragas_metrics_no_data,
     ]
     for t in tests:
         try:
