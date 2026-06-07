@@ -1,14 +1,17 @@
 {
-  "current_objective": "Phase 133 complete and deployed. All local agent performance improvements active. System at 90/90 QA.",
-  "phase": "Phase 133 — Local agent performance + MCP fix: COMPLETE + DEPLOYED",
+  "current_objective": "Phase 133+ post-deploy quality improvements. System healthy, 90/90 QA.",
+  "phase": "Phase 134 — Observability + hints quality improvements",
   "todo_snapshot": [
-    "DONE: Phase 132 — domain-role enforcement, local-coding, embedded-assist, code validation (f11e21f6)",
-    "DONE: Phase 132.1 — YAML catalog, Nix validation, lang detection, local-coding routing (bfd65459)",
-    "DONE: DNS resilience — NM dispatcher + nix.settings.fallback (db03c080)",
     "DONE: Phase 133 — MCP bridge fix + HM activation (6525d706)",
-    "DONE: QA 132.3 + adaptive embedded-assist query + 132.1 endpoint fix (15dac928, 0e037ec6, b5e44c8f)",
-    "DONE: nixos-rebuild switch — all changes deployed, 90/90 QA PASS"
+    "DONE: nixos-rebuild switch — all changes deployed, 90/90 QA PASS",
+    "DONE: query-gaps display fix — curated-stale vs DB-unavailable distinction (f27b3010)",
+    "DONE: Dominant hint suppression — session-meta gaps (76f7940c, f7f7d826)",
+    "DONE: aq-rag-prewarm prompt_ids array fix — split() not split(',') (7a16b004)",
+    "DONE: Hardware-bound delegate latency threshold 60s→30s (ac9f7ad3)",
+    "DONE: All 21 spurious JSONL gap entries suppressed — patterns + exact match (f7f7d826)",
+    "PENDING-REBUILD: gap_analyzer.py changes take effect after nixos-rebuild",
+    "PENDING-REBUILD: dispatch.py embedded-assist SSE fix already deployed (Phase 133)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "90 passed / 0 failed / 0 skipped — first clean sweep. All local agent improvements live: local-coding profile (switchboard), embedded-assist pre-context (adaptive debug/coding/general), Nix code validation, implementation→local-coding routing, MCP bridge fix, DNS resilience. Next: test a real coding delegation to verify end-to-end embedded-assist pre-context flow."
+  "resume_hint": "5 fixes committed this session: f27b3010, 76f7940c, 7a16b004, ac9f7ad3, f7f7d826. All pass tier0. Need nixos-rebuild to deploy gap_analyzer suppression changes. Continue hot corpus 1.3G total — chatInteraction.jsonl 244 MiB accumulating."
 }
