@@ -2360,12 +2360,39 @@ async def run_http_mode(port: int) -> None:
                 prefer_local = bool(data.get("prefer_local", True)) if "data" in locals() and isinstance(data, dict) else True
                 if str(audit_metadata.get("backend", "unknown")) == "unknown":
                     audit_metadata["backend"] = "local" if prefer_local else "remote"
+            _qh_query = query[:120] if "query" in locals() else ""
             logger.exception(
                 "query_handler_failed query=%r generate_response=%s prefer_local=%s",
-                query[:120] if "query" in locals() else "",
+                _qh_query,
                 generate_response if "generate_response" in locals() else False,
                 prefer_local if "prefer_local" in locals() else True,
             )
+            # Phase 138.2 — Attention queue: surface unexpected query-path exceptions (auto_ok → archive)
+            _qh_exc_msg = str(exc)[:200]
+            _qh_exc_type = type(exc).__name__
+
+            def _push_query_attention(_q=_qh_query, _t=_qh_exc_type, _e=_qh_exc_msg):
+                try:
+                    from attention_queue import push as _aq_push  # noqa: PLC0415
+                    _aq_push(
+                        source="query-handler",
+                        severity="medium",
+                        autonomy_boundary="auto_ok",
+                        title=f"Unexpected query handler exception: {_t}",
+                        detail=f"Query: {_q!r}. {_t}: {_e}.",
+                        proposed_action=(
+                            "Check coordinator logs for stack trace. "
+                            "If persistent, investigate route_search or memory recall path."
+                        ),
+                    )
+                except Exception:
+                    pass
+
+            try:
+                asyncio.create_task(asyncio.to_thread(_push_query_attention))
+            except RuntimeError:
+                pass  # no running loop during tests
+
             return web.json_response({"error": "route_search_failed", "detail": str(exc)}, status=500)
 
     async def handle_query_http(request):

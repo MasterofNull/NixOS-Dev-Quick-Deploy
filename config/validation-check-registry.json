@@ -1098,6 +1098,21 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "query-handler-attention-queue",
+      "description": "Phase 138.2 \u2014 unexpected query-path exception fires auto_ok attention queue push (query-handler boundary)",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "scripts/testing/test-query-handler-attention-queue.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-query-handler-attention-queue.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
