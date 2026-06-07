@@ -126,3 +126,8 @@
   Severity: high
   Action: Implement Phase 148 agent task envelope, workflow-adherence golden corpus, first-pass contract evaluator, model-profile freshness gate, and dashboard/aq-report interop scorecard.
   File: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
+
+[OPEN] desktop-input — post-build cursor/text input instability required system build revert — user reported erratic text input and cursor selection after the last activation. Current read-only process scan found no active ydotool/xdotool/wtype/kmonad/keyd/warpd/dotool/xte-style process; COSMIC logs show missing input/cursor config keys and invalid shortcut action parsing near session start; VSCodium Gemini Code Assist A2A server is active but not proven causal.
+  Severity: high
+  Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
+  File: .agents/plans/phase-148-agentic-mind-research.md
