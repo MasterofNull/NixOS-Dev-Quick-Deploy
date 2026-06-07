@@ -179,7 +179,10 @@ class TraceCollector:
         self.finish_reason: str = "stop"   # Phase E: OTel gen_ai.response.finish_reason
         self.prompt_hash: str = ""          # Phase 64.1: SHA256[:8] of system prompt
         self._start: float = time.perf_counter()
-        
+        # Phase 140 — Agent identity envelope (P0 parity)
+        self.caller_source: str = ""
+        self.caller_role: str = ""
+        self.caller_boundary: str = ""
         # Phase 59.4: Hardware Resource Monitoring
         self.cpu_percent: float = 0.0
         self.memory_percent: float = 0.0
@@ -226,6 +229,12 @@ class TraceCollector:
 
     def set_profile(self, profile: str) -> None:
         self.profile = profile
+
+    def set_caller(self, source: str = "", role: str = "", boundary: str = "") -> None:
+        """Phase 140 — record agent identity envelope from request headers."""
+        self.caller_source = (source or "")[:64]
+        self.caller_role = (role or "")[:32]
+        self.caller_boundary = (boundary or "")[:32]
 
     def set_retrieval(self, hits: int, latency_ms: int, skipped: bool = False, collection_count: int = 0) -> None:
         self.retrieval_hits = hits
@@ -277,6 +286,10 @@ class TraceCollector:
             "gen_ai.maeah.total_ms": total_ms,
             "gen_ai.maeah.semconv_version": _OTEL_SEMCONV_VERSION,
             "gen_ai.maeah.prompt_hash": self.prompt_hash,   # Phase 64.1
+            # Phase 140 — agent identity envelope (P0 parity)
+            "gen_ai.maeah.caller.source": self.caller_source or None,
+            "gen_ai.maeah.caller.role": self.caller_role or None,
+            "gen_ai.maeah.caller.autonomy_boundary": self.caller_boundary or None,
             # Hardware metrics
             "gen_ai.maeah.hardware.cpu_percent": self.cpu_percent,
             "gen_ai.maeah.hardware.memory_percent": self.memory_percent,

@@ -1144,6 +1144,22 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "agent-identity-envelope",
+      "description": "Phase 140 \u2014 P0 parity: caller identity (source/role/boundary) captured in trace OTel attributes",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/trace_collector.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "scripts/testing/test-agent-identity-envelope.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-agent-identity-envelope.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
