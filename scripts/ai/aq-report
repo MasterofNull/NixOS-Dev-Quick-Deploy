@@ -5587,6 +5587,7 @@ def format_md(
     feedback_acceleration: Optional[Dict[str, Any]] = None,
     gap_remediation: Optional[Dict[str, Any]] = None,
     llama_benchmark_summary: Optional[Dict[str, Any]] = None,
+    gaps_all_suppressed: bool = False,
 ) -> str:
     lines = [
         f"# AI Stack Performance Report — last {since_label}",
@@ -5737,7 +5738,10 @@ def format_md(
             "*Import suggestion: `scripts/ai/aq-knowledge-import.sh \"<query text>\"` to pull relevant docs.*",
         ]
     else:
-        lines.append("*No query gaps found (Postgres unreachable or table empty).*")
+        if gaps_all_suppressed:
+            lines.append("*All recent gaps suppressed (curated-stale or resolved — no actionable gaps).*")
+        else:
+            lines.append("*No query gaps found (Postgres unreachable or table empty).*")
     lines.append("")
 
     # 8. Recent health snapshot
@@ -6461,6 +6465,7 @@ def format_text(
     gap_remediation: Optional[Dict[str, Any]] = None,
     llama_benchmark_summary: Optional[Dict[str, Any]] = None,
     useful_tokens: Optional[Dict[str, Any]] = None,
+    gaps_all_suppressed: bool = False,
 ) -> str:
     sep = "─" * 60
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -6608,6 +6613,8 @@ def format_text(
         for i, g in enumerate(gaps[:5], 1):
             q = str(g.get("query_text", ""))[:70].replace("\n", " ")
             lines.append(f"  {i}. [{g.get('occurrences', 1)}x] {q}")
+    elif gaps_all_suppressed:
+        lines.append("  All recent gaps suppressed (curated-stale or resolved — no actionable gaps).")
     else:
         lines.append("  No gaps data (Postgres unavailable or table empty).")
     lines.append("")
@@ -8097,13 +8104,15 @@ def main() -> None:
     delegation_feedback_raw = read_delegation_feedback(since_dt)
     delegation_feedback = aggregate_delegation_feedback(delegation_feedback_raw)
     eval_rows = read_eval_scores(since_dt)
-    gaps = read_query_gaps(since_dt, limit=10)
-    gaps = filter_resolved_query_gaps(gaps, audit_entries)
+    _gaps_raw = read_query_gaps(since_dt, limit=10)
+    _gaps_raw_count = len(_gaps_raw)
+    gaps = filter_resolved_query_gaps(_gaps_raw, audit_entries)
     gaps = [
         g for g in gaps
         if not _is_synthetic_gap(str(g.get("query_text", "")))
         and not _is_curated_stale_gap(str(g.get("query_text", "")))
     ]
+    _gaps_all_suppressed = _gaps_raw_count > 0 and not gaps
     prompts = read_prompt_registry()
 
     # Analyse
@@ -8311,14 +8320,14 @@ def main() -> None:
         summary_text = f"# EXECUTIVE SUMMARY\n\n{summary_text}\n\n---\n\n"
 
     if args.fmt == "md":
-        output = summary_text + format_md(*fmt_args)
+        output = summary_text + format_md(*fmt_args, gaps_all_suppressed=_gaps_all_suppressed)
     elif args.fmt == "json":
         # For JSON, we can optionally add the summary to a field
         if args.summarize:
             json_output["executive_summary"] = summary_text.strip().replace("# EXECUTIVE SUMMARY\n\n", "")
         output = json_output
     else:
-        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary)
+        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, gaps_all_suppressed=_gaps_all_suppressed)
 
     print(output)
 

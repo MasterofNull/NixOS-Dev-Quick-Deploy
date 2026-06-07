@@ -1,3 +1,7 @@
+[RESOLVED 2026-06-06] aq-report/query-gaps-display — Section "7. Top Query Gaps" showed "No gaps data (Postgres unavailable or table empty)" even when DB had rows, because all rows were suppressed by `_is_curated_stale_gap()`. Root cause: the else branch couldn't distinguish "DB down" from "all filtered." Fix: track `_gaps_raw_count` before the filter pipeline; set `_gaps_all_suppressed = raw_count > 0 and not gaps`; show distinct message in both `format_text()` and `format_md()`. Added `gaps_all_suppressed` kwarg to both formatters (default False).
+  Severity: low (display only — no data loss)
+  Files: scripts/ai/aq-report ~lines 8100-8106, 6612, 5740
+
 [RESOLVED 2026-06-06] mcp/agent-connectivity — Claude/shared MCP config retained stale external-fetching server entries (`npx`, `nix run github:*`) and a placeholder GitHub token, causing startup-time MCP socket/API failures and noisy model-agent connection errors.
   Severity: high → resolved
   Action: Replaced bootstrap defaults with local `hybrid-coordinator` bridge + `osint-tools`. HM activation now repairs legacy configs (backup + rewrite). Repaired live `~/.mcp/config.json` and Claude settings. Added IDE smoke coverage for unsafe MCP entries. Validation: IDE adapter smoke 19 PASS / 0 FAIL; aq-qa phase 0 87 PASS / 0 FAIL / 3 SKIP. Requires home-manager switch to deploy activation script persistently.
