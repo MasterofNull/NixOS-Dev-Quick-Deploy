@@ -5,7 +5,7 @@ title: Multi-Agent Edge Harness Parity Integration Plan
 status: active
 owner: AI Stack Maintainers
 parent_prd: multi-agent-edge-harness-combined-prd
-last_updated: "2026-06-07"
+last_updated: "2026-06-08"
 ---
 
 # Multi-Agent Edge Harness — Parity Integration Plan
@@ -24,7 +24,7 @@ companion to `COMBINED-PRD.md`.
 
 | Priority | Capability | Status |
 |----------|------------|--------|
-| P0 | Agent identity envelope (source + role + boundary) | In progress |
+| P0 | Agent identity envelope (source + role + boundary) | **PARTIAL** — caller source/role/boundary extracted from X-Agent-* request headers, stored in OTel trace attributes (Phase 140). Switchboard ingress enforcement (reject missing-identity) deferred until callers updated. |
 | P1 | Runtime bounded delegation envelopes for agent identity/delegation | Partial |
 | P1 | MCP tool-boundary profile enforcement | Partial |
 | P1 | Trace path view: prompt → route → memory → tools → response → review | Partial — trace events in hybrid-events.jsonl; Gantt panel active; per-turn RAGAS scoring wired (Phase 137); faithfulness (Qwen-as-judge) wired (Phase 139) |

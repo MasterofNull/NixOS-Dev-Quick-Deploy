@@ -2095,6 +2095,12 @@ async def run_http_mode(port: int) -> None:
                 postgres_client=None,  # uses module-level _pg set by trace_collector.init()
                 query=query[:200],
             )
+            # Phase 140 — extract agent identity envelope from request headers (P0 parity)
+            _trace.set_caller(
+                source=request.headers.get("X-Agent-Source", ""),
+                role=request.headers.get("X-Agent-Role", ""),
+                boundary=request.headers.get("X-Agent-Boundary", ""),
+            )
 
             # Phase 54.2 — classify intent before any routing decisions
             # Use classify_async: keyword-first with semantic rescue for low-confidence
