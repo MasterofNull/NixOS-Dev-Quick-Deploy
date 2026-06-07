@@ -13,7 +13,62 @@
       "output_file": ".agents/delegation/outputs/gemini-20260604-084514-3795s7.log",
       "objective": "# Phase 115 \u2014 System Intelligence Hub: Agent PRD Brief\n\n## Context for All Agents\n\nYou are contributing to a multi-agent",
       "dispatched_at": "2026-06-04T15:45:14.532159Z",
-      "status": "running"
+      "status": "done",
+      "completed_note": "Phase 115 complete \u2014 marked done retroactively 2026-06-06"
+    },
+    {
+      "id": "local-20260606-181107-fns56q",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-181107-fns56q.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-07T01:11:07.308612Z",
+      "status": "done",
+      "completed_at": "2026-06-07T01:12:35.154091Z"
+    },
+    {
+      "id": "local-20260606-180932-oevdgn",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-180932-oevdgn.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-07T01:09:32.439869Z",
+      "status": "done",
+      "completed_at": "2026-06-07T01:11:01.341699Z"
+    },
+    {
+      "id": "local-20260606-173813-2imqor",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-173813-2imqor.log",
+      "objective": "Write a Python function get_config_name(config_path: str) -> str that reads a JSON file and returns the top-level 'name'",
+      "dispatched_at": "2026-06-07T00:38:13.653542Z",
+      "status": "done",
+      "completed_at": "2026-06-07T00:39:10.825737Z"
+    },
+    {
+      "id": "local-20260606-173531-221y9i",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-173531-221y9i.log",
+      "objective": "Write a Python function get_config_name(config_path: str) -> str that reads a JSON file and returns the top-level 'name'",
+      "dispatched_at": "2026-06-07T00:35:31.291964Z",
+      "status": "done",
+      "completed_at": "2026-06-07T00:36:21.962095Z"
+    },
+    {
+      "id": "local-20260606-133201-0qcn9b",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-133201-0qcn9b.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-06T20:32:02.063496Z",
+      "status": "done",
+      "completed_at": "2026-06-06T20:33:39.805028Z"
+    },
+    {
+      "id": "local-20260606-060155-6jtg56",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-060155-6jtg56.log",
+      "objective": "As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit history.\nFocus on arch",
+      "dispatched_at": "2026-06-06T13:01:55.786694Z",
+      "status": "done",
+      "completed_at": "2026-06-06T13:08:18.987126Z"
     },
     {
       "id": "local-20260604-192956-5b6kbn",
@@ -88,7 +143,7 @@
       "completed_at": "2026-06-03T02:08:27.206186Z"
     }
   ],
-  "updated_at": "2026-06-05T02:31:53.770198Z",
+  "updated_at": "2026-06-07T01:12:35.154619Z",
   "validated_at": "2026-06-04T07:52:36.208799+00:00",
   "validation_notes": "loadAgentReplay, swimlane, race, sendControl all wired and returning data. scorecard/agent-runs endpoints healthy."
 }
