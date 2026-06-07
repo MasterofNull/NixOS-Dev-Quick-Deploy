@@ -5587,6 +5587,7 @@ def format_md(
     feedback_acceleration: Optional[Dict[str, Any]] = None,
     gap_remediation: Optional[Dict[str, Any]] = None,
     llama_benchmark_summary: Optional[Dict[str, Any]] = None,
+    ragas_metrics: Optional[Dict[str, Any]] = None,
     gaps_all_suppressed: bool = False,
 ) -> str:
     lines = [
@@ -5691,6 +5692,25 @@ def format_md(
         ]
     else:
         lines.append("*No eval runs found for this window.*")
+    lines.append("")
+
+    # Phase 143 — RAGAS metric averages panel (markdown)
+    lines += ["## 4b. RAGAS Metrics", ""]
+    rm = ragas_metrics or {}
+    _n = rm.get("sample_count") or 0
+    if _n > 0:
+        def _rfmt(v: Any) -> str:
+            return f"{float(v):.4f}" if v is not None else "--"
+        lines += [
+            f"| Metric | Value | Notes |",
+            f"|--------|-------|-------|",
+            f"| Answer Relevance | {_rfmt(rm.get('answer_relevance_avg'))} | embed cosine, 20% sample |",
+            f"| Context Precision | {_rfmt(rm.get('context_precision_avg'))} | non-empty retrieved docs ratio |",
+            f"| Faithfulness | {_rfmt(rm.get('faithfulness_avg'))} | Qwen-judge, 10% sample |",
+            f"| Samples (n) | {_n} | rolling last 100 queries |",
+        ]
+    else:
+        lines.append("*No RAGAS samples yet — queries accumulate at 20% sample rate.*")
     lines.append("")
 
     # 5. Strategy Leaderboard (18.2.2)
@@ -6465,6 +6485,7 @@ def format_text(
     gap_remediation: Optional[Dict[str, Any]] = None,
     llama_benchmark_summary: Optional[Dict[str, Any]] = None,
     useful_tokens: Optional[Dict[str, Any]] = None,
+    ragas_metrics: Optional[Dict[str, Any]] = None,
     gaps_all_suppressed: bool = False,
 ) -> str:
     sep = "─" * 60
@@ -6589,6 +6610,24 @@ def format_text(
         ]
     else:
         lines.append("  No eval data.")
+    lines.append("")
+
+    # Phase 143 — RAGAS metric averages panel
+    lines += ["[ 4b. RAGAS Metrics ]"]
+    rm = ragas_metrics or {}
+    _n = rm.get("sample_count") or 0
+    if _n > 0:
+        def _rfmt(v: Any) -> str:
+            return f"{float(v):.4f}" if v is not None else "--"
+        lines += [
+            f"  Samples: {_n}  (rolling last 100 queries at 20% sample rate)",
+            f"  Answer Relevance:   {_rfmt(rm.get('answer_relevance_avg'))}",
+            f"  Context Precision:  {_rfmt(rm.get('context_precision_avg'))}",
+            f"  Faithfulness:       {_rfmt(rm.get('faithfulness_avg'))}"
+            + (" (Qwen-judge, 10% sample)" if rm.get("faithfulness_enabled") else " (disabled)"),
+        ]
+    else:
+        lines.append("  No RAGAS samples yet (queries accumulate at 20% sample rate).")
     lines.append("")
 
     lines += ["[ 5. Strategy Leaderboard ]"]
@@ -8147,6 +8186,9 @@ def main() -> None:
     cache = cache_hit_rate(recent_audit_entries)
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
+    # Phase 143 — fetch RAGAS metric averages for dedicated 4b panel
+    _ragas_raw = fetch_coordinator_eval_trend()
+    _ragas_metrics: Dict[str, Any] = _ragas_raw.get("ragas_metrics") or {}
     adoption = hint_adoption(since_dt)  # Phase 19.3.4
     tooling_quality = task_tooling_quality(since_dt, adoption)
     intent_compliance = read_workflow_sessions(since_dt)
@@ -8324,14 +8366,14 @@ def main() -> None:
         summary_text = f"# EXECUTIVE SUMMARY\n\n{summary_text}\n\n---\n\n"
 
     if args.fmt == "md":
-        output = summary_text + format_md(*fmt_args, gaps_all_suppressed=_gaps_all_suppressed)
+        output = summary_text + format_md(*fmt_args, ragas_metrics=_ragas_metrics, gaps_all_suppressed=_gaps_all_suppressed)
     elif args.fmt == "json":
         # For JSON, we can optionally add the summary to a field
         if args.summarize:
             json_output["executive_summary"] = summary_text.strip().replace("# EXECUTIVE SUMMARY\n\n", "")
         output = json_output
     else:
-        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, gaps_all_suppressed=_gaps_all_suppressed)
+        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, ragas_metrics=_ragas_metrics, gaps_all_suppressed=_gaps_all_suppressed)
 
     print(output)
 
