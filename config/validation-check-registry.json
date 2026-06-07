@@ -1082,6 +1082,22 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "delegate-attention-queue-wiring",
+      "description": "Phase 138.1 \u2014 remote delegate HTTP 5xx fires auto_ok attention queue push at delegate boundary",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
+        "scripts/ai/lib/attention_queue.py",
+        "scripts/testing/test-delegate-attention-queue-wiring.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-delegate-attention-queue-wiring.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

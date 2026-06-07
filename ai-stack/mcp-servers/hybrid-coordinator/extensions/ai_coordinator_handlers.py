@@ -2294,6 +2294,40 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             finalization_applied=finalization_applied,
             delegated_quality=delegated_quality,
         )
+
+        # Phase 138.1 — Attention queue: surface non-transient remote delegate failures (auto_ok → archive)
+        if response.status_code >= 500 and _is_remote_profile(effective_profile):
+            _attn_profile = effective_profile
+            _attn_code = int(response.status_code)
+            _attn_task = task[:120]
+            _attn_err = str((body.get("error") or {}).get("message", ""))[:200]
+            _attn_fc = str(final_classification.get("primary_failure_class", "") or "unknown")
+
+            def _push_delegate_attention(
+                _p=_attn_profile, _c=_attn_code, _t=_attn_task,
+                _e=_attn_err, _fc=_attn_fc,
+            ):
+                try:
+                    from attention_queue import push as _aq_push  # noqa: PLC0415
+                    _aq_push(
+                        source="delegate-handler",
+                        severity="medium",
+                        autonomy_boundary="auto_ok",
+                        title=f"Remote delegate HTTP {_c} ({_p})",
+                        detail=(
+                            f"Profile: {_p}, HTTP {_c}, failure_class={_fc}. "
+                            f"Task: {_t}. Error: {_e or 'none'}."
+                        ),
+                        proposed_action=(
+                            "Check remote provider quota and endpoint health. "
+                            "If repeated, review profile exclusions or switch profile."
+                        ),
+                    )
+                except Exception:
+                    pass
+
+            asyncio.create_task(asyncio.to_thread(_push_delegate_attention))
+
         prompt_tokens_before = int(prompt_optimization.get("original_tokens", 0) or 0)
         prompt_tokens_after = int(prompt_optimization.get("compressed_tokens", 0) or 0)
         DELEGATED_PROMPT_TOKENS_BEFORE.labels(profile=effective_profile).observe(prompt_tokens_before)
