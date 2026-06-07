@@ -1,6 +1,6 @@
 {
-  "current_objective": "Phase 146 complete. aq-qa governance now tracks agent identity emission in query traces.",
-  "phase": "Phase 147 — next improvement slices",
+  "current_objective": "Phase 147 complete. Dashboard degradation monitoring/remediation gap fixed in repo; rebuild required to activate.",
+  "phase": "Phase 148 — next improvement slices",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
     "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
@@ -8,10 +8,12 @@
     "DONE: Phase 144 — format_json ragas_metrics dedup + P2 parity plan closure (05c11384)",
     "DONE: Phase 145 — dashboard caller identity coverage panel in query traces widget (2ed34de8)",
     "DONE: Phase 146 — aq-qa identity coverage checks 146.1-146.4 in phase0.py + _aq-qa-bash",
+    "DONE: Phase 147 — dashboard health-spider semantic probes + auto-remediate health-spider pass + passive firewall sudo suppression",
+    "PENDING: nixos-rebuild required to activate Phase 147 AppArmor/service/dashboard code",
     "PENDING: next improvement slices — candidates: P1 MCP tool-boundary enforcement, switchboard ingress identity validation"
   ],
   "uncommitted_changes": [
-    "Unrelated pre-existing/live telemetry changes remain unstaged: .agents/attention/ATTENTION_ARCHIVE.jsonl, .agents/telemetry/routing-decisions.jsonl, config/harness-prompt-extensions.json, nix/data/profile-system-packages.nix"
+    "Commit requested for all current repo changes, including generated telemetry/training-ingest state"
   ],
-  "resume_hint": "Phase 146 complete pending/after commit: Python aq-qa phase0 and active bash fallback runner both include checks 146.1-146.4. They validate request header capture, TraceCollector OTel caller attributes, dashboard /query/traces proxy + Identity Coverage UI strings, and live /api/traces identity coverage. The live check emits a bounded POST /query probe with X-Agent-Source=aq-qa-phase146 before reading /api/traces?limit=100 so tier0 is not brittle to trace churn. Validation: py_compile phase0.py, bash -n _aq-qa-bash, test-agent-identity-envelope.py, scripts/ai/aq-qa 0 --machine (95/0), tier0 --pre-commit (19/0). Next candidates: P1 MCP tool-boundary enforcement, switchboard ingress identity validation."
+  "resume_hint": "Phase 147 diagnosis: dashboard /api/health stayed green while command-center-dashboard-api AppArmor denials accumulated for /proc/<pid>/stat and passive firewall/status sudo reads. aq-health-spider only checked /api/health every 7200s and auto-remediate only parsed aq-qa, so dashboard degradation was not caught promptly. Repo fixes: aq-health-spider now runs every 900s, probes /api/health/aggregate, /api/aistack/effectiveness/scorecard, /api/aistack/agent-runs?limit=1, and /api/traces/summary, removes success attention spam, and emits dashboard_degraded anomalies. auto-remediate runs health-spider --once before aq-qa and saves logs. firewall.py disables sudo for passive read endpoints by default. mcp-servers.nix includes /proc/@{pids}/stat AppArmor rule and explicit --interval 900. Validation performed: py_compile aq-health-spider/firewall.py; bash -n auto-remediate.sh; nix-instantiate --parse mcp-servers.nix; health-spider --once shows probes OK and existing AppArmor debt all paths covered. Need sudo nixos-rebuild switch --flake .#hyperd-ai-dev to activate."
 }

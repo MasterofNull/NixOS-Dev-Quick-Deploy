@@ -34,6 +34,11 @@
   Action: Added 24h freshness fields (`candidate_calls_24h`, `downshifted_calls_24h`, `last_candidate_at`, `stale_candidate_window`) and updated recommendations/hints to distinguish stale history from active failures.
   File: scripts/ai/aq-report ~line 1697; ai-stack/mcp-servers/hybrid-coordinator/knowledge/hints_engine_impl.py ~line 2183
 
+[PENDING-REBUILD] dashboard/health-spider — Dashboard AppArmor denials degraded operator visibility while health-spider and auto-remediate did not catch/fix it promptly — Root cause: health-spider only checked `/api/health` every 7200s and auto-remediate only parsed `aq-qa 0`; dashboard passive firewall/status polling also attempted `sudo` reads under AppArmor, creating denial noise.
+  Severity: high
+  Action: Added dashboard semantic probes to `aq-health-spider`, reduced interval to 900s, removed success attention spam, made auto-remediate run health-spider before aq-qa, disabled sudo for passive firewall reads by default, and added `/proc/@{pids}/stat r,` AppArmor rule. Run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate service/AppArmor/dashboard code.
+  File: scripts/ai/aq-health-spider ~line 77; scripts/automation/auto-remediate.sh ~line 16; dashboard/backend/api/routes/firewall.py ~line 54; nix/modules/services/mcp-servers.nix ~line 1737
+
 [DONE] cli-contract — documented machine/query flags rejected by local CLIs — `aq-report --machine` and `aq-hints --query ...` were documented workflow forms but argparse rejected them, blocking machine-mode parity and copied quick-start commands. Added compatibility aliases.
   Severity: medium
   Action: Added `--machine` as JSON alias in `scripts/ai/aq-report` and `--query` alias in `scripts/ai/aq-hints`; validate with CLI smoke commands and Python compile.

@@ -1,3 +1,33 @@
+# HANDOFF MEMO — 2026-06-07 (Phase 147: dashboard health-spider remediation gap)
+
+## Phase 147 — Dashboard degradation monitoring and remediation
+
+### Status
+COMPLETE in repo. Pending `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate dashboard service/AppArmor/health-spider changes.
+
+### Problem
+Dashboard `/api/health` stayed green while dashboard operator paths produced AppArmor denials. The health spider checked only `/api/health` every 7200s, and `ai-auto-remediate` only parsed `aq-qa 0`, so dashboard card degradation and AppArmor denial debt were not caught promptly.
+
+### Work done
+| Item | Result |
+|------|--------|
+| `aq-health-spider` | Interval 7200s -> 900s; probes aggregate health, effectiveness scorecard, agent-runs, traces summary |
+| Attention noise | Removed success-path auto_ok pushes from health-spider |
+| Dashboard anomalies | Added `dashboard_degraded` anomaly handling with attention, RAG, and memory fact hooks |
+| `auto-remediate.sh` | Runs `aq-health-spider --once` before `aq-qa 0`; saves spider and QA logs |
+| Firewall dashboard routes | Passive read endpoints avoid `sudo` by default (`FIREWALL_ALLOW_SUDO_READS=1` opt-in) |
+| AppArmor | Added `/proc/@{pids}/stat r,` for dashboard service process stats |
+
+### Validation
+- `python3 -m py_compile scripts/ai/aq-health-spider dashboard/backend/api/routes/firewall.py`
+- `bash -n scripts/automation/auto-remediate.sh`
+- `nix-instantiate --parse nix/modules/services/mcp-servers.nix`
+- `REPO_ROOT=$PWD scripts/ai/aq-health-spider --once` — dashboard probes OK; existing AppArmor denials found; fix-agent reports all paths covered
+
+### Pending activation
+- Run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`
+- After rebuild: `journalctl -k --since "10 min ago" | grep command-center-dashboard-api` should show no fresh `/proc/*/stat` or passive firewall `sudo` denials.
+
 # HANDOFF MEMO — 2026-06-07 (Phase 146: aq-qa agent identity coverage)
 
 ## Phase 146 — Agent identity governance coverage
@@ -2133,3 +2163,16 @@ You are contribut"
 [2026-06-07T01:11:01.341699Z] [done] id=local-20260606-180932-oevdgn
 [2026-06-07T01:11:07.308612Z] [dispatch] id=local-20260606-181107-fns56q agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260606-181107-fns56q.log obj="As a Senior NixOS Architect, extract 2-4 institutional memory facts from this git diff and commit hi"
 [2026-06-07T01:12:35.154091Z] [done] id=local-20260606-181107-fns56q
+
+### [2026-06-07T16:24:42Z] apparmor-fix-agent
+**Auto-committed AppArmor fix** `pending-human-approval` — profile `command-center-dashboard-api`  
+Rules added (1):
+  - `/proc/@{pids}/stat r,`
+Denied paths that triggered: ['/nix/store/z5gs9jxm42pxkvy2jypq2xnmxgjfk3i2-sudo-1.9.17p2/bin/sudo', '/proc/1256/stat', '/proc/1264/stat', '/proc/684277/stat', '/proc/1197/stat']  
+⚠️  **Pending rebuild: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+
+### [2026-06-07T16:24:43Z] health-spider
+**AppArmor fix staged** — profile `command-center-dashboard-api`  
+Rules added (1): ['            /proc/@{pids}/stat r,']  
+Denied paths: ['/nix/store/z5gs9jxm42pxkvy2jypq2xnmxgjfk3i2-sudo-1.9.17p2/bin/sudo', '/proc/1256/stat', '/proc/1264/stat', '/proc/684277/stat', '/proc/1197/stat']  
+⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**

@@ -1737,6 +1737,8 @@ in {
             ExecStart = lib.escapeShellArgs [
               "${pkgs.python3}/bin/python3"
               "${toString repoSource}/scripts/ai/aq-health-spider"
+              "--interval"
+              "900"
             ];
             Restart = "always";
             RestartSec = "10s";
@@ -2676,6 +2678,8 @@ in {
             /nix/store/**/bin/journalctl ix,
             # Dashboard keyword signals
             /home/hyperd/.local/share/nixos-system-dashboard/** r,
+            # auto-added by apparmor-fix-agent 2026-06-07
+            /proc/@{pids}/stat r,  # /proc/<pid> → @{pids}
             deny /home/** wx,
             deny /root/** rwx,
           }

@@ -2,8 +2,9 @@
 """
 aq-health-spider — Real service health sampling + autonomous fix pipeline.
 
-Per cycle (default 7200s / 2h — configurable via --interval):
+Per cycle (default 900s / 15m — configurable via --interval):
   1. HTTP health check each zone (5s timeout, non-blocking)
+  1b. Dashboard semantic probes for high-value operator cards
   2. Systemd service active-state check (on HTTP failure only, to save bandwidth)
   3. AppArmor denial scan since last cycle (kernel journal, deduped)
   4. Anomaly classification → fix pipeline dispatch
@@ -77,6 +78,12 @@ ZONES: Dict[str, Dict[str, Any]] = {
         "url":             "http://127.0.0.1:8889/api/health",
         "service":         "command-center-dashboard-api.service",
         "apparmor_profile": "command-center-dashboard-api",
+        "probes": [
+            {"name": "aggregate", "url": "http://127.0.0.1:8889/api/health/aggregate"},
+            {"name": "effectiveness-scorecard", "url": "http://127.0.0.1:8889/api/aistack/effectiveness/scorecard"},
+            {"name": "agent-runs", "url": "http://127.0.0.1:8889/api/aistack/agent-runs?limit=1"},
+            {"name": "traces-summary", "url": "http://127.0.0.1:8889/api/traces/summary"},
+        ],
     },
 }
 
@@ -92,6 +99,29 @@ def _http_check(url: str, timeout: int = 5) -> Tuple[bool, Optional[float]]:
         return True, round(ms, 1)
     except Exception:
         return False, None
+
+
+def _json_probe(url: str, timeout: int = 5) -> Tuple[bool, Optional[float], str]:
+    """Returns (ok, latency_ms, reason) for JSON dashboard/service probes."""
+    try:
+        t0 = time.monotonic()
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            ms = (time.monotonic() - t0) * 1000
+            if resp.status >= 500:
+                return False, round(ms, 1), f"HTTP {resp.status}"
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        if not isinstance(data, dict):
+            return False, round(ms, 1), "non-object JSON response"
+        status = str(data.get("overall_status") or data.get("status") or "").lower()
+        if status in {"degraded", "down", "fail", "failed", "error", "unhealthy"}:
+            return False, round(ms, 1), f"status={status}"
+        if data.get("available") is False:
+            return False, round(ms, 1), "available=false"
+        return True, round(ms, 1), ""
+    except urllib.error.HTTPError as e:
+        return False, None, f"HTTP {e.code}"
+    except Exception as e:
+        return False, None, str(e)[:120]
 
 
 def _service_check(service: str) -> str:
@@ -240,7 +270,7 @@ def _push_memory_fact(anomaly_type: str, zone: str, detail: str, resolution: str
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
-    def __init__(self, interval: int = 7200):
+    def __init__(self, interval: int = 900):
         self.interval = interval
         self._apparmor_last: Dict[str, float] = {}
         self._known_issues: set = set()   # Dedup RAG seeding
@@ -254,18 +284,6 @@ class HealthSpider:
         ok, ms = await asyncio.to_thread(_http_check, cfg["url"])
         if ok:
             logger.info(f"[{zone}] HTTP OK {ms}ms")
-            # auto_ok (informational only, goes straight to archive)
-            try:
-                push(
-                    source="health-spider",
-                    severity="low",
-                    autonomy_boundary="auto_ok",
-                    title=f"Zone {zone} health check passing",
-                    detail=f"HTTP OK at {cfg['url']} ({ms}ms)",
-                    proposed_action="None (automated check)"
-                )
-            except Exception:
-                pass  # attention queue write failure is non-fatal for health checks
         else:
             logger.warning(f"[{zone}] HTTP FAILED {cfg['url']}")
             # 2. Service check only on HTTP failure (saves bandwidth)
@@ -283,6 +301,22 @@ class HealthSpider:
                     "url": cfg["url"], "service_state": state,
                     "timestamp": time.time(),
                 })
+
+        # 1b. Semantic probes catch degraded dashboard cards that /api/health masks.
+        for probe in cfg.get("probes", []):
+            probe_ok, probe_ms, reason = await asyncio.to_thread(_json_probe, probe["url"])
+            if probe_ok:
+                logger.info(f"[{zone}] probe {probe['name']} OK {probe_ms}ms")
+                continue
+            logger.warning(f"[{zone}] probe {probe['name']} DEGRADED {probe['url']} ({reason})")
+            anomalies.append({
+                "type": "dashboard_degraded",
+                "zone": zone,
+                "probe": probe["name"],
+                "url": probe["url"],
+                "reason": reason,
+                "timestamp": time.time(),
+            })
 
         # 3. AppArmor denial scan (only zones with a profile)
         profile = cfg.get("apparmor_profile")
@@ -372,6 +406,40 @@ class HealthSpider:
                     _push_memory_fact,
                     "http_failure", zone,
                     f"HTTP check failed at {anomaly.get('url')} (service state: {anomaly.get('service_state', 'unknown')}).",
+                    resolution,
+                )
+
+        elif atype == "dashboard_degraded":
+            probe = anomaly.get("probe", "unknown")
+            reason = anomaly.get("reason", "unknown")
+            try:
+                push(
+                    source="health-spider",
+                    severity="medium",
+                    autonomy_boundary="human_gate",
+                    title=f"Dashboard probe degraded: {probe}",
+                    detail=f"{anomaly.get('url')} failed semantic health probe: {reason}",
+                    proposed_action="Inspect dashboard endpoint response, AppArmor denials, and command-center-dashboard-api logs.",
+                    payload=anomaly,
+                )
+            except Exception:
+                pass
+            key = f"dashboard_degraded:{probe}:{reason}"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                resolution = "Check command-center-dashboard-api logs and AppArmor denials; verify card endpoint JSON has available=true and healthy/pass status."
+                await asyncio.to_thread(
+                    _seed_rag,
+                    "dashboard_degraded",
+                    f"Dashboard probe '{probe}' degraded: {reason}",
+                    f"Health spider deep probe {anomaly.get('url')}",
+                    resolution,
+                    ["dashboard", "health-spider", "degraded"],
+                )
+                await asyncio.to_thread(
+                    _push_memory_fact,
+                    "dashboard_degraded", zone,
+                    f"Probe {probe} failed: {reason}.",
                     resolution,
                 )
 
@@ -477,8 +545,8 @@ class HealthSpider:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Health Spider — real service monitoring")
-    parser.add_argument("--interval", type=int, default=7200,
-                        help="Scan interval in seconds (default: 7200 = 2h)")
+    parser.add_argument("--interval", type=int, default=900,
+                        help="Scan interval in seconds (default: 900 = 15m)")
     parser.add_argument("--once", action="store_true", help="Run one cycle then exit")
     args = parser.parse_args()
 

@@ -874,7 +874,21 @@ variables:
     consumers: [dashboard-backend (ai_insights.py)]
     description: "Path to persisted aq-report snapshot read by dashboard"
 
+  - canonical: FIREWALL_ALLOW_SUDO_READS
+    aliases: []
+    default: "0"
+    layer: nix
+    consumers: [dashboard-backend (firewall.py)]
+    description: "Allow passive dashboard firewall read endpoints to use sudo fallback; disabled by default to avoid AppArmor denial noise"
+
   # ── aq-qa fixture/test overrides ────────────────────────────────────────
+  - canonical: AQ_QA
+    aliases: []
+    default: "/run/current-system/sw/bin/aq-qa"
+    layer: shell
+    consumers: [auto-remediate.sh]
+    description: "Path to the aq-qa executable used by autonomous remediation"
+
   - canonical: AQ_QA_AQ_REPORT_JSON
     aliases: []
     default: ""
@@ -952,6 +966,13 @@ variables:
     layer: shell
     consumers: [all shell scripts]
     description: "Absolute path to the repository root; set by each script at startup"
+
+  - canonical: HEALTH_SPIDER
+    aliases: []
+    default: "${REPO_ROOT}/scripts/ai/aq-health-spider"
+    layer: shell
+    consumers: [auto-remediate.sh]
+    description: "Path to the health-spider executable used by autonomous remediation"
 
   - canonical: AIDB_HOST
     aliases: []

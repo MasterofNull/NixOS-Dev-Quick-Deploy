@@ -5,6 +5,8 @@
   # so it must not be duplicated in system package profiles.
   ai-dev = [
     "nodejs"
+    "bun"
+    "typescript"
     "go"
     "cargo"
     "ruby"
@@ -75,6 +77,8 @@
 
   gaming = [
     "nodejs"
+    "bun"
+    "typescript"
     "go"
     "cargo"
     "ruby"
@@ -89,6 +93,8 @@
 
   minimal = [
     "nodejs"
+    "bun"
+    "typescript"
     "go"
     "cargo"
     "ruby"
