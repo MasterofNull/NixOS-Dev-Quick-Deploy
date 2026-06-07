@@ -1,18 +1,16 @@
 {
-  "current_objective": "Phase 137 complete. RAGAS auto-scoring wired. QA 193/0/2.",
-  "phase": "Phase 138 — next improvement slices",
+  "current_objective": "Phase 138 complete. Attention queue coverage complete. QA 193/0/2. Pending rebuild.",
+  "phase": "Phase 139 — nixos-rebuild to deploy Phase 137-138 + next slices",
   "todo_snapshot": [
-    "DONE: Phase 133 — MCP bridge fix + HM activation (6525d706)",
-    "DONE: Phase 134 — Hints quality + observability fixes (8 commits)",
-    "DONE: nixos-rebuild switch — Phase 134 deployed, QA 91/0/0",
-    "DONE: RAGAS metrics visibility fix — ragas_metrics field in JSON snapshot + aq-insights reader (2c2c6071)",
-    "DONE: aq-insights RAG posture + hint adoption signal extraction fix (2e918506)",
-    "DONE: Cross-project contamination fix — mcp-bridge-hybrid.py (f2530fe4)",
-    "DONE: Contaminating MakerSpace artifacts removed from NixOS repo",
-    "DONE: Phase 137 — RAGAS auto-scoring wired into handle_query (0c36728d) — 20% sample, 6/6 tests pass",
-    "DONE: 0.5.7 obsolete AI marker cleared (google.geminicodeassist-2.81.0) — QA 193/0/2",
-    "PENDING: nixos-rebuild to pick up http_server_impl.py Phase 137 change (coordinator needs restart)"
+    "DONE: Phase 137 — RAGAS auto-scoring wired into handle_query (0c36728d)",
+    "DONE: Phase 138.1 — Attention queue at remote delegate 5xx boundary (5e26b1c4)",
+    "DONE: Phase 138.2 — Attention queue at query-path exception boundary (b8b417b7)",
+    "DONE: Phase 138.3 — Attention queue at MCP tool dispatch boundary (f3eb9d32)",
+    "DONE: Parity plan P2 both items COMPLETE (attention queue all boundaries, contradiction detection partial)",
+    "DONE: QA 193/0/2",
+    "PENDING: nixos-rebuild switch to deploy Phase 137-138 coordinator changes",
+    "PENDING: RAGAS faithfulness option in NixOS (expose RAGAS_FAITHFULNESS_ENABLED toggle as aiStack option)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 137: RAGAS auto-scoring wired as fire-and-forget create_task in handle_query at 20% sample rate. Uses eval_runner.score_answer_relevance + score_context_precision + record_query_metrics. Registered in validation-check-registry (id: ragas-autoscoring-wiring). Parity plan updated: cross-project isolation + RAGAS auto-scoring both COMPLETE. QA 193/0/2 — was 193/1/2 before clearing the obsolete AI marker. Coordinator needs nixos-rebuild to deploy the http_server_impl change. Next candidates: (1) cross-agent contradiction detection P2, (2) attention queue integration P2, (3) Pi-style observability planning, (4) RAGAS faithfulness enablement (RAGAS_FAITHFULNESS_ENABLED=true env toggle)."
+  "resume_hint": "Phase 138 complete. All attention queue parity P2 gaps filled: circuit_breaker (Ph101), memory contradictions + consensus (Ph103), remote delegate 5xx (Ph138.1), query-path exception (Ph138.2), MCP tool dispatch (Ph138.3). All auto_ok so they go to archive without blocking queue. RAGAS auto-scoring (Ph137) at 20% sample rate. Both need nixos-rebuild to take effect since coordinator loads from repoSource (Nix store copy). RAGAS faithfulness is the next NixOS-level improvement — add RAGAS_FAITHFULNESS_ENABLED env var to coordinator service in mcp-servers.nix and expose as aiStack.ragas.faithfulnessEnabled option."
 }
