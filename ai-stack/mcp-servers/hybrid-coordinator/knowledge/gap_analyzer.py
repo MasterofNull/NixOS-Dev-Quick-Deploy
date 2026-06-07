@@ -44,6 +44,18 @@ _CURATED_STALE_GAP_PATTERNS = (
     "continue agent mode still says message exceeds context limit",
     "message exceeds context limit return a compact diagnosis path",
     "continue editor rescue message exceeds context limit",
+    # Session-continuity meta-queries — handled by RESUME.json, not RAG import
+    "what open items remain from previous session",
+    "what tasks remain from previous session",
+    "open items from previous session",
+    "continue from previous session",
+    "continuation from last session",
+    "next steps from last session",
+    "what was left unfinished",
+    "resume previous session",
+    "current session status",
+    "what is the current status of",
+    "summarize current session",
 )
 
 
