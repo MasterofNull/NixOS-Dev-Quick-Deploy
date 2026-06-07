@@ -1175,6 +1175,21 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "aq-report-ragas-panel",
+      "description": "Phase 143 \u2014 RAGAS metrics panel (4b) in aq-report: format_text and format_md accept ragas_metrics kwarg and emit correct section",
+      "trigger_paths": [
+        "scripts/ai/aq-report",
+        "scripts/testing/test-aq-report-ragas-panel.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-report-ragas-panel.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

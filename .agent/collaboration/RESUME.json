@@ -1,6 +1,6 @@
 {
-  "current_objective": "Phase 142 complete. P2 contradiction detection wired. Continuing system improvement slices.",
-  "phase": "Phase 143 — next improvement slices",
+  "current_objective": "Phase 143 complete. RAGAS 4b panel in aq-report. Continuing system improvement slices.",
+  "phase": "Phase 144 — next improvement slices",
   "todo_snapshot": [
     "DONE: Phase 137 — RAGAS auto-scoring wired into handle_query (0c36728d)",
     "DONE: Phase 138.1-3 — Attention queue all 5 boundaries (5e26b1c4–f3eb9d32)",
@@ -8,16 +8,16 @@
     "DONE: Phase 140 — P0 identity envelope in OTel trace attributes (45d11a4d)",
     "DONE: Phase 140.1 — X-Agent headers in aq-chat + mcp-bridge-hybrid (81729396)",
     "DONE: Phase 141 — RAGAS context_precision + faithfulness ctx payload-nested fix (0f235363)",
-    "DONE: Phase 142 — P2 contradiction detection at query time: check_contradiction + auto_ok attention queue (pending commit)",
-    "DONE: nixos-rebuild switch (Phase 137-141 now live; Phase 142 needs rebuild after commit)",
-    "PENDING: nixos-rebuild to activate Phase 141+142 eval_runner/http_server_impl fixes",
-    "PENDING: next improvement slices — candidates: dashboard caller identity panel, P1 MCP tool-boundary, eval trend visibility in aq-report"
+    "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
+    "DONE: nixos-rebuild switch (Phase 141+142 confirmed live in /nix/store/0j09ay3...)",
+    "DONE: Phase 143 — RAGAS 4b panel in aq-report (pending commit)",
+    "PENDING: next improvement slices — candidates: dashboard caller identity panel (P0 visual), P1 MCP tool-boundary, format_json ragas_metrics exposure"
   ],
   "uncommitted_changes": [
-    "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py — Phase 142 contradiction block",
-    "scripts/testing/test-ragas-autoscoring-wiring.py — Phase 142 tests (16 total)",
-    "config/validation-check-registry.json — memory-contradiction-detection check (71 total)",
+    "scripts/ai/aq-report — Phase 143: 4b RAGAS panel + _ragas_metrics fetch",
+    "scripts/testing/test-aq-report-ragas-panel.py — 6 regression tests",
+    "config/validation-check-registry.json — aq-report-ragas-panel check (72 total)",
     "nix/data/profile-system-packages.nix — bun+typescript added (pre-existing, unrelated)"
   ],
-  "resume_hint": "Phase 142 just implemented (not yet committed). http_server_impl.py memory recall block now runs pairwise check_contradiction() on recalled memory_summaries; contradiction fires auto_ok attention queue push via asyncio.create_task(to_thread()). All inside try/except — never blocks query path. 16/16 tests pass. Tier-0 gate clean. Next: commit, then nixos-rebuild to activate Phase 141+142. After rebuild: eval_runner payload-nested fix + contradiction detection both live. Phase 143 candidates: dashboard caller identity panel, P1 MCP tool-boundary, eval trend in aq-report."
+  "resume_hint": "Phase 143 just implemented (not yet committed). aq-report now shows [ 4b. RAGAS Metrics ] in terminal output and ## 4b in markdown. Live: 22 samples, AR=0.5194, CP=0.2662, faithfulness=null (Phase 141 fixes will improve CP on future queries; faithfulness will appear once Qwen-judge runs). 6/6 tests pass. 72 validation checks. No rebuild needed (aq-report is a script, live immediately). Next: commit, then Phase 144 candidates: dashboard caller identity panel, format_json ragas_metrics, P1 MCP tool-boundary."
 }
