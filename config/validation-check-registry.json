@@ -1160,6 +1160,21 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "memory-contradiction-detection",
+      "description": "Phase 142 \u2014 P2 live contradiction detection at query time: check_contradiction + auto_ok attention queue push wired into handle_query memory recall path",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "scripts/testing/test-ragas-autoscoring-wiring.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-ragas-autoscoring-wiring.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

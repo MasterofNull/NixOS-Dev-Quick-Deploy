@@ -1162,6 +1162,46 @@ async def _inject_semantic_tooling(
                 request_context["prior_memory"] = memory_summaries[:3]
                 request_context["memory_recall"] = memory_summaries[:3]
                 tooling_layer["memory_recall"] = memory_summaries[:2]
+                # Phase 142 — P2: pairwise contradiction check on recalled memory facts
+                if len(memory_summaries) >= 2:
+                    try:
+                        _mb = memory_broker.get_broker()
+                        _found_contradiction = False
+                        for _ci, _s1 in enumerate(memory_summaries):
+                            if _found_contradiction:
+                                break
+                            for _s2 in memory_summaries[_ci + 1:]:
+                                if _mb.check_contradiction(_s1, _s2):
+                                    _found_contradiction = True
+                                    def _push_contradiction(
+                                        _q=query[:120], _a=_s1[:120], _b=_s2[:120]
+                                    ):
+                                        try:
+                                            from attention_queue import push as _aq_push  # noqa: PLC0415
+                                            _aq_push(
+                                                source="memory-recall",
+                                                severity="low",
+                                                autonomy_boundary="auto_ok",
+                                                title="Recalled memory facts may contradict",
+                                                detail=(
+                                                    f"Query: {_q!r}. "
+                                                    f"Fact A: {_a!r}. "
+                                                    f"Fact B: {_b!r}."
+                                                ),
+                                                proposed_action=(
+                                                    "Review memory facts for conflict. "
+                                                    "Consider running memory consolidation."
+                                                ),
+                                            )
+                                        except Exception:
+                                            pass
+                                    try:
+                                        asyncio.create_task(asyncio.to_thread(_push_contradiction))
+                                    except RuntimeError:
+                                        pass
+                                    break
+                    except Exception:
+                        pass
             else:
                 request_context["memory_recall_miss"] = True
                 request["audit_metadata"]["memory_recall_miss"] = True
