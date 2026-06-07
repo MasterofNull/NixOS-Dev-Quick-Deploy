@@ -121,3 +121,8 @@
   Severity: medium
   Action: Added explicit `/sys/bus/pci/devices/` and `/sys/bus/pci/devices/**` read coverage to the `command-center-dashboard-api` profile; restart/rebuild required for live activation.
   File: nix/modules/services/mcp-servers.nix ~line 2609
+
+[OPEN] agentic-mind — cross-model workflow behavior is not standardized or gated — Claude follows the workflow more reliably than Gemini/remote/local lanes, while current parity checks mostly verify transport/header availability and fallback recovery can hide first-pass contract failures.
+  Severity: high
+  Action: Implement Phase 148 agent task envelope, workflow-adherence golden corpus, first-pass contract evaluator, model-profile freshness gate, and dashboard/aq-report interop scorecard.
+  File: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
