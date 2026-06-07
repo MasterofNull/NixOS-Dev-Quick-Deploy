@@ -51,6 +51,7 @@ NFT_FAMILY = os.getenv("FIREWALL_NFT_FAMILY", "inet")
 NFT_TABLE = os.getenv("FIREWALL_NFT_TABLE", "filter")
 NFT_OUTPUT_CHAIN = os.getenv("FIREWALL_NFT_OUTPUT_CHAIN", "output")
 CAPTIVE_PORTAL_RULE_COMMENT = os.getenv("CAPTIVE_PORTAL_RULE_COMMENT", "captive-portal-bypass")
+ALLOW_SUDO_FOR_READS = os.getenv("FIREWALL_ALLOW_SUDO_READS", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _resolve_binary(command: str) -> str:
@@ -187,6 +188,18 @@ async def run_sudo_command(cmd: List[str], timeout: int = 10) -> tuple[int, str,
     return await run_command([SUDO_BIN, "-n", *resolved], timeout)
 
 
+async def run_privileged_read_command(cmd: List[str], timeout: int = 10) -> tuple[int, str, str]:
+    """Run a read-only firewall command without sudo by default.
+
+    Dashboard cards poll these endpoints frequently. Under AppArmor, probing sudo
+    for passive reads creates denial noise and degrades operator visibility.
+    """
+    code, stdout, stderr = await run_command(cmd, timeout)
+    if code == 0 or not ALLOW_SUDO_FOR_READS:
+        return code, stdout, stderr
+    return await run_sudo_command(cmd, timeout)
+
+
 def _build_captive_portal_rule(*tokens: str, interface: Optional[str] = None) -> List[str]:
     """Build a consistent nftables add-rule command for captive portal bypass."""
     cmd = ["nft", "add", "rule", NFT_FAMILY, NFT_TABLE, NFT_OUTPUT_CHAIN]
@@ -244,7 +257,7 @@ async def get_firewall_status(request: Request):
         open_ports = []
         interfaces = {}
 
-        code, stdout, _ = await run_sudo_command(["nft", "list", "ruleset"])
+        code, stdout, _ = await run_privileged_read_command(["nft", "list", "ruleset"])
         if code == 0:
             # Parse nftables output for open ports
             for line in stdout.split('\n'):
@@ -285,11 +298,11 @@ async def get_firewall_status(request: Request):
 async def get_firewall_rules(request: Request):
     """Get current firewall rules (read-only, no audit needed)"""
     try:
-        code, stdout, stderr = await run_sudo_command(["nft", "list", "ruleset"])
+        code, stdout, stderr = await run_privileged_read_command(["nft", "list", "ruleset"])
 
         if code != 0:
             # Fall back to iptables
-            code, stdout, stderr = await run_sudo_command(["iptables", "-L", "-n", "-v"])
+            code, stdout, stderr = await run_privileged_read_command(["iptables", "-L", "-n", "-v"])
 
         if code != 0:
             raise HTTPException(status_code=500, detail=f"Failed to list rules: {stderr}")
@@ -573,7 +586,7 @@ async def get_crowdsec_bouncer_status():
 async def get_crowdsec_decisions():
     """Get current CrowdSec decisions (blocked IPs)"""
     try:
-        code, stdout, stderr = await run_sudo_command([
+        code, stdout, stderr = await run_privileged_read_command([
             "cscli", "decisions", "list", "-o", "json"
         ])
 
