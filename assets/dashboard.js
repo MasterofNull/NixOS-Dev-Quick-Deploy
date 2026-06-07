@@ -2631,7 +2631,13 @@ async function loadQueryTraces() {
       const lat = t.total_ms != null ? `${t.total_ms}ms` : "--";
       const col =
         t.total_ms > 10000 ? "err" : t.total_ms > 3000 ? "warn" : "ok";
-      return fwRow(query, `${t.intent || "--"} · ${lat}`, col);
+      // Phase 140 — show caller source when present (agent identity envelope)
+      const otel = t.otel_attributes || {};
+      const src = otel["gen_ai.maeah.caller.source"] || null;
+      const detail = src
+        ? `${src} · ${t.intent || "--"} · ${lat}`
+        : `${t.intent || "--"} · ${lat}`;
+      return fwRow(query, detail, col);
     }),
   ]
     .filter(Boolean)
