@@ -236,7 +236,7 @@ wait || true
 if [[ "${JSON_OUTPUT}" == "true" ]]; then
   # Simplified JSON output for parallel mode
   printf '{\n  "status": "ok",\n  "parallel_mode": true,\n  "max_jobs": %d,\n  "prompt_ids": %s\n}\n' \
-    "${MAX_JOBS}" "$(printf '%s' "${SELECTED_PROMPT_IDS[*]}" | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().split(",")))')"
+    "${MAX_JOBS}" "$(printf '%s' "${SELECTED_PROMPT_IDS[*]}" | python3 -c 'import json, sys; data=sys.stdin.read().split(); print(json.dumps(data if data else []))')"
 else
   printf 'aq-rag-prewarm: parallel execution complete (jobs=%d)\n' "${MAX_JOBS}"
 fi
