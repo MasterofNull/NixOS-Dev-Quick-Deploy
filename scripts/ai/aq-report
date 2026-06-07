@@ -7948,6 +7948,7 @@ def format_json(
         "cache": cache,
         "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
+        "ragas_metrics": (fetch_coordinator_eval_trend().get("ragas_metrics") or {}),
         "strategy_leaderboard": leaderboard,
         "top_prompts": [
             {"id": p["id"], "name": p.get("name"), "mean_score": p.get("mean_score")}
