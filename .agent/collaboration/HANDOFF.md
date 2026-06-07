@@ -1,3 +1,29 @@
+# HANDOFF MEMO — 2026-06-07 (Phase 146: aq-qa agent identity coverage)
+
+## Phase 146 — Agent identity governance coverage
+
+### Status
+COMPLETE. Pending commit at time of memo.
+
+### Work done
+| Item | Result |
+|------|--------|
+| Python aq-qa phase0 | Added `_check_phase146_identity_coverage(ctx)` and registered checks 146.1-146.4 |
+| Active aq-qa fallback | Mirrored checks in `scripts/ai/_aq-qa-bash` because `scripts/ai/aq-qa` currently falls back to bash when `scripts/ai/lib/harness_runner.py` is absent |
+| Static coverage | Checks request header capture, TraceCollector OTel caller attributes, and dashboard `/query/traces` + Identity Coverage UI |
+| Live coverage | Emits bounded `/query` probe with `X-Agent-Source=aq-qa-phase146`, then verifies known caller coverage in `/api/traces?limit=100` |
+
+### Validation
+- `python3 -m py_compile scripts/testing/harness_qa/phases/phase0.py`
+- `bash -n scripts/ai/_aq-qa-bash`
+- `python3 scripts/testing/test-agent-identity-envelope.py`
+- `scripts/ai/aq-qa 0 --machine` — 95 passed, 0 failed
+- `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/governance/tier0-validation-gate.sh --pre-commit` — 19 passed, 0 failed
+
+### Notes
+- Unrelated modified files remain unstaged: `.agents/attention/ATTENTION_ARCHIVE.jsonl`, `.agents/telemetry/routing-decisions.jsonl`, `config/harness-prompt-extensions.json`, `nix/data/profile-system-packages.nix`.
+- Next useful slice: switchboard ingress identity validation or P1 MCP tool-boundary enforcement.
+
 # HANDOFF MEMO — 2026-06-06 (Phase 134: DNS resilience + nix fallback — pending nixos-rebuild)
 
 ## Phase 134 — DNS resilience on bad-router wifi

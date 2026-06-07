@@ -1160,6 +1160,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_phase85_drop_zone(ctx))
     results.extend(_check_phase86_attention_queue(ctx))
     results.extend(_check_phase87_training_ingest(ctx))
+    results.extend(_check_phase146_identity_coverage(ctx))
     return results
 
 
@@ -1506,6 +1507,124 @@ def _check_ragas_eval(ctx: RunContext) -> list[CheckResult]:
         # Coordinator is up but returning pre-Phase-60.5 response: old nix store build.
         # Treat as skip (rebuild-pending) rather than fail (code bug).
         results.append(skipped(4, "60.7.4", "GET /eval/trend ragas_metrics", "old build active — ragas_metrics absent; nixos-rebuild required"))
+
+    return results
+
+
+def _check_phase146_identity_coverage(ctx: RunContext) -> list[CheckResult]:
+    """Phase 146: governance coverage for agent identity emitted in query traces."""
+    results: list[CheckResult] = []
+
+    http_server = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "http_server_impl.py"
+    )
+    trace_collector = (
+        ctx.repo_root
+        / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "trace_collector.py"
+    )
+    dashboard_backend = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    dashboard_js = ctx.repo_root / "assets" / "dashboard.js"
+
+    # 146.1 — request identity headers are captured into TraceCollector.
+    if not http_server.exists():
+        results.append(failed(4, "146.1", "agent identity request capture", "http_server_impl.py missing"))
+    else:
+        text = http_server.read_text()
+        checks = {
+            "set_caller": "set_caller(" in text,
+            "X-Agent-Source": "X-Agent-Source" in text,
+            "X-Agent-Role": "X-Agent-Role" in text,
+            "X-Agent-Boundary": "X-Agent-Boundary" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "146.1", "agent identity request capture", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "146.1", "agent identity request headers captured"))
+
+    # 146.2 — TraceCollector emits the identity envelope into OTel attributes.
+    if not trace_collector.exists():
+        results.append(failed(4, "146.2", "agent identity OTel envelope", "trace_collector.py missing"))
+    else:
+        text = trace_collector.read_text()
+        checks = {
+            "set_caller method": "def set_caller(" in text,
+            "caller source": "gen_ai.maeah.caller.source" in text,
+            "caller role": "gen_ai.maeah.caller.role" in text,
+            "caller boundary": "gen_ai.maeah.caller.autonomy_boundary" in text,
+        }
+        missing = [k for k, v in checks.items() if not v]
+        if missing:
+            results.append(failed(4, "146.2", "agent identity OTel envelope", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "146.2", "agent identity OTel attributes emitted"))
+
+    # 146.3 — dashboard proxy and frontend expose identity coverage, not just raw traces.
+    missing_surface = []
+    if not dashboard_backend.exists():
+        missing_surface.append("dashboard/backend/api/routes/aistack.py")
+    else:
+        backend_text = dashboard_backend.read_text()
+        if '@router.get("/query/traces")' not in backend_text or "/api/traces" not in backend_text:
+            missing_surface.append("dashboard query trace proxy")
+    if not dashboard_js.exists():
+        missing_surface.append("assets/dashboard.js")
+    else:
+        js_text = dashboard_js.read_text()
+        for needle in ("Identity Coverage", "Callers", "gen_ai.maeah.caller.source"):
+            if needle not in js_text:
+                missing_surface.append(f"dashboard {needle}")
+    if missing_surface:
+        results.append(failed(4, "146.3", "dashboard identity coverage surface", f"missing: {', '.join(missing_surface)}"))
+    else:
+        results.append(passed(4, "146.3", "dashboard identity coverage surface wired"))
+
+    # 146.4 — live trace endpoint returns identity envelope fields when callers emit them.
+    # Emit a bounded retrieval-only probe first; otherwise background health checks can
+    # push the most recent identity-bearing trace out of a small query window.
+    probe_status, _ = http_post_json(
+        f"{ctx.hybrid_coordinator_url}/query",
+        {"query": "ping", "max_tokens": 16},
+        headers={
+            "X-Agent-Source": "aq-qa-phase146",
+            "X-Agent-Role": "validator",
+            "X-Agent-Boundary": "auto_ok",
+        },
+        timeout=8,
+    )
+    if probe_status < 0:
+        results.append(skipped(4, "146.4", "live trace identity coverage", "coordinator query probe unreachable"))
+        return results
+
+    data = http_json(f"{ctx.hybrid_coordinator_url}/api/traces?limit=100", timeout=4)
+    if data is None:
+        results.append(skipped(4, "146.4", "live trace identity coverage", "coordinator unreachable"))
+        return results
+
+    traces = data.get("traces") if isinstance(data, dict) else None
+    if traces is None:
+        results.append(skipped(4, "146.4", "live trace identity coverage", "trace endpoint unavailable or old build active"))
+        return results
+    if not traces:
+        results.append(skipped(4, "146.4", "live trace identity coverage", "no query traces available yet"))
+        return results
+
+    with_envelope = [
+        t for t in traces
+        if isinstance(t.get("otel_attributes"), dict)
+        and "gen_ai.maeah.caller.source" in t["otel_attributes"]
+    ]
+    known_callers = [
+        t for t in with_envelope
+        if t["otel_attributes"].get("gen_ai.maeah.caller.source")
+    ]
+    if not with_envelope:
+        results.append(skipped(4, "146.4", "live trace identity coverage", "old traces lack Phase 140 caller envelope; rebuild or new query required"))
+    elif known_callers:
+        results.append(passed(4, "146.4", f"live trace identity coverage {len(known_callers)}/{len(traces)} known callers"))
+    else:
+        results.append(failed(4, "146.4", "live trace identity coverage", f"caller envelope present but 0/{len(traces)} traces have known caller source"))
 
     return results
 

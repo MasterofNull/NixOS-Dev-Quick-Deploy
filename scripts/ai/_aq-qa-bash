@@ -1451,6 +1451,111 @@ except Exception as e:
       _fail 1 "132.3" "_validate_code_blocks" "validation logic not catching syntax errors or raising false positives"
     fi
   fi
+
+  # 146.1-146.4 — agent identity envelope governance coverage in query traces
+  if _should_run 4; then
+    local _http_server="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py"
+    local _trace_collector="${REPO_ROOT}/ai-stack/mcp-servers/hybrid-coordinator/trace_collector.py"
+    local _dash_backend="${REPO_ROOT}/dashboard/backend/api/routes/aistack.py"
+    local _dash_js="${REPO_ROOT}/assets/dashboard.js"
+
+    if [[ -f "$_http_server" ]] \
+      && grep -q "set_caller(" "$_http_server" \
+      && grep -q "X-Agent-Source" "$_http_server" \
+      && grep -q "X-Agent-Role" "$_http_server" \
+      && grep -q "X-Agent-Boundary" "$_http_server"; then
+      _pass 4 "146.1" "agent identity request headers captured"
+    else
+      _fail 4 "146.1" "agent identity request capture" "missing set_caller or X-Agent-* header extraction"
+    fi
+
+    if [[ -f "$_trace_collector" ]] \
+      && grep -q "def set_caller(" "$_trace_collector" \
+      && grep -q "gen_ai.maeah.caller.source" "$_trace_collector" \
+      && grep -q "gen_ai.maeah.caller.role" "$_trace_collector" \
+      && grep -q "gen_ai.maeah.caller.autonomy_boundary" "$_trace_collector"; then
+      _pass 4 "146.2" "agent identity OTel attributes emitted"
+    else
+      _fail 4 "146.2" "agent identity OTel envelope" "missing set_caller or gen_ai.maeah.caller.* attributes"
+    fi
+
+    if [[ -f "$_dash_backend" && -f "$_dash_js" ]] \
+      && grep -q '@router.get("/query/traces")' "$_dash_backend" \
+      && grep -q "/api/traces" "$_dash_backend" \
+      && grep -q "Identity Coverage" "$_dash_js" \
+      && grep -q "Callers" "$_dash_js" \
+      && grep -q "gen_ai.maeah.caller.source" "$_dash_js"; then
+      _pass 4 "146.3" "dashboard identity coverage surface wired"
+    else
+      _fail 4 "146.3" "dashboard identity coverage surface" "missing proxy or Identity Coverage/Callers UI wiring"
+    fi
+
+    local _probe_status _traces_json _identity_live
+    _probe_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
+      -X POST "${HYBRID_URL}/query" \
+      -H "Content-Type: application/json" \
+      -H "X-Agent-Source: aq-qa-phase146" \
+      -H "X-Agent-Role: validator" \
+      -H "X-Agent-Boundary: auto_ok" \
+      -d '{"query":"ping","max_tokens":16}' 2>/dev/null || echo "000")
+    if [[ "$_probe_status" == "000" ]]; then
+      _skip 4 "146.4" "live trace identity coverage" "coordinator query probe unreachable"
+      return 0
+    fi
+
+    _traces_json=$(curl -s --max-time 4 "${HYBRID_URL}/api/traces?limit=100" 2>/dev/null || true)
+    if [[ -z "$_traces_json" ]]; then
+      _skip 4 "146.4" "live trace identity coverage" "coordinator unreachable"
+    else
+      _identity_live=$(python3 -c "
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+except Exception:
+    print('malformed')
+    sys.exit(0)
+traces = data.get('traces') if isinstance(data, dict) else None
+if traces is None:
+    print('unavailable')
+elif not traces:
+    print('empty')
+else:
+    with_envelope = [
+        t for t in traces
+        if isinstance(t.get('otel_attributes'), dict)
+        and 'gen_ai.maeah.caller.source' in t['otel_attributes']
+    ]
+    known = [
+        t for t in with_envelope
+        if t['otel_attributes'].get('gen_ai.maeah.caller.source')
+    ]
+    if not with_envelope:
+        print('old')
+    elif known:
+        print(f'pass:{len(known)}:{len(traces)}')
+    else:
+        print(f'fail:0:{len(traces)}')
+" <<< "$_traces_json" 2>/dev/null || echo "malformed")
+      case "$_identity_live" in
+        pass:*)
+          local _known_total="${_identity_live#pass:}"
+          _pass 4 "146.4" "live trace identity coverage ${_known_total/:/\/} known callers"
+          ;;
+        fail:*)
+          _fail 4 "146.4" "live trace identity coverage" "caller envelope present but 0/${_identity_live##*:} traces have known caller source"
+          ;;
+        empty)
+          _skip 4 "146.4" "live trace identity coverage" "no query traces available yet"
+          ;;
+        old)
+          _skip 4 "146.4" "live trace identity coverage" "old traces lack Phase 140 caller envelope; rebuild or new query required"
+          ;;
+        *)
+          _skip 4 "146.4" "live trace identity coverage" "trace endpoint unavailable or old build active"
+          ;;
+      esac
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------
