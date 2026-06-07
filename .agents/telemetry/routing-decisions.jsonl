@@ -573,3 +573,4 @@
 {"ts": 1780848578.8146265, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780848610.0000374, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780849878.3661273, "local": false, "profile": "remote-reasoning", "event_type": "routing_decision"}
+{"ts": 1780850356.420202, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
