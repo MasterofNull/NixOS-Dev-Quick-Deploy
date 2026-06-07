@@ -1,6 +1,6 @@
 {
-  "current_objective": "Phase 148 research pass in progress: map agentic config/workflow/model degradation and desktop input rollback incident before implementation.",
-  "phase": "Phase 148 — agentic mind standardization research",
+  "current_objective": "Phase 148 rebuild-watch remediation complete in repo; activation pending for Nix/AppArmor/service-copy changes.",
+  "phase": "Phase 148 — rebuild-watch remediation",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
     "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
@@ -11,12 +11,14 @@
     "DONE: Phase 147 — dashboard health-spider semantic probes + auto-remediate health-spider pass + passive firewall sudo suppression",
     "DONE: Phase 147 rebuild was attempted by user; user then reverted a later build due desktop cursor/text input instability",
     "DONE: Phase 148 research pass identified aq-chat enable_thinking=true contradiction, thin golden eval coverage, stale parity/routing docs, local-agent-config multi-doc YAML trap, and COSMIC input log signals",
-    "PENDING: implement repo-only agentic standardization fixes after research review; avoid another Nix activation until desktop input diagnostic checklist exists"
+    "DONE: Rebuild watch found and repo-fixed ai-auto-remediate PRSI queue command drift, tmpfiles unsafe transitions, health-spider already-covered AppArmor false-positive exit, and dashboard /tmp AppArmor directory denial",
+    "PENDING: sudo nixos-rebuild switch --flake .#hyperd-ai-dev to activate Nix/AppArmor/service-copy changes",
+    "PENDING: implement repo-only agentic standardization fixes after rebuild-watch commit"
   ],
   "uncommitted_changes": [
     "Research doc .agents/plans/phase-148-agentic-mind-research.md",
     "Issue backlog desktop-input entry",
-    "Generated routing telemetry from session start/hints"
+    "Rebuild-watch remediation files and generated telemetry"
   ],
-  "resume_hint": "Do not start with a rebuild. User asked for research passes before implementation after reverting a build due erratic cursor/text input. Research finding: scripts/ai/aq-chat currently advertises and sends enable_thinking=true for local Qwen paths, contradicting shared llm_config.py and likely causing local chat/tool-output degradation. switchboard only sets enable_thinking=false if caller omitted chat_template_kwargs. config/local-agent-config.yaml has two YAML documents and breaks yaml.safe_load. data/harness-golden-evals.json has only 2 cases and does not gate workflow adherence. docs/architecture/agent-behavior-parity-index.md and routing-profile-inventory.md have stale references/findings. COSMIC logs show missing input/cursor config keys and invalid shortcut parsing; no obvious synthetic input process is currently active. See .agents/plans/phase-148-agentic-mind-research.md."
+  "resume_hint": "Rebuild-watch repo fixes are ready but require sudo nixos-rebuild switch to activate: scripts/automation/auto-remediate.sh now uses supported prsi-orchestrator.py cycle instead of removed queue; nix/modules/core/base.nix repairs /var/lib/nixos-ai-stack parent before children; nix/modules/services/mcp-servers.nix removes duplicate /var/lib/ai-stack tmpfiles rules, makes /var/log/nixos-ai-stack root:ai-stack, and adds /tmp/ r, to command-center-dashboard-api AppArmor; scripts/ai/aq-health-spider no longer exits nonzero when apparmor-fix-agent reports all paths already covered. Validation passed: bash -n auto-remediate, py_compile health-spider/prsi/test, boot-stability regression, nix parse base/mcp, aq-qa 0 --machine 95/0, health-spider --once exit 0. Agentic degradation research remains next: aq-chat enable_thinking=true contradiction is the highest-confidence local-model culprit."
 }

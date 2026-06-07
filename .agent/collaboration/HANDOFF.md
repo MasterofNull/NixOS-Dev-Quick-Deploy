@@ -2180,3 +2180,15 @@ Denied paths that triggered: ['/nix/store/z5gs9jxm42pxkvy2jypq2xnmxgjfk3i2-sudo-
 Rules added (1): ['            /proc/@{pids}/stat r,']  
 Denied paths: ['/nix/store/z5gs9jxm42pxkvy2jypq2xnmxgjfk3i2-sudo-1.9.17p2/bin/sudo', '/proc/1256/stat', '/proc/1264/stat', '/proc/684277/stat', '/proc/1197/stat']  
 ⚠️  **Action required: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`**
+### 2026-06-07 — Rebuild Watch Remediation Follow-Up
+
+During post-rebuild monitoring, these issues were found and fixed in repo:
+
+- `ai-auto-remediate.service` failed because `auto-remediate.sh` called removed PRSI subcommand `queue`; fixed to use `prsi-orchestrator.py cycle --since=1d --execute-limit=1`.
+- `systemd-tmpfiles` emitted unsafe/duplicate path warnings for AI stack state; fixed tmpfiles ordering for `/var/lib/nixos-ai-stack`, removed duplicate `/var/lib/ai-stack` declarations, and made `/var/log/nixos-ai-stack` `root:ai-stack`.
+- `aq-health-spider --once` exited nonzero for AppArmor denials even when `apparmor-fix-agent` reported all paths already covered; fixed unresolved anomaly accounting.
+- Dashboard AppArmor profile denied `/tmp/` directory reads while allowing `/tmp/*.db`; added narrow `/tmp/ r,`.
+
+Validation: `bash -n scripts/automation/auto-remediate.sh`; `python3 -m py_compile scripts/ai/aq-health-spider scripts/automation/prsi-orchestrator.py scripts/testing/test-boot-stability-regressions.py`; `python3 scripts/testing/test-boot-stability-regressions.py`; `nix-instantiate --parse nix/modules/core/base.nix`; `nix-instantiate --parse nix/modules/services/mcp-servers.nix`; `aq-qa 0 --machine` passed 95/0 before repo-only fixes; `scripts/ai/aq-health-spider --once` now exits 0 for already-covered AppArmor denials.
+
+Pending activation: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`.

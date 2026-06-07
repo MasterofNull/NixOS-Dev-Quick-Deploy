@@ -131,3 +131,8 @@
   Severity: high
   Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
   File: .agents/plans/phase-148-agentic-mind-research.md
+
+[PENDING-REBUILD] rebuild-watch — activation exposed auto-remediate PRSI CLI drift, tmpfiles unsafe transitions, and dashboard AppArmor `/tmp/` denial noise — Root causes: `auto-remediate.sh` called removed `prsi-orchestrator.py queue`; tmpfiles repaired `/var/lib/nixos-ai-stack` after processing child paths and kept `/var/log/nixos-ai-stack` user-owned while service-owned child logs live under it; dashboard AppArmor allowed `/tmp/*.db` but not `/tmp/` directory reads; health-spider counted already-covered AppArmor denials as unresolved.
+  Severity: high
+  Action: Repo fixes applied: auto-remediate uses `prsi-orchestrator.py cycle`; tmpfiles parent repair is ordered before child paths and AI log parent is `root:ai-stack`; dashboard profile allows narrow `/tmp/ r,`; health-spider returns cleanly when apparmor-fix-agent reports all paths already covered. Run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate Nix/AppArmor/service-copy changes.
+  File: scripts/automation/auto-remediate.sh; scripts/ai/aq-health-spider; nix/modules/core/base.nix; nix/modules/services/mcp-servers.nix; scripts/testing/test-boot-stability-regressions.py
