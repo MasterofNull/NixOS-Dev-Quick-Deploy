@@ -1820,4 +1820,32 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
         raise
     except Exception as exc:
         _write_audit(name, 'error', str(exc), (_time.perf_counter() - _start) * 1000, arguments)
+        # Phase 138.3 — Attention queue: surface unexpected MCP tool dispatch errors (auto_ok → archive)
+        _mcp_exc_msg = str(exc)[:200]
+        _mcp_exc_type = type(exc).__name__
+        _mcp_tool_name = name or "unknown"
+
+        def _push_mcp_attention(_t=_mcp_tool_name, _et=_mcp_exc_type, _em=_mcp_exc_msg):
+            try:
+                from attention_queue import push as _aq_push  # noqa: PLC0415
+                _aq_push(
+                    source="mcp-tool-handler",
+                    severity="medium",
+                    autonomy_boundary="auto_ok",
+                    title=f"MCP tool dispatch exception: {_t} ({_et})",
+                    detail=f"Tool: {_t}. {_et}: {_em}.",
+                    proposed_action=(
+                        "Check coordinator logs for full stack trace. "
+                        "If persistent, review tool arguments or coordinator state."
+                    ),
+                )
+            except Exception:
+                pass
+
+        try:
+            import asyncio as _asyncio
+            _asyncio.ensure_future(_asyncio.to_thread(_push_mcp_attention))
+        except RuntimeError:
+            pass  # no running loop (tests / non-async context)
+
         raise
