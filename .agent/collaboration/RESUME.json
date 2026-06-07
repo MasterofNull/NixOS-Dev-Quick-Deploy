@@ -1,16 +1,18 @@
 {
-  "current_objective": "Phase 138 complete. Attention queue coverage complete. QA 193/0/2. Pending rebuild.",
-  "phase": "Phase 139 — nixos-rebuild to deploy Phase 137-138 + next slices",
+  "current_objective": "Phase 139 — identify and execute next parity/improvement slices. All Phase 137-138 committed; awaiting user nixos-rebuild.",
+  "phase": "Phase 139 — next system improvement slices",
   "todo_snapshot": [
     "DONE: Phase 137 — RAGAS auto-scoring wired into handle_query (0c36728d)",
     "DONE: Phase 138.1 — Attention queue at remote delegate 5xx boundary (5e26b1c4)",
     "DONE: Phase 138.2 — Attention queue at query-path exception boundary (b8b417b7)",
     "DONE: Phase 138.3 — Attention queue at MCP tool dispatch boundary (f3eb9d32)",
-    "DONE: Parity plan P2 both items COMPLETE (attention queue all boundaries, contradiction detection partial)",
-    "DONE: QA 193/0/2",
-    "PENDING: nixos-rebuild switch to deploy Phase 137-138 coordinator changes",
-    "PENDING: RAGAS faithfulness option in NixOS (expose RAGAS_FAITHFULNESS_ENABLED toggle as aiStack option)"
+    "DONE: QA 193/0/2 (94f24aa3)",
+    "DONE: RAGAS faithfulness — faithfulnessEnabled=true already in nix/hosts/hyperd/facts.nix:91; env var wired in mcp-servers.nix:1157",
+    "PENDING: nixos-rebuild switch (user runs: nrs or sudo nixos-rebuild switch --flake .#hyperd-ai-dev)",
+    "PENDING: next improvement slices — candidates: P0 agent identity envelope, P1 MCP tool-boundary enforcement, P2 live cross-agent contradiction detection"
   ],
-  "uncommitted_changes": [],
-  "resume_hint": "Phase 138 complete. All attention queue parity P2 gaps filled: circuit_breaker (Ph101), memory contradictions + consensus (Ph103), remote delegate 5xx (Ph138.1), query-path exception (Ph138.2), MCP tool dispatch (Ph138.3). All auto_ok so they go to archive without blocking queue. RAGAS auto-scoring (Ph137) at 20% sample rate. Both need nixos-rebuild to take effect since coordinator loads from repoSource (Nix store copy). RAGAS faithfulness is the next NixOS-level improvement — add RAGAS_FAITHFULNESS_ENABLED env var to coordinator service in mcp-servers.nix and expose as aiStack.ragas.faithfulnessEnabled option."
+  "uncommitted_changes": [
+    "nix/data/profile-system-packages.nix — bun+typescript added to ai-dev/gaming/minimal profiles (pre-existing, unrelated to Phase 137-138)"
+  ],
+  "resume_hint": "Phase 137-138 complete and committed. RAGAS faithfulness already enabled (facts.nix:91). Only action needed from user is nixos-rebuild switch. Next slices candidates: (1) P0 agent identity envelope — wire source/role/autonomy_boundary into every dispatch call; (2) P1 MCP tool-boundary profile enforcement; (3) P2 live cross-agent fact-checking at query time (extend beyond memory_broker/consensus_arbiter Phase 103 partial). QA: 193/0/2. 68 validation checks. Uncommitted: profile-system-packages.nix (bun+typescript, unrelated)."
 }

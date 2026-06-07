@@ -27,7 +27,7 @@ companion to `COMBINED-PRD.md`.
 | P0 | Agent identity envelope (source + role + boundary) | In progress |
 | P1 | Runtime bounded delegation envelopes for agent identity/delegation | Partial |
 | P1 | MCP tool-boundary profile enforcement | Partial |
-| P1 | Trace path view: prompt → route → memory → tools → response → review | Partial — trace events in hybrid-events.jsonl; Gantt panel active; per-turn RAGAS scoring wired (Phase 137) |
+| P1 | Trace path view: prompt → route → memory → tools → response → review | Partial — trace events in hybrid-events.jsonl; Gantt panel active; per-turn RAGAS scoring wired (Phase 137); faithfulness (Qwen-as-judge) wired (Phase 139) |
 | P1 | Agent run event stream with replayable single-agent, swimlane, and race views | **COMPLETE** (Phase 93.1/93.6/93.7 — 2026-06-02) |
 | P1 | Controlled spec-format race: Markdown vs HTML vs enhanced visual HTML | **COMPLETE** (Phase 93.4 — 2026-06-02) |
 | P1 | Useful-token accounting tied to accepted outcome and reviewer/eval verdict | **COMPLETE** (Phase 93.5 — 2026-06-02) |
