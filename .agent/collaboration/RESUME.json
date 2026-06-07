@@ -1,17 +1,17 @@
 {
-  "current_objective": "Phase 145 complete. Dashboard caller identity panel live. Continuing system improvement slices.",
-  "phase": "Phase 146 — next improvement slices",
+  "current_objective": "Phase 146 complete. aq-qa governance now tracks agent identity emission in query traces.",
+  "phase": "Phase 147 — next improvement slices",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
     "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
     "DONE: Phase 143 — RAGAS 4b panel in aq-report (0610441b)",
     "DONE: Phase 144 — format_json ragas_metrics dedup + P2 parity plan closure (05c11384)",
-    "DONE: Phase 145 — dashboard caller identity coverage panel in query traces widget (pending commit)",
-    "PENDING: next improvement slices — candidates: aq-qa caller identity coverage check, P1 MCP tool-boundary enforcement, switchboard ingress identity validation"
+    "DONE: Phase 145 — dashboard caller identity coverage panel in query traces widget (2ed34de8)",
+    "DONE: Phase 146 — aq-qa identity coverage checks 146.1-146.4 in phase0.py + _aq-qa-bash",
+    "PENDING: next improvement slices — candidates: P1 MCP tool-boundary enforcement, switchboard ingress identity validation"
   ],
   "uncommitted_changes": [
-    "assets/dashboard.js — Phase 145: Identity Coverage + Callers rows in query traces widget",
-    ".agent/collaboration/RESUME.json — updated"
+    "Unrelated pre-existing/live telemetry changes remain unstaged: .agents/attention/ATTENTION_ARCHIVE.jsonl, .agents/telemetry/routing-decisions.jsonl, config/harness-prompt-extensions.json, nix/data/profile-system-packages.nix"
   ],
-  "resume_hint": "Phase 145 just implemented (not yet committed). dashboard.js query traces widget now shows Identity Coverage (N%/M of N traces) and Callers breakdown (aq-chat:N · mcp-bridge-hybrid:N · unknown:N). Reads gen_ai.maeah.caller.source from otel_attributes. Live immediately (static file from repo). Currently shows 0% / unknown:N because health-spider traces don't send X-Agent headers — will populate when aq-chat queries run. Phase 146 candidates: aq-qa check for identity coverage threshold, P1 MCP tool-boundary, switchboard ingress identity validation (reject missing-identity requests)."
+  "resume_hint": "Phase 146 complete pending/after commit: Python aq-qa phase0 and active bash fallback runner both include checks 146.1-146.4. They validate request header capture, TraceCollector OTel caller attributes, dashboard /query/traces proxy + Identity Coverage UI strings, and live /api/traces identity coverage. The live check emits a bounded POST /query probe with X-Agent-Source=aq-qa-phase146 before reading /api/traces?limit=100 so tier0 is not brittle to trace churn. Validation: py_compile phase0.py, bash -n _aq-qa-bash, test-agent-identity-envelope.py, scripts/ai/aq-qa 0 --machine (95/0), tier0 --pre-commit (19/0). Next candidates: P1 MCP tool-boundary enforcement, switchboard ingress identity validation."
 }
