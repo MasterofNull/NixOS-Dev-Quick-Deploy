@@ -44,6 +44,13 @@
   Action: Pass `force=True` in cleanup calls, or add auto-deactivate before cleanup. File: ai-stack/orchestration/workspace_isolation.py
   File: ai-stack/orchestration/workspace_isolation.py (cleanup_workspace method)
 
+[RESOLVED 2026-06-07] cross-project-contamination — mcp-bridge-hybrid workflow tools (retrofit, primer, brownfield, project-init) ran with cwd=REPO_ROOT, so --target . resolved to the NixOS harness root instead of the calling agent's project directory. Gemini CLI working in a fresh MakerSpace repo called aqd workflows retrofit --target . and polluted: .claude/CLAUDE.md (template reset), .agents/plans/README.md, .agent/commands/, .agent/PROJECT-PRD.md, .agent/GLOBAL-RULES.md, .agent/workflows/*.json, session-primer-summary.json.
+  Severity: high (corrupts harness scaffolding silently; cross-project data contamination)
+  Root cause: _run_local(argv) defaults cwd=REPO_ROOT; relative targets resolve to harness root not client CWD
+  Fix: _resolve_workflow_target() normalizes target_dir to absolute path; all four workflow handlers now pass cwd=abs_target to _run_local; REPO_ROOT overlap triggers strong warning in tool response
+  Files: scripts/ai/mcp-bridge-hybrid.py (Phase 136)
+  Pattern: External agents MUST pass target_dir as absolute path; never --target . from a remote client
+
 [OPEN] hardware — ROCm not available on Renoir APU (gfx90c) — ACCELERATE PRD assumed ROCm availability. Renoir iGPU is not a supported ROCm target. `rocminfo` absent. llama-cpp runs Vulkan only. Baseline: 2.71 tok/s.
   Severity: info (hardware constraint, not a bug — requires discrete RDNA2+ GPU for ROCm)
   Action: Document in hardware-profiles.json; remove ROCm acceptance criterion from ACCELERATE PRD. No code fix possible without hardware upgrade.

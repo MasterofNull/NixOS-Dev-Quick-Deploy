@@ -106,6 +106,43 @@ _HINTS_CACHE_TTL = 30.0
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="mcp-bridge")
 
 
+def _resolve_workflow_target(target_dir_arg: str) -> tuple[str, str | None]:
+    """Resolve a workflow target_dir arg to an absolute path.
+
+    Returns (abs_path, warning_or_None).
+
+    Cross-project isolation rule: workflow tools that write project files (retrofit,
+    primer, brownfield, project-init) MUST operate on the caller's project directory,
+    not the harness repo. Relative paths (including ".") are ambiguous when the bridge
+    runs with cwd=REPO_ROOT — they silently resolve to the harness repo itself.
+
+    Enforcement:
+    - If the caller passes an absolute path → use it directly.
+    - If the caller passes "." or a relative path → resolve relative to REPO_ROOT
+      (unavoidable default) and emit a warning. External agents should always pass
+      an absolute path to the project they're initialising.
+    - If the resolved path equals REPO_ROOT → append a strong warning: writing
+      project-init artifacts here will overwrite harness scaffolding.
+    """
+    abs_target = os.path.abspath(target_dir_arg) if os.path.isabs(target_dir_arg) else os.path.abspath(
+        os.path.join(REPO_ROOT, target_dir_arg)
+    )
+    warning = None
+    if not os.path.isabs(target_dir_arg) or target_dir_arg in (".", "./"):
+        warning = (
+            f"WARNING: target_dir '{target_dir_arg}' is a relative path; "
+            f"resolved to '{abs_target}' (harness bridge cwd={REPO_ROOT}). "
+            "For external projects pass an absolute path to avoid writing into the harness repo."
+        )
+    if os.path.normpath(abs_target) == os.path.normpath(REPO_ROOT):
+        warning = (
+            f"WARNING: target_dir resolved to the harness repo root ({REPO_ROOT}). "
+            "This will overwrite harness scaffolding (.claude/CLAUDE.md, commands, .agent/ files). "
+            "Pass target_dir as an absolute path to the external project directory."
+        )
+    return abs_target, warning
+
+
 def _post(url: str, payload: dict, key: str, timeout: int = _DEFAULT_TIMEOUT_POST) -> dict:
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
@@ -1113,13 +1150,8 @@ def _call_tool(name: str, args: dict) -> str:
         return _format_result(r)
 
     if name == "project_init_workflow":
-        argv = [
-            AQD_BIN,
-            "workflows",
-            "project-init",
-            "--target",
-            str(args.get("target_dir", ".")),
-        ]
+        abs_target, target_warn = _resolve_workflow_target(str(args.get("target_dir", ".")))
+        argv = [AQD_BIN, "workflows", "project-init", "--target", abs_target]
         if args.get("project_name"):
             argv.extend(["--name", str(args.get("project_name"))])
         if args.get("goal"):
@@ -1130,32 +1162,26 @@ def _call_tool(name: str, args: dict) -> str:
             argv.extend(["--owner", str(args.get("owner"))])
         if bool(args.get("force", False)):
             argv.append("--force")
-        r = _run_local(argv)
+        r = _run_local(argv, cwd=abs_target)
+        if target_warn:
+            r.setdefault("warnings", []).append(target_warn)
         return _format_result(r)
 
     if name == "primer_workflow":
-        argv = [
-            AQD_BIN,
-            "workflows",
-            "primer",
-            "--target",
-            str(args.get("target_dir", ".")),
-        ]
+        abs_target, target_warn = _resolve_workflow_target(str(args.get("target_dir", ".")))
+        argv = [AQD_BIN, "workflows", "primer", "--target", abs_target]
         if args.get("objective"):
             argv.extend(["--objective", str(args.get("objective"))])
         if args.get("output"):
             argv.extend(["--output", str(args.get("output"))])
-        r = _run_local(argv)
+        r = _run_local(argv, cwd=abs_target)
+        if target_warn:
+            r.setdefault("warnings", []).append(target_warn)
         return _format_result(r)
 
     if name == "brownfield_workflow":
-        argv = [
-            AQD_BIN,
-            "workflows",
-            "brownfield",
-            "--target",
-            str(args.get("target_dir", ".")),
-        ]
+        abs_target, target_warn = _resolve_workflow_target(str(args.get("target_dir", ".")))
+        argv = [AQD_BIN, "workflows", "brownfield", "--target", abs_target]
         if args.get("objective"):
             argv.extend(["--objective", str(args.get("objective"))])
         if args.get("constraints"):
@@ -1166,17 +1192,14 @@ def _call_tool(name: str, args: dict) -> str:
             argv.extend(["--acceptance", str(args.get("acceptance"))])
         if bool(args.get("force", False)):
             argv.append("--force")
-        r = _run_local(argv)
+        r = _run_local(argv, cwd=abs_target)
+        if target_warn:
+            r.setdefault("warnings", []).append(target_warn)
         return _format_result(r)
 
     if name == "retrofit_workflow":
-        argv = [
-            AQD_BIN,
-            "workflows",
-            "retrofit",
-            "--target",
-            str(args.get("target_dir", ".")),
-        ]
+        abs_target, target_warn = _resolve_workflow_target(str(args.get("target_dir", ".")))
+        argv = [AQD_BIN, "workflows", "retrofit", "--target", abs_target]
         if args.get("project_name"):
             argv.extend(["--name", str(args.get("project_name"))])
         if args.get("goal"):
@@ -1187,7 +1210,9 @@ def _call_tool(name: str, args: dict) -> str:
             argv.extend(["--owner", str(args.get("owner"))])
         if bool(args.get("force", False)):
             argv.append("--force")
-        r = _run_local(argv)
+        r = _run_local(argv, cwd=abs_target)
+        if target_warn:
+            r.setdefault("warnings", []).append(target_warn)
         return _format_result(r)
 
     if name == "store_memory":
