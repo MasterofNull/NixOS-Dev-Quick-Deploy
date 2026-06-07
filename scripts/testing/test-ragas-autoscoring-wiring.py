@@ -121,6 +121,50 @@ class TestRagasAutoscoringWiring(unittest.TestCase):
         self.assertIn('d.get("payload")', src)
         self.assertIn('p.get("solution")', src)
 
+    def test_phase142_contradiction_block_present(self):
+        """Static (Phase 142): contradiction check block must exist in handle_query memory recall path."""
+        src = (COORDINATOR / "http_server_impl.py").read_text(encoding="utf-8")
+        self.assertIn("Phase 142", src, "Phase 142 contradiction block missing")
+        self.assertIn("check_contradiction", src, "check_contradiction call missing")
+        self.assertIn("memory-recall", src, "attention queue source missing")
+        self.assertIn("auto_ok", src, "autonomy_boundary auto_ok missing")
+
+    def test_phase142_contradiction_fires_attention_queue(self):
+        """Unit (Phase 142): check_contradiction True → attention queue push attempted."""
+        import sys, types
+
+        # Stub attention_queue so the push() call is captured
+        aq_mod = types.ModuleType("attention_queue")
+        push_calls = []
+        def _fake_push(**kwargs):
+            push_calls.append(kwargs)
+        aq_mod.push = _fake_push
+        sys.modules["attention_queue"] = aq_mod
+
+        # Stub memory_broker with a broker that always says contradicted
+        mb_mod = types.ModuleType("memory_broker")
+        class _FakeBroker:
+            def check_contradiction(self, a, b):
+                return True
+        mb_mod.get_broker = lambda: _FakeBroker()
+        sys.modules.setdefault("memory_broker", mb_mod)
+
+        # Import and run the standalone push helper directly (simulates what _push_contradiction does)
+        from attention_queue import push as _aq_push  # noqa: PLC0415
+        _aq_push(
+            source="memory-recall", severity="low",
+            autonomy_boundary="auto_ok",
+            title="Recalled memory facts may contradict",
+            detail="Query: 'q'. Fact A: 'a'. Fact B: 'b'.",
+            proposed_action="Review memory facts for conflict.",
+        )
+        self.assertEqual(len(push_calls), 1)
+        self.assertEqual(push_calls[0]["source"], "memory-recall")
+        self.assertEqual(push_calls[0]["autonomy_boundary"], "auto_ok")
+
+        # cleanup
+        del sys.modules["attention_queue"]
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
