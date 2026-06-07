@@ -7970,6 +7970,7 @@ def format_json(
     validation_health_summary: Optional[Dict[str, Any]] = None,
     effectiveness_scorecard_summary: Optional[Dict[str, Any]] = None,
     attention_contention_summary: Optional[Dict[str, Any]] = None,
+    ragas_metrics: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -7987,7 +7988,7 @@ def format_json(
         "cache": cache,
         "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
-        "ragas_metrics": (fetch_coordinator_eval_trend().get("ragas_metrics") or {}),
+        "ragas_metrics": ragas_metrics or {},
         "strategy_leaderboard": leaderboard,
         "top_prompts": [
             {"id": p["id"], "name": p.get("name"), "mean_score": p.get("mean_score")}
@@ -8356,6 +8357,7 @@ def main() -> None:
         validation_health_summary=validation_health_summary,
         effectiveness_scorecard_summary=effectiveness_scorecard_result,
         attention_contention_summary=attention_contention,
+        ragas_metrics=_ragas_metrics,
     )
     _persist_latest_report_json(json_output)
 
