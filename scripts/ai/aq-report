@@ -7316,10 +7316,11 @@ def format_text(
         ratio = ut.get("useful_ratio")
         ratio_str = f"{ratio * 100:.1f}%" if ratio is not None else "--"
         lines.append(f"  Runs: {runs}   Total tokens: {total}   Accepted: {accepted}   Useful ratio: {ratio_str}")
-        wb = ut.get("waste_buckets") or {}
-        rej = wb.get("rejected_output")
-        fr = wb.get("failed_retries")
-        ab = wb.get("abandoned_context")
+        wb = ut.get("waste_buckets")
+        wb_dict = wb or {}
+        rej = wb_dict.get("rejected_output")
+        fr = wb_dict.get("failed_retries")
+        ab = wb_dict.get("abandoned_context")
         wb_parts = []
         if rej is not None:
             wb_parts.append(f"rejected_output={rej}")
@@ -7329,8 +7330,10 @@ def format_text(
             wb_parts.append(f"abandoned_context={ab}")
         if wb_parts:
             lines.append(f"  Waste buckets: {', '.join(wb_parts)}")
+        elif wb is not None and runs > 0:
+            lines.append("  Waste buckets: clean — no failed retries, rejected outputs, or abandoned context.")
         else:
-            lines.append("  Waste buckets: no data (Phase 114 telemetry — populates after first quality-gate failure)")
+            lines.append("  Waste buckets: no data (populates after quality-gate failures or rework events)")
 
     lines += ["", sep]
     return "\n".join(lines)
