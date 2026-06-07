@@ -1113,6 +1113,21 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "mcp-tool-attention-queue",
+      "description": "Phase 138.3 \u2014 unexpected MCP tool dispatch exception fires auto_ok attention queue push (mcp-tool boundary)",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py",
+        "scripts/testing/test-mcp-tool-attention-queue.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-mcp-tool-attention-queue.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
