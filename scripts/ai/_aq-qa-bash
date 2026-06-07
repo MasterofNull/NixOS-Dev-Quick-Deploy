@@ -1395,6 +1395,39 @@ sys.exit(0 if not ok else 1)
     fi
   fi
 
+  # 134.1 — gap_analyzer suppresses session-meta queries (open items, continuation, greetings)
+  if _should_run 1; then
+    local _ga_ok
+    _ga_ok=$(python3 -c "
+import sys
+sys.path.insert(0, '${REPO_ROOT:-/home/hyperd/Documents/NixOS-Dev-Quick-Deploy}/ai-stack/mcp-servers/hybrid-coordinator')
+try:
+    from knowledge.gap_analyzer import _is_curated_stale_gap, _is_synthetic_gap
+    should_suppress = [
+        'what open items remain from previous session',
+        'continuation from last session',
+        'next steps from last session',
+        'Hello, who are you?',
+        'ping',
+    ]
+    should_pass = [
+        'how to configure qwen3 max_tokens for structured output',
+        'nixos tmpfiles rules for creating directories',
+        'implement delegation retry logic for 503 responses',
+    ]
+    all_suppressed = all(_is_curated_stale_gap(q) or _is_synthetic_gap(q) for q in should_suppress)
+    none_falsely_suppressed = not any(_is_curated_stale_gap(q) or _is_synthetic_gap(q) for q in should_pass)
+    print('true' if all_suppressed and none_falsely_suppressed else 'false')
+except Exception as e:
+    print('false')
+" 2>/dev/null || echo "false")
+    if [[ "$_ga_ok" == "true" ]]; then
+      _pass 1 "134.1" "gap_analyzer suppresses session-meta/greeting/test queries, passes real knowledge queries"
+    else
+      _fail 1 "134.1" "gap_analyzer" "session-meta gap suppression not working or false positive on real queries"
+    fi
+  fi
+
   # 132.3 — _validate_code_blocks catches Python syntax errors and passes valid code
   if _should_run 1; then
     local _vcb_ok
