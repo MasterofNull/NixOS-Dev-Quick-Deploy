@@ -2617,6 +2617,21 @@ async function loadQueryTraces() {
     traces.reduce((s, t) => s + (t.total_ms || 0), 0) / traces.length;
   const hitRate =
     traces.filter((t) => t.retrieval_hits > 0).length / traces.length;
+
+  // Phase 145 — caller identity coverage summary
+  const callerCounts = {};
+  for (const t of traces) {
+    const src = (t.otel_attributes || {})["gen_ai.maeah.caller.source"] || null;
+    const key = src || "unknown";
+    callerCounts[key] = (callerCounts[key] || 0) + 1;
+  }
+  const knownCallers = traces.length - (callerCounts["unknown"] || 0);
+  const coveragePct = traces.length > 0 ? knownCallers / traces.length : 0;
+  const callerBreakdown = Object.entries(callerCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${k}:${n}`)
+    .join(" · ");
+
   el.innerHTML = [
     fwRow("Recent", `${total} traces`, "info"),
     fwRow("Avg Latency", `${avgMs.toFixed(0)}ms`, avgMs > 5000 ? "warn" : "ok"),
@@ -2625,6 +2640,12 @@ async function loadQueryTraces() {
       `${(hitRate * 100).toFixed(0)}%`,
       hitRate > 0.5 ? "ok" : "warn"
     ),
+    fwRow(
+      "Identity Coverage",
+      `${(coveragePct * 100).toFixed(0)}% (${knownCallers}/${traces.length})`,
+      coveragePct > 0.5 ? "ok" : coveragePct > 0 ? "warn" : "err"
+    ),
+    fwRow("Callers", callerBreakdown, "info"),
     '<div style="font-size:.55rem;color:var(--fg3);margin:.35rem 0 .2rem;text-transform:uppercase">Recent Queries</div>',
     ...traces.slice(0, 6).map((t) => {
       const query = (t.query_text || "--").slice(0, 28);

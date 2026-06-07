@@ -1,23 +1,17 @@
 {
-  "current_objective": "Phase 143 complete. RAGAS 4b panel in aq-report. Continuing system improvement slices.",
-  "phase": "Phase 144 — next improvement slices",
+  "current_objective": "Phase 145 complete. Dashboard caller identity panel live. Continuing system improvement slices.",
+  "phase": "Phase 146 — next improvement slices",
   "todo_snapshot": [
-    "DONE: Phase 137 — RAGAS auto-scoring wired into handle_query (0c36728d)",
-    "DONE: Phase 138.1-3 — Attention queue all 5 boundaries (5e26b1c4–f3eb9d32)",
-    "DONE: Phase 139 — Faithfulness (Qwen-judge) wired into RAGAS block (a708ef66)",
-    "DONE: Phase 140 — P0 identity envelope in OTel trace attributes (45d11a4d)",
-    "DONE: Phase 140.1 — X-Agent headers in aq-chat + mcp-bridge-hybrid (81729396)",
-    "DONE: Phase 141 — RAGAS context_precision + faithfulness ctx payload-nested fix (0f235363)",
+    "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
     "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
-    "DONE: nixos-rebuild switch (Phase 141+142 confirmed live in /nix/store/0j09ay3...)",
-    "DONE: Phase 143 — RAGAS 4b panel in aq-report (pending commit)",
-    "PENDING: next improvement slices — candidates: dashboard caller identity panel (P0 visual), P1 MCP tool-boundary, format_json ragas_metrics exposure"
+    "DONE: Phase 143 — RAGAS 4b panel in aq-report (0610441b)",
+    "DONE: Phase 144 — format_json ragas_metrics dedup + P2 parity plan closure (05c11384)",
+    "DONE: Phase 145 — dashboard caller identity coverage panel in query traces widget (pending commit)",
+    "PENDING: next improvement slices — candidates: aq-qa caller identity coverage check, P1 MCP tool-boundary enforcement, switchboard ingress identity validation"
   ],
   "uncommitted_changes": [
-    "scripts/ai/aq-report — Phase 143: 4b RAGAS panel + _ragas_metrics fetch",
-    "scripts/testing/test-aq-report-ragas-panel.py — 6 regression tests",
-    "config/validation-check-registry.json — aq-report-ragas-panel check (72 total)",
-    "nix/data/profile-system-packages.nix — bun+typescript added (pre-existing, unrelated)"
+    "assets/dashboard.js — Phase 145: Identity Coverage + Callers rows in query traces widget",
+    ".agent/collaboration/RESUME.json — updated"
   ],
-  "resume_hint": "Phase 143 just implemented (not yet committed). aq-report now shows [ 4b. RAGAS Metrics ] in terminal output and ## 4b in markdown. Live: 22 samples, AR=0.5194, CP=0.2662, faithfulness=null (Phase 141 fixes will improve CP on future queries; faithfulness will appear once Qwen-judge runs). 6/6 tests pass. 72 validation checks. No rebuild needed (aq-report is a script, live immediately). Next: commit, then Phase 144 candidates: dashboard caller identity panel, format_json ragas_metrics, P1 MCP tool-boundary."
+  "resume_hint": "Phase 145 just implemented (not yet committed). dashboard.js query traces widget now shows Identity Coverage (N%/M of N traces) and Callers breakdown (aq-chat:N · mcp-bridge-hybrid:N · unknown:N). Reads gen_ai.maeah.caller.source from otel_attributes. Live immediately (static file from repo). Currently shows 0% / unknown:N because health-spider traces don't send X-Agent headers — will populate when aq-chat queries run. Phase 146 candidates: aq-qa check for identity coverage threshold, P1 MCP tool-boundary, switchboard ingress identity validation (reject missing-identity requests)."
 }
