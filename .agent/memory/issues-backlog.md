@@ -116,3 +116,8 @@
   Action: Removed spurious `await`; _upsert() now calls self.qdrant.upsert() directly. 2/2 regression tests pass.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py ~line 1231
   Test: scripts/testing/test-continuous-learning-qdrant-upsert.py
+
+[DONE] dashboard/app-armor — dashboard GPU metrics triggered a live AppArmor denial after rebuild — `lspci` could execute but could not open `/sys/bus/pci/devices/`, so the dashboard process still emitted kernel audit denials even after the passive firewall sudo fix was active.
+  Severity: medium
+  Action: Added explicit `/sys/bus/pci/devices/` and `/sys/bus/pci/devices/**` read coverage to the `command-center-dashboard-api` profile; restart/rebuild required for live activation.
+  File: nix/modules/services/mcp-servers.nix ~line 2609

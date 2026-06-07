@@ -3,7 +3,7 @@
 ## Phase 147 — Dashboard degradation monitoring and remediation
 
 ### Status
-COMPLETE in repo. Pending `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate dashboard service/AppArmor/health-spider changes.
+DEPLOYED, then follow-up AppArmor PCI sysfs coverage added after live verification. Pending another `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate the `/sys/bus/pci/devices/**` dashboard profile rule.
 
 ### Problem
 Dashboard `/api/health` stayed green while dashboard operator paths produced AppArmor denials. The health spider checked only `/api/health` every 7200s, and `ai-auto-remediate` only parsed `aq-qa 0`, so dashboard card degradation and AppArmor denial debt were not caught promptly.
@@ -17,16 +17,20 @@ Dashboard `/api/health` stayed green while dashboard operator paths produced App
 | `auto-remediate.sh` | Runs `aq-health-spider --once` before `aq-qa 0`; saves spider and QA logs |
 | Firewall dashboard routes | Passive read endpoints avoid `sudo` by default (`FIREWALL_ALLOW_SUDO_READS=1` opt-in) |
 | AppArmor | Added `/proc/@{pids}/stat r,` for dashboard service process stats |
+| AppArmor follow-up | Added `/sys/bus/pci/devices/` and `/sys/bus/pci/devices/**` for dashboard `lspci -s <slot>` GPU-name resolution |
 
 ### Validation
 - `python3 -m py_compile scripts/ai/aq-health-spider dashboard/backend/api/routes/firewall.py`
 - `bash -n scripts/automation/auto-remediate.sh`
 - `nix-instantiate --parse nix/modules/services/mcp-servers.nix`
 - `REPO_ROOT=$PWD scripts/ai/aq-health-spider --once` — dashboard probes OK; existing AppArmor denials found; fix-agent reports all paths covered
+- Post-rebuild dashboard API restart confirmed `/api/firewall/status` no longer emits sudo denials.
+- Post-rebuild live audit found one remaining dashboard denial on `/sys/bus/pci/devices/`; repo profile now covers it.
 
 ### Pending activation
 - Run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`
-- After rebuild: `journalctl -k --since "10 min ago" | grep command-center-dashboard-api` should show no fresh `/proc/*/stat` or passive firewall `sudo` denials.
+- Restart `command-center-dashboard-api.service` if Nix does not restart it automatically.
+- After rebuild/restart: `journalctl -k --since "10 min ago" | grep command-center-dashboard-api` should show no fresh `/proc/*/stat`, `/sys/bus/pci/devices`, or passive firewall `sudo` denials.
 
 # HANDOFF MEMO — 2026-06-07 (Phase 146: aq-qa agent identity coverage)
 

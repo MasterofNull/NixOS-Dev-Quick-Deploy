@@ -2598,6 +2598,10 @@ in {
             # Full sysfs device tree: covers ACPI (LNXSYSTM), PCI, NVMe, virtual/thermal.
             # psutil walks /sys/devices/** for hwmon, thermal, battery, and GPU stats.
             /sys/devices/** r,
+            # lspci resolves GPU names through PCI bus symlinks before reading
+            # device details under /sys/devices/**.
+            /sys/bus/pci/devices/ r,
+            /sys/bus/pci/devices/** r,
 
             # ip — psutil/netifaces execs ip for network interface enumeration.
             # nft — dashboard reads firewall rules_count via nft list ruleset.
