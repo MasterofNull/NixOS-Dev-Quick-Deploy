@@ -54,12 +54,17 @@ def extract_signals(report: dict) -> dict:
     }
 
     # --- eval trend ---
+    # ragas_metrics is always fetched from coordinator and stored separately in the snapshot.
+    # eval_trend only has RAGAS keys when source=="ragas" (i.e. no promptfoo data).
     eval_trend = report.get("eval_trend") or {}
+    ragas = report.get("ragas_metrics") or {}
     out["eval_trend"] = {
-        "answer_relevance":   eval_trend.get("answer_relevance_avg"),
-        "context_precision":  eval_trend.get("context_precision_avg"),
-        "faithfulness":       eval_trend.get("faithfulness_avg"),
-        "sample_count":       eval_trend.get("sample_count", 0),
+        "answer_relevance":   ragas.get("answer_relevance_avg") or eval_trend.get("answer_relevance_avg"),
+        "context_precision":  ragas.get("context_precision_avg") or eval_trend.get("context_precision_avg"),
+        "faithfulness":       ragas.get("faithfulness_avg") or eval_trend.get("faithfulness_avg"),
+        "sample_count":       ragas.get("sample_count") or eval_trend.get("sample_count", 0),
+        "promptfoo_source":   eval_trend.get("source"),
+        "promptfoo_latest_pct": eval_trend.get("latest_pct"),
     }
 
     # --- tool performance ---
