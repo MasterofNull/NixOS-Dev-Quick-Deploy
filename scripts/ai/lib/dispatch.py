@@ -124,7 +124,7 @@ def _emit_training_event(
     import datetime
     event = json.dumps({
         "event_type": "agent_step_complete",
-        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         "query": query,
         "response": response,
         "latency_ms": tokens_out * 600 if tokens_out else 1000,  # ~600ms/tok estimate
@@ -457,10 +457,13 @@ def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float 
             f"Identify 2 critical rules or patterns most relevant to this task. "
             f"Be concise (≤80 words total):\n{prompt[:200]}"
         )
+    # Switchboard forces stream=True for local targets regardless of the request value.
+    # Send stream=True explicitly so is_stream is set before the override, ensuring a
+    # proper SSE response that we can parse line-by-line (not truncated 2-chunk SSE).
     payload = {
         "messages": [{"role": "user", "content": query}],
         "max_tokens": 120,
-        "stream": False,
+        "stream": True,
         "chat_template_kwargs": {"enable_thinking": False},
         "frequency_penalty": 0.0,
     }
@@ -475,9 +478,24 @@ def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float 
             },
             method="POST",
         )
+        chunks: list[str] = []
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read())
-        text = (body.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+            for raw_line in resp:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        chunks.append(content)
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+        text = "".join(chunks).strip()
         if not text:
             return ""
         return f"[embedded-assist context]\n{text}\n[/embedded-assist context]\n\n"
