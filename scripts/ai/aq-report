@@ -5006,7 +5006,7 @@ def _is_hardware_bound_delegate_latency(
     fresh_client_errors = int(fresh.get("client_error_count", 0) or 0)
     fresh_success_pct = fresh.get("success_pct")
     fresh_success_ok = fresh_success_pct is None or float(fresh_success_pct or 0.0) >= 80.0
-    return fresh_p95_ms >= 60000.0 and fresh_errors == 0 and fresh_client_errors == 0 and fresh_success_ok
+    return fresh_p95_ms >= 30000.0 and fresh_errors == 0 and fresh_client_errors == 0 and fresh_success_ok
 
 
 def _autorun_block_context(recent_semantic_autorun: Optional[Dict[str, Any]] = None) -> str:
