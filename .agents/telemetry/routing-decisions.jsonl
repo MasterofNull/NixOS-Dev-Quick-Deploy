@@ -555,3 +555,7 @@
 {"ts": 1780794051.529886, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780794572.4630396, "local": true, "profile": "embedded-assist", "event_type": "routing_decision"}
 {"ts": 1780794667.3306403, "local": true, "profile": "embedded-assist", "event_type": "routing_decision"}
+{"ts": 1780798011.1339254, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780798013.1415253, "local": false, "profile": "remote-reasoning", "event_type": "routing_decision"}
+{"ts": 1780798041.1085863, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780798075.1920063, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}

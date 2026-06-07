@@ -76,18 +76,26 @@ def extract_signals(report: dict) -> dict:
 
     # --- rag posture ---
     rag = report.get("rag_posture") or {}
+    retrieval_mix = rag.get("retrieval_mix") or {}
+    recent_mix = retrieval_mix.get("recent") or {}
     out["rag_posture"] = {
-        "collections":        rag.get("collection_count"),
-        "avg_result_count":   rag.get("avg_result_count"),
-        "top_collections":    rag.get("top_collections", [])[:4],
+        "status":                rag.get("status"),
+        "cache_hit_pct":         rag.get("cache_hit_pct"),
+        "recent_retrieval_calls": rag.get("recent_retrieval_calls"),
+        "memory_recall_share_pct": rag.get("memory_recall_share_pct"),
+        "memory_recall_miss_pct": rag.get("memory_recall_miss_pct"),
+        "dominant_strategy":     retrieval_mix.get("dominant_recent"),
+        "actionable_gap_count":  rag.get("actionable_gap_count"),
     }
 
     # --- health ---
     health = report.get("recent_health") or {}
     out["health"] = {
-        "ok_pct":     health.get("ok_pct"),
-        "warn_count": health.get("warn_count"),
-        "error_count": health.get("error_count"),
+        "ok_pct":             health.get("ok_pct"),
+        "warn_count":         health.get("warn_count"),
+        "error_count":        health.get("error_count"),
+        "delegate_24h_rate":  health.get("delegate_24h_breakdown", {}).get("adjusted_rate"),
+        "delegate_7d_rate":   health.get("delegate_7d_breakdown", {}).get("adjusted_rate"),
     }
 
     # --- query gaps (top 3) ---
@@ -104,9 +112,16 @@ def extract_signals(report: dict) -> dict:
 
     # --- hint adoption ---
     hint = report.get("hint_adoption") or {}
+    recent_hint = report.get("recent_hint_adoption") or {}
     out["hint_adoption"] = {
-        "adoption_rate": hint.get("rate"),
-        "top_hints":     (hint.get("top_hints") or [])[:3],
+        "adoption_pct":          hint.get("adoption_pct"),
+        "dominant_hint_id":      hint.get("dominant_hint_id"),
+        "dominant_share_pct":    hint.get("dominant_share_pct"),
+        "normalized_entropy_pct": hint.get("normalized_entropy_pct"),
+        "effective_hints":       hint.get("effective_hints"),
+        "recent_dominant_hint":  recent_hint.get("dominant_hint_id"),
+        "recent_dominant_share": recent_hint.get("dominant_share_pct"),
+        "recent_top_hints":      (recent_hint.get("top_hints") or [])[:3],
     }
 
     # --- generated_at ---
