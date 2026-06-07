@@ -1,16 +1,18 @@
 {
-  "current_objective": "Phase 135-136 observability, signal quality, and cross-project isolation fixes. System at QA 91/0/0.",
-  "phase": "Phase 136 — Cross-project contamination fix",
+  "current_objective": "Phase 137 complete. RAGAS auto-scoring wired. QA 193/0/2.",
+  "phase": "Phase 138 — next improvement slices",
   "todo_snapshot": [
     "DONE: Phase 133 — MCP bridge fix + HM activation (6525d706)",
     "DONE: Phase 134 — Hints quality + observability fixes (8 commits)",
     "DONE: nixos-rebuild switch — Phase 134 deployed, QA 91/0/0",
     "DONE: RAGAS metrics visibility fix — ragas_metrics field in JSON snapshot + aq-insights reader (2c2c6071)",
     "DONE: aq-insights RAG posture + hint adoption signal extraction fix (2e918506)",
-    "DONE: Cross-project contamination fix — mcp-bridge target resolution (f2530fe4)",
+    "DONE: Cross-project contamination fix — mcp-bridge-hybrid.py (f2530fe4)",
     "DONE: Contaminating MakerSpace artifacts removed from NixOS repo",
-    "PENDING: nixos-rebuild to deploy mcp-bridge-hybrid.py fix (f2530fe4) — mcp-bridge restarted automatically after HM switch"
+    "DONE: Phase 137 — RAGAS auto-scoring wired into handle_query (0c36728d) — 20% sample, 6/6 tests pass",
+    "DONE: 0.5.7 obsolete AI marker cleared (google.geminicodeassist-2.81.0) — QA 193/0/2",
+    "PENDING: nixos-rebuild to pick up http_server_impl.py Phase 137 change (coordinator needs restart)"
   ],
   "uncommitted_changes": [],
-  "resume_hint": "Phase 136 fix: Gemini CLI working in MakerSpace repo called retrofit_workflow/primer_workflow with --target . which resolved to NixOS harness root (cwd=REPO_ROOT in subprocess). Overwrote .claude/CLAUDE.md, .agents/plans/README.md, .agent/PROJECT-PRD.md etc. Fix: _resolve_workflow_target() normalises to absolute, passes cwd=abs_target. This fix deploys when home-manager switches (mcp-bridge is in PATH, not a systemd service). Contamination artefacts cleaned. Pattern added to issues-backlog. RAGAS: AR=0.644 CP=1.0 N=5 now visible in aq-insights."
+  "resume_hint": "Phase 137: RAGAS auto-scoring wired as fire-and-forget create_task in handle_query at 20% sample rate. Uses eval_runner.score_answer_relevance + score_context_precision + record_query_metrics. Registered in validation-check-registry (id: ragas-autoscoring-wiring). Parity plan updated: cross-project isolation + RAGAS auto-scoring both COMPLETE. QA 193/0/2 — was 193/1/2 before clearing the obsolete AI marker. Coordinator needs nixos-rebuild to deploy the http_server_impl change. Next candidates: (1) cross-agent contradiction detection P2, (2) attention queue integration P2, (3) Pi-style observability planning, (4) RAGAS faithfulness enablement (RAGAS_FAITHFULNESS_ENABLED=true env toggle)."
 }
