@@ -56,6 +56,26 @@ _CURATED_STALE_GAP_PATTERNS = (
     "current session status",
     "what is the current status of",
     "summarize current session",
+    # Greetings / small-talk — not knowledge gaps (patterns must be normalized: no punctuation)
+    "how are you today",
+    "hello who are you",
+    "hello what are your core capabilities",
+    "what are your core capabilities",
+    # Test probes — not knowledge gaps (short probes covered by _is_synthetic_gap exact-match)
+    "test concurrency gate",
+    "reply with the single word working",
+    "reply with the single word",
+    # Orchestration artifacts / aider feedback injections — not knowledge gaps
+    "we are preparing a new project prd",
+    "feedback on your last task",
+    "feedback on the implementation",
+    "unleash expert systems mode",
+    "unleash the expert systems architecture",
+    "you are implementation agent",
+    # Capability introspection — not actionable knowledge gaps
+    "list the available tools you can use",
+    "what are your capabilities",
+    "what tools do you have",
 )
 
 
@@ -69,7 +89,7 @@ def _is_synthetic_gap(query_text: str) -> bool:
     text = (query_text or "").strip().lower()
     if not text:
         return True
-    if text in {"test", "nix", "ping", "health"}:
+    if text in {"test", "nix", "ping", "health", "hello!", "hello", "hi", "status", "ok", "etimedout"}:
         return True
     synthetic_prefixes = (
         "analysis only task ",
