@@ -147,7 +147,13 @@ def _post(url: str, payload: dict, key: str, timeout: int = _DEFAULT_TIMEOUT_POS
     body = json.dumps(payload).encode()
     req = urllib.request.Request(
         url, data=body,
-        headers={"Content-Type": "application/json", "X-API-Key": key},
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": key,
+            "X-Agent-Source": "mcp-bridge-hybrid",
+            "X-Agent-Role": "implementer",
+            "X-Agent-Boundary": "auto_ok",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:

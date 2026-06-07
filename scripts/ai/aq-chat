@@ -177,7 +177,11 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 "agent_type": "human"
             }
 
-            headers = {}
+            headers = {
+                "X-Agent-Source": "aq-chat",
+                "X-Agent-Role": "orchestrator",
+                "X-Agent-Boundary": "human_gate",
+            }
             if self.active_profile == "local":
                 headers["X-AI-Lane"] = "high-priority"
                 
