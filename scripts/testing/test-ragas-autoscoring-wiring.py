@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Phase 137 regression: RAGAS auto-scoring wired into handle_query.
+Phase 137/139 regression: RAGAS auto-scoring + faithfulness wired into handle_query.
 
 Checks that http_server_impl.py fires eval_runner RAGAS calls at 20% sample
-rate just before the trace commit. No live server required — static analysis +
-unit mock.
+rate and faithfulness scoring (Qwen-as-judge, 10% sample when enabled).
+No live server required — static analysis + unit mock.
 """
 import sys
 import types
@@ -64,6 +64,37 @@ class TestRagasAutoscoringWiring(unittest.TestCase):
         self.assertIn("response", ar_sig.parameters)
         cp_sig = inspect.signature(eval_runner.score_context_precision)
         self.assertIn("retrieved_docs", cp_sig.parameters)
+
+    def test_phase139_faithfulness_wiring(self):
+        """Static: Phase 139 faithfulness call must be present in _ragas_score."""
+        src = (COORDINATOR / "http_server_impl.py").read_text(encoding="utf-8")
+        self.assertIn("Phase 139", src, "Phase 139 faithfulness block missing")
+        self.assertIn("score_faithfulness_async", src, "faithfulness call missing")
+
+    def test_faithfulness_context_extraction(self):
+        """Static: context string must be built from docs content/text/snippet fields."""
+        src = (COORDINATOR / "http_server_impl.py").read_text(encoding="utf-8")
+        self.assertIn('"content"', src)
+        self.assertIn('"snippet"', src)
+
+    def test_faithfulness_fn_callable(self):
+        """eval_runner.score_faithfulness_async must be callable."""
+        import eval_runner  # noqa: PLC0415
+        self.assertTrue(callable(getattr(eval_runner, "score_faithfulness_async", None)))
+
+    def test_faithfulness_fn_signature(self):
+        """score_faithfulness_async takes (query, context, response)."""
+        import inspect
+        import eval_runner  # noqa: PLC0415
+        sig = inspect.signature(eval_runner.score_faithfulness_async)
+        self.assertIn("query", sig.parameters)
+        self.assertIn("context", sig.parameters)
+        self.assertIn("response", sig.parameters)
+
+    def test_faithfulness_passed_to_record(self):
+        """Static: faithfulness variable (fs) must be passed to record_query_metrics."""
+        src = (COORDINATOR / "http_server_impl.py").read_text(encoding="utf-8")
+        self.assertIn("faithfulness=fs", src, "faithfulness=fs not passed to record_query_metrics")
 
 
 if __name__ == "__main__":

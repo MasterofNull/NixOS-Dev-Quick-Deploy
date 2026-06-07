@@ -1128,6 +1128,22 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "ragas-faithfulness-wiring",
+      "description": "Phase 139 \u2014 faithfulness (Qwen-as-judge) wired into RAGAS auto-scoring block",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py",
+        "scripts/testing/test-ragas-autoscoring-wiring.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-ragas-autoscoring-wiring.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
