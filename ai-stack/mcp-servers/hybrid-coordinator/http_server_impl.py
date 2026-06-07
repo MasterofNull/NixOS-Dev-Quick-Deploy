@@ -2343,11 +2343,18 @@ async def run_http_mode(port: int) -> None:
                     try:
                         ar = await eval_runner.score_answer_relevance(q, r)
                         cp = eval_runner.score_context_precision(docs)
-                        # Phase 139 — faithfulness (Qwen-as-judge, 10% sample when env enabled)
+                        # Phase 139/141 — faithfulness context: docs nest text under payload
+                        def _doc_ctx(d: dict) -> str:
+                            top = d.get("content") or d.get("text") or d.get("snippet") or ""
+                            if top:
+                                return str(top)
+                            p = d.get("payload") or {}
+                            return str(p.get("content") or p.get("solution") or
+                                       p.get("text") or p.get("context") or "")
                         _ctx = " ".join(
-                            str(d.get("content") or d.get("text") or d.get("snippet") or "")[:300]
+                            _doc_ctx(d)[:300]
                             for d in (docs if isinstance(docs, list) else [])
-                            if isinstance(d, dict)
+                            if isinstance(d, dict) and _doc_ctx(d).strip()
                         )[:800]
                         fs = await eval_runner.score_faithfulness_async(q, _ctx, r) if _ctx else None
                         await eval_runner.record_query_metrics(
