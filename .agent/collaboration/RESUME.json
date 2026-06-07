@@ -1,23 +1,16 @@
 {
-  "current_objective": "Phase 134+ observability and reporting quality. System at QA 91/0/0.",
-  "phase": "Phase 135 — RAGAS metrics visibility fix",
+  "current_objective": "Phase 135-136 observability, signal quality, and cross-project isolation fixes. System at QA 91/0/0.",
+  "phase": "Phase 136 — Cross-project contamination fix",
   "todo_snapshot": [
     "DONE: Phase 133 — MCP bridge fix + HM activation (6525d706)",
-    "DONE: nixos-rebuild switch — all Phase 133 changes deployed, 90/90 QA PASS",
-    "DONE: query-gaps display fix — curated-stale vs DB-unavailable distinction (f27b3010)",
-    "DONE: Dominant hint suppression — session-meta gaps (76f7940c, f7f7d826)",
-    "DONE: aq-rag-prewarm prompt_ids array fix — split() not split(',') (7a16b004)",
-    "DONE: Hardware-bound delegate latency threshold 60s→30s (ac9f7ad3)",
-    "DONE: All 21 spurious JSONL gap entries suppressed — patterns + exact match (f7f7d826)",
-    "DONE: waste-bucket nil/empty distinction fix (37b2bc6d)",
-    "DONE: QA 134.1 — gap_analyzer session-meta suppression regression coverage (460d680f)",
+    "DONE: Phase 134 — Hints quality + observability fixes (8 commits)",
     "DONE: nixos-rebuild switch — Phase 134 deployed, QA 91/0/0",
-    "DONE: RAGAS metrics visibility fix — ragas_metrics field in JSON snapshot + aq-insights reader (135)",
-    "PENDING-COMMIT: aq-report ragas_metrics field + aq-insights fix"
+    "DONE: RAGAS metrics visibility fix — ragas_metrics field in JSON snapshot + aq-insights reader (2c2c6071)",
+    "DONE: aq-insights RAG posture + hint adoption signal extraction fix (2e918506)",
+    "DONE: Cross-project contamination fix — mcp-bridge target resolution (f2530fe4)",
+    "DONE: Contaminating MakerSpace artifacts removed from NixOS repo",
+    "PENDING: nixos-rebuild to deploy mcp-bridge-hybrid.py fix (f2530fe4) — mcp-bridge restarted automatically after HM switch"
   ],
-  "uncommitted_changes": [
-    "scripts/ai/aq-report — ragas_metrics always included in JSON snapshot",
-    "scripts/ai/aq-insights — reads ragas_metrics from dedicated field, adds promptfoo context"
-  ],
-  "resume_hint": "Phase 135 fix: aq-insights was reading answer_relevance_avg/context_precision_avg from eval_trend dict, but those keys only exist when source==ragas (fallback path). When source==tool_audit, RAGAS data was always null in aq-insights. Fix: always include raw ragas_metrics in JSON snapshot; aq-insights reads from there. Coordinator shows AR=0.644, CP=1.0, 5 samples. Faithfulness null by design (RAGAS_FAITHFULNESS_ENABLED=false)."
+  "uncommitted_changes": [],
+  "resume_hint": "Phase 136 fix: Gemini CLI working in MakerSpace repo called retrofit_workflow/primer_workflow with --target . which resolved to NixOS harness root (cwd=REPO_ROOT in subprocess). Overwrote .claude/CLAUDE.md, .agents/plans/README.md, .agent/PROJECT-PRD.md etc. Fix: _resolve_workflow_target() normalises to absolute, passes cwd=abs_target. This fix deploys when home-manager switches (mcp-bridge is in PATH, not a systemd service). Contamination artefacts cleaned. Pattern added to issues-backlog. RAGAS: AR=0.644 CP=1.0 N=5 now visible in aq-insights."
 }
