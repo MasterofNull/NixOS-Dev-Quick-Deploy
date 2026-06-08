@@ -1285,6 +1285,11 @@ async function loadCoordinator() {
       "vBackendN",
       backendN ? Math.round(backendN / 7).toLocaleString() : "0"
     );
+    // Phase 150: Logic Discipline tile populating
+    const logicRate = (analytics.logic_discipline_rate ?? 100);
+    setText("vLogicDiscipline", `${Math.round(logicRate)}%`);
+    if (logicRate < 90) addClass("statLogicDiscipline", "warn");
+    else if (logicRate < 70) addClass("statLogicDiscipline", "err");
   }
   el.innerHTML = [
     fwRow("Status", hc.status || "--", statusColor(hc.status)),
@@ -7172,6 +7177,7 @@ async function loadAgentReplay(runId) {
           const payload = typeof ev.payload === "object" ? ev.payload : {};
           const planStep = payload.plan_step || payload.step || "planning";
           const rationale = payload.rationale_summary || payload.summary || "Plan step recorded.";
+          const localPath = payload.local_path || "";
           const evidence = Array.isArray(payload.evidence_refs)
             ? payload.evidence_refs.join(", ")
             : payload.evidence_refs || "";
@@ -7179,8 +7185,10 @@ async function loadAgentReplay(runId) {
             <div style="margin-top:.3rem; background:rgba(150,110,210,0.08); border-left:2px solid var(--purp); padding:.45rem .55rem; border-radius:3px; font-size:.6rem; color:var(--fg2);">
               <div style="color:var(--purp);font-weight:bold;margin-bottom:.2rem;">${escapeHtml(planStep)}</div>
               <div>${escapeHtml(rationale)}</div>
+              ${localPath ? `<div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">path: ${escapeHtml(localPath)}</div>` : ""}
               ${evidence ? `<div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">evidence: ${escapeHtml(evidence)}</div>` : ""}
             </div>`;
+
         } else {
           const isPrompt =
             ev.event_type === "run_start" ||

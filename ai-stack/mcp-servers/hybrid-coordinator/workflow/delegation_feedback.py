@@ -36,6 +36,16 @@ _GENERIC_LOW_SIGNAL_TOKENS = (
     "i can help",
     "would you like me to",
 )
+_META_REASONING_TOKENS = (
+    "i will",
+    "okay,",
+    "certainly",
+    "sure,",
+    "here is",
+    "observed_signals",
+    "thought process",
+    "based on",
+)
 
 
 def delegation_feedback_log_path() -> Path:
@@ -249,6 +259,14 @@ def classify_delegated_response(
             json.loads(text)
         except json.JSONDecodeError:
             failure_classes.append("json_contract_failed")
+    
+    if contract["expects_short_exact"] and text:
+        text_first_line = text.split("\n")[0].lower()
+        if any(token in text_first_line for token in _META_REASONING_TOKENS):
+            failure_classes.append("meta_reasoning_leak")
+        elif len(text.split()) > 25:
+            failure_classes.append("exact_output_too_verbose")
+
     if path_summary["missing"] and not path_summary["existing"] and len(path_summary["missing"]) >= 2:
         failure_classes.append("invented_repo_paths")
     if status_code < 400 and text:
@@ -283,6 +301,8 @@ def classify_delegated_response(
         improvement_actions.append("ask for terse evidence-first output with concrete files, commands, or validation")
     if "policy_refusal" in ordered_failure_classes:
         improvement_actions.append("narrow the delegated task scope and remove ambiguous or policy-triggering phrasing")
+    if "meta_reasoning_leak" in ordered_failure_classes or "exact_output_too_verbose" in ordered_failure_classes:
+        improvement_actions.append("enforce EXACT-OUTPUT discipline gate and align system prompt with tool-free path")
     if "provider_request_error" in ordered_failure_classes or "provider_http_error" in ordered_failure_classes:
         improvement_actions.append("capture provider-specific failure details and simplify the payload before retry")
 

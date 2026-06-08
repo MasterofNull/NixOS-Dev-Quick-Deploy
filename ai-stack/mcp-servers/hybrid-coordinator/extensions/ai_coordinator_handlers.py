@@ -82,6 +82,8 @@ from ai_coordinator import (
     infer_profile as _ai_coordinator_infer_profile,
     local_fallback_profile as _ai_coordinator_local_fallback_profile,
     route_by_complexity as _ai_coordinator_route_by_complexity,
+    _should_use_compact_delegation_contract as _ai_coordinator_should_use_compact_delegation_contract,
+    _compact_delegation_contract_block as _ai_coordinator_compact_delegation_contract_block,
 )
 from delegation_feedback import (
     build_recovered_artifact,
@@ -1184,6 +1186,13 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
         _slot_busy_next_profile: Optional[str] = None
         _slot_busy_next_runtime: Optional[str] = None
 
+        # Phase 12.4 / Phase 150: agent logic lives in a real Python file.
+        # Path: extensions/ → hybrid-coordinator/ → mcp-servers/ → ai-stack/ → agents/runtimes/
+        _runtime_path = (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "agents" / "runtimes" / "local_agent_runtime.py"
+        )
+
         # ── Local subprocess agent spawning ──────────────────────────────
         # For local runtimes, spawn actual subprocess agents instead of
         # just proxying HTTP to the switchboard. This enables independent
@@ -1211,12 +1220,6 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             state_dir.mkdir(parents=True, exist_ok=True)
             agent_state_file = state_dir / f"agent-{agent_id}.json"
 
-            # Phase 12.4 / senior review: agent logic lives in a real Python file.
-            # Path: extensions/ → hybrid-coordinator/ → mcp-servers/ → ai-stack/ → agents/
-            _runtime_path = (
-                Path(__file__).parent.parent.parent.parent
-                / "agents" / "runtimes" / "local_agent_runtime.py"
-            )
             if not _runtime_path.exists():
                 logger.error("local_agent_runtime.py not found at %s", _runtime_path)
                 return web.json_response(
@@ -1389,10 +1392,23 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             model_name: str = "",
             ok: bool = True,
             fallback_used: bool = False,
+            local_path: Optional[str] = None,
         ) -> None:
             if not (_AGENT_RUN_EVENTS_AVAILABLE and _are is not None):
                 return
             try:
+                payload = {
+                    "plan_step": "route-selection",
+                    "rationale_summary": "Coordinator selected delegation profile and model class before execution.",
+                    "task_archetype": str(routing_decision.get("task_archetype", "") or ""),
+                    "model_class": str(routing_decision.get("model_class", "") or ""),
+                    "selected_profile": str(profile_name or ""),
+                    "fallback_used": bool(fallback_used),
+                    "evidence_refs": ["routing_decision", "provider_fallback_policy"],
+                }
+                if local_path:
+                    payload["local_path"] = local_path
+                    
                 plan_ev = _are.make_event(
                     "planning",
                     source="hybrid-coordinator",
@@ -1400,15 +1416,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     status="succeeded" if ok else "failed",
                     model=model_name or None,
                     route_profile=profile_name or None,
-                    payload={
-                        "plan_step": "route-selection",
-                        "rationale_summary": "Coordinator selected delegation profile and model class before execution.",
-                        "task_archetype": str(routing_decision.get("task_archetype", "") or ""),
-                        "model_class": str(routing_decision.get("model_class", "") or ""),
-                        "selected_profile": str(profile_name or ""),
-                        "fallback_used": bool(fallback_used),
-                        "evidence_refs": ["routing_decision", "provider_fallback_policy"],
-                    },
+                    payload=payload,
                 )
                 await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, plan_ev)
             except Exception:
@@ -1439,6 +1447,17 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 delegated_max_tokens if delegated_max_tokens > 0
                 else int(data.get("max_tokens", 768))
             )
+            # Phase 150: Tool-free and exact-output discipline gate for local subprocess
+            _normalized_task = task.lower()
+            _is_tool_free = any(p in _normalized_task for p in {
+                "do not call tools", "don't call tools", "no tools", "without tools", "tool-free", "tool free"
+            })
+            # Phase 150: Allow exact-output discipline even for tool-calling profiles if task is strict
+            _is_exact_output = _ai_coordinator_should_use_compact_delegation_contract(task, selected_profile) or (
+                ("return exactly" in _normalized_task or "reply exactly" in _normalized_task or "respond exactly" in _normalized_task)
+                or (len(task.split()) <= 12 and " only" in _normalized_task)
+            )
+
             _spawn_kwargs = dict(
                 role=agent_role,
                 task_text=user_task,
@@ -1448,6 +1467,27 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 timeout_sec=timeout_s,
                 agent_timeout_sec=local_agent_timeout_s,
             )
+
+            if _is_tool_free or _is_exact_output:
+                # Align with aq-chat tool-free system prompt
+                _spawn_kwargs["system_prompt"] = (
+                    "TOOL-FREE TURN: answer from the prompt and conversation context only. "
+                    "Do not emit tool calls, do not claim live command results, and keep the "
+                    "answer code-ready and concrete."
+                )
+                if _is_exact_output:
+                    # Use the canonical compact contract block for exact-output tasks
+                    _spawn_kwargs["system_prompt"] = _ai_coordinator_compact_delegation_contract_block(
+                        task, selected_profile, data.get("context")
+                    )
+                
+                # Force tools off and thinking mode off for disciplined local output
+                data = dict(data)
+                data["tools_enabled"] = False
+                data["thinking_mode"] = "off"
+                # Cap tokens for tool-free/exact-output to prevent runaway meta-reasoning
+                _spawn_kwargs["max_tokens"] = min(_spawn_kwargs["max_tokens"], 1024)
+
 
             # Phase 8.9 — Streaming dispatch: SSE token stream to caller.
             # Enabled via streaming_mode=true. Incompatible with async_mode and tools.
@@ -1517,6 +1557,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 model_name=f"local-{agent_role}",
                 ok=local_response.status < 400,
                 fallback_used=False,
+                local_path=str(_runtime_path),
             ))
 
             # Slot-busy advance: the single llama.cpp slot is occupied by a
