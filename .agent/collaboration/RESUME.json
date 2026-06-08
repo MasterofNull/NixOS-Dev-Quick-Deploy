@@ -9,6 +9,7 @@
     "DONE: Updated dashboard to render local_path and show Logic Discipline stat tile",
     "DONE: Added 0.10.3 QA check for exact-output discipline",
     "DONE: Verified Phase 150 parity with system rebuild and 98/98 aq-qa passing",
+    "DONE: Restored tool/reasoning capabilities for exact-output tasks (avoiding regression in Harness-OS vision)",
     "PENDING: Monitor live dashboard for logic discipline rate stability",
     "PENDING: Prepare Phase 151: Distributed planning consistency and cross-agent review"
   ],
