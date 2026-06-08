@@ -2093,13 +2093,24 @@ def _rewrite_model(payload: dict, profile: str) -> dict:
 def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str) -> dict:
     # Disable thinking for all local targets by default — thinking tokens are
     # filtered from the OpenAI response content field, producing empty responses
-    # unless the caller explicitly opts in via chat_template_kwargs.
+    # unless the profile is an explicit local reasoning profile.
     if not isinstance(payload, dict) or target_type != "local":
         return payload
     kwargs = payload.get("chat_template_kwargs")
     if not isinstance(kwargs, dict):
         kwargs = {}
-    if "enable_thinking" not in kwargs:
+
+    # FORCE thinking OFF for all local targets unless explicitly allowed for a reasoning profile.
+    # Local Qwen3-35B on llama.cpp requires this to prevent empty response fields.
+    # We override caller-supplied True to False here to protect against agentic drift.
+    current_val = kwargs.get("enable_thinking")
+    is_reasoning_profile = "reasoning" in profile.lower()
+
+    if current_val is True and not is_reasoning_profile:
+        kwargs = dict(kwargs)
+        kwargs["enable_thinking"] = False
+        payload["chat_template_kwargs"] = kwargs
+    elif "enable_thinking" not in kwargs:
         kwargs = dict(kwargs)
         kwargs["enable_thinking"] = False
         payload["chat_template_kwargs"] = kwargs

@@ -33,7 +33,7 @@ inference:
   ubatch_size: 256
   threads: 8               # Ryzen 7 PRO 6850U — 8 cores, all for inference
   threads_batch: 8
-  flash_attn: false        # Disabled — Renoir iGPU Flash Attention unstable
+  flash_attn: true         # Required by llama.cpp when q8_0 KV cache quantization is enabled
   timeout_s: 600           # Qwen3.6-35B on CPU path needs up to 5 min for large prompts
   spec_type: draft-mtp     # MTP speculative decoding (bundled draft heads)
   spec_draft_n_max: 2      # Draft tokens per step; bump to 3-4 if acceptance_rate > 65%

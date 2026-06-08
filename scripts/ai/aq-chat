@@ -124,7 +124,7 @@ class AQChat:
 
 STACK: llama.cpp :8080 ({model_id}, n_gpu_layers={ngl or 12}/12) | embed :8081 | coordinator :8003 | switchboard :8085 | AIDB :8002 | dashboard :8889
 HARDWARE: thermal={thermal}{temps} | RAM={ram_str} | MTP={mtp_str}
-CONSTRAINTS: gpu_layers≤12 | ports from nix/modules/core/options.nix only | enable_thinking=true | dashboard/backend hot-reloads; coordinator/switchboard/llama need nixos-rebuild
+CONSTRAINTS: gpu_layers≤12 | ports from nix/modules/core/options.nix only | dashboard/backend hot-reloads; coordinator/switchboard/llama need nixos-rebuild
 
 === OPERATIONAL RULES ===
 1. CHECK-IN FIRST: Before making system changes, show your research and proposed plan with proof (file reads, command outputs).
@@ -141,7 +141,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             offloading_path = REPO_ROOT / "ai-stack" / "offloading"
             if str(offloading_path) not in sys.path:
                 sys.path.insert(0, str(offloading_path))
-            
+
             from agent_pool_manager import AgentPoolManager
             self.pool_manager = AgentPoolManager()
             self.available_agents = {
@@ -164,7 +164,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         self.context_history.append({"role": "user", "content": prompt})
         self.interrupt_event.clear()
         self.steering_prompt = None
-        
+
         thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
         with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
             local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
@@ -184,16 +184,16 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             }
             if self.active_profile == "local":
                 headers["X-AI-Lane"] = "high-priority"
-                
+
             if switchboard_local_tools:
                 target_url = f"{self.switchboard_url}/v1/chat/completions"
                 headers["X-AI-Profile"] = "local-tool-calling"
                 payload["stream"] = False
                 payload["max_tool_calls"] = self.max_tool_calls
-                payload["chat_template_kwargs"] = {"enable_thinking": True}
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
             elif self.active_profile == "local":
                 target_url = f"{self.llama_url}/v1/chat/completions"
-                payload["chat_template_kwargs"] = {"enable_thinking": True}
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
 
@@ -204,7 +204,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         if response.status_code != 200:
                             console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
                             return
-                        
+
                         async for line in response.aiter_lines():
                             if line.startswith("data: "):
                                 content = line[6:]
@@ -213,10 +213,10 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                                     chunk = json.loads(content)
                                     # DEBUG: Log the full chunk for analysis
                                     # logger.debug(f"Chunk: {content}")
-                                    
+
                                     # Display thoughts and tool calls in real-time
                                     delta = chunk.get("choices", [{}])[0].get("delta", {})
-                                    
+
                                     # Check for dedicated reasoning field (e.g., DeepSeek/Qwen format)
                                     if "reasoning" in delta and delta["reasoning"]:
                                         if not self.is_thinking:
@@ -231,7 +231,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                                             self.is_thinking = False
                                             print("[/dim]\n", end="", flush=True)
                                         print(delta["content"], end="", flush=True)
-                                    
+
                                     if "tool_calls" in delta:
                                         console.print(f"\n[bold magenta]Tool Call:[/] {delta['tool_calls']}")
                                     if chunk.get("local_tool_budget_exhausted"):
@@ -248,7 +248,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                     full_response = ""
                     self.is_thinking = False
                     print()
-                    
+
                     async for line in response.aiter_lines():
                         if self.interrupt_event.is_set():
                             console.print("\n[bold yellow]Interrupted! Steering with new prompt...[/]")
@@ -261,7 +261,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                                     break
                                 chunk = json.loads(content)
                                 token = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "") or ""
-                                
+
                                 if "<think>" in token or "<thought>" in token:
                                     self.is_thinking = True
                                     print("\n[dim]Thoughts: ", end="", flush=True)
@@ -270,7 +270,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                                     self.is_thinking = False
                                     print("[/dim]\n", end="", flush=True)
                                     continue
-                                
+
                                 full_response += token
                                 if self.is_thinking:
                                     print(f"\033[2m{token}\033[0m", end="", flush=True)
@@ -278,7 +278,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                                     print(token, end="", flush=True)
                             except json.JSONDecodeError:
                                 continue
-                    
+
                     print()
                     if not self.interrupt_event.is_set():
                         console.print(Markdown("---"))
@@ -303,7 +303,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
     async def handle_slash_command(self, cmd: str):
         parts = cmd.split()
         base = parts[0].lower()
-        
+
         if base == "/clear":
             # Preserve system prompt if present
             sys_msg = [m for m in self.context_history if m.get("role") == "system"]
@@ -371,7 +371,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         if not path.exists():
             console.print(f"[red]File not found: {path}[/]")
             return
-        
+
         try:
             self.context_history = []
             with open(path, "r") as f:
@@ -429,7 +429,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         if not results:
                             console.print("[yellow]No relevant documents found.[/]")
                             return
-                        
+
                         table = Table(title=f"RAG Results: {query}", border_style="cyan")
                         table.add_column("Score", style="dim", justify="right")
                         table.add_column("Source", style="green")
@@ -460,12 +460,12 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 register_git_tools(registry)
                 register_ai_coordination_tools(registry)
                 register_computer_use_tools(registry)
-            
+
             table = Table(title="Local Agent Tool Registry", border_style="#ff00ff")
             table.add_column("Tool Name", style="bold cyan")
             table.add_column("Safety", style="magenta")
             table.add_column("Description")
-            
+
             for name, tool in registry.get_all_tools().items():
                 table.add_row(name, str(tool.safety_policy.value), tool.description)
             console.print(table)
@@ -476,7 +476,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         grid = Table.grid(expand=True)
         grid.add_column(style="cyan")
         grid.add_column(style="magenta", justify="right")
-        
+
         active_model = await self._get_active_model()
         grid.add_row("Active Model", active_model)
         grid.add_row("Current Profile", self.active_profile)
@@ -484,7 +484,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         grid.add_row("Temperature", str(self.temperature))
 
         console.print(Panel(grid, title="[bold #00d9ff]System Context[/]", border_style="#00d9ff"))
-        
+
         try:
             load = os.getloadavg()
             res_table = Table(title="Host Resources", box=None)
@@ -505,7 +505,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
     async def run(self):
         await self._discover_pool()
         self.model_name = await self._get_active_model()
-        
+
         # Inject harness-aware system prompt
         if self.inject_context and self.active_profile == "local":
             with console.status("[dim]Grounding model in harness context...[/]", spinner="dots"):
@@ -525,14 +525,14 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 p_text = f'<prompt>[{self.active_profile}]</prompt> <model>❯</model> '
                 user_input = await self.session.prompt_async(HTML(p_text), style=STYLE)
                 user_input = user_input.strip()
-                
+
                 if not user_input: continue
-                
+
                 if user_input.startswith("/"):
                     await self.handle_slash_command(user_input)
                 else:
                     await self._stream_chat(user_input)
-                    
+
             except EOFError: break
             except KeyboardInterrupt: continue
 

@@ -437,7 +437,8 @@ def generate_prompt_extensions(
                 raw = _json.loads(_cand.read_text()) or {}
             else:
                 import yaml as _yaml
-                raw = _yaml.safe_load(_cand.read_text()) or {}
+                docs = [doc for doc in _yaml.safe_load_all(_cand.read_text()) if isinstance(doc, dict)]
+                raw = docs[-1] if docs else {}
             existing = raw if isinstance(raw, dict) else {}
             break  # use first readable file
         except Exception:

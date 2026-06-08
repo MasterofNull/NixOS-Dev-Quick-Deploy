@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import importlib
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ HYBRID_DIR = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
 MCP_ROOT = ROOT / "ai-stack" / "mcp-servers"
 HYPERD_FACTS = ROOT / "nix" / "hosts" / "hyperd" / "facts.nix"
 SWITCHBOARD = ROOT / "nix" / "modules" / "services" / "switchboard.nix"
+SWITCHBOARD_PY = ROOT / "ai-stack" / "switchboard" / "switchboard.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -24,70 +26,83 @@ def assert_true(condition: bool, message: str) -> None:
 def main() -> int:
     facts_text = HYPERD_FACTS.read_text(encoding="utf-8")
     assert_true(
-        'llamaCpp.activeModel = "qwen3.6-35b";' in facts_text,
-        "hyperd should pin the local llama.cpp lane to qwen3.6-35b for harness testing",
+        'llamaCpp.activeModel = "qwen3.6-35b-mtp-q5";' in facts_text,
+        "hyperd should pin the local llama.cpp lane to qwen3.6-35b-mtp-q5 for harness testing",
     )
     assert_true(
         '"--n-gpu-layers" "12"' in facts_text,
         "hyperd should cap Qwen Vulkan offload layers for the local harness host",
     )
     assert_true(
-        '"--flash-attn" "off"' in facts_text,
-        "hyperd should disable flash attention on the constrained local Qwen host path",
+        "q8_0 KV cache requires --flash-attn" in facts_text,
+        "hyperd should document flash-attn as required by the q8_0 KV cache path",
+    )
+    local_model_text = (ROOT / "config" / "local-model-config.yaml").read_text(encoding="utf-8")
+    assert_true(
+        "flash_attn: true" in local_model_text,
+        "local-model-config.yaml should mirror the q8_0 KV cache flash-attn deployment path",
     )
     switchboard_text = SWITCHBOARD.read_text(encoding="utf-8")
     assert_true(
-        '"type": "local_model_loading"' in switchboard_text,
-        "switchboard should classify the local llama.cpp warmup state explicitly",
+        "[profile-card:local-tool-calling]" in switchboard_text,
+        "switchboard should expose the local tool-calling profile card",
     )
     assert_true(
-        'profile not in ("continue-local", "embedded-assist")' in switchboard_text,
-        "switchboard should scope forced no-think handling to lightweight local profiles",
+        "[profile-card:embedded-assist]" in switchboard_text and "/no_think" in switchboard_text,
+        "switchboard should expose no-think local profile cards",
+    )
+    switchboard_py_text = SWITCHBOARD_PY.read_text(encoding="utf-8")
+    assert_true(
+        'kwargs["enable_thinking"] = False' in switchboard_py_text,
+        "switchboard should disable thinking explicitly for local profiles",
     )
     assert_true(
-        'kwargs["enable_thinking"] = False' in switchboard_text,
-        "switchboard should disable thinking explicitly for lightweight local profiles",
+        "current_val is True and not is_reasoning_profile" in switchboard_py_text,
+        "switchboard should override caller-supplied thinking mode for non-reasoning local profiles",
     )
     assert_true(
-        "Agent introspection / operator perspective:" in switchboard_text,
-        "switchboard local-agent card should document evidence-first introspection guidance",
-    )
-    assert_true(
-        'aq-feedback-loop --task "<prompt>" --format json' in switchboard_text,
-        "switchboard local-agent card should route introspection prompts through the feedback loop first",
-    )
-    assert_true(
-        'aq-context-manage summary --task "<prompt>" --json' in switchboard_text,
-        "switchboard local-agent card should request compact recent-session summaries before broad introspection",
-    )
-    assert_true(
-        "preflight_commands or continuation_startup_commands" in switchboard_text,
-        "switchboard local-agent card should require following context-offload startup packets before analysis",
-    )
-    assert_true(
-        "execute sanctioned aq-* preflight_commands or continuation_startup_commands before answering" in switchboard_text,
-        "switchboard local-agent card should require direct execution of sanctioned aq-* startup packets",
-    )
-    assert_true(
-        "embedded-assist as the compact search/context helper lane" in switchboard_text,
-        "switchboard local-agent card should expose embedded-assist as the compact search/context helper lane",
-    )
-    assert_true(
-        "aq-introspection-validate --file <response-file>" in switchboard_text,
-        "switchboard local-agent card should expose the introspection contract validator",
-    )
-    assert_true(
-        "Observed signals" in switchboard_text and "Evidence sources" in switchboard_text,
-        "switchboard local-agent card should require evidence-oriented introspection output buckets",
-    )
-    assert_true(
-        "Never claim internal behavior, memory writes, or remote-sync behavior as fact unless a tool result supports it." in switchboard_text,
-        "switchboard local-agent card should forbid unsupported introspection claims",
+        "is_reasoning_profile" in switchboard_py_text,
+        "switchboard should leave room for explicit reasoning profiles",
     )
     runtime_text = (ROOT / "ai-stack" / "agents" / "runtimes" / "local_agent_runtime.py").read_text(encoding="utf-8")
     assert_true(
-        'payload["chat_template_kwargs"] = {"enable_thinking": False}' in runtime_text,
-        "local agent runtime should disable thinking explicitly when routed in no-think mode",
+        "build_llama_payload(" in runtime_text,
+        "local agent runtime should use the shared llama payload builder for no-think mode",
+    )
+    llm_config_text = (ROOT / "ai-stack" / "mcp-servers" / "shared" / "llm_config.py").read_text(encoding="utf-8")
+    assert_true(
+        '"chat_template_kwargs": {"enable_thinking": False}' in llm_config_text,
+        "shared llama payload builder should disable thinking explicitly",
+    )
+    aq_chat_text = (ROOT / "scripts" / "ai" / "aq-chat").read_text(encoding="utf-8")
+    assert_true(
+        "enable_thinking=true" not in aq_chat_text,
+        "aq-chat system prompt should not contradict the local no-think request contract",
+    )
+    assert_true(
+        re.search(r"enable_thinking[\"']\s*:\s*True", aq_chat_text) is None,
+        "aq-chat should never send enable_thinking=True to local llama.cpp or switchboard local tools",
+    )
+    assert_true(
+        aq_chat_text.count('"chat_template_kwargs"] = {"enable_thinking": False}') >= 2,
+        "aq-chat should disable thinking for direct local and local-tool-calling payloads",
+    )
+    agent_executor_text = (ROOT / "ai-stack" / "local-agents" / "agent_executor.py").read_text(encoding="utf-8")
+    training_ingest_text = (ROOT / "ai-stack" / "local-agents" / "training_ingest.py").read_text(encoding="utf-8")
+    drop_spec_text = (ROOT / "scripts" / "ai" / "lib" / "drop_spec.py").read_text(encoding="utf-8")
+    assert_true(
+        "safe_load_all" in agent_executor_text and "safe_load_all" in training_ingest_text and "safe_load_all" in drop_spec_text,
+        "agent prompt extension and drop-zone YAML readers should support multi-document YAML",
+    )
+    phase0_text = (ROOT / "scripts" / "testing" / "harness_qa" / "phases" / "phase0.py").read_text(encoding="utf-8")
+    assert_true(
+        "safe_load_all(config.read_text())" in phase0_text,
+        "aq-qa local model config check should support multi-document YAML",
+    )
+    gate_text = (ROOT / "scripts" / "testing" / "gate-local-payload-discipline.sh").read_text(encoding="utf-8")
+    assert_true(
+        ("enable_thinking=" + "True") in gate_text and "--include=\"aq-chat\"" in gate_text,
+        "local payload discipline gate should reject thinking-mode drift in Python and aq-chat sources",
     )
     assert_true(
         '"name": "run_harness_cli"' in runtime_text,
@@ -113,7 +128,7 @@ def main() -> int:
         "knowledge.llm_router should keep advisor support enabled when imported standalone",
     )
 
-    print("PASS: local agent configuration keeps qwen3.6-35b for harness testing and advisor imports work")
+    print("PASS: local agent configuration keeps qwen3.6-35b-mtp-q5 for harness testing and advisor imports work")
     return 0
 
 

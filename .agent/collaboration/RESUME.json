@@ -1,6 +1,6 @@
 {
-  "current_objective": "Phase 148 rebuild-watch remediation complete in repo; activation pending for Nix/AppArmor/service-copy changes.",
-  "phase": "Phase 148 — rebuild-watch remediation",
+  "current_objective": "Phase 148 agentic-standardization integration validated; pre-commit gate and commit remain.",
+  "phase": "Phase 148 — agentic standardization integration",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
     "DONE: Phase 142 — P2 contradiction detection at query time (6b321b4e)",
@@ -10,15 +10,34 @@
     "DONE: Phase 146 — aq-qa identity coverage checks 146.1-146.4 in phase0.py + _aq-qa-bash",
     "DONE: Phase 147 — dashboard health-spider semantic probes + auto-remediate health-spider pass + passive firewall sudo suppression",
     "DONE: Phase 147 rebuild was attempted by user; user then reverted a later build due desktop cursor/text input instability",
-    "DONE: Phase 148 research pass identified aq-chat enable_thinking=true contradiction, thin golden eval coverage, stale parity/routing docs, local-agent-config multi-doc YAML trap, and COSMIC input log signals",
+    "DONE: Phase 148 research pass identified aq-chat enable_thinking=true contradiction, thin golden eval coverage, stale parity/routing docs, multi-document YAML parser traps, and COSMIC input log signals",
     "DONE: Rebuild watch found and repo-fixed ai-auto-remediate PRSI queue command drift, tmpfiles unsafe transitions, health-spider already-covered AppArmor false-positive exit, and dashboard /tmp AppArmor directory denial",
-    "PENDING: sudo nixos-rebuild switch --flake .#hyperd-ai-dev to activate Nix/AppArmor/service-copy changes",
-    "PENDING: implement repo-only agentic standardization fixes after rebuild-watch commit"
+    "DONE: sudo nixos-rebuild switch --flake .#hyperd-ai-dev activated Nix/AppArmor/service-copy changes",
+    "DONE: Gemini direct edits changed aq-chat local payloads to enable_thinking=false and added first-pass multi-document YAML loader support",
+    "DONE: Codex integration review repaired RESUME.json, hardened YAML loader edge cases, added Python aq-qa 0.10.1 coverage, and fixed local model config drift",
+    "DONE: Focused validation passed: json.tool RESUME, py_compile touched Python, gate-local-payload-discipline, test-local-agent-config, diff --check, aq-qa 0 --machine 94/0/2",
+    "PENDING: run tier0 pre-commit gate and commit the accepted integration slice",
+    "PENDING-REBUILD: run sudo nixos-rebuild switch --flake .#hyperd-ai-dev after commit to activate switchboard/service-copy changes"
   ],
   "uncommitted_changes": [
-    "Research doc .agents/plans/phase-148-agentic-mind-research.md",
-    "Issue backlog desktop-input entry",
-    "Rebuild-watch remediation files and generated telemetry"
+    ".agent/collaboration/RESUME.json",
+    ".agent/memory/issues-backlog.md",
+    ".agent/collaboration/HANDOFF.md",
+    ".agent/collaboration/PULSE.log",
+    ".agents/attention/ATTENTION_ARCHIVE.jsonl",
+    ".agents/telemetry/routing-decisions.jsonl",
+    "ai-stack/local-agents/agent_executor.py",
+    "ai-stack/local-agents/training_ingest.py",
+    "ai-stack/switchboard/switchboard.py",
+    "config/env-contract.yaml",
+    "config/intent-routing-map.json",
+    "config/local-model-config.yaml",
+    "scripts/ai/_aq-qa-bash",
+    "scripts/ai/aq-chat",
+    "scripts/ai/lib/drop_spec.py",
+    "scripts/testing/gate-local-payload-discipline.sh",
+    "scripts/testing/harness_qa/phases/phase0.py",
+    "scripts/testing/test-local-agent-config.py"
   ],
-  "resume_hint": "Rebuild-watch repo fixes are ready but require sudo nixos-rebuild switch to activate: scripts/automation/auto-remediate.sh now uses supported prsi-orchestrator.py cycle instead of removed queue; nix/modules/core/base.nix repairs /var/lib/nixos-ai-stack parent before children; nix/modules/services/mcp-servers.nix removes duplicate /var/lib/ai-stack tmpfiles rules, makes /var/log/nixos-ai-stack root:ai-stack, and adds /tmp/ r, to command-center-dashboard-api AppArmor; scripts/ai/aq-health-spider no longer exits nonzero when apparmor-fix-agent reports all paths already covered. Validation passed: bash -n auto-remediate, py_compile health-spider/prsi/test, boot-stability regression, nix parse base/mcp, aq-qa 0 --machine 95/0, health-spider --once exit 0. Agentic degradation research remains next: aq-chat enable_thinking=true contradiction is the highest-confidence local-model culprit."
+  "resume_hint": "Gemini's resumed work was useful but needed integration repair. Validated: aq-chat no-think payloads, switchboard override for non-reasoning local profiles, multi-document YAML loaders, local-model config qwen3.6-35b-mtp-q5/flash-attn mirror, aq-qa 0.10.1 payload-discipline gate, and SWB_RESERVED_SLOTS env contract coverage. Next: tier0 pre-commit gate, commit, then rebuild to activate service-copy changes."
 }

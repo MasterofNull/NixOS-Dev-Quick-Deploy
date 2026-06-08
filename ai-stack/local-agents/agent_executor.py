@@ -923,7 +923,8 @@ class LocalAgentExecutor:
             return ""
         try:
             import yaml  # type: ignore[import]
-            data = yaml.safe_load(ext_path.read_text()) or {}
+            docs = [doc for doc in yaml.safe_load_all(ext_path.read_text()) if isinstance(doc, dict)]
+            data = docs[-1] if docs else {}
             rules = data.get("rules") or []
             if not rules:
                 return ""

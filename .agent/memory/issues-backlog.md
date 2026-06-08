@@ -132,7 +132,17 @@
   Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
   File: .agents/plans/phase-148-agentic-mind-research.md
 
-[PENDING-REBUILD] rebuild-watch — activation exposed auto-remediate PRSI CLI drift, tmpfiles unsafe transitions, and dashboard AppArmor `/tmp/` denial noise — Root causes: `auto-remediate.sh` called removed `prsi-orchestrator.py queue`; tmpfiles repaired `/var/lib/nixos-ai-stack` after processing child paths and kept `/var/log/nixos-ai-stack` user-owned while service-owned child logs live under it; dashboard AppArmor allowed `/tmp/*.db` but not `/tmp/` directory reads; health-spider counted already-covered AppArmor denials as unresolved.
+[DONE] rebuild-watch — activation exposed auto-remediate PRSI CLI drift, tmpfiles unsafe transitions, and dashboard AppArmor `/tmp/` denial noise — Root causes: `auto-remediate.sh` called removed `prsi-orchestrator.py queue`; tmpfiles repaired `/var/lib/nixos-ai-stack` after processing child paths and kept `/var/log/nixos-ai-stack` user-owned while service-owned child logs live under it; dashboard AppArmor allowed `/tmp/*.db` but not `/tmp/` directory reads; health-spider counted already-covered AppArmor denials as unresolved.
   Severity: high
-  Action: Repo fixes applied: auto-remediate uses `prsi-orchestrator.py cycle`; tmpfiles parent repair is ordered before child paths and AI log parent is `root:ai-stack`; dashboard profile allows narrow `/tmp/ r,`; health-spider returns cleanly when apparmor-fix-agent reports all paths already covered. Run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate Nix/AppArmor/service-copy changes.
+  Action: Repo fixes applied and user rebuild activated the previous Nix/AppArmor/service-copy changes. auto-remediate uses `prsi-orchestrator.py cycle`; tmpfiles parent repair is ordered before child paths and AI log parent is `root:ai-stack`; dashboard profile allows narrow `/tmp/ r,`; health-spider returns cleanly when apparmor-fix-agent reports all paths already covered.
   File: scripts/automation/auto-remediate.sh; scripts/ai/aq-health-spider; nix/modules/core/base.nix; nix/modules/services/mcp-servers.nix; scripts/testing/test-boot-stability-regressions.py
+
+[DONE] collaboration-state — Gemini resumed Phase 148 with useful direct edits but wrote malformed RESUME.json — Root causes: duplicate JSON keys, missing comma in todo_snapshot, and completion claims not matched by validation evidence made `aq-resume`/JSON tooling fail during handoff review.
+  Severity: medium
+  Action: Repaired RESUME.json as valid JSON, validated Gemini's code diff, tightened multi-document YAML loaders, and added static regression coverage for aq-chat no-think and YAML loader contracts.
+  File: .agent/collaboration/RESUME.json; scripts/testing/test-local-agent-config.py
+
+[PENDING-REBUILD] agentic-standardization — Phase 148 repo fixes need activation — Root cause: switchboard/service code runs from the Nix store; repository edits to `ai-stack/switchboard/switchboard.py`, config mirrors, and aq-qa wrapper are validated in repo but will not affect live services until rebuilt.
+  Severity: medium
+  Action: After commit, run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`, then verify `aq-qa 0 --machine` and one local `aq-chat`/switchboard smoke.
+  File: ai-stack/switchboard/switchboard.py; scripts/ai/aq-chat; scripts/testing/harness_qa/phases/phase0.py

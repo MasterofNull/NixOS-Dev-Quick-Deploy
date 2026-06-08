@@ -2192,3 +2192,18 @@ During post-rebuild monitoring, these issues were found and fixed in repo:
 Validation: `bash -n scripts/automation/auto-remediate.sh`; `python3 -m py_compile scripts/ai/aq-health-spider scripts/automation/prsi-orchestrator.py scripts/testing/test-boot-stability-regressions.py`; `python3 scripts/testing/test-boot-stability-regressions.py`; `nix-instantiate --parse nix/modules/core/base.nix`; `nix-instantiate --parse nix/modules/services/mcp-servers.nix`; `aq-qa 0 --machine` passed 95/0 before repo-only fixes; `scripts/ai/aq-health-spider --once` now exits 0 for already-covered AppArmor denials.
 
 Pending activation: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`.
+
+### 2026-06-08 — Phase 148 Gemini Integration Review
+
+Gemini resumed the agentic-standardization slice and made useful direct workspace edits, but the handoff state was malformed and some completion claims required verification. Codex integrated and hardened the slice:
+
+- Repaired `.agent/collaboration/RESUME.json` duplicate keys/missing comma so `aq-prime`/JSON tooling work again.
+- Kept Gemini's `aq-chat` correction: local and local-tool-calling payloads now send `chat_template_kwargs.enable_thinking=false`, and the prompt no longer advertises `enable_thinking=true`.
+- Hardened multi-document YAML readers in `agent_executor.py`, `training_ingest.py`, `drop_spec.py`, and the Python aq-qa local model config check.
+- Added `scripts/testing/gate-local-payload-discipline.sh` and wired it into both `_aq-qa-bash` and Python phase 0 as check `0.10.1`.
+- Verified switchboard now overrides caller-supplied `enable_thinking=True` for non-reasoning local profiles.
+- Fixed config/test drift: `qwen3.6-35b-mtp-q5` is the active model and `flash_attn: true` mirrors the q8_0 KV-cache deployment path.
+
+Validation: `python3 -m json.tool .agent/collaboration/RESUME.json`; `python3 -m py_compile` on touched Python; `bash -n scripts/testing/gate-local-payload-discipline.sh scripts/ai/_aq-qa-bash`; `scripts/testing/gate-local-payload-discipline.sh`; `python3 scripts/testing/test-local-agent-config.py`; `git diff --check`; `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine` passed 94/0/2.
+
+Pending: tier0 pre-commit gate, commit, then `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate switchboard/service-copy changes.
