@@ -1476,15 +1476,19 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     "answer code-ready and concrete."
                 )
                 if _is_exact_output:
-                    # Use the canonical compact contract block for exact-output tasks
+                    # Use the canonical compact contract block for exact-output tasks.
+                    # This provides the necessary discipline instructions while allowing tools if the profile has them.
                     _spawn_kwargs["system_prompt"] = _ai_coordinator_compact_delegation_contract_block(
                         task, selected_profile, data.get("context")
                     )
                 
-                # Force tools off and thinking mode off for disciplined local output
-                data = dict(data)
-                data["tools_enabled"] = False
-                data["thinking_mode"] = "off"
+                # Phase 150 (Restored): Do NOT force tools/thinking off for exact-output.
+                # Only force tools off if the task is explicitly tool-free.
+                if _is_tool_free:
+                    data = dict(data)
+                    data["tools_enabled"] = False
+                    data["thinking_mode"] = "off"
+                
                 # Cap tokens for tool-free/exact-output to prevent runaway meta-reasoning
                 _spawn_kwargs["max_tokens"] = min(_spawn_kwargs["max_tokens"], 1024)
 
