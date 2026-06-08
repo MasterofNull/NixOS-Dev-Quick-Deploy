@@ -2225,3 +2225,15 @@ Two follow-up defects were found and fixed in repo:
 - `ai-post-deploy-converge.service` omitted `git` from its systemd path, causing `run-focused-ci-checks.sh` to warn with `FileNotFoundError: git`; patched `nix/modules/services/mcp-servers.nix`. Validation: `nix-instantiate --parse nix/modules/services/mcp-servers.nix`.
 
 Pending: tier0 pre-commit gate, commit follow-up fixes, then rebuild to activate hybrid-coordinator/post-deploy unit changes.
+
+### 2026-06-08 — Phase 148 Activation Follow-Up
+
+User rebuilt after commit `a23e1e24` and ran live validation:
+
+- `aq-qa 0 --machine` passed 96/0/0, including `0.10.1 local inference payload discipline` and identity checks `146.1`-`146.4`.
+- `aq-health-spider --once` returned clean coordinator, switchboard, AIDB, dashboard, aggregate, effectiveness, agent-runs, and traces-summary probes.
+- `scripts/ai/aq-alerts --count` returned 0.
+
+Codex follow-up inspection found the post-deploy `git` PATH fix was not actually live: `systemctl cat ai-post-deploy-converge.service` still lacked a `git` store path. Root cause: the prior patch added `git` to `ai-npm-security-monitor`, not `ai-post-deploy-converge`. Repo is now corrected in `nix/modules/services/mcp-servers.nix`.
+
+Pending: validate corrected Nix syntax, tier0, commit, then rebuild once more to activate the corrected post-deploy unit PATH.

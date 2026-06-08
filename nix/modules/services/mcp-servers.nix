@@ -2013,6 +2013,7 @@ in {
           curl
           findutils
           gawk
+          git
           gnugrep
           jq
           nodejs
