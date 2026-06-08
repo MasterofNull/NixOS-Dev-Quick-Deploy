@@ -36,6 +36,11 @@ DEFAULT_LLAMA_URL = "http://127.0.0.1:8080"
 DEFAULT_HYBRID_URL = "http://127.0.0.1:8003"
 DEFAULT_SWITCHBOARD_URL = "http://127.0.0.1:8085"
 USER_HISTORY_FILE = Path.home() / ".aq_chat_history"
+SNAPSHOT_KEYWORDS = {
+    "improvement", "improvements", "fix", "fixes", "issue", "issues",
+    "health", "degraded", "status", "right now", "next", "priority",
+    "priorities", "should we", "what should", "start to address",
+}
 
 # --- Styling ---
 STYLE = Style.from_dict({
@@ -84,6 +89,78 @@ class AQChat:
         # Feedback loop — tracks last exchange for /rate command
         self._last_user_msg: str = ""
         self._last_assistant_msg: str = ""
+
+    def _run_snapshot_command(self, label: str, command: List[str], timeout: int = 8) -> Dict[str, Any]:
+        """Run a read-only local snapshot command for grounding chat answers."""
+        try:
+            proc = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+            stdout = (proc.stdout or "").strip()
+            stderr = (proc.stderr or "").strip()
+            return {
+                "label": label,
+                "command": " ".join(command),
+                "returncode": proc.returncode,
+                "stdout": stdout[:2000],
+                "stderr": stderr[:1000],
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "label": label,
+                "command": " ".join(command),
+                "returncode": 124,
+                "stdout": "",
+                "stderr": f"timed out after {timeout}s",
+            }
+        except OSError as exc:
+            return {
+                "label": label,
+                "command": " ".join(command),
+                "returncode": 127,
+                "stdout": "",
+                "stderr": str(exc),
+            }
+
+    def _should_use_local_snapshot(self, prompt: str) -> bool:
+        compact = " ".join(prompt.lower().split())
+        return any(keyword in compact for keyword in SNAPSHOT_KEYWORDS)
+
+    async def _build_local_snapshot(self, prompt: str) -> Optional[str]:
+        """Build a compact trusted snapshot for operational recommendation prompts."""
+        if not self._should_use_local_snapshot(prompt):
+            return None
+
+        commands = [
+            ("git_status", ["git", "status", "--short"], 6),
+            ("alerts_count", ["scripts/ai/aq-alerts", "--count"], 6),
+            ("failed_units", ["systemctl", "--failed", "--no-pager"], 8),
+            ("open_issues", ["rg", "-n", "^\\[OPEN\\]", ".agent/memory/issues-backlog.md"], 6),
+            ("health_spider_once", ["scripts/ai/aq-health-spider", "--once"], 20),
+        ]
+        results = [
+            self._run_snapshot_command(label, command, timeout)
+            for label, command, timeout in commands
+        ]
+        return json.dumps(
+            {
+                "source": "aq-chat trusted local preflight",
+                "repo_root": str(REPO_ROOT),
+                "checks": results,
+                "limits": [
+                    "Full aq-qa was not run inside this chat turn unless shown above.",
+                    "Use only these command outputs for current-state claims.",
+                    "Do not recommend a rebuild unless a check reports pending activation or failed units.",
+                    "If a command failed, report it as a snapshot command failure, not as confirmed system degradation.",
+                ],
+            },
+            indent=2,
+        )
 
     async def _build_harness_system_prompt(self) -> str:
         """Fetch live coordinator state and build a harness-aware system prompt.
@@ -196,9 +273,26 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
             local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
             switchboard_local_tools = self._uses_switchboard_local_tools()
+            local_snapshot = await self._build_local_snapshot(prompt)
+            request_messages = list(self.context_history)
+            if local_snapshot:
+                request_messages = (
+                    self.context_history[:-1]
+                    + [{
+                        "role": "system",
+                        "content": (
+                            "TRUSTED LOCAL PREFLIGHT SNAPSHOT FOR THIS TURN:\n"
+                            f"{local_snapshot}\n\n"
+                            "Answer contract: be concise and human-readable. Start with current status, "
+                            "then give the top 3 evidence-backed next improvements. Use only snapshot "
+                            "evidence for current-state claims. Do not mention unavailable tool calls."
+                        ),
+                    }]
+                    + self.context_history[-1:]
+                )
             payload = {
                 "model": local_model_id if self.active_profile in {"local", "local-tool-calling"} else self.active_profile,
-                "messages": self.context_history,
+                "messages": request_messages,
                 "stream": True,
                 "temperature": self.temperature,
                 "agent_type": "human"
@@ -212,15 +306,18 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             if self.active_profile == "local":
                 headers["X-AI-Lane"] = "high-priority"
 
-            if switchboard_local_tools:
+            if switchboard_local_tools and not local_snapshot:
                 target_url = f"{self.switchboard_url}/v1/chat/completions"
                 headers["X-AI-Profile"] = "local-tool-calling"
                 payload["stream"] = False
                 payload["max_tool_calls"] = self.max_tool_calls
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
-            elif self.active_profile == "local":
+            elif self.active_profile == "local" or local_snapshot:
                 target_url = f"{self.llama_url}/v1/chat/completions"
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
+                if local_snapshot:
+                    payload["stream"] = False
+                    payload["max_tokens"] = 512
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
 
@@ -237,6 +334,20 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         return
                     if body.get("local_tool_budget_exhausted"):
                         console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
+                    full_response = self._assistant_content_from_body(body)
+                    self._record_and_render_assistant_response(prompt, full_response)
+                    return
+
+                if local_snapshot:
+                    response = await self.client.post(target_url, json=payload, headers=headers)
+                    if response.status_code != 200:
+                        console.print(f"[bold red]Error: Received {response.status_code} from local backend.[/]")
+                        return
+                    try:
+                        body = response.json()
+                    except json.JSONDecodeError:
+                        console.print("[bold red]Error: local backend returned non-JSON response.[/]")
+                        return
                     full_response = self._assistant_content_from_body(body)
                     self._record_and_render_assistant_response(prompt, full_response)
                     return

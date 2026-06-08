@@ -161,3 +161,8 @@
   Severity: medium
   Action: Keep local-tool-calling `stream=False`, consume the completed JSON response with `self.client.post()`, and render the final assistant content once through the Markdown renderer. Added static regression coverage and live switchboard smoke returned normal content `AQ_CHAT_RENDER_OK`.
   File: scripts/ai/aq-chat ~line 160; scripts/testing/test-aq-chat-local-tool-profile.py
+
+[DONE] aq-chat-grounding — local aq-chat exhausted tool budget and recommended stale/false system fixes — Root cause: operational recommendation prompts were delegated to the model's local tool loop, so failures in individual tools or repeated tool calls were treated as current system facts and the answer could recommend rebuilds despite a clean live system.
+  Severity: medium
+  Action: Added deterministic local preflight snapshots for improvement/health/status prompts, bypassed the local tool loop when snapshot evidence is available, required answers to use only snapshot evidence for current-state claims, and capped snapshot-grounded responses at 512 tokens. Live non-interactive aq-chat smoke produced a bounded answer with no tool-budget exhaustion.
+  File: scripts/ai/aq-chat ~line 45; scripts/testing/test-aq-chat-local-tool-profile.py

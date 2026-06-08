@@ -28,6 +28,22 @@ def main() -> None:
         "aq-chat should render completed assistant responses through one readable final renderer",
     )
     assert_true(
+        "def _build_local_snapshot" in text and "TRUSTED LOCAL PREFLIGHT SNAPSHOT" in text,
+        "aq-chat should ground operational recommendation prompts in a trusted local snapshot",
+    )
+    assert_true(
+        "Do not recommend a rebuild unless a check reports pending activation or failed units." in text,
+        "aq-chat snapshot contract should prevent stale rebuild recommendations",
+    )
+    assert_true(
+        "if switchboard_local_tools and not local_snapshot:" in text,
+        "aq-chat should bypass local tool loops when deterministic snapshot grounding is available",
+    )
+    assert_true(
+        'payload["max_tokens"] = 512' in text,
+        "aq-chat snapshot-grounded turns should have a bounded interactive response budget",
+    )
+    assert_true(
         'headers["X-AI-Profile"] = "local-tool-calling"' in text,
         "aq-chat should send the local-tool-calling switchboard profile header",
     )
