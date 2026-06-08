@@ -143,6 +143,16 @@ def main() -> int:
         and 'title=f"Systemd failed units detected: {len(units)}"' in health_spider_text,
         "health spider should surface failed systemd units to attention/telemetry",
     )
+    assert_true(
+        '"name": "routing-analytics"' in health_spider_text
+        and '"required_keys": ["logic_discipline", "logic_discipline_rate"]' in health_spider_text,
+        "health spider should catch stale dashboard routing analytics code by requiring logic-discipline telemetry keys",
+    )
+    assert_true(
+        'missing = [key for key in (required_keys or []) if key not in data]' in health_spider_text
+        and "missing_keys=" in health_spider_text,
+        "health spider JSON probes should fail when required dashboard semantic keys are absent",
+    )
 
     print("PASS: boot stability regressions are covered")
     return 0
