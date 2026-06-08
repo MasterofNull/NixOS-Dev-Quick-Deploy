@@ -192,6 +192,13 @@ variables:
     consumers: [switchboard]
     description: "Safety-fuse maximum tool calls per local-model request before forcing a response"
 
+  - canonical: SWB_RESERVED_SLOTS
+    aliases: []
+    default: "0"
+    layer: nix
+    consumers: [switchboard]
+    description: "Number of local inference slots reserved exclusively for high-priority interactive requests"
+
   - canonical: SWB_ACTIVE_TOOL_SCHEMA_LIMIT
     aliases: []
     default: "7"

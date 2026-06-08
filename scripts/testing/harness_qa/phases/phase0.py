@@ -1079,7 +1079,8 @@ def _check_local_model_config(ctx: RunContext) -> list[CheckResult]:
     else:
         try:
             import yaml as _yaml
-            d = _yaml.safe_load(config.read_text())
+            docs = [doc for doc in _yaml.safe_load_all(config.read_text()) if isinstance(doc, dict)]
+            d = docs[0] if docs else {}
             required = {"_meta", "active_model", "inference", "chat", "performance_targets"}
             missing = required - set(d.keys())
             if missing:
@@ -1104,6 +1105,25 @@ def _check_local_model_config(ctx: RunContext) -> list[CheckResult]:
             results.append(failed(4, "60.0.2", "smoke-local-model.sh", "missing expected gates"))
 
     return results
+
+
+def _check_local_payload_discipline(ctx: RunContext) -> list[CheckResult]:
+    """Phase 148: local inference payloads must not enable thinking mode."""
+    gate = ctx.repo_root / "scripts" / "testing" / "gate-local-payload-discipline.sh"
+    if not gate.exists():
+        return [failed(1, "0.10.1", "local inference payload discipline", "gate-local-payload-discipline.sh missing")]
+    proc = subprocess.run(
+        ["bash", str(gate)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.1", "local inference payload discipline (no enable_thinking=True)")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.1", "local inference payload discipline (no enable_thinking=True)", detail)]
 
 
 # ---------------------------------------------------------------------------
@@ -1148,6 +1168,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_aqd_logic(ctx))
     results.extend(_check_topology_api(ctx))
     results.extend(_check_local_model_config(ctx))
+    results.extend(_check_local_payload_discipline(ctx))
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))

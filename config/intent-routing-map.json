@@ -11,42 +11,42 @@
     "code_generation": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": false,
       "rag_project": "logic-patterns,best-practices,semantic"
     },
     "code_review": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": false,
       "rag_project": "logic-patterns,best-practices"
     },
     "knowledge_lookup": {
-      "profile": "local",
+      "profile": "default",
       "min_confidence": 0.3,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": true,
       "rag_project": "semantic,best-practices"
     },
     "planning": {
       "profile": "remote-reasoning",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": true,
       "rag_project": "episodic,semantic"
     },
     "math_reasoning": {
-      "profile": "local",
+      "profile": "default",
       "min_confidence": 0.5,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": false,
       "rag_project": "semantic"
     },
     "tool_execution": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": false,
       "rag_project": "logic-patterns,procedural"
     },
@@ -58,23 +58,23 @@
       "rag_project": "error-solutions,logic-patterns,semantic"
     },
     "delegation": {
-      "profile": "local",
+      "profile": "default",
       "min_confidence": 0.5,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": true,
       "rag_project": "procedural,semantic"
     },
     "unknown": {
-      "profile": "local",
+      "profile": "default",
       "min_confidence": 0.0,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": true,
       "rag_project": "semantic"
     },
     "harness_operation": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": false,
       "rag_project": "procedural"
     },
@@ -88,7 +88,7 @@
     "systems_software": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": true,
       "rag_project": "nix-systems-patterns,logic-patterns,procedural"
     },
@@ -116,7 +116,7 @@
     "gis_systems": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "local",
+      "fallback_profile": "default",
       "memory_recall": true,
       "rag_project": "gis-systems-patterns,semantic"
     },

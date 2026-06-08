@@ -66,7 +66,8 @@ class DropSpec:
     @classmethod
     def from_file(cls, path: Path) -> "DropSpec":
         try:
-            raw = yaml.safe_load(path.read_text())
+            docs = [doc for doc in yaml.safe_load_all(path.read_text()) if doc is not None]
+            raw = docs[-1] if docs else None
         except yaml.YAMLError as exc:
             raise DropSpecError(f"YAML parse error in {path.name}: {exc}") from exc
 
