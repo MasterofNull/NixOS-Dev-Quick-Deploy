@@ -881,6 +881,13 @@ variables:
     consumers: [dashboard-backend (ai_insights.py)]
     description: "Path to persisted aq-report snapshot read by dashboard"
 
+  - canonical: DELEGATION_FEEDBACK_LOG_PATH
+    aliases: []
+    default: "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl"
+    layer: nix
+    consumers: [dashboard-backend (ai_insights.py), aq-report, hybrid-coordinator]
+    description: "Path to delegation feedback JSONL used for failure learning and dashboard logic-discipline telemetry"
+
   - canonical: FIREWALL_ALLOW_SUDO_READS
     aliases: []
     default: "0"

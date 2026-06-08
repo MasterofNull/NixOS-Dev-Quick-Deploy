@@ -217,7 +217,17 @@
   Action: First corrective slice implemented: safe reasoning summary events, raw `<think>` stripping, shared coordinator route-planning events for HTTP and local subprocess paths, schema/fixture repair, dashboard thought/planning filters/rendering, sandboxed HTML previews, and behavioral 0.10.2 QA. Pending rebuild/live smoke and richer dashboard summary tiles.
   File: .agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md
 
-[OPEN] local-subprocess-instruction-discipline — local coordinator delegate ignored exact-output instruction during smoke — Root cause not yet isolated; `/control/ai-coordinator/delegate` with `profile=local-tool-calling`, `max_tokens=32`, and task "Return exactly PLANNING_SMOKE_OK" returned meta-reasoning text instead of the requested literal.
+[DONE] local-subprocess-instruction-discipline — local coordinator delegate ignored exact-output instruction during smoke, then first remediation disabled capabilities too broadly — Root cause: `/control/ai-coordinator/delegate` with `profile=local-tool-calling`, `max_tokens=32`, and task "Return exactly PLANNING_SMOKE_OK" originally returned meta-reasoning text instead of the requested literal. Gemini's first Phase 150 fix forced `tools_enabled=false` and `thinking_mode=off` for all exact-output tasks, which made the smoke pass by trimming capabilities; follow-up commit 173b5f50 restored exact-output tool/reasoning capability unless the task is explicitly tool-free.
   Severity: medium
-  Action: Add a tool-free/exact-output discipline gate for the local subprocess runtime, align its system prompt with aq-chat's tool-free path, and expose failures in aq-qa/dashboard before using it as a predictable production delegate lane.
+  Action: Hardened 0.10.3 to assert exact-output tasks do not disable tools/thinking unless explicitly tool-free; wired dashboard logic-discipline metric to delegation-feedback telemetry instead of defaulting missing data to 100%; rebuilt, restarted dashboard API with sudo, and verified live smoke plus aq-qa 0.
   File: ai-stack/agents/runtimes/local_agent_runtime.py; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
+
+[DONE] dashboard-logic-discipline-no-data — Logic Discipline tile reported 100% without backend metric — Root cause: `assets/dashboard.js` used `analytics.logic_discipline_rate ?? 100` while `/api/insights/routing/analytics` did not produce `logic_discipline_rate`, hiding missing telemetry and making the error threshold unreachable (`<90` warning checked before `<70` error).
+  Severity: high
+  Action: Added backend `logic_discipline` summary from delegation-feedback JSONL, exposed nullable `logic_discipline_rate`, rendered `--` on missing data, made the `<70` error threshold reachable, and verified live `/api/insights/routing/analytics` returns sample/failure/score telemetry.
+  File: dashboard/backend/api/services/ai_insights.py; assets/dashboard.js; dashboard.html
+
+[OPEN] manual-rebuild-source-backed-dashboard-reload — manual `nixos-rebuild switch` left command-center-dashboard-api serving stale repo-backed Python code until an explicit privileged restart — Root cause: the dashboard API unit runs from the repo path, so source-only backend edits are not activated by a plain NixOS switch unless the unit is restarted; unprivileged `systemctl start/reset-failed` can also hang on authorization.
+  Severity: medium
+  Action: Add a documented/manual-rebuild postflight or aq-qa remediation hint that uses `sudo -n systemctl restart command-center-dashboard-api.service` when dashboard/backend or assets change outside `nixos-quick-deploy.sh`; consider making health-spider detect route-shape drift for source-backed services.
+  File: nix/modules/services/command-center-dashboard.nix; nixos-quick-deploy.sh; scripts/ai/aq-health-spider
