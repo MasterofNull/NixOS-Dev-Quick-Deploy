@@ -1085,6 +1085,8 @@ for p in profiles:
       bash "${REPO_ROOT}/scripts/testing/test-telemetry-thought-event.sh"
     _check 1 "0.10.3" "local subprocess exact-output discipline" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-subprocess-discipline-smoke.py"
+    _check 1 "0.10.4" "discovery agent opportunity scanner" \
+      python3 "${REPO_ROOT}/scripts/testing/test-discovery-agent-opportunities.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

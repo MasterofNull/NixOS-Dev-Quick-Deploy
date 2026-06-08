@@ -202,9 +202,9 @@
   Action: Add model catalog/profile freshness metadata and aq-qa/dashboard checks; route new model candidates through sandbox evals before activation or download.
   File: ai-stack/mcp-servers/shared/model_catalog.py
 
-[OPEN] discovery-agent-stub — proactive discovery agent is not doing opportunity analysis yet — Root cause: `ai-stack/local-agents/discovery_agent.py` declares `discover_opportunities()` but currently only logs and `pass`es, so idle discovery cannot surface query gaps, routing failures, tokenomics regressions, or research candidates as actionable work.
+[DONE] discovery-agent-stub — proactive discovery agent was not doing opportunity analysis yet — Root cause: `ai-stack/local-agents/discovery_agent.py` declared `discover_opportunities()` but only logged and `pass`ed, so idle discovery could not surface query gaps, routing failures, tokenomics regressions, or research candidates as actionable work.
   Severity: medium
-  Action: Implement a deterministic local-signal scanner that emits machine-readable candidates from aq-qa failures, health-spider anomalies, query gaps, dashboard blanks, routing failures, and stale source/model metadata.
+  Action: Implemented deterministic local-signal scanner that emits dashboard-compatible `.agents/improvement/candidates.json` from issues backlog, health-spider events, delegation feedback, and stale model-profile metadata. Added focused regression coverage, focused-CI registry entry, and aq-qa 0.10.4.
   File: ai-stack/local-agents/discovery_agent.py
 
 [OPEN] flat-collaboration-disabled — desired flat model-team workflow is documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still has `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still has `collaborative_workflows: false`, while active Gemini/direct paths can write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.

@@ -1190,6 +1190,23 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "discovery-agent-opportunities",
+      "description": "Phase 153 \u2014 discovery agent emits deterministic improvement candidates for dashboard review",
+      "trigger_paths": [
+        "ai-stack/local-agents/discovery_agent.py",
+        "scripts/testing/test-discovery-agent-opportunities.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-discovery-agent-opportunities.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }
