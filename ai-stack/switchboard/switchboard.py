@@ -8,6 +8,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
 if _SHARED_PATH not in sys.path:
     sys.path.insert(0, _SHARED_PATH)
+_LIB_PATH = str(_REPO_ROOT / "scripts" / "ai" / "lib")
+if _LIB_PATH not in sys.path:
+    sys.path.insert(0, _LIB_PATH)
+
+import agent_run_events as _are
 
 import asyncio
 import collections
@@ -47,6 +52,46 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 ROUTE_HINT_HEADER = "x-ai-route"
 PROVIDER_HINT_HEADER = "x-ai-provider"
 PROFILE_HINT_HEADER = "x-ai-profile"
+
+_AGENT_RUN_EVENTS_PATH = Path(
+    os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
+)
+_THINK_BLOCK_RE = re.compile(r"<think>(.*?)</think>", flags=re.DOTALL | re.IGNORECASE)
+
+
+async def _emit_reasoning_summary_events(run_id: str, content: str) -> str:
+    """Emit safe reasoning-observed events and remove raw reasoning blocks.
+
+    The dashboard should show that a local model produced internal reasoning,
+    but it must not persist or display raw chain-of-thought. Store a hash and
+    size for traceability instead.
+    """
+    if not content or "<think" not in content.lower():
+        return content
+
+    matches = list(_THINK_BLOCK_RE.finditer(content))
+    for match in matches:
+        raw_thought = (match.group(1) or "").strip()
+        if not raw_thought:
+            continue
+        try:
+            ev = _are.make_event(
+                event_type="thought",
+                source="switchboard",
+                run_id=run_id,
+                payload={
+                    "kind": "local_model_reasoning_block",
+                    "summary": "Local model emitted an internal reasoning block; raw chain-of-thought was suppressed.",
+                    "char_count": len(raw_thought),
+                    "content_hash": _are.stable_digest(raw_thought),
+                    "redaction_level": "raw_reasoning_suppressed",
+                },
+            )
+            await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+        except Exception as e:
+            print(f"[switchboard] failed to emit thought summary event: {e}", file=sys.stderr)
+
+    return _THINK_BLOCK_RE.sub("", content).strip()
 
 # Initialize Independent Circuit Breaker Registries
 # Phase 56.1: Decouple local and remote paths to prevent downstream provider failures 
@@ -1208,7 +1253,7 @@ async def _finalize_after_local_tool_limit(
     return _local_tool_limit_fallback(body, tool_calls_used)
 
 
-async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
+async def _execute_local_tool_calling(payload: dict, run_id: str = "unknown-run") -> tuple[dict, int]:
     registry, tool_call_cls = _load_local_tool_registry()
     messages = list(payload.get("messages") or [])
     if not messages:
@@ -1259,6 +1304,15 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
             if isinstance(body, dict):
                 body["tool_working_set"] = working_set
                 body["context_output_gc"] = context_gc
+
+                # Phase 149: Record safe reasoning-observed summaries only.
+                choices = body.get("choices", [])
+                message_obj = choices[0].get("message", {}) if choices and isinstance(choices[0], dict) else {}
+                content = message_obj.get("content", "") or ""
+                clean_content = await _emit_reasoning_summary_events(run_id, content)
+                if clean_content != content and choices and isinstance(choices[0], dict):
+                    choices[0].setdefault("message", {})["content"] = clean_content
+
             return body, tool_calls_used
         while True:
             try:
@@ -1281,6 +1335,10 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
             if not choices:
                 raise RuntimeError("local llama.cpp returned no choices during tool execution")
             message_obj = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+            content = message_obj.get("content", "") or ""
+            content = await _emit_reasoning_summary_events(run_id, content)
+            message_obj["content"] = content
+
             tool_calls = message_obj.get("tool_calls") or []
             if not tool_calls:
                 if isinstance(body, dict):
@@ -1290,7 +1348,7 @@ async def _execute_local_tool_calling(payload: dict) -> tuple[dict, int]:
 
             messages.append({
                 "role": "assistant",
-                "content": message_obj.get("content", "") or "",
+                "content": content,
                 "tool_calls": tool_calls,
             })
 
@@ -2668,7 +2726,8 @@ async def proxy(path: str, request: Request):
                     and not is_stream
                 ):
                     try:
-                        local_body, local_tool_calls_used = await _execute_local_tool_calling(payload)
+                        run_id = request.headers.get("x-agent-run-id") or payload.get("session_id") or "unknown-run"
+                        local_body, local_tool_calls_used = await _execute_local_tool_calling(payload, run_id=run_id)
                         if isinstance(local_body, dict) and isinstance(local_body.get("tool_working_set"), dict):
                             tool_working_set = local_body.get("tool_working_set")
                         if isinstance(local_body, dict) and isinstance(local_body.get("context_output_gc"), dict):

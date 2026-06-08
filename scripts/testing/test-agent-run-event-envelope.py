@@ -60,7 +60,27 @@ def test_full_replay_fixture() -> None:
         events.make_event("system_prompt", **common, payload={"system_prompt_hash": events.stable_digest("safe excerpt")}),
         events.make_event("memory_recall", **common, payload={"collections": ["best-practices"], "hits": 2}),
         events.make_event("skill_load", **common, payload={"skills": ["multi-agent-collab", "slice-authoring"]}),
+        events.make_event(
+            "planning",
+            **common,
+            payload={
+                "plan_step": "inspect-before-edit",
+                "rationale_summary": "Use deterministic file reads before patching.",
+                "evidence_refs": ["fixture"],
+            },
+        ),
         events.make_event("model_call", **common, model="qwen3.6", route_profile="local-tool-calling", duration_ms=42),
+        events.make_event(
+            "thought",
+            **common,
+            payload={
+                "kind": "local_model_reasoning_block",
+                "summary": "Local model emitted an internal reasoning block; raw chain-of-thought was suppressed.",
+                "char_count": 42,
+                "content_hash": events.stable_digest("internal reasoning fixture"),
+                "redaction_level": "raw_reasoning_suppressed",
+            },
+        ),
         events.make_event("tool_call", **common, tool_name="rg", payload={"args": ["rg", "agent"], "api_token": "do-not-leak"}),
         events.make_event("tool_result", **common, tool_name="rg", status="succeeded", payload={"stdout_tail": "agent"}),
         events.make_event("token_usage", **common, tokens={"input": 100, "output": 50, "tool_output": 25, "accepted_artifact": 70}),
@@ -72,7 +92,7 @@ def test_full_replay_fixture() -> None:
     ]
 
     timeline = events.reconstruct_timeline(reversed(records))
-    assert_true(len(timeline) == 14, "expected all fixture events in replay timeline")
+    assert_true(len(timeline) == len(events.EVENT_TYPES), "expected all fixture events in replay timeline")
     assert_true({item["event_type"] for item in timeline} == events.EVENT_TYPES, "fixture should cover every event type")
 
     tool_event = next(item for item in timeline if item["event_type"] == "tool_call")

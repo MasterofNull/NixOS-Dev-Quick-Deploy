@@ -1077,10 +1077,12 @@ for p in profiles:
     _fail 4 "0.9.20" "topology API routes" "missing: ${_topo_missing[*]}"
   fi
 
-  # 0.10 Agentic Standardization (Phase 148)
+  # 0.10 Agentic Standardization (Phase 148 & 149)
   if _should_run 1; then
     _check 1 "0.10.1" "local inference payload discipline (no enable_thinking=True)" \
       bash "${REPO_ROOT}/scripts/testing/gate-local-payload-discipline.sh"
+    _check 1 "0.10.2" "thought event telemetry wiring" \
+      bash "${REPO_ROOT}/scripts/testing/test-telemetry-thought-event.sh"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

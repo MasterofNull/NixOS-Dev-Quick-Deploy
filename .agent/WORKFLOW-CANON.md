@@ -333,3 +333,21 @@ COMMIT   →  git add <specific files> + small message with evidence + Co-Author
 
 *Referenced by: `.agent/GEMINI.md`, `AGENTS.md`, `nix/home/base.nix` (Continue rules),
 `nix/modules/services/switchboard.nix` (harnessAwareBody)*
+
+---
+
+### Optimization Overlay: Software Factory Parity Targets
+
+**Purpose**: Implement advanced "Software Factory" patterns to maximize token arbitrage and operational efficiency without changing the canonical 8-step workflow.
+
+These targets are applied inside the relevant existing steps:
+- `RESEARCH` / `PRD/PLAN`: identify routing, context, and resilience needs.
+- `EXECUTE(slice)`: implement bounded routing, caching, sharding, fallback, or PRSI changes.
+- `VALIDATE`: measure token efficiency, quality, and operational visibility before commit.
+
+**Cloudflare S-Tier Parity Gaps**:
+1. **Local Model Tiering**: Dynamically route tasks (e.g., Coordinator uses large model, syntax checks use small models).
+2. **Aggressive Context Caching**: Share KV-caches across local agent instances.
+3. **Diff Scoping**: Shard diffs to provide agents only the context strictly necessary for their specific domain.
+4. **Resilience Out-Loops**: Ensure failovers (e.g., local queue saturated -> fallback to `remote-reasoning`).
+5. **Zero Touch Engineering**: Agents must autonomously commit via the PRSI queue to fix their own findings.

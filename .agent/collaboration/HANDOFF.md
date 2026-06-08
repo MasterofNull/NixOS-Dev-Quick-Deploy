@@ -2299,3 +2299,177 @@ Fix:
 - `scripts/testing/test-boot-stability-regressions.py` now asserts the global failed-unit probe and attention surface.
 
 Live cleanup: inspected `nix-optimise.service`, found missing `/nix/store/6f03d0g1wdar9rr9qcphn0apwqvp2yxp-coffeescript-2.7.0-npm-deps.drv` from the previous timer run, reset the stale failed state, rejected the generated attention item with evidence, then revalidated `systemctl --failed`, `aq-alerts --count`, `/brief`, and `aq-health-spider --once` as clean. The coverage issue is logged as `[DONE] health-spider-systemd-coverage`.
+
+### 2026-06-08 — Tokenomics Parity Team Handoff
+
+User asked to hand off the Cloudflare "Software Factory" parity goals to the agentic model teams so they can debate and produce a PRD/plan before implementation.
+
+Monitor findings:
+
+- Gemini has current uncommitted edits in `.agent/WORKFLOW-CANON.md` and `.agents/prompts/CLOUDFLARE_SOFTWARE_FACTORY_PARITY.md`.
+- The current `.agent/WORKFLOW-CANON.md` edit adds `Step 9: OPTIMIZE`, which should not be accepted as-is because `WORKFLOW-CANON.md` is the canonical 8-step workflow contract.
+- The parity content should become an optimization overlay or PRD/plan, not a new mandatory workflow step.
+- Primary-source Cloudflare patterns worth translating: plugin isolation, coordinator-worker orchestration, JSONL event telemetry, specialized reviewers, model tiers, shared context files, diff-directory scoping, risk-tier compute, timeouts, circuit breakers, and failback chains.
+
+Created handoff package:
+
+- `.agents/prompts/TOKENOMICS_PARITY_TEAM_HANDOFF.md`
+
+The handoff asks agent teams to debate as architect, implementer, reviewer, performance/tokenomics engineer, security reviewer, and operator/dashboard owner. Required output is a consolidated Phase 149 PRD/plan, parity scorecard, slice backlog, risk register, and validation matrix.
+
+Immediate guidance for the next agent:
+
+1. Preserve the canonical 8-step workflow.
+2. Move parity goals into an overlay/PRD.
+3. Do not implement tokenomics machinery before a reviewed plan exists.
+4. Fix/track the open `delegate-to-local` artifact/status mismatch before relying on direct local delegation as a measured factory primitive.
+
+### 2026-06-08 — Flat Model-Team PRD Protocol
+
+User clarified the desired collaboration structure: every model should operate as a flat peer team. Each model/team creates its own expert roster, drafts an independent PRD/plan, reviews the other model teams' PRDs, then the agreed additions are merged into one consensus plan. Only after that consensus plan exists should implementation slices be assigned or selected by role/domain experts.
+
+Observed gap:
+
+- Gemini is producing useful PRD artifacts, including `.agents/plans/OBSERVABILITY-PARITY-PLAN.md`, but it is still behaving like a single direct editor rather than a peer model team participating in proposal → cross-review → consensus → slice assignment.
+- `config/local-agent-config.yaml` still says `multi_agent_collaboration: false`.
+- `config/workflow-automation.yaml` still says `collaborative_workflows: false`.
+- Existing collaboration docs/configs describe team formation and consensus, but the active Gemini/direct CLI path is not enforcing the flat model-team protocol.
+
+Created protocol artifact:
+
+- `.agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md`
+
+Protocol requirements:
+
+- Use the protocol during PRD/PLAN, not as a replacement for the canonical 8-step workflow.
+- Treat Gemini's observability PRD as one model-team proposal, not the final plan.
+- Require independent proposals, cross-reviews, consensus PRD, decision log, slice backlog, and validation matrix before implementation.
+- Do not allow a model to review its own implementation.
+- Do not capture or expose hidden chain-of-thought from providers that forbid it; observability should use allowed summaries, explicit planning events, token metrics, traces, and artifacts.
+
+### 2026-06-08 — Gemini Workflow Remediation Handoff
+
+User clarified that Gemini's workflow issues are broader than flat-team PRD collaboration. The recurring problems include validation evidence, commit readiness, tool-mode confusion, predictable collaboration-state transitions, and full-system optimization behavior.
+
+Created remediation artifact:
+
+- `.agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md`
+
+The remediation handoff defines:
+
+- observed Gemini failure classes,
+- required state transitions (`ORIENTED`, `RESEARCHED`, `PLANNED`, `READY_TO_EDIT`, `EDITED`, `VALIDATED`, `REVIEW_READY`, `COMMIT_READY`),
+- tool-use contracts for `auto_edit`, direct/yolo shell-capable mode, and PRD-only planning mode,
+- validation and commit gates,
+- observability-specific cautions around `thought`/`planning` events and hidden chain-of-thought,
+- tokenomics/optimization measurement requirements,
+- implementation targets for a future Gemini mode detector, workflow state machine, PRD-only write guard, validation checklist gate, delegation artifact reliability, and dashboard/aq-qa parity gates.
+
+Next agent guidance:
+
+1. Read `.agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md` before accepting Gemini-authored PRDs or code.
+2. Treat Gemini work as `REVIEW_READY_NOT_VALIDATED` unless it includes concrete validation evidence or an explicit blocker.
+3. Do not allow observability/tokenomics implementation until the flat-team PRD consensus process is complete.
+
+### 2026-06-08 — Software Factory Readiness Research
+
+User asked for a comprehensive multi-pass research loop to prepare the harness to become a world-class local AI software factory with research/data spiders that can discover, evaluate, and safely adopt new models, tools, features, and tactics.
+
+Created research artifact:
+
+- `.agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md`
+
+Research anchors reviewed:
+
+- Cloudflare AI code review for coordinator-worker orchestration, shared context files, JSONL telemetry, model tiers, risk-tier compute, and prompt/cache tokenomics.
+- OpenTelemetry GenAI semantic conventions for model, agent, workflow, retrieval, token, error, and tool spans.
+- OpenAI Agents SDK docs for owned orchestration, handoffs, guardrails, approvals, tracing, and eval loops.
+- MCP official registry/spec for tool discovery and schema grounding.
+- Gemini CLI extension docs for context files, MCP servers, custom commands, and `excludeTools` enforcement.
+- Claude Code best practices/hooks for verification-first workflows, subagents, skills, plugins, and deterministic hook enforcement.
+- Hugging Face Hub API docs for model/eval/agent/tool discovery surfaces.
+- OWASP Top 10 for Agentic Applications 2026 for autonomous-agent security governance.
+
+Local inventory highlights:
+
+- `ai-stack/data/knowledge-sources.yaml` already has a large source registry, including MCP, arXiv, Papers With Code, security feeds, research labs, and disabled Semantic Scholar/Hugging Face candidates.
+- `scripts/data/sync-knowledge-sources` already imports enabled sources into AIDB.
+- `systemd/ai-research-sync.*`, `ai-stack/autoresearch/local_model_optimizer.py`, model registry/lifecycle code, runtime budget policy, provider fallback policy, and switchboard profiles provide useful substrate.
+- `ai-stack/local-agents/discovery_agent.py` is still mostly a stub.
+- `ai-stack/mcp-servers/shared/model_catalog.py` is static and likely stale for 2026 model velocity.
+- Collaboration intent exists, but `multi_agent_collaboration` and `collaborative_workflows` remain disabled in config.
+
+Next agent guidance:
+
+1. Treat the new readiness file as a shared research brief for a future Phase 150 flat-team PRD.
+2. Do not start spider/model-catalog/MCP-registry implementation until tokenomics/observability consensus planning is complete or explicitly superseded.
+3. Prefer adding a lifecycle/scoring overlay to `ai-stack/data/knowledge-sources.yaml` rather than forking a second source registry.
+4. First implementation slices should be source registry overlay, candidate schema, `aq-research-spider --machine` MVP, local-signal ingest, model-catalog freshness gate, MCP registry scoring, flat PRD intake gate, eval sandbox, dashboard cards, and RAG learning loop.
+5. Keep all scraped content untrusted; do not auto-install tools, auto-download models, execute scraped code, or expose hidden chain-of-thought.
+
+### 2026-06-08 — Observability Parity Flat-Team Rerun
+
+User reported Gemini finished Phase 149 but the dashboard still did not show acceptable agent logic observability.
+
+Ran flat-team review loop:
+
+- Backend telemetry reviewer: `REQUEST_REVISION`
+- Dashboard/operator reviewer: `REQUEST_REVISION`
+- Local model reviewer: `REQUEST_REVISION`, but output artifact truncated after the first finding; keep `local-delegation-artifact` open.
+
+Consensus findings:
+
+- Gemini's new 0.10.2 check was source-grep only and did not prove live thought events, replay visibility, schema consistency, or safety.
+- `thought` and `planning` were added to runtime event types, but the canonical JSON schema and replay fixture were not updated.
+- `planning` had dashboard icon/color only; no producer existed.
+- Raw `<think>` content was persisted and rendered, which is not acceptable for chain-of-thought/privacy safety.
+- HTML artifact iframe rendering was not sandboxed.
+- Useful-token behavior counted unknown quality as accepted, inflating useful ratios.
+- Live telemetry before repo corrections had no `thought` or `planning` events.
+
+Implemented first corrective slice:
+
+- `ai-stack/switchboard/switchboard.py`: safe reasoning-observed events only; raw `<think>` blocks are stripped from local response content; event payload stores summary, char count, content hash, and `raw_reasoning_suppressed`.
+- `ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py`: route-selection `planning` event emitted before token usage; useful-token unknown-quality semantics restored to `None`.
+- `config/schemas/maeah/agent-run-event.schema.json`: added `thought` and `planning`.
+- `scripts/testing/test-agent-run-event-envelope.py`: fixture covers every event type, including `thought` and `planning`.
+- `scripts/testing/test-telemetry-thought-event.sh`: replaced grep-only check with schema/event/JSONL/safety/dashboard contract checks.
+- `assets/dashboard.js` and `dashboard.html`: added thought/planning filters and safe rendering; sandboxed escaped HTML artifact previews.
+- `.agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md`: consensus review + remaining slices.
+
+Validation passed:
+
+- `python3 -m py_compile ai-stack/switchboard/switchboard.py ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py scripts/ai/lib/agent_run_events.py`
+- `python3 scripts/testing/test-agent-run-event-envelope.py`
+- `bash scripts/testing/test-telemetry-thought-event.sh`
+- `python3 scripts/testing/test-useful-token-metrics.py`
+- `python3 scripts/testing/test-dashboard-agent-replay.py`
+- `node --check assets/dashboard.js`
+- `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine` → 95 passed, 0 failed, 2 skipped
+
+Activation status:
+
+- Repo-validated only. Runtime switchboard/coordinator changes require rebuild/restart before live thought/planning telemetry appears.
+- Next live smoke after rebuild should trigger a local reasoning-observed event with a known `x-agent-run-id` and verify `/api/aistack/agent-runs/{run_id}` contains safe `thought` and `planning` events.
+[2026-06-08T18:32:48.368262Z] [dispatch] id=local-20260608-113248-j5dkaq agent=local-direct output=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260608-113248-j5dkaq.log obj="You are the local model-team reviewer for Phase 149 observability parity. Review these repo facts: G"
+[2026-06-08T18:33:52.683323Z] [done] id=local-20260608-113248-j5dkaq
+
+### 2026-06-08 — Post-Rebuild Live Smoke Follow-Up
+
+After the user rebuilt/switch, services were active and `aq-qa 0 --machine` passed with report-backed checks skipped (`95 passed · 0 failed · 2 skipped`).
+
+Live smoke findings:
+
+- Switchboard literal `<think>` prompt did not leak tags, but the model did not emit a real reasoning block, so it did not prove live `thought` event creation.
+- Coordinator delegate smoke through `/control/ai-coordinator/delegate` returned from the local subprocess path without writing a `planning` event because the deployed service was still using the Nix-store copy of the pre-correction source.
+- The local subprocess delegate also ignored an exact-output task and returned meta-reasoning text instead of `PLANNING_SMOKE_OK`; this is logged as a separate instruction-discipline gap.
+
+Source correction added after that smoke:
+
+- `ai_coordinator_handlers.py` now has a shared `_emit_delegation_planning_event()` helper and calls it before returning from the local subprocess delegate path.
+- `.agent/WORKFLOW-CANON.md` parity wording is now an optimization overlay, not Step 9 of the canonical workflow.
+
+Next:
+
+- Run focused tests and tier0, commit the intentional source/docs/collaboration changes, then rebuild/switch again.
+- After activation, rerun live smoke with a known run id and verify dashboard replay contains safe `planning` and, when model output contains a reasoning block, safe redacted `thought`.
