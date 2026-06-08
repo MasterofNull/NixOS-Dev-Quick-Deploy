@@ -2207,3 +2207,21 @@ Gemini resumed the agentic-standardization slice and made useful direct workspac
 Validation: `python3 -m json.tool .agent/collaboration/RESUME.json`; `python3 -m py_compile` on touched Python; `bash -n scripts/testing/gate-local-payload-discipline.sh scripts/ai/_aq-qa-bash`; `scripts/testing/gate-local-payload-discipline.sh`; `python3 scripts/testing/test-local-agent-config.py`; `git diff --check`; `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine` passed 94/0/2.
 
 Pending: tier0 pre-commit gate, commit, then `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate switchboard/service-copy changes.
+
+### 2026-06-08 — Post-Rebuild Phase 148 Validation
+
+User completed `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` after commit `df78604a`. Post-rebuild validation:
+
+- `aq-prime` confirmed last commit `df78604a` and harness online.
+- `systemctl --failed --no-pager` returned 0 failed units; core services active: llama-cpp, switchboard, hybrid-coordinator, aidb, health-spider, drop-daemon.
+- `scripts/ai/aq-alerts --count` returned 0.
+- `scripts/ai/aq-health-spider --once` returned clean HTTP/dashboard probes.
+- `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 150 scripts/ai/aq-qa 0 --machine` passed 94/0/2, including live check `0.10.1 local inference payload discipline`.
+- Focused checks passed: `test-local-agent-config.py`, `gate-local-payload-discipline.sh`, `test-switchboard-profile-catalog-contract.py`, `test-aq-chat-local-tool-profile.py`.
+
+Two follow-up defects were found and fixed in repo:
+
+- `route_by_complexity()` routed continuation/general local tasks away from the canonical `default` lane; patched in `ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py`. Validation: `test-ai-coordinator.py`, `test-frontdoor-routing-contract.py`, py_compile.
+- `ai-post-deploy-converge.service` omitted `git` from its systemd path, causing `run-focused-ci-checks.sh` to warn with `FileNotFoundError: git`; patched `nix/modules/services/mcp-servers.nix`. Validation: `nix-instantiate --parse nix/modules/services/mcp-servers.nix`.
+
+Pending: tier0 pre-commit gate, commit follow-up fixes, then rebuild to activate hybrid-coordinator/post-deploy unit changes.

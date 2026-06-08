@@ -601,7 +601,9 @@ def route_by_complexity(
         if _frontdoor_routing_enabled():
             recommended = _frontdoor_profile("continuation")
         else:
-            if prefer_local and task_archetype in {"planning", "retrieval", "continuation", "general"}:
+            if prefer_local and task_archetype in {"continuation", "general"}:
+                recommended = "default"
+            elif prefer_local and task_archetype in {"planning", "retrieval"}:
                 recommended = "embedded-assist"
             else:
                 recommended = "default" if prefer_local or task_archetype != "implementation" else recommended

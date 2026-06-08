@@ -1,5 +1,5 @@
 {
-  "current_objective": "Phase 148 agentic-standardization integration validated; pre-commit gate and commit remain.",
+  "current_objective": "Post-rebuild Phase 148 validation found two follow-up fixes; tier0 and commit remain.",
   "phase": "Phase 148 — agentic standardization integration",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
@@ -16,8 +16,11 @@
     "DONE: Gemini direct edits changed aq-chat local payloads to enable_thinking=false and added first-pass multi-document YAML loader support",
     "DONE: Codex integration review repaired RESUME.json, hardened YAML loader edge cases, added Python aq-qa 0.10.1 coverage, and fixed local model config drift",
     "DONE: Focused validation passed: json.tool RESUME, py_compile touched Python, gate-local-payload-discipline, test-local-agent-config, diff --check, aq-qa 0 --machine 94/0/2",
-    "PENDING: run tier0 pre-commit gate and commit the accepted integration slice",
-    "PENDING-REBUILD: run sudo nixos-rebuild switch --flake .#hyperd-ai-dev after commit to activate switchboard/service-copy changes"
+    "DONE: User rebuilt and activated commit df78604a; post-rebuild aq-qa 0 --machine passed 94/0/2 and health-spider was clean",
+    "DONE: Fixed continuation routing regression so continuation/general local tasks stay on the canonical default lane",
+    "DONE: Fixed ai-post-deploy-converge service PATH gap by adding git to the Nix service path",
+    "PENDING: run tier0 pre-commit gate and commit the post-rebuild follow-up fixes",
+    "PENDING-REBUILD: run sudo nixos-rebuild switch --flake .#hyperd-ai-dev after follow-up commit to activate hybrid-coordinator/post-deploy unit changes"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
@@ -26,18 +29,8 @@
     ".agent/collaboration/PULSE.log",
     ".agents/attention/ATTENTION_ARCHIVE.jsonl",
     ".agents/telemetry/routing-decisions.jsonl",
-    "ai-stack/local-agents/agent_executor.py",
-    "ai-stack/local-agents/training_ingest.py",
-    "ai-stack/switchboard/switchboard.py",
-    "config/env-contract.yaml",
-    "config/intent-routing-map.json",
-    "config/local-model-config.yaml",
-    "scripts/ai/_aq-qa-bash",
-    "scripts/ai/aq-chat",
-    "scripts/ai/lib/drop_spec.py",
-    "scripts/testing/gate-local-payload-discipline.sh",
-    "scripts/testing/harness_qa/phases/phase0.py",
-    "scripts/testing/test-local-agent-config.py"
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py",
+    "nix/modules/services/mcp-servers.nix"
   ],
-  "resume_hint": "Gemini's resumed work was useful but needed integration repair. Validated: aq-chat no-think payloads, switchboard override for non-reasoning local profiles, multi-document YAML loaders, local-model config qwen3.6-35b-mtp-q5/flash-attn mirror, aq-qa 0.10.1 payload-discipline gate, and SWB_RESERVED_SLOTS env contract coverage. Next: tier0 pre-commit gate, commit, then rebuild to activate service-copy changes."
+  "resume_hint": "Post-rebuild validation of df78604a passed health/QA/payload checks. Follow-up repo fixes are staged next: continuation routing should keep canonical default lane, and post-deploy convergence needs git in systemd PATH. Next: tier0 pre-commit gate, commit, then rebuild to activate hybrid-coordinator/post-deploy unit changes."
 }
