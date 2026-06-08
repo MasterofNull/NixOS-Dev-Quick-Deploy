@@ -8,6 +8,15 @@
   "status": "accepted",
   "in_flight": [
     {
+      "id": "local-20260608-113248-j5dkaq",
+      "agent": "local-direct",
+      "output_file": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agents/delegation/outputs/local-20260608-113248-j5dkaq.log",
+      "objective": "You are the local model-team reviewer for Phase 149 observability parity. Review these repo facts: Gemini added raw <thi",
+      "dispatched_at": "2026-06-08T18:32:48.368262Z",
+      "status": "done",
+      "completed_at": "2026-06-08T18:33:52.683323Z"
+    },
+    {
       "id": "gemini-20260604-084514-3795s7",
       "agent": "gemini",
       "output_file": ".agents/delegation/outputs/gemini-20260604-084514-3795s7.log",
@@ -143,7 +152,7 @@
       "completed_at": "2026-06-03T02:08:27.206186Z"
     }
   ],
-  "updated_at": "2026-06-07T01:12:35.154619Z",
+  "updated_at": "2026-06-08T18:33:52.684210Z",
   "validated_at": "2026-06-04T07:52:36.208799+00:00",
   "validation_notes": "loadAgentReplay, swimlane, race, sendControl all wired and returning data. scorecard/agent-runs endpoints healthy."
 }
