@@ -1,37 +1,24 @@
 {
-  "current_objective": "Complete Phase 151 anti-capability-trimming guardrails after Gemini Phase 150 exposed declarative and metric-gaming risks.",
-  "phase": "Phase 151 — anti-capability-trimming and learning feedback enforcement",
-  "todo_snapshot": [
-    "DONE: Implemented local subprocess exact-output/tool-free discipline gate",
-    "DONE: Aligned system prompt with aq-chat tool-free path and forced tools off for exact-output tasks",
-    "DONE: Added local_path to planning telemetry events in hybrid-coordinator",
-    "DONE: Added broader planning-state producers for logic gate and HTTP dispatch",
-    "DONE: Updated dashboard to render local_path and show Logic Discipline stat tile",
-    "DONE: Added 0.10.3 QA check for exact-output discipline",
-    "DONE: Verified Phase 150 parity with system rebuild and 98/98 aq-qa passing",
-    "DONE: Restored tool/reasoning capabilities for exact-output tasks (avoiding regression in Harness-OS vision)",
-    "DONE: Checked in with Gemini reviewer; Gemini confirmed first Phase 150 exact-output fix disabled tools/thinking too broadly, then restored capabilities in 173b5f50",
-    "DONE: Identified Logic Discipline dashboard bug: frontend defaulted missing backend metric to 100% and made <70 error state unreachable",
-    "DONE: Added backend logic_discipline summary from delegation-feedback telemetry and nullable logic_discipline_rate",
-    "DONE: Updated dashboard to show -- on missing logic-discipline telemetry and use reachable err/warn thresholds",
-    "DONE: Upgraded 0.10.3 local subprocess smoke with static anti-capability-trimming checks and dashboard telemetry contract",
-    "DONE: Rebuilt/switched and restarted command-center-dashboard-api with sudo so repo-backed backend changes are live",
-    "DONE: Live 0.10.3 smoke passed with exact output and dashboard logic-discipline telemetry contract",
-    "DONE: aq-qa 0 --machine passed 98/0/0 and aq-health-spider --once passed",
-    "DONE: Logged manual rebuild source-backed dashboard reload gap for follow-up",
-    "PENDING: Stage intentional source/docs changes, rerun tier0 against staged diff, and commit Phase 151 guardrails"
-  ],
-  "uncommitted_changes": [
-    "dashboard/backend/api/services/ai_insights.py",
-    "assets/dashboard.js",
-    "dashboard.html",
-    "scripts/testing/test-local-subprocess-discipline-smoke.py",
-    "config/env-contract.yaml",
-    ".agent/collaboration/PULSE.log",
-    ".agent/collaboration/RESUME.json",
-    ".agent/memory/issues-backlog.md",
-    ".agents/telemetry/routing-decisions.jsonl",
-    "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
-  ],
-  "resume_hint": "Next: stage dashboard/backend/api/services/ai_insights.py, assets/dashboard.js, dashboard.html, scripts/testing/test-local-subprocess-discipline-smoke.py, config/env-contract.yaml, .agent/collaboration/RESUME.json, and .agent/memory/issues-backlog.md; avoid unrelated runtime telemetry and facts.nix whitespace; rerun tier0 and commit."
+    "current_objective": "Complete Phase 152 dashboard source-activation drift detection after rebuild and continue parity gap implementation.",
+    "phase": "Phase 152 \u2014 source-backed dashboard stale-code detection",
+    "todo_snapshot": [
+        "DONE: Confirmed Phase 151 source files were committed in 704635fe and remaining dirty files are runtime/collaboration artifacts",
+        "DONE: Selected next logged parity gap: manual rebuild can leave command-center-dashboard-api serving stale repo-backed Python code",
+        "DONE: Added health-spider required-key support for dashboard semantic JSON probes",
+        "DONE: Added routing-analytics semantic probe requiring logic_discipline and logic_discipline_rate",
+        "DONE: Added boot-stability regression assertions for routing-analytics stale-backend detection",
+        "DONE: Live aq-health-spider --once passed and reported routing-analytics OK",
+        "DONE: Focused py_compile and boot-stability regression checks passed",
+        "DONE: aq-health-spider --once passed and reported routing-analytics OK",
+        "DONE: aq-qa 0 --machine passed 98/0/0",
+        "PENDING: Stage only Phase 152 files, run tier0 against staged diff, then commit"
+    ],
+    "uncommitted_changes": [
+        "scripts/ai/aq-health-spider",
+        "scripts/testing/test-boot-stability-regressions.py",
+        ".agent/collaboration/RESUME.json",
+        ".agent/memory/issues-backlog.md",
+        "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
+    ],
+    "resume_hint": "Next: stage scripts/ai/aq-health-spider, scripts/testing/test-boot-stability-regressions.py, .agent/collaboration/RESUME.json, and .agent/memory/issues-backlog.md; avoid unrelated runtime telemetry and facts.nix whitespace; run tier0 and commit."
 }

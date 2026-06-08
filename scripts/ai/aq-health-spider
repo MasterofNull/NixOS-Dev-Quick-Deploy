@@ -83,6 +83,11 @@ ZONES: Dict[str, Dict[str, Any]] = {
             {"name": "effectiveness-scorecard", "url": "http://127.0.0.1:8889/api/aistack/effectiveness/scorecard"},
             {"name": "agent-runs", "url": "http://127.0.0.1:8889/api/aistack/agent-runs?limit=1"},
             {"name": "traces-summary", "url": "http://127.0.0.1:8889/api/traces/summary"},
+            {
+                "name": "routing-analytics",
+                "url": "http://127.0.0.1:8889/api/insights/routing/analytics",
+                "required_keys": ["logic_discipline", "logic_discipline_rate"],
+            },
         ],
     },
 }
@@ -101,7 +106,7 @@ def _http_check(url: str, timeout: int = 5) -> Tuple[bool, Optional[float]]:
         return False, None
 
 
-def _json_probe(url: str, timeout: int = 5) -> Tuple[bool, Optional[float], str]:
+def _json_probe(url: str, timeout: int = 5, required_keys: Optional[List[str]] = None) -> Tuple[bool, Optional[float], str]:
     """Returns (ok, latency_ms, reason) for JSON dashboard/service probes."""
     try:
         t0 = time.monotonic()
@@ -117,6 +122,9 @@ def _json_probe(url: str, timeout: int = 5) -> Tuple[bool, Optional[float], str]
             return False, round(ms, 1), f"status={status}"
         if data.get("available") is False:
             return False, round(ms, 1), "available=false"
+        missing = [key for key in (required_keys or []) if key not in data]
+        if missing:
+            return False, round(ms, 1), f"missing_keys={','.join(missing)}"
         return True, round(ms, 1), ""
     except urllib.error.HTTPError as e:
         return False, None, f"HTTP {e.code}"
@@ -342,7 +350,11 @@ class HealthSpider:
 
         # 1b. Semantic probes catch degraded dashboard cards that /api/health masks.
         for probe in cfg.get("probes", []):
-            probe_ok, probe_ms, reason = await asyncio.to_thread(_json_probe, probe["url"])
+            probe_ok, probe_ms, reason = await asyncio.to_thread(
+                _json_probe,
+                probe["url"],
+                required_keys=probe.get("required_keys"),
+            )
             if probe_ok:
                 logger.info(f"[{zone}] probe {probe['name']} OK {probe_ms}ms")
                 continue
