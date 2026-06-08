@@ -2270,6 +2270,32 @@ Fix:
 - `scripts/ai/aq-chat` now detects operational recommendation prompts such as "what fixes should we address right now?"
 - For those turns it runs a read-only trusted local snapshot: `git status --short`, `aq-alerts --count`, `systemctl --failed --no-pager`, open issue backlog scan, and `aq-health-spider --once`.
 - The model receives that snapshot as an explicit system message and must use only that evidence for current-state claims.
-- Snapshot-grounded turns bypass the switchboard local tool loop and call the raw local model with `stream=false` and `max_tokens=512`, so they avoid tool-budget exhaustion and stay concise.
+- Snapshot-grounded turns bypass the switchboard local tool loop and call the raw local model with `stream=false` and `max_tokens=1024`, so they avoid tool-budget exhaustion while leaving room for useful local reasoning.
 
 Validation: `py_compile`, `test-aq-chat-local-tool-profile.py`, `gate-local-payload-discipline.sh`, import-level snapshot smoke, and a live non-interactive aq-chat smoke for "what fixes should we address right now?" returned a bounded answer with `HAS_BUDGET_EXHAUSTED False`.
+
+### 2026-06-08 — aq-chat Local Delegation and Brief Command
+
+User requested real local-agent delegation through both Codex channels and the aq-chat terminal. Codex worker `019ea58f-f2c9-7211-8846-22265a8e5fa2` implemented `/brief` in `scripts/ai/aq-chat`, reusing trusted local preflight checks and rendering a no-model Rich table. The live aq-chat terminal test exposed two additional gaps: explicit "do not call tools" spec prompts still took the slow local tool path, and Ctrl-C during an in-flight local request dumped a traceback.
+
+Fix:
+
+- `/brief` prints a deterministic local health snapshot without llama, switchboard, or hybrid inference.
+- Explicit tool-free/spec prompts bypass switchboard local-tool-calling and use raw local inference with `enable_thinking=false`, no tool claims, `stream=false`, and a 1024-token bounded answer budget.
+- In-flight request cancellation now prints `Interrupted.` instead of dumping a Python traceback.
+- Static aq-chat tests cover `/brief`, tool-free routing, local-tool-calling routing, bounded raw-local turns, and interrupt handling.
+
+Open follow-up: `delegate-to-local --mode direct` reported id `local-20260607-214905-ifsp88` and output path `.agents/delegation/outputs/local-20260607-214905-ifsp88.log`, but status/check could not find the task and no output artifact existed. Logged as `[OPEN] local-delegation-artifact` in `.agent/memory/issues-backlog.md`.
+
+### 2026-06-08 — Health Spider Failed-Unit Coverage
+
+Live `/brief` smoke surfaced `nix-optimise.service` as failed while `aq-health-spider --once` still returned clean. Root cause: health-spider only checked configured HTTP zones and only inspected systemd state when an HTTP zone failed.
+
+Fix:
+
+- Added `_failed_systemd_units()` to run `systemctl --failed --no-legend --no-pager`.
+- `run_once()` now emits/handles a `systemd_failed_units` anomaly before zone checks.
+- The anomaly pushes attention, seeds health memory/RAG context, and makes `aq-health-spider --once` exit non-zero while failed units remain.
+- `scripts/testing/test-boot-stability-regressions.py` now asserts the global failed-unit probe and attention surface.
+
+Live cleanup: inspected `nix-optimise.service`, found missing `/nix/store/6f03d0g1wdar9rr9qcphn0apwqvp2yxp-coffeescript-2.7.0-npm-deps.drv` from the previous timer run, reset the stale failed state, rejected the generated attention item with evidence, then revalidated `systemctl --failed`, `aq-alerts --count`, `/brief`, and `aq-health-spider --once` as clean. The coverage issue is logged as `[DONE] health-spider-systemd-coverage`.

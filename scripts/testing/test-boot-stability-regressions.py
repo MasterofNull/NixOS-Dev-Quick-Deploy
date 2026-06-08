@@ -133,6 +133,16 @@ def main() -> int:
         "total += len(anomalies)" not in health_spider_text,
         "health spider should count unresolved anomalies after remediation handling",
     )
+    assert_true(
+        "def _failed_systemd_units" in health_spider_text
+        and '["systemctl", "--failed", "--no-legend", "--no-pager"]' in health_spider_text,
+        "health spider should include a global systemd failed-unit probe",
+    )
+    assert_true(
+        '"type": "systemd_failed_units"' in health_spider_text
+        and 'title=f"Systemd failed units detected: {len(units)}"' in health_spider_text,
+        "health spider should surface failed systemd units to attention/telemetry",
+    )
 
     print("PASS: boot stability regressions are covered")
     return 0

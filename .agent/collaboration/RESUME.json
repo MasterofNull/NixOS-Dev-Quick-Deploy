@@ -1,5 +1,5 @@
 {
-  "current_objective": "Improve aq-chat local recommendation quality with deterministic snapshot grounding and tool-loop bypass.",
+  "current_objective": "Complete aq-chat local delegation improvements: deterministic /brief, explicit tool-free prompt routing, interrupt cleanup, and validation/commit.",
   "phase": "Phase 148 — agentic standardization integration",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
@@ -24,18 +24,27 @@
     "DONE: aq-chat rendering fix committed in 1db804c8; local-tool-calling now renders completed JSON responses once",
     "DONE: Identified follow-up quality gap: operational recommendation prompts exhausted the local tool budget and could turn tool failures into false current-state claims",
     "DONE: Patched aq-chat to build trusted local preflight snapshots for improvement/health/status prompts and bypass the local tool loop for those turns",
-    "DONE: Snapshot-grounded turns now call the raw local model with stream=false and max_tokens=512 using explicit evidence-only answer constraints",
+    "DONE: Snapshot-grounded turns now call the raw local model with stream=false and max_tokens=1024 using explicit evidence-only answer constraints",
     "DONE: Focused validation passed: py_compile, test-aq-chat-local-tool-profile.py, gate-local-payload-discipline.sh, import-level snapshot smoke, live aq-chat smoke with HAS_BUDGET_EXHAUSTED False",
-    "PENDING: run tier0 pre-commit gate and commit aq-chat snapshot grounding fix"
+    "DONE: Delegated /brief implementation to Codex worker 019ea58f-f2c9-7211-8846-22265a8e5fa2 and integrated the resulting code",
+    "DONE: Triggered local agent via delegate-to-local; discovered output/status artifact mismatch and logged local-delegation-artifact follow-up",
+    "DONE: Triggered live aq-chat terminal; discovered explicit tool-free prompts still entered the slow path and Ctrl-C dumped a traceback",
+    "DONE: Patched aq-chat explicit tool-free/spec routing and interrupt handling",
+    "DONE: Live /brief smoke surfaced nix-optimise.service failed while aq-health-spider --once returned clean",
+    "DONE: Patched aq-health-spider with a global systemd failed-unit probe and static boot-stability regression coverage",
+    "DONE: Inspected live nix-optimise.service failure, reset stale failed state, rejected cleared attention item, and revalidated failed units/alerts/health-spider clean",
+    "DONE: tier0 pre-commit gate passed 19/0 after direct aq-qa 0 --machine passed 94/0/2",
+    "PENDING: commit aq-chat/health-spider fixes"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
     ".agent/memory/issues-backlog.md",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PULSE.log",
-    ".agents/telemetry/routing-decisions.jsonl",
     "scripts/ai/aq-chat",
+    "scripts/ai/aq-health-spider",
+    "scripts/testing/test-boot-stability-regressions.py",
     "scripts/testing/test-aq-chat-local-tool-profile.py"
   ],
-  "resume_hint": "aq-chat snapshot grounding fix is in repo: operational recommendation prompts get trusted local preflight evidence, bypass local-tool-calling tool loops, and use stream=false/max_tokens=512. Focused validation passed including live smoke with HAS_BUDGET_EXHAUSTED False. Next: tier0 pre-commit gate and commit."
+  "resume_hint": "aq-chat local delegation fix is validated: /brief provides no-model deterministic health snapshot; explicit tool-free/spec prompts bypass switchboard tools and use raw local stream=false/max_tokens=1024; Ctrl-C is handled cleanly. Health-spider now detects global failed systemd units. Live nix-optimise failed state was inspected/reset and alerts are clean. Open issue: delegate-to-local reported an id/output path but no retrievable artifact. Next: commit."
 }

@@ -41,6 +41,28 @@ SNAPSHOT_KEYWORDS = {
     "health", "degraded", "status", "right now", "next", "priority",
     "priorities", "should we", "what should", "start to address",
 }
+SNAPSHOT_CHECKS = [
+    ("git_status", ["git", "status", "--short"], 6),
+    ("alerts_count", ["scripts/ai/aq-alerts", "--count"], 6),
+    ("failed_units", ["systemctl", "--failed", "--no-pager"], 8),
+    ("open_issues", ["rg", "-n", "^\\[OPEN\\]", ".agent/memory/issues-backlog.md"], 6),
+    ("health_spider_once", ["scripts/ai/aq-health-spider", "--once"], 20),
+]
+TOOL_FREE_PHRASES = {
+    "do not call tools",
+    "don't call tools",
+    "no tools",
+    "without tools",
+    "tool-free",
+    "tool free",
+}
+TOOL_FREE_SPEC_PHRASES = {
+    "acceptance criteria",
+    "tests only",
+    "spec only",
+    "code-ready spec",
+    "produce a spec",
+}
 
 # --- Styling ---
 STYLE = Style.from_dict({
@@ -53,7 +75,7 @@ console = Console()
 
 COMMANDS = [
     "/help", "/exit", "/clear", "/reset", "/status",
-    "/prime", "/route", "/save", "/load", "/search", "/tools",
+    "/brief", "/prime", "/route", "/save", "/load", "/search", "/tools",
     "/rate",
 ]
 command_completer = WordCompleter(COMMANDS, ignore_case=True)
@@ -131,36 +153,90 @@ class AQChat:
         compact = " ".join(prompt.lower().split())
         return any(keyword in compact for keyword in SNAPSHOT_KEYWORDS)
 
+    def _should_bypass_tools_for_turn(self, prompt: str) -> bool:
+        compact = " ".join(prompt.lower().split())
+        explicit_no_tools = any(phrase in compact for phrase in TOOL_FREE_PHRASES)
+        spec_style = any(phrase in compact for phrase in TOOL_FREE_SPEC_PHRASES)
+        return explicit_no_tools or (spec_style and "tool" not in compact)
+
+    def _collect_local_snapshot(self) -> Dict[str, Any]:
+        """Collect the trusted read-only local checks used for operational grounding."""
+        results = [
+            self._run_snapshot_command(label, command, timeout)
+            for label, command, timeout in SNAPSHOT_CHECKS
+        ]
+        return {
+            "source": "aq-chat trusted local preflight",
+            "repo_root": str(REPO_ROOT),
+            "checks": results,
+            "limits": [
+                "Full aq-qa was not run inside this chat turn unless shown above.",
+                "Use only these command outputs for current-state claims.",
+                "Do not recommend a rebuild unless a check reports pending activation or failed units.",
+                "If a command failed, report it as a snapshot command failure, not as confirmed system degradation.",
+            ],
+        }
+
     async def _build_local_snapshot(self, prompt: str) -> Optional[str]:
         """Build a compact trusted snapshot for operational recommendation prompts."""
         if not self._should_use_local_snapshot(prompt):
             return None
 
-        commands = [
-            ("git_status", ["git", "status", "--short"], 6),
-            ("alerts_count", ["scripts/ai/aq-alerts", "--count"], 6),
-            ("failed_units", ["systemctl", "--failed", "--no-pager"], 8),
-            ("open_issues", ["rg", "-n", "^\\[OPEN\\]", ".agent/memory/issues-backlog.md"], 6),
-            ("health_spider_once", ["scripts/ai/aq-health-spider", "--once"], 20),
-        ]
-        results = [
-            self._run_snapshot_command(label, command, timeout)
-            for label, command, timeout in commands
-        ]
-        return json.dumps(
-            {
-                "source": "aq-chat trusted local preflight",
-                "repo_root": str(REPO_ROOT),
-                "checks": results,
-                "limits": [
-                    "Full aq-qa was not run inside this chat turn unless shown above.",
-                    "Use only these command outputs for current-state claims.",
-                    "Do not recommend a rebuild unless a check reports pending activation or failed units.",
-                    "If a command failed, report it as a snapshot command failure, not as confirmed system degradation.",
-                ],
-            },
-            indent=2,
-        )
+        return json.dumps(self._collect_local_snapshot(), indent=2)
+
+    @staticmethod
+    def _compact_text(value: str, limit: int = 120) -> str:
+        return " ".join(value.split())[:limit]
+
+    def _brief_row(self, result: Dict[str, Any]) -> tuple[str, str, str]:
+        label = result.get("label", "unknown")
+        returncode = result.get("returncode")
+        stdout = str(result.get("stdout") or "").strip()
+        stderr = str(result.get("stderr") or "").strip()
+
+        if returncode == 124:
+            return label, "timeout", stderr or "command timed out"
+        if returncode == 127:
+            return label, "unavailable", stderr or "command unavailable"
+
+        if label == "git_status":
+            if returncode == 0 and not stdout:
+                return label, "clean", "working tree has no reported changes"
+            changed = len(stdout.splitlines()) if stdout else 0
+            return label, "changes", f"{changed} changed path(s)"
+
+        if label == "alerts_count":
+            detail = stdout or stderr or "no output"
+            status = "pending" if returncode not in (0, None) else "clear"
+            return label, status, detail
+
+        if label == "failed_units":
+            if returncode == 0 and ("0 loaded units listed" in stdout or not stdout):
+                return label, "clear", "no failed systemd units reported"
+            lines = [line for line in stdout.splitlines() if line.strip()]
+            return label, "attention", lines[0][:120] if lines else (stderr or "check returned output")
+
+        if label == "open_issues":
+            if returncode == 1 and not stdout:
+                return label, "clear", "no open issue backlog entries found"
+            if returncode == 0:
+                return label, "open", f"{len(stdout.splitlines())} open issue backlog entries"
+            return label, "error", stderr or f"exit {returncode}"
+
+        if label == "health_spider_once":
+            lines = [line for line in stdout.splitlines() if line.strip()]
+            status = "ok" if returncode == 0 else "error"
+            if lines:
+                detail = self._compact_text(lines[-1], 80)
+                return label, status, f"{len(lines)} output lines; {detail}"
+            err_lines = [line for line in stderr.splitlines() if line.strip()]
+            if returncode == 0:
+                return label, status, f"completed; {len(err_lines)} progress line(s)"
+            return label, status, self._compact_text(stderr or f"exit {returncode}")
+
+        status = "ok" if returncode == 0 else "error"
+        detail = stdout.splitlines()[0][:120] if stdout else (stderr or f"exit {returncode}")
+        return label, status, detail
 
     async def _build_harness_system_prompt(self) -> str:
         """Fetch live coordinator state and build a harness-aware system prompt.
@@ -274,6 +350,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
             switchboard_local_tools = self._uses_switchboard_local_tools()
             local_snapshot = await self._build_local_snapshot(prompt)
+            tool_free_turn = self._should_bypass_tools_for_turn(prompt)
             request_messages = list(self.context_history)
             if local_snapshot:
                 request_messages = (
@@ -286,6 +363,19 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                             "Answer contract: be concise and human-readable. Start with current status, "
                             "then give the top 3 evidence-backed next improvements. Use only snapshot "
                             "evidence for current-state claims. Do not mention unavailable tool calls."
+                        ),
+                    }]
+                    + self.context_history[-1:]
+                )
+            elif tool_free_turn:
+                request_messages = (
+                    self.context_history[:-1]
+                    + [{
+                        "role": "system",
+                        "content": (
+                            "TOOL-FREE TURN: answer from the prompt and conversation context only. "
+                            "Do not emit tool calls, do not claim live command results, and keep the "
+                            "answer code-ready and concrete."
                         ),
                     }]
                     + self.context_history[-1:]
@@ -306,23 +396,23 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             if self.active_profile == "local":
                 headers["X-AI-Lane"] = "high-priority"
 
-            if switchboard_local_tools and not local_snapshot:
+            if switchboard_local_tools and not local_snapshot and not tool_free_turn:
                 target_url = f"{self.switchboard_url}/v1/chat/completions"
                 headers["X-AI-Profile"] = "local-tool-calling"
                 payload["stream"] = False
                 payload["max_tool_calls"] = self.max_tool_calls
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
-            elif self.active_profile == "local" or local_snapshot:
+            elif self.active_profile == "local" or local_snapshot or tool_free_turn:
                 target_url = f"{self.llama_url}/v1/chat/completions"
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
-                if local_snapshot:
+                if local_snapshot or tool_free_turn:
                     payload["stream"] = False
-                    payload["max_tokens"] = 512
+                    payload["max_tokens"] = 1024
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
 
             try:
-                if switchboard_local_tools:
+                if switchboard_local_tools and not local_snapshot and not tool_free_turn:
                     response = await self.client.post(target_url, json=payload, headers=headers)
                     if response.status_code != 200:
                         console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
@@ -338,7 +428,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                     self._record_and_render_assistant_response(prompt, full_response)
                     return
 
-                if local_snapshot:
+                if local_snapshot or tool_free_turn:
                     response = await self.client.post(target_url, json=payload, headers=headers)
                     if response.status_code != 200:
                         console.print(f"[bold red]Error: Received {response.status_code} from local backend.[/]")
@@ -400,6 +490,9 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         self.context_history.append({"role": "assistant", "content": full_response + " [INTERRUPTED]"})
                         # Re-trigger with steering
                         await self._stream_chat(steer_msg)
+            except asyncio.CancelledError:
+                console.print("\n[dim]Interrupted.[/]")
+                raise
             except Exception as e:
                 err_msg = str(e)
                 if not err_msg:
@@ -423,6 +516,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             console.print("[bold yellow]Conversation reset.[/]")
         elif base == "/status":
             await self.show_status()
+        elif base == "/brief":
+            self._show_brief()
         elif base == "/route":
             if len(parts) > 1:
                 target = parts[1]
@@ -524,6 +619,22 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             console.print(f"{icon} Feedback recorded ({rating}). Use `aq-local-training-loop` to process.")
         except OSError as exc:
             console.print(f"[red]Could not write feedback: {exc}[/]")
+
+    def _show_brief(self) -> None:
+        snapshot = self._collect_local_snapshot()
+        table = Table(title="Trusted Local Brief", border_style="cyan")
+        table.add_column("Check", style="bold cyan")
+        table.add_column("Status", style="magenta")
+        table.add_column("Summary")
+
+        for result in snapshot["checks"]:
+            check, status, detail = self._brief_row(result)
+            table.add_row(check, status, detail)
+
+        console.print(table)
+        console.print(
+            "[dim]Source: same aq-chat trusted local preflight checks used for operational grounding; no model call made.[/]"
+        )
 
     async def _rag_search(self, query: str):
         with console.status("[bold cyan]Searching knowledge base...", spinner="bouncingBar"):
@@ -660,4 +771,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     chat = AQChat(args)
-    asyncio.run(chat.run())
+    try:
+        asyncio.run(chat.run())
+    except KeyboardInterrupt:
+        console.print("\n[dim]Interrupted.[/]")

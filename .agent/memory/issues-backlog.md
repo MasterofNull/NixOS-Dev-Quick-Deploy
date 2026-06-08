@@ -164,5 +164,30 @@
 
 [DONE] aq-chat-grounding — local aq-chat exhausted tool budget and recommended stale/false system fixes — Root cause: operational recommendation prompts were delegated to the model's local tool loop, so failures in individual tools or repeated tool calls were treated as current system facts and the answer could recommend rebuilds despite a clean live system.
   Severity: medium
-  Action: Added deterministic local preflight snapshots for improvement/health/status prompts, bypassed the local tool loop when snapshot evidence is available, required answers to use only snapshot evidence for current-state claims, and capped snapshot-grounded responses at 512 tokens. Live non-interactive aq-chat smoke produced a bounded answer with no tool-budget exhaustion.
+  Action: Added deterministic local preflight snapshots for improvement/health/status prompts, bypassed the local tool loop when snapshot evidence is available, required answers to use only snapshot evidence for current-state claims, and bounded snapshot-grounded responses at 1024 tokens. Live non-interactive aq-chat smoke produced a bounded answer with no tool-budget exhaustion.
   File: scripts/ai/aq-chat ~line 45; scripts/testing/test-aq-chat-local-tool-profile.py
+
+[DONE] aq-chat-brief — operators needed a deterministic local health brief without waiting on model inference — Root cause: aq-chat only exposed model-mediated operational recommendation prompts, so even simple current-state checks could spend local inference/tool budget.
+  Severity: medium
+  Action: Added `/brief`, reusing the trusted local preflight checks and rendering a concise Rich table without llama, switchboard, or hybrid calls. Static tests assert command registration, routing, and renderer presence.
+  File: scripts/ai/aq-chat ~line 46; scripts/testing/test-aq-chat-local-tool-profile.py
+
+[DONE] aq-chat-interrupt — Ctrl-C during an in-flight local request dumped an async traceback — Root cause: cancellation/keyboard interrupt handling was only scoped to the prompt loop, not the active inference request path.
+  Severity: medium
+  Action: Added explicit cancellation/KeyboardInterrupt handling so interrupted in-flight turns print a concise interruption message instead of a traceback.
+  File: scripts/ai/aq-chat ~line 312
+
+[DONE] aq-chat-tool-free — explicit "do not call tools" spec prompts still entered the slow local tool path — Root cause: local profile defaulted to switchboard local-tool-calling unless deterministic snapshot grounding was active.
+  Severity: medium
+  Action: Added an explicit tool-free/spec prompt detector that routes those turns directly to raw local inference with no tool calls, no live-state claims, `enable_thinking=false`, and a 1024-token bounded response budget.
+  File: scripts/ai/aq-chat ~line 95
+
+[OPEN] local-delegation-artifact — delegate-to-local reported a task id and output path that could not be found afterward — Root cause not yet isolated; `delegate-to-local --mode direct` printed `local-20260607-214905-ifsp88` and `.agents/delegation/outputs/local-20260607-214905-ifsp88.log`, but `--status/--check` returned "Task not found" and no output file existed.
+  Severity: high
+  Action: Audit delegate-to-local persistence paths and status lookup contract; add an aq-qa check that direct local delegation creates a retrievable output artifact or reports failure before returning an id.
+  File: scripts/ai/delegate-to-local
+
+[DONE] health-spider-systemd-coverage — aq-health-spider returned clean while `nix-optimise.service` was failed — Root cause: health-spider only checked declared HTTP zones and their service state on HTTP failure, so unrelated failed systemd units were invisible to the spider/dashboard health path.
+  Severity: high
+  Action: Added a global `systemctl --failed --no-legend --no-pager` probe that emits telemetry/attention and makes `aq-health-spider --once` fail when failed units exist. Inspected the live `nix-optimise.service` error (`missing ...coffeescript-2.7.0-npm-deps.drv`), reset the stale failed state, rejected the now-cleared attention item with evidence, and revalidated `systemctl --failed`, `aq-alerts --count`, `/brief`, and `aq-health-spider --once` as clean.
+  File: scripts/ai/aq-health-spider; scripts/testing/test-boot-stability-regressions.py
