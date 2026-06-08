@@ -142,7 +142,17 @@
   Action: Repaired RESUME.json as valid JSON, validated Gemini's code diff, tightened multi-document YAML loaders, and added static regression coverage for aq-chat no-think and YAML loader contracts.
   File: .agent/collaboration/RESUME.json; scripts/testing/test-local-agent-config.py
 
-[PENDING-REBUILD] agentic-standardization — Phase 148 repo fixes need activation — Root cause: switchboard/service code runs from the Nix store; repository edits to `ai-stack/switchboard/switchboard.py`, config mirrors, and aq-qa wrapper are validated in repo but will not affect live services until rebuilt.
+[DONE] agentic-standardization — Phase 148 repo fixes needed activation — Root cause: switchboard/service code runs from the Nix store; repository edits to `ai-stack/switchboard/switchboard.py`, config mirrors, and aq-qa wrapper were validated in repo but did not affect live services until rebuilt.
   Severity: medium
-  Action: After commit, run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`, then verify `aq-qa 0 --machine` and one local `aq-chat`/switchboard smoke.
+  Action: User rebuilt after commit df78604a. Post-rebuild validation passed: no failed units, aq-health-spider clean, payload discipline gate clean, aq-qa 0 --machine 94/0/2.
   File: ai-stack/switchboard/switchboard.py; scripts/ai/aq-chat; scripts/testing/harness_qa/phases/phase0.py
+
+[PENDING-REBUILD] coordinator-routing — continuation tasks routed to local-tool-calling instead of canonical default lane — Root cause: route_by_complexity() had a continuation override that converted continuation/general tasks to embedded-assist/local-tool-calling behavior under prefer_local, violating the existing continuation test contract and cross-agent compact-default lane expectation.
+  Severity: medium
+  Action: Patched continuation/general local routing to `default`; targeted `test-ai-coordinator.py` and front-door routing contract pass. Rebuild required to activate hybrid-coordinator service-copy change.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py ~line 604
+
+[PENDING-REBUILD] post-deploy-converge — focused CI artifact step could not find git in systemd PATH — Root cause: ai-post-deploy-converge.service path omitted `pkgs.git`, while run-focused-ci-checks.sh calls `git diff` to select changed files.
+  Severity: medium
+  Action: Added `git` to the service path in mcp-servers.nix; nix parse passes. Rebuild required before the unit can run without the warning.
+  File: nix/modules/services/mcp-servers.nix ~line 2016

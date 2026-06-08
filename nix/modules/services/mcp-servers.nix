@@ -1643,6 +1643,7 @@ in {
           coreutils
           findutils
           gawk
+          git
           gnugrep
           jq
           nodejs
