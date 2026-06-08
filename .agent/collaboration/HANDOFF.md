@@ -2237,3 +2237,15 @@ User rebuilt after commit `a23e1e24` and ran live validation:
 Codex follow-up inspection found the post-deploy `git` PATH fix was not actually live: `systemctl cat ai-post-deploy-converge.service` still lacked a `git` store path. Root cause: the prior patch added `git` to `ai-npm-security-monitor`, not `ai-post-deploy-converge`. Repo is now corrected in `nix/modules/services/mcp-servers.nix`.
 
 Pending: validate corrected Nix syntax, tier0, commit, then rebuild once more to activate the corrected post-deploy unit PATH.
+
+### 2026-06-08 — Final Phase 148 Activation Validation
+
+User rebuilt after commit `eeb47e49`. Codex verified the rendered unit and health state:
+
+- `systemctl show ai-post-deploy-converge.service -p Environment --value` shows `/nix/store/...-git-2.51.2/bin` and `/sbin` in `PATH`.
+- `systemctl --failed --no-pager` returned 0 failed units.
+- `scripts/ai/aq-alerts --count` returned 0.
+- `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 150 scripts/ai/aq-qa 0 --machine` passed 94/0/2; skipped checks were report-backed recursion guards.
+- `scripts/ai/aq-health-spider --once` returned clean coordinator, switchboard, AIDB, dashboard, aggregate, effectiveness, agent-runs, and traces-summary probes.
+
+Phase 148 agentic standardization, identity coverage, routing alignment, payload discipline, dashboard/health-spider validation, and post-deploy convergence PATH activation are complete.

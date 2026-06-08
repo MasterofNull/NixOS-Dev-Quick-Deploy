@@ -1,5 +1,5 @@
 {
-  "current_objective": "Phase 148 post-rebuild validation passed; corrected post-deploy git PATH fix remains to commit and rebuild.",
+  "current_objective": "Phase 148 agentic standardization and post-deploy PATH activation complete; final validation record remains to commit.",
   "phase": "Phase 148 — agentic standardization integration",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
@@ -19,17 +19,15 @@
     "DONE: User rebuilt and activated commit df78604a; post-rebuild aq-qa 0 --machine passed 94/0/2 and health-spider was clean",
     "DONE: Fixed continuation routing regression so continuation/general local tasks stay on the canonical default lane and user rebuild activated commit a23e1e24",
     "DONE: User post-rebuild validation passed aq-qa 0 --machine with 96/0/0 and aq-health-spider --once clean",
-    "PENDING: commit corrected ai-post-deploy-converge service PATH fix; prior git addition landed in the npm security monitor path, not the post-deploy unit path",
-    "PENDING-REBUILD: run sudo nixos-rebuild switch --flake .#hyperd-ai-dev after the corrected post-deploy PATH commit"
+    "DONE: Corrected ai-post-deploy-converge service PATH fix committed in eeb47e49; prior git addition had landed in the npm security monitor path",
+    "DONE: User rebuilt eeb47e49; live ai-post-deploy-converge PATH now includes git, no failed units, aq-alerts count 0, aq-qa 0 --machine passed 94/0/2 with report-backed checks skipped, and aq-health-spider --once clean"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
     ".agent/memory/issues-backlog.md",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PULSE.log",
-    ".agents/attention/ATTENTION_ARCHIVE.jsonl",
-    ".agents/telemetry/routing-decisions.jsonl",
-    "nix/modules/services/mcp-servers.nix"
+    ".agents/attention/ATTENTION_ARCHIVE.jsonl"
   ],
-  "resume_hint": "User rebuilt commit a23e1e24 and validation passed: aq-qa 0 --machine 96/0/0, aq-health-spider clean, aq-alerts count 0. Live systemd unit inspection showed ai-post-deploy-converge PATH still lacked git because the previous patch hit ai-npm-security-monitor. The actual post-deploy path is now corrected in repo; next run focused validation, tier0, commit, then rebuild once more to activate only that unit PATH fix."
+  "resume_hint": "User rebuilt eeb47e49 and final validation passed. Rendered ai-post-deploy-converge PATH includes /nix/store/...-git-2.51.2/bin and /sbin; no failed units; aq-alerts count 0; aq-qa 0 --machine passed 94/0/2 with report-backed checks skipped; aq-health-spider --once clean. Next: commit final activation record."
 }

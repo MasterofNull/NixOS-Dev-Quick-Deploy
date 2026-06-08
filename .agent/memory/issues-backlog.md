@@ -152,7 +152,7 @@
   Action: Patched continuation/general local routing to `default`; user rebuilt commit a23e1e24 and `aq-qa 0 --machine` passed 96/0/0.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py ~line 604
 
-[PENDING-REBUILD] post-deploy-converge — focused CI artifact step could not find git in systemd PATH — Root cause: ai-post-deploy-converge.service path omitted `pkgs.git`, while run-focused-ci-checks.sh calls `git diff` to select changed files.
+[DONE] post-deploy-converge — focused CI artifact step could not find git in systemd PATH — Root cause: ai-post-deploy-converge.service path omitted `pkgs.git`, while run-focused-ci-checks.sh calls `git diff` to select changed files.
   Severity: medium
-  Action: Live unit inspection after rebuild showed the first patch added `git` to ai-npm-security-monitor, not ai-post-deploy-converge. Corrected the actual post-deploy service path in repo; rebuild required before the unit can run without the warning.
+  Action: Live unit inspection after rebuild showed the first patch added `git` to ai-npm-security-monitor, not ai-post-deploy-converge. Corrected the actual post-deploy service path in repo, committed eeb47e49, rebuilt, and verified rendered PATH includes `/nix/store/...-git-2.51.2/bin`; no failed units, aq-alerts count 0, aq-qa 0 --machine 94/0/2 with report-backed checks skipped, aq-health-spider clean.
   File: nix/modules/services/mcp-servers.nix ~line 2016
