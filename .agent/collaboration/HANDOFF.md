@@ -2260,3 +2260,16 @@ Fix:
 - `scripts/testing/test-aq-chat-local-tool-profile.py` now asserts the non-streaming local-tool-calling contract and final response renderer.
 
 Validation: `py_compile` for touched Python, `test-aq-chat-local-tool-profile.py`, `gate-local-payload-discipline.sh`, `test-local-agent-config.py`, and a live switchboard smoke returned JSON content `AQ_CHAT_RENDER_OK`.
+
+### 2026-06-08 — aq-chat Snapshot Grounding
+
+Follow-up after the rendering fix: user showed `aq-chat` was readable but still low quality. It exhausted the local tool budget and reported stale/false actions like rebuilding after the system had already validated cleanly.
+
+Fix:
+
+- `scripts/ai/aq-chat` now detects operational recommendation prompts such as "what fixes should we address right now?"
+- For those turns it runs a read-only trusted local snapshot: `git status --short`, `aq-alerts --count`, `systemctl --failed --no-pager`, open issue backlog scan, and `aq-health-spider --once`.
+- The model receives that snapshot as an explicit system message and must use only that evidence for current-state claims.
+- Snapshot-grounded turns bypass the switchboard local tool loop and call the raw local model with `stream=false` and `max_tokens=512`, so they avoid tool-budget exhaustion and stay concise.
+
+Validation: `py_compile`, `test-aq-chat-local-tool-profile.py`, `gate-local-payload-discipline.sh`, import-level snapshot smoke, and a live non-interactive aq-chat smoke for "what fixes should we address right now?" returned a bounded answer with `HAS_BUDGET_EXHAUSTED False`.
