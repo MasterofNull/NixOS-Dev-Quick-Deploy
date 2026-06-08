@@ -1,0 +1,373 @@
+{
+  "candidates": [
+    {
+      "category": "delegation-quality",
+      "effort": "medium",
+      "estimated_impact": "120 delegation feedback event(s)",
+      "evidence": [
+        "failure_class=json_contract_failed",
+        "aq-qa probe 71.4: respond with the word OK only"
+      ],
+      "id": "delegation-reduce-delegated-prompt-failure-json-contract-fa-83fcaba2d2ef",
+      "priority": 2,
+      "related_files": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
+        "config/intent-routing-map.json"
+      ],
+      "suggested_actions": [
+        "Inspect failure class examples before changing prompts",
+        "Add or update a focused regression gate for this failure class"
+      ],
+      "title": "Reduce delegated prompt failure: json_contract_failed"
+    },
+    {
+      "category": "delegation-quality",
+      "effort": "medium",
+      "estimated_impact": "72 delegation feedback event(s)",
+      "evidence": [
+        "failure_class=provider_http_error",
+        "aq-qa probe 71.4: respond with the word OK only"
+      ],
+      "id": "delegation-reduce-delegated-prompt-failure-provider-http-er-4831c4de2f50",
+      "priority": 2,
+      "related_files": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
+        "config/intent-routing-map.json"
+      ],
+      "suggested_actions": [
+        "Inspect failure class examples before changing prompts",
+        "Add or update a focused regression gate for this failure class"
+      ],
+      "title": "Reduce delegated prompt failure: provider_http_error"
+    },
+    {
+      "category": "delegation-quality",
+      "effort": "medium",
+      "estimated_impact": "58 delegation feedback event(s)",
+      "evidence": [
+        "failure_class=provider_request_error",
+        "aq-qa probe 71.4: respond with the word OK only"
+      ],
+      "id": "delegation-reduce-delegated-prompt-failure-provider-request-e2d188843f97",
+      "priority": 2,
+      "related_files": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
+        "config/intent-routing-map.json"
+      ],
+      "suggested_actions": [
+        "Inspect failure class examples before changing prompts",
+        "Add or update a focused regression gate for this failure class"
+      ],
+      "title": "Reduce delegated prompt failure: provider_request_error"
+    },
+    {
+      "category": "health-spider",
+      "effort": "small",
+      "estimated_impact": "16 recent health-spider event(s)",
+      "evidence": [
+        "{\"denials\": [{\"mask\": \"wr\", \"operation\": \"open\", \"path\": \"/dev/tty\"}, {\"mask\": \"x\", \"operation\": \"exec\", \"path\": \"/nix/store/cyr8pbss92g8fzsy2jlckl8r653bzv4h-python3-3.13.12-env/bin/uvicorn\"}, {\"mask\": \"x\", \"operation\": \"exec\", \"path\": \"/nix/store/sahqyj4v0za2cwcnrbcjyndyk8ka8a9y-python3.13-uvicorn-0.35.0/bin/.uvicorn-"
+      ],
+      "id": "health-investigate-recurring-health-signal-dashboard-ap-91b415169c8f",
+      "priority": 2,
+      "related_files": [
+        "scripts/ai/aq-health-spider"
+      ],
+      "suggested_actions": [
+        "Review recent health-spider telemetry and attention queue",
+        "Promote recurring event to a focused aq-qa or remediation check"
+      ],
+      "title": "Investigate recurring health signal: dashboard apparmor_denial"
+    },
+    {
+      "category": "health-spider",
+      "effort": "small",
+      "estimated_impact": "3 recent health-spider event(s)",
+      "evidence": [
+        "{\"denials\": [{\"mask\": \"r\", \"operation\": \"open\", \"path\": \"/proc/778166/cgroup\", \"peer\": \"\"}, {\"mask\": \"r\", \"operation\": \"open\", \"path\": \"/proc/926707/cgroup\", \"peer\": \"\"}], \"event\": \"health_spider_apparmor_denial\", \"event_type\": \"health_spider_apparmor_denial\", \"profile\": \"ai-hybrid-coordinator\", \"source\": \"health-spide"
+      ],
+      "id": "health-investigate-recurring-health-signal-hybrid-coord-473f37ebc9ed",
+      "priority": 2,
+      "related_files": [
+        "scripts/ai/aq-health-spider"
+      ],
+      "suggested_actions": [
+        "Review recent health-spider telemetry and attention queue",
+        "Promote recurring event to a focused aq-qa or remediation check"
+      ],
+      "title": "Investigate recurring health signal: hybrid-coordinator apparmor_denial"
+    },
+    {
+      "category": "model-catalog",
+      "effort": "small",
+      "estimated_impact": "profile_age_days=32",
+      "evidence": [
+        "probed_at=2026-05-07T17:41:53.741214Z",
+        "_meta.last_updated=2026-05-20"
+      ],
+      "id": "model-refresh-local-model-profile-freshness-metadata-a4882f992eae",
+      "priority": 2,
+      "related_files": [
+        "config/model-profile.json",
+        "ai-stack/mcp-servers/shared/model_catalog.py"
+      ],
+      "suggested_actions": [
+        "Refresh probe metadata or mark freshness policy explicitly",
+        "Add aq-qa/dashboard freshness gates before activating new models"
+      ],
+      "title": "Refresh local model profile freshness metadata"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "cross-model workflow behavior is not standardized or gated"
+      ],
+      "id": "issue-resolve-open-issue-agentic-mind-05ca4bfefc0d",
+      "priority": 2,
+      "related_files": [
+        ".agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: agentic-mind"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "desired flat model-team workflow is documented but not enabled/enforced"
+      ],
+      "id": "issue-resolve-open-issue-flat-collaboration-disabled-9a565f8dac02",
+      "priority": 2,
+      "related_files": [
+        "config/local-agent-config.yaml",
+        "config/workflow-automation.yaml",
+        ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: flat-collaboration-disabled"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "delegate-to-local reported a task id and output path that could not be found afterward"
+      ],
+      "id": "issue-resolve-open-issue-local-delegation-artifact-b20ea57633c5",
+      "priority": 2,
+      "related_files": [
+        "scripts/ai/aq-health-spider",
+        "scripts/testing/test-boot-stability-regressions.py"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: local-delegation-artifact"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "research discovery substrate exists but lacks candidate lifecycle, scoring, and adoption gates"
+      ],
+      "id": "issue-resolve-open-issue-software-factory-readiness-617b45b6a59e",
+      "priority": 2,
+      "related_files": [
+        ".agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: software-factory-readiness"
+    },
+    {
+      "category": "health-spider",
+      "effort": "small",
+      "estimated_impact": "1 recent health-spider event(s)",
+      "evidence": [
+        "{\"event\": \"health_spider_http_failure\", \"event_type\": \"health_spider_http_failure\", \"service_state\": \"active\", \"source\": \"health-spider\", \"timestamp\": 1780164119.2421105, \"type\": \"http_failure\", \"url\": \"http://127.0.0.1:8003/health\", \"zone\": \"hybrid-coordinator\"}"
+      ],
+      "id": "health-investigate-recurring-health-signal-hybrid-coord-cd1d630151f7",
+      "priority": 3,
+      "related_files": [
+        "scripts/ai/aq-health-spider"
+      ],
+      "suggested_actions": [
+        "Review recent health-spider telemetry and attention queue",
+        "Promote recurring event to a focused aq-qa or remediation check"
+      ],
+      "title": "Investigate recurring health signal: hybrid-coordinator http_failure"
+    },
+    {
+      "category": "health-spider",
+      "effort": "small",
+      "estimated_impact": "1 recent health-spider event(s)",
+      "evidence": [
+        "{\"event\": \"health_spider_http_failure\", \"event_type\": \"health_spider_http_failure\", \"service_state\": \"active\", \"source\": \"health-spider\", \"timestamp\": 1780164119.9469619, \"type\": \"http_failure\", \"url\": \"http://127.0.0.1:8085/health\", \"zone\": \"switchboard\"}"
+      ],
+      "id": "health-investigate-recurring-health-signal-switchboard--6da3ca5eb68f",
+      "priority": 3,
+      "related_files": [
+        "scripts/ai/aq-health-spider"
+      ],
+      "suggested_actions": [
+        "Review recent health-spider telemetry and attention queue",
+        "Promote recurring event to a focused aq-qa or remediation check"
+      ],
+      "title": "Investigate recurring health signal: switchboard http_failure"
+    },
+    {
+      "category": "health-spider",
+      "effort": "small",
+      "estimated_impact": "2 recent health-spider event(s)",
+      "evidence": [
+        "{\"event\": \"health_spider_started\", \"event_type\": \"health_spider_started\", \"interval_s\": 7200, \"source\": \"health-spider\", \"timestamp\": \"2026-05-30T14:58:01.059923+00:00\", \"zones\": [\"hybrid-coordinator\", \"switchboard\", \"aidb\", \"dashboard\"]}"
+      ],
+      "id": "health-investigate-recurring-health-signal-unknown-star-b142aa1df0df",
+      "priority": 3,
+      "related_files": [
+        "scripts/ai/aq-health-spider"
+      ],
+      "suggested_actions": [
+        "Review recent health-spider telemetry and attention queue",
+        "Promote recurring event to a focused aq-qa or remediation check"
+      ],
+      "title": "Investigate recurring health signal: unknown started"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "medium issue pressure",
+      "evidence": [
+        "issues-backlog status=PENDING-REBUILD",
+        "Dashboard AppArmor denials degraded operator visibility while health-spider and auto-remediate did not catch/fix it promptly"
+      ],
+      "id": "issue-resolve-open-issue-dashboard-health-spider-256bd6b40ce3",
+      "priority": 3,
+      "related_files": [
+        "ai-stack/orchestration/workspace_isolation.py (cleanup_workspace method)"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: dashboard/health-spider"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "medium issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "post-build cursor/text input instability required system build revert"
+      ],
+      "id": "issue-resolve-open-issue-desktop-input-17ca0df46069",
+      "priority": 3,
+      "related_files": [
+        "scripts/ai/aq-chat ~line 95"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: desktop-input"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "medium issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "proactive discovery agent is not doing opportunity analysis yet"
+      ],
+      "id": "issue-resolve-open-issue-discovery-agent-stub-f3dab5fd2b7b",
+      "priority": 3,
+      "related_files": [
+        "ai-stack/local-agents/discovery_agent.py"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: discovery-agent-stub"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "medium issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "ROCm not available on Renoir APU (gfx90c)"
+      ],
+      "id": "issue-resolve-open-issue-hardware-426e9a0e2222",
+      "priority": 3,
+      "related_files": [
+        "nix/modules/services/mcp-servers.nix ~line 2609"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: hardware"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "medium issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "local model catalog is static and likely stale for current model velocity"
+      ],
+      "id": "issue-resolve-open-issue-model-catalog-freshness-e918cdbb88ae",
+      "priority": 3,
+      "related_files": [
+        "ai-stack/mcp-servers/shared/model_catalog.py"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: model-catalog-freshness"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "medium issue pressure",
+      "evidence": [
+        "issues-backlog status=PENDING-REBUILD",
+        "Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage"
+      ],
+      "id": "issue-resolve-open-issue-observability-parity-3f3b1b8d21cc",
+      "priority": 3,
+      "related_files": [
+        "nix/modules/services/command-center-dashboard.nix",
+        "nixos-quick-deploy.sh",
+        "scripts/ai/aq-health-spider"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: observability-parity"
+    }
+  ],
+  "generated_at": "2026-06-08T23:47:15.780198+00:00",
+  "schema_version": "discovery-candidates.v1",
+  "source": "DiscoveryAgent",
+  "total_candidates": 19
+}

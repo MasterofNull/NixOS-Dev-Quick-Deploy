@@ -1126,6 +1126,25 @@ def _check_local_payload_discipline(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.1", "local inference payload discipline (no enable_thinking=True)", detail)]
 
 
+def _check_discovery_agent(ctx: RunContext) -> list[CheckResult]:
+    """Phase 153: discovery agent emits deterministic improvement candidates."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-discovery-agent-opportunities.py"
+    if not check.exists():
+        return [failed(1, "0.10.4", "discovery agent opportunity scanner", "test-discovery-agent-opportunities.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.4", "discovery agent opportunity scanner emits dashboard candidates")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.4", "discovery agent opportunity scanner", detail)]
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -1169,6 +1188,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_topology_api(ctx))
     results.extend(_check_local_model_config(ctx))
     results.extend(_check_local_payload_discipline(ctx))
+    results.extend(_check_discovery_agent(ctx))
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))

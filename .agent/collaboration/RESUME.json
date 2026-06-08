@@ -1,24 +1,29 @@
 {
-    "current_objective": "Complete Phase 152 dashboard source-activation drift detection after rebuild and continue parity gap implementation.",
-    "phase": "Phase 152 \u2014 source-backed dashboard stale-code detection",
-    "todo_snapshot": [
-        "DONE: Confirmed Phase 151 source files were committed in 704635fe and remaining dirty files are runtime/collaboration artifacts",
-        "DONE: Selected next logged parity gap: manual rebuild can leave command-center-dashboard-api serving stale repo-backed Python code",
-        "DONE: Added health-spider required-key support for dashboard semantic JSON probes",
-        "DONE: Added routing-analytics semantic probe requiring logic_discipline and logic_discipline_rate",
-        "DONE: Added boot-stability regression assertions for routing-analytics stale-backend detection",
-        "DONE: Live aq-health-spider --once passed and reported routing-analytics OK",
-        "DONE: Focused py_compile and boot-stability regression checks passed",
-        "DONE: aq-health-spider --once passed and reported routing-analytics OK",
-        "DONE: aq-qa 0 --machine passed 98/0/0",
-        "PENDING: Stage only Phase 152 files, run tier0 against staged diff, then commit"
-    ],
-    "uncommitted_changes": [
-        "scripts/ai/aq-health-spider",
-        "scripts/testing/test-boot-stability-regressions.py",
-        ".agent/collaboration/RESUME.json",
-        ".agent/memory/issues-backlog.md",
-        "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
-    ],
-    "resume_hint": "Next: stage scripts/ai/aq-health-spider, scripts/testing/test-boot-stability-regressions.py, .agent/collaboration/RESUME.json, and .agent/memory/issues-backlog.md; avoid unrelated runtime telemetry and facts.nix whitespace; run tier0 and commit."
+  "current_objective": "Complete Phase 153 proactive discovery-agent candidate generation and continue parity gap closures.",
+  "phase": "Phase 153 — deterministic discovery opportunities",
+  "todo_snapshot": [
+    "DONE: Rehydrated session and confirmed Phase 152 committed in 4233299c",
+    "DONE: Delegated model-catalog-freshness review to explorer; recommendation is to add metadata, aq-qa freshness gate, and dashboard model lifecycle freshness row",
+    "DONE: Delegated flat-collaboration-disabled review to explorer; recommendation is candidate-artifact PRD gate first, not broad autonomous writes",
+    "DONE: Replaced discovery_agent.py stub with deterministic local-signal scanner",
+    "DONE: Scanner emits dashboard-compatible .agents/improvement/candidates.json",
+    "DONE: Scanner reads issues backlog, health-spider telemetry, delegation feedback, and stale model profile metadata",
+    "DONE: Added focused regression test scripts/testing/test-discovery-agent-opportunities.py",
+    "DONE: Registered focused-CI check discovery-agent-opportunities",
+    "DONE: Added aq-qa Phase 0 check 0.10.4 for discovery candidate generation in both Python harness and active bash runner",
+    "DONE: Ran live discovery scan; dashboard /api/insights/improvements/candidates reports 19 candidates",
+    "PENDING: Run focused tests, aq-qa 0 --machine, tier0, commit Phase 153, then consider rebuild if local-agent source is packaged into active services"
+  ],
+  "uncommitted_changes": [
+    "ai-stack/local-agents/discovery_agent.py",
+    "scripts/testing/test-discovery-agent-opportunities.py",
+    "scripts/testing/harness_qa/phases/phase0.py",
+    "scripts/ai/_aq-qa-bash",
+    "config/validation-check-registry.json",
+    ".agents/improvement/candidates.json",
+    ".agent/collaboration/RESUME.json",
+    ".agent/memory/issues-backlog.md",
+    "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
+  ],
+  "resume_hint": "Next: validate py_compile, test-discovery-agent-opportunities.py, aq-qa 0 --machine, dashboard improvement candidates route, tier0; stage only Phase 153 files plus candidates.json; commit. Next slices: model-catalog-freshness and flat PRD intake gate."
 }
