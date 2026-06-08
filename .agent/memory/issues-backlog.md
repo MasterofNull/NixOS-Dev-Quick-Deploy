@@ -147,12 +147,12 @@
   Action: User rebuilt after commit df78604a. Post-rebuild validation passed: no failed units, aq-health-spider clean, payload discipline gate clean, aq-qa 0 --machine 94/0/2.
   File: ai-stack/switchboard/switchboard.py; scripts/ai/aq-chat; scripts/testing/harness_qa/phases/phase0.py
 
-[PENDING-REBUILD] coordinator-routing — continuation tasks routed to local-tool-calling instead of canonical default lane — Root cause: route_by_complexity() had a continuation override that converted continuation/general tasks to embedded-assist/local-tool-calling behavior under prefer_local, violating the existing continuation test contract and cross-agent compact-default lane expectation.
+[DONE] coordinator-routing — continuation tasks routed to local-tool-calling instead of canonical default lane — Root cause: route_by_complexity() had a continuation override that converted continuation/general tasks to embedded-assist/local-tool-calling behavior under prefer_local, violating the existing continuation test contract and cross-agent compact-default lane expectation.
   Severity: medium
-  Action: Patched continuation/general local routing to `default`; targeted `test-ai-coordinator.py` and front-door routing contract pass. Rebuild required to activate hybrid-coordinator service-copy change.
+  Action: Patched continuation/general local routing to `default`; user rebuilt commit a23e1e24 and `aq-qa 0 --machine` passed 96/0/0.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py ~line 604
 
 [PENDING-REBUILD] post-deploy-converge — focused CI artifact step could not find git in systemd PATH — Root cause: ai-post-deploy-converge.service path omitted `pkgs.git`, while run-focused-ci-checks.sh calls `git diff` to select changed files.
   Severity: medium
-  Action: Added `git` to the service path in mcp-servers.nix; nix parse passes. Rebuild required before the unit can run without the warning.
+  Action: Live unit inspection after rebuild showed the first patch added `git` to ai-npm-security-monitor, not ai-post-deploy-converge. Corrected the actual post-deploy service path in repo; rebuild required before the unit can run without the warning.
   File: nix/modules/services/mcp-servers.nix ~line 2016

@@ -1,5 +1,5 @@
 {
-  "current_objective": "Post-rebuild Phase 148 validation found two follow-up fixes; tier0 and commit remain.",
+  "current_objective": "Phase 148 post-rebuild validation passed; corrected post-deploy git PATH fix remains to commit and rebuild.",
   "phase": "Phase 148 — agentic standardization integration",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
@@ -17,10 +17,10 @@
     "DONE: Codex integration review repaired RESUME.json, hardened YAML loader edge cases, added Python aq-qa 0.10.1 coverage, and fixed local model config drift",
     "DONE: Focused validation passed: json.tool RESUME, py_compile touched Python, gate-local-payload-discipline, test-local-agent-config, diff --check, aq-qa 0 --machine 94/0/2",
     "DONE: User rebuilt and activated commit df78604a; post-rebuild aq-qa 0 --machine passed 94/0/2 and health-spider was clean",
-    "DONE: Fixed continuation routing regression so continuation/general local tasks stay on the canonical default lane",
-    "DONE: Fixed ai-post-deploy-converge service PATH gap by adding git to the Nix service path",
-    "PENDING: run tier0 pre-commit gate and commit the post-rebuild follow-up fixes",
-    "PENDING-REBUILD: run sudo nixos-rebuild switch --flake .#hyperd-ai-dev after follow-up commit to activate hybrid-coordinator/post-deploy unit changes"
+    "DONE: Fixed continuation routing regression so continuation/general local tasks stay on the canonical default lane and user rebuild activated commit a23e1e24",
+    "DONE: User post-rebuild validation passed aq-qa 0 --machine with 96/0/0 and aq-health-spider --once clean",
+    "PENDING: commit corrected ai-post-deploy-converge service PATH fix; prior git addition landed in the npm security monitor path, not the post-deploy unit path",
+    "PENDING-REBUILD: run sudo nixos-rebuild switch --flake .#hyperd-ai-dev after the corrected post-deploy PATH commit"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
@@ -29,8 +29,7 @@
     ".agent/collaboration/PULSE.log",
     ".agents/attention/ATTENTION_ARCHIVE.jsonl",
     ".agents/telemetry/routing-decisions.jsonl",
-    "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator.py",
     "nix/modules/services/mcp-servers.nix"
   ],
-  "resume_hint": "Post-rebuild validation of df78604a passed health/QA/payload checks. Follow-up repo fixes are staged next: continuation routing should keep canonical default lane, and post-deploy convergence needs git in systemd PATH. Next: tier0 pre-commit gate, commit, then rebuild to activate hybrid-coordinator/post-deploy unit changes."
+  "resume_hint": "User rebuilt commit a23e1e24 and validation passed: aq-qa 0 --machine 96/0/0, aq-health-spider clean, aq-alerts count 0. Live systemd unit inspection showed ai-post-deploy-converge PATH still lacked git because the previous patch hit ai-npm-security-monitor. The actual post-deploy path is now corrected in repo; next run focused validation, tier0, commit, then rebuild once more to activate only that unit PATH fix."
 }
