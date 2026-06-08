@@ -156,3 +156,8 @@
   Severity: medium
   Action: Live unit inspection after rebuild showed the first patch added `git` to ai-npm-security-monitor, not ai-post-deploy-converge. Corrected the actual post-deploy service path in repo, committed eeb47e49, rebuilt, and verified rendered PATH includes `/nix/store/...-git-2.51.2/bin`; no failed units, aq-alerts count 0, aq-qa 0 --machine 94/0/2 with report-backed checks skipped, aq-health-spider clean.
   File: nix/modules/services/mcp-servers.nix ~line 2016
+
+[DONE] aq-chat-rendering — local aq-chat printed one token per line, making answers unreadable — Root cause: aq-chat defaulted to the switchboard `local-tool-calling` lane but flipped the payload back to `stream=True`; switchboard only executes the local tool loop for non-streaming local-tool-calling requests, so aq-chat consumed and printed raw SSE deltas exactly as emitted.
+  Severity: medium
+  Action: Keep local-tool-calling `stream=False`, consume the completed JSON response with `self.client.post()`, and render the final assistant content once through the Markdown renderer. Added static regression coverage and live switchboard smoke returned normal content `AQ_CHAT_RENDER_OK`.
+  File: scripts/ai/aq-chat ~line 160; scripts/testing/test-aq-chat-local-tool-profile.py

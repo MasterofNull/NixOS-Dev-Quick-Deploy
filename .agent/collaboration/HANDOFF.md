@@ -2249,3 +2249,14 @@ User rebuilt after commit `eeb47e49`. Codex verified the rendered unit and healt
 - `scripts/ai/aq-health-spider --once` returned clean coordinator, switchboard, AIDB, dashboard, aggregate, effectiveness, agent-runs, and traces-summary probes.
 
 Phase 148 agentic standardization, identity coverage, routing alignment, payload discipline, dashboard/health-spider validation, and post-deploy convergence PATH activation are complete.
+
+### 2026-06-08 — aq-chat Rendering Fix
+
+User reported `aq-chat` printing one token per line for normal local responses. Root cause: the client selected switchboard `local-tool-calling`, set the profile and non-streaming payload, then flipped `payload["stream"] = True` immediately before sending. In switchboard, local-tool-calling execution is intentionally non-streaming; the stream flip bypassed the tool loop and exposed raw SSE token deltas to the terminal.
+
+Fix:
+
+- `scripts/ai/aq-chat` keeps local-tool-calling `stream=False`, calls switchboard with `self.client.post()`, extracts the OpenAI-compatible assistant message, and renders the final answer once as Markdown.
+- `scripts/testing/test-aq-chat-local-tool-profile.py` now asserts the non-streaming local-tool-calling contract and final response renderer.
+
+Validation: `py_compile` for touched Python, `test-aq-chat-local-tool-profile.py`, `gate-local-payload-discipline.sh`, `test-local-agent-config.py`, and a live switchboard smoke returned JSON content `AQ_CHAT_RENDER_OK`.

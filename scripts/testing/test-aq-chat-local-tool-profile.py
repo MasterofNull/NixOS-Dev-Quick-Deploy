@@ -24,8 +24,20 @@ def main() -> None:
         "aq-chat should use a single switchboard local-tools routing decision",
     )
     assert_true(
+        "def _record_and_render_assistant_response" in text,
+        "aq-chat should render completed assistant responses through one readable final renderer",
+    )
+    assert_true(
         'headers["X-AI-Profile"] = "local-tool-calling"' in text,
         "aq-chat should send the local-tool-calling switchboard profile header",
+    )
+    assert_true(
+        'payload["stream"] = False' in text,
+        "aq-chat should keep local-tool-calling non-streaming so switchboard executes the tool loop",
+    )
+    assert_true(
+        "response = await self.client.post(target_url, json=payload, headers=headers)" in text,
+        "aq-chat should consume local-tool-calling as a completed JSON response, not raw token SSE",
     )
     assert_true(
         'if switchboard_local_tools:' in text,

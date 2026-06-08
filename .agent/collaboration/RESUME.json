@@ -1,5 +1,5 @@
 {
-  "current_objective": "Phase 148 agentic standardization and post-deploy PATH activation complete; final validation record remains to commit.",
+  "current_objective": "Fix aq-chat local response readability by keeping local-tool-calling non-streaming and rendering the final answer once.",
   "phase": "Phase 148 — agentic standardization integration",
   "todo_snapshot": [
     "DONE: Phase 141 — RAGAS context_precision + faithfulness payload-nested fix (0f235363)",
@@ -20,14 +20,20 @@
     "DONE: Fixed continuation routing regression so continuation/general local tasks stay on the canonical default lane and user rebuild activated commit a23e1e24",
     "DONE: User post-rebuild validation passed aq-qa 0 --machine with 96/0/0 and aq-health-spider --once clean",
     "DONE: Corrected ai-post-deploy-converge service PATH fix committed in eeb47e49; prior git addition had landed in the npm security monitor path",
-    "DONE: User rebuilt eeb47e49; live ai-post-deploy-converge PATH now includes git, no failed units, aq-alerts count 0, aq-qa 0 --machine passed 94/0/2 with report-backed checks skipped, and aq-health-spider --once clean"
+    "DONE: User rebuilt eeb47e49; live ai-post-deploy-converge PATH now includes git, no failed units, aq-alerts count 0, aq-qa 0 --machine passed 94/0/2 with report-backed checks skipped, and aq-health-spider --once clean",
+    "DONE: Identified aq-chat readability root cause: local-tool-calling stream=True bypassed switchboard's non-streaming tool loop and printed raw SSE deltas one token per line",
+    "DONE: Patched aq-chat to keep local-tool-calling stream=False, consume JSON with self.client.post(), and render the final assistant content once",
+    "DONE: Focused validation passed: py_compile, test-aq-chat-local-tool-profile.py, gate-local-payload-discipline.sh, test-local-agent-config.py, live switchboard smoke returned AQ_CHAT_RENDER_OK",
+    "PENDING: run tier0 pre-commit gate and commit aq-chat rendering fix"
   ],
   "uncommitted_changes": [
     ".agent/collaboration/RESUME.json",
     ".agent/memory/issues-backlog.md",
     ".agent/collaboration/HANDOFF.md",
     ".agent/collaboration/PULSE.log",
-    ".agents/attention/ATTENTION_ARCHIVE.jsonl"
+    ".agents/telemetry/routing-decisions.jsonl",
+    "scripts/ai/aq-chat",
+    "scripts/testing/test-aq-chat-local-tool-profile.py"
   ],
-  "resume_hint": "User rebuilt eeb47e49 and final validation passed. Rendered ai-post-deploy-converge PATH includes /nix/store/...-git-2.51.2/bin and /sbin; no failed units; aq-alerts count 0; aq-qa 0 --machine passed 94/0/2 with report-backed checks skipped; aq-health-spider --once clean. Next: commit final activation record."
+  "resume_hint": "aq-chat readability fix is in repo: local-tool-calling now stays stream=False and renders final JSON assistant content once. Focused validation passed, including live switchboard smoke with AQ_CHAT_RENDER_OK. Next: tier0 pre-commit gate and commit."
 }

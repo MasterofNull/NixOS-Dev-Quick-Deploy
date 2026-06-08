@@ -160,6 +160,33 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
     def _uses_switchboard_local_tools(self) -> bool:
         return self.local_tools_enabled and self.active_profile in {"local", "local-tool-calling"}
 
+    @staticmethod
+    def _assistant_content_from_body(body: Dict[str, Any]) -> str:
+        """Extract assistant text from an OpenAI-compatible response body."""
+        choices = body.get("choices") if isinstance(body, dict) else None
+        if not isinstance(choices, list) or not choices:
+            return ""
+        first = choices[0] if isinstance(choices[0], dict) else {}
+        message = first.get("message") if isinstance(first.get("message"), dict) else {}
+        if isinstance(message.get("content"), str):
+            return message["content"]
+        delta = first.get("delta") if isinstance(first.get("delta"), dict) else {}
+        if isinstance(delta.get("content"), str):
+            return delta["content"]
+        return ""
+
+    def _record_and_render_assistant_response(self, prompt: str, full_response: str) -> None:
+        """Render the completed response once and update conversation/feedback state."""
+        full_response = full_response.strip()
+        if not full_response:
+            console.print("[yellow]No assistant content returned.[/]")
+            return
+        console.print()
+        console.print(Markdown(full_response))
+        self.context_history.append({"role": "assistant", "content": full_response})
+        self._last_user_msg = prompt
+        self._last_assistant_msg = full_response
+
     async def _stream_chat(self, prompt: str):
         self.context_history.append({"role": "user", "content": prompt})
         self.interrupt_event.clear()
@@ -199,45 +226,19 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
 
             try:
                 if switchboard_local_tools:
-                    payload["stream"] = True
-                    async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
-                        if response.status_code != 200:
-                            console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
-                            return
-
-                        async for line in response.aiter_lines():
-                            if line.startswith("data: "):
-                                content = line[6:]
-                                if content.strip() == "[DONE]": break
-                                try:
-                                    chunk = json.loads(content)
-                                    # DEBUG: Log the full chunk for analysis
-                                    # logger.debug(f"Chunk: {content}")
-
-                                    # Display thoughts and tool calls in real-time
-                                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-
-                                    # Check for dedicated reasoning field (e.g., DeepSeek/Qwen format)
-                                    if "reasoning" in delta and delta["reasoning"]:
-                                        if not self.is_thinking:
-                                            self.is_thinking = True
-                                            print("\n[dim]Thoughts: ", end="", flush=True)
-                                        print(f"\033[2m{delta['reasoning']}\033[0m", end="", flush=True)
-                                        continue
-
-                                    if "content" in delta and delta["content"]:
-                                        # Close thoughts if content starts
-                                        if self.is_thinking:
-                                            self.is_thinking = False
-                                            print("[/dim]\n", end="", flush=True)
-                                        print(delta["content"], end="", flush=True)
-
-                                    if "tool_calls" in delta:
-                                        console.print(f"\n[bold magenta]Tool Call:[/] {delta['tool_calls']}")
-                                    if chunk.get("local_tool_budget_exhausted"):
-                                        console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
-                                except json.JSONDecodeError: continue
-                    print()
+                    response = await self.client.post(target_url, json=payload, headers=headers)
+                    if response.status_code != 200:
+                        console.print(f"[bold red]Error: Received {response.status_code} from {self.active_profile} backend.[/]")
+                        return
+                    try:
+                        body = response.json()
+                    except json.JSONDecodeError:
+                        console.print("[bold red]Error: local-tool-calling backend returned non-JSON response.[/]")
+                        return
+                    if body.get("local_tool_budget_exhausted"):
+                        console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
+                    full_response = self._assistant_content_from_body(body)
+                    self._record_and_render_assistant_response(prompt, full_response)
                     return
 
                 async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
@@ -281,13 +282,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
 
                     print()
                     if not self.interrupt_event.is_set():
-                        console.print(Markdown("---"))
-                        console.print(Markdown(full_response))
-                        console.print(Markdown("---"))
-                        self.context_history.append({"role": "assistant", "content": full_response})
-                        # Track for /rate feedback capture
-                        self._last_user_msg = prompt
-                        self._last_assistant_msg = full_response
+                        self._record_and_render_assistant_response(prompt, full_response)
                     else:
                         # Handle steering
                         steer_msg = f"INTERRUPT: {self.steering_prompt}"
