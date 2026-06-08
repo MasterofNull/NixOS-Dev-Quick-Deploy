@@ -35,7 +35,7 @@ companion to `COMBINED-PRD.md`.
 | P1 | Cross-project isolation for MCP bridge workflow tools | **COMPLETE** (Phase 136 — 2026-06-07) — _resolve_workflow_target() normalises relative targets; cwd=abs_target; REPO_ROOT overlap triggers warning |
 | P1 | Continuous eval coverage — RAGAS auto-scoring on live query path | **COMPLETE** (Phase 137 — 2026-06-07) — fire-and-forget 20% sample; record_query_metrics writes to eval_results |
 | P2 | Cross-agent contradiction detection and escalation | **COMPLETE** — memory_broker blocks contradictions; consensus_arbiter escalates divergence >0.5 to attention archive (Phase 103). Phase 142 (2026-06-07): pairwise check_contradiction() on recalled memory_summaries at query time; contradiction fires auto_ok attention queue push (non-blocking). |
-| P2 | Attention queue integration for all agent boundaries | **COMPLETE** — circuit_breaker (Ph 101), memory contradictions + consensus divergence (Ph 103), remote delegate 5xx (Ph 138.1), query-path exception (Ph 138.2), MCP tool dispatch exception (Ph 138.3). All five major boundaries covered. |
+| P2 | Attention queue integration for all agent boundaries | **COMPLETE** — circuit_breaker (Phase 101), memory contradictions + consensus divergence (Phase 103), remote delegate 5xx delegate boundary (Phase 138.1), query-path exception (Phase 138.2), MCP tool dispatch exception (Phase 138.3). All five major boundaries covered. |
 
 ## Integration Slices
 

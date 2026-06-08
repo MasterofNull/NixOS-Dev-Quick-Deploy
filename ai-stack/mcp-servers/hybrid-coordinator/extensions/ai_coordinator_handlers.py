@@ -1382,6 +1382,38 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 },
             })
 
+        async def _emit_delegation_planning_event(
+            *,
+            run_id: str,
+            profile_name: str,
+            model_name: str = "",
+            ok: bool = True,
+            fallback_used: bool = False,
+        ) -> None:
+            if not (_AGENT_RUN_EVENTS_AVAILABLE and _are is not None):
+                return
+            try:
+                plan_ev = _are.make_event(
+                    "planning",
+                    source="hybrid-coordinator",
+                    run_id=run_id or "unknown",
+                    status="succeeded" if ok else "failed",
+                    model=model_name or None,
+                    route_profile=profile_name or None,
+                    payload={
+                        "plan_step": "route-selection",
+                        "rationale_summary": "Coordinator selected delegation profile and model class before execution.",
+                        "task_archetype": str(routing_decision.get("task_archetype", "") or ""),
+                        "model_class": str(routing_decision.get("model_class", "") or ""),
+                        "selected_profile": str(profile_name or ""),
+                        "fallback_used": bool(fallback_used),
+                        "evidence_refs": ["routing_decision", "provider_fallback_policy"],
+                    },
+                )
+                await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, plan_ev)
+            except Exception:
+                pass  # telemetry is best-effort; never block delegation
+
         # If local runtime, spawn subprocess agent instead of HTTP proxy
         if _is_local_runtime(selected_runtime_id):
             # Determine agent role from profile
@@ -1479,6 +1511,13 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 }, status=202)
 
             local_response = await _spawn_local_agent(**_spawn_kwargs)
+            asyncio.create_task(_emit_delegation_planning_event(
+                run_id=str(data.get("task_id") or request.get("request_id", "") or id(request)),
+                profile_name=selected_profile,
+                model_name=f"local-{agent_role}",
+                ok=local_response.status < 400,
+                fallback_used=False,
+            ))
 
             # Slot-busy advance: the single llama.cpp slot is occupied by a
             # long-running task.  Filter the fallback chain to remote-only
@@ -1512,6 +1551,11 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                             "delegation_slot_busy_no_remote_advance: profile=%s slot busy and remote routing is not configured",
                             selected_profile,
                         )
+                        return local_response
+                    else:
+                        return local_response
+                else:
+                    return local_response
 
             if _slot_busy_next_profile is None:
                 # Phase 8.8 — Auto-consolidate successful delegate outcomes into memory.
@@ -2188,10 +2232,10 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             _are_ok = response.status_code < 400
             _are_quality_available = delegated_quality.get("available")
             _are_quality_passed = bool(delegated_quality.get("passed")) if _are_quality_available else None
-            # accepted_artifact = output tokens when quality gate passed; None when unavailable or failed
+            # accepted_artifact = output tokens when quality gate passed; 0 when failed; None when unavailable
             _are_accepted = _are_tok_out if (
                 _are_ok and _are_quality_passed and _are_tok_out > 0
-            ) else None
+            ) else (0 if _are_quality_available and not _are_quality_passed else None)
             # waste buckets: classify token spend that produced no accepted artifact
             _are_rejected = _are_tok_out if (
                 _are_ok and _are_quality_available and not _are_quality_passed and _are_tok_out > 0
@@ -2202,14 +2246,34 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             _are_model = _delegate_model_id
             _are_profile = effective_profile
             _are_dur = _delegate_latency_ms
+            _are_plan_payload = {
+                "plan_step": "route-selection",
+                "rationale_summary": "Coordinator selected delegation profile and model class before execution.",
+                "task_archetype": str(routing_decision.get("task_archetype", "") or ""),
+                "model_class": str(routing_decision.get("model_class", "") or ""),
+                "selected_profile": str(effective_profile or ""),
+                "fallback_used": bool(fallback_applied),
+                "evidence_refs": ["routing_decision", "provider_fallback_policy"],
+            }
 
             async def _emit_token_event(
                 _run_id=_are_run_id, _tok_in=_are_tok_in, _tok_out=_are_tok_out,
                 _total=_are_total, _accepted=_are_accepted, _model=_are_model,
                 _profile=_are_profile, _dur=_are_dur, _ok=_are_ok,
                 _rejected=_are_rejected, _failed_retry=_are_failed_retry,
+                _plan_payload=_are_plan_payload,
             ):
                 try:
+                    plan_ev = _are.make_event(
+                        "planning",
+                        source="hybrid-coordinator",
+                        run_id=_run_id or "unknown",
+                        status="succeeded" if _ok else "failed",
+                        model=_model or None,
+                        route_profile=_profile or None,
+                        payload=_plan_payload,
+                    )
+                    await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, plan_ev)
                     ev = _are.make_event(
                         "token_usage",
                         source="hybrid-coordinator",

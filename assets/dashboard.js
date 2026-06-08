@@ -6863,6 +6863,8 @@ const _OBS_EVENT_COLOR = {
   token_usage: "#7b9ee0",
   run_start: "var(--fg0)",
   run_end: "var(--fg0)",
+  thought: "var(--yel)",
+  planning: "var(--purp)",
   default: "var(--fg3)",
 };
 let _obsActiveRunId = null;
@@ -7065,6 +7067,14 @@ async function loadAgentReplay(runId) {
        </div>`
     : "";
 
+  const escapeHtml = (value) =>
+    String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
   const EVENT_ICON = {
     tool_call: "⚙",
     artifact: "📦",
@@ -7072,6 +7082,8 @@ async function loadAgentReplay(runId) {
     token_usage: "🪙",
     run_start: "▶",
     run_end: "⏹",
+    thought: "🧠",
+    planning: "🗺️",
     default: "·",
   };
 
@@ -7138,29 +7150,67 @@ async function loadAgentReplay(runId) {
 
       let payloadHtml = "";
       if (ev.payload) {
-        const isPrompt =
-          ev.event_type === "run_start" ||
-          ev.event_type === "prompt_load" ||
-          ev.event_type === "model_call";
-        const summaryText = isPrompt
-          ? "View System Prompt / Payload"
-          : "View Payload";
-        let content =
-          typeof ev.payload === "object"
-            ? JSON.stringify(ev.payload, null, 2)
-            : ev.payload;
-        content = content
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-        payloadHtml = `
-         <details style="margin-top:.3rem; background:rgba(0,0,0,0.2); border-left:2px solid ${color}; padding:.3rem .5rem; border-radius:2px;">
-           <summary style="font-size:.55rem; color:var(--cyan); cursor:pointer; text-transform:uppercase; letter-spacing:.05em;">${summaryText}</summary>
-           <pre style="font-size:.55rem; color:var(--fg2); white-space:pre-wrap; max-height:250px; overflow-y:auto; margin-top:.4rem; font-family:var(--font);">${content}</pre>
-         </details>
-       `;
+        if (ev.event_type === "thought") {
+          const payload = typeof ev.payload === "object" ? ev.payload : {};
+          const summary =
+            payload.summary ||
+            "Reasoning signal observed; raw chain-of-thought is hidden by policy.";
+          const meta = [
+            payload.char_count != null ? `${payload.char_count} chars suppressed` : "",
+            payload.content_hash ? `hash ${payload.content_hash}` : "",
+            payload.redaction_level || "raw_reasoning_suppressed",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          payloadHtml = `
+            <div style="margin-top:.3rem; background:rgba(190,150,60,0.08); border:1px dashed var(--yel); padding:.45rem .55rem; border-radius:3px; font-size:.6rem; color:var(--fg2);">
+              <div style="color:var(--yel);font-weight:bold;margin-bottom:.2rem;">Reasoning observed</div>
+              <div>${escapeHtml(summary)}</div>
+              <div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">${escapeHtml(meta)}</div>
+            </div>`;
+        } else if (ev.event_type === "planning") {
+          const payload = typeof ev.payload === "object" ? ev.payload : {};
+          const planStep = payload.plan_step || payload.step || "planning";
+          const rationale = payload.rationale_summary || payload.summary || "Plan step recorded.";
+          const evidence = Array.isArray(payload.evidence_refs)
+            ? payload.evidence_refs.join(", ")
+            : payload.evidence_refs || "";
+          payloadHtml = `
+            <div style="margin-top:.3rem; background:rgba(150,110,210,0.08); border-left:2px solid var(--purp); padding:.45rem .55rem; border-radius:3px; font-size:.6rem; color:var(--fg2);">
+              <div style="color:var(--purp);font-weight:bold;margin-bottom:.2rem;">${escapeHtml(planStep)}</div>
+              <div>${escapeHtml(rationale)}</div>
+              ${evidence ? `<div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">evidence: ${escapeHtml(evidence)}</div>` : ""}
+            </div>`;
+        } else {
+          const isPrompt =
+            ev.event_type === "run_start" ||
+            ev.event_type === "prompt_load" ||
+            ev.event_type === "system_prompt" ||
+            ev.event_type === "model_call";
+          const summaryText = isPrompt
+            ? "View System Prompt / Payload"
+            : "View Payload";
+          let content =
+            typeof ev.payload === "object"
+              ? JSON.stringify(ev.payload, null, 2)
+              : ev.payload;
+
+          let iframeHtml = "";
+          // Multimodal Render support (Phase 149)
+          if (ev.event_type === "artifact" && ev.payload.variant === "html" && ev.payload.html_content) {
+            const encodedHtml = escapeHtml(ev.payload.html_content);
+            iframeHtml = `<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="${encodedHtml}" style="width:100%; height:300px; border:1px solid var(--border); margin-top:0.5rem; background:white;"></iframe>`;
+          }
+
+          content = escapeHtml(content);
+          payloadHtml = `
+           <details style="margin-top:.3rem; background:rgba(0,0,0,0.2); border-left:2px solid ${color}; padding:.3rem .5rem; border-radius:2px;">
+             <summary style="font-size:.55rem; color:var(--cyan); cursor:pointer; text-transform:uppercase; letter-spacing:.05em;">${summaryText}</summary>
+             <pre style="font-size:.55rem; color:var(--fg2); white-space:pre-wrap; max-height:250px; overflow-y:auto; margin-top:.4rem; font-family:var(--font);">${content}</pre>
+             ${iframeHtml}
+           </details>
+         `;
+        }
       }
 
       return `<div id="ev-${i}" style="display:flex;flex-direction:column;padding:.3rem 0;border-bottom:1px solid rgba(255,255,255,.04)">

@@ -30,6 +30,8 @@ EVENT_TYPES = {
     "validation",
     "review",
     "human_control",
+    "thought",
+    "planning",
     "final_outcome",
 }
 

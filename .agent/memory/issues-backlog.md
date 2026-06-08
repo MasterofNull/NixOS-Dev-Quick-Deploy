@@ -191,3 +191,33 @@
   Severity: high
   Action: Added a global `systemctl --failed --no-legend --no-pager` probe that emits telemetry/attention and makes `aq-health-spider --once` fail when failed units exist. Inspected the live `nix-optimise.service` error (`missing ...coffeescript-2.7.0-npm-deps.drv`), reset the stale failed state, rejected the now-cleared attention item with evidence, and revalidated `systemctl --failed`, `aq-alerts --count`, `/brief`, and `aq-health-spider --once` as clean.
   File: scripts/ai/aq-health-spider; scripts/testing/test-boot-stability-regressions.py
+
+[OPEN] software-factory-readiness — research discovery substrate exists but lacks candidate lifecycle, scoring, and adoption gates — Root cause: `ai-stack/data/knowledge-sources.yaml` and `scripts/data/sync-knowledge-sources` can fetch/import sources, but there is no enforced path from source update to trust scoring, candidate lifecycle state, flat-team PRD debate, eval sandbox, dashboard visibility, and governed adoption.
+  Severity: high
+  Action: Use `.agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md` as the Phase 150 shared brief; design source-registry overlay, candidate schema, `aq-research-spider --machine`, local-signal ingest, eval sandbox, dashboard cards, and RAG learning loop before implementation.
+  File: .agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md
+
+[OPEN] model-catalog-freshness — local model catalog is static and likely stale for current model velocity — Root cause: `ai-stack/mcp-servers/shared/model_catalog.py` contains hardcoded model specs and `config/model-profile.json` has a last-updated/probed timestamp but no freshness gate that forces review when model catalogs, local GGUF, or provider model capabilities drift.
+  Severity: medium
+  Action: Add model catalog/profile freshness metadata and aq-qa/dashboard checks; route new model candidates through sandbox evals before activation or download.
+  File: ai-stack/mcp-servers/shared/model_catalog.py
+
+[OPEN] discovery-agent-stub — proactive discovery agent is not doing opportunity analysis yet — Root cause: `ai-stack/local-agents/discovery_agent.py` declares `discover_opportunities()` but currently only logs and `pass`es, so idle discovery cannot surface query gaps, routing failures, tokenomics regressions, or research candidates as actionable work.
+  Severity: medium
+  Action: Implement a deterministic local-signal scanner that emits machine-readable candidates from aq-qa failures, health-spider anomalies, query gaps, dashboard blanks, routing failures, and stale source/model metadata.
+  File: ai-stack/local-agents/discovery_agent.py
+
+[OPEN] flat-collaboration-disabled — desired flat model-team workflow is documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still has `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still has `collaborative_workflows: false`, while active Gemini/direct paths can write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.
+  Severity: high
+  Action: Create a flat PRD intake gate and Gemini/workflow mode detector before treating Gemini/local plans as consensus; do not enable broad autonomous collaboration until direct delegation artifacts and validation evidence gates are reliable.
+  File: config/local-agent-config.yaml; config/workflow-automation.yaml; .agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md
+
+[PENDING-REBUILD] observability-parity — Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage — Root cause: implementation added runtime event labels and raw `<think>` extraction without updating the canonical schema/fixture, producing a planning event producer, protecting chain-of-thought, or adding behavior-level QA. The dashboard still lacked acceptable agent logic observability and live telemetry had no thought/planning events before activation. Post-rebuild live smoke also showed the local subprocess delegate branch returns before the HTTP-path telemetry producer in the deployed Nix-store copy.
+  Severity: high
+  Action: First corrective slice implemented: safe reasoning summary events, raw `<think>` stripping, shared coordinator route-planning events for HTTP and local subprocess paths, schema/fixture repair, dashboard thought/planning filters/rendering, sandboxed HTML previews, and behavioral 0.10.2 QA. Pending rebuild/live smoke and richer dashboard summary tiles.
+  File: .agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md
+
+[OPEN] local-subprocess-instruction-discipline — local coordinator delegate ignored exact-output instruction during smoke — Root cause not yet isolated; `/control/ai-coordinator/delegate` with `profile=local-tool-calling`, `max_tokens=32`, and task "Return exactly PLANNING_SMOKE_OK" returned meta-reasoning text instead of the requested literal.
+  Severity: medium
+  Action: Add a tool-free/exact-output discipline gate for the local subprocess runtime, align its system prompt with aq-chat's tool-free path, and expose failures in aq-qa/dashboard before using it as a predictable production delegate lane.
+  File: ai-stack/agents/runtimes/local_agent_runtime.py; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
