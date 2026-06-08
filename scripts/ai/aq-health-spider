@@ -136,6 +136,44 @@ def _service_check(service: str) -> str:
         return "unknown"
 
 
+def _failed_systemd_units() -> List[Dict[str, str]]:
+    """Return currently failed systemd units from the host manager."""
+    try:
+        r = subprocess.run(
+            ["systemctl", "--failed", "--no-legend", "--no-pager"],
+            capture_output=True, text=True, timeout=8,
+        )
+    except Exception as e:
+        return [{"unit": "systemctl", "load": "unknown", "active": "unknown", "sub": "unknown", "description": str(e)[:160]}]
+
+    if r.returncode != 0 and not r.stdout.strip():
+        return [{
+            "unit": "systemctl",
+            "load": "unknown",
+            "active": "error",
+            "sub": "error",
+            "description": (r.stderr or f"systemctl exited {r.returncode}").strip()[:160],
+        }]
+
+    failed: List[Dict[str, str]] = []
+    for raw in r.stdout.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        line = line.lstrip("●").strip()
+        parts = line.split(None, 4)
+        if len(parts) < 4:
+            continue
+        failed.append({
+            "unit": parts[0],
+            "load": parts[1],
+            "active": parts[2],
+            "sub": parts[3],
+            "description": parts[4] if len(parts) > 4 else "",
+        })
+    return failed
+
+
 def _apparmor_scan(profile: str, since_ts: float) -> List[Dict[str, str]]:
     """Returns deduplicated list of {operation, path, mask} DENIED for profile since since_ts."""
     # journalctl --since expects local time (not UTC)
@@ -446,6 +484,40 @@ class HealthSpider:
                     resolution,
                 )
             return True
+        elif atype == "systemd_failed_units":
+            units = anomaly.get("units") or []
+            unit_names = ", ".join(str(unit.get("unit", "unknown")) for unit in units[:8])
+            try:
+                push(
+                    source="health-spider",
+                    severity="high",
+                    autonomy_boundary="human_gate",
+                    title=f"Systemd failed units detected: {len(units)}",
+                    detail=f"Failed units: {unit_names}",
+                    proposed_action="Inspect with: systemctl --failed --no-pager && journalctl -u <unit> -n 80 --no-pager",
+                    payload=anomaly,
+                )
+            except Exception:
+                pass
+            key = f"systemd_failed_units:{unit_names}"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                resolution = "Inspect failed units with systemctl --failed and journalctl; reset failed state only after root cause is understood or transient."
+                await asyncio.to_thread(
+                    _seed_rag,
+                    "systemd_failed_units",
+                    f"{len(units)} failed unit(s): {unit_names}",
+                    "Health spider global systemd failed-unit probe",
+                    resolution,
+                    ["systemd", "failed-units", "health-spider"],
+                )
+                await asyncio.to_thread(
+                    _push_memory_fact,
+                    "systemd_failed_units", zone,
+                    f"{len(units)} failed unit(s): {unit_names}.",
+                    resolution,
+                )
+            return True
         return True
 
     async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> str:
@@ -529,6 +601,17 @@ class HealthSpider:
     async def run_once(self) -> int:
         """Single cycle — returns anomaly count."""
         total = 0
+        failed_units = await asyncio.to_thread(_failed_systemd_units)
+        if failed_units:
+            logger.warning(f"[systemd] {len(failed_units)} failed unit(s): {', '.join(u['unit'] for u in failed_units[:8])}")
+            anomaly = {
+                "type": "systemd_failed_units",
+                "zone": "systemd",
+                "units": failed_units,
+                "timestamp": time.time(),
+            }
+            if await self.handle_anomaly(anomaly):
+                total += 1
         for zone in ZONES:
             try:
                 anomalies = await self.sample_zone(zone)

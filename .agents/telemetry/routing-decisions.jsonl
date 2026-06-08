@@ -595,3 +595,14 @@
 {"ts": 1780887782.2238147, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780891308.3625, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
 {"ts": 1780892418.4097002, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780894805.6781752, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780898491.4252481, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780901486.3058643, "local": false, "profile": "remote-reasoning", "event_type": "routing_decision"}
+{"ts": 1780902378.1387997, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780902594.9073129, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780905727.389902, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780909430.381159, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780912874.833705, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780916541.4738963, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780920180.0409997, "local": true, "profile": "local-tool-calling", "event_type": "routing_decision"}
+{"ts": 1780923083.4387603, "local": false, "profile": "remote-reasoning", "event_type": "routing_decision"}
