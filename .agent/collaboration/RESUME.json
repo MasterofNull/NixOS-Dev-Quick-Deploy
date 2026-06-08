@@ -1,6 +1,6 @@
 {
-  "current_objective": "Complete Phase 150 local subprocess discipline and broad planning telemetry; all source validation and aq-qa are green.",
-  "phase": "Phase 150 — local subprocess discipline and telemetry parity",
+  "current_objective": "Complete Phase 151 anti-capability-trimming guardrails after Gemini Phase 150 exposed declarative and metric-gaming risks.",
+  "phase": "Phase 151 — anti-capability-trimming and learning feedback enforcement",
   "todo_snapshot": [
     "DONE: Implemented local subprocess exact-output/tool-free discipline gate",
     "DONE: Aligned system prompt with aq-chat tool-free path and forced tools off for exact-output tasks",
@@ -10,32 +10,28 @@
     "DONE: Added 0.10.3 QA check for exact-output discipline",
     "DONE: Verified Phase 150 parity with system rebuild and 98/98 aq-qa passing",
     "DONE: Restored tool/reasoning capabilities for exact-output tasks (avoiding regression in Harness-OS vision)",
-    "PENDING: Monitor live dashboard for logic discipline rate stability",
-    "PENDING: Prepare Phase 151: Distributed planning consistency and cross-agent review"
+    "DONE: Checked in with Gemini reviewer; Gemini confirmed first Phase 150 exact-output fix disabled tools/thinking too broadly, then restored capabilities in 173b5f50",
+    "DONE: Identified Logic Discipline dashboard bug: frontend defaulted missing backend metric to 100% and made <70 error state unreachable",
+    "DONE: Added backend logic_discipline summary from delegation-feedback telemetry and nullable logic_discipline_rate",
+    "DONE: Updated dashboard to show -- on missing logic-discipline telemetry and use reachable err/warn thresholds",
+    "DONE: Upgraded 0.10.3 local subprocess smoke with static anti-capability-trimming checks and dashboard telemetry contract",
+    "DONE: Rebuilt/switched and restarted command-center-dashboard-api with sudo so repo-backed backend changes are live",
+    "DONE: Live 0.10.3 smoke passed with exact output and dashboard logic-discipline telemetry contract",
+    "DONE: aq-qa 0 --machine passed 98/0/0 and aq-health-spider --once passed",
+    "DONE: Logged manual rebuild source-backed dashboard reload gap for follow-up",
+    "PENDING: Stage intentional source/docs changes, rerun tier0 against staged diff, and commit Phase 151 guardrails"
   ],
   "uncommitted_changes": [
-    ".agent/WORKFLOW-CANON.md",
-    ".agent/collaboration/HANDOFF.md",
+    "dashboard/backend/api/services/ai_insights.py",
+    "assets/dashboard.js",
+    "dashboard.html",
+    "scripts/testing/test-local-subprocess-discipline-smoke.py",
+    "config/env-contract.yaml",
     ".agent/collaboration/PULSE.log",
     ".agent/collaboration/RESUME.json",
     ".agent/memory/issues-backlog.md",
-    ".agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md",
-    ".agents/plans/OBSERVABILITY-PARITY-PLAN.md",
-    ".agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md",
-    ".agents/prompts/CLOUDFLARE_SOFTWARE_FACTORY_PARITY.md",
-    ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md",
-    ".agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md",
-    ".agents/prompts/TOKENOMICS_PARITY_TEAM_HANDOFF.md",
     ".agents/telemetry/routing-decisions.jsonl",
-    "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py",
-    "ai-stack/switchboard/switchboard.py",
-    "assets/dashboard.js",
-    "config/schemas/maeah/agent-run-event.schema.json",
-    "dashboard.html",
-    "scripts/ai/_aq-qa-bash",
-    "scripts/ai/lib/agent_run_events.py",
-    "scripts/testing/test-agent-run-event-envelope.py",
-    "scripts/testing/test-telemetry-thought-event.sh"
+    "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
   ],
-  "resume_hint": "Next: Monitor the dashboard for logic discipline rate stability. Begin Phase 151 distributed planning consistency work, starting with a cross-agent review of the newly implemented planning producers. Verify that planning events from multiple nodes maintain causal ordering in the dashboard swimlane view."
+  "resume_hint": "Next: stage dashboard/backend/api/services/ai_insights.py, assets/dashboard.js, dashboard.html, scripts/testing/test-local-subprocess-discipline-smoke.py, config/env-contract.yaml, .agent/collaboration/RESUME.json, and .agent/memory/issues-backlog.md; avoid unrelated runtime telemetry and facts.nix whitespace; rerun tier0 and commit."
 }

@@ -11,7 +11,7 @@ import logging
 import os
 import time
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -60,6 +60,13 @@ def _optimization_proposals_path() -> Path:
     return Path("/var/lib/ai-stack/hybrid/telemetry/optimization_proposals.jsonl")
 
 
+def _delegation_feedback_path() -> Path:
+    configured = os.getenv("DELEGATION_FEEDBACK_LOG_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    return Path("/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
+
+
 def _improvement_candidates_path() -> Path:
     configured = os.getenv("DASHBOARD_IMPROVEMENT_CANDIDATES_PATH", "").strip()
     if configured:
@@ -105,6 +112,80 @@ def _prometheus_metric_scalar(metrics_text: str, metric_name: str) -> Optional[f
         except ValueError:
             continue
     return None
+
+
+def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _logic_discipline_summary(hours: int = 168) -> Dict[str, Any]:
+    """Summarize exact-output/meta-reasoning delegation failures."""
+    path = _delegation_feedback_path()
+    try:
+        if not path.exists():
+            return {"available": False, "source": str(path), "reason": "missing"}
+    except OSError:
+        return {"available": False, "source": str(path), "reason": "unreadable"}
+
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    total = 0
+    discipline_failures = 0
+    examples: List[Dict[str, Any]] = []
+    failure_tokens = {"meta_reasoning_leak", "exact_output_too_verbose"}
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                ts = _parse_iso_timestamp(entry.get("timestamp"))
+                if ts is None or ts < since:
+                    continue
+                total += 1
+                classes = entry.get("failure_classes")
+                if not isinstance(classes, list):
+                    classes = [entry.get("failure_class")]
+                class_set = {str(item) for item in classes if item}
+                if class_set & failure_tokens:
+                    discipline_failures += 1
+                    if len(examples) < 3:
+                        examples.append({
+                            "timestamp": entry.get("timestamp"),
+                            "failure_class": entry.get("failure_class"),
+                            "selected_profile": entry.get("selected_profile"),
+                            "task_excerpt": entry.get("task_excerpt"),
+                        })
+    except OSError:
+        return {"available": False, "source": str(path), "reason": "unreadable"}
+
+    score = None
+    if total > 0:
+        score = round(100.0 * max(0, total - discipline_failures) / total, 1)
+    return {
+        "available": True,
+        "source": str(path),
+        "window_hours": hours,
+        "sample_n": total,
+        "discipline_failures": discipline_failures,
+        "score": score,
+        "examples": examples,
+    }
+
 
 class AIInsightsService:
     """Service for AI stack insights and analytics."""
@@ -982,6 +1063,9 @@ class AIInsightsService:
             "windows": report.get("routing_windows", {}),
             "remote_profile_utilization": report.get("remote_profile_utilization_windows", {}),
         }
+        logic_discipline = _logic_discipline_summary()
+        result["logic_discipline"] = logic_discipline
+        result["logic_discipline_rate"] = logic_discipline.get("score")
 
         # Augment with live coordinator traces when tool_audit lacks LLM routing labels.
         # tool_audit.jsonl records coordinator MCP tool calls (hints, discovery, a2a, …),

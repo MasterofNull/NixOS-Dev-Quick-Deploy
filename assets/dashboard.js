@@ -1285,12 +1285,24 @@ async function loadCoordinator() {
       "vBackendN",
       backendN ? Math.round(backendN / 7).toLocaleString() : "0"
     );
-    // Phase 150: Logic Discipline tile populating
-    const logicRate = (analytics.logic_discipline_rate ?? 100);
-    setText("vLogicDiscipline", `${Math.round(logicRate)}%`);
-    if (logicRate < 90) addClass("statLogicDiscipline", "warn");
-    else if (logicRate < 70) addClass("statLogicDiscipline", "err");
   }
+  // Phase 150: Logic Discipline tile populating. Do not fabricate success
+  // when no denominator exists; missing telemetry should stay visible as --.
+  const logicRate = analytics.logic_discipline_rate;
+  const logic = analytics.logic_discipline || {};
+  if (Number.isFinite(logicRate)) {
+    setText("vLogicDiscipline", `${Math.round(logicRate)}%`);
+    if (logicRate < 70) addClass("statLogicDiscipline", "err");
+    else if (logicRate < 90) addClass("statLogicDiscipline", "warn");
+  } else {
+    setText("vLogicDiscipline", "--");
+  }
+  setText(
+    "vLogicDisciplineDetail",
+    logic.available
+      ? `${logic.discipline_failures || 0} fail · ${logic.sample_n || 0} samples`
+      : "no telemetry"
+  );
   el.innerHTML = [
     fwRow("Status", hc.status || "--", statusColor(hc.status)),
     fwRow("Port", hc.port ? `:${hc.port}` : "--", "info"),
