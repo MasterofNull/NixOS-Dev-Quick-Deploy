@@ -212,6 +212,11 @@
   Action: Added first-pass `aq-flat-prd-gate` and aq-qa 0.10.6 to require at least two model proposals, two cross-reviews, and consensus PRD/slice/decision artifacts before a topic can be treated as integrated consensus. Broad collaboration flags remain disabled until direct delegation artifacts and validation evidence gates are reliable.
   File: scripts/ai/aq-flat-prd-gate; scripts/testing/test-flat-prd-gate.py; config/local-agent-config.yaml; config/workflow-automation.yaml; .agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md
 
+[DONE] agent-artifact-distribution — local day-to-day agent artifacts are tracked as repo state — Root cause: live collaboration, attention, delegation, comms, telemetry, and host facts files were tracked, so new deployments could inherit stale locks, local routing history, active-session context, and host-specific hardware facts.
+  Severity: high
+  Action: Added distribution policy, local-only ignore rules, collaboration templates, and aq-qa/focused-CI gate 0.10.7; untracked local runtime artifacts and host facts with `git rm --cached` while preserving local copies.
+  File: .gitignore; docs/operations/agent-artifact-distribution-policy.md; scripts/testing/test-agent-artifact-policy.py
+
 [PENDING-REBUILD] observability-parity — Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage — Root cause: implementation added runtime event labels and raw `<think>` extraction without updating the canonical schema/fixture, producing a planning event producer, protecting chain-of-thought, or adding behavior-level QA. The dashboard still lacked acceptable agent logic observability and live telemetry had no thought/planning events before activation. Post-rebuild live smoke also showed the local subprocess delegate branch returns before the HTTP-path telemetry producer in the deployed Nix-store copy.
   Severity: high
   Action: First corrective slice implemented: safe reasoning summary events, raw `<think>` stripping, shared coordinator route-planning events for HTTP and local subprocess paths, schema/fixture repair, dashboard thought/planning filters/rendering, sandboxed HTML previews, and behavioral 0.10.2 QA. Pending rebuild/live smoke and richer dashboard summary tiles.

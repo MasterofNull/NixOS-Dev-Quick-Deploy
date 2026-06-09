@@ -1248,6 +1248,29 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "agent-artifact-distribution-policy",
+      "description": "Phase 156 \u2014 local runtime artifacts stay untracked while portable knowledge is distributed",
+      "trigger_paths": [
+        ".gitignore",
+        ".agent/collaboration/README.md",
+        ".agent/collaboration/HANDOFF.template.md",
+        ".agent/collaboration/PENDING.template.json",
+        ".agent/collaboration/RESUME.template.json",
+        "docs/operations/agent-artifact-distribution-policy.md",
+        "docs/operations/agent-artifact-gc-policy.md",
+        "scripts/testing/test-agent-artifact-policy.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-agent-artifact-policy.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

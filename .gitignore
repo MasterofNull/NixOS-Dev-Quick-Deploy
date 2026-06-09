@@ -167,7 +167,20 @@ nix/hosts/*/.sops.yaml
 
 # Strands-style workflow artifacts (scratchpad is temporary working files)
 .agents/scratchpad/
-# Agent delegation task output logs (runtime; registry.jsonl is tracked)
+# Local agent runtime state. Portable knowledge belongs in prompts/plans/docs/memory,
+# not in these live coordination and telemetry spools.
+.agent/collaboration/HANDOFF.md
+.agent/collaboration/PENDING.json
+.agent/collaboration/PULSE.log
+.agent/collaboration/RESUME.json
+.agent/comms/command.json
+.agent/comms/output.json
+.agent/comms/output.txt
+.agents/attention/ATTENTION.json
+.agents/attention/ATTENTION_ARCHIVE.jsonl
+.agents/delegation/registry.jsonl
+.agents/telemetry/*.jsonl
+# Agent delegation task output logs and local registry are runtime state.
 .agents/delegation/outputs/
 .agents/delegation/fanout/
 # Phase 83 — DAG session traces (runtime; large JSONL, not for version control)

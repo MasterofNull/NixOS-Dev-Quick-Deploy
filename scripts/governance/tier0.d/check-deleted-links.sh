@@ -10,6 +10,7 @@ cd "${REPO_ROOT}"
 
 # Doc directories where deletions are guarded.
 DOC_PREFIXES=(".agent/" ".agents/plans/" "docs/")
+LOCAL_RUNTIME_DOCS=(".agent/collaboration/HANDOFF.md")
 
 collect_deleted_files() {
   if [[ "${MODE}" == "--pre-commit" ]]; then
@@ -23,6 +24,14 @@ deleted=()
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
   [[ "$f" != *.md ]] && continue
+  skip_runtime=false
+  for runtime_doc in "${LOCAL_RUNTIME_DOCS[@]}"; do
+    if [[ "$f" == "$runtime_doc" ]]; then
+      skip_runtime=true
+      break
+    fi
+  done
+  $skip_runtime && continue
   for prefix in "${DOC_PREFIXES[@]}"; do
     if [[ "$f" == "${prefix}"* ]]; then
       deleted+=("$f")
