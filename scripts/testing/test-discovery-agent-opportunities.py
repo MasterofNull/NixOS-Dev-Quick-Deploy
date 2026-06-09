@@ -38,6 +38,16 @@ async def main() -> int:
   Severity: high
   Action: Implement deterministic scanner.
   File: ai-stack/local-agents/discovery_agent.py
+
+[DONE] completed-issue — this closed issue must not become or mutate a candidate — Root cause: old bug.
+  Severity: high
+  Action: Ignore completed backlog records.
+  File: should/not/appear.py
+
+[OPEN] second-open — verify active issues after DONE are still parsed — Root cause: parser state bug.
+  Severity: medium
+  Action: Keep parsing active issues.
+  File: docs/second-open.md
 """,
         )
         _write(
@@ -84,10 +94,17 @@ async def main() -> int:
         assert_true(payload.get("total_candidates", 0) >= 4, "expected issue, health, delegation, and model candidates")
 
         categories = {item.get("category") for item in payload.get("candidates", [])}
+        titles = {item.get("title") for item in payload.get("candidates", [])}
         assert_true("system-fix" in categories, "open issues should create system-fix candidates")
         assert_true("health-spider" in categories, "health-spider anomalies should create health candidates")
         assert_true("delegation-quality" in categories, "delegation feedback should create quality candidates")
         assert_true("model-catalog" in categories, "stale model profile should create model-catalog candidate")
+        assert_true("Resolve open issue: completed-issue" not in titles, "DONE issues should not create candidates")
+        assert_true("Resolve open issue: second-open" in titles, "active issues after DONE should still create candidates")
+        assert_true(
+            all("should/not/appear.py" not in item.get("related_files", []) for item in payload.get("candidates", [])),
+            "DONE issue file paths should not bleed into active candidates",
+        )
 
         first = payload["candidates"][0]
         assert_true({"title", "category", "priority", "estimated_impact", "effort", "related_files"} <= set(first), "candidate should match dashboard summary contract")

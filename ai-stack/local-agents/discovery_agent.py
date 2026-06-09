@@ -26,7 +26,8 @@ from tool_registry import ToolRegistry, get_registry
 logger = logging.getLogger(__name__)
 
 
-_STATUS_RE = re.compile(r"^\[(OPEN|IN-FLIGHT|PENDING-REBUILD)\]\s+([^—]+)—\s*(.+?)\s+—")
+_STATUS_RE = re.compile(r"^\[(OPEN|IN-FLIGHT|PENDING-REBUILD|DONE)\]\s+([^—]+)—\s*(.+?)\s+—")
+_ACTIVE_STATUSES = {"OPEN", "IN-FLIGHT", "PENDING-REBUILD"}
 _SEVERITY_RE = re.compile(r"^\s*Severity:\s*(critical|high|medium|low)\s*$", re.IGNORECASE)
 _FILE_RE = re.compile(r"^\s*File:\s*(.+?)\s*$")
 
@@ -121,6 +122,9 @@ class DiscoveryAgent:
                 if current:
                     candidates.append(self._issue_candidate(current))
                 status, scope, description = match.groups()
+                if status not in _ACTIVE_STATUSES:
+                    current = None
+                    continue
                 current = {
                     "status": status,
                     "scope": scope.strip(),

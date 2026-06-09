@@ -19,6 +19,7 @@ from loopback.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import os
@@ -124,7 +125,7 @@ async def list_models(request: Request):
             m["file_exists"] = bool(local and Path(local).exists())
         except PermissionError:
             m["file_exists"] = None
-    return {"models": models, "count": len(models)}
+    return {"models": models, "count": len(models), "freshness": _model_freshness()}
 
 
 @router.get("/models/active")
@@ -410,6 +411,120 @@ _REGISTRY_PATHS = [
     Path(__file__).resolve().parents[4] / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "model-registry.json",
 ]
 
+_MODEL_PROFILE_PATH = Path(os.getenv("MODEL_PROFILE_PATH", "")) if os.getenv("MODEL_PROFILE_PATH") else Path(__file__).resolve().parents[4] / "config" / "model-profile.json"
+_MODEL_CATALOG_PATH = Path(__file__).resolve().parents[4] / "ai-stack" / "mcp-servers" / "shared" / "model_catalog.py"
+
+
+def _parse_ts(value: str) -> Optional[dt.datetime]:
+    try:
+        if not value:
+            return None
+        if len(value) == 10 and value.count("-") == 2:
+            value = f"{value}T00:00:00+00:00"
+        elif value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        return dt.datetime.fromisoformat(value).astimezone(dt.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _age_days(value: str) -> Optional[float]:
+    parsed = _parse_ts(value)
+    if parsed is None:
+        return None
+    return round((dt.datetime.now(dt.timezone.utc) - parsed).total_seconds() / 86400, 1)
+
+
+def _catalog_metadata() -> Dict[str, Any]:
+    if not _MODEL_CATALOG_PATH.exists():
+        return {}
+    try:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("_dashboard_model_catalog", _MODEL_CATALOG_PATH)
+        if spec is None or spec.loader is None:
+            return {}
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        metadata = getattr(module, "CATALOG_METADATA", {})
+        return metadata.copy() if isinstance(metadata, dict) else {}
+    except Exception as exc:
+        logger.warning("models route: failed to load catalog metadata: %s", exc)
+        return {}
+
+
+def _model_freshness() -> Dict[str, Any]:
+    """Return active model/profile/catalog freshness for dashboard and health checks."""
+    profile: Dict[str, Any] = {}
+    try:
+        profile = json.loads(_MODEL_PROFILE_PATH.read_text())
+    except Exception as exc:
+        return {
+            "status": "unknown",
+            "action_required": True,
+            "reason": f"model profile unavailable: {exc}",
+            "profile_path": str(_MODEL_PROFILE_PATH),
+        }
+
+    meta = profile.get("_meta", {}) if isinstance(profile.get("_meta"), dict) else {}
+    catalog = _catalog_metadata()
+    max_age = int(profile.get("freshness_max_age_days") or catalog.get("freshness_max_age_days") or 30)
+    model_id = profile.get("model_id")
+    probe_model_id = profile.get("probe_model_id")
+    model_path = profile.get("model_path")
+    reviewed_at = meta.get("reviewed_at") or meta.get("last_updated")
+    probed_at = profile.get("probed_at")
+    catalog_reviewed_at = catalog.get("catalog_reviewed_at")
+
+    profile_age_days = _age_days(str(reviewed_at or ""))
+    probe_age_days = _age_days(str(probed_at or ""))
+    catalog_age_days = _age_days(str(catalog_reviewed_at or ""))
+
+    active_model_path_state = "unknown"
+    try:
+        active_model_path_exists = bool(model_path and Path(model_path).exists())
+        active_model_path_state = "readable" if active_model_path_exists else "missing"
+    except PermissionError:
+        active_model_path_exists = None
+        active_model_path_state = "restricted"
+    except OSError:
+        active_model_path_exists = None
+
+    reasons = []
+    if not reviewed_at:
+        reasons.append("missing profile review timestamp")
+    if profile_age_days is None or profile_age_days > max_age:
+        reasons.append("model profile review is stale")
+    if probe_age_days is None or probe_age_days > max_age:
+        reasons.append("model probe is stale")
+    if catalog_age_days is None or catalog_age_days > int(catalog.get("freshness_max_age_days") or max_age):
+        reasons.append("model catalog review is stale")
+    if model_id != probe_model_id:
+        reasons.append("probe model does not match active model")
+    if active_model_path_state in {"missing", "unknown"}:
+        reasons.append("active model path is not readable")
+
+    status_value = "stale" if reasons else "fresh"
+    return {
+        "status": status_value,
+        "action_required": bool(reasons),
+        "reason": "; ".join(reasons) if reasons else "profile, probe, catalog, and active path are within policy",
+        "max_age_days": max_age,
+        "profile_age_days": profile_age_days,
+        "probe_age_days": probe_age_days,
+        "catalog_age_days": catalog_age_days,
+        "active_model_id": model_id,
+        "probe_model_id": probe_model_id,
+        "active_model_path": model_path,
+        "active_model_path_exists": active_model_path_exists,
+        "active_model_path_state": active_model_path_state,
+        "profile_reviewed_at": reviewed_at,
+        "probed_at": probed_at,
+        "catalog_reviewed_at": catalog_reviewed_at,
+        "catalog_version": catalog.get("catalog_version"),
+        "profile_path": str(_MODEL_PROFILE_PATH),
+    }
+
 
 def _stub_catalog():
     """Read model catalog from the persisted registry JSON; fall back to empty list."""
@@ -426,11 +541,12 @@ def _stub_catalog():
                     m["file_exists"] = bool(local and Path(local).exists())
                 except (PermissionError, OSError):
                     m["file_exists"] = None
-            return {"models": models, "count": len(models), "source": "registry_file"}
+            return {"models": models, "count": len(models), "source": "registry_file", "freshness": _model_freshness()}
         except Exception as _e:
             logger.warning("models route: failed to read registry file %s: %s", reg_path, _e)
     return {
         "models": [],
         "count": 0,
+        "freshness": _model_freshness(),
         "error": "lifecycle modules not available — coordinator may still be loading",
     }

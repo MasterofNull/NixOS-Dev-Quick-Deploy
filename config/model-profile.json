@@ -2,7 +2,9 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-05-20"
+    "last_updated": "2026-06-09",
+    "reviewed_at": "2026-06-09T00:00:00Z",
+    "freshness_policy": "phase154-profile-and-active-model-review"
   },
   "model_id": "active.gguf",
   "model_path": "/var/lib/llama-cpp/models/active.gguf",
@@ -23,5 +25,7 @@
   "ctx_budget_reasoning": 1842,
   "profile_version": 2,
   "probed_at": "2026-05-07T17:41:53.741214Z",
-  "probe_model_id": "active.gguf"
+  "probe_model_id": "active.gguf",
+  "freshness_max_age_days": 45,
+  "freshness_review_required": false
 }

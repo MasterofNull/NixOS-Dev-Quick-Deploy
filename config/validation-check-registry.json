@@ -1207,6 +1207,26 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "model-catalog-freshness",
+      "description": "Phase 154 \u2014 model catalog/profile freshness telemetry is governed and dashboard-visible",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/shared/model_catalog.py",
+        "config/model-profile.json",
+        "dashboard/backend/api/routes/models.py",
+        "assets/dashboard.js",
+        "scripts/testing/test-model-catalog-freshness.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-model-catalog-freshness.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

@@ -1145,6 +1145,25 @@ def _check_discovery_agent(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.4", "discovery agent opportunity scanner", detail)]
 
 
+def _check_model_catalog_freshness(ctx: RunContext) -> list[CheckResult]:
+    """Phase 154: model catalog/profile freshness is governed and visible."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-model-catalog-freshness.py"
+    if not check.exists():
+        return [failed(1, "0.10.5", "model catalog/profile freshness", "test-model-catalog-freshness.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.5", "model catalog/profile freshness telemetry wired")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.5", "model catalog/profile freshness", detail)]
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -1189,6 +1208,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_model_config(ctx))
     results.extend(_check_local_payload_discipline(ctx))
     results.extend(_check_discovery_agent(ctx))
+    results.extend(_check_model_catalog_freshness(ctx))
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))
