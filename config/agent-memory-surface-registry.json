@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "last_reviewed": "2026-06-09",
+  "purpose": "Classify agentic memory, handoff, learning, and state surfaces so agents can distinguish local runtime state from portable collective knowledge.",
+  "global_rules": [
+    "Local current-state files are ignored by git and must not be treated as portable memory.",
+    "Portable memory is curated before commit and should be compact, deduplicated, and referenced from the hot index.",
+    "Raw telemetry, scratchpads, and training loop outputs are evidence inputs, not authoritative instructions.",
+    "Facts promoted into AIDB/RAG must use the coordinator path and include source and fact_type metadata."
+  ],
+  "categories": {
+    "local_live_state": {
+      "authority": "current-session-only",
+      "tracking": "ignored",
+      "promotion_target": "durable_collective_memory or curated_prd_plan_prompt after review",
+      "retention": "operator-local; rotate or garbage-collect after handoff is complete",
+      "search_default": "only during resume/recovery",
+      "allowed_patterns": [
+        ".agent/collaboration/HANDOFF.md",
+        ".agent/collaboration/PENDING.json",
+        ".agent/collaboration/PULSE.log",
+        ".agent/collaboration/RESUME.json",
+        ".agent/comms/command.json",
+        ".agent/comms/output.json",
+        ".agent/comms/output.txt",
+        ".agents/attention/*.json",
+        ".agents/attention/*.jsonl",
+        ".agents/delegation/registry.jsonl",
+        ".agents/delegation/outputs/**",
+        ".agents/scratchpad/**",
+        ".agents/telemetry/*.jsonl",
+        "nix/hosts/*/facts.nix"
+      ],
+      "forbidden_tracked_patterns": [
+        ".agent/collaboration/HANDOFF.md",
+        ".agent/collaboration/PENDING.json",
+        ".agent/collaboration/PULSE.log",
+        ".agent/collaboration/RESUME.json",
+        ".agent/comms/command.json",
+        ".agent/comms/output.json",
+        ".agent/comms/output.txt",
+        ".agents/attention/ATTENTION.json",
+        ".agents/attention/ATTENTION_ARCHIVE.jsonl",
+        ".agents/delegation/registry.jsonl",
+        ".agents/telemetry/hybrid-events.jsonl",
+        ".agents/telemetry/routing-decisions.jsonl",
+        "nix/hosts/hyperd/facts.nix",
+        "nix/hosts/nixos/facts.nix",
+        "nix/hosts/sbc-minimal/facts.nix"
+      ],
+      "notes": "These files are useful for active operations but are unsafe as distributed source because they contain host-local, session-local, or high-churn state."
+    },
+    "portable_coordination_templates": {
+      "authority": "bootstrap-contract",
+      "tracking": "tracked",
+      "promotion_target": "none",
+      "retention": "distributed with repo",
+      "search_default": "yes",
+      "allowed_patterns": [
+        ".agent/collaboration/README.md",
+        ".agent/collaboration/HANDOFF.template.md",
+        ".agent/collaboration/PENDING.template.json",
+        ".agent/collaboration/RESUME.template.json"
+      ],
+      "forbidden_tracked_patterns": [],
+      "notes": "Templates define the local live-state shape without distributing the live state itself."
+    },
+    "durable_collective_memory": {
+      "authority": "curated-operational-memory",
+      "tracking": "tracked",
+      "promotion_target": "ai-stack/agent-memory/MEMORY.md pointer or .agent/memory topic file",
+      "retention": "trim hot index; archive stale topic files after review",
+      "search_default": "yes",
+      "allowed_patterns": [
+        "ai-stack/agent-memory/MEMORY.md",
+        ".agent/memory/*.md",
+        ".agents/improvement/candidates.json"
+      ],
+      "forbidden_tracked_patterns": [],
+      "notes": "Use for durable lessons, issue backlog, stable constraints, and curated improvement candidates. Keep MEMORY.md pointer-only."
+    },
+    "curated_prd_plan_prompt": {
+      "authority": "active-planning-record",
+      "tracking": "tracked",
+      "promotion_target": "docs/architecture, docs/operations, tests, or implementation",
+      "retention": "keep while referenced; archive superseded plans with inbound-reference scan",
+      "search_default": "yes for active task planning",
+      "allowed_patterns": [
+        ".agents/plans/*.md",
+        ".agents/prompts/*.md",
+        ".agent/PROJECT-*-PRD.md"
+      ],
+      "forbidden_tracked_patterns": [],
+      "notes": "These are intentional planning artifacts, not raw scratchpads."
+    },
+    "rag_database_facts": {
+      "authority": "retrieval-memory",
+      "tracking": "database",
+      "promotion_target": "error-solutions, best-practices, skills-patterns, logic-patterns, or codebase-context collection",
+      "retention": "dedupe by content hash and periodically curate stale facts",
+      "search_default": "via hybrid coordinator only",
+      "allowed_patterns": [
+        "coordinator:/query",
+        "coordinator:/memory/facts",
+        "scripts/ai/aq-commit-facts",
+        "scripts/data/seed-rag-knowledge.py"
+      ],
+      "forbidden_tracked_patterns": [],
+      "notes": "Agents must not write directly to AIDB or Qdrant. Promote facts through coordinator APIs or approved seeding scripts."
+    },
+    "raw_learning_feedback": {
+      "authority": "evidence-only",
+      "tracking": "ignored-or-runtime",
+      "promotion_target": "durable_collective_memory, rag_database_facts, or test coverage after review",
+      "retention": "bounded by service telemetry policy",
+      "search_default": "no; query through reports or dashboard",
+      "allowed_patterns": [
+        "/var/lib/ai-stack/**",
+        "/var/log/nixos-ai-stack/**",
+        ".agents/telemetry/*.jsonl",
+        ".agents/delegation/training-loop-*.json*"
+      ],
+      "forbidden_tracked_patterns": [
+        ".agents/delegation/training-loop-checkpoint.json",
+        ".agents/delegation/training-loop-results.jsonl"
+      ],
+      "notes": "Raw outcomes should feed scorecards, reports, and curated lessons. They should not become permanent instructions by accident."
+    },
+    "reference_only_archives": {
+      "authority": "historical-reference",
+      "tracking": "tracked-or-archived",
+      "promotion_target": "new curated memory or docs if still valid",
+      "retention": "read only when explicitly investigating history",
+      "search_default": "no",
+      "allowed_patterns": [
+        ".agent/archive/**",
+        ".agents/archive/**",
+        ".agents/planning/**",
+        ".agents/summary/**",
+        "docs/archive/**"
+      ],
+      "forbidden_tracked_patterns": [],
+      "notes": "Existing planning/summary/archive material may be useful evidence, but it is not active workflow authority."
+    }
+  },
+  "hot_memory_limits": {
+    "path": "ai-stack/agent-memory/MEMORY.md",
+    "max_lines": 200,
+    "rule": "Pointer index only; move details to topic files."
+  }
+}

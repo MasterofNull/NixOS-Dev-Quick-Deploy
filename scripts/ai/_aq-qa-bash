@@ -1093,6 +1093,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-flat-prd-gate.py"
     _check 1 "0.10.7" "agent artifact distribution policy" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-artifact-policy.py"
+    _check 1 "0.10.8" "agent memory surface registry" \
+      python3 "${REPO_ROOT}/scripts/testing/test-agent-memory-surface-registry.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
