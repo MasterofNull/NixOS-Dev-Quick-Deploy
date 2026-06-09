@@ -1202,6 +1202,25 @@ def _check_agent_artifact_policy(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.7", "agent artifact distribution policy", detail)]
 
 
+def _check_agent_memory_surface_registry(ctx: RunContext) -> list[CheckResult]:
+    """Phase 157: agent memory/state surfaces are classified and governed."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-agent-memory-surface-registry.py"
+    if not check.exists():
+        return [failed(1, "0.10.8", "agent memory surface registry", "test-agent-memory-surface-registry.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.8", "agent memory surface registry classifies state, memory, RAG, and archives")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.8", "agent memory surface registry", detail)]
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -1249,6 +1268,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_model_catalog_freshness(ctx))
     results.extend(_check_flat_prd_gate(ctx))
     results.extend(_check_agent_artifact_policy(ctx))
+    results.extend(_check_agent_memory_surface_registry(ctx))
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))

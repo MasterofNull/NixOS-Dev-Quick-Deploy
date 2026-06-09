@@ -1,3 +1,8 @@
+[DONE] agent-memory/state — Raw training-loop outputs and agent state surfaces lacked a single authority registry, letting agents confuse local runtime state, curated memory, RAG facts, old planning summaries, and raw feedback artifacts.
+  Severity: medium
+  Action: Added `config/agent-memory-surface-registry.json`, documented `docs/operations/agent-memory-state-standard.md`, untracked local training-loop outputs, and wired `scripts/testing/test-agent-memory-surface-registry.py` into aq-qa 0.10.8 plus validation registry.
+  File: config/agent-memory-surface-registry.json; docs/operations/agent-memory-state-standard.md; scripts/testing/test-agent-memory-surface-registry.py
+
 [RESOLVED 2026-06-06] aq-report/query-gaps-display — Section "7. Top Query Gaps" showed "No gaps data (Postgres unavailable or table empty)" even when DB had rows, because all rows were suppressed by `_is_curated_stale_gap()`. Root cause: the else branch couldn't distinguish "DB down" from "all filtered." Fix: track `_gaps_raw_count` before the filter pipeline; set `_gaps_all_suppressed = raw_count > 0 and not gaps`; show distinct message in both `format_text()` and `format_md()`. Added `gaps_all_suppressed` kwarg to both formatters (default False).
   Severity: low (display only — no data loss)
   Files: scripts/ai/aq-report ~lines 8100-8106, 6612, 5740

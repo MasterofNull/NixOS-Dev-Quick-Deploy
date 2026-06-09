@@ -179,6 +179,8 @@ nix/hosts/*/.sops.yaml
 .agents/attention/ATTENTION.json
 .agents/attention/ATTENTION_ARCHIVE.jsonl
 .agents/delegation/registry.jsonl
+.agents/delegation/training-loop-checkpoint.json
+.agents/delegation/training-loop-results.jsonl
 .agents/telemetry/*.jsonl
 # Agent delegation task output logs and local registry are runtime state.
 .agents/delegation/outputs/
