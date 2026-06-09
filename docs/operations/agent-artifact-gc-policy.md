@@ -2,7 +2,7 @@
 
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-05-25
+Last Updated: 2026-06-09
 Supersedes: none
 Superseded-By: none
 
@@ -26,6 +26,11 @@ This policy separates active coordination state from historical evidence and rep
 | Skill caches | `.agent/impeccable-cache/`, generated skill caches | Usually reproducible, but may be searched as source | Prune by age unless explicitly promoted to docs |
 | Generated Python/cache files | `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/` | Low authority risk, high search noise | Delete freely; never commit |
 | Cold archives | `archive/`, `docs/archive/` | Valuable history, but easy to cite accidentally | Keep indexed; do not treat as current authority |
+
+Distribution policy: see `docs/operations/agent-artifact-distribution-policy.md`.
+Runtime coordination, attention, delegation registry, and telemetry JSONL files
+stay local-only unless a durable lesson has been promoted into tracked docs,
+plans, prompts, tests, or memory.
 
 ## Retention Targets
 
@@ -64,4 +69,3 @@ python3 scripts/governance/audit-agent-artifact-debt.py --strict
 ```
 
 The audit reports hidden stores, large artifacts, old transient files, cache directories, and suspicious nested agent workspaces. It does not delete anything.
-

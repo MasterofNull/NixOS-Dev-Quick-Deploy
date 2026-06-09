@@ -1,0 +1,7 @@
+{
+  "current_objective": "Start a new local session with aq-session-start --task \"...\"",
+  "phase": "cold-start",
+  "todo_snapshot": [],
+  "uncommitted_changes": [],
+  "resume_hint": "No live RESUME.json is tracked. Create local runtime state during session start."
+}
