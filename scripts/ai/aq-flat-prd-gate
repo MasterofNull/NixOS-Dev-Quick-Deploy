@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""aq-flat-prd-gate — validate flat model-team PRD collaboration artifacts."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ACTIVE_MODES = {
+    "research_only",
+    "proposal_candidate",
+    "cross_review",
+    "consensus_synthesis",
+    "implementation_slice",
+    "integration_review",
+}
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _has_yaml_flag(path: Path, key: str, expected: str) -> bool:
+    if not path.exists():
+        return False
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*:\s*{re.escape(expected)}\s*(?:#.*)?$", re.MULTILINE)
+    return bool(pattern.search(_read(path)))
+
+
+def detect_mode(path: Path) -> str:
+    """Classify a collaboration artifact path for governance checks."""
+    parts = path.as_posix().split("/")
+    name = path.name.lower()
+    if "reviews" in parts:
+        return "cross_review"
+    if name.endswith("-proposal.md"):
+        return "proposal_candidate"
+    if name.endswith("-consensus-prd.md") or name.endswith("-slice-backlog.md") or name.endswith("-decision-log.md"):
+        return "consensus_synthesis"
+    if "slice" in name and name.endswith(".md"):
+        return "implementation_slice"
+    if "review" in name and name.endswith(".md"):
+        return "integration_review"
+    return "research_only"
+
+
+def _topic_paths(repo: Path, topic: str) -> dict[str, Path]:
+    return {
+        "proposal_dir": repo / ".agents" / "plans" / "model-proposals" / topic,
+        "reviews_dir": repo / ".agents" / "plans" / "model-proposals" / topic / "reviews",
+        "consensus_prd": repo / ".agents" / "plans" / f"{topic}-CONSENSUS-PRD.md",
+        "slice_backlog": repo / ".agents" / "plans" / f"{topic}-SLICE-BACKLOG.md",
+        "decision_log": repo / ".agents" / "plans" / f"{topic}-DECISION-LOG.md",
+    }
+
+
+def validate(repo: Path, topic: str | None = None) -> dict[str, Any]:
+    protocol = repo / ".agents" / "prompts" / "FLAT_MODEL_TEAM_PRD_PROTOCOL.md"
+    gemini = repo / ".agents" / "prompts" / "GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md"
+    local_cfg = repo / "config" / "local-agent-config.yaml"
+    workflow_cfg = repo / "config" / "workflow-automation.yaml"
+
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    protocol_text = _read(protocol) if protocol.exists() else ""
+    required_terms = [
+        "Independent Model-Team Proposals",
+        "Cross-Review",
+        "Consensus Merge",
+        "Slice Delegation",
+        "At least two independent model-team proposals",
+    ]
+    for term in required_terms:
+        if term not in protocol_text:
+            failures.append(f"protocol missing term: {term}")
+    if not gemini.exists():
+        failures.append("Gemini remediation companion missing")
+
+    if not _has_yaml_flag(local_cfg, "multi_agent_collaboration", "false"):
+        warnings.append("multi_agent_collaboration is not explicitly false; broad mode requires gate-backed rollout")
+    if not _has_yaml_flag(workflow_cfg, "collaborative_workflows", "false"):
+        warnings.append("collaborative_workflows is not explicitly false; broad mode requires gate-backed rollout")
+
+    topic_summary: dict[str, Any] | None = None
+    if topic:
+        paths = _topic_paths(repo, topic)
+        proposal_dir = paths["proposal_dir"]
+        reviews_dir = paths["reviews_dir"]
+        proposals = sorted(p for p in proposal_dir.glob("*-proposal.md") if p.is_file()) if proposal_dir.exists() else []
+        reviews = sorted(p for p in reviews_dir.glob("*.md") if p.is_file()) if reviews_dir.exists() else []
+        consensus = [paths["consensus_prd"], paths["slice_backlog"], paths["decision_log"]]
+
+        if len(proposals) < 2:
+            failures.append(f"topic {topic}: expected >=2 independent proposals, got {len(proposals)}")
+        if len(reviews) < 2:
+            failures.append(f"topic {topic}: expected >=2 cross-reviews, got {len(reviews)}")
+        missing_consensus = [p.name for p in consensus if not p.exists()]
+        if missing_consensus:
+            failures.append(f"topic {topic}: missing consensus artifacts: {', '.join(missing_consensus)}")
+
+        topic_summary = {
+            "topic": topic,
+            "proposal_count": len(proposals),
+            "review_count": len(reviews),
+            "consensus_artifacts": {p.name: p.exists() for p in consensus},
+            "modes": {p.as_posix(): detect_mode(p) for p in proposals + reviews + consensus if p.exists()},
+        }
+
+    return {
+        "ok": not failures,
+        "status": "pass" if not failures else "fail",
+        "warnings": warnings,
+        "failures": failures,
+        "modes_supported": sorted(ACTIVE_MODES),
+        "topic": topic_summary,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=_repo_root())
+    parser.add_argument("--topic", help="Validate a model-proposals topic before consensus integration")
+    parser.add_argument("--machine", action="store_true", help="Emit JSON")
+    args = parser.parse_args()
+
+    result = validate(args.repo_root.resolve(), args.topic)
+    if args.machine:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    elif result["ok"]:
+        print("PASS: flat PRD gate is satisfied")
+    else:
+        print("FAIL: flat PRD gate is not satisfied")
+        for failure in result["failures"]:
+            print(f"  - {failure}")
+    return 0 if result["ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

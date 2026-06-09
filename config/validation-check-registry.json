@@ -1227,6 +1227,27 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "flat-prd-gate",
+      "description": "Phase 155 \u2014 flat model-team PRD gate requires proposal/review/consensus artifacts",
+      "trigger_paths": [
+        "scripts/ai/aq-flat-prd-gate",
+        "scripts/testing/test-flat-prd-gate.py",
+        ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md",
+        ".agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md",
+        "config/local-agent-config.yaml",
+        "config/workflow-automation.yaml",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-flat-prd-gate.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

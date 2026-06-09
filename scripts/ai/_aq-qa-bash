@@ -1089,6 +1089,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-discovery-agent-opportunities.py"
     _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-model-catalog-freshness.py"
+    _check 1 "0.10.6" "flat model-team PRD gate" \
+      python3 "${REPO_ROOT}/scripts/testing/test-flat-prd-gate.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

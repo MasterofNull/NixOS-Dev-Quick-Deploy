@@ -1,34 +1,27 @@
 {
-  "current_objective": "Complete Phase 154 model catalog/profile freshness governance, validate live dashboard visibility, and continue parity gap closures.",
-  "phase": "Phase 154 — model catalog freshness governance",
+  "current_objective": "Complete Phase 155 flat model-team PRD intake gate and continue parity gap closures.",
+  "phase": "Phase 155 — flat collaboration PRD gate",
   "todo_snapshot": [
-    "DONE: Rehydrated session after Phase 153 commit 9f9aea2e",
-    "DONE: Delegated model-catalog freshness acceptance review to Curie; review confirmed live/stub /api/models freshness, dashboard UI, and aq-qa coverage requirements",
-    "DONE: Added CATALOG_METADATA to ai-stack/mcp-servers/shared/model_catalog.py",
-    "DONE: Added explicit profile freshness metadata to config/model-profile.json",
-    "DONE: Added /api/models freshness payload for live and stub catalog responses",
-    "DONE: Added Model Lifecycle freshness rows and badge status in assets/dashboard.js",
-    "DONE: Added focused regression script scripts/testing/test-model-catalog-freshness.py",
-    "DONE: Registered aq-qa Phase 0 check 0.10.5 in Python and active bash runner",
-    "DONE: Registered focused-CI check model-catalog-freshness",
-    "DONE: Refreshed .agents/improvement/candidates.json; model-catalog category dropped from live candidates after fix",
-    "DONE: Live dashboard API restart loaded freshness payload; /api/models reports status=fresh, active path state=restricted",
-    "PENDING: Run tier0 pre-commit, health-spider, commit Phase 154 files, then continue with flat-collaboration-disabled gate"
+    "DONE: Committed Phase 154 model freshness governance as 8a5f8ec6",
+    "DONE: Implemented scripts/ai/aq-flat-prd-gate with --machine output and topic validation",
+    "DONE: Gate supports research_only, proposal_candidate, cross_review, consensus_synthesis, implementation_slice, and integration_review mode classification",
+    "DONE: Gate requires >=2 model proposals, >=2 cross-reviews, and consensus PRD/slice-backlog/decision-log artifacts before a topic can be integrated",
+    "DONE: Added scripts/testing/test-flat-prd-gate.py regression coverage",
+    "DONE: Registered aq-qa Phase 0 check 0.10.6 in Python and active bash runner",
+    "DONE: Registered focused-CI check flat-prd-gate",
+    "DONE: Left broad collaboration flags disabled; gate-first rollout is intentional until direct delegation artifact persistence is fixed",
+    "DONE: aq-qa 0 --machine passed 101/0/0 with 0.10.6",
+    "PENDING: Run tier0 pre-commit, commit Phase 155 files, then continue with local-delegation-artifact or dashboard logic observability slices"
   ],
   "uncommitted_changes": [
-    "ai-stack/mcp-servers/shared/model_catalog.py",
-    "config/model-profile.json",
-    "dashboard/backend/api/routes/models.py",
-    "assets/dashboard.js",
-    "scripts/testing/test-model-catalog-freshness.py",
+    "scripts/ai/aq-flat-prd-gate",
+    "scripts/testing/test-flat-prd-gate.py",
     "scripts/testing/harness_qa/phases/phase0.py",
     "scripts/ai/_aq-qa-bash",
     "config/validation-check-registry.json",
-    ".agents/improvement/candidates.json",
     ".agent/memory/issues-backlog.md",
     ".agent/collaboration/RESUME.json",
-    ".agent/collaboration/HANDOFF.md",
     "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
   ],
-  "resume_hint": "Next: run tier0 pre-commit and aq-health-spider --once; stage only Phase 154 source/test/docs/candidates/resume/handoff files; commit. Avoid staging volatile ATTENTION_ARCHIVE, delegation registry, routing telemetry, and nix/hosts/hyperd/facts.nix unless intentionally promoted."
+  "resume_hint": "Next: run tier0 pre-commit; stage only Phase 155 gate/test/qa/registry/backlog/resume files; commit. Avoid staging volatile ATTENTION_ARCHIVE, delegation registry, routing telemetry, HANDOFF drift, and nix/hosts/hyperd/facts.nix unless intentionally promoted."
 }
