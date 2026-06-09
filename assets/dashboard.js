@@ -1424,8 +1424,33 @@ async function loadModels() {
     return;
   }
   const models = Array.isArray(d) ? d : d.models || [];
-  setText("mlBadge", `${models.length}`);
-  el.innerHTML =
+  const freshness = !Array.isArray(d) && d ? d.freshness || {} : {};
+  const freshStatus = freshness.status || "--";
+  const freshCls =
+    freshStatus === "fresh" ? "badge-ok" : freshStatus === "stale" ? "badge-warn" : "badge-info";
+  const freshBadge = document.getElementById("mlBadge");
+  if (freshBadge) {
+    freshBadge.className = `card-badge ${freshCls}`;
+    freshBadge.textContent = `${models.length} · ${freshStatus}`;
+  }
+  const freshnessHtml = `<div id="mlFreshness" style="border-bottom:1px solid rgba(255,255,255,.08);padding:.35rem .45rem .5rem;margin-bottom:.25rem">
+      <div class="fw-row"><span class="fk">Freshness</span><span class="fv ${
+        freshness.action_required ? "warn" : "ok"
+      }">${freshStatus}</span></div>
+      <div class="fw-row"><span class="fk">Active / Probe</span><span class="fv">${freshness.active_model_id || "--"} / ${
+        freshness.probe_model_id || "--"
+      }</span></div>
+      <div class="fw-row"><span class="fk">Profile Age</span><span class="fv">${
+        freshness.profile_age_days ?? "--"
+      }d</span></div>
+      <div class="fw-row"><span class="fk">Catalog Age</span><span class="fv">${
+        freshness.catalog_age_days ?? "--"
+      }d</span></div>
+      <div class="fw-row"><span class="fk">Active Path</span><span class="fv ${
+        freshness.active_model_path_state === "readable" || freshness.active_model_path_state === "restricted" ? "ok" : "warn"
+      }">${freshness.active_model_path_state || "--"}</span></div>
+    </div>`;
+  const modelRows =
     models
       .map((m) => {
         const sc =
@@ -1460,6 +1485,7 @@ async function loadModels() {
       })
       .join("") ||
     '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No models</div>';
+  el.innerHTML = freshnessHtml + modelRows;
 }
 
 async function mlPromote(id) {

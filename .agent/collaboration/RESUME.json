@@ -1,29 +1,34 @@
 {
-  "current_objective": "Complete Phase 153 proactive discovery-agent candidate generation and continue parity gap closures.",
-  "phase": "Phase 153 — deterministic discovery opportunities",
+  "current_objective": "Complete Phase 154 model catalog/profile freshness governance, validate live dashboard visibility, and continue parity gap closures.",
+  "phase": "Phase 154 — model catalog freshness governance",
   "todo_snapshot": [
-    "DONE: Rehydrated session and confirmed Phase 152 committed in 4233299c",
-    "DONE: Delegated model-catalog-freshness review to explorer; recommendation is to add metadata, aq-qa freshness gate, and dashboard model lifecycle freshness row",
-    "DONE: Delegated flat-collaboration-disabled review to explorer; recommendation is candidate-artifact PRD gate first, not broad autonomous writes",
-    "DONE: Replaced discovery_agent.py stub with deterministic local-signal scanner",
-    "DONE: Scanner emits dashboard-compatible .agents/improvement/candidates.json",
-    "DONE: Scanner reads issues backlog, health-spider telemetry, delegation feedback, and stale model profile metadata",
-    "DONE: Added focused regression test scripts/testing/test-discovery-agent-opportunities.py",
-    "DONE: Registered focused-CI check discovery-agent-opportunities",
-    "DONE: Added aq-qa Phase 0 check 0.10.4 for discovery candidate generation in both Python harness and active bash runner",
-    "DONE: Ran live discovery scan; dashboard /api/insights/improvements/candidates reports 19 candidates",
-    "PENDING: Run focused tests, aq-qa 0 --machine, tier0, commit Phase 153, then consider rebuild if local-agent source is packaged into active services"
+    "DONE: Rehydrated session after Phase 153 commit 9f9aea2e",
+    "DONE: Delegated model-catalog freshness acceptance review to Curie; review confirmed live/stub /api/models freshness, dashboard UI, and aq-qa coverage requirements",
+    "DONE: Added CATALOG_METADATA to ai-stack/mcp-servers/shared/model_catalog.py",
+    "DONE: Added explicit profile freshness metadata to config/model-profile.json",
+    "DONE: Added /api/models freshness payload for live and stub catalog responses",
+    "DONE: Added Model Lifecycle freshness rows and badge status in assets/dashboard.js",
+    "DONE: Added focused regression script scripts/testing/test-model-catalog-freshness.py",
+    "DONE: Registered aq-qa Phase 0 check 0.10.5 in Python and active bash runner",
+    "DONE: Registered focused-CI check model-catalog-freshness",
+    "DONE: Refreshed .agents/improvement/candidates.json; model-catalog category dropped from live candidates after fix",
+    "DONE: Live dashboard API restart loaded freshness payload; /api/models reports status=fresh, active path state=restricted",
+    "PENDING: Run tier0 pre-commit, health-spider, commit Phase 154 files, then continue with flat-collaboration-disabled gate"
   ],
   "uncommitted_changes": [
-    "ai-stack/local-agents/discovery_agent.py",
-    "scripts/testing/test-discovery-agent-opportunities.py",
+    "ai-stack/mcp-servers/shared/model_catalog.py",
+    "config/model-profile.json",
+    "dashboard/backend/api/routes/models.py",
+    "assets/dashboard.js",
+    "scripts/testing/test-model-catalog-freshness.py",
     "scripts/testing/harness_qa/phases/phase0.py",
     "scripts/ai/_aq-qa-bash",
     "config/validation-check-registry.json",
     ".agents/improvement/candidates.json",
-    ".agent/collaboration/RESUME.json",
     ".agent/memory/issues-backlog.md",
+    ".agent/collaboration/RESUME.json",
+    ".agent/collaboration/HANDOFF.md",
     "runtime-generated collaboration/telemetry artifacts remain unstaged unless explicitly promoted"
   ],
-  "resume_hint": "Next: validate py_compile, test-discovery-agent-opportunities.py, aq-qa 0 --machine, dashboard improvement candidates route, tier0; stage only Phase 153 files plus candidates.json; commit. Next slices: model-catalog-freshness and flat PRD intake gate."
+  "resume_hint": "Next: run tier0 pre-commit and aq-health-spider --once; stage only Phase 154 source/test/docs/candidates/resume/handoff files; commit. Avoid staging volatile ATTENTION_ARCHIVE, delegation registry, routing telemetry, and nix/hosts/hyperd/facts.nix unless intentionally promoted."
 }

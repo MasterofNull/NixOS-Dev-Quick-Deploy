@@ -20,6 +20,14 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
+CATALOG_METADATA: Dict[str, Any] = {
+    "catalog_version": "phase154-local-model-catalog",
+    "catalog_reviewed_at": "2026-06-09T00:00:00Z",
+    "source_reviewed_at": "2026-06-09T00:00:00Z",
+    "freshness_max_age_days": 45,
+    "freshness_policy": "review static catalog entries, active model profile, and model availability within policy window",
+}
+
 
 class HardwareTier(Enum):
     """Hardware tiers based on system capabilities"""
@@ -533,6 +541,7 @@ class ModelCatalogManager:
         all_models = self.get_available_models()
         
         summary = {
+            "metadata": CATALOG_METADATA.copy(),
             "total_models": len(all_models),
             "by_tier": {},
             "by_size": {},

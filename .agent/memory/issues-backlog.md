@@ -197,10 +197,10 @@
   Action: Use `.agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md` as the Phase 150 shared brief; design source-registry overlay, candidate schema, `aq-research-spider --machine`, local-signal ingest, eval sandbox, dashboard cards, and RAG learning loop before implementation.
   File: .agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md
 
-[OPEN] model-catalog-freshness — local model catalog is static and likely stale for current model velocity — Root cause: `ai-stack/mcp-servers/shared/model_catalog.py` contains hardcoded model specs and `config/model-profile.json` has a last-updated/probed timestamp but no freshness gate that forces review when model catalogs, local GGUF, or provider model capabilities drift.
+[DONE] model-catalog-freshness — local model catalog is static and likely stale for current model velocity — Root cause: `ai-stack/mcp-servers/shared/model_catalog.py` contains hardcoded model specs and `config/model-profile.json` had a last-updated/probed timestamp but no freshness gate that forces review when model catalogs, local GGUF, or provider model capabilities drift.
   Severity: medium
-  Action: Add model catalog/profile freshness metadata and aq-qa/dashboard checks; route new model candidates through sandbox evals before activation or download.
-  File: ai-stack/mcp-servers/shared/model_catalog.py
+  Action: Added catalog/profile freshness metadata, dashboard `/api/models.freshness`, Model Lifecycle freshness rows, focused CI coverage, and aq-qa 0.10.5; refreshed discovery candidates so stale model-catalog work no longer appears after validation.
+  File: ai-stack/mcp-servers/shared/model_catalog.py; config/model-profile.json; dashboard/backend/api/routes/models.py; assets/dashboard.js; scripts/testing/test-model-catalog-freshness.py
 
 [DONE] discovery-agent-stub — proactive discovery agent was not doing opportunity analysis yet — Root cause: `ai-stack/local-agents/discovery_agent.py` declared `discover_opportunities()` but only logged and `pass`ed, so idle discovery could not surface query gaps, routing failures, tokenomics regressions, or research candidates as actionable work.
   Severity: medium

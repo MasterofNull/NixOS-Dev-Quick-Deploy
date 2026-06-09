@@ -97,26 +97,6 @@
       "title": "Investigate recurring health signal: hybrid-coordinator apparmor_denial"
     },
     {
-      "category": "model-catalog",
-      "effort": "small",
-      "estimated_impact": "profile_age_days=32",
-      "evidence": [
-        "probed_at=2026-05-07T17:41:53.741214Z",
-        "_meta.last_updated=2026-05-20"
-      ],
-      "id": "model-refresh-local-model-profile-freshness-metadata-a4882f992eae",
-      "priority": 2,
-      "related_files": [
-        "config/model-profile.json",
-        "ai-stack/mcp-servers/shared/model_catalog.py"
-      ],
-      "suggested_actions": [
-        "Refresh probe metadata or mark freshness policy explicitly",
-        "Add aq-qa/dashboard freshness gates before activating new models"
-      ],
-      "title": "Refresh local model profile freshness metadata"
-    },
-    {
       "category": "system-fix",
       "effort": "medium",
       "estimated_impact": "high issue pressure",
@@ -134,6 +114,47 @@
         "Add aq-qa and dashboard visibility before closing"
       ],
       "title": "Resolve open issue: agentic-mind"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=PENDING-REBUILD",
+        "Dashboard AppArmor denials degraded operator visibility while health-spider and auto-remediate did not catch/fix it promptly"
+      ],
+      "id": "issue-resolve-open-issue-dashboard-health-spider-256bd6b40ce3",
+      "priority": 2,
+      "related_files": [
+        "scripts/ai/aq-health-spider ~line 77",
+        "scripts/automation/auto-remediate.sh ~line 16",
+        "dashboard/backend/api/routes/firewall.py ~line 54",
+        "nix/modules/services/mcp-servers.nix ~line 1737"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: dashboard/health-spider"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=OPEN",
+        "post-build cursor/text input instability required system build revert"
+      ],
+      "id": "issue-resolve-open-issue-desktop-input-17ca0df46069",
+      "priority": 2,
+      "related_files": [
+        ".agents/plans/phase-148-agentic-mind-research.md"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: desktop-input"
     },
     {
       "category": "system-fix",
@@ -167,14 +188,32 @@
       "id": "issue-resolve-open-issue-local-delegation-artifact-b20ea57633c5",
       "priority": 2,
       "related_files": [
-        "scripts/ai/aq-health-spider",
-        "scripts/testing/test-boot-stability-regressions.py"
+        "scripts/ai/delegate-to-local"
       ],
       "suggested_actions": [
         "Create a bounded implementation slice",
         "Add aq-qa and dashboard visibility before closing"
       ],
       "title": "Resolve open issue: local-delegation-artifact"
+    },
+    {
+      "category": "system-fix",
+      "effort": "medium",
+      "estimated_impact": "high issue pressure",
+      "evidence": [
+        "issues-backlog status=PENDING-REBUILD",
+        "Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage"
+      ],
+      "id": "issue-resolve-open-issue-observability-parity-3f3b1b8d21cc",
+      "priority": 2,
+      "related_files": [
+        ".agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md"
+      ],
+      "suggested_actions": [
+        "Create a bounded implementation slice",
+        "Add aq-qa and dashboard visibility before closing"
+      ],
+      "title": "Resolve open issue: observability-parity"
     },
     {
       "category": "system-fix",
@@ -254,120 +293,23 @@
       "effort": "medium",
       "estimated_impact": "medium issue pressure",
       "evidence": [
-        "issues-backlog status=PENDING-REBUILD",
-        "Dashboard AppArmor denials degraded operator visibility while health-spider and auto-remediate did not catch/fix it promptly"
-      ],
-      "id": "issue-resolve-open-issue-dashboard-health-spider-256bd6b40ce3",
-      "priority": 3,
-      "related_files": [
-        "ai-stack/orchestration/workspace_isolation.py (cleanup_workspace method)"
-      ],
-      "suggested_actions": [
-        "Create a bounded implementation slice",
-        "Add aq-qa and dashboard visibility before closing"
-      ],
-      "title": "Resolve open issue: dashboard/health-spider"
-    },
-    {
-      "category": "system-fix",
-      "effort": "medium",
-      "estimated_impact": "medium issue pressure",
-      "evidence": [
-        "issues-backlog status=OPEN",
-        "post-build cursor/text input instability required system build revert"
-      ],
-      "id": "issue-resolve-open-issue-desktop-input-17ca0df46069",
-      "priority": 3,
-      "related_files": [
-        "scripts/ai/aq-chat ~line 95"
-      ],
-      "suggested_actions": [
-        "Create a bounded implementation slice",
-        "Add aq-qa and dashboard visibility before closing"
-      ],
-      "title": "Resolve open issue: desktop-input"
-    },
-    {
-      "category": "system-fix",
-      "effort": "medium",
-      "estimated_impact": "medium issue pressure",
-      "evidence": [
-        "issues-backlog status=OPEN",
-        "proactive discovery agent is not doing opportunity analysis yet"
-      ],
-      "id": "issue-resolve-open-issue-discovery-agent-stub-f3dab5fd2b7b",
-      "priority": 3,
-      "related_files": [
-        "ai-stack/local-agents/discovery_agent.py"
-      ],
-      "suggested_actions": [
-        "Create a bounded implementation slice",
-        "Add aq-qa and dashboard visibility before closing"
-      ],
-      "title": "Resolve open issue: discovery-agent-stub"
-    },
-    {
-      "category": "system-fix",
-      "effort": "medium",
-      "estimated_impact": "medium issue pressure",
-      "evidence": [
         "issues-backlog status=OPEN",
         "ROCm not available on Renoir APU (gfx90c)"
       ],
       "id": "issue-resolve-open-issue-hardware-426e9a0e2222",
       "priority": 3,
       "related_files": [
-        "nix/modules/services/mcp-servers.nix ~line 2609"
+        "nix/modules/roles/ai-stack.nix ~line 439"
       ],
       "suggested_actions": [
         "Create a bounded implementation slice",
         "Add aq-qa and dashboard visibility before closing"
       ],
       "title": "Resolve open issue: hardware"
-    },
-    {
-      "category": "system-fix",
-      "effort": "medium",
-      "estimated_impact": "medium issue pressure",
-      "evidence": [
-        "issues-backlog status=OPEN",
-        "local model catalog is static and likely stale for current model velocity"
-      ],
-      "id": "issue-resolve-open-issue-model-catalog-freshness-e918cdbb88ae",
-      "priority": 3,
-      "related_files": [
-        "ai-stack/mcp-servers/shared/model_catalog.py"
-      ],
-      "suggested_actions": [
-        "Create a bounded implementation slice",
-        "Add aq-qa and dashboard visibility before closing"
-      ],
-      "title": "Resolve open issue: model-catalog-freshness"
-    },
-    {
-      "category": "system-fix",
-      "effort": "medium",
-      "estimated_impact": "medium issue pressure",
-      "evidence": [
-        "issues-backlog status=PENDING-REBUILD",
-        "Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage"
-      ],
-      "id": "issue-resolve-open-issue-observability-parity-3f3b1b8d21cc",
-      "priority": 3,
-      "related_files": [
-        "nix/modules/services/command-center-dashboard.nix",
-        "nixos-quick-deploy.sh",
-        "scripts/ai/aq-health-spider"
-      ],
-      "suggested_actions": [
-        "Create a bounded implementation slice",
-        "Add aq-qa and dashboard visibility before closing"
-      ],
-      "title": "Resolve open issue: observability-parity"
     }
   ],
-  "generated_at": "2026-06-08T23:47:15.780198+00:00",
+  "generated_at": "2026-06-09T03:53:06.089696+00:00",
   "schema_version": "discovery-candidates.v1",
   "source": "DiscoveryAgent",
-  "total_candidates": 19
+  "total_candidates": 16
 }
