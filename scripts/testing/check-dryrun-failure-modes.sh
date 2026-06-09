@@ -49,12 +49,12 @@ cfg_ref="${FLAKE_REF}#nixosConfigurations.\"${NIXOS_TARGET}\".config"
 
 nix_raw() {
   local expr="$1"
-  nix --extra-experimental-features 'nix-command flakes' eval --raw "${cfg_ref}.${expr}" 2>/dev/null
+  nix --extra-experimental-features 'nix-command flakes' eval --option eval-cache false --raw "${cfg_ref}.${expr}"
 }
 
 nix_json() {
   local expr="$1"
-  nix --extra-experimental-features 'nix-command flakes' eval --json "${cfg_ref}.${expr}" 2>/dev/null
+  nix --extra-experimental-features 'nix-command flakes' eval --option eval-cache false --json "${cfg_ref}.${expr}"
 }
 
 assert_prefix() {
@@ -88,8 +88,8 @@ assert_prefix "${npm_wd}" "/var/lib/" "ai-npm-security-monitor WorkingDirectory"
 assert_prefix "${post_wd}" "/var/lib/" "ai-post-deploy-converge WorkingDirectory"
 
 log "Checking service executable wiring"
-npm_exec="$(nix_raw 'systemd.services.ai-npm-security-monitor.serviceConfig.ExecStart')"
-post_exec="$(nix_raw 'systemd.services.ai-post-deploy-converge.serviceConfig.ExecStart')"
+npm_exec="$(nix_json 'systemd.services.ai-npm-security-monitor.serviceConfig.ExecStart' | jq -r .)"
+post_exec="$(nix_json 'systemd.services.ai-post-deploy-converge.serviceConfig.ExecStart' | jq -r .)"
 echo "${npm_exec}" | grep -E ' /nix/store/[^ ]+-source/scripts/security/npm-security-monitor\.sh ' >/dev/null \
   || die "ai-npm-security-monitor ExecStart is not store-backed"
 echo "${npm_exec}" | grep -F "scripts/security/npm-security-monitor.sh" >/dev/null \
