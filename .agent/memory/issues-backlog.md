@@ -1,3 +1,8 @@
+[DONE] pre-push/failure-mode-check — `git push` was blocked by quick lint "Known failure-mode checks" after host facts became local-only. Root cause: host defaults still imported ignored `facts.nix` unconditionally, so pure flake source evaluation failed; once fixed, the checker also exposed context-bearing `ExecStart` eval fragility.
+  Severity: high
+  Action: Made host `facts.nix` imports optional, changed npm security monitor `ExecStart` to `lib.escapeShellArgs`, and updated `check-dryrun-failure-modes.sh` to disable eval-cache and read `ExecStart` via JSON.
+  File: nix/hosts/hyperd/default.nix; nix/hosts/nixos/default.nix; nix/hosts/sbc-minimal/default.nix; nix/modules/services/mcp-servers.nix; scripts/testing/check-dryrun-failure-modes.sh
+
 [DONE] agent-memory/state — Raw training-loop outputs and agent state surfaces lacked a single authority registry, letting agents confuse local runtime state, curated memory, RAG facts, old planning summaries, and raw feedback artifacts.
   Severity: medium
   Action: Added `config/agent-memory-surface-registry.json`, documented `docs/operations/agent-memory-state-standard.md`, untracked local training-loop outputs, and wired `scripts/testing/test-agent-memory-surface-registry.py` into aq-qa 0.10.8 plus validation registry.

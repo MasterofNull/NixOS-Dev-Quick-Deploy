@@ -1657,7 +1657,14 @@ in {
           User = auditUser;
           Group = aiGroup;
           WorkingDirectory = dataDir;
-          ExecStart = "${pkgs.bash}/bin/bash" + " " + "${repoSource}/scripts/security/npm-security-monitor.sh" + " --repo-root " + "${repoSource}" + " --output-dir ${dataDir}/security/npm";
+          ExecStart = lib.escapeShellArgs [
+            "${pkgs.bash}/bin/bash"
+            "${toString repoSource}/scripts/security/npm-security-monitor.sh"
+            "--repo-root"
+            "${toString repoSource}"
+            "--output-dir"
+            "${dataDir}/security/npm"
+          ];
           ReadOnlyPaths = ["/"];
           # Keep namespace requirements stable by anchoring writes to dataDir.
           # Per-path confinement is still preserved by service logic + assertions.

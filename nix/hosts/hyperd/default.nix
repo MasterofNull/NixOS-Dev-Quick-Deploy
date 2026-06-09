@@ -4,7 +4,7 @@
   ...
 }: {
   imports =
-    [./facts.nix]
+    lib.optionals (builtins.pathExists ./facts.nix) [./facts.nix]
     ++ lib.optionals (builtins.pathExists ./hardware-configuration.nix) [./hardware-configuration.nix];
 
   # ── Host-Specific Configuration ───────────────────────────────────────────────
