@@ -1357,6 +1357,24 @@ async function loadRouting() {
 
   // Show per-intent breakdown from traces (most accurate), then profiles, then fallbacks
   const traceIntents = (traceSummary && traceSummary.intent_breakdown) || {};
+
+  // Phase 160 — unknown intent rate stat tile
+  {
+    const unknownCount = traceIntents.unknown || 0;
+    const unknownPct = traceCount > 0 ? Math.round(100 * unknownCount / traceCount) : null;
+    if (unknownPct !== null) {
+      setText("vIntentUnknown", `${unknownPct}%`);
+      setText("vIntentUnknownDetail", `${unknownCount}/${traceCount} unclassified`);
+      const tile = document.getElementById("statIntentUnknown");
+      if (tile) {
+        tile.classList.remove("ok", "warn", "err");
+        tile.classList.add(unknownPct > 50 ? "err" : unknownPct > 20 ? "warn" : "ok");
+      }
+    } else {
+      setText("vIntentUnknown", "--");
+      setText("vIntentUnknownDetail", "no trace data");
+    }
+  }
   const profiles = w7d.top_profiles || cur.top_profiles || [];
   const recentD = (cls || {}).recent_decisions || [];
   const clsTypes = (cls || {}).by_task_type || {};

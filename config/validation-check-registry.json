@@ -1261,6 +1261,17 @@
       "category": "behavioral"
     },
     {
+      "id": "intent-classifier-coverage",
+      "description": "Phase 160: intent classification unknown rate stat tile and aq-report 4c panel",
+      "phase": "160",
+      "command": [
+        "python3",
+        "scripts/testing/test-intent-classifier-coverage.py"
+      ],
+      "timeout_secs": 30,
+      "category": "behavioral"
+    },
+    {
       "id": "agent-artifact-distribution-policy",
       "description": "Phase 156 \u2014 local runtime artifacts stay untracked while portable knowledge is distributed",
       "trigger_paths": [

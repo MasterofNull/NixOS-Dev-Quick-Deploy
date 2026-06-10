@@ -1240,6 +1240,25 @@ def _check_local_delegation_artifact(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.9", "local delegation artifact persistence", detail)]
 
 
+def _check_intent_classifier_coverage(ctx: RunContext) -> list[CheckResult]:
+    """Phase 160: intent unknown rate stat tile and aq-report 4c section."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-intent-classifier-coverage.py"
+    if not check.exists():
+        return [failed(1, "0.10.10", "intent classifier coverage", "test-intent-classifier-coverage.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.10", "intent classifier coverage: unknown-rate tile and 4c panel wired")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.10", "intent classifier coverage", detail)]
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -1302,6 +1321,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_phase87_training_ingest(ctx))
     results.extend(_check_phase146_identity_coverage(ctx))
     results.extend(_check_local_delegation_artifact(ctx))
+    results.extend(_check_intent_classifier_coverage(ctx))
     return results
 
 
