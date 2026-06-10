@@ -75,6 +75,7 @@ class TaskConfig:
         hybrid_url: str,
         ralph_url: str,
         task_type: str = "code",
+        max_tokens_hint: int | None = None,
     ) -> "TaskConfig":
         """Build a TaskConfig, resolving token budget and normalising role."""
         if mode not in _VALID_MODES:
@@ -87,7 +88,7 @@ class TaskConfig:
                 f"(or legacy aliases: {sorted(_ROLE_ALIASES)})"
             )
 
-        resolved_tokens = cls._resolve_tokens(mode, max_tokens)
+        resolved_tokens = cls._resolve_tokens(mode, max_tokens, hint=max_tokens_hint)
         resolved_task_type = task_type if task_type in _VALID_TASK_TYPES else "code"
 
         return cls(
@@ -102,8 +103,14 @@ class TaskConfig:
         )
 
     @staticmethod
-    def _resolve_tokens(mode: str, explicit: int | None) -> int:
-        """Priority: explicit CLI → DIRECT_MAX_TOKENS env → LLAMA_MAX_TOKENS env → default."""
+    def _resolve_tokens(mode: str, explicit: int | None, hint: int | None = None) -> int:
+        """Priority: explicit CLI → DIRECT_MAX_TOKENS env → LLAMA_MAX_TOKENS env → hint → default.
+
+        hint: profile max_tokens_hint (Phase 163). Applied after env vars so
+        DIRECT_MAX_TOKENS=8192 still overrides the profile suggestion. This lets
+        each task class carry a sensible default without the mode-global 4096 fallback
+        generating unnecessarily large budgets for tiny/structured tasks.
+        """
         if explicit is not None:
             return explicit
         if mode in ("direct", "ralph"):
@@ -119,4 +126,6 @@ class TaskConfig:
                 return int(env_llama)
             except ValueError:
                 pass
+        if hint is not None:
+            return hint
         return _MODE_TOKEN_DEFAULTS.get(mode, 1200)

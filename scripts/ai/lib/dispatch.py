@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import socket
 import subprocess
@@ -100,6 +101,57 @@ except ImportError:
 from task_config import TaskConfig  # type: ignore  # noqa: E402
 from task_registry import TaskRegistry  # type: ignore  # noqa: E402
 from slot_scheduler import wait_for_slot  # type: ignore  # noqa: E402
+
+
+# ── Phase 163: local inference budget + visibility ───────────────────────────
+# Calibration constant for timeout scaling in direct-mode tasks.
+# At 1.0 tok/s (Renoir APU measured floor), a 1200-tok task needs ≥1260s.
+# Override via env: LOCAL_TOK_PER_SEC=1.5 delegate-to-local --task-id ...
+_LOCAL_TOK_PER_SEC = float(os.environ.get("LOCAL_TOK_PER_SEC", "1.0"))
+
+
+def _scale_timeout(explicit_timeout: int, max_tokens: int) -> int:
+    """Compute timeout from token budget so long tasks aren't killed prematurely.
+
+    Formula: max(explicit_timeout, ceil(max_tokens / LOCAL_TOK_PER_SEC) + 60)
+    The 60s headroom covers connection setup and final SSE flush.
+
+    Only applied to direct-mode llama.cpp tasks — HybridRunner / RalphRunner /
+    AgentRunner manage their own timeouts independent of token budgets.
+    """
+    computed = math.ceil(max_tokens / _LOCAL_TOK_PER_SEC) + 60
+    return max(explicit_timeout, computed)
+
+
+def _write_progress(
+    progress_file: Path,
+    tokens_out: int,
+    max_tokens: int,
+    elapsed_s: float,
+    tok_per_sec: float,
+    eta_s: Optional[float],
+    status: str,
+) -> None:
+    """Atomically update a .progress.json sidecar for dispatch.py watch to read.
+
+    Uses write-then-rename so readers never see a partial file.
+    Silently no-ops on any I/O error — never blocks the main inference path.
+    """
+    data: dict = {
+        "status": status,
+        "tokens_out": tokens_out,
+        "max_tokens": max_tokens,
+        "elapsed_s": round(elapsed_s, 1),
+        "tok_per_sec": round(tok_per_sec, 2),
+    }
+    if eta_s is not None:
+        data["eta_s"] = round(eta_s, 0)
+    try:
+        tmp = progress_file.with_suffix(".progress.tmp")
+        tmp.write_text(json.dumps(data))
+        tmp.rename(progress_file)
+    except Exception:
+        pass
 
 
 # ── training telemetry ────────────────────────────────────────────────────────
@@ -307,7 +359,13 @@ class DirectRunner:
     """
 
     def run(self, config: TaskConfig, prompt: str, output_file: Path) -> bool:
-        """Return True on success, False on failure. Writes result to output_file."""
+        """Return True on success, False on failure. Writes result to output_file.
+
+        Phase 163: incremental writes — each SSE content chunk is written and
+        flushed immediately so observers (dispatch.py watch, tail -f) see output
+        in real time rather than waiting for the full response to complete.
+        A .progress.json sidecar is updated every 10 tokens for live metrics.
+        """
         wait_for_slot(config.llama_url, config.timeout_secs)
 
         messages = [{"role": "user", "content": prompt}]
@@ -325,51 +383,79 @@ class DirectRunner:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        progress_file = Path(str(output_file) + ".progress.json")
+        _start = time.monotonic()
+
         try:
             with urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
-                full_text: list[str] = []
                 tokens_in = tokens_out = 0
-                # After first byte we have the slot; switch to per-line timeout
+                _stream_toks = 0  # content-chunk count; proxy for tokens_out mid-stream
                 resp.fp.raw._sock.settimeout(config.timeout_secs)
-                for raw_line in resp:
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        # Usage chunk (include_usage=True) has choices:[] — handle independently
-                        choices = chunk.get("choices") or []
-                        if choices:
-                            content = choices[0].get("delta", {}).get("content", "")
-                            if content:
-                                full_text.append(content)
-                        usage = chunk.get("usage") or {}
-                        if usage:
-                            tokens_in = usage.get("prompt_tokens", tokens_in)
-                            tokens_out = usage.get("completion_tokens", tokens_out)
-                    except (json.JSONDecodeError, KeyError):
-                        pass
+                # Phase 163: open file at stream start — write each content chunk
+                # immediately so tail -f / dispatch.py watch sees live output.
+                with open(output_file, "w", encoding="utf-8") as out_fh:
+                    for raw_line in resp:
+                        line = raw_line.decode("utf-8", errors="replace").strip()
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            # Usage chunk (include_usage=True) has choices:[] — independent
+                            choices = chunk.get("choices") or []
+                            if choices:
+                                content = choices[0].get("delta", {}).get("content", "")
+                                if content:
+                                    out_fh.write(content)
+                                    out_fh.flush()
+                                    _stream_toks += 1
+                            usage = chunk.get("usage") or {}
+                            if usage:
+                                tokens_in = usage.get("prompt_tokens", tokens_in)
+                                tokens_out = usage.get("completion_tokens", tokens_out)
+                            # Progress sidecar: update every 10 content tokens
+                            if _stream_toks > 0 and _stream_toks % 10 == 0:
+                                elapsed = time.monotonic() - _start
+                                tps = _stream_toks / elapsed if elapsed > 0 else 0.0
+                                eta = (config.max_tokens - _stream_toks) / tps if tps > 0 else None
+                                _write_progress(progress_file, _stream_toks, config.max_tokens,
+                                                elapsed, tps, eta, "running")
+                        except (json.JSONDecodeError, KeyError):
+                            pass
 
-            result = "".join(full_text)
-            output_file.write_text(result)
-            if tokens_in or tokens_out:
+            final_toks = tokens_out or _stream_toks
+            elapsed = time.monotonic() - _start
+            tps = final_toks / elapsed if elapsed > 0 and final_toks > 0 else 0.0
+            _write_progress(progress_file, final_toks, config.max_tokens, elapsed, tps, None, "done")
+
+            result = output_file.read_text() if output_file.exists() else ""
+            if tokens_in or final_toks:
                 Path(str(output_file) + ".usage.json").write_text(
-                    json.dumps({"tokens_in": tokens_in, "tokens_out": tokens_out})
+                    json.dumps({"tokens_in": tokens_in, "tokens_out": final_toks})
                 )
             # Emit agent_step_complete to feed training ingest pipeline.
-            # training_ingest.py reads this event type from hybrid-events.jsonl;
-            # without it samples_added stays 0 for direct-mode dispatches.
-            _emit_training_event(prompt, result, tokens_in, tokens_out, config.role)
+            _emit_training_event(prompt, result, tokens_in, final_toks, config.role)
             return True
 
         except urllib.error.HTTPError as e:
+            elapsed = time.monotonic() - _start
+            _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
             output_file.write_text(f"HTTP {e.code}: {e.read().decode()}")
             return False
         except Exception as e:
-            output_file.write_text(f"Error: {e}")
+            elapsed = time.monotonic() - _start
+            _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
+            # Preserve any partial output that streamed before the failure
+            if output_file.exists() and output_file.stat().st_size > 0:
+                try:
+                    with open(output_file, "a", encoding="utf-8") as fh:
+                        fh.write(f"\n\n[Error: {e}]")
+                except Exception:
+                    pass
+            else:
+                output_file.write_text(f"Error: {e}")
             return False
 
 
@@ -801,7 +887,94 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("task_id")
         p.add_argument("--delegation-dir", required=True)
 
+    # watch subcommand — Phase 163: live tail of running task output + progress
+    w = sub.add_parser("watch", help="Tail a running task with live progress metrics")
+    w.add_argument("task_id")
+    w.add_argument("--delegation-dir", required=True)
+    w.add_argument("--interval", type=float, default=2.0,
+                   help="Poll interval in seconds (default: 2)")
+
     return parser
+
+
+def _cmd_watch(args: argparse.Namespace) -> int:
+    """Phase 163: tail a running dispatch task with live progress metrics.
+
+    Polls the output file for new content and the .progress.json sidecar for
+    metrics. Exits when the task reaches done/failed status. Ctrl-C detaches
+    cleanly without killing the background task.
+    """
+    delegation_dir = Path(args.delegation_dir)
+    registry = TaskRegistry(delegation_dir)
+    entry = registry.get(args.task_id)
+    if not entry:
+        print(f"Task {args.task_id!r} not found in registry.", file=sys.stderr)
+        return 1
+
+    output_path_str = entry.get("output_file", "")
+    output_path = Path(output_path_str) if output_path_str else None
+    progress_path = Path(str(output_path) + ".progress.json") if output_path else None
+    interval = getattr(args, "interval", 2.0)
+    pos = 0  # byte position in output file (tracks new bytes to display)
+
+    print(f"[watch] task={args.task_id}", flush=True)
+    if output_path:
+        print(f"[watch] output={output_path}", flush=True)
+    print("[watch] Ctrl-C to detach (task keeps running)", flush=True)
+    print("-" * 60, flush=True)
+
+    try:
+        while True:
+            # Stream new output
+            if output_path and output_path.exists():
+                try:
+                    with open(output_path, "rb") as f:
+                        f.seek(pos)
+                        new_bytes = f.read()
+                    if new_bytes:
+                        sys.stdout.write(new_bytes.decode("utf-8", errors="replace"))
+                        sys.stdout.flush()
+                        pos += len(new_bytes)
+                except Exception:
+                    pass
+
+            # Read progress sidecar
+            prog = None
+            if progress_path and progress_path.exists():
+                try:
+                    prog = json.loads(progress_path.read_text())
+                except Exception:
+                    pass
+
+            status = "unknown"
+            if prog:
+                status = prog.get("status", "unknown")
+                toks = prog.get("tokens_out", 0)
+                max_t = prog.get("max_tokens", 0)
+                pct = f"{100 * toks // max_t}%" if max_t else "?%"
+                elapsed = prog.get("elapsed_s", 0)
+                tps = prog.get("tok_per_sec", 0)
+                eta = prog.get("eta_s")
+                eta_str = f"  eta={int(eta)}s" if eta else ""
+                print(
+                    f"\n[progress] {status}  {toks}/{max_t} tok ({pct})"
+                    f"  elapsed={elapsed:.0f}s  {tps:.1f} tok/s{eta_str}",
+                    flush=True,
+                )
+            else:
+                # Fall back to registry status when sidecar not yet created
+                entry = registry.get(args.task_id)
+                if entry:
+                    status = entry.get("status", "unknown")
+
+            if status in ("done", "failed"):
+                print(f"\n[watch] complete: {status}", flush=True)
+                return 0 if status == "done" else 1
+
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\n[watch] detached — task still running", flush=True)
+        return 0
 
 
 def main() -> int:
@@ -827,6 +1000,9 @@ def main() -> int:
     if args.subcmd == "cancel":
         return registry.cmd_cancel(args.task_id)
 
+    if args.subcmd == "watch":
+        return _cmd_watch(args)
+
     # delegate subcommand
     assert args.subcmd == "delegate"
 
@@ -834,10 +1010,9 @@ def main() -> int:
     # Token budget resolution:
     #   1. Explicit --max-tokens CLI flag → absolute override
     #   2. classify_tokens() signal match (tiny/small/large) → task-appropriate budget
-    #   3. None from classify_tokens → pass None so TaskConfig reads DIRECT_MAX_TOKENS
-    #      env var (set by the caller shell) then falls back to mode default.
-    # This ensures that `DIRECT_MAX_TOKENS=8192 delegate-to-local ...` is always
-    # honoured and not silently capped by the heuristic's 800-token default.
+    #   3. None from classify_tokens → TaskConfig reads DIRECT_MAX_TOKENS env var
+    #   4. Phase 163: profile max_tokens_hint → inserted before mode-global 4096 default
+    # DIRECT_MAX_TOKENS=8192 set by the caller shell is always honoured (step 3 > step 4).
     resolved_tokens = args.max_tokens if args.max_tokens is not None \
         else classify_tokens(args.prompt, resolved_mode)
     # resolved_tokens=None means TaskConfig._resolve_tokens() will read env vars.
@@ -850,6 +1025,17 @@ def main() -> int:
         else _cli_task_type
     )
 
+    # Phase 163: fetch profile max_tokens_hint when no explicit/signal budget.
+    # Falls back to None if llm_config import fails (keeps legacy chain intact).
+    _tokens_hint: Optional[int] = None
+    if resolved_tokens is None:
+        try:
+            from llm_config import get_task_profile as _gtp  # type: ignore
+            _ph = _gtp(resolved_task_type)
+            _tokens_hint = _ph.max_tokens_hint if _ph else None
+        except Exception:
+            pass
+
     config = TaskConfig.from_args(
         mode=resolved_mode,
         role=args.role,
@@ -859,7 +1045,12 @@ def main() -> int:
         hybrid_url=args.hybrid_url,
         ralph_url=args.ralph_url,
         task_type=resolved_task_type,
+        max_tokens_hint=_tokens_hint,
     )
+    # Phase 163: scale timeout from token budget for direct-mode tasks.
+    # Fixed 300s was killing code/reasoning tasks at ~300 tokens — half a function.
+    if resolved_mode == "direct":
+        config.timeout_secs = _scale_timeout(args.timeout, config.max_tokens)
 
     script_dir = Path(args.script_dir) if args.script_dir else _HERE.parent
     output_file = Path(args.output)

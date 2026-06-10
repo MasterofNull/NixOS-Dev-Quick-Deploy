@@ -1103,6 +1103,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-ragas-faithfulness-guard.py"
     _check 1 "0.10.12" "modal task profiles for local dispatch (Phase 162)" \
       python3 "${REPO_ROOT}/scripts/testing/test-modal-task-profiles.py"
+    _check 1 "0.10.13" "local inference budget visibility: hints, timeout scaling, progress sidecar, watch (Phase 163)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-local-inference-budget.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
