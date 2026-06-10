@@ -50,9 +50,22 @@ except ImportError:
     # the shared module path isn't resolvable (e.g. test environments).
     AGENT_TASK_MAX_TOKENS = 1200
 
-    def build_llama_payload(messages, *, max_tokens=None, temperature=0.3,
-                             stream=False, role=None, **extra):  # type: ignore
+    def build_llama_payload(messages, *, max_tokens=None, temperature=None,
+                             stream=False, role=None, task_type=None, **extra):  # type: ignore
+        # Inline fallback: minimal task_type profile support.
+        # Mirrors the TASK_PROFILES in shared/llm_config.py.
+        _FALLBACK_PROFILES = {
+            "structured": {"temperature": 0.0,  "frequency_penalty": 0.0,  "enable_thinking": False},
+            "lookup":     {"temperature": 0.1,  "frequency_penalty": 0.0,  "enable_thinking": False},
+            "code":       {"temperature": 0.15, "frequency_penalty": 0.0,  "enable_thinking": False},
+            "reasoning":  {"temperature": 0.5,  "frequency_penalty": 0.05, "enable_thinking": False},
+            "agent":      {"temperature": 0.3,  "frequency_penalty": 0.0,  "enable_thinking": False},
+        }
+        _profile = _FALLBACK_PROFILES.get(task_type or "code", _FALLBACK_PROFILES["code"])
         _max = max_tokens or int(os.environ.get("LLAMA_MAX_TOKENS", str(AGENT_TASK_MAX_TOKENS)))
+        _temperature = temperature if temperature is not None else _profile["temperature"]
+        _freq_penalty = extra.pop("frequency_penalty", _profile["frequency_penalty"])
+        _enable_thinking = _profile["enable_thinking"]
         msgs = list(messages)
         if role:
             _role_prompts = {
@@ -70,19 +83,12 @@ except ImportError:
                     msgs.insert(0, {"role": "system", "content": prefix})
         payload = {
             "messages": msgs,
-            "temperature": temperature,
+            "temperature": _temperature,
             "max_tokens": _max,
-            "chat_template_kwargs": {"enable_thinking": False},
-            # Anti-loop guardrails: repeat_penalty + repeat_last_n guard the
-            # 64-token sliding window against stuck phrases without touching
-            # global token counts.  frequency_penalty is intentionally 0 —
-            # cumulative per-token penalties cause early EOS on dense JSON/code
-            # output where structural tokens ('"', ':', '{') appear hundreds of
-            # times, causing logit penalty overflow and truncation at ~59-61 lines.
+            "chat_template_kwargs": {"enable_thinking": _enable_thinking},
             "repeat_penalty": 1.08,
             "repeat_last_n": 64,
-            "frequency_penalty": 0.0,
-            # Always request usage stats so callers can observe actual spend.
+            "frequency_penalty": _freq_penalty,
             "stream_options": {"include_usage": True},
         }
         if stream:
@@ -238,6 +244,59 @@ def classify_mode(prompt: str) -> str:
     return "direct"
 
 
+# ── Phase 162: task-type auto-classification ──────────────────────────────────
+# Separate from mode classification: mode = WHERE to route, task_type = HOW to
+# configure the payload (temperature, frequency_penalty, enable_thinking).
+
+_TASK_REASONING_SIGNALS = frozenset([
+    "analyze", "architect", "design document", "design doc",
+    "explain why", "compare and contrast", "compare the",
+    "tradeoff", "trade-off", "evaluate ", "investigate",
+    "diagnose", "recommend", "advise ", "what are the implications",
+    "what is the impact", "security audit", "architectural review",
+    "architectural", "design decision", "assess the",
+    "explain the difference", "why does ", "pros and cons",
+])
+
+_TASK_CODE_SIGNALS = frozenset([
+    "implement", "write a function", "write code", "write a script",
+    "write the ", "fix the", "fix a ", "refactor", "add feature",
+    "add method", "create module", "debug ", "write test",
+    "add endpoint", "create class", "build the ", "add the ",
+])
+
+
+def classify_task_type(prompt: str, mode: str = "direct") -> str:
+    """Map prompt + dispatch mode to a modal task profile name (Phase 162).
+
+    Profiles: structured, lookup, code, reasoning, agent
+    Mode-driven overrides take priority over keyword matching.
+    Defaults to 'code' when no signal is detected (most common direct task).
+
+    Examples:
+        classify_task_type("Return as JSON", "direct")           -> "structured"
+        classify_task_type("Analyze the architecture", "direct") -> "reasoning"
+        classify_task_type("Write a function to sort", "direct") -> "code"
+        classify_task_type("yes or no", "direct")                -> "lookup"
+        classify_task_type("any prompt", "ralph")                -> "structured"
+        classify_task_type("any prompt", "agent")                -> "agent"
+    """
+    if mode == "ralph":
+        return "structured"
+    if mode == "agent":
+        return "agent"
+    p = prompt.lower()
+    if any(k in p for k in _RALPH_KEYWORDS):
+        return "structured"
+    if any(k in p for k in _TINY_SIGNALS):
+        return "lookup"
+    if any(k in p for k in _TASK_REASONING_SIGNALS):
+        return "reasoning"
+    if any(k in p for k in _TASK_CODE_SIGNALS):
+        return "code"
+    return "code"
+
+
 # ── runners ──────────────────────────────────────────────────────────────────
 
 class DirectRunner:
@@ -257,6 +316,7 @@ class DirectRunner:
             max_tokens=config.max_tokens,
             stream=True,
             role=config.role,
+            task_type=config.task_type,
         )
 
         req = urllib.request.Request(
@@ -718,6 +778,9 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--mode",          default="auto",
                    choices=["auto", "agent", "hybrid", "direct", "ralph"],
                    help="Routing mode; 'auto' runs classify_mode() heuristic (default)")
+    d.add_argument("--task-type",     default=None,
+                   choices=["auto", "structured", "lookup", "code", "reasoning", "agent"],
+                   help="Modal payload profile; None/'auto' runs classify_task_type() (default)")
     d.add_argument("--role",          required=True)
     d.add_argument("--prompt",        required=True)
     d.add_argument("--timeout",       type=int, default=300)
@@ -779,6 +842,14 @@ def main() -> int:
         else classify_tokens(args.prompt, resolved_mode)
     # resolved_tokens=None means TaskConfig._resolve_tokens() will read env vars.
 
+    # Phase 162: modal task profile — auto-classify if not explicitly provided.
+    _cli_task_type = getattr(args, "task_type", None)
+    resolved_task_type = (
+        classify_task_type(args.prompt, resolved_mode)
+        if (not _cli_task_type or _cli_task_type == "auto")
+        else _cli_task_type
+    )
+
     config = TaskConfig.from_args(
         mode=resolved_mode,
         role=args.role,
@@ -787,6 +858,7 @@ def main() -> int:
         llama_url=args.llama_url,
         hybrid_url=args.hybrid_url,
         ralph_url=args.ralph_url,
+        task_type=resolved_task_type,
     )
 
     script_dir = Path(args.script_dir) if args.script_dir else _HERE.parent
@@ -810,6 +882,24 @@ def main() -> int:
         output_file=str(output_file),
         objective=args.prompt,
     )
+    # Phase 162: emit task_type + suggested_remote_profile to the output header
+    # so orchestrators can see which switchboard profile to use for equivalent
+    # remote delegations.
+    try:
+        from llm_config import get_task_profile  # type: ignore
+        _profile = get_task_profile(resolved_task_type)
+        if _profile:
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            _header_file = output_file.with_suffix(".profile.json")
+            import json as _json
+            _header_file.write_text(_json.dumps({
+                "task_type": resolved_task_type,
+                "suggested_remote_profile": _profile.suggested_remote_profile,
+                "temperature": _profile.temperature,
+                "enable_thinking": _profile.enable_thinking,
+            }))
+    except Exception:
+        pass
 
     success = dispatch_task(
         config=config,

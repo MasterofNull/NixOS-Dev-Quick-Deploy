@@ -1259,6 +1259,25 @@ def _check_intent_classifier_coverage(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.10", "intent classifier coverage", detail)]
 
 
+def _check_modal_task_profiles(ctx: RunContext) -> list[CheckResult]:
+    """Phase 162: modal task profiles for local dispatch."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-modal-task-profiles.py"
+    if not check.exists():
+        return [failed(1, "0.10.12", "modal task profiles", "test-modal-task-profiles.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.12", "modal task profiles: 5 profiles, classify_task_type, TaskConfig wired")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.12", "modal task profiles", detail)]
+
+
 def _check_ragas_faithfulness_guard(ctx: RunContext) -> list[CheckResult]:
     """Phase 161: faithfulness scorer modal guard and judge prompt calibration."""
     check = ctx.repo_root / "scripts" / "testing" / "test-ragas-faithfulness-guard.py"
@@ -1342,6 +1361,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_delegation_artifact(ctx))
     results.extend(_check_intent_classifier_coverage(ctx))
     results.extend(_check_ragas_faithfulness_guard(ctx))
+    results.extend(_check_modal_task_profiles(ctx))
     return results
 
 
