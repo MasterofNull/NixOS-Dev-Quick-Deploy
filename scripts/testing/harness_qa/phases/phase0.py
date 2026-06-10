@@ -1278,6 +1278,25 @@ def _check_modal_task_profiles(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.12", "modal task profiles", detail)]
 
 
+def _check_local_inference_budget(ctx: RunContext) -> list[CheckResult]:
+    """Phase 163: local inference budget visibility (hints, timeout scaling, sidecar, watch)."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-local-inference-budget.py"
+    if not check.exists():
+        return [failed(1, "0.10.13", "local inference budget", "test-local-inference-budget.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.13", "local inference budget: hints, timeout scaling, progress sidecar, watch")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.13", "local inference budget", detail)]
+
+
 def _check_ragas_faithfulness_guard(ctx: RunContext) -> list[CheckResult]:
     """Phase 161: faithfulness scorer modal guard and judge prompt calibration."""
     check = ctx.repo_root / "scripts" / "testing" / "test-ragas-faithfulness-guard.py"
@@ -1362,6 +1381,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_intent_classifier_coverage(ctx))
     results.extend(_check_ragas_faithfulness_guard(ctx))
     results.extend(_check_modal_task_profiles(ctx))
+    results.extend(_check_local_inference_budget(ctx))
     return results
 
 

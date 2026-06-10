@@ -78,3 +78,15 @@ Local inference on 35B models can take **90-120s**. Ensure your client timeouts 
 - **Declarative Swap**: Change models via `mySystem.aiStack.llamaCpp.activeModel` in Nix modules.
 - **Avoid Hardcoding**: Read ports from `nix/modules/core/options.nix` or environment variables.
 - **GPU Offload**: Ensure `gpuLayers` matches your VRAM capacity (default 12 for Qwen3.6-35B).
+- **dispatch.py watch**: Monitor running `delegate-to-local` tasks in real time:
+  ```bash
+  dispatch.py watch <task-id> --delegation-dir .agents/delegation
+  ```
+  Shows streamed output + live progress metrics (tokens/elapsed/tok_per_sec/eta).
+- **Timeout scaling (Phase 163)**: Timeout auto-scales from token budget —
+  `max(explicit, ceil(max_tokens/LOCAL_TOK_PER_SEC)+60)`. At 1 tok/s:
+  code tasks (1200 tok) get 1260s; reasoning tasks (1800 tok) get 1860s.
+  Override rate calibration: `LOCAL_TOK_PER_SEC=1.5 delegate-to-local ...`
+- **Progress sidecar**: `<output>.progress.json` updated every 10 tokens with
+  status/tokens_out/max_tokens/elapsed_s/tok_per_sec/eta_s. Also readable via
+  `tail -f <output_file>` (incremental writes, not all-at-end).

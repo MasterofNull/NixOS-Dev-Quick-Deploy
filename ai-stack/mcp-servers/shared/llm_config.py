@@ -88,6 +88,11 @@ class TaskProfile:
     enable_thinking is False on current hardware (Renoir APU 1 tok/s —
     thinking tokens would fill the budget before the response generates).
     The field is present so profiles are upgrade-ready for faster hardware.
+
+    max_tokens_hint: profile-driven budget suggestion. Used when no explicit
+    --max-tokens or env-var budget is set. Allows each task class to carry
+    a reasonable default without hard-coding one value for all task types.
+    Priority: explicit > DIRECT_MAX_TOKENS env > LLAMA_MAX_TOKENS env > hint > mode default.
     """
     name: str
     temperature: float
@@ -95,6 +100,7 @@ class TaskProfile:
     enable_thinking: bool
     suggested_remote_profile: str   # switchboard lane for equivalent remote tasks
     description: str
+    max_tokens_hint: int            # suggested budget when no explicit/env override
 
 
 TASK_PROFILES: dict[str, TaskProfile] = {
@@ -108,6 +114,7 @@ TASK_PROFILES: dict[str, TaskProfile] = {
         enable_thinking=False,
         suggested_remote_profile="remote-tool-calling",
         description="JSON output, strict format, ralph mode",
+        max_tokens_hint=512,
     ),
     # Tiny budget: yes/no, one-liners, pings.
     "lookup": TaskProfile(
@@ -117,6 +124,7 @@ TASK_PROFILES: dict[str, TaskProfile] = {
         enable_thinking=False,
         suggested_remote_profile="remote-free",
         description="Quick Q&A, yes/no, one-liner",
+        max_tokens_hint=150,
     ),
     # Code generation and debugging. frequency_penalty=0.0 avoids truncation
     # on repeated structural tokens in code (same reason as structured).
@@ -127,6 +135,7 @@ TASK_PROFILES: dict[str, TaskProfile] = {
         enable_thinking=False,
         suggested_remote_profile="remote-coding",
         description="Write, fix, refactor code",
+        max_tokens_hint=1200,
     ),
     # Architecture, analysis, design decisions. Higher temperature for more
     # exploratory prose. Mild frequency_penalty is safe for natural language.
@@ -138,6 +147,7 @@ TASK_PROFILES: dict[str, TaskProfile] = {
         enable_thinking=False,
         suggested_remote_profile="remote-reasoning",
         description="Architecture, analysis, design, explain-why",
+        max_tokens_hint=1800,
     ),
     # Agent tool calls and harness operations.
     "agent": TaskProfile(
@@ -147,6 +157,7 @@ TASK_PROFILES: dict[str, TaskProfile] = {
         enable_thinking=False,
         suggested_remote_profile="local-agent",
         description="Tool calls, agent steps, harness ops",
+        max_tokens_hint=512,
     ),
 }
 

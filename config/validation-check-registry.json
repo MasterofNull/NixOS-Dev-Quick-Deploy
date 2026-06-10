@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-06-07"
+    "last_updated": "2026-06-10"
   },
   "_comment": "Validation check registry \u2014 SSOT for all path-gated CI checks. Edit this file to add/modify behavioral checks. See scripts/governance/run-focused-ci-checks.sh for the runner.",
   "version": "1.0",
@@ -1348,6 +1348,23 @@
         "scripts/testing/test-modal-task-profiles.py",
         "scripts/testing/harness_qa/phases/phase0.py",
         "scripts/ai/_aq-qa-bash"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "local-inference-budget",
+      "description": "Phase 163: local inference budget visibility (max_tokens_hint, _scale_timeout, progress sidecar, watch subcommand)",
+      "trigger_paths": [
+        "scripts/ai/lib/dispatch.py",
+        "scripts/ai/lib/task_config.py",
+        "ai-stack/mcp-servers/shared/llm_config.py",
+        "scripts/testing/test-local-inference-budget.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-local-inference-budget.py"
       ],
       "tier": "behavioral",
       "timeout_seconds": 30,
