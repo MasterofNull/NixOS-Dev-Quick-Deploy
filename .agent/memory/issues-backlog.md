@@ -192,10 +192,10 @@
   Action: Added an explicit tool-free/spec prompt detector that routes those turns directly to raw local inference with no tool calls, no live-state claims, `enable_thinking=false`, and a 1024-token bounded response budget.
   File: scripts/ai/aq-chat ~line 95
 
-[OPEN] local-delegation-artifact — delegate-to-local reported a task id and output path that could not be found afterward — Root cause not yet isolated; `delegate-to-local --mode direct` printed `local-20260607-214905-ifsp88` and `.agents/delegation/outputs/local-20260607-214905-ifsp88.log`, but `--status/--check` returned "Task not found" and no output file existed.
+[DONE] local-delegation-artifact — delegate-to-local reported a task id and output path that could not be found afterward — Root cause: dispatch.py registered the task inside dispatch_task(), so an OOM-kill or import crash before that point left the ID unreachable. Phase 159 fix: pre-register in main() before dispatch_task(), add pre_registered=True guard to skip duplicate write.
   Severity: high
-  Action: Audit delegate-to-local persistence paths and status lookup contract; add an aq-qa check that direct local delegation creates a retrievable output artifact or reports failure before returning an id.
-  File: scripts/ai/delegate-to-local
+  Action: Moved registry.append()/record_dispatch() to main() before dispatch_task(); added pre_registered param to dispatch_task(); added aq-qa 0.10.9 regression coverage.
+  File: scripts/ai/lib/dispatch.py; scripts/testing/test-local-delegation-artifact.py
 
 [DONE] health-spider-systemd-coverage — aq-health-spider returned clean while `nix-optimise.service` was failed — Root cause: health-spider only checked declared HTTP zones and their service state on HTTP failure, so unrelated failed systemd units were invisible to the spider/dashboard health path.
   Severity: high
