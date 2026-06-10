@@ -2045,6 +2045,35 @@ def fetch_coordinator_eval_trend() -> Dict[str, Any]:
         return {}
 
 
+def fetch_intent_distribution() -> Dict[str, Any]:
+    """Fetch intent breakdown from coordinator /api/traces summary.
+
+    Returns dict with intent_breakdown, total, unknown_pct on success.
+    """
+    try:
+        url = f"{COORDINATOR_URL.rstrip('/')}/api/traces"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        traces = data.get("traces", []) if isinstance(data, dict) else []
+        if not traces:
+            return {}
+        from collections import Counter as _Counter
+        counts = _Counter(t.get("intent") or "unknown" for t in traces)
+        total = len(traces)
+        unknown = counts.get("unknown", 0)
+        unknown_pct = round(100.0 * unknown / total, 1) if total else None
+        known = {k: v for k, v in counts.most_common() if k != "unknown"}
+        return {
+            "total": total,
+            "unknown": unknown,
+            "unknown_pct": unknown_pct,
+            "known": known,
+        }
+    except Exception:
+        return {}
+
+
 def strategy_leaderboard(rows: List[dict]) -> List[dict]:
     """Group eval rows by strategy_tag and compute mean pct_passed per tag."""
     from collections import defaultdict
@@ -5588,6 +5617,7 @@ def format_md(
     gap_remediation: Optional[Dict[str, Any]] = None,
     llama_benchmark_summary: Optional[Dict[str, Any]] = None,
     ragas_metrics: Optional[Dict[str, Any]] = None,
+    intent_dist: Optional[Dict[str, Any]] = None,
     gaps_all_suppressed: bool = False,
 ) -> str:
     lines = [
@@ -5711,6 +5741,32 @@ def format_md(
         ]
     else:
         lines.append("*No RAGAS samples yet — queries accumulate at 20% sample rate.*")
+    lines.append("")
+
+    # Phase 160 — intent classification coverage
+    lines += ["## 4c. Intent Classification", ""]
+    _id = intent_dist or {}
+    _id_total = _id.get("total") or 0
+    if _id_total > 0:
+        _id_unk = _id.get("unknown", 0)
+        _id_unk_pct = _id.get("unknown_pct")
+        _known = _id.get("known") or {}
+        lines += [
+            f"| Metric | Value |",
+            f"|--------|-------|",
+            f"| Traces (n) | {_id_total} |",
+            f"| Unknown intents | {_id_unk} ({_id_unk_pct:.1f}%) |",
+        ]
+        for k, v in list(_known.items())[:5]:
+            lines.append(f"| {k.replace('_', ' ')} | {v} |")
+        if _id_unk_pct is not None and _id_unk_pct > 50:
+            lines.append("")
+            lines.append(f"> **WARN**: {_id_unk_pct:.0f}% of traces have unknown intent — intent classifier may need retraining.")
+        elif _id_unk_pct is not None and _id_unk_pct > 20:
+            lines.append("")
+            lines.append(f"> **Note**: {_id_unk_pct:.0f}% of traces unclassified — consider extending intent classifier training data.")
+    else:
+        lines.append("*No trace data (coordinator offline or no queries yet).*")
     lines.append("")
 
     # 5. Strategy Leaderboard (18.2.2)
@@ -6486,6 +6542,7 @@ def format_text(
     llama_benchmark_summary: Optional[Dict[str, Any]] = None,
     useful_tokens: Optional[Dict[str, Any]] = None,
     ragas_metrics: Optional[Dict[str, Any]] = None,
+    intent_dist: Optional[Dict[str, Any]] = None,
     gaps_all_suppressed: bool = False,
 ) -> str:
     sep = "─" * 60
@@ -6628,6 +6685,27 @@ def format_text(
         ]
     else:
         lines.append("  No RAGAS samples yet (queries accumulate at 20% sample rate).")
+    lines.append("")
+
+    lines += ["[ 4c. Intent Classification ]"]
+    _id = intent_dist or {}
+    _id_total = _id.get("total") or 0
+    if _id_total > 0:
+        _id_unk = _id.get("unknown", 0)
+        _id_unk_pct = _id.get("unknown_pct")
+        _unk_label = f"  Unknown:  {_id_unk}/{_id_total}  ({_id_unk_pct:.1f}%)"
+        if _id_unk_pct is not None and _id_unk_pct > 50:
+            _unk_label += "  ← WARN: >50% unclassified"
+        elif _id_unk_pct is not None and _id_unk_pct > 20:
+            _unk_label += "  ← note: >20% unclassified"
+        lines.append(f"  Traces:   {_id_total}  (rolling last 100 queries)")
+        lines.append(_unk_label)
+        _known = _id.get("known") or {}
+        if _known:
+            top5 = list(_known.items())[:5]
+            lines.append("  Known:    " + "  ".join(f"{k}:{v}" for k, v in top5))
+    else:
+        lines.append("  No trace data (coordinator offline or no queries yet).")
     lines.append("")
 
     lines += ["[ 5. Strategy Leaderboard ]"]
@@ -7971,6 +8049,7 @@ def format_json(
     effectiveness_scorecard_summary: Optional[Dict[str, Any]] = None,
     attention_contention_summary: Optional[Dict[str, Any]] = None,
     ragas_metrics: Optional[Dict[str, Any]] = None,
+    intent_dist: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -7989,6 +8068,7 @@ def format_json(
         "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
         "ragas_metrics": ragas_metrics or {},
+        "intent_distribution": intent_dist or {},
         "strategy_leaderboard": leaderboard,
         "top_prompts": [
             {"id": p["id"], "name": p.get("name"), "mean_score": p.get("mean_score")}
@@ -8190,6 +8270,8 @@ def main() -> None:
     # Phase 143 — fetch RAGAS metric averages for dedicated 4b panel
     _ragas_raw = fetch_coordinator_eval_trend()
     _ragas_metrics: Dict[str, Any] = _ragas_raw.get("ragas_metrics") or {}
+    # Phase 160 — fetch intent distribution for 4c panel
+    _intent_dist: Dict[str, Any] = fetch_intent_distribution()
     adoption = hint_adoption(since_dt)  # Phase 19.3.4
     tooling_quality = task_tooling_quality(since_dt, adoption)
     intent_compliance = read_workflow_sessions(since_dt)
@@ -8358,6 +8440,7 @@ def main() -> None:
         effectiveness_scorecard_summary=effectiveness_scorecard_result,
         attention_contention_summary=attention_contention,
         ragas_metrics=_ragas_metrics,
+        intent_dist=_intent_dist,
     )
     _persist_latest_report_json(json_output)
 
@@ -8368,14 +8451,14 @@ def main() -> None:
         summary_text = f"# EXECUTIVE SUMMARY\n\n{summary_text}\n\n---\n\n"
 
     if args.fmt == "md":
-        output = summary_text + format_md(*fmt_args, ragas_metrics=_ragas_metrics, gaps_all_suppressed=_gaps_all_suppressed)
+        output = summary_text + format_md(*fmt_args, ragas_metrics=_ragas_metrics, intent_dist=_intent_dist, gaps_all_suppressed=_gaps_all_suppressed)
     elif args.fmt == "json":
         # For JSON, we can optionally add the summary to a field
         if args.summarize:
             json_output["executive_summary"] = summary_text.strip().replace("# EXECUTIVE SUMMARY\n\n", "")
         output = json_output
     else:
-        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, ragas_metrics=_ragas_metrics, gaps_all_suppressed=_gaps_all_suppressed)
+        output = summary_text + format_text(*fmt_args, useful_tokens=useful_tokens_summary, ragas_metrics=_ragas_metrics, intent_dist=_intent_dist, gaps_all_suppressed=_gaps_all_suppressed)
 
     print(output)
 
