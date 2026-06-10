@@ -1314,6 +1314,24 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "ragas-faithfulness-guard",
+      "phase": "161",
+      "description": "RAGAS faithfulness scorer modal guard: empty context returns None; judge prompt distinguishes faithfulness from relevance; response truncation >= 800 chars",
+      "command": [
+        "python3",
+        "scripts/testing/test-ragas-faithfulness-guard.py"
+      ],
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py",
+        "scripts/testing/test-ragas-faithfulness-guard.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

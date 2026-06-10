@@ -1099,6 +1099,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-local-delegation-artifact.py"
     _check 1 "0.10.10" "intent classifier coverage stat tile and aq-report 4c panel" \
       python3 "${REPO_ROOT}/scripts/testing/test-intent-classifier-coverage.py"
+    _check 1 "0.10.11" "RAGAS faithfulness scorer modal guard and judge prompt calibration" \
+      python3 "${REPO_ROOT}/scripts/testing/test-ragas-faithfulness-guard.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
