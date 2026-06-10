@@ -209,18 +209,26 @@ async def score_faithfulness_async(
     Faithfulness (AM-C1): Qwen-as-judge scoring 0–1.
     Only called when RAGAS_FAITHFULNESS_ENABLED=true AND random sample hits.
     Adds 3–8s — NEVER called inline on the response path.
+    Returns None (not 0) when context is absent — modal: only scores when meaningful.
     """
     if not _FAITHFULNESS_ENABLED:
+        return None
+    if not context or len(context.strip()) < 20:
+        # Phase 161: modal guard — no context means no faithfulness signal.
+        # Scoring against empty context would bias the average toward 0 artificially.
         return None
     if random.random() > _FAITHFULNESS_SAMPLE_RATE:
         return None
     prompt = (
-        "You are a faithfulness judge. Given a query, context, and response, "
-        "rate how well the response is grounded in the context on a scale of 0 to 1. "
-        "Output ONLY a single decimal number (e.g. 0.85). No explanation.\n\n"
+        "You are a faithfulness judge evaluating whether an AI response is grounded "
+        "in the provided retrieved context. Faithfulness measures ONLY whether the "
+        "response relies on information from the context — not whether the response "
+        "is correct or helpful in general. A response using only context facts scores "
+        "1.0. A response adding facts absent from the context scores lower.\n"
+        "Output ONLY a single decimal number between 0 and 1 (e.g. 0.85). No explanation.\n\n"
         f"Query: {query[:300]}\n\n"
-        f"Context: {context[:800]}\n\n"
-        f"Response: {response[:500]}\n\n"
+        f"Retrieved Context: {context[:800]}\n\n"
+        f"Response: {response[:800]}\n\n"
         "Faithfulness score (0-1):"
     )
     try:
@@ -538,7 +546,7 @@ async def handle_eval_score_query(request) -> Any:
 
     # Faithfulness: fire async, don't block response
     async def _faith_and_record():
-        faith = await score_faithfulness_async(query, context, response)
+        faith = await score_faithfulness_async(query, context, response) if context.strip() else None
         await record_query_metrics(
             query_text=query,
             intent=intent,
