@@ -1332,6 +1332,26 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "modal-task-profiles",
+      "phase": "162",
+      "description": "Modal task profiles: TASK_PROFILES in llm_config.py, classify_task_type() in dispatch.py, TaskConfig.task_type field. 5 profiles (structured/lookup/code/reasoning/agent) each with temperature, frequency_penalty, enable_thinking, suggested_remote_profile.",
+      "command": [
+        "python3",
+        "scripts/testing/test-modal-task-profiles.py"
+      ],
+      "trigger_paths": [
+        "ai-stack/mcp-servers/shared/llm_config.py",
+        "scripts/ai/lib/dispatch.py",
+        "scripts/ai/lib/task_config.py",
+        "scripts/testing/test-modal-task-profiles.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

@@ -43,6 +43,10 @@ _MODE_TOKEN_DEFAULTS: dict[str, int] = {
 
 _VALID_MODES = {"agent", "hybrid", "direct", "ralph"}
 
+# Valid task profile names — kept in sync with llm_config.TASK_PROFILES.
+# "auto" is a sentinel resolved by classify_task_type() before TaskConfig is built.
+_VALID_TASK_TYPES = {"structured", "lookup", "code", "reasoning", "agent"}
+
 
 def normalize_role(role: str) -> str:
     """Map legacy alias to canonical role-matrix value."""
@@ -58,6 +62,7 @@ class TaskConfig:
     llama_url: str
     hybrid_url: str
     ralph_url: str
+    task_type: str      # modal payload profile (structured/lookup/code/reasoning/agent)
 
     @classmethod
     def from_args(
@@ -69,6 +74,7 @@ class TaskConfig:
         llama_url: str,
         hybrid_url: str,
         ralph_url: str,
+        task_type: str = "code",
     ) -> "TaskConfig":
         """Build a TaskConfig, resolving token budget and normalising role."""
         if mode not in _VALID_MODES:
@@ -82,6 +88,7 @@ class TaskConfig:
             )
 
         resolved_tokens = cls._resolve_tokens(mode, max_tokens)
+        resolved_task_type = task_type if task_type in _VALID_TASK_TYPES else "code"
 
         return cls(
             mode=mode,
@@ -91,6 +98,7 @@ class TaskConfig:
             llama_url=llama_url,
             hybrid_url=hybrid_url,
             ralph_url=ralph_url,
+            task_type=resolved_task_type,
         )
 
     @staticmethod

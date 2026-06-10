@@ -94,6 +94,7 @@ def test_service_down_still_creates_registry_entry():
             llama_url="http://127.0.0.1:19999",
             hybrid_url="http://127.0.0.1:19999",
             ralph_url="http://127.0.0.1:19999",
+            task_type="code",
         )
 
         # Pre-register (as main() now does)

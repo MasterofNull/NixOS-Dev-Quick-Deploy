@@ -1101,6 +1101,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-intent-classifier-coverage.py"
     _check 1 "0.10.11" "RAGAS faithfulness scorer modal guard and judge prompt calibration" \
       python3 "${REPO_ROOT}/scripts/testing/test-ragas-faithfulness-guard.py"
+    _check 1 "0.10.12" "modal task profiles for local dispatch (Phase 162)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-modal-task-profiles.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
