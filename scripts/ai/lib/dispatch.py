@@ -611,30 +611,35 @@ def dispatch_task(
     output_file: Path,
     registry: TaskRegistry,
     script_dir: Path,
+    pre_registered: bool = False,
 ) -> bool:
     """Run a task: registry append → service check → runner → registry update.
 
     Returns True on success, False on failure.
     Writes result (or error text) to output_file regardless of outcome.
+
+    pre_registered: if True, skip the initial registry.append / record_dispatch
+    (caller already wrote them before any blocking operation).
     """
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Registry: append running entry with our own PID
-    registry.append(
-        task_id=task_id,
-        description=prompt,
-        output_file=str(output_file),
-        mode=config.mode,
-        role=config.role,
-        pid=os.getpid(),
-    )
-    # Cross-session persistence
-    registry.record_dispatch(
-        task_id=task_id,
-        agent=f"local-{config.mode}",
-        output_file=str(output_file),
-        objective=prompt,
-    )
+    if not pre_registered:
+        # Registry: append running entry with our own PID
+        registry.append(
+            task_id=task_id,
+            description=prompt,
+            output_file=str(output_file),
+            mode=config.mode,
+            role=config.role,
+            pid=os.getpid(),
+        )
+        # Cross-session persistence
+        registry.record_dispatch(
+            task_id=task_id,
+            agent=f"local-{config.mode}",
+            output_file=str(output_file),
+            objective=prompt,
+        )
 
     # Service availability pre-check
     _service_urls = {
@@ -787,6 +792,25 @@ def main() -> int:
     script_dir = Path(args.script_dir) if args.script_dir else _HERE.parent
     output_file = Path(args.output)
 
+    # Phase 159: pre-register before any blocking operation so the task ID is
+    # always retrievable via --status/--check even if dispatch_task() crashes
+    # or the background process is OOM-killed before reaching registry.append().
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    registry.append(
+        task_id=args.task_id,
+        description=args.prompt,
+        output_file=str(output_file),
+        mode=resolved_mode,
+        role=config.role,
+        pid=os.getpid(),
+    )
+    registry.record_dispatch(
+        task_id=args.task_id,
+        agent=f"local-{resolved_mode}",
+        output_file=str(output_file),
+        objective=args.prompt,
+    )
+
     success = dispatch_task(
         config=config,
         prompt=args.prompt,
@@ -794,6 +818,7 @@ def main() -> int:
         output_file=output_file,
         registry=registry,
         script_dir=script_dir,
+        pre_registered=True,
     )
     return 0 if success else 1
 

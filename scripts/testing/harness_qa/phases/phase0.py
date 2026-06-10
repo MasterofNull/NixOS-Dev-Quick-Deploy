@@ -1221,6 +1221,25 @@ def _check_agent_memory_surface_registry(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.8", "agent memory surface registry", detail)]
 
 
+def _check_local_delegation_artifact(ctx: RunContext) -> list[CheckResult]:
+    """Phase 159: delegate-to-local pre-registers task before any blocking op."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-local-delegation-artifact.py"
+    if not check.exists():
+        return [failed(1, "0.10.9", "local delegation artifact persistence", "test-local-delegation-artifact.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.9", "local delegation pre-registers artifact before blocking ops")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.9", "local delegation artifact persistence", detail)]
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -1282,6 +1301,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_phase86_attention_queue(ctx))
     results.extend(_check_phase87_training_ingest(ctx))
     results.extend(_check_phase146_identity_coverage(ctx))
+    results.extend(_check_local_delegation_artifact(ctx))
     return results
 
 

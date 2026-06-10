@@ -1250,6 +1250,17 @@
       "enabled": true
     },
     {
+      "id": "local-delegation-artifact",
+      "description": "Phase 159: delegate-to-local pre-registers task before any blocking op",
+      "phase": "159",
+      "command": [
+        "python3",
+        "scripts/testing/test-local-delegation-artifact.py"
+      ],
+      "timeout_secs": 30,
+      "category": "behavioral"
+    },
+    {
       "id": "agent-artifact-distribution-policy",
       "description": "Phase 156 \u2014 local runtime artifacts stay untracked while portable knowledge is distributed",
       "trigger_paths": [
