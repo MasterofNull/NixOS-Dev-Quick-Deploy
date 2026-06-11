@@ -73,6 +73,8 @@ def build_registry() -> ToolRegistry:
     register_file_tools(registry)
     register_shell_tools(registry)
     register_git_tools(registry)
+    from ai_coordination import register_ai_coordination_tools
+    register_ai_coordination_tools(registry)
     return registry
 
 

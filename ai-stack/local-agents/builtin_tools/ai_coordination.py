@@ -179,11 +179,21 @@ async def store_memory_handler(
             "error": str (if failed)
         }
     """
-    # Placeholder - will integrate with context memory when implemented
-    return {
-        "success": False,
-        "error": "Context memory integration not yet implemented",
-    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/memory/store",
+                json={
+                    "content": content,
+                    "memory_type": context_type,
+                    "importance": importance,
+                    "tags": tags or [],
+                    "source": "local-agent",
+                },
+            )
+            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def get_workflow_status_handler(workflow_id: str) -> Dict:
@@ -387,14 +397,13 @@ async def collective_memory_search_handler(query: str, limit: int = 5) -> Dict:
     """Search historical collaboration records in the collective memory (AIDB)."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Collaborations are stored in a specific project in AIDB
             resp = await client.post(
-                f"{AIDB_URL}/documents/search",
+                f"{AIDB_URL}/vector/search",
                 json={
                     "query": query,
+                    "collection": "knowledge",
                     "limit": limit,
-                    "project": "agent-collaborations",
-                }
+                },
             )
             return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
     except Exception as e:

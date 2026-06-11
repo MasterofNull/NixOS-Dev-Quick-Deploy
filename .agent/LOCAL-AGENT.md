@@ -137,6 +137,14 @@ When deploying a new locally hosted model, verify:
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
 Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
 
+### Phase 162A — AI Coordination Tools Now Registered (2026-06-11)
+
+`aq-agent-loop` `build_registry()` previously only registered file/shell/git tools. As of Phase 162A:
+- `register_ai_coordination_tools()` is now called — adds `query_aidb`, `store_memory`, `get_hint`, `get_working_memory`, `mesh_discovery`, `delegate_to_remote`, `harness_health`, `query_context`, and 6 more tools.
+- `store_memory_handler` wired to coordinator `/memory/store` (was returning placeholder error).
+- `collective_memory_search_handler` fixed: endpoint `/documents/search` → `/vector/search`, `collection="knowledge"`.
+- 5 additional LLM callers migrated to `build_llama_payload()` SSOT (`claude-local-wrapper.py`, `model-client.py`, `llm_code_reviewer.py`, `trigger_engine.py`, `mcp_client.py`).
+
 ### AppArmor: coreutils-full multi-call binary (Phase 160)
 
 `ai-hybrid-coordinator` AppArmor profile blocked `coreutils-full` exec — 4 denials on 2026-06-11.

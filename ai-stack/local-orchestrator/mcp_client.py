@@ -7,11 +7,17 @@ Provides typed access to MCP tools via the hybrid-coordinator and AIDB services.
 
 import json
 import os
+import sys
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 
 HYBRID_URL = os.getenv("HYBRID_URL", "http://127.0.0.1:8003")
@@ -455,11 +461,11 @@ class MCPClient:
         Returns:
             Assistant response
         """
-        payload = {
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
+        payload = build_llama_payload(
+            messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
         result = self._post(f"{self.llama_url}/v1/chat/completions", payload)
 
