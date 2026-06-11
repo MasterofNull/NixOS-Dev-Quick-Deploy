@@ -210,7 +210,11 @@ def delegation_prompt_contract_signals(task: str, messages: List[Dict[str, Any]]
         if isinstance(message, dict):
             combined.append(str(message.get("content") or ""))
     text = "\n".join(combined).lower()
-    expects_json = "json" in text and any(token in text for token in ("only", "exact", "valid", "strict", "object", "array"))
+    # Only check the task itself for JSON contract signals — scanning all messages
+    # (including system prompts) causes false positives since system prompts routinely
+    # contain "json" + "only/valid" for unrelated reasons.
+    task_lower = task.lower()
+    expects_json = "json" in task_lower and any(token in task_lower for token in ("only", "exact", "valid", "strict", "object", "array"))
     expects_short_exact = any(token in text for token in ("exactly", "and nothing else", "only this", "single word"))
     return {
         "expects_json": expects_json,
@@ -409,6 +413,7 @@ def record_delegation_feedback(
         "requester_role": str(requester_role or "orchestrator").strip() or "orchestrator",
         "failure_stage": classification.get("stage"),
         "http_status": classification.get("http_status"),
+        "outcome": "failed" if classification.get("is_failure") else "error",
         "failure_class": classification.get("primary_failure_class"),
         "failure_classes": classification.get("failure_classes") or [],
         "fallback_applied": bool(classification.get("fallback_applied")),

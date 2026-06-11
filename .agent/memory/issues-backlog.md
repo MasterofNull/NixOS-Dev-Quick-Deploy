@@ -202,9 +202,7 @@
   Action: Added a global `systemctl --failed --no-legend --no-pager` probe that emits telemetry/attention and makes `aq-health-spider --once` fail when failed units exist. Inspected the live `nix-optimise.service` error (`missing ...coffeescript-2.7.0-npm-deps.drv`), reset the stale failed state, rejected the now-cleared attention item with evidence, and revalidated `systemctl --failed`, `aq-alerts --count`, `/brief`, and `aq-health-spider --once` as clean.
   File: scripts/ai/aq-health-spider; scripts/testing/test-boot-stability-regressions.py
 
-[OPEN] software-factory-readiness — research discovery substrate exists but lacks candidate lifecycle, scoring, and adoption gates — Root cause: `ai-stack/data/knowledge-sources.yaml` and `scripts/data/sync-knowledge-sources` can fetch/import sources, but there is no enforced path from source update to trust scoring, candidate lifecycle state, flat-team PRD debate, eval sandbox, dashboard visibility, and governed adoption.
-  Severity: high
-  Action: Use `.agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md` as the Phase 150 shared brief; design source-registry overlay, candidate schema, `aq-research-spider --machine`, local-signal ingest, eval sandbox, dashboard cards, and RAG learning loop before implementation.
+[DONE-2026-06-11] software-factory-readiness — Resolved by Phase 150-153: CandidateLifecycleManager state machine, trust scoring engine, eval sandbox, aq-review CLI, aq-propose, dashboard /api/aistack/candidate-pipeline, and 108/108 QA checks. 14 candidates scored and active in pipeline.
   File: .agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md
 
 ## Software Factory Readiness Gaps (Phase 150)
