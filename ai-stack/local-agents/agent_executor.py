@@ -32,7 +32,7 @@ _MCP_SERVERS_PATH = str(Path(__file__).resolve().parents[1] / "mcp-servers")
 if _MCP_SERVERS_PATH not in sys.path:
     sys.path.insert(0, _MCP_SERVERS_PATH)
 
-from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS  # noqa: E402
+from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS  # noqa: E402
 from tool_registry import ToolCall, ToolRegistry, get_registry
 
 logger = logging.getLogger(__name__)
