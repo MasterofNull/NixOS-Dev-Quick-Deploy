@@ -289,6 +289,15 @@ read_file <confirmed_path>
   - `POST :8002/vector/search` — semantic search (body: `{"query":"...","collection":"...","limit":N}`)
   - `GET :8002/openapi.json` — full endpoint list (always check this before guessing paths)
 
+**Qdrant collection routing (CRITICAL — use the correct collection or you get MCP-registry noise):**
+| Purpose | Collection |
+|---------|-----------|
+| Error patterns / bug fixes | `error-solutions` (319 seeded records) |
+| Best practices / patterns | `best-practices` |
+| Agent workflow skills | `skills-patterns` |
+| Solved harness issues | `solved_issues` (MCP registry catalog — NOT for error patterns) |
+| DO NOT use `solved_issues` for error lookups — it returns irrelevant MCP-registry results (distance>0.95) |
+
 ### Step 3 — PRD / PLAN (write 3 lines before touching code)
 Write to `.agent/collaboration/PULSE.log`:
 ```
