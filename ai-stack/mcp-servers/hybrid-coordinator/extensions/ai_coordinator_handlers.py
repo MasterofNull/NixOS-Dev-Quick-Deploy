@@ -2300,6 +2300,15 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 "fallback_used": bool(fallback_applied),
                 "evidence_refs": ["routing_decision", "provider_fallback_policy"],
             }
+            # Phase 149: capture response/task text for fallback token estimation
+            _are_response_text = (_extract_delegated_response_text(body) or "").strip()
+            if not _are_response_text:
+                _sse_body_est = _parse_sse_response_body(response.text)
+                _are_response_text = (
+                    (_extract_delegated_response_text(_sse_body_est) or "").strip()
+                    if _sse_body_est else ""
+                )
+            _are_task_text = task or ""
 
             async def _emit_token_event(
                 _run_id=_are_run_id, _tok_in=_are_tok_in, _tok_out=_are_tok_out,
@@ -2307,6 +2316,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 _profile=_are_profile, _dur=_are_dur, _ok=_are_ok,
                 _rejected=_are_rejected, _failed_retry=_are_failed_retry,
                 _plan_payload=_are_plan_payload,
+                _resp_text=_are_response_text, _task_text=_are_task_text,
             ):
                 try:
                     plan_ev = _are.make_event(
@@ -2319,6 +2329,24 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         payload=_plan_payload,
                     )
                     await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, plan_ev)
+                    # Phase 149: fall back to char_count//4 estimate when API omits usage block
+                    _is_estimated = not _tok_in and not _tok_out
+                    _est_out = _tok_out if _tok_out else (len(_resp_text) // 4 if _resp_text else None)
+                    _est_in = _tok_in if _tok_in else (len(_task_text) // 4 if _task_text else None)
+                    _no_data = "estimated" if _is_estimated else None
+                    # model_call event — makes coordinator stream consistent with race-harness pattern
+                    mc_ev = _are.make_event(
+                        "model_call",
+                        source="hybrid-coordinator",
+                        run_id=_run_id or "unknown",
+                        status="succeeded" if _ok else "failed",
+                        model=_model or None,
+                        route_profile=_profile or None,
+                        duration_ms=max(0.0, _dur) if _dur is not None else None,
+                        tokens={"input": _est_in, "output": _est_out},
+                        no_data_reason=_no_data,
+                    )
+                    await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, mc_ev)
                     ev = _are.make_event(
                         "token_usage",
                         source="hybrid-coordinator",
@@ -2328,15 +2356,15 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         route_profile=_profile or None,
                         duration_ms=max(0.0, _dur) if _dur is not None else None,
                         tokens={
-                            "input": _tok_in if _tok_in else None,
-                            "output": _tok_out if _tok_out else None,
-                            "total": _total if _total else None,
+                            "input": _est_in,
+                            "output": _est_out,
                             "accepted_artifact": _accepted,
                         },
                         payload={
                             "rejected_output": _rejected,
                             "failed_retries": _failed_retry,
                         },
+                        no_data_reason=_no_data,
                     )
                     await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
                 except Exception:

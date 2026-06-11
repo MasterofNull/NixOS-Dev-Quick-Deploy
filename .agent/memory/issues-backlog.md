@@ -137,7 +137,7 @@
   Action: Implement Phase 148 agent task envelope, workflow-adherence golden corpus, first-pass contract evaluator, model-profile freshness gate, and dashboard/aq-report interop scorecard.
   File: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
 
-[OPEN] desktop-input — post-build cursor/text input instability required system build revert — user reported erratic text input and cursor selection after the last activation. Current read-only process scan found no active ydotool/xdotool/wtype/kmonad/keyd/warpd/dotool/xte-style process; COSMIC logs show missing input/cursor config keys and invalid shortcut action parsing near session start; VSCodium Gemini Code Assist A2A server is active but not proven causal.
+[OPEN] desktop-input — post-build cursor/text input instability (gens 697-700, Jun 8) — COSMIC logs show missing input/cursor config keys + invalid shortcut action parsing. No synthetic input process found. Current gen 701 (Jun 10 rebuild) appears stable. Root cause: unconfirmed. Recommended pre-rebuild checklist: (1) close VSCodium, (2) capture `journalctl -u cosmic-session` at login, (3) compare ~/.config/cosmic/ shortcut configs against previous generation.
   Severity: high
   Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
   File: .agents/plans/phase-148-agentic-mind-research.md
@@ -256,3 +256,8 @@
   Severity: medium
   Action: Added a health-spider semantic routing-analytics probe with required `logic_discipline` keys so stale dashboard backends are detected as degraded, surfaced to attention/telemetry/RAG, and validated by boot-stability regression coverage. Manual source-only backend edits still require privileged service restart for activation.
   File: nix/modules/services/command-center-dashboard.nix; nixos-quick-deploy.sh; scripts/ai/aq-health-spider
+
+[DONE-2026-06-11] token-usage-coverage-gap — coordinator token_usage events had null token counts (19/378 = 5% coverage) — Root cause: `body.get("usage")` omits the usage block for streaming/SSE responses; token counts defaulted to 0 then None. Additionally, no model_call event was emitted by the coordinator (only planning + token_usage), causing cross-source metric mismatch with race-harness model_call events.
+  Severity: medium
+  Action: Phase 149 fix in ai_coordinator_handlers.py: (1) emit model_call event per delegation with estimated tokens (char_count//4 fallback); (2) token_usage now uses same fallback — no_data_reason="estimated" when API omits usage block. Added aq-qa check 0.10.2 + test-token-usage-coverage.py measuring coordinator model_call token coverage ≥50%. Requires coordinator service restart to activate.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
