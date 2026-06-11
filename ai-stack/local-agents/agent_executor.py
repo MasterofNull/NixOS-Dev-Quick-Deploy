@@ -537,8 +537,12 @@ class LocalAgentExecutor:
         total_tokens = 0
 
         while tool_call_count < max_tool_calls:
-            # Call model
-            response, tok = await self._call_llama(messages, role=role)
+            # Call model — use larger budget once tools have been used so that
+            # the final synthesis turn (no tool_call in response) isn't capped at
+            # the tool-call budget (512).  First call keeps 512 since the model
+            # almost always emits a tool call there (short JSON, EOS quick).
+            call_max_tokens = AGENT_TASK_MAX_TOKENS if tool_call_count > 0 else AGENT_TOOL_CALL_MAX_TOKENS
+            response, tok = await self._call_llama(messages, role=role, max_tokens=call_max_tokens)
             total_tokens += tok
 
             # Parse tool call
@@ -582,7 +586,7 @@ class LocalAgentExecutor:
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
         return f"Task incomplete: reached max tool calls ({max_tool_calls})", total_tokens
 
-    async def _call_llama(self, messages: List[Dict], role: Optional[str] = None) -> Tuple[str, int]:
+    async def _call_llama(self, messages: List[Dict], role: Optional[str] = None, max_tokens: int = AGENT_TOOL_CALL_MAX_TOKENS) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
 
@@ -608,7 +612,7 @@ class LocalAgentExecutor:
             # Legacy non-streaming path — 300s wall-clock limit.
             payload = build_llama_payload(
                 messages,
-                max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
+                max_tokens=max_tokens,
                 temperature=0.2,
                 role=role,
             )
@@ -630,7 +634,7 @@ class LocalAgentExecutor:
         # httpx.Timeout(read=chunk_timeout) is per-read-operation (per chunk), not total.
         payload = build_llama_payload(
             messages,
-            max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
+            max_tokens=max_tokens,
             temperature=0.2,
             role=role,
             stream=True,
