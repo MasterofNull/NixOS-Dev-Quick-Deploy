@@ -402,8 +402,8 @@ def record_delegation_feedback(
     requesting_agent: str = "human",
     requester_role: str = "orchestrator",
 ) -> None:
-    if not classification.get("is_failure"):
-        return
+    # Log all outcomes (success and failure) so aq-report can compute accurate success rates
+    # Previously only logged failures, which prevented tracking overall delegation reliability
     payload = {
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "task_excerpt": task[:280],
@@ -416,7 +416,7 @@ def record_delegation_feedback(
         "requester_role": str(requester_role or "orchestrator").strip() or "orchestrator",
         "failure_stage": classification.get("stage"),
         "http_status": classification.get("http_status"),
-        "outcome": "failed" if classification.get("is_failure") else "error",
+        "outcome": "failed" if classification.get("is_failure") else "success",
         "failure_class": classification.get("primary_failure_class"),
         "failure_classes": classification.get("failure_classes") or [],
         "fallback_applied": bool(classification.get("fallback_applied")),
