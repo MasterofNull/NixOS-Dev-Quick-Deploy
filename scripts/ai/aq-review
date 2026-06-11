@@ -29,9 +29,82 @@ def _c(text: str, color: str) -> str:
     return f"{color}{text}{_RESET}" if sys.stdout.isatty() else text
 
 
+def _candidate_review(args: list[str]) -> int:
+    """Phase 150 Slice 4: candidate lifecycle review subcommand."""
+    _HERE2 = Path(__file__).resolve().parent.parent.parent / "ai-stack" / "local-agents"
+    sys.path.insert(0, str(_HERE2))
+    from candidate_lifecycle import CandidateLifecycleManager  # noqa: E402
+
+    _STATE_MAP = {
+        "propose": "proposed",
+        "evaluate": "evaluating",
+        "approve": "reviewed",
+        "adopt": "adopted",
+        "reject": "rejected",
+        "retire": "retired",
+    }
+    candidates_path = Path(__file__).resolve().parents[2] / ".agents" / "improvement" / "candidates.json"
+    candidate_id = ""
+    action = ""
+    note = ""
+    by = "system"
+    i = 0
+    while i < len(args):
+        if args[i] == "--candidate-id" and i + 1 < len(args):
+            candidate_id = args[i + 1]; i += 2
+        elif args[i] == "--action" and i + 1 < len(args):
+            action = args[i + 1]; i += 2
+        elif args[i] == "--note" and i + 1 < len(args):
+            note = args[i + 1]; i += 2
+        elif args[i] == "--by" and i + 1 < len(args):
+            by = args[i + 1]; i += 2
+        elif args[i] == "list":
+            action = "list"; i += 1
+        else:
+            i += 1
+
+    mgr = CandidateLifecycleManager(candidates_path)
+    cands = mgr.load()
+
+    if action == "list":
+        fmt = "{:<8}  {:<60}  {:<12}"
+        print(fmt.format("PRIORITY", "ID", "STATE"))
+        print("-" * 85)
+        for c in sorted(cands, key=lambda x: int(x.get("priority", 9) or 9)):
+            print(fmt.format(str(c.get("priority", "?")), c.get("id", "?")[:60], c.get("state", "proposed")))
+        return 0
+
+    if not candidate_id or not action:
+        print("Usage: aq-review --candidate-id <ID> --action <propose|evaluate|approve|adopt|reject|retire> [--note TEXT] [--by AGENT]")
+        print("       aq-review --candidate-id list")
+        return 1
+
+    new_state = _STATE_MAP.get(action, action)
+    try:
+        updated = mgr.transition(candidate_id, new_state, by=by, note=note)
+        mgr.save(cands)
+        print(f"OK: {updated['id']} → {updated['state']}")
+        if updated.get("lifecycle_log"):
+            last = updated["lifecycle_log"][-1]
+            print(f"  logged: {last['from_state']} → {last['to_state']} by {last['by']}")
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main() -> int:
+    # Phase 150: route --candidate-id subcommand
+    if "--candidate-id" in sys.argv[1:] or (len(sys.argv) > 1 and sys.argv[1] == "list" and "--candidate-id" not in sys.argv):
+        # list without an alert-id looks like candidate list if first arg is "list"
+        # use --candidate-id presence as the reliable gate
+        pass
+    if "--candidate-id" in sys.argv[1:] or (len(sys.argv) > 1 and sys.argv[1] in ("list",) and len(sys.argv) == 2):
+        return _candidate_review(sys.argv[1:])
+
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: aq-review <alert-id>")
+        print("       aq-review --candidate-id <ID> --action <action>  (Phase 150 candidate review)")
         return 1
 
     alert_id = sys.argv[1]
