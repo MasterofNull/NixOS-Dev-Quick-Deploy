@@ -80,8 +80,8 @@ def main() -> None:
         "aq-chat should handle Ctrl-C without dumping a traceback",
     )
     assert_true(
-        'parser.add_argument("--max-tools", type=int, default=16,' in text,
-        "aq-chat should default to enough local tool calls for broad analysis turns",
+        'parser.add_argument("--max-tools", type=int, default=40,' in text,
+        "aq-chat should default to enough local tool calls for broad analysis turns (Phase 164: 16→40)",
     )
     assert_true(
         'local tool budget exhausted; answer finalized from completed tool outputs' in text,

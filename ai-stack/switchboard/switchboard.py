@@ -460,12 +460,12 @@ def _load_profile_catalog() -> dict:
 PROFILE_CATALOG = _load_profile_catalog()
 REPO_PATH = os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
 LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/local-agents").strip()
-LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "16"))
-ACTIVE_TOOL_SCHEMA_LIMIT = max(1, int(os.environ.get("SWB_ACTIVE_TOOL_SCHEMA_LIMIT", "7")))
+LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "40"))
+ACTIVE_TOOL_SCHEMA_LIMIT = max(1, int(os.environ.get("SWB_ACTIVE_TOOL_SCHEMA_LIMIT", "12")))
 TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 REMOTE_TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_REMOTE_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 CONTEXT_OUTPUT_GC_ENABLED = os.environ.get("SWB_CONTEXT_OUTPUT_GC_ENABLED", "1").strip() not in ("0", "false", "no")
-CONTEXT_OUTPUT_GC_MIN_CHARS = max(256, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "2400")))
+CONTEXT_OUTPUT_GC_MIN_CHARS = max(256, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "5000")))
 CONTEXT_OUTPUT_GC_SUMMARY_CHARS = max(160, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_SUMMARY_CHARS", "900")))
 CONTEXT_ARTIFACT_DIR = os.environ.get(
     "SWB_CONTEXT_ARTIFACT_DIR",
@@ -749,6 +749,23 @@ _TOOL_BUNDLES = {
         "search_files",
         "read_file",
     }),
+    # Composite bundle for multi-step dev tasks: research + read + edit + validate + commit
+    # Avoids bundle-switch lease calls that burn tool budget mid-task.
+    "harness_dev": frozenset({
+        VIRTUAL_TOOL_LEASE_NAME,
+        "get_hint",
+        "query_context",
+        "harness_health",
+        "get_working_memory",
+        "search_files",
+        "read_file",
+        "list_files",
+        "write_file",
+        "run_command",
+        "git_status",
+        "git_diff",
+        "validate_before_commit",
+    }),
     "harness_control": frozenset({
         VIRTUAL_TOOL_LEASE_NAME,
         "harness_health",
@@ -878,6 +895,15 @@ def _classify_tool_intent(messages: list) -> str:
     }
     if compact in conversational_exact:
         return "conversational"
+    # Compound dev task: self-improvement, slices, or edit+commit in one request → composite bundle.
+    # Checked before the short-message conversational guard so that "hi" substring in e.g. "this"
+    # doesn't shadow legitimate dev tasks with few tokens.
+    _harness_dev_direct = {"improvement", "improvements", "slice", "slices", "self-improve", "self_improve", "self-improvement", "self_improvement"}
+    if any(t in words for t in _harness_dev_direct):
+        return "harness_dev"
+    if (any(t in words for t in {"fix", "implement", "edit", "refactor", "patch", "create", "write"}) and
+            any(t in words for t in {"commit", "validate", "verify", "test", "push"})):
+        return "harness_dev"
     if len(words) <= 8 and any(greet in compact for greet in ("hello", "hi", "hey", "how are you", "who are you")):
         return "conversational"
     if any(token in words for token in {"git", "commit", "diff", "branch", "staged", "unstaged", "status"}):
