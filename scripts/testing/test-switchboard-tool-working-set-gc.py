@@ -56,9 +56,10 @@ def main():
     assert_true({"search_files", "read_file"}.issubset(selected), "search bundle incomplete")
     assert_true("check_service" not in selected, "search query should not receive sys-ops tools")
 
+    # "fix and validate" is a compound dev task → harness_dev composite bundle (Phase 164 Stage A)
     edit_prompt = [{"role": "user", "content": "fix and validate the switchboard local tool profile"}]
     tools, allowed, meta = swb._normalize_local_tools(None, edit_prompt)
-    assert_true(meta["intent"] == "file_edit", f"expected file_edit intent, got {meta['intent']}")
+    assert_true(meta["intent"] == "harness_dev", f"expected harness_dev intent, got {meta['intent']}")
     assert_true(len(tools) <= swb.ACTIVE_TOOL_SCHEMA_LIMIT, "automatic file-edit lease exceeds active schema cap")
     assert_true(swb.VIRTUAL_TOOL_LEASE_NAME in names(tools), "file-edit bundle should include lease_tools broker")
 

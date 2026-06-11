@@ -90,3 +90,40 @@ Local inference on 35B models can take **90-120s**. Ensure your client timeouts 
 - **Progress sidecar**: `<output>.progress.json` updated every 10 tokens with
   status/tokens_out/max_tokens/elapsed_s/tok_per_sec/eta_s. Also readable via
   `tail -f <output_file>` (incremental writes, not all-at-end).
+
+---
+
+## Phase 164 — Local Agent Capability Lift (Stage A)
+
+Changes to unblock high-level multi-step tasks (self-improvement slices, full dev cycles).
+
+### Tool Call Ceiling Raised
+
+| Constant | Before | After | Env Override |
+|---|---|---|---|
+| `LOCAL_TOOL_CALL_LIMIT` | 16 | 40 | `SWB_LOCAL_TOOL_CALL_LIMIT` |
+| `ACTIVE_TOOL_SCHEMA_LIMIT` | 7 | 12 | `SWB_ACTIVE_TOOL_SCHEMA_LIMIT` |
+| `CONTEXT_OUTPUT_GC_MIN_CHARS` | 2400 | 5000 | `SWB_CONTEXT_OUTPUT_GC_MIN_CHARS` |
+| `aq-chat --max-tools` default | 16 | 40 | `--max-tools N` CLI flag |
+
+### `harness_dev` Composite Bundle
+
+New tool bundle combining search + file_edit + harness_analysis + git into a single working set.
+Avoids bundle-swap lease calls that burn tool budget mid-task:
+
+```
+harness_dev = get_hint, query_context, harness_health, get_working_memory,
+              search_files, read_file, list_files, write_file, run_command,
+              git_status, git_diff, validate_before_commit
+```
+
+Triggers automatically for:
+- Self-improvement / slice tasks (`improvement`, `slice`, `self-improve`)
+- Compound edit+commit requests (`fix ... and validate`, `refactor ... and test`, etc.)
+
+### REPO_ROOT Path Map in System Prompt
+
+`aq-chat` now injects an explicit path map into the system prompt at session start, showing
+the agent exactly where scripts/, tests/, config/, nix/, .agent/, and docs/ live.
+Prevents the "searched /nix instead of REPO_ROOT/scripts" discovery failure seen in Phase 164
+diagnosis.

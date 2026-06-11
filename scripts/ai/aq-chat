@@ -94,7 +94,7 @@ class AQChat:
         self.model_name = "loading..."
         self.context_history: List[Dict[str, str]] = []
         self.temperature = args.temperature
-        self.max_tool_calls = getattr(args, "max_tools", 16)
+        self.max_tool_calls = getattr(args, "max_tools", 40)
         self.inject_context = not getattr(args, "no_inject", False)
         self.local_tools_enabled = not getattr(args, "no_tools", False)
 
@@ -273,11 +273,28 @@ class AQChat:
             if isinstance(ram_free, float) else "unknown"
         )
 
+        repo = str(REPO_ROOT)
         return f"""You are AQ, the expert coding and systems developer for NixOS-Dev-Quick-Deploy (ThinkPad P14s AMD, Cezanne APU, 27 GB RAM, NixOS flake).
 
 STACK: llama.cpp :8080 ({model_id}, n_gpu_layers={ngl or 12}/12) | embed :8081 | coordinator :8003 | switchboard :8085 | AIDB :8002 | dashboard :8889
 HARDWARE: thermal={thermal}{temps} | RAM={ram_str} | MTP={mtp_str}
 CONSTRAINTS: gpu_layers≤12 | ports from nix/modules/core/options.nix only | dashboard/backend hot-reloads; coordinator/switchboard/llama need nixos-rebuild
+
+=== REPO PATH MAP ===
+REPO_ROOT={repo}
+  scripts/         → {repo}/scripts/          (CLI tools: aq-*, dispatch.py, task_config.py)
+  scripts/ai/      → {repo}/scripts/ai/        (aq-chat, aq-prime, aq-session-start, aq-report, aq-qa)
+  scripts/ai/lib/  → {repo}/scripts/ai/lib/    (dispatch.py, task_config.py, phase0.py)
+  scripts/testing/ → {repo}/scripts/testing/   (test-*.py regression suites)
+  scripts/governance/ → {repo}/scripts/governance/ (tier0-validation-gate.sh, repo-structure-lint.sh)
+  ai-stack/switchboard/ → {repo}/ai-stack/switchboard/switchboard.py
+  ai-stack/mcp-servers/shared/ → {repo}/ai-stack/mcp-servers/shared/ (llm_config.py, retry_backoff.py)
+  nix/             → {repo}/nix/               (modules/, profiles/, pkgs/)
+  nix/modules/core/options.nix → port/URL source of truth
+  .agent/          → {repo}/.agent/            (GLOBAL-RULES.md, SKILL_INDEX.md, LOCAL-AGENT.md, skills/)
+  .agents/plans/   → {repo}/.agents/plans/     (phase plans)
+  config/          → {repo}/config/            (harness config JSON)
+  docs/            → {repo}/docs/              (agent-guides/, architecture/)
 
 === OPERATIONAL RULES ===
 1. CHECK-IN FIRST: Before making system changes, show your research and proposed plan with proof (file reads, command outputs).
@@ -760,8 +777,8 @@ def parse_args():
     parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
     parser.add_argument("--switchboard-url", help="Override switchboard URL")
     parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
-    parser.add_argument("--max-tools", type=int, default=16,
-                        help="Max tool calls allowed per local turn (default: 16)")
+    parser.add_argument("--max-tools", type=int, default=40,
+                        help="Max tool calls allowed per local turn (default: 40)")
     parser.add_argument("--no-inject", action="store_true",
                         help="Skip harness context injection (raw session, no system prompt)")
     parser.add_argument("--no-tools", action="store_true",

@@ -29,8 +29,8 @@ def main() -> None:
         "expected finalization prompt to force a tool-free final answer",
     )
     assert_true(
-        'LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "16"))' in text,
-        "expected local tool-call ceiling default to support broad analysis turns",
+        'LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "40"))' in text,
+        "expected local tool-call ceiling default to support broad analysis turns (Phase 164: 16→40)",
     )
     assert_true(
         'final_payload["max_tokens"] = max(768, min(int(final_payload.get("max_tokens") or 1536), 2048))' in text,
