@@ -94,6 +94,9 @@ class DiscoveryAgent:
             candidates.append(model_candidate)
 
         candidates = self._dedupe_and_rank(candidates)
+        # Phase 150 Slice 2: merge existing lifecycle state — new candidates get "proposed"
+        # defaults; candidates already under review preserve their governance state.
+        candidates = self._merge_lifecycle_state(candidates)
         generated_at = _utc_now().isoformat()
         payload = {
             "schema_version": "discovery-candidates.v1",
@@ -108,6 +111,45 @@ class DiscoveryAgent:
             tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             tmp.replace(self.output_path)
         return payload
+
+    _LIFECYCLE_FIELDS = frozenset({"state", "trust_score", "relevance", "governance", "eval_results", "lifecycle_log"})
+    _LIFECYCLE_DEFAULTS: Dict[str, Any] = {
+        "state": "proposed",
+        "trust_score": 0.0,
+        "relevance": 0.5,
+        "governance": {"proposals": [], "reviews": [], "consensus_prd": None},
+        "eval_results": {"sandbox_pass": None, "tokenomics_impact": "unknown", "hardware_compatible": None},
+        "lifecycle_log": [],
+    }
+
+    def _merge_lifecycle_state(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Merge lifecycle fields from persisted candidates; add defaults for new ones."""
+        existing: Dict[str, Dict[str, Any]] = {}
+        if self.output_path.exists():
+            try:
+                data = json.loads(self.output_path.read_text(encoding="utf-8"))
+                for c in data.get("candidates", []):
+                    if c.get("id"):
+                        existing[c["id"]] = c
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        result = []
+        for candidate in candidates:
+            cid = candidate.get("id", "")
+            prev = existing.get(cid, {})
+            for field, default in self._LIFECYCLE_DEFAULTS.items():
+                if field in prev:
+                    # preserve existing lifecycle state (e.g. evaluating, reviewed)
+                    candidate[field] = prev[field]
+                elif field not in candidate:
+                    candidate[field] = (
+                        list(default) if isinstance(default, list) else
+                        dict(default) if isinstance(default, dict) else
+                        default
+                    )
+            result.append(candidate)
+        return result
 
     def _scan_issue_backlog(self) -> List[Dict[str, Any]]:
         path = self.repo_root / ".agent" / "memory" / "issues-backlog.md"

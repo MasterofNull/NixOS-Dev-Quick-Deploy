@@ -1,5 +1,5 @@
 """AI Stack specific API endpoints for learning stats, circuit breakers, and Ralph"""
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response, Depends
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import hashlib
@@ -20,6 +20,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from ..config import service_endpoints
 from ..services.qa_runner import run_phase_json
 from ..services.systemd_units import get_ai_runtime_units
+from ..services.ai_insights import AIInsightsService, get_insights_service
 
 try:
     import asyncpg
@@ -2198,6 +2199,12 @@ async def get_harness_overview() -> Dict[str, Any]:
 async def get_harness_legacy_alias() -> Dict[str, Any]:
     """Compatibility alias for older dashboard clients expecting /api/aistack/harness."""
     return await get_harness_overview()
+
+
+@router.get("/aistack/candidate-pipeline")
+async def get_candidate_pipeline(insights: AIInsightsService = Depends(get_insights_service)):
+    """Expose candidate pipeline lifecycle states (Phase 150 Slice 3)."""
+    return await insights.get_candidate_pipeline()
 
 
 def _hybrid_dual_auth_headers() -> Dict[str, str]:
@@ -6438,3 +6445,25 @@ async def get_collaboration_locks() -> Dict[str, Any]:
         "locks": locks,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+
+@router.get("/candidate-pipeline")
+async def get_candidate_pipeline() -> Dict[str, Any]:
+    """Return Phase 150 candidate lifecycle pipeline counts grouped by state."""
+    from collections import Counter as _Counter
+    try:
+        cp = Path(__file__).resolve().parents[4] / ".agents" / "improvement" / "candidates.json"
+        if not cp.exists():
+            return {"available": False, "states": {}, "total": 0}
+        data = json.loads(cp.read_text(encoding="utf-8"))
+        cands = data.get("candidates", [])
+        cnt = _Counter(c.get("state", "proposed") for c in cands)
+        states = {s: cnt.get(s, 0) for s in ["proposed", "evaluating", "reviewed", "adopted", "rejected", "retired"]}
+        return {
+            "available": True,
+            "total": len(cands),
+            "states": states,
+            "generated_at": data.get("generated_at"),
+        }
+    except Exception as exc:
+        return {"available": False, "error": str(exc), "states": {}, "total": 0}
