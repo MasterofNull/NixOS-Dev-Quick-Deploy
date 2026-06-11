@@ -402,7 +402,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 "messages": request_messages,
                 "stream": True,
                 "temperature": self.temperature,
-                "agent_type": "human"
+                "agent_type": "human",
+                "frequency_penalty": 0.0,
             }
 
             headers = {
