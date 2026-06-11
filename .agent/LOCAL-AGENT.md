@@ -280,7 +280,14 @@ run_command "curl -s -X POST http://localhost:8003/query
 read_file <confirmed_path>
 ```
 - Use coordinator hints + RAG before reading raw files
-- Direct AIDB curl (:8002) is blocked — always use :8003 endpoints
+- Direct AIDB curl (:8002) is blocked for most endpoints — always use :8003 endpoints
+- Exception — these AIDB endpoints ARE accessible without auth:
+  - `GET :8002/health` — service health
+  - `GET :8002/health/detailed` — circuit breakers, RAG status
+  - `GET :8002/history` — recent interactions (list)
+  - `GET :8002/history/stats` — total_interactions, outcomes breakdown
+  - `POST :8002/vector/search` — semantic search (body: `{"query":"...","collection":"...","limit":N}`)
+  - `GET :8002/openapi.json` — full endpoint list (always check this before guessing paths)
 
 ### Step 3 — PRD / PLAN (write 3 lines before touching code)
 Write to `.agent/collaboration/PULSE.log`:

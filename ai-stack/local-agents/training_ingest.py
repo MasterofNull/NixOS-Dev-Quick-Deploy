@@ -38,20 +38,26 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 # not the Nix store copy which is read-only (OSError EROFS).
 _REPO_ROOT = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else _SCRIPT_DIR.parent.parent
 
-TELEMETRY_DIR = Path(os.getenv(
-    "TELEMETRY_DIR",
-    "/var/lib/ai-stack/hybrid/telemetry",
-))
-FINE_TUNING_DATASET = Path(os.getenv(
-    "FINE_TUNING_DATASET",
-    "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl",
-))
-OPTIMIZATION_PROPOSALS = TELEMETRY_DIR / "optimization_proposals.jsonl"
-DELEGATION_FEEDBACK    = TELEMETRY_DIR / "delegation-feedback.jsonl"
-HYBRID_EVENTS          = TELEMETRY_DIR / "hybrid-events.jsonl"
-# User-space spool written by delegate-to-local (DirectRunner) when the service
-# telemetry dir isn't writable by the invoking user. Merged at ingest time.
-USER_EVENTS_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
+# Prefer harness_paths for canonical path resolution; fall back to legacy env-var logic.
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(_SCRIPT_DIR))
+    from harness_paths import (  # noqa: E402
+        TELEMETRY_DIR,
+        DELEGATION_FEEDBACK,
+        HYBRID_EVENTS,
+        OPTIMIZATION_PROPOSALS,
+        USER_EVENTS_SPOOL,
+        DATASET as FINE_TUNING_DATASET,
+    )
+    _sys.path.pop(0)
+except ImportError:
+    TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
+    FINE_TUNING_DATASET = Path(os.getenv("FINE_TUNING_DATASET", "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"))
+    OPTIMIZATION_PROPOSALS = TELEMETRY_DIR / "optimization_proposals.jsonl"
+    DELEGATION_FEEDBACK    = TELEMETRY_DIR / "delegation-feedback.jsonl"
+    HYBRID_EVENTS          = TELEMETRY_DIR / "hybrid-events.jsonl"
+    USER_EVENTS_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
 
 # ── quality thresholds ────────────────────────────────────────────────────────
 

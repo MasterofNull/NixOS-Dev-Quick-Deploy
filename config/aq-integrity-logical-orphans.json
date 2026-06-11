@@ -321,6 +321,14 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: nix/modules/services/agent-mesh.nix"
     },
     {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
+      "module": "cross_model_critique",
+      "owner": "claude-sonnet-4-6",
+      "path": "ai-stack/local-agents/cross_model_critique.py",
+      "rationale": "Phase 157 cross-model critique spool. Standalone library imported by harness CLIs, aq-adopt-workflow, and training_ingest pipeline. No inbound package imports by design (avoids circular dependency with harness_paths)."
+    },
+    {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
       "module": "discovery_agent",
@@ -649,7 +657,7 @@
       "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: dashboard/backend/api/routes/testing.py, dashboard/backend/api/services/ai_insights.py, scripts/testing/test-dashboard-testing-execution.py"
     }
   ],
-  "generated_at": "2026-05-27T14:00:58Z",
+  "generated_at": "2026-06-11T18:06:22.517112Z",
   "generated_by": "scripts/ai/aq-integrity-scan --write-logical-baseline",
   "policy": "Existing entries are known debt. New zero-inbound ai-stack modules must be wired, removed, or explicitly added with a classification rationale.",
   "version": 1

@@ -20,8 +20,10 @@ _SOURCE_TRUST: dict[str, float] = {
 _CATEGORY_RELEVANCE: dict[str, float] = {
     "delegation-quality": 0.95,
     "health": 0.85,
+    "health-spider": 0.85,
     "observability": 0.80,
     "security": 0.75,
+    "system-fix": 0.75,
     "performance": 0.70,
     "tooling": 0.65,
     "documentation": 0.50,
