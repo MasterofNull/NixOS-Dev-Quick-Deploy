@@ -1411,6 +1411,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_inference_budget(ctx))
     results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
+    results.extend(_check_golden_eval_parity(ctx))
     return results
 
 
@@ -1430,6 +1431,169 @@ def _check_eval_sandbox(ctx: RunContext) -> list[CheckResult]:
         return [failed(1, "0.150.5", "eval sandbox executor", detail)]
     except Exception as exc:
         return [failed(1, "0.150.5", "eval sandbox executor", str(exc))]
+
+
+def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:
+    """Phase 152: golden eval set size + static checks for workflow/role/cross-model parity."""
+    import re
+
+    results: list[CheckResult] = []
+    eval_path = ctx.repo_root / "data" / "harness-golden-evals.json"
+
+    # 0.152.1a — eval set must exist and have at least 15 entries
+    if not eval_path.exists():
+        return [failed(1, "0.152.1", "golden eval parity", "data/harness-golden-evals.json missing")]
+    try:
+        with eval_path.open() as f:
+            evals = json.load(f)
+    except Exception as exc:
+        return [failed(1, "0.152.1", "golden eval parity", f"JSON parse error: {exc}")]
+
+    cases = evals.get("cases", [])
+    n = len(cases)
+    if n < 15:
+        results.append(failed(1, "0.152.1", "golden eval parity",
+                              f"eval set has {n} entries — need ≥15 for adequate coverage"))
+    else:
+        results.append(passed(1, "0.152.1", f"golden eval set size: {n} entries (≥15 required)"))
+
+    # Helper: resolve a path that may be relative to repo root or absolute
+    def _rp(rel: str) -> Path:
+        p = Path(rel)
+        return p if p.is_absolute() else ctx.repo_root / rel
+
+    # 0.152.2 — WORKFLOW-CANON.md exists and contains 8-step keywords
+    wc_path = _rp(".agent/WORKFLOW-CANON.md")
+    if not wc_path.exists():
+        results.append(failed(1, "0.152.2", "WORKFLOW-CANON.md", "file missing"))
+    else:
+        content = wc_path.read_text(errors="replace")
+        required = ["ORIENT", "RESEARCH", "EXECUTE", "VALIDATE", "COMMIT"]
+        missing = [t for t in required if t not in content]
+        if missing:
+            results.append(failed(1, "0.152.2", "WORKFLOW-CANON.md",
+                                  f"missing step keywords: {missing}"))
+        else:
+            results.append(passed(1, "0.152.2", "WORKFLOW-CANON.md contains canonical 8-step keywords"))
+
+    # 0.152.3 — PULSE.log: at least one line matches expected format
+    pulse_path = _rp(".agent/collaboration/PULSE.log")
+    if not pulse_path.exists():
+        results.append(failed(1, "0.152.3", "PULSE.log format", "file missing"))
+    else:
+        pulse_pattern = re.compile(
+            r"^\[20\d{2}-\d{2}-\d{2}T[\d:Z.+-]+\] \[[a-z][\w-]*\] \[[a-z][\w-]*\]: .+ — .+$"
+        )
+        lines = pulse_path.read_text(errors="replace").splitlines()
+        matching = [ln for ln in lines if pulse_pattern.match(ln.strip())]
+        if not matching:
+            results.append(failed(1, "0.152.3", "PULSE.log format",
+                                  "no lines match [ISO-ts] [agent] [action]: scope — outcome pattern"))
+        else:
+            results.append(passed(1, "0.152.3", f"PULSE.log format: {len(matching)} conforming lines"))
+
+    # 0.152.4 — RESUME.json has all required fields
+    resume_path = _rp(".agent/collaboration/RESUME.json")
+    if not resume_path.exists():
+        results.append(failed(1, "0.152.4", "RESUME.json required fields", "file missing"))
+    else:
+        try:
+            resume = json.loads(resume_path.read_text(errors="replace"))
+            req_fields = ["current_objective", "phase", "todo_snapshot", "uncommitted_changes", "resume_hint"]
+            missing_f = [f for f in req_fields if f not in resume]
+            if missing_f:
+                results.append(failed(1, "0.152.4", "RESUME.json required fields",
+                                      f"missing: {missing_f}"))
+            else:
+                results.append(passed(1, "0.152.4", "RESUME.json has all required fields"))
+        except Exception as exc:
+            results.append(failed(1, "0.152.4", "RESUME.json required fields",
+                                  f"parse error: {exc}"))
+
+    # 0.152.5 — role-matrix.md exists with 4 canonical roles + sub-agent rule
+    rm_path = _rp("docs/architecture/role-matrix.md")
+    if not rm_path.exists():
+        results.append(failed(1, "0.152.5", "role-matrix.md", "file missing at docs/architecture/role-matrix.md"))
+    else:
+        rm_content = rm_path.read_text(errors="replace")
+        roles = ["orchestrator", "architect", "implementer", "reviewer"]
+        missing_roles = [r for r in roles if r not in rm_content]
+        if missing_roles:
+            results.append(failed(1, "0.152.5", "role-matrix.md canonical roles",
+                                  f"missing roles: {missing_roles}"))
+        elif "assigned slice" not in rm_content:
+            results.append(failed(1, "0.152.5", "role-matrix.md sub-agent rule",
+                                  "'assigned slice' constraint not found"))
+        else:
+            results.append(passed(1, "0.152.5",
+                                  "role-matrix.md: 4 canonical roles defined + sub-agent constraint present"))
+
+    # 0.152.6 — all 3 agent instruction files reference WORKFLOW-CANON.md and use canonical role names
+    agent_files = {
+        "GEMINI.md": _rp(".agent/GEMINI.md"),
+        "CODEX.md": _rp(".agent/CODEX.md"),
+        "LOCAL-AGENT.md": _rp(".agent/LOCAL-AGENT.md"),
+    }
+    parity_failures = []
+    for name, path in agent_files.items():
+        if not path.exists():
+            parity_failures.append(f"{name} missing")
+            continue
+        text = path.read_text(errors="replace")
+        text_lower = text.lower()
+        if "workflow-canon" not in text_lower:
+            parity_failures.append(f"{name}: no WORKFLOW-CANON reference")
+        for role in ["orchestrator", "implementer", "reviewer"]:
+            if role not in text_lower:
+                parity_failures.append(f"{name}: missing role '{role}'")
+    if parity_failures:
+        results.append(failed(1, "0.152.6", "cross-model parity (agent files)",
+                              "; ".join(parity_failures)))
+    else:
+        results.append(passed(1, "0.152.6",
+                              "GEMINI.md, CODEX.md, LOCAL-AGENT.md: WORKFLOW-CANON ref + canonical roles present"))
+
+    # 0.152.7 — switchboard-profiles.yaml contains the 3 required profiles
+    swb_path = _rp("config/switchboard-profiles.yaml")
+    if not swb_path.exists():
+        results.append(failed(1, "0.152.7", "switchboard profiles", "config/switchboard-profiles.yaml missing"))
+    else:
+        swb_content = swb_path.read_text(errors="replace")
+        required_profiles = ["local-coding", "remote-default", "local-tool-calling"]
+        missing_p = [p for p in required_profiles if p not in swb_content]
+        if missing_p:
+            results.append(failed(1, "0.152.7", "switchboard profiles",
+                                  f"missing profiles: {missing_p}"))
+        else:
+            results.append(passed(1, "0.152.7",
+                                  "switchboard-profiles.yaml: local-coding, remote-default, local-tool-calling present"))
+
+    # 0.152.8 — trust_scoring.py exists
+    ts_path = _rp("ai-stack/local-agents/trust_scoring.py")
+    if not ts_path.exists():
+        results.append(failed(1, "0.152.8", "trust_scoring module", "ai-stack/local-agents/trust_scoring.py missing"))
+    else:
+        results.append(passed(1, "0.152.8", "trust_scoring.py exists"))
+
+    # 0.152.9 — candidates.json exists and has ≥1 candidate with trust_score > 0
+    cands_path = _rp(".agents/improvement/candidates.json")
+    if not cands_path.exists():
+        results.append(failed(1, "0.152.9", "candidates.json trust scores", ".agents/improvement/candidates.json missing"))
+    else:
+        try:
+            cands_data = json.loads(cands_path.read_text(errors="replace"))
+            cands = cands_data.get("candidates", [])
+            positive = [c for c in cands if isinstance(c.get("trust_score"), (int, float)) and c["trust_score"] > 0]
+            if not positive:
+                results.append(failed(1, "0.152.9", "candidates.json trust scores",
+                                      f"{len(cands)} candidates but none with trust_score > 0"))
+            else:
+                results.append(passed(1, "0.152.9",
+                                      f"candidates.json: {len(positive)} candidate(s) with trust_score > 0"))
+        except Exception as exc:
+            results.append(failed(1, "0.152.9", "candidates.json trust scores", f"parse error: {exc}"))
+
+    return results
 
 
 def _check_candidate_lifecycle(ctx: RunContext) -> list[CheckResult]:
