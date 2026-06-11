@@ -1,10 +1,25 @@
+import fcntl
 import json
 import os
 import shutil
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 VALID_STATES = ["proposed", "evaluating", "reviewed", "adopted", "rejected", "retired"]
+_REQUIRED_FIELDS = {"id", "category", "title"}
+
+
+@contextmanager
+def _file_lock(lock_path: Path):
+    """Exclusive file lock for cross-process safety (AppArmor needs 'k' on this path)."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lf:
+        try:
+            fcntl.flock(lf, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
 
 class CandidateLifecycleManager:
     def __init__(self, candidates_path: Path):
@@ -49,34 +64,41 @@ class CandidateLifecycleManager:
         return self.candidates
 
     def save(self, candidates: list[dict]):
-        """Persist candidates, preserving the outer wrapper schema."""
-        self.candidates = candidates
-        # Read existing wrapper to preserve metadata fields
-        wrapper: dict = {}
-        if self.path.exists():
-            try:
-                with open(self.path, "r", encoding="utf-8") as f:
-                    existing = json.load(f)
-                if isinstance(existing, dict):
-                    wrapper = {k: v for k, v in existing.items() if k != "candidates"}
-            except (json.JSONDecodeError, OSError):
-                pass
-        wrapper["candidates"] = candidates
-        wrapper.setdefault("schema_version", "discovery-candidates.v1")
-        wrapper["total_candidates"] = len(candidates)
-        tmp_path = self.path.with_suffix(".tmp")
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(wrapper, f, indent=2, sort_keys=True)
-            f.write("\n")
-        os.replace(tmp_path, self.path)
+        """Persist candidates with exclusive file lock to prevent lost updates."""
+        lock_path = self.path.with_suffix(".lock")
+        with _file_lock(lock_path):
+            self.candidates = candidates
+            # Read existing wrapper to preserve metadata fields
+            wrapper: dict = {}
+            if self.path.exists():
+                try:
+                    with open(self.path, "r", encoding="utf-8") as f:
+                        existing = json.load(f)
+                    if isinstance(existing, dict):
+                        wrapper = {k: v for k, v in existing.items() if k != "candidates"}
+                except (json.JSONDecodeError, OSError):
+                    pass
+            wrapper["candidates"] = candidates
+            wrapper.setdefault("schema_version", "discovery-candidates.v1")
+            wrapper["total_candidates"] = len(candidates)
+            tmp_path = self.path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(wrapper, f, indent=2, sort_keys=True)
+                f.write("\n")
+            os.replace(tmp_path, self.path)
 
     def transition(self, candidate_id, new_state, by="system", note="") -> dict:
         if new_state not in VALID_STATES:
             raise ValueError(f"Invalid state: {new_state}")
-        
+
         cand = next((c for c in self.candidates if c.get("id") == candidate_id), None)
         if not cand:
             raise ValueError(f"Candidate not found: {candidate_id}")
+
+        # Validate required fields before any state change
+        missing = _REQUIRED_FIELDS - set(cand.keys())
+        if missing:
+            raise ValueError(f"Candidate {candidate_id} missing required fields: {missing}")
         
         old_state = cand.get("state", "proposed")
         cand["state"] = new_state

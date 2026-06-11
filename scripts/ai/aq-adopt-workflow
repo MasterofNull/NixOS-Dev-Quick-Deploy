@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# aq-adopt-workflow — Phase 157: generate PRD stubs for adopted candidates
+#
+# For each adopted candidate, creates:
+#   .agents/plans/phase-<N>-<candidate-slug>.md   (PRD stub)
+# And seeds the candidate title+action to RAG (best-practices collection).
+#
+# Usage:
+#   aq-adopt-workflow               # process all adopted candidates
+#   aq-adopt-workflow --dry-run     # preview without writing
+#   aq-adopt-workflow --seed-rag    # also seed to AIDB best-practices
+
+set -euo pipefail
+
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+CANDIDATES="$REPO_ROOT/.agents/improvement/candidates.json"
+PLANS_DIR="$REPO_ROOT/.agents/plans"
+AIDB_URL="${AIDB_URL:-http://127.0.0.1:8002}"
+DRY_RUN=0
+SEED_RAG=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    --seed-rag) SEED_RAG=1 ;;
+  esac
+done
+
+if [[ ! -f "$CANDIDATES" ]]; then
+  echo "[aq-adopt-workflow] ERROR: $CANDIDATES not found" >&2
+  exit 1
+fi
+
+ADOPTED=$(python3 -c "
+import json, pathlib, sys
+data = json.loads(pathlib.Path('$CANDIDATES').read_text())
+cands = data.get('candidates', data) if isinstance(data, dict) else data
+for c in cands:
+    if c.get('state') == 'adopted':
+        print(json.dumps(c))
+")
+
+if [[ -z "$ADOPTED" ]]; then
+  echo "[aq-adopt-workflow] No adopted candidates found."
+  exit 0
+fi
+
+COUNT=0
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+
+  ID=$(echo "$line" | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['id'])")
+  TITLE=$(echo "$line" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('title','untitled'))")
+  CATEGORY=$(echo "$line" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('category','unknown'))")
+  ACTION=$(echo "$line" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); a=d.get('proposed_action',''); print(a if a else 'Investigate evidence and implement fix for: ' + d.get('title','this candidate'))")
+  PRIORITY=$(echo "$line" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('priority',2))")
+  TRUST=$(echo "$line" | python3 -c "import sys,json; print(round(json.loads(sys.stdin.read()).get('trust_score',0),2))")
+  RELEVANCE=$(echo "$line" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(round(d.get('relevance') or d.get('relevance_score') or 0,2))")
+  DESC=$(echo "$line" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); evid='; '.join(d.get('evidence',[])[:2]); print(d.get('description','') or evid or 'See evidence field.')")
+
+  # Derive plan filename from candidate ID slug (first 50 chars, sanitized)
+  SLUG=$(echo "$ID" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-50)
+  # Find next available phase number
+  LAST_PHASE=$(ls "$PLANS_DIR"/phase-*.md 2>/dev/null | grep -oP 'phase-\K[0-9]+' | sort -n | tail -1 || echo "156")
+  NEXT_PHASE=$((LAST_PHASE + 1))
+  PLAN_FILE="$PLANS_DIR/phase-${NEXT_PHASE}-${SLUG}.md"
+
+  echo "[aq-adopt-workflow] Candidate: $ID"
+  echo "  Title:    $TITLE"
+  echo "  Category: $CATEGORY  Priority: $PRIORITY  Trust: $TRUST  Rel: $RELEVANCE"
+  echo "  Plan:     $PLAN_FILE"
+
+  if [[ $DRY_RUN -eq 0 ]]; then
+    TODAY=$(date +%Y-%m-%d)
+    cat > "$PLAN_FILE" <<MDEOF
+---
+phase: ${NEXT_PHASE}
+candidate_id: ${ID}
+category: ${CATEGORY}
+priority: ${PRIORITY}
+trust_score: ${TRUST}
+relevance_score: ${RELEVANCE}
+status: draft
+created: ${TODAY}
+---
+
+# Phase ${NEXT_PHASE} — ${TITLE}
+
+## Origin
+Adopted candidate from discovery pipeline (trust=${TRUST}, relevance=${RELEVANCE}).
+Source: candidate ID \`${ID}\`.
+
+## Problem Statement
+${DESC}
+
+## Proposed Action
+${ACTION}
+
+## Acceptance Criteria
+- [ ] Implementation matches proposed_action scope
+- [ ] Tier0 validation gate passes
+- [ ] QA phase 0 passes (all checks green)
+- [ ] RAG seeded with bug/fix pattern if applicable
+- [ ] PULSE.log updated
+
+## Implementation Notes
+_Fill in during implementation._
+
+## Out of Scope
+_Fill in during planning._
+
+## References
+- Candidate pipeline: \`.agents/improvement/candidates.json\`
+- Trust scoring: \`ai-stack/local-agents/trust_scoring.py\`
+- Eval sandbox: \`ai-stack/local-agents/eval_sandbox.py\`
+MDEOF
+    echo "  [wrote] $PLAN_FILE"
+    COUNT=$((COUNT + 1))
+
+    if [[ $SEED_RAG -eq 1 ]]; then
+      # Seed via Qdrant directly (same path as seed-rag-knowledge.py)
+      python3 -c "
+import os, sys, uuid, json, urllib.request
+QDRANT = os.environ.get('QDRANT_URL', 'http://127.0.0.1:6333')
+EMBED   = os.environ.get('EMBED_URL',  'http://127.0.0.1:8081')
+text = 'Adopted candidate: ${TITLE}. Category: ${CATEGORY}. Action: ${ACTION}. Trust=${TRUST}, Relevance=${RELEVANCE}.'
+# Get embedding
+req = urllib.request.Request(f'{EMBED}/v1/embeddings', data=json.dumps({'input':text,'model':'bge-m3'}).encode(), headers={'Content-Type':'application/json'}, method='POST')
+vec = json.loads(urllib.request.urlopen(req, timeout=15).read())['data'][0]['embedding']
+point = {'id': str(uuid.uuid4()), 'vector': vec, 'payload': {'title': '${SLUG}', 'content': text, 'category': '${CATEGORY}', 'source': 'adopt-workflow'}}
+req2 = urllib.request.Request(f'{QDRANT}/collections/best-practices/points', data=json.dumps({'points': [point]}).encode(), headers={'Content-Type':'application/json'}, method='PUT')
+urllib.request.urlopen(req2, timeout=15)
+print('seeded')
+" 2>/dev/null && echo "  [seeded] best-practices RAG" || echo "  [WARN] RAG seed skipped (embed/qdrant unavailable)"
+    fi
+  fi
+
+done <<< "$ADOPTED"
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "[aq-adopt-workflow] Dry run complete — no files written."
+else
+  echo "[aq-adopt-workflow] Done: $COUNT PRD stub(s) created."
+fi

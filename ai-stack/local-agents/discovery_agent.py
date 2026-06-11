@@ -23,6 +23,12 @@ from typing import Any, Dict, List, Optional
 from agent_executor import LocalAgentExecutor
 from tool_registry import ToolRegistry, get_registry
 
+try:
+    from harness_paths import DELEGATION_FEEDBACK, CANDIDATES_JSON, ISSUES_BACKLOG, MODEL_PROFILE
+    _HP_AVAILABLE = True
+except ImportError:
+    _HP_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,12 +79,17 @@ class DiscoveryAgent:
         self.executor = executor
         self.tool_registry = tool_registry or get_registry()
         self.repo_root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[2]
-        self.output_path = Path(output_path) if output_path else self.repo_root / ".agents" / "improvement" / "candidates.json"
-        self.delegation_feedback_path = (
-            Path(delegation_feedback_path)
-            if delegation_feedback_path
+        # Use harness_paths if available; fall back to env var / hardcoded default
+        _default_candidates = (
+            CANDIDATES_JSON if _HP_AVAILABLE
+            else self.repo_root / ".agents" / "improvement" / "candidates.json"
+        )
+        _default_feedback = (
+            DELEGATION_FEEDBACK if _HP_AVAILABLE
             else Path(os.getenv("DELEGATION_FEEDBACK_LOG_PATH", "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl"))
         )
+        self.output_path = Path(output_path) if output_path else _default_candidates
+        self.delegation_feedback_path = Path(delegation_feedback_path) if delegation_feedback_path else _default_feedback
 
     async def discover_opportunities(self, persist: bool = True) -> Dict[str, Any]:
         logger.info("Scanning for system and code optimization opportunities.")
@@ -159,6 +170,7 @@ class DiscoveryAgent:
         return result
 
     def _scan_issue_backlog(self) -> List[Dict[str, Any]]:
+        # Use repo_root-relative path so tests with synthetic data work correctly
         path = self.repo_root / ".agent" / "memory" / "issues-backlog.md"
         if not path.exists():
             return []
@@ -296,6 +308,7 @@ class DiscoveryAgent:
         return candidates
 
     def _scan_model_profile_freshness(self) -> Optional[Dict[str, Any]]:
+        # Always prefer repo_root-relative path so tests can inject synthetic profiles
         path = self.repo_root / "config" / "model-profile.json"
         if not path.exists():
             return None

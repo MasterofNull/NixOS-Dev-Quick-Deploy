@@ -1414,7 +1414,44 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
+    results.extend(_check_cross_model_critique(ctx))
+    results.extend(_check_adopt_workflow(ctx))
     return results
+
+
+def _check_cross_model_critique(ctx: RunContext) -> list[CheckResult]:
+    """Phase 157: cross_model_critique module exists and passes syntax check."""
+    mod = ctx.repo_root / "ai-stack" / "local-agents" / "cross_model_critique.py"
+    if not mod.exists():
+        return [failed(1, "0.157.1", "cross-model critique", "cross_model_critique.py missing")]
+    import ast
+    try:
+        ast.parse(mod.read_text())
+    except SyntaxError as exc:
+        return [failed(1, "0.157.1", "cross-model critique", f"syntax error: {exc}")]
+    # Check required public symbols
+    src = mod.read_text()
+    missing = [s for s in ("record_critique", "query_critiques", "synthesize_critiques") if s not in src]
+    if missing:
+        return [failed(1, "0.157.1", "cross-model critique", f"missing symbols: {missing}")]
+    return [passed(1, "0.157.1", "cross-model critique", "module OK, 3 public symbols present")]
+
+
+def _check_adopt_workflow(ctx: RunContext) -> list[CheckResult]:
+    """Phase 157: aq-adopt-workflow script exists and is executable."""
+    script = ctx.repo_root / "scripts" / "ai" / "aq-adopt-workflow"
+    if not script.exists():
+        return [failed(1, "0.157.2", "adopt workflow", "aq-adopt-workflow missing")]
+    if not os.access(script, os.X_OK):
+        return [failed(1, "0.157.2", "adopt workflow", "aq-adopt-workflow not executable")]
+    import subprocess
+    try:
+        r = subprocess.run(["bash", "-n", str(script)], capture_output=True, timeout=5)
+        if r.returncode != 0:
+            return [failed(1, "0.157.2", "adopt workflow", f"bash -n failed: {r.stderr.decode()[:100]}")]
+    except Exception as exc:
+        return [failed(1, "0.157.2", "adopt workflow", f"bash check error: {exc}")]
+    return [passed(1, "0.157.2", "adopt workflow", "aq-adopt-workflow exists and passes bash -n")]
 
 
 def _check_delegation_feedback_contract(ctx: RunContext) -> list[CheckResult]:
