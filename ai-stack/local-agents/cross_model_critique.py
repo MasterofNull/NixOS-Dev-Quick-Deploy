@@ -50,13 +50,13 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("cross-model-critique")
 
 # Use harness_paths for canonical spool location; fall back gracefully
+# Note: harness_paths does not define AIDB_URL — resolve separately from env/config
 try:
-    from harness_paths import CRITIQUE_SPOOL, AIDB_URL as _AIDB_URL_DEFAULT
+    from harness_paths import CRITIQUE_SPOOL
 except ImportError:
-    _AIDB_URL_DEFAULT = "http://127.0.0.1:8002"
     CRITIQUE_SPOOL = Path(os.environ.get("REPO_ROOT", ".")) / ".agents" / "telemetry" / "cross-model-critiques.jsonl"
 
-_AIDB_URL = os.environ.get("AIDB_URL", _AIDB_URL_DEFAULT)
+_AIDB_URL = os.environ.get("AIDB_URL", "http://127.0.0.1:8002")
 
 
 # ---------------------------------------------------------------------------

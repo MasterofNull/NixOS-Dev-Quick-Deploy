@@ -510,14 +510,21 @@ def generate_prompt_extensions(
     }
 
     if not dry_run:
+        import os as _os
         extensions_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write as YAML if pyyaml available, else JSON.
+        # Write via temp file + atomic replace to prevent concurrent write loss
         try:
             import yaml as _yaml
-            extensions_path.write_text(_yaml.dump(extensions, allow_unicode=True, sort_keys=False))
+            _target = extensions_path
+            _tmp = _target.with_suffix(_target.suffix + ".tmp")
+            _tmp.write_text(_yaml.dump(extensions, allow_unicode=True, sort_keys=False))
+            _os.replace(_tmp, _target)
         except ImportError:
             import json as _json
-            extensions_path.with_suffix(".json").write_text(_json.dumps(extensions, indent=2))
+            _target = extensions_path.with_suffix(".json")
+            _tmp = _target.with_suffix(".json.tmp")
+            _tmp.write_text(_json.dumps(extensions, indent=2))
+            _os.replace(_tmp, _target)
 
     return {"rules_added": added, "total_rules": len(rules), "file": str(extensions_path)}
 

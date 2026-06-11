@@ -71,16 +71,23 @@ def apply_scores(candidates: list[dict[str, Any]], *, overwrite: bool = False) -
 
     Returns the same list with scores updated in-place.
     """
+    skipped = 0
     for candidate in candidates:
         missing_trust = "trust_score" not in candidate or candidate.get("trust_score") == 0.0
         missing_rel = "relevance" not in candidate or candidate.get("relevance") == 0.5
         if overwrite or (missing_trust and missing_rel):
             try:
                 trust, relevance = score_candidate(candidate)
-            except ValueError:
-                continue  # skip candidates with missing required fields; don't crash the pipeline
+            except ValueError as exc:
+                skipped += 1
+                import logging as _logging
+                _logging.getLogger(__name__).warning("apply_scores: skipped invalid candidate — %s", exc)
+                continue
             candidate["trust_score"] = trust
             candidate["relevance"] = relevance
+    if skipped:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("apply_scores: %d candidate(s) skipped due to missing required fields", skipped)
     return candidates
 
 
