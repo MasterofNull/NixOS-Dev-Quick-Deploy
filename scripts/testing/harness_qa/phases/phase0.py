@@ -1410,7 +1410,26 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_modal_task_profiles(ctx))
     results.extend(_check_local_inference_budget(ctx))
     results.extend(_check_candidate_lifecycle(ctx))
+    results.extend(_check_eval_sandbox(ctx))
     return results
+
+
+def _check_eval_sandbox(ctx: RunContext) -> list[CheckResult]:
+    """Phase 150 Slice 5: EvalSandboxExecutor static evaluation."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-eval-sandbox.py"
+    if not check.exists():
+        return [failed(1, "0.150.5", "eval sandbox executor", "test-eval-sandbox.py missing")]
+    try:
+        rc = subprocess.run(
+            ["python3", str(check)],
+            capture_output=True, text=True, timeout=15,
+        )
+        if rc.returncode == 0:
+            return [passed(1, "0.150.5", "eval sandbox static checks + hardware constraint guard")]
+        detail = rc.stdout.strip() or rc.stderr.strip() or f"exit {rc.returncode}"
+        return [failed(1, "0.150.5", "eval sandbox executor", detail)]
+    except Exception as exc:
+        return [failed(1, "0.150.5", "eval sandbox executor", str(exc))]
 
 
 def _check_candidate_lifecycle(ctx: RunContext) -> list[CheckResult]:
