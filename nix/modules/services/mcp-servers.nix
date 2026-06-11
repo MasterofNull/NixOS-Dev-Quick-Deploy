@@ -2453,6 +2453,9 @@ in {
             /etc/ssl/**             r,
             /etc/resolv.conf        r,
             # jq, coreutils (used in _aq-qa-bash output formatting)
+            # coreutils multi-call binary (pkgs.coreutils-full provides /bin/coreutils
+            # as the dispatcher; individual tool symlinks also covered by per-name rules)
+            /nix/store/**/bin/coreutils ix,
             /nix/store/**/bin/jq    ix,
             /nix/store/**/bin/cat   ix,
             /nix/store/**/bin/grep  ix,
@@ -2464,6 +2467,14 @@ in {
             /nix/store/**/bin/sort  ix,
             /nix/store/**/bin/head  ix,
             /nix/store/**/bin/tail  ix,
+            /nix/store/**/bin/ls    ix,
+            /nix/store/**/bin/mkdir ix,
+            /nix/store/**/bin/cp    ix,
+            /nix/store/**/bin/mv    ix,
+            /nix/store/**/bin/rm    ix,
+            /nix/store/**/bin/tr    ix,
+            /nix/store/**/bin/cut   ix,
+            /nix/store/**/bin/echo  ix,
             /run/current-system/sw/bin/jq  ix,
             /run/current-system/sw/** r,
             /run/current-system/sw/**/*.so* mr,

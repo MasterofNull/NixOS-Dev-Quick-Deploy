@@ -137,6 +137,14 @@ When deploying a new locally hosted model, verify:
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
 Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
 
+### AppArmor: coreutils-full multi-call binary (Phase 160)
+
+`ai-hybrid-coordinator` AppArmor profile blocked `coreutils-full` exec — 4 denials on 2026-06-11.
+`pkgs.coreutils-full` ships a single multi-call binary at `/nix/store/.../bin/coreutils`.
+Per-tool rules (`cat`, `ls`, etc.) don't cover it. Fix: added `/nix/store/**/bin/coreutils ix,`
+plus additional common tools (`ls`, `mkdir`, `cp`, `mv`, `rm`, `tr`, `cut`, `echo`) to profile.
+File: `nix/modules/services/mcp-servers.nix`. Requires `nixos-rebuild switch` to activate.
+
 ### Context Guard (Phase 159.2)
 
 Two runtime defences against context overflow (n_ctx=8192 ceiling on Renoir APU):
