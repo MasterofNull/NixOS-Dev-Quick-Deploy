@@ -457,7 +457,82 @@ def _load_profile_catalog() -> dict:
 
     return catalog
 
+
+def _load_routing_rules() -> dict:
+    """Load routing_rules from harness-prompt-extensions.json/yaml if present."""
+    repo_path = os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
+    for candidate in (
+        os.path.join(repo_path, "config", "harness-prompt-extensions.json"),
+        os.path.join(repo_path, "config", "harness-prompt-extensions.yaml"),
+    ):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate, "r", encoding="utf-8") as fh:
+                raw = fh.read()
+            doc: dict = {}
+            try:
+                import yaml as _yaml
+                doc = _yaml.safe_load(raw) or {}
+            except Exception:
+                doc = json.loads(raw)
+            if isinstance(doc, dict) and isinstance(doc.get("routing_rules"), dict):
+                return doc["routing_rules"]
+        except Exception as exc:
+            print(f"warning: failed to load routing_rules: {exc}", file=sys.stderr)
+    return {}
+
+
+def _classify_routing_intent(payload: dict | None) -> str | None:
+    """Return 'local' or 'remote' based on routing_rules task_matrix, or None to defer.
+
+    Checks:
+    1. Input token count against local_input_token_limit (hard cap → remote).
+    2. Prompt text against task_matrix triggers (first match wins, remote tasks checked first).
+    Returns None when no rule fires — caller falls through to DEFAULT_PROVIDER logic.
+    """
+    if not isinstance(payload, dict):
+        return None
+    rules = ROUTING_RULES
+    if not rules:
+        return None
+
+    # Hard token-count cap: anything over limit goes remote
+    token_limit = int(rules.get("local_input_token_limit", 8000))
+    messages = payload.get("messages") or []
+    if isinstance(messages, list):
+        total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        # Rough approximation: 4 chars ≈ 1 token
+        estimated_tokens = total_chars // 4
+        if estimated_tokens > token_limit and REMOTE_URL:
+            return "remote"
+
+    # Prompt text trigger matching
+    prompt_text = " ".join(
+        str(m.get("content", "")) for m in messages if isinstance(m, dict)
+    ).lower()
+    task_matrix = rules.get("task_matrix", {})
+    # Check remote-forcing rules first so they take precedence
+    for task_type, spec in task_matrix.items():
+        if not isinstance(spec, dict):
+            continue
+        if spec.get("provider") != "remote":
+            continue
+        if any(trigger in prompt_text for trigger in spec.get("triggers", [])):
+            return "remote" if REMOTE_URL else "local"
+    # Then check local-preferred rules
+    for task_type, spec in task_matrix.items():
+        if not isinstance(spec, dict):
+            continue
+        if spec.get("provider") != "local":
+            continue
+        if any(trigger in prompt_text for trigger in spec.get("triggers", [])):
+            return "local"
+    return None
+
+
 PROFILE_CATALOG = _load_profile_catalog()
+ROUTING_RULES = _load_routing_rules()
 REPO_PATH = os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
 LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/local-agents").strip()
 LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "40"))
@@ -2136,6 +2211,11 @@ def _route_target(request: Request, payload: dict | None, profile: str) -> str:
         model = str(payload.get("model", "")).strip().lower()
     if any(model.startswith(prefix) for prefix in REMOTE_MODEL_PREFIXES):
         return "remote" if REMOTE_URL else "local"
+
+    # Phase 158: intent-based routing — fires only when no explicit override was set
+    intent_target = _classify_routing_intent(payload)
+    if intent_target is not None:
+        return intent_target
 
     if DEFAULT_PROVIDER == "remote" and REMOTE_URL:
         return "remote"

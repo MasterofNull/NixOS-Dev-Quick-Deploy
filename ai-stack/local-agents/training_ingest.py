@@ -477,6 +477,23 @@ def generate_prompt_extensions(
         if count >= 3:  # only noteworthy recurring failures
             failure_hints.append(f"{fclass} ({count}x in last 24h)")
 
+    # Preserve routing_rules if already set (written by Phase 158+ design tooling)
+    _existing_routing_rules: dict = {}
+    for _try_path in (extensions_path, extensions_path.with_suffix(".json")):
+        if _try_path.exists():
+            try:
+                import yaml as _yaml
+                _existing = _yaml.safe_load(_try_path.read_text(encoding="utf-8"))
+            except Exception:
+                try:
+                    import json as _json
+                    _existing = _json.loads(_try_path.read_text(encoding="utf-8"))
+                except Exception:
+                    _existing = {}
+            if isinstance(_existing, dict) and isinstance(_existing.get("routing_rules"), dict):
+                _existing_routing_rules = _existing["routing_rules"]
+            break
+
     extensions = {
         "schema_version": "1.0",
         "last_updated": _now_utc().isoformat(),
@@ -487,6 +504,7 @@ def generate_prompt_extensions(
         ),
         "rules": rules,
         "routing_hints": failure_hints,
+        "routing_rules": _existing_routing_rules,
         "dataset_size": ingest_report.get("dataset_total", 0),
         "auto_approved_proposals": len(ingest_report.get("proposals_auto_approved", [])),
     }

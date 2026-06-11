@@ -1832,7 +1832,14 @@ in {
             # commonServiceConfig sets ProtectHome="read-only" which blocks writes to
             # /home/hyperd/... even when REPO_ROOT points there.  Add explicit ReadWritePaths
             # so training_ingest.py can write harness-prompt-extensions.json.
-            ReadWritePaths = serviceWritablePaths ++ ["${mcp.repoPath}/config" "${mcp.repoPath}/.agents/attention"];
+            ReadWritePaths = serviceWritablePaths ++ [
+              "${mcp.repoPath}/config"
+              "${mcp.repoPath}/.agents/attention"
+              # Phase 157: candidate_lifecycle.save() creates .agents/improvement/candidates.lock
+              # (fcntl LOCK_EX cross-process safety). AppArmor 'k' on this path is satisfied
+              # by the existing NixOS-managed file-lock syscall allowance in hardenedBase.
+              "${mcp.repoPath}/.agents/improvement"
+            ];
           };
       };
 

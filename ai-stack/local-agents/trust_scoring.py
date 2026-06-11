@@ -34,11 +34,18 @@ _CATEGORY_RELEVANCE: dict[str, float] = {
 _PRIORITY_RELEVANCE: dict[int, float] = {1: 1.0, 2: 0.8, 3: 0.6, 4: 0.4}
 
 
+_SCORE_REQUIRED_FIELDS: frozenset[str] = frozenset({"id", "category", "title", "source"})
+
+
 def score_candidate(candidate: dict[str, Any]) -> tuple[float, float]:
     """Return (trust_score, relevance_score) in [0.0, 1.0] for a candidate.
 
     Deterministic: same inputs always produce same outputs.
+    Raises ValueError if required fields (id, category, title, source) are missing.
     """
+    missing = _SCORE_REQUIRED_FIELDS - set(candidate.keys())
+    if missing:
+        raise ValueError(f"score_candidate: missing required fields {missing} in candidate {candidate.get('id', '?')!r}")
     source = str(candidate.get("source") or candidate.get("category") or "unknown")
     category = str(candidate.get("category") or "unknown")
     priority = int(candidate.get("priority") or 3)
@@ -68,7 +75,10 @@ def apply_scores(candidates: list[dict[str, Any]], *, overwrite: bool = False) -
         missing_trust = "trust_score" not in candidate or candidate.get("trust_score") == 0.0
         missing_rel = "relevance" not in candidate or candidate.get("relevance") == 0.5
         if overwrite or (missing_trust and missing_rel):
-            trust, relevance = score_candidate(candidate)
+            try:
+                trust, relevance = score_candidate(candidate)
+            except ValueError:
+                continue  # skip candidates with missing required fields; don't crash the pipeline
             candidate["trust_score"] = trust
             candidate["relevance"] = relevance
     return candidates
