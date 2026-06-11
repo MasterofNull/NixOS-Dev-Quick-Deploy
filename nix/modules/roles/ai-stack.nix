@@ -1690,6 +1690,10 @@ in {
       environment.systemPackages = [
         aiHarnessCliWrappers
         (pkgs.callPackage ../../pkgs/agentic-tools.nix {})
+        # Phase 164 Stage B: RTK shell output compression for run_command tool
+        (pkgs.callPackage ../../pkgs/rtk.nix {})
+        # Phase 164 Stage D: lean-ctx MCP server (62 tools, 10 read modes)
+        (pkgs.callPackage ../../pkgs/lean-ctx.nix {})
         # OSINT tools (Phase 61 capability activation)
         pkgs.holehe
         pkgs.sherlock

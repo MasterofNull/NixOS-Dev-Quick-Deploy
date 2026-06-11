@@ -7,6 +7,7 @@
     ./ingress.nix
     ./capability-registry.nix
     ./switchboard.nix
+    ./headroom-proxy.nix
     ./autonomous-improvement.nix
     ./identity-kernel.nix
     ./affective-engine.nix

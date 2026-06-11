@@ -127,3 +127,56 @@ Triggers automatically for:
 the agent exactly where scripts/, tests/, config/, nix/, .agent/, and docs/ live.
 Prevents the "searched /nix instead of REPO_ROOT/scripts" discovery failure seen in Phase 164
 diagnosis.
+
+---
+
+## Phase 164 — Stages B, C, D: Context Compression Toolchain
+
+### Stage B — RTK Shell Output Compression
+
+RTK (Rust Token Killer) is installed as a NixOS system package and auto-detected by
+`run_command`. When `rtk` is in PATH, every `run_command` call wraps the command with
+`rtk <cmd>` before execution, compressing output 60-90% before it enters LLM context.
+
+```nix
+# Already in ai-stack.nix — enabled after nixos-rebuild:
+(pkgs.callPackage ../../pkgs/rtk.nix {})
+```
+
+Controls: `SWB_RTK_ENABLED=0` disables wrapping; `RTK_BIN=/path/to/rtk` overrides binary path.
+
+**Hash resolution required** (run after nixos-rebuild download error):
+```bash
+nix-prefetch-url https://github.com/rtk-ai/rtk/releases/download/v0.42.3/rtk-x86_64-unknown-linux-musl.tar.gz
+# Replace lib.fakeHash in nix/pkgs/rtk.nix with printed hash
+```
+
+### Stage C — headroom Context Compression Proxy (pending packaging)
+
+NixOS module added at `nix/modules/services/headroom-proxy.nix`. When
+`mySystem.aiStack.headroomProxy.enable = true`, switchboard routes completions through
+headroom (`:8787`) which compresses payloads before forwarding to llama.cpp.
+
+**Packaging incomplete** — blocked by nixpkgs-25.11 litellm@1.69.0 (need ≥1.86.2)
+and missing `magika`, `sqlite-vec`, `ast-grep-cli` packages. Options:
+- Wait for nixpkgs update
+- Use `poetry2nix` with headroom's `pyproject.toml`
+- Add local `fetchPypi` derivations for the missing deps
+
+### Stage D — lean-ctx MCP Server
+
+lean-ctx installed as NixOS system package. After rebuild, run once per user:
+```bash
+lean-ctx init --agent claude   # registers MCP in ~/.claude.json, installs rules
+lean-ctx setup                 # shell + editor + verification setup
+```
+
+62 MCP tools available: `ctx_read` with modes `signatures`, `map`, `lines:N-M`,
+`density:X`, `diff`. Session memory persists across chats. See `lean-ctx doctor`
+for diagnostic checks.
+
+**Hash resolution required**:
+```bash
+nix-prefetch-github --owner yvgude --repo lean-ctx --rev v3.3.7
+# Replace lib.fakeHash in nix/pkgs/lean-ctx.nix with printed hashes
+```

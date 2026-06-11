@@ -1830,6 +1830,35 @@
         };
       };
 
+      # ── headroom: context-compression proxy (Phase 164 Stage C) ─────────────
+      # Sits between switchboard and llama.cpp; intercepts completions requests
+      # and compresses payloads (tool outputs, logs, RAG chunks) before forwarding.
+      # When enabled, switchboard's llamaUrl is redirected to the headroom port.
+      headroomProxy = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Enable the headroom context-compression proxy.
+            Routes switchboard → headroom (:8787) → llama.cpp (:8080).
+            Requires headroom-ai[proxy] Python package (see packaging note in
+            nix/modules/services/headroom-proxy.nix before enabling).
+          '';
+        };
+
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 8787;
+          description = "TCP port headroom proxy listens on (loopback only).";
+        };
+
+        debug = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable DEBUG log level for the headroom proxy service.";
+        };
+      };
+
       # ── AI harness architecture (memory + eval + tree-search retrieval) ─────
       aiHarness = {
         enable = lib.mkOption {
