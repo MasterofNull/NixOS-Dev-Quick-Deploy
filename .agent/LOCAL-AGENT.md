@@ -74,6 +74,8 @@ the right knowledge in view without loading the full codebase.
 
 **Token budget constraint**: local model input = 3500 tokens (`local-agent` profile).
 **Load max 2 skills per task.** Each SKILL.md ≈ 400-1000 tokens.
+**Tool call budget**: 40 calls per session (`LOCAL_TOOL_CALL_LIMIT`). Active schemas: 12. GC threshold: 5000 chars.
+**Context compression**: `run_command` auto-wraps with RTK when available — shell output is compressed 60-90% before entering context. Check savings with `run_command "rtk gain"`.
 
 **Critical local-agent skills** (load for applicable work):
 - `llm-config` — mandatory: `enable_thinking` in chat_template_kwargs, build_llama_payload SSOT
@@ -247,7 +249,7 @@ When a task is beyond your capability or tools, say so and request delegation �
 | Edit in-place | `edit_file` | Provide exact old/new string |
 | List directory | `list_files` | Do not use shell `ls` |
 | Search contents | `search_files` | grep-equivalent, returns matches |
-| Run whitelisted commands | `run_command` | SAFE_COMMANDS whitelist applies |
+| Run whitelisted commands | `run_command` | SAFE_COMMANDS whitelist; RTK auto-compresses output when installed (`"compressed": true` in response) |
 | Git status/diff | `git_status`, `git_diff` | Read-only git introspection |
 | Stage files | `git_add` | Only stage specific files |
 | Validate before commit | `validate_before_commit` | MANDATORY before any commit |

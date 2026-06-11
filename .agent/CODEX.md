@@ -229,6 +229,19 @@ Co-Authored-By: <Codex model name> <noreply@openai.com>"
 - Pass only slice-relevant context to sub-agents — not full history
 - Compact aggressively when approaching context limits
 
+## Context Compression Toolchain (Phase 164)
+
+System-wide installed. Register lean-ctx for this agent with `lean-ctx init --agent codex`.
+
+| Tool | Purpose |
+|------|---------|
+| `rtk <cmd>` | Compress shell stdout 60-90% before it enters context. Check: `rtk gain` |
+| `lean-ctx` | MCP server — 62 tools, 10 read modes (signatures/map/lines/diff). 76-99% token savings on file reads |
+| headroom proxy | Payload compression on :8787 → llama.cpp. Enable via `ai.headroomProxy.enable = true` |
+
+**Switchboard budget** (routed through `:8085`): tool call limit = 40 · active schemas = 12 · GC threshold = 5000 chars.
+Full spec → `.agent/WORKFLOW-CANON.md ## Context Compression Toolchain`
+
 ---
 
 ## Architecture Constraints (Non-Negotiable)

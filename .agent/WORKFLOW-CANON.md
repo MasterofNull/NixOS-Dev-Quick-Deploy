@@ -243,6 +243,28 @@ EOF
 
 ---
 
+## Context Compression Toolchain (Phase 164 — agent-agnostic)
+
+Three tools are system-wide installed. All agents must be aware of them.
+
+| Tool | What it does | How to use |
+|------|-------------|------------|
+| **RTK** (`rtk`) | Wraps shell commands; compresses stdout 60-90% before it enters LLM context | `run_command` auto-wraps when `rtk` is in PATH (`"compressed": true` in response). Direct use: `rtk <cmd>`. Check savings: `rtk gain` |
+| **lean-ctx** (`lean-ctx`) | MCP server: 62 tools, 10 file-read modes (signatures, map, lines:N-M, density, diff), session memory. 76-99% token savings on file reads | Claude Code: registered in `~/.claude.json`. Other agents: `lean-ctx init --agent <gemini\|codex\|...>` |
+| **headroom** | Payload compression proxy on port 8787 (routes to llama.cpp :8080). STUB — not yet fully packaged | Enable when `ai.headroomProxy.enable = true` (nix). Set in `deploy-options.local.nix` |
+
+**RTK env vars** (disable/override per-agent if needed):
+- `SWB_RTK_ENABLED=0` — disable RTK wrapping in `run_command`
+- `RTK_BIN=<path>` — override binary path
+
+**Tool call budget** (switchboard — all agents routing through `:8085`):
+- `LOCAL_TOOL_CALL_LIMIT`: 40 (env `SWB_LOCAL_TOOL_CALL_LIMIT`)
+- `ACTIVE_TOOL_SCHEMA_LIMIT`: 12 (env `SWB_ACTIVE_TOOL_SCHEMA_LIMIT`)
+- `CONTEXT_OUTPUT_GC_MIN_CHARS`: 5000 (env `SWB_CONTEXT_OUTPUT_GC_MIN_CHARS`)
+- `harness_dev` bundle: `search_files + read_file + list_files + write_file + run_command + git_status + git_diff + validate_before_commit` — replaces bundle-swap mid-task for compound edit+commit work
+
+---
+
 ## Security Reference (OWASP Agentic Top 10 — 2026)
 
 | # | Risk | Mitigation |
