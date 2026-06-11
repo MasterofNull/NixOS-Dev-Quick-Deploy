@@ -135,6 +135,7 @@ When deploying a new locally hosted model, verify:
 | Synthesis | `tool_call_count > 0` | 1200 (`AGENT_TASK_MAX_TOKENS`) | Final answer may be large JSON/prose; 512 was cutting it off |
 
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
+Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
 At 1 tok/s on Renoir APU: 512 tok = ~8 min worst case; 1200 tok = ~20 min worst case.
 Tool calls EOS naturally at ~100 tokens regardless of budget ceiling.
 
