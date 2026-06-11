@@ -362,3 +362,14 @@ class DiscoveryAgent:
             ),
         )
         return ranked[:25]
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    _persist = "--no-persist" not in _sys.argv
+    _agent = DiscoveryAgent()
+    result = asyncio.run(_agent.discover_opportunities(persist=_persist))
+    cands = result.get("candidates", [])
+    print(f"Discovered {len(cands)} candidates (persist={_persist})")
+    for c in cands[:5]:
+        print(f"  [{c.get('trust_score', 0):.2f}t {c.get('relevance', 0):.2f}r] {c.get('state', '?'):10} {c.get('id', '')[:60]}")
