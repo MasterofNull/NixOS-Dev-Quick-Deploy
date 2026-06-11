@@ -422,6 +422,35 @@ ERROR_SOLUTIONS = [
         "files": [".agent/LOCAL-AGENT.md", "scripts/data/seed-rag-knowledge.py"],
         "related_patterns": ["score_threshold_hardcoded", "rag_collection_empty_silent_zero_results"],
     },
+    # Phase 159 patterns
+    {
+        "error_type": "agent_executor_synthesis_truncated_at_512",
+        "error_message": "Local agent result=null, status=failed after successful tool calls — synthesis cut off",
+        "context": "agent_executor._call_llama() used AGENT_TOOL_CALL_MAX_TOKENS=512 for ALL model calls including final synthesis. After 4 successful tool calls, the synthesis response generating JSON candidates was truncated at 512 tokens → model returned empty/incomplete → result=null, status=failed.",
+        "solution": "Two-phase token budget: AGENT_TOOL_CALL_MAX_TOKENS=512 for first call (tool_call_count==0), AGENT_TASK_MAX_TOKENS=1200 for post-tool calls (tool_call_count>0). Added max_tokens parameter to _call_llama(). Import AGENT_TASK_MAX_TOKENS from shared.llm_config alongside AGENT_TOOL_CALL_MAX_TOKENS.",
+        "solution_verified": True,
+        "success_count": 3,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.98,
+        "files": ["ai-stack/local-agents/agent_executor.py", "ai-stack/mcp-servers/shared/llm_config.py"],
+        "related_patterns": ["frequency_penalty_truncates_dense_json"],
+    },
+    {
+        "error_type": "agent_loop_context_overflow_8192",
+        "error_message": "llama.cpp error: request (N tokens) exceeds available context size (8192 tokens)",
+        "context": "Local agent loop accumulates tool call history in messages list. Large tool results (file reads, shell output) + multi-turn exchanges push total tokens past n_ctx=8192. Error occurs on the 5th+ tool call when history exceeds context window.",
+        "solution": "Two defences: (1) format_tool_result() caps raw result at 3000 chars (~750 tok) with truncation notice. (2) _execute_with_tools() per-iteration context guard: when total message chars > (8192-2000)*4=24768, drops oldest assistant+tool message pair (indices 2+3). System message and user task always preserved.",
+        "solution_verified": True,
+        "success_count": 2,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.97,
+        "files": ["ai-stack/local-agents/agent_executor.py", "ai-stack/local-agents/tool_registry.py"],
+        "related_patterns": ["agent_executor_synthesis_truncated_at_512"],
+    },
 ]
 
 SKILLS_PATTERNS = [
