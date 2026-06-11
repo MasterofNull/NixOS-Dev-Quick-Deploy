@@ -2681,6 +2681,7 @@ in {
             /run/wrappers/bin/sudo ix,
             /run/wrappers/wrappers.*/sudo ix,
             /nix/var/nix/profiles/ r,
+            /nix/var/nix/profiles/** r,
             # CLI tools invoked by health probes and aq-qa
             /nix/store/**/bin/aq-qa ix,
             /nix/store/**/bin/lspci ix,
