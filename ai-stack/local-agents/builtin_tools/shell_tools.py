@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from typing import Dict
@@ -27,6 +28,13 @@ from tool_registry import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Phase 164 Stage B: RTK (Rust Token Killer) shell output compression.
+# When rtk is in PATH (installed as a NixOS system package), run_command wraps
+# the command with `rtk <cmd>` so output is compressed before entering LLM context.
+# Disable via SWB_RTK_ENABLED=0 or RTK_BIN="".
+_RTK_BIN: str = os.environ.get("RTK_BIN", "") or shutil.which("rtk") or ""
+_RTK_ENABLED: bool = bool(_RTK_BIN) and os.environ.get("SWB_RTK_ENABLED", "1").strip() not in ("0", "false", "no")
 
 
 # Whitelist of safe commands
@@ -184,6 +192,30 @@ async def run_command_handler(
         # Plain subprocess compatibility path. This is only used when nsjail is
         # not configured as required; the shell injection guard above still
         # applies before reaching this path.
+        #
+        # Phase 164 Stage B: when RTK is available, wrap the command so output
+        # is compressed before it enters the LLM context window. RTK handles
+        # git, grep, ls, pytest, cargo, docker, kubectl, and 100+ other commands.
+        # Falls back to uncompressed execution if RTK fails.
+        if _RTK_ENABLED:
+            try:
+                rtk_argv = [_RTK_BIN] + shlex.split(command)
+                result = subprocess.run(
+                    rtk_argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                )
+                return {
+                    "success": result.returncode == 0,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "returncode": result.returncode,
+                    "compressed": True,
+                }
+            except Exception as rtk_exc:
+                logger.debug("RTK compression failed (%s), falling back to plain subprocess", rtk_exc)
+
         result = subprocess.run(
             command,
             shell=True,

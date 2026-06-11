@@ -20,7 +20,12 @@ let
   swb = ai.switchboard;
   sec = cfg.secrets;
   mcp = cfg.mcpServers;
-  llamaUrl = "http://${ai.llamaCpp.host}:${toString ai.llamaCpp.port}";
+  # Phase 164 Stage C: when headroom proxy is enabled, route completions through
+  # headroom (:8787) which compresses payloads before forwarding to llama.cpp.
+  llamaUrl =
+    if ai.headroomProxy.enable
+    then "http://127.0.0.1:${toString ai.headroomProxy.port}"
+    else "http://${ai.llamaCpp.host}:${toString ai.llamaCpp.port}";
   embeddingUrl =
     if ai.embeddingServer.enable
     then "http://${ai.llamaCpp.host}:${toString ai.embeddingServer.port}"
