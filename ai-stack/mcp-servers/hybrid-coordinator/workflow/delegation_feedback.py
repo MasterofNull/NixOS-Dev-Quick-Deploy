@@ -215,7 +215,10 @@ def delegation_prompt_contract_signals(task: str, messages: List[Dict[str, Any]]
     # contain "json" + "only/valid" for unrelated reasons.
     task_lower = task.lower()
     expects_json = "json" in task_lower and any(token in task_lower for token in ("only", "exact", "valid", "strict", "object", "array"))
-    expects_short_exact = any(token in text for token in ("exactly", "and nothing else", "only this", "single word"))
+    # Only check the task itself for exact-output contract signals — scanning all messages
+    # (including system prompts) causes false positives since system prompts routinely
+    # contain "exactly" / "and nothing else" for unrelated formatting instructions.
+    expects_short_exact = any(token in task_lower for token in ("exactly", "and nothing else", "only this", "single word"))
     return {
         "expects_json": expects_json,
         "expects_short_exact": expects_short_exact,

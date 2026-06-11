@@ -307,3 +307,6 @@ Single source of truth: `nix/modules/core/options.nix`. Never hardcode these.
 | gis-systems | `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` |
 | embedded-hardware | `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` |
 | scientific-research | `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` |
+
+## Sub-agent Constraint
+Execute only the assigned slice. Do not re-scope goals, route other agents, or self-promote to reviewer.
