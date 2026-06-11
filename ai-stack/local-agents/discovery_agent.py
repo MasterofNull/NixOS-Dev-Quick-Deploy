@@ -97,6 +97,12 @@ class DiscoveryAgent:
         # Phase 150 Slice 2: merge existing lifecycle state — new candidates get "proposed"
         # defaults; candidates already under review preserve their governance state.
         candidates = self._merge_lifecycle_state(candidates)
+        # Phase 150 Slice 6: apply trust/relevance scores to candidates missing them
+        try:
+            from trust_scoring import apply_scores as _apply_scores  # noqa: PLC0415
+            _apply_scores(candidates)
+        except ImportError:
+            pass
         generated_at = _utc_now().isoformat()
         payload = {
             "schema_version": "discovery-candidates.v1",
