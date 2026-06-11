@@ -7,6 +7,7 @@ when to trigger improvement cycles based on anomaly patterns
 
 import asyncio
 import json
+import sys
 import uuid
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -18,6 +19,11 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from trend_database import TrendDatabase
+
+_SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 
 @dataclass
@@ -85,23 +91,21 @@ class TriggerEngine:
         Call local llama.cpp for analysis
         Low temperature for consistent, analytical responses
         """
-        payload = {
-            "model": "local",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an AI system performance analyst. "
-                               "Analyze metrics and provide concise, actionable insights. "
-                               "Focus on root causes and specific recommendations."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
+        _messages = [
+            {
+                "role": "system",
+                "content": "You are an AI system performance analyst. "
+                           "Analyze metrics and provide concise, actionable insights. "
+                           "Focus on root causes and specific recommendations."
+            },
+            {"role": "user", "content": prompt},
+        ]
+        payload = build_llama_payload(
+            _messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            task_type="reasoning",
+        )
 
         async with aiohttp.ClientSession() as session:
             async with session.post(self.llm_url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:

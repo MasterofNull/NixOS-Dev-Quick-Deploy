@@ -15,11 +15,18 @@ Part of Phase 3 Batch 3.1: Improvement Candidate Detection
 import asyncio
 import json
 import logging
+import os
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+
+_SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -157,21 +164,22 @@ Focus on actionable, specific feedback."""
             # Call local llama.cpp server
             import httpx
 
+            llama_url = os.getenv("LLAMA_URL", "http://127.0.0.1:8080") + "/v1/chat/completions"
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
-                    "http://localhost:8080/v1/chat/completions",
-                    json={
-                        "model": "qwen",
-                        "messages": [
+                    llama_url,
+                    json=build_llama_payload(
+                        [
                             {
                                 "role": "system",
                                 "content": "You are a senior software engineer performing code reviews.",
                             },
                             {"role": "user", "content": prompt},
                         ],
-                        "temperature": 0.3,  # Lower temperature for consistency
-                        "max_tokens": 2000,
-                    },
+                        max_tokens=AGENT_TASK_MAX_TOKENS,
+                        temperature=0.3,
+                        task_type="code",
+                    ),
                 )
 
                 if response.status_code == 200:

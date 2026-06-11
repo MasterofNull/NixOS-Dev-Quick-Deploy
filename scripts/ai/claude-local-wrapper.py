@@ -8,7 +8,13 @@ import json
 import os
 import sys
 import requests
+from pathlib import Path
 from typing import Dict, Any
+
+_SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 SERVICE_HOST = os.getenv("SERVICE_HOST", "localhost")
 HYBRID_COORDINATOR = os.getenv("HYBRID_COORDINATOR_URL", os.getenv("HYBRID_URL", "http://localhost"))
@@ -105,11 +111,7 @@ class LocalAIWrapper:
 
             response = self.session.post(
                 llama_url,
-                json={
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 2000
-                },
+                json=build_llama_payload(messages, max_tokens=AGENT_TASK_MAX_TOKENS, temperature=0.7),
                 timeout=60
             )
 

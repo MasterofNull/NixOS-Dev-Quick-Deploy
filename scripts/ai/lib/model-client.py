@@ -5,9 +5,16 @@ Shared Local Model Client for aq-* tools.
 
 import json
 import os
+import sys
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_SHARED = Path(__file__).resolve().parents[3] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 
 class LocalModelClient:
@@ -23,19 +30,19 @@ class LocalModelClient:
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.2,
-        max_tokens: int = 4096,
+        max_tokens: int = AGENT_TASK_MAX_TOKENS,
         stream: bool = False,
     ) -> Any:
         """Execute chat completion against the local model."""
         url = f"{self.llama_url}/v1/chat/completions"
         model_id = os.getenv("AI_LOCAL_MODEL_ID", "local-model")
-        payload = {
-            "model": model_id,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": stream,
-        }
+        payload = build_llama_payload(
+            messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=stream,
+            model=model_id,
+        )
         
         if stream:
             return self._stream_request(url, payload)
