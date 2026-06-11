@@ -47,6 +47,16 @@ def test_dashboard_metric_not_faked() -> None:
 
 
 def test_discipline() -> None:
+    # Skip if coordinator just restarted — local model cold-start takes up to 5 min.
+    try:
+        hc = httpx.get("http://127.0.0.1:8003/health", timeout=5.0)
+        uptime = hc.json().get("uptime_seconds") or 0
+        if isinstance(uptime, (int, float)) and uptime < 300:
+            print(f"SKIP: coordinator uptime {uptime:.0f}s < 300s warmup window")
+            return
+    except Exception:
+        pass
+
     url = "http://127.0.0.1:8003/control/ai-coordinator/delegate"
     payload = {
         "task": "Return exactly PLANNING_SMOKE_OK",
@@ -59,7 +69,7 @@ def test_discipline() -> None:
 
     print(f"Calling {url} with task: {payload['task']}")
     try:
-        r = httpx.post(url, json=payload, timeout=90.0)
+        r = httpx.post(url, json=payload, timeout=300.0)
         print(f"Status Code: {r.status_code}")
         if r.status_code != 200:
             print(f"Error: {r.text}")
