@@ -1409,7 +1409,26 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_token_usage_coverage(ctx))
     results.extend(_check_modal_task_profiles(ctx))
     results.extend(_check_local_inference_budget(ctx))
+    results.extend(_check_candidate_lifecycle(ctx))
     return results
+
+
+def _check_candidate_lifecycle(ctx: RunContext) -> list[CheckResult]:
+    """Phase 150 Slice 1: CandidateLifecycleManager module + test."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-candidate-lifecycle.py"
+    if not check.exists():
+        return [failed(1, "0.150.1", "candidate lifecycle manager", "test-candidate-lifecycle.py missing")]
+    try:
+        rc = subprocess.run(
+            ["python3", str(check)],
+            capture_output=True, text=True, timeout=15,
+        )
+        if rc.returncode == 0:
+            return [passed(1, "0.150.1", "candidate lifecycle state machine + defaults")]
+        detail = rc.stdout.strip() or rc.stderr.strip() or f"exit {rc.returncode}"
+        return [failed(1, "0.150.1", "candidate lifecycle manager", detail)]
+    except Exception as exc:
+        return [failed(1, "0.150.1", "candidate lifecycle manager", str(exc))]
 
 
 def _check_clm(ctx: RunContext) -> list[CheckResult]:

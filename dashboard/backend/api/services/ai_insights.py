@@ -1146,6 +1146,21 @@ class AIInsightsService:
             **summary,
         }
 
+    async def get_candidate_pipeline(self) -> Dict[str, Any]:
+        """Return candidate pipeline counts grouped by lifecycle state (Phase 150)."""
+        try:
+            from collections import Counter as _Counter
+            cp = _repo_root() / ".agents" / "improvement" / "candidates.json"
+            if not cp.exists():
+                return {"available": False, "states": {}, "total": 0}
+            data = json.loads(cp.read_text(encoding="utf-8"))
+            cands = data.get("candidates", [])
+            cnt = _Counter(c.get("state", "proposed") for c in cands)
+            states = {s: cnt.get(s, 0) for s in ["proposed", "evaluating", "reviewed", "adopted", "rejected", "retired"]}
+            return {"available": True, "total": len(cands), "states": states, "generated_at": data.get("generated_at")}
+        except Exception as exc:
+            return {"available": False, "error": str(exc), "states": {}, "total": 0}
+
     async def get_code_review_summary(self) -> Dict[str, Any]:
         """Return the current persisted LLM code-review summary."""
         report = await self.get_full_report()
