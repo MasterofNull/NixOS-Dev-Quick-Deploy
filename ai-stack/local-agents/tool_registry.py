@@ -598,24 +598,27 @@ class ToolRegistry:
             logger.debug(f"Failed to parse tool call: {e}")
             return None
 
-    def format_tool_result(self, tool_call: ToolCall) -> str:
-        """
-        Format tool call result for model consumption.
+    # Per-tool-result char cap: 3000 chars (~750 tokens).
+    # At 5 tool calls × 750 tok = 3750 tok, system prompt ~500 tok → stays well under n_ctx=8192.
+    _RESULT_CHAR_CAP = 3000
 
-        Returns formatted string that the model can understand.
-        """
+    def format_tool_result(self, tool_call: ToolCall) -> str:
+        """Format tool call result for model consumption with size cap."""
         if tool_call.status == "completed":
+            raw = json.dumps(tool_call.result, ensure_ascii=False) if not isinstance(tool_call.result, str) else tool_call.result
+            if len(raw) > self._RESULT_CHAR_CAP:
+                raw = raw[:self._RESULT_CHAR_CAP] + f"\n... [truncated: {len(raw) - self._RESULT_CHAR_CAP} chars omitted]"
             return json.dumps({
                 "tool": tool_call.tool_name,
                 "status": "success",
-                "result": tool_call.result,
-            }, indent=2)
+                "result": raw,
+            })
         else:
             return json.dumps({
                 "tool": tool_call.tool_name,
                 "status": "error",
                 "error": tool_call.error,
-            }, indent=2)
+            })
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get tool registry statistics"""
