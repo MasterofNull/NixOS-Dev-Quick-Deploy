@@ -125,6 +125,22 @@ When deploying a new locally hosted model, verify:
 - [ ] Verify `enable_thinking: false` equivalent for the new model or remove if not applicable
 - [ ] Re-check `SAFE_COMMANDS` in `shell_tools.py` — no model-specific paths should be hardcoded
 
+### Agent Executor Token Budget (Phase 159)
+
+`agent_executor.py` uses a two-phase token budget in `_execute_with_tools()`:
+
+| Phase | Condition | Max tokens | Rationale |
+|-------|-----------|-----------|-----------|
+| Tool call | `tool_call_count == 0` | 512 (`AGENT_TOOL_CALL_MAX_TOKENS`) | Model emits tool call JSON (~100 tok); EOS fast |
+| Synthesis | `tool_call_count > 0` | 1200 (`AGENT_TASK_MAX_TOKENS`) | Final answer may be large JSON/prose; 512 was cutting it off |
+
+`_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
+At 1 tok/s on Renoir APU: 512 tok = ~8 min worst case; 1200 tok = ~20 min worst case.
+Tool calls EOS naturally at ~100 tokens regardless of budget ceiling.
+
+**Root cause** (Phase 159, 2026-06-11): local agent local-20260611-110819-8ed7p8 ran 4 tool calls
+successfully but result=null, status=failed — final synthesis response truncated at 512 tokens.
+
 ---
 
 ## Capability Amplification — Overcoming Limits
