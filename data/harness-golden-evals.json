@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "description": "Harness golden eval set — detects agentic workflow degradation, role behavior, output envelope, and cross-provider parity. Extended in Phase 148.",
+  "version": 3,
+  "description": "Harness golden eval set — detects agentic workflow degradation, role behavior, output envelope, and cross-provider parity. Extended in Phase 148. Expanded to 25 checks in Phase 152 (workflow adherence, output envelope, role behavior, cross-model parity, trust scoring).",
   "cases": [
     {
       "id": "headers-presence",
@@ -79,6 +79,123 @@
       "query": "read a large Python source file to find a specific function signature",
       "expected_keywords": ["lean-ctx", "signatures"],
       "mode": "auto"
+    },
+    {
+      "id": "workflow-canon-file-exists",
+      "description": "Workflow adherence: WORKFLOW-CANON.md must exist and contain all 8 canonical steps",
+      "type": "static",
+      "check": "file_contains",
+      "path": ".agent/WORKFLOW-CANON.md",
+      "required_terms": ["ORIENT", "RESEARCH", "EXECUTE", "VALIDATE", "COMMIT"],
+      "mode": "static"
+    },
+    {
+      "id": "pulse-log-format",
+      "description": "Workflow adherence: PULSE.log entries must match ISO-timestamp format",
+      "type": "static",
+      "check": "file_regex",
+      "path": ".agent/collaboration/PULSE.log",
+      "pattern": "^\\[20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:Z.+-]+\\] \\[[a-z-]+\\] \\[[a-z_-]+\\]: .+ — .+$",
+      "mode": "static"
+    },
+    {
+      "id": "resume-json-required-fields",
+      "description": "Workflow adherence: RESUME.json must contain all required fields for compaction recovery",
+      "type": "static",
+      "check": "json_fields",
+      "path": ".agent/collaboration/RESUME.json",
+      "required_fields": ["current_objective", "phase", "todo_snapshot", "uncommitted_changes", "resume_hint"],
+      "mode": "static"
+    },
+    {
+      "id": "role-matrix-file-exists",
+      "description": "Role behavior: role-matrix.md must exist at canonical path",
+      "type": "static",
+      "check": "file_exists",
+      "path": "docs/architecture/role-matrix.md",
+      "mode": "static"
+    },
+    {
+      "id": "role-matrix-four-canonical-roles",
+      "description": "Role behavior: role-matrix.md must define all 4 canonical roles",
+      "type": "static",
+      "check": "file_contains",
+      "path": "docs/architecture/role-matrix.md",
+      "required_terms": ["orchestrator", "architect", "implementer", "reviewer"],
+      "mode": "static"
+    },
+    {
+      "id": "role-matrix-sub-agent-rule",
+      "description": "Role behavior: role-matrix.md must contain sub-agent execution constraint",
+      "type": "static",
+      "check": "file_contains",
+      "path": "docs/architecture/role-matrix.md",
+      "required_terms": ["assigned slice"],
+      "mode": "static"
+    },
+    {
+      "id": "cross-model-workflow-canon-gemini",
+      "description": "Cross-model parity: GEMINI.md must reference WORKFLOW-CANON.md",
+      "type": "static",
+      "check": "file_contains",
+      "path": ".agent/GEMINI.md",
+      "required_terms": ["WORKFLOW-CANON"],
+      "mode": "static"
+    },
+    {
+      "id": "cross-model-workflow-canon-codex",
+      "description": "Cross-model parity: CODEX.md must reference WORKFLOW-CANON.md",
+      "type": "static",
+      "check": "file_contains",
+      "path": ".agent/CODEX.md",
+      "required_terms": ["WORKFLOW-CANON"],
+      "mode": "static"
+    },
+    {
+      "id": "cross-model-workflow-canon-local",
+      "description": "Cross-model parity: LOCAL-AGENT.md must reference WORKFLOW-CANON.md",
+      "type": "static",
+      "check": "file_contains",
+      "path": ".agent/LOCAL-AGENT.md",
+      "required_terms": ["WORKFLOW-CANON"],
+      "mode": "static"
+    },
+    {
+      "id": "cross-model-role-names-parity",
+      "description": "Cross-model parity: all agent instruction files must use the same 4 canonical role names",
+      "type": "static",
+      "check": "multi_file_contains",
+      "paths": [".agent/GEMINI.md", ".agent/CODEX.md", ".agent/LOCAL-AGENT.md"],
+      "required_terms": ["orchestrator", "implementer", "reviewer"],
+      "mode": "static"
+    },
+    {
+      "id": "switchboard-profiles-canonical",
+      "description": "Cross-model parity: switchboard-profiles.yaml must contain local-coding, remote-default, and local-tool-calling profiles",
+      "type": "static",
+      "check": "file_contains",
+      "path": "config/switchboard-profiles.yaml",
+      "required_terms": ["local-coding", "remote-default", "local-tool-calling"],
+      "mode": "static"
+    },
+    {
+      "id": "trust-scoring-module-exists",
+      "description": "Trust scoring: trust_scoring.py must exist and be importable",
+      "type": "static",
+      "check": "file_exists",
+      "path": "ai-stack/local-agents/trust_scoring.py",
+      "mode": "static"
+    },
+    {
+      "id": "candidates-json-trust-scores",
+      "description": "Trust scoring: candidates.json must exist and have at least 1 candidate with trust_score > 0",
+      "type": "static",
+      "check": "json_array_field_positive",
+      "path": ".agents/improvement/candidates.json",
+      "array_key": "candidates",
+      "field": "trust_score",
+      "min_count": 1,
+      "mode": "static"
     }
   ]
 }
