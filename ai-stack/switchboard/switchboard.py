@@ -2786,10 +2786,64 @@ async def proxy(path: str, request: Request):
                                 service_name=service_name,
                             )
 
+                            full_content = ""
+                            token_usage_emitted = False
                             async def _iter():
+                                nonlocal full_content, token_usage_emitted
                                 try:
                                     async for chunk in upstream.aiter_bytes():
+                                        # Phase 1: Track content for token estimation fallback
+                                        try:
+                                            chunk_str = chunk.decode("utf-8", errors="ignore")
+                                            for line in chunk_str.splitlines():
+                                                if line.startswith("data: "):
+                                                    data_str = line[6:]
+                                                    if data_str == "[DONE]": break
+                                                    data = json.loads(data_str)
+                                                    delta = data.get("choices", [{}])[0].get("delta", {})
+                                                    if "content" in delta:
+                                                        full_content += delta["content"]
+                                                    
+                                                    # Check if llama.cpp provided usage in this chunk
+                                                    usage = data.get("usage")
+                                                    if usage and not token_usage_emitted and run_id != "unknown-run":
+                                                        ev = _are.make_event(
+                                                            "token_usage",
+                                                            source="switchboard",
+                                                            run_id=run_id,
+                                                            payload={
+                                                                "model": payload.get("model", "qwen3.6"),
+                                                                "route_profile": profile,
+                                                                "tokens": usage
+                                                            }
+                                                        )
+                                                        await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+                                                        token_usage_emitted = True
+                                        except Exception:
+                                            pass
                                         yield chunk
+                                    
+                                    # Fallback: Emit estimated usage if stream finished without a usage block
+                                    if not token_usage_emitted and run_id != "unknown-run" and full_content:
+                                        est_output_tokens = len(full_content) // 4
+                                        est_input_tokens = _estimate_payload_tokens(payload)
+                                        ev = _are.make_event(
+                                            "token_usage",
+                                            source="switchboard",
+                                            run_id=run_id,
+                                            payload={
+                                                "model": payload.get("model", "qwen3.6"),
+                                                "route_profile": profile,
+                                                "tokens": {
+                                                    "prompt_tokens": est_input_tokens,
+                                                    "completion_tokens": est_output_tokens,
+                                                    "total_tokens": est_input_tokens + est_output_tokens,
+                                                    "is_estimated": True
+                                                }
+                                            }
+                                        )
+                                        await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+                                        token_usage_emitted = True
                                 finally:
                                     await upstream.aclose()
                                     await client.aclose()

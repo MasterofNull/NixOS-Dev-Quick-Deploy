@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Generate lightweight proposal markdown for high-signal candidates.
+
+Phase 153: Candidate Proposal Generator
+Filters candidates where trust_score >= 0.70 AND relevance >= 0.40 AND state == "proposed",
+then generates a proposal markdown file in .agents/proposals/<candidate-id>.md.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+_REPO_ROOT = Path(
+    __file__
+).resolve().parents[2]
+
+CANDIDATES_PATH = _REPO_ROOT / ".agents" / "improvement" / "candidates.json"
+PROPOSALS_DIR = _REPO_ROOT / ".agents" / "proposals"
+
+TRUST_THRESHOLD = 0.70
+RELEVANCE_THRESHOLD = 0.40
+
+
+def _render_proposal(c: dict, generated_at: str) -> str:
+    cid = c.get("id", "unknown")
+    title = c.get("title", "Untitled")
+    source = c.get("source", "unknown")
+    category = c.get("category", "unknown")
+    trust = c.get("trust_score", 0.0)
+    relevance = c.get("relevance", 0.0)
+    priority = c.get("priority", 9)
+    evidence_items = c.get("evidence", [])
+    suggested_actions = c.get("suggested_actions", [])
+    related_files = c.get("related_files", [])
+
+    evidence_block = "\n".join(f"  - {e}" for e in evidence_items) if evidence_items else "  - (none)"
+    actions_block = "\n".join(f"- {a}" for a in suggested_actions) if suggested_actions else "- (none)"
+    files_block = "\n".join(f"- `{f}`" for f in related_files) if related_files else "- (none)"
+
+    return f"""---
+candidate_id: {cid}
+title: {title}
+source: {source}
+category: {category}
+trust_score: {trust}
+relevance: {relevance}
+priority: {priority}
+generated_at: {generated_at}
+---
+
+# Proposal: {title}
+
+## Signal Summary
+- Source: {source}
+- Trust: {trust} | Relevance: {relevance}
+- Priority: {priority}
+- Evidence:
+{evidence_block}
+
+## Suggested Actions
+{actions_block}
+
+## Related Files
+{files_block}
+
+## Governance
+- State: proposed -> review pending
+- Proposed by: DiscoveryAgent (automated)
+"""
+
+
+def main() -> int:
+    if not CANDIDATES_PATH.exists():
+        print(f"ERROR: candidates.json not found at {CANDIDATES_PATH}", file=sys.stderr)
+        return 1
+
+    with CANDIDATES_PATH.open() as f:
+        data = json.load(f)
+
+    candidates = data.get("candidates", [])
+    PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+
+    generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    proposed_count = 0
+    skipped_count = 0
+
+    qualifying = [
+        c for c in candidates
+        if (
+            float(c.get("trust_score", 0.0)) >= TRUST_THRESHOLD
+            and float(c.get("relevance", 0.0)) >= RELEVANCE_THRESHOLD
+            and c.get("state") == "proposed"
+        )
+    ]
+
+    if not qualifying:
+        print("No qualifying candidates (trust >= 0.70, relevance >= 0.40, state == proposed).")
+        return 0
+
+    for c in qualifying:
+        cid = c.get("id", "unknown")
+        proposal_path = PROPOSALS_DIR / f"{cid}.md"
+
+        if proposal_path.exists():
+            print(f"SKIP: {cid} (already proposed)")
+            skipped_count += 1
+            continue
+
+        content = _render_proposal(c, generated_at)
+        proposal_path.write_text(content, encoding="utf-8")
+        print(f"PROPOSED: {cid} -> .agents/proposals/{cid}.md")
+        proposed_count += 1
+
+    print(f"\nSummary: {proposed_count} generated, {skipped_count} skipped (already existed)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
