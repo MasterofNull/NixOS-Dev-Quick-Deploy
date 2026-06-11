@@ -97,10 +97,11 @@ class DiscoveryAgent:
         # Phase 150 Slice 2: merge existing lifecycle state — new candidates get "proposed"
         # defaults; candidates already under review preserve their governance state.
         candidates = self._merge_lifecycle_state(candidates)
-        # Phase 150 Slice 6: apply trust/relevance scores to candidates missing them
+        # Phase 150 Slice 6: recalculate trust/relevance on every discovery run
+        # (overwrite=True because source fields may have changed since last run)
         try:
             from trust_scoring import apply_scores as _apply_scores  # noqa: PLC0415
-            _apply_scores(candidates)
+            _apply_scores(candidates, overwrite=True)
         except ImportError:
             pass
         generated_at = _utc_now().isoformat()
@@ -201,6 +202,7 @@ class DiscoveryAgent:
         return {
             "id": _candidate_id("issue", title),
             "title": title,
+            "source": "issues-backlog",
             "category": "system-fix",
             "priority": _priority_from_severity(severity),
             "estimated_impact": f"{severity} issue pressure",
@@ -237,6 +239,7 @@ class DiscoveryAgent:
             candidates.append({
                 "id": _candidate_id("health", title),
                 "title": title,
+                "source": "health-spider",
                 "category": "health-spider",
                 "priority": 2 if count >= 3 else 3,
                 "estimated_impact": f"{count} recent health-spider event(s)",
@@ -272,6 +275,7 @@ class DiscoveryAgent:
             candidates.append({
                 "id": _candidate_id("delegation", title),
                 "title": title,
+                "source": "delegation-feedback",
                 "category": "delegation-quality",
                 "priority": 2 if count >= 3 else 3,
                 "estimated_impact": f"{count} delegation feedback event(s)",
@@ -314,6 +318,7 @@ class DiscoveryAgent:
         return {
             "id": _candidate_id("model", title),
             "title": title,
+            "source": "model-profile",
             "category": "model-catalog",
             "priority": 2,
             "estimated_impact": f"profile_age_days={age_days if age_days is not None else 'unknown'}",
