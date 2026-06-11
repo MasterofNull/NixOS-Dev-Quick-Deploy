@@ -2532,6 +2532,8 @@ in {
             # auto-added by apparmor-fix-agent 2026-05-31
             /proc/@{pids}/cgroup r,  # /proc/<pid> → @{pids}
             /sys/fs/cgroup/** r,
+            # auto-added by apparmor-fix-agent 2026-06-10
+            /dev/tty rw,  # open
             deny /home/** wx,
             deny /root/** rwx,
           }

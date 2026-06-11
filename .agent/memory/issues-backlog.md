@@ -44,7 +44,7 @@
   Action: Added 24h freshness fields (`candidate_calls_24h`, `downshifted_calls_24h`, `last_candidate_at`, `stale_candidate_window`) and updated recommendations/hints to distinguish stale history from active failures.
   File: scripts/ai/aq-report ~line 1697; ai-stack/mcp-servers/hybrid-coordinator/knowledge/hints_engine_impl.py ~line 2183
 
-[PENDING-REBUILD] dashboard/health-spider — Dashboard AppArmor denials degraded operator visibility while health-spider and auto-remediate did not catch/fix it promptly — Root cause: health-spider only checked `/api/health` every 7200s and auto-remediate only parsed `aq-qa 0`; dashboard passive firewall/status polling also attempted `sudo` reads under AppArmor, creating denial noise.
+[DONE-2026-06-10] dashboard/health-spider — Dashboard AppArmor denials degraded operator visibility while health-spider and auto-remediate did not catch/fix it promptly — Root cause: health-spider only checked `/api/health` every 7200s and auto-remediate only parsed `aq-qa 0`; dashboard passive firewall/status polling also attempted `sudo` reads under AppArmor, creating denial noise.
   Severity: high
   Action: Added dashboard semantic probes to `aq-health-spider`, reduced interval to 900s, removed success attention spam, made auto-remediate run health-spider before aq-qa, disabled sudo for passive firewall reads by default, and added `/proc/@{pids}/stat r,` AppArmor rule. Run `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` to activate service/AppArmor/dashboard code.
   File: scripts/ai/aq-health-spider ~line 77; scripts/automation/auto-remediate.sh ~line 16; dashboard/backend/api/routes/firewall.py ~line 54; nix/modules/services/mcp-servers.nix ~line 1737
@@ -206,6 +206,16 @@
   Severity: high
   Action: Use `.agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md` as the Phase 150 shared brief; design source-registry overlay, candidate schema, `aq-research-spider --machine`, local-signal ingest, eval sandbox, dashboard cards, and RAG learning loop before implementation.
   File: .agents/plans/WORLD_CLASS_SOFTWARE_FACTORY_READINESS_RESEARCH.md
+
+## Software Factory Readiness Gaps (Phase 150)
+
+- [ ] **Candidate Siloing:** Knowledge sources imported via `sync-knowledge-sources` are stored in AIDB but do not automatically surface as candidates in `candidates.json`.
+- [ ] **Lack of Eval Sandbox:** No restricted runtime environment exists to safely test new tools or models before adoption.
+- [ ] **Manual Scoring:** Trust and relevance scoring for new tools/research is currently human-mediated and non-deterministic.
+- [ ] **Disconnected Governance:** Proposal and review workflows for candidates are not linked to the candidate lifecycle state.
+- [ ] **Dashboard Invisibility:** The candidate pipeline (proposed -> evaluated -> adopted) is not visible to operators in the Command Center.
+- [ ] **Stale Model Catalog:** The model catalog remains a static Python file, disconnected from the research discovery loop.
+- [ ] **Missing Trust Provenance:** Knowledge in AIDB lacks a clear trust-tier and license-posture metadata that can drive autonomous decision-making.
 
 [DONE] model-catalog-freshness — local model catalog is static and likely stale for current model velocity — Root cause: `ai-stack/mcp-servers/shared/model_catalog.py` contains hardcoded model specs and `config/model-profile.json` had a last-updated/probed timestamp but no freshness gate that forces review when model catalogs, local GGUF, or provider model capabilities drift.
   Severity: medium
