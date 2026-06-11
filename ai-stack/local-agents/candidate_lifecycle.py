@@ -92,7 +92,19 @@ class CandidateLifecycleManager:
         if "lifecycle_log" not in cand:
             cand["lifecycle_log"] = []
         cand["lifecycle_log"].append(log_entry)
-        
+
+        if new_state == "evaluating":
+            try:
+                from eval_sandbox import EvalSandboxExecutor  # noqa: PLC0415
+                sandbox_results = EvalSandboxExecutor().evaluate(cand)
+                if "eval_results" not in cand:
+                    cand["eval_results"] = {}
+                cand["eval_results"].update(sandbox_results)
+            except Exception as exc:  # noqa: BLE001
+                if "eval_results" not in cand:
+                    cand["eval_results"] = {}
+                cand["eval_results"]["sandbox_error"] = str(exc)
+
         return cand
 
     def set_trust_score(self, candidate_id, score):

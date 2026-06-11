@@ -87,6 +87,25 @@ def _candidate_review(args: list[str]) -> int:
         if updated.get("lifecycle_log"):
             last = updated["lifecycle_log"][-1]
             print(f"  logged: {last['from_state']} → {last['to_state']} by {last['by']}")
+        if action == "evaluate":
+            # Explicit re-evaluation: run sandbox directly and report results
+            try:
+                sys.path.insert(0, str(_HERE2))
+                from eval_sandbox import EvalSandboxExecutor  # noqa: E402
+                sandbox_results = EvalSandboxExecutor().evaluate(updated)
+                # Merge into eval_results on the in-memory object and re-save
+                if "eval_results" not in updated:
+                    updated["eval_results"] = {}
+                updated["eval_results"].update(sandbox_results)
+                mgr.save(cands)
+                print("  sandbox_pass:", updated["eval_results"].get("sandbox_pass"))
+                print("  hardware_compatible:", updated["eval_results"].get("hardware_compatible"))
+                print("  tokenomics_impact:", updated["eval_results"].get("tokenomics_impact"))
+                viols = updated["eval_results"].get("violations")
+                if viols:
+                    print("  violations:", viols)
+            except Exception as exc:  # noqa: BLE001
+                print(f"  eval_sandbox unavailable: {exc}", file=sys.stderr)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
