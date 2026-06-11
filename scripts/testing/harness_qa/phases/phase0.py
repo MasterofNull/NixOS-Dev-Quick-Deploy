@@ -1412,7 +1412,39 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_golden_eval_parity(ctx))
+    results.extend(_check_agentic_parity(ctx))
+    results.extend(_check_delegation_feedback_contract(ctx))
     return results
+
+
+def _check_delegation_feedback_contract(ctx: RunContext) -> list[CheckResult]:
+    """Phase 156: delegation_feedback contract detection accuracy (json + exact-output signals)."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-delegation-feedback-contract.py"
+    if not check.exists():
+        return [failed(1, "0.156.1", "delegation feedback contract", "test-delegation-feedback-contract.py missing")]
+    try:
+        rc = subprocess.run(["python3", str(check)], capture_output=True, text=True, timeout=15)
+        if rc.returncode == 0:
+            return [passed(1, "0.156.1", "delegation feedback contract detection: json + exact-output signals correct")]
+        detail = rc.stdout.strip() or rc.stderr.strip() or f"exit {rc.returncode}"
+        return [failed(1, "0.156.1", "delegation feedback contract", detail)]
+    except Exception as exc:
+        return [failed(1, "0.156.1", "delegation feedback contract", str(exc))]
+
+
+def _check_agentic_parity(ctx: RunContext) -> list[CheckResult]:
+    """Phase 154: cross-model agentic workflow parity."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-agentic-workflow-parity.py"
+    if not check.exists():
+        return [failed(1, "0.154.1", "agentic workflow parity", "test missing")]
+    try:
+        rc = subprocess.run(["python3", str(check)], capture_output=True, text=True, timeout=15)
+        if rc.returncode == 0:
+            return [passed(1, "0.154.1", "cross-model workflow parity verified")]
+        detail = rc.stdout.strip() or rc.stderr.strip() or f"exit {rc.returncode}"
+        return [failed(1, "0.154.1", "agentic workflow parity", detail)]
+    except Exception as exc:
+        return [failed(1, "0.154.1", "agentic workflow parity", str(exc))]
 
 
 def _check_eval_sandbox(ctx: RunContext) -> list[CheckResult]:
