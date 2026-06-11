@@ -10,7 +10,7 @@ auto_prefer_local:
   # automatically prefer local routing. Set to 0.0 to disable auto-prefer-local.
   max_timeout_s: 10.0
   # Default prefer_local when caller does not specify it in the request body.
-  default_prefer_local: false
+  default_prefer_local: true
 
 delegate:
   # Total delegation wall-clock timeout (seconds). Overridable per-request via timeout_s field.

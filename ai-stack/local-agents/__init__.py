@@ -121,6 +121,12 @@ def initialize_builtin_tools(registry: Optional[ToolRegistry] = None) -> ToolReg
     except ImportError as e:
         logger.warning(f"Failed to import code_execution tools: {e}")
 
+    try:
+        from .builtin_tools.git_tools import register_git_tools
+        register_git_tools(registry)
+    except ImportError as e:
+        logger.warning(f"Failed to import git_tools: {e}")
+
     logger.info(f"Initialized tool registry with {len(registry.tools)} built-in tools")
 
     return registry
