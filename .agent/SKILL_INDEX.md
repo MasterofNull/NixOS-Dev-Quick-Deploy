@@ -89,6 +89,7 @@
 | `ai-stack-qa` | qa, smoke, phase, stack | Full stack QA runs; phase verification |
 | `prsi-review` | prsi, review, autonomous, claude | PRSI autonomous review workflow |
 | `tradingagents` | trading, analysis, buy, hold, sell | Financial analysis via multi-agent team |
+| `lean-ctx` | context, compress, token, mcp, read, shell | File reads, shell output, any task where token usage is a concern; 10 read modes, 62 tools |
 
 ---
 

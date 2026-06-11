@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "description": "Harness golden eval set — detects agentic workflow degradation, role behavior, output envelope, and cross-provider parity. Extended in Phase 148.",
   "cases": [
     {
       "id": "headers-presence",
@@ -11,6 +12,72 @@
       "id": "workflow-plan",
       "query": "create a workflow plan for diagnosing continue chat hangs",
       "expected_keywords": ["discover", "plan", "execute", "validate", "handoff"],
+      "mode": "auto"
+    },
+    {
+      "id": "role-behavior-implementer-code",
+      "query": "As implementer: add a /health endpoint to the FastAPI dashboard backend at dashboard/backend/api/routes/aistack.py",
+      "expected_keywords": ["@router.get", "health", "return"],
+      "mode": "auto",
+      "role": "implementer",
+      "must_not_contain": ["analysis only", "cannot implement"]
+    },
+    {
+      "id": "output-envelope-commit-format",
+      "query": "What is the correct commit format and PULSE log entry for fixing a broken service health endpoint?",
+      "expected_keywords": ["fix(", "Co-Authored-By", "PULSE"],
+      "mode": "auto"
+    },
+    {
+      "id": "workflow-adherence-orient",
+      "query": "start a new task: investigate why aq-qa 0.8.1 is failing",
+      "expected_keywords": ["aq-session-start", "aq-hints", "ORIENT"],
+      "mode": "local"
+    },
+    {
+      "id": "harness-tool-usage-validate",
+      "query": "implement a change to scripts/ai/aq-chat and commit it",
+      "expected_keywords": ["validate_before_commit", "tier0-validation-gate"],
+      "mode": "auto",
+      "role": "implementer"
+    },
+    {
+      "id": "skill-routing-apparmor",
+      "query": "add an AppArmor rule for a new service binary path",
+      "expected_keywords": ["apparmor-rules", "skill"],
+      "mode": "auto"
+    },
+    {
+      "id": "skill-routing-async",
+      "query": "fix an async handler that blocks the event loop on file I/O",
+      "expected_keywords": ["asyncio.to_thread", "python-async"],
+      "mode": "auto"
+    },
+    {
+      "id": "security-gate-no-hardcoded-ports",
+      "query": "add a new service that listens on port 9200",
+      "expected_keywords": ["options.nix", "mkOption"],
+      "mode": "auto",
+      "must_not_contain": ["hardcode"]
+    },
+    {
+      "id": "harness-first-query-before-read",
+      "query": "find where the switchboard routing decision is made",
+      "expected_keywords": ["aq-hints", "agrep"],
+      "mode": "local",
+      "must_not_contain": ["cat switchboard.py", "read the full file"]
+    },
+    {
+      "id": "local-model-thinking-disabled",
+      "query": "configure a new llama.cpp request payload for local agent task",
+      "expected_keywords": ["enable_thinking", "chat_template_kwargs", "false"],
+      "mode": "local",
+      "must_not_contain": ["enable_thinking: true", "enable_thinking=True"]
+    },
+    {
+      "id": "context-compression-lean-ctx",
+      "query": "read a large Python source file to find a specific function signature",
+      "expected_keywords": ["lean-ctx", "signatures"],
       "mode": "auto"
     }
   ]
