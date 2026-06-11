@@ -253,7 +253,7 @@ DEFAULT_PROFILE_CATALOG = {
     },
     "continue-local": {
         "forceProvider": "local",
-        "injectHints": False,
+        "injectHints": True,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
         "maxInputTokens": int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS", "4000")),
@@ -349,7 +349,7 @@ DEFAULT_PROFILE_CATALOG = {
     },
     "local-tool-calling": {
         "forceProvider": "local",
-        "injectHints": False,
+        "injectHints": True,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
         # 12000 input + 1024 output = 13024 < 16384 ctx headroom; env-override for rebuild flexibility

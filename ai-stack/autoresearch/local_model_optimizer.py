@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -23,6 +24,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import hashlib
 import httpx
+
+_SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 logger = logging.getLogger("local_model_optimizer")
 
@@ -169,15 +175,15 @@ class LocalChatOptimizer:
                 start_ms = int(time.time() * 1000)
 
                 try:
-                    payload = {
-                        "model": "continue-local",
-                        "messages": [
+                    payload = build_llama_payload(
+                        [
                             {"role": "system", "content": config.parameters.get("system_message", "You are a helpful assistant.")},
-                            {"role": "user", "content": task["query"]}
+                            {"role": "user", "content": task["query"]},
                         ],
-                        "temperature": config.parameters.get("temperature", 0.7),
-                        "max_tokens": 512,
-                    }
+                        max_tokens=AGENT_TASK_MAX_TOKENS,
+                        temperature=config.parameters.get("temperature", 0.7),
+                        task_type="lookup",
+                    )
 
                     resp = await client.post(
                         f"{self.base_url}/v1/chat/completions",

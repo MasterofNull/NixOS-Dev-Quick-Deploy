@@ -137,6 +137,13 @@ When deploying a new locally hosted model, verify:
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
 Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
 
+### Phase 162B — Coordinator git_tools, injectHints, local-first routing (2026-06-11, requires rebuild)
+
+- `ai-stack/local-agents/__init__.py`: `initialize_builtin_tools()` now calls `register_git_tools()` — coordinator MCP protocol exposes git tools.
+- `ai-stack/switchboard/switchboard.py`: `injectHints: True` for `continue-local` and `local-tool-calling` profiles — aq-chat and Continue sessions now receive context injection (~200 tokens per request).
+- `config/routing-policy.yaml`: `default_prefer_local: true` — callers without an explicit profile route local by default.
+- `ai-stack/meta-optimization/meta_optimizer.py` + `ai-stack/autoresearch/local_model_optimizer.py`: `build_llama_payload()` migration; both are imported by coordinator endpoints.
+
 ### Phase 162A — AI Coordination Tools Now Registered (2026-06-11)
 
 `aq-agent-loop` `build_registry()` previously only registered file/shell/git tools. As of Phase 162A:

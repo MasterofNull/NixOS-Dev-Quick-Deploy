@@ -18,12 +18,19 @@ import aiohttp
 import json
 import logging
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
+from pathlib import Path
 from uuid import uuid4
+
+_SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "shared"
+if str(_SHARED) not in sys.path:
+    sys.path.insert(0, str(_SHARED))
+from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("meta_optimizer")
@@ -135,18 +142,19 @@ class MetaOptimizer:
         try:
             async with self.http_client.post(
                 f"{self.llama_url}/v1/chat/completions",
-                json={
-                    "messages": [
+                json=build_llama_payload(
+                    [
                         {
                             "role": "system",
                             "content": "You are a system optimizer analyzing AI harness performance. "
-                                     "Provide structured, actionable recommendations based on data."
+                                       "Provide structured, actionable recommendations based on data."
                         },
-                        {"role": "user", "content": prompt}
+                        {"role": "user", "content": prompt},
                     ],
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                },
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    task_type="reasoning",
+                ),
             ) as response:
                 response.raise_for_status()
                 result = await response.json()
