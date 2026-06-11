@@ -136,6 +136,14 @@ When deploying a new locally hosted model, verify:
 
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
 Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
+
+### Context Guard (Phase 159.2)
+
+Two runtime defences against context overflow (n_ctx=8192 ceiling on Renoir APU):
+
+1. **Tool result cap** (`tool_registry.format_tool_result()`): raw result serialised to string, hard-capped at **3000 chars** (~750 tokens). Truncation suffix appended so model knows data was clipped.
+
+2. **Message pruning** (`_execute_with_tools()` loop start): when message history exceeds `(8192-2000)*4 = 24768 chars`, the oldest assistant+tool pair is dropped (indices 2+3, after system+user). System message and user task are always preserved. Fires per-loop-iteration so it can prune multiple old pairs before a call.
 At 1 tok/s on Renoir APU: 512 tok = ~8 min worst case; 1200 tok = ~20 min worst case.
 Tool calls EOS naturally at ~100 tokens regardless of budget ceiling.
 

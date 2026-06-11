@@ -537,6 +537,16 @@ class LocalAgentExecutor:
         total_tokens = 0
 
         while tool_call_count < max_tool_calls:
+            # Context guard: prune oldest assistant+tool pairs when history is large.
+            # Keep system message [0] + user message [1] + last N tool call pairs intact.
+            # 4 chars/token, 8192 ctx, leave ~2000 tokens for generation headroom.
+            _CTX_CHAR_BUDGET = (8192 - 2000) * 4  # ~24768 chars
+            _ctx_chars = sum(len(str(m.get("content", ""))) for m in messages)
+            if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 4:
+                # Drop the oldest assistant+tool pair (indices 2+3 after system+user)
+                messages = messages[:2] + messages[4:]
+                logger.debug("context_prune: dropped oldest tool pair, messages now %d", len(messages))
+
             # Call model — use larger budget once tools have been used so that
             # the final synthesis turn (no tool_call in response) isn't capped at
             # the tool-call budget (512).  First call keeps 512 since the model
