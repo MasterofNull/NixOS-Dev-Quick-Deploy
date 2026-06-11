@@ -1126,25 +1126,6 @@ def _check_local_payload_discipline(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.1", "local inference payload discipline (no enable_thinking=True)", detail)]
 
 
-def _check_token_usage_coverage(ctx: RunContext) -> list[CheckResult]:
-    """Phase 149: coordinator token_usage coverage ≥50% of model_call events."""
-    check = ctx.repo_root / "scripts" / "testing" / "test-token-usage-coverage.py"
-    if not check.exists():
-        return [failed(1, "0.10.2", "token_usage observability coverage", "test-token-usage-coverage.py missing")]
-    proc = subprocess.run(
-        ["python3", str(check)],
-        cwd=ctx.repo_root,
-        text=True,
-        capture_output=True,
-        timeout=30,
-        check=False,
-    )
-    if proc.returncode == 0:
-        return [passed(1, "0.10.2", "token_usage coverage ≥50% of coordinator model_call events")]
-    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
-    return [failed(1, "0.10.2", "token_usage observability coverage", detail)]
-
-
 def _check_discovery_agent(ctx: RunContext) -> list[CheckResult]:
     """Phase 153: discovery agent emits deterministic improvement candidates."""
     check = ctx.repo_root / "scripts" / "testing" / "test-discovery-agent-opportunities.py"
@@ -1316,6 +1297,32 @@ def _check_local_inference_budget(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.13", "local inference budget", detail)]
 
 
+def _check_token_usage_coverage(ctx: RunContext) -> list[CheckResult]:
+    """0.10.2 — token_usage coverage ≥ 50% of model_call events over last 100 events."""
+    results: list[CheckResult] = []
+    if not ctx.should_run(1):
+        return results
+
+    checker = ctx.repo_root / "scripts" / "testing" / "test-token-usage-coverage.py"
+    if not checker.exists():
+        return [failed(1, "0.10.2", "token_usage coverage", "test-token-usage-coverage.py missing")]
+
+    try:
+        rc = subprocess.run(
+            ["python3", str(checker)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if rc.returncode == 0:
+            results.append(passed(1, "0.10.2", "token_usage coverage ≥ 50% of recent model_calls"))
+        else:
+            detail = rc.stdout.strip() or rc.stderr.strip() or f"exit code {rc.returncode}"
+            results.append(failed(1, "0.10.2", "token_usage coverage", detail))
+    except Exception as e:
+        results.append(failed(1, "0.10.2", "token_usage coverage", str(e)))
+
+    return results
+
+
 def _check_ragas_faithfulness_guard(ctx: RunContext) -> list[CheckResult]:
     """Phase 161: faithfulness scorer modal guard and judge prompt calibration."""
     check = ctx.repo_root / "scripts" / "testing" / "test-ragas-faithfulness-guard.py"
@@ -1378,7 +1385,6 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_topology_api(ctx))
     results.extend(_check_local_model_config(ctx))
     results.extend(_check_local_payload_discipline(ctx))
-    results.extend(_check_token_usage_coverage(ctx))
     results.extend(_check_discovery_agent(ctx))
     results.extend(_check_model_catalog_freshness(ctx))
     results.extend(_check_flat_prd_gate(ctx))
@@ -1400,6 +1406,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_delegation_artifact(ctx))
     results.extend(_check_intent_classifier_coverage(ctx))
     results.extend(_check_ragas_faithfulness_guard(ctx))
+    results.extend(_check_token_usage_coverage(ctx))
     results.extend(_check_modal_task_profiles(ctx))
     results.extend(_check_local_inference_budget(ctx))
     return results
