@@ -29,13 +29,13 @@ rustPlatform.buildRustPackage rec {
     owner = "yvgude";
     repo = "lean-ctx";
     rev = "v${version}";
-    # TODO: replace with real hash:
-    #   nix-prefetch-github --owner yvgude --repo lean-ctx --rev v3.3.7
-    hash = lib.fakeHash;
+    hash = "sha256-wOnAOywjP9E1TDQydSTquyP6kjM76zWej6AF8BxZyY4=";
   };
 
-  # TODO: replace with real vendor hash from failed build output
-  cargoHash = lib.fakeHash;
+  # Rust sources live under the rust/ subdirectory of the monorepo
+  sourceRoot = "source/rust";
+
+  cargoHash = "sha256-Ov7qwDEDzhBcD9ZoOGofn99NYHcvHrjPnbY0tqfNMwQ=";
 
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ openssl ];

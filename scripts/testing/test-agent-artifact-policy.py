@@ -24,7 +24,6 @@ LOCAL_ONLY = {
     ".agents/delegation/outputs/claude-arch-revamp-all-slices-done.md",
     ".agents/telemetry/hybrid-events.jsonl",
     ".agents/telemetry/routing-decisions.jsonl",
-    "nix/hosts/hyperd/facts.nix",
     "nix/hosts/nixos/facts.nix",
     "nix/hosts/sbc-minimal/facts.nix",
 }

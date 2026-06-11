@@ -26,30 +26,22 @@ stdenv.mkDerivation rec {
 
   src = fetchurl {
     url = "https://github.com/rtk-ai/rtk/releases/download/v${version}/rtk-x86_64-unknown-linux-musl.tar.gz";
-    # TODO: replace with real hash after first build:
-    #   nix-prefetch-url <url>
-    hash = lib.fakeHash;
+    hash = "sha256-XfdkpjNwnLhdJIJY0IXSTslfqovKDmg1qTzVfK3E654=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];
 
-  # musl binary: static, no dynamic deps; autoPatchelfHook is a no-op but included
-  # for forward compatibility if the release switches to gnu libc.
+  # musl static binary — tarball contains a bare 'rtk' file with no top-level directory.
+  # Standard unpackPhase fails on no-directory tarballs; skip it and unpack manually.
+  dontUnpack = true;
   dontConfigure = true;
   dontBuild = true;
 
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin
-    # The tarball contains either a bare 'rtk' binary or a directory with 'rtk' inside.
-    if [ -f rtk ]; then
-      install -Dm755 rtk $out/bin/rtk
-    elif [ -d rtk-x86_64-unknown-linux-musl ]; then
-      install -Dm755 rtk-x86_64-unknown-linux-musl/rtk $out/bin/rtk
-    else
-      # Fallback: find the binary anywhere in the unpacked tree.
-      find . -type f -name "rtk" -exec install -Dm755 {} $out/bin/rtk \;
-    fi
+    tar xf $src
+    install -Dm755 rtk $out/bin/rtk
     runHook postInstall
   '';
 
