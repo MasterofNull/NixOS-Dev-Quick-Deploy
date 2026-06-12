@@ -25,6 +25,25 @@
           grep -c "routing_rules" config/harness-prompt-extensions.json
   Commit: fix(training-ingest): truthy check prevents perpetuating empty routing_rules on rewrite
 
+[OPEN] training-ingest-write-race — concurrent training_ingest runs share a fixed temp file path causing lost writes
+  Severity: medium
+  Root cause: ai-stack/local-agents/training_ingest.py lines 519-527 — the atomic write uses a fixed temp file path:
+  `_tmp = _target.with_suffix(_target.suffix + ".tmp")` (YAML) or `_target.with_suffix(".json.tmp")` (JSON).
+  `os.replace()` is atomic for the final rename, BUT if two training_ingest processes run concurrently both will
+  write to the same .tmp file. Process A's temp content can be overwritten by process B before A calls os.replace(),
+  causing A to atomically rename B's partial content OR failing with FileNotFoundError.
+  Identified by Codex code review (codex-20260612-114434-oo76i3xxxxxx, 2026-06-12).
+  File: ai-stack/local-agents/training_ingest.py (lines 516-527)
+  Fix: Replace fixed .tmp path with tempfile.NamedTemporaryFile in the same directory, then os.replace.
+  Example:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=_target.parent, delete=False) as fh:
+        fh.write(content)
+        tmp_path = Path(fh.name)
+    os.replace(tmp_path, _target)
+  Apply to BOTH the YAML write block (lines 517-521) and JSON write block (lines 523-527).
+  Verify: python3 -m py_compile ai-stack/local-agents/training_ingest.py
+  Commit: fix(training-ingest): use NamedTemporaryFile for atomic write to eliminate concurrent-write race
+
 [DONE] dispatch-timeout-env-undocumented — AGENT_WALL_CLOCK_SECS env var documented in .env.example
   Fixed by agent commit 73f8102b.
 
