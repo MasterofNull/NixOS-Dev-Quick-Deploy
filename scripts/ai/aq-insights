@@ -277,12 +277,39 @@ def main() -> int:
         print(f"[aq-insights] ERROR: {exc}", file=sys.stderr)
         return 1
 
+    # ── OIB: Operator Intelligence Bridge section ───────────────────────────
+    oib_section = ""
+    try:
+        import urllib.request as _ureq
+        oib_req = _ureq.Request(
+            "http://127.0.0.1:8003/operator/insights",
+            data=json.dumps({
+                "session_context": json.dumps(signals, ensure_ascii=False)[:2000],
+                "recent_work": signals.get("report_generated_at", ""),
+            }).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _ureq.urlopen(oib_req, timeout=10) as resp:
+            oib_data = json.loads(resp.read())
+        from pathlib import Path as _P
+        import sys as _sys
+        _ext_dir = _P(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions"
+        if str(_ext_dir) not in _sys.path:
+            _sys.path.insert(0, str(_ext_dir))
+        from operator_intelligence import format_insights_for_cli
+        oib_section = format_insights_for_cli(oib_data)
+    except Exception as _oib_err:
+        print(f"[aq-insights] OIB section skipped: {_oib_err}", file=sys.stderr)
+
     if not args.no_write:
-        out_path = write_insights(analysis, signals.get("report_generated_at", "unknown"))
+        out_path = write_insights(analysis + oib_section, signals.get("report_generated_at", "unknown"))
         print(f"[aq-insights] Written: {out_path}", file=sys.stderr)
 
     if args.print or args.no_write:
         print(analysis)
+        if oib_section:
+            print(oib_section)
 
     return 0
 

@@ -78,6 +78,7 @@ the right knowledge in view without loading the full codebase.
 **Context compression**: `run_command` auto-wraps with RTK when available — shell output is compressed 60-90% before entering context. Check savings with `run_command "rtk gain"`.
 
 **Critical local-agent skills** (load for applicable work):
+- `self-improvement` — **load first** when asked to "run a self-improvement slice" or "improve the harness" — full workflow: discover priority from issues-backlog/PRDs/reports → propose 3 options → execute after operator confirms
 - `llm-config` — mandatory: `enable_thinking` in chat_template_kwargs, build_llama_payload SSOT
 - `rag-operations` — RAG queries via :8003, collection names, BGE-M3 threshold 0.45
 - `coordinator-api` — auth, loopback exemptions, key routes
@@ -86,6 +87,28 @@ the right knowledge in view without loading the full codebase.
 
 **In `--mode direct`** (no tool access): reasoning/analysis only. Cannot query live services.
 Reference skills by name for the orchestrator to load — don't claim to have called a tool.
+
+---
+
+## Self-Improvement Workflow (MANDATORY — do not invent work)
+
+When asked to run a "self-improvement slice" or "improve the harness":
+
+**NEVER** start with documentation cleanup or hypothetical planning. Always:
+
+1. **Load the skill**: read `.agent/skills/self-improvement/SKILL.md`
+2. **Scan authoritative sources** for open P1/P2 work:
+   - `memory/issues-backlog.md` — open bugs and blockers (highest signal)
+   - `.agent/collaboration/RESUME.json` — in-flight objective
+   - `.agent/collaboration/HANDOFF.md` — recent session context
+   - `.agents/plans/*.md` — active implementation plans
+   - Quick health: `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 90 scripts/ai/aq-qa 0 2>&1 | tail -20`
+3. **Propose 3 ranked options** with title, source, problem, impact, effort
+4. **Wait for operator selection** before executing
+5. **Execute the chosen slice** following the commit discipline in `system-dev` skill
+
+This workflow exists because the harness has extensive existing plans, backlogs, and roadmaps.
+Ignoring them produces redundant or low-impact work. Always derive improvement from authoritative sources.
 
 ---
 

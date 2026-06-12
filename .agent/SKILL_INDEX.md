@@ -16,6 +16,7 @@
 
 | Skill | Tags (excerpt) | When to Use |
 |-------|----------------|-------------|
+| `self-improvement` | self-improvement, issues-backlog, PRD, aq-report, roadmap, slice, priority | When asked to "run a self-improvement slice" or "improve the harness" — discover priority from issues-backlog/PRDs/reports, propose 3 options, then execute |
 | `system-dev` | pre-commit, doc-sync, rule11, RAG-seed, tier0 | Pre-commit sequence; doc sync check; issue logging; any commit workflow |
 | `nixos-system` | nix, flake, rebuild, options.nix, module, AppArmor | Adding Nix module/option; triggering rebuild; NixOS-specific Python env; port SSOT |
 | `apparmor-rules` | apparmor, profile, ix, Ux, NoNewPrivileges, deny | Writing AppArmor rules; diagnosing EPERM; profile reload; denial→rule workflow |
