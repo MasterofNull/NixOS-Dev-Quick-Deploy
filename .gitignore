@@ -211,3 +211,10 @@ config/rocm-promotion-state.json
 .agents/drops/failed/*.drop.yaml
 .agents/drops/.lock
 .agent/archive/tool-audit-*.jsonl
+
+# Phase 162 — Runtime artifacts and auto-generated editor config
+*.lean-ctx.bak
+LEAN-CTX.md
+.cursorrules
+ai-stack/local-agents/.agent/
+.agents/improvement/candidates.lock
