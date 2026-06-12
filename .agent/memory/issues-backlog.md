@@ -37,16 +37,19 @@
   Impact: model retains which issue it targets across all steps; no re-reads of already-seen content.
   File: ai-stack/local-agents/agent_executor.py (_execute_with_tools, Pinned+Sliding block)
   Commit: feat(agents): pinned+sliding context + stagnation detection
+  Follow-up (Gemini FAIL d5235778): removed dead overlap dedup guard (overlap=4+4-len<0 always when len>8).
+  Commit: fix(agents): remove dead overlap guard + tune stagnation thresholds
 
 [DONE] agent-stagnation-detection — no guard against runaway same-tool loops in agent_executor
   Root cause: agent could call read_file or run_command 20+ times with identical result (e.g. after context
   pruning dropped the tool result, model re-reads the same file in a tight loop). No detection, no early exit.
-  Gemini recommendation (2026-06-12): terminate if same tool called 3 consecutive times with no state change.
-  Fix (agent_executor.py _execute_with_tools): _recent_tools list tracks (tool_name, result[:200]) for last 3
-  calls. If all 3 have same tool name AND same result prefix, logger.warning and return stagnation_msg early.
-  This prevents burning max_tool_calls budget and the 3-hour wall-clock on a stuck loop.
+  Gemini recommendation (2026-06-12): terminate if same tool called N consecutive times with no state change.
+  Fix (agent_executor.py _execute_with_tools): _recent_tools list tracks (tool_name, result[:200]) for last N
+  calls. Threshold is tool-specific: read_file=3 (pure observation, 3 identical reads = stuck),
+  run_command=5 (polling loops like tail/systemctl legitimately repeat). If all N have same result prefix,
+  logger.warning and return stagnation_msg early.
   File: ai-stack/local-agents/agent_executor.py (_execute_with_tools, stagnation detection block)
-  Commit: feat(agents): pinned+sliding context + stagnation detection
+  Commit: fix(agents): remove dead overlap guard + tune stagnation thresholds
 
 [DONE] training-ingest-routing-rules-lost — training_ingest.py perpetuated routing_rules loss due to non-truthy check
   Root cause: training_ingest.py lines 493-495 — `break` at col 12 was OUTSIDE the inner

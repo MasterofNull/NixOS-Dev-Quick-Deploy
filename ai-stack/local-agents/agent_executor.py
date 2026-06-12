@@ -544,10 +544,14 @@ class LocalAgentExecutor:
         total_tokens = 0
         _loop_start = time.time()
 
-        # Stagnation guard: track (tool_name, result_prefix) for last 3 calls.
-        # If all three are identical, the model is stuck — abort with a degraded result
-        # rather than burning the full budget on a runaway loop.
+        # Stagnation guard: track (tool_name, result_prefix) for recent calls.
+        # Thresholds: 3 for read_file (pure observation, no state change expected after 3
+        # identical reads); 5 for run_command and others (allows brief polling loops).
+        # If the threshold is exceeded, abort with a degraded result rather than burning
+        # the full budget on a runaway loop.
         _recent_tools: list = []
+        _STAGNATION_THRESHOLD_READ = 3   # read_file: identical result = definitely stuck
+        _STAGNATION_THRESHOLD_OTHER = 5  # run_command etc: allow polling for state change
 
         # Observability: progress sidecar path (set by aq-agent-loop via env var).
         # Updated after every tool call so dashboards and `dispatch.py watch` can
@@ -645,10 +649,9 @@ class LocalAgentExecutor:
             if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 8:
                 pinned = messages[:4]   # system + user + first_assistant + first_tool
                 sliding = messages[-4:]  # last 2 assistant+tool pairs
-                # Guard: if the two windows overlap (8 < len < 8), deduplicate.
-                overlap = len(pinned) + len(sliding) - len(messages)
-                if overlap > 0:
-                    sliding = sliding[overlap:]
+                # When len > 8, pinned ends at index 3 and sliding starts at len-4.
+                # The minimum gap between them is (len-4) - 3 = len-7 ≥ 2, so overlap
+                # is never possible here. Simple concatenation is correct.
                 messages = pinned + sliding
                 logger.debug(
                     "context_prune(pinned+sliding): pinned=%d sliding=%d total=%d chars_before=%d",
@@ -698,24 +701,34 @@ class LocalAgentExecutor:
             # Format result for model
             formatted_result = self.tool_registry.format_tool_result(result)
 
-            # Stagnation detection: same tool × 3 consecutive calls with identical output
-            # prefix → model is looping without state change. Abort early so we don't
-            # exhaust max_tool_calls on a runaway pattern (e.g. re-reading the same file
-            # 10 times because context pruning dropped the result).
+            # Stagnation detection: same (tool_name, result_prefix) repeated beyond
+            # threshold → model is looping without state change. Abort early so we don't
+            # exhaust max_tool_calls on a runaway pattern.
+            # Thresholds are tool-specific:
+            #   read_file  → 3: pure observation; identical result 3× = definitely stuck.
+            #   run_command → 5: polling loops (e.g. tail, systemctl) legitimately repeat.
+            threshold = (
+                _STAGNATION_THRESHOLD_READ
+                if result.tool_name == "read_file"
+                else _STAGNATION_THRESHOLD_OTHER
+            )
             _recent_tools.append((result.tool_name, formatted_result[:200]))
-            if len(_recent_tools) > 3:
+            if len(_recent_tools) > threshold:
                 _recent_tools.pop(0)
             if (
-                len(_recent_tools) == 3
+                len(_recent_tools) == threshold
                 and len({t for t, _ in _recent_tools}) == 1   # same tool name
                 and len({r for _, r in _recent_tools}) == 1   # same result prefix
             ):
                 stagnation_msg = (
-                    f"Stagnation detected: '{result.tool_name}' called 3 consecutive times "
-                    f"with identical result — loop aborted to prevent runaway. "
+                    f"Stagnation detected: '{result.tool_name}' called {threshold} consecutive "
+                    f"times with identical result — loop aborted to prevent runaway. "
                     f"Last result prefix: {formatted_result[:300]}"
                 )
-                logger.warning("stagnation: tool=%r — aborting loop at call %d", result.tool_name, tool_call_count)
+                logger.warning(
+                    "stagnation: tool=%r threshold=%d — aborting loop at call %d",
+                    result.tool_name, threshold, tool_call_count,
+                )
                 return stagnation_msg, total_tokens
 
             # Extract the clean JSON from the response so the assistant turn
