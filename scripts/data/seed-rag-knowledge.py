@@ -451,6 +451,35 @@ ERROR_SOLUTIONS = [
         "files": ["ai-stack/local-agents/agent_executor.py", "ai-stack/local-agents/tool_registry.py"],
         "related_patterns": ["agent_executor_synthesis_truncated_at_512"],
     },
+    # Phase 162 patterns
+    {
+        "error_type": "aq_agent_loop_tool_registration_gap",
+        "error_message": "Local agent cannot use query_aidb, store_memory, get_hint — tool not found",
+        "context": "aq-agent-loop build_registry() only registered file_tools, shell_tools, git_tools. All 14 AI coordination tools (query_aidb, store_memory, get_hint, mesh_discovery, delegate_to_remote, harness_health, get_working_memory, etc.) were never added. store_memory_handler returned placeholder error. collective_memory_search_handler called non-existent /documents/search.",
+        "solution": "Add to build_registry() after register_git_tools(): 'from ai_coordination import register_ai_coordination_tools; register_ai_coordination_tools(registry)'. Fix store_memory_handler to POST to HYBRID_COORDINATOR_URL/memory/store. Fix collective_memory_search_handler to use AIDB_URL/vector/search with collection='knowledge'.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 1.0,
+        "files": ["scripts/ai/aq-agent-loop", "ai-stack/local-agents/builtin_tools/ai_coordination.py"],
+        "related_patterns": ["local_agent_wrong_qdrant_collection_returns_noise", "agent_executor_synthesis_truncated_at_512"],
+    },
+    {
+        "error_type": "coordinator_endpoint_not_in_loopback_agent_prefixes",
+        "error_message": "Local agent tool returns 401 unauthorized from coordinator on loopback",
+        "context": "Coordinator auth middleware at middleware/auth.py exempts loopback requests only for paths in LOOPBACK_AGENT_PREFIXES tuple. New coordinator endpoints added for agent tools are NOT automatically trusted. query_aidb_handler calls /search/tree which was missing → 401 with mode='api-key' for every local agent call.",
+        "solution": "Add the endpoint prefix to LOOPBACK_AGENT_PREFIXES in ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py. Pattern: '/search/' for search endpoints. Requires nixos-rebuild. Check this list every time a new coordinator endpoint is added for agent tool use.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 1.0,
+        "files": ["ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py", "ai-stack/local-agents/builtin_tools/ai_coordination.py"],
+        "related_patterns": ["tool_security_control_over_broad_block"],
+    },
 ]
 
 SKILLS_PATTERNS = [
