@@ -274,3 +274,8 @@
   Severity: high
   Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`) and the THP status file also reported by health-spider. Requires NixOS rebuild/switch to activate.
   File: nix/modules/services/mcp-servers.nix
+
+[DONE] aq-alerts-json-contract — `aq-alerts --json` printed the human table instead of machine-readable JSON — Root cause: the CLI usage and downstream agent workflow expected JSON, but `scripts/ai/aq-alerts` had no `--json` argparse option and always rendered the table unless `--count` was used.
+  Severity: medium
+  Action: Added `--json` output with `{pending, alerts}` and regression coverage using an isolated `ATTENTION_QUEUE_DIR`.
+  File: scripts/ai/aq-alerts; scripts/testing/test-aq-alerts-json.py

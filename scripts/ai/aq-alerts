@@ -10,12 +10,14 @@ Usage:
   aq-alerts               # table of pending alerts
   aq-alerts --all         # include resolved/expired
   aq-alerts --count       # print count only, exit 1 if pending > 0
+  aq-alerts --json        # print machine-readable alert payload
   aq-alerts --source apparmor-fix-agent
   aq-alerts --severity critical
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -94,6 +96,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="View pending AI stack alerts")
     parser.add_argument("--all", action="store_true", help="include resolved/expired alerts")
     parser.add_argument("--count", action="store_true", help="print count only, exit 1 if >0")
+    parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     parser.add_argument("--source", help="filter by source")
     parser.add_argument("--severity", help="filter by severity (critical|high|medium|low)")
     args = parser.parse_args()
@@ -108,6 +111,11 @@ def main() -> int:
     if args.count:
         pending = [a for a in alerts if a.get("status") == "pending"]
         print(len(pending))
+        return 1 if pending else 0
+
+    if args.json:
+        pending = [a for a in alerts if a.get("status") == "pending"]
+        print(json.dumps({"pending": len(pending), "alerts": alerts}, indent=2, sort_keys=True))
         return 1 if pending else 0
 
     _print_table(alerts)
