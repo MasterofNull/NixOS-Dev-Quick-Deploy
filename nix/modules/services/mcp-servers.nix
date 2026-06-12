@@ -1337,6 +1337,14 @@ in {
               ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}"
               ++ lib.optional sec.enable "POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
             EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";
+            # Phase 163 — allow coordinator subprocesses (aq-qa) to write attention alerts.
+            # commonServiceConfig sets ProtectHome=read-only; ATTENTION_QUEUE_DIR points to
+            # live repo under /home/hyperd/. Without this override, attention_queue._ensure_dirs()
+            # and file writes both fail with EPERM, causing aq-qa check 86.2 to abort the script
+            # (set -euo pipefail) → empty stdout + exit 1 on every run_qa_check call.
+            ReadWritePaths = serviceWritablePaths ++ [
+              "${mcp.repoPath}/.agents/attention"
+            ];
           };
       };
     })
@@ -2483,6 +2491,9 @@ in {
             # Repo source tree — config files, scripts (NixOS: ReadOnlyPaths=)
             ${repoSource}/** r,
             ${mcp.repoPath}/** r,
+            # Phase 163 — attention queue write access (ReadWritePaths override)
+            ${mcp.repoPath}/.agents/attention/ rw,
+            ${mcp.repoPath}/.agents/attention/** rwk,
 
             # === ReadWritePaths (from service unit) ===
             # rwk: read, write/create (O_CREAT+truncate), file lock (fcntl/flock)
