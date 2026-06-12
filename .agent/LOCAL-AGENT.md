@@ -78,7 +78,7 @@ the right knowledge in view without loading the full codebase.
 **Context compression**: `run_command` auto-wraps with RTK when available — shell output is compressed 60-90% before entering context. Check savings with `run_command "rtk gain"`.
 
 **Critical local-agent skills** (load for applicable work):
-- `self-improvement` — **load first** when asked to "run a self-improvement slice" or "improve the harness" — full workflow: discover priority from issues-backlog/PRDs/reports → propose 3 options → execute after operator confirms
+- `self-improvement` — **load first** when asked to "run a self-improvement slice" or "improve the harness" — full workflow: discover priority from issues-backlog/PRDs/reports → announce target → implement autonomously → validate → commit
 - `llm-config` — mandatory: `enable_thinking` in chat_template_kwargs, build_llama_payload SSOT
 - `rag-operations` — RAG queries via :8003, collection names, BGE-M3 threshold 0.45
 - `coordinator-api` — auth, loopback exemptions, key routes
@@ -103,12 +103,15 @@ When asked to run a "self-improvement slice" or "improve the harness":
    - `.agent/collaboration/HANDOFF.md` — recent session context
    - `.agents/plans/*.md` — active implementation plans
    - Quick health: `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 90 scripts/ai/aq-qa 0 2>&1 | tail -20`
-3. **Propose 3 ranked options** with title, source, problem, impact, effort
-4. **Wait for operator selection** before executing
-5. **Execute the chosen slice** following the commit discipline in `system-dev` skill
+3. **Select the single highest-priority OPEN item** — state in one sentence what you are fixing
+4. **Implement immediately** — write_file / run_command; one issue, no scope-creep
+5. **Validate**: `scripts/governance/tier0-validation-gate.sh --pre-commit` + `aq-qa 0` if runtime changed; fix failures
+6. **Commit**: `git add <specific files>` + `git commit -m "type(scope): ...\n\nCo-Authored-By: AQ <noreply@harness.local>"`
+7. **Report** what changed, what passed, what to review
 
 This workflow exists because the harness has extensive existing plans, backlogs, and roadmaps.
 Ignoring them produces redundant or low-impact work. Always derive improvement from authoritative sources.
+**Execute all steps without stopping** — the operator reviews the commit, not pre-approves each step.
 
 ---
 

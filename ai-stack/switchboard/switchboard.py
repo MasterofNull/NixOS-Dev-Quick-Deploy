@@ -431,16 +431,22 @@ def _load_profile_catalog() -> dict:
     catalog = DEFAULT_PROFILE_CATALOG.copy()
     loaded = {}
 
+    _shared_bodies: dict[str, str] = {}
     yaml_file = os.environ.get("SWB_PROFILE_CATALOG_YAML_FILE", "").strip()
     if yaml_file:
         try:
             import yaml
             with open(yaml_file, "r", encoding="utf-8") as handle:
                 doc = yaml.safe_load(handle)
-            if isinstance(doc, dict) and isinstance(doc.get("profiles"), dict):
-                loaded = doc["profiles"]
-            elif isinstance(doc, dict):
-                loaded = doc
+            if isinstance(doc, dict):
+                # Extract _shared_bodies before stripping to profiles dict
+                raw_bodies = doc.get("_shared_bodies") or {}
+                if isinstance(raw_bodies, dict):
+                    _shared_bodies = {k: str(v) for k, v in raw_bodies.items() if v}
+                if isinstance(doc.get("profiles"), dict):
+                    loaded = doc["profiles"]
+                else:
+                    loaded = doc
         except (OSError, Exception) as exc:
             print(f"warning: failed to load switchboard profile catalog YAML: {exc}", file=sys.stderr)
     else:
@@ -461,12 +467,23 @@ def _load_profile_catalog() -> dict:
     if isinstance(loaded, dict):
         for name, value in loaded.items():
             if name.startswith("_"):
-                continue  # skip _meta and other YAML metadata keys
+                continue  # skip _meta, _shared_bodies, and other metadata keys
             if name in catalog and isinstance(catalog[name], dict) and isinstance(value, dict):
                 # Merge: null values in YAML preserve Python defaults (env-var-resolved fields)
                 catalog[name].update({k: v for k, v in value.items() if v is not None})
             else:
                 catalog[name] = value
+
+    # Resolve ${BODY_NAME} placeholders in profileCard values
+    if _shared_bodies:
+        for prof in catalog.values():
+            if not isinstance(prof, dict):
+                continue
+            card = prof.get("profileCard") or ""
+            if "${" in card:
+                for body_name, body_text in _shared_bodies.items():
+                    card = card.replace(f"${{{body_name}}}", body_text.rstrip("\n"))
+                prof["profileCard"] = card
 
     # Startup validation: warn if token budget exceeds context window headroom
     budget_ctx = LLAMA_CTX_SIZE - 600
