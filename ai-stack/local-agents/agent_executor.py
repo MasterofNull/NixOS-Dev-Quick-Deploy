@@ -912,9 +912,12 @@ class LocalAgentExecutor:
             "        If gate fails, fix the problem and re-run. If gate passes, proceed immediately.\n"
             "STEP 6: git_add([<files>]) then git_commit('<type>(<scope>): <description>')\n"
             "        git_commit adds Co-Authored-By automatically — do NOT add it in the message.\n"
-            "DONE:   After git_commit returns success=true, output ONE sentence:\n"
-            "        'Committed <hash-prefix>: <what changed> — gate passed, ready for review.'\n"
-            "        STOP. Do not call any more tools after git_commit succeeds.\n"
+            "STEP 7: store_memory('<fix-pattern-in-one-sentence>', context_type='error-solutions', importance=0.8)\n"
+            "        This seeds the fix into AIDB so Gemini, Codex, and future local sessions can learn from it.\n"
+            "        Example: 'Fix: unconditional break in for-loop exits before JSON fallback is read — indent break inside if-block.'\n"
+            "DONE:   After store_memory returns, output ONE sentence:\n"
+            "        'Committed <hash-prefix>: <what changed> — gate passed, memory seeded, ready for review.'\n"
+            "        STOP. Do not call any more tools.\n"
             "Execute all steps without stopping. Do NOT target uncommitted git changes.\n"
         )
 

@@ -210,18 +210,21 @@ async def write_file_handler(
             return {"success": False, "error": f"Failed to create directories: {e}"}
 
     # Write file
+    import hashlib as _hashlib
     try:
+        encoded = content.encode("utf-8")
         if mode == "w":
-            path.write_text(content)
+            path.write_bytes(encoded)
         else:  # append
-            with path.open("a") as f:
-                f.write(content)
+            with path.open("ab") as f:
+                f.write(encoded)
 
-        bytes_written = len(content.encode("utf-8"))
+        sha256 = _hashlib.sha256(encoded).hexdigest()[:16]
 
         return {
             "success": True,
-            "bytes_written": bytes_written,
+            "bytes_written": len(encoded),
+            "sha256_prefix": sha256,  # audit trail: non-repudiation without re-reading
             "path": str(path),
         }
 
