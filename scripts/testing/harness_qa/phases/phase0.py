@@ -1297,6 +1297,25 @@ def _check_local_inference_budget(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.13", "local inference budget", detail)]
 
 
+def _check_local_agent_store_memory_contract(ctx: RunContext) -> list[CheckResult]:
+    """Phase 164: local store_memory advertises coordinator-compatible memory tiers."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-local-agent-store-memory-contract.py"
+    if not check.exists():
+        return [failed(1, "0.10.14", "local-agent store_memory contract", "test-local-agent-store-memory-contract.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.14", "local-agent store_memory uses canonical memory tiers and aliases")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.14", "local-agent store_memory contract", detail)]
+
+
 def _check_token_usage_coverage(ctx: RunContext) -> list[CheckResult]:
     """0.10.2 — token_usage coverage ≥ 50% of model_call events over last 100 events."""
     results: list[CheckResult] = []
@@ -1409,6 +1428,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_token_usage_coverage(ctx))
     results.extend(_check_modal_task_profiles(ctx))
     results.extend(_check_local_inference_budget(ctx))
+    results.extend(_check_local_agent_store_memory_contract(ctx))
     results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_golden_eval_parity(ctx))

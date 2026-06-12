@@ -1369,6 +1369,23 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "local-agent-store-memory-contract",
+      "description": "Phase 164: local-agent store_memory exposes coordinator-compatible memory tiers and normalizes legacy aliases",
+      "trigger_paths": [
+        "ai-stack/local-agents/builtin_tools/ai_coordination.py",
+        "scripts/testing/test-local-agent-store-memory-contract.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-local-agent-store-memory-contract.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

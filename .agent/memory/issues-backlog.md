@@ -1,3 +1,8 @@
+[DONE] local-agent/store-memory-contract — Local agent capability test retried `store_memory` because the tool schema advertised `context_type` as note/decision/observation while the coordinator requires canonical memory tiers; `milestone` failed with `memory_store_invalid` before retrying as episodic.
+  Severity: medium
+  Action: Updated local `store_memory` schema to expose canonical memory tiers, added alias normalization for legacy context labels including milestone->episodic, and added aq-qa/focused-CI coverage as 0.10.14.
+  File: ai-stack/local-agents/builtin_tools/ai_coordination.py; scripts/testing/test-local-agent-store-memory-contract.py; scripts/testing/harness_qa/phases/phase0.py; scripts/ai/_aq-qa-bash
+
 [DONE] pre-push/failure-mode-check — `git push` was blocked by quick lint "Known failure-mode checks" after host facts became local-only. Root cause: host defaults still imported ignored `facts.nix` unconditionally, so pure flake source evaluation failed; once fixed, the checker also exposed context-bearing `ExecStart` eval fragility.
   Severity: high
   Action: Made host `facts.nix` imports optional, changed npm security monitor `ExecStart` to `lib.escapeShellArgs`, and updated `check-dryrun-failure-modes.sh` to disable eval-cache and read `ExecStart` via JSON.
