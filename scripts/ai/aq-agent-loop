@@ -97,10 +97,11 @@ async def run_task(
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
 
-    # LLAMA_CHUNK_TIMEOUT: per-SSE-chunk read timeout — must be at least 300s to
-    # survive prefill of large system prompts on CPU-heavy APU (Renoir, 12 GPU layers).
-    # Prefill for ~1000 tokens at ~10-30 tok/s = 33-100s; keep headroom above that.
-    os.environ["LLAMA_CHUNK_TIMEOUT"] = str(max(300.0, float(timeout_secs)))
+    # LLAMA_CHUNK_TIMEOUT: per-SSE-chunk read timeout.
+    # After 2+ tool calls the context can be ~2500 tokens; prefill at 5 tok/s = 500s.
+    # Minimum 900s so that slow prefill on a growing context never fires the timeout.
+    # The timer only fires if the server goes silent (not between tokens during gen).
+    os.environ["LLAMA_CHUNK_TIMEOUT"] = str(max(900.0, float(timeout_secs) * 2))
     # 512 tok/call: tool call JSON is 50-100 tokens; final summary fits in 400.
     # Prevents abandoned-connection slot locks (4096 tokens @ 1-2 tok/s = 34-68 min).
     os.environ["LLAMA_MAX_TOKENS"] = os.environ.get("LLAMA_MAX_TOKENS", "512")

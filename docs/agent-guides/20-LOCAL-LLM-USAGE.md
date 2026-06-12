@@ -180,3 +180,30 @@ for diagnostic checks.
 nix-prefetch-github --owner yvgude --repo lean-ctx --rev v3.3.7
 # Replace lib.fakeHash in nix/pkgs/lean-ctx.nix with printed hashes
 ```
+
+## Agent Loop Reliability (Phase 165)
+
+### Per-Chunk SSE Timeout (LLAMA_CHUNK_TIMEOUT)
+
+`aq-agent-loop` sets `LLAMA_CHUNK_TIMEOUT = max(900, timeout_secs × 2)` (seconds).
+
+This timeout fires when the llama.cpp server is **silent** for that many seconds between
+SSE data chunks. It does NOT fire during continuous token generation.
+
+**Why 900s minimum?**  After 2+ tool calls the context grows to ~2500 tokens.  On Renoir APU
+at ~5 tok/s prefill, that requires ~500s of prefill before the first response token is
+emitted.  A 300s timeout (old default) fired during prefill, producing `httpx.ReadTimeout`
+with no message → `task.error = ""`, `task.status = failed`.
+
+### Retry Logic
+
+`_execute_with_tools` retries a failed LLM call once with a 512-token budget.  If the
+retry also fails or returns an empty response, a descriptive `RuntimeError` is raised.
+
+### Debugging Failures
+
+| `task.error` value | Likely cause |
+|--------------------|--------------|
+| `LLM prefill/generation timeout: server silent for >Xs` | Context too large for chunk timeout; increase `LLAMA_CHUNK_TIMEOUT` |
+| `LLM returned empty response at call N` | Model emitted EOS with no content; check llama.cpp logs |
+| `LLM connection refused at ...` | llama.cpp not running; check `systemctl status ai-llama-cpp` |

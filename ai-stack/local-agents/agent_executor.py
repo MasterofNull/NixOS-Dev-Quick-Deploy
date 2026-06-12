@@ -552,8 +552,21 @@ class LocalAgentExecutor:
             # the tool-call budget (512).  First call keeps 512 since the model
             # almost always emits a tool call there (short JSON, EOS quick).
             call_max_tokens = AGENT_TASK_MAX_TOKENS if tool_call_count > 0 else AGENT_TOOL_CALL_MAX_TOKENS
-            response, tok = await self._call_llama(messages, role=role, max_tokens=call_max_tokens)
+            try:
+                response, tok = await self._call_llama(messages, role=role, max_tokens=call_max_tokens)
+            except Exception as _llm_err:
+                # Retry once with reduced budget on transient failures (timeout, connection drop).
+                logger.warning(
+                    "LLM call %d failed (%r), retrying with 512 tokens",
+                    tool_call_count + 1, str(_llm_err)[:120],
+                )
+                response, tok = await self._call_llama(messages, role=role, max_tokens=512)
             total_tokens += tok
+            if not response.strip():
+                raise RuntimeError(
+                    f"LLM returned empty response at call {tool_call_count + 1} "
+                    f"(context ~{sum(len(str(m.get('content','') or '')) for m in messages)} chars)"
+                )
 
             # Parse tool call
             tool_call = self.tool_registry.parse_tool_call_from_llama(response)
@@ -654,37 +667,47 @@ class LocalAgentExecutor:
         collected: List[str] = []
         tokens_used = 0
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "POST",
-                f"{self.llama_endpoint}/v1/chat/completions",
-                json=payload,
-            ) as response:
-                if response.status_code != 200:
-                    body = await response.aread()
-                    raise Exception(f"llama.cpp error: {response.status_code} {body.decode()[:200]}")
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.llama_endpoint}/v1/chat/completions",
+                    json=payload,
+                ) as response:
+                    if response.status_code != 200:
+                        body = await response.aread()
+                        raise Exception(f"llama.cpp error: {response.status_code} {body.decode()[:200]}")
 
-                async for raw_line in response.aiter_lines():
-                    line = raw_line.strip()
-                    if not line or line == "data: [DONE]":
-                        continue
-                    if line.startswith("data: "):
-                        line = line[len("data: "):]
-                    try:
-                        chunk = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = chunk.get("choices", [{}])
-                    if not choices:
-                        # Usage-only chunk emitted when stream_options.include_usage=True
-                        usage = chunk.get("usage", {})
-                        if usage:
-                            tokens_used = usage.get("total_tokens", 0)
-                        continue
-                    delta = choices[0].get("delta", {})
-                    token = delta.get("content") or ""
-                    if token:
-                        collected.append(token)
+                    async for raw_line in response.aiter_lines():
+                        line = raw_line.strip()
+                        if not line or line == "data: [DONE]":
+                            continue
+                        if line.startswith("data: "):
+                            line = line[len("data: "):]
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = chunk.get("choices", [{}])
+                        if not choices:
+                            # Usage-only chunk emitted when stream_options.include_usage=True
+                            usage = chunk.get("usage", {})
+                            if usage:
+                                tokens_used = usage.get("total_tokens", 0)
+                            continue
+                        delta = choices[0].get("delta", {})
+                        token = delta.get("content") or ""
+                        if token:
+                            collected.append(token)
+        except httpx.ReadTimeout:
+            raise RuntimeError(
+                f"LLM prefill/generation timeout: server silent for >{chunk_timeout:.0f}s "
+                f"(context may be too large; LLAMA_CHUNK_TIMEOUT={chunk_timeout:.0f})"
+            )
+        except httpx.ConnectError as _ce:
+            raise RuntimeError(f"LLM connection refused at {self.llama_endpoint}: {_ce}") from _ce
+        except httpx.NetworkError as _ne:
+            raise RuntimeError(f"LLM network error: {_ne}") from _ne
 
         return "".join(collected), tokens_used
 
