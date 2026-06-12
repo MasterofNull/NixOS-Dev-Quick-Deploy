@@ -1,5 +1,19 @@
 ## OPEN ISSUES
 
+[DONE] agent-loop-wall-clock-timeout — agent tasks killed at 3600s fixed-wall-clock before completing 9 tool calls
+  Root cause: iter 9 self-improvement run grew context to 7436 tokens by call 6-7 (Qwen3 SWA forces full
+  re-prefill each turn, no KV cache reuse). At 10 tok/s prefill, each late call took 12+ minutes. Fixed 3600s
+  wall-clock only allowed ~3 large calls. Context pruning at 24768 chars (~6192 tokens) didn't prevent growth.
+  Fix A (dispatch.py): Dynamic wall-clock = min(per_call_budget × max_calls + 120, 10800s).
+    per_call_budget = chunk_timeout (900s) + gen_budget (1200s) = 2100s.
+    For 9 calls: min(9×2100+120=19020, 10800) = 10800s (3-hour hard cap = runaway safeguard).
+    AGENT_WALL_CLOCK_SECS env var still overrides for ops/debug.
+  Fix B (agent_executor.py): Lower context budget from 24768 chars (~6192 tokens) to 12000 chars (~3000 tokens).
+    Keep only system + user + last 2 tool pairs (max 6 messages). Caps prefill at ~5 min per call.
+    Tradeoff: agent loses older history; BEHAVIORAL CONTRACT already discourages re-reading.
+  Files: scripts/ai/lib/dispatch.py, ai-stack/local-agents/agent_executor.py
+  Identified: 2026-06-12 by analyzing llama.cpp slot print_timing logs during iter 9.
+
 [OPEN] training-ingest-routing-rules-lost — training_ingest.py perpetuates routing_rules loss due to non-truthy check
   Severity: medium
   Root cause: ai-stack/local-agents/training_ingest.py lines 493-495
