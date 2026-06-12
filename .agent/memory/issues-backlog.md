@@ -1,5 +1,15 @@
 ## OPEN ISSUES
 
+[DONE] agent-behavioral-contract-cleanup — contract updated with surgical finality (commit-on-pass, no post-fix cleanup)
+  Gemini P2 finding (2026-06-12): BEHAVIORAL CONTRACT lacked explicit "commit on pass, no cleanup" mandate.
+  Iter 7 timed out doing post-commit cleanup (RESUME.json, HANDOFF.md, PULSE.log updates), consuming ~3-4
+  extra inference calls and hitting 3600s wall-clock. Fix: Added "SURGICAL FINALITY" rule and strengthened
+  DONE step to explicit "STOP. Do not refactor. Do not update other files."
+  Also: STEP 3 now instructs agent to use start_line/end_line for targeted reads (reduce context load).
+  Also: STEP 6 now includes issues-backlog.md in git_add so the fix is committed with DONE marker.
+  File: ai-stack/local-agents/agent_executor.py (_workflow_contract)
+  Commit: fix(agents): strengthen behavioral contract with surgical finality + targeted reads
+
 [DONE] agent-loop-wall-clock-timeout — agent tasks killed at 3600s fixed-wall-clock before completing 9 tool calls
   Root cause: iter 9 self-improvement run grew context to 7436 tokens by call 6-7 (Qwen3 SWA forces full
   re-prefill each turn, no KV cache reuse). At 10 tok/s prefill, each late call took 12+ minutes. Fixed 3600s
