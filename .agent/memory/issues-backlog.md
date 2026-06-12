@@ -48,29 +48,13 @@
   File: ai-stack/local-agents/agent_executor.py (_execute_with_tools, stagnation detection block)
   Commit: feat(agents): pinned+sliding context + stagnation detection
 
-[OPEN] training-ingest-routing-rules-lost — training_ingest.py perpetuates routing_rules loss due to non-truthy check
-  Severity: medium
-  Root cause: ai-stack/local-agents/training_ingest.py lines 493-495
-  The break at line 495 is correctly inside `if _try_path.exists():` (col 12), BUT it is outside
-  the inner `if isinstance(_existing, dict) and isinstance(_existing.get("routing_rules"), dict):` check.
-  Result: if YAML exists with routing_rules = {} (empty dict), `isinstance({}, dict)` is True →
-  _existing_routing_rules = {} → break — the empty state is preserved forever.
-  The truthy check is missing: `{}` should NOT match as "routing_rules found".
+[DONE] training-ingest-routing-rules-lost — training_ingest.py perpetuated routing_rules loss due to non-truthy check
+  Root cause: training_ingest.py lines 493-495 — `break` at col 12 was OUTSIDE the inner
+  `isinstance(_existing.get("routing_rules"), dict)` check. An empty dict {} passes `isinstance({}, dict)`,
+  so _existing_routing_rules = {} and break fired → empty state preserved forever on every subsequent rewrite.
+  Fix: Changed condition to truthy `_existing.get("routing_rules")` and moved `break` INSIDE the success branch.
+  Both config/harness-prompt-extensions.json and .yaml still carry routing_rules (grep -c confirms).
   File: ai-stack/local-agents/training_ingest.py (lines 493-495)
-  NOTE: config/harness-prompt-extensions.json and .yaml routing_rules have already been restored
-  to HEAD state by the orchestrator. This fix prevents FUTURE loss only.
-  Fix: Change lines 493-495 in training_ingest.py from:
-      if isinstance(_existing, dict) and isinstance(_existing.get("routing_rules"), dict):
-          _existing_routing_rules = _existing["routing_rules"]
-      break
-    To:
-      if isinstance(_existing, dict) and _existing.get("routing_rules"):
-          _existing_routing_rules = _existing["routing_rules"]
-          break
-    This: (a) adds truthy check so {} (empty) does not match, (b) moves break inside the success
-    branch so the loop tries JSON if YAML has empty/missing routing_rules.
-  Verify: python3 -m py_compile ai-stack/local-agents/training_ingest.py
-          grep -c "routing_rules" config/harness-prompt-extensions.json
   Commit: fix(training-ingest): truthy check prevents perpetuating empty routing_rules on rewrite
 
 [OPEN] training-ingest-write-race — concurrent training_ingest runs share a fixed temp file path causing lost writes
