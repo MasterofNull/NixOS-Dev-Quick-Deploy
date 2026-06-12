@@ -83,7 +83,34 @@ log = logging.getLogger(__name__)
 
 # ── Agent Role Definitions ───────────────────────────────────────────────────
 
-AGENT_ROLES: Dict[str, Dict[str, Any]] = {
+def _load_agent_roles_from_yaml() -> Dict[str, Dict[str, Any]]:
+    """Load role definitions from .agent/roles/agent-roles.yaml; return {} on any error."""
+    try:
+        import yaml as _yaml
+        repo_root = Path(__file__).resolve().parents[2]
+        roles_file = repo_root / ".agent" / "roles" / "agent-roles.yaml"
+        doc = _yaml.safe_load(roles_file.read_text(encoding="utf-8"))
+        raw_roles = doc.get("roles") if isinstance(doc, dict) else None
+        if not isinstance(raw_roles, dict):
+            return {}
+        result: Dict[str, Dict[str, Any]] = {}
+        for name, cfg in raw_roles.items():
+            if not isinstance(cfg, dict):
+                continue
+            result[name] = {
+                "description": cfg.get("description", ""),
+                "system_prompt": (cfg.get("system_prompt") or "").rstrip("\n"),
+                "tools": list(cfg.get("tools") or []),
+                "max_tool_calls": int(cfg.get("max_tool_calls", 10)),
+            }
+        return result
+    except Exception:
+        return {}
+
+
+_AGENT_ROLES_YAML = _load_agent_roles_from_yaml()
+
+_AGENT_ROLES_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "coordinator": {
         "description": "Orchestrates agent teams, delegates tasks, aggregates results",
         "system_prompt": (
@@ -161,6 +188,9 @@ AGENT_ROLES: Dict[str, Dict[str, Any]] = {
         "max_tool_calls": 8,
     },
 }
+
+# YAML overrides Python defaults; Python defaults are fallback only.
+AGENT_ROLES: Dict[str, Dict[str, Any]] = {**_AGENT_ROLES_DEFAULTS, **_AGENT_ROLES_YAML}
 
 # ── State Management ─────────────────────────────────────────────────────────
 
