@@ -1,3 +1,80 @@
+## OPEN ISSUES
+
+[OPEN] aq-agent-loop/doc-drift — module docstring advertises wrong --max-calls default
+  Severity: low
+  Root cause: argparse default was raised from 15→50 in Phase 162A but the module-level
+  docstring on line 18 still reads "[default: 15]" while the actual argparse line says default=50.
+  File: scripts/ai/aq-agent-loop line 18
+  Fix: change the string "[default: 15]" to "[default: 50]" on line 18
+  Verify: python3 -m py_compile scripts/ai/aq-agent-loop
+  Commit: docs(aq-agent-loop): sync --max-calls default documentation to match code
+
+[OPEN] hardware — ROCm not available on Renoir APU (gfx90c) — ACCELERATE PRD assumed ROCm availability. Renoir iGPU is not a supported ROCm target. `rocminfo` absent. llama-cpp runs Vulkan only. Baseline: 2.71 tok/s.
+  Severity: info (hardware constraint, not a bug — requires discrete RDNA2+ GPU for ROCm)
+  Action: Document in hardware-profiles.json; remove ROCm acceptance criterion from ACCELERATE PRD. No code fix possible without hardware upgrade.
+  File: .agent/PROJECT-ACCELERATE-PRD.md
+
+[OPEN] agentic-mind — cross-model workflow behavior is not standardized or gated — Claude follows the workflow more reliably than Gemini/remote/local lanes, while current parity checks mostly verify transport/header availability and fallback recovery can hide first-pass contract failures.
+  Severity: high
+  Action: Implement Phase 148 agent task envelope, workflow-adherence golden corpus, first-pass contract evaluator, model-profile freshness gate, and dashboard/aq-report interop scorecard.
+  File: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
+
+[OPEN] desktop-input — post-build cursor/text input instability (gens 697-700, Jun 8) — COSMIC logs show missing input/cursor config keys + invalid shortcut action parsing. No synthetic input process found. Current gen 701 (Jun 10 rebuild) appears stable. Root cause: unconfirmed. Recommended pre-rebuild checklist: (1) close VSCodium, (2) capture `journalctl -u cosmic-session` at login, (3) compare ~/.config/cosmic/ shortcut configs against previous generation.
+  Severity: high
+  Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
+  File: .agents/plans/phase-148-agentic-mind-research.md
+
+## PENDING-REBUILD
+
+[PENDING-REBUILD] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
+  Severity: high
+  Action: Restored `continue-local.injectHints=false` in the switchboard profile catalog while leaving `local-tool-calling.injectHints=true`. Requires switchboard reload/rebuild for live `/health` and aq-qa 0.5 checks to reflect the fix.
+  File: config/switchboard-profiles.yaml ~25
+
+[PENDING-REBUILD] coordinator-qa-check-wrapper-empty-capture — after rebuild, the deployed `aq-qa` wrapper and `_aq-qa-bash` both emitted JSON when run directly, but live `/qa/check` still reported `parse_error: aq-qa produced empty stdout` for the wrapper command — Root cause: unresolved live coordinator capture/scheduler mismatch on the wrapper path; no fresh AppArmor denial was observed, and the direct deployed wrapper produced JSON with failure evidence.
+  Severity: high
+  Action: Added a JSON-mode recovery path in `run_qa_check_as_dict`: when wrapper stdout is empty, rerun the deployed `_aq-qa-bash` fallback directly and preserve wrapper exit/stderr metadata. Requires NixOS rebuild/switch to activate in the live endpoint.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py ~265
+
+[PENDING-REBUILD] coordinator-qa-check-drop-spec-abort — post-rebuild `/qa/check` still returned `parse_error: aq-qa produced empty stdout` after AppArmor denials were resolved — Root cause: `_aq-qa-bash` ran the Phase 85.2 `drop_spec.py` injection probe in an unguarded command substitution under `set -euo pipefail`; when the coordinator subprocess resolved plain `python3` to a thinner system Python without `yaml`, the script exited before `_render_results` emitted JSON. The same PATH drift also made Phase 0 governance tests miss `httpx` and `psutil` inside `/qa/check`.
+  Severity: high
+  Action: Guarded the `drop_spec.py` probe so import/test failures become normal `CheckResult` rows and added `hybridPython` to the `ai-hybrid-coordinator` service path so child QA probes inherit the coordinator's packaged Python dependencies. Requires NixOS rebuild/switch before live `/qa/check` can use the new service path and patched store source.
+  File: scripts/ai/_aq-qa-bash ~1190; nix/modules/services/mcp-servers.nix ~1034
+
+[PENDING-REBUILD] tool-registry-readonly-home-default — `test-local-agent-store-memory-contract.py` failed only inside the coordinator-like environment with `PermissionError: /var/lib/ai-stack/hybrid/.local/share/...` — Root cause: `ToolRegistry()` defaulted its SQLite audit DB under `Path.home()/.local/share`, but coordinator service hardening sets `HOME=/var/lib/ai-stack/hybrid` and does not make that nested home data path writable; existing writable state is exposed through `XDG_STATE_HOME`/`DATA_DIR`.
+  Severity: high
+  Action: Changed the default audit DB path to prefer `XDG_STATE_HOME` then `DATA_DIR`, preserving the interactive `XDG_DATA_HOME`/home fallback. Requires NixOS rebuild/switch for deployed coordinator subprocesses.
+  File: ai-stack/local-agents/tool_registry.py ~46
+
+[PENDING-REBUILD] coordinator-qa-check-store-script-exec-denial — post-switch `/qa/check` advanced past proc-net but still returned `parse_error: aq-qa produced empty stdout` — Root cause: coordinator phase 0 runs from the deployed Nix-store source path, so existing AppArmor exec rules for live-repo `scripts/ai/aqd` did not match `/nix/store/*-source/scripts/ai/aqd`; phase 0 also invokes `git` from Python checks.
+  Severity: high
+  Action: Added inherited-profile exec rules for `/nix/store/*-source/scripts/ai/{aqd,aq-alerts}` and `/nix/store/**/bin/git`. Requires NixOS rebuild/switch to activate.
+  File: nix/modules/services/mcp-servers.nix
+
+[PENDING-REBUILD] coordinator-qa-check-ss-procnet-denial — post-rebuild `/qa/check` still aborted before machine JSON while direct git sync was already clean — Root cause: the new AppArmor exec rule allowed `ss`, but inherited `ai-hybrid-coordinator` confinement denied `ss -tlnp` reads of `/proc/<pid>/net/tcp`, so repeated phase 0 listener probes still failed in the service sandbox. The handler correctly exposed `parse_error: aq-qa produced empty stdout`.
+  Severity: high
+  Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`) and the THP status file also reported by health-spider. Follow-up after rebuild: first patch placed the rules in the dashboard profile block, not `ai-hybrid-coordinator`; moved them into the correct profile. Requires NixOS rebuild/switch to activate.
+  File: nix/modules/services/mcp-servers.nix
+
+[PENDING-REBUILD] coordinator-qa-check-empty-json — `/qa/check` returned `qa_result: {}` with empty stdout/stderr while direct `aq-qa 0 --json` produced machine JSON — Root cause: the enforced `ai-hybrid-coordinator` AppArmor profile denied exec for phase 0 probe tools (`ss`, `psql`, `redis-cli`, `getent`) and repo-local `scripts/ai/aqd`; the denied `aqd --version` pipeline ran under `set -euo pipefail`, aborting `_aq-qa-bash` before JSON emission. The coordinator handler also parsed empty stdout as `{}`, hiding the root cause.
+  Severity: high
+  Action: Added explicit AppArmor exec rules for the phase 0 probe tools, made the `aqd` version probe failure-tolerant, and changed `/qa/check` JSON parsing to report `parse_error: aq-qa produced empty stdout` when subprocess output is empty. Requires NixOS rebuild/switch to activate the profile changes.
+  File: nix/modules/services/mcp-servers.nix; scripts/ai/_aq-qa-bash; ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py
+
+[PENDING-REBUILD] observability-parity — Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage — Root cause: implementation added runtime event labels and raw `<think>` extraction without updating the canonical schema/fixture, producing a planning event producer, protecting chain-of-thought, or adding behavior-level QA. The dashboard still lacked acceptable agent logic observability and live telemetry had no thought/planning events before activation. Post-rebuild live smoke also showed the local subprocess delegate branch returns before the HTTP-path telemetry producer in the deployed Nix-store copy.
+  Severity: high
+  Action: First corrective slice implemented: safe reasoning summary events, raw `<think>` stripping, shared coordinator route-planning events for HTTP and local subprocess paths, schema/fixture repair, dashboard thought/planning filters/rendering, sandboxed HTML previews, and behavioral 0.10.2 QA. Pending rebuild/live smoke and richer dashboard summary tiles.
+  File: .agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md
+
+## IN-FLIGHT
+
+[IN-FLIGHT] flat-collaboration-disabled — desired flat model-team workflow is documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still has `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still has `collaborative_workflows: false`, while active Gemini/direct paths can write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.
+  Severity: high
+  Action: Added first-pass `aq-flat-prd-gate` and aq-qa 0.10.6 to require at least two model proposals, two cross-reviews, and consensus PRD/slice/decision artifacts before a topic can be treated as integrated consensus. Broad collaboration flags remain disabled until direct delegation artifacts and validation evidence gates are reliable.
+  File: scripts/ai/aq-flat-prd-gate; scripts/testing/test-flat-prd-gate.py; config/local-agent-config.yaml; config/workflow-automation.yaml; .agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md
+
+## RESOLVED / DONE
+
 [DONE] local-agent/store-memory-contract — Local agent capability test retried `store_memory` because the tool schema advertised `context_type` as note/decision/observation while the coordinator requires canonical memory tiers; `milestone` failed with `memory_store_invalid` before retrying as episodic.
   Severity: medium
   Action: Updated local `store_memory` schema to expose canonical memory tiers, added alias normalization for legacy context labels including milestone->episodic, and added aq-qa/focused-CI coverage as 0.10.14.
@@ -25,10 +102,12 @@
 [RESOLVED 2026-06-06] local-coding — switchboard local-coding profile deployed. QA 132.1 PASS. Also active: embedded-assist pre-context injection, adaptive query (debug/coding/general), Nix code validation, local-coding routing for implementation archetypes, adaptive embedded-assist.
   Severity: low → resolved
   Files: nix/modules/services/switchboard.nix, scripts/ai/lib/dispatch.py, config/switchboard-profiles.yaml
+
 [RESOLVED 2026-06-03] ci — L5/L6 cognitive intelligence regression test fails on any memory_broker.py change — pytest not in Nix Python env
   Severity: medium (blocks commits that touch memory_broker.py or intent_classifier.py)
   Action: Added require_tool=pytest to cognitive-intelligence-regressions check in validation-check-registry.json. Check now SKIPs (not FAILs) when pytest absent. Long-term: add pytest to Nix Python env package set.
   File: config/validation-check-registry.json (cognitive-intelligence-regressions check)
+
 [DONE] aq-report/delegation — historical delegated prompt failures surfaced as active remediation — `delegated_prompt_failure_windows` showed 0 failures in 1h and 24h, but recommendations and structured actions still emitted active OpenRouter prompt-contract remediation from 7d historical debt.
   Severity: medium
   Action: Wired delegated failure windows into recommendations/actions; historical-only failures now produce passive context and suppress active salvage/action guidance unless failures recur in 24h.
@@ -70,11 +149,6 @@
   Fix: _resolve_workflow_target() normalizes target_dir to absolute path; all four workflow handlers now pass cwd=abs_target to _run_local; REPO_ROOT overlap triggers strong warning in tool response
   Files: scripts/ai/mcp-bridge-hybrid.py (Phase 136)
   Pattern: External agents MUST pass target_dir as absolute path; never --target . from a remote client
-
-[OPEN] hardware — ROCm not available on Renoir APU (gfx90c) — ACCELERATE PRD assumed ROCm availability. Renoir iGPU is not a supported ROCm target. `rocminfo` absent. llama-cpp runs Vulkan only. Baseline: 2.71 tok/s.
-  Severity: info (hardware constraint, not a bug — requires discrete RDNA2+ GPU for ROCm)
-  Action: Document in hardware-profiles.json; remove ROCm acceptance criterion from ACCELERATE PRD. No code fix possible without hardware upgrade.
-  File: .agent/PROJECT-ACCELERATE-PRD.md
 
 [RESOLVED 2026-06-02] workflow — aq-session-start (and 8 others) missing from Codex/agent shell PATH — aiHarnessCliWrappers in ai-stack.nix did not include aq-session-start, aq-resume, aq-insights, aq-commit-facts, aq-skill-suggest, aq-alerts, aq-approve, aq-reject, aq-integrity-scan.
   Action: Added all 9 wrappers to aiHarnessCliWrappers (Phase 100.1). Requires nixos-rebuild to activate.
@@ -136,16 +210,6 @@
   Severity: medium
   Action: Added explicit `/sys/bus/pci/devices/` and `/sys/bus/pci/devices/**` read coverage to the `command-center-dashboard-api` profile; restart/rebuild required for live activation.
   File: nix/modules/services/mcp-servers.nix ~line 2609
-
-[OPEN] agentic-mind — cross-model workflow behavior is not standardized or gated — Claude follows the workflow more reliably than Gemini/remote/local lanes, while current parity checks mostly verify transport/header availability and fallback recovery can hide first-pass contract failures.
-  Severity: high
-  Action: Implement Phase 148 agent task envelope, workflow-adherence golden corpus, first-pass contract evaluator, model-profile freshness gate, and dashboard/aq-report interop scorecard.
-  File: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
-
-[OPEN] desktop-input — post-build cursor/text input instability (gens 697-700, Jun 8) — COSMIC logs show missing input/cursor config keys + invalid shortcut action parsing. No synthetic input process found. Current gen 701 (Jun 10 rebuild) appears stable. Root cause: unconfirmed. Recommended pre-rebuild checklist: (1) close VSCodium, (2) capture `journalctl -u cosmic-session` at login, (3) compare ~/.config/cosmic/ shortcut configs against previous generation.
-  Severity: high
-  Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
-  File: .agents/plans/phase-148-agentic-mind-research.md
 
 [DONE] rebuild-watch — activation exposed auto-remediate PRSI CLI drift, tmpfiles unsafe transitions, and dashboard AppArmor `/tmp/` denial noise — Root causes: `auto-remediate.sh` called removed `prsi-orchestrator.py queue`; tmpfiles repaired `/var/lib/nixos-ai-stack` after processing child paths and kept `/var/log/nixos-ai-stack` user-owned while service-owned child logs live under it; dashboard AppArmor allowed `/tmp/*.db` but not `/tmp/` directory reads; health-spider counted already-covered AppArmor denials as unresolved.
   Severity: high
@@ -230,25 +294,10 @@
   Action: Implemented deterministic local-signal scanner that emits dashboard-compatible `.agents/improvement/candidates.json` from issues backlog, health-spider events, delegation feedback, and stale model-profile metadata. Added focused regression coverage, focused-CI registry entry, and aq-qa 0.10.4.
   File: ai-stack/local-agents/discovery_agent.py
 
-[IN-FLIGHT] flat-collaboration-disabled — desired flat model-team workflow is documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still has `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still has `collaborative_workflows: false`, while active Gemini/direct paths can write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.
-  Severity: high
-  Action: Added first-pass `aq-flat-prd-gate` and aq-qa 0.10.6 to require at least two model proposals, two cross-reviews, and consensus PRD/slice/decision artifacts before a topic can be treated as integrated consensus. Broad collaboration flags remain disabled until direct delegation artifacts and validation evidence gates are reliable.
-  File: scripts/ai/aq-flat-prd-gate; scripts/testing/test-flat-prd-gate.py; config/local-agent-config.yaml; config/workflow-automation.yaml; .agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md
-
 [DONE] agent-artifact-distribution — local day-to-day agent artifacts are tracked as repo state — Root cause: live collaboration, attention, delegation, comms, telemetry, and host facts files were tracked, so new deployments could inherit stale locks, local routing history, active-session context, and host-specific hardware facts.
   Severity: high
   Action: Added distribution policy, local-only ignore rules, collaboration templates, and aq-qa/focused-CI gate 0.10.7; untracked local runtime artifacts and host facts with `git rm --cached` while preserving local copies.
   File: .gitignore; docs/operations/agent-artifact-distribution-policy.md; scripts/testing/test-agent-artifact-policy.py
-
-[PENDING-REBUILD] observability-parity — Gemini Phase 149 completion claim missed schema drift, raw reasoning leakage, weak QA, dashboard logic gaps, and local-subprocess telemetry coverage — Root cause: implementation added runtime event labels and raw `<think>` extraction without updating the canonical schema/fixture, producing a planning event producer, protecting chain-of-thought, or adding behavior-level QA. The dashboard still lacked acceptable agent logic observability and live telemetry had no thought/planning events before activation. Post-rebuild live smoke also showed the local subprocess delegate branch returns before the HTTP-path telemetry producer in the deployed Nix-store copy.
-  Severity: high
-  Action: First corrective slice implemented: safe reasoning summary events, raw `<think>` stripping, shared coordinator route-planning events for HTTP and local subprocess paths, schema/fixture repair, dashboard thought/planning filters/rendering, sandboxed HTML previews, and behavioral 0.10.2 QA. Pending rebuild/live smoke and richer dashboard summary tiles.
-  File: .agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md
-
-[DONE] local-subprocess-instruction-discipline — local coordinator delegate ignored exact-output instruction during smoke, then first remediation disabled capabilities too broadly — Root cause: `/control/ai-coordinator/delegate` with `profile=local-tool-calling`, `max_tokens=32`, and task "Return exactly PLANNING_SMOKE_OK" originally returned meta-reasoning text instead of the requested literal. Gemini's first Phase 150 fix forced `tools_enabled=false` and `thinking_mode=off` for all exact-output tasks, which made the smoke pass by trimming capabilities; follow-up commit 173b5f50 restored exact-output tool/reasoning capability unless the task is explicitly tool-free.
-  Severity: medium
-  Action: Hardened 0.10.3 to assert exact-output tasks do not disable tools/thinking unless explicitly tool-free; wired dashboard logic-discipline metric to delegation-feedback telemetry instead of defaulting missing data to 100%; rebuilt, restarted dashboard API with sudo, and verified live smoke plus aq-qa 0.
-  File: ai-stack/agents/runtimes/local_agent_runtime.py; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
 
 [DONE] dashboard-logic-discipline-no-data — Logic Discipline tile reported 100% without backend metric — Root cause: `assets/dashboard.js` used `analytics.logic_discipline_rate ?? 100` while `/api/insights/routing/analytics` did not produce `logic_discipline_rate`, hiding missing telemetry and making the error threshold unreachable (`<90` warning checked before `<70` error).
   Severity: high
@@ -265,42 +314,12 @@
   Action: Phase 149 fix in ai_coordinator_handlers.py: (1) emit model_call event per delegation with estimated tokens (char_count//4 fallback); (2) token_usage now uses same fallback — no_data_reason="estimated" when API omits usage block. Added aq-qa check 0.10.2 + test-token-usage-coverage.py measuring coordinator model_call token coverage ≥50%. Requires coordinator service restart to activate.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
 
-[PENDING-REBUILD] coordinator-qa-check-empty-json — `/qa/check` returned `qa_result: {}` with empty stdout/stderr while direct `aq-qa 0 --json` produced machine JSON — Root cause: the enforced `ai-hybrid-coordinator` AppArmor profile denied exec for phase 0 probe tools (`ss`, `psql`, `redis-cli`, `getent`) and repo-local `scripts/ai/aqd`; the denied `aqd --version` pipeline ran under `set -euo pipefail`, aborting `_aq-qa-bash` before JSON emission. The coordinator handler also parsed empty stdout as `{}`, hiding the root cause.
-  Severity: high
-  Action: Added explicit AppArmor exec rules for the phase 0 probe tools, made the `aqd` version probe failure-tolerant, and changed `/qa/check` JSON parsing to report `parse_error: aq-qa produced empty stdout` when subprocess output is empty. Requires NixOS rebuild/switch to activate the profile changes.
-  File: nix/modules/services/mcp-servers.nix; scripts/ai/_aq-qa-bash; ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py
-
-[PENDING-REBUILD] coordinator-qa-check-ss-procnet-denial — post-rebuild `/qa/check` still aborted before machine JSON while direct git sync was already clean — Root cause: the new AppArmor exec rule allowed `ss`, but inherited `ai-hybrid-coordinator` confinement denied `ss -tlnp` reads of `/proc/<pid>/net/tcp`, so repeated phase 0 listener probes still failed in the service sandbox. The handler correctly exposed `parse_error: aq-qa produced empty stdout`.
-  Severity: high
-  Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`) and the THP status file also reported by health-spider. Follow-up after rebuild: first patch placed the rules in the dashboard profile block, not `ai-hybrid-coordinator`; moved them into the correct profile. Requires NixOS rebuild/switch to activate.
-  File: nix/modules/services/mcp-servers.nix
-
-[PENDING-REBUILD] coordinator-qa-check-store-script-exec-denial — post-switch `/qa/check` advanced past proc-net but still returned `parse_error: aq-qa produced empty stdout` — Root cause: coordinator phase 0 runs from the deployed Nix-store source path, so existing AppArmor exec rules for live-repo `scripts/ai/aqd` did not match `/nix/store/*-source/scripts/ai/aqd`; phase 0 also invokes `git` from Python checks.
-  Severity: high
-  Action: Added inherited-profile exec rules for `/nix/store/*-source/scripts/ai/{aqd,aq-alerts}` and `/nix/store/**/bin/git`. Requires NixOS rebuild/switch to activate.
-  File: nix/modules/services/mcp-servers.nix
-
 [DONE] aq-alerts-json-contract — `aq-alerts --json` printed the human table instead of machine-readable JSON — Root cause: the CLI usage and downstream agent workflow expected JSON, but `scripts/ai/aq-alerts` had no `--json` argparse option and always rendered the table unless `--count` was used.
   Severity: medium
   Action: Added `--json` output with `{pending, alerts}` and regression coverage using an isolated `ATTENTION_QUEUE_DIR`.
   File: scripts/ai/aq-alerts; scripts/testing/test-aq-alerts-json.py
 
-[PENDING-REBUILD] coordinator-qa-check-drop-spec-abort — post-rebuild `/qa/check` still returned `parse_error: aq-qa produced empty stdout` after AppArmor denials were resolved — Root cause: `_aq-qa-bash` ran the Phase 85.2 `drop_spec.py` injection probe in an unguarded command substitution under `set -euo pipefail`; when the coordinator subprocess resolved plain `python3` to a thinner system Python without `yaml`, the script exited before `_render_results` emitted JSON. The same PATH drift also made Phase 0 governance tests miss `httpx` and `psutil` inside `/qa/check`.
-  Severity: high
-  Action: Guarded the `drop_spec.py` probe so import/test failures become normal `CheckResult` rows and added `hybridPython` to the `ai-hybrid-coordinator` service path so child QA probes inherit the coordinator's packaged Python dependencies. Requires NixOS rebuild/switch before live `/qa/check` can use the new service path and patched store source.
-  File: scripts/ai/_aq-qa-bash ~1190; nix/modules/services/mcp-servers.nix ~1034
-
-[PENDING-REBUILD] tool-registry-readonly-home-default — `test-local-agent-store-memory-contract.py` failed only inside the coordinator-like environment with `PermissionError: /var/lib/ai-stack/hybrid/.local/share/...` — Root cause: `ToolRegistry()` defaulted its SQLite audit DB under `Path.home()/.local/share`, but coordinator service hardening sets `HOME=/var/lib/ai-stack/hybrid` and does not make that nested home data path writable; existing writable state is exposed through `XDG_STATE_HOME`/`DATA_DIR`.
-  Severity: high
-  Action: Changed the default audit DB path to prefer `XDG_STATE_HOME` then `DATA_DIR`, preserving the interactive `XDG_DATA_HOME`/home fallback. Requires NixOS rebuild/switch for deployed coordinator subprocesses.
-  File: ai-stack/local-agents/tool_registry.py ~46
-
-[PENDING-REBUILD] coordinator-qa-check-wrapper-empty-capture — after rebuild, the deployed `aq-qa` wrapper and `_aq-qa-bash` both emitted JSON when run directly, but live `/qa/check` still reported `parse_error: aq-qa produced empty stdout` for the wrapper command — Root cause: unresolved live coordinator capture/scheduler mismatch on the wrapper path; no fresh AppArmor denial was observed, and the direct deployed wrapper produced JSON with failure evidence.
-  Severity: high
-  Action: Added a JSON-mode recovery path in `run_qa_check_as_dict`: when wrapper stdout is empty, rerun the deployed `_aq-qa-bash` fallback directly and preserve wrapper exit/stderr metadata. Requires NixOS rebuild/switch to activate in the live endpoint.
-  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py ~265
-
-[PENDING-REBUILD] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
-  Severity: high
-  Action: Restored `continue-local.injectHints=false` in the switchboard profile catalog while leaving `local-tool-calling.injectHints=true`. Requires switchboard reload/rebuild for live `/health` and aq-qa 0.5 checks to reflect the fix.
-  File: config/switchboard-profiles.yaml ~25
+[DONE] local-subprocess-instruction-discipline — local coordinator delegate ignored exact-output instruction during smoke, then first remediation disabled capabilities too broadly — Root cause: `/control/ai-coordinator/delegate` with `profile=local-tool-calling`, `max_tokens=32`, and task "Return exactly PLANNING_SMOKE_OK" originally returned meta-reasoning text instead of the requested literal. Gemini's first Phase 150 fix forced `tools_enabled=false` and `thinking_mode=off` for all exact-output tasks, which made the smoke pass by trimming capabilities; follow-up commit 173b5f50 restored exact-output tool/reasoning capability unless the task is explicitly tool-free.
+  Severity: medium
+  Action: Hardened 0.10.3 to assert exact-output tasks do not disable tools/thinking unless explicitly tool-free; wired dashboard logic-discipline metric to delegation-feedback telemetry instead of defaulting missing data to 100%; rebuilt, restarted dashboard API with sudo, and verified live smoke plus aq-qa 0.
+  File: ai-stack/agents/runtimes/local_agent_runtime.py; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
