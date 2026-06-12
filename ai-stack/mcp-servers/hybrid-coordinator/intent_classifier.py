@@ -89,6 +89,40 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
         "security", "security review", "owasp", "vulnerability", "cve", "exploit", "pentest", "harden",
         "threat", "attack", "injection", "xss", "csrf", "privilege escalation",
         "scan for", "trivy", "semgrep", "bandit", "secret leak", "auth bypass",
+        # MIC-G Phase 164 additions
+        "adapter audit", "capability guard", "context sanitizer", "capability suppression",
+        "provider guardrail", "refusal backdoor", "rlhf", "chilling effect",
+        "mic-g", "model integrity", "lane health", "supply chain", "lora adapter",
+        "prompt injection", "context poisoning", "trust chain", "peft", "safetensors",
+        "logit bias", "refusal tokens", "probe lane", "suppression detected",
+    ],
+    "operator_intelligence": [
+        "operator insight", "aq-insights", "knowledge gap", "operator profile",
+        "insight card", "research hook", "validation challenge", "staleness warning",
+        "operator intelligence", "oib", "operator growth", "upskill",
+        "prompt specificity", "chilling effect", "what should i learn",
+        "knowledge domain", "outdated info", "verify with my own", "double check ai",
+    ],
+    "model_integrity": [
+        "probe the model", "probe lane", "probe the", "lane health", "model version drift",
+        "silent upgrade", "capability guard", "capability guard check", "get_unbound_profile",
+        "refusal rate", "preach level", "suppressed lane", "failover to local", "technical probe",
+        "adapter_audit", "audit adapter", "combinatorial risk", "colora", "weight collision",
+        "sanitize tool result", "objective drift", "hard violation", "soft violation",
+        "injection pattern", "sanitize_rag", "sanitize rag",
+    ],
+    "harness_self_improvement": [
+        "self improvement", "self-improvement", "run a slice", "next priority",
+        "issues backlog", "improvement slice", "backlog priority", "system issues",
+        "aq-report findings", "what should we work on", "what to work on next",
+        "seed rag", "seed knowledge", "rag knowledge", "training ingest",
+        "ingest patterns", "aq-commit-facts", "improvement workflow",
+    ],
+    "osint_reconnaissance": [
+        "osint", "reconnaissance", "open source intel", "shodan", "censys",
+        "maltego", "recon", "footprinting", "whois", "dns recon", "social engineering",
+        "passive recon", "active recon", "threat intelligence", "darkweb", "tor",
+        "breach data", "haveibeenpwned", "intel gathering", "target profile",
     ],
     "systems_software": [
         "nix ", "nixos", "flake", "derivation", "nix module", "systemd unit",
@@ -202,6 +236,33 @@ SEMANTIC_PROTOTYPES: Dict[str, List[str]] = {
         "process this shapefile with geopandas and calculate area statistics per polygon",
         "convert this GeoTIFF raster to cloud-optimized format using gdal_translate",
         "load this OSM pbf file with osmium-tool and extract all road features",
+    ],
+    # Phase 164 additions
+    "operator_intelligence": [
+        "show me insight cards for my current skill gaps as an operator",
+        "what should I research to better understand what the AI is doing",
+        "is the operator profile showing any chilling effect or prompt specificity drop",
+        "what knowledge domains have I been engaging with least recently",
+    ],
+    "model_integrity": [
+        "probe the local-tool-calling lane and report its health classification",
+        "run the capability guard to check if the remote model is suppressing technical responses",
+        "audit this LoRA adapter directory for supply chain RCE risks before loading it",
+        "sanitize this tool result for prompt injection before injecting it into the agent context",
+        "the refusal rate on the remote lane jumped — check for RLHF suppression events",
+    ],
+    "harness_self_improvement": [
+        "run a self-improvement slice using the issues backlog and recent aq-report",
+        "what is the highest priority improvement to work on next based on our system state",
+        "check the issues backlog, RESUME.json, and HANDOFF.md and propose three improvement options",
+        "seed the RAG collections with new bug patterns from this session",
+        "run training ingest to capture this session's tool call quality signal",
+    ],
+    "osint_reconnaissance": [
+        "use shodan to enumerate exposed services on this IP range",
+        "run passive DNS recon against this domain and build a target profile",
+        "gather open-source intelligence on this organization using maltego and breach databases",
+        "perform subdomain enumeration and identify shadow IT infrastructure",
     ],
 }
 

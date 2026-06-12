@@ -5,8 +5,8 @@
     "last_updated": "2026-05-21"
   },
   "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
-  "_version": "1.1",
-  "_updated": "2026-05-24",
+  "_version": "1.2",
+  "_updated": "2026-06-11",
   "intents": {
     "code_generation": {
       "profile": "local-tool-calling",
@@ -74,7 +74,7 @@
     "harness_operation": {
       "profile": "local-tool-calling",
       "min_confidence": 0.4,
-      "fallback_profile": "default",
+      "fallback_profile": "local",
       "memory_recall": false,
       "rag_project": "procedural"
     },
@@ -126,6 +126,27 @@
       "fallback_profile": "local-tool-calling",
       "memory_recall": true,
       "rag_project": "osint-intelligence,codebase-context,semantic"
+    },
+    "operator_intelligence": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.35,
+      "fallback_profile": "default",
+      "memory_recall": true,
+      "rag_project": "semantic,best-practices"
+    },
+    "model_integrity": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.35,
+      "fallback_profile": "remote-reasoning",
+      "memory_recall": true,
+      "rag_project": "security-findings,best-practices"
+    },
+    "harness_self_improvement": {
+      "profile": "local-tool-calling",
+      "min_confidence": 0.35,
+      "fallback_profile": "default",
+      "memory_recall": true,
+      "rag_project": "procedural,best-practices"
     }
   }
 }
