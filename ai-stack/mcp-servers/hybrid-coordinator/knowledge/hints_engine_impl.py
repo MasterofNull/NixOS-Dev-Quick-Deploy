@@ -1783,18 +1783,33 @@ class HintsEngine:
                 Hint(
                     id="prompt_coaching_prsi_loop",
                     type="prompt_coaching",
-                    title="Keep PRSI asks scoped to one reversible improvement cycle",
+                    title="Self-improvement workflow: backlog → reports → 3 options → wait",
                     score=0.91,
                     snippet=(
-                        "Name one target bottleneck, one reversible change, the exact pessimistic gates, "
-                        "and the rollback note. Treat failure evidence as learning input, not a reason to broaden the slice."
-                    )[:220],
-                    reason="Compact operator guidance for PRSI and pessimistic self-improvement requests",
+                        "Step 1: read_file('.agent/memory/issues-backlog.md'). "
+                        "Step 2: read_file('.agent/collaboration/RESUME.json'). "
+                        "Step 3: read_file('.agent/collaboration/HANDOFF.md'). "
+                        "Step 4: PROPOSE 3 ranked options. Step 5: WAIT for operator choice. "
+                        "NEVER treat uncommitted git changes as the improvement target."
+                    )[:400],
+                    reason="Local model self-improvement workflow: authoritative backlog sources, not git diff",
                     tags=["prompting", "coaching", "prsi", "self-improvement", "operator-guidance"],
                     agent_hints={
                         "human": "State the bottleneck, the one change you want attempted, and the gates that must pass.",
                         "codex": "Keep PRSI cycles single-change, evidence-heavy, and rollback-explicit before moving to the next pass.",
                         "claude": "Use this lane for pessimistic risk framing and decision-quality review, not multi-change bundling.",
+                        # Phase 164E: local model must follow the harness self-improvement workflow,
+                        # not treat git diffs or uncommitted files as the improvement target.
+                        "local": (
+                            "SELF-IMPROVEMENT WORKFLOW — follow these steps in order: "
+                            "1) read_file('.agent/memory/issues-backlog.md') to find highest-priority OPEN issues. "
+                            "2) read_file('.agent/collaboration/RESUME.json') for current in-progress state. "
+                            "3) read_file('.agent/collaboration/HANDOFF.md') for last-session context. "
+                            "4) PROPOSE 3 ranked options (effort × impact) to the operator. "
+                            "5) WAIT for operator choice before executing anything. "
+                            "NEVER treat uncommitted git changes as the improvement slice. "
+                            "NEVER default to documentation cleanup."
+                        ),
                     },
                 )
             )
