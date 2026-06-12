@@ -15,7 +15,7 @@ Usage:
 Options:
     --task TEXT        Coding task objective (required unless --list-tools)
     --output FILE      Write JSON result summary to FILE
-    --max-calls N      Max tool calls allowed [default: 15]
+    --max-calls N      Max tool calls allowed [default: 50]
     --fallback         Allow fallback to remote hybrid-coordinator if local fails
     --llama-url URL    llama.cpp endpoint [default: http://127.0.0.1:8080]
     --timeout SECS     Per-inference timeout in seconds [default: 300]
