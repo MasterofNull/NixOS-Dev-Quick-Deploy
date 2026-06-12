@@ -46,6 +46,20 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _default_tool_audit_db_path() -> Path:
+    """Choose a writable audit DB location for services and interactive shells."""
+    for env_name in ("XDG_STATE_HOME", "DATA_DIR"):
+        base = os.getenv(env_name)
+        if base:
+            return Path(base) / "local-agents" / "tool_audit.db"
+
+    data_home = os.getenv("XDG_DATA_HOME")
+    if data_home:
+        return Path(data_home) / "nixos-ai-stack" / "local-agents" / "tool_audit.db"
+
+    return Path.home() / ".local/share/nixos-ai-stack/local-agents/tool_audit.db"
+
+
 class SafetyPolicy(Enum):
     """Safety policy levels for tool access"""
     READ_ONLY = "read_only"  # Read files, fetch URLs
@@ -266,7 +280,7 @@ class ToolRegistry:
         self.safety_layer = SafetyControlLayer(mode=safety_mode)
 
         # Database for audit trail
-        self.db_path = db_path or Path.home() / ".local/share/nixos-ai-stack/local-agents/tool_audit.db"
+        self.db_path = db_path or _default_tool_audit_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_database()
 

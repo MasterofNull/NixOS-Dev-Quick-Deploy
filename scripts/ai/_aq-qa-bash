@@ -1187,7 +1187,7 @@ print('ok' if ok else 'fail')
     _fail 4 "85.2" "drop_spec.py" "file not found at scripts/ai/lib/drop_spec.py"
   else
     local ds_out
-    ds_out=$(python3 -c "
+    if ds_out=$(python3 -c "
 import sys; sys.path.insert(0,'${REPO_ROOT}/scripts/ai/lib')
 from drop_spec import DropSpec, DropSpecError
 s=DropSpec(objective='ok',prompt='do useful work'); s._validate()
@@ -1198,9 +1198,12 @@ except DropSpecError:
     raised=True
 assert raised, 'injection not blocked'
 print('ok')
-" 2>&1)
-    if [[ "$ds_out" == *"ok"* ]]; then
-      _pass 4 "85.2" "drop_spec.py: schema validator + injection guard pass"
+" 2>&1); then
+      if [[ "$ds_out" == *"ok"* ]]; then
+        _pass 4 "85.2" "drop_spec.py: schema validator + injection guard pass"
+      else
+        _fail 4 "85.2" "drop_spec.py injection guard" "${ds_out:0:120}"
+      fi
     else
       _fail 4 "85.2" "drop_spec.py injection guard" "${ds_out:0:120}"
     fi

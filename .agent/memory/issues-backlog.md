@@ -284,3 +284,13 @@
   Severity: medium
   Action: Added `--json` output with `{pending, alerts}` and regression coverage using an isolated `ATTENTION_QUEUE_DIR`.
   File: scripts/ai/aq-alerts; scripts/testing/test-aq-alerts-json.py
+
+[PENDING-REBUILD] coordinator-qa-check-drop-spec-abort — post-rebuild `/qa/check` still returned `parse_error: aq-qa produced empty stdout` after AppArmor denials were resolved — Root cause: `_aq-qa-bash` ran the Phase 85.2 `drop_spec.py` injection probe in an unguarded command substitution under `set -euo pipefail`; when the coordinator subprocess resolved plain `python3` to a thinner system Python without `yaml`, the script exited before `_render_results` emitted JSON. The same PATH drift also made Phase 0 governance tests miss `httpx` and `psutil` inside `/qa/check`.
+  Severity: high
+  Action: Guarded the `drop_spec.py` probe so import/test failures become normal `CheckResult` rows and added `hybridPython` to the `ai-hybrid-coordinator` service path so child QA probes inherit the coordinator's packaged Python dependencies. Requires NixOS rebuild/switch before live `/qa/check` can use the new service path and patched store source.
+  File: scripts/ai/_aq-qa-bash ~1190; nix/modules/services/mcp-servers.nix ~1034
+
+[PENDING-REBUILD] tool-registry-readonly-home-default — `test-local-agent-store-memory-contract.py` failed only inside the coordinator-like environment with `PermissionError: /var/lib/ai-stack/hybrid/.local/share/...` — Root cause: `ToolRegistry()` defaulted its SQLite audit DB under `Path.home()/.local/share`, but coordinator service hardening sets `HOME=/var/lib/ai-stack/hybrid` and does not make that nested home data path writable; existing writable state is exposed through `XDG_STATE_HOME`/`DATA_DIR`.
+  Severity: high
+  Action: Changed the default audit DB path to prefer `XDG_STATE_HOME` then `DATA_DIR`, preserving the interactive `XDG_DATA_HOME`/home fallback. Requires NixOS rebuild/switch for deployed coordinator subprocesses.
+  File: ai-stack/local-agents/tool_registry.py ~46
