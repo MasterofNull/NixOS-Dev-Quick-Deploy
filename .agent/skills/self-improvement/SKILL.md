@@ -22,11 +22,14 @@ from authoritative sources first.
 Check these sources **in order** to identify the next highest-priority improvement:
 
 ### A. Open Issues & Backlog (Highest signal)
+Use read_file (preferred — no shell metachar issues):
+```
+read_file('.agent/memory/issues-backlog.md')
+```
+Or via shell (no metacharacters):
 ```bash
-# Scan issues backlog for OPEN P1/P2 items
-acat memory/issues-backlog.md | head -80
-# Or grep for open items
-agrep "OPEN\|P1\|P2" memory/issues-backlog.md
+acat .agent/memory/issues-backlog.md
+agrep "OPEN" .agent/memory/issues-backlog.md
 ```
 
 ### B. Active PRD / Plans
@@ -46,15 +49,7 @@ acat .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md | head -40
 AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 90 scripts/ai/aq-qa 0 2>&1 | tail -30
 
 # Check for failing checks or degraded services
-scripts/ai/aq-report --format json 2>/dev/null | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-# Surface top-level failures
-checks = d.get('checks', {})
-for k, v in checks.items():
-    if isinstance(v, dict) and v.get('status') not in ('pass', 'ok', None):
-        print(f'DEGRADED: {k} — {v.get(\"status\",\"?\")} — {v.get(\"message\",\"\")}')
-" 2>/dev/null || echo "Use: scripts/ai/aq-report"
+scripts/ai/aq-report --format json
 ```
 
 ### D. Roadmaps and System Improvement Plans
