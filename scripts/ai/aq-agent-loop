@@ -67,14 +67,32 @@ logger = logging.getLogger(__name__)
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def build_registry() -> ToolRegistry:
-    """Create a fresh ToolRegistry populated with all coding tools."""
+_SLIM_TOOLS = frozenset({
+    "read_file", "write_file", "run_command",
+    "git_add", "git_commit", "store_memory",
+})
+
+
+def build_registry(tool_manifest: str = "full") -> ToolRegistry:
+    """Create a fresh ToolRegistry populated with coding tools.
+
+    tool_manifest:
+      "full"             — all 29 tools (default; research/multi-step tasks)
+      "self-improvement" — minimal 6 tools for self-improvement slices only:
+                           read_file, write_file, run_command, git_add, git_commit, store_memory.
+                           Reduces schema from ~2507 tokens to ~620 tokens — saves ~2 min/call
+                           on Renoir APU (10 tok/s prefill).
+    """
     registry = ToolRegistry()
     register_file_tools(registry)
     register_shell_tools(registry)
     register_git_tools(registry)
     from ai_coordination import register_ai_coordination_tools
     register_ai_coordination_tools(registry)
+    if tool_manifest == "self-improvement":
+        for _tool_name in list(registry.tools):
+            if _tool_name not in _SLIM_TOOLS:
+                registry.unregister(_tool_name)
     return registry
 
 
@@ -94,6 +112,7 @@ async def run_task(
     llama_url: str,
     timeout_secs: int,
     role: str | None = None,
+    tool_manifest: str = "full",
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
 
@@ -121,7 +140,9 @@ async def run_task(
         os.environ["AGENT_PROGRESS_FILE"] = f"{_tmp_base}.progress.json"
         os.environ["AGENT_STEPS_FILE"] = f"{_tmp_base}.steps.jsonl"
 
-    registry = build_registry()
+    registry = build_registry(tool_manifest=tool_manifest)
+    if tool_manifest != "full":
+        logger.warning("[aq-agent-loop] tool_manifest=%s: %d tools registered", tool_manifest, len(registry.tools))
 
     executor = LocalAgentExecutor(
         llama_endpoint=llama_url,
@@ -222,11 +243,22 @@ def main() -> int:
                         choices=["orchestrator", "architect", "implementer", "reviewer"],
                         help="Authority role injected into system prompt (default: auto from AgentType mapping)")
     parser.add_argument("--list-tools", action="store_true", help="List registered tools and exit")
+    parser.add_argument(
+        "--tool-manifest",
+        default="full",
+        choices=["full", "self-improvement"],
+        help=(
+            "Tool set to expose to the model. "
+            "'full' = all 29 tools (default). "
+            "'self-improvement' = minimal 6 tools (read_file/write_file/run_command/git_add/git_commit/store_memory); "
+            "reduces schema from ~2507 to ~620 tokens — saves ~1900 tokens per prefill call."
+        ),
+    )
 
     args = parser.parse_args()
 
     if args.list_tools:
-        list_tools(build_registry())
+        list_tools(build_registry(tool_manifest=getattr(args, "tool_manifest", "full")))
         return 0
 
     if not args.task:
@@ -240,6 +272,7 @@ def main() -> int:
         llama_url=args.llama_url,
         timeout_secs=args.timeout,
         role=args.role,
+        tool_manifest=args.tool_manifest,
     ))
 
 
