@@ -1311,6 +1311,9 @@ in {
                 # Phase 164A — OIB operator profile + any service writing to live repo paths
                 # (e.g. operator-knowledge-profile.json). Must be live checkout, not Nix store.
                 "REPO_ROOT=${mcp.repoPath}"
+                # Phase 164G — OIB profile storage: coordinator (ai-hybrid) can't write to
+                # repo .agent/collaboration/ (owned hyperd). Direct writes to service state dir.
+                "AI_STACK_DATA_DIR=${dataDir}"
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
                 # Phase A.1 fix: point hints_engine at sidecar audit log (group-readable by ai-stack)

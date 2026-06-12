@@ -294,3 +294,8 @@
   Severity: high
   Action: Changed the default audit DB path to prefer `XDG_STATE_HOME` then `DATA_DIR`, preserving the interactive `XDG_DATA_HOME`/home fallback. Requires NixOS rebuild/switch for deployed coordinator subprocesses.
   File: ai-stack/local-agents/tool_registry.py ~46
+
+[PENDING-REBUILD] coordinator-qa-check-wrapper-empty-capture — after rebuild, the deployed `aq-qa` wrapper and `_aq-qa-bash` both emitted JSON when run directly, but live `/qa/check` still reported `parse_error: aq-qa produced empty stdout` for the wrapper command — Root cause: unresolved live coordinator capture/scheduler mismatch on the wrapper path; no fresh AppArmor denial was observed, and the direct deployed wrapper produced JSON with failure evidence.
+  Severity: high
+  Action: Added a JSON-mode recovery path in `run_qa_check_as_dict`: when wrapper stdout is empty, rerun the deployed `_aq-qa-bash` fallback directly and preserve wrapper exit/stderr metadata. Requires NixOS rebuild/switch to activate in the live endpoint.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py ~265
