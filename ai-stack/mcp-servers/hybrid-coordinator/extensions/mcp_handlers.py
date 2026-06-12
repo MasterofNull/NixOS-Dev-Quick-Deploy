@@ -264,15 +264,48 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     stdout_text = stdout.decode("utf-8", errors="replace").strip()
     stderr_text = stderr.decode("utf-8", errors="replace").strip()
+    fallback_cmd: Optional[List[str]] = None
+    fallback_returncode: Optional[int] = None
+    fallback_stderr_text: Optional[str] = None
+    if output_format == "json" and not stdout_text:
+        bash_fallback = _AQ_QA_SCRIPT.with_name("_aq-qa-bash")
+        if bash_fallback.exists():
+            fallback_cmd = [_resolve_bash_binary(), str(bash_fallback), phase, "--json"]
+            if include_sudo:
+                fallback_cmd.append("--sudo")
+            fallback_proc = await asyncio.create_subprocess_exec(
+                *fallback_cmd,
+                cwd=str(_REPO_ROOT),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                fallback_stdout, fallback_stderr = await asyncio.wait_for(
+                    fallback_proc.communicate(),
+                    timeout=timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                fallback_proc.kill()
+                await fallback_proc.communicate()
+                raise TimeoutError(f"aq-qa bash fallback timed out after {timeout_seconds}s")
+            stdout_text = fallback_stdout.decode("utf-8", errors="replace").strip()
+            fallback_stderr_text = fallback_stderr.decode("utf-8", errors="replace").strip()
+            fallback_returncode = int(fallback_proc.returncode)
+    effective_returncode = fallback_returncode if fallback_returncode is not None else int(proc.returncode)
     result: Dict[str, Any] = {
-        "status": "ok" if proc.returncode == 0 else "failed",
+        "status": "ok" if effective_returncode == 0 else "failed",
         "phase": phase,
         "format": output_format,
-        "exit_code": int(proc.returncode),
+        "exit_code": effective_returncode,
         "command": cmd,
         "stdout": stdout_text if output_format == "text" else None,
-        "stderr": stderr_text or None,
+        "stderr": (fallback_stderr_text if fallback_stderr_text is not None else stderr_text) or None,
     }
+    if fallback_cmd is not None:
+        result["fallback_command"] = fallback_cmd
+        result["wrapper_exit_code"] = int(proc.returncode)
+        result["wrapper_stderr"] = stderr_text or None
     if output_format == "json":
         if not stdout_text:
             result["status"] = "error"

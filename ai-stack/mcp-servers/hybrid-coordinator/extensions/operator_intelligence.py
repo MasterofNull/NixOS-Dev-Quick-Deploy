@@ -191,9 +191,13 @@ class OperatorKnowledgeProfile:
 # ---------------------------------------------------------------------------
 
 def _profile_path() -> Path:
-    repo_root = Path(
-        __import__("os").environ.get("REPO_ROOT", str(Path(__file__).resolve().parents[5]))
-    )
+    import os as _os
+    data_dir = _os.environ.get("AI_STACK_DATA_DIR", "").strip()
+    if data_dir:
+        # Service context: write to the coordinator's own state directory (ai-hybrid owned)
+        return Path(data_dir) / "hybrid" / "operator-knowledge-profile.json"
+    # Local dev fallback: REPO_ROOT or __file__ heuristic
+    repo_root = Path(_os.environ.get("REPO_ROOT", str(Path(__file__).resolve().parents[5])))
     return repo_root / ".agent" / "collaboration" / "operator-knowledge-profile.json"
 
 

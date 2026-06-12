@@ -252,6 +252,52 @@ class TestRunQaCheckAsDict:
         assert result["stdout"] == ""
         assert result["qa_result"] == {}
 
+    def test_json_empty_stdout_uses_bash_fallback(self, tmp_path, monkeypatch):
+        import extensions.mcp_handlers as ext
+
+        qa_script = tmp_path / "aq-qa"
+        qa_script.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+        fallback_script = tmp_path / "_aq-qa-bash"
+        fallback_script.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+        calls = []
+
+        class FakeProc:
+            def __init__(self, returncode, stdout, stderr=b""):
+                self.returncode = returncode
+                self._stdout = stdout
+                self._stderr = stderr
+
+            async def communicate(self):
+                return self._stdout, self._stderr
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                return FakeProc(1, b"", b"wrapper failed silently")
+            return FakeProc(
+                1,
+                b'{"phase":"0","passed":1,"failed":1,"skipped":0,"tests":[]}',
+                b"",
+            )
+
+        monkeypatch.setattr(ext, "_AQ_QA_SCRIPT", qa_script)
+        monkeypatch.setattr(ext, "_resolve_bash_binary", lambda: "/bin/bash")
+        monkeypatch.setattr(ext.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+        result = asyncio.run(
+            mcp_handlers.run_qa_check_as_dict({"phase": "0", "format": "json"})
+        )
+
+        assert len(calls) == 2
+        assert calls[1][1] == str(fallback_script)
+        assert result["status"] == "failed"
+        assert result["exit_code"] == 1
+        assert result["qa_result"]["passed"] == 1
+        assert result["qa_result"]["failed"] == 1
+        assert result["fallback_command"][1] == str(fallback_script)
+        assert result["wrapper_exit_code"] == 1
+        assert result["wrapper_stderr"] == "wrapper failed silently"
+
 
 # ---------------------------------------------------------------------------
 # QA_PHASE_ALIASES completeness
