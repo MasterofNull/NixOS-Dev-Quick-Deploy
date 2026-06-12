@@ -124,6 +124,20 @@ _EXECUTOR_TABLE = {
 }
 
 
+def _apparmor_rules_already_present(profile: str, rules: list) -> bool:
+    """Return True when all proposed AppArmor rules already exist in mcp-servers.nix."""
+    if not profile or not rules:
+        return False
+    nix_file = _REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
+    try:
+        text = nix_file.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if profile not in text:
+        return False
+    return all(str(rule).strip() in text for rule in rules)
+
+
 def main() -> int:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: aq-approve <alert-id>")
@@ -147,8 +161,19 @@ def main() -> int:
     # Run executor if present
     executor_key = alert.get("executor")
     if executor_key:
+        if (
+            executor_key == "apparmor_fix"
+            and _apparmor_rules_already_present(
+                alert.get("payload", {}).get("profile", ""),
+                alert.get("payload", {}).get("rules_proposed", []),
+            )
+        ):
+            print("  Proposed AppArmor rule(s) already present in mcp-servers.nix.")
+            executor_key = None
         handler = _EXECUTOR_TABLE.get(executor_key)
-        if not handler:
+        if executor_key is None:
+            pass
+        elif not handler:
             print(f"  Unknown executor key {executor_key!r} — approval recorded but no action taken.", file=sys.stderr)
         else:
             ok = handler(alert)
