@@ -1,13 +1,18 @@
 ## OPEN ISSUES
 
-[OPEN] aq-agent-loop/doc-drift — module docstring advertises wrong --max-calls default
+[OPEN] dispatch-timeout-env-undocumented — AGENT_WALL_CLOCK_SECS env var is not in .env.example
   Severity: low
-  Root cause: argparse default was raised from 15→50 in Phase 162A but the module-level
-  docstring on line 18 still reads "[default: 15]" while the actual argparse line says default=50.
-  File: scripts/ai/aq-agent-loop line 18
-  Fix: change the string "[default: 15]" to "[default: 50]" on line 18
-  Verify: python3 -m py_compile scripts/ai/aq-agent-loop
-  Commit: docs(aq-agent-loop): sync --max-calls default documentation to match code
+  Root cause: scripts/ai/lib/dispatch.py reads AGENT_WALL_CLOCK_SECS at module level
+  (os.environ.get("AGENT_WALL_CLOCK_SECS", "3600")) but .env.example does not list it,
+  so operators don't know it exists or how to override it.
+  File: .env.example
+  Fix: add the line: AGENT_WALL_CLOCK_SECS=3600  # wall-clock cap for delegate-to-local agent tasks (seconds)
+  Verify: grep -n AGENT_WALL_CLOCK_SECS .env.example
+  Commit: docs(dispatch): document AGENT_WALL_CLOCK_SECS env var in .env.example
+
+[DONE] aq-agent-loop/doc-drift — module docstring advertised wrong --max-calls default
+  Auto-resolved by pre-commit hook during Phase 165 commit (03e5f950). Docstring line 18
+  now reads "[default: 50]" matching argparse default=50.
 
 [OPEN] hardware — ROCm not available on Renoir APU (gfx90c) — ACCELERATE PRD assumed ROCm availability. Renoir iGPU is not a supported ROCm target. `rocminfo` absent. llama-cpp runs Vulkan only. Baseline: 2.71 tok/s.
   Severity: info (hardware constraint, not a bug — requires discrete RDNA2+ GPU for ROCm)
