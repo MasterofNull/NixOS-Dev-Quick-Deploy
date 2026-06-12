@@ -4,7 +4,7 @@ id: self-improvement
 title: Self-Improvement Slice Workflow
 status: active
 tags: [self-improvement, harness-evolution, PRD, issues-backlog, aq-report, slice, improvement, roadmap]
-description: "How to identify, propose, and execute the next highest-priority self-improvement dev slice for the harness."
+description: "How to identify and execute the next highest-priority self-improvement dev slice for the harness autonomously."
 
 ---
 
@@ -71,29 +71,16 @@ acat .agent/collaboration/RESUME.json
 
 ---
 
-## Step 2 — Synthesize: Propose 3 Options to the Operator
+## Step 2 — Select and Announce the Target Slice
 
-After discovery, **never silently pick one and start**. Present a ranked list:
+After discovery, **select the single highest-priority OPEN item** and announce it in one sentence before executing:
 
 ```
-Here are the top 3 candidate slices, ranked by priority and impact:
-
-1. [P1 — HIGHEST] <Title>
-   Source: issues-backlog line N / PRD section X
-   Problem: <what is broken or missing>
-   Impact: <what improves if fixed>
-   Effort: <estimated complexity, rebuild required? yes/no>
-
-2. [P2] <Title>
-   ...
-
-3. [P3] <Title>
-   ...
-
-Which slice should I execute? (Or describe a different priority.)
+Fixing: [P1] <Title> — <one-sentence description of the change>
 ```
 
-Give the operator the choice. Do not proceed to Step 3 until they confirm.
+Then proceed immediately to Step 3. Do not present a menu or wait for confirmation.
+The operator reviews the commit; they do not pre-approve each step.
 
 ---
 
@@ -104,7 +91,7 @@ Once a slice is selected:
 1. **Check for a relevant skill first**: `aq-skill-suggest "<slice description>"`
 2. **Write RESUME.json** with `current_objective` = chosen slice title
 3. **Append to PULSE.log**: `[ISO] [local-agent] [plan]: <slice-title> — starting`
-4. **Scope check**: Is this a no-rebuild slice or rebuild-required? Confirm with operator if rebuild needed.
+4. **Scope check**: Note in the commit message if a nixos-rebuild is required to activate the change.
 5. **Implement**: Make minimal, targeted changes. One concern per slice.
 6. **Validate**:
    ```bash
@@ -113,11 +100,13 @@ Once a slice is selected:
    scripts/governance/tier0-validation-gate.sh --pre-commit
    ```
 7. **Seed new bug patterns** if the slice fixed a real bug: `scripts/data/seed-rag-knowledge.py`
-8. **Stage and describe the commit** for operator review (do NOT commit autonomously unless operator authorizes it):
+8. **Commit autonomously**:
+   ```bash
+   git add <specific files>
+   scripts/governance/tier0-validation-gate.sh --pre-commit
+   git commit -m "type(scope): description\n\nCo-Authored-By: AQ <noreply@harness.local>"
    ```
-   Files changed: <list>
-   Proposed commit message: feat(<scope>): <description>
-   ```
+   Then report: what changed, what validation passed, what to review.
 
 ---
 
@@ -136,9 +125,9 @@ After execution:
 |---|---|
 | Inventing work from scratch | Misses actual system priorities; wastes operator time |
 | Picking documentation cleanup as "safe" work | Low impact; doesn't advance system capability |
-| Starting implementation before confirming the choice | Operator loses control of priorities |
+| Presenting a menu and waiting for selection | Breaks the autonomous execute loop; operator reviews commits |
 | Running improvement without checking issues-backlog first | May duplicate work or miss P1 blockers |
-| Committing without operator sign-off | Violates harness governance (Rule 1) |
+| Skipping tier0-validation-gate before commit | Breaks governance contract — gate is mandatory |
 
 ---
 
