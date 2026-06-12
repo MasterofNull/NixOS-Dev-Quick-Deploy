@@ -72,17 +72,19 @@ MODE="auto"   # Phase 74E: auto runs classify_mode() heuristic in dispatch.py
 TIMEOUT=300
 ROLE="implement"
 WAIT=false
+TOOL_MANIFEST="full"
 SUBCMD=""
 SUBCMD_ARG=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --prompt)      PROMPT="$2";       shift 2 ;;
-        --prompt-file) PROMPT_FILE="$2";  shift 2 ;;
-        --mode)        MODE="$2";         shift 2 ;;
-        --timeout)     TIMEOUT="$2";      shift 2 ;;
-        --role)        ROLE="$2";         shift 2 ;;
-        --wait)        WAIT=true;         shift   ;;
+        --prompt)         PROMPT="$2";         shift 2 ;;
+        --prompt-file)    PROMPT_FILE="$2";    shift 2 ;;
+        --mode)           MODE="$2";           shift 2 ;;
+        --timeout)        TIMEOUT="$2";        shift 2 ;;
+        --role)           ROLE="$2";           shift 2 ;;
+        --wait)           WAIT=true;           shift   ;;
+        --tool-manifest)  TOOL_MANIFEST="$2";  shift 2 ;;
         --check)       SUBCMD="check";    SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";   SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";     shift   ;;
@@ -152,6 +154,7 @@ case "${SUBCMD:-}" in
             --role           "$ROLE"
             --prompt         "$PROMPT"
             --timeout        "$TIMEOUT"
+            --tool-manifest  "$TOOL_MANIFEST"
             --delegation-dir "$DELEGATION_DIR"
             --llama-url      "http://127.0.0.1:${LLAMA_PORT}"
             --hybrid-url     "http://127.0.0.1:${HYBRID_PORT}"

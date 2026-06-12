@@ -63,6 +63,7 @@ class TaskConfig:
     hybrid_url: str
     ralph_url: str
     task_type: str      # modal payload profile (structured/lookup/code/reasoning/agent)
+    tool_manifest: str = "full"  # agent mode only: "full" | "self-improvement"
 
     @classmethod
     def from_args(
@@ -76,6 +77,7 @@ class TaskConfig:
         ralph_url: str,
         task_type: str = "code",
         max_tokens_hint: int | None = None,
+        tool_manifest: str = "full",
     ) -> "TaskConfig":
         """Build a TaskConfig, resolving token budget and normalising role."""
         if mode not in _VALID_MODES:
@@ -100,6 +102,7 @@ class TaskConfig:
             hybrid_url=hybrid_url,
             ralph_url=ralph_url,
             task_type=resolved_task_type,
+            tool_manifest=tool_manifest if tool_manifest in ("full", "self-improvement") else "full",
         )
 
     @staticmethod
