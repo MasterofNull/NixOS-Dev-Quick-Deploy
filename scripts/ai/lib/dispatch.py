@@ -579,6 +579,8 @@ class AgentRunner:
             "--max-calls", str(max_calls),
             "--role", config.role,
         ]
+        if getattr(config, "tool_manifest", "full") != "full":
+            cmd += ["--tool-manifest", config.tool_manifest]
         try:
             result = subprocess.run(cmd, timeout=wall_clock)
             return result.returncode == 0
@@ -926,6 +928,9 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--max-tokens",    type=int, default=None)
     d.add_argument("--max-calls",     type=int, default=50,
                    help="Max tool calls for agent mode [default: 50]")
+    d.add_argument("--tool-manifest", default="full",
+                   choices=["full", "self-improvement"],
+                   help="Tool set for agent mode: 'full' (29 tools) or 'self-improvement' (6 tools) [default: full]")
     d.add_argument("--delegation-dir", required=True)
     d.add_argument("--llama-url",     default="http://127.0.0.1:8080")
     d.add_argument("--hybrid-url",    default="http://127.0.0.1:8003")
@@ -1101,6 +1106,7 @@ def main() -> int:
         ralph_url=args.ralph_url,
         task_type=resolved_task_type,
         max_tokens_hint=_tokens_hint,
+        tool_manifest=getattr(args, "tool_manifest", "full"),
     )
     # Phase 163: scale timeout from token budget for direct-mode tasks.
     # Fixed 300s was killing code/reasoning tasks at ~300 tokens — half a function.
