@@ -264,3 +264,8 @@
   Severity: medium
   Action: Phase 149 fix in ai_coordinator_handlers.py: (1) emit model_call event per delegation with estimated tokens (char_count//4 fallback); (2) token_usage now uses same fallback — no_data_reason="estimated" when API omits usage block. Added aq-qa check 0.10.2 + test-token-usage-coverage.py measuring coordinator model_call token coverage ≥50%. Requires coordinator service restart to activate.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
+
+[PENDING-REBUILD] coordinator-qa-check-empty-json — `/qa/check` returned `qa_result: {}` with empty stdout/stderr while direct `aq-qa 0 --json` produced machine JSON — Root cause: the enforced `ai-hybrid-coordinator` AppArmor profile denied exec for phase 0 probe tools (`ss`, `psql`, `redis-cli`, `getent`) and repo-local `scripts/ai/aqd`; the denied `aqd --version` pipeline ran under `set -euo pipefail`, aborting `_aq-qa-bash` before JSON emission. The coordinator handler also parsed empty stdout as `{}`, hiding the root cause.
+  Severity: high
+  Action: Added explicit AppArmor exec rules for the phase 0 probe tools, made the `aqd` version probe failure-tolerant, and changed `/qa/check` JSON parsing to report `parse_error: aq-qa produced empty stdout` when subprocess output is empty. Requires NixOS rebuild/switch to activate the profile changes.
+  File: nix/modules/services/mcp-servers.nix; scripts/ai/_aq-qa-bash; ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py
