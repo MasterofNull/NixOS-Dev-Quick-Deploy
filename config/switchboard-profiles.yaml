@@ -24,7 +24,7 @@ profiles:
 
   continue-local:
     forceProvider: "local"
-    injectHints: true
+    injectHints: false
     modelAlias: null
     advertisedContextWindow: null  # LLAMA_CTX_SIZE
     maxInputTokens: null  # SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS (default 4000)

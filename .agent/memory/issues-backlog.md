@@ -299,3 +299,8 @@
   Severity: high
   Action: Added a JSON-mode recovery path in `run_qa_check_as_dict`: when wrapper stdout is empty, rerun the deployed `_aq-qa-bash` fallback directly and preserve wrapper exit/stderr metadata. Requires NixOS rebuild/switch to activate in the live endpoint.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py ~265
+
+[PENDING-REBUILD] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
+  Severity: high
+  Action: Restored `continue-local.injectHints=false` in the switchboard profile catalog while leaving `local-tool-calling.injectHints=true`. Requires switchboard reload/rebuild for live `/health` and aq-qa 0.5 checks to reflect the fix.
+  File: config/switchboard-profiles.yaml ~25
