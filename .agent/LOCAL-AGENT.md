@@ -137,6 +137,10 @@ When deploying a new locally hosted model, verify:
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
 Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
 
+### Phase 163 — Fix qa_check 0% failure: coordinator attention queue write access (2026-06-11, requires rebuild)
+
+`run_qa_check` MCP tool was returning empty stdout + exit_code=1 on every call. Root cause: `_aq-qa-bash` check 86.2 calls `attention_queue.push()` which tries to write `ATTENTION_ARCHIVE.jsonl` under `${mcp.repoPath}/.agents/attention/`. The coordinator service runs with `ProtectHome=read-only` (from `commonServiceConfig`) which blocks writes to `/home/hyperd/...` even though `ATTENTION_QUEUE_DIR` is correctly set. Fix: added `"${mcp.repoPath}/.agents/attention"` to `ReadWritePaths` override in the coordinator service config, plus matching AppArmor `rwk` rules. Requires nixos-rebuild.
+
 ### Phase 162C — Fix query_aidb 401: /search/ in LOOPBACK_AGENT_PREFIXES (2026-06-11, requires rebuild)
 
 `query_aidb_handler` posts to coordinator `/search/tree` which was not in `LOOPBACK_AGENT_PREFIXES`.
