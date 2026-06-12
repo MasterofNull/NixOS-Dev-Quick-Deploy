@@ -180,7 +180,7 @@ def main() -> int:
     )
     parser.add_argument("--task",       help="Coding task objective")
     parser.add_argument("--output",     help="Write JSON result to this file")
-    parser.add_argument("--max-calls",  type=int, default=15, help="Max tool calls [default: 15]")
+    parser.add_argument("--max-calls",  type=int, default=50, help="Max tool calls [default: 50]")
     parser.add_argument("--fallback",   action="store_true", help="Allow remote fallback if local fails")
     parser.add_argument("--llama-url",  default=os.environ.get("LLAMA_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--timeout",    type=int, default=300, help="Per-inference timeout (seconds) [default: 300]")
