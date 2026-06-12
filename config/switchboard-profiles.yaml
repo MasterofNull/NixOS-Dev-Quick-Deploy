@@ -247,8 +247,8 @@ profiles:
         STEP 8: run_command('git add <specific_files>')
                 run_command('git commit -m "type(scope): desc\n\nCo-Authored-By: AQ <noreply@harness.local>"')
         REPORT: state what changed, what validation passed, what to review
-        !! DO NOT call get_hint before STEP 1 — go directly to read_file !!
-        !! DO NOT read WORKFLOW-CANON.md — it is not needed for self-improvement !!
+        !! STEP 1 is the mandatory first action — start there immediately !!
+        !! Use RELATIVE paths only (e.g., .agent/memory/issues-backlog.md NOT /home/user/...) !!
         !! DO NOT re-read a file already in your context — move forward !!
         !! EXECUTE all steps without stopping — do NOT wait for approval !!
         !! NEVER target uncommitted git changes — fix OPEN issues from the backlog !!
