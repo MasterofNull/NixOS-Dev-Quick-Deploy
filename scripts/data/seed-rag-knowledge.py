@@ -480,6 +480,20 @@ ERROR_SOLUTIONS = [
         "files": ["ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py", "ai-stack/local-agents/builtin_tools/ai_coordination.py"],
         "related_patterns": ["tool_security_control_over_broad_block"],
     },
+    {
+        "error_type": "coordinator_protecthome_blocks_attention_queue_writes",
+        "error_message": "run_qa_check returns empty stdout, exit_code=1 on every call",
+        "context": "The ai-hybrid-coordinator service uses commonServiceConfig which sets ProtectHome=read-only. ATTENTION_QUEUE_DIR is set to live-repo .agents/attention path (under /home/hyperd/). ProtectHome=read-only makes /home a read-only bind mount at the namespace level — all subprocesses (including aq-qa) inherit this. When aq-qa check 86.2 calls attention_queue.push(auto_ok), _append_archive() tries to open ATTENTION_ARCHIVE.jsonl for append → fails with EPERM. set -euo pipefail kills aq-qa before it emits any JSON output → empty stdout + exit 1.",
+        "solution": "Add '${mcp.repoPath}/.agents/attention' to ReadWritePaths override in the coordinator serviceConfig (same pattern as ai-training-ingest at line ~1837 of mcp-servers.nix). Also add matching AppArmor rwk rules for the attention directory path. Requires nixos-rebuild. Pattern: any service in commonServiceConfig that needs to write to live-repo paths under /home must explicitly override ReadWritePaths.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 1.0,
+        "files": ["nix/modules/services/mcp-servers.nix", "scripts/ai/lib/attention_queue.py", "scripts/ai/_aq-qa-bash"],
+        "related_patterns": ["nix_service_erofs_repo_root", "apparmor_service_tmp_directory_access"],
+    },
 ]
 
 SKILLS_PATTERNS = [
