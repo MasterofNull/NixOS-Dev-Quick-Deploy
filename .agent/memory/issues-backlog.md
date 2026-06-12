@@ -1,5 +1,16 @@
 ## OPEN ISSUES
 
+[DONE] progressive-tool-disclosure — aq-agent-loop exposed all 29 tools (~2507 tokens) in every self-improvement slice
+  Root cause: build_registry() always registered all tools. Self-improvement slices only need 6 tools
+  (read_file, write_file, run_command, git_add, git_commit, store_memory). Extra 23 tools added 1739
+  tokens to the system prompt on every LLM call = 174s wasted prefill per call at 10 tok/s (Renoir APU).
+  Over 7 calls per slice: ~20 minutes wasted per self-improvement iteration.
+  Fix: Added --tool-manifest flag to aq-agent-loop with 'full' (default, 29 tools) and 'self-improvement'
+  (6 tools). build_registry(tool_manifest=) unregisters excluded tools via registry.unregister().
+  Slim schema: 3073 chars (~768 tokens) vs full 10031 chars (~2507 tokens). 1739 token savings per call.
+  File: scripts/ai/aq-agent-loop (build_registry, run_task, argparser)
+  Commit: feat(agents): progressive tool disclosure — --tool-manifest self-improvement (6 tools, save ~174s/call)
+
 [DONE] agent-behavioral-contract-cleanup — contract updated with surgical finality (commit-on-pass, no post-fix cleanup)
   Gemini P2 finding (2026-06-12): BEHAVIORAL CONTRACT lacked explicit "commit on pass, no cleanup" mandate.
   Iter 7 timed out doing post-commit cleanup (RESUME.json, HANDOFF.md, PULSE.log updates), consuming ~3-4
