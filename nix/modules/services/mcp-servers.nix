@@ -2710,6 +2710,7 @@ in {
             /proc/@{pids}/net/udp r,
             /proc/@{pids}/net/udp6 r,
             /proc/@{pids}/net/unix r,
+            /sys/kernel/mm/transparent_hugepage/enabled r,
             /run/log/journal/ r,  # open
             /var/log/journal/ r,  # open
             /proc/sys/kernel/random/boot_id r,  # open

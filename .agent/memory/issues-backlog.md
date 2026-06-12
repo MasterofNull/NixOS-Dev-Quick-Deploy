@@ -272,5 +272,5 @@
 
 [PENDING-REBUILD] coordinator-qa-check-ss-procnet-denial — post-rebuild `/qa/check` still aborted before machine JSON while direct git sync was already clean — Root cause: the new AppArmor exec rule allowed `ss`, but inherited `ai-hybrid-coordinator` confinement denied `ss -tlnp` reads of `/proc/<pid>/net/tcp`, so repeated phase 0 listener probes still failed in the service sandbox. The handler correctly exposed `parse_error: aq-qa produced empty stdout`.
   Severity: high
-  Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`). Requires NixOS rebuild/switch to activate.
+  Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`) and the THP status file also reported by health-spider. Requires NixOS rebuild/switch to activate.
   File: nix/modules/services/mcp-servers.nix
