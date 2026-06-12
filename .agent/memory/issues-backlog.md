@@ -115,6 +115,17 @@
   Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
   File: .agents/plans/phase-148-agentic-mind-research.md
 
+[OPEN] slim-manifest-missing-validate-before-commit — _SLIM_TOOLS in aq-agent-loop excludes validate_before_commit but BEHAVIORAL CONTRACT header says "validate_before_commit MUST pass before git_add"
+  Root cause: when build_registry(tool_manifest="self-improvement") unregisters tools not in _SLIM_TOOLS,
+  validate_before_commit is removed (it's registered by register_git_tools, not in the frozenset).
+  The BEHAVIORAL CONTRACT general rule still tells the model to call it, creating a tool-not-found
+  failure on the validation step. STEP 4/5 correctly use run_command as fallback, but the top-level
+  rule is inconsistent and will cause model confusion on the first iteration that strictly follows the header.
+  Severity: medium
+  Action: Add "validate_before_commit" to _SLIM_TOOLS frozenset in scripts/ai/aq-agent-loop (line 70-73).
+  One-line change: add "validate_before_commit" to the frozenset. No other files need to change.
+  File: scripts/ai/aq-agent-loop lines 70-73 (_SLIM_TOOLS frozenset)
+
 ## PENDING-REBUILD
 
 [PENDING-REBUILD] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
