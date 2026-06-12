@@ -527,6 +527,9 @@ class RalphRunner:
             return False
 
 
+_AGENT_WALL_CLOCK_SECS = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "3600"))
+
+
 class AgentRunner:
     """Delegate to aq-agent-loop (keeps its own Python entry point)."""
 
@@ -543,10 +546,15 @@ class AgentRunner:
             "--output", str(output_file),
             "--timeout", str(config.timeout_secs),
             "--role", config.role,
-            "--max-calls", "25",
         ]
-        result = subprocess.run(cmd)
-        return result.returncode == 0
+        try:
+            result = subprocess.run(cmd, timeout=_AGENT_WALL_CLOCK_SECS)
+            return result.returncode == 0
+        except subprocess.TimeoutExpired:
+            output_file.write_text(
+                f"Agent wall-clock timeout after {_AGENT_WALL_CLOCK_SECS}s"
+            )
+            return False
 
 
 # ── service check ─────────────────────────────────────────────────────────────
