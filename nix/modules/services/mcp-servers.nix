@@ -2744,6 +2744,7 @@ in {
             /nix/var/nix/profiles/** r,
             # CLI tools invoked by health probes and aq-qa
             /nix/store/**/bin/aq-qa ix,
+            /run/current-system/sw/bin/aq-qa ix,
             /nix/store/**/bin/lspci ix,
             /nix/store/**/bin/grep ix,
             # journalctl — dashboard reads journal logs via subprocess exec
@@ -2752,6 +2753,8 @@ in {
             /home/hyperd/.local/share/nixos-system-dashboard/** r,
             # auto-added by apparmor-fix-agent 2026-06-07
             /proc/@{pids}/stat r,  # /proc/<pid> → @{pids}
+            # auto-added by apparmor-fix-agent 2026-06-12
+            /proc/@{pids}/statm r,  # /proc/<pid> → @{pids}
             deny /home/** wx,
             deny /root/** rwx,
           }

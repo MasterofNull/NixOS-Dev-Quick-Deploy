@@ -113,6 +113,17 @@ def test_faithfulness_guard_returns_none_not_zero():
     print("PASS  context guard returns None (not 0) — AVG(faithfulness) ignores it")
 
 
+def test_trend_exposes_faithfulness_sample_count():
+    """Trend API must distinguish total eval rows from scored faithfulness rows."""
+    path = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "eval_runner.py"
+    src = path.read_text()
+    assert_true("COUNT(faithfulness)    AS faithfulness_sample_count" in src,
+                "trend query must count non-null faithfulness rows separately")
+    assert_true('"faithfulness_sample_count": int(r["faithfulness_sample_count"] or 0)' in src,
+                "trend response must expose faithfulness_sample_count")
+    print("PASS  trend exposes faithfulness_sample_count")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -122,6 +133,7 @@ if __name__ == "__main__":
         test_judge_prompt_response_truncation_increased,
         test_handle_eval_score_query_context_guard,
         test_faithfulness_guard_returns_none_not_zero,
+        test_trend_exposes_faithfulness_sample_count,
     ]
     for t in tests:
         try:

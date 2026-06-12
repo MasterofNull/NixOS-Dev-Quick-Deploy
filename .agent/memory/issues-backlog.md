@@ -365,3 +365,23 @@
   Severity: medium
   Action: Hardened 0.10.3 to assert exact-output tasks do not disable tools/thinking unless explicitly tool-free; wired dashboard logic-discipline metric to delegation-feedback telemetry instead of defaulting missing data to 100%; rebuilt, restarted dashboard API with sudo, and verified live smoke plus aq-qa 0.
   File: ai-stack/agents/runtimes/local_agent_runtime.py; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py
+
+[DONE] health-spider-dashboard-semantic-coverage — dashboard showed operator-visible degradation while aq-health-spider reported clean cycles — Root cause: the spider only probed broad dashboard endpoints and did not validate the specific card payload semantics for OSI layer readiness, RAGAS faithfulness, operator audit integrity, or degraded child service statuses inside aggregate health.
+  Severity: high
+  Action: Added dashboard semantic probes for `/api/health/layered`, `/api/eval/trend`, `/api/audit/operator/integrity`, and child statuses in `/api/health/aggregate`; added regression coverage so enabled faithfulness with missing/zero values, OSI 0/0 pending, unsealed audit chains, and degraded service children surface as `dashboard_degraded` alerts.
+  File: scripts/ai/aq-health-spider; scripts/testing/test-boot-stability-regressions.py
+
+[DONE] switchboard-health-metrics-blocking — dashboard aggregate marked ai-switchboard degraded while switchboard `/health` returned 200 — Root cause: switchboard `/health` synchronously included optional llama.cpp `/metrics`, which can block behind active local inference for ~4s and exceed the dashboard aggregate probe budget.
+  Severity: medium
+  Action: Changed switchboard `/health` to use a sub-second optional metrics probe while preserving immediate semaphore/active-request telemetry; added regression coverage.
+  File: ai-stack/switchboard/switchboard.py; scripts/testing/test-boot-stability-regressions.py
+
+[DONE] dashboard-osi-aq-qa-opaque-exit — OSI layer health stayed pending and dashboard logs only reported `aq-qa exited 126` — Root cause: dashboard `qa_runner.py` discarded stdout/stderr for unexpected aq-qa exit codes, making service confinement/environment failures impossible to diagnose from logs.
+  Severity: medium
+  Action: Include stderr/stdout snippets in unexpected aq-qa RuntimeError messages and cover the diagnostic contract in boot-stability regression checks. Direct host `aq-qa 0 --json` passes, while dashboard service execution used `/run/current-system/sw/bin/aq-qa`; added the exact AppArmor ix rule for that symlink path. Requires rebuild to validate live OSI cache population.
+  File: dashboard/backend/api/services/qa_runner.py; nix/modules/services/mcp-servers.nix; scripts/testing/test-boot-stability-regressions.py
+
+[DONE] ragas-faithfulness-null-render — dashboard rendered RAGAS faithfulness as `0.0%` when faithfulness scoring produced no non-null samples in the latest trend window — Root cause: `/eval/trend` exposed total eval `sample_count` but not non-null faithfulness sample count, so the frontend could not distinguish "0 score" from "not scored / unavailable".
+  Severity: medium
+  Action: Added `faithfulness_sample_count` to global and per-model RAGAS trend output, rendered faithfulness as `N/A` when no faithfulness samples exist, and made health-spider alert on enabled scoring with `faithfulness_sample_count=0`.
+  File: ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py; assets/dashboard.js; scripts/ai/aq-health-spider; scripts/testing/test-ragas-faithfulness-guard.py

@@ -299,6 +299,7 @@ async def _fetch_ragas_averages(window: int = 100) -> Dict[str, Any]:
                 AVG(answer_relevance)  AS answer_relevance_avg,
                 AVG(context_precision) AS context_precision_avg,
                 AVG(faithfulness)      AS faithfulness_avg,
+                COUNT(faithfulness)    AS faithfulness_sample_count,
                 COUNT(*)               AS sample_count
             FROM (
                 SELECT answer_relevance, context_precision, faithfulness
@@ -318,6 +319,7 @@ async def _fetch_ragas_averages(window: int = 100) -> Dict[str, Any]:
                 "context_precision_avg": _fmt(r["context_precision_avg"]),
                 "faithfulness_avg": _fmt(r["faithfulness_avg"]),
                 "faithfulness_enabled": _FAITHFULNESS_ENABLED,
+                "faithfulness_sample_count": int(r["faithfulness_sample_count"] or 0),
                 "sample_count": int(r["sample_count"] or 0),
             }
     except Exception as exc:
@@ -342,6 +344,7 @@ async def _fetch_ragas_by_model(window: int = 100) -> Dict[str, Any]:
                 AVG(answer_relevance)           AS answer_relevance_avg,
                 AVG(context_precision)          AS context_precision_avg,
                 AVG(faithfulness)               AS faithfulness_avg,
+                COUNT(faithfulness)             AS faithfulness_sample_count,
                 COUNT(*)                        AS sample_count
             FROM (
                 SELECT llm_model, answer_relevance, context_precision, faithfulness
@@ -361,6 +364,7 @@ async def _fetch_ragas_by_model(window: int = 100) -> Dict[str, Any]:
                 "answer_relevance_avg": _fmt(r["answer_relevance_avg"]),
                 "context_precision_avg": _fmt(r["context_precision_avg"]),
                 "faithfulness_avg": _fmt(r["faithfulness_avg"]),
+                "faithfulness_sample_count": int(r["faithfulness_sample_count"] or 0),
                 "sample_count": int(r["sample_count"] or 0),
             }
             for r in rows
