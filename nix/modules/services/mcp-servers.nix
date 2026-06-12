@@ -1304,6 +1304,9 @@ in {
                 # Phase 101 — attention_queue writable path. repoSource is Nix store (read-only);
                 # mcp.repoPath is the live checkout string, so writes succeed.
                 "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
+                # Phase 164A — OIB operator profile + any service writing to live repo paths
+                # (e.g. operator-knowledge-profile.json). Must be live checkout, not Nix store.
+                "REPO_ROOT=${mcp.repoPath}"
                 # Phase 12.3.2 — audit sidecar socket path
                 "AUDIT_SOCKET_PATH=/run/ai-audit-sidecar.sock"
                 # Phase A.1 fix: point hints_engine at sidecar audit log (group-readable by ai-stack)
@@ -2491,6 +2494,9 @@ in {
             /nix/store/**/bin/psql      ix,
             /nix/store/**/bin/redis-cli ix,
             /nix/store/**/bin/getent    ix,
+            /nix/store/**/bin/git       ix,
+            /nix/store/*-source/scripts/ai/aqd ix,
+            /nix/store/*-source/scripts/ai/aq-alerts ix,
             ${mcp.repoPath}/scripts/ai/aqd ix,
             ${mcp.repoPath}/scripts/ai/aq-alerts ix,
             /run/current-system/sw/bin/jq  ix,

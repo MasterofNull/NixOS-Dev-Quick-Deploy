@@ -275,6 +275,11 @@
   Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`) and the THP status file also reported by health-spider. Follow-up after rebuild: first patch placed the rules in the dashboard profile block, not `ai-hybrid-coordinator`; moved them into the correct profile. Requires NixOS rebuild/switch to activate.
   File: nix/modules/services/mcp-servers.nix
 
+[PENDING-REBUILD] coordinator-qa-check-store-script-exec-denial — post-switch `/qa/check` advanced past proc-net but still returned `parse_error: aq-qa produced empty stdout` — Root cause: coordinator phase 0 runs from the deployed Nix-store source path, so existing AppArmor exec rules for live-repo `scripts/ai/aqd` did not match `/nix/store/*-source/scripts/ai/aqd`; phase 0 also invokes `git` from Python checks.
+  Severity: high
+  Action: Added inherited-profile exec rules for `/nix/store/*-source/scripts/ai/{aqd,aq-alerts}` and `/nix/store/**/bin/git`. Requires NixOS rebuild/switch to activate.
+  File: nix/modules/services/mcp-servers.nix
+
 [DONE] aq-alerts-json-contract — `aq-alerts --json` printed the human table instead of machine-readable JSON — Root cause: the CLI usage and downstream agent workflow expected JSON, but `scripts/ai/aq-alerts` had no `--json` argparse option and always rendered the table unless `--count` was used.
   Severity: medium
   Action: Added `--json` output with `{pending, alerts}` and regression coverage using an isolated `ATTENTION_QUEUE_DIR`.
