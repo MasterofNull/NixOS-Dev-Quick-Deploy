@@ -490,9 +490,9 @@ def generate_prompt_extensions(
                     _existing = _json.loads(_try_path.read_text(encoding="utf-8"))
                 except Exception:
                     _existing = {}
-            if isinstance(_existing, dict) and isinstance(_existing.get("routing_rules"), dict):
+            if isinstance(_existing, dict) and _existing.get("routing_rules"):
                 _existing_routing_rules = _existing["routing_rules"]
-            break
+                break
 
     extensions = {
         "schema_version": "1.0",
