@@ -1,14 +1,39 @@
 ## OPEN ISSUES
 
-[OPEN] dispatch-timeout-env-undocumented — AGENT_WALL_CLOCK_SECS env var is not in .env.example
-  Severity: low
-  Root cause: scripts/ai/lib/dispatch.py reads AGENT_WALL_CLOCK_SECS at module level
-  (os.environ.get("AGENT_WALL_CLOCK_SECS", "3600")) but .env.example does not list it,
-  so operators don't know it exists or how to override it.
-  File: .env.example
-  Fix: add the line: AGENT_WALL_CLOCK_SECS=3600  # wall-clock cap for delegate-to-local agent tasks (seconds)
-  Verify: grep -n AGENT_WALL_CLOCK_SECS .env.example
-  Commit: docs(dispatch): document AGENT_WALL_CLOCK_SECS env var in .env.example
+[OPEN] training-ingest-routing-rules-lost — training_ingest.py drops routing_rules from harness-prompt-extensions.json on rewrite
+  Severity: medium
+  Root cause: ai-stack/local-agents/training_ingest.py lines 482-495 — the `for _try_path in (yaml_path, json_path)` loop
+  has an unconditional `break` at the END of the loop body (outside the `if _try_path.exists():` block).
+  When the YAML file does not exist, the loop skips the if-body but still hits `break`, exits without
+  ever reading the JSON file, and leaves _existing_routing_rules = {}.
+  File: ai-stack/local-agents/training_ingest.py (line ~495); config/harness-prompt-extensions.json
+  Fix step 1: in training_ingest.py, indent the `break` one level further so it sits inside
+    `if _try_path.exists():` — change from column 8 to column 12.
+    Current (broken):
+      for _try_path in (extensions_path, extensions_path.with_suffix(".json")):
+          if _try_path.exists():
+              ...load file...
+              if routing_rules found: _existing_routing_rules = ...
+          break   ← fires even when file did not exist
+    Fixed:
+      for _try_path in (extensions_path, extensions_path.with_suffix(".json")):
+          if _try_path.exists():
+              ...load file...
+              if routing_rules found: _existing_routing_rules = ...
+              break   ← only fires after successfully reading a file
+  Fix step 2: restore routing_rules in config/harness-prompt-extensions.json
+    Run: git show HEAD~3:config/harness-prompt-extensions.json to get the previous content,
+    then write_file to restore routing_rules. The routing_rules dict should include:
+      "_comment": "Phase 158 — intent-based routing enforcement. Preserved by training_ingest.py on rewrite.",
+      "local_input_token_limit": 8000, "remote_fallback_on_local_busy": true, "force_remote_on_json_complexity": true,
+      "task_matrix": { "codebase_analysis": {...}, "json_generation_heavy": {...}, "long_horizon_planning": {...}, "triage_classification": {...} }
+    (Use git show to get exact content — do not guess values.)
+  Verify: python3 -m py_compile ai-stack/local-agents/training_ingest.py
+          grep -c routing_rules config/harness-prompt-extensions.json
+  Commit: fix(training-ingest): preserve routing_rules when only JSON extension file exists
+
+[DONE] dispatch-timeout-env-undocumented — AGENT_WALL_CLOCK_SECS env var documented in .env.example
+  Fixed by agent commit 73f8102b.
 
 [DONE] aq-agent-loop/doc-drift — module docstring advertised wrong --max-calls default
   Auto-resolved by pre-commit hook during Phase 165 commit (03e5f950). Docstring line 18
