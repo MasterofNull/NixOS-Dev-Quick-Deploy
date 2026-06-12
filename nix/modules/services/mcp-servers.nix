@@ -2573,6 +2573,14 @@ in {
             /sys/fs/cgroup/** r,
             # auto-added by apparmor-fix-agent 2026-06-10
             /dev/tty rw,  # open
+            # ss -tlnp runs inside the inherited coordinator profile during
+            # /qa/check and reads per-process net tables to enumerate listeners.
+            /proc/@{pids}/net/tcp r,
+            /proc/@{pids}/net/tcp6 r,
+            /proc/@{pids}/net/udp r,
+            /proc/@{pids}/net/udp6 r,
+            /proc/@{pids}/net/unix r,
+            /sys/kernel/mm/transparent_hugepage/enabled r,
             deny /home/** wx,
             deny /root/** rwx,
           }
@@ -2703,14 +2711,6 @@ in {
             # Deny writes/exec to home/root; reads allowed for repo above.
             # auto-added by apparmor-fix-agent 2026-05-30
             /proc/@{pids}/comm r,  # /proc/<pid> → @{pids}
-            # ss -tlnp runs inside the inherited coordinator profile during
-            # /qa/check and reads per-process net tables to enumerate listeners.
-            /proc/@{pids}/net/tcp r,
-            /proc/@{pids}/net/tcp6 r,
-            /proc/@{pids}/net/udp r,
-            /proc/@{pids}/net/udp6 r,
-            /proc/@{pids}/net/unix r,
-            /sys/kernel/mm/transparent_hugepage/enabled r,
             /run/log/journal/ r,  # open
             /var/log/journal/ r,  # open
             /proc/sys/kernel/random/boot_id r,  # open
