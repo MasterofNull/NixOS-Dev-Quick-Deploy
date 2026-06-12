@@ -1,36 +1,29 @@
 ## OPEN ISSUES
 
-[OPEN] training-ingest-routing-rules-lost — training_ingest.py drops routing_rules from harness-prompt-extensions.json on rewrite
+[OPEN] training-ingest-routing-rules-lost — training_ingest.py perpetuates routing_rules loss due to non-truthy check
   Severity: medium
-  Root cause: ai-stack/local-agents/training_ingest.py lines 482-495 — the `for _try_path in (yaml_path, json_path)` loop
-  has an unconditional `break` at the END of the loop body (outside the `if _try_path.exists():` block).
-  When the YAML file does not exist, the loop skips the if-body but still hits `break`, exits without
-  ever reading the JSON file, and leaves _existing_routing_rules = {}.
-  File: ai-stack/local-agents/training_ingest.py (line ~495); config/harness-prompt-extensions.json
-  Fix step 1: in training_ingest.py, indent the `break` one level further so it sits inside
-    `if _try_path.exists():` — change from column 8 to column 12.
-    Current (broken):
-      for _try_path in (extensions_path, extensions_path.with_suffix(".json")):
-          if _try_path.exists():
-              ...load file...
-              if routing_rules found: _existing_routing_rules = ...
-          break   ← fires even when file did not exist
-    Fixed:
-      for _try_path in (extensions_path, extensions_path.with_suffix(".json")):
-          if _try_path.exists():
-              ...load file...
-              if routing_rules found: _existing_routing_rules = ...
-              break   ← only fires after successfully reading a file
-  Fix step 2: restore routing_rules in config/harness-prompt-extensions.json
-    Run: git show HEAD~3:config/harness-prompt-extensions.json to get the previous content,
-    then write_file to restore routing_rules. The routing_rules dict should include:
-      "_comment": "Phase 158 — intent-based routing enforcement. Preserved by training_ingest.py on rewrite.",
-      "local_input_token_limit": 8000, "remote_fallback_on_local_busy": true, "force_remote_on_json_complexity": true,
-      "task_matrix": { "codebase_analysis": {...}, "json_generation_heavy": {...}, "long_horizon_planning": {...}, "triage_classification": {...} }
-    (Use git show to get exact content — do not guess values.)
+  Root cause: ai-stack/local-agents/training_ingest.py lines 493-495
+  The break at line 495 is correctly inside `if _try_path.exists():` (col 12), BUT it is outside
+  the inner `if isinstance(_existing, dict) and isinstance(_existing.get("routing_rules"), dict):` check.
+  Result: if YAML exists with routing_rules = {} (empty dict), `isinstance({}, dict)` is True →
+  _existing_routing_rules = {} → break — the empty state is preserved forever.
+  The truthy check is missing: `{}` should NOT match as "routing_rules found".
+  File: ai-stack/local-agents/training_ingest.py (lines 493-495)
+  NOTE: config/harness-prompt-extensions.json and .yaml routing_rules have already been restored
+  to HEAD state by the orchestrator. This fix prevents FUTURE loss only.
+  Fix: Change lines 493-495 in training_ingest.py from:
+      if isinstance(_existing, dict) and isinstance(_existing.get("routing_rules"), dict):
+          _existing_routing_rules = _existing["routing_rules"]
+      break
+    To:
+      if isinstance(_existing, dict) and _existing.get("routing_rules"):
+          _existing_routing_rules = _existing["routing_rules"]
+          break
+    This: (a) adds truthy check so {} (empty) does not match, (b) moves break inside the success
+    branch so the loop tries JSON if YAML has empty/missing routing_rules.
   Verify: python3 -m py_compile ai-stack/local-agents/training_ingest.py
-          grep -c routing_rules config/harness-prompt-extensions.json
-  Commit: fix(training-ingest): preserve routing_rules when only JSON extension file exists
+          grep -c "routing_rules" config/harness-prompt-extensions.json
+  Commit: fix(training-ingest): truthy check prevents perpetuating empty routing_rules on rewrite
 
 [DONE] dispatch-timeout-env-undocumented — AGENT_WALL_CLOCK_SECS env var documented in .env.example
   Fixed by agent commit 73f8102b.
