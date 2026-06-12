@@ -137,6 +137,12 @@ When deploying a new locally hosted model, verify:
 `_call_llama()` now accepts a `max_tokens` parameter (default=512 for backwards compat).
 Import: `from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS`.
 
+### Phase 162C — Fix query_aidb 401: /search/ in LOOPBACK_AGENT_PREFIXES (2026-06-11, requires rebuild)
+
+`query_aidb_handler` posts to coordinator `/search/tree` which was not in `LOOPBACK_AGENT_PREFIXES`.
+Loopback requests without an API key were rejected with `{"error": "unauthorized", "mode": "api-key"}`.
+Fix: added `"/search/"` to `LOOPBACK_AGENT_PREFIXES` in `middleware/auth.py`. Requires nixos-rebuild.
+
 ### Phase 162B — Coordinator git_tools, injectHints, local-first routing (2026-06-11, requires rebuild)
 
 - `ai-stack/local-agents/__init__.py`: `initialize_builtin_tools()` now calls `register_git_tools()` — coordinator MCP protocol exposes git tools.
