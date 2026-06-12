@@ -1031,7 +1031,11 @@ in {
         after = hybridDeps;
         requires = hybridDeps;
         wants = ["network-online.target"];
-        path = [pkgs.nsjail]; # Phase 62.1: nsjail execution sandbox
+        # Phase 62.1: nsjail execution sandbox.
+        # Phase 164.x: qa_check subprocesses invoke plain `python3`; keep them
+        # on the coordinator's packaged Python env so harness checks see the
+        # same deps (httpx/psutil/pyyaml) as the service itself.
+        path = [hybridPython pkgs.nsjail];
         serviceConfig =
           commonServiceConfig
           // {

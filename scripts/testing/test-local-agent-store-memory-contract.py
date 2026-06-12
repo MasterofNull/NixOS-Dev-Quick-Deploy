@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -54,9 +56,22 @@ def main() -> int:
         actual = module.normalize_store_memory_type(raw)
         assert_true(actual == expected, f"alias {raw!r} normalized to {actual!r}, expected {expected!r}")
 
-    registry = module.ToolRegistry()
-    module.register_ai_coordination_tools(registry)
-    store_tool = registry.get_tool("store_memory")
+    with tempfile.TemporaryDirectory() as state_dir:
+        old_state_home = os.environ.get("XDG_STATE_HOME")
+        os.environ["XDG_STATE_HOME"] = state_dir
+        try:
+            registry = module.ToolRegistry()
+            assert_true(
+                str(registry.db_path).startswith(state_dir),
+                "ToolRegistry default audit DB must honor XDG_STATE_HOME",
+            )
+            module.register_ai_coordination_tools(registry)
+            store_tool = registry.get_tool("store_memory")
+        finally:
+            if old_state_home is None:
+                os.environ.pop("XDG_STATE_HOME", None)
+            else:
+                os.environ["XDG_STATE_HOME"] = old_state_home
     assert_true(store_tool is not None, "store_memory tool must be registered")
 
     context_schema = store_tool.parameters["properties"]["context_type"]
