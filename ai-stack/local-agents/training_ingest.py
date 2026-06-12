@@ -512,19 +512,30 @@ def generate_prompt_extensions(
     if not dry_run:
         import os as _os
         extensions_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write via temp file + atomic replace to prevent concurrent write loss
+        # Write via NamedTemporaryFile + atomic replace to prevent concurrent write loss.
+        # Fixed .tmp path (_target.suffix + ".tmp" or ".json.tmp") is unsafe when two
+        # training_ingest processes run concurrently: process B overwrites A's .tmp before
+        # A calls os.replace(), causing A to atomically promote B's partial content.
+        # NamedTemporaryFile in the same directory gets a unique path per process.
+        import tempfile as _tempfile
         try:
             import yaml as _yaml
             _target = extensions_path
-            _tmp = _target.with_suffix(_target.suffix + ".tmp")
-            _tmp.write_text(_yaml.dump(extensions, allow_unicode=True, sort_keys=False))
-            _os.replace(_tmp, _target)
+            with _tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=_target.parent, delete=False, suffix=".tmp"
+            ) as _fh:
+                _fh.write(_yaml.dump(extensions, allow_unicode=True, sort_keys=False))
+                _tmp_path = _fh.name
+            _os.replace(_tmp_path, _target)
         except ImportError:
             import json as _json
             _target = extensions_path.with_suffix(".json")
-            _tmp = _target.with_suffix(".json.tmp")
-            _tmp.write_text(_json.dumps(extensions, indent=2))
-            _os.replace(_tmp, _target)
+            with _tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=_target.parent, delete=False, suffix=".json.tmp"
+            ) as _fh:
+                _fh.write(_json.dumps(extensions, indent=2))
+                _tmp_path = _fh.name
+            _os.replace(_tmp_path, _target)
 
     return {"rules_added": added, "total_rules": len(rules), "file": str(extensions_path)}
 
