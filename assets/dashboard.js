@@ -2580,6 +2580,7 @@ async function loadIntelligence() {
     loadTaskClassifier(),
     loadLogicPatterns(),
     loadLocalInsights(),
+    loadOperatorIntelligence(),
     loadADKStatus(),
     loadRoutingDecisions(),
     loadQueryTraces(),
@@ -2652,6 +2653,76 @@ async function loadLocalInsights() {
   if (previewEl)
     previewEl.textContent =
       preview + (d.content && d.content.length > 400 ? "\n…" : "");
+}
+
+// ─── OPERATOR INTELLIGENCE BRIDGE (OIB) ──────────────────────────────────────
+async function loadOperatorIntelligence() {
+  const d = await apiFetch("/aistack/operator/intelligence", {}, 8000);
+  const el = document.getElementById("oibDetails");
+  const cardsEl = document.getElementById("oibCards");
+  const badge = document.getElementById("oibBadge");
+  if (!el) return;
+
+  if (!d || !d.available) {
+    el.innerHTML = fwRow("Status", "Profile not yet available — run aq-insights", "warn");
+    if (badge) { badge.textContent = "--"; badge.className = "card-badge badge-warn"; }
+    return;
+  }
+
+  // Badge: show surfaced / researched counts
+  const surfaced = d.insight_cards_surfaced || 0;
+  const researched = d.insight_cards_researched || 0;
+  if (badge) {
+    badge.textContent = `${researched}/${surfaced} researched`;
+    badge.className = surfaced > 0 ? "card-badge badge-ok" : "card-badge badge-info";
+  }
+
+  // Specificity trend: last 5 scores rendered as micro-bar
+  const trend = (d.prompt_specificity_trend || []).slice(-5);
+  const trendBar = trend.length
+    ? trend.map(v => {
+        const pct = Math.round((v || 0) * 100);
+        const col = pct >= 60 ? "ok" : pct >= 35 ? "warn" : "err";
+        return `<span class="fv ${col}" style="margin-right:.15rem">${pct}%</span>`;
+      }).join("")
+    : '<span style="color:var(--fg3)">no data</span>';
+
+  // Chilling effect
+  const ce = d.chilling_effect_alerts || 0;
+  const ceCls = ce > 0 ? "err" : "ok";
+
+  el.innerHTML =
+    fwRow("Sessions", String(d.session_count || 0), "info") +
+    fwRow("Cards Surfaced", String(surfaced), surfaced > 0 ? "info" : "warn") +
+    fwRow("Cards Researched", String(researched), researched > 0 ? "ok" : "warn") +
+    fwRow("Chilling Alerts", String(ce), ceCls) +
+    `<div class="fw-row"><span class="fk">Specificity (last 5)</span><span class="fv">${trendBar}</span></div>` +
+    (d.last_updated ? fwRow("Updated", d.last_updated.replace("T", " ").slice(0, 16) + " UTC", "info") : "");
+
+  // Domain engagement table
+  const domains = d.domains_engaged || {};
+  const domainKeys = Object.keys(domains);
+  if (cardsEl && domainKeys.length > 0) {
+    const rows = domainKeys.map(k => {
+      const cnt = domains[k] || 0;
+      const cls = cnt >= 3 ? "ok" : cnt >= 1 ? "warn" : "err";
+      return `<tr><td style="color:var(--fg2)">${k}</td><td class="fv ${cls}" style="text-align:right">${cnt} sessions</td></tr>`;
+    }).join("");
+    cardsEl.innerHTML =
+      `<div style="font-size:.58rem;color:var(--fg3);margin-bottom:.25rem;text-transform:uppercase;letter-spacing:.08em">Domain Engagement</div>` +
+      `<table style="width:100%;font-size:.58rem;border-collapse:collapse"><tbody>${rows}</tbody></table>`;
+  } else if (cardsEl) {
+    cardsEl.innerHTML = "";
+  }
+
+  // Open research threads
+  const threads = d.open_research_threads || [];
+  if (threads.length > 0 && cardsEl) {
+    const threadHtml = threads.slice(0, 3).map(t =>
+      `<div style="padding:.2rem .35rem;margin-top:.2rem;background:rgba(255,255,255,.03);border-radius:3px;font-size:.56rem;color:var(--fg2)">▶ ${t}</div>`
+    ).join("");
+    cardsEl.innerHTML += `<div style="margin-top:.4rem;font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em">Open Research</div>${threadHtml}`;
+  }
 }
 
 // ─── INTELLIGENCE: QUERY TRACES ──────────────────────────────────────────────
