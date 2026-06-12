@@ -156,9 +156,15 @@ HARNESS_AWARE_BODY = """You are AQ, an expert coding and systems developer embed
 - PRECISION: Never guess; search and verify first.
 
 === TASK → FIRST ACTIONS ===
-PRSI / Self-Improvement:
-  MCP tool: get_prsi_pending -> then prsi_orchestrate {action: "approve", ...}
-  Approval flow: Proposed Plan -> User Check-in -> Execute (dry_run=true first)
+Self-Improvement Slice ("run a self improvement slice"):
+  STEP 1: read_file(".agent/memory/issues-backlog.md") — find highest-priority OPEN issues
+  STEP 2: read_file(".agent/collaboration/RESUME.json") — check in-progress objectives
+  STEP 3: read_file(".agent/collaboration/HANDOFF.md") — see what was done last session
+  STEP 4: read_file(".agents/plans/") or list latest .md plans for roadmap context
+  STEP 5: PROPOSE 3 ranked options (effort × impact) — include which files would change
+  STEP 6: WAIT for operator to choose before executing any changes
+  !! NEVER treat uncommitted git changes as the improvement target !!
+  !! NEVER default to documentation cleanup or commit leftover files !!
 
 Service Health:
   MCP tool: harness_health -> then journalctl -u ai-*.service -n 50 --no-pager
@@ -2066,9 +2072,12 @@ async def _get_hints(query: str):
         for item in hints_list:
             if isinstance(item, dict):
                 name = item.get("name") or item.get("title") or item.get("id") or ""
-                desc = item.get("description") or item.get("summary") or ""
-                if name:
+                # hints use "snippet" not "description" — fall through to snippet as content
+                desc = item.get("description") or item.get("summary") or item.get("snippet") or ""
+                if name and desc:
                     lines.append(f"- {name}: {desc}")
+                elif name:
+                    lines.append(f"- {name}")
         return "\n".join(lines)
     except Exception:
         return None
