@@ -12,6 +12,8 @@ MONITORING = ROOT / "nix" / "modules" / "services" / "monitoring.nix"
 MCP_SERVERS = ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
 AUTO_REMEDIATE = ROOT / "scripts" / "automation" / "auto-remediate.sh"
 HEALTH_SPIDER = ROOT / "scripts" / "ai" / "aq-health-spider"
+AQ_APPROVE = ROOT / "scripts" / "ai" / "aq-approve"
+APPARMOR_FIX_AGENT = ROOT / "scripts" / "automation" / "apparmor-fix-agent.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -27,6 +29,8 @@ def main() -> int:
     mcp_servers_text = MCP_SERVERS.read_text(encoding="utf-8")
     auto_remediate_text = AUTO_REMEDIATE.read_text(encoding="utf-8")
     health_spider_text = HEALTH_SPIDER.read_text(encoding="utf-8")
+    aq_approve_text = AQ_APPROVE.read_text(encoding="utf-8")
+    apparmor_fix_text = APPARMOR_FIX_AGENT.read_text(encoding="utf-8")
     switchboard_text = (ROOT / "ai-stack" / "switchboard" / "switchboard.py").read_text(encoding="utf-8")
     qa_runner_text = (ROOT / "dashboard" / "backend" / "api" / "services" / "qa_runner.py").read_text(encoding="utf-8")
 
@@ -193,6 +197,16 @@ def main() -> int:
         and "stdout={stdout_text[:300]}" in qa_runner_text
         and "aq-qa exited {proc.returncode}{detail}" in qa_runner_text,
         "dashboard qa_runner should preserve stdout/stderr snippets for unexpected aq-qa exits",
+    )
+    assert_true(
+        "def _apparmor_rules_already_present" in aq_approve_text
+        and "Proposed AppArmor rule(s) already present" in aq_approve_text,
+        "aq-approve should resolve AppArmor alerts when proposed rules are already committed",
+    )
+    assert_true(
+        "git\", \"-C\", str(REPO_ROOT), \"check-ignore\", \"-q\"" in apparmor_fix_text
+        and "paths.append(HANDOFF_MD.relative_to(REPO_ROOT))" in apparmor_fix_text,
+        "apparmor-fix-agent should not force-add ignored HANDOFF.md during commits",
     )
 
     print("PASS: boot stability regressions are covered")

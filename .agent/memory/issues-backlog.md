@@ -385,3 +385,8 @@
   Severity: medium
   Action: Added `faithfulness_sample_count` to global and per-model RAGAS trend output, rendered faithfulness as `N/A` when no faithfulness samples exist, and made health-spider alert on enabled scoring with `faithfulness_sample_count=0`.
   File: ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py; assets/dashboard.js; scripts/ai/aq-health-spider; scripts/testing/test-ragas-faithfulness-guard.py
+
+[DONE] aq-approve-apparmor-already-committed — approving an AppArmor alert after manually committing the proposed rule failed instead of resolving the alert — Root cause: `aq-approve` always delegated to `apparmor-fix-agent --commit-staged`, and the fixer tried to `git add` ignored `.agent/collaboration/HANDOFF.md`, violating the local-artifact ignore policy.
+  Severity: medium
+  Action: `aq-approve` now resolves AppArmor alerts when all proposed rules are already present in `mcp-servers.nix`; `apparmor-fix-agent` only stages `HANDOFF.md` when it is not ignored or is already tracked.
+  File: scripts/ai/aq-approve; scripts/automation/apparmor-fix-agent.py; scripts/testing/test-boot-stability-regressions.py

@@ -285,12 +285,26 @@ def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> b
 # ── Git helpers ────────────────────────────────────────────────────────────────
 
 def _git_commit(message: str) -> Optional[str]:
-    """Stage mcp-servers.nix + HANDOFF.md and commit. Returns short hash or None."""
+    """Stage tracked AppArmor changes and commit. Returns short hash or None."""
+    paths = [NIX_FILE.relative_to(REPO_ROOT)]
+    try:
+        ignored = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", str(HANDOFF_MD.relative_to(REPO_ROOT))],
+            check=False,
+        )
+        tracked = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "--error-unmatch", str(HANDOFF_MD.relative_to(REPO_ROOT))],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if ignored.returncode != 0 or tracked.returncode == 0:
+            paths.append(HANDOFF_MD.relative_to(REPO_ROOT))
+    except Exception:
+        pass
     try:
         subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "add",
-             str(NIX_FILE.relative_to(REPO_ROOT)),
-             str(HANDOFF_MD.relative_to(REPO_ROOT))],
+            ["git", "-C", str(REPO_ROOT), "add", *[str(path) for path in paths]],
             check=True, capture_output=True,
         )
         subprocess.run(
