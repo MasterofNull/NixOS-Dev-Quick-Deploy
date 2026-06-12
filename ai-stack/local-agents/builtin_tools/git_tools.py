@@ -6,10 +6,11 @@ Provides safe git operations for the local agent coding loop:
 - git_status: Show working tree status
 - git_diff: Show unstaged or staged diff
 - git_add: Stage specific files for commit
+- git_commit: Commit staged files with Co-Authored-By injected automatically
 - validate_before_commit: Run tier0-validation-gate.sh before committing
 
-All tools enforce repo-boundary safety. git_add is WRITE_SAFE (staged changes only).
-No tool performs a git commit — the human orchestrator reviews and commits.
+All tools enforce repo-boundary safety. git_add/git_commit are WRITE_SAFE.
+git_commit automatically appends Co-Authored-By: AQ <noreply@harness.local>.
 
 Part of Phase 32: Local Agent Coding Loop
 """
@@ -175,6 +176,43 @@ async def git_add_handler(files: List[str]) -> Dict:
     }
 
 
+async def git_commit_handler(message: str) -> Dict:
+    """
+    Commit staged files with a formatted commit message.
+
+    Automatically appends:
+        Co-Authored-By: AQ <noreply@harness.local>
+
+    Args:
+        message: Commit subject + optional body (without Co-Authored-By).
+                 Use format: 'type(scope): description'
+
+    Returns:
+        {
+            "success": bool,
+            "message": str,   # full message used (with Co-Authored-By appended)
+            "stdout": str,
+            "error": str (if failed)
+        }
+    """
+    if not message or not message.strip():
+        return {"success": False, "error": "message is required"}
+
+    full_message = message.strip() + "\n\nCo-Authored-By: AQ <noreply@harness.local>"
+    result = _run_git(["commit", "-m", full_message], timeout=30)
+    if result.get("success"):
+        return {
+            "success": True,
+            "message": full_message,
+            "stdout": result.get("stdout", ""),
+        }
+    return {
+        "success": False,
+        "error": result.get("stderr") or result.get("error") or "git commit failed",
+        "stdout": result.get("stdout", ""),
+    }
+
+
 async def validate_before_commit_handler() -> Dict:
     """
     Run the tier0 validation gate before committing.
@@ -309,6 +347,29 @@ def register_git_tools(registry) -> None:
     ))
 
     registry.register(ToolDefinition(
+        name="git_commit",
+        description=(
+            "Commit staged files. Co-Authored-By is added automatically. "
+            "ONLY call after git_add succeeds. "
+            "message format: 'type(scope): description' — single line, no Co-Authored-By needed."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Commit message in 'type(scope): description' format.",
+                },
+            },
+            "required": ["message"],
+        },
+        category=ToolCategory.SHELL,
+        safety_policy=SafetyPolicy.WRITE_SAFE,
+        handler=git_commit_handler,
+        requires_confirmation=False,
+    ))
+
+    registry.register(ToolDefinition(
         name="validate_before_commit",
         description=(
             "Run scripts/governance/tier0-validation-gate.sh --pre-commit. "
@@ -321,4 +382,4 @@ def register_git_tools(registry) -> None:
         handler=validate_before_commit_handler,
     ))
 
-    logger.info("Registered 4 git tools: git_status, git_diff, git_add, validate_before_commit")
+    logger.info("Registered 5 git tools: git_status, git_diff, git_add, git_commit, validate_before_commit")
