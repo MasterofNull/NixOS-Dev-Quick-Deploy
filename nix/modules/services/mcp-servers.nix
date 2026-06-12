@@ -2483,6 +2483,16 @@ in {
             /nix/store/**/bin/tr    ix,
             /nix/store/**/bin/cut   ix,
             /nix/store/**/bin/echo  ix,
+            # Phase 163 — aq-qa phase 0 probes executed through /qa/check.
+            # These must inherit the coordinator profile because NoNewPrivileges=true
+            # prevents profile transitions. Without the explicit exec rules, denied
+            # subprocesses can abort _aq-qa-bash before it emits machine JSON.
+            /nix/store/**/bin/ss        ix,
+            /nix/store/**/bin/psql      ix,
+            /nix/store/**/bin/redis-cli ix,
+            /nix/store/**/bin/getent    ix,
+            ${mcp.repoPath}/scripts/ai/aqd ix,
+            ${mcp.repoPath}/scripts/ai/aq-alerts ix,
             /run/current-system/sw/bin/jq  ix,
             /run/current-system/sw/** r,
             /run/current-system/sw/**/*.so* mr,

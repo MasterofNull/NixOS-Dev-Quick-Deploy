@@ -890,13 +890,17 @@ except Exception as e:
     aqd_ok=false; _aqd_missing+=("aqd(not-executable)")
   else
     local aqd_ver
-    aqd_ver=$("$aqd_bin" --version 2>/dev/null | grep -oP '[\d.]+' | head -1)
-    # Require v0.4.0+ for run subcommand group
-    python3 -c "
+    aqd_ver="$("$aqd_bin" --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || true)"
+    if [[ -z "$aqd_ver" ]]; then
+      aqd_ok=false; _aqd_missing+=("aqd(version-unavailable)")
+    else
+      # Require v0.4.0+ for run subcommand group
+      python3 -c "
 v='${aqd_ver}'
 parts = [int(x) for x in v.split('.')]
 assert parts >= [0,4,0], f'aqd version {v} < 0.4.0'
 " 2>/dev/null || { aqd_ok=false; _aqd_missing+=("aqd(version<0.4.0:${aqd_ver})"); }
+    fi
     for subcmd in "run:plan" "run:execute" "run:replay" "run:review" "run:status" "run:budget"; do
       grep -q "^    ${subcmd})" "$aqd_bin" 2>/dev/null \
         || { aqd_ok=false; _aqd_missing+=("aqd-${subcmd}"); }

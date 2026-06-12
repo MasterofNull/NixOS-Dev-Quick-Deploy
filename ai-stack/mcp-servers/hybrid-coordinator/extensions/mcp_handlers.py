@@ -274,12 +274,19 @@ async def run_qa_check_as_dict(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "stderr": stderr_text or None,
     }
     if output_format == "json":
-        try:
-            result["qa_result"] = json.loads(stdout_text or "{}")
-        except json.JSONDecodeError as exc:
+        if not stdout_text:
             result["status"] = "error"
-            result["parse_error"] = str(exc)
+            result["parse_error"] = "aq-qa produced empty stdout"
             result["stdout"] = stdout_text
+            result["qa_result"] = {}
+        else:
+            try:
+                result["qa_result"] = json.loads(stdout_text)
+            except json.JSONDecodeError as exc:
+                result["status"] = "error"
+                result["parse_error"] = str(exc)
+                result["stdout"] = stdout_text
+                result["qa_result"] = {}
     return result
 
 

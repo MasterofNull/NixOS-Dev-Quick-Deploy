@@ -43,6 +43,17 @@ sys.modules.setdefault(
     types.SimpleNamespace(write_audit_entry=lambda *a, **k: None),
 )
 sys.modules.setdefault(
+    "shared.circuit_breaker",
+    types.SimpleNamespace(
+        CircuitBreakerRegistry=lambda *a, **k: types.SimpleNamespace(),
+        CircuitBreakerOpenError=RuntimeError,
+    ),
+)
+sys.modules.setdefault(
+    "shared.retry_backoff",
+    types.SimpleNamespace(retry_with_backoff=lambda *a, **k: (lambda fn: fn)),
+)
+sys.modules.setdefault(
     "tooling_manifest",
     types.SimpleNamespace(
         build_tooling_manifest=lambda: {},
@@ -212,6 +223,34 @@ class TestRunQaCheckAsDict:
             asyncio.run(
                 mcp_handlers.run_qa_check_as_dict({"phase": "0", "format": "json"})
             )
+
+    def test_json_empty_stdout_reports_parse_error(self, tmp_path, monkeypatch):
+        import extensions.mcp_handlers as ext
+
+        qa_script = tmp_path / "aq-qa"
+        qa_script.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+
+        class FakeProc:
+            returncode = 1
+
+            async def communicate(self):
+                return b"", b""
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            return FakeProc()
+
+        monkeypatch.setattr(ext, "_AQ_QA_SCRIPT", qa_script)
+        monkeypatch.setattr(ext, "_resolve_bash_binary", lambda: "/bin/bash")
+        monkeypatch.setattr(ext.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+        result = asyncio.run(
+            mcp_handlers.run_qa_check_as_dict({"phase": "0", "format": "json"})
+        )
+
+        assert result["status"] == "error"
+        assert result["parse_error"] == "aq-qa produced empty stdout"
+        assert result["stdout"] == ""
+        assert result["qa_result"] == {}
 
 
 # ---------------------------------------------------------------------------
