@@ -457,7 +457,7 @@ def register_file_tools(registry: ToolRegistry):
         category=ToolCategory.FILE_OPS,
         safety_policy=SafetyPolicy.WRITE_SAFE,
         handler=write_file_handler,
-        requires_confirmation=True,  # Require confirmation for writes
+        requires_confirmation=False,  # Agent loop is autonomous; git review is the safety gate
     ))
 
     # list_files

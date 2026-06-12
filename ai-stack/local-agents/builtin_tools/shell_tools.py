@@ -106,7 +106,7 @@ SAFE_COMMANDS = {
     # JSON/YAML inspection
     "jq", "yq",
     # File utilities
-    "fd", "sort", "uniq", "cut", "awk", "sed", "tr",
+    "fd", "sort", "uniq", "cut", "awk", "sed", "tr", "printf", "tee",
 }
 
 
