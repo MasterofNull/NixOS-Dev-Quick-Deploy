@@ -163,14 +163,13 @@ Self-Improvement Slice ("run a self improvement slice" / "execute a self improve
     read_file(".agent/collaboration/HANDOFF.md")           → last-session context
     read_file(".agents/plans/<latest>.md") if relevant     → roadmap context
   IDENTIFY  — select the single highest-impact, clearly-scoped item; read all affected files
-  PROPOSE   — present ONE best option: target issue, change summary, effort estimate, validation plan
-              WAIT for operator approval — do NOT touch any file until approved
-  IMPLEMENT — [after approval] make the changes using write_file / run_command; one issue, no scope-creep
+  ANNOUNCE  — state in ONE sentence what issue you are fixing, then implement immediately
+  IMPLEMENT — make the changes using write_file / run_command; one issue, no scope-creep
   VALIDATE  — run_command("scripts/governance/tier0-validation-gate.sh --pre-commit")
               run_command("aq-qa 0") if runtime behavior changed; fix failures before commit
   SUBMIT    — git add <specific files>; git commit -m "type(scope): …\n\nCo-Authored-By: AQ <noreply@harness.local>"
               report what was done, what passed validation, and what to review
-  !! NEVER skip the proposal+approval step — always get operator go-ahead before touching files !!
+  !! EXECUTE all steps — do NOT stop to wait for approval !!
   !! NEVER treat uncommitted git changes or git status as the improvement target !!
   !! Fix ONE issue per slice — no bundling, no scope-creep !!
 
@@ -226,13 +225,29 @@ Use the configured remote tool-calling lane for bounded tool use with strict arg
 Prefer minimal tool schemas, explicit constraints, and concise final output.
 """
 
-LOCAL_TOOL_CALLING_CARD = """[profile-card:local-tool-calling]
+LOCAL_TOOL_CALLING_CARD = """/no_think
+[profile-card:local-tool-calling]
 Use the local tool-calling lane for bounded built-in tool execution on the local host.
 The runtime leases a small active tool set; use the leased tools for evidence, then synthesize.
 For broad analysis, gather only the strongest 2-4 evidence points before answering.
 Use lease_tools to swap to a different active bundle when the current leased tools are the wrong fit.
 Preserve strict tool schemas, prefer concise execution, and surface tool failures explicitly.
 CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
+
+=== SELF-IMPROVEMENT SLICE ===
+When asked to run a self-improvement slice or execute a slice:
+  RESEARCH  — read_file('.agent/memory/issues-backlog.md') → highest-priority OPEN issue
+              read_file('.agent/collaboration/RESUME.json') + HANDOFF.md for context
+  ANNOUNCE  — state in ONE sentence what issue you are fixing (do not wait for approval)
+  IMPLEMENT — write_file / run_command to make the fix; one issue, no scope-creep
+  VALIDATE  — run_command('scripts/governance/tier0-validation-gate.sh --pre-commit')
+              run_command('aq-qa 0') if runtime behavior changed; fix any failures
+  COMMIT    — git add <specific files> then git commit:
+              type(scope): description\n\nCo-Authored-By: AQ <noreply@harness.local>
+  REPORT    — what changed, what passed, what the reviewer should check
+  !! EXECUTE all steps in sequence — do NOT stop to wait for approval !!
+  !! NEVER treat git diff / uncommitted changes as the improvement target !!
+  !! Fix ONE issue per slice — no bundling !!
 """
 
 EMBEDDING_LOCAL_CARD = """[profile-card:embedding-local]
