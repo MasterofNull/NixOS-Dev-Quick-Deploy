@@ -535,6 +535,85 @@ class LocalAgentExecutor:
         # Tool use loop
         tool_call_count = 0
         total_tokens = 0
+        _loop_start = time.time()
+
+        # Observability: progress sidecar path (set by aq-agent-loop via env var).
+        # Updated after every tool call so dashboards and `dispatch.py watch` can
+        # read current state without waiting for the final JSON output.
+        _progress_file = os.getenv("AGENT_PROGRESS_FILE")
+        _steps_file = os.getenv("AGENT_STEPS_FILE")
+
+        def _emit_step_telemetry(tc_result, call_number: int, prose_before: str) -> None:
+            """Write per-tool-call telemetry to all three observability surfaces."""
+            ts = datetime.utcnow().isoformat() + "Z"
+            elapsed = time.time() - _loop_start
+
+            # 1. hybrid-events.jsonl — feeds dashboard + training_ingest
+            if _HYBRID_EVENTS.parent.exists():
+                try:
+                    events = []
+                    if prose_before.strip():
+                        events.append(json.dumps({
+                            "event_type": "agent_thinking",
+                            "timestamp": ts,
+                            "task_id": task.id,
+                            "session_id": task.id,
+                            "tool_call_number": call_number,
+                            "thinking": prose_before[:500],
+                            "model": os.getenv("LLAMA_MODEL_NAME", "local"),
+                        }))
+                    events.append(json.dumps({
+                        "event_type": "agent_tool_call",
+                        "timestamp": ts,
+                        "task_id": task.id,
+                        "session_id": task.id,
+                        "tool_name": tc_result.tool_name,
+                        "tool_call_number": call_number,
+                        "success": tc_result.status == "completed",
+                        "execution_time_ms": tc_result.execution_time_ms,
+                        "error": tc_result.error,
+                        "elapsed_s": round(elapsed, 1),
+                        "objective_preview": task.objective[:120],
+                        "model": os.getenv("LLAMA_MODEL_NAME", "local"),
+                    }))
+                    with open(_HYBRID_EVENTS, "a", encoding="utf-8") as _hef:
+                        _hef.write("\n".join(events) + "\n")
+                except Exception:
+                    pass
+
+            # 2. Progress sidecar — single JSON, overwritten each step
+            if _progress_file:
+                try:
+                    Path(_progress_file).write_text(json.dumps({
+                        "task_id": task.id,
+                        "status": "running",
+                        "tool_call_count": call_number,
+                        "last_tool": tc_result.tool_name,
+                        "last_tool_success": tc_result.status == "completed",
+                        "last_tool_ms": round(tc_result.execution_time_ms or 0, 1),
+                        "last_error": tc_result.error,
+                        "elapsed_s": round(elapsed, 1),
+                        "objective_preview": task.objective[:120],
+                        "timestamp": ts,
+                    }, indent=2))
+                except Exception:
+                    pass
+
+            # 3. Steps JSONL — append-only, one line per step, for streaming tail
+            if _steps_file:
+                try:
+                    with open(_steps_file, "a", encoding="utf-8") as _sf:
+                        _sf.write(json.dumps({
+                            "step": call_number,
+                            "tool": tc_result.tool_name,
+                            "ok": tc_result.status == "completed",
+                            "ms": round(tc_result.execution_time_ms or 0),
+                            "elapsed_s": round(elapsed, 1),
+                            "ts": ts,
+                            "error": tc_result.error,
+                        }) + "\n")
+                except Exception:
+                    pass
 
         while tool_call_count < max_tool_calls:
             # Context guard: prune oldest assistant+tool pairs when history is large.
@@ -594,6 +673,14 @@ class LocalAgentExecutor:
             if brace == -1:
                 brace = response.rfind("{")
             clean_call = response[brace:].strip() if brace != -1 else response.strip()
+
+            # Capture prose before the tool call JSON (model's reasoning/thinking).
+            # This is the text the model emitted BEFORE the structured tool call —
+            # the "thinking aloud" surface that would otherwise be invisible.
+            prose_before = response[:brace].strip() if brace > 0 else ""
+
+            # Emit per-step telemetry to all observability surfaces (non-blocking).
+            _emit_step_telemetry(result, tool_call_count, prose_before)
 
             messages.append({
                 "role": "assistant",

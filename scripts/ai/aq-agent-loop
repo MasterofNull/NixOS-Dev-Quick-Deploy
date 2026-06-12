@@ -106,6 +106,21 @@ async def run_task(
     # Prevents abandoned-connection slot locks (4096 tokens @ 1-2 tok/s = 34-68 min).
     os.environ["LLAMA_MAX_TOKENS"] = os.environ.get("LLAMA_MAX_TOKENS", "512")
 
+    # Observability: wire sidecar paths so agent_executor can stream per-step
+    # telemetry without knowing the output file path.
+    # - AGENT_PROGRESS_FILE: single-JSON state, overwritten after each tool call.
+    #   Read by dashboards and dispatch.py watch for live status.
+    # - AGENT_STEPS_FILE: append-only JSONL, one line per tool call.
+    #   `tail -f <steps_file>` gives real-time tool call stream during execution.
+    if output_file:
+        os.environ["AGENT_PROGRESS_FILE"] = f"{output_file}.progress.json"
+        os.environ["AGENT_STEPS_FILE"] = f"{output_file}.steps.jsonl"
+    else:
+        import tempfile as _tf
+        _tmp_base = _tf.mktemp(prefix="aq-agent-", suffix=".tmp")
+        os.environ["AGENT_PROGRESS_FILE"] = f"{_tmp_base}.progress.json"
+        os.environ["AGENT_STEPS_FILE"] = f"{_tmp_base}.steps.jsonl"
+
     registry = build_registry()
 
     executor = LocalAgentExecutor(
@@ -165,7 +180,25 @@ async def run_task(
     if output_file:
         Path(output_file).write_text(json.dumps(summary, indent=2, default=str))
         print(f"[aq-agent-loop] Summary written to: {output_file}")
-    else:
+
+    # Update progress sidecar to final state so dashboards show completion, not "running".
+    _progress_path = os.environ.get("AGENT_PROGRESS_FILE")
+    if _progress_path:
+        try:
+            Path(_progress_path).write_text(json.dumps({
+                "task_id": summary["task_id"],
+                "status": summary["status"],
+                "success": summary["success"],
+                "tool_call_count": len(summary["tool_calls"]),
+                "elapsed_s": summary["elapsed_seconds"],
+                "result_preview": (summary["result"] or "")[:200],
+                "error": summary["error"],
+                "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            }, indent=2))
+        except Exception:
+            pass
+
+    if not output_file:
         print(f"[aq-agent-loop] (Use --output FILE to save JSON summary)")
 
     return 0 if success else 1
