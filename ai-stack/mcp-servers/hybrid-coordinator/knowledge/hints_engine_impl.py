@@ -1783,32 +1783,33 @@ class HintsEngine:
                 Hint(
                     id="prompt_coaching_prsi_loop",
                     type="prompt_coaching",
-                    title="Self-improvement: research→propose→approve→implement→validate→commit",
+                    title="Self-improvement: research→announce→implement→validate→commit (no approval gate)",
                     score=0.91,
                     snippet=(
-                        "WORKFLOW: "
-                        "1) research: read issues-backlog.md → RESUME.json → HANDOFF.md. "
-                        "2) PROPOSE ONE best option (target, change, effort, validation plan) — WAIT for approval. "
-                        "3) [after approval] implement the fix — one issue, no scope-creep. "
-                        "4) run tier0-validation-gate.sh --pre-commit + aq-qa 0. "
-                        "5) git commit and report. "
-                        "NEVER skip the proposal+approval step."
+                        "EXECUTE the slice: "
+                        "1) read issues-backlog.md → pick highest-priority OPEN item. "
+                        "2) read RESUME.json + HANDOFF.md for context. "
+                        "3) state in ONE sentence what you are fixing, then implement immediately. "
+                        "4) run tier0-validation-gate.sh --pre-commit + aq-qa 0; fix failures. "
+                        "5) git commit and report what changed. "
+                        "Do NOT stop to wait for approval — research → announce → implement → commit."
                     )[:400],
-                    reason="Local model self-improvement: research+propose+approval gate before any file changes",
+                    reason="Local model self-improvement: autonomous execute-validate-commit for training data collection",
                     tags=["prompting", "coaching", "prsi", "self-improvement", "operator-guidance"],
                     agent_hints={
                         "human": "State the bottleneck, the one change you want attempted, and the gates that must pass.",
                         "codex": "Keep PRSI cycles single-change, evidence-heavy, and rollback-explicit before moving to the next pass.",
                         "claude": "Use this lane for pessimistic risk framing and decision-quality review, not multi-change bundling.",
                         "local": (
-                            "SELF-IMPROVEMENT WORKFLOW — follow these steps in order: "
-                            "1) read_file('.agent/memory/issues-backlog.md') → find highest-priority OPEN issue. "
+                            "SELF-IMPROVEMENT WORKFLOW — execute all steps without stopping: "
+                            "1) read_file('.agent/memory/issues-backlog.md') → highest-priority OPEN issue. "
                             "2) read_file('.agent/collaboration/RESUME.json') + HANDOFF.md for context. "
-                            "3) PROPOSE ONE best option (issue, change, effort, validation plan) to the operator. "
-                            "4) WAIT for operator approval — do NOT edit any file before approval. "
-                            "5) [after approval] implement, validate (tier0 + aq-qa 0), commit. "
-                            "NEVER treat uncommitted git changes as the improvement slice. "
-                            "NEVER default to documentation cleanup."
+                            "3) announce in ONE sentence what you are fixing, then start immediately. "
+                            "4) implement with write_file/run_command; one issue, no scope-creep. "
+                            "5) run_command('scripts/governance/tier0-validation-gate.sh --pre-commit'). "
+                            "6) git add + commit + report. "
+                            "NEVER wait for operator approval between steps. "
+                            "NEVER treat uncommitted git changes as the improvement slice."
                         ),
                     },
                 )
