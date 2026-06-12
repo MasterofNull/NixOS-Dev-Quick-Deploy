@@ -24,6 +24,30 @@
   Files: scripts/ai/lib/dispatch.py, ai-stack/local-agents/agent_executor.py
   Identified: 2026-06-12 by analyzing llama.cpp slot print_timing logs during iter 9.
 
+[DONE] agent-context-pinned-sliding — "last 2 pairs" context strategy dropped initial discovery by step 5-6
+  Gemini FAIL verdict (2026-06-12 architectural review): reducing context to system+user+last-2-pairs was too
+  aggressive. By step 5-6, the model had lost the initial grep output (which issue to fix), causing it to read
+  the backlog file again → extra tool call, context refill, potentially triggering stagnation loop.
+  Root cause: messages[:2] + messages[-4:] discards messages[2:3] = first assistant call + first tool result.
+  Those contain the grep discovery that anchors the entire slice.
+  Fix (agent_executor.py _execute_with_tools): Replace with "Pinned + Sliding" strategy:
+    PINNED  = messages[0:4]  — system + user + first_assistant_call + first_tool_result (task anchor)
+    SLIDING = messages[-4:]  — last 2 assistant+tool pairs (most recent work)
+    Trigger: _ctx_chars > 12000 AND len(messages) > 8. Fallback shed-oldest-pair for len 6-8.
+  Impact: model retains which issue it targets across all steps; no re-reads of already-seen content.
+  File: ai-stack/local-agents/agent_executor.py (_execute_with_tools, Pinned+Sliding block)
+  Commit: feat(agents): pinned+sliding context + stagnation detection
+
+[DONE] agent-stagnation-detection — no guard against runaway same-tool loops in agent_executor
+  Root cause: agent could call read_file or run_command 20+ times with identical result (e.g. after context
+  pruning dropped the tool result, model re-reads the same file in a tight loop). No detection, no early exit.
+  Gemini recommendation (2026-06-12): terminate if same tool called 3 consecutive times with no state change.
+  Fix (agent_executor.py _execute_with_tools): _recent_tools list tracks (tool_name, result[:200]) for last 3
+  calls. If all 3 have same tool name AND same result prefix, logger.warning and return stagnation_msg early.
+  This prevents burning max_tool_calls budget and the 3-hour wall-clock on a stuck loop.
+  File: ai-stack/local-agents/agent_executor.py (_execute_with_tools, stagnation detection block)
+  Commit: feat(agents): pinned+sliding context + stagnation detection
+
 [OPEN] training-ingest-routing-rules-lost — training_ingest.py perpetuates routing_rules loss due to non-truthy check
   Severity: medium
   Root cause: ai-stack/local-agents/training_ingest.py lines 493-495

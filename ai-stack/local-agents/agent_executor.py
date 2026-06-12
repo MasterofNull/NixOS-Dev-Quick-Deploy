@@ -544,6 +544,11 @@ class LocalAgentExecutor:
         total_tokens = 0
         _loop_start = time.time()
 
+        # Stagnation guard: track (tool_name, result_prefix) for last 3 calls.
+        # If all three are identical, the model is stuck — abort with a degraded result
+        # rather than burning the full budget on a runaway loop.
+        _recent_tools: list = []
+
         # Observability: progress sidecar path (set by aq-agent-loop via env var).
         # Updated after every tool call so dashboards and `dispatch.py watch` can
         # read current state without waiting for the final JSON output.
@@ -623,19 +628,36 @@ class LocalAgentExecutor:
                     pass
 
         while tool_call_count < max_tool_calls:
-            # Context guard: keep context under ~3000 tokens so prefill stays < 6 min
-            # on the Renoir APU (10 tok/s batch prefill rate, n_ctx=8192).
-            # Qwen3-35B forces full re-prefill on every call (no KV cache reuse across
-            # turns due to SWA architecture), so context size directly drives latency.
-            # Strategy: retain system[0] + user[1] + last 2 tool pairs (4 msgs) = max 6.
-            # This gives ~3200 tokens worst-case, keeping per-call prefill under 5 min.
+            # Context guard — Pinned + Sliding strategy:
+            # Qwen3-35B SWA forces full re-prefill on every call (no KV cache reuse
+            # across turns). At 10 tok/s prefill on Renoir APU, 7k tokens = ~12 min/call.
+            # Target: keep context under ~3000 tokens (~12000 chars at 4 chars/tok).
+            #
+            # Strategy (avoids the "last-N-pairs" failure mode where the model loses
+            # its initial discovery — e.g. which issue to fix — by step 5-6):
+            #   PINNED  = messages[0:4]  — system + user + first call + first result
+            #             These hold the task objective and initial grep/discovery output.
+            #   SLIDING = messages[-4:]  — last 2 assistant+tool pairs (most recent work)
+            #   Combined = PINNED + SLIDING when len(messages) > 8.
+            #   When len ≤ 8, all messages fit; no pruning needed.
             _CTX_CHAR_BUDGET = 12000  # ~3000 tokens (4 chars/tok)
             _ctx_chars = sum(len(str(m.get("content", ""))) for m in messages)
-            if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 6:
-                # Retain system+user (2 msgs) + last 2 assistant+tool pairs (4 msgs).
-                tail = messages[max(2, len(messages) - 4):]
-                messages = messages[:2] + tail
-                logger.debug("context_prune: kept system+user+last-2-pairs, messages now %d", len(messages))
+            if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 8:
+                pinned = messages[:4]   # system + user + first_assistant + first_tool
+                sliding = messages[-4:]  # last 2 assistant+tool pairs
+                # Guard: if the two windows overlap (8 < len < 8), deduplicate.
+                overlap = len(pinned) + len(sliding) - len(messages)
+                if overlap > 0:
+                    sliding = sliding[overlap:]
+                messages = pinned + sliding
+                logger.debug(
+                    "context_prune(pinned+sliding): pinned=%d sliding=%d total=%d chars_before=%d",
+                    len(pinned), len(sliding), len(messages), _ctx_chars,
+                )
+            elif _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 6:
+                # Fallback for 6 < len ≤ 8: can't do full pinned+sliding, just shed oldest pair.
+                messages = messages[:2] + messages[4:]
+                logger.debug("context_prune(shed-oldest-pair): messages now %d", len(messages))
 
             # Call model — use larger budget once tools have been used so that
             # the final synthesis turn (no tool_call in response) isn't capped at
@@ -675,6 +697,26 @@ class LocalAgentExecutor:
 
             # Format result for model
             formatted_result = self.tool_registry.format_tool_result(result)
+
+            # Stagnation detection: same tool × 3 consecutive calls with identical output
+            # prefix → model is looping without state change. Abort early so we don't
+            # exhaust max_tool_calls on a runaway pattern (e.g. re-reading the same file
+            # 10 times because context pruning dropped the result).
+            _recent_tools.append((result.tool_name, formatted_result[:200]))
+            if len(_recent_tools) > 3:
+                _recent_tools.pop(0)
+            if (
+                len(_recent_tools) == 3
+                and len({t for t, _ in _recent_tools}) == 1   # same tool name
+                and len({r for _, r in _recent_tools}) == 1   # same result prefix
+            ):
+                stagnation_msg = (
+                    f"Stagnation detected: '{result.tool_name}' called 3 consecutive times "
+                    f"with identical result — loop aborted to prevent runaway. "
+                    f"Last result prefix: {formatted_result[:300]}"
+                )
+                logger.warning("stagnation: tool=%r — aborting loop at call %d", result.tool_name, tool_call_count)
+                return stagnation_msg, total_tokens
 
             # Extract the clean JSON from the response so the assistant turn
             # contains only the tool call object, not any leading prose.
