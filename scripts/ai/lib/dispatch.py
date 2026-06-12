@@ -527,7 +527,36 @@ class RalphRunner:
             return False
 
 
-_AGENT_WALL_CLOCK_SECS = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "3600"))
+# _AGENT_WALL_CLOCK_SECS: hard-cap override. When set, this overrides the
+# dynamic computation. Used for ops/debug. Default: 0 (= use dynamic formula).
+_AGENT_WALL_CLOCK_OVERRIDE = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "0"))
+
+# RUNAWAY_HARD_CAP: absolute maximum wall-clock for any agent task (3 hours).
+# Prevents true runaway agents from holding a slot indefinitely. Any task
+# exceeding this is considered a runaway and terminated.
+_RUNAWAY_HARD_CAP_SECS = 10800
+
+
+def _compute_agent_wall_clock(timeout_secs: int, max_calls: int) -> int:
+    """Compute dynamic wall-clock timeout for an agent task.
+
+    Scales with max_calls and chunk_timeout so each call has time to complete
+    one full prefill + generation cycle without being killed prematurely.
+
+    Formula:
+      chunk_timeout = max(900, timeout_secs × 2)   (silence before per-call timeout)
+      gen_budget    = 1200s                          (AGENT_TASK_MAX_TOKENS / 1 tok/s floor)
+      per_call      = chunk_timeout + gen_budget
+      wall_clock    = min(per_call × max_calls + 120, RUNAWAY_HARD_CAP_SECS)
+
+    The env var AGENT_WALL_CLOCK_SECS overrides this calculation when non-zero.
+    """
+    if _AGENT_WALL_CLOCK_OVERRIDE > 0:
+        return _AGENT_WALL_CLOCK_OVERRIDE
+    chunk_timeout = max(900.0, timeout_secs * 2)
+    per_call = chunk_timeout + 1200  # worst-case prefill silence + generation
+    computed = int(per_call * max_calls) + 120
+    return min(computed, _RUNAWAY_HARD_CAP_SECS)
 
 
 class AgentRunner:
@@ -536,23 +565,36 @@ class AgentRunner:
     def __init__(self, script_dir: Path):
         self.agent_loop = script_dir / "aq-agent-loop"
 
-    def run(self, config: TaskConfig, prompt: str, output_file: Path) -> bool:
+    def run(self, config: TaskConfig, prompt: str, output_file: Path,
+            max_calls: int = 50) -> bool:
         if not self.agent_loop.exists():
             output_file.write_text(f"Error: aq-agent-loop not found at {self.agent_loop}")
             return False
+        wall_clock = _compute_agent_wall_clock(config.timeout_secs, max_calls)
         cmd = [
             sys.executable, str(self.agent_loop),
             "--task", prompt,
             "--output", str(output_file),
             "--timeout", str(config.timeout_secs),
+            "--max-calls", str(max_calls),
             "--role", config.role,
         ]
         try:
-            result = subprocess.run(cmd, timeout=_AGENT_WALL_CLOCK_SECS)
+            result = subprocess.run(cmd, timeout=wall_clock)
             return result.returncode == 0
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as _te:
+            # Include last-known progress state in the timeout message for debugging.
+            # The progress sidecar is written after each tool call by aq-agent-loop.
+            progress_path = Path(str(output_file) + ".progress.json")
+            progress_snippet = ""
+            try:
+                progress_snippet = f"\nLast progress: {progress_path.read_text()[:400]}"
+            except Exception:
+                pass
             output_file.write_text(
-                f"Agent wall-clock timeout after {_AGENT_WALL_CLOCK_SECS}s"
+                f"Agent wall-clock timeout after {wall_clock}s "
+                f"(dynamic: {max_calls} calls × {config.timeout_secs}s timeout)."
+                f"{progress_snippet}"
             )
             return False
 
@@ -767,6 +809,7 @@ def dispatch_task(
     registry: TaskRegistry,
     script_dir: Path,
     pre_registered: bool = False,
+    max_calls: int = 50,
 ) -> bool:
     """Run a task: registry append → service check → runner → registry update.
 
@@ -828,7 +871,8 @@ def dispatch_task(
         "agent":  AgentRunner(script_dir),
     }
     runner = runners[config.mode]
-    success = runner.run(config, prompt, output_file)
+    _run_kwargs = {"max_calls": max_calls} if config.mode == "agent" else {}
+    success = runner.run(config, prompt, output_file, **_run_kwargs)
 
     # Code validation: append syntax check report to output for direct-mode tasks.
     if success and config.mode == "direct" and output_file.exists():
@@ -880,6 +924,8 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--prompt",        required=True)
     d.add_argument("--timeout",       type=int, default=300)
     d.add_argument("--max-tokens",    type=int, default=None)
+    d.add_argument("--max-calls",     type=int, default=50,
+                   help="Max tool calls for agent mode [default: 50]")
     d.add_argument("--delegation-dir", required=True)
     d.add_argument("--llama-url",     default="http://127.0.0.1:8080")
     d.add_argument("--hybrid-url",    default="http://127.0.0.1:8003")
@@ -1109,6 +1155,7 @@ def main() -> int:
         registry=registry,
         script_dir=script_dir,
         pre_registered=True,
+        max_calls=getattr(args, "max_calls", 50),
     )
     return 0 if success else 1
 

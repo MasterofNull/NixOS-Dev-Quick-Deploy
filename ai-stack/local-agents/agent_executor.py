@@ -623,15 +623,19 @@ class LocalAgentExecutor:
                     pass
 
         while tool_call_count < max_tool_calls:
-            # Context guard: prune oldest assistant+tool pairs when history is large.
-            # Keep system message [0] + user message [1] + last N tool call pairs intact.
-            # 4 chars/token, 8192 ctx, leave ~2000 tokens for generation headroom.
-            _CTX_CHAR_BUDGET = (8192 - 2000) * 4  # ~24768 chars
+            # Context guard: keep context under ~3000 tokens so prefill stays < 6 min
+            # on the Renoir APU (10 tok/s batch prefill rate, n_ctx=8192).
+            # Qwen3-35B forces full re-prefill on every call (no KV cache reuse across
+            # turns due to SWA architecture), so context size directly drives latency.
+            # Strategy: retain system[0] + user[1] + last 2 tool pairs (4 msgs) = max 6.
+            # This gives ~3200 tokens worst-case, keeping per-call prefill under 5 min.
+            _CTX_CHAR_BUDGET = 12000  # ~3000 tokens (4 chars/tok)
             _ctx_chars = sum(len(str(m.get("content", ""))) for m in messages)
-            if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 4:
-                # Drop the oldest assistant+tool pair (indices 2+3 after system+user)
-                messages = messages[:2] + messages[4:]
-                logger.debug("context_prune: dropped oldest tool pair, messages now %d", len(messages))
+            if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 6:
+                # Retain system+user (2 msgs) + last 2 assistant+tool pairs (4 msgs).
+                tail = messages[max(2, len(messages) - 4):]
+                messages = messages[:2] + tail
+                logger.debug("context_prune: kept system+user+last-2-pairs, messages now %d", len(messages))
 
             # Call model — use larger budget once tools have been used so that
             # the final synthesis turn (no tool_call in response) isn't capped at
