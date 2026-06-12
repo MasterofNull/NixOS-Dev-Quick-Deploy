@@ -44,6 +44,17 @@
   Verify: python3 -m py_compile ai-stack/local-agents/training_ingest.py
   Commit: fix(training-ingest): use NamedTemporaryFile for atomic write to eliminate concurrent-write race
 
+[DONE] agent-telemetry-permission-drop — agent_step_complete / agent_thinking / agent_tool_call events silently dropped
+  Root cause: agent_executor.py wrote per-step telemetry to /var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl
+  (owned ai-hybrid:ai-stack 0640). aq-agent-loop runs as hyperd (ai-stack group, read-only) → PermissionError
+  on every write, silently suppressed by try/except. All agent observability events were dropped — dashboard and
+  training_ingest never received agent-loop telemetry. Identified 2026-06-12 by analyzing group permissions.
+  Fix: _HYBRID_EVENTS in agent_executor.py redirected to .agents/telemetry/hybrid-events.jsonl (owned hyperd:users
+  0644, fully writable). REPO_ROOT env var respected for Nix store compatibility. training_ingest.py already reads
+  this path as USER_EVENTS_SPOOL — no ingest changes needed.
+  File: ai-stack/local-agents/agent_executor.py (lines 41-46)
+  Commit: fix(telemetry): redirect agent event spool to user-writable path
+
 [DONE] dispatch-timeout-env-undocumented — AGENT_WALL_CLOCK_SECS env var documented in .env.example
   Fixed by agent commit 73f8102b.
 

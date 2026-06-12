@@ -38,7 +38,14 @@ from tool_registry import ToolCall, ToolRegistry, get_registry
 logger = logging.getLogger(__name__)
 
 _TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
-_HYBRID_EVENTS = _TELEMETRY_DIR / "hybrid-events.jsonl"
+# Agent events are written to the user-spool path (.agents/telemetry/hybrid-events.jsonl)
+# rather than the service-owned /var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl.
+# Reason: hybrid-events.jsonl is owned by ai-hybrid:ai-stack with 0640 permissions —
+# aq-agent-loop runs as hyperd (ai-stack group, read-only) so every direct write
+# silently fails with PermissionError. training_ingest.py reads BOTH paths via
+# USER_EVENTS_SPOOL, so agent telemetry lands in training data without privilege issues.
+_REPO_ROOT_PATH = Path(os.environ.get("REPO_ROOT", Path(__file__).resolve().parents[2]))
+_HYBRID_EVENTS = _REPO_ROOT_PATH / ".agents" / "telemetry" / "hybrid-events.jsonl"
 
 _CODE_TASK_RE = re.compile(
     r"\b(implement|write|code|script|function|class|patch|refactor|debug|fix|test)\b",
