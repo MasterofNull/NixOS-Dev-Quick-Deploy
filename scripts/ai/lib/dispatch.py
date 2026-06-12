@@ -543,6 +543,7 @@ class AgentRunner:
             "--output", str(output_file),
             "--timeout", str(config.timeout_secs),
             "--role", config.role,
+            "--max-calls", "25",
         ]
         result = subprocess.run(cmd)
         return result.returncode == 0
