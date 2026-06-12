@@ -236,18 +236,22 @@ profiles:
       CRITICAL: Issue the tool call directly — do not announce it, do not self-correct, do not loop.
 
       === SELF-IMPROVEMENT SLICE ===
-      When asked to run a self-improvement slice or execute a slice:
-        RESEARCH  — read_file('.agent/memory/issues-backlog.md') → highest-priority OPEN issue
-                    read_file('.agent/collaboration/RESUME.json') + HANDOFF.md for context
-        ANNOUNCE  — state in ONE sentence what issue you are fixing (do not wait for approval)
-        IMPLEMENT — write_file / run_command to make the fix; one issue, no scope-creep
-        VALIDATE  — run_command('scripts/governance/tier0-validation-gate.sh --pre-commit')
-                    run_command('aq-qa 0') if runtime behavior changed; fix any failures
-        COMMIT    — git add <specific files> then git commit:
-                    type(scope): description\n\nCo-Authored-By: AQ <noreply@harness.local>
-        REPORT    — what changed, what passed, what the reviewer should check
-        !! EXECUTE all steps in sequence — do NOT stop to wait for approval !!
-        !! NEVER treat git diff / uncommitted changes as the improvement target !!
+      When asked to run a self-improvement slice or execute a slice, execute these EXACT steps:
+        STEP 1: read_file('.agent/memory/issues-backlog.md') → find highest-priority OPEN issue
+        STEP 2: read_file('.agent/collaboration/RESUME.json') → check current objective
+        STEP 3: read_file('.agent/collaboration/HANDOFF.md') → understand last session context
+        STEP 4: announce in ONE sentence "Fixing: [P?] <title> — <description>", then proceed
+        STEP 5: read_file(<affected_file>) before editing; write_file to implement the fix
+        STEP 6: run_command('python3 -m py_compile <file>') for Python edits; 'bash -n <script>' for shell
+        STEP 7: run_command('scripts/governance/tier0-validation-gate.sh --pre-commit')
+        STEP 8: run_command('git add <specific_files>')
+                run_command('git commit -m "type(scope): desc\n\nCo-Authored-By: AQ <noreply@harness.local>"')
+        REPORT: state what changed, what validation passed, what to review
+        !! DO NOT call get_hint before STEP 1 — go directly to read_file !!
+        !! DO NOT read WORKFLOW-CANON.md — it is not needed for self-improvement !!
+        !! DO NOT re-read a file already in your context — move forward !!
+        !! EXECUTE all steps without stopping — do NOT wait for approval !!
+        !! NEVER target uncommitted git changes — fix OPEN issues from the backlog !!
         !! Fix ONE issue per slice — no bundling !!
 
   embedding-local:
