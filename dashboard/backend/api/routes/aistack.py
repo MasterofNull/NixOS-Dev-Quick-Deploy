@@ -2549,6 +2549,40 @@ async def get_local_insights_latest() -> Dict[str, Any]:
     }
 
 
+# Phase 164D — Operator Intelligence Bridge dashboard endpoint
+@router.get("/operator/intelligence")
+async def get_operator_intelligence() -> Dict[str, Any]:
+    """Proxy GET /operator/profile from hybrid-coordinator for the OIB dashboard panel.
+
+    Returns operator knowledge profile + cached insight cards. Falls back to
+    empty profile structure on coordinator unavailability.
+    """
+    hybrid_url = service_endpoints.HYBRID_URL
+    empty: Dict[str, Any] = {
+        "available": False,
+        "session_count": 0,
+        "domains_engaged": {},
+        "open_research_threads": [],
+        "prompt_specificity_trend": [],
+        "chilling_effect_alerts": 0,
+        "insight_cards_surfaced": 0,
+        "insight_cards_researched": 0,
+        "last_updated": None,
+    }
+    try:
+        timeout = aiohttp.ClientTimeout(total=5.0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"{hybrid_url}/operator/profile") as resp:
+                if resp.status != 200:
+                    return empty
+                data = await resp.json()
+                data["available"] = True
+                return data
+    except Exception as exc:
+        logger.debug("operator/intelligence fetch failed: %s", exc)
+        return empty
+
+
 @router.get("/context/lifecycle/status")
 async def proxy_clm_status() -> Dict[str, Any]:
     """Proxy coordinator /context/lifecycle/status — CLM Hot/Warm/Cold tier distribution."""
