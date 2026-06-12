@@ -110,6 +110,7 @@ LOOPBACK_AGENT_PREFIXES = (
     "/api/memory/facts",   # Phase 56: commit fact ingest
     "/qa/",                # Phase 84: QA check runner (loopback agents need eval access)
     "/search/",            # Phase 162C: local agent query_aidb tool uses /search/tree
+    "/operator/",         # Phase 164: Operator Intelligence Bridge endpoints
 )
 
 

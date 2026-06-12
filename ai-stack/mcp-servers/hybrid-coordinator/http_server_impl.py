@@ -146,6 +146,7 @@ import orchestration_handlers
 import workflow_session_handlers
 import hints_handlers
 import memory_context_handlers
+import operator_intelligence_handlers
 import agents_task_handlers
 import evidence_safety_handlers
 import ai_coordinator_handlers
@@ -459,6 +460,10 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
         return "hints"
     if path == "/hints/feedback" and method == "POST":
         return "hints_feedback"
+    if path == "/operator/insights" and method == "POST":
+        return "operator_insights"
+    if path == "/operator/profile" and method == "GET":
+        return "operator_profile"
     if path.startswith("/discovery/"):
         return "discovery"
     if path == "/workflow/plan":
@@ -2744,6 +2749,7 @@ async def run_http_mode(port: int) -> None:
     # http_app.router.add_post("/search/tree", handle_tree_search)     # _fallback_handle_tree_search
     memory_context_handlers.register_routes(http_app)
     hints_handlers.register_routes(http_app)
+    operator_intelligence_handlers.register_routes(http_app)  # Phase 164: OIB
     workflow_session_handlers.register_routes(http_app)
     ai_coordinator_handlers.register_routes(http_app)  # Phase 12.4: extracted to ai_coordinator_handlers.py
     # Phase 12.1/12.2 — Model Coordination + LLM Router endpoints

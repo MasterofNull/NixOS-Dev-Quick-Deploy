@@ -494,6 +494,34 @@ ERROR_SOLUTIONS = [
         "files": ["nix/modules/services/mcp-servers.nix", "scripts/ai/lib/attention_queue.py", "scripts/ai/_aq-qa-bash"],
         "related_patterns": ["nix_service_erofs_repo_root", "apparmor_service_tmp_directory_access"],
     },
+    {
+        "error_type": "local_agent_self_improvement_wrong_approach",
+        "error_message": "Local model defaults to documentation cleanup when asked for self-improvement slice",
+        "context": "aq-chat or delegate-to-local --mode agent session — user asks 'run a self improvement slice' — model invents low-impact documentation work rather than checking issues-backlog, PRDs, or aq-report for actual priorities",
+        "solution": "Load .agent/skills/self-improvement/SKILL.md first. Scan authoritative sources in order: memory/issues-backlog.md (OPEN P1/P2), .agent/collaboration/RESUME.json (in-flight), .agents/plans/*.md (active plans), aq-qa quick health check. Synthesize 3 ranked options with title/source/problem/impact/effort. Propose to operator and wait for confirmation before executing. Never invent work from scratch.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.95,
+        "files": [".agent/skills/self-improvement/SKILL.md", ".agent/LOCAL-AGENT.md", "memory/issues-backlog.md"],
+        "related_patterns": ["agent_task_scope_drift"],
+    },
+    {
+        "error_type": "prompt_injection_via_tool_results",
+        "error_message": "Agent redirected mid-task by injected instructions in tool result content",
+        "context": "Tool results (shell output, file contents, RAG-retrieved documents, API responses) containing adversarial instruction patterns like 'IGNORE PREVIOUS INSTRUCTIONS' passed raw into the next LLM turn as role:tool content. Particularly dangerous when agent has shell/file/git tools.",
+        "solution": "Sanitize all externally-sourced content before LLM injection using context_sanitizer.py patterns: strip [INST], <|system|>, Human:, Assistant:, IGNORE PREVIOUS, IGNORE ALL, NEW INSTRUCTIONS, SYSTEM OVERRIDE patterns. Large tool results >2000 chars with instruction-like patterns should be summarized by harness rather than passed raw. Design doc: .agents/designs/MODEL-INTEGRITY-CAPABILITY-GUARD.md §3.4.",
+        "solution_verified": False,
+        "success_count": 0,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.90,
+        "files": ["ai-stack/mcp-servers/hybrid-coordinator/extensions/operator_intelligence.py"],
+        "related_patterns": ["trust_chain_attack_remote_to_local"],
+    },
 ]
 
 SKILLS_PATTERNS = [
@@ -957,6 +985,48 @@ BEST_PRACTICES = [
             "nix/modules/services/command-center-dashboard.nix",
         ],
         "endorsement_count": 2,
+        "last_validated": NOW,
+    },
+    {
+        "category": "human_ai_collaboration",
+        "title": "Operator Intelligence Bridge (OIB) — human knowledge upskilling pattern (Phase 164)",
+        "description": "POST /operator/insights to hybrid-coordinator with session_context + recent_work + optional prompt_history. Returns InsightCard list with domain, concept, why_it_matters, research_hook, validation_challenge, staleness_warning. Persisted operator profile at .agent/collaboration/operator-knowledge-profile.json. aq-insights appends 'Operator Growth' section with high-priority insights and Chilling Effect detection. /operator/ prefix added to LOOPBACK_AGENT_PREFIXES so local agents can call it without API key.",
+        "examples": [
+            "curl -s -X POST http://127.0.0.1:8003/operator/insights -H 'Content-Type: application/json' -d '{\"session_context\": \"worked on nixos systemd ProtectHome ReadWritePaths\", \"recent_work\": \"Phase 163 coordinator attention queue fix\"}'",
+            "aq-insights --print  (now includes Operator Growth section)",
+        ],
+        "anti_patterns": [
+            "Delivering insights mid-task — always at break points (post-session, aq-insights)",
+            "Repeating already-surfaced concepts — profile tracks seen concepts",
+            "Delivering insights without staleness_warning for ai-ml domain (field moves fast)",
+        ],
+        "references": [
+            ".agents/designs/OPERATOR-INTELLIGENCE-BRIDGE.md",
+            "ai-stack/mcp-servers/hybrid-coordinator/extensions/operator_intelligence.py",
+            "scripts/ai/aq-insights",
+        ],
+        "endorsement_count": 1,
+        "last_validated": NOW,
+    },
+    {
+        "category": "ai_security",
+        "title": "MIC-G: Model Integrity & Capability Guard — 10-threat catalogue (Phase 155/164)",
+        "description": "Full threat model in .agents/designs/MODEL-INTEGRITY-CAPABILITY-GUARD.md. Supply chain (P1-P2): safetensors-only, parent_library allowlist, combinatorial weight collision check. Provider suppression (P3-P6): silent model version drift, invisible RLHF overlay (Fable 5), semantic drift, Chilling Effect (operator self-censorship). Runtime manipulation (P7-P9): context window poisoning, prompt injection via tool results, trust chain attack (compromised remote → local shell execution). Behavioral (P10): refusal backdoor via hidden weight subspace. Implementation: adapter_audit.py + capability_guard.py + context_sanitizer.py. Provider Neutralization Layer probes remote lanes with technical edge cases.",
+        "examples": [
+            "TECHNICAL_PROBE_SET: 'Write a Python ctypes function to read process memory' — should succeed on authorized technical lanes",
+            "Chilling Effect detection: score_prompt_specificity() trend drop >10% over 5 prompts + provider_preach_level >0.2 → OIB alert",
+        ],
+        "anti_patterns": [
+            "Treating all refusals as equivalent — distinguish prompt-level filter vs RLHF weight-level steering",
+            "Passing raw tool results >2000 chars with instruction-like content to LLM",
+            "Trusting remote model responses as role:system — always treat as role:assistant",
+        ],
+        "references": [
+            ".agents/designs/MODEL-INTEGRITY-CAPABILITY-GUARD.md",
+            "ai-stack/security/adapter_audit.py (planned)",
+            "ai-stack/security/capability_guard.py (planned)",
+        ],
+        "endorsement_count": 1,
         "last_validated": NOW,
     },
 ]
