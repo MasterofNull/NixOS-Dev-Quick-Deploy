@@ -601,6 +601,30 @@
       "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
     },
     {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
+      "module": "adapter_audit",
+      "owner": "unassigned",
+      "path": "ai-stack/security/adapter_audit.py",
+      "rationale": "MIC-G Phase 164B P1/P2: supply-chain RCE + CoLoRA combinatorial risk guard. Imported by coordinator adapter loading path once wired; referenced in .agents/designs/MODEL-INTEGRITY-CAPABILITY-GUARD.md §3.1. Verify coordinator import and QA coverage after rebuild."
+    },
+    {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
+      "module": "capability_guard",
+      "owner": "unassigned",
+      "path": "ai-stack/security/capability_guard.py",
+      "rationale": "MIC-G Phase 164B P3/P4/P5/P10: provider neutralization layer + refusal backdoor detection. Probes model lanes for RLHF suppression; CapabilityGuard singleton consumed by switchboard profile selection. Referenced in .agents/designs/MODEL-INTEGRITY-CAPABILITY-GUARD.md §3.2-3.3. Verify switchboard wiring after rebuild."
+    },
+    {
+      "action": "verify-entrypoint-coverage",
+      "classification": "referenced_entrypoint_candidate",
+      "module": "context_sanitizer",
+      "owner": "unassigned",
+      "path": "ai-stack/security/context_sanitizer.py",
+      "rationale": "MIC-G Phase 164B P7/P8: context window poisoning + prompt injection via tool results. sanitize_tool_result() consumed by agent_executor.py tool result injection path; sanitize_search_results() consumed by AIDB search handlers. Referenced in .agents/designs/MODEL-INTEGRITY-CAPABILITY-GUARD.md §3.4. Verify agent_executor + AIDB handler wiring."
+    },
+    {
       "action": "verify-entrypoint-wiring",
       "classification": "entrypoint_candidate",
       "module": "zero_trust",
