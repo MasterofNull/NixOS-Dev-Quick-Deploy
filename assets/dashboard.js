@@ -510,7 +510,13 @@ async function loadRagQuality() {
   };
   setText("ragAnswerRelevance", p(r.answer_relevance_avg));
   setText("ragContextPrecision", p(r.context_precision_avg));
-  setText("ragFaithfulness", p(r.faithfulness_avg, r.faithfulness_enabled));
+  const faithfulnessSamples = r.faithfulness_sample_count ?? 0;
+  const pf = (v, enabled = true) => {
+    if (enabled === false) return "N/A";
+    if ((r.sample_count ?? 0) > 0 && faithfulnessSamples === 0) return "N/A";
+    return p(v, enabled);
+  };
+  setText("ragFaithfulness", pf(r.faithfulness_avg, r.faithfulness_enabled));
   setText(
     "ragSampleCount",
     noData ? "0" : r.sample_count != null ? r.sample_count : "0"
@@ -518,7 +524,7 @@ async function loadRagQuality() {
   // Mirror into intelligence eval card
   setText("evalAR", p(r.answer_relevance_avg));
   setText("evalCP", p(r.context_precision_avg));
-  setText("evalFaith", p(r.faithfulness_avg, r.faithfulness_enabled));
+  setText("evalFaith", pf(r.faithfulness_avg, r.faithfulness_enabled));
   setText(
     "evalSamples",
     noData ? "0" : r.sample_count != null ? r.sample_count : "0"

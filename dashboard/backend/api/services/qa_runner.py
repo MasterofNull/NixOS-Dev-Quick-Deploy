@@ -46,10 +46,16 @@ async def _execute_phase(phase: str, *, timeout_s: float, cwd: Optional[Path]) -
         await proc.communicate()
         raise RuntimeError(f"aq-qa timed out after {int(timeout_s)}s")
 
-    if proc.returncode not in (0, 1):
-        raise RuntimeError(f"aq-qa exited {proc.returncode}")
-
     stdout_text = stdout.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr.decode("utf-8", errors="replace").strip() if stderr else ""
+    if proc.returncode not in (0, 1):
+        detail = ""
+        if stderr_text:
+            detail = f": stderr={stderr_text[:300]}"
+        elif stdout_text:
+            detail = f": stdout={stdout_text[:300]}"
+        raise RuntimeError(f"aq-qa exited {proc.returncode}{detail}")
+
     data: Dict[str, Any] = {}
     for line in reversed(stdout_text.splitlines()):
         line = line.strip()
@@ -62,7 +68,6 @@ async def _execute_phase(phase: str, *, timeout_s: float, cwd: Optional[Path]) -
     if not data:
         data = json.loads(stdout_text)
 
-    stderr_text = stderr.decode("utf-8", errors="replace") if stderr else ""
     data["_debug_stderr"] = stderr_text[:4096] if stderr_text else None
     data["_exit_code"] = proc.returncode
     return data

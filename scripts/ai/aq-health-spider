@@ -79,10 +79,29 @@ ZONES: Dict[str, Dict[str, Any]] = {
         "service":         "command-center-dashboard-api.service",
         "apparmor_profile": "command-center-dashboard-api",
         "probes": [
-            {"name": "aggregate", "url": "http://127.0.0.1:8889/api/health/aggregate"},
+            {
+                "name": "aggregate",
+                "url": "http://127.0.0.1:8889/api/health/aggregate",
+                "semantic_checks": ["aggregate_services"],
+            },
             {"name": "effectiveness-scorecard", "url": "http://127.0.0.1:8889/api/aistack/effectiveness/scorecard"},
             {"name": "agent-runs", "url": "http://127.0.0.1:8889/api/aistack/agent-runs?limit=1"},
             {"name": "traces-summary", "url": "http://127.0.0.1:8889/api/traces/summary"},
+            {
+                "name": "osi-layered",
+                "url": "http://127.0.0.1:8889/api/health/layered",
+                "semantic_checks": ["osi_layered_ready"],
+            },
+            {
+                "name": "ragas-faithfulness",
+                "url": "http://127.0.0.1:8889/api/eval/trend",
+                "semantic_checks": ["ragas_faithfulness"],
+            },
+            {
+                "name": "audit-integrity",
+                "url": "http://127.0.0.1:8889/api/audit/operator/integrity",
+                "semantic_checks": ["audit_integrity"],
+            },
             {
                 "name": "routing-analytics",
                 "url": "http://127.0.0.1:8889/api/insights/routing/analytics",
@@ -106,7 +125,73 @@ def _http_check(url: str, timeout: int = 5) -> Tuple[bool, Optional[float]]:
         return False, None
 
 
-def _json_probe(url: str, timeout: int = 5, required_keys: Optional[List[str]] = None) -> Tuple[bool, Optional[float], str]:
+def _semantic_probe_reason(check: str, data: Dict[str, Any]) -> str:
+    """Return non-empty reason when a dashboard payload is semantically degraded."""
+    if check == "aggregate_services":
+        services = data.get("services") if isinstance(data.get("services"), dict) else {}
+        bad = [
+            f"{name}:{svc.get('status')}"
+            for name, svc in services.items()
+            if isinstance(svc, dict)
+            and str(svc.get("status") or "").lower() in {"degraded", "down", "fail", "failed", "error", "unhealthy"}
+        ]
+        if bad:
+            return f"degraded_services={','.join(bad[:8])}"
+        return ""
+
+    if check == "osi_layered_ready":
+        if data.get("pending") is True:
+            return "osi_layered_pending"
+        layers = data.get("layers") if isinstance(data.get("layers"), dict) else {}
+        passed = int(data.get("passed") or 0)
+        failed = int(data.get("failed") or 0)
+        total = passed + failed
+        if not layers or total == 0:
+            return "osi_layered_no_results"
+        if failed > 0:
+            return f"osi_layered_failed={failed}"
+        return ""
+
+    if check == "ragas_faithfulness":
+        metrics = data.get("ragas_metrics") if isinstance(data.get("ragas_metrics"), dict) else {}
+        if not metrics:
+            return "ragas_metrics_missing"
+        sample_count = int(metrics.get("sample_count") or 0)
+        faithfulness_sample_count = int(metrics.get("faithfulness_sample_count") or 0)
+        enabled = metrics.get("faithfulness_enabled", True) is not False
+        value = metrics.get("faithfulness_avg")
+        if sample_count <= 0:
+            return "ragas_sample_count=0"
+        if enabled and faithfulness_sample_count <= 0:
+            return f"faithfulness_sample_count=0:samples={sample_count}"
+        if enabled and value is None:
+            return f"faithfulness_avg_missing:samples={sample_count}"
+        if enabled and isinstance(value, (int, float)) and value <= 0:
+            return f"faithfulness_avg={value}:samples={sample_count}"
+        return ""
+
+    if check == "audit_integrity":
+        if data.get("valid") is not True:
+            return "audit_integrity_valid=false"
+        checked = int(data.get("checked_events") or 0)
+        sealed = int(data.get("sealed_events") or 0)
+        if checked <= 0:
+            return "audit_integrity_checked=0"
+        if sealed < checked:
+            return f"audit_integrity_sealed={sealed}/{checked}"
+        if data.get("fully_sealed") is not True:
+            return "audit_integrity_fully_sealed=false"
+        return ""
+
+    return ""
+
+
+def _json_probe(
+    url: str,
+    timeout: int = 5,
+    required_keys: Optional[List[str]] = None,
+    semantic_checks: Optional[List[str]] = None,
+) -> Tuple[bool, Optional[float], str]:
     """Returns (ok, latency_ms, reason) for JSON dashboard/service probes."""
     try:
         t0 = time.monotonic()
@@ -125,6 +210,10 @@ def _json_probe(url: str, timeout: int = 5, required_keys: Optional[List[str]] =
         missing = [key for key in (required_keys or []) if key not in data]
         if missing:
             return False, round(ms, 1), f"missing_keys={','.join(missing)}"
+        for check in semantic_checks or []:
+            reason = _semantic_probe_reason(check, data)
+            if reason:
+                return False, round(ms, 1), reason
         return True, round(ms, 1), ""
     except urllib.error.HTTPError as e:
         return False, None, f"HTTP {e.code}"
@@ -354,6 +443,7 @@ class HealthSpider:
                 _json_probe,
                 probe["url"],
                 required_keys=probe.get("required_keys"),
+                semantic_checks=probe.get("semantic_checks"),
             )
             if probe_ok:
                 logger.info(f"[{zone}] probe {probe['name']} OK {probe_ms}ms")

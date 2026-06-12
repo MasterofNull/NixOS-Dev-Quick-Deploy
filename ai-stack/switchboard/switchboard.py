@@ -2200,11 +2200,12 @@ async def _local_runtime_health_snapshot() -> dict:
     if last_completion:
         snapshot["last_completion"] = last_completion
     try:
-        if _local_health_client is not None:
-            resp = await _local_health_client.get(f"{LLAMA_URL}/metrics")
-        else:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=2.0, read=4.0, write=2.0, pool=2.0)) as client:
-                resp = await client.get(f"{LLAMA_URL}/metrics")
+        # /health must stay cheap for dashboard probes. llama.cpp /metrics can
+        # block behind active inference; treat it as optional telemetry here.
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=0.35, read=0.35, write=0.35, pool=0.35)
+        ) as client:
+            resp = await client.get(f"{LLAMA_URL}/metrics")
         if resp.status_code >= 400:
             snapshot["llama_metrics_status_code"] = resp.status_code
             return snapshot

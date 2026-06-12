@@ -27,6 +27,8 @@ def main() -> int:
     mcp_servers_text = MCP_SERVERS.read_text(encoding="utf-8")
     auto_remediate_text = AUTO_REMEDIATE.read_text(encoding="utf-8")
     health_spider_text = HEALTH_SPIDER.read_text(encoding="utf-8")
+    switchboard_text = (ROOT / "ai-stack" / "switchboard" / "switchboard.py").read_text(encoding="utf-8")
+    qa_runner_text = (ROOT / "dashboard" / "backend" / "api" / "services" / "qa_runner.py").read_text(encoding="utf-8")
 
     assert_true(
         'mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];' in base_text,
@@ -126,6 +128,10 @@ def main() -> int:
         "dashboard AppArmor profile should allow reading /tmp directory before opening tmp SQLite files",
     )
     assert_true(
+        "/run/current-system/sw/bin/aq-qa ix," in mcp_servers_text,
+        "dashboard AppArmor profile should execute the exact aq-qa symlink path used by qa_runner",
+    )
+    assert_true(
         'return await self._fix_apparmor(anomaly) != "covered"' in health_spider_text,
         "health spider should not fail a cycle for AppArmor denials when rules are already covered",
     )
@@ -152,6 +158,41 @@ def main() -> int:
         'missing = [key for key in (required_keys or []) if key not in data]' in health_spider_text
         and "missing_keys=" in health_spider_text,
         "health spider JSON probes should fail when required dashboard semantic keys are absent",
+    )
+    assert_true(
+        '"name": "osi-layered"' in health_spider_text
+        and '"semantic_checks": ["osi_layered_ready"]' in health_spider_text
+        and "osi_layered_pending" in health_spider_text,
+        "health spider should catch OSI layer cards stuck pending or showing 0/0",
+    )
+    assert_true(
+        '"name": "ragas-faithfulness"' in health_spider_text
+        and '"semantic_checks": ["ragas_faithfulness"]' in health_spider_text
+        and "faithfulness_sample_count=0" in health_spider_text,
+        "health spider should catch enabled RAGAS faithfulness metrics that render as 0.0%",
+    )
+    assert_true(
+        '"name": "audit-integrity"' in health_spider_text
+        and '"semantic_checks": ["audit_integrity"]' in health_spider_text
+        and "audit_integrity_sealed" in health_spider_text,
+        "health spider should catch operator audit integrity cards that are not fully sealed",
+    )
+    assert_true(
+        '"semantic_checks": ["aggregate_services"]' in health_spider_text
+        and "degraded_services=" in health_spider_text,
+        "health spider aggregate probe should inspect child service status, not only top-level HTTP status",
+    )
+    assert_true(
+        "block behind active inference" in switchboard_text
+        and "connect=0.35" in switchboard_text
+        and 'client.get(f"{LLAMA_URL}/metrics")' in switchboard_text,
+        "switchboard /health should not block dashboard probes on optional llama metrics",
+    )
+    assert_true(
+        "stderr={stderr_text[:300]}" in qa_runner_text
+        and "stdout={stdout_text[:300]}" in qa_runner_text
+        and "aq-qa exited {proc.returncode}{detail}" in qa_runner_text,
+        "dashboard qa_runner should preserve stdout/stderr snippets for unexpected aq-qa exits",
     )
 
     print("PASS: boot stability regressions are covered")
