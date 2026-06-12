@@ -32,6 +32,26 @@ logger = logging.getLogger(__name__)
 HYBRID_COORDINATOR_URL = "http://127.0.0.1:8003"
 AIDB_URL = "http://127.0.0.1:8002"
 
+MEMORY_TYPES = ("episodic", "semantic", "procedural", "working", "error_solutions", "interaction_history")
+MEMORY_TYPE_ALIASES = {
+    "note": "semantic",
+    "observation": "episodic",
+    "context": "episodic",
+    "event": "episodic",
+    "milestone": "episodic",
+    "decision": "procedural",
+    "procedure": "procedural",
+    "error": "error_solutions",
+    "error_solution": "error_solutions",
+    "interaction": "interaction_history",
+}
+
+
+def normalize_store_memory_type(context_type: str) -> str:
+    """Map local-agent store_memory aliases onto coordinator memory tiers."""
+    normalized = str(context_type or "").strip().lower()
+    return MEMORY_TYPE_ALIASES.get(normalized, normalized or "semantic")
+
 
 async def get_hint_handler(
     query: str,
@@ -159,7 +179,7 @@ async def query_context_handler(
 
 async def store_memory_handler(
     content: str,
-    context_type: str = "note",
+    context_type: str = "semantic",
     importance: float = 0.5,
     tags: Optional[list] = None,
 ) -> Dict:
@@ -168,7 +188,9 @@ async def store_memory_handler(
 
     Args:
         content: Content to store
-        context_type: Type of context (note, decision, observation)
+        context_type: Memory tier. Canonical values are episodic, semantic,
+            procedural, working, error_solutions, interaction_history. Legacy
+            aliases like note, decision, observation, and milestone are accepted.
         importance: Importance score (0.0-1.0)
         tags: Optional tags
 
@@ -180,12 +202,13 @@ async def store_memory_handler(
         }
     """
     try:
+        memory_type = normalize_store_memory_type(context_type)
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{HYBRID_COORDINATOR_URL}/memory/store",
                 json={
                     "content": content,
-                    "memory_type": context_type,
+                    "memory_type": memory_type,
                     "importance": importance,
                     "tags": tags or [],
                     "source": "local-agent",
@@ -495,7 +518,7 @@ def register_ai_coordination_tools(registry: ToolRegistry):
     # store_memory
     registry.register(ToolDefinition(
         name="store_memory",
-        description="Store information in context memory",
+        description="Store information in agent memory using canonical memory tiers",
         parameters={
             "type": "object",
             "properties": {
@@ -505,9 +528,13 @@ def register_ai_coordination_tools(registry: ToolRegistry):
                 },
                 "context_type": {
                     "type": "string",
-                    "description": "Type of context",
-                    "enum": ["note", "decision", "observation"],
-                    "default": "note",
+                    "description": (
+                        "Memory tier. Use episodic for events/milestones, semantic for facts, "
+                        "procedural for decisions/procedures, working for active scratch memory, "
+                        "error_solutions for bug fixes, interaction_history for conversations."
+                    ),
+                    "enum": list(MEMORY_TYPES),
+                    "default": "semantic",
                 },
                 "importance": {
                     "type": "number",
