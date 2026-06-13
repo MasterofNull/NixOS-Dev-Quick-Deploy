@@ -607,7 +607,7 @@ def register_file_tools(registry: ToolRegistry):
             "required": ["file_path", "old_string", "new_string"],
         },
         category=ToolCategory.FILE_OPS,
-        safety_policy=SafetyPolicy.WRITE_ALLOWED,
+        safety_policy=SafetyPolicy.WRITE_SAFE,
         handler=edit_file_handler,
     ))
 
