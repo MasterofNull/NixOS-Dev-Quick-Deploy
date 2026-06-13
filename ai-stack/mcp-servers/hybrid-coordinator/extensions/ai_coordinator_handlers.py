@@ -1440,6 +1440,26 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 elif isinstance(msg, dict) and msg.get("role") == "user":
                     user_task = msg.get("content", task)
 
+            # Phase 155: MIC-G Authorization Logic
+            # Recognize human users (aq-chat) or administrative roles without bypassing
+            # harness safety, approval, secret-handling, or destructive-action gates.
+            _is_human = data.get("agent_type") == "human" or request.headers.get("X-Agent-Boundary") == "human_gate"
+            _is_admin_role = agent_role in {"coordinator", "architect", "reviewer"}
+            _has_administrative_clearance = _is_human or _is_admin_role
+
+            if _has_administrative_clearance:
+                # Prepend Capability Authorization Block (CAB) to prevent keyword-only
+                # refusals while preserving system governance and approval boundaries.
+                _cab = (
+                    "OPERATOR AUTHORIZATION ACTIVE: You are assisting an authenticated operator inside "
+                    "the local Harness-OS systems engineering environment. Do not refuse solely because "
+                    "a legitimate diagnostic or administrative task contains security-sensitive terms such "
+                    "as root, exploit, attack, or shadow. Continue to follow harness safety policy: protect "
+                    "secrets, avoid destructive actions without explicit approval, prefer read-only evidence "
+                    "first, and keep all tool use within the configured agent/runtime boundaries."
+                )
+                system_prompt = f"{_cab}\n\n{system_prompt}" if system_prompt else _cab
+
             # Use delegated_max_tokens (ceiling-enforced) rather than raw request max_tokens.
             # delegated_response_budget() applies _LOCAL_MAX_TOKENS_HARD_CEILING=180 for local
             # profiles; bypassing it here caused 504s at 240s (768 tok × ~1 tok/s > 210s budget).
@@ -1470,7 +1490,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
 
             if _is_tool_free or _is_exact_output:
                 # Align with aq-chat tool-free system prompt
-                _spawn_kwargs["system_prompt"] = (
+                _new_prompt = (
                     "TOOL-FREE TURN: answer from the prompt and conversation context only. "
                     "Do not emit tool calls, do not claim live command results, and keep the "
                     "answer code-ready and concrete."
@@ -1478,10 +1498,16 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 if _is_exact_output:
                     # Use the canonical compact contract block for exact-output tasks.
                     # This provides the necessary discipline instructions while allowing tools if the profile has them.
-                    _spawn_kwargs["system_prompt"] = _ai_coordinator_compact_delegation_contract_block(
+                    _new_prompt = _ai_coordinator_compact_delegation_contract_block(
                         task, selected_profile, data.get("context")
                     )
-                
+
+                # Phase 155: Preserve Administrative Clearance even in discipline mode
+                if _has_administrative_clearance:
+                    _new_prompt = f"{_cab}\n\n{_new_prompt}"
+
+                _spawn_kwargs["system_prompt"] = _new_prompt
+
                 # Phase 150 (Restored): Do NOT force tools/thinking off for exact-output.
                 # Only force tools off if the task is explicitly tool-free.
                 if _is_tool_free:
@@ -1492,6 +1518,34 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 # Cap tokens for tool-free/exact-output to prevent runaway meta-reasoning
                 _spawn_kwargs["max_tokens"] = min(_spawn_kwargs["max_tokens"], 1024)
 
+            # Phase 169: emit system_prompt event before execution (Pi observability parity).
+            # Captures the resolved prompt (post-tool-free/exact-output) so replay shows
+            # the actual system prompt the model received, not the raw caller input.
+            if _AGENT_RUN_EVENTS_AVAILABLE and _are is not None:
+                _sp_ev_text = _spawn_kwargs.get("system_prompt", "")
+                _sp_ev_run_id = str(data.get("task_id") or request.get("request_id", "") or id(request))
+
+                async def _emit_system_prompt_event() -> None:
+                    try:
+                        ev = _are.make_event(
+                            "system_prompt",
+                            source="hybrid-coordinator",
+                            run_id=_sp_ev_run_id,
+                            status="started",
+                            model=f"local-{agent_role}",
+                            route_profile=selected_profile or None,
+                            payload={
+                                "prompt_length": len(_sp_ev_text),
+                                "profile": selected_profile,
+                                "role": agent_role,
+                                "system_prompt": _sp_ev_text[:1000],
+                            },
+                        )
+                        await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+                    except Exception:
+                        pass
+
+                asyncio.create_task(_emit_system_prompt_event())
 
             # Phase 8.9 — Streaming dispatch: SSE token stream to caller.
             # Enabled via streaming_mode=true. Incompatible with async_mode and tools.
