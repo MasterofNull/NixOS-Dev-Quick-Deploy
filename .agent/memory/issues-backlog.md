@@ -1,6 +1,6 @@
 ## OPEN ISSUES
 
-[OPEN] behavioral-contract-backlog-update-step — BEHAVIORAL CONTRACT STEP 6 adds issues-backlog.md to git but never marks the issue [DONE] first
+[DONE] behavioral-contract-backlog-update-step — BEHAVIORAL CONTRACT STEP 6 adds issues-backlog.md to git but never marks the issue [DONE] first
   Root cause: STEP 6 says git_add([<changed-files>, '.agent/memory/issues-backlog.md']) but there is no
   step before git_add that calls edit_file to change [OPEN] to [DONE] in the backlog. The backlog is staged
   but unchanged, so [OPEN] issues remain [OPEN] after commit. Orchestrator has to manually update them.
