@@ -1175,6 +1175,8 @@ class LocalAgentExecutor:
             "- ALWAYS prefer edit_file over write_file for targeted changes.\n"
             "  edit_file(path, old_string, new_string) replaces old_string in place — no full-file regeneration.\n"
             "  Only use write_file if you must create a new file from scratch.\n"
+            "- READ LIMIT: At most 4 read_file calls per slice. After 4 reads, STOP reading — you have enough\n"
+            "  context. Call edit_file immediately. If edit_file fails with 'old_string not found', THEN read more.\n"
             "- SURGICAL FINALITY: validation gate passes → commit IMMEDIATELY. No cleanup. No refactor.\n"
             "  Adjacent improvements are separate tasks. One fix per slice.\n"
             "\n\nSELF-IMPROVEMENT SLICE — when asked to run/execute a self-improvement slice:\n"
