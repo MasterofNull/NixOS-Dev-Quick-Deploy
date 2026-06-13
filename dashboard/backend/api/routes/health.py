@@ -156,7 +156,7 @@ _LAYERED_BACKGROUND_ENABLED = os.getenv("DASHBOARD_AQ_QA_BACKGROUND", "1").strip
 
 async def _run_aq_qa_layered() -> Dict[str, Any]:
     """Run aq-qa 0 through the shared single-flight service."""
-    return await run_phase_json("0", timeout_s=600.0)
+    return await run_phase_json("0", timeout_s=600.0, normalize_dashboard_confined=True)
 
 
 async def _run_aq_qa_layered_background() -> None:

@@ -261,7 +261,9 @@ def main(argv: list[str] | None = None) -> int:
         _parse_args(["--help"])
         return 0
 
-    _source_endpoints()
+    dashboard_safe = os.environ.get("AQ_QA_DASHBOARD_SAFE", "0").strip().lower() in {"1", "true", "yes", "on"}
+    if not dashboard_safe:
+        _source_endpoints()
 
     from .core.context import RunContext
     from .core.result import ResultSet
@@ -279,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         query_timeout_s=int(os.environ.get("AQ_QA_QUERY_TIMEOUT_SECONDS", "45")),
         port_retry_attempts=int(os.environ.get("AQ_QA_PORT_RETRY_ATTEMPTS", "4")),
         port_retry_delay_s=float(os.environ.get("AQ_QA_PORT_RETRY_DELAY_SECONDS", "1")),
+        dashboard_safe=dashboard_safe,
     )
 
     start = time.monotonic()

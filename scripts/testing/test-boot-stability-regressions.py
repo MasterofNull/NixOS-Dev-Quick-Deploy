@@ -34,6 +34,7 @@ def main() -> int:
     switchboard_text = (ROOT / "ai-stack" / "switchboard" / "switchboard.py").read_text(encoding="utf-8")
     qa_runner_text = (ROOT / "dashboard" / "backend" / "api" / "services" / "qa_runner.py").read_text(encoding="utf-8")
     qa_context_text = (ROOT / "scripts" / "testing" / "harness_qa" / "core" / "context.py").read_text(encoding="utf-8")
+    phase0_text = (ROOT / "scripts" / "testing" / "harness_qa" / "phases" / "phase0.py").read_text(encoding="utf-8")
 
     assert_true(
         'mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];' in base_text,
@@ -224,6 +225,18 @@ def main() -> int:
         "dashboard qa_runner should explain empty/non-JSON aq-qa output instead of logging raw JSONDecodeError",
     )
     assert_true(
+        'AQ_QA_DASHBOARD_SAFE' in qa_runner_text
+        and "dashboard_safe" in qa_context_text
+        and "dashboard-safe mode: host-only probe" in phase0_text,
+        "dashboard OSI health should skip host-only aq-qa probes before AppArmor-denied subprocesses run",
+    )
+    assert_true(
+        'if ctx.dashboard_safe:' in phase0_text
+        and 's.connect_ex(("127.0.0.1", 3000))' in phase0_text
+        and 'results.extend(_check_local_payload_discipline(ctx))' in phase0_text,
+        "dashboard-safe OSI should avoid ss/coreutils denials from Grafana and shell gate probes",
+    )
+    assert_true(
         "pwd.getpwuid" in qa_context_text
         and "pwd.getpwnam" in qa_context_text
         and '["stat", "-c", "%U"' not in qa_context_text
@@ -239,6 +252,11 @@ def main() -> int:
         "git\", \"-C\", str(REPO_ROOT), \"check-ignore\", \"-q\"" in apparmor_fix_text
         and "paths.append(HANDOFF_MD.relative_to(REPO_ROOT))" in apparmor_fix_text,
         "apparmor-fix-agent should not force-add ignored HANDOFF.md during commits",
+    )
+    assert_true(
+        'operation == "mknod"' in apparmor_fix_text
+        and 're.fullmatch(r"/tmp/[A-Za-z0-9_]{6,12}", path)' in apparmor_fix_text,
+        "apparmor-fix-agent should ignore volatile mktemp mknod paths instead of proposing one-off /tmp rules",
     )
 
     print("PASS: boot stability regressions are covered")

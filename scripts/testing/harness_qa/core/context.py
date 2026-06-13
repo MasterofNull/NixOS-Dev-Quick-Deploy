@@ -23,6 +23,7 @@ class RunContext:
         query_timeout_s: int = 45,
         port_retry_attempts: int = 4,
         port_retry_delay_s: float = 1.0,
+        dashboard_safe: bool = False,
     ) -> None:
         self.repo_root = repo_root
         self.layer_filter = layer_filter
@@ -33,6 +34,7 @@ class RunContext:
         self.query_timeout_s = query_timeout_s
         self.port_retry_attempts = port_retry_attempts
         self.port_retry_delay_s = port_retry_delay_s
+        self.dashboard_safe = dashboard_safe
 
     def should_run(self, layer: int) -> bool:
         if self.layer_filter == 0:

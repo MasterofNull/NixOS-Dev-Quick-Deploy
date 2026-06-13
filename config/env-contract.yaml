@@ -931,6 +931,13 @@ variables:
     consumers: [aq-qa, harness_qa]
     description: "Skip checks that require aq-report data (prevents recursion when aq-report calls aq-qa)"
 
+  - canonical: AQ_QA_DASHBOARD_SAFE
+    aliases: []
+    default: "0"
+    layer: shell
+    consumers: [dashboard-backend, harness_qa]
+    description: "Run aq-qa phase 0 in dashboard-safe mode, skipping host-only user/session/tempdir probes that cannot execute inside the confined dashboard service"
+
   - canonical: AQ_QA_QUERY_TIMEOUT_SECONDS
     aliases: []
     default: "45"

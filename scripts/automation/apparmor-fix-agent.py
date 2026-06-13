@@ -97,6 +97,11 @@ def _make_rule(operation: str, path: str, mask: str, peer: str = "") -> Optional
     if not path:
         return None
 
+    # Volatile mktemp files are one-shot paths. Adding exact AppArmor rules for
+    # /tmp/<random> only bloats the profile and never fixes the next denial.
+    if operation == "mknod" and re.fullmatch(r"/tmp/[A-Za-z0-9_]{6,12}", path):
+        return None
+
     # ── File path operations ───────────────────────────────────────────────────
     # Nix store — generalize hash-prefixed derivation name.
     # Path: /nix/store/<hash-name>/sub/path
