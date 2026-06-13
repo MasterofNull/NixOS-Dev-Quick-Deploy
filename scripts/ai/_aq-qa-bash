@@ -1117,6 +1117,10 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-synthesis-guard.py"
     _check 1 "0.10.17" "exploration stagnation guard (reads-without-edit) in agent_executor (Phase 165)" \
       python3 "${REPO_ROOT}/scripts/testing/test-exploration-stagnation-guard.py"
+    _check 1 "0.10.18" "BEHAVIORAL CONTRACT READ LIMIT rule in agent_executor (Phase 165 iter 18)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-behavioral-contract-read-limit.py"
+    _check 1 "0.10.19" "JSON embedded-newline sanitizer in tool_registry parse_tool_call_from_llama (Phase 165 iter 20)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-json-sanitizer.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

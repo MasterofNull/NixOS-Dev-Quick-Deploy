@@ -1,4 +1,8 @@
 ## OPEN ISSUES
+<!-- Phase 165 behavioral contract hardening COMPLETE (2026-06-13):
+  iter 16-21 resolved: slim-manifest, read-limit, backlog-update-step, embedded-newlines-parse, synthesis-guard@call0.
+  aq-qa covers: 0.10.15-19 (5 new Phase 165 checks). Dataset=309. Backlog clear.
+  Next: PENDING-REBUILD activation (nixos-rebuild required, all commits ready). -->
 
 [DONE] parse-tool-call-embedded-newlines — parse_tool_call_from_llama fails when model emits JSON with literal (unescaped) newlines in string values
   Root cause: When old_string/new_string span multiple Python source lines, the model may emit them
