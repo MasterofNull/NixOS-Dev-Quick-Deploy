@@ -580,6 +580,8 @@ class LocalAgentExecutor:
         _MAX_READS_WITHOUT_EDIT = 8
         _READS_HARD_LIMIT = 12
         _exploration_nudge_sent = False
+        _validation_passes_without_commit = 0
+        _VALIDATION_STALL_NUDGE = 3
 
         # Observability: progress sidecar path (set by aq-agent-loop via env var).
         # Updated after every tool call so dashboards and `dispatch.py watch` can
@@ -823,6 +825,14 @@ class LocalAgentExecutor:
             elif result.tool_name in ("edit_file", "write_file"):
                 _reads_without_edit = 0
 
+            # Validation stall: detect repeated validate_before_commit/run_command
+            # without any intervening commit. Model validated the code is ready but
+            # won't pull the trigger. Nudge it to git_add → git_commit immediately.
+            if result.tool_name in ("validate_before_commit", "run_command") and result.status == "completed":
+                _validation_passes_without_commit += 1
+            elif result.tool_name in ("write_file", "edit_file", "git_add", "git_commit"):
+                _validation_passes_without_commit = 0
+
             if _reads_without_edit >= _READS_HARD_LIMIT:
                 stagnation_msg = (
                     f"Exploration stagnation: {_reads_without_edit} consecutive reads without "
@@ -878,6 +888,24 @@ class LocalAgentExecutor:
                     "exploration-nudge injected after %d reads without edit at call %d",
                     _reads_without_edit, tool_call_count,
                 )
+
+            # Validation stall nudge: code passed validation N times but model won't commit.
+            if _validation_passes_without_commit >= _VALIDATION_STALL_NUDGE:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"COMMIT STALL: validate_before_commit or run_command has passed "
+                        f"{_validation_passes_without_commit} times without a git_commit. "
+                        "The code is ready. If edit_file for the [DONE] marker is failing, "
+                        "call git_add now with only the changed code files, then git_commit "
+                        "immediately. Do NOT validate again."
+                    ),
+                })
+                logger.info(
+                    "validation-stall nudge injected after %d passes without commit at call %d",
+                    _validation_passes_without_commit, tool_call_count,
+                )
+                _validation_passes_without_commit = 0
 
         # Max tool calls reached, return current state
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
