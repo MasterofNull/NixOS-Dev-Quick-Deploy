@@ -79,8 +79,9 @@ def build_registry(tool_manifest: str = "full") -> ToolRegistry:
 
     tool_manifest:
       "full"             — all 29 tools (default; research/multi-step tasks)
-      "self-improvement" — minimal 6 tools for self-improvement slices only:
-                           read_file, write_file, run_command, git_add, git_commit, store_memory.
+      "self-improvement" — minimal 8 tools for self-improvement slices only:
+                           read_file, edit_file, write_file, run_command, git_add, git_commit,
+                           store_memory, validate_before_commit.
                            Reduces schema from ~2507 tokens to ~620 tokens — saves ~2 min/call
                            on Renoir APU (10 tok/s prefill).
     """
@@ -251,7 +252,7 @@ def main() -> int:
         help=(
             "Tool set to expose to the model. "
             "'full' = all 29 tools (default). "
-            "'self-improvement' = minimal 6 tools (read_file/write_file/run_command/git_add/git_commit/store_memory); "
+            "'self-improvement' = minimal 8 tools (read_file/edit_file/write_file/run_command/git_add/git_commit/store_memory/validate_before_commit); "
             "reduces schema from ~2507 to ~620 tokens — saves ~1900 tokens per prefill call."
         ),
     )
