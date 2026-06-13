@@ -1121,6 +1121,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-behavioral-contract-read-limit.py"
     _check 1 "0.10.19" "JSON embedded-newline sanitizer in tool_registry parse_tool_call_from_llama (Phase 165 iter 20)" \
       python3 "${REPO_ROOT}/scripts/testing/test-json-sanitizer.py"
+    _check 1 "0.10.20" "health-spider osi_layered_ready probe tolerates running:True transient state (Phase 166)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-health-spider-osi-layered-probe.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
