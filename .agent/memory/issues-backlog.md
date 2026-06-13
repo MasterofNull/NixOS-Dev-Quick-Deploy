@@ -4,6 +4,42 @@
   aq-qa covers: 0.10.15-19 (5 new Phase 165 checks). Dataset=309. Backlog clear.
   Next: PENDING-REBUILD activation (nixos-rebuild required, all commits ready). -->
 
+[OPEN] health-spider-osi-layered-running-flag — health spider flags osi_layered_pending as degraded even when background task is actively running (running: True)
+  Root cause: _semantic_probe_reason() check for "osi_layered_ready" returns "osi_layered_pending" whenever
+  data.get("pending") is True, regardless of data.get("running"). But the layered endpoint is designed to
+  return {pending: True, running: True} during its warm-up period (300-600s background aq-qa run).
+  The rebuild resets the in-process cache → first post-rebuild request triggers background task →
+  health spider hits during warm-up window → false-positive "degraded" alert (attn-0c6f15e9, 2026-06-12).
+  Severity: low
+  Action: In scripts/ai/aq-health-spider, edit _semantic_probe_reason() for the "osi_layered_ready" check:
+  Old text (exact, line ~142-144):
+    if check == "osi_layered_ready":
+        if data.get("pending") is True:
+            return "osi_layered_pending"
+  New text:
+    if check == "osi_layered_ready":
+        if data.get("pending") is True and not data.get("running"):
+            return "osi_layered_pending"
+  Effect: Spider tolerates the warm-up window (running: True). Only flags as degraded when stuck (pending AND NOT running).
+  Files: scripts/ai/aq-health-spider (_semantic_probe_reason, ~line 142)
+  One surgical edit, no logic changes beyond the single condition.
+
+[OPEN] ragas-faithfulness-zero-samples — faithfulness metric never computed; faithfulness_sample_count=0 across all 100 eval samples
+  Root cause: http_server_impl.py _ragas_score() computes faithfulness only when _ctx is non-empty:
+    `fs = await eval_runner.score_faithfulness_async(q, _ctx, r) if _ctx else None`
+  _ctx is built from RAG documents returned by the coordinator. If AIDB returns no matching documents
+  (sparse collections), _ctx is empty → faithfulness=None for that sample. All 100 samples evaluated
+  with empty context → faithfulness_sample_count=0 → faithfulness_avg=null indefinitely.
+  Live state (2026-06-13): ragas_metrics={answer_relevance_avg: 0.4747, faithfulness_avg: null, faithfulness_sample_count: 0, sample_count: 100}
+  Root cause of empty context: RAG collections (error-solutions, skills-patterns, best-practices) may be
+  stale or sparse for the types of queries flowing through the coordinator. Re-seed with current patterns.
+  Severity: medium
+  Action: Run seed-rag-knowledge.py --clear-wrong-type to refresh collections, then verify
+  faithfulness_sample_count increases over the next 24h as coordinator queries hit populated collections.
+  If collections are populated but faithfulness remains 0, investigate score_faithfulness_async for errors.
+  Files: scripts/data/seed-rag-knowledge.py (immediate action); ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py _ragas_score (~line 2404) for deeper fix if needed.
+  Non-blocking: answer_relevance and context_precision metrics are healthy (0.47 and 0.43).
+
 [DONE] parse-tool-call-embedded-newlines — parse_tool_call_from_llama fails when model emits JSON with literal (unescaped) newlines in string values
   Root cause: When old_string/new_string span multiple Python source lines, the model may emit them
   as JSON string values containing literal `\n` characters instead of `\\n` escape sequences.
