@@ -10,6 +10,8 @@ Achieve full parity with the "Pi-style" observability stack, focusing on deep ag
 | Feature | Status | Gap Description |
 | --- | --- | --- |
 | **Thought Visualization** | PARTIAL | Frontend renders `thought`/`agent_thinking`/`planning` events (dashboard.js:7293-7315). Backend emission gap: switchboard/coordinator don't extract `<think>` tags as telemetry events. |
+| **System Prompt Visibility** | PARTIAL | Frontend renders `system_prompt`/`model_call` events as "View System Prompt / Payload". Backend gap: coordinator doesn't emit a dedicated `system_prompt` event per run. |
+| **Multimodal Replay** | PARTIAL | Frontend renders `artifact` events with `variant=html` in sandboxed iframe. Backend gap: agents don't emit `artifact` events. |
 | **Swimlane Timeline** | PARTIAL | Backend exists (`/agent-runs/swimlane`), but frontend rendering in `dashboard.html` is minimal and lacks deep-dive interactivity. |
 | **Race Mode side-by-side** | PARTIAL | Backend exists (`/agent-runs/race`), but frontend comparison needs multimodal support (rendering HTML/Visual specs). |
 | **Useful Token Tracking** | DONE (rebuild pending) | switchboard.py fix committed ebeae5ab. Dashboard gauge at line 7661 shows ratio once data flows. Frontend shows `--` until rebuild activates live data. |
@@ -30,8 +32,8 @@ Achieve full parity with the "Pi-style" observability stack, focusing on deep ag
 - **Goal:** Transform `dashboard.html` into a rich control surface.
 - [x] **Thought Block:** `dashboard.js` already renders `thought` + `agent_thinking` events (lines 7293-7314) and `planning` events (line 7315). Backend emission is the remaining gap (Phase 1 items).
 - [x] **Useful Token Gauge:** `dashboard.js` already calls `gaugeBar(ratio, 0.6, 0.4, "Useful token ratio")` (line 7661). Was showing null/-- due to switchboard gap now fixed (ebeae5ab, awaiting rebuild).
-- [ ] **Multimodal Replay:** Add support for rendering HTML artifacts directly in the replay view using `<iframe>`.
-- [ ] **System Prompt Viewer:** Add a "View System Context" button to expand the full prompt used for the run.
+- [x] **Multimodal Replay:** iframe renderer already in dashboard.js (lines 7360-7364): detects `event_type=artifact, payload.variant=html` and renders in sandboxed iframe. Backend needs to emit `artifact` events.
+- [x] **System Prompt Viewer:** already in dashboard.js (lines 7346-7352): `run_start`/`prompt_load`/`system_prompt`/`model_call` events show "View System Prompt / Payload" expandable. Backend emission gap: coordinator doesn't emit `system_prompt` event per run.
 
 ### Phase 3: Advanced Visualizations
 - [ ] **Swimlane Interactivity:** Allow clicking a bar in the swimlane to immediately focus the Replay panel on that run.
