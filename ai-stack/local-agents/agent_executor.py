@@ -572,6 +572,14 @@ class LocalAgentExecutor:
         _failed_reads: dict = {}  # path → failure count
         _FAILED_READ_LIMIT = 3
 
+        # Exploration stagnation: tracks reads since the last edit/write tool call.
+        # Models in self-improvement mode should read 1-3 files then act. More than
+        # 8 reads without any edit is over-exploration; nudge the model. 12 = hard abort.
+        _reads_without_edit = 0
+        _MAX_READS_WITHOUT_EDIT = 8
+        _READS_HARD_LIMIT = 12
+        _exploration_nudge_sent = False
+
         # Observability: progress sidecar path (set by aq-agent-loop via env var).
         # Updated after every tool call so dashboards and `dispatch.py watch` can
         # read current state without waiting for the final JSON output.
@@ -804,6 +812,26 @@ class LocalAgentExecutor:
                         )
                         return stagnation_msg, total_tokens
 
+            # Exploration stagnation: count reads vs edits/writes.
+            # Reset counter on any write action; abort if model reads too many files
+            # without acting (prevents over-exploration in self-improvement tasks).
+            if result.tool_name == "read_file":
+                _reads_without_edit += 1
+            elif result.tool_name in ("edit_file", "write_file"):
+                _reads_without_edit = 0
+
+            if _reads_without_edit >= _READS_HARD_LIMIT:
+                stagnation_msg = (
+                    f"Exploration stagnation: {_reads_without_edit} consecutive reads without "
+                    f"any edit_file or write_file — model stuck in exploration phase. "
+                    f"Aborting at tool call {tool_call_count}."
+                )
+                logger.warning(
+                    "exploration stagnation: %d reads without edit — aborting at call %d",
+                    _reads_without_edit, tool_call_count,
+                )
+                return stagnation_msg, total_tokens
+
             # Extract the clean JSON from the response so the assistant turn
             # contains only the tool call object, not any leading prose.
             # Qwen3's chat template strips unknown roles — "function" is not
@@ -830,6 +858,23 @@ class LocalAgentExecutor:
                 "name": result.tool_name,
                 "content": formatted_result,
             })
+
+            # Soft nudge: inject a user message when reads-without-edit reaches the soft limit.
+            # Appears before the next LLM call so the model can course-correct without aborting.
+            if _reads_without_edit == _MAX_READS_WITHOUT_EDIT and not _exploration_nudge_sent:
+                _exploration_nudge_sent = True
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"EXPLORATION WARNING: You have read {_reads_without_edit} files without "
+                        "making any edits. You have enough context. Execute the required "
+                        "edit_file calls from the BEHAVIORAL CONTRACT now."
+                    ),
+                })
+                logger.info(
+                    "exploration-nudge injected after %d reads without edit at call %d",
+                    _reads_without_edit, tool_call_count,
+                )
 
         # Max tool calls reached, return current state
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")

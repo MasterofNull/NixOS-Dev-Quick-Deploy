@@ -35,6 +35,10 @@ _SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
 if _SHARED_PATH not in sys.path:
     sys.path.insert(0, _SHARED_PATH)
 
+_SECURITY_PATH = str(_REPO_ROOT / "ai-stack" / "security")
+if _SECURITY_PATH not in sys.path:
+    sys.path.insert(0, _SECURITY_PATH)
+
 import hashlib
 import logging
 import os
@@ -87,6 +91,13 @@ def _thinking_kwargs(task_type: Optional[str]) -> dict:
     return {"chat_template_kwargs": {"enable_thinking": False}}
 
 import capability_discovery
+try:
+    from capability_guard import get_guard as _get_capability_guard
+    _CAPABILITY_GUARD_AVAILABLE = True
+except ImportError:
+    _CAPABILITY_GUARD_AVAILABLE = False
+    _get_capability_guard = None  # type: ignore[assignment]
+
 from config import Config, routing_config
 from metrics import (
     ROUTE_DECISIONS,
@@ -1644,6 +1655,27 @@ async def route_search(
                         compressed_tokens,
                         distinct_reasoning_client_available,
                     )
+                    # capability_guard: if probe cache shows the recommended remote profile
+                    # is suppressed, fall back to local routing by clearing burst_decision.
+                    # get_unbound_profile() is a synchronous cache-read — no latency cost.
+                    # Falls back gracefully if no probes have been run yet (cache empty).
+                    if burst_decision is not None and _CAPABILITY_GUARD_AVAILABLE and _get_capability_guard is not None:
+                        try:
+                            _orig_profile = burst_decision["recommended_profile"]
+                            _guarded = _get_capability_guard().get_unbound_profile(_orig_profile)
+                            if _guarded != _orig_profile:
+                                logger.warning(
+                                    "capability_guard: profile '%s' suppressed → local failover",
+                                    _orig_profile,
+                                )
+                                results["capability_guard_failover"] = {
+                                    "original_profile": _orig_profile,
+                                    "redirected_to": _guarded,
+                                }
+                                burst_decision = None
+                        except Exception as _cg_err:
+                            logger.debug("capability_guard check non-fatal: %s", _cg_err)
+
                     if burst_decision is not None:
                         _swb = _switchboard_client_ref() if _switchboard_client_ref else None
                         if _swb and Config.SWITCHBOARD_URL:
