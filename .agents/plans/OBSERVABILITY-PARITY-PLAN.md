@@ -1,7 +1,7 @@
 # Observability & Dashboard Parity Implementation Plan
 
 **Source:** [YouTube: Pi Coding Agent Observability](https://www.youtube.com/watch?v=o4KZH_KSqYQ&t=1s)
-**Status:** In Progress (Phase 149)
+**Status:** In Progress (Phase 149→166)
 
 ## 1. Goal
 Achieve full parity with the "Pi-style" observability stack, focusing on deep agentic introspection, useful-token metrics, and side-by-side comparison (Race Mode).
@@ -12,7 +12,7 @@ Achieve full parity with the "Pi-style" observability stack, focusing on deep ag
 | **Thought Visualization** | PENDING | Dashboard lacks a dedicated "Thought/Reasoning" block rendering. Agents do not consistently emit `<think>` tags in structured telemetry. |
 | **Swimlane Timeline** | PARTIAL | Backend exists (`/agent-runs/swimlane`), but frontend rendering in `dashboard.html` is minimal and lacks deep-dive interactivity. |
 | **Race Mode side-by-side** | PARTIAL | Backend exists (`/agent-runs/race`), but frontend comparison needs multimodal support (rendering HTML/Visual specs). |
-| **Useful Token Tracking** | PARTIAL | Logic in `aq-report` and `aistack.py` exists, but telemetry data in `agent-run-events.jsonl` often has `null` for these fields. |
+| **Useful Token Tracking** | IN PROGRESS | Logic in `aq-report` and `aistack.py` exists. `agent_executor.py` emits `useful_ratio=1.0` for local inference. Switchboard token_usage events still missing `useful_ratio` — fix committed 2026-06-13, awaiting next nixos-rebuild. |
 | **Performance/Speed/Cost Triangle** | MISSING | No unified visualization for cost-per-intelligence or efficiency metrics. |
 | **System Prompt Visibility** | PENDING | No easy way to view the *actual* system prompt (including injected skills) used for a specific run in the replay UI. |
 
@@ -22,7 +22,7 @@ Achieve full parity with the "Pi-style" observability stack, focusing on deep ag
 - **Goal:** Ensure `agent-run-events.jsonl` contains the rich data needed for the dashboard.
 - [ ] Update `agent_run_events.py` to include a `thought` event type or a `thought` field in `model_call` payloads.
 - [ ] Instrument `Switchboard` and `Hybrid Coordinator` to extract content between `<think>` tags from local model responses and emit them as telemetry events.
-- [ ] Fix `useful_ratio` calculation in `Switchboard` so it is emitted with every `token_usage` event.
+- [x] Fix `useful_ratio` in `Switchboard` — `useful_ratio=1.0` now injected at both token_usage sites (2026-06-13, awaiting rebuild).
 
 ### Phase 2: Dashboard Frontend Elevation
 - **Goal:** Transform `dashboard.html` into a rich control surface.
