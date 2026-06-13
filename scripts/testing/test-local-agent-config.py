@@ -71,8 +71,12 @@ def main() -> int:
     )
     llm_config_text = (ROOT / "ai-stack" / "mcp-servers" / "shared" / "llm_config.py").read_text(encoding="utf-8")
     assert_true(
-        '"chat_template_kwargs": {"enable_thinking": False}' in llm_config_text,
-        "shared llama payload builder should disable thinking explicitly",
+        '"chat_template_kwargs": {"enable_thinking": _enable_thinking}' in llm_config_text,
+        "shared llama payload builder should route thinking through the profile-driven chat_template_kwargs field",
+    )
+    assert_true(
+        llm_config_text.count("enable_thinking=False") >= 5,
+        "all local task profiles should keep thinking disabled on current hardware",
     )
     aq_chat_text = (ROOT / "scripts" / "ai" / "aq-chat").read_text(encoding="utf-8")
     assert_true(
@@ -84,8 +88,8 @@ def main() -> int:
         "aq-chat should never send enable_thinking=True to local llama.cpp or switchboard local tools",
     )
     assert_true(
-        aq_chat_text.count('"chat_template_kwargs"] = {"enable_thinking": False}') >= 2,
-        "aq-chat should disable thinking for direct local and local-tool-calling payloads",
+        aq_chat_text.count('"chat_template_kwargs"] = {"enable_thinking": False}') >= 1,
+        "aq-chat should disable thinking for coordinator delegated local payloads",
     )
     agent_executor_text = (ROOT / "ai-stack" / "local-agents" / "agent_executor.py").read_text(encoding="utf-8")
     training_ingest_text = (ROOT / "ai-stack" / "local-agents" / "training_ingest.py").read_text(encoding="utf-8")

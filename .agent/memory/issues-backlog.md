@@ -619,3 +619,13 @@
   Fix: Added _failed_reads dict to agent_executor execute_task loop. If the same read_file path
   returns ok=False >= 3 times in a session, abort with "File-not-found stagnation" message.
   File: ai-stack/local-agents/agent_executor.py (_failed_reads dict + FAILED_READ_LIMIT check)
+
+[DONE] aq-chat-local-tool-execution-parity — aq-chat printed pseudo tool calls and then hit 502 on follow-up instead of using the delegated local runtime — Root cause: the local chat path mixed Switchboard/OpenAI payloads with coordinator delegation and omitted the canonical `task` field expected by `/control/ai-coordinator/delegate`.
+  Severity: high
+  Fix: Routed local/local-tool-calling aq-chat turns through coordinator delegation with `task`, preserved messages, disabled Qwen thinking mode, added backend error detail, and added live dashboard OSI grounding to prevent stale status claims.
+  File: scripts/ai/aq-chat; scripts/testing/test-aq-chat-local-tool-profile.py
+
+[DONE] aq-chat-payload-discipline-gate-drift — local payload discipline gate stopped scanning aq-chat — Root cause: a prior edit added `--exclude="aq-chat"` despite the gate including extensionless aq-chat scripts.
+  Severity: high
+  Fix: Removed the exclusion and kept the local no-think contract covered by focused config and payload gate tests.
+  File: scripts/testing/gate-local-payload-discipline.sh; scripts/testing/test-local-agent-config.py

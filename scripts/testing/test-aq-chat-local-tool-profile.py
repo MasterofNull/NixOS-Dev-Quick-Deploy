@@ -17,11 +17,11 @@ def main() -> None:
     text = AQ_CHAT.read_text(encoding="utf-8")
     assert_true(
         'self.active_profile in {"local", "local-tool-calling"}' in text,
-        "aq-chat should treat local-tool-calling as a local switchboard profile",
+        "aq-chat should treat local-tool-calling as a local profile",
     )
     assert_true(
-        "switchboard_local_tools = self._uses_switchboard_local_tools()" in text,
-        "aq-chat should use a single switchboard local-tools routing decision",
+        "def _build_coordinator_delegate_payload" in text,
+        "aq-chat should build a canonical coordinator delegation payload for local turns",
     )
     assert_true(
         "def _record_and_render_assistant_response" in text,
@@ -30,6 +30,10 @@ def main() -> None:
     assert_true(
         "def _build_local_snapshot" in text and "TRUSTED LOCAL PREFLIGHT SNAPSHOT" in text,
         "aq-chat should ground operational recommendation prompts in a trusted local snapshot",
+    )
+    assert_true(
+        '"dashboard_osi"' in text and "/api/health/layered" in text,
+        "aq-chat trusted snapshot should include live dashboard OSI counts",
     )
     assert_true(
         '"/brief"' in text,
@@ -52,28 +56,36 @@ def main() -> None:
         "aq-chat should support explicit tool-free local turns for spec-only prompts",
     )
     assert_true(
-        "if switchboard_local_tools and not local_snapshot and not tool_free_turn:" in text,
-        "aq-chat should bypass local tool loops when deterministic snapshot or explicit tool-free grounding is available",
+        '"task": prompt' in text,
+        "aq-chat coordinator delegation should include the current user turn as task",
     )
     assert_true(
-        'payload["max_tokens"] = 1024' in text,
-        "aq-chat snapshot/tool-free turns should stay bounded without being too restrictive for local reasoning",
+        '"messages": request_messages' in text,
+        "aq-chat coordinator delegation should preserve conversation messages",
     )
     assert_true(
         'headers["X-AI-Profile"] = "local-tool-calling"' in text,
-        "aq-chat should send the local-tool-calling switchboard profile header",
+        "aq-chat should identify the local-tool-calling profile to the coordinator",
     )
     assert_true(
-        'payload["stream"] = False' in text,
-        "aq-chat should keep local-tool-calling non-streaming so switchboard executes the tool loop",
+        '"stream": False' in text,
+        "aq-chat should consume coordinator local delegation as a completed JSON response",
     )
     assert_true(
         "response = await self.client.post(target_url, json=payload, headers=headers)" in text,
-        "aq-chat should consume local-tool-calling as a completed JSON response, not raw token SSE",
+        "aq-chat should consume local delegation as a completed JSON response, not raw token SSE",
     )
     assert_true(
-        'if switchboard_local_tools and not local_snapshot and not tool_free_turn:' in text,
-        "aq-chat should post local-tool-calling requests to switchboard, not hybrid orchestration",
+        'target_url = f"{self.hybrid_url}/control/ai-coordinator/delegate"' in text,
+        "aq-chat local profile should route through the hybrid coordinator delegate endpoint",
+    )
+    assert_true(
+        'target_url = f"{self.switchboard_url}/v1/chat/completions"' not in text,
+        "aq-chat local profile should not bypass coordinator governance through switchboard chat completions",
+    )
+    assert_true(
+        "Never print pseudo tool calls" in text,
+        "aq-chat prompt should forbid printed pseudo-tool calls when tool execution is unavailable",
     )
     assert_true(
         "except KeyboardInterrupt:" in text and "Interrupted." in text,
@@ -87,7 +99,7 @@ def main() -> None:
         'local tool budget exhausted; answer finalized from completed tool outputs' in text,
         "aq-chat should surface when a response was forced after local tool budget exhaustion",
     )
-    print("PASS: aq-chat local-tool-calling profile routes through switchboard")
+    print("PASS: aq-chat local-tool-calling profile routes through coordinator delegation")
 
 
 if __name__ == "__main__":
