@@ -70,6 +70,7 @@ logger = logging.getLogger(__name__)
 _SLIM_TOOLS = frozenset({
     "read_file", "edit_file", "write_file", "run_command",
     "git_add", "git_commit", "store_memory",
+    "validate_before_commit",
 })
 
 
