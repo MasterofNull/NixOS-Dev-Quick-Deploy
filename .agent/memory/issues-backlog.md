@@ -1,6 +1,6 @@
 ## OPEN ISSUES
 
-[OPEN] parse-tool-call-embedded-newlines — parse_tool_call_from_llama fails when model emits JSON with literal (unescaped) newlines in string values
+[DONE] parse-tool-call-embedded-newlines — parse_tool_call_from_llama fails when model emits JSON with literal (unescaped) newlines in string values
   Root cause: When old_string/new_string span multiple Python source lines, the model may emit them
   as JSON string values containing literal `\n` characters instead of `\\n` escape sequences.
   `json.loads()` rejects literal control chars in strings → parse returns None → tool never executes.
