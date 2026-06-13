@@ -4201,6 +4201,13 @@ async def get_orchestration_events(
 _AGENT_RUN_EVENTS_PATH = Path(
     os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 )
+# User-space spool written by aq-agent-loop (agent_thinking, agent_tool_call, agent_step_complete).
+# These events use task_id/session_id keys instead of run_id — merged on replay for aq-* run IDs.
+_USER_EVENTS_SPOOL_PATH = Path(
+    os.getenv("AQ_USER_EVENTS_SPOOL_PATH", str(
+        Path(__file__).parents[4] / ".agents" / "telemetry" / "hybrid-events.jsonl"
+    ))
+)
 _RACE_RUNS_PATH = Path(
     os.getenv("AQ_RACE_RUNS_PATH", "/var/lib/ai-stack/hybrid/telemetry/race-runs.jsonl")
 )
@@ -4235,36 +4242,65 @@ def _load_agent_run_events(
     limit: int = 500,
 ) -> tuple[list[dict], str]:
     """Load agent-run events from JSONL with optional filters. Returns (events, source_label)."""
-    if not _AGENT_RUN_EVENTS_PATH.exists():
-        return [], "no_data"
     events: list[dict] = []
-    try:
-        with _AGENT_RUN_EVENTS_PATH.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                if not line.strip():
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if run_id and record.get("run_id") != run_id:
-                    continue
-                if experiment_id and record.get("experiment_id") != experiment_id:
-                    continue
-                if agent_id and record.get("agent_id") != agent_id:
-                    continue
-                if event_type and record.get("event_type") != event_type:
-                    continue
-                if spec_variant:
-                    spec = record.get("spec") or {}
-                    if spec.get("variant") != spec_variant:
+    source_label = "no_data"
+
+    if _AGENT_RUN_EVENTS_PATH.exists():
+        try:
+            with _AGENT_RUN_EVENTS_PATH.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if not line.strip():
                         continue
-                events.append(record)
-        events = sorted(events, key=lambda e: (str(e.get("timestamp") or ""), str(e.get("event_id") or "")))
-        return events[-limit:], "agent-run-events"
-    except OSError as exc:
-        logger.warning("agent-run-events read error: %s", exc)
-        return [], "no_data"
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if run_id and record.get("run_id") != run_id:
+                        continue
+                    if experiment_id and record.get("experiment_id") != experiment_id:
+                        continue
+                    if agent_id and record.get("agent_id") != agent_id:
+                        continue
+                    if event_type and record.get("event_type") != event_type:
+                        continue
+                    if spec_variant:
+                        spec = record.get("spec") or {}
+                        if spec.get("variant") != spec_variant:
+                            continue
+                    events.append(record)
+            if events:
+                source_label = "agent-run-events"
+        except OSError as exc:
+            logger.warning("agent-run-events read error: %s", exc)
+
+    # User-spool fallback: aq-agent-loop writes agent_thinking/agent_tool_call/agent_step_complete
+    # events to .agents/telemetry/hybrid-events.jsonl using task_id/session_id (not run_id).
+    # Merge these when the run_id looks like a local agent task (aq-* prefix).
+    if run_id and run_id.startswith("aq-") and _USER_EVENTS_SPOOL_PATH.exists():
+        try:
+            with _USER_EVENTS_SPOOL_PATH.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    task_id = record.get("task_id") or record.get("session_id") or ""
+                    if task_id != run_id:
+                        continue
+                    if event_type and record.get("event_type") != event_type:
+                        continue
+                    # Normalise: add run_id so downstream code can group consistently
+                    record.setdefault("run_id", run_id)
+                    events.append(record)
+            if events:
+                source_label = "user-spool+agent-run-events" if source_label != "no_data" else "user-spool"
+        except OSError as exc:
+            logger.debug("user-spool read error: %s", exc)
+
+    events = sorted(events, key=lambda e: (str(e.get("timestamp") or ""), str(e.get("event_id") or "")))
+    return events[-limit:], source_label
 
 
 def _load_race_runs(
