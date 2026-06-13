@@ -7221,6 +7221,8 @@ async function loadAgentReplay(runId) {
     run_start: "▶",
     run_end: "⏹",
     thought: "🧠",
+    agent_thinking: "🧠",
+    agent_tool_call: "🔧",
     planning: "🗺️",
     default: "·",
   };
@@ -7288,22 +7290,26 @@ async function loadAgentReplay(runId) {
 
       let payloadHtml = "";
       if (ev.payload) {
-        if (ev.event_type === "thought") {
+        if (ev.event_type === "thought" || ev.event_type === "agent_thinking") {
+          // "thought" — redacted chain-of-thought from remote models (payload.summary)
+          // "agent_thinking" — prose the local agent emitted before a tool call (ev.thinking)
           const payload = typeof ev.payload === "object" ? ev.payload : {};
-          const summary =
-            payload.summary ||
-            "Reasoning signal observed; raw chain-of-thought is hidden by policy.";
-          const meta = [
-            payload.char_count != null ? `${payload.char_count} chars suppressed` : "",
-            payload.content_hash ? `hash ${payload.content_hash}` : "",
-            payload.redaction_level || "raw_reasoning_suppressed",
-          ]
-            .filter(Boolean)
-            .join(" · ");
+          const thinkingText = ev.thinking || ev.thought || payload.summary || null;
+          const summary = thinkingText
+            ? escapeHtml(thinkingText.slice(0, 400)) + (thinkingText.length > 400 ? "…" : "")
+            : "Reasoning signal observed; raw chain-of-thought is hidden by policy.";
+          const toolRef = ev.tool_call_number != null ? ` · before call #${ev.tool_call_number}` : "";
+          const meta = ev.event_type === "agent_thinking"
+            ? `local model pre-tool prose${toolRef}`
+            : [
+                payload.char_count != null ? `${payload.char_count} chars suppressed` : "",
+                payload.content_hash ? `hash ${payload.content_hash}` : "",
+                payload.redaction_level || "raw_reasoning_suppressed",
+              ].filter(Boolean).join(" · ");
           payloadHtml = `
             <div style="margin-top:.3rem; background:rgba(190,150,60,0.08); border:1px dashed var(--yel); padding:.45rem .55rem; border-radius:3px; font-size:.6rem; color:var(--fg2);">
               <div style="color:var(--yel);font-weight:bold;margin-bottom:.2rem;">Reasoning observed</div>
-              <div>${escapeHtml(summary)}</div>
+              <div>${summary}</div>
               <div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">${escapeHtml(meta)}</div>
             </div>`;
         } else if (ev.event_type === "planning") {
@@ -7320,6 +7326,20 @@ async function loadAgentReplay(runId) {
               <div>${escapeHtml(rationale)}</div>
               ${localPath ? `<div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">path: ${escapeHtml(localPath)}</div>` : ""}
               ${evidence ? `<div style="margin-top:.25rem;color:var(--fg3);font-family:var(--hud);font-size:.52rem">evidence: ${escapeHtml(evidence)}</div>` : ""}
+            </div>`;
+
+        } else if (ev.event_type === "agent_tool_call") {
+          // Local agent tool call event — show tool name, success, and timing
+          const toolName = ev.tool_name || "unknown";
+          const success = ev.success !== false;
+          const ms = ev.execution_time_ms != null ? `${Math.round(ev.execution_time_ms)}ms` : "";
+          const elapsedStr = ev.elapsed_s != null ? ` · ${ev.elapsed_s}s elapsed` : "";
+          const errStr = ev.error ? `<div style="margin-top:.2rem;color:var(--red);font-size:.56rem">${escapeHtml(String(ev.error))}</div>` : "";
+          payloadHtml = `
+            <div style="margin-top:.3rem; background:rgba(0,200,160,0.05); border-left:2px solid ${success ? "var(--grn)" : "var(--red)"}; padding:.35rem .55rem; border-radius:3px; font-size:.59rem; color:var(--fg2);">
+              <span style="color:${success ? "var(--grn)" : "var(--red)"};font-weight:bold">${escapeHtml(toolName)}</span>
+              <span style="color:var(--fg3);font-size:.54rem;margin-left:.4rem">${success ? "✓" : "✗"} ${ms}${elapsedStr}</span>
+              ${errStr}
             </div>`;
 
         } else {

@@ -35,6 +35,19 @@ if _MCP_SERVERS_PATH not in sys.path:
 from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS  # noqa: E402
 from tool_registry import ToolCall, ToolRegistry, get_registry
 
+# Phase 164B — MIC-G context sanitizer: scrub prompt-injection patterns from tool results
+# before they are injected into the LLM context window.  Import is best-effort; if the
+# security module is unavailable (e.g. minimal install) the agent continues without it.
+try:
+    _SECURITY_PATH = str(Path(__file__).resolve().parents[1] / "security")
+    if _SECURITY_PATH not in sys.path:
+        sys.path.insert(0, _SECURITY_PATH)
+    from context_sanitizer import sanitize_tool_result as _sanitize_tool_result
+    _CONTEXT_SANITIZER_AVAILABLE = True
+except ImportError:
+    _CONTEXT_SANITIZER_AVAILABLE = False
+    _sanitize_tool_result = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 _TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
@@ -693,7 +706,29 @@ class LocalAgentExecutor:
             tool_call = self.tool_registry.parse_tool_call_from_llama(response)
 
             if not tool_call:
-                # No tool call, return response as final answer
+                # No tool call — could be prose synthesis (correct) or a truncated/malformed
+                # tool-call JSON (model tried to call a tool but got cut off at max_tokens).
+                # Detect the latter by checking for the {"function" prefix that Qwen3 uses.
+                # Only trigger the safety net when tools have already been used (tool_call_count > 0);
+                # on the first turn a missing tool call just means the model answered in prose.
+                if tool_call_count > 0 and response.lstrip().startswith('{"function"'):
+                    logger.warning(
+                        "final-response-is-tool-call: response looks like truncated tool call at "
+                        "call %d — requesting prose synthesis (max_tokens=256)",
+                        tool_call_count,
+                    )
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "The previous output was incomplete. "
+                            "Write ONE prose sentence starting with 'COMPLETED:' summarising what was done. "
+                            "No JSON. No tool calls."
+                        ),
+                    })
+                    prose, syn_tokens = await self._call_llama(messages, role=role, max_tokens=256)
+                    total_tokens += syn_tokens
+                    return prose.strip() if prose.strip() else response, total_tokens
                 return response, total_tokens
 
             # Execute tool call
@@ -704,8 +739,22 @@ class LocalAgentExecutor:
             task.tool_calls_made.append(result)
             tool_call_count += 1
 
-            # Format result for model
+            # Format result for model, then sanitize for prompt-injection patterns.
+            # context_sanitizer scrubs IGNORE/SYSTEM/OVERRIDE patterns from tool output
+            # before it reaches the model context (MIC-G P2 — External Content Injection).
             formatted_result = self.tool_registry.format_tool_result(result)
+            if _CONTEXT_SANITIZER_AVAILABLE and _sanitize_tool_result is not None:
+                try:
+                    formatted_result, _violations = _sanitize_tool_result(
+                        formatted_result, source=result.tool_name,
+                    )
+                    if _violations:
+                        logger.warning(
+                            "context_sanitizer: %d violation(s) in %s result: %s",
+                            len(_violations), result.tool_name, _violations[:3],
+                        )
+                except Exception as _san_err:
+                    logger.debug("context_sanitizer error (non-fatal): %s", _san_err)
 
             # Stagnation detection: same (tool_name, result_prefix) repeated beyond
             # threshold → model is looping without state change. Abort early so we don't
@@ -1101,9 +1150,10 @@ class LocalAgentExecutor:
             "STEP 7: store_memory('<fix-pattern-in-one-sentence>', context_type='error-solutions', importance=0.8)\n"
             "        Seeds fix into AIDB so all agents learn from it.\n"
             "        Example: 'Fix: unconditional break exits loop before JSON fallback — indent break inside if-block.'\n"
-            "DONE:   After store_memory returns, output ONE sentence:\n"
-            "        'Committed <hash-prefix>: <what changed> — gate passed, memory seeded.'\n"
-            "        STOP. Do not call any more tools. Do not refactor. Do not update other files.\n"
+            "DONE:   After store_memory returns success, your FINAL output MUST start with:\n"
+            "        'COMPLETED: <what was fixed in one sentence>.'\n"
+            "        Example: 'COMPLETED: Added validate_before_commit to _SLIM_TOOLS frozenset.'\n"
+            "        Output ONLY that sentence. No JSON. No tool calls. STOP.\n"
             "Execute all steps in sequence without stopping. Do NOT target uncommitted changes.\n"
         )
 
