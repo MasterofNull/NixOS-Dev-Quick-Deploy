@@ -716,11 +716,13 @@ class LocalAgentExecutor:
 
             if not tool_call:
                 # No tool call — could be prose synthesis (correct) or a truncated/malformed
-                # tool-call JSON (model tried to call a tool but got cut off at max_tokens).
+                # tool-call JSON (model tried to call a tool but got cut off at max_tokens, or
+                # the parser rejected it due to embedded newlines in string values).
                 # Detect the latter by checking for the {"function" prefix that Qwen3 uses.
-                # Only trigger the safety net when tools have already been used (tool_call_count > 0);
-                # on the first turn a missing tool call just means the model answered in prose.
-                if tool_call_count > 0 and response.lstrip().startswith('{"function"'):
+                # Fire on ANY turn — tool_call_count > 0 was too narrow; the model can output
+                # a JSON tool call as its very first response if the parse failed (e.g. embedded
+                # bare newlines in old_string/new_string values).
+                if response.lstrip().startswith('{"function"'):
                     logger.warning(
                         "final-response-is-tool-call: response looks like truncated tool call at "
                         "call %d — requesting prose synthesis (max_tokens=256)",
