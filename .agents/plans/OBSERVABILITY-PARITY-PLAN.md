@@ -22,7 +22,8 @@ Achieve full parity with the "Pi-style" observability stack, focusing on deep ag
 - **Goal:** Ensure `agent-run-events.jsonl` contains the rich data needed for the dashboard.
 - [ ] Update `agent_run_events.py` to include a `thought` event type or a `thought` field in `model_call` payloads.
 - [ ] Instrument `Switchboard` and `Hybrid Coordinator` to extract content between `<think>` tags from local model responses and emit them as telemetry events.
-- [x] Fix `useful_ratio` in `Switchboard` — `useful_ratio=1.0` now injected at both token_usage sites (2026-06-13, awaiting rebuild).
+- [x] Fix `useful_ratio` in `Switchboard` — `useful_ratio=1.0` now injected at both token_usage sites (commit ebeae5ab, awaiting rebuild).
+- [x] aq-qa 0.10.21 — switchboard useful_ratio emission verified at both sites (test-switchboard-useful-ratio.py, 2026-06-13).
 
 ### Phase 2: Dashboard Frontend Elevation
 - **Goal:** Transform `dashboard.html` into a rich control surface.
