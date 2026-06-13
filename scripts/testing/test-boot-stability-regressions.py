@@ -33,6 +33,7 @@ def main() -> int:
     apparmor_fix_text = APPARMOR_FIX_AGENT.read_text(encoding="utf-8")
     switchboard_text = (ROOT / "ai-stack" / "switchboard" / "switchboard.py").read_text(encoding="utf-8")
     qa_runner_text = (ROOT / "dashboard" / "backend" / "api" / "services" / "qa_runner.py").read_text(encoding="utf-8")
+    qa_context_text = (ROOT / "scripts" / "testing" / "harness_qa" / "core" / "context.py").read_text(encoding="utf-8")
 
     assert_true(
         'mutableUserServicePaths = lib.unique [mutableOptimizerDir mutableLogDir];' in base_text,
@@ -136,6 +137,25 @@ def main() -> int:
         "dashboard AppArmor profile should execute the exact aq-qa symlink path used by qa_runner",
     )
     assert_true(
+        "/nix/store/**/bin/bash ix," in mcp_servers_text
+        and "/run/current-system/sw/bin/bash ix," in mcp_servers_text,
+        "dashboard AppArmor profile should allow the explicit bash interpreter used by qa_runner",
+    )
+    assert_true(
+        "def _qa_command()" in qa_runner_text
+        and "harness_qa" in qa_runner_text
+        and "sys.executable" in qa_runner_text
+        and "return [_bash_bin(), _aq_qa_bin()]" in qa_runner_text,
+        "dashboard qa_runner should prefer the Python harness_qa runner and keep bash aq-qa only as fallback",
+    )
+    assert_true(
+        "def _bash_bin()" in qa_runner_text
+        and "BASH_BIN" in qa_runner_text
+        and '"scripts" / "ai" / "aq-qa"' in qa_runner_text
+        and "await asyncio.create_subprocess_exec(\n        *_qa_command()," in qa_runner_text,
+        "dashboard qa_runner should invoke repo aq-qa through explicit bash to avoid wrapper and /usr/bin/env shebang denials",
+    )
+    assert_true(
         'return await self._fix_apparmor(anomaly) != "covered"' in health_spider_text,
         "health spider should not fail a cycle for AppArmor denials when rules are already covered",
     )
@@ -193,10 +213,22 @@ def main() -> int:
         "switchboard /health should not block dashboard probes on optional llama metrics",
     )
     assert_true(
-        "stderr={stderr_text[:300]}" in qa_runner_text
-        and "stdout={stdout_text[:300]}" in qa_runner_text
+        "stderr={stderr_text[:2000]}" in qa_runner_text
+        and "stdout={stdout_text[:2000]}" in qa_runner_text
         and "aq-qa exited {proc.returncode}{detail}" in qa_runner_text,
         "dashboard qa_runner should preserve stdout/stderr snippets for unexpected aq-qa exits",
+    )
+    assert_true(
+        "aq-qa emitted no stdout" in qa_runner_text
+        and "aq-qa emitted non-JSON output" in qa_runner_text,
+        "dashboard qa_runner should explain empty/non-JSON aq-qa output instead of logging raw JSONDecodeError",
+    )
+    assert_true(
+        "pwd.getpwuid" in qa_context_text
+        and "pwd.getpwnam" in qa_context_text
+        and '["stat", "-c", "%U"' not in qa_context_text
+        and '["getent", "passwd"' not in qa_context_text,
+        "harness RunContext should resolve primary user/home via Python stdlib, not AppArmor-sensitive stat/getent subprocesses",
     )
     assert_true(
         "def _apparmor_rules_already_present" in aq_approve_text

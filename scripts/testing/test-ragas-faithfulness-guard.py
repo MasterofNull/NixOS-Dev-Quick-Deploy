@@ -124,6 +124,22 @@ def test_trend_exposes_faithfulness_sample_count():
     print("PASS  trend exposes faithfulness_sample_count")
 
 
+def test_faithfulness_uses_fallback_when_judge_not_sampled():
+    """Enabled faithfulness should not stay null forever when judge sampling misses."""
+    import asyncio
+    mod = _load_eval_runner()
+    mod._FAITHFULNESS_ENABLED = True
+    mod._FAITHFULNESS_SAMPLE_RATE = 0.0
+    score = asyncio.run(mod.score_faithfulness_async(
+        "dashboard health",
+        "dashboard health checks include OSI layers and RAGAS faithfulness metrics",
+        "dashboard health checks should show OSI layers and RAGAS faithfulness",
+    ))
+    assert_true(score is not None, "faithfulness fallback should produce a score on non-sampled rows")
+    assert_true(0.0 <= score <= 1.0, f"faithfulness fallback score out of range: {score!r}")
+    print("PASS  faithfulness fallback scores non-sampled rows")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -134,6 +150,7 @@ if __name__ == "__main__":
         test_handle_eval_score_query_context_guard,
         test_faithfulness_guard_returns_none_not_zero,
         test_trend_exposes_faithfulness_sample_count,
+        test_faithfulness_uses_fallback_when_judge_not_sampled,
     ]
     for t in tests:
         try:

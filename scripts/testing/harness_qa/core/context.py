@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import pwd
 import subprocess
 from pathlib import Path
 from functools import cached_property
@@ -97,26 +98,20 @@ class RunContext:
             return v
         if v := os.environ.get("SUDO_USER"):
             return v
-        result = subprocess.run(
-            ["stat", "-c", "%U", str(self.repo_root)],
-            capture_output=True, text=True
-        )
-        owner = result.stdout.strip()
-        if owner and owner != "UNKNOWN":
-            return owner
+        try:
+            return pwd.getpwuid(self.repo_root.stat().st_uid).pw_name
+        except (KeyError, OSError):
+            pass
         return os.environ.get("USER", "")
 
     @cached_property
     def primary_home(self) -> str:
         if v := os.environ.get("AQ_QA_PRIMARY_HOME"):
             return v
-        result = subprocess.run(
-            ["getent", "passwd", self.primary_user],
-            capture_output=True, text=True
-        )
-        parts = result.stdout.strip().split(":")
-        if len(parts) >= 6 and parts[5]:
-            return parts[5]
+        try:
+            return pwd.getpwnam(self.primary_user).pw_dir
+        except (KeyError, OSError):
+            pass
         return os.environ.get("HOME", "")
 
     @cached_property
