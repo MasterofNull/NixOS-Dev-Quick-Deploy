@@ -140,7 +140,7 @@ def _semantic_probe_reason(check: str, data: Dict[str, Any]) -> str:
         return ""
 
     if check == "osi_layered_ready":
-        if data.get("pending") is True:
+        if data.get("pending") is True and not data.get("running"):
             return "osi_layered_pending"
         layers = data.get("layers") if isinstance(data.get("layers"), dict) else {}
         passed = int(data.get("passed") or 0)
