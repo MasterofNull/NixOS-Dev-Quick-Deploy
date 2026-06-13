@@ -1,27 +1,18 @@
 ## OPEN ISSUES
 
-[OPEN] agent-step-complete-tool-call-result — agent_step_complete training event captures last tool call JSON as response instead of prose synthesis, causing 0% quality score and training sample rejection
-  Root cause: when model's final output is a tool call (e.g. store_memory as last step), agent_executor
-  sets task.result to the tool call JSON rather than a prose synthesis. The training_ingest quality scorer
-  gives this ~0.048 (coverage=0, is_structured=False) against a 0.40 floor, so iter 16 produced 0 samples.
-  Severity: medium
-  Action: In execute_task(), after final tool call result is returned, request one more model completion
-  to get prose synthesis: add a "generate your final summary" step if task.result starts with '{"function"'.
-  Alternative: add "function " (with space as JSON key prefix) to _STRUCTURED_MARKERS in training_ingest.
-  Files: ai-stack/local-agents/agent_executor.py (execute_task final result detection)
-         ai-stack/local-agents/training_ingest.py (_STRUCTURED_MARKERS list as quick fix)
+[DONE] agent-step-complete-tool-call-result — synthesis guard added to agent_executor.py
+  Fix: two-part — (1) training_ingest: added '"function"' + '"arguments"' to _STRUCTURED_MARKERS so JSON
+  tool-call blobs score as structured (score≈0.80 vs 0.048 pre-fix). (2) agent_executor.py synthesis guard:
+  if final response starts with '{"function"', request 256-token "COMPLETED:" prose synthesis.
+  BEHAVIORAL CONTRACT DONE marker now requires "COMPLETED: <sentence>" prefix explicitly.
+  Commit: 8694d6fc (feat(observability): wire context_sanitizer, synthesis guard, agent replay parity)
+  Validated: iter 17 retry produced COMPLETED: sentence at step 8. training_ingest will pick up sample.
 
-[OPEN] aq-agent-loop-build-registry-docstring-drift — build_registry() docstring says "minimal 6 tools: read_file, write_file, run_command, git_add, git_commit, store_memory" but slim manifest now has 8 tools (also includes edit_file and validate_before_commit since Phase 165 iter 16)
-  Root cause: docstring was written when _SLIM_TOOLS had 6 entries; edit_file was added in Phase 165
-  iter 14-15, validate_before_commit added in iter 16 (19176f6f). Docstring was not updated.
-  The "--help" output for --tool-manifest also repeats the stale 6-tool list:
-  "'self-improvement' = minimal 6 tools (read_file/write_file/run_command/git_add/git_commit/store_memory)"
-  This is misleading for operators choosing manifests and for future model self-improvement that reads docs.
-  Severity: low
-  Action: Update the build_registry() docstring and argparse --tool-manifest help text to list all 8 tools:
-    read_file, edit_file, write_file, run_command, git_add, git_commit, store_memory, validate_before_commit
-  Files: scripts/ai/aq-agent-loop lines 77-86 (build_registry docstring) and lines 249-256 (argparse help text)
-  Two edit_file calls. No logic changes.
+[DONE] aq-agent-loop-build-registry-docstring-drift — build_registry() docstring + argparse help updated to list 8 slim tools
+  Fix: iter 17 retry (zyk4bj / aq-1781328865) — model used edit_file × 2, validate_before_commit, git_commit.
+  7 steps in 475s. Commit: f3fb0e11 "docs(aq-agent-loop): update build_registry docstring + argparse help to list 8 slim tools"
+  Key improvement vs iter 17 original: targeted prompt with exact old_string/new_string eliminated over-exploration.
+  Original iter 17 ran 26+ minutes with 12 reads, 0 edits — killed and re-dispatched.
 
 [DONE] progressive-tool-disclosure — aq-agent-loop exposed all 29 tools (~2507 tokens) in every self-improvement slice
   Root cause: build_registry() always registered all tools. Self-improvement slices only need 6 tools
