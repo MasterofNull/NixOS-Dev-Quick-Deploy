@@ -393,6 +393,42 @@ async def file_exists_handler(file_path: str) -> Dict:
     return result
 
 
+async def edit_file_handler(file_path: str, old_string: str, new_string: str) -> Dict:
+    """
+    Surgically replace old_string with new_string in a file (first occurrence).
+
+    Preferred over write_file for targeted changes — the model only needs to supply
+    the strings to change, not regenerate the entire file.  Fails with a clear error
+    if old_string is not found so the model can self-correct.
+
+    Args:
+        file_path:   Relative or absolute path to the file to edit.
+        old_string:  Exact text to replace (must be unique enough to identify the site).
+        new_string:  Replacement text.
+
+    Returns:
+        {"success": True, "replacements": 1}          on success
+        {"success": False, "error": "<reason>"}        on failure
+    """
+    try:
+        path = Path(file_path) if Path(file_path).is_absolute() else Path.cwd() / file_path
+        if not path.exists():
+            return {"success": False, "error": f"File not found: {file_path}"}
+        content = path.read_text(encoding="utf-8")
+        if old_string not in content:
+            # Provide a snippet of the file to help the model self-correct its old_string
+            snippet = content[:400] + ("..." if len(content) > 400 else "")
+            return {
+                "success": False,
+                "error": f"old_string not found in {file_path}. File starts with:\n{snippet}",
+            }
+        new_content = content.replace(old_string, new_string, 1)
+        path.write_text(new_content, encoding="utf-8")
+        return {"success": True, "replacements": 1}
+    except OSError as exc:
+        return {"success": False, "error": str(exc)}
+
+
 def register_file_tools(registry: ToolRegistry):
     """Register all file operation tools in the registry"""
 
@@ -544,7 +580,38 @@ def register_file_tools(registry: ToolRegistry):
         handler=file_exists_handler,
     ))
 
-    logger.info("Registered 5 file operation tools")
+    # edit_file
+    registry.register(ToolDefinition(
+        name="edit_file",
+        description=(
+            "Surgically replace old_string with new_string in a file (first occurrence). "
+            "Preferred over write_file for targeted changes — does not require regenerating "
+            "the whole file. Fails with a clear error if old_string is not found."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the file to edit",
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "Exact text to replace (must uniquely identify the edit site)",
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "Replacement text",
+                },
+            },
+            "required": ["file_path", "old_string", "new_string"],
+        },
+        category=ToolCategory.FILE_OPS,
+        safety_policy=SafetyPolicy.WRITE_ALLOWED,
+        handler=edit_file_handler,
+    ))
+
+    logger.info("Registered 6 file operation tools")
 
 
 if __name__ == "__main__":

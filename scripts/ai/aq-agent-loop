@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 _SLIM_TOOLS = frozenset({
-    "read_file", "write_file", "run_command",
+    "read_file", "edit_file", "write_file", "run_command",
     "git_add", "git_commit", "store_memory",
 })
 
