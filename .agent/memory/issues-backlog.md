@@ -4,7 +4,25 @@
   aq-qa covers: 0.10.15-19 (5 new Phase 165 checks). Dataset=309. Backlog clear.
   Next: PENDING-REBUILD activation (nixos-rebuild required, all commits ready). -->
 
-[OPEN] health-spider-osi-layered-running-flag — health spider flags osi_layered_pending as degraded even when background task is actively running (running: True)
+[OPEN] switchboard-useful-ratio-missing — switchboard token_usage events never emit useful_ratio; field is always null in telemetry (observability parity gap Phase 149)
+  Root cause: switchboard.py emits token_usage events at two sites (~line 2944, ~line 2964) but neither
+  includes useful_ratio in the tokens dict. The agent_run_events.py schema supports useful_ratio but
+  switchboard passes only raw llama.cpp usage (prompt/completion/total tokens) or estimated counts.
+  For local inference with enable_thinking=false, ALL output tokens are useful → useful_ratio=1.0.
+  This means the dashboard Useful Token Gauge shows null/-- for 100% of local model requests.
+  Live state: grep "useful_ratio" switchboard.py → no results (2026-06-13).
+  Severity: medium (observability gap; does not affect response quality)
+  Requires rebuild: YES (switchboard.py is a coordinator-side service)
+  Action: In ai-stack/switchboard/switchboard.py, at both token_usage emission sites (~line 2944 and ~2964),
+  add useful_ratio to the tokens dict:
+    Site 1 (llama.cpp usage block, line ~2944): inject "useful_ratio": 1.0 into the usage dict before emit.
+    Site 2 (estimated fallback, line ~2971): add "useful_ratio": 1.0 to the tokens dict.
+  Justification: enable_thinking=false is system-wide for local inference (CLAUDE.md constraint);
+  all output tokens are response tokens → useful_ratio is exactly 1.0.
+  Files: ai-stack/switchboard/switchboard.py (~line 2944 and ~2971)
+  Two surgical edits. No logic changes.
+
+[DONE] health-spider-osi-layered-running-flag — health spider flags osi_layered_pending as degraded even when background task is actively running (running: True)
   Root cause: _semantic_probe_reason() check for "osi_layered_ready" returns "osi_layered_pending" whenever
   data.get("pending") is True, regardless of data.get("running"). But the layered endpoint is designed to
   return {pending: True, running: True} during its warm-up period (300-600s background aq-qa run).
