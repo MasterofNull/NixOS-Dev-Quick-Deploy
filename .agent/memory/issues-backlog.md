@@ -17,7 +17,7 @@
   Files: ai-stack/local-agents/agent_executor.py (_get_system_prompt BEHAVIORAL CONTRACT)
   One edit_file call. No logic changes.
 
-[OPEN] behavioral-contract-read-limit — BEHAVIORAL CONTRACT lacks explicit READ LIMIT rule; model over-reads before editing
+[DONE] behavioral-contract-read-limit — BEHAVIORAL CONTRACT lacks explicit READ LIMIT rule; model over-reads before editing
   Root cause: BEHAVIORAL CONTRACT general rules say "Read before writing" but this causes over-exploration.
   Iter 17 original ran 12 reads, 0 edits in 26+ minutes because the model kept reading different files
   instead of attempting edit_file. The exploration stagnation guard (Phase 165) catches this at 12 reads
