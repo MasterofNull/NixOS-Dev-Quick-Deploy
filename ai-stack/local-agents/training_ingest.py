@@ -124,6 +124,7 @@ _STRUCTURED_MARKERS = (
     "```", "def ", "class ", "import ", "return ", "function ",
     "## ", "### ", "1. ", "2. ", "- [", "* ", "| ",  # markdown / lists
     '"function"', '"arguments"',  # JSON tool-call blobs from agent_step_complete
+    "COMPLETED:",  # agent synthesis guard output — verified task completion sentence
 )
 
 
