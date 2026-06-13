@@ -593,6 +593,20 @@ ERROR_SOLUTIONS = [
         "files": ["ai-stack/local-agents/training_ingest.py"],
         "related_patterns": ["training_ingest_empty_routing_rules_preserved"],
     },
+    {
+        "error_type": "agent_file_not_found_varied_loop",
+        "error_message": "Agent picks an issue referencing a non-existent file, then burns 40+ calls varying find/grep/ls patterns — stagnation ring-buffer never fires",
+        "context": "self-improvement loop iter 12: model picked [OPEN] hardware issue first in backlog, tried read_file(.agent/PROJECT-ACCELERATE-PRD.md) → ok=False, then ran varied run_command patterns (find .agent, ls .agent, grep -i acceler) 40+ times. Ring-buffer stagnation tracks last N same-tool-same-result; varied commands prevented match. File returned False 3 times across session but not consecutively. 50 calls exhausted.",
+        "solution": "Two fixes: (1) Reclassify non-code-fixable backlog entries from [OPEN] to [DEFERRED] so grep '[OPEN]' only returns code-fixable slice targets. (2) Added _failed_reads dict to agent_executor execute_task: if same read_file path returns ok=False >= 3 times in session, abort with 'File-not-found stagnation' message (FAILED_READ_LIMIT=3). Complementary to ring-buffer guard — ring-buffer catches same-result consecutive loops; failed_reads catches same-target-keeps-failing loops with varied surrounding commands.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 1,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 1.0,
+        "files": ["ai-stack/local-agents/agent_executor.py", ".agent/memory/issues-backlog.md"],
+        "related_patterns": ["agent_stagnation_same_tool_loop", "agent_context_pruning_loses_initial_discovery"],
+    },
 ]
 
 SKILLS_PATTERNS = [
