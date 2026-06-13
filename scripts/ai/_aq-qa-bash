@@ -1123,6 +1123,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-json-sanitizer.py"
     _check 1 "0.10.20" "health-spider osi_layered_ready probe tolerates running:True transient state (Phase 166)" \
       python3 "${REPO_ROOT}/scripts/testing/test-health-spider-osi-layered-probe.py"
+    _check 1 "0.10.21" "switchboard emits useful_ratio=1.0 in both token_usage sites (Phase 166 observability parity)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-switchboard-useful-ratio.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
