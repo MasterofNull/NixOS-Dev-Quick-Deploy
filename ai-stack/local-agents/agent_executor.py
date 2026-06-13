@@ -483,6 +483,7 @@ class LocalAgentExecutor:
                         "tool_calls": len(task.tool_calls_made),
                         "model": os.getenv("LLAMA_MODEL_NAME", "local"),
                         "tokens_used": _task_tokens_used,
+                        "useful_ratio": 1.0,  # local inference: enable_thinking=False, all tokens are useful
                     })
                     with open(_HYBRID_EVENTS, "a", encoding="utf-8") as _hef:
                         _hef.write(_event + "\n")

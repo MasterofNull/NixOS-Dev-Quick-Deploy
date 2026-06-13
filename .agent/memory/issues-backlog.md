@@ -1,5 +1,43 @@
 ## OPEN ISSUES
 
+[OPEN] behavioral-contract-backlog-update-step — BEHAVIORAL CONTRACT STEP 6 adds issues-backlog.md to git but never marks the issue [DONE] first
+  Root cause: STEP 6 says git_add([<changed-files>, '.agent/memory/issues-backlog.md']) but there is no
+  step before git_add that calls edit_file to change [OPEN] to [DONE] in the backlog. The backlog is staged
+  but unchanged, so [OPEN] issues remain [OPEN] after commit. Orchestrator has to manually update them.
+  Severity: medium
+  Action: In agent_executor.py, edit BEHAVIORAL CONTRACT to add a step between STEP 5 and STEP 6.
+  Old text (exact):
+    "        If gate fails, fix the problem and re-run. Gate passes → go to STEP 6 immediately.\n"
+    "STEP 6: git_add([<changed-files>, '.agent/memory/issues-backlog.md'])\n"
+  New text:
+    "        If gate fails, fix the problem and re-run. Gate passes → go to STEP 5b immediately.\n"
+    "STEP 5b: edit_file('.agent/memory/issues-backlog.md', '[OPEN] <issue-title>', '[DONE] <issue-title>')\n"
+    "         Marks the fixed issue as done. Use the exact issue title from STEP 2.\n"
+    "STEP 6: git_add([<changed-files>, '.agent/memory/issues-backlog.md'])\n"
+  Files: ai-stack/local-agents/agent_executor.py (_get_system_prompt BEHAVIORAL CONTRACT)
+  One edit_file call. No logic changes.
+
+[OPEN] behavioral-contract-read-limit — BEHAVIORAL CONTRACT lacks explicit READ LIMIT rule; model over-reads before editing
+  Root cause: BEHAVIORAL CONTRACT general rules say "Read before writing" but this causes over-exploration.
+  Iter 17 original ran 12 reads, 0 edits in 26+ minutes because the model kept reading different files
+  instead of attempting edit_file. The exploration stagnation guard (Phase 165) catches this at 12 reads
+  (hard abort) and nudges at 8, but the root fix is making the contract explicit.
+  Severity: medium
+  Action: In agent_executor.py, inside _get_system_prompt(), edit the BEHAVIORAL CONTRACT to add after the
+  "- ALWAYS prefer edit_file over write_file" rule:
+  Old text (exact):
+    "- ALWAYS prefer edit_file over write_file for targeted changes.\n"
+    "  edit_file(path, old_string, new_string) replaces old_string in place — no full-file regeneration.\n"
+    "  Only use write_file if you must create a new file from scratch.\n"
+  New text:
+    "- ALWAYS prefer edit_file over write_file for targeted changes.\n"
+    "  edit_file(path, old_string, new_string) replaces old_string in place — no full-file regeneration.\n"
+    "  Only use write_file if you must create a new file from scratch.\n"
+    "- READ LIMIT: At most 4 read_file calls per slice. After 4 reads, STOP reading — you have enough\n"
+    "  context. Call edit_file immediately. If edit_file fails with 'old_string not found', THEN read more.\n"
+  Files: ai-stack/local-agents/agent_executor.py (BEHAVIORAL CONTRACT in _get_system_prompt)
+  One edit_file call. No logic changes.
+
 [DONE] agent-step-complete-tool-call-result — synthesis guard added to agent_executor.py
   Fix: two-part — (1) training_ingest: added '"function"' + '"arguments"' to _STRUCTURED_MARKERS so JSON
   tool-call blobs score as structured (score≈0.80 vs 0.048 pre-fix). (2) agent_executor.py synthesis guard:
