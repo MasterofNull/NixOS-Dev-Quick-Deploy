@@ -42,7 +42,7 @@
   Files: scripts/ai/aq-health-spider (_semantic_probe_reason, ~line 142)
   One surgical edit, no logic changes beyond the single condition.
 
-[OPEN] stagnation-guard-run-command-repeat — stagnation guard counts reads-without-edit but does not detect repeated run_command calls (e.g. 4x tier0 validation passes without committing)
+[DONE] stagnation-guard-run-command-repeat — stagnation guard counts reads-without-edit but does not detect repeated run_command calls (e.g. 4x tier0 validation passes without committing)
   Root cause: agent_executor.py exploration_stagnation_guard tracks read_count_without_edit and fires nudge at 8, abort at 12. But a model that runs validate_before_commit repeatedly (g8w0oa ran tier0 x4 over 36 min) is also stuck — the guard never fires because run_command resets no counter.
   Observed: g8w0oa dispatched 2026-06-13 passed tier0 at steps 8, 13, 18, 23 (4 times) but never committed; orchestrator had to intervene manually.
   Likely cause: edit_file for issues-backlog.md failed silently (old_string mismatch due to oryb80 staging conflict), model re-validated rather than aborting.
