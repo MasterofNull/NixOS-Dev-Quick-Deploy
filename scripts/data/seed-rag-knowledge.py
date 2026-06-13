@@ -677,6 +677,20 @@ ERROR_SOLUTIONS = [
         "files": ["ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py", "ai-stack/security/capability_guard.py"],
         "related_patterns": ["context_sanitizer_unwired_tool_result"],
     },
+    {
+        "error_type": "json_embedded_newline_parse_failure",
+        "error_message": "parse_tool_call_from_llama returns None — model emitted JSON with literal newlines in string values",
+        "context": "Phase 165 iter 19 (aq-1781332710): model output correct edit_file JSON but old_string/new_string spanned multiple Python source lines. Model embedded literal 0x0a chars in the JSON string value instead of \\n escape sequences. json.loads() rejects unescaped control chars in strings → parse returns None → tool never executed → task.result = raw JSON blob. tool_call_count=0 so synthesis guard (gated on tool_call_count > 0) also did not fire.",
+        "solution": "Two fixes (commit 87ce2328): (1) tool_registry.py parse_tool_call_from_llama: add _sanitize_json() pre-processor that escapes bare \\n/\\r/\\t inside JSON string regions (state-machine char scanner, skips escaped chars). Called as second attempt in json.JSONDecodeError fallback path. (2) agent_executor.py synthesis guard: remove `tool_call_count > 0` guard — the synthesis safety net now fires on ANY turn where no-tool-call branch produces a {\"function\" response. Testing: embedded-newline JSON parses correctly after fix. aq-qa 112/112.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.95,
+        "files": ["ai-stack/local-agents/tool_registry.py", "ai-stack/local-agents/agent_executor.py"],
+        "related_patterns": ["agent_exploration_stagnation_no_edit", "behavioral_contract_read_limit"],
+    },
 ]
 
 SKILLS_PATTERNS = [
