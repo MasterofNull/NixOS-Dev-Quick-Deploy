@@ -123,6 +123,7 @@ def _token_count(text: str) -> int:
 _STRUCTURED_MARKERS = (
     "```", "def ", "class ", "import ", "return ", "function ",
     "## ", "### ", "1. ", "2. ", "- [", "* ", "| ",  # markdown / lists
+    '"function"', '"arguments"',  # JSON tool-call blobs from agent_step_complete
 )
 
 

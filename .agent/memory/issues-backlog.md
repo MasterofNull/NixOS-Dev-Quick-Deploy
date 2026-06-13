@@ -1,5 +1,16 @@
 ## OPEN ISSUES
 
+[OPEN] agent-step-complete-tool-call-result — agent_step_complete training event captures last tool call JSON as response instead of prose synthesis, causing 0% quality score and training sample rejection
+  Root cause: when model's final output is a tool call (e.g. store_memory as last step), agent_executor
+  sets task.result to the tool call JSON rather than a prose synthesis. The training_ingest quality scorer
+  gives this ~0.048 (coverage=0, is_structured=False) against a 0.40 floor, so iter 16 produced 0 samples.
+  Severity: medium
+  Action: In execute_task(), after final tool call result is returned, request one more model completion
+  to get prose synthesis: add a "generate your final summary" step if task.result starts with '{"function"'.
+  Alternative: add "function " (with space as JSON key prefix) to _STRUCTURED_MARKERS in training_ingest.
+  Files: ai-stack/local-agents/agent_executor.py (execute_task final result detection)
+         ai-stack/local-agents/training_ingest.py (_STRUCTURED_MARKERS list as quick fix)
+
 [OPEN] aq-agent-loop-build-registry-docstring-drift — build_registry() docstring says "minimal 6 tools: read_file, write_file, run_command, git_add, git_commit, store_memory" but slim manifest now has 8 tools (also includes edit_file and validate_before_commit since Phase 165 iter 16)
   Root cause: docstring was written when _SLIM_TOOLS had 6 entries; edit_file was added in Phase 165
   iter 14-15, validate_before_commit added in iter 16 (19176f6f). Docstring was not updated.
