@@ -100,21 +100,6 @@
   Auto-resolved by pre-commit hook during Phase 165 commit (03e5f950). Docstring line 18
   now reads "[default: 50]" matching argparse default=50.
 
-[OPEN] hardware — ROCm not available on Renoir APU (gfx90c) — ACCELERATE PRD assumed ROCm availability. Renoir iGPU is not a supported ROCm target. `rocminfo` absent. llama-cpp runs Vulkan only. Baseline: 2.71 tok/s.
-  Severity: info (hardware constraint, not a bug — requires discrete RDNA2+ GPU for ROCm)
-  Action: Document in hardware-profiles.json; remove ROCm acceptance criterion from ACCELERATE PRD. No code fix possible without hardware upgrade.
-  File: .agent/PROJECT-ACCELERATE-PRD.md
-
-[OPEN] agentic-mind — cross-model workflow behavior is not standardized or gated — Claude follows the workflow more reliably than Gemini/remote/local lanes, while current parity checks mostly verify transport/header availability and fallback recovery can hide first-pass contract failures.
-  Severity: high
-  Action: Implement Phase 148 agent task envelope, workflow-adherence golden corpus, first-pass contract evaluator, model-profile freshness gate, and dashboard/aq-report interop scorecard.
-  File: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
-
-[OPEN] desktop-input — post-build cursor/text input instability (gens 697-700, Jun 8) — COSMIC logs show missing input/cursor config keys + invalid shortcut action parsing. No synthetic input process found. Current gen 701 (Jun 10 rebuild) appears stable. Root cause: unconfirmed. Recommended pre-rebuild checklist: (1) close VSCodium, (2) capture `journalctl -u cosmic-session` at login, (3) compare ~/.config/cosmic/ shortcut configs against previous generation.
-  Severity: high
-  Action: Before any next rebuild, compare generations 677/678, inspect COSMIC input and shortcut declarations, capture focused journal slices around activation, and add a rollback-safe desktop-input validation checklist/probe.
-  File: .agents/plans/phase-148-agentic-mind-research.md
-
 [OPEN] slim-manifest-missing-validate-before-commit — _SLIM_TOOLS in aq-agent-loop excludes validate_before_commit but BEHAVIORAL CONTRACT header says "validate_before_commit MUST pass before git_add"
   Root cause: when build_registry(tool_manifest="self-improvement") unregisters tools not in _SLIM_TOOLS,
   validate_before_commit is removed (it's registered by register_git_tools, not in the frozenset).
@@ -450,3 +435,35 @@
   Severity: medium
   Action: `aq-approve` now resolves AppArmor alerts when all proposed rules are already present in `mcp-servers.nix`; `apparmor-fix-agent` only stages `HANDOFF.md` when it is not ignored or is already tracked.
   File: scripts/ai/aq-approve; scripts/automation/apparmor-fix-agent.py; scripts/testing/test-boot-stability-regressions.py
+
+## DEFERRED — requires hardware, external investigation, or multi-phase project work
+## (not valid targets for grep-[OPEN] self-improvement slices)
+
+[DEFERRED] hardware — ROCm not available on Renoir APU (gfx90c) — no code fix possible
+  Severity: info (hardware constraint)
+  Note: ACCELERATE PRD assumed ROCm. Renoir iGPU (gfx90c) not a supported ROCm target.
+  rocminfo absent. llama-cpp runs Vulkan only. Baseline 2.71 tok/s.
+  Action: requires discrete RDNA2+ GPU. Deferred until hardware upgrade.
+
+[DEFERRED] agentic-mind — cross-model workflow standardization — multi-phase PRD project
+  Severity: high (but requires Phase 148 envelope + corpus + evaluator — not a slice fix)
+  Action: defer to dedicated phase. References: .agent/PROJECT-AGENTIC-MIND-STANDARDIZATION-PRD.md
+
+[DEFERRED] desktop-input — post-build cursor/text input instability (gens 697-700, Jun 8)
+  Severity: high (but gen 701, Jun 10, appears stable — may be self-resolved by rebuild)
+  Action: pre-rebuild checklist: close VSCodium, capture journalctl -u cosmic-session,
+  compare ~/.config/cosmic/ shortcut configs between generations.
+  Note: gen 701 stable; defer until next rebuild shows regression.
+
+[OPEN] stagnation-detect-varied-loop — agent burned 50 calls on hardware issue with no progress; stagnation not triggered because varied run_command commands changed result prefix
+  Root cause: iter 12 picked [OPEN] hardware (first in file), tried .agent/PROJECT-ACCELERATE-PRD.md
+  (not found), then varied grep/find/ls patterns 40+ times searching for ACCELERATE files.
+  Each run_command used a slightly different command, resetting the stagnation ring buffer.
+  Stagnation threshold (other=5) tracks last 5 tool calls of the SAME tool; varied commands
+  never matched 5 identical (tool, result_prefix) pairs.
+  Severity: medium
+  Action: Add "file-not-found loop" detection to agent_executor: track read_file paths that
+  returned ok=False; if same path returns False 3+ times in a session, abort with stagnation
+  message. Also track run_command patterns: if 5+ commands all return empty/error result and
+  none triggered a write_file, flag as stuck-in-search loop.
+  File: ai-stack/local-agents/agent_executor.py (stagnation guard, ~line 548)
