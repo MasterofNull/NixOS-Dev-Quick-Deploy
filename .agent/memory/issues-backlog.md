@@ -1,5 +1,21 @@
 ## OPEN ISSUES
 
+[OPEN] parse-tool-call-embedded-newlines — parse_tool_call_from_llama fails when model emits JSON with literal (unescaped) newlines in string values
+  Root cause: When old_string/new_string span multiple Python source lines, the model may emit them
+  as JSON string values containing literal `\n` characters instead of `\\n` escape sequences.
+  `json.loads()` rejects literal control chars in strings → parse returns None → tool never executes.
+  iter 19 (aq-1781332710) triggered this: old_string contained two Python source lines joined by `\n`.
+  Synthesis guard did NOT fire because tool_call_count==0 (guard has `if tool_call_count > 0` guard).
+  Severity: medium
+  Action: In tool_registry.py parse_tool_call_from_llama, pre-process the raw string to escape
+  literal newlines/tabs before json.loads(): replace raw `\n` (0x0a) with `\\n` inside the JSON
+  string payload. Use regex or a custom sanitize step before json.loads().
+  Also: remove the `tool_call_count > 0` guard from the synthesis guard in agent_executor.py so
+  it fires even when the first response is an unexecuted JSON tool call.
+  Files: ai-stack/local-agents/tool_registry.py parse_tool_call_from_llama (~line 583);
+         ai-stack/local-agents/agent_executor.py synthesis guard (~line 723)
+  Two surgical edits, one to each file.
+
 [DONE] behavioral-contract-backlog-update-step — BEHAVIORAL CONTRACT STEP 6 adds issues-backlog.md to git but never marks the issue [DONE] first
   Root cause: STEP 6 says git_add([<changed-files>, '.agent/memory/issues-backlog.md']) but there is no
   step before git_add that calls edit_file to change [OPEN] to [DONE] in the backlog. The backlog is staged

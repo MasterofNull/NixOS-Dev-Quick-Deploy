@@ -582,19 +582,65 @@ class ToolRegistry:
 
             output = output.strip()
 
+            def _sanitize_json(raw: str) -> str:
+                """Escape bare control chars inside JSON string values.
+
+                The model sometimes emits literal newlines/tabs inside JSON string
+                values (e.g. when old_string/new_string spans multiple source lines).
+                json.loads() rejects unescaped control chars, so we replace them
+                inside string-value regions only.
+                """
+                import re as _re
+                result, in_str, i = [], False, 0
+                while i < len(raw):
+                    ch = raw[i]
+                    if in_str:
+                        if ch == "\\" and i + 1 < len(raw):
+                            result.append(ch)
+                            result.append(raw[i + 1])
+                            i += 2
+                            continue
+                        if ch == '"':
+                            in_str = False
+                        elif ch == "\n":
+                            result.append("\\n")
+                            i += 1
+                            continue
+                        elif ch == "\r":
+                            result.append("\\r")
+                            i += 1
+                            continue
+                        elif ch == "\t":
+                            result.append("\\t")
+                            i += 1
+                            continue
+                    else:
+                        if ch == '"':
+                            in_str = True
+                    result.append(ch)
+                    i += 1
+                return "".join(result)
+
             # Fast path: entire output is JSON.
             try:
                 data = json.loads(output)
             except json.JSONDecodeError:
-                # Fallback: model prepended prose before the JSON object.
-                # Find the last '{' that opens a valid JSON object so we skip
-                # any leading natural-language text.
-                brace = output.rfind('{"function"')
-                if brace == -1:
-                    brace = output.rfind("{")
-                if brace == -1:
-                    return None
-                data = json.loads(output[brace:])
+                # Retry after sanitizing bare control chars in string values.
+                try:
+                    data = json.loads(_sanitize_json(output))
+                except json.JSONDecodeError:
+                    # Fallback: model prepended prose before the JSON object.
+                    # Find the last '{' that opens a valid JSON object so we skip
+                    # any leading natural-language text.
+                    brace = output.rfind('{"function"')
+                    if brace == -1:
+                        brace = output.rfind("{")
+                    if brace == -1:
+                        return None
+                    try:
+                        data = json.loads(output[brace:])
+                    except json.JSONDecodeError:
+                        data = json.loads(_sanitize_json(output[brace:]))
 
             # Check if it's a function call
             if "function" not in data:
