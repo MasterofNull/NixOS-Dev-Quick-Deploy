@@ -126,11 +126,17 @@ def _check_grafana_port(ctx: RunContext) -> list[CheckResult]:
     if not ctx.should_run(3):
         return []
     grafana_active = cmd_ok("systemctl", "is-active", "--quiet", "grafana.service")
-    try:
-        ss_out = subprocess.run(["ss", "-tlnp"], capture_output=True, text=True, timeout=5).stdout
-    except Exception:
-        ss_out = ""
-    port_3000_bound = ":3000 " in ss_out
+    if ctx.dashboard_safe:
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            port_3000_bound = s.connect_ex(("127.0.0.1", 3000)) == 0
+    else:
+        try:
+            ss_out = subprocess.run(["ss", "-tlnp"], capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            ss_out = ""
+        port_3000_bound = ":3000 " in ss_out
     if grafana_active and port_3000_bound:
         return [passed(3, "0.2.2", "port 3000 = Grafana (no Open-WebUI regression)")]
     if not port_3000_bound:
@@ -1365,6 +1371,47 @@ def _check_ragas_faithfulness_guard(ctx: RunContext) -> list[CheckResult]:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _dashboard_host_only_skip(layer: int, check_id: str, description: str) -> CheckResult:
+    return skipped(
+        layer,
+        check_id,
+        description,
+        "dashboard-safe mode: host-only probe; run aq-qa 0 --machine for authoritative host validation",
+    )
+
+
+def _dashboard_safe_host_only_skips() -> list[CheckResult]:
+    """Checks intentionally omitted when phase 0 runs inside the dashboard unit."""
+    return [
+        _dashboard_host_only_skip(5, "0.2.4", "Postgres has tables"),
+        _dashboard_host_only_skip(5, "0.2.5", "Redis has keys"),
+        _dashboard_host_only_skip(7, "0.5.1", "Continue CLI help works"),
+        _dashboard_host_only_skip(7, "0.5.2", "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane"),
+        _dashboard_host_only_skip(7, "0.5.3", "VSCodium has Continue extension installed"),
+        _dashboard_host_only_skip(7, "0.5.5", "continue-local trims oversized dense prompts"),
+        _dashboard_host_only_skip(7, "0.5.6", "Continue/editor prompt to feedback smoke"),
+        _dashboard_host_only_skip(7, "0.6.1", "flagship agent CLI help smokes"),
+        _dashboard_host_only_skip(7, "0.6.2", "gemini CLI live-state health check"),
+        _dashboard_host_only_skip(1, "0.10.1", "local inference payload discipline"),
+        _dashboard_host_only_skip(1, "0.10.4", "discovery agent opportunity scanner"),
+        _dashboard_host_only_skip(1, "0.10.5", "model catalog/profile freshness"),
+        _dashboard_host_only_skip(1, "0.10.6", "flat model-team PRD gate"),
+        _dashboard_host_only_skip(1, "0.10.7", "agent artifact distribution policy"),
+        _dashboard_host_only_skip(1, "0.10.8", "agent memory surface registry"),
+        _dashboard_host_only_skip(1, "0.10.9", "local delegation artifact persistence"),
+        _dashboard_host_only_skip(1, "0.10.13", "local inference budget"),
+        _dashboard_host_only_skip(1, "0.10.14", "local-agent store_memory contract"),
+        _dashboard_host_only_skip(1, "0.150.1", "candidate lifecycle manager"),
+        _dashboard_host_only_skip(4, "83.1", "dag_manager.py syntax"),
+        _dashboard_host_only_skip(4, "83.2", "context-merger.py syntax"),
+        _dashboard_host_only_skip(4, "83.3", "Phase 1 integration test"),
+        _dashboard_host_only_skip(4, "85.1", "aq-drop-daemon syntax"),
+        _dashboard_host_only_skip(4, "85.2", "drop_spec.py injection guard"),
+        _dashboard_host_only_skip(4, "86.2", "auto_ok push creates .agents/attention/ATTENTION_ARCHIVE.jsonl"),
+        _dashboard_host_only_skip(4, "86.4", "aq-alerts --count"),
+    ]
+
+
 def run(ctx: RunContext) -> list[CheckResult]:
     """Run all phase 0 checks and return a flat list of CheckResult."""
     results: list[CheckResult] = []
@@ -1374,12 +1421,14 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_ports(ctx))
     results.extend(_check_grafana_port(ctx))
     results.extend(_check_qdrant_docs(ctx))
-    results.extend(_check_postgres_tables(ctx))
-    results.extend(_check_redis_keys(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_postgres_tables(ctx))
+        results.extend(_check_redis_keys(ctx))
     results.extend(_check_apparmor(ctx))
     results.extend(_check_inference(ctx))
-    results.extend(_check_continue(ctx))
-    results.extend(_check_flagship_cli(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_continue(ctx))
+        results.extend(_check_flagship_cli(ctx))
     results.extend(_check_routing(ctx))
     results.extend(_check_delegate_rate(ctx))
     results.extend(_check_safety_gate(ctx))
@@ -1403,12 +1452,14 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_aqd_logic(ctx))
     results.extend(_check_topology_api(ctx))
     results.extend(_check_local_model_config(ctx))
-    results.extend(_check_local_payload_discipline(ctx))
-    results.extend(_check_discovery_agent(ctx))
-    results.extend(_check_model_catalog_freshness(ctx))
-    results.extend(_check_flat_prd_gate(ctx))
-    results.extend(_check_agent_artifact_policy(ctx))
-    results.extend(_check_agent_memory_surface_registry(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_local_payload_discipline(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_discovery_agent(ctx))
+        results.extend(_check_model_catalog_freshness(ctx))
+        results.extend(_check_flat_prd_gate(ctx))
+        results.extend(_check_agent_artifact_policy(ctx))
+        results.extend(_check_agent_memory_surface_registry(ctx))
     results.extend(_check_ragas_eval(ctx))
     results.extend(_check_clm(ctx))
     results.extend(_check_nsjail_sandbox(ctx))
@@ -1417,25 +1468,30 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_agent_docs(ctx))
     results.extend(_check_phase67_dashboard(ctx))
     results.extend(_check_phase66_wasmtime(ctx))
-    results.extend(_check_phase83_dag_context(ctx))
-    results.extend(_check_phase85_drop_zone(ctx))
-    results.extend(_check_phase86_attention_queue(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_phase83_dag_context(ctx))
+        results.extend(_check_phase85_drop_zone(ctx))
+        results.extend(_check_phase86_attention_queue(ctx))
     results.extend(_check_phase87_training_ingest(ctx))
     results.extend(_check_phase146_identity_coverage(ctx))
-    results.extend(_check_local_delegation_artifact(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_local_delegation_artifact(ctx))
     results.extend(_check_intent_classifier_coverage(ctx))
     results.extend(_check_ragas_faithfulness_guard(ctx))
     results.extend(_check_token_usage_coverage(ctx))
     results.extend(_check_modal_task_profiles(ctx))
-    results.extend(_check_local_inference_budget(ctx))
-    results.extend(_check_local_agent_store_memory_contract(ctx))
-    results.extend(_check_candidate_lifecycle(ctx))
+    if not ctx.dashboard_safe:
+        results.extend(_check_local_inference_budget(ctx))
+        results.extend(_check_local_agent_store_memory_contract(ctx))
+        results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
     results.extend(_check_cross_model_critique(ctx))
     results.extend(_check_adopt_workflow(ctx))
+    if ctx.dashboard_safe:
+        results.extend(_dashboard_safe_host_only_skips())
     return results
 
 

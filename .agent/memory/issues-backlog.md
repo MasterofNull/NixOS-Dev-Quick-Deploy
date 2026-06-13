@@ -588,10 +588,10 @@
   Requires rebuild: YES
   File: nix/modules/services/mcp-servers.nix
 
-[OPEN] dashboard-osi-confined-runner-false-failures — `/api/health/layered` now populates but reports failures caused by the dashboard service confinement, not host health — Root cause: host-level phase-0 checks execute inside `command-center-dashboard-api` AppArmor and hit denied `psql`, `redis-cli`, Continue config, and CLI probes.
+[DONE] dashboard-osi-confined-runner-false-failures — `/api/health/layered` now populates without reporting dashboard confinement artifacts as host health failures — Root cause: host-level phase-0 checks executed inside `command-center-dashboard-api` AppArmor and hit denied `psql`, `redis-cli`, Continue config, tempdir, and CLI probes.
   Severity: medium
-  Action: Prefer a host-generated `aq-qa` artifact or split a dashboard-safe OSI subset so the dashboard does not display confinement artifacts as host failures.
-  File: dashboard/backend/api/routes/health.py; dashboard/backend/api/services/qa_runner.py; scripts/automation/post-deploy-converge.sh
+  Fix: Added `AQ_QA_DASHBOARD_SAFE` mode so dashboard OSI skips host-only probes before spawning AppArmor-denied subprocesses; added dashboard runner normalization as a fallback and blocked apparmor-fix-agent from proposing one-off `/tmp/<random>` mknod rules.
+  File: dashboard/backend/api/routes/health.py; dashboard/backend/api/services/qa_runner.py; scripts/testing/harness_qa/phases/phase0.py; scripts/automation/apparmor-fix-agent.py
 
 ## DEFERRED — requires hardware, external investigation, or multi-phase project work
 ## (not valid targets for grep-[OPEN] self-improvement slices)
