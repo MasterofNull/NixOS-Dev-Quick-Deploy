@@ -607,6 +607,20 @@ ERROR_SOLUTIONS = [
         "files": ["ai-stack/local-agents/agent_executor.py", ".agent/memory/issues-backlog.md"],
         "related_patterns": ["agent_stagnation_same_tool_loop", "agent_context_pruning_loses_initial_discovery"],
     },
+    {
+        "error_type": "write_file_token_budget_truncation",
+        "error_message": "Model re-reads target file 3 times without writing — stagnation fires; root cause: write_file requires full file regeneration exceeding max_tokens=1200",
+        "context": "self-improvement loop iters 13-14: model correctly found target file (scripts/ai/aq-agent-loop, 280 lines, ~3200 tokens as JSON content). Called read_file 3 times on it without writing. Stagnation fired at 3rd read. Root cause: AGENT_TASK_MAX_TOKENS=1200 — writing the full file as write_file JSON would require ~3200+ tokens, truncating the JSON mid-file and producing invalid output. Model sensed this and re-read looking for a minimal section.",
+        "solution": "Added edit_file(file_path, old_string, new_string) surgical replacement tool to file_operations.py. Only requires the model to output the strings to change (~50-200 tokens), not the full file content. Handles reading internally, returns {success:False, error: '... file starts with: <snippet>'} so model can self-correct without extra read. Added to _SLIM_TOOLS (7 tools). BEHAVIORAL CONTRACT STEP 3 updated: prefer edit_file over write_file. Only use write_file for new-file creation.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 2,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 1.0,
+        "files": ["ai-stack/local-agents/builtin_tools/file_operations.py", "scripts/ai/aq-agent-loop", "ai-stack/local-agents/agent_executor.py"],
+        "related_patterns": ["write_file_full_replacement_destroys_file", "agent_stagnation_same_tool_loop"],
+    },
 ]
 
 SKILLS_PATTERNS = [
