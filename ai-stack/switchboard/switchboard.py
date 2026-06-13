@@ -2941,6 +2941,7 @@ async def proxy(path: str, request: Request):
                                                     # Check if llama.cpp provided usage in this chunk
                                                     usage = data.get("usage")
                                                     if usage and not token_usage_emitted and run_id != "unknown-run":
+                                                        usage["useful_ratio"] = 1.0
                                                         ev = _are.make_event(
                                                             "token_usage",
                                                             source="switchboard",
@@ -2972,7 +2973,8 @@ async def proxy(path: str, request: Request):
                                                     "prompt_tokens": est_input_tokens,
                                                     "completion_tokens": est_output_tokens,
                                                     "total_tokens": est_input_tokens + est_output_tokens,
-                                                    "is_estimated": True
+                                                    "is_estimated": True,
+                                                    "useful_ratio": 1.0
                                                 }
                                             }
                                         )

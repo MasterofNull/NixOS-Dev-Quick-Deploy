@@ -4,7 +4,7 @@
   aq-qa covers: 0.10.15-19 (5 new Phase 165 checks). Dataset=309. Backlog clear.
   Next: PENDING-REBUILD activation (nixos-rebuild required, all commits ready). -->
 
-[OPEN] switchboard-useful-ratio-missing — switchboard token_usage events never emit useful_ratio; field is always null in telemetry (observability parity gap Phase 149)
+[DONE] switchboard-useful-ratio-missing — switchboard token_usage events never emit useful_ratio; field is always null in telemetry (observability parity gap Phase 149)
   Root cause: switchboard.py emits token_usage events at two sites (~line 2944, ~line 2964) but neither
   includes useful_ratio in the tokens dict. The agent_run_events.py schema supports useful_ratio but
   switchboard passes only raw llama.cpp usage (prompt/completion/total tokens) or estimated counts.
