@@ -36,6 +36,7 @@ import asyncio
 import logging
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -200,15 +201,56 @@ def score_context_precision(retrieved_docs: List[Any]) -> float:
     return round(non_empty / len(retrieved_docs), 4)
 
 
+_FAITHFULNESS_STOPWORDS = {
+    "about",
+    "after",
+    "also",
+    "from",
+    "have",
+    "into",
+    "only",
+    "that",
+    "their",
+    "there",
+    "this",
+    "were",
+    "what",
+    "when",
+    "where",
+    "with",
+    "would",
+}
+
+
+def _faithfulness_token_set(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9_.:/-]{2,}", text.lower())
+        if token not in _FAITHFULNESS_STOPWORDS
+    }
+
+
+def _heuristic_faithfulness(context: str, response: str) -> Optional[float]:
+    """Cheap grounding fallback used when the local judge is skipped or unavailable."""
+    ctx_tokens = _faithfulness_token_set(context)
+    rsp_tokens = _faithfulness_token_set(response)
+    if not ctx_tokens or not rsp_tokens:
+        return None
+    overlap = len(ctx_tokens & rsp_tokens) / max(1, len(rsp_tokens))
+    return round(min(1.0, max(0.0, overlap)), 4)
+
+
 async def score_faithfulness_async(
     query: str,
     context: str,
     response: str,
 ) -> Optional[float]:
     """
-    Faithfulness (AM-C1): Qwen-as-judge scoring 0–1.
-    Only called when RAGAS_FAITHFULNESS_ENABLED=true AND random sample hits.
-    Adds 3–8s — NEVER called inline on the response path.
+    Faithfulness (AM-C1): Qwen-as-judge scoring 0–1 with a cheap fallback.
+    The expensive judge is called only when RAGAS_FAITHFULNESS_ENABLED=true AND
+    the random sample hits. Non-sampled rows use a lexical grounding fallback so
+    enabled faithfulness does not stay null forever when the judge is saturated.
+    Adds 3–8s on judge hits — NEVER called inline on the response path.
     Returns None (not 0) when context is absent — modal: only scores when meaningful.
     """
     if not _FAITHFULNESS_ENABLED:
@@ -218,7 +260,7 @@ async def score_faithfulness_async(
         # Scoring against empty context would bias the average toward 0 artificially.
         return None
     if random.random() > _FAITHFULNESS_SAMPLE_RATE:
-        return None
+        return _heuristic_faithfulness(context, response)
     prompt = (
         "You are a faithfulness judge evaluating whether an AI response is grounded "
         "in the provided retrieved context. Faithfulness measures ONLY whether the "
@@ -250,7 +292,10 @@ async def score_faithfulness_async(
                     return round(min(1.0, max(0.0, float(text))), 4)
     except Exception as exc:
         logger.debug("eval_runner.faithfulness_failed: %s", exc)
-    return None
+    fallback = _heuristic_faithfulness(context, response)
+    if fallback is not None:
+        logger.info("eval_runner.faithfulness_fallback_used")
+    return fallback
 
 
 async def record_query_metrics(

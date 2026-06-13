@@ -42,6 +42,15 @@
   Files: scripts/ai/aq-health-spider (_semantic_probe_reason, ~line 142)
   One surgical edit, no logic changes beyond the single condition.
 
+[OPEN] stagnation-guard-run-command-repeat — stagnation guard counts reads-without-edit but does not detect repeated run_command calls (e.g. 4x tier0 validation passes without committing)
+  Root cause: agent_executor.py exploration_stagnation_guard tracks read_count_without_edit and fires nudge at 8, abort at 12. But a model that runs validate_before_commit repeatedly (g8w0oa ran tier0 x4 over 36 min) is also stuck — the guard never fires because run_command resets no counter.
+  Observed: g8w0oa dispatched 2026-06-13 passed tier0 at steps 8, 13, 18, 23 (4 times) but never committed; orchestrator had to intervene manually.
+  Likely cause: edit_file for issues-backlog.md failed silently (old_string mismatch due to oryb80 staging conflict), model re-validated rather than aborting.
+  Severity: medium (self-improvement loop efficiency)
+  Action: In agent_executor.py stagnation guard, also track run_command_repeat_count. If the same semantic action (validate_before_commit or git_add + git_commit) repeats 3+ times without intervening edits, fire the stagnation nudge. Or: if validate_before_commit count ≥ 3 and no git_commit yet, inject "STEP 6 now: git_add and git_commit immediately."
+  Files: ai-stack/local-agents/agent_executor.py stagnation guard (~line 600-650)
+  One edit, adds repeat-command detection to existing stagnation logic.
+
 [OPEN] ragas-faithfulness-zero-samples — faithfulness metric never computed; faithfulness_sample_count=0 across all 100 eval samples
   Root cause: http_server_impl.py _ragas_score() computes faithfulness only when _ctx is non-empty:
     `fs = await eval_runner.score_faithfulness_async(q, _ctx, r) if _ctx else None`
@@ -562,6 +571,26 @@
   Severity: medium
   Action: `aq-approve` now resolves AppArmor alerts when all proposed rules are already present in `mcp-servers.nix`; `apparmor-fix-agent` only stages `HANDOFF.md` when it is not ignored or is already tracked.
   File: scripts/ai/aq-approve; scripts/automation/apparmor-fix-agent.py; scripts/testing/test-boot-stability-regressions.py
+
+[DONE] dashboard-osi-runner-shebang-and-empty-json — dashboard OSI layer showed 0/0 pending after rebuild — Root cause: the dashboard ran `aq-qa` through the system wrapper, which re-entered the repo script via `/usr/bin/env` under AppArmor; later failures returned empty stdout with truncated JSON errors.
+  Severity: high
+  Action: Dashboard `qa_runner.py` now prefers the Python `harness_qa/main.py` entrypoint, keeps bash `aq-qa` only as fallback, and reports empty/non-JSON subprocess output with exit/stderr detail. Live `/api/health/layered` now populates layers instead of staying blank.
+  File: dashboard/backend/api/services/qa_runner.py; scripts/testing/harness_qa/core/context.py; scripts/testing/test-boot-stability-regressions.py
+
+[DONE] ragas-faithfulness-all-null — RAGAS trend had `faithfulness_enabled=true`, 100 eval rows, and `faithfulness_sample_count=0` — Root cause: enabled faithfulness returned `None` whenever the expensive local judge was not sampled, failed, timed out, or produced unparsable output.
+  Severity: medium
+  Action: Added bounded lexical grounding fallback for non-sampled or failed judge rows while preserving the empty-context modal guard; live dashboard trend now shows `faithfulness_sample_count=1` after a fresh retrieval query.
+  File: ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py; scripts/testing/test-ragas-faithfulness-guard.py
+
+[OPEN] apparmor-profile-reload-bpf-oom — `nixos-rebuild switch` activated services but returned exit 4 while reloading AppArmor — Root cause: `apparmor_parser` failed replacing `ai-hybrid-coordinator` with kernel/BPF `Out of memory` (`error=-12`), likely due profile size/complexity rather than system RAM exhaustion.
+  Severity: high
+  Action: Split or simplify the `ai-hybrid-coordinator` AppArmor profile and add a regression/activation check so future rebuilds cannot partially reload profiles silently.
+  File: nix/modules/services/mcp-servers.nix
+
+[OPEN] dashboard-osi-confined-runner-false-failures — `/api/health/layered` now populates but reports failures caused by the dashboard service confinement, not host health — Root cause: host-level phase-0 checks execute inside `command-center-dashboard-api` AppArmor and hit denied `psql`, `redis-cli`, Continue config, and CLI probes.
+  Severity: medium
+  Action: Prefer a host-generated `aq-qa` artifact or split a dashboard-safe OSI subset so the dashboard does not display confinement artifacts as host failures.
+  File: dashboard/backend/api/routes/health.py; dashboard/backend/api/services/qa_runner.py; scripts/automation/post-deploy-converge.sh
 
 ## DEFERRED — requires hardware, external investigation, or multi-phase project work
 ## (not valid targets for grep-[OPEN] self-improvement slices)
