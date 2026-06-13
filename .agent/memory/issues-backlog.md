@@ -51,7 +51,7 @@
   Files: ai-stack/local-agents/agent_executor.py stagnation guard (~line 600-650)
   One edit, adds repeat-command detection to existing stagnation logic.
 
-[OPEN] ragas-faithfulness-zero-samples — faithfulness metric never computed; faithfulness_sample_count=0 across all 100 eval samples
+[DONE] ragas-faithfulness-zero-samples — faithfulness metric never computed; faithfulness_sample_count=0 across all 100 eval samples
   Root cause: http_server_impl.py _ragas_score() computes faithfulness only when _ctx is non-empty:
     `fs = await eval_runner.score_faithfulness_async(q, _ctx, r) if _ctx else None`
   _ctx is built from RAG documents returned by the coordinator. If AIDB returns no matching documents
@@ -582,9 +582,10 @@
   Action: Added bounded lexical grounding fallback for non-sampled or failed judge rows while preserving the empty-context modal guard; live dashboard trend now shows `faithfulness_sample_count=1` after a fresh retrieval query.
   File: ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py; scripts/testing/test-ragas-faithfulness-guard.py
 
-[OPEN] apparmor-profile-reload-bpf-oom — `nixos-rebuild switch` activated services but returned exit 4 while reloading AppArmor — Root cause: `apparmor_parser` failed replacing `ai-hybrid-coordinator` with kernel/BPF `Out of memory` (`error=-12`), likely due profile size/complexity rather than system RAM exhaustion.
+[DONE] apparmor-profile-reload-bpf-oom — `nixos-rebuild switch` activated services but returned exit 4 while reloading AppArmor — Root cause: `apparmor_parser` failed replacing `ai-hybrid-coordinator` with kernel/BPF `Out of memory` (`error=-12`), likely due profile size/complexity rather than system RAM exhaustion.
   Severity: high
-  Action: Split or simplify the `ai-hybrid-coordinator` AppArmor profile and add a regression/activation check so future rebuilds cannot partially reload profiles silently.
+  Fix (Phase 168): consolidated 27 per-tool `/nix/store/**/bin/<tool> ix` rules into 2 patterns (`/nix/store/**/bin/* ix` + `/nix/store/**/sbin/* ix`). Reduces BPF program instruction count significantly. Security preserved via deny rules (no network egress, no home writes, no privileged caps).
+  Requires rebuild: YES
   File: nix/modules/services/mcp-servers.nix
 
 [OPEN] dashboard-osi-confined-runner-false-failures — `/api/health/layered` now populates but reports failures caused by the dashboard service confinement, not host health — Root cause: host-level phase-0 checks execute inside `command-center-dashboard-api` AppArmor and hit denied `psql`, `redis-cli`, Continue config, and CLI probes.

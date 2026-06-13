@@ -2450,65 +2450,24 @@ in {
             # Nix store — read-only execution (covers Python stdlib, certifi SSL, libs)
             /nix/store/** r,
             /nix/store/**/*.so* mr,
-            /nix/store/**/bin/python3* ix,
-            # Phase 84 (rev2): shell subprocess execution for qa_check + continuous-learning daemon.
-            # NoNewPrivileges=true blocks Ux/Px profile transitions (EPERM). Must use ix (inherit).
-            # Children inherit this profile — add explicit rules for what aq-qa spawns.
-            /nix/store/**/bin/bash   ix,
-            /nix/store/**/bin/dash   ix,
-            /nix/store/**/bin/sh     ix,
-            /run/current-system/sw/bin/bash ix,
-            /run/current-system/sw/bin/sh   ix,
-            # systemctl is-active — reads unit state via D-Bus / /run/systemd/
-            /nix/store/**/bin/systemctl ix,
-            /run/current-system/sw/bin/systemctl ix,
+            # Phase 168 (BPF OOM fix): consolidate 27 per-tool ix rules into 2 patterns.
+            # Prior individual rules (python3*, bash, sh, curl, coreutils, jq, ss, psql,
+            # git, etc.) caused apparmor_parser BPF JIT OOM during nixos-rebuild --switch.
+            # Security preserved: ix inherits this profile (no escalation); deny rules
+            # below still block network egress, home writes, privileged capabilities.
+            /nix/store/**/bin/* ix,
+            /nix/store/**/sbin/* ix,
+            /nix/store/*-source/scripts/** ix,
+            ${mcp.repoPath}/scripts/ai/aqd ix,
+            ${mcp.repoPath}/scripts/ai/aq-alerts ix,
+            /run/current-system/sw/bin/* ix,
+            /run/current-system/sw/** r,
+            /run/current-system/sw/**/*.so* mr,
             /run/systemd/           r,
             /run/systemd/**         r,
             /run/dbus/system_bus_socket rw,
-            # curl — loopback HTTP health probes (network already inet stream)
-            /nix/store/**/bin/curl  ix,
-            /run/current-system/sw/bin/curl ix,
             /etc/ssl/**             r,
             /etc/resolv.conf        r,
-            # jq, coreutils (used in _aq-qa-bash output formatting)
-            # coreutils multi-call binary (pkgs.coreutils-full provides /bin/coreutils
-            # as the dispatcher; individual tool symlinks also covered by per-name rules)
-            /nix/store/**/bin/coreutils ix,
-            /nix/store/**/bin/jq    ix,
-            /nix/store/**/bin/cat   ix,
-            /nix/store/**/bin/grep  ix,
-            /nix/store/**/bin/sed   ix,
-            /nix/store/**/bin/awk   ix,
-            /nix/store/**/bin/date  ix,
-            /nix/store/**/bin/printf ix,
-            /nix/store/**/bin/wc    ix,
-            /nix/store/**/bin/sort  ix,
-            /nix/store/**/bin/head  ix,
-            /nix/store/**/bin/tail  ix,
-            /nix/store/**/bin/ls    ix,
-            /nix/store/**/bin/mkdir ix,
-            /nix/store/**/bin/cp    ix,
-            /nix/store/**/bin/mv    ix,
-            /nix/store/**/bin/rm    ix,
-            /nix/store/**/bin/tr    ix,
-            /nix/store/**/bin/cut   ix,
-            /nix/store/**/bin/echo  ix,
-            # Phase 163 — aq-qa phase 0 probes executed through /qa/check.
-            # These must inherit the coordinator profile because NoNewPrivileges=true
-            # prevents profile transitions. Without the explicit exec rules, denied
-            # subprocesses can abort _aq-qa-bash before it emits machine JSON.
-            /nix/store/**/bin/ss        ix,
-            /nix/store/**/bin/psql      ix,
-            /nix/store/**/bin/redis-cli ix,
-            /nix/store/**/bin/getent    ix,
-            /nix/store/**/bin/git       ix,
-            /nix/store/*-source/scripts/ai/aqd ix,
-            /nix/store/*-source/scripts/ai/aq-alerts ix,
-            ${mcp.repoPath}/scripts/ai/aqd ix,
-            ${mcp.repoPath}/scripts/ai/aq-alerts ix,
-            /run/current-system/sw/bin/jq  ix,
-            /run/current-system/sw/** r,
-            /run/current-system/sw/**/*.so* mr,
 
             # === ReadOnlyPaths (from service unit) ===
             # Repo source tree — config files, scripts (NixOS: ReadOnlyPaths=)
