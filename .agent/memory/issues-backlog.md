@@ -1,5 +1,17 @@
 ## OPEN ISSUES
 
+[OPEN] aq-agent-loop-build-registry-docstring-drift — build_registry() docstring says "minimal 6 tools: read_file, write_file, run_command, git_add, git_commit, store_memory" but slim manifest now has 8 tools (also includes edit_file and validate_before_commit since Phase 165 iter 16)
+  Root cause: docstring was written when _SLIM_TOOLS had 6 entries; edit_file was added in Phase 165
+  iter 14-15, validate_before_commit added in iter 16 (19176f6f). Docstring was not updated.
+  The "--help" output for --tool-manifest also repeats the stale 6-tool list:
+  "'self-improvement' = minimal 6 tools (read_file/write_file/run_command/git_add/git_commit/store_memory)"
+  This is misleading for operators choosing manifests and for future model self-improvement that reads docs.
+  Severity: low
+  Action: Update the build_registry() docstring and argparse --tool-manifest help text to list all 8 tools:
+    read_file, edit_file, write_file, run_command, git_add, git_commit, store_memory, validate_before_commit
+  Files: scripts/ai/aq-agent-loop lines 77-86 (build_registry docstring) and lines 249-256 (argparse help text)
+  Two edit_file calls. No logic changes.
+
 [DONE] progressive-tool-disclosure — aq-agent-loop exposed all 29 tools (~2507 tokens) in every self-improvement slice
   Root cause: build_registry() always registered all tools. Self-improvement slices only need 6 tools
   (read_file, write_file, run_command, git_add, git_commit, store_memory). Extra 23 tools added 1739
@@ -100,7 +112,7 @@
   Auto-resolved by pre-commit hook during Phase 165 commit (03e5f950). Docstring line 18
   now reads "[default: 50]" matching argparse default=50.
 
-[OPEN] slim-manifest-missing-validate-before-commit — _SLIM_TOOLS in aq-agent-loop excludes validate_before_commit but BEHAVIORAL CONTRACT header says "validate_before_commit MUST pass before git_add"
+[DONE] slim-manifest-missing-validate-before-commit — _SLIM_TOOLS in aq-agent-loop excludes validate_before_commit but BEHAVIORAL CONTRACT header says "validate_before_commit MUST pass before git_add"
   Root cause: when build_registry(tool_manifest="self-improvement") unregisters tools not in _SLIM_TOOLS,
   validate_before_commit is removed (it's registered by register_git_tools, not in the frozenset).
   The BEHAVIORAL CONTRACT general rule still tells the model to call it, creating a tool-not-found
@@ -110,6 +122,7 @@
   Action: Add "validate_before_commit" to _SLIM_TOOLS frozenset in scripts/ai/aq-agent-loop (line 70-73).
   One-line change: add "validate_before_commit" to the frozenset. No other files need to change.
   File: scripts/ai/aq-agent-loop lines 70-73 (_SLIM_TOOLS frozenset)
+  Resolved: iter 16 model commit 19176f6f (2026-06-12) — Qwen3-35B used edit_file to add "validate_before_commit" to _SLIM_TOOLS. First successful autonomous self-improvement iteration.
 
 ## PENDING-REBUILD
 
