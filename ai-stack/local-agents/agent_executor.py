@@ -553,6 +553,12 @@ class LocalAgentExecutor:
         _STAGNATION_THRESHOLD_READ = 3   # read_file: identical result = definitely stuck
         _STAGNATION_THRESHOLD_OTHER = 5  # run_command etc: allow polling for state change
 
+        # File-not-found stagnation: track paths that returned ok=False.
+        # If the same path fails 3 times, the file genuinely does not exist and
+        # the model is stuck in a search loop — abort rather than burn the budget.
+        _failed_reads: dict = {}  # path → failure count
+        _FAILED_READ_LIMIT = 3
+
         # Observability: progress sidecar path (set by aq-agent-loop via env var).
         # Updated after every tool call so dashboards and `dispatch.py watch` can
         # read current state without waiting for the final JSON output.
@@ -730,6 +736,24 @@ class LocalAgentExecutor:
                     result.tool_name, threshold, tool_call_count,
                 )
                 return stagnation_msg, total_tokens
+
+            # File-not-found stagnation: if the same path keeps returning an error
+            # (file not found), the model is stuck in a search loop. Abort early.
+            if result.tool_name == "read_file" and not result.result.get("success", True):
+                _fp = result.arguments.get("file_path", "")
+                if _fp:
+                    _failed_reads[_fp] = _failed_reads.get(_fp, 0) + 1
+                    if _failed_reads[_fp] >= _FAILED_READ_LIMIT:
+                        stagnation_msg = (
+                            f"File-not-found stagnation: '{_fp}' has returned an error "
+                            f"{_FAILED_READ_LIMIT} times — file does not exist or is inaccessible. "
+                            f"Aborting loop at call {tool_call_count} to prevent runaway search."
+                        )
+                        logger.warning(
+                            "file-not-found stagnation: path=%r failed %d times — aborting at call %d",
+                            _fp, _FAILED_READ_LIMIT, tool_call_count,
+                        )
+                        return stagnation_msg, total_tokens
 
             # Extract the clean JSON from the response so the assistant turn
             # contains only the tool call object, not any leading prose.

@@ -455,15 +455,10 @@
   compare ~/.config/cosmic/ shortcut configs between generations.
   Note: gen 701 stable; defer until next rebuild shows regression.
 
-[OPEN] stagnation-detect-varied-loop — agent burned 50 calls on hardware issue with no progress; stagnation not triggered because varied run_command commands changed result prefix
-  Root cause: iter 12 picked [OPEN] hardware (first in file), tried .agent/PROJECT-ACCELERATE-PRD.md
-  (not found), then varied grep/find/ls patterns 40+ times searching for ACCELERATE files.
-  Each run_command used a slightly different command, resetting the stagnation ring buffer.
-  Stagnation threshold (other=5) tracks last 5 tool calls of the SAME tool; varied commands
-  never matched 5 identical (tool, result_prefix) pairs.
-  Severity: medium
-  Action: Add "file-not-found loop" detection to agent_executor: track read_file paths that
-  returned ok=False; if same path returns False 3+ times in a session, abort with stagnation
-  message. Also track run_command patterns: if 5+ commands all return empty/error result and
-  none triggered a write_file, flag as stuck-in-search loop.
-  File: ai-stack/local-agents/agent_executor.py (stagnation guard, ~line 548)
+[DONE] stagnation-detect-varied-loop — agent burned 50 calls on hardware issue with no progress; stagnation not triggered because varied run_command commands changed result prefix
+  Root cause: iter 12 picked [OPEN] hardware (first in file, now DEFERRED), tried .agent/PROJECT-ACCELERATE-PRD.md
+  (not found), then varied grep/find/ls patterns 40+ times. Each command was slightly different,
+  resetting the ring buffer. Same file returned ok=False 3+ times across 50 calls.
+  Fix: Added _failed_reads dict to agent_executor execute_task loop. If the same read_file path
+  returns ok=False >= 3 times in a session, abort with "File-not-found stagnation" message.
+  File: ai-stack/local-agents/agent_executor.py (_failed_reads dict + FAILED_READ_LIMIT check)
