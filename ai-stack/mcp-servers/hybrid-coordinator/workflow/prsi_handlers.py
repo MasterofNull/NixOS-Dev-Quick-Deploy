@@ -49,7 +49,11 @@ async def handle_prsi_pending(_request: web.Request) -> web.Response:
 
         terminal_states = {"approved", "rejected", "executed", "completed",
                            "failed", "counterfactual_queued"}
-        all_actions = queue.get("actions", [])
+        # queue file may be a bare list or {"actions": [...]}
+        if isinstance(queue, list):
+            all_actions = queue
+        else:
+            all_actions = queue.get("actions", [])
         pending = [
             {
                 "id": a.get("id", ""),
