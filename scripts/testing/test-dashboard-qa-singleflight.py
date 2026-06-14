@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HEALTH = (ROOT / "dashboard/backend/api/routes/health.py").read_text()
 AISTACK = (ROOT / "dashboard/backend/api/routes/aistack.py").read_text()
 RUNNER = (ROOT / "dashboard/backend/api/services/qa_runner.py").read_text()
+HELPERS = (ROOT / "scripts/testing/harness_qa/core/helpers.py").read_text()
 
 
 def require(condition: bool, message: str) -> None:
@@ -28,5 +29,11 @@ require(
 require(
     'env.setdefault("AQ_QA_DASHBOARD_SAFE", "1")' in RUNNER,
     "dashboard phase-0 QA should request dashboard-safe harness mode before host-only probes run",
+)
+require(
+    "dashboard_safe = os.environ.get(\"AQ_QA_DASHBOARD_SAFE\"" in HELPERS
+    and "if dashboard_safe:" in HELPERS
+    and "subprocess.run(" in HELPERS,
+    "dashboard-safe port probes must avoid ss fallback that AppArmor denies under command-center-dashboard-api",
 )
 print("PASS: dashboard QA surfaces share one single-flight runner")

@@ -14,6 +14,19 @@ checks = [
     # The original vulnerable condition (no running check) must NOT be present
     ("old vulnerable condition removed",
      'if data.get("pending") is True:\n            return "osi_layered_pending"' not in src),
+    ("dashboard recovery resolver present", "def _resolve_recovered_dashboard_probe_alerts" in src),
+    (
+        "dashboard recovery uses attention queue",
+        "get_pending(\"health-spider\")" in src
+        and "resolve(alert.get(\"id\", \"\"), \"rejected\", resolved_by=\"health-spider-recovered\")" in src,
+    ),
+    ("dashboard probe OK resolves stale alert", "_resolve_recovered_dashboard_probe_alerts" in src and "resolved {recovered} recovered alert(s)" in src),
+    (
+        "apparmor scan bounded by service activation",
+        "def _service_active_since_epoch" in src
+        and "ActiveEnterTimestamp" in src
+        and "since = max(since, active_since)" in src,
+    ),
 ]
 
 failed = [name for name, ok in checks if not ok]
