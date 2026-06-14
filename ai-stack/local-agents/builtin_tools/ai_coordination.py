@@ -14,6 +14,7 @@ Part of Phase 11 Batch 11.1: Tool Calling Infrastructure
 import asyncio
 import json
 import logging
+import os
 from typing import Dict, Optional
 
 import httpx

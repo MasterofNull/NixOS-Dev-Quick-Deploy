@@ -2,6 +2,19 @@
 
 ## Summary: 28 OK / 5 GAPS / 2 STUBS
 
+## Remediation Update: 2026-06-14
+
+The follow-up local-agent tool contract pass resolved or guarded most findings below:
+
+- `GAP-1` fixed: `ai_coordination.py` imports `os`, so `run_opencode_handler` can resolve environment aliases.
+- `GAP-2` fixed in handler contract: `recommend_agent_for_task_handler` no longer calls `/federated/recommend`; it reads `/control/agents/roles` and scores locally.
+- `GAP-3` fixed in auth contract: `/control/prsi/` is present in `LOOPBACK_AGENT_PREFIXES`.
+- `GAP-4` fixed in handler contract: `get_workflow_status_handler` uses `/workflow/orchestrate/{workflow_id}`.
+- `STUB-1` fixed in handler contract: `query_context_handler` calls `/memory/recall`.
+- `STUB-2` fixed in handler contract: `delegate_to_remote_handler` calls `/control/ai-coordinator/delegate`.
+
+Regression coverage: `scripts/testing/test-local-agent-store-memory-contract.py` now checks these local-agent tool endpoint contracts and PRSI loopback authorization.
+
 ---
 
 ## GAPS (need fixing)

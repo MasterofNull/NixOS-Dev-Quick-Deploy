@@ -32,6 +32,10 @@ def assert_true(condition: bool, message: str) -> None:
 
 def main() -> int:
     module = load_module()
+    source = AI_COORDINATION.read_text(encoding="utf-8")
+    auth_source = (ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "middleware" / "auth.py").read_text(
+        encoding="utf-8",
+    )
 
     canonical = {
         "episodic",
@@ -78,6 +82,28 @@ def main() -> int:
     assert_true(set(context_schema["enum"]) == canonical, "store_memory schema must expose canonical tiers")
     assert_true(context_schema["default"] == "semantic", "store_memory default must be semantic")
     assert_true("milestone" not in context_schema["enum"], "milestone must remain an alias, not a canonical tier")
+
+    assert_true("import os" in source, "run_opencode_handler must import os for env resolution")
+    assert_true(
+        "/control/ai-coordinator/delegate" in source,
+        "delegate_to_remote must use the coordinator delegate endpoint, not /query",
+    )
+    assert_true(
+        "/memory/recall" in source and "Context memory integration not yet implemented" not in source,
+        "query_context must call memory recall instead of returning a stub",
+    )
+    assert_true(
+        "/workflow/orchestrate/" in source and "/workflow/status/" not in source,
+        "get_workflow_status must use the registered workflow orchestrate endpoint",
+    )
+    assert_true(
+        '.post(f"{HYBRID_COORDINATOR_URL}/federated/recommend"' not in source,
+        "recommend_agent_for_task must not call the nonexistent federated recommend route",
+    )
+    assert_true(
+        '"/control/prsi/"' in auth_source,
+        "PRSI local-agent tools require /control/prsi/ loopback authorization",
+    )
 
     print("PASS: local-agent store_memory contract uses canonical memory tiers")
     return 0
