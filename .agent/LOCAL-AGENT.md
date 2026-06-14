@@ -129,12 +129,32 @@ Ignoring them produces redundant or low-impact work. Always derive improvement f
 
 | Knob | Value | Notes |
 |------|-------|-------|
-| `enable_thinking` | **false** | Qwen3 emits reasoning tokens that produce empty `content` — must always be disabled |
-| `chat_template_kwargs` | `{"enable_thinking": false}` | How to pass it in every request |
+| `enable_thinking` | **false (default)** | Qwen3 emits reasoning tokens that produce empty `content` when unbounded — must be disabled OR capped via `thinking_budget` |
+| `chat_template_kwargs` | `{"enable_thinking": false}` | Default: no thinking. Research/PRSI profiles use `{"enable_thinking": true, "thinking_budget": N}` |
 | `n_gpu_layers` | 12 | Hardware ceiling |
 | `spec_draft_n_max` | 2 | MTP draft tokens; tune up to 4 if acceptance rate stays >65% |
 | Temperature (analysis) | 0.3 | Balanced; raise to 0.7 for creative tasks |
 | Temperature (code) | 0.1 | Low variance for deterministic output |
+
+**Phase 172 — Safe Thinking Mode (via `llm_config.py` task profiles):**
+
+| Profile | `task_type=` | `enable_thinking` | `thinking_budget` | Use case |
+|---------|-------------|-------------------|-------------------|----------|
+| agent (default) | `"agent"` | False | None | Tool calls, harness ops |
+| research | `"research"` | **True** | 100 tokens | PRSI cycles, root-cause analysis |
+| deep_reasoning | `"deep_reasoning"` | **True** | 150 tokens | Architecture, multi-hop planning |
+
+Safe thinking: `thinking_budget` caps the thinking phase at N tokens (N seconds at 1 tok/s).
+Total `max_tokens` covers both thinking + content. At 1 tok/s: research = max 900s, deep_reasoning = max 1150s.
+
+Activation:
+```bash
+aq-agent-loop --task "..." --task-type research     # PRSI / discovery
+aq-agent-loop --task "..." --task-type deep_reasoning   # architecture planning
+python3 scripts/automation/prsi-orchestrator.py agent   # autonomous PRSI cycle
+```
+
+For coordinator-spawned agents (`local_agent_runtime.py`): set `AGENT_TASK_TYPE=research` env var.
 
 ### Model Swap Checklist
 

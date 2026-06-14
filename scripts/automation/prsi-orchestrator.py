@@ -72,6 +72,137 @@ DEFAULT_POLICY: Dict[str, Any] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# PRSI autonomous agent task template — OBSERVE→DIAGNOSE→HYPOTHESIZE→PLAN→IMPLEMENT→VALIDATE→REFLECT
+# Used by cmd_agent to generate the task description for aq-agent-loop.
+# Scaffold guides the local model through a full self-improvement cycle without
+# human prompting at each step. Tool names match TOOL_CATALOG in local_agent_runtime.py.
+# ---------------------------------------------------------------------------
+PRSI_AGENT_TASK_TEMPLATE = """\
+You are running a PRSI (Pessimistic Recursive Self-Improvement) autonomous cycle.
+Complete all 7 phases below in order. Use the listed tools at each phase.
+
+## OBSERVE — What is the current state?
+1. Call get_prsi_pending to list all pending improvement actions and their risk levels.
+2. Call run_harness_cli(tool="aq-report", args=["--format=json"]) to get current system metrics.
+3. Note which metrics are degraded (hint_adoption, eval_latest, cache_hit, intent_coverage).
+
+## DIAGNOSE — What are the root causes?
+4. For each degraded metric, call query_aidb with the metric name + "error pattern" to find related bugs.
+5. Call query_context with "PRSI cycle history" to recall what previous cycles tried.
+6. Answer: Is this a routing issue (wrong lane), knowledge gap (AIDB sparse), or config drift?
+
+## HYPOTHESIZE — What would fix it?
+7. For each pending action from OBSERVE step 1, ask:
+   - Which specific metric does this action target?
+   - What evidence supports approving it? (cite from DIAGNOSE findings)
+   - Risk assessment: low/medium/high. High-risk needs explicit justification.
+
+## PLAN — What will this cycle do?
+8. Select up to 3 low-risk or 1 medium-risk action(s) to approve per cycle.
+   High-risk actions require explicit written justification stored in memory before approval.
+9. Reject any action where the DIAGNOSE evidence does not support the hypothesis.
+
+## IMPLEMENT — Execute the plan.
+10. Call prsi_orchestrate(action="approve", action_id="<id>", note="<reason>") for each selected action.
+11. Call prsi_orchestrate(action="execute") to run the approved actions.
+
+## VALIDATE — Did it work?
+12. Call run_harness_cli(tool="aq-qa", args=["0", "--json"]) to check system health post-execution.
+13. Compare results to the degraded metrics from OBSERVE. Note any improvements or regressions.
+
+## REFLECT — What did this cycle teach?
+14. Call store_memory(context_type="episodic", content="PRSI cycle <date>: <1-sentence summary of what changed>")
+15. If a new error pattern was found, call store_memory(context_type="error_solutions", content="<pattern + fix>")
+16. Call store_memory(context_type="procedural", content="Next PRSI focus: <what to prioritize next cycle>")
+
+Return this JSON when complete:
+{{
+  "cycle_summary": "<one sentence>",
+  "actions_approved": <N>,
+  "actions_executed": <N>,
+  "metrics_checked": ["<metric>", ...],
+  "next_focus": "<one sentence>"
+}}
+
+{context_block}
+"""
+
+
+def _build_prsi_context_block() -> str:
+    """Summarise current queue + budget state for injection into the agent task."""
+    queue = _load_queue()
+    state = _load_state()
+    policy = _load_policy()
+
+    pending = [a for a in queue["actions"] if isinstance(a, dict) and a.get("status") == "pending_approval"]
+    approved = [a for a in queue["actions"] if isinstance(a, dict) and a.get("status") == "approved"]
+    total = len(queue["actions"])
+
+    budget_cap = int(policy.get("budget", {}).get("remote_token_cap_daily", 120000))
+    budget_used = int(state.get("remote_tokens_used", 0))
+    budget_remaining = max(0, budget_cap - budget_used)
+
+    lines = [
+        f"## CURRENT STATE (injected at cycle start)",
+        f"Queue: {total} total — {len(pending)} pending_approval, {len(approved)} approved",
+        f"Budget: {budget_remaining}/{budget_cap} remote tokens remaining today",
+    ]
+    if pending:
+        lines.append("Pending actions:")
+        for a in pending[:5]:
+            lines.append(f"  - id={a.get('id','?')} type={a.get('type','?')} risk={a.get('risk','?')}: {str(a.get('summary', a.get('reason', '')))[:80]}")
+        if len(pending) > 5:
+            lines.append(f"  ... and {len(pending) - 5} more")
+    if not pending and not approved:
+        lines.append("Queue is empty — run sync first if no actions appear.")
+    return "\n".join(lines)
+
+
+def cmd_agent(args: argparse.Namespace) -> int:
+    """Dispatch a PRSI autonomous agent cycle via aq-agent-loop.
+
+    Builds a structured OBSERVE→REFLECT task description from current queue state
+    and dispatches it to the local model. The model uses harness tools to complete
+    the full PRSI loop without human intervention at each step.
+    """
+    aq_agent_loop = REPO_ROOT / "scripts" / "ai" / "aq-agent-loop"
+    if not aq_agent_loop.exists():
+        print(json.dumps({"ok": False, "error": "aq-agent-loop not found at expected path"}), file=sys.stderr)
+        return 1
+
+    context_block = _build_prsi_context_block()
+    template = PRSI_AGENT_TASK_TEMPLATE
+    if args.dry_run:
+        template = template.replace(
+            "## IMPLEMENT — Execute the plan.",
+            "## IMPLEMENT — DRY RUN (observe and plan only — do NOT call prsi_orchestrate with action='execute').",
+        )
+    task_text = template.format(context_block=context_block)
+
+    output_file = str(args.output) if getattr(args, "output", None) else None
+    max_calls = int(getattr(args, "max_calls", 30))
+
+    argv = [
+        sys.executable,
+        str(aq_agent_loop),
+        "--task", task_text,
+        "--max-calls", str(max_calls),
+        "--role", "implementer",
+        "--task-type", "research",  # PRSI cycles benefit from deliberative thinking
+    ]
+    if output_file:
+        argv.extend(["--output", output_file])
+    if getattr(args, "fallback", False):
+        argv.append("--fallback")
+
+    _log_event({"ts": _now(), "event": "agent_cycle_start", "max_calls": max_calls, "dry_run": args.dry_run})
+    result = subprocess.run(argv, text=True, timeout=1800, check=False)
+    exit_code = result.returncode
+    _log_event({"ts": _now(), "event": "agent_cycle_complete", "exit_code": exit_code})
+    return exit_code
+
+
 def _now() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
@@ -614,6 +745,13 @@ def build_parser() -> argparse.ArgumentParser:
     s_cycle.add_argument("--execute-limit", type=int, default=0)
     s_cycle.add_argument("--dry-run", action="store_true")
     s_cycle.set_defaults(func=cmd_cycle)
+
+    s_agent = sub.add_parser("agent", help="Autonomous PRSI cycle via local agent (OBSERVE→REFLECT)")
+    s_agent.add_argument("--dry-run", action="store_true", help="Observe and plan but do not execute actions")
+    s_agent.add_argument("--max-calls", type=int, default=30, help="Max tool calls for agent loop [default: 30]")
+    s_agent.add_argument("--output", default=None, help="Write agent JSON summary to this file")
+    s_agent.add_argument("--fallback", action="store_true", help="Allow remote fallback if local fails")
+    s_agent.set_defaults(func=cmd_agent)
     return p
 
 
