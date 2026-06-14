@@ -54,8 +54,12 @@ LLAMA_CPP_URL = os.environ.get("LLAMA_CPP_URL", "http://127.0.0.1:8080")
 HYBRID_URL = os.environ.get("HYBRID_URL", "http://127.0.0.1:8003")
 STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
-TEMPERATURE = float(os.environ.get("AGENT_TEMPERATURE", "0.3"))
+# None when not explicitly set — defers to task profile temperature in build_llama_payload().
+TEMPERATURE: float | None = float(os.environ["AGENT_TEMPERATURE"]) if "AGENT_TEMPERATURE" in os.environ else None
 AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "240"))
+# Task profile selects thinking mode + token budget. Defaults to "agent" (no thinking).
+# Callers may inject "research" or "deep_reasoning" via AGENT_TASK_TYPE for PRSI/planning tasks.
+AGENT_TASK_TYPE = os.environ.get("AGENT_TASK_TYPE", "agent")
 
 # Phase 30.6: auto-inject context-bootstrap preamble at startup
 AGENT_INJECT_BOOTSTRAP = os.environ.get("AGENT_INJECT_BOOTSTRAP", "false").lower() == "true"
@@ -566,10 +570,14 @@ def _build_inference_payload(messages: list[dict], selected_tools: list[dict] | 
         tools = selected_tools if selected_tools is not None else TOOL_SCHEMAS
         extra["tools"] = tools
         extra["tool_choice"] = "auto"
+    # Pass explicit temperature only when caller set AGENT_TEMPERATURE; otherwise
+    # let the task profile's temperature take effect via build_llama_payload().
+    if TEMPERATURE is not None:
+        extra["temperature"] = TEMPERATURE
     return build_llama_payload(
         messages,
         max_tokens=MAX_TOKENS,
-        temperature=TEMPERATURE,
+        task_type=AGENT_TASK_TYPE,
         **extra,
     )
 
@@ -883,12 +891,16 @@ async def _post_completion_with_fallback(
 
 
 def _streaming_payload(messages: list[dict]) -> dict:
+    kwargs: dict = {}
+    if TEMPERATURE is not None:
+        kwargs["temperature"] = TEMPERATURE
     return build_llama_payload(
         messages,
         max_tokens=MAX_TOKENS,
-        temperature=TEMPERATURE,
+        task_type=AGENT_TASK_TYPE,
         stream=True,
         stop=STOP_SEQUENCES,
+        **kwargs,
     )
 
 

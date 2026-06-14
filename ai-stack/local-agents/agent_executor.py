@@ -257,6 +257,12 @@ class Task:
     # (role-matrix.md §8: a reviewer may not review their own work).
     reviewer_id: Optional[str] = None
 
+    # Phase 172 — task_type selects a modal llm_config TaskProfile for this task.
+    # Profiles control temperature, thinking mode, and thinking_budget.
+    # None = default agent profile (enable_thinking=False, temperature=0.2).
+    # Use "research" or "deep_reasoning" for PRSI / multi-hop planning tasks.
+    task_type: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -952,7 +958,9 @@ class LocalAgentExecutor:
             # almost always emits a tool call there (short JSON, EOS quick).
             call_max_tokens = AGENT_TASK_MAX_TOKENS if tool_call_count > 0 else AGENT_TOOL_CALL_MAX_TOKENS
             try:
-                response, tok = await self._call_llama(messages, role=role, max_tokens=call_max_tokens)
+                response, tok = await self._call_llama(
+                    messages, role=role, max_tokens=call_max_tokens, task_type=task.task_type
+                )
             except Exception as _llm_err:
                 # Retry once with reduced budget on transient failures (timeout, connection drop).
                 logger.warning(
@@ -1219,7 +1227,13 @@ class LocalAgentExecutor:
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
         return f"Task incomplete: reached max tool calls ({max_tool_calls})", total_tokens
 
-    async def _call_llama(self, messages: List[Dict], role: Optional[str] = None, max_tokens: int = AGENT_TOOL_CALL_MAX_TOKENS) -> Tuple[str, int]:
+    async def _call_llama(
+        self,
+        messages: List[Dict],
+        role: Optional[str] = None,
+        max_tokens: int = AGENT_TOOL_CALL_MAX_TOKENS,
+        task_type: Optional[str] = None,
+    ) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
 
@@ -1230,6 +1244,9 @@ class LocalAgentExecutor:
 
         Args:
             messages: Conversation messages
+            task_type: Optional llm_config profile name. When set, profile drives
+                temperature, thinking_budget, and enable_thinking. When None, the
+                hardcoded temperature=0.2 default is used (no profile).
 
         Returns:
             (response_text, tokens_used) — tokens_used is total_tokens from the usage chunk.
@@ -1240,15 +1257,17 @@ class LocalAgentExecutor:
         # Agent tool calls: 512 tokens (50-100 for JSON + 400 for summary).
         # At 1-2 tok/s on Renoir APU, 512 tokens = 256-512s max generation.
         # 4096 would risk 68-minute slot locks when clients disconnect.
+        # When task_type is set the profile drives temperature; otherwise use 0.2.
+        _temperature: Optional[float] = None if task_type else 0.2
 
         if not use_streaming:
             # Legacy non-streaming path — 300s wall-clock limit.
-            payload = build_llama_payload(
-                messages,
-                max_tokens=max_tokens,
-                temperature=0.2,
-                role=role,
-            )
+            _payload_kwargs: Dict[str, Any] = {"max_tokens": max_tokens, "role": role}
+            if _temperature is not None:
+                _payload_kwargs["temperature"] = _temperature
+            if task_type:
+                _payload_kwargs["task_type"] = task_type
+            payload = build_llama_payload(messages, **_payload_kwargs)
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.llama_endpoint}/v1/chat/completions",
@@ -1265,13 +1284,12 @@ class LocalAgentExecutor:
         # Pass stream=True so build_llama_payload includes stream_options.include_usage=True,
         # which causes llama.cpp to emit a final usage-only chunk for token tracking.
         # httpx.Timeout(read=chunk_timeout) is per-read-operation (per chunk), not total.
-        payload = build_llama_payload(
-            messages,
-            max_tokens=max_tokens,
-            temperature=0.2,
-            role=role,
-            stream=True,
-        )
+        _stream_kwargs: Dict[str, Any] = {"max_tokens": max_tokens, "role": role, "stream": True}
+        if _temperature is not None:
+            _stream_kwargs["temperature"] = _temperature
+        if task_type:
+            _stream_kwargs["task_type"] = task_type
+        payload = build_llama_payload(messages, **_stream_kwargs)
         timeout = httpx.Timeout(connect=10.0, read=chunk_timeout, write=10.0, pool=5.0)
 
         collected: List[str] = []

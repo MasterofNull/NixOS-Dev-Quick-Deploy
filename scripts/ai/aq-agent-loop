@@ -147,6 +147,7 @@ async def run_task(
     timeout_secs: int,
     role: str | None = None,
     tool_manifest: str = "full",
+    task_type: str | None = None,
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
 
@@ -192,7 +193,8 @@ async def run_task(
         objective=task_text,
         complexity=0.7,  # treat coding tasks as moderately complex → prefer local
         quality_critical=False,
-        role=role,  # None = auto-assign from AGENT_TYPE_DEFAULT_ROLE mapping
+        role=role,       # None = auto-assign from AGENT_TYPE_DEFAULT_ROLE mapping
+        task_type=task_type,  # None = default agent profile; "research"/"deep_reasoning" enable thinking
     )
 
     print(f"[aq-agent-loop] Task: {task_id}")
@@ -335,6 +337,17 @@ def main() -> int:
                         help="Authority role injected into system prompt (default: auto from AgentType mapping)")
     parser.add_argument("--list-tools", action="store_true", help="List registered tools and exit")
     parser.add_argument(
+        "--task-type",
+        default=None,
+        choices=["structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning"],
+        help=(
+            "LLM task profile. Controls temperature, thinking_budget, and enable_thinking. "
+            "'research' enables thinking (100 tok budget, 0.4 temp) for PRSI/discovery tasks. "
+            "'deep_reasoning' enables thinking (150 tok budget, 0.5 temp) for planning tasks. "
+            "Default: None (uses agent profile: enable_thinking=False, temperature=0.2)."
+        ),
+    )
+    parser.add_argument(
         "--tool-manifest",
         default="full",
         choices=["full", "self-improvement"],
@@ -364,6 +377,7 @@ def main() -> int:
         timeout_secs=args.timeout,
         role=args.role,
         tool_manifest=args.tool_manifest,
+        task_type=args.task_type,
     ))
 
 
