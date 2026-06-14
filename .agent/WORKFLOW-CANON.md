@@ -101,6 +101,64 @@ Contents: Objective, Scope Lock (in/out of scope), Workstreams, Step Plan, Valid
 
 ---
 
+### Step 3 Extension: Flat Collaborative Design Protocol
+
+**Applies to**: Any non-trivial feature, architectural change, or multi-service refactor.
+**Principle**: All agents operate as **equal expert teams in a flat organization**. No agent
+outranks another during design. The organization functions as a **software factory** —
+same standardized process every time, every agent, every task type.
+
+**This protocol replaces solo PRD drafting for non-trivial work.**
+
+#### Phase 1 — Dynamic Expert Team Assembly
+- Assemble team roles **per task domain** — NOT hardcoded or permanent.
+- Select only the expert roles the current task actually requires.
+- Assign the **same team composition to ALL agents** — no framing advantage for any team.
+- Team may shift between PRD phase and plan phase (e.g., drop Risk Analyst, add Slice Owner).
+- Example roles (pick only what fits): Systems Architect · Security Reviewer · Performance Analyst ·
+  Observability Engineer · CLI UX Designer · Risk Analyst · QA/Test Engineer · Implementation Engineer ·
+  Domain Expert · Integration Lead · Documentation Lead · Slice Owner
+
+#### Phase 2 — Independent PRD Drafting (all agents parallel, no cross-agent visibility)
+- Each team drafts their PRD independently. No agent sees another's draft during this phase.
+- PRD structure (mandatory): Executive Summary · Mission · Scope (In/Out/Constraints) ·
+  Current State Architecture · Proposed Architecture · Security & Configuration ·
+  Implementation Phases (high-level only) · Validation & Success Criteria ·
+  Risks & Mitigations · Open Questions · **Team Sign-off** (each expert role: APPROVED or CONCERNS)
+- Output: `.agent/<NAME>-PRD-<agent>.md`
+
+#### Phase 3 — PRD Consolidation
+- Consolidating agent collects all drafts → single **Consolidated PRD**.
+- Divergences and conflicts are **surfaced explicitly** — never silently resolved.
+- Output: `.agent/<NAME>-PRD-CONSOLIDATED.md`
+
+#### Phase 4 — PRD Consensus Sign-off
+- All agents issue explicit verdict: `APPROVED` or `REQUEST_REVISION: <reason>`.
+- PRD locked **only when ALL agents have signed off APPROVED**.
+- Any `REQUEST_REVISION` triggers a targeted revision cycle, not a full re-draft.
+
+#### Phase 5 — Independent Plan Drafting (all agents parallel)
+- Same fan-out pattern. Each team drafts their implementation plan for their assigned slice(s).
+- Plans include: phases, files touched, acceptance criteria, estimated complexity, validation steps.
+- Output: `.agents/plans/<NAME>-PLAN-<agent>.md`
+
+#### Phase 6 — Plan Consolidation + Consensus Sign-off
+- Same pattern as Phases 3-4 applied to plans. Inter-slice dependencies resolved explicitly.
+- Output: `.agents/plans/<NAME>-PLAN-CONSOLIDATED.md`
+
+#### Phase 7 — Delegation
+- **Only after both PRD and plan carry all-agent sign-off** are task delegations issued.
+- Delegations reference the locked plan slice by ID — no ad-hoc "do this" dispatches.
+
+**Key rules**:
+- Never draft a PRD solo and then ask others to review — that anchors all other teams to your framing.
+- No delegation before consensus. "We'll figure it out during implementation" is not a plan.
+- The consolidator role is **logistics only**, not authority — surfaces conflicts, does not resolve them.
+- If an agent is unavailable, the orchestrator fills that agent's role and marks it as proxy sign-off.
+  Never skip a sign-off slot silently.
+
+---
+
 ### Step 4: MEMORY CHECKPOINT
 
 **Purpose**: Store the plan and initialize collaboration locks so work is resumable.
