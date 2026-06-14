@@ -30,6 +30,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # ── path setup ───────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ for _p in [str(_LOCAL_AGENTS), str(_BUILTIN_TOOLS)]:
 # ── imports from Phase 11 infrastructure ─────────────────────────────────────
 
 try:
+    from harness_paths import AGENT_RUN_EVENTS as _AGENT_RUN_EVENTS_PATH
     from tool_registry import ToolRegistry, get_registry
     from agent_executor import LocalAgentExecutor, Task, AgentType, TaskStatus
     from file_operations import register_file_tools      # noqa: F401 (used via register call)
@@ -66,6 +68,36 @@ logger = logging.getLogger(__name__)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+_agent_loop_event_seq: dict[str, int] = {}
+
+
+async def _async_append_jsonl(path: Path, event: dict) -> None:
+    """Append one JSONL event without blocking the agent loop."""
+    try:
+        def _write() -> None:
+            with path.open("a", encoding="utf-8") as _f:
+                _f.write(json.dumps(event) + "\n")
+        await asyncio.to_thread(_write)
+    except Exception:
+        pass
+
+
+async def _emit_agent_event(task_id: str, event_type: str, payload: dict) -> None:
+    """Fire-and-forget wrapper event for aq-agent-loop lifecycle."""
+    path = Path(os.environ.get("AQ_AGENT_RUN_EVENTS_PATH", str(_AGENT_RUN_EVENTS_PATH)))
+    seq = _agent_loop_event_seq.get(task_id, 0) + 1
+    _agent_loop_event_seq[task_id] = seq
+    event = {
+        "task_id": task_id,
+        "seq": seq,
+        "event_type": event_type,
+        "ts": datetime.utcnow().isoformat() + "Z",
+        **payload,
+    }
+    asyncio.create_task(_async_append_jsonl(path, event))
+    if event_type in {"agent_complete", "agent_failed"}:
+        _agent_loop_event_seq.pop(task_id, None)
 
 _SLIM_TOOLS = frozenset({
     "read_file", "edit_file", "write_file", "run_command",
@@ -170,6 +202,12 @@ async def run_task(
     print(f"[aq-agent-loop] Running...\n")
 
     start = time.time()
+    wrapper_event_task_id = f"{task_id}:aq-agent-loop"
+    await _emit_agent_event(
+        wrapper_event_task_id,
+        "agent_step_start",
+        {"tool_call_count": 0},
+    )
     result_task = await executor.execute_task(task, AgentType.AGENT, max_calls)
     elapsed = time.time() - start
 
@@ -187,6 +225,25 @@ async def run_task(
         print(f"\n--- Result ---\n{result_task.result or '(no output)'}\n")
     else:
         print(f"\n--- Error ---\n{result_task.error or '(unknown error)'}\n", file=sys.stderr)
+
+    if success:
+        await _emit_agent_event(
+            wrapper_event_task_id,
+            "agent_complete",
+            {
+                "result_preview": str(result_task.result)[:200] if result_task.result is not None else "",
+                "run_attempt": len(result_task.tool_calls_made),
+            },
+        )
+    else:
+        await _emit_agent_event(
+            wrapper_event_task_id,
+            "agent_failed",
+            {
+                "error": result_task.error or "unknown error",
+                "run_attempt": len(result_task.tool_calls_made),
+            },
+        )
 
     # Write JSON summary
     summary = {
