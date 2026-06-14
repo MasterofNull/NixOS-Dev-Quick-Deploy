@@ -160,6 +160,7 @@ nix/hosts/*/facts.nix
 nix/hosts/*/secrets.sops.yaml
 nix/hosts/*/.sops.yaml
 .claude/settings.json
+.claude/*.lock
 .upstream/
 .forks/
 .workflow-sessions.json
