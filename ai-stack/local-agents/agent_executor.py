@@ -65,6 +65,65 @@ _CODE_TASK_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Phase A.6: keyword sets for per-iteration tool hot-swap ──────────────────
+# Mirror the sets in local_agent_runtime.py so both runtimes share the same
+# signal vocabulary.  Tools described as text in the system prompt are refreshed
+# by rebuilding messages[0] after each tool call result.
+_AEXEC_MEMORY_KW = frozenset(["remember", "store", "save", "record", "note", "memorize", "persist"])
+_AEXEC_WORKFLOW_KW = frozenset(["workflow", "pipeline", "prsi", "self-improve", "optimization"])
+_AEXEC_DELEGATE_KW = frozenset(["delegate", "remote", "escalate", "assign", "handoff", "codex", "claude", "opencode"])
+_AEXEC_HEALTH_KW = frozenset(["health", "status", "check", "verify", "diagnose", "monitor", "running", "alive"])
+_AEXEC_MESH_KW = frozenset(["mesh", "agents", "discover", "team", "capabilities", "federated", "who can"])
+
+# Tool names that are always present (never hot-swapped in/out).
+_AEXEC_ALWAYS_TOOLS: frozenset[str] = frozenset(["read_file", "write_file", "edit_file", "run_command", "git_add", "git_commit"])
+# Tools eligible for hot-swap injection keyed by the keyword set that triggers them.
+_AEXEC_HOTSWAP_MAP: list[tuple[frozenset[str], list[str]]] = [
+    (_AEXEC_MEMORY_KW,   ["store_memory"]),
+    (_AEXEC_WORKFLOW_KW, ["get_workflow_status"]),
+    (_AEXEC_DELEGATE_KW, ["delegate_to_remote"]),
+    (_AEXEC_HEALTH_KW,   ["harness_health"]),
+    (_AEXEC_MESH_KW,     ["mesh_discovery"]),
+]
+
+
+def _refresh_active_tools(
+    tool_name: str,
+    result_text: str,
+    current_tools: List[Dict],
+    all_tools: List[Dict],
+    max_tools: int = 8,
+) -> List[Dict]:
+    """Hot-swap active tool set for agent_executor based on tool result content.
+
+    Monotonic expansion: never removes already-active tools.
+    all_tools is the full registry snapshot — source of new schemas.
+    max_tools is generous (8) here because tool descriptions are text, not JSON schemas.
+    """
+    current_names = {t["name"] for t in current_tools}
+    result_lower = result_text.lower()
+    additions: list[str] = []
+
+    for kw_set, candidates in _AEXEC_HOTSWAP_MAP:
+        if any(k in result_lower for k in kw_set):
+            for candidate in candidates:
+                if candidate not in current_names:
+                    additions.append(candidate)
+
+    if not additions:
+        return current_tools
+
+    # Build lookup from full registry
+    all_by_name = {t["name"]: t for t in all_tools}
+    result_tools = list(current_tools)
+    for name in additions:
+        if len(result_tools) >= max_tools:
+            break
+        if name in all_by_name and name not in current_names:
+            result_tools.append(all_by_name[name])
+            current_names.add(name)
+    return result_tools
+
 
 def _env_flag(name: str, default: bool) -> bool:
     """Parse a boolean environment flag."""
@@ -531,14 +590,19 @@ class LocalAgentExecutor:
         4. Append results to context
         5. Repeat until no more tool calls or max reached
         """
-        # Get tools for model
-        tools = self.tool_registry.get_tools_for_model()
+        # Get tools for model.
+        # A.6 — _all_tools is the full registry snapshot (hot-swap source, never depleted).
+        # _active_tools starts as the full set and may expand mid-loop via _refresh_active_tools.
+        # The system prompt is rebuilt whenever _active_tools changes so the model always
+        # sees the current tool surface without a full context reload.
+        _all_tools = self.tool_registry.get_tools_for_model()
+        _active_tools = list(_all_tools)
 
         # Build initial prompt
         messages = [
             {
                 "role": "system",
-                "content": self._get_system_prompt(agent_type, tools),
+                "content": self._get_system_prompt(agent_type, _active_tools),
             },
             {
                 "role": "user",
@@ -871,6 +935,23 @@ class LocalAgentExecutor:
                 "name": result.tool_name,
                 "content": formatted_result,
             })
+
+            # A.6 — hot-swap: expand active tool set based on what the result reveals.
+            # Monotonic expansion only (never shrinks). Rebuilds messages[0] (system prompt)
+            # when new tools are added so the model sees the expanded surface next call.
+            _prev_tool_count = len(_active_tools)
+            _active_tools = _refresh_active_tools(
+                result.tool_name, formatted_result, _active_tools, _all_tools,
+            )
+            if len(_active_tools) > _prev_tool_count:
+                messages[0] = {
+                    "role": "system",
+                    "content": self._get_system_prompt(agent_type, _active_tools),
+                }
+                logger.debug(
+                    "tool_hotswap: +%d tools after %s (total=%d)",
+                    len(_active_tools) - _prev_tool_count, result.tool_name, len(_active_tools),
+                )
 
             # Soft nudge: inject a user message when reads-without-edit reaches the soft limit.
             # Appears before the next LLM call so the model can course-correct without aborting.

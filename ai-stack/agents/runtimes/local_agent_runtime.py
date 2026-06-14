@@ -507,6 +507,42 @@ def _select_tools_for_task(task_description: str) -> list[dict]:
     return [_slim_schema(TOOL_CATALOG[name]) for name in selected if name in TOOL_CATALOG]
 
 
+def _refresh_tools_from_result(
+    tool_name: str,
+    result_text: str,
+    current_tools: list[dict],
+    max_tools: int = 6,
+) -> list[dict]:
+    """Hot-swap active tool set based on tool result content.
+
+    Monotonic expansion: never removes already-selected tools.
+    Reads from TOOL_CATALOG — catalog is always complete.
+    _slim_schema() keeps each addition ~50 tokens (cheap swap).
+    """
+    current_names = {t["function"]["name"] for t in current_tools}
+    result_lower = result_text.lower()
+    additions: list[str] = []
+
+    if any(k in result_lower for k in _TOOL_SELECT_MEMORY_KW) and "store_memory" not in current_names:
+        additions.append("store_memory")
+    if any(k in result_lower for k in _TOOL_SELECT_WORKFLOW_KW) and "get_workflow_status" not in current_names:
+        additions.extend(["get_workflow_status", "prsi_orchestrate"])
+    if any(k in result_lower for k in _TOOL_SELECT_DELEGATE_KW) and "delegate_to_remote" not in current_names:
+        additions.append("delegate_to_remote")
+    if any(k in result_lower for k in _TOOL_SELECT_HEALTH_KW) and "harness_health" not in current_names:
+        additions.append("harness_health")
+    if any(k in result_lower for k in _TOOL_SELECT_MESH_KW) and "mesh_discovery" not in current_names:
+        additions.append("mesh_discovery")
+
+    result_tools = list(current_tools)
+    for name in additions:
+        if len(result_tools) >= max_tools:
+            break
+        if name in TOOL_CATALOG:
+            result_tools.append(_slim_schema(TOOL_CATALOG[name]))
+    return result_tools
+
+
 def _profile_for_role(role: str) -> str:
     normalized = str(role or "").strip().lower()
     if normalized == "coder":
@@ -1156,7 +1192,9 @@ async def run() -> None:
 
         # A.3 — Progressive tool disclosure: select 4-6 relevant schemas for this task.
         # Only computed when tools are enabled; avoids any overhead for non-tool invocations.
+        # A.6 — _active_tools tracks the live set; expanded per-iteration via _refresh_tools_from_result.
         _selected_tools: list[dict] | None = _select_tools_for_task(AGENT_TASK) if TOOLS_ENABLED else None
+        _active_tools: list[dict] | None = list(_selected_tools) if _selected_tools is not None else None
 
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
             if STREAMING_MODE:
@@ -1228,7 +1266,7 @@ async def run() -> None:
             for _round in range(max_rounds):
                 resp = await _post_completion_with_fallback(
                     client,
-                    payload=_build_inference_payload(messages, selected_tools=_selected_tools),
+                    payload=_build_inference_payload(messages, selected_tools=_active_tools),
                     headers=headers,
                     state=state,
                 )
@@ -1270,6 +1308,9 @@ async def run() -> None:
                     })
                     state["tool_calls"] += 1
                     _write_state(state)
+                    # A.6 — hot-swap: expand active tool set based on what the result reveals.
+                    if _active_tools is not None:
+                        _active_tools = _refresh_tools_from_result(tc_name, tc_result, _active_tools)
             else:
                 if not content:
                     last_msg = messages[-1] if messages else {}
