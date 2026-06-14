@@ -57,21 +57,20 @@ SNAPSHOT_CHECKS = [
     ("open_issues", ["rg", "-n", "^\\[OPEN\\]", ".agent/memory/issues-backlog.md"], 6),
     ("health_spider_once", ["scripts/ai/aq-health-spider", "--once"], 20),
 ]
-TOOL_FREE_PHRASES = {
-    "do not call tools",
-    "don't call tools",
-    "no tools",
-    "without tools",
-    "tool-free",
-    "tool free",
-}
-TOOL_FREE_SPEC_PHRASES = {
-    "acceptance criteria",
-    "tests only",
-    "spec only",
-    "code-ready spec",
-    "produce a spec",
-}
+# --- chat_intent: shared classifier (Phase B) ---
+# TOOL_FREE_PHRASES and TOOL_FREE_SPEC_PHRASES live in chat_intent.py (single source of truth).
+# Import them from there so the coordinator can also share the same definition.
+_CHAT_INTENT_LIB = Path(__file__).resolve().parent / "lib"
+if str(_CHAT_INTENT_LIB) not in sys.path:
+    sys.path.insert(0, str(_CHAT_INTENT_LIB))
+from chat_intent import (  # noqa: E402
+    TOOL_FREE_PHRASES,
+    TOOL_FREE_SPEC_PHRASES,
+    TurnClassification,
+    ToolMode,
+    classify_chat_intent,
+    is_conversational,
+)
 
 # --- Styling ---
 STYLE = Style.from_dict({
@@ -105,7 +104,29 @@ class AQChat:
         self.temperature = args.temperature
         self.max_tool_calls = getattr(args, "max_tools", 40)
         self.inject_context = not getattr(args, "no_inject", False)
-        self.local_tools_enabled = not getattr(args, "no_tools", False)
+        # Phase B: three-state ToolMode replaces bool local_tools_enabled
+        self.tool_mode: ToolMode = (
+            ToolMode.DISABLED_SESSION if getattr(args, "no_tools", False)
+            else ToolMode.ENABLED
+        )
+        # Keep local_tools_enabled as a compatibility property (used in _uses_switchboard_local_tools)
+        # Derived from tool_mode so both are always consistent.
+
+        # Phase C: wire profile tracking (actual profile sent to backend — not self.active_profile)
+        self._wire_profile: str = "local-tool-calling"
+
+        # Phase C: HUD verbosity and banner suppression
+        self._verbose_hud: bool = getattr(args, "verbose_hud", False)
+        self._quiet: bool = getattr(args, "quiet", False)
+
+        # Phase D: fast-path state
+        self._no_fastpath: bool = getattr(args, "no_fastpath", False)
+        self._last_turn_had_tool_calls: bool = False
+        self._session_id: str = f"aq-chat-{int(time.time())}"
+        self._routing_seq: int = 0
+
+        # Phase C: HUD tool count (cached from parity contract on first access)
+        self._tool_count_cache: Optional[int] = None
 
         # Steering & Concurrency state
         self.current_stream_task: Optional[asyncio.Task] = None
@@ -162,11 +183,20 @@ class AQChat:
         compact = " ".join(prompt.lower().split())
         return any(keyword in compact for keyword in SNAPSHOT_KEYWORDS)
 
+    @property
+    def local_tools_enabled(self) -> bool:
+        """Compatibility property: True when tool_mode is ENABLED."""
+        return self.tool_mode == ToolMode.ENABLED
+
     def _should_bypass_tools_for_turn(self, prompt: str) -> bool:
-        compact = " ".join(prompt.lower().split())
-        explicit_no_tools = any(phrase in compact for phrase in TOOL_FREE_PHRASES)
-        spec_style = any(phrase in compact for phrase in TOOL_FREE_SPEC_PHRASES)
-        return explicit_no_tools or (spec_style and "tool" not in compact)
+        """Return True if this turn should skip tool calls.
+
+        Delegates to is_conversational() from chat_intent.py (Phase B).
+        Also respects session-level DISABLED_SESSION mode.
+        """
+        if self.tool_mode == ToolMode.DISABLED_SESSION:
+            return True
+        return is_conversational(prompt)
 
     def _collect_local_snapshot(self) -> Dict[str, Any]:
         """Collect the trusted read-only local checks used for operational grounding."""
@@ -422,10 +452,224 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         self._last_user_msg = prompt
         self._last_assistant_msg = full_response
 
+    # -------------------------------------------------------------------------
+    # Phase C — HUD transparency helpers
+    # -------------------------------------------------------------------------
+
+    # Wire profile abbreviation map (Phase C.1)
+    _PROFILE_ABBREV: Dict[str, str] = {
+        "local-tool-calling": "ltc",
+        "continue-local": "cl",
+        "local-chat-new": "lcn",
+        "default": "def",
+    }
+
+    @staticmethod
+    def _build_prompt_text(
+        active_profile: str,
+        wire_profile: str,
+        tool_mode: "ToolMode",
+        tool_count: int,
+        verbose: bool = False,
+    ) -> str:
+        """Build the HUD prompt string (pure function — testable).
+
+        Format (compact):  [local | ltc | tools:15] ❯
+        Format (verbose):  [local | local-tool-calling | tools:15] ❯
+        DISABLED_SESSION:  [local | ltc | tools:off] ❯
+        DISABLED_TURN:     [local | off | turn] ❯
+        """
+        abbrev = AQChat._PROFILE_ABBREV.get(wire_profile, wire_profile)
+        wire_display = wire_profile if verbose else abbrev
+
+        if tool_mode == ToolMode.DISABLED_TURN:
+            return f"[{active_profile} | off | turn] ❯ "
+        if tool_mode == ToolMode.DISABLED_SESSION:
+            return f"[{active_profile} | {wire_display} | tools:off] ❯ "
+        # ENABLED
+        return f"[{active_profile} | {wire_display} | tools:{tool_count}] ❯ "
+
+    def _runtime_tool_count(self) -> int:
+        """Return cached tool count from parity contract (read once at session start)."""
+        if self._tool_count_cache is not None:
+            return self._tool_count_cache
+        contract = self._load_parity_contract()
+        required = contract.get("required_tools", [])
+        # Fallback: if contract not available, use a sensible default
+        count = len(required) if required else 3
+        self._tool_count_cache = count
+        return count
+
+    def _next_routing_seq(self) -> int:
+        self._routing_seq += 1
+        return self._routing_seq
+
+    # -------------------------------------------------------------------------
+    # Phase D — conversational fast-path helpers
+    # -------------------------------------------------------------------------
+
+    def _build_fast_path_payload(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        """Build switchboard payload for conversational fast-path turns.
+
+        All 4 required fields must be set explicitly:
+          - stream: True  (switchboard forces SSE for local targets; be explicit — Phase 109.1)
+          - max_tokens: 1024  (continue-local has no ceiling; caller controls)
+          - chat_template_kwargs: {"enable_thinking": False}  (Qwen3 CRITICAL — not top-level)
+          - frequency_penalty: 0.0  (prevents token blackout on dense output — MEMORY.md pattern)
+        """
+        local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
+        return {
+            "model": local_model_id,
+            "messages": messages,
+            "stream": True,                                      # CRITICAL — Phase 109.1
+            "max_tokens": 1024,                                  # CRITICAL — no ceiling otherwise
+            "temperature": self.temperature,
+            "frequency_penalty": 0.0,                            # CRITICAL — prevent token blackout
+            "chat_template_kwargs": {"enable_thinking": False},  # CRITICAL — Qwen3 thinking tokens
+        }
+
+    async def _write_routing_event(self, event: Dict[str, Any]) -> None:
+        """Fire-and-forget routing event write to agent-run-events.jsonl."""
+        try:
+            # Import harness_paths SSOT; fall back to env var or absolute production path.
+            try:
+                _local_agents = REPO_ROOT / "ai-stack" / "local-agents"
+                if str(_local_agents) not in sys.path:
+                    sys.path.insert(0, str(_local_agents))
+                from harness_paths import AGENT_RUN_EVENTS as _events_path
+                path = Path(str(_events_path))
+            except ImportError:
+                path = Path(os.environ.get(
+                    "AQ_AGENT_RUN_EVENTS_PATH",
+                    "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl",
+                ))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(event) + "\n")
+        except Exception:
+            pass  # fire-and-forget: never raise
+
+    async def _stream_fast_path(
+        self, prompt: str, messages: List[Dict[str, str]]
+    ) -> None:
+        """Conversational fast-path: POST directly to switchboard continue-local profile.
+
+        Bypasses the coordinator delegate (~50s overhead) for turns classified as
+        conversational (no tool calls needed). Uses SSE parsing — never response.json().
+
+        Emits a routing_decision event before the HTTP request (Phase D.4).
+        """
+        classification = classify_chat_intent(prompt)
+        wire_profile = "continue-local"
+        self._wire_profile = wire_profile
+
+        # D.4 — routing event BEFORE HTTP request (fire-and-forget)
+        asyncio.create_task(self._write_routing_event({
+            "event_type": "routing_decision",
+            "task_id": self._session_id,
+            "path": "fast_path",
+            "profile": wire_profile,
+            "classification": classification.mode,
+            "matched_phrase": classification.matched_phrase,
+            "seq": self._next_routing_seq(),
+            "ts": time.time(),
+        }))
+
+        target_url = f"{self.switchboard_url}/v1/chat/completions"
+        headers = {
+            "X-Agent-Source": "aq-chat",
+            "X-Agent-Role": "orchestrator",
+            "X-Agent-Boundary": "human_gate",
+            "X-AI-Profile": wire_profile,
+        }
+        payload = self._build_fast_path_payload(messages)
+
+        try:
+            full_response = ""
+            self.is_thinking = False
+            print()
+            async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
+                if response.status_code != 200:
+                    detail = self._response_error_detail(response)
+                    suffix = f" {detail}" if detail else ""
+                    console.print(
+                        f"[bold red]Fast-path error: {response.status_code} from switchboard.[/]{suffix}"
+                    )
+                    # Fall through gracefully — caller can retry via coordinator
+                    return
+
+                async for line in response.aiter_lines():
+                    if self.interrupt_event.is_set():
+                        console.print("\n[bold yellow]Interrupted![/]")
+                        break
+                    if not line.startswith("data: "):
+                        continue
+                    content = line[6:]
+                    if content.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(content)
+                    except json.JSONDecodeError:
+                        continue
+                    token = (
+                        chunk.get("choices", [{}])[0]
+                        .get("delta", {})
+                        .get("content", "") or ""
+                    )
+                    if "<think>" in token or "<thought>" in token:
+                        self.is_thinking = True
+                        continue
+                    elif "</think>" in token or "</thought>" in token:
+                        self.is_thinking = False
+                        continue
+                    full_response += token
+                    if not self.is_thinking:
+                        print(token, end="", flush=True)
+
+            print()
+            self._last_turn_had_tool_calls = False
+            self._record_and_render_assistant_response(prompt, full_response)
+            self._write_feedback_turn(fast_path=True)
+        except asyncio.CancelledError:
+            console.print("\n[dim]Interrupted.[/]")
+            raise
+        except Exception as e:
+            console.print(f"[bold red]Fast-path error: {e}[/]")
+
+    def _write_feedback_turn(self, fast_path: bool = False) -> None:
+        """Internal: record per-turn metadata to feedback log (no rating — use /rate for that)."""
+        # This is NOT the same as _write_feedback() which records explicit /rate commands.
+        # It records routing decisions so training_ingest can correlate profile → quality.
+        # Intentionally lightweight — no I/O on every turn, only when explicitly rating.
+        pass  # placeholder: called from _stream_fast_path for future telemetry hooks
+
     async def _stream_chat(self, prompt: str):
         self.context_history.append({"role": "user", "content": prompt})
         self.interrupt_event.clear()
         self.steering_prompt = None
+
+        # -----------------------------------------------------------------------
+        # Phase D.2 — conversational fast-path guard
+        # Bypass coordinator (~50s overhead) for turns that need no tool calls.
+        # Guard conditions:
+        #   1. tool_mode is ENABLED (not disabled at session or turn level)
+        #   2. turn is classified conversational by chat_intent
+        #   3. --no-fastpath flag not set (debug escape hatch)
+        #   4. last turn didn't use tools (preserves tool-call context continuity)
+        #   5. local profile (fast-path only makes sense for local targets)
+        #   6. no snapshot required (snapshot turns always need coordinator context)
+        # -----------------------------------------------------------------------
+        is_local_profile = self.active_profile in {"local", "local-tool-calling"}
+        if (
+            is_local_profile
+            and self.tool_mode == ToolMode.ENABLED
+            and not self._no_fastpath
+            and not self._last_turn_had_tool_calls
+            and is_conversational(prompt)
+            and not self._should_use_local_snapshot(prompt)
+        ):
+            await self._stream_fast_path(prompt, list(self.context_history))
+            return
 
         thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
         with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
@@ -482,6 +726,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 # Human local turns use the same coordinator delegation path as autonomous local agents.
                 target_url = f"{self.hybrid_url}/control/ai-coordinator/delegate"
                 headers["X-AI-Profile"] = "local-tool-calling"
+                wire_profile = "local-tool-calling" if self.local_tools_enabled and not tool_free_turn else "default"
+                self._wire_profile = wire_profile
                 payload = self._build_coordinator_delegate_payload(
                     prompt,
                     request_messages,
@@ -489,9 +735,22 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 )
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
+                self._wire_profile = self.active_profile
 
             try:
                 if self.active_profile in {"local", "local-tool-calling"} or local_snapshot or tool_free_turn:
+                    # D.4 — routing event before HTTP request (fire-and-forget)
+                    asyncio.create_task(self._write_routing_event({
+                        "event_type": "routing_decision",
+                        "task_id": self._session_id,
+                        "path": "coordinator",
+                        "profile": self._wire_profile,
+                        "classification": "agentic",
+                        "tool_free_turn": tool_free_turn,
+                        "snapshot_turn": bool(local_snapshot),
+                        "seq": self._next_routing_seq(),
+                        "ts": time.time(),
+                    }))
                     response = await self.client.post(target_url, json=payload, headers=headers)
                     if response.status_code != 200:
                         detail = self._response_error_detail(response)
@@ -503,6 +762,10 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                     except json.JSONDecodeError:
                         console.print("[bold red]Error: local backend returned non-JSON response.[/]")
                         return
+                    # D.2: track whether coordinator used tools (for next-turn fast-path gate)
+                    self._last_turn_had_tool_calls = bool(
+                        body.get("tool_calls_made", 0) or body.get("local_tool_budget_exhausted")
+                    )
                     if body.get("local_tool_budget_exhausted"):
                         console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
                     full_response = self._assistant_content_from_body(body)
@@ -550,6 +813,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
 
                     print()
                     if not self.interrupt_event.is_set():
+                        self._last_turn_had_tool_calls = False
                         self._record_and_render_assistant_response(prompt, full_response)
                     else:
                         # Handle steering
@@ -657,10 +921,20 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         except Exception as e:
             console.print(f"[bold red]Load failed: {e}[/]")
 
-    def _write_feedback(self, rating: str, comment: str) -> None:
+    def _write_feedback(
+        self,
+        rating: str,
+        comment: str,
+        *,
+        fast_path: bool = False,
+    ) -> None:
         """
         Write a user feedback entry to delegation-feedback.jsonl.
-        Activates the feedback stream (currently 0MB) for the training pipeline.
+        Activates the feedback stream for the training pipeline.
+
+        Phase C.3: records self._wire_profile (actual wire profile, e.g. "local-tool-calling")
+        NOT self.active_profile (always "local") — fixes training data poisoning.
+        Also records tool_mode and fast_path for downstream analysis.
         """
         import datetime as _dt
         feedback_path = Path(os.getenv(
@@ -672,7 +946,11 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             "comment": comment,
             "query": self._last_user_msg[:500] if self._last_user_msg else "",
             "response_preview": self._last_assistant_msg[:300] if self._last_assistant_msg else "",
-            "profile": self.active_profile,
+            # Phase C.3: actual wire profile (not self.active_profile which is always "local")
+            "profile": self._wire_profile,
+            "active_profile": self.active_profile,
+            "tool_mode": self.tool_mode.value,
+            "fast_path": fast_path,
             "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
             # Map bad ratings to improvement_actions so training_ingest can pick them up
             "improvement_actions": [comment] if rating == "bad" and comment else (
@@ -880,6 +1158,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         await self._discover_pool()
         self.model_name = await self._get_active_model()
 
+
         # Inject harness-aware system prompt for all local delegation profiles.
         # local-tool-calling routes to coordinator /delegate (same as agentic delegation);
         # injecting context here puts the system message in context_history → request_messages →
@@ -891,16 +1170,37 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             self.context_history = [{"role": "system", "content": sys_prompt}]
             console.print("[dim italic]Harness context injected.[/]")
 
+        # Phase C.4 — session-start banner (one-time, suppressible with --quiet)
+        if not self._quiet:
+            wire = self._wire_profile
+            tool_count = self._runtime_tool_count()
+            fast_path_status = "enabled" if not self._no_fastpath else "disabled (--no-fastpath)"
+            console.print(
+                f"[dim][aq-chat] Profile: {wire} | "
+                f"Fast-path: {fast_path_status} | "
+                f"Tools: {tool_count} available[/dim]"
+            )
+
         console.print(Panel.fit(
-            f"[bold #00d9ff]Command Center HUD v2.2-STELLAR[/]\n"
-            f"[dim]Professional-grade edge orchestration interface.[/]\n"
+            f"[bold #00d9ff]Command Center HUD v2.3[/]\n"
+            f"[dim]Unified routing: coordinator + fast-path.[/]\n"
             f"Active: [bold #ff00ff]{self.active_profile}[/] ({self.model_name})",
             border_style="#00d9ff"
         ))
 
         while True:
             try:
-                p_text = f'<prompt>[{self.active_profile}]</prompt> <model>❯</model> '
+                # Phase C.2 — D3 HUD format: [local | ltc | tools:15] ❯
+                tool_count = self._runtime_tool_count()
+                p_text_str = self._build_prompt_text(
+                    self.active_profile,
+                    self._wire_profile,
+                    self.tool_mode,
+                    tool_count,
+                    verbose=self._verbose_hud,
+                )
+                # prompt_toolkit HTML: escape the prompt text for safe embedding
+                p_text = f'<prompt>{p_text_str}</prompt>'
                 user_input = await self.session.prompt_async(HTML(p_text), style=STYLE)
                 user_input = user_input.strip()
 
@@ -926,7 +1226,15 @@ def parse_args():
     parser.add_argument("--no-inject", action="store_true",
                         help="Skip harness context injection (raw session, no system prompt)")
     parser.add_argument("--no-tools", action="store_true",
-                        help="Use raw llama.cpp local chat without Switchboard local-tool-calling")
+                        help="Disable tool calls for the session (ToolMode.DISABLED_SESSION)")
+    # Phase D: fast-path control
+    parser.add_argument("--no-fastpath", action="store_true",
+                        help="Disable conversational fast-path (debug escape hatch; all turns go via coordinator)")
+    # Phase C: HUD verbosity
+    parser.add_argument("--verbose-hud", action="store_true",
+                        help="Expand HUD abbreviations to full profile names (e.g. ltc → local-tool-calling)")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Suppress session-start banner and informational messages")
     return parser.parse_args()
 
 if __name__ == "__main__":

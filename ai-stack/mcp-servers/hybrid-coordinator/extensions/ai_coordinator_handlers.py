@@ -1487,10 +1487,27 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 else int(data.get("max_tokens", 768))
             )
             # Phase 150: Tool-free and exact-output discipline gate for local subprocess
+            # Phase B.4: import TOOL_FREE_PHRASES from chat_intent.py (shared source of truth).
+            # Requires nixos-rebuild to activate in production (DC-2: coordinator reads Nix store
+            # copy). The try/except fallback phrase set ensures no service disruption until rebuild.
+            # NOTE: write the code now; activate at rebuild commit alongside Phase E.5.
+            try:
+                import os as _os_b4, sys as _sys_b4
+                _chat_intent_path = _os_b4.path.join(
+                    _os_b4.environ.get("REPO_ROOT", ""), "scripts", "ai", "lib"
+                )
+                if _chat_intent_path and _chat_intent_path not in _sys_b4.path:
+                    _sys_b4.path.insert(0, _chat_intent_path)
+                from chat_intent import TOOL_FREE_PHRASES as _b4_tool_free_phrases
+                _tool_free_set = _b4_tool_free_phrases
+            except (ImportError, Exception):
+                # Fallback phrase set — active until nixos-rebuild picks up chat_intent.py
+                _tool_free_set = frozenset({
+                    "do not call tools", "don't call tools", "no tools",
+                    "without tools", "tool-free", "tool free",
+                })
             _normalized_task = task.lower()
-            _is_tool_free = any(p in _normalized_task for p in {
-                "do not call tools", "don't call tools", "no tools", "without tools", "tool-free", "tool free"
-            })
+            _is_tool_free = any(p in _normalized_task for p in _tool_free_set)
             # Phase 150: Allow exact-output discipline even for tool-calling profiles if task is strict
             _is_exact_output = _ai_coordinator_should_use_compact_delegation_contract(task, selected_profile) or (
                 ("return exactly" in _normalized_task or "reply exactly" in _normalized_task or "respond exactly" in _normalized_task)
