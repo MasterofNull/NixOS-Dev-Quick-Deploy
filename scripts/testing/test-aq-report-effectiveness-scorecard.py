@@ -102,6 +102,39 @@ def test_efficiency_inputs_never_blocks() -> None:
     assert_true(ei["lock_contention_events_per_hour"] == 100.0, "contention rate propagated to efficiency_inputs")
 
 
+def test_scorecard_uses_activation_window_for_delegate_reliability() -> None:
+    mod = _load_aq_report()
+    recent_health = {
+        "delegate_active_window_s": 3600,
+        "delegate_active_window_rate": 0.95,
+        "delegate_active_window_breakdown": {
+            "total": 20,
+            "ok": 19,
+            "adjusted_rate": 0.95,
+            "timeout": 1,
+            "infra_startup_500": 0,
+            "provider_error": 0,
+        },
+        "delegate_24h_rate": 0.33,
+        "delegate_24h_breakdown": {
+            "total": 40,
+            "ok": 13,
+            "adjusted_rate": 0.37,
+            "timeout": 23,
+            "infra_startup_500": 4,
+            "provider_error": 0,
+        },
+    }
+    result = mod.effectiveness_scorecard(
+        {}, {}, {}, {}, [], None, None, None, recent_health, None, None, None
+    )
+    cr = result["completion_reliability"]
+    assert_true(cr["status"] == "pass", f"active-window reliability should pass, got {cr['status']}")
+    assert_true(cr["delegation_success_rate"] == 0.95, "active-window rate should drive current reliability")
+    assert_true(cr["delegation_24h_success_rate"] == 0.33, "24h rate should remain visible as history")
+    assert_true(cr["delegation_24h_timeout_failures"] == 23, "24h timeout history should remain visible")
+
+
 def test_format_json_includes_effectiveness_scorecard() -> None:
     mod = _load_aq_report()
     dummy_scorecard = {"overall_status": "pass", "blocking_reasons": []}
@@ -124,6 +157,7 @@ if __name__ == "__main__":
         ("warn when validation health has failures", test_warn_when_validation_health_has_failures),
         ("all six scorecard dimensions present", test_scorecard_dimensions_all_present),
         ("efficiency_inputs never blocks overall", test_efficiency_inputs_never_blocks),
+        ("scorecard uses activation window for delegate reliability", test_scorecard_uses_activation_window_for_delegate_reliability),
         ("format_json includes effectiveness_scorecard", test_format_json_includes_effectiveness_scorecard),
     ]
     failed = 0

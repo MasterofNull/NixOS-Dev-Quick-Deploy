@@ -629,3 +629,8 @@
   Severity: high
   Fix: Removed the exclusion and kept the local no-think contract covered by focused config and payload gate tests.
   File: scripts/testing/gate-local-payload-discipline.sh; scripts/testing/test-local-agent-config.py
+
+[DONE] delegate-timeout-cascade-single-local-slot — Effectiveness scorecard failed because overlapping local delegates timed out on a single llama.cpp slot — Root cause: coordinator subprocess path spawned competing local agents without a pre-spawn lease; with llama.cpp `--parallel 1`, multiple requests waited inside runtime and hit the 240s coordinator wall timeout.
+  Severity: high
+  Fix: Added coordinator-side local subprocess lease/backpressure (`local_slot_busy`) and activation-aware aq-report scorecard metrics so historical timeout windows remain visible without hiding current recovery.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py; scripts/ai/aq-report; scripts/testing/test-delegate-attention-queue-wiring.py; scripts/testing/test-aq-report-effectiveness-scorecard.py

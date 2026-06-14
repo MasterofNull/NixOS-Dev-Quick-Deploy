@@ -270,6 +270,10 @@ _DELEGATE_DEFAULT_TIMEOUT_S: float = float(
 _DELEGATE_SLACK_S: float = float(
     _ROUTING_POLICY.get("delegate", {}).get("slack_s", 30)
 )
+_LOCAL_SUBPROCESS_CONCURRENCY: int = max(
+    1,
+    int(os.getenv("AI_DELEGATE_LOCAL_SUBPROCESS_CONCURRENCY", "1") or 1),
+)
 
 # ---------------------------------------------------------------------------
 # Module-level state (promoted / moved from http_server.py)
@@ -283,6 +287,7 @@ _MODEL_CATALOG_PATH = Path(__file__).resolve().parents[3] / "config" / "model-ca
 
 # Async delegate task registry (Phase 8.6)
 _DELEGATE_TASK_REGISTRY: Dict[str, Dict[str, Any]] = {}
+_LOCAL_SUBPROCESS_LEASES: asyncio.Semaphore = asyncio.Semaphore(_LOCAL_SUBPROCESS_CONCURRENCY)
 _DELEGATE_TASK_TTL_S: float = 600.0
 
 # ---------------------------------------------------------------------------
@@ -1385,6 +1390,20 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 },
             })
 
+        async def _spawn_local_agent_with_lease(**kwargs: Any) -> web.Response:
+            """Run one local subprocess at a time on single-slot llama.cpp hosts."""
+            if _LOCAL_SUBPROCESS_LEASES.locked():
+                return web.json_response({
+                    "error": "local_slot_busy",
+                    "retry_after_s": 30,
+                    "local_subprocess_concurrency": _LOCAL_SUBPROCESS_CONCURRENCY,
+                }, status=503)
+            await _LOCAL_SUBPROCESS_LEASES.acquire()
+            try:
+                return await _spawn_local_agent(**kwargs)
+            finally:
+                _LOCAL_SUBPROCESS_LEASES.release()
+
         async def _emit_delegation_planning_event(
             *,
             run_id: str,
@@ -1550,7 +1569,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             # Phase 8.9 — Streaming dispatch: SSE token stream to caller.
             # Enabled via streaming_mode=true. Incompatible with async_mode and tools.
             if bool(data.get("streaming_mode", False)) and not bool(data.get("async_mode", False)):
-                return await _spawn_local_agent(**_spawn_kwargs, sse_request=request)
+                return await _spawn_local_agent_with_lease(**_spawn_kwargs, sse_request=request)
 
             # Phase 8.6 — Async dispatch: return task_id immediately, caller polls.
             # Enabled via async_mode=true in request body. Default: synchronous.
@@ -1567,7 +1586,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 async def _run_async_delegate(tid: str, kwargs: dict, _role: str, _utask: str, _rout: dict) -> None:
                     _DELEGATE_TASK_REGISTRY[tid]["status"] = "running"
                     try:
-                        _resp = await _spawn_local_agent(**kwargs)
+                        _resp = await _spawn_local_agent_with_lease(**kwargs)
                         _body: Dict[str, Any] = {}
                         try:
                             _body = json.loads(_resp.body)
@@ -1608,7 +1627,7 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     "poll_url": f"/control/ai-coordinator/delegate/status/{_task_id}",
                 }, status=202)
 
-            local_response = await _spawn_local_agent(**_spawn_kwargs)
+            local_response = await _spawn_local_agent_with_lease(**_spawn_kwargs)
             asyncio.create_task(_emit_delegation_planning_event(
                 run_id=str(data.get("task_id") or request.get("request_id", "") or id(request)),
                 profile_name=selected_profile,
