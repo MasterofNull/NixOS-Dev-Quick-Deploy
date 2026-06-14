@@ -5527,6 +5527,37 @@ def _compute_delegate_counts(audit_entries: List[dict], now: datetime, window_s:
     return total, failures
 
 
+def _service_active_age_seconds(unit: str) -> Optional[int]:
+    """Return systemd service active age in seconds, or None when unavailable."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", unit, "-p", "ActiveEnterTimestampMonotonic", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        active_us = int((result.stdout or "").strip())
+    except (TypeError, ValueError):
+        return None
+    if active_us <= 0:
+        return None
+    return max(1, int(time.monotonic() - (active_us / 1_000_000)))
+
+
+def _delegate_active_window_seconds(max_window_s: int = 86400) -> int:
+    """Use current coordinator activation age when it is shorter than the report window."""
+    active_age_s = _service_active_age_seconds("ai-hybrid-coordinator.service")
+    if active_age_s is None:
+        return max_window_s
+    return max(1, min(max_window_s, active_age_s))
+
+
 def historical_watchlist(tool_stats: Dict[str, dict], recent_tool_stats: Dict[str, dict]) -> Dict[str, Any]:
     """Summarize longer-window issues that are not active in the recent window."""
     watch: Dict[str, Any] = {
@@ -7663,9 +7694,13 @@ def effectiveness_scorecard(
     eval_pass_rate = eval_trend.get("recent_pass_rate") or eval_trend.get("pass_rate")
     useful_ratio = (useful_tokens_summary or {}).get("useful_ratio")
     rh = recent_health or {}
-    del_success_rate: Optional[float] = rh.get("delegate_24h_rate")
+    del_success_rate: Optional[float] = rh.get("delegate_active_window_rate")
+    del_24h_rate: Optional[float] = rh.get("delegate_24h_rate")
     _sc_now = datetime.now(tz=timezone.utc)
-    del_total, del_failures = _compute_delegate_counts(audit_entries or [], _sc_now, window_s=86400)
+    _active_window_s = int(rh.get("delegate_active_window_s") or 86400)
+    del_total, del_failures = _compute_delegate_counts(
+        audit_entries or [], _sc_now, window_s=_active_window_s
+    )
     oc_rate = eval_pass_rate if eval_pass_rate is not None else del_success_rate
     oc_status = _scorecard_status(oc_rate, _SCORECARD_OUTCOME_PASS_THRESHOLD, _SCORECARD_OUTCOME_WARN_THRESHOLD)
     if oc_status == "fail":
@@ -7681,19 +7716,28 @@ def effectiveness_scorecard(
     # Use adjusted_rate (excludes infra startup-500s and provider unavailability) when
     # available so that nixos-rebuild restart transients don't penalise the scorecard.
     # Raw rate is preserved for display alongside the adjusted figure.
+    _active_breakdown = rh.get("delegate_active_window_breakdown") or {}
     _24h_breakdown = rh.get("delegate_24h_breakdown") or {}
-    _adj_rate = _24h_breakdown.get("adjusted_rate")
+    _adj_rate = _active_breakdown.get("adjusted_rate")
     cr_rate = _adj_rate if _adj_rate is not None else del_success_rate
     cr_status = _scorecard_status(cr_rate, 0.9, 0.7)
     completion_reliability = {
         "status": cr_status,
         "delegation_success_rate": del_success_rate,
         "delegation_success_rate_adjusted": _adj_rate,
+        "delegation_window_s": _active_window_s,
         "delegation_total": del_total,
         "delegation_failures": del_failures,
-        "infra_startup_500_excluded": _24h_breakdown.get("infra_startup_500", 0),
-        "provider_errors_excluded": _24h_breakdown.get("provider_error", 0),
-        "timeout_failures": _24h_breakdown.get("timeout", 0),
+        "infra_startup_500_excluded": _active_breakdown.get("infra_startup_500", 0),
+        "provider_errors_excluded": _active_breakdown.get("provider_error", 0),
+        "timeout_failures": _active_breakdown.get("timeout", 0),
+        "delegation_24h_success_rate": del_24h_rate,
+        "delegation_24h_total": _24h_breakdown.get("total", 0),
+        "delegation_24h_failures": max(
+            0,
+            int(_24h_breakdown.get("total", 0) or 0) - int(_24h_breakdown.get("ok", 0) or 0),
+        ),
+        "delegation_24h_timeout_failures": _24h_breakdown.get("timeout", 0),
     }
 
     # ── operator_trust ─────────────────────────────────────────────────────
@@ -8279,6 +8323,14 @@ def main() -> None:
     semantic_autorun = semantic_autorun_health(audit_entries)
     recent_semantic_autorun = semantic_autorun_health(recent_audit_entries)
     recent_health = recent_health_snapshot(recent_tool_stats, recent_provider_fallbacks)
+    delegate_active_window_s = _delegate_active_window_seconds(86400)
+    recent_health["delegate_active_window_s"] = delegate_active_window_s
+    recent_health["delegate_active_window_rate"] = _compute_delegate_rate(
+        audit_entries, now, window_s=delegate_active_window_s
+    )
+    recent_health["delegate_active_window_breakdown"] = _compute_delegate_breakdown(
+        audit_entries, now, window_s=delegate_active_window_s
+    )
     # Phase 90.3 — attach 24h and 7d delegate rates to recent_health for side-by-side display
     recent_health["delegate_24h_rate"] = _compute_delegate_rate(audit_entries, now, window_s=86400)
     recent_health["delegate_7d_rate"] = _compute_delegate_rate(audit_entries, now, window_s=7 * 86400)

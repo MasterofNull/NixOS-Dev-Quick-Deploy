@@ -52,6 +52,16 @@ class TestDelegateAttentionQueueWiring(unittest.TestCase):
         except py_compile.PyCompileError as exc:
             self.fail(f"Compile error: {exc}")
 
+    def test_local_subprocess_lease_guards_single_slot_hosts(self):
+        """Static: local subprocess delegates must acquire a lease before spawn."""
+        src = self._src()
+        self.assertIn("_LOCAL_SUBPROCESS_LEASES", src)
+        self.assertIn("def _spawn_local_agent_with_lease", src)
+        self.assertIn('"error": "local_slot_busy"', src)
+        self.assertIn("return await _spawn_local_agent_with_lease(**_spawn_kwargs, sse_request=request)", src)
+        self.assertIn("_resp = await _spawn_local_agent_with_lease(**kwargs)", src)
+        self.assertIn("local_response = await _spawn_local_agent_with_lease(**_spawn_kwargs)", src)
+
     def test_parity_plan_updated(self):
         """Parity plan must reflect Phase 138.1 delegate boundary."""
         plan = (

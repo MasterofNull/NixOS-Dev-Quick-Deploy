@@ -831,6 +831,13 @@ variables:
     consumers: [hybrid-coordinator (ai_coordinator_handlers.py)]
     description: "Path to routing-policy.yaml config (Phase C)"
 
+  - canonical: AI_DELEGATE_LOCAL_SUBPROCESS_CONCURRENCY
+    aliases: []
+    default: "1"
+    layer: nix
+    consumers: [hybrid-coordinator (ai_coordinator_handlers.py)]
+    description: "Maximum concurrent local subprocess delegates; default 1 matches single-slot llama.cpp hosts and prevents timeout cascades"
+
   - canonical: RUNTIME_SAFETY_POLICY_FILE
     aliases: []
     default: ""
