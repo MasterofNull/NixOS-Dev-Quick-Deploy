@@ -771,8 +771,9 @@ class VectorStore:
                     sa.text(
                         """
                         UPDATE document_embeddings
-                        SET metadata = metadata || jsonb_build_object('last_accessed_at', :ts)
-                        WHERE id = ANY(:ids)
+                        SET metadata = COALESCE(metadata, '{}'::jsonb)
+                            || jsonb_build_object('last_accessed_at', CAST(:ts AS text))
+                        WHERE id = ANY(CAST(:ids AS integer[]))
                         """
                     ),
                     {"ts": now_iso, "ids": row_ids},

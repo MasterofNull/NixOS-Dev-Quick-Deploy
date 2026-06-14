@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -49,6 +50,7 @@ def output_matches(pattern: str, *args: str, timeout: int = 15) -> bool:
 def port_bound(port: int, retries: int = 4, delay: float = 1.0) -> bool:
     """Check if a TCP port is listening (resilient check)."""
     import socket
+    dashboard_safe = os.environ.get("AQ_QA_DASHBOARD_SAFE", "0").strip().lower() in {"1", "true", "yes", "on"}
     for attempt in range(retries):
         # Primary: socket connection check (most reliable across environments)
         try:
@@ -58,6 +60,11 @@ def port_bound(port: int, retries: int = 4, delay: float = 1.0) -> bool:
                     return True
         except Exception:
             pass
+
+        if dashboard_safe:
+            if attempt < retries - 1:
+                time.sleep(delay)
+            continue
 
         # Secondary: ss command (fallback for detailed diagnostic if needed)
         try:

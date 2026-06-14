@@ -634,3 +634,28 @@
   Severity: high
   Fix: Added coordinator-side local subprocess lease/backpressure (`local_slot_busy`) and activation-aware aq-report scorecard metrics so historical timeout windows remain visible without hiding current recovery.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py; scripts/ai/aq-report; scripts/testing/test-delegate-attention-queue-wiring.py; scripts/testing/test-aq-report-effectiveness-scorecard.py
+
+[DONE] dashboard-osi-confined-ss-denial — Dashboard OSI layered health showed false port failures and AppArmor denials — Root cause: dashboard-safe phase 0 used Python sockets first but still fell back to `ss`, which AppArmor denies under `command-center-dashboard-api`.
+  Severity: high
+  Fix: Dashboard-safe port probes now skip the `ss` fallback; host-shell aq-qa keeps the diagnostic fallback.
+  File: scripts/testing/harness_qa/core/helpers.py; scripts/testing/test-dashboard-qa-singleflight.py
+
+[DONE] health-spider-stale-dashboard-alerts — aq-alerts kept showing recovered dashboard probe alerts — Root cause: health-spider pushed `Dashboard probe degraded:*` alerts but did not resolve matching pending alerts when the probe later returned OK.
+  Severity: medium
+  Fix: Health-spider now resolves recovered dashboard probe alerts through the attention queue API.
+  File: scripts/ai/aq-health-spider; scripts/testing/test-health-spider-osi-layered-probe.py
+
+[DONE] health-spider-apparmor-stale-window — One-shot health-spider runs repeatedly reported old AppArmor denials after dashboard restart — Root cause: each fresh process scanned the default interval window and did not bound the scan by current service activation.
+  Severity: medium
+  Fix: AppArmor scans now start no earlier than the current systemd service activation timestamp.
+  File: scripts/ai/aq-health-spider; scripts/testing/test-health-spider-osi-layered-probe.py
+
+[DONE] editor-obsolete-marker-false-degraded — aq-qa 0.5.7 reported degraded editor-local corpus even though corpus budgets were within limits — Root cause: stale local VSCodium obsolete marker `google.geminicodeassist-2.81.0`.
+  Severity: medium
+  Fix: Backed up and cleared the stale local marker; fresh aq-report reports editor state budget 5/5 passing.
+  File: ~/.vscode-oss/extensions/.obsolete
+
+[DONE] aidb-last-accessed-unknown-parameter — AIDB vector search logged PostgreSQL `could not determine data type of parameter` while updating `last_accessed_at` — Root cause: SQL parameters inside `jsonb_build_object` and `ANY` lacked explicit PostgreSQL casts.
+  Severity: medium
+  Fix: Cast `:ts` as text and `:ids` as integer[] in the metadata update query.
+  File: ai-stack/mcp-servers/aidb/server.py; scripts/testing/test-aidb-last-accessed-sql.py

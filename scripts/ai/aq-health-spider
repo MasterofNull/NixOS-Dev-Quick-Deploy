@@ -41,9 +41,11 @@ if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
 try:
-    from attention_queue import push
+    from attention_queue import get_pending, push, resolve
 except ImportError:
     def push(*args, **kwargs): return None
+    def get_pending(*args, **kwargs): return []
+    def resolve(*args, **kwargs): return False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("health-spider")
@@ -233,6 +235,29 @@ def _service_check(service: str) -> str:
         return "unknown"
 
 
+def _service_active_since_epoch(service: Optional[str]) -> Optional[float]:
+    """Return the current activation start time as epoch seconds."""
+    if not service:
+        return None
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", service, "-p", "ActiveEnterTimestamp", "--value"],
+            capture_output=True, text=True, timeout=5,
+        )
+        raw = (r.stdout or "").strip()
+        if r.returncode != 0 or not raw or raw.lower() == "n/a":
+            return None
+        parsed = subprocess.run(
+            ["date", "--date", raw, "+%s"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if parsed.returncode != 0:
+            return None
+        return float(parsed.stdout.strip())
+    except Exception:
+        return None
+
+
 def _failed_systemd_units() -> List[Dict[str, str]]:
     """Return currently failed systemd units from the host manager."""
     try:
@@ -318,6 +343,21 @@ def _emit_event(event_type: str, payload: Dict[str, Any]) -> None:
             f.write(json.dumps(event) + "\n")
     except Exception as e:
         logger.debug(f"emit_event error: {e}")
+
+
+def _resolve_recovered_dashboard_probe_alerts(probe: str) -> int:
+    """Resolve stale dashboard-degraded alerts once the named probe is healthy."""
+    title = f"Dashboard probe degraded: {probe}"
+    resolved = 0
+    try:
+        for alert in get_pending("health-spider"):
+            if alert.get("title") != title:
+                continue
+            if resolve(alert.get("id", ""), "rejected", resolved_by="health-spider-recovered"):
+                resolved += 1
+    except Exception as e:
+        logger.debug(f"dashboard probe alert recovery failed for {probe}: {e}")
+    return resolved
 
 
 def _seed_rag(error_type: str, error_msg: str, context: str, solution: str, tags: List[str]) -> bool:
@@ -447,6 +487,12 @@ class HealthSpider:
             )
             if probe_ok:
                 logger.info(f"[{zone}] probe {probe['name']} OK {probe_ms}ms")
+                recovered = await asyncio.to_thread(
+                    _resolve_recovered_dashboard_probe_alerts,
+                    probe["name"],
+                )
+                if recovered:
+                    logger.info(f"[{zone}] resolved {recovered} recovered alert(s) for probe {probe['name']}")
                 continue
             logger.warning(f"[{zone}] probe {probe['name']} DEGRADED {probe['url']} ({reason})")
             anomalies.append({
@@ -462,6 +508,12 @@ class HealthSpider:
         profile = cfg.get("apparmor_profile")
         if profile:
             since = self._apparmor_last.get(profile, time.time() - self.interval * 1.5)
+            active_since = await asyncio.to_thread(
+                _service_active_since_epoch,
+                cfg.get("service"),
+            )
+            if active_since is not None:
+                since = max(since, active_since)
             denials = await asyncio.to_thread(_apparmor_scan, profile, since)
             self._apparmor_last[profile] = time.time()
             if denials:
