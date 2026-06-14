@@ -109,38 +109,38 @@ async def delegate_to_remote_handler(
     priority: str = "normal",
 ) -> Dict:
     """
-    Delegate a task to a remote agent.
+    Delegate a task to a remote agent via the coordinator delegate lane.
 
     Args:
         task: Task description
-        agent_type: Agent type (codex, claude, qwen)
+        agent_type: Agent type (codex, claude, gemini)
         priority: Task priority (low, normal, high)
 
     Returns:
         {
             "success": bool,
-            "task_id": str,
+            "response": str,
             "agent": str,
             "error": str (if failed)
         }
     """
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                f"{HYBRID_COORDINATOR_URL}/query",
+                f"{HYBRID_COORDINATOR_URL}/control/ai-coordinator/delegate",
                 json={
-                    "query": task,
-                    "agent_type": agent_type,
-                    "context": {"priority": priority},
+                    "task": task,
+                    "agent": agent_type,
+                    "priority": priority,
                 },
-                timeout=30.0,
             )
 
             if response.status_code == 200:
                 data = response.json()
                 return {
                     "success": True,
-                    "response": data.get("response", ""),
+                    "response": data.get("response", data.get("result", "")),
+                    "task_id": data.get("task_id", ""),
                     "agent": agent_type,
                 }
             else:
@@ -174,11 +174,30 @@ async def query_context_handler(
             "error": str (if failed)
         }
     """
-    # Placeholder - will integrate with context memory when implemented
-    return {
-        "success": False,
-        "error": "Context memory integration not yet implemented",
-    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/memory/recall",
+                json={
+                    "query": query,
+                    "memory_types": ["episodic", "semantic"],
+                    "limit": max_results,
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                return {
+                    "success": True,
+                    "contexts": [
+                        {"content": r.get("content", ""), "importance": r.get("score", 0.5)}
+                        for r in results
+                    ],
+                    "count": len(results),
+                }
+            return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def store_memory_handler(
@@ -241,7 +260,7 @@ async def get_workflow_status_handler(workflow_id: str) -> Dict:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{HYBRID_COORDINATOR_URL}/workflow/status/{workflow_id}",
+                f"{HYBRID_COORDINATOR_URL}/workflow/orchestrate/{workflow_id}",
                 timeout=5.0,
             )
 
@@ -369,11 +388,42 @@ async def prsi_orchestrate_handler(action: str, action_id: Optional[str] = None,
 
 
 async def recommend_agent_for_task_handler(query: str) -> Dict:
-    """Proxy for recommend_agent_for_task (federated)"""
+    """
+    Recommend an agent role for the given task query.
+
+    Uses GET /control/agents/roles for the role catalogue, then scores locally
+    via keyword matching — no /federated/recommend route exists in coordinator.
+    """
+    _ROLE_KEYWORDS: dict = {
+        "coordinator": ["orchestrate", "plan", "delegate", "coordinate", "workflow", "multi"],
+        "coder": ["code", "implement", "write", "fix", "debug", "refactor", "patch", "function", "class"],
+        "reviewer": ["review", "audit", "check", "evaluate", "assess", "verify", "feedback"],
+        "researcher": ["research", "find", "search", "gather", "context", "information", "lookup"],
+    }
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/federated/recommend", json={"query": query})
-            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+            resp = await client.get(f"{HYBRID_COORDINATOR_URL}/control/agents/roles")
+            if resp.status_code != 200:
+                return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text}"}
+            roles = resp.json().get("roles", [])
+
+        q_lower = query.lower()
+        best_role = "agent"
+        best_score = 0
+        for role_entry in roles:
+            role = role_entry.get("role", "")
+            keywords = _ROLE_KEYWORDS.get(role, [])
+            score = sum(1 for kw in keywords if kw in q_lower)
+            if score > best_score:
+                best_score = score
+                best_role = role
+
+        return {
+            "success": True,
+            "recommended_agent": best_role,
+            "query": query,
+            "available_roles": [r.get("role") for r in roles],
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
