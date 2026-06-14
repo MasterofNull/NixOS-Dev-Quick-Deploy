@@ -388,7 +388,7 @@ async def get_working_memory_handler() -> Dict:
     """Proxy for recall_agent_memory (get_working_memory)"""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/memory/recall", json={"query": "working memory summary", "memory_types": ["semantic"]})
+            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/memory/recall", json={"query": "working memory summary", "memory_types": ["working"]})
             return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
     except Exception as e:
         return {"success": False, "error": str(e)}
