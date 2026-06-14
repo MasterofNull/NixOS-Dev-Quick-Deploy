@@ -174,10 +174,10 @@ async def _store_prune_checkpoint(coordinator_url: str, task_id: str, summary: s
                 f"{coordinator_url.rstrip('/')}/memory/store",
                 json={
                     "content": summary,
-                    "memory_type": "working",
+                    "memory_type": "semantic",
                     "source": "agent-executor-prune",
                     "importance": 0.5,
-                    "tags": [f"task_id:{task_id}", "prune_checkpoint"],
+                    "tags": [f"task_id:{task_id}", "prune_checkpoint", "working_memory"],
                 },
             )
     except Exception:
@@ -741,7 +741,7 @@ class LocalAgentExecutor:
                 async with httpx.AsyncClient(timeout=3.0) as _wm_client:
                     _wm_resp = await _wm_client.post(
                         f"{self.fallback_endpoint.rstrip('/')}/memory/recall",
-                        json={"query": task.objective[:200], "memory_types": ["working"], "limit": 3},
+                        json={"query": task.objective[:200], "memory_types": ["semantic"], "limit": 3},
                     )
                     if _wm_resp.status_code == 200:
                         _wm_results = _wm_resp.json().get("results", [])[:3]
