@@ -84,7 +84,7 @@ console = Console()
 
 COMMANDS = [
     "/help", "/exit", "/clear", "/reset", "/status",
-    "/brief", "/prime", "/route", "/save", "/load", "/search", "/tools",
+    "/brief", "/prime", "/route", "/save", "/load", "/search", "/tools", "/tools all",
     "/rate",
 ]
 command_completer = WordCompleter(COMMANDS, ignore_case=True)
@@ -612,7 +612,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             if query: await self._rag_search(query)
             else: console.print("[red]Usage: /search <query>[/]")
         elif base == "/tools":
-            await self._show_tools()
+            show_all = len(parts) > 1 and parts[1].lower() == "all"
+            await self._show_tools(show_all=show_all)
         elif base == "/rate":
             # /rate good|bad [optional comment]
             if len(parts) < 2 or parts[1].lower() not in ("good", "bad"):
@@ -726,35 +727,124 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             except Exception as e:
                 console.print(f"[red]Search connection failed: {e}[/]")
 
-    async def _show_tools(self):
+    def _load_parity_contract(self) -> dict:
+        """Load (and cache) .agent/tool-parity-contract.json."""
+        if hasattr(self, "_parity_contract_cache") and self._parity_contract_cache:
+            return self._parity_contract_cache
+        contract_path = REPO_ROOT / ".agent" / "tool-parity-contract.json"
         try:
-            registry_path = REPO_ROOT / "ai-stack" / "local-agents"
-            if str(registry_path) not in sys.path:
-                sys.path.insert(0, str(registry_path))
-            from tool_registry import get_registry
-            from builtin_tools.ai_coordination import register_ai_coordination_tools
-            from builtin_tools.computer_use import register_computer_use_tools
-            from builtin_tools.file_operations import register_file_tools
-            from builtin_tools.git_tools import register_git_tools
-            from builtin_tools.shell_tools import register_shell_tools
-            registry = get_registry()
-            if not registry.tools:
-                register_file_tools(registry)
-                register_shell_tools(registry)
-                register_git_tools(registry)
-                register_ai_coordination_tools(registry)
-                register_computer_use_tools(registry)
+            import json as _json
+            self._parity_contract_cache = _json.loads(contract_path.read_text())
+        except Exception:
+            self._parity_contract_cache = {}
+        return self._parity_contract_cache
 
-            table = Table(title="Local Agent Tool Registry", border_style="#ff00ff")
+    async def _show_tools(self, show_all: bool = False):
+        if show_all:
+            # /tools all — full tool_registry view (Phase 11)
+            try:
+                registry_path = REPO_ROOT / "ai-stack" / "local-agents"
+                if str(registry_path) not in sys.path:
+                    sys.path.insert(0, str(registry_path))
+                from tool_registry import get_registry
+                from builtin_tools.ai_coordination import register_ai_coordination_tools
+                from builtin_tools.computer_use import register_computer_use_tools
+                from builtin_tools.file_operations import register_file_tools
+                from builtin_tools.git_tools import register_git_tools
+                from builtin_tools.shell_tools import register_shell_tools
+                registry = get_registry()
+                if not registry.tools:
+                    register_file_tools(registry)
+                    register_shell_tools(registry)
+                    register_git_tools(registry)
+                    register_ai_coordination_tools(registry)
+                    register_computer_use_tools(registry)
+                table = Table(title="Full Tool Registry (/tools all)", border_style="#ff00ff")
+                table.add_column("Tool Name", style="bold cyan")
+                table.add_column("Safety", style="magenta")
+                table.add_column("Description")
+                for name, tool in registry.get_all_tools().items():
+                    table.add_row(name, str(tool.safety_policy.value), tool.description)
+                console.print(table)
+            except Exception as e:
+                console.print(f"[red]Could not load full tool registry: {e}[/]")
+            return
+
+        # /tools — parity contract view: required_tools vs TOOL_SCHEMAS names
+        try:
+            contract = self._load_parity_contract()
+            required = set(contract.get("required_tools", []))
+            budget_ceiling = int(contract.get("schema_token_budget_ceiling", 800))
+
+            runtime_path = REPO_ROOT / "ai-stack" / "agents" / "runtimes"
+            if str(runtime_path) not in sys.path:
+                sys.path.insert(0, str(runtime_path))
+            from local_agent_runtime import TOOL_SCHEMAS as _TS, TOOL_CATALOG  # noqa: F401
+            import json as _json
+            schema_names = {t["function"]["name"] for t in _TS}
+            token_count = len(_json.dumps(_TS)) / 4
+
+            table = Table(
+                title=f"TOOL_SCHEMAS parity — {len(_TS)} tools / {token_count:.0f}t of {budget_ceiling}t budget",
+                border_style="#ff00ff",
+            )
             table.add_column("Tool Name", style="bold cyan")
-            table.add_column("Safety", style="magenta")
-            table.add_column("Description")
+            table.add_column("Status", style="magenta")
+            table.add_column("Description (catalog)")
 
-            for name, tool in registry.get_all_tools().items():
-                table.add_row(name, str(tool.safety_policy.value), tool.description)
+            # Show all catalog tools in order
+            for tool_name, schema in TOOL_CATALOG.items():
+                fn = schema.get("function", {})
+                desc = fn.get("description", "")[:80]
+                in_schemas = tool_name in schema_names
+                in_contract = tool_name in required or tool_name in {
+                    "route_search", "recall_memory", "run_harness_cli"
+                }
+                if in_schemas:
+                    status = "[green]✓[/green]"
+                elif in_contract:
+                    status = "[yellow][GAP][/yellow]"
+                else:
+                    status = "[dim]schema-only[/dim]"
+                table.add_row(tool_name, status, desc)
+
             console.print(table)
+            console.print(
+                f"[dim]Budget: {token_count:.0f}/{budget_ceiling}t  "
+                "[green]✓[/green]=in TOOL_SCHEMAS  "
+                "[yellow][GAP][/yellow]=required but missing  "
+                "[dim]schema-only[/dim]=catalog extra  "
+                "Run [bold]/tools all[/bold] for full registry[/dim]"
+            )
         except Exception as e:
-            console.print(f"[red]Could not load tool registry: {e}[/]")
+            console.print(f"[red]Could not load TOOL_CATALOG: {e}[/]")
+            # Fallback: show legacy tool_registry view
+            try:
+                registry_path = REPO_ROOT / "ai-stack" / "local-agents"
+                if str(registry_path) not in sys.path:
+                    sys.path.insert(0, str(registry_path))
+                from tool_registry import get_registry
+                from builtin_tools.ai_coordination import register_ai_coordination_tools
+                from builtin_tools.computer_use import register_computer_use_tools
+                from builtin_tools.file_operations import register_file_tools
+                from builtin_tools.git_tools import register_git_tools
+                from builtin_tools.shell_tools import register_shell_tools
+                registry = get_registry()
+                if not registry.tools:
+                    register_file_tools(registry)
+                    register_shell_tools(registry)
+                    register_git_tools(registry)
+                    register_ai_coordination_tools(registry)
+                    register_computer_use_tools(registry)
+                table = Table(title="Local Agent Tool Registry (fallback)", border_style="#ff00ff")
+                table.add_column("Tool Name", style="bold cyan")
+                table.add_column("Safety", style="magenta")
+                table.add_column("Description")
+                for name, tool in registry.get_all_tools().items():
+                    table.add_row(name, str(tool.safety_policy.value), tool.description)
+                console.print(table)
+            except Exception as e2:
+                console.print(f"[red]Fallback registry also failed: {e2}[/]")
 
     async def show_status(self):
         grid = Table.grid(expand=True)
