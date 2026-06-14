@@ -790,8 +790,12 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         await self._discover_pool()
         self.model_name = await self._get_active_model()
 
-        # Inject harness-aware system prompt
-        if self.inject_context and self.active_profile == "local":
+        # Inject harness-aware system prompt for all local delegation profiles.
+        # local-tool-calling routes to coordinator /delegate (same as agentic delegation);
+        # injecting context here puts the system message in context_history → request_messages →
+        # coordinator extracts it and passes it to the local agent as system_prompt, giving
+        # aq-chat interactive turns the same harness grounding as autonomous agent dispatches.
+        if self.inject_context and self.active_profile in {"local", "local-tool-calling"}:
             with console.status("[dim]Grounding model in harness context...[/]", spinner="dots"):
                 sys_prompt = await self._build_harness_system_prompt()
             self.context_history = [{"role": "system", "content": sys_prompt}]
