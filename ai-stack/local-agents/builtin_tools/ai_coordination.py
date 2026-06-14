@@ -44,6 +44,10 @@ MEMORY_TYPE_ALIASES = {
     "error": "error_solutions",
     "error_solution": "error_solutions",
     "interaction": "interaction_history",
+    # "working" is a conceptual scratch-pad alias for "semantic".
+    # The coordinator has no separate working tier — scratch notes live in
+    # semantic memory, distinguished by a "working_memory" tag on each entry.
+    "working": "semantic",
 }
 
 
@@ -388,7 +392,7 @@ async def get_working_memory_handler() -> Dict:
     """Proxy for recall_agent_memory (get_working_memory)"""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/memory/recall", json={"query": "working memory summary", "memory_types": ["working"]})
+            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/memory/recall", json={"query": "working memory summary", "memory_types": ["semantic"]})
             return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
     except Exception as e:
         return {"success": False, "error": str(e)}
