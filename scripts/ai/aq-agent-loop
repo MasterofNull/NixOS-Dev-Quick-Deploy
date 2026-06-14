@@ -235,6 +235,38 @@ async def run_task(
                 "run_attempt": len(result_task.tool_calls_made),
             },
         )
+        # Bridge into training_ingest pipeline: emit local_inference event so
+        # training_ingest.py can extract (query → response) pairs from
+        # hybrid-events.jsonl. Agent loop calls llama.cpp directly (not via
+        # coordinator delegate path) so local_inference events are never emitted
+        # there — this is the only emission point for agent tasks.
+        if result_task.result:
+            _hybrid_path = Path("/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl")
+
+            async def _emit_training_signal(
+                _q=task_text, _r=result_task.result,
+                _lat=round(elapsed * 1000), _tc=len(result_task.tool_calls_made),
+            ):
+                import datetime as _dt
+                _evt = json.dumps({
+                    "event_type": "local_inference",
+                    "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+                    "query": _q[:4000],
+                    "response": _r[:4000],
+                    "model": "local",
+                    "latency_ms": _lat,
+                    "tool_calls": _tc,
+                    "source": "aq-agent-loop",
+                })
+                try:
+                    def _write(_p: Path, _line: str) -> None:
+                        with open(_p, "a", encoding="utf-8") as _f:
+                            _f.write(_line + "\n")
+                    await asyncio.to_thread(_write, _hybrid_path, _evt)
+                except Exception:
+                    pass  # telemetry is best-effort
+
+            asyncio.create_task(_emit_training_signal())
     else:
         await _emit_agent_event(
             wrapper_event_task_id,
