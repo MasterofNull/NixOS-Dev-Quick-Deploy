@@ -96,9 +96,17 @@ _ALLOWED_HARNESS_CLI_TOOLS = {
     "aq-runtime": REPO_ROOT / "scripts" / "ai" / "aq-runtime",
 }
 
-# OpenAI-compatible tool schemas for harness endpoints (loopback auth bypass applies)
-TOOL_SCHEMAS = [
-    {
+# ── TOOL_CATALOG ─────────────────────────────────────────────────────────────
+# Complete registry of ALL harness tool schemas keyed by tool name.
+# NOT auto-injected into model context — use _select_tools_for_task() to pick
+# 4-6 relevant schemas per call (progressive disclosure, ~200-300 tokens max).
+#
+# Catalog has 17 entries:
+#   3 base tools (route_search, recall_memory, run_harness_cli)
+#   14 AI coordination tools (mirrors ai_coordination.py register_ai_coordination_tools)
+# ─────────────────────────────────────────────────────────────────────────────
+TOOL_CATALOG: dict[str, dict] = {
+    "route_search": {
         "type": "function",
         "function": {
             "name": "route_search",
@@ -107,17 +115,13 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query string"},
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (1-10)",
-                        "default": 5,
-                    },
+                    "limit": {"type": "integer", "description": "Max results to return (1-10)", "default": 5},
                 },
                 "required": ["query"],
             },
         },
     },
-    {
+    "recall_memory": {
         "type": "function",
         "function": {
             "name": "recall_memory",
@@ -131,7 +135,7 @@ TOOL_SCHEMAS = [
             },
         },
     },
-    {
+    "run_harness_cli": {
         "type": "function",
         "function": {
             "name": "run_harness_cli",
@@ -158,7 +162,349 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    # ── AI coordination tools (14) ──────────────────────────────────────────
+    "get_hint": {
+        "type": "function",
+        "function": {
+            "name": "get_hint",
+            "description": "Query the hints engine for relevant hints and guidance about the current task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Query string"},
+                    "max_hints": {"type": "integer", "description": "Maximum hints to return", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "delegate_to_remote": {
+        "type": "function",
+        "function": {
+            "name": "delegate_to_remote",
+            "description": "Delegate a task to a remote agent (codex, claude, qwen, opencode) when escalation is needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Task description"},
+                    "agent_type": {
+                        "type": "string",
+                        "description": "Agent type",
+                        "enum": ["codex", "claude", "qwen", "opencode"],
+                        "default": "codex",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "description": "Task priority",
+                        "enum": ["low", "normal", "high"],
+                        "default": "normal",
+                    },
+                },
+                "required": ["task"],
+            },
+        },
+    },
+    "query_context": {
+        "type": "function",
+        "function": {
+            "name": "query_context",
+            "description": "Query context memory for relevant information about the current task or project state.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Query string"},
+                    "max_results": {"type": "integer", "description": "Maximum results to return", "default": 10},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "store_memory": {
+        "type": "function",
+        "function": {
+            "name": "store_memory",
+            "description": "Store information in agent memory using canonical memory tiers (episodic/semantic/procedural/working/error_solutions).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string", "description": "Content to store"},
+                    "context_type": {
+                        "type": "string",
+                        "description": "Memory tier: episodic, semantic, procedural, working, error_solutions, interaction_history",
+                        "enum": ["episodic", "semantic", "procedural", "working", "error_solutions", "interaction_history"],
+                        "default": "semantic",
+                    },
+                    "importance": {"type": "number", "description": "Importance score (0.0-1.0)", "default": 0.5},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags"},
+                },
+                "required": ["content"],
+            },
+        },
+    },
+    "get_workflow_status": {
+        "type": "function",
+        "function": {
+            "name": "get_workflow_status",
+            "description": "Get status and progress of a running workflow by ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workflow_id": {"type": "string", "description": "Workflow ID"},
+                },
+                "required": ["workflow_id"],
+            },
+        },
+    },
+    "run_opencode": {
+        "type": "function",
+        "function": {
+            "name": "run_opencode",
+            "description": "Invoke the opencode CLI coding agent for file-editing, refactoring, or code-generation tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "Coding task description"},
+                    "model": {"type": "string", "description": "Override model id (OpenRouter format, e.g. qwen/qwen3-235b-a22b:free)"},
+                },
+                "required": ["prompt"],
+            },
+        },
+    },
+    "harness_health": {
+        "type": "function",
+        "function": {
+            "name": "harness_health",
+            "description": "Run AI stack health checks (aq-qa). Returns status of all harness services.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phase": {"type": "string", "description": "QA phase to run (0-10)", "default": "0"},
+                },
+            },
+        },
+    },
+    "get_prsi_pending": {
+        "type": "function",
+        "function": {
+            "name": "get_prsi_pending",
+            "description": "Get list of pending PRSI (Proactive Runtime Self-Improvement) optimization actions.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    "prsi_orchestrate": {
+        "type": "function",
+        "function": {
+            "name": "prsi_orchestrate",
+            "description": "Approve, reject, sync, or execute PRSI actions to manage runtime self-improvement.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["approve", "reject", "sync", "execute"]},
+                    "action_id": {"type": "string"},
+                    "note": {"type": "string"},
+                },
+                "required": ["action"],
+            },
+        },
+    },
+    "recommend_agent_for_task": {
+        "type": "function",
+        "function": {
+            "name": "recommend_agent_for_task",
+            "description": "Get recommendation for the best agent to handle a task from the agent mesh.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Task description to match against agent capabilities"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "query_aidb": {
+        "type": "function",
+        "function": {
+            "name": "query_aidb",
+            "description": "Search the AI stack knowledge base (AIDB) using hybrid search for errors, solutions, and patterns.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "get_working_memory": {
+        "type": "function",
+        "function": {
+            "name": "get_working_memory",
+            "description": "Retrieve recent session facts and decisions from working memory.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    "mesh_discovery": {
+        "type": "function",
+        "function": {
+            "name": "mesh_discovery",
+            "description": "Discover active agents, teams, and capabilities in the agent mesh.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    "collective_memory_search": {
+        "type": "function",
+        "function": {
+            "name": "collective_memory_search",
+            "description": "Search past agent collaborations and lessons learned in collective memory (AIDB).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+}
+
+# ── Phase A: TOOL_SCHEMAS — all 17 tools, ultra-minimal schemas (≤800t) ──────
+# Each entry uses the shortest description that preserves intent (≤25 chars).
+# Zero-arg tools omit the ``parameters`` key entirely to save tokens.
+# Required-only params — optional params are stripped.
+# Validated: len(json.dumps(TOOL_SCHEMAS)) / 4 ≤ 800.
+# DO NOT add description, enum, or default fields — they push over budget.
+def _T(name: str, desc: str, required_props: dict | None = None) -> dict:
+    fn: dict = {"name": name, "description": desc}
+    if required_props is not None:
+        fn["parameters"] = {
+            "type": "object",
+            "properties": {k: {"type": v} for k, v in required_props.items()},
+        }
+        if required_props:
+            fn["parameters"]["required"] = list(required_props.keys())
+    return {"type": "function", "function": fn}
+
+
+TOOL_SCHEMAS = [
+    # ── 3 base tools ────────────────────────────────────────────────────────
+    _T("route_search",              "RAG codebase search",      {"query": "string"}),
+    _T("recall_memory",             "Recall past context",      {"query": "string"}),
+    _T("run_harness_cli",           "Run aq-* CLI",             {"tool": "string"}),
+    # ── 14 AI coordination tools ────────────────────────────────────────────
+    _T("get_hint",                  "Get harness hint",         {"query": "string"}),
+    _T("delegate_to_remote",        "Delegate to agent",        {"task": "string"}),
+    _T("query_context",             "Query context mem",        {"query": "string"}),
+    _T("store_memory",              "Store to memory",          {"content": "string"}),
+    _T("get_workflow_status",       "Workflow status",          {"workflow_id": "string"}),
+    _T("run_opencode",              "Run opencode agent",       {"prompt": "string"}),
+    _T("harness_health",            "Run QA health"),
+    _T("get_prsi_pending",          "List PRSI pending"),
+    _T("prsi_orchestrate",          "Execute PRSI action",      {"action": "string"}),
+    _T("recommend_agent_for_task",  "Recommend agent",          {"query": "string"}),
+    _T("query_aidb",                "Search AIDB",              {"query": "string"}),
+    _T("get_working_memory",        "Get working memory"),
+    _T("mesh_discovery",            "Discover agents"),
+    _T("collective_memory_search",  "Search collab history",    {"query": "string"}),
 ]
+
+# ── Keyword sets for task-aware tool selection ────────────────────────────────
+_TOOL_SELECT_SEARCH_KW = frozenset(["search", "find", "look", "locate", "where", "which", "what is"])
+_TOOL_SELECT_MEMORY_KW = frozenset(["remember", "store", "save", "record", "note", "memorize", "persist"])
+_TOOL_SELECT_RECALL_KW = frozenset(["recall", "retrieve", "past", "previous", "history", "prior"])
+_TOOL_SELECT_HINT_KW = frozenset(["hint", "suggest", "help", "guidance", "recommend", "advice", "how to"])
+_TOOL_SELECT_HEALTH_KW = frozenset(["health", "status", "check", "verify", "diagnose", "monitor", "running", "alive"])
+_TOOL_SELECT_DELEGATE_KW = frozenset(["delegate", "remote", "escalate", "assign", "handoff", "codex", "claude", "opencode"])
+_TOOL_SELECT_MESH_KW = frozenset(["mesh", "agents", "discover", "team", "capabilities", "federated", "who can"])
+_TOOL_SELECT_MEMORY_WRITE_KW = frozenset(["working memory", "session", "scratch", "current state", "active", "get memory"])
+_TOOL_SELECT_WORKFLOW_KW = frozenset(["workflow", "pipeline", "prsi", "self-improve", "optimization"])
+_TOOL_SELECT_AIDB_KW = frozenset(["aidb", "knowledge base", "error pattern", "solution", "bug", "fix", "pattern"])
+
+
+def _slim_schema(schema: dict) -> dict:
+    """Return a token-minimal copy of an OpenAI function schema for model context.
+
+    Aggressively strips to fit n_ctx=8192 budget (target: ≤70 chars/schema):
+    - Truncates function description to 60 chars
+    - Strips all parameter-level ``description`` fields
+    - Strips ``enum`` arrays (too verbose; model infers valid values from name)
+    - Strips ``default`` values
+    - Keeps ``type``, ``items``, and ``required`` — minimum for correct calling
+    """
+    import copy
+    s = copy.deepcopy(schema)
+    fn = s.get("function", {})
+    # Truncate top-level description hard
+    if "description" in fn:
+        fn["description"] = fn["description"][:60]
+    # Strip per-property noise
+    params = fn.get("parameters", {})
+    for _prop in params.get("properties", {}).values():
+        _prop.pop("description", None)
+        _prop.pop("enum", None)
+        _prop.pop("default", None)
+    return s
+
+
+def _select_tools_for_task(task_description: str) -> list[dict]:
+    """Select 4-6 relevant tool schemas from TOOL_CATALOG for a given task.
+
+    Progressive disclosure strategy:
+    - Always include route_search + recall_memory (core harness access)
+    - Classify task keywords → add up to 4 more relevant tools
+    - Cap at 6 tools total (~200-300 tokens when slimmed)
+    - General/unclassified tasks: get_hint + query_aidb + store_memory + run_harness_cli
+    - Returns slim schemas (descriptions stripped) to respect n_ctx=8192 budget
+    """
+    task_lower = task_description.lower()
+
+    # Always-present base tools (2)
+    selected: list[str] = ["route_search", "recall_memory"]
+
+    # Scored candidate pools — collect by category match, then cap
+    candidates: list[str] = []
+
+    if any(k in task_lower for k in _TOOL_SELECT_SEARCH_KW):
+        candidates.extend(["query_aidb", "collective_memory_search"])
+    if any(k in task_lower for k in _TOOL_SELECT_AIDB_KW):
+        candidates.append("query_aidb")
+    if any(k in task_lower for k in _TOOL_SELECT_MEMORY_KW):
+        candidates.extend(["store_memory", "get_working_memory"])
+    if any(k in task_lower for k in _TOOL_SELECT_RECALL_KW):
+        candidates.append("get_working_memory")
+    if any(k in task_lower for k in _TOOL_SELECT_HINT_KW):
+        candidates.extend(["get_hint", "query_context"])
+    if any(k in task_lower for k in _TOOL_SELECT_HEALTH_KW):
+        candidates.extend(["harness_health", "get_workflow_status"])
+    if any(k in task_lower for k in _TOOL_SELECT_DELEGATE_KW):
+        candidates.append("delegate_to_remote")
+    if any(k in task_lower for k in _TOOL_SELECT_MESH_KW):
+        candidates.extend(["mesh_discovery", "recommend_agent_for_task"])
+    if any(k in task_lower for k in _TOOL_SELECT_MEMORY_WRITE_KW):
+        candidates.append("get_working_memory")
+    if any(k in task_lower for k in _TOOL_SELECT_WORKFLOW_KW):
+        candidates.extend(["get_workflow_status", "get_prsi_pending"])
+
+    # Deduplicate preserving first-seen order
+    seen: set[str] = set(selected)
+    for name in candidates:
+        if name not in seen:
+            selected.append(name)
+            seen.add(name)
+
+    # Fallback: no keyword match → general-purpose set
+    if len(selected) == 2:
+        selected.extend(["get_hint", "query_aidb", "store_memory", "run_harness_cli"])
+    else:
+        # Always include run_harness_cli for CLI access if budget allows
+        if "run_harness_cli" not in seen and len(selected) < 5:
+            selected.append("run_harness_cli")
+
+    # Cap at 5 tools (slim schemas at ~80 chars each ≈ 400 tok for 5 tools)
+    selected = selected[:5]
+
+    return [_slim_schema(TOOL_CATALOG[name]) for name in selected if name in TOOL_CATALOG]
 
 
 def _profile_for_role(role: str) -> str:
@@ -177,10 +523,12 @@ def _write_state(state: dict) -> None:
         p.write_text(json.dumps(state))
 
 
-def _build_inference_payload(messages: list[dict]) -> dict:
+def _build_inference_payload(messages: list[dict], selected_tools: list[dict] | None = None) -> dict:
     extra: dict = {"stop": STOP_SEQUENCES}
     if TOOLS_ENABLED:
-        extra["tools"] = TOOL_SCHEMAS
+        # Use caller-provided progressive selection; fall back to base 3-tool set
+        tools = selected_tools if selected_tools is not None else TOOL_SCHEMAS
+        extra["tools"] = tools
         extra["tool_choice"] = "auto"
     return build_llama_payload(
         messages,
@@ -567,6 +915,183 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
                     "error": "args must be a list of strings",
                 })
             return _compress_tool_output(await _run_harness_cli(tool, [str(item) for item in tool_args]))
+        # ── A.4: AI coordination tool dispatch handlers ────────────────────────
+        elif name == "get_hint":
+            query = str(args.get("query", "")).strip()
+            max_hints = max(1, min(20, int(args.get("max_hints", 5))))
+            r = await client.get(
+                f"{HYBRID_URL}/hints",
+                params={"q": query, "max": max_hints},
+                timeout=15.0,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                hints = data.get("hints") or []
+                if hints:
+                    return _compress_tool_output("\n".join(f"- {h}" for h in hints[:max_hints]))
+                return "No hints found."
+            return f"get_hint error: HTTP {r.status_code}"
+        elif name == "delegate_to_remote":
+            task_text = str(args.get("task", "")).strip()
+            agent_type = str(args.get("agent_type", "codex"))
+            priority = str(args.get("priority", "normal"))
+            r = await client.post(
+                f"{HYBRID_URL}/query",
+                json={"query": task_text, "agent_type": agent_type, "context": {"priority": priority}},
+                timeout=45.0,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                return _compress_tool_output(json.dumps({
+                    "agent": agent_type,
+                    "response": data.get("response", ""),
+                }))
+            return f"delegate_to_remote error: HTTP {r.status_code}"
+        elif name == "query_context":
+            query = str(args.get("query", "")).strip()
+            max_results = max(1, min(20, int(args.get("max_results", 10))))
+            r = await client.post(
+                f"{HYBRID_URL}/query",
+                json={"query": query, "mode": "context_only", "limit": max_results, "prefer_local": True},
+                timeout=20.0,
+            )
+            if r.status_code == 200:
+                results = r.json().get("results") or []
+                if results:
+                    return _compress_tool_output("\n".join(
+                        f"[{i+1}] {res.get('content', '')[:400]}"
+                        for i, res in enumerate(results[:max_results])
+                    ))
+                return "No context found."
+            return f"query_context error: HTTP {r.status_code}"
+        elif name == "store_memory":
+            content_val = str(args.get("content", "")).strip()
+            context_type = str(args.get("context_type", "semantic"))
+            importance = float(args.get("importance", 0.5))
+            tags = args.get("tags") or []
+            r = await client.post(
+                f"{HYBRID_URL}/memory/store",
+                json={
+                    "content": content_val,
+                    "memory_type": context_type,
+                    "importance": max(0.0, min(1.0, importance)),
+                    "tags": tags if isinstance(tags, list) else [],
+                    "source": "local-agent",
+                },
+                timeout=15.0,
+            )
+            if r.status_code == 200:
+                return json.dumps(r.json())
+            return f"store_memory error: HTTP {r.status_code}"
+        elif name == "get_workflow_status":
+            workflow_id = str(args.get("workflow_id", "")).strip()
+            r = await client.get(
+                f"{HYBRID_URL}/workflow/orchestrate/{workflow_id}",
+                timeout=10.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"get_workflow_status error: HTTP {r.status_code}"
+        elif name == "run_opencode":
+            # run_opencode requires subprocess — proxy through harness_health path
+            # (opencode not available in this subprocess context; return descriptive error)
+            prompt = str(args.get("prompt", "")).strip()
+            return json.dumps({
+                "success": False,
+                "error": "run_opencode not available in local_agent_runtime subprocess context. "
+                         "Use delegate_to_remote with agent_type='opencode' instead.",
+                "prompt_received": prompt[:100],
+            })
+        elif name == "harness_health":
+            phase = str(args.get("phase", "0"))
+            r = await client.post(
+                f"{HYBRID_URL}/qa/check",
+                json={"phase": phase},
+                timeout=90.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"harness_health error: HTTP {r.status_code}"
+        elif name == "get_prsi_pending":
+            r = await client.get(
+                f"{HYBRID_URL}/control/prsi/pending",
+                timeout=10.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"get_prsi_pending error: HTTP {r.status_code}"
+        elif name == "prsi_orchestrate":
+            action = str(args.get("action", "")).strip()
+            payload_data: dict = {"action": action}
+            if args.get("action_id"):
+                payload_data["action_id"] = str(args["action_id"])
+            if args.get("note"):
+                payload_data["note"] = str(args["note"])
+            if action == "execute":
+                r = await client.post(
+                    f"{HYBRID_URL}/control/prsi/actions/execute",
+                    json=payload_data,
+                    timeout=30.0,
+                )
+            else:
+                r = await client.get(
+                    f"{HYBRID_URL}/control/prsi/actions",
+                    params=payload_data,
+                    timeout=15.0,
+                )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"prsi_orchestrate error: HTTP {r.status_code}"
+        elif name == "recommend_agent_for_task":
+            # /federated/recommend is not registered; use /control/agents mesh status
+            # which returns active_agents, total_agents, and instances as best proxy.
+            r = await client.get(
+                f"{HYBRID_URL}/control/agents",
+                timeout=15.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"recommend_agent_for_task error: HTTP {r.status_code}"
+        elif name == "query_aidb":
+            query = str(args.get("query", "")).strip()
+            limit = max(1, min(20, int(args.get("limit", 5))))
+            r = await client.post(
+                f"{HYBRID_URL}/search/tree",
+                json={"query": query, "limit": limit},
+                timeout=20.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"query_aidb error: HTTP {r.status_code}"
+        elif name == "get_working_memory":
+            r = await client.post(
+                f"{HYBRID_URL}/memory/recall",
+                json={"query": "working memory summary", "memory_types": ["semantic"]},
+                timeout=15.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"get_working_memory error: HTTP {r.status_code}"
+        elif name == "mesh_discovery":
+            r = await client.get(
+                f"{HYBRID_URL}/discovery/capabilities",
+                timeout=10.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"mesh_discovery error: HTTP {r.status_code}"
+        elif name == "collective_memory_search":
+            query = str(args.get("query", "")).strip()
+            limit = max(1, min(20, int(args.get("limit", 5))))
+            aidb_url = os.environ.get("AIDB_URL", "http://127.0.0.1:8002")
+            r = await client.post(
+                f"{aidb_url}/vector/search",
+                json={"query": query, "collection": "knowledge", "limit": limit},
+                timeout=15.0,
+            )
+            if r.status_code == 200:
+                return _compress_tool_output(json.dumps(r.json()))
+            return f"collective_memory_search error: HTTP {r.status_code}"
         return f"unknown_tool: {name}"
     except Exception as exc:
         return f"tool_error({name}): {exc}"
@@ -628,6 +1153,10 @@ async def run() -> None:
         headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
         content = ""
         data: dict = {}
+
+        # A.3 — Progressive tool disclosure: select 4-6 relevant schemas for this task.
+        # Only computed when tools are enabled; avoids any overhead for non-tool invocations.
+        _selected_tools: list[dict] | None = _select_tools_for_task(AGENT_TASK) if TOOLS_ENABLED else None
 
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
             if STREAMING_MODE:
@@ -699,7 +1228,7 @@ async def run() -> None:
             for _round in range(max_rounds):
                 resp = await _post_completion_with_fallback(
                     client,
-                    payload=_build_inference_payload(messages),
+                    payload=_build_inference_payload(messages, selected_tools=_selected_tools),
                     headers=headers,
                     state=state,
                 )

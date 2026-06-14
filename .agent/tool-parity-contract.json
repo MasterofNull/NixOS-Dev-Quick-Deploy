@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "schema_token_budget_ceiling": 800,
+  "required_tools": [
+    "get_hint",
+    "delegate_to_remote",
+    "query_context",
+    "store_memory",
+    "get_workflow_status",
+    "run_opencode",
+    "harness_health",
+    "get_prsi_pending",
+    "prsi_orchestrate",
+    "recommend_agent_for_task",
+    "query_aidb",
+    "get_working_memory",
+    "mesh_discovery",
+    "collective_memory_search"
+  ],
+  "deferred_tools": [],
+  "deferred_reason": "All 14 tools required. Budget managed via compressed descriptions.",
+  "generated_at": "2026-06-13"
+}

@@ -1609,6 +1609,52 @@ else:
       esac
     fi
   fi
+
+  # A.5 — Phase A tool-parity CI check
+  # Verifies TOOL_SCHEMAS contains all required_tools from .agent/tool-parity-contract.json
+  # and that the token budget ceiling is not exceeded.
+  if _should_run 7; then
+    local _parity_contract="${REPO_ROOT}/.agent/tool-parity-contract.json"
+    if [[ -f "$_parity_contract" ]]; then
+      local _parity_result
+      _parity_result=$(AGENT_ID=aq-qa-parity AGENT_ROLE=test AGENT_SYSTEM_PROMPT=test AGENT_TASK=test \
+        python3 -c "
+import sys, json, pathlib
+sys.path.insert(0, str(pathlib.Path('${REPO_ROOT}') / 'ai-stack' / 'agents' / 'runtimes'))
+from local_agent_runtime import TOOL_SCHEMAS
+contract = json.loads(pathlib.Path('${_parity_contract}').read_text())
+required = set(contract.get('required_tools', []))
+ceiling = int(contract.get('schema_token_budget_ceiling', 800))
+schema_names = {t['function']['name'] for t in TOOL_SCHEMAS}
+missing = required - schema_names
+token_count = len(json.dumps(TOOL_SCHEMAS)) / 4
+if missing:
+    print('fail:missing:' + ','.join(sorted(missing)))
+elif token_count > ceiling:
+    print(f'fail:budget:{token_count:.0f}>{ceiling}')
+else:
+    print(f'pass:{len(schema_names)}tools:{token_count:.0f}t')
+" 2>&1)
+      case "$_parity_result" in
+        pass:*)
+          _pass 7 "A.5.1" "TOOL_SCHEMAS parity: ${_parity_result#pass:}"
+          ;;
+        fail:missing:*)
+          _fail 7 "A.5.1" "TOOL_SCHEMAS parity: all required tools present" \
+            "missing: ${_parity_result#fail:missing:}"
+          ;;
+        fail:budget:*)
+          _fail 7 "A.5.1" "TOOL_SCHEMAS parity: token budget ≤800t" \
+            "budget exceeded: ${_parity_result#fail:budget:}"
+          ;;
+        *)
+          _fail 7 "A.5.1" "TOOL_SCHEMAS parity check" "unexpected output: ${_parity_result:0:80}"
+          ;;
+      esac
+    else
+      _skip 7 "A.5.1" "TOOL_SCHEMAS parity check" "contract file not found: .agent/tool-parity-contract.json"
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------
