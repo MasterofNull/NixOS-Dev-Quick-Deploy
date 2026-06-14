@@ -1253,7 +1253,6 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 "AGENT_NO_THINK_PREFIX": _no_think_prefix,
                 # Phase 8.7 — tool calling: pass through caller preference
                 "AGENT_TOOLS_ENABLED": "true" if bool(data.get("tools_enabled", False)) else "false",
-                "AGENT_MAX_TOOL_ROUNDS": str(int(data.get("max_tool_rounds", 3))),
                 "HYBRID_URL": "http://127.0.0.1:8003",
                 "SWITCHBOARD_URL": Config.SWITCHBOARD_URL,
                 "LLAMA_CPP_URL": Config.LLAMA_CPP_URL,  # Phase 12.1: direct fallback URL

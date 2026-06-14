@@ -102,7 +102,6 @@ class AQChat:
         self.model_name = "loading..."
         self.context_history: List[Dict[str, str]] = []
         self.temperature = args.temperature
-        self.max_tool_calls = getattr(args, "max_tools", 40)
         self.inject_context = not getattr(args, "no_inject", False)
         # Phase B: three-state ToolMode replaces bool local_tools_enabled
         self.tool_mode: ToolMode = (
@@ -415,7 +414,6 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             "agent_type": "human",
             "temperature": self.temperature,
             "max_tokens": 1024,
-            "max_tool_calls": self.max_tool_calls,
             "stream": False,
             "frequency_penalty": 0.0,
         }
@@ -764,10 +762,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         return
                     # D.2: track whether coordinator used tools (for next-turn fast-path gate)
                     self._last_turn_had_tool_calls = bool(
-                        body.get("tool_calls_made", 0) or body.get("local_tool_budget_exhausted")
+                        body.get("tool_calls_made", 0)
                     )
-                    if body.get("local_tool_budget_exhausted"):
-                        console.print("[yellow]local tool budget exhausted; answer finalized from completed tool outputs[/]")
                     full_response = self._assistant_content_from_body(body)
                     self._record_and_render_assistant_response(prompt, full_response)
                     return
@@ -1221,8 +1217,8 @@ def parse_args():
     parser.add_argument("--hybrid-url", help="Override hybrid-coordinator URL")
     parser.add_argument("--switchboard-url", help="Override switchboard URL")
     parser.add_argument("--temperature", type=float, default=0.2, help="Model sampling temperature")
-    parser.add_argument("--max-tools", type=int, default=40,
-                        help="Max tool calls allowed per local turn (default: 40)")
+    parser.add_argument("--max-tools", type=int, default=0,
+                        help="Deprecated compatibility flag; local tool loops are progress-guarded")
     parser.add_argument("--no-inject", action="store_true",
                         help="Skip harness context injection (raw session, no system prompt)")
     parser.add_argument("--no-tools", action="store_true",

@@ -9,13 +9,13 @@ validate, and produce an auditable output summary.
 Usage:
     aq-agent-loop --task "implement X in file Y"
     aq-agent-loop --task "..." --output summary.json
-    aq-agent-loop --task "..." --max-calls 20 --fallback
+    aq-agent-loop --task "..." --fallback
     aq-agent-loop --list-tools
 
 Options:
     --task TEXT        Coding task objective (required unless --list-tools)
     --output FILE      Write JSON result summary to FILE
-    --max-calls N      Max tool calls allowed [default: 50]
+    --max-calls N      Deprecated compatibility flag; ignored
     --fallback         Allow fallback to remote hybrid-coordinator if local fails
     --llama-url URL    llama.cpp endpoint [default: http://127.0.0.1:8080]
     --timeout SECS     Per-inference timeout in seconds [default: 300]
@@ -138,6 +138,18 @@ def list_tools(registry: ToolRegistry) -> None:
     print()
 
 
+def _is_incomplete_result(result: str | None) -> bool:
+    text = str(result or "").lower()
+    incomplete_markers = (
+        "task incomplete:",
+        "reached max tool calls",
+        "stagnation detected:",
+        "exploration stagnation:",
+        "file-not-found stagnation:",
+    )
+    return any(marker in text for marker in incomplete_markers)
+
+
 async def run_task(
     task_text: str,
     output_file: str | None,
@@ -150,6 +162,7 @@ async def run_task(
     task_type: str | None = None,
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
+    del max_calls  # Deprecated: loops are progress-guarded, not count-guarded.
 
     # LLAMA_CHUNK_TIMEOUT: per-SSE-chunk read timeout.
     # After 2+ tool calls the context can be ~2500 tokens; prefill at 5 tok/s = 500s.
@@ -199,7 +212,7 @@ async def run_task(
 
     print(f"[aq-agent-loop] Task: {task_id}")
     print(f"[aq-agent-loop] Objective: {task_text[:120]}{'...' if len(task_text) > 120 else ''}")
-    print(f"[aq-agent-loop] Max tool calls: {max_calls}")
+    print("[aq-agent-loop] Tool calls: progress-guarded (no fixed ceiling)")
     print(f"[aq-agent-loop] Fallback: {'enabled' if allow_fallback else 'disabled (local only)'}")
     print(f"[aq-agent-loop] Running...\n")
 
@@ -210,10 +223,11 @@ async def run_task(
         "agent_step_start",
         {"tool_call_count": 0},
     )
-    result_task = await executor.execute_task(task, AgentType.AGENT, max_calls)
+    result_task = await executor.execute_task(task, AgentType.AGENT)
     elapsed = time.time() - start
 
-    success = result_task.status in (TaskStatus.COMPLETED, TaskStatus.FALLBACK)
+    incomplete_result = _is_incomplete_result(result_task.result)
+    success = result_task.status in (TaskStatus.COMPLETED, TaskStatus.FALLBACK) and not incomplete_result
     status_label = result_task.status.value
 
     print(f"\n[aq-agent-loop] Status:     {status_label}")
@@ -243,7 +257,10 @@ async def run_task(
         # coordinator delegate path) so local_inference events are never emitted
         # there — this is the only emission point for agent tasks.
         if result_task.result:
-            _hybrid_path = Path("/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl")
+            _hybrid_path = Path(os.environ.get(
+                "AQ_AGENT_HYBRID_EVENTS_PATH",
+                str(_REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"),
+            ))
 
             async def _emit_training_signal(
                 _q=task_text, _r=result_task.result,
@@ -284,6 +301,7 @@ async def run_task(
         "task_id": task_id,
         "status": status_label,
         "success": success,
+        "incomplete_result": incomplete_result,
         "elapsed_seconds": round(elapsed, 1),
         "tool_calls": [tc.to_dict() for tc in result_task.tool_calls_made],
         "result": result_task.result,
@@ -328,7 +346,7 @@ def main() -> int:
     )
     parser.add_argument("--task",       help="Coding task objective")
     parser.add_argument("--output",     help="Write JSON result to this file")
-    parser.add_argument("--max-calls",  type=int, default=50, help="Max tool calls [default: 50]")
+    parser.add_argument("--max-calls",  type=int, default=0, help="Deprecated compatibility flag; ignored")
     parser.add_argument("--fallback",   action="store_true", help="Allow remote fallback if local fails")
     parser.add_argument("--llama-url",  default=os.environ.get("LLAMA_URL", "http://127.0.0.1:8080"))
     parser.add_argument("--timeout",    type=int, default=300, help="Per-inference timeout (seconds) [default: 300]")

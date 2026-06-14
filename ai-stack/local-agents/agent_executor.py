@@ -508,7 +508,7 @@ class LocalAgentExecutor:
         self,
         task: Task,
         agent_type: AgentType = AgentType.AGENT,
-        max_tool_calls: int = 10,
+        max_tool_calls: int = 0,
     ) -> Task:
         """
         Execute a task using local agent with tool use.
@@ -516,7 +516,9 @@ class LocalAgentExecutor:
         Args:
             task: Task to execute
             agent_type: Type of agent to use
-            max_tool_calls: Maximum tool calls allowed
+            max_tool_calls: Deprecated compatibility parameter. Tool loops are
+                governed by stagnation/progress guards, context pruning, and the
+                stall watchdog, not by a fixed tool-call ceiling.
 
         Returns:
             Updated task with result or error
@@ -900,7 +902,7 @@ class LocalAgentExecutor:
                 except Exception:
                     pass
 
-        while tool_call_count < max_tool_calls:
+        while True:
             # Phase E — agent_step_start: emitted at the top of every iteration before the LLM call.
             await self._emit_agent_event(
                 task.id, "agent_step_start",
@@ -1065,8 +1067,10 @@ class LocalAgentExecutor:
                     logger.debug("context_sanitizer error (non-fatal): %s", _san_err)
 
             # Stagnation detection: same (tool_name, result_prefix) repeated beyond
-            # threshold → model is looping without state change. Abort early so we don't
-            # exhaust max_tool_calls on a runaway pattern.
+            # threshold → model is looping without state change. Abort early via a
+            # progress guard. There is intentionally no hard max-tool-call ceiling:
+            # context pruning + working-memory checkpoints keep prior findings
+            # reachable across long implementation loops.
             # Thresholds are tool-specific:
             #   read_file  → 3: pure observation; identical result 3× = definitely stuck.
             #   run_command → 5: polling loops (e.g. tail, systemctl) legitimately repeat.
@@ -1221,11 +1225,6 @@ class LocalAgentExecutor:
                     _validation_passes_without_commit, tool_call_count,
                 )
                 _validation_passes_without_commit = 0
-
-        # Max tool calls reached, return current state
-        _cancel_watchdog()
-        logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
-        return f"Task incomplete: reached max tool calls ({max_tool_calls})", total_tokens
 
     async def _call_llama(
         self,
