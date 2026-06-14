@@ -162,6 +162,28 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+async def _store_prune_checkpoint(coordinator_url: str, task_id: str, summary: str) -> None:
+    """Fire-and-forget: save pruned context summary to working memory before eviction.
+
+    Called via asyncio.create_task() — never blocks the agent loop.
+    Skipped silently on any network/coordinator error.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as _pc_client:
+            await _pc_client.post(
+                f"{coordinator_url.rstrip('/')}/memory/store",
+                json={
+                    "content": summary,
+                    "memory_type": "working",
+                    "source": "agent-executor-prune",
+                    "importance": 0.5,
+                    "tags": [f"task_id:{task_id}", "prune_checkpoint"],
+                },
+            )
+    except Exception:
+        pass
+
+
 class AgentType(Enum):
     """Local agent types — capability class (what the model CAN do).
     Orthogonal to role (what the model is AUTHORISED to do this session).
@@ -711,6 +733,30 @@ class LocalAgentExecutor:
                 "content": f"Context: {json.dumps(task.context)}",
             })
 
+        # F.3 — working-memory auto-prefetch: inject prior-task scratch notes into the
+        # system prompt so the model starts with relevant prior findings without needing
+        # to call get_working_memory explicitly. 3 s hard timeout — skip on any error.
+        if self.fallback_endpoint:
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as _wm_client:
+                    _wm_resp = await _wm_client.post(
+                        f"{self.fallback_endpoint.rstrip('/')}/memory/recall",
+                        json={"query": task.objective[:200], "memory_types": ["working"], "limit": 3},
+                    )
+                    if _wm_resp.status_code == 200:
+                        _wm_results = _wm_resp.json().get("results", [])[:3]
+                        _wm_lines = [
+                            f"- {r['content'][:200]}"
+                            for r in _wm_results if r.get("content")
+                        ]
+                        if _wm_lines:
+                            messages[0]["content"] += (
+                                "\n\nPRIOR WORKING MEMORY:\n" + "\n".join(_wm_lines)
+                            )
+                            logger.debug("working_memory_prefetch: injected %d entries", len(_wm_lines))
+            except Exception:
+                pass
+
         # Tool use loop
         tool_call_count = 0
         total_tokens = 0
@@ -876,6 +922,20 @@ class LocalAgentExecutor:
                 # When len > 8, pinned ends at index 3 and sliding starts at len-4.
                 # The minimum gap between them is (len-4) - 3 = len-7 ≥ 2, so overlap
                 # is never possible here. Simple concatenation is correct.
+                # F.2 — prune checkpoint: compact the about-to-be-dropped middle messages
+                # into working memory before evicting them, so prior findings remain
+                # recoverable via get_working_memory. Fire-and-forget.
+                if self.fallback_endpoint:
+                    _dropped = messages[4:-4]
+                    _prune_text = " | ".join(
+                        str(m.get("content", ""))[:120]
+                        for m in _dropped
+                        if m.get("role") in {"assistant", "tool"} and m.get("content")
+                    )[:600]
+                    if _prune_text:
+                        asyncio.create_task(
+                            _store_prune_checkpoint(self.fallback_endpoint, task.id, _prune_text)
+                        )
                 messages = pinned + sliding
                 logger.debug(
                     "context_prune(pinned+sliding): pinned=%d sliding=%d total=%d chars_before=%d",

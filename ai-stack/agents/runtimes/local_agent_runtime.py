@@ -1004,7 +1004,12 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
             content_val = str(args.get("content", "")).strip()
             context_type = str(args.get("context_type", "semantic"))
             importance = float(args.get("importance", 0.5))
-            tags = args.get("tags") or []
+            tags = list(args.get("tags") or [])
+            # F.1 — auto-inject agent identity so stored memories are task-scoped
+            # and recoverable by the same agent on future get_working_memory calls.
+            _agent_tag = f"agent:{AGENT_ID}"
+            if _agent_tag not in tags:
+                tags.append(_agent_tag)
             r = await client.post(
                 f"{HYBRID_URL}/memory/store",
                 json={
