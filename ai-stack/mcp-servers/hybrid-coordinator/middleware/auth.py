@@ -111,6 +111,7 @@ LOOPBACK_AGENT_PREFIXES = (
     "/qa/",                # Phase 84: QA check runner (loopback agents need eval access)
     "/search/",            # Phase 162C: local agent query_aidb tool uses /search/tree
     "/operator/",         # Phase 164: Operator Intelligence Bridge endpoints
+    "/control/prsi/",     # Phase 170: PRSI pending/orchestrate tools need loopback access
 )
 
 
