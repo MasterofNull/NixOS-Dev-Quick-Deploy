@@ -57,6 +57,11 @@ let
       psycopg
       redis
     ]);
+  monitorPython = pkgs.python3.withPackages (ps:
+    with ps; [
+      asyncpg
+      httpx
+    ]);
   gapAutoRemediatePath = lib.makeBinPath [
     pkgs.bash
     pkgs.bc
@@ -428,6 +433,7 @@ let
       '')
       # --- Monitoring & feedback ---
       (pkgs.writeShellScriptBin "aq-llm-monitor" ''
+        export PATH="${monitorPython}/bin:$PATH"
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-llm-monitor" "$@"
       '')
       (pkgs.writeShellScriptBin "aq-rate" ''

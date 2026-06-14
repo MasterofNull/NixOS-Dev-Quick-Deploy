@@ -128,6 +128,8 @@ def _make_rate_limit_config() -> RateLimiterConfig:
             "/harness/eval": int(os.getenv("RATE_LIMIT_EVAL_RPM", "20")),
             "/workflow": int(os.getenv("RATE_LIMIT_WORKFLOW_RPM", "30")),
             "/a2a": int(os.getenv("RATE_LIMIT_A2A_RPM", "300")),
+            "/control/ai-coordinator/delegate": int(os.getenv("RATE_LIMIT_DELEGATE_RPM", "10")),
+            "/research/web/fetch": int(os.getenv("RATE_LIMIT_RESEARCH_RPM", "20")),
         },
         exempt_paths={"/health", "/metrics", "/health/detailed", "/health/aggregate"},
     )
@@ -222,6 +224,7 @@ def create_app(
         middlewares.extend(extra_middlewares)
 
     app = web.Application(middlewares=middlewares)
+    app["rate_limiter"] = _rate_limiter
 
     # -----------------------------------------------------------------------
     # Route registration — one block per R2.x slice.

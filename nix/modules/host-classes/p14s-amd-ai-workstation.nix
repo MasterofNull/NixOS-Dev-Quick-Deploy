@@ -23,25 +23,30 @@ in {
       acceleration = lib.mkDefault "auto";
       rocmGfxOverride = lib.mkDefault "9.0.0";
       switchboard = {
+        enable = lib.mkDefault true;
         localConcurrency = lib.mkDefault 4;
         reservedSlots = lib.mkDefault 1;
+        inactivityTimeoutSeconds = lib.mkDefault 600;
+        maxTotalTimeoutSeconds = lib.mkDefault 7200;
+        rateLimitDelegateRpm = lib.mkDefault 5;
+        rateLimitResearchRpm = lib.mkDefault 10;
         continueLocal = {
           # Increased limits for high-end interactive use.
           maxInputTokens = lib.mkDefault 4000;
           maxMessages = lib.mkDefault 12;
         };
       };
-
       llamaCpp = {
         activeModel = lib.mkDefault "gemma4-e4b";
+        inferenceTimeoutSeconds = lib.mkDefault 3600;
         # Mobile 27GB RAM target: leave memory reclaimable so the editor and
         # desktop are not OOM-killed when the dashboard or QA tooling runs.
         ctxSize = lib.mkDefault 16384;
         extraArgs = lib.mkDefault [
           "--timeout"
-          "600"
+          "3600"
           "--parallel"
-          "1"
+          "2"
           "--batch-size"
           "512"
           "--ubatch-size"

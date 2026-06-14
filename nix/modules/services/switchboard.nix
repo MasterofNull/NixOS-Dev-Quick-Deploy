@@ -493,6 +493,10 @@ in {
           # switchboard concurrency ceiling matches llama.cpp's slot count.
           "SWB_LOCAL_CONCURRENCY=${toString swb.localConcurrency}"
           "SWB_RESERVED_SLOTS=${toString swb.reservedSlots}"
+          "SWB_INACTIVITY_TIMEOUT=${toString swb.inactivityTimeoutSeconds}"
+          "SWB_MAX_TOTAL_TIMEOUT=${toString swb.maxTotalTimeoutSeconds}"
+          "RATE_LIMIT_DELEGATE_RPM=${toString swb.rateLimitDelegateRpm}"
+          "RATE_LIMIT_RESEARCH_RPM=${toString swb.rateLimitResearchRpm}"
           "SWB_LOCAL_TOOL_CALL_LIMIT=16"
           "SWB_ACTIVE_TOOL_SCHEMA_LIMIT=7"
           "SWB_TOOL_WORKING_SET_ENABLED=1"

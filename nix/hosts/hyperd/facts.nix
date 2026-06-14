@@ -51,11 +51,11 @@
                           llamaCpp.extraArgs = [
                             # Qwen3.6-35B on this CPU needs up to 5 minutes for large prompts.
                             "--timeout"
-                            "600"
+                            "3600"
                             # 27GB RAM: prefer one full-context slot over two 4k slots.
                             # Must match SWB_LOCAL_CONCURRENCY in switchboard.nix.
                             "--parallel"
-                            "1"
+                            "2"
                             "--batch-size"
                             "512"
                             "--ubatch-size"
