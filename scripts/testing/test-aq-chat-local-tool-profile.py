@@ -121,12 +121,13 @@ def main() -> None:
         "aq-chat should handle Ctrl-C without dumping a traceback",
     )
     assert_true(
-        'parser.add_argument("--max-tools", type=int, default=40,' in text,
-        "aq-chat should default to enough local tool calls for broad analysis turns (Phase 164: 16→40)",
+        'parser.add_argument("--max-tools", type=int, default=0,' in text
+        and "Deprecated compatibility flag; local tool loops are progress-guarded" in text,
+        "aq-chat --max-tools should be a deprecated compatibility flag; tool loops are progress-guarded",
     )
     assert_true(
-        'local tool budget exhausted; answer finalized from completed tool outputs' in text,
-        "aq-chat should surface when a response was forced after local tool budget exhaustion",
+        '"max_tool_calls":' not in text and "local_tool_budget_exhausted" not in text,
+        "aq-chat must not send or depend on fixed local tool-call budget state",
     )
     print("PASS: aq-chat local-tool-calling profile routes through coordinator delegation")
 

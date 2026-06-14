@@ -20,7 +20,6 @@ Environment variables (all injected by _spawn_local_agent):
   AGENT_NO_THINK_PREFIX — prefix to suppress CoT (e.g. "/no_think" for Qwen3)
   AGENT_STOP_SEQUENCES  — JSON-encoded list of stop tokens
   AGENT_TOOLS_ENABLED   — "true" | "false"
-  AGENT_MAX_TOOL_ROUNDS — max tool-call rounds (default 3)
   AGENT_STREAMING       — "true" | "false" (SSE streaming mode)
   SWITCHBOARD_URL       — inference router (default localhost:8085)
   LLAMA_CPP_URL         — direct llama.cpp fallback (default localhost:8080)
@@ -80,7 +79,6 @@ except Exception:
     STOP_SEQUENCES = ["<|im_end|>", "<|endoftext|>"]
 
 TOOLS_ENABLED = os.environ.get("AGENT_TOOLS_ENABLED", "false").lower() == "true"
-MAX_TOOL_ROUNDS = int(os.environ.get("AGENT_MAX_TOOL_ROUNDS", "3"))
 STREAMING_MODE = (
     os.environ.get("AGENT_STREAMING", "false").lower() == "true" and not TOOLS_ENABLED
 )
@@ -1279,8 +1277,9 @@ async def run() -> None:
                 sys.stdout.flush()
                 return
 
-            max_rounds = MAX_TOOL_ROUNDS if TOOLS_ENABLED else 1
-            for _round in range(max_rounds):
+            _round = 0
+            _recent_tool_results: list[tuple[str, str]] = []
+            while True:
                 resp = await _post_completion_with_fallback(
                     client,
                     payload=_build_inference_payload(messages, selected_tools=_active_tools),
@@ -1305,6 +1304,7 @@ async def run() -> None:
                     if not content:
                         content = (msg.get("reasoning_content") or "").strip()
                     break
+                _round += 1
                 assistant_turn: dict = {"role": "assistant"}
                 if msg.get("content"):
                     assistant_turn["content"] = msg["content"]
@@ -1325,13 +1325,24 @@ async def run() -> None:
                     })
                     state["tool_calls"] += 1
                     _write_state(state)
+                    _recent_tool_results.append((tc_name, tc_result[:200]))
+                    if len(_recent_tool_results) > 5:
+                        _recent_tool_results.pop(0)
+                    if (
+                        len(_recent_tool_results) == 5
+                        and len({name for name, _ in _recent_tool_results}) == 1
+                        and len({result for _, result in _recent_tool_results}) == 1
+                    ):
+                        content = (
+                            f"Stagnation detected: '{tc_name}' returned the same result "
+                            "five consecutive times; loop stopped by progress guard."
+                        )
+                        break
                     # A.6 — hot-swap: expand active tool set based on what the result reveals.
                     if _active_tools is not None:
                         _active_tools = _refresh_tools_from_result(tc_name, tc_result, _active_tools)
-            else:
-                if not content:
-                    last_msg = messages[-1] if messages else {}
-                    content = str(last_msg.get("content") or "")
+                if content:
+                    break
 
         state.update({
             "status": "completed",
