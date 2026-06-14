@@ -488,6 +488,42 @@ async def collective_memory_search_handler(query: str, limit: int = 5) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def get_unified_stack_health_handler() -> Dict:
+    """Get a comprehensive health snapshot of the local AI stack."""
+    try:
+        api_key_path = "/run/secrets/hybrid_coordinator_api_key"
+        api_key = ""
+        if os.path.exists(api_key_path):
+            with open(api_key_path, "r") as f:
+                api_key = f.read().strip()
+
+        headers = {"X-API-Key": api_key} if api_key else {}
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Parallel fetch for optimal performance
+            status_task = client.get(f"{HYBRID_COORDINATOR_URL}/status", headers=headers)
+            rate_limit_task = client.get(f"{HYBRID_COORDINATOR_URL}/admin/v1/policy/rate-limit-stats", headers=headers)
+            hardware_task = client.get(f"{HYBRID_COORDINATOR_URL}/api/hardware/state", headers=headers)
+
+            resps = await asyncio.gather(status_task, rate_limit_task, hardware_task, return_exceptions=True)
+
+            results = []
+            for r in resps:
+                if isinstance(r, httpx.Response):
+                    results.append(r.json() if r.status_code == 200 else {"error": f"HTTP {r.status_code}"})
+                else:
+                    results.append({"error": str(r)})
+
+            return {
+                "success": True,
+                "status": results[0],
+                "rate_limiting": results[1],
+                "hardware": results[2],
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def register_ai_coordination_tools(registry: ToolRegistry):
     """Register all AI coordination tools in the registry"""
 
@@ -783,4 +819,14 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=collective_memory_search_handler,
     ))
 
-    logger.info("Registered 14 AI coordination tools")
+    # get_unified_stack_health
+    registry.register(ToolDefinition(
+        name="get_unified_stack_health",
+        description="Get a comprehensive health snapshot of the local AI stack (status, rate-limits, hardware)",
+        parameters={"type": "object", "properties": {}},
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=get_unified_stack_health_handler,
+    ))
+
+    logger.info("Registered 15 AI coordination tools")

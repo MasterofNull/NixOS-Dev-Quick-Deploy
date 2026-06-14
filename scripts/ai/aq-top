@@ -28,15 +28,15 @@ def get_api_key():
             return f.read().strip()
     return ""
 
-async def fetch_status(client: httpx.AsyncClient, url: str, api_key: str) -> Dict[str, Any]:
+async def fetch_json(client: httpx.AsyncClient, url: str, api_key: str) -> Dict[str, Any]:
     try:
         headers = {"X-API-Key": api_key}
-        resp = await client.get(f"{url}/admin/v1/scheduler/status", headers=headers, timeout=2.0)
+        resp = await client.get(url, headers=headers, timeout=2.0)
         if resp.status_code == 200:
             return resp.json()
     except Exception as e:
         return {"error": str(e)}
-    return {"error": "unknown"}
+    return {"error": f"HTTP {resp.status_code}" if 'resp' in locals() else "unknown"}
 
 def make_layout() -> Layout:
     layout = Layout()
@@ -76,19 +76,29 @@ def generate_table(status: Dict[str, Any]) -> Table:
         )
     return table
 
-def generate_metrics(status: Dict[str, Any]) -> Table:
-    table = Table(title="System Metrics", border_style="magenta")
+def generate_metrics(status: Dict[str, Any], rate_limit: Dict[str, Any]) -> Table:
+    table = Table(title="System & Rate Metrics", border_style="magenta")
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
     
     table.add_row("Thermal Tier", status.get("thermal_tier", "unknown"))
     table.add_row("Zombie Count", str(status.get("zombie_count", 0)))
-    table.add_row("Reserved Tokens", str(status.get("reserved_tokens_total", 0)))
     
     budget_total = status.get("system_token_budget", 0)
     reserved = status.get("reserved_tokens_total", 0)
     usage = (reserved / budget_total * 100) if budget_total > 0 else 0
-    table.add_row("Budget Usage", f"{usage:.1f}%")
+    table.add_row("Token Budget", f"{usage:.1f}%")
+
+    # Rate limiting info
+    if "error" not in rate_limit:
+        cfg = rate_limit.get("config", {})
+        status_text = "[green]ON[/]" if cfg.get("enabled") else "[red]OFF[/]"
+        table.add_row("Rate Limiting", status_text)
+        table.add_row("Active Clients", str(rate_limit.get("total_clients", 0)))
+        table.add_row("RPM (Total)", str(rate_limit.get("total_minute_requests", 0)))
+        table.add_row("RPH (Total)", str(rate_limit.get("total_hour_requests", 0)))
+    else:
+        table.add_row("Rate Limiting", "[yellow]Error[/]")
     
     return table
 
@@ -127,22 +137,45 @@ def generate_slots_table(status: Dict[str, Any]) -> Table:
     return table
 
 async def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="aq-top — Live telemetry for AI Stack")
+    parser.add_argument("--once", action="store_true", help="Print once and exit")
+    args = parser.parse_args()
+
     url = os.getenv("COORDINATOR_URL", DEFAULT_COORDINATOR_URL)
     api_key = get_api_key()
     
     layout = make_layout()
     
+    if args.once:
+        async with httpx.AsyncClient() as client:
+            status = await fetch_json(client, f"{url}/admin/v1/scheduler/status", api_key)
+            rate_limit = await fetch_json(client, f"{url}/admin/v1/policy/rate-limit-stats", api_key)
+            
+            if "error" in status:
+                console.print(f"[bold red]Error:[/] {status['error']}")
+            else:
+                console.print(Panel(f"AI Stack Telemetry | URL: {url} | Tier: {status.get('thermal_tier', 'N/A')}", style="bold white on blue"))
+                console.print(generate_table(status))
+                console.print(generate_metrics(status, rate_limit))
+                console.print(generate_slots_table(status))
+        return
+
     with Live(layout, refresh_per_second=1, screen=True):
         async with httpx.AsyncClient() as client:
             while True:
-                status = await fetch_status(client, url, api_key)
+                # Parallel fetch of both endpoints
+                status_task = fetch_json(client, f"{url}/admin/v1/scheduler/status", api_key)
+                rate_limit_task = fetch_json(client, f"{url}/admin/v1/policy/rate-limit-stats", api_key)
+                
+                status, rate_limit = await asyncio.gather(status_task, rate_limit_task)
                 
                 if "error" in status:
                     layout["body"].update(Panel(f"[bold red]Error:[/] {status['error']}", title="Status"))
                 else:
                     layout["header"].update(Panel(f"AI Stack Telemetry | URL: {url} | Tier: {status.get('thermal_tier', 'N/A')}", style="bold white on blue"))
                     layout["queues"].update(generate_table(status))
-                    layout["metrics"].update(generate_metrics(status))
+                    layout["metrics"].update(generate_metrics(status, rate_limit))
                     layout["slots"].update(generate_slots_table(status))
                     
                     events = status.get("backpressure_events", [])

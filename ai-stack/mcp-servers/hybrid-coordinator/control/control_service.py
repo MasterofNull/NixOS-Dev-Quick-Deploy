@@ -5,6 +5,7 @@ Phase R2.6 (Strangler Fig): route registration extracted from http_server.py.
 Handles:
   GET /admin/v1/scheduler/status          — MLFQ scheduler status
   GET /admin/v1/policy/tool-deny-stats    — auth-profile tool denial counters (S2)
+  GET /admin/v1/policy/rate-limit-stats   — active rate limit counters
   GET /control/model-fleet/status         — model fleet status (model_fleet_manager)
   *   /control/runtimes/*                 — runtime registry (delegated to runtime_control_handlers)
   GET /control/fleet/summary              — fleet summary (delegated to runtime_control_handlers)
@@ -54,6 +55,14 @@ async def handle_fleet_status(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=500)
 
 
+async def handle_rate_limit_stats(request: web.Request) -> web.Response:
+    """GET /admin/v1/policy/rate-limit-stats — active rate limit counters."""
+    limiter = request.app.get("rate_limiter")
+    if not limiter:
+        return web.json_response({"error": "Rate limiter not found in app state"}, status=503)
+    return web.json_response(limiter.get_stats())
+
+
 # ---------------------------------------------------------------------------
 # Route registration helper (called from router.py)
 # ---------------------------------------------------------------------------
@@ -63,6 +72,7 @@ def register_routes(app: web.Application) -> None:
     """Register all ControlService routes on the given aiohttp Application."""
     app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
     app.router.add_get("/admin/v1/policy/tool-deny-stats", handle_tool_deny_stats)
+    app.router.add_get("/admin/v1/policy/rate-limit-stats", handle_rate_limit_stats)
     app.router.add_get("/control/model-fleet/status", handle_fleet_status)
 
     # Runtime/budget/fleet/reasoning routes — already fully extracted

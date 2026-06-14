@@ -1565,20 +1565,43 @@
         '';
       };
 
-      # ── Switchboard: local/remote LLM routing proxy ─────────────────────────
-      switchboard = {
-        enable = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = "Enable AI Switchboard OpenAI-compatible proxy on port 8085 for local/remote LLM routing.";
-        };
-        port = lib.mkOption {
-          type = lib.types.port;
-          default = 8085;
-          description = "TCP port for the AI Switchboard proxy.";
-        };
+        switchboard = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Enable AI Switchboard OpenAI-compatible proxy on port 8085 for local/remote LLM routing.";
+          };
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 8085;
+            description = "TCP port for the AI Switchboard proxy.";
+          };
 
-        routingMode = lib.mkOption {
+          inactivityTimeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 300;
+            description = "Event-driven inactivity timeout: cut request if no data for N seconds.";
+          };
+
+          maxTotalTimeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 3600;
+            description = "Absolute maximum total timeout for any LLM request.";
+          };
+
+          rateLimitDelegateRpm = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 10;
+            description = "RPM limit for the heavy /delegate endpoint.";
+          };
+
+          rateLimitResearchRpm = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 20;
+            description = "RPM limit for the /research/web/fetch endpoint.";
+          };
+
+          routingMode = lib.mkOption {
           type = lib.types.enum ["auto" "local_only" "remote_only"];
           default = "auto";
           description = ''

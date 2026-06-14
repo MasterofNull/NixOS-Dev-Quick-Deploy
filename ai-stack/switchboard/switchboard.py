@@ -53,6 +53,11 @@ ROUTE_HINT_HEADER = "x-ai-route"
 PROVIDER_HINT_HEADER = "x-ai-provider"
 PROFILE_HINT_HEADER = "x-ai-profile"
 
+# Phase 2026.06: Event-driven timeout configuration
+# Default inactivity timeout is 300s (5m); absolute maximum is 3600s (1h)
+INACTIVITY_TIMEOUT_S = float(os.environ.get("SWB_INACTIVITY_TIMEOUT", "300.0"))
+MAX_TOTAL_TIMEOUT_S = float(os.environ.get("SWB_MAX_TOTAL_TIMEOUT", "3600.0"))
+
 _AGENT_RUN_EVENTS_PATH = Path(
     os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 )
@@ -2448,15 +2453,10 @@ def _remote_budget_status(projected_delta: int) -> tuple[bool, dict]:
     }
 
 def _timeout_for(target_type: str, is_stream: bool) -> httpx.Timeout:
-    if is_stream:
-        read_timeout = STREAM_READ_TIMEOUT_S
-    elif target_type == "remote":
-        read_timeout = REMOTE_READ_TIMEOUT_S
-    else:
-        read_timeout = LOCAL_READ_TIMEOUT_S
+    # Use max absolute timeout for all requests; inactivity is handled separately.
     return httpx.Timeout(
         connect=CONNECT_TIMEOUT_S,
-        read=read_timeout,
+        read=MAX_TOTAL_TIMEOUT_S,
         write=WRITE_TIMEOUT_S,
         pool=POOL_TIMEOUT_S,
     )
@@ -2922,10 +2922,13 @@ async def proxy(path: str, request: Request):
 
                             full_content = ""
                             token_usage_emitted = False
+                            last_activity = time.time()
+
                             async def _iter():
-                                nonlocal full_content, token_usage_emitted
+                                nonlocal full_content, token_usage_emitted, last_activity
                                 try:
                                     async for chunk in upstream.aiter_bytes():
+                                        last_activity = time.time()
                                         # Phase 1: Track content for token estimation fallback
                                         try:
                                             chunk_str = chunk.decode("utf-8", errors="ignore")
