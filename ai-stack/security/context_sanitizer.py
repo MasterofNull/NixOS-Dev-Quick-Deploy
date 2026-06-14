@@ -94,6 +94,7 @@ def sanitize_tool_result(
     source: str = "tool",
     max_chars: int = _MAX_TOOL_RESULT_CHARS,
     hard_block: bool = True,
+    bypass_limits: bool = False,
 ) -> tuple[str, list[str]]:
     """
     Sanitize tool result content before injecting into LLM context.
@@ -104,6 +105,7 @@ def sanitize_tool_result(
         max_chars: Truncation limit (default 3000, matching Phase 159 tool result cap).
         hard_block: If True, replace hard-violation content with placeholder.
                    If False, log and pass through (useful for audit-only mode).
+        bypass_limits: If True, allow content to exceed max_chars (Progressive Disclosure).
 
     Returns:
         (sanitized_content, list_of_violation_descriptions)
@@ -147,13 +149,16 @@ def sanitize_tool_result(
         )
         return sanitized, result.flags
 
-    # Soft violations: log only, keep content but truncate aggressively
-    if result.soft_violations > 0:
-        max_chars = min(max_chars, 1500)
+    # Progressive Disclosure: if bypassing limits, set a very high ceiling (128k)
+    effective_max = 128000 if bypass_limits else max_chars
+
+    # Soft violations: log only, keep content but truncate more aggressively if not bypassing
+    if result.soft_violations > 0 and not bypass_limits:
+        effective_max = min(effective_max, 1500)
 
     # Truncate
-    if len(content) > max_chars:
-        content = content[:max_chars] + _TRUNCATION_NOTICE.format(n=max_chars)
+    if len(content) > effective_max:
+        content = content[:effective_max] + _TRUNCATION_NOTICE.format(n=effective_max)
         result.truncated = True
 
     return content, result.flags
@@ -163,6 +168,7 @@ def sanitize_rag_doc(
     content: str,
     doc_id: Optional[str] = None,
     max_chars: int = _MAX_RAG_CONTENT_CHARS,
+    bypass_limits: bool = False,
 ) -> tuple[str, list[str]]:
     """
     Sanitize a RAG-retrieved document before injecting into context.
@@ -174,6 +180,7 @@ def sanitize_rag_doc(
         source=f"rag:{doc_id or 'unknown'}",
         max_chars=max_chars,
         hard_block=True,
+        bypass_limits=bypass_limits,
     )
 
 
