@@ -60,6 +60,23 @@ _TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telem
 _REPO_ROOT_PATH = Path(os.environ.get("REPO_ROOT", Path(__file__).resolve().parents[2]))
 _HYBRID_EVENTS = _REPO_ROOT_PATH / ".agents" / "telemetry" / "hybrid-events.jsonl"
 
+# Phase E — agent-run-events.jsonl path: prefer harness_paths SSOT; fall back to absolute path.
+# Never use a relative path — agent_executor.py may run from Nix store (EROFS).
+try:
+    _HP_PATH = str(Path(__file__).resolve().parent)
+    if _HP_PATH not in sys.path:
+        sys.path.insert(0, _HP_PATH)
+    from harness_paths import AGENT_RUN_EVENTS as _AGENT_RUN_EVENTS_PATH
+except ImportError:
+    _AGENT_RUN_EVENTS_PATH = Path(os.environ.get(  # type: ignore[assignment]
+        "AQ_AGENT_RUN_EVENTS_PATH",
+        "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl",
+    ))
+
+# Per-task monotonic sequence counter for agent-run-events.jsonl.
+# Keyed by task_id. Cleaned up on agent_complete/agent_failed to prevent unbounded growth.
+_agent_event_seq: dict[str, int] = {}
+
 _CODE_TASK_RE = re.compile(
     r"\b(implement|write|code|script|function|class|patch|refactor|debug|fix|test)\b",
     re.IGNORECASE,
@@ -371,6 +388,51 @@ class LocalAgentExecutor:
             f"allow_degraded_local={self.allow_degraded_local_execution}"
         )
 
+    # ── Phase E — agent-run-events.jsonl event emission ──────────────────────
+
+    async def _async_append_jsonl(self, path: Path, event: dict) -> None:
+        """Append one JSON line to path. Never raises — fire-and-forget."""
+        try:
+            try:
+                import aiofiles  # type: ignore[import]
+                async with aiofiles.open(path, "a", encoding="utf-8") as _f:
+                    await _f.write(json.dumps(event) + "\n")
+            except ImportError:
+                # aiofiles not available: fall back to asyncio.to_thread
+                def _sync_write() -> None:
+                    with path.open("a", encoding="utf-8") as _f:
+                        _f.write(json.dumps(event) + "\n")
+                await asyncio.to_thread(_sync_write)
+        except Exception:
+            pass  # fire-and-forget: never propagate
+
+    async def _emit_agent_event(
+        self,
+        task_id: str,
+        event_type: str,
+        payload: dict,
+        _watchdog_last_activity: "list[float] | None" = None,
+    ) -> None:
+        """Emit a structured event to agent-run-events.jsonl. Fire-and-forget."""
+        path = Path(os.environ.get("AQ_AGENT_RUN_EVENTS_PATH", str(_AGENT_RUN_EVENTS_PATH)))
+        seq = _agent_event_seq.get(task_id, 0) + 1
+        _agent_event_seq[task_id] = seq
+        if _watchdog_last_activity is not None:
+            _watchdog_last_activity[0] = time.time()
+        event = {
+            "task_id": task_id,
+            "seq": seq,
+            "event_type": event_type,
+            "ts": datetime.utcnow().isoformat() + "Z",
+            **payload,
+        }
+        asyncio.create_task(self._async_append_jsonl(path, event))
+
+    async def _emit_terminal_agent_event(self, task: Task, event_type: str, payload: dict) -> None:
+        """Emit a terminal event and release per-task sequence state."""
+        await self._emit_agent_event(task.id, event_type, payload)
+        _agent_event_seq.pop(task.id, None)
+
     def route_task(self, task: Task) -> Tuple[bool, str]:
         """
         Route task to local or remote agent.
@@ -477,6 +539,14 @@ class LocalAgentExecutor:
                         task.status = TaskStatus.FAILED
                         task.error = f"{route_reason}; remote fallback unavailable"
                         task.execution_time_ms = (time.time() - start_time) * 1000
+                        await self._emit_terminal_agent_event(
+                            task,
+                            "agent_failed",
+                            {
+                                "error": task.error,
+                                "run_attempt": len(task.tool_calls_made),
+                            },
+                        )
                         self.performance[agent_type].update(task)
                         return task
                 else:
@@ -489,6 +559,14 @@ class LocalAgentExecutor:
                 task.status = TaskStatus.FAILED
                 task.error = f"{route_reason}; remote fallback disabled"
                 task.execution_time_ms = (time.time() - start_time) * 1000
+                await self._emit_terminal_agent_event(
+                    task,
+                    "agent_failed",
+                    {
+                        "error": task.error,
+                        "run_attempt": len(task.tool_calls_made),
+                    },
+                )
                 self.performance[agent_type].update(task)
                 return task
 
@@ -553,6 +631,14 @@ class LocalAgentExecutor:
                 f"Task {task.id} completed: {task.execution_time_ms:.1f}ms, "
                 f"{len(task.tool_calls_made)} tool calls"
             )
+            await self._emit_terminal_agent_event(
+                task,
+                "agent_complete",
+                {
+                    "result_preview": str(task.result)[:200] if task.result is not None else "",
+                    "run_attempt": len(task.tool_calls_made),
+                },
+            )
 
         except Exception as e:
             task.error = str(e)
@@ -567,6 +653,14 @@ class LocalAgentExecutor:
                 return await self._fallback_to_remote(task)
             if self.enable_fallback and task.error:
                 task.error = f"{task.error}; remote fallback unavailable"
+            await self._emit_terminal_agent_event(
+                task,
+                "agent_failed",
+                {
+                    "error": task.error or str(e),
+                    "run_attempt": len(task.tool_calls_made),
+                },
+            )
 
         # Update performance tracking
         self.performance[agent_type].update(task)
@@ -621,6 +715,35 @@ class LocalAgentExecutor:
         tool_call_count = 0
         total_tokens = 0
         _loop_start = time.time()
+
+        # Phase E — stall watchdog: fire advisory event if no activity for STALL_TIMEOUT seconds.
+        # STALL_TIMEOUT_OVERRIDE env var enables short timeouts for CI testing (e.g. 5s).
+        # Watchdog is advisory only — never aborts the loop.
+        STALL_TIMEOUT = int(os.environ.get("STALL_TIMEOUT_OVERRIDE", "300"))
+        _watchdog_last_activity: list[float] = [time.time()]
+        _loop = asyncio.get_running_loop()
+        _watchdog_handle: asyncio.TimerHandle
+
+        def _cancel_watchdog() -> None:
+            if not _watchdog_handle.cancelled():
+                _watchdog_handle.cancel()
+
+        def _fire_stall() -> None:
+            if task.status != TaskStatus.RUNNING:
+                _cancel_watchdog()
+                return
+            elapsed = time.time() - _watchdog_last_activity[0]
+            if elapsed >= STALL_TIMEOUT - 1:
+                asyncio.create_task(self._emit_agent_event(
+                    task.id, "agent_stall",
+                    {"elapsed_s": round(elapsed, 1), "advisory": True},
+                    _watchdog_last_activity,
+                ))
+            # Reschedule for the next interval
+            nonlocal _watchdog_handle
+            _watchdog_handle = _loop.call_later(STALL_TIMEOUT, _fire_stall)
+
+        _watchdog_handle = _loop.call_later(STALL_TIMEOUT, _fire_stall)
 
         # Stagnation guard: track (tool_name, result_prefix) for recent calls.
         # Thresholds: 3 for read_file (pure observation, no state change expected after 3
@@ -726,6 +849,13 @@ class LocalAgentExecutor:
                     pass
 
         while tool_call_count < max_tool_calls:
+            # Phase E — agent_step_start: emitted at the top of every iteration before the LLM call.
+            await self._emit_agent_event(
+                task.id, "agent_step_start",
+                {"tool_call_count": tool_call_count},
+                _watchdog_last_activity,
+            )
+
             # Context guard — Pinned + Sliding strategy:
             # Qwen3-35B SWA forces full re-prefill on every call (no KV cache reuse
             # across turns). At 10 tok/s prefill on Renoir APU, 7k tokens = ~12 min/call.
@@ -805,8 +935,31 @@ class LocalAgentExecutor:
                     })
                     prose, syn_tokens = await self._call_llama(messages, role=role, max_tokens=256)
                     total_tokens += syn_tokens
+                    _cancel_watchdog()
                     return prose.strip() if prose.strip() else response, total_tokens
+                # Phase E — agent_synthesis_start: no tool call in response after ≥1 tool calls.
+                if tool_call_count > 0:
+                    await self._emit_agent_event(
+                        task.id, "agent_synthesis_start",
+                        {"tool_call_count": tool_call_count},
+                        _watchdog_last_activity,
+                    )
+                _cancel_watchdog()
                 return response, total_tokens
+
+            # Phase E — agent_tool_intent: emitted after parsing, before dispatch.
+            await self._emit_agent_event(
+                task.id, "agent_tool_intent",
+                {
+                    "tool_name": tool_call.tool_name,
+                    "tool_args_preview": json.dumps(
+                        tool_call.arguments,
+                        sort_keys=True,
+                        default=str,
+                    )[:200],
+                },
+                _watchdog_last_activity,
+            )
 
             # Execute tool call
             tool_call.model_id = f"local-{agent_type.value}"
@@ -815,6 +968,16 @@ class LocalAgentExecutor:
             result = await self.tool_registry.execute_tool_call(tool_call)
             task.tool_calls_made.append(result)
             tool_call_count += 1
+
+            # Phase E — agent_tool_result: emitted after dispatch returns.
+            await self._emit_agent_event(
+                task.id, "agent_tool_result",
+                {
+                    "tool_name": result.tool_name,
+                    "result_preview": str(result.result)[:200] if result.result is not None else "",
+                },
+                _watchdog_last_activity,
+            )
 
             # Format result for model, then sanitize for prompt-injection patterns.
             # context_sanitizer scrubs IGNORE/SYSTEM/OVERRIDE patterns from tool output
@@ -861,6 +1024,7 @@ class LocalAgentExecutor:
                     "stagnation: tool=%r threshold=%d — aborting loop at call %d",
                     result.tool_name, threshold, tool_call_count,
                 )
+                _cancel_watchdog()
                 return stagnation_msg, total_tokens
 
             # File-not-found stagnation: if the same path keeps returning an error
@@ -879,6 +1043,7 @@ class LocalAgentExecutor:
                             "file-not-found stagnation: path=%r failed %d times — aborting at call %d",
                             _fp, _FAILED_READ_LIMIT, tool_call_count,
                         )
+                        _cancel_watchdog()
                         return stagnation_msg, total_tokens
 
             # Exploration stagnation: count reads vs edits/writes.
@@ -907,6 +1072,7 @@ class LocalAgentExecutor:
                     "exploration stagnation: %d reads without edit — aborting at call %d",
                     _reads_without_edit, tool_call_count,
                 )
+                _cancel_watchdog()
                 return stagnation_msg, total_tokens
 
             # Extract the clean JSON from the response so the assistant turn
@@ -989,6 +1155,7 @@ class LocalAgentExecutor:
                 _validation_passes_without_commit = 0
 
         # Max tool calls reached, return current state
+        _cancel_watchdog()
         logger.warning(f"Task {task.id} reached max tool calls ({max_tool_calls})")
         return f"Task incomplete: reached max tool calls ({max_tool_calls})", total_tokens
 
