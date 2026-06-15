@@ -9,7 +9,9 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# Phase 177: honor REPO_ROOT env var when set (coordinator calls Nix-store copy;
+# without this, SCRIPT_DIR resolves to the Nix store and git ops fail silently).
+REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 
 HARNESS_PY="${REPO_ROOT}/scripts/ai/lib/harness_runner.py"
 

@@ -814,6 +814,14 @@ class LocalAgentExecutor:
         _failed_reads: dict = {}  # path → failure count
         _FAILED_READ_LIMIT = 3
 
+        # Per-tool failure stagnation: tracks how many times any single tool has returned
+        # success=False (or a non-zero exit_code). If the same tool keeps failing regardless
+        # of intervening calls (e.g. harness_health → store_memory → harness_health loop),
+        # the observation stagnation guard won't fire because action calls reset the counter.
+        # This guard catches persistent infra failures the model cannot fix.
+        _tool_failure_counts: dict = {}  # tool_name → failure count
+        _TOOL_FAILURE_HARD_LIMIT = 5
+
         # Exploration stagnation: tracks reads since the last edit/write tool call.
         # Models in self-improvement mode should read 1-3 files then act. More than
         # 8 reads without any edit is over-exploration; nudge the model. 12 = hard abort.
@@ -1135,6 +1143,29 @@ class LocalAgentExecutor:
                         )
                         _cancel_watchdog()
                         return stagnation_msg, total_tokens
+
+            # Per-tool failure stagnation: track tools that persistently return errors.
+            # Catches loops like harness_health(fail)→store_memory(ok)→harness_health(fail)
+            # that reset the observation counter but never make forward progress.
+            _is_tool_failure = (
+                not result.result.get("success", True)
+                or result.result.get("exit_code", 0) not in (None, 0)
+                or result.result.get("error") is not None
+            )
+            if _is_tool_failure:
+                _tool_failure_counts[result.tool_name] = _tool_failure_counts.get(result.tool_name, 0) + 1
+                if _tool_failure_counts[result.tool_name] >= _TOOL_FAILURE_HARD_LIMIT:
+                    stagnation_msg = (
+                        f"Tool-failure stagnation: '{result.tool_name}' has failed "
+                        f"{_tool_failure_counts[result.tool_name]} times — persistent infra error, "
+                        f"not fixable by the agent. Aborting at call {tool_call_count}."
+                    )
+                    logger.warning(
+                        "tool-failure stagnation: tool=%r failed %d times — aborting at call %d",
+                        result.tool_name, _tool_failure_counts[result.tool_name], tool_call_count,
+                    )
+                    _cancel_watchdog()
+                    return stagnation_msg, total_tokens
 
             # Exploration stagnation: count reads vs edits/writes.
             # Reset counter on any write action; abort if model reads too many files
