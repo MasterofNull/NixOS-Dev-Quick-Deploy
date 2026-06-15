@@ -2162,6 +2162,14 @@ async def run_http_mode(port: int) -> None:
             # Elevate memory_recall_priority based on intent routing map
             if _intent_result.get("memory_recall") and not memory_recall_priority:
                 memory_recall_priority = True
+            # Phase 174: always recall for local interactive profiles.
+            # Qwen3 runs locally without long-horizon context — prior-work memory
+            # compensates for the model's lack of session state across turns.
+            _intent_profile = _intent_result.get("profile", "local")
+            if not memory_recall_priority and _intent_profile in {
+                "local", "local-tool-calling", "local-agent"
+            }:
+                memory_recall_priority = True
 
             # Phase 54.3 — RAG augmentation (default ON, 500ms cap)
             _rag = rag_augmentor.get_augmentor()

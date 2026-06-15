@@ -574,6 +574,23 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             "ts": time.time(),
         }))
 
+        # Phase 174: inject harness hints into fast-path turns.
+        # Fast-path bypasses coordinator semantic tooling entirely. This lightweight
+        # /hints call (2s timeout, returns empty on failure) enriches the system
+        # prompt with AIDB-derived patterns before the model sees the turn.
+        hints = await self._fetch_fast_path_hints(prompt)
+        if hints:
+            fp_messages = list(messages)
+            if fp_messages and fp_messages[0].get("role") == "system":
+                fp_messages[0] = {
+                    "role": "system",
+                    "content": fp_messages[0]["content"] + f"\n\n[HARNESS HINTS]\n{hints}",
+                }
+            else:
+                fp_messages.insert(0, {"role": "system", "content": f"[HARNESS HINTS]\n{hints}"})
+        else:
+            fp_messages = messages
+
         target_url = f"{self.switchboard_url}/v1/chat/completions"
         headers = {
             "X-Agent-Source": "aq-chat",
@@ -581,7 +598,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             "X-Agent-Boundary": "human_gate",
             "X-AI-Profile": wire_profile,
         }
-        payload = self._build_fast_path_payload(messages)
+        payload = self._build_fast_path_payload(fp_messages)
 
         try:
             full_response = ""
@@ -662,6 +679,39 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         # It records routing decisions so training_ingest can correlate profile → quality.
         # Intentionally lightweight — no I/O on every turn, only when explicitly rating.
         pass  # placeholder: called from _stream_fast_path for future telemetry hooks
+
+    async def _fetch_fast_path_hints(self, query: str) -> str:
+        """Fetch top-2 harness hints for fast-path turns via coordinator /hints endpoint.
+
+        Phase 174: Fast-path bypasses coordinator semantic tooling entirely, so the
+        model never receives AIDB-derived hints. This adds a lightweight /hints call
+        (~100-200ms) to enrich the system prompt before forwarding to switchboard.
+        Returns empty string on any failure — never blocks the turn.
+        """
+        try:
+            import urllib.parse
+            q = urllib.parse.quote(query[:200])
+            async with httpx.AsyncClient(timeout=2.0) as c:
+                api_key_path = "/run/secrets/hybrid_coordinator_api_key"
+                api_key = ""
+                try:
+                    api_key = Path(api_key_path).read_text().strip()
+                except Exception:
+                    pass
+                hdrs = {"X-API-Key": api_key} if api_key else {}
+                r = await c.get(f"{self.hybrid_url}/hints?q={q}&limit=2", headers=hdrs)
+                if r.status_code != 200:
+                    return ""
+                data = r.json()
+                hints = data.get("hints", []) if isinstance(data, dict) else []
+                snippets = [
+                    str(h.get("snippet") or h.get("text") or "").strip()
+                    for h in hints
+                    if isinstance(h, dict)
+                ]
+                return "\n".join(s for s in snippets if s)
+        except Exception:
+            return ""
 
     async def _emit_local_inference_event(
         self,

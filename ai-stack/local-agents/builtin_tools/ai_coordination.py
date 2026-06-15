@@ -429,11 +429,14 @@ async def recommend_agent_for_task_handler(query: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
-async def query_aidb_handler(query: str, limit: int = 5) -> Dict:
-    """Proxy for hybrid_search (query_aidb)"""
+async def query_aidb_handler(query: str, collection: str = "error-solutions", limit: int = 5) -> Dict:
+    """Search AIDB vector store. Default collection 'error-solutions' has 63+ seeded harness patterns."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(f"{HYBRID_COORDINATOR_URL}/search/tree", json={"query": query, "limit": limit})
+            resp = await client.post(
+                f"{AIDB_URL}/vector/search",
+                json={"query": query, "collection": collection, "limit": limit},
+            )
             return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
     except Exception as e:
         return {"success": False, "error": str(e)}
