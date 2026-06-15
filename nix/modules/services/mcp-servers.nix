@@ -642,8 +642,10 @@ in {
           "d ${dataDir}/hybrid/checkpoints 0750 ${hybridUser} ${aiGroup} -"
           "Z ${dataDir}/hybrid/checkpoints 0750 ${hybridUser} ${aiGroup} -"
           "z ${dataDir}/hybrid/fine-tuning 0750 ${hybridUser} ${aiGroup} -"
-          "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
-          "z ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup} - -"
+          # Phase 174 — hybrid-events.jsonl written by both ai-hybrid (coordinator) and hyperd (aq-chat
+          # fast-path training emission). 0640→0660 so group (ai-stack, which includes hyperd) can append.
+          "f ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0660 ${hybridUser} ${aiGroup} - -"
+          "z ${dataDir}/hybrid/telemetry/hybrid-events.jsonl 0660 ${hybridUser} ${aiGroup} - -"
           "f ${dataDir}/hybrid/telemetry/continuous_learning_stats.json 0640 ${hybridUser} ${aiGroup} - -"
           # Phase 95.1 — delegation-feedback.jsonl was root:root; coordinator (ai-hybrid) needs rw.
           # f creates if absent; z relabels if already present (root:root from prior session).
