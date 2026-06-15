@@ -429,15 +429,67 @@ async def recommend_agent_for_task_handler(query: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def _query_qdrant_direct(query: str, collection: str, limit: int) -> Dict:
+    """Embed query via llama-embed (8081) then search Qdrant directly (6333).
+    Phase 175 fallback: AIDB validator rejects collection names not in its allowlist.
+    Normalises response to the same shape as AIDB /vector/search."""
+    embed_url = os.environ.get("AI_STACK_EMBED_ENDPOINT", "http://127.0.0.1:8081")
+    qdrant_url = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            er = await client.post(f"{embed_url}/v1/embeddings",
+                                   json={"model": "bge-m3", "input": query})
+            if er.status_code != 200:
+                return {"success": False, "error": f"embed failed {er.status_code}: {er.text[:200]}"}
+            vector = er.json()["data"][0]["embedding"]
+            sr = await client.post(
+                f"{qdrant_url}/collections/{collection}/points/search",
+                json={"vector": vector, "limit": limit, "with_payload": True},
+            )
+            if sr.status_code != 200:
+                return {"success": False, "error": f"qdrant {sr.status_code}: {sr.text[:200]}"}
+            hits = sr.json().get("result", [])
+            return {
+                "success": True,
+                "results": [
+                    {
+                        "title": (h.get("payload") or {}).get("error_type")
+                                 or (h.get("payload") or {}).get("title")
+                                 or (h.get("payload") or {}).get("skill_name", ""),
+                        "content": (h.get("payload") or {}).get("solution")
+                                   or (h.get("payload") or {}).get("description", ""),
+                        "score": h.get("score", 0.0),
+                        "source": f"qdrant:{collection}",
+                        "payload": h.get("payload", {}),
+                    }
+                    for h in hits
+                ],
+                "count": len(hits),
+                "fallback": "qdrant-direct",
+            }
+    except Exception as e:
+        return {"success": False, "error": f"qdrant-direct: {e}"}
+
+
 async def query_aidb_handler(query: str, collection: str = "error-solutions", limit: int = 5) -> Dict:
-    """Search AIDB vector store. Default collection 'error-solutions' has 63+ seeded harness patterns."""
+    """Search AIDB vector store. Default collection 'error-solutions' has 63+ seeded harness patterns.
+
+    AIDB /vector/search is tried first. If AIDB rejects the collection name (422 validation
+    error — its allowlist doesn't include real Qdrant collections yet; fix in query_validator.py
+    pending rebuild), falls back to _query_qdrant_direct: embed via llama-embed + search Qdrant
+    directly. Result shape is identical either way.
+    """
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 f"{AIDB_URL}/vector/search",
                 json={"query": query, "collection": collection, "limit": limit},
             )
-            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
+            if resp.status_code == 200:
+                return resp.json()
+            if resp.status_code in (400, 422) and "Unknown collection" in resp.text:
+                return await _query_qdrant_direct(query, collection, limit)
+            return {"success": False, "error": resp.text}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
