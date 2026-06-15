@@ -921,6 +921,24 @@ ERROR_SOLUTIONS = [
         "files": ["ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py"],
         "related_patterns": ["query_aidb_wrong_endpoint"],
     },
+    {
+        "error_type": "aidb_qdrant_two_store_architecture",
+        "error_message": "query_aidb calls AIDB /vector/search but gets MCP registry entries instead of harness fix patterns — wrong vector store",
+        "context": "AIDB (port 8002, pgvector) and Qdrant (port 6333) are two separate vector stores. seed-rag-knowledge.py seeds harness patterns (error-solutions, skills-patterns, best-practices, etc.) directly into Qdrant. AIDB pgvector holds document chunks and MCP registry entries. Routing query_aidb to AIDB /vector/search returns wrong content even when the collection name is accepted. Additionally AIDB query_validator.py ALLOWED_COLLECTIONS originally listed only stale names (nixos_docs, solved_issues, etc.) that don't exist in Qdrant, so all 14 real harness collections returned HTTP 400. ralph-wiggum/orchestrator.py also queried 'solved_issues' (a PostgreSQL table, not a Qdrant collection).",
+        "solution": "Phase 175B: add _QDRANT_COLLECTIONS frozenset listing all 14 harness-seeded collection names. In query_aidb_handler, route ALL harness collections directly to _query_qdrant_direct() as the PRIMARY path — embed via llama-embed (port 8081) then search Qdrant (port 6333). AIDB pgvector is bypassed entirely for these collections. Also expand AIDB query_validator.py ALLOWED_COLLECTIONS (rebuild required). Fix ralph-wiggum to use 'error-solutions' not 'solved_issues' (rebuild required). The two-store split is permanent: Qdrant = harness patterns, AIDB pgvector = document chunks.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.99,
+        "files": [
+            "ai-stack/local-agents/builtin_tools/ai_coordination.py",
+            "ai-stack/mcp-servers/aidb/query_validator.py",
+            "ai-stack/mcp-servers/ralph-wiggum/orchestrator.py",
+        ],
+        "related_patterns": ["query_aidb_wrong_endpoint", "aidb_last_accessed_unknown_parameter"],
+    },
 ]
 
 SKILLS_PATTERNS = [
