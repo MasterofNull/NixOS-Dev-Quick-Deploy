@@ -15,14 +15,33 @@ from datetime import datetime, timedelta
 import re
 
 
-# Whitelist of allowed collections
+# Whitelist of allowed collections.
+# Phase 175: expanded to match actual Qdrant collections (previous list had stale names
+# that don't exist in Qdrant — every AIDB vector search was silently failing).
+# Legacy names retained for backward compat; they will fail at Qdrant level if queried.
 ALLOWED_COLLECTIONS: Set[str] = {
+    # Real Qdrant collections (hyphenated, as created by seed scripts and coordinator)
+    'error-solutions',
+    'skills-patterns',
+    'best-practices',
+    'codebase-context',
+    'knowledge',
+    'interaction-history',
+    'agent-memory-episodic',
+    'agent-memory-semantic',
+    'agent-memory-procedural',
+    'learning-feedback',
+    'trading-patterns',
+    'osint-intelligence',
+    'mlops-patterns',
+    'qa-patterns',
+    # Legacy names (stale — not in Qdrant, kept for backward compat)
     'nixos_docs',
     'solved_issues',
     'skill_embeddings',
     'telemetry_patterns',
     'system_registry',
-    'tool_schemas'
+    'tool_schemas',
 }
 
 # Security patterns to reject

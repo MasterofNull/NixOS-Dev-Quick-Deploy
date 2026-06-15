@@ -12,6 +12,12 @@
 - `http_server_impl.py` memory recall: coordinator now elevates `memory_recall_priority=True` for `local`, `local-tool-calling`, and `local-agent` intent profiles unconditionally — prior-work memory always injected for local interactive sessions.
 - Agent timeout hardening (flush-agent autonomous changes): `AGENT_TIMEOUT` default 240→600s in `local_agent_runtime.py`; `LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS` 2→10s; `LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS` 60→600s; explicit `AGENT_TIMEOUT=600` and `AGENT_MAX_TOKENS=1024` env vars added to `ai-stack.nix` (requires nixos-rebuild).
 
+### Phase 175 changes (2026-06-14) — AIDB collection allowlist mismatch
+System flush agent discovered that AIDB's `ALLOWED_COLLECTIONS` (query_validator.py) contained 6 stale names (`nixos_docs`, `solved_issues`, `skill_embeddings`, etc.) that don't exist in Qdrant. The 14 real Qdrant collections (`error-solutions`, `skills-patterns`, `best-practices`, etc.) were all blocked — every AIDB vector search silently returned a 400 validation error. Three fixes:
+- `ai_coordination.py`: `query_aidb_handler` now detects AIDB 400 "Unknown collection" errors and falls back to embed-via-llama-embed (8081) → search-Qdrant-direct (6333). Live immediately, no rebuild needed.
+- `aidb/query_validator.py`: `ALLOWED_COLLECTIONS` updated to include all 14 real Qdrant collection names (requires nixos-rebuild for AIDB service).
+- `ralph-wiggum/orchestrator.py`: AIDB context fetch changed from `collection="solved_issues"` (PG table, not in Qdrant) to `collection="error-solutions"` (requires nixos-rebuild for ralph-wiggum service).
+
 ---
 
 ## Table of Contents

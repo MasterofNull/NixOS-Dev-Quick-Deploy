@@ -92,7 +92,7 @@ class RalphOrchestrator:
             aidb_context = {}
             try:
                 search_results = await self.aidb.vector_search(
-                    query=prompt, collection="solved_issues", limit=3
+                    query=prompt, collection="error-solutions", limit=3
                 )
                 aidb_context = {"search_results": search_results}
             except Exception as e:
