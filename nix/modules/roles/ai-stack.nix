@@ -1726,8 +1726,11 @@ in {
         AI_STACK_INFERENCE_ENDPOINT = "http://127.0.0.1:${toString llama.port}/v1";
         LOCAL_AGENT_OFFLINE_MODE = "false";
         LOCAL_AGENT_ALLOW_DEGRADED_LOCAL = "true";
-        LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS = "2";
-        LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS = "60";
+        LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS = "10";
+        LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS = "600";
+        AGENT_TIMEOUT = "600";
+        # Task profile selects thinking mode + token budget. 
+        AGENT_MAX_TOKENS = "1024";
 
         # Tool paths (backwards compatible)
         AQ_HINTS_BIN = "${cfg.mcpServers.repoPath}/scripts/ai/aq-hints";
