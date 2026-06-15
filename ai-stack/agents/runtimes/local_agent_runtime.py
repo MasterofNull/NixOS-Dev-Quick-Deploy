@@ -28,6 +28,7 @@ Environment variables (all injected by _spawn_local_agent):
 
 import asyncio
 import json
+import logging
 import os
 import pathlib
 import shutil
@@ -35,6 +36,8 @@ import sys
 import time
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # shared/ lives at ai-stack/mcp-servers/shared/ — resolve from this file's location.
 # ai-stack/agents/runtimes/ -> parents[2] = ai-stack/
