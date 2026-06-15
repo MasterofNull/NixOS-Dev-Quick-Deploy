@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -292,21 +293,51 @@ def _load_agent_evaluations_registry_sync() -> Dict[str, Any]:
     return _normalize_agent_evaluations_registry(data)
 
 
+# ---------------------------------------------------------------------------
+# Caching layer for registry lookups (Phase 2026.06 optimization)
+# ---------------------------------------------------------------------------
+
+_LESSONS_CACHE: Optional[Dict[str, Any]] = None
+_LESSONS_CACHE_TS: float = 0.0
+_EVALS_CACHE: Optional[Dict[str, Any]] = None
+_EVALS_CACHE_TS: float = 0.0
+_CACHE_TTL_S = 60.0
+
+
 async def _load_agent_evaluations_registry() -> Dict[str, Any]:
+    global _EVALS_CACHE, _EVALS_CACHE_TS
+    now = time.time()
+    if _EVALS_CACHE is not None and (now - _EVALS_CACHE_TS) < _CACHE_TTL_S:
+        return _EVALS_CACHE
+
     path = _agent_evaluations_registry_path()
     if not path.exists():
         return _default_agent_evaluations_registry()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # Phase 2026.06: Move I/O to thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        content = await loop.run_in_executor(None, path.read_text, "utf-8")
+        data = json.loads(content)
     except (OSError, json.JSONDecodeError):
         return _default_agent_evaluations_registry()
-    return _normalize_agent_evaluations_registry(data)
+    
+    _EVALS_CACHE = _normalize_agent_evaluations_registry(data)
+    _EVALS_CACHE_TS = now
+    return _EVALS_CACHE
 
 
 async def _save_agent_evaluations_registry(data: Dict[str, Any]) -> None:
+    global _EVALS_CACHE
     path = _agent_evaluations_registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_normalize_agent_evaluations_registry(data), indent=2) + "\n", encoding="utf-8")
+    
+    normalized = _normalize_agent_evaluations_registry(data)
+    _EVALS_CACHE = normalized
+    
+    # Phase 2026.06: Async write via executor
+    content = json.dumps(normalized, indent=2) + "\n"
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: path.write_text(content, encoding="utf-8"))
 
 
 def _record_agent_review_event(
@@ -551,21 +582,40 @@ def _normalize_task_class(value: Any, session: Optional[Dict[str, Any]]) -> str:
         if blueprint_id:
             return blueprint_id
     return "general"
+
+
 async def _load_agent_lessons_registry() -> Dict[str, Any]:
+    global _LESSONS_CACHE, _LESSONS_CACHE_TS
+    now = time.time()
+    if _LESSONS_CACHE is not None and (now - _LESSONS_CACHE_TS) < _CACHE_TTL_S:
+        return _LESSONS_CACHE
+
     path = _agent_lessons_registry_path()
     if not path.exists():
         return _default_agent_lessons_registry()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        loop = asyncio.get_event_loop()
+        content = await loop.run_in_executor(None, path.read_text, "utf-8")
+        data = json.loads(content)
     except (OSError, json.JSONDecodeError):
         return _default_agent_lessons_registry()
-    return _normalize_agent_lessons_registry(data)
+        
+    _LESSONS_CACHE = _normalize_agent_lessons_registry(data)
+    _LESSONS_CACHE_TS = now
+    return _LESSONS_CACHE
 
 
 async def _save_agent_lessons_registry(data: Dict[str, Any]) -> None:
+    global _LESSONS_CACHE
     path = _agent_lessons_registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_normalize_agent_lessons_registry(data), indent=2) + "\n", encoding="utf-8")
+    
+    normalized = _normalize_agent_lessons_registry(data)
+    _LESSONS_CACHE = normalized
+    
+    content = json.dumps(normalized, indent=2) + "\n"
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: path.write_text(content, encoding="utf-8"))
 
 
 def _normalize_string_list(value: Any) -> List[str]:
@@ -685,5 +735,3 @@ def _coerce_intent_contract(query: str, incoming: Any) -> Dict[str, Any]:
     if anti_goals:
         base["anti_goals"] = anti_goals
     return base
-
-

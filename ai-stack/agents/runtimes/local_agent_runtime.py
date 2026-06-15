@@ -869,23 +869,42 @@ async def _post_completion_with_fallback(
 ) -> httpx.Response:
     inference_url = f"{SWITCHBOARD_URL}/v1/chat/completions"
     start_time = time.perf_counter()
-    try:
-        resp = await client.post(inference_url, json=payload, headers=headers)
-        state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
-        return resp
-    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
-        state["fallback_backend"] = "llama.cpp"
-        state["fallback_reason"] = "switchboard_timeout_or_unreachable"
-        _write_state(state)
-        start_time = time.perf_counter()
-        resp = await client.post(
-            f"{LLAMA_CPP_URL}/v1/chat/completions",
-            json=_payload_for_direct_llama(payload),
-            headers={},
-            timeout=AGENT_TIMEOUT
-        )
-        state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
-        return resp
+    
+    # Phase 2026.06: Increased handshake resilience for edge AI
+    # Retry once for transient connection/read issues on slow cold-starts
+    for attempt in range(2):
+        try:
+            # Use a longer connect timeout for the initial handshake
+            resp = await client.post(
+                inference_url, 
+                json=payload, 
+                headers=headers,
+                timeout=httpx.Timeout(AGENT_TIMEOUT, connect=30.0)
+            )
+            state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
+            return resp
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
+            if attempt == 0:
+                logger.warning(f"Inference handshake attempt 1 failed ({exc}), retrying...")
+                await asyncio.sleep(2.0)
+                continue
+                
+            logger.info("Falling back to direct llama.cpp due to switchboard timeout/error")
+            state["fallback_backend"] = "llama.cpp"
+            state["fallback_reason"] = f"switchboard_error: {type(exc).__name__}"
+            _write_state(state)
+            start_time = time.perf_counter()
+            resp = await client.post(
+                f"{LLAMA_CPP_URL}/v1/chat/completions",
+                json=_payload_for_direct_llama(payload),
+                headers={},
+                timeout=httpx.Timeout(AGENT_TIMEOUT, connect=30.0)
+            )
+            state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
+            return resp
+    
+    # Should not reach here
+    raise RuntimeError("Inference delivery failed after all attempts")
 
 
 def _streaming_payload(messages: list[dict]) -> dict:
