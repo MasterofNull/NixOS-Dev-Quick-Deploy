@@ -52,10 +52,11 @@
                             # Qwen3.6-35B on this CPU needs up to 5 minutes for large prompts.
                             "--timeout"
                             "3600"
-                            # 27GB RAM: prefer one full-context slot over two 4k slots.
-                            # Must match SWB_LOCAL_CONCURRENCY in switchboard.nix.
+                            # 27GB RAM: one slot gets full 8192 ctx; SWB_LOCAL_CONCURRENCY=1.
+                            # Phase 176: was "2" — halved context to 4096 per slot, causing
+                            # agent context overflow on multi-tool tasks (4250 > 4096).
                             "--parallel"
-                            "2"
+                            "1"
                             "--batch-size"
                             "512"
                             "--ubatch-size"
