@@ -53,14 +53,16 @@ SKIP_DIRS = {
     ".git", "__pycache__", ".venv", "venv", "node_modules",
     ".agents/delegation/outputs", "result", ".direnv",
     "archive", ".agent/archive",
+    ".forks",   # forked repos — 45k+ files, not harness-authored
+    ".reports",  # generated reports
 }
 
 # Max file size to index (bytes)
 MAX_FILE_BYTES = 80_000
 
-# Chunk size (characters) — BGE-M3 context window ≈ 8192 tokens; 3000 chars ≈ safe
-CHUNK_SIZE = 3000
-CHUNK_OVERLAP = 300
+# Chunk size (characters) — embed server ubatch-size=512 tokens; dense code ~2.8 chars/tok → 1000 chars ≈ 350 tokens (safe headroom)
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 100
 
 # Batch size for embedding requests
 EMBED_BATCH = 8
