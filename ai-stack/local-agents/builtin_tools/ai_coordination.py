@@ -595,6 +595,78 @@ async def get_unified_stack_health_handler() -> Dict:
         return {"success": False, "error": str(e)}
 
 
+async def web_research_fetch_handler(
+    urls: list,
+    selectors: Optional[list] = None,
+    max_text_chars: Optional[int] = None,
+) -> Dict:
+    """Fetch and extract text from one or more URLs via the coordinator web research engine."""
+    try:
+        payload: Dict = {"urls": urls}
+        if selectors:
+            payload["selectors"] = selectors
+        if max_text_chars is not None:
+            payload["max_text_chars"] = max_text_chars
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/research/web/fetch",
+                json=payload,
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def delegate_to_aider_handler(
+    prompt: str,
+    files: Optional[list] = None,
+    workspace: Optional[str] = None,
+) -> Dict:
+    """Delegate a multi-file coding task to the aider coding assistant.
+    Aider applies the change, returns the diff. Best for targeted edits
+    requiring >4K tokens of context that exceed local model budget.
+    """
+    try:
+        aider_url = os.environ.get("AIDER_WRAPPER_URL", "http://127.0.0.1:8090")
+        aider_key_path = "/run/secrets/aider_wrapper_api_key"
+        aider_key = ""
+        if os.path.exists(aider_key_path):
+            with open(aider_key_path) as f:
+                aider_key = f.read().strip()
+        headers = {"Authorization": f"Bearer {aider_key}"} if aider_key else {}
+        payload: Dict = {"prompt": prompt}
+        if files:
+            payload["files"] = files
+        if workspace:
+            payload["workspace"] = workspace
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # submit task
+            resp = await client.post(f"{aider_url}/tasks", json=payload, headers=headers)
+            if resp.status_code not in (200, 201, 202):
+                return {"success": False, "error": f"aider submit HTTP {resp.status_code}: {resp.text[:200]}"}
+            task_data = resp.json()
+            task_id = task_data.get("task_id") or task_data.get("id")
+            if not task_id:
+                return {"success": False, "error": "aider returned no task_id"}
+            # poll for completion (max 270s)
+            import asyncio as _asyncio
+            for _ in range(54):
+                await _asyncio.sleep(5)
+                sr = await client.get(f"{aider_url}/tasks/{task_id}/status", headers=headers)
+                if sr.status_code == 200:
+                    status_data = sr.json()
+                    st = status_data.get("status", "")
+                    if st in ("completed", "done", "success"):
+                        return {"success": True, "task_id": task_id, "result": status_data}
+                    if st in ("failed", "error"):
+                        return {"success": False, "task_id": task_id, "error": status_data.get("error", "aider task failed")}
+            return {"success": False, "error": "aider task polling timed out (270s)"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def register_ai_coordination_tools(registry: ToolRegistry):
     """Register all AI coordination tools in the registry"""
 
@@ -900,4 +972,70 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=get_unified_stack_health_handler,
     ))
 
-    logger.info("Registered 15 AI coordination tools")
+    # web_research_fetch
+    registry.register(ToolDefinition(
+        name="web_research_fetch",
+        description=(
+            "Fetch and extract readable text from one or more URLs. "
+            "Handles robots.txt, redirect chains, and CSS selector extraction. "
+            "Use for live web research, documentation lookups, and scraping."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of URLs to fetch (max 5)",
+                },
+                "selectors": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional CSS selectors to extract specific page regions",
+                },
+                "max_text_chars": {
+                    "type": "integer",
+                    "description": "Max characters of extracted text per page (default 8000)",
+                },
+            },
+            "required": ["urls"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=web_research_fetch_handler,
+    ))
+
+    # delegate_to_aider
+    registry.register(ToolDefinition(
+        name="delegate_to_aider",
+        description=(
+            "Delegate a multi-file coding task to the aider AI coding assistant. "
+            "Aider applies the edit and returns the diff. "
+            "Use when a change requires reading >4K tokens of file context "
+            "that exceeds the local model budget."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Natural-language instruction for the code change",
+                },
+                "files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Relative file paths aider should read/edit",
+                },
+                "workspace": {
+                    "type": "string",
+                    "description": "Absolute path to workspace root (defaults to repo root)",
+                },
+            },
+            "required": ["prompt"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.SYSTEM_MODIFY,
+        handler=delegate_to_aider_handler,
+    ))
+
+    logger.info("Registered 17 AI coordination tools")

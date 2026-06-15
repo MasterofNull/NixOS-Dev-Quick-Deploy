@@ -112,6 +112,7 @@ LOOPBACK_AGENT_PREFIXES = (
     "/search/",            # Phase 162C: local agent query_aidb tool uses /search/tree
     "/operator/",         # Phase 164: Operator Intelligence Bridge endpoints
     "/control/prsi/",     # Phase 170: PRSI pending/orchestrate tools need loopback access
+    "/research/",          # Phase 178: web_research_fetch tool — agents fetch live URLs
 )
 
 
