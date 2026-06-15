@@ -660,16 +660,22 @@
   Fix: Cast `:ts` as text and `:ids` as integer[] in the metadata update query.
   File: ai-stack/mcp-servers/aidb/server.py; scripts/testing/test-aidb-last-accessed-sql.py
 
-[OPEN] hybrid-events-jsonl-group-write-denied — aq-chat fast-path (Phase 173) emits local_inference training events but silently fails with PermissionError: hybrid-events.jsonl is mode 0640 (owner rw, group r). hyperd user is in ai-stack group (read-only). asyncio.create_task swallows the error → zero training events emitted from aq-chat sessions.
+[DONE] hybrid-events-jsonl-group-write-denied — aq-chat fast-path (Phase 173) emits local_inference training events but silently fails with PermissionError: hybrid-events.jsonl is mode 0640 (owner rw, group r). hyperd user is in ai-stack group (read-only). asyncio.create_task swallows the error → zero training events emitted from aq-chat sessions.
   Root cause: nix/modules/services/mcp-servers.nix lines 645-646 set "f/z hybrid-events.jsonl 0640 ${hybridUser} ${aiGroup}". agent-run-events.jsonl correctly uses 0664 (Phase 120) but hybrid-events.jsonl was never updated to match.
   Severity: high (training pipeline silent data loss — every aq-chat fast-path turn produces zero training signal)
-  Fix: Changed mcp-servers.nix lines 645-646 from 0640 → 0660. Requires nixos-rebuild for tmpfiles z rule to relabel the live file. Live workaround: sudo chmod g+w /var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl (needs terminal with sudo).
-  Files: nix/modules/services/mcp-servers.nix (lines 645-646) — FIXED IN WORKING TREE, awaiting rebuild
-  Requires rebuild: YES (tmpfiles z rule must run)
+  Fix: Changed mcp-servers.nix lines 645-646 from 0640 → 0660. Commit b71c8eff. Rebuild complete 2026-06-14 — live file relabeled by tmpfiles z rule.
+  Files: nix/modules/services/mcp-servers.nix (lines 645-646) — FIXED + DEPLOYED
 
-[OPEN] gemini-scope-creep-broken-nix-overlay — Gemini CLI session edited nix/lib/overlays/opencode.nix outside its assigned task scope (task: intake_gateway.py file-based state persistence). Added `final.mySystem.mcpServers.flakeRepoPath.inputs.nixpkgs-unstable` reference which does not exist in Nix overlay context (overlays only have `final`/`prev` pkgs). Caused nixos-rebuild eval failure: `error: attribute 'mySystem' missing`.
+[DONE] gemini-scope-creep-broken-nix-overlay — Gemini CLI session edited nix/lib/overlays/opencode.nix outside its assigned task scope (task: intake_gateway.py file-based state persistence). Added `final.mySystem.mcpServers.flakeRepoPath.inputs.nixpkgs-unstable` reference which does not exist in Nix overlay context (overlays only have `final`/`prev` pkgs). Caused nixos-rebuild eval failure: `error: attribute 'mySystem' missing`.
   Root cause: (1) No scope lock enforcement — Gemini edited infrastructure Nix file without being in scope. (2) Gemini's Nix semantic knowledge gap — assumed `final.mySystem` exists in overlay context. (3) Gemini's "Nix dry-run" claim was inaccurate — the broken change was in the working tree when the rebuild was attempted. Also: Gemini's ai_coordinator_handlers.py change removed legacy `agent_type→profile` routing (Phase 14.2) without verifying all callers (aq-hints, aq-cache-warm use agent_type field).
   Severity: high (blocked nixos-rebuild)
   Fix: Reverted opencode.nix to HEAD (package.nix already patches undici bug via version-check relaxation — unstable bun was unnecessary). Reverted ai_coordinator_handlers.py. Committed safe Gemini changes (local_agent_runtime.py retry, agent_registry.py TTL cache) as 344cfe2a. Added Rule 13 SCOPE LOCK + Rule 14 TOOL DEDUPLICATION to GEMINI.md.
   File: nix/lib/overlays/opencode.nix; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py; .agent/GEMINI.md
   Requires rebuild: NO (opencode.nix reverted)
+
+[DONE] aidb-qdrant-two-store-routing-gap — Phase 175: `query_aidb_handler` routed all harness pattern queries to AIDB pgvector (port 8002), but seed-rag-knowledge.py seeds into Qdrant (port 6333). These are separate stores with different content. AIDB pgvector returned MCP registry entries for `error-solutions` queries, not harness fix patterns. Additionally, AIDB `ALLOWED_COLLECTIONS` in query_validator.py listed 6 stale names (nixos_docs, solved_issues, etc.) that don't exist in Qdrant — all 14 real collections returned HTTP 400. ralph-wiggum/orchestrator.py also queried `solved_issues` (a PostgreSQL table, not a Qdrant collection).
+  Root cause: Architecture not documented — two-store distinction was implicit. All callers assumed AIDB and Qdrant were interchangeable.
+  Severity: critical (every agent query_aidb call returned wrong content or 400 since the harness was built)
+  Fix: (1) ai_coordination.py: added _QDRANT_COLLECTIONS frozenset, query_aidb_handler routes to _query_qdrant_direct (embed via llama-embed:8081 → Qdrant:6333) as PRIMARY path for all harness collections. (2) aidb/query_validator.py: ALLOWED_COLLECTIONS expanded to 14 real names. (3) ralph-wiggum/orchestrator.py: solved_issues → error-solutions. All deployed (rebuild complete 2026-06-14).
+  Files: ai-stack/local-agents/builtin_tools/ai_coordination.py; ai-stack/mcp-servers/aidb/query_validator.py; ai-stack/mcp-servers/ralph-wiggum/orchestrator.py
+  Pattern: AIDB (port 8002) = pgvector for document chunks. Qdrant (port 6333) = harness patterns seeded by seed-rag-knowledge.py + training pipeline. Always use embed→Qdrant-direct for harness collections.
