@@ -972,6 +972,42 @@ ERROR_SOLUTIONS = [
         ],
         "related_patterns": ["tool_failure_stagnation_loop"],
     },
+    {
+        "error_type": "agent_tool_not_registered",
+        "error_message": "Tool 'github_search_code' not found in registry / tool not available",
+        "context": "aq-agent-loop agent asks for github_search_code, run_tests, check_test_coverage, web_research_fetch, or delegate_to_aider but gets 'tool not found' — tools exist in builtin_tools/ but were not registered",
+        "solution": "Phase 178 fix: add try/except ImportError guard blocks in build_registry() in scripts/ai/aq-agent-loop to register: code_execution (register_code_execution_tools), github_tools (register_github_tools), testing_tools (register_testing_tools). Also add web_research_fetch_handler and delegate_to_aider_handler to ai_coordination.py and register them in register_ai_coordination_tools() (count: 17). The tools exist at ai-stack/local-agents/builtin_tools/{github_tools,testing_tools,code_execution}.py.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.99,
+        "files": [
+            "scripts/ai/aq-agent-loop",
+            "ai-stack/local-agents/builtin_tools/ai_coordination.py",
+            "ai-stack/local-agents/builtin_tools/github_tools.py",
+            "ai-stack/local-agents/builtin_tools/testing_tools.py",
+        ],
+        "related_patterns": ["aider_wrapper_integration", "web_research_loopback_prefix"],
+    },
+    {
+        "error_type": "web_research_loopback_prefix_missing",
+        "error_message": "POST /research/web/fetch returns 401 Unauthorized from loopback agent",
+        "context": "web_research_fetch tool in ai_coordination.py posts to http://127.0.0.1:8003/research/web/fetch. If /research/ is not in LOOPBACK_AGENT_PREFIXES in middleware/auth.py, loopback agents get 401 even though they are local.",
+        "solution": "Phase 178 fix: add '/research/' to LOOPBACK_AGENT_PREFIXES tuple in ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py. Requires nixos-rebuild to take effect (middleware is loaded at coordinator startup). The entry was added at line 116 with comment '# Phase 178: web_research_fetch tool — agents fetch live URLs'.",
+        "solution_verified": False,
+        "success_count": 0,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.90,
+        "files": [
+            "ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py",
+            "ai-stack/local-agents/builtin_tools/ai_coordination.py",
+        ],
+        "related_patterns": ["agent_tool_not_registered"],
+    },
 ]
 
 SKILLS_PATTERNS = [
