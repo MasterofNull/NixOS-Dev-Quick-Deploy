@@ -939,6 +939,39 @@ ERROR_SOLUTIONS = [
         ],
         "related_patterns": ["query_aidb_wrong_endpoint", "aidb_last_accessed_unknown_parameter"],
     },
+    # ── Phase 177 patterns ────────────────────────────────────────────────────
+    {
+        "error_type": "tool_failure_stagnation_loop",
+        "error_message": "Agent loops harness_health(fail)→store_memory(ok)→harness_health(fail) for 74 minutes — observation stagnation guard evaded",
+        "context": "Observation stagnation guard (Phase 173) tracks _OBSERVATION_ACTION_TOOLS. store_memory is in ACTION_TOOLS, so every store_memory call resets the counter. A loop of harness_health(fail)→store_memory(ok)→harness_health(fail)... never triggers stagnation because store_memory always 'succeeds'. The same-tool-result guard only fires when N consecutive calls to the SAME tool return the SAME result — but store_memory always queues successfully (status:queued), so it resets the failure streak for harness_health.",
+        "solution": "Phase 177: Add per-tool failure stagnation guard to agent_executor.py. State: _tool_failure_counts: dict = {} (tool_name → int), _TOOL_FAILURE_HARD_LIMIT = 5. After any tool result with success=False or exit_code≠0 or error≠None, increment count. If count >= 5, inject stagnation_msg and return. This fires regardless of intervening successful tool calls. The guard is reset per-dispatch (initialized at task start). File: ai-stack/local-agents/agent_executor.py. Root cause of 74-min loop: harness_health failed repeatedly because aq-qa ran from Nix store path where REPO_ROOT derivation failed silently.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 1,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.97,
+        "files": ["ai-stack/local-agents/agent_executor.py"],
+        "related_patterns": ["agent_observation_loop_no_stagnation_guard", "nix_store_erofs_script_path"],
+    },
+    {
+        "error_type": "mlfq_thermal_shutdown_blocks_background",
+        "error_message": "/qa/check returns 'workload rejected by scheduler admission control' — thermal_tier: shutdown blocks level-1 background tasks",
+        "context": "MLFQ scheduler (mlfq_scheduler.py) _admit_snapshot() checks: if level == 1 and self._thermal_tier == 'shutdown': return False. The /qa/check handler submits with task_class='background' (level 1). IPM (inference_param_manager.py) polls sysfs hwmon and sets thermal_tier='shutdown' when CPU >= 88°C (THERMAL_SHUTDOWN_C). Renoir APU reaches 94°C during llama.cpp inference. The rejection is CORRECT — it prevents adding CPU load during thermal emergencies. The harness_health tool will appear broken whenever inference is active, even after the REPO_ROOT fix.",
+        "solution": "This is expected behavior. To test harness_health: wait for inference to complete and CPU to cool below 88°C. Alternatively run aq-qa directly: REPO_ROOT=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy scripts/ai/aq-qa 0 --machine (bypasses coordinator+MLFQ entirely). The REPO_ROOT fix in mcp_handlers.py (Phase 177, commit 6ab509c0) IS needed for when CPU is cool — without it aq-qa emits empty stdout from Nix store path. Do not attempt to change task_class to 'interactive' to bypass thermal protection — aq-qa runs subprocess and adds CPU load.",
+        "solution_verified": True,
+        "success_count": 1,
+        "failure_count": 0,
+        "first_seen": NOW,
+        "last_used": NOW,
+        "confidence_score": 0.99,
+        "files": [
+            "ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py",
+            "ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py",
+            "ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py",
+        ],
+        "related_patterns": ["tool_failure_stagnation_loop"],
+    },
 ]
 
 SKILLS_PATTERNS = [
