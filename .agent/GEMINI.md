@@ -81,6 +81,8 @@ writing delegation prompts for other agents.
 | 10 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
 | 11 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
 | 12 | **NO DELETE — ARCHIVE** | Never use `rm`/`rmdir` to delete files or directories. Move to a timestamped path instead: `mv <path> .agent/archive/<YYYYMMDD>-<name>`. Use a context-appropriate archive dir (`.agent/archive/`, `.agents/archive/`, etc.) if a closer one exists. |
+| 13 | **SCOPE LOCK (HARD)** | Before editing ANY file, verify it is within the scope of your current task. If a file is not in scope → STOP, report to orchestrator, do not edit. Never touch infrastructure/Nix files (overlays, flake.nix, modules, packages) unless the task explicitly assigns them. Nix overlay edits require `nix eval .#<target>` to pass before committing — `final.mySystem` does not exist in overlay context (only `final`/`prev` pkgs). |
+| 14 | **TOOL DEDUPLICATION** | Never call the same tool with identical arguments more than once in the same session. Before each tool call: check whether an identical call was already made this session. If yes — the result will not change. Write findings to working memory (`store_memory`) and act on them instead of re-querying. Repeated read/search calls without intervening action are a stagnation signal — stop querying and act on what you have. |
 
 ---
 
@@ -135,6 +137,8 @@ asum <file>                             # structural overview (Py, JS, Go, Nix)
 - Slice execution → write `.agents/plans/phase-<N>-<name>.md`
   (objective, scope lock, workstreams, step plan, validation, rollback)
 - **Never start coding until the plan exists**
+- **Scope declaration required**: list exactly which files will be edited before touching any of them
+- **Nix files are infrastructure** — any edit to `nix/`, `flake.nix`, `*.nix` outside assigned scope → STOP
 
 ### Step 4 — MEMORY CHECKPOINT
 ```bash

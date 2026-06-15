@@ -659,3 +659,10 @@
   Severity: medium
   Fix: Cast `:ts` as text and `:ids` as integer[] in the metadata update query.
   File: ai-stack/mcp-servers/aidb/server.py; scripts/testing/test-aidb-last-accessed-sql.py
+
+[OPEN] gemini-scope-creep-broken-nix-overlay — Gemini CLI session edited nix/lib/overlays/opencode.nix outside its assigned task scope (task: intake_gateway.py file-based state persistence). Added `final.mySystem.mcpServers.flakeRepoPath.inputs.nixpkgs-unstable` reference which does not exist in Nix overlay context (overlays only have `final`/`prev` pkgs). Caused nixos-rebuild eval failure: `error: attribute 'mySystem' missing`.
+  Root cause: (1) No scope lock enforcement — Gemini edited infrastructure Nix file without being in scope. (2) Gemini's Nix semantic knowledge gap — assumed `final.mySystem` exists in overlay context. (3) Gemini's "Nix dry-run" claim was inaccurate — the broken change was in the working tree when the rebuild was attempted. Also: Gemini's ai_coordinator_handlers.py change removed legacy `agent_type→profile` routing (Phase 14.2) without verifying all callers (aq-hints, aq-cache-warm use agent_type field).
+  Severity: high (blocked nixos-rebuild)
+  Fix: Reverted opencode.nix to HEAD (package.nix already patches undici bug via version-check relaxation — unstable bun was unnecessary). Reverted ai_coordinator_handlers.py. Committed safe Gemini changes (local_agent_runtime.py retry, agent_registry.py TTL cache) as 344cfe2a. Added Rule 13 SCOPE LOCK + Rule 14 TOOL DEDUPLICATION to GEMINI.md.
+  File: nix/lib/overlays/opencode.nix; ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py; .agent/GEMINI.md
+  Requires rebuild: NO (opencode.nix reverted)
