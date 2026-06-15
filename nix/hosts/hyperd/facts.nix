@@ -84,7 +84,7 @@
                             # Renoir iGPU shares VRAM with system RAM. --n-gpu-layers 99 in
                             # ai-stack.nix causes GPU OOM for inputs > ~400 tokens. Override
                             # to 12 layers (same as chat model) for reliable KV-cache headroom.
-                            extraArgs = ["--threads" "4" "--n-gpu-layers" "12" "--parallel" "4"];
+                            extraArgs = ["--threads" "4" "--n-gpu-layers" "12" "--parallel" "4" "--ubatch-size" "2048"];
                           };
 
                           switchboard.remoteModelAliases = {
