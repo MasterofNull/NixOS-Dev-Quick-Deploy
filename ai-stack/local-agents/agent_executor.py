@@ -401,6 +401,10 @@ class LocalAgentExecutor:
             if remote_probe_timeout_seconds is None
             else remote_probe_timeout_seconds
         )
+        # Cached prompt extensions — loaded once per executor instance (extensions only
+        # change with a rebuild, so per-process caching is safe and avoids a YAML read
+        # on every LLM call in a long-running agent task).
+        self._prompt_extensions_cache: Optional[str] = None
         self._remote_endpoint_healthy: Optional[bool] = None
         self._remote_endpoint_checked_at: float = 0.0
 
@@ -726,7 +730,7 @@ class LocalAgentExecutor:
         messages = [
             {
                 "role": "system",
-                "content": self._get_system_prompt(agent_type, _active_tools),
+                "content": self._get_system_prompt(agent_type, _active_tools, task.objective),
             },
             {
                 "role": "user",
@@ -998,10 +1002,29 @@ class LocalAgentExecutor:
                 response, tok = await self._call_llama(messages, role=role, max_tokens=512)
             total_tokens += tok
             if not response.strip():
-                raise RuntimeError(
-                    f"LLM returned empty response at call {tool_call_count + 1} "
-                    f"(context ~{sum(len(str(m.get('content','') or '')) for m in messages)} chars)"
+                # Retry once with a nudge before failing the task. Empty responses happen
+                # when the server is cold or the model stalls — a single retry recovers most
+                # transient cases without burning the full budget.
+                _ctx_chars_at_fail = sum(len(str(m.get("content", "") or "")) for m in messages)
+                logger.warning(
+                    "empty response at call %d (ctx ~%d chars) — retrying once with nudge",
+                    tool_call_count + 1, _ctx_chars_at_fail,
                 )
+                _nudge_messages = messages + [{
+                    "role": "user",
+                    "content": "Your previous response was empty. Please provide a JSON tool call or a plain-text final answer now.",
+                }]
+                response, _retry_tok = await self._call_llama(
+                    _nudge_messages, role=role, max_tokens=AGENT_TASK_MAX_TOKENS,
+                )
+                total_tokens += _retry_tok
+                if response.strip():
+                    messages = _nudge_messages
+                else:
+                    raise RuntimeError(
+                        f"LLM returned empty response at call {tool_call_count + 1} "
+                        f"(context ~{_ctx_chars_at_fail} chars)"
+                    )
 
             # Parse tool call
             tool_call = self.tool_registry.parse_tool_call_from_llama(response)
@@ -1253,7 +1276,7 @@ class LocalAgentExecutor:
             if len(_active_tools) > _prev_tool_count:
                 messages[0] = {
                     "role": "system",
-                    "content": self._get_system_prompt(agent_type, _active_tools),
+                    "content": self._get_system_prompt(agent_type, _active_tools, task.objective),
                 }
                 logger.debug(
                     "tool_hotswap: +%d tools after %s (total=%d)",
@@ -1588,13 +1611,22 @@ class LocalAgentExecutor:
 
         return ""
 
-    def _get_system_prompt(self, agent_type: AgentType, tools: List[Dict]) -> str:
+    def _get_system_prompt(
+        self,
+        agent_type: AgentType,
+        tools: List[Dict],
+        objective_hint: str = "",
+    ) -> str:
         """Get system prompt for agent type with tool descriptions.
 
         Injects the LOCAL-AGENT.md canonical operating contract (behavioral rules,
         7-step workflow, harness-first principle) so the model runs with its full
         operating instructions, then appends learned gap rules from
         config/harness-prompt-extensions.yaml.
+
+        objective_hint: used to decide whether to include the self-improvement slice
+        (~722 tokens). Omitting it for non-SI tasks saves context and avoids model
+        confusion when the task has nothing to do with issue fixing.
         """
         _tool_call_format = (
             "\n\nTOOL USE PROTOCOL (strict — follow exactly):\n"
@@ -1608,9 +1640,9 @@ class LocalAgentExecutor:
             "- NEVER wrap the JSON in ```json``` code blocks.\n"
         )
 
-        # Compact workflow contract — kept short to avoid large prefill on constrained APU.
+        # Compact workflow contract — always injected for AGENT type.
         # Full operating contract: .agent/LOCAL-AGENT.md
-        _workflow_contract = (
+        _behavioral_contract = (
             "\n\nBEHAVIORAL CONTRACT:\n"
             "- Read before writing. One change at a time. Stay in the assigned slice.\n"
             "- validate_before_commit MUST pass before git_add. Call it once, then act on result.\n"
@@ -1622,6 +1654,14 @@ class LocalAgentExecutor:
             "  context. Call edit_file immediately. If edit_file fails with 'old_string not found', THEN read more.\n"
             "- SURGICAL FINALITY: validation gate passes → commit IMMEDIATELY. No cleanup. No refactor.\n"
             "  Adjacent improvements are separate tasks. One fix per slice.\n"
+        )
+
+        # Self-improvement slice instructions (~722 tokens). Only injected when the task
+        # explicitly involves issue-fixing / improvement cycles — saves context and avoids
+        # confusing the model when it's doing factory, research, or delegation tasks.
+        _SI_KEYWORDS = frozenset({"self-improvement", "slice", "issues-backlog", "open issue", "improvement cycle", "fix issue", "aq-qa"})
+        _is_si_task = bool(objective_hint and any(kw in objective_hint.lower() for kw in _SI_KEYWORDS))
+        _si_slice = (
             "\n\nSELF-IMPROVEMENT SLICE — when asked to run/execute a self-improvement slice:\n"
             "PRE-FLIGHT (mandatory — 3 harness lookups before touching any file):\n"
             "  get_hint(query='<issue-title in 5 words>')        → harness-curated guidance\n"
@@ -1695,8 +1735,11 @@ class LocalAgentExecutor:
         tools_desc = "\n\nTools: " + "  ".join(_minimal_tool(t) for t in tools)
         extensions = self._load_prompt_extensions()
 
-        # AGENT type gets the full workflow contract; other types get only tool call format
+        # AGENT type gets behavioral contract always; SI slice only for self-improvement tasks.
+        # Non-SI tasks save ~722 tokens (self-improvement step-by-step is irrelevant noise
+        # for factory, research, delegation, and monitoring tasks).
         if agent_type == AgentType.AGENT:
+            _workflow_contract = _behavioral_contract + (_si_slice if _is_si_task else "")
             return base_prompt[agent_type] + _workflow_contract + _tool_call_format + tools_desc + extensions
         return base_prompt[agent_type] + _tool_call_format + tools_desc + extensions
 
@@ -1705,10 +1748,15 @@ class LocalAgentExecutor:
 
         Returns an empty string on any error so prompt building never fails.
         Rules are injected as a compact advisory section to minimise token overhead.
+        Result is cached per-instance — extensions only change with a rebuild, so
+        re-reading the YAML on every LLM call in a 252-tool-call agent loop is waste.
         """
+        if self._prompt_extensions_cache is not None:
+            return self._prompt_extensions_cache
         _REPO_ROOT = Path(__file__).resolve().parents[2]
         ext_path = _REPO_ROOT / "config" / "harness-prompt-extensions.yaml"
         if not ext_path.exists():
+            self._prompt_extensions_cache = ""
             return ""
         try:
             import yaml  # type: ignore[import]
@@ -1716,15 +1764,19 @@ class LocalAgentExecutor:
             data = docs[-1] if docs else {}
             rules = data.get("rules") or []
             if not rules:
+                self._prompt_extensions_cache = ""
                 return ""
             lines = ["\n\n[Learned gap rules — apply these on every task:]"]
             for r in rules[:5]:  # cap at 5 to limit token overhead
                 pattern = r.get("pattern", "")
                 if pattern:
                     lines.append(f"- {pattern}")
-            return "\n".join(lines)
+            result = "\n".join(lines)
+            self._prompt_extensions_cache = result
+            return result
         except Exception as exc:
             logger.debug("harness-prompt-extensions load skipped: %s", exc)
+            self._prompt_extensions_cache = ""
             return ""
 
     def get_performance_stats(self) -> Dict[str, Any]:
