@@ -289,6 +289,20 @@
   Action: First corrective slice implemented: safe reasoning summary events, raw `<think>` stripping, shared coordinator route-planning events for HTTP and local subprocess paths, schema/fixture repair, dashboard thought/planning filters/rendering, sandboxed HTML previews, and behavioral 0.10.2 QA. Pending rebuild/live smoke and richer dashboard summary tiles.
   File: .agents/plans/OBSERVABILITY-PARITY-CONSENSUS-REVIEW.md
 
+[DONE-2026-06-15] mcp-handlers-repo-root-nix-store — mcp_handlers.py _REPO_ROOT resolved to Nix store at module load — harness_health /qa/check ran aq-qa from Nix store path where git ops fail silently → empty stdout
+  Root cause: `_REPO_ROOT = Path(__file__).resolve().parents[4]` at module load resolves to Nix store. `_AQ_QA_SCRIPT` pointed to Nix store copy of aq-qa which re-derives REPO_ROOT from BASH_SOURCE[0] (also Nix store), ignoring env var. NixOS service sets REPO_ROOT=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy but aq-qa ignored it.
+  Fix (Phase 177, commit 6ab509c0): (1) mcp_handlers.py: `_REPO_ROOT = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else Path(__file__).resolve().parents[4]`. (2) aq-qa line 14: `REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"`. (3) _aq-qa-bash same fix. Live after 2026-06-15 rebuild.
+  Severity: high → RESOLVED
+  Note: /qa/check may still fail post-fix when CPU >= 88°C (THERMAL_SHUTDOWN_C) due to MLFQ thermal protection (see KNOWN-BEHAVIOR below). This is separate from the REPO_ROOT bug.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py ~27-31; scripts/ai/aq-qa ~14; scripts/ai/_aq-qa-bash ~11
+
+[KNOWN-BEHAVIOR] mlfq-thermal-shutdown-blocks-qa-check — /qa/check returns "workload rejected by scheduler admission control" when Renoir APU CPU >= 88°C
+  Root cause: MLFQ scheduler _admit_snapshot(): `if level == 1 and self._thermal_tier == "shutdown": return False`. `/qa/check` uses `task_class="background"` (level 1). IPM polls hwmon and sets thermal_tier="shutdown" at THERMAL_SHUTDOWN_C=88°C. Renoir APU reaches 94°C during llama.cpp inference. Observed on 2026-06-15 immediately post-rebuild with agent running.
+  This is CORRECT BEHAVIOR — prevents aq-qa subprocess adding CPU load during thermal emergency.
+  Workaround: run `REPO_ROOT=/home/hyperd/Documents/NixOS-Dev-Quick-Deploy scripts/ai/aq-qa 0 --machine` directly (bypasses coordinator+MLFQ). Only attempt /qa/check when CPU is cool (inference idle).
+  Severity: expected — not a bug
+  File: ai-stack/mcp-servers/hybrid-coordinator/mlfq_scheduler.py _admit_snapshot (~line 328); ai-stack/mcp-servers/hybrid-coordinator/inference_param_manager.py ~line 157-172
+
 ## IN-FLIGHT
 
 [IN-FLIGHT] flat-collaboration-disabled — desired flat model-team workflow is documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still has `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still has `collaborative_workflows: false`, while active Gemini/direct paths can write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.
