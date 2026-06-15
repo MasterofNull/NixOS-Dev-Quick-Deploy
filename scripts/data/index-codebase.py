@@ -60,9 +60,9 @@ SKIP_DIRS = {
 # Max file size to index (bytes)
 MAX_FILE_BYTES = 80_000
 
-# Chunk size (characters) — embed server ubatch-size=512 tokens; dense code ~2.8 chars/tok → 1000 chars ≈ 350 tokens (safe headroom)
-CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 100
+# Chunk size (characters) — embed server ubatch-size=2048 tokens (post-rebuild); 2000 chars ≈ 700 tokens, well within limit
+CHUNK_SIZE = 2000
+CHUNK_OVERLAP = 200
 
 # Batch size for embedding requests
 EMBED_BATCH = 8
