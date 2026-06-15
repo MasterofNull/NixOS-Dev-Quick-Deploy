@@ -55,7 +55,8 @@ STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "768"))
 # None when not explicitly set — defers to task profile temperature in build_llama_payload().
 TEMPERATURE: float | None = float(os.environ["AGENT_TEMPERATURE"]) if "AGENT_TEMPERATURE" in os.environ else None
-AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "240"))
+# Phase 2026.06: Increased default timeout for edge AI
+AGENT_TIMEOUT = float(os.environ.get("AGENT_TIMEOUT", "600"))
 # Task profile selects thinking mode + token budget. Defaults to "agent" (no thinking).
 # Callers may inject "research" or "deep_reasoning" via AGENT_TASK_TYPE for PRSI/planning tasks.
 AGENT_TASK_TYPE = os.environ.get("AGENT_TASK_TYPE", "agent")

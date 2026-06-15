@@ -10,6 +10,7 @@
 - `agent_executor.py` BEHAVIORAL CONTRACT: added mandatory PRE-FLIGHT RESEARCH step — `get_hint + query_aidb + get_working_memory` before STEP 1 (file reads/edits). Applies to every new agent task.
 - `aq-chat` fast-path hints: `_fetch_fast_path_hints()` now called in `_stream_fast_path` before the switchboard POST — injects AIDB-derived hints into the system prompt for conversational turns that bypass coordinator semantic tooling.
 - `http_server_impl.py` memory recall: coordinator now elevates `memory_recall_priority=True` for `local`, `local-tool-calling`, and `local-agent` intent profiles unconditionally — prior-work memory always injected for local interactive sessions.
+- Agent timeout hardening (flush-agent autonomous changes): `AGENT_TIMEOUT` default 240→600s in `local_agent_runtime.py`; `LOCAL_AGENT_REMOTE_PROBE_TIMEOUT_SECONDS` 2→10s; `LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS` 60→600s; explicit `AGENT_TIMEOUT=600` and `AGENT_MAX_TOKENS=1024` env vars added to `ai-stack.nix` (requires nixos-rebuild).
 
 ---
 
