@@ -24,8 +24,11 @@ import os
 import sys
 from pathlib import Path
 
-# Identify repo root (must be 4 levels up from this file)
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+# Identify repo root. Phase 177: prefer REPO_ROOT env var (set by NixOS service to the
+# live repo path). Fallback to __file__-relative derivation for local dev runs. Without
+# this, the coordinator running from /nix/store calls aq-qa from the Nix store, and
+# git ops inside aq-qa fail silently (Nix store is not a git repo) → empty stdout.
+_REPO_ROOT = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else Path(__file__).resolve().parents[4]
 
 # Stability Backbone (Phase 55.2): Ensure shared utilities and local-agents are on path
 _SHARED_PATH = str(_REPO_ROOT / "ai-stack" / "mcp-servers")
