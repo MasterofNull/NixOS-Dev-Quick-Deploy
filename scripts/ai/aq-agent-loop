@@ -123,6 +123,21 @@ def build_registry(tool_manifest: str = "full") -> ToolRegistry:
     register_git_tools(registry)
     from ai_coordination import register_ai_coordination_tools
     register_ai_coordination_tools(registry)
+    try:
+        from code_execution import register_code_execution_tools
+        register_code_execution_tools(registry)
+    except ImportError as e:
+        logger.warning("[aq-agent-loop] code_execution tools unavailable: %s", e)
+    try:
+        from github_tools import register_github_tools
+        register_github_tools(registry)
+    except ImportError as e:
+        logger.warning("[aq-agent-loop] github_tools unavailable: %s", e)
+    try:
+        from testing_tools import register_testing_tools
+        register_testing_tools(registry)
+    except ImportError as e:
+        logger.warning("[aq-agent-loop] testing_tools unavailable: %s", e)
     if tool_manifest == "self-improvement":
         for _tool_name in list(registry.tools):
             if _tool_name not in _SLIM_TOOLS:
