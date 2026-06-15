@@ -289,6 +289,12 @@ def build_llama_payload(
         "repeat_penalty": 1.08,
         "repeat_last_n": 64,
         "frequency_penalty": _freq_penalty,
+        # Phase 173: enable llama.cpp KV-cache prefix reuse for multi-turn sessions.
+        # cache_prompt=True tells llama.cpp to cache this prompt's KV state and reuse
+        # it on subsequent requests sharing the same prefix (system prompt + history).
+        # Improves cache_hit_rate metric (target ≥50%; PRSI found 17.2% without this).
+        # Callers may override to False via **extra if needed.
+        "cache_prompt": True,
     }
     if stream:
         payload["stream"] = True

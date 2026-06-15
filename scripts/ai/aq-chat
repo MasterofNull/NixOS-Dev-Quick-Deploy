@@ -520,6 +520,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             "model": local_model_id,
             "messages": messages,
             "stream": True,                                      # CRITICAL — Phase 109.1
+            "stream_options": {"include_usage": True},           # Phase 173: token counts in final SSE chunk
             "max_tokens": 1024,                                  # CRITICAL — no ceiling otherwise
             "temperature": self.temperature,
             "frequency_penalty": 0.0,                            # CRITICAL — prevent token blackout
@@ -584,6 +585,9 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
 
         try:
             full_response = ""
+            _fp_tok_in: int = 0
+            _fp_tok_out: int = 0
+            _fp_t0 = time.perf_counter()
             self.is_thinking = False
             print()
             async with self.client.stream("POST", target_url, json=payload, headers=headers) as response:
@@ -609,6 +613,11 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         chunk = json.loads(content)
                     except json.JSONDecodeError:
                         continue
+                    # Capture token usage from final SSE usage chunk (Phase 173)
+                    _usage = chunk.get("usage") or {}
+                    if _usage:
+                        _fp_tok_in = int(_usage.get("prompt_tokens") or 0)
+                        _fp_tok_out = int(_usage.get("completion_tokens") or 0)
                     token = (
                         chunk.get("choices", [{}])[0]
                         .get("delta", {})
@@ -624,9 +633,22 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                     if not self.is_thinking:
                         print(token, end="", flush=True)
 
+            _fp_latency_ms = round((time.perf_counter() - _fp_t0) * 1000, 1)
             print()
             self._last_turn_had_tool_calls = False
             self._record_and_render_assistant_response(prompt, full_response)
+            # Phase 173: emit local_inference training event for fast-path turns.
+            # Fast-path bypasses coordinator delegate (ai_coordinator_handlers.py Phase 110.1),
+            # so this is the only site that can emit for continue-local turns.
+            if full_response.strip():
+                asyncio.create_task(self._emit_local_inference_event(
+                    query=prompt,
+                    response=full_response,
+                    profile=wire_profile,
+                    latency_ms=_fp_latency_ms,
+                    tok_in=_fp_tok_in or None,
+                    tok_out=_fp_tok_out or None,
+                ))
             self._write_feedback_turn(fast_path=True)
         except asyncio.CancelledError:
             console.print("\n[dim]Interrupted.[/]")
@@ -640,6 +662,40 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         # It records routing decisions so training_ingest can correlate profile → quality.
         # Intentionally lightweight — no I/O on every turn, only when explicitly rating.
         pass  # placeholder: called from _stream_fast_path for future telemetry hooks
+
+    async def _emit_local_inference_event(
+        self,
+        query: str,
+        response: str,
+        profile: str,
+        latency_ms: float = 0.0,
+        tok_in: Optional[int] = None,
+        tok_out: Optional[int] = None,
+    ) -> None:
+        """Write a local_inference event to hybrid-events.jsonl for training ingest.
+
+        Phase 173: Fills the fast-path training dark path. The coordinator delegate path
+        emits these events via ai_coordinator_handlers.py Phase 110.1, but the fast-path
+        (continue-local → switchboard direct) bypasses the coordinator entirely.
+        """
+        import datetime as _dt
+        tel_path = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")) / "hybrid-events.jsonl"
+        evt = json.dumps({
+            "event_type": "local_inference",
+            "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+            "query": query[:4000],
+            "response": response[:4000],
+            "model": os.getenv("AI_LOCAL_MODEL_ID", "local"),
+            "latency_ms": latency_ms,
+            "tokens_in": tok_in,
+            "tokens_out": tok_out,
+            "profile": profile,
+            "source": "aq-chat-fast-path",
+        })
+        try:
+            await asyncio.to_thread(lambda: open(tel_path, "a", encoding="utf-8").write(evt + "\n"))
+        except Exception:
+            pass  # telemetry is best-effort; never block the chat turn
 
     async def _stream_chat(self, prompt: str):
         self.context_history.append({"role": "user", "content": prompt})
