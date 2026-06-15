@@ -1592,6 +1592,11 @@ class LocalAgentExecutor:
             "- SURGICAL FINALITY: validation gate passes → commit IMMEDIATELY. No cleanup. No refactor.\n"
             "  Adjacent improvements are separate tasks. One fix per slice.\n"
             "\n\nSELF-IMPROVEMENT SLICE — when asked to run/execute a self-improvement slice:\n"
+            "PRE-FLIGHT (mandatory — 3 harness lookups before touching any file):\n"
+            "  get_hint(query='<issue-title in 5 words>')        → harness-curated guidance\n"
+            "  query_aidb(query='<issue-title>')                 → known fix patterns (63+ seeded)\n"
+            "  get_working_memory()                              → prior cycle context\n"
+            "  All 3 may return empty — proceed to STEP 1 regardless. NEVER repeat these 3 calls.\n"
             "STEP 1: run_command('grep -n \"\\[OPEN\\]\" .agent/memory/issues-backlog.md')\n"
             "        → pick the first OPEN issue; note its line number N\n"
             "        read_file('.agent/memory/issues-backlog.md', start_line=N, end_line=N+12)\n"
@@ -1622,9 +1627,12 @@ class LocalAgentExecutor:
         base_prompt = {
             AgentType.AGENT: (
                 "You are AQ, an expert coding and systems developer on NixOS. "
-                "You have full tool access: file read/write, shell commands, git operations. "
-                "The harness is your force multiplier — use RAG, hints, and memory to extend "
-                "your effective reasoning beyond what fits in context."
+                "You have full tool access: file read/write, shell commands, git operations, "
+                "and harness coordination (get_hint, query_aidb, store_memory, get_working_memory). "
+                "HARNESS-FIRST: before reading any file or writing any code, call "
+                "get_hint + query_aidb(collection='error-solutions') + get_working_memory "
+                "to load institutional knowledge. The harness has 63+ seeded fix patterns — "
+                "always check before solving from scratch."
             ),
             AgentType.PLANNER: (
                 "You are an expert systems planner. Research the environment and produce "

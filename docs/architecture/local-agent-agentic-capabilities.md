@@ -2,8 +2,14 @@
 
 **Status:** Production
 **Owner:** AI Infrastructure Team
-**Last Updated:** 2026-03-21
-**Phase:** 11 - Local Agent Agentic Capabilities
+**Last Updated:** 2026-06-14
+**Phase:** 174 - Harness-Leverage improvements (see Phase 162 for AI coordination tool registration)
+
+### Phase 174 changes (2026-06-14)
+- `query_aidb_handler` fixed: was calling `/search/tree` (404 on coordinator) → now calls `AIDB_URL/vector/search` with `collection="error-solutions"` default. Agents can now reach 63+ seeded harness fix patterns.
+- `agent_executor.py` BEHAVIORAL CONTRACT: added mandatory PRE-FLIGHT RESEARCH step — `get_hint + query_aidb + get_working_memory` before STEP 1 (file reads/edits). Applies to every new agent task.
+- `aq-chat` fast-path hints: `_fetch_fast_path_hints()` now called in `_stream_fast_path` before the switchboard POST — injects AIDB-derived hints into the system prompt for conversational turns that bypass coordinator semantic tooling.
+- `http_server_impl.py` memory recall: coordinator now elevates `memory_recall_priority=True` for `local`, `local-tool-calling`, and `local-agent` intent profiles unconditionally — prior-work memory always injected for local interactive sessions.
 
 ---
 
