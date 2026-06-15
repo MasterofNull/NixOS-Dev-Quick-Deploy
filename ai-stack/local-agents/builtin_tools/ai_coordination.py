@@ -450,22 +450,27 @@ async def _query_qdrant_direct(query: str, collection: str, limit: int) -> Dict:
             if sr.status_code != 200:
                 return {"success": False, "error": f"qdrant {sr.status_code}: {sr.text[:200]}"}
             hits = sr.json().get("result", [])
+            # Deduplicate by title — same pattern seeded across multiple runs
+            # produces identical Qdrant points. Keep highest-scored entry per title.
+            seen_titles: set = set()
+            deduped = []
+            for h in hits:
+                p = h.get("payload") or {}
+                title = p.get("error_type") or p.get("title") or p.get("skill_name", "")
+                if title and title in seen_titles:
+                    continue
+                seen_titles.add(title)
+                deduped.append({
+                    "title": title,
+                    "content": p.get("solution") or p.get("description", ""),
+                    "score": h.get("score", 0.0),
+                    "source": f"qdrant:{collection}",
+                    "payload": p,
+                })
             return {
                 "success": True,
-                "results": [
-                    {
-                        "title": (h.get("payload") or {}).get("error_type")
-                                 or (h.get("payload") or {}).get("title")
-                                 or (h.get("payload") or {}).get("skill_name", ""),
-                        "content": (h.get("payload") or {}).get("solution")
-                                   or (h.get("payload") or {}).get("description", ""),
-                        "score": h.get("score", 0.0),
-                        "source": f"qdrant:{collection}",
-                        "payload": h.get("payload", {}),
-                    }
-                    for h in hits
-                ],
-                "count": len(hits),
+                "results": deduped,
+                "count": len(deduped),
                 "fallback": "qdrant-direct",
             }
     except Exception as e:
