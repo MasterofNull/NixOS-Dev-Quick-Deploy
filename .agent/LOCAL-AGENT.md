@@ -156,6 +156,17 @@ python3 scripts/automation/prsi-orchestrator.py agent   # autonomous PRSI cycle
 
 For coordinator-spawned agents (`local_agent_runtime.py`): set `AGENT_TASK_TYPE=research` env var.
 
+### Inference Delivery Resilience (Phase 173)
+
+`local_agent_runtime._post_completion_with_fallback()` retries once on transient switchboard
+failures before falling back to direct llama.cpp:
+
+1. Attempt 0: POST to switchboard (30s connect timeout). On failure → sleep 2s → retry.
+2. Attempt 1: Retry switchboard. On second failure → fallback to llama.cpp direct.
+
+`agent_registry.py` lessons/evaluations registries use a 60-second TTL in-memory cache
+and async executor-based file I/O to avoid blocking the event loop.
+
 ### Model Swap Checklist
 
 When deploying a new locally hosted model, verify:
