@@ -824,6 +824,24 @@ class LocalAgentExecutor:
         _validation_passes_without_commit = 0
         _VALIDATION_STALL_NUDGE = 3
 
+        # Observation stagnation: harness query tools (get_hint, query_aidb, etc.) called
+        # repeatedly without taking any action. Distinguishable from exploration stagnation
+        # (which tracks read_file). Research tasks legitimately query multiple sources, so
+        # threshold is higher than read_file's 3. Soft nudge at 6; hard abort at 10.
+        _OBSERVATION_QUERY_TOOLS = frozenset({
+            "get_hint", "query_aidb", "get_prsi_pending", "get_working_memory",
+            "mesh_discovery", "harness_health", "query_context", "get_context",
+            "collective_memory_search",
+        })
+        _OBSERVATION_ACTION_TOOLS = frozenset({
+            "store_memory", "run_command", "run_harness_cli", "delegate_to_remote",
+            "edit_file", "write_file", "git_add", "git_commit",
+        })
+        _observations_without_action = 0
+        _MAX_OBSERVATIONS_WITHOUT_ACTION = 6
+        _OBSERVATIONS_HARD_LIMIT = 10
+        _observation_nudge_sent = False
+
         # Observability: progress sidecar path (set by aq-agent-loop via env var).
         # Updated after every tool call so dashboards and `dispatch.py watch` can
         # read current state without waiting for the final JSON output.
@@ -1134,6 +1152,12 @@ class LocalAgentExecutor:
             elif result.tool_name in ("write_file", "edit_file", "git_add", "git_commit"):
                 _validation_passes_without_commit = 0
 
+            # Observation stagnation: track harness query calls vs action calls.
+            if result.tool_name in _OBSERVATION_QUERY_TOOLS:
+                _observations_without_action += 1
+            elif result.tool_name in _OBSERVATION_ACTION_TOOLS:
+                _observations_without_action = 0
+
             if _reads_without_edit >= _READS_HARD_LIMIT:
                 stagnation_msg = (
                     f"Exploration stagnation: {_reads_without_edit} consecutive reads without "
@@ -1143,6 +1167,20 @@ class LocalAgentExecutor:
                 logger.warning(
                     "exploration stagnation: %d reads without edit — aborting at call %d",
                     _reads_without_edit, tool_call_count,
+                )
+                _cancel_watchdog()
+                return stagnation_msg, total_tokens
+
+            if _observations_without_action >= _OBSERVATIONS_HARD_LIMIT:
+                stagnation_msg = (
+                    f"Observation stagnation: {_observations_without_action} consecutive "
+                    f"harness query calls (get_hint/query_aidb/etc.) without any action — "
+                    f"model is stuck in an observation loop. "
+                    f"Aborting at tool call {tool_call_count}."
+                )
+                logger.warning(
+                    "observation stagnation: %d queries without action — aborting at call %d",
+                    _observations_without_action, tool_call_count,
                 )
                 _cancel_watchdog()
                 return stagnation_msg, total_tokens
@@ -1189,6 +1227,25 @@ class LocalAgentExecutor:
                 logger.debug(
                     "tool_hotswap: +%d tools after %s (total=%d)",
                     len(_active_tools) - _prev_tool_count, result.tool_name, len(_active_tools),
+                )
+
+            # Observation stall nudge: too many harness query calls without any action.
+            if _observations_without_action == _MAX_OBSERVATIONS_WITHOUT_ACTION and not _observation_nudge_sent:
+                _observation_nudge_sent = True
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"OBSERVATION STALL: You have called harness query tools "
+                        f"({_observations_without_action} times: get_hint, query_aidb, etc.) "
+                        "without taking any action. You have enough context. Now act: "
+                        "call store_memory with your findings, OR call run_harness_cli, "
+                        "OR write/edit a file. Do NOT call get_hint or query_aidb again "
+                        "until after you have taken at least one action."
+                    ),
+                })
+                logger.info(
+                    "observation-stall nudge injected after %d queries without action at call %d",
+                    _observations_without_action, tool_call_count,
                 )
 
             # Soft nudge: inject a user message when reads-without-edit reaches the soft limit.
