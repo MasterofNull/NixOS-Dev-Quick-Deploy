@@ -869,6 +869,24 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         "ts": time.time(),
                     }))
                     response = await self.client.post(target_url, json=payload, headers=headers)
+                    if response.status_code == 202:
+                        # Long-running task auto-promoted to async dispatch by coordinator.
+                        # Return task_id so user can poll or check later.
+                        try:
+                            _async_body = response.json()
+                        except Exception:
+                            _async_body = {}
+                        _tid = _async_body.get("task_id", "unknown")
+                        _poll = _async_body.get("poll_url", f"/control/ai-coordinator/delegate/status/{_tid}")
+                        _bg_msg = (
+                            f"Task dispatched to background agent (this takes 20-40 min).\n\n"
+                            f"**Task ID:** `{_tid}`\n"
+                            f"**Poll:** `curl -s -H 'Authorization: Bearer <key>' "
+                            f"http://127.0.0.1:8003{_poll}`\n"
+                            f"**Or list all:** `python3 scripts/ai/lib/pending-update list`"
+                        )
+                        self._record_and_render_assistant_response(prompt, _bg_msg)
+                        return
                     if response.status_code != 200:
                         detail = self._response_error_detail(response)
                         suffix = f" {detail}" if detail else ""

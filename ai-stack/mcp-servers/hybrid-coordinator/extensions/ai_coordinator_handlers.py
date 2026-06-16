@@ -1587,8 +1587,30 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             if bool(data.get("streaming_mode", False)) and not bool(data.get("async_mode", False)):
                 return await _spawn_local_agent_with_lease(**_spawn_kwargs, sse_request=request)
 
+            # Auto-async: long-running intents are promoted to async_mode automatically.
+            # These tasks complete in 20-40 minutes — synchronous blocking always times out
+            # regardless of delegateTimeoutSeconds. The caller receives 202+task_id and polls.
+            # Phrase list mirrors intent_classifier.py's harness_self_improvement prototype set.
+            _LONG_RUNNING_TASK_PHRASES: frozenset = frozenset({
+                "self improvement", "self-improvement", "run a slice",
+                "improvement slice", "run training ingest", "training ingest",
+                "run the learning loop", "run learning loop",
+                "run the continuous learning", "run continuous learning",
+            })
+            _task_lower_for_async = user_task.lower()
+            if (
+                not bool(data.get("async_mode", False))
+                and any(p in _task_lower_for_async for p in _LONG_RUNNING_TASK_PHRASES)
+            ):
+                data = dict(data)
+                data["async_mode"] = True
+                logger.info(
+                    "delegate_auto_async: task=%r promoted to async_mode — long-running intent",
+                    user_task[:100],
+                )
+
             # Phase 8.6 — Async dispatch: return task_id immediately, caller polls.
-            # Enabled via async_mode=true in request body. Default: synchronous.
+            # Enabled via async_mode=true in request body or auto-detected above.
             if bool(data.get("async_mode", False)):
                 import uuid as _uuid
                 _task_id = str(_uuid.uuid4())
