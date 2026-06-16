@@ -636,7 +636,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         _fp_tok_in = int(_usage.get("prompt_tokens") or 0)
                         _fp_tok_out = int(_usage.get("completion_tokens") or 0)
                     token = (
-                        chunk.get("choices", [{}])[0]
+                        (chunk.get("choices") or [{}])[0]
                         .get("delta", {})
                         .get("content", "") or ""
                     )
