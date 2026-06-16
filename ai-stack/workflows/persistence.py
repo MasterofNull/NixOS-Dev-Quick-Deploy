@@ -9,6 +9,7 @@ Phase 2.4: Coordinator Integration
 
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -26,7 +27,10 @@ class WorkflowStateStore:
 
     def __init__(
         self,
-        storage_dir: str = ".workflow-executions",
+        storage_dir: str = os.environ.get(
+            "WORKFLOW_STATE_DIR",
+            "/var/lib/ai-stack/hybrid/workflow-executions",
+        ),
         backend: str = "json",
     ):
         """

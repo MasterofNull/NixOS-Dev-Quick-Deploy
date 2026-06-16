@@ -248,11 +248,11 @@ async def execute_workflow_handler(
     inputs: Optional[Dict] = None,
     async_mode: bool = False,
 ) -> Dict:
-    """Execute a YAML workflow via the coordinator's /api/workflows/execute endpoint."""
+    """Execute a YAML workflow via the coordinator's /yaml-workflow/execute endpoint."""
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
-                f"{HYBRID_COORDINATOR_URL}/api/workflows/execute",
+                f"{HYBRID_COORDINATOR_URL}/yaml-workflow/execute",
                 json={
                     "workflow_file": yaml_file,
                     "inputs": inputs or {},
