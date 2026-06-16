@@ -221,6 +221,13 @@ class ContinuousLearningPipeline:
             aidb_telemetry_dir / "aidb-events.jsonl",
             telemetry_dir / "hybrid-events.jsonl",
         ]
+        # User spool: agent_executor.py writes agent_step_complete events here (repo-local).
+        # REPO_ROOT injected by mcp-servers.nix; ai-hybrid reads it world-readable (644).
+        _repo_root = os.getenv("REPO_ROOT")
+        if _repo_root:
+            _user_spool = Path(_repo_root) / ".agents" / "telemetry" / "hybrid-events.jsonl"
+            if _user_spool not in self.telemetry_paths:
+                self.telemetry_paths.append(_user_spool)
 
         # Fine-tuning dataset path
         dataset_default = (
