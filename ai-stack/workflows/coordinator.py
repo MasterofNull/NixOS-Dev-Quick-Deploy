@@ -8,8 +8,12 @@ Phase 2.4: Coordinator Integration
 """
 
 import asyncio
+import json
 import logging
+import os
+import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -20,6 +24,7 @@ from .parser import WorkflowParser
 from .validator import WorkflowValidator, ValidationError
 from .persistence import WorkflowStateStore
 from .graph import DependencyGraph
+from .node_dispatcher import WorkflowNodeDispatcher, _write_event as _emit_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -151,23 +156,51 @@ class WorkflowCoordinator:
     ) -> Dict[str, Any]:
         """Execute workflow synchronously and return result."""
         try:
-            # TODO: Implement actual workflow execution using executor
-            # For now, return a placeholder result
-            logger.info(f"Executing workflow {workflow.name} (sync mode)")
-
-            # Update state
+            logger.info("Executing workflow %s (sync mode, execution_id=%s)", workflow.name, execution_id)
             execution_state = self.active_executions[execution_id]
+            execution_state["status"] = "running"
+            await self.state_store.save(execution_id, execution_state)
+
+            _emit_telemetry(
+                "workflow_started", execution_id,
+                workflow=workflow.name, node_count=len(workflow.nodes),
+            )
+
+            graph = DependencyGraph(workflow)
+            batches = graph.get_parallel_batches()
+            dispatcher = WorkflowNodeDispatcher(
+                execution_id=execution_id,
+                coordinator_url=os.getenv("COORDINATOR_URL", "http://127.0.0.1:8003"),
+            )
+            node_outputs: Dict[str, Any] = dict(inputs)
+            failed_nodes: List[str] = []
+
+            for batch_index, batch in enumerate(batches):
+                batch_id = f"{execution_id[:8]}-b{batch_index}"
+                results = await dispatcher.dispatch_batch(batch, node_outputs, batch_id)
+                for node_id, result in results.items():
+                    if result.get("status") == "failed":
+                        failed_nodes.append(node_id)
+                    node_outputs[node_id] = result.get("output", "")
+
+            aggregated = self._aggregate_results(workflow, node_outputs)
+            _emit_telemetry(
+                "workflow_aggregated", execution_id,
+                workflow=workflow.name, node_count=len(workflow.nodes),
+                failed_count=len(failed_nodes),
+                parallel_speedup_ratio=dispatcher.speedup_ratio(),
+            )
+
             execution_state["status"] = "completed"
             execution_state["completed_at"] = datetime.now(timezone.utc).isoformat()
-            execution_state["outputs"] = {"result": "Workflow execution not yet implemented"}
-
+            execution_state["outputs"] = aggregated
             await self.state_store.save(execution_id, execution_state)
 
             return {
                 "status": "completed",
                 "execution_id": execution_id,
                 "workflow": workflow.name,
-                "outputs": execution_state["outputs"],
+                "outputs": aggregated,
             }
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
@@ -188,23 +221,11 @@ class WorkflowCoordinator:
     async def _execute_async(
         self, execution_id: str, workflow: Workflow, inputs: Dict[str, Any]
     ) -> None:
-        """Execute workflow in background."""
+        """Execute workflow in background (called from a daemon thread via asyncio.run)."""
         try:
-            # Update status to running
-            execution_state = self.active_executions[execution_id]
-            execution_state["status"] = "running"
-            await self.state_store.save(execution_id, execution_state)
-
-            # TODO: Implement actual workflow execution
-            logger.info(f"Executing workflow {workflow.name} (async mode)")
-            await asyncio.sleep(1)  # Placeholder
-
-            # Update state to completed
-            execution_state["status"] = "completed"
-            execution_state["completed_at"] = datetime.now(timezone.utc).isoformat()
-            execution_state["outputs"] = {"result": "Workflow execution not yet implemented"}
-
-            await self.state_store.save(execution_id, execution_state)
+            result = await self._execute_sync(execution_id, workflow, inputs)
+            if result.get("status") == "failed":
+                raise RuntimeError(result.get("error", "workflow failed"))
         except Exception as e:
             logger.error(f"Async workflow execution failed: {e}")
             execution_state = self.active_executions.get(execution_id)
@@ -213,6 +234,20 @@ class WorkflowCoordinator:
                 execution_state["error"] = str(e)
                 execution_state["completed_at"] = datetime.now(timezone.utc).isoformat()
                 await self.state_store.save(execution_id, execution_state)
+
+    @staticmethod
+    def _aggregate_results(workflow: Workflow, node_outputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge per-node outputs into a final result dict.
+
+        Terminal nodes (not depended-upon by any other node) are the primary outputs.
+        """
+        all_dependencies = {dep for node in workflow.nodes for dep in (node.depends_on or [])}
+        terminal_ids = [n.id for n in workflow.nodes if n.id not in all_dependencies]
+        return {
+            "terminal_outputs": {nid: node_outputs.get(nid, "") for nid in terminal_ids},
+            "all_outputs": node_outputs,
+            "node_count": len(workflow.nodes),
+        }
 
     async def get_execution_status(self, execution_id: str) -> Dict[str, Any]:
         """

@@ -272,6 +272,18 @@ class DependencyGraph:
 
         return levels
 
+    def get_parallel_batches(self) -> "List[List[WorkflowNode]]":
+        """Return nodes grouped into parallel batches (topological levels).
+
+        Nodes in the same batch have no inter-dependencies and may execute
+        concurrently. Delegates to get_execution_levels() and maps IDs → nodes.
+        """
+        node_by_id = {n.id: n for n in self.workflow.nodes}
+        return [
+            [node_by_id[nid] for nid in level if nid in node_by_id]
+            for level in self.get_execution_levels()
+        ]
+
     def to_mermaid(self) -> str:
         """
         Export the workflow dependency graph as a Mermaid DAG.

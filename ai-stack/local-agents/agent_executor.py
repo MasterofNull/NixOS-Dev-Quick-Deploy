@@ -98,7 +98,7 @@ _AEXEC_ALWAYS_TOOLS: frozenset[str] = frozenset(["read_file", "write_file", "edi
 # Tools eligible for hot-swap injection keyed by the keyword set that triggers them.
 _AEXEC_HOTSWAP_MAP: list[tuple[frozenset[str], list[str]]] = [
     (_AEXEC_MEMORY_KW,   ["store_memory"]),
-    (_AEXEC_WORKFLOW_KW, ["get_workflow_status"]),
+    (_AEXEC_WORKFLOW_KW, ["get_workflow_status", "execute_workflow"]),
     (_AEXEC_DELEGATE_KW, ["delegate_to_remote"]),
     (_AEXEC_HEALTH_KW,   ["harness_health"]),
     (_AEXEC_MESH_KW,     ["mesh_discovery"]),
