@@ -170,7 +170,7 @@ import json
 import sys
 from pathlib import Path
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 hint_path = Path(sys.argv[1])
 gaps_path = Path(sys.argv[2])
@@ -205,7 +205,7 @@ if gaps_path.exists():
     stats["gaps"]["unique_topics"] = len(topics)
 
 stats["pattern_library_estimate"] = stats["hint_audit"]["unique_hints"] + stats["gaps"]["unique_topics"]
-stats["generated_at"] = datetime.utcnow().isoformat() + "Z"
+stats["generated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 if output_format == "json":
     print(json.dumps(stats, indent=2))

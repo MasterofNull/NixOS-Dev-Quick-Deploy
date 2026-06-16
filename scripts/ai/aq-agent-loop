@@ -30,7 +30,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ── path setup ───────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ async def _emit_agent_event(task_id: str, event_type: str, payload: dict) -> Non
         "task_id": task_id,
         "seq": seq,
         "event_type": event_type,
-        "ts": datetime.utcnow().isoformat() + "Z",
+        "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         **payload,
     }
     asyncio.create_task(_async_append_jsonl(path, event))
@@ -284,7 +284,7 @@ async def run_task(
                 import datetime as _dt
                 _evt = json.dumps({
                     "event_type": "local_inference",
-                    "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+                    "timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z"),
                     "query": _q[:4000],
                     "response": _r[:4000],
                     "model": "local",
@@ -340,7 +340,7 @@ async def run_task(
                 "elapsed_s": summary["elapsed_seconds"],
                 "result_preview": (summary["result"] or "")[:200],
                 "error": summary["error"],
-                "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             }, indent=2))
         except Exception:
             pass
