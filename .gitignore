@@ -10,6 +10,7 @@
 /package.json
 /package-lock.json
 /routing_metrics.db
+.agent/codebase-index-checkpoint.json
 
 # User-specific files
 .vscode/

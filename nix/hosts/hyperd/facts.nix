@@ -91,6 +91,10 @@
                             opencode = "qwen/qwen3-coder-32b";
                           };
                           aiHarness.eval.faithfulnessEnabled = true;
+                          # 360s outer / 330s inner gives headroom for 4 tool calls × 25s
+                          # + 80s synthesis = 180s at 10 tok/s (Qwen3-35B quantised).
+                          # Default 240s was consistently hit by multi-tool agentic tasks.
+                          aiHarness.runtime.delegateTimeoutSeconds = 360;
                           autonomousImprovement.enable = true;
                         };
   };
