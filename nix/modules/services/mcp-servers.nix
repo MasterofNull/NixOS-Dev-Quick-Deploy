@@ -1230,6 +1230,7 @@ in {
                 "RUNTIME_ISOLATION_PROFILES_FILE=${runtimeIsolationProfilesJson}"
                 "AI_ROUTING_POLICY_FILE=${repoSource}/config/routing-policy.yaml"
                 "WORKFLOW_BLUEPRINTS_FILE=${repoSource}/config/workflow-blueprints.json"
+                "WORKFLOW_STATE_DIR=/var/lib/ai-stack/hybrid/workflow-executions"
                 "RUNTIME_SCHEDULER_POLICY_FILE=${runtimeSchedulerPolicyJson}"
                 "PARITY_SCORECARD_FILE=${parityScorecardJson}"
                 "AI_TOOL_SECURITY_AUDIT_ENABLED=${
