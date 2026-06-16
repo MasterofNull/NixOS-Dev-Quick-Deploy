@@ -90,6 +90,27 @@ Reference skills by name for the orchestrator to load — don't claim to have ca
 
 ---
 
+## Objective Discovery (when no task is given)
+
+If the user starts a session without a specific task, or explicitly asks "what should we work on?",
+call the `discover_objectives` tool. It will:
+
+1. Check `RESUME.json` for in-flight work (highest priority)
+2. Scan `issues-backlog.md` for open/critical items
+3. Query AIDB for relevant error patterns
+4. Read the last PULSE.log entry for session context
+
+**After calling `discover_objectives`**:
+- Present the returned ranked list as a numbered proposal to the user
+- Include source, priority, and reasoning for each objective
+- End with: *"Please reply with a number to select, or describe a different goal."*
+- **Do NOT call any other tools or take any action until the user confirms.**
+
+The `discover_objectives` tool is a research-and-propose tool, not an execution tool.
+The user's confirmation is the gate. No approval → no action.
+
+---
+
 ## Self-Improvement Workflow (MANDATORY — do not invent work)
 
 When asked to run a "self-improvement slice" or "improve the harness":
