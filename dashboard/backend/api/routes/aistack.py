@@ -6537,3 +6537,280 @@ async def get_candidate_pipeline() -> Dict[str, Any]:
         }
     except Exception as exc:
         return {"available": False, "error": str(exc), "states": {}, "total": 0}
+
+
+# ── Phase 184C — Observability panels (12 new panels) ─────────────────────────
+
+_DELEGATION_FB_PATH = Path(
+    os.getenv("AQ_DELEGATION_FEEDBACK_PATH",
+              "/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
+)
+_CL_STATS_PATH = Path(
+    os.getenv("AQ_CL_STATS_PATH",
+              "/var/lib/ai-stack/hybrid/telemetry/continuous_learning_stats.json")
+)
+_FINETUNE_DATASET_PATH = Path(
+    os.getenv("FINE_TUNING_DATASET",
+              "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl")
+)
+
+
+def _read_jsonl_tail(path: Path, n: int = 5000) -> list:
+    """Read last n lines of a JSONL file without loading the whole file."""
+    if not path.exists():
+        return []
+    results = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    results.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+                if len(results) > n:
+                    results.pop(0)
+    except OSError:
+        pass
+    return results
+
+
+@router.get("/stats/delegation/feedback-health")
+async def get_delegation_feedback_health() -> Dict[str, Any]:
+    """Panel D — Delegation feedback closure rate and event_type coverage."""
+    events = await asyncio.to_thread(_read_jsonl_tail, _DELEGATION_FB_PATH, 2000)
+    if not events:
+        return {"available": False, "total": 0, "with_event_type": 0, "closure_rate": 0.0}
+    total = len(events)
+    with_type = sum(1 for e in events if e.get("event_type"))
+    successes = sum(1 for e in events if e.get("outcome") == "success")
+    failures = sum(1 for e in events if e.get("outcome") == "failed")
+    failure_classes: Dict[str, int] = {}
+    for e in events:
+        fc = e.get("failure_class") or "unknown"
+        if e.get("outcome") == "failed":
+            failure_classes[fc] = failure_classes.get(fc, 0) + 1
+    return {
+        "available": True,
+        "total": total,
+        "with_event_type": with_type,
+        "closure_rate": round(with_type / total, 3) if total else 0.0,
+        "successes": successes,
+        "failures": failures,
+        "success_rate": round(successes / total, 3) if total else 0.0,
+        "top_failure_classes": dict(sorted(failure_classes.items(), key=lambda x: -x[1])[:5]),
+    }
+
+
+@router.get("/stats/delegate/timeseries")
+async def get_delegate_timeseries(hours: int = 24, bucket_minutes: int = 60) -> Dict[str, Any]:
+    """Panel A — Delegation success rate time series (rolling window, bucketed)."""
+    from datetime import timezone as _tz
+    cutoff = datetime.now(tz=_tz.utc) - timedelta(hours=hours)
+    events = await asyncio.to_thread(_read_jsonl_tail, _DELEGATION_FB_PATH, 5000)
+    buckets: Dict[str, Dict[str, int]] = {}
+    for e in events:
+        ts_str = e.get("timestamp", "")
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            continue
+        if ts < cutoff:
+            continue
+        # Bucket by floor(minute / bucket_minutes)
+        floored = ts.replace(
+            minute=(ts.minute // bucket_minutes) * bucket_minutes,
+            second=0, microsecond=0
+        )
+        key = floored.isoformat()
+        b = buckets.setdefault(key, {"success": 0, "failure": 0})
+        if e.get("outcome") == "success":
+            b["success"] += 1
+        else:
+            b["failure"] += 1
+    series = []
+    for ts_key in sorted(buckets):
+        b = buckets[ts_key]
+        total = b["success"] + b["failure"]
+        series.append({
+            "timestamp": ts_key,
+            "success": b["success"],
+            "failure": b["failure"],
+            "total": total,
+            "rate": round(b["success"] / total, 3) if total else 0.0,
+        })
+    overall_total = sum(s["total"] for s in series)
+    overall_success = sum(s["success"] for s in series)
+    return {
+        "available": True,
+        "hours": hours,
+        "bucket_minutes": bucket_minutes,
+        "series": series,
+        "summary": {
+            "total_delegations": overall_total,
+            "total_success": overall_success,
+            "overall_rate": round(overall_success / overall_total, 3) if overall_total else 0.0,
+        },
+    }
+
+
+@router.get("/stats/training/dataset-health")
+async def get_training_dataset_health() -> Dict[str, Any]:
+    """Panels E+F — Finetuning dataset size and patterns learned counter."""
+    # Dataset size from JSONL line count
+    dataset_size = 0
+    try:
+        dataset_size = await asyncio.to_thread(
+            lambda: sum(1 for _ in open(_FINETUNE_DATASET_PATH, errors="replace"))
+            if _FINETUNE_DATASET_PATH.exists() else 0
+        )
+    except OSError:
+        pass
+
+    # Continuous learning stats
+    cl = {}
+    if _CL_STATS_PATH.exists():
+        try:
+            cl = json.loads(await asyncio.to_thread(_CL_STATS_PATH.read_text))
+        except Exception:
+            pass
+
+    return {
+        "available": True,
+        "dataset_size": dataset_size,
+        "finetuning_dataset_size": cl.get("finetuning_dataset_size", dataset_size),
+        "patterns_learned": cl.get("total_patterns_learned", 0),
+        "learning_paused": cl.get("learning_paused", False),
+        "last_updated": cl.get("last_updated"),
+        "dataset_path": str(_FINETUNE_DATASET_PATH),
+    }
+
+
+@router.get("/stats/telemetry/event-distribution")
+async def get_event_distribution(hours: int = 24) -> Dict[str, Any]:
+    """Panel G — Agent-run event type distribution (last N hours)."""
+    from datetime import timezone as _tz
+    cutoff = datetime.now(tz=_tz.utc) - timedelta(hours=hours)
+    events = await asyncio.to_thread(_read_jsonl_tail, _AGENT_RUN_EVENTS_PATH, 10000)
+    # Also include user spool
+    user_events = await asyncio.to_thread(_read_jsonl_tail, _USER_EVENTS_SPOOL_PATH, 5000)
+    counts: Dict[str, int] = {}
+    for e in events + user_events:
+        ts_str = e.get("timestamp", "")
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if ts < cutoff:
+                continue
+        except (ValueError, AttributeError):
+            pass
+        et = e.get("event_type") or e.get("event") or "unknown"
+        counts[et] = counts.get(et, 0) + 1
+    distribution = [
+        {"event_type": k, "count": v}
+        for k, v in sorted(counts.items(), key=lambda x: -x[1])
+    ]
+    return {
+        "available": True,
+        "hours": hours,
+        "total_events": sum(counts.values()),
+        "distribution": distribution,
+    }
+
+
+_AQ_REPORT_PATH = Path(
+    os.getenv("AQ_REPORT_PATH",
+              "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+)
+
+
+@router.get("/stats/ragas")
+async def get_ragas_scores() -> Dict[str, Any]:
+    """Panel H — RAGAS quality scores from latest-aq-report.json ragas_metrics."""
+    if not _AQ_REPORT_PATH.exists():
+        return {"available": False, "reason": "aq-report not found"}
+    try:
+        report = json.loads(await asyncio.to_thread(_AQ_REPORT_PATH.read_text))
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+    ragas = report.get("ragas_metrics") or {}
+    if not ragas:
+        return {"available": False, "reason": "ragas_metrics not in aq-report"}
+    return {
+        "available": True,
+        "answer_relevance": ragas.get("answer_relevance_avg"),
+        "context_precision": ragas.get("context_precision_avg"),
+        "faithfulness": ragas.get("faithfulness_avg"),
+        "faithfulness_enabled": ragas.get("faithfulness_enabled"),
+        "sample_count": ragas.get("sample_count"),
+        "generated_at": report.get("generated_at"),
+    }
+
+
+@router.get("/stats/memory/collections")
+async def get_memory_collections() -> Dict[str, Any]:
+    """Panel J — Agent memory collection point counts (episodic/procedural/semantic)."""
+    memory_collections = [
+        "agent-memory-episodic",
+        "agent-memory-procedural",
+        "agent-memory-semantic",
+    ]
+    results = {}
+    qdrant_url = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
+    try:
+        sess = await get_http_session()
+        for coll in memory_collections:
+            try:
+                async with sess.get(
+                    f"{qdrant_url}/collections/{coll}",
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        results[coll] = data.get("result", {}).get("points_count", 0)
+                    else:
+                        results[coll] = 0
+            except Exception:
+                results[coll] = 0
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+    total = sum(results.values())
+    return {
+        "available": True,
+        "collections": results,
+        "total_memory_points": total,
+        "episodic": results.get("agent-memory-episodic", 0),
+        "procedural": results.get("agent-memory-procedural", 0),
+        "semantic": results.get("agent-memory-semantic", 0),
+    }
+
+
+@router.get("/stats/tools/performance")
+async def get_tool_performance() -> Dict[str, Any]:
+    """Panel C — Per-tool success rate from coordinator harness scorecard."""
+    try:
+        result = await fetch_with_fallback(
+            f"{SERVICES['hybrid']}/harness/scorecard",
+            None,
+            _hybrid_headers(),
+        )
+        if result is None:
+            return {"available": False}
+        tools = result.get("tool_performance") or result.get("tools") or {}
+        rows = []
+        for name, stats in (tools.items() if isinstance(tools, dict) else []):
+            calls = stats.get("calls", 0)
+            success = stats.get("success", 0)
+            rows.append({
+                "tool": name,
+                "calls": calls,
+                "success": success,
+                "failures": calls - success,
+                "success_rate": round(success / calls, 3) if calls else 0.0,
+                "p95_ms": stats.get("p95_ms"),
+            })
+        rows.sort(key=lambda x: x["calls"], reverse=True)
+        return {"available": True, "tools": rows, "generated_at": result.get("generated_at")}
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
