@@ -273,47 +273,142 @@ async def discover_objectives_handler(
     """
     Research the codebase and propose ranked objectives for user approval.
 
-    Queries AIDB, issues-backlog.md, RESUME.json, and PULSE.log to surface
-    actionable objectives. Returns a structured proposal that MUST be presented
-    to the user verbatim — the agent must not take any action after calling this.
+    For each objective also populates:
+      - context.relevant_files: file paths mentioned in the source data
+      - context.recent_errors: matching error events from telemetry
+      - context.prsi_items: pending PRSI actions related to the objective
+      - constraints: inferred boundaries (validation gate, rebuild required, etc.)
+
+    Returns a structured proposal. The agent MUST present it to the user and
+    wait for approval — the terminal tool gate enforces this.
     """
     import json as _json
+    import re as _re
     from pathlib import Path as _Path
 
-    proposal: Dict = {
-        "proposal_type": "objective_discovery",
-        "instruction": (
-            "STOP — do not call any more tools. Present the ranked objectives below "
-            "to the user as a numbered list with source, priority, and reasoning. "
-            "End with: 'Please reply with a number to select, or describe a different goal.' "
-            "Wait for their approval before taking any action."
-        ),
-        "objectives": [],
-        "evidence_sources": [],
-        "recommendation": "",
-    }
+    _FILE_RE = _re.compile(r'[\w./\-]+\.(?:py|nix|yaml|yml|json|sh|md|toml)\b')
+    _REBUILD_KW = frozenset(["nix", "nixos", "apparmor", "switchboard", "service", "module", "rebuild"])
+    _RESTART_KW = frozenset(["coordinator", "server", "handler", "daemon", "python"])
+    _QA_KW = frozenset(["test", "qa", "health", "check", "validation"])
+
+    def _infer_constraints(text: str) -> list:
+        lo = text.lower()
+        c = ["must pass scripts/governance/tier0-validation-gate.sh --pre-commit"]
+        if any(k in lo for k in _REBUILD_KW):
+            c.append("requires nixos-rebuild switch to activate")
+        if any(k in lo for k in _RESTART_KW):
+            c.append("requires service restart if Python-only change (no Nix)")
+        if any(k in lo for k in _QA_KW):
+            c.append("must pass aq-qa 0 after changes")
+        if "apparmor" in lo:
+            c.append("verify with: journalctl -u apparmor.service | grep -i error")
+        return c
+
+    def _extract_files(texts: list) -> list:
+        seen: set = set()
+        out: list = []
+        for t in texts:
+            for m in _FILE_RE.findall(str(t)):
+                if m not in seen and len(m) > 4:
+                    seen.add(m)
+                    out.append(m)
+        return out[:6]
 
     repo_root = _Path(os.environ.get("REPO_ROOT", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"))
 
-    # 1. RESUME.json — highest priority: in-flight work
+    # ── Gather shared evidence upfront ────────────────────────────────────────
+
+    # A. PRSI pending actions
+    prsi_items: list = []
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{HYBRID_COORDINATOR_URL}/control/prsi/pending")
+            if resp.status_code == 200:
+                data = resp.json()
+                actions = data if isinstance(data, list) else data.get("actions", [])
+                for a in actions[:10]:
+                    if a.get("approval", {}).get("at") is None:
+                        prsi_items.append({
+                            "id": a.get("id", "")[:16],
+                            "action": a.get("action", ""),
+                            "confidence": a.get("confidence"),
+                            "reason": (a.get("raw_action") or {}).get("reason", "")[:80],
+                        })
+    except Exception:
+        # Fall back to reading the queue file directly
+        try:
+            qf = _Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+            if qf.exists():
+                data = _json.loads(qf.read_text())
+                actions = data if isinstance(data, list) else data.get("actions", [])
+                for a in actions[:10]:
+                    if a.get("approval", {}).get("at") is None:
+                        prsi_items.append({
+                            "id": a.get("id", "")[:16],
+                            "action": a.get("action", ""),
+                            "confidence": a.get("confidence"),
+                            "reason": (a.get("raw_action") or {}).get("reason", "")[:80],
+                        })
+        except Exception:
+            pass
+
+    # B. Recent error events from telemetry
+    recent_errors: list = []
+    try:
+        _ERROR_KW = frozenset(["error", "fail", "stall", "eperm", "denied", "timeout", "exception"])
+        telemetry_path = _Path(
+            os.environ.get("HYBRID_TELEMETRY_PATH",
+                           "/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl")
+        )
+        if telemetry_path.exists():
+            lines = telemetry_path.read_text().splitlines()[-200:]
+            for ln in lines:
+                try:
+                    ev = _json.loads(ln)
+                    ev_type = ev.get("event_type", "")
+                    err = str(ev.get("error") or "")
+                    if any(k in ev_type.lower() for k in _ERROR_KW) or any(k in err.lower() for k in _ERROR_KW):
+                        recent_errors.append({
+                            "ts": ev.get("timestamp", "")[:19],
+                            "event": ev_type,
+                            "detail": (err or ev.get("tool_name", ""))[:120],
+                        })
+                except Exception:
+                    pass
+            recent_errors = recent_errors[-10:]
+    except Exception:
+        pass
+
+    # ── Build objectives ───────────────────────────────────────────────────────
+
+    objectives: list = []
+
+    # 1. RESUME.json — in-flight work (highest priority)
     try:
         resume_path = repo_root / ".agent" / "collaboration" / "RESUME.json"
         if resume_path.exists():
             resume = _json.loads(resume_path.read_text())
             current = resume.get("current_objective", "")
             pending = [t for t in resume.get("todo_snapshot", []) if not t.startswith("DONE")]
+            uncommitted = resume.get("uncommitted_changes", [])
             if current or pending:
-                proposal["objectives"].append({
+                combined_text = " ".join([current] + pending + uncommitted)
+                objectives.append({
                     "rank": 1,
                     "source": "RESUME.json",
                     "title": f"Resume: {current}" if current else "Resume in-flight work",
                     "detail": pending[:3],
                     "reasoning": "Active work in progress — highest priority to maintain continuity.",
                     "priority": "critical",
+                    "context": {
+                        "relevant_files": _extract_files([combined_text]),
+                        "recent_errors": [e for e in recent_errors[-3:]],
+                        "prsi_items": prsi_items[:3],
+                    },
+                    "constraints": _infer_constraints(combined_text),
                 })
-            proposal["evidence_sources"].append(f"RESUME.json: {len(pending)} pending item(s)")
-    except Exception as e:
-        proposal["evidence_sources"].append(f"RESUME.json error: {e}")
+    except Exception:
+        pass
 
     # 2. issues-backlog.md — open/critical items
     try:
@@ -328,19 +423,27 @@ async def discover_objectives_handler(
                 if any(tag in stripped for tag in ("[ ]", "OPEN", "CRITICAL", "TODO", "PENDING-REBUILD")):
                     open_items.append(stripped.lstrip("- ").lstrip("[ ] ").strip())
             for item in open_items[:3]:
-                if any(o["title"][:60] == item[:60] for o in proposal["objectives"]):
+                if any(o["title"][:60] == item[:60] for o in objectives):
                     continue
                 priority = "high" if any(t in item for t in ("CRITICAL", "PENDING-REBUILD")) else "medium"
-                proposal["objectives"].append({
-                    "rank": len(proposal["objectives"]) + 1,
+                # Filter errors relevant to this item's keywords
+                item_lo = item.lower()
+                item_errors = [e for e in recent_errors if any(w in e["detail"].lower() for w in item_lo.split()[:4])][:2]
+                objectives.append({
+                    "rank": len(objectives) + 1,
                     "source": "issues-backlog.md",
                     "title": item[:120],
                     "reasoning": "Tracked open issue requiring resolution.",
                     "priority": priority,
+                    "context": {
+                        "relevant_files": _extract_files([item]),
+                        "recent_errors": item_errors,
+                        "prsi_items": [p for p in prsi_items if any(w in p["action"] for w in item_lo.split()[:3])][:2],
+                    },
+                    "constraints": _infer_constraints(item),
                 })
-            proposal["evidence_sources"].append(f"issues-backlog.md: {len(open_items)} open item(s)")
-    except Exception as e:
-        proposal["evidence_sources"].append(f"issues-backlog.md error: {e}")
+    except Exception:
+        pass
 
     # 3. AIDB error-solutions — known patterns needing attention
     try:
@@ -352,49 +455,85 @@ async def discover_objectives_handler(
                 "limit": 3,
             })
             if resp.status_code == 200:
-                hits = resp.json().get("results", [])
-                for hit in hits:
+                for hit in resp.json().get("results", []):
                     payload = hit.get("payload", {})
                     title = (payload.get("title") or payload.get("problem", ""))[:100]
+                    solution = payload.get("solution", "")[:200]
                     if not title:
                         continue
-                    if any(o["title"][:60] == title[:60] for o in proposal["objectives"]):
+                    if any(o["title"][:60] == title[:60] for o in objectives):
                         continue
                     score = hit.get("score", 0)
-                    proposal["objectives"].append({
-                        "rank": len(proposal["objectives"]) + 1,
+                    combined = f"{title} {solution}"
+                    objectives.append({
+                        "rank": len(objectives) + 1,
                         "source": "aidb:error-solutions",
                         "title": title,
-                        "reasoning": f"Known error pattern (relevance {score:.2f}).",
+                        "reasoning": f"Known error pattern (relevance {score:.2f}). Suggested fix: {solution[:100]}",
                         "priority": "high" if score > 0.65 else "medium",
                         "score": round(score, 3),
+                        "context": {
+                            "relevant_files": _extract_files([combined]),
+                            "recent_errors": [e for e in recent_errors if any(w in e["detail"].lower() for w in title.lower().split()[:4])][:2],
+                            "prsi_items": [],
+                        },
+                        "constraints": _infer_constraints(combined),
                     })
-                proposal["evidence_sources"].append(f"AIDB error-solutions: {len(hits)} match(es)")
-    except Exception as e:
-        proposal["evidence_sources"].append(f"AIDB unavailable: {e}")
+    except Exception:
+        pass
 
-    # 4. Recent PULSE.log — last activity for context
+    # 4. PRSI-sourced objectives — unapproved high-confidence actions
+    for p in prsi_items[:2]:
+        title = f"PRSI: {p['action']} — {p['reason']}" if p["reason"] else f"PRSI: {p['action']}"
+        if any(o["title"][:60] == title[:60] for o in objectives):
+            continue
+        objectives.append({
+            "rank": len(objectives) + 1,
+            "source": f"prsi:action-queue ({p['id']})",
+            "title": title[:120],
+            "reasoning": f"Pending PRSI action (confidence {p['confidence']}) awaiting approval.",
+            "priority": "medium",
+            "context": {
+                "relevant_files": [],
+                "recent_errors": [],
+                "prsi_items": [p],
+            },
+            "constraints": _infer_constraints(p["action"]),
+        })
+
+    # ── Final assembly ─────────────────────────────────────────────────────────
+
+    objectives = objectives[:limit]
+    for i, obj in enumerate(objectives, 1):
+        obj["rank"] = i
+
+    # Last PULSE entry for session continuity
+    last_pulse = ""
     try:
         pulse_path = repo_root / ".agent" / "collaboration" / "PULSE.log"
         if pulse_path.exists():
             recent = pulse_path.read_text().splitlines()
-            last = next((ln for ln in reversed(recent) if ln.strip()), "")
-            if last:
-                proposal["evidence_sources"].append(f"Last PULSE entry: {last[-120:]}")
+            last_pulse = next((ln for ln in reversed(recent) if ln.strip()), "")
     except Exception:
         pass
 
-    # Re-rank and cap at limit
-    objectives = proposal["objectives"][:limit]
-    for i, obj in enumerate(objectives, 1):
-        obj["rank"] = i
-    proposal["objectives"] = objectives
-    proposal["recommendation"] = (
-        objectives[0]["title"] if objectives
-        else "No clear pending objectives found. Please describe what you'd like to work on."
-    )
-
-    return proposal
+    return {
+        "proposal_type": "objective_discovery",
+        "instruction": (
+            "STOP — do not call any more tools. Present the ranked objectives below "
+            "to the user as a numbered list. For each include: title, source, priority, "
+            "reasoning, context (relevant_files, recent_errors, prsi_items), and constraints. "
+            "End with: 'Please reply with a number to select, or describe a different goal.' "
+            "Wait for their approval before taking any action."
+        ),
+        "objectives": objectives,
+        "last_pulse": last_pulse[-120:] if last_pulse else "",
+        "prsi_pending_total": len(prsi_items),
+        "recommendation": (
+            objectives[0]["title"] if objectives
+            else "No pending objectives found. Please describe what you'd like to work on."
+        ),
+    }
 
 
 async def get_workflow_status_handler(workflow_id: str) -> Dict:

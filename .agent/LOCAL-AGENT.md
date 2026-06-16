@@ -102,7 +102,11 @@ call the `discover_objectives` tool. It will:
 
 **After calling `discover_objectives`**:
 - Present the returned ranked list as a numbered proposal to the user
-- Include source, priority, and reasoning for each objective
+- For each objective show: **title**, source, priority, reasoning
+- Show `context.relevant_files` — files the user will likely need to review
+- Show `context.recent_errors` — any matching error events from telemetry
+- Show `context.prsi_items` — pending automation actions related to this objective
+- Show `constraints` — inferred boundaries (validation gate, rebuild needed, etc.)
 - End with: *"Please reply with a number to select, or describe a different goal."*
 - **Do NOT call any other tools or take any action until the user confirms.**
 
