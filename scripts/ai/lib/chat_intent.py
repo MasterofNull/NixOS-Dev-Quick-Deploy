@@ -111,6 +111,11 @@ def classify_chat_intent(text: str) -> TurnClassification:
             if phrase in lower:
                 return TurnClassification("conversational", 0.85, phrase)
 
+    # Greeting / purely conversational phrases — bypass coordinator (~50s overhead)
+    for phrase in _CONVERSATIONAL_INTENTS:
+        if phrase in lower:
+            return TurnClassification("conversational", 0.80, phrase)
+
     # Conservative default: agentic
     return TurnClassification("agentic", 1.0, None)
 

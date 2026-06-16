@@ -551,10 +551,11 @@ def _refresh_tools_from_result(
 
 def _profile_for_role(role: str) -> str:
     normalized = str(role or "").strip().lower()
-    if normalized == "coder":
-        return "local-tool-calling"
-    # continue-local has ~150-char system prompt vs local-agent ~2000-char.
-    # Lighter profile avoids >300s prefill overhead for simple delegate tasks.
+    # Always use continue-local when spawned as a subprocess (TOOLS_ENABLED=False).
+    # "local-tool-calling" in switchboard routes to _execute_local_tool_calling which
+    # expects built-in server tools, not subprocess agent tool schemas — causes 400
+    # which holds _local_sem and blocks all local inference for ~210s.
+    _ = normalized
     return "continue-local"
 
 
