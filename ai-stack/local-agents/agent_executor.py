@@ -59,6 +59,7 @@ _TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telem
 # USER_EVENTS_SPOOL, so agent telemetry lands in training data without privilege issues.
 _REPO_ROOT_PATH = Path(os.environ.get("REPO_ROOT", Path(__file__).resolve().parents[2]))
 _HYBRID_EVENTS = _REPO_ROOT_PATH / ".agents" / "telemetry" / "hybrid-events.jsonl"
+_HYBRID_EVENTS.parent.mkdir(parents=True, exist_ok=True)
 
 # Phase E — agent-run-events.jsonl path: prefer harness_paths SSOT; fall back to absolute path.
 # Never use a relative path — agent_executor.py may run from Nix store (EROFS).

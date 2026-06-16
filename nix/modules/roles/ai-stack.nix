@@ -1706,6 +1706,8 @@ in {
         pkgs.bbot-placeholder
         # Phase 86: desktop notifications for human-gate alerts
         pkgs.libnotify
+        # Sprint 2: zstd CLI required by continuous_learning.py log rotation
+        pkgs.zstd
       ];
 
       # Agent-agnostic environment variables for tool discovery.

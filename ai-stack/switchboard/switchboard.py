@@ -2983,6 +2983,8 @@ async def proxy(path: str, request: Request):
                                         )
                                         await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
                                         token_usage_emitted = True
+                                except httpx.RemoteProtocolError as _rpe:
+                                    print(f"[switchboard] stream cut short (RemoteProtocolError): {_rpe} target={target_type} req_id={req_id}", file=sys.stderr)
                                 finally:
                                     await upstream.aclose()
                                     await client.aclose()
