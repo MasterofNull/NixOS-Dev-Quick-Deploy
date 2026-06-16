@@ -88,7 +88,7 @@ async def record_critique(
     Returns {"status": "stored", "critique_id": ..., "timestamp": ...} on success.
     """
     critique_id = f"critique-{critic}-{author}-{uuid.uuid4().hex[:8]}"
-    ts = datetime.datetime.utcnow().isoformat() + "Z"
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z"
 
     record: Dict[str, Any] = {
         "critique_id": critique_id,
@@ -214,7 +214,7 @@ def synthesize_critiques(critiques: List[Dict[str, Any]]) -> Dict[str, Any]:
         "consensus_weaknesses": _dedup(all_weaknesses)[:10],
         "consensus_suggestions": _dedup(all_suggestions)[:10],
         "promoted_patterns": _dedup(all_patterns)[:15],
-        "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
     }
 
 

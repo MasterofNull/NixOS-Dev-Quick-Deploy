@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import socket as _socket_module
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -70,7 +70,7 @@ def write_audit_entry(
         caller_hash = hashlib.sha256(caller_identity.encode()).hexdigest()[:16]
 
         entry = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat() + 'Z',
             'service': service,
             'tool_name': tool_name,
             'caller_hash': caller_hash,

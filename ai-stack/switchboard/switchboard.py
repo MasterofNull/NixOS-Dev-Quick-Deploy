@@ -1312,7 +1312,7 @@ def _compact_tool_result_if_needed(tool_name: str, tool_call_id: str, result_tex
         artifact_dir.mkdir(parents=True, exist_ok=True)
         artifact_path = artifact_dir / f"{int(time.time())}-{tool_name}-{digest[:12]}.json"
         artifact_payload = {
-            "created_at": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds") + "Z",
             "tool": tool_name,
             "tool_call_id": tool_call_id,
             "sha256": digest,
@@ -2412,7 +2412,7 @@ def _effective_profile(request: Request) -> str:
     return profile if profile in allowed else "default"
 
 def _budget_state_current() -> dict:
-    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     state = {"date": today, "remote_tokens_used": 0}
     if not REMOTE_BUDGET_STATE_PATH:
         return state
@@ -2431,7 +2431,7 @@ def _budget_state_save(remote_tokens_used: int) -> None:
     state_path = pathlib.Path(REMOTE_BUDGET_STATE_PATH)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "date": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
+        "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
         "remote_tokens_used": max(0, int(remote_tokens_used)),
     }
     tmp = state_path.with_suffix(".tmp")

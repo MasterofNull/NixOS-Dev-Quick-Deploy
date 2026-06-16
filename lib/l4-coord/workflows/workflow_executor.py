@@ -13,7 +13,7 @@ import json
 from typing import Dict, List, Optional, Set, Any, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -196,7 +196,7 @@ class TelemetryCollector:
             "event": "task_start",
             "task_id": task_execution.task_id,
             "execution_id": task_execution.execution_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
     def record_task_end(self, task_execution: TaskExecution):
@@ -207,7 +207,7 @@ class TelemetryCollector:
             "execution_id": task_execution.execution_id,
             "status": task_execution.status.value,
             "duration": task_execution.duration,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
     def record_workflow_start(self, workflow_execution: WorkflowExecution):
@@ -216,7 +216,7 @@ class TelemetryCollector:
             "event": "workflow_start",
             "workflow_id": workflow_execution.workflow_id,
             "execution_id": workflow_execution.execution_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
     def record_workflow_end(self, workflow_execution: WorkflowExecution):
@@ -227,7 +227,7 @@ class TelemetryCollector:
             "execution_id": workflow_execution.execution_id,
             "status": workflow_execution.status.value,
             "duration": workflow_execution.total_duration,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
     def get_telemetry(self) -> List[Dict[str, Any]]:
@@ -260,7 +260,7 @@ class TelemetryCollector:
             "workflow_execution_id": workflow_execution_id,
             "level": level,
             "message": message,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "context": context,
         }
         self.logs.append(log_entry)
@@ -382,7 +382,7 @@ class WorkflowExecutor:
 
         # Start execution
         workflow_execution.status = ExecutionStatus.RUNNING
-        workflow_execution.start_time = datetime.utcnow().isoformat()
+        workflow_execution.start_time = datetime.now(timezone.utc).isoformat()
 
         self.telemetry_collector.record_workflow_start(workflow_execution)
 
@@ -407,7 +407,7 @@ class WorkflowExecutor:
             workflow_execution.metadata["error"] = str(e)
 
         # Finalize
-        workflow_execution.end_time = datetime.utcnow().isoformat()
+        workflow_execution.end_time = datetime.now(timezone.utc).isoformat()
         workflow_execution.total_duration = self._calculate_duration(
             workflow_execution.start_time,
             workflow_execution.end_time
@@ -486,7 +486,7 @@ class WorkflowExecutor:
             try:
                 # Start execution
                 task_execution.status = ExecutionStatus.RUNNING
-                task_execution.start_time = datetime.utcnow().isoformat()
+                task_execution.start_time = datetime.now(timezone.utc).isoformat()
 
                 self.telemetry_collector.record_task_start(task_execution)
 
@@ -606,7 +606,7 @@ class WorkflowExecutor:
                     break
 
         # Finalize
-        task_execution.end_time = datetime.utcnow().isoformat()
+        task_execution.end_time = datetime.now(timezone.utc).isoformat()
         task_execution.duration = self._calculate_duration(
             task_execution.start_time,
             task_execution.end_time
@@ -645,7 +645,7 @@ class WorkflowExecutor:
 
     def _generate_execution_id(self, prefix: str) -> str:
         """Generate execution ID."""
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
         return f"{prefix}_{timestamp}"
 
     def _calculate_duration(self, start_time: str, end_time: str) -> int:

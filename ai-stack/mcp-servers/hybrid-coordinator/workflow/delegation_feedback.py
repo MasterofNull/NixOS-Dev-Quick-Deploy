@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -407,7 +407,7 @@ def record_delegation_feedback(
     # Previously only logged failures, which prevented tracking overall delegation reliability
     payload = {
         "event_type": event_type,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "task_excerpt": task[:280],
         "requested_profile": requested_profile,
         "selected_profile": selected_profile,

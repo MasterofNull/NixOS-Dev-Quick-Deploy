@@ -513,7 +513,7 @@ class LLMClient:
                 _usage = body.get("usage", {})
                 _evt = json.dumps({
                     "event_type": "local_inference",
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
                     "query": prompt[:4000],
                     "response": (llm_res.content or "")[:4000],
                     "model": llm_res.model,

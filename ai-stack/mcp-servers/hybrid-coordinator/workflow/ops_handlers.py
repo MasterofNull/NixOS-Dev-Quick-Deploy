@@ -309,7 +309,7 @@ async def handle_health_aggregate(_request: web.Request) -> web.Response:
         overall = "partially_healthy"
 
     snapshot = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "overall": overall,
         "servers": {k: v.get("status") for k, v in results.items()},
         "latencies": {k: v.get("latency_ms") for k, v in results.items()},
@@ -333,7 +333,7 @@ async def handle_health_aggregate(_request: web.Request) -> web.Response:
         "servers": results,
         "trend": trend,
         "history_depth": len(_HEALTH_HISTORY),
-        "checked_at": datetime.utcnow().isoformat() + "Z",
+        "checked_at": datetime.now(timezone.utc).isoformat() + "Z",
     }
     return web.json_response(payload, status=200 if overall == "healthy" else 207)
 

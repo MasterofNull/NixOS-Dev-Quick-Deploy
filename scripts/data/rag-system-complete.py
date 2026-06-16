@@ -22,7 +22,7 @@ import time
 import hashlib
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -81,8 +81,8 @@ class EnhancedPayload:
     value_score: float = 0.0
 
     # Timestamps
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     last_used_at: Optional[str] = None
 
     # Additional metadata
@@ -103,8 +103,8 @@ class EnhancedPayload:
         self.success_rate = (
             self.success_count / self.usage_count if self.usage_count > 0 else 0.0
         )
-        self.last_used_at = datetime.utcnow().isoformat()
-        self.updated_at = datetime.utcnow().isoformat()
+        self.last_used_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(timezone.utc).isoformat()
 
 
 @dataclass
@@ -205,7 +205,7 @@ class SemanticCache:
         cursor = self.conn.execute("""
             SELECT * FROM semantic_cache
             WHERE query_hash = ? AND expires_at > ?
-        """, (query_hash, datetime.utcnow().isoformat()))
+        """, (query_hash, datetime.now(timezone.utc).isoformat()))
 
         row = cursor.fetchone()
         if row:
@@ -214,7 +214,7 @@ class SemanticCache:
                 UPDATE semantic_cache
                 SET hit_count = hit_count + 1, last_hit_at = ?
                 WHERE id = ?
-            """, (datetime.utcnow().isoformat(), row[0]))
+            """, (datetime.now(timezone.utc).isoformat(), row[0]))
             self.conn.commit()
 
             return {
@@ -229,7 +229,7 @@ class SemanticCache:
             SELECT id, query_text, query_embedding, response, llm_used, hit_count
             FROM semantic_cache
             WHERE expires_at > ?
-        """, (datetime.utcnow().isoformat(),))
+        """, (datetime.now(timezone.utc).isoformat(),))
 
         best = None
         best_score = 0.0
@@ -248,7 +248,7 @@ class SemanticCache:
                 UPDATE semantic_cache
                 SET hit_count = hit_count + 1, last_hit_at = ?
                 WHERE id = ?
-            """, (datetime.utcnow().isoformat(), best[0]))
+            """, (datetime.now(timezone.utc).isoformat(), best[0]))
             self.conn.commit()
 
             return {
@@ -266,8 +266,8 @@ class SemanticCache:
         """Cache a response"""
         query_hash = self._query_hash(query)
         cache_id = str(uuid.uuid4())
-        created_at = datetime.utcnow().isoformat()
-        expires_at = (datetime.utcnow() + timedelta(hours=CONFIG["cache_ttl_hours"])).isoformat()
+        created_at = datetime.now(timezone.utc).isoformat()
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=CONFIG["cache_ttl_hours"])).isoformat()
 
         self.conn.execute("""
             INSERT OR REPLACE INTO semantic_cache
@@ -284,7 +284,7 @@ class SemanticCache:
         """Remove expired cache entries"""
         self.conn.execute("""
             DELETE FROM semantic_cache WHERE expires_at < ?
-        """, (datetime.utcnow().isoformat(),))
+        """, (datetime.now(timezone.utc).isoformat(),))
         self.conn.commit()
 
     def stats(self) -> Dict:
@@ -297,7 +297,7 @@ class SemanticCache:
                 AVG(hit_count) as avg_hits_per_entry
             FROM semantic_cache
             WHERE expires_at > ?
-        """, (datetime.utcnow().isoformat(),))
+        """, (datetime.now(timezone.utc).isoformat(),))
 
         row = cursor.fetchone()
         return {
@@ -358,7 +358,7 @@ class RAGSystem:
                     vector=data["embedding"],
                     model=self.config["embedding_model"],
                     dimensions=len(data["embedding"]),
-                    created_at=datetime.utcnow().isoformat()
+                    created_at=datetime.now(timezone.utc).isoformat()
                 )
             else:
                 print(f"❌ Embedding generation failed: HTTP {response.status_code}")

@@ -20,7 +20,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -463,7 +463,7 @@ class LocalAgentExecutor:
             "task_id": task_id,
             "seq": seq,
             "event_type": event_type,
-            "ts": datetime.utcnow().isoformat() + "Z",
+            "ts": datetime.now(timezone.utc).isoformat() + "Z",
             **payload,
         }
         asyncio.create_task(self._async_append_jsonl(path, event))
@@ -654,7 +654,7 @@ class LocalAgentExecutor:
                 try:
                     _event = json.dumps({
                         "event_type": "agent_step_complete",
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
                         "query": task.objective,
                         "response": task.result if isinstance(task.result, str) else json.dumps(task.result),
                         "latency_ms": task.execution_time_ms,
@@ -882,7 +882,7 @@ class LocalAgentExecutor:
 
         def _emit_step_telemetry(tc_result, call_number: int, prose_before: str) -> None:
             """Write per-tool-call telemetry to all three observability surfaces."""
-            ts = datetime.utcnow().isoformat() + "Z"
+            ts = datetime.now(timezone.utc).isoformat() + "Z"
             elapsed = time.time() - _loop_start
 
             # 1. hybrid-events.jsonl — feeds dashboard + training_ingest

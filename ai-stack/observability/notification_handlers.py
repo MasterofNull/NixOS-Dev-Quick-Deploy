@@ -13,7 +13,7 @@ import logging
 import os
 import smtplib
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
@@ -117,7 +117,7 @@ class NotificationHandlers:
         Returns:
             True if within limit, False if rate limited
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         config = self.config.get(channel)
         if not config:
             return True

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -509,7 +509,7 @@ class WorkflowGenerator:
             description=f"Auto-generated workflow for: {goal}",
             goal=goal,
             tasks=tasks,
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
             metadata={
                 "parsed_goal": parsed_goal,
                 "total_tasks": len(tasks),
@@ -563,7 +563,7 @@ class WorkflowGenerator:
 
     def _generate_workflow_id(self, goal: str) -> str:
         """Generate unique workflow ID from goal."""
-        hash_input = f"{goal}_{datetime.utcnow().isoformat()}"
+        hash_input = f"{goal}_{datetime.now(timezone.utc).isoformat()}"
         hash_digest = hashlib.sha256(hash_input.encode()).hexdigest()
         return f"wf_{hash_digest[:12]}"
 

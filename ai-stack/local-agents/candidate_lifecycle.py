@@ -3,7 +3,7 @@ import json
 import os
 import shutil
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 VALID_STATES = ["proposed", "evaluating", "reviewed", "adopted", "rejected", "retired"]
@@ -104,7 +104,7 @@ class CandidateLifecycleManager:
         cand["state"] = new_state
         
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "from_state": old_state,
             "to_state": new_state,
             "by": by,

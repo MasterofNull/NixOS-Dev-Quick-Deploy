@@ -12,7 +12,7 @@ import os
 import re
 from typing import Dict, List, Optional, Set, Any, Tuple
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -288,8 +288,8 @@ class TemplateExtractor:
         return TemplateMetadata(
             category=category,
             tags=tags,
-            created_at=datetime.utcnow().isoformat(),
-            updated_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
+            updated_at=datetime.now(timezone.utc).isoformat(),
             version="1.0.0",
             success_rate=success_rate,
             avg_duration=avg_duration,
@@ -492,7 +492,7 @@ class TemplateStore:
         )
 
         # Update timestamp
-        template.metadata.updated_at = datetime.utcnow().isoformat()
+        template.metadata.updated_at = datetime.now(timezone.utc).isoformat()
 
         self._save()
         logger.info(f"Updated template {template_id} usage statistics")

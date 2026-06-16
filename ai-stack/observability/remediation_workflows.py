@@ -12,7 +12,7 @@ import logging
 import os
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 import httpx
@@ -94,7 +94,7 @@ class RemediationWorkflows:
             restart_times = restart_file.read_text().strip().split("\n")
             recent_restarts = [
                 t for t in restart_times
-                if (datetime.utcnow() - datetime.fromisoformat(t)).total_seconds() < 3600
+                if (datetime.now(timezone.utc) - datetime.fromisoformat(t)).total_seconds() < 3600
             ]
             if len(recent_restarts) >= 3:
                 return {
@@ -135,7 +135,7 @@ class RemediationWorkflows:
                 # Log restart
                 restart_file.parent.mkdir(parents=True, exist_ok=True)
                 with open(restart_file, "a") as f:
-                    f.write(f"{datetime.utcnow().isoformat()}\n")
+                    f.write(f"{datetime.now(timezone.utc).isoformat()}\n")
 
                 return {
                     "success": is_active,

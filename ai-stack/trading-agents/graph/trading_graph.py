@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -130,7 +130,7 @@ class TradingGraph:
     def _log_state(self, state: AgentState) -> None:
         ticker = state.get("ticker", "unknown")
         trade_date = state.get("trade_date", "unknown")
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         log_file = self._log_dir / f"{ticker}_{trade_date}_{ts}.json"
         try:
             with open(log_file, "w") as f:

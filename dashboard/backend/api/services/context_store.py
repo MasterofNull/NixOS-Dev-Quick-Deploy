@@ -12,7 +12,7 @@ import re
 import threading
 import subprocess
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 import asyncio
@@ -307,7 +307,7 @@ class ContextStore:
     @staticmethod
     def _timestamp() -> str:
         """Use microsecond timestamps so high-frequency events do not collide."""
-        return datetime.utcnow().isoformat(timespec="microseconds")
+        return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
     def start_deployment(self, deployment_id: str, command: str, user: str = "system") -> bool:
         """Start tracking a new deployment"""

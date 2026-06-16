@@ -713,7 +713,7 @@ class ContinuousLearningPipeline:
         archive_name = (
             path.stem
             + "-"
-            + datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             + path.suffix
             + ".zst"
         )
