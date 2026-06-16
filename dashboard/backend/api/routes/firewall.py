@@ -19,7 +19,7 @@ import os
 import re
 import json
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ def audit_log(action: str, details: Dict[str, Any], success: bool, client_ip: st
     """Append firewall operation to audit log."""
     try:
         entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "action": action,
             "success": success,
             "client_ip": client_ip,

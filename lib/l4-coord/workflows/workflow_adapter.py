@@ -10,7 +10,7 @@ import re
 import logging
 from typing import Dict, List, Optional, Set, Tuple, Any
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import difflib
 
 logger = logging.getLogger(__name__)
@@ -298,7 +298,7 @@ class WorkflowCustomizer:
         # Update goal and metadata
         customized.goal = goal
         customized.description = f"Adapted workflow for: {goal}"
-        customized.created_at = datetime.utcnow().isoformat()
+        customized.created_at = datetime.now(timezone.utc).isoformat()
 
         if customizations:
             # Apply task additions
@@ -605,12 +605,12 @@ class WorkflowAdapter:
 
         # Create workflow
         workflow = Workflow(
-            id=f"wf_{template.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            id=f"wf_{template.id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
             name=template.name,
             description=template.description,
             goal=template.goal_pattern,
             tasks=tasks,
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
             metadata={"template_id": template.id},
         )
 

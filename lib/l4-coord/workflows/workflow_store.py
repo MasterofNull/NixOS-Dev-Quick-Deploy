@@ -11,7 +11,7 @@ import sqlite3
 import logging
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
@@ -414,7 +414,7 @@ class WorkflowStore:
         Returns:
             List of executions
         """
-        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -469,7 +469,7 @@ class WorkflowStore:
         Returns:
             List of telemetry events
         """
-        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -527,7 +527,7 @@ class WorkflowStore:
             avg_duration = cursor.fetchone()["avg_duration"] or 0
 
             # Recent activity (last 24 hours)
-            cutoff = (datetime.utcnow() - timedelta(days=1)).isoformat()
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
             cursor.execute("""
                 SELECT COUNT(*) as count FROM workflow_executions
                 WHERE start_time >= ?
@@ -549,7 +549,7 @@ class WorkflowStore:
         Args:
             days: Delete data older than this many days
         """
-        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         with self._get_connection() as conn:
             cursor = conn.cursor()

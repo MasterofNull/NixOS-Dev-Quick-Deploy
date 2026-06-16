@@ -6,7 +6,7 @@ Demonstrates RF spectrum analysis and anomaly detection skills.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 import json
 
@@ -91,7 +91,7 @@ async def analyze_rf_spectrum(
                 "avg_power_dbm": round(avg_power, 2),
                 "max_power_dbm": max_power,
                 "signals": signals[:20],  # Top 20 by power
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
     except Exception as e:
@@ -173,7 +173,7 @@ async def detect_interference(
         "status": "success",
         "monitored_frequencies": len(known_frequencies),
         "results": results,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
@@ -227,7 +227,7 @@ async def classify_signal_types(
                     "end_mhz": frequency_range[1] / 1e6
                 },
                 "classifications": classifications,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
     except Exception as e:

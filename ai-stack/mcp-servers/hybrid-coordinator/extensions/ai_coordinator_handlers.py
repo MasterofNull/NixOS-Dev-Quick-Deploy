@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -603,7 +603,7 @@ async def handle_ai_coordinator_lessons_review(request: web.Request) -> web.Resp
                     break
             if target is None:
                 return web.json_response({"error": "lesson not found"}, status=404)
-            stamp = datetime.utcnow().isoformat() + "Z"
+            stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             target["state"] = requested_state
             target["review"] = {
                 "reviewer": reviewer[:64],
@@ -2489,10 +2489,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 _tok_in=_li_tok_in, _tok_out=_li_tok_out, _profile=effective_profile,
             ):
                 try:
-                    import datetime as _dt
                     _evt = json.dumps({
                         "event_type": "local_inference",
-                        "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+                        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "query": _query[:4000],
                         "response": _response[:4000],
                         "model": _model or "local",

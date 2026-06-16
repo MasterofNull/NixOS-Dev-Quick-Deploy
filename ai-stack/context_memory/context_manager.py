@@ -18,7 +18,7 @@ import math
 import os
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -226,7 +226,7 @@ class ContextMemoryManager:
         - Semantic centrality (0.10): Connection to other context
         - Error resolution (0.05): Problem-solving value
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         age_hours = (now - context.created_at).total_seconds() / 3600
 
         # Recency score with exponential decay
@@ -281,7 +281,7 @@ class ContextMemoryManager:
         1-7d: STALE
         7d+: ARCHIVED
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         age = now - context.created_at
 
         if age < timedelta(hours=1):
@@ -324,7 +324,7 @@ class ContextMemoryManager:
         Returns:
             Created Context object
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Generate context ID
         context_id = hashlib.sha256(f"{content}{now.isoformat()}".encode()).hexdigest()[:16]
@@ -438,7 +438,7 @@ class ContextMemoryManager:
                 temp_context = Context(
                     id=context_id,
                     created_at=created_at,
-                    last_accessed=datetime.utcnow(),
+                    last_accessed=datetime.now(timezone.utc),
                     lifecycle_state=LifecycleState(current_state),
                     importance_score=0.0,
                     reference_count=0,

@@ -438,6 +438,19 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 return value.strip()[:500]
         return text[:500]
 
+    def _record_response(self, prompt: str, full_response: str) -> None:
+        """Update conversation/feedback state only — no rendering.
+
+        Used by _stream_fast_path where content is already streamed token-by-token.
+        Calling _record_and_render_assistant_response there would double-print.
+        """
+        full_response = full_response.strip()
+        if not full_response:
+            return
+        self.context_history.append({"role": "assistant", "content": full_response})
+        self._last_user_msg = prompt
+        self._last_assistant_msg = full_response
+
     def _record_and_render_assistant_response(self, prompt: str, full_response: str) -> None:
         """Render the completed response once and update conversation/feedback state."""
         full_response = full_response.strip()
@@ -653,7 +666,7 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             _fp_latency_ms = round((time.perf_counter() - _fp_t0) * 1000, 1)
             print()
             self._last_turn_had_tool_calls = False
-            self._record_and_render_assistant_response(prompt, full_response)
+            self._record_response(prompt, full_response)
             # Phase 173: emit local_inference training event for fast-path turns.
             # Fast-path bypasses coordinator delegate (ai_coordinator_handlers.py Phase 110.1),
             # so this is the only site that can emit for continue-local turns.

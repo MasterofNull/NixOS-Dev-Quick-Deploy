@@ -12,7 +12,7 @@ import hashlib
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Dict, List, Optional, Set, Callable, Any
 from pathlib import Path
@@ -286,7 +286,7 @@ class AlertEngine:
         Returns:
             Alert: The created or deduplicated alert
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Create alert object
         alert = Alert(
@@ -347,7 +347,7 @@ class AlertEngine:
 
         Returns existing alert if found, None otherwise.
         """
-        cutoff_time = datetime.utcnow() - self.dedup_window
+        cutoff_time = datetime.now(timezone.utc) - self.dedup_window
 
         for existing_alert in self.active_alerts.values():
             if (
@@ -434,7 +434,7 @@ class AlertEngine:
             return False
 
         alert.status = AlertStatus.ACKNOWLEDGED
-        alert.acknowledged_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now(timezone.utc)
         logger.info(f"Alert acknowledged: {alert_id}")
         return True
 
@@ -445,7 +445,7 @@ class AlertEngine:
             return False
 
         alert.status = AlertStatus.RESOLVED
-        alert.resolved_at = datetime.utcnow()
+        alert.resolved_at = datetime.now(timezone.utc)
 
         # Remove from active alerts
         del self.active_alerts[alert_id]

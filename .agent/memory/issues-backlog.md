@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[FIXED 6e7a4be3] aq-chat-504-stuck-semaphore — aq-chat 504 local_agent_timeout on every turn
+  Root cause: two bugs combined: (1) _CONVERSATIONAL_INTENTS in chat_intent.py defined but never used — "how are you?" classified as agentic, sent to coordinator subprocess path; (2) _profile_for_role("coder") returned "local-tool-calling" which hits switchboard's _execute_local_tool_calling (expects built-in server tools, not subprocess agent schemas). Request reached llama.cpp, held _local_sem (SWB_LOCAL_CONCURRENCY=1). After coordinator proc.kill() at 210s, TCP closed but switchboard kept sem until llama.cpp finished (~150s), blocking ALL local inference requests.
+  Severity: critical (aq-chat completely broken for all agentic turns)
+  Fix: (1) chat_intent.py: add _CONVERSATIONAL_INTENTS check in classify_chat_intent() — greetings/explanatory phrases route to fast-path; (2) local_agent_runtime.py: _profile_for_role() always returns "continue-local" — correct profile for subprocess agents. Requires switchboard restart to clear stuck _local_sem.
+  Files: scripts/ai/lib/chat_intent.py; ai-stack/agents/runtimes/local_agent_runtime.py
+
 [PENDING-REBUILD 4cdc6fdf] embed-ubatch-size-512-too-small — llama-cpp-embed rejects chunks >512 tokens with HTTP 500
   Root cause: llama-cpp-embed default --ubatch-size=512 tokens (physical batch). Dense code tokenizes at ~2.8 chars/tok → 2000-char chunk = 700+ tokens → 500 "input too large to process". Also .forks/ (45k files) inflated eligible file count from 3189→48391.
   Severity: high (codebase-context indexing fails for any chunk >512 tokens)

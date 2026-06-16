@@ -7,7 +7,7 @@ import asyncio
 import logging
 import subprocess
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import aiohttp
 import psutil
 
@@ -145,7 +145,7 @@ class AIServiceHealthMonitor:
                 service_health[service_id] = {
                     "status": "error",
                     "error": str(result),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             else:
                 service_health[service_id] = result
@@ -155,7 +155,7 @@ class AIServiceHealthMonitor:
         total_count = len(service_health)
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "services": service_health,
             "aggregate": {
                 "healthy": healthy_count,
@@ -194,7 +194,7 @@ class AIServiceHealthMonitor:
             "http_health": http_health,
             "metrics": process_metrics,
             "details": service_details,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     def _service_details(self, service_id: str, http_health: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

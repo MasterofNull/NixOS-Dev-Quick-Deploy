@@ -9,7 +9,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import asyncio
 import os
@@ -254,7 +254,7 @@ async def _broadcast_runtime_status(
             "message": message,
             "progress": progress,
             "metadata": metadata or {},
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
 
@@ -463,7 +463,7 @@ async def start_deployment(deployment_id: str, command: str, user: str = "system
         "message": f"Deployment started: {command}",
         "progress": 0,
         "metadata": {"command": command, "user": user},
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     await broadcast_deployment_event(event_dict)
 
@@ -474,7 +474,7 @@ async def start_deployment(deployment_id: str, command: str, user: str = "system
 @router.post("/deployments/execute")
 async def execute_deployment(request: DeploymentExecuteRequest):
     """Execute the repo-native deployment pipeline with safe defaults."""
-    deployment_id = request.deployment_id or f"runtime-deploy-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    deployment_id = request.deployment_id or f"runtime-deploy-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     command = _deployment_command_from_request(request)
 
     async with runtime_deployment_lock:
@@ -503,7 +503,7 @@ async def execute_deployment(request: DeploymentExecuteRequest):
         pending_deployment_approvals[deployment_id] = {
             "deployment_id": deployment_id,
             "command": command,
-            "requested_at": datetime.utcnow().isoformat(),
+            "requested_at": datetime.now(timezone.utc).isoformat(),
             "request": _serialize_runtime_request(request),
         }
         context_store.update_deployment_status(deployment_id, "pending_approval", progress=0)
@@ -626,7 +626,7 @@ async def update_deployment_progress(
         "message": request.message,
         "progress": request.progress,
         "metadata": metadata or {},
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     await broadcast_deployment_event(event_dict)
 
@@ -654,7 +654,7 @@ async def complete_deployment(
         "message": request.message or f"Deployment {'completed successfully' if request.success else 'failed'}",
         "progress": 100 if request.success else 0,
         "metadata": {"success": request.success},
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     await broadcast_deployment_event(event_dict)
 
@@ -896,7 +896,7 @@ async def rollback_deployment(deployment_id: str, request: DeploymentRollbackReq
                 "command": quoted_command,
                 "planned": True,
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await broadcast_deployment_event(event_dict)
         return {
@@ -923,7 +923,7 @@ async def rollback_deployment(deployment_id: str, request: DeploymentRollbackReq
             "success": success,
             "returncode": result.returncode,
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     await broadcast_deployment_event(event_dict)
 

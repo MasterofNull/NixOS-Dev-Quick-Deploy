@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
@@ -413,7 +413,7 @@ async def check_connectivity(source_container: str, target_host: str, target_por
         "reachable": False,
         "error": "Container exec operations are disabled for security reasons",
         "recommendation": "Use container logs or inspect network settings instead",
-        "tested_at": datetime.utcnow().isoformat()
+        "tested_at": datetime.now(timezone.utc).isoformat()
     }
 
 

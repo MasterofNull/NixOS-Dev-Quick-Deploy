@@ -23,7 +23,7 @@ import pytest
 import sqlite3
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import threading
@@ -183,9 +183,9 @@ class TestAddServiceState:
         service_name = 'redis'
 
         # Record timestamp before and after
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc)
         context_store.add_service_state(deployment_id, service_name, 'running')
-        after = datetime.utcnow()
+        after = datetime.now(timezone.utc)
 
         # Query the state
         states = context_store.query_services_by_deployment(deployment_id)
@@ -276,14 +276,14 @@ class TestServiceHealthTimeline:
         service_name = 'queue'
 
         # Record timestamp before adding states
-        time_before = datetime.utcnow().isoformat()
+        time_before = datetime.now(timezone.utc).isoformat()
 
         context_store.add_service_state(sample_deployments['staging']['id'], service_name, 'running')
 
         time.sleep(0.05)
 
         # Record timestamp after
-        time_after = datetime.utcnow().isoformat()
+        time_after = datetime.now(timezone.utc).isoformat()
 
         # Query timeline
         timeline = context_store.query_service_health_timeline(service_name, limit=100)

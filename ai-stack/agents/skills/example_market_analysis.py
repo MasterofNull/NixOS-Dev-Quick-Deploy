@@ -7,7 +7,7 @@ AI skills for the AIDB MCP system.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 import json
 
@@ -86,7 +86,7 @@ async def analyze_market_trends(
                 "price_change_pct": round(price_change_pct, 2),
                 "trend": trend,
                 "avg_volume": avg_volume,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
     except Exception as e:
@@ -157,7 +157,7 @@ async def detect_volatility_spikes(
                 "std_dev": std_dev,
                 "spike_count": len(spikes),
                 "spikes": spikes[:10],  # Top 10 spikes
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
     except Exception as e:

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class NodeType(Enum):
@@ -324,7 +324,7 @@ class WorkflowExecutor:
         
         try:
             node.status = NodeStatus.RUNNING
-            node.start_time = datetime.utcnow().isoformat()
+            node.start_time = datetime.now(timezone.utc).isoformat()
             
             # Execute based on node type
             if node.node_type == NodeType.TASK:
@@ -353,14 +353,14 @@ class WorkflowExecutor:
                 result["status"] = "completed"
                 node.status = NodeStatus.COMPLETED
             
-            node.end_time = datetime.utcnow().isoformat()
+            node.end_time = datetime.now(timezone.utc).isoformat()
             
         except Exception as e:
             result["status"] = "failed"
             result["error"] = str(e)
             node.status = NodeStatus.FAILED
             node.error = str(e)
-            node.end_time = datetime.utcnow().isoformat()
+            node.end_time = datetime.now(timezone.utc).isoformat()
         
         self.execution_log.append(result)
         return result

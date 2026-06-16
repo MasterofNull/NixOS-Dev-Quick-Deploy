@@ -28,7 +28,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.x509.oid import NameOID, ExtensionOID
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -138,8 +138,8 @@ class CertificateAuthority:
             .issuer_name(issuer)
             .public_key(ca_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=3650))  # 10 years
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(days=3650))  # 10 years
             .add_extension(
                 x509.BasicConstraints(ca=True, path_length=None),
                 critical=True,
@@ -212,8 +212,8 @@ class CertificateAuthority:
             .issuer_name(ca_cert.subject)
             .public_key(service_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=validity_days))
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(days=validity_days))
             .add_extension(
                 x509.SubjectAlternativeName([
                     x509.DNSName(service_name),
@@ -309,7 +309,7 @@ class RequestSigner:
         body: bytes = b"",
     ) -> RequestSignature:
         """Sign an HTTP request"""
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
 
         # Create canonical request
         canonical = f"{method}\n{path}\n{timestamp.isoformat()}\n"
@@ -351,7 +351,7 @@ class RequestSigner:
     ) -> bool:
         """Verify a request signature"""
         # Check timestamp freshness
-        age = (datetime.utcnow() - signature.timestamp).total_seconds()
+        age = (datetime.now(timezone.utc) - signature.timestamp).total_seconds()
         if age > max_age_seconds:
             logger.warning(f"Signature too old: {age}s > {max_age_seconds}s")
             return False

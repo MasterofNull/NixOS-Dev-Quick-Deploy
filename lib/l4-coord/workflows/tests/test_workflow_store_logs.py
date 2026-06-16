@@ -1,7 +1,7 @@
 """Unit tests for workflow store log functionality."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 
@@ -21,7 +21,7 @@ def test_save_log():
         workflow_execution_id="wf-123",
         level="INFO",
         message="Test log message",
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
     logs = store.get_task_logs("exec-123")
@@ -36,7 +36,7 @@ def test_filter_logs_by_level():
     store = WorkflowStore(":memory:")
 
     # Save logs with different levels
-    ts = datetime.utcnow().isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
     store.save_log("exec-123", "task-1", "wf-123", "INFO", "Info message", ts)
     store.save_log("exec-123", "task-1", "wf-123", "ERROR", "Error message", ts)
     store.save_log("exec-123", "task-1", "wf-123", "INFO", "Another info", ts)
@@ -56,7 +56,7 @@ def test_search_logs():
     """Test searching logs."""
     store = WorkflowStore(":memory:")
 
-    ts = datetime.utcnow().isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
     store.save_log("exec-123", "task-1", "wf-123", "INFO", "Starting deployment", ts)
     store.save_log("exec-123", "task-1", "wf-123", "INFO", "Deployment completed", ts)
     store.save_log("exec-123", "task-1", "wf-123", "ERROR", "Connection failed", ts)
@@ -84,7 +84,7 @@ def test_pagination():
             "wf-123",
             "INFO",
             f"Log {i}",
-            datetime.utcnow().isoformat()
+            datetime.now(timezone.utc).isoformat()
         )
 
     # Get first page
@@ -114,7 +114,7 @@ def test_count_task_logs():
             "wf-123",
             level,
             f"Log {i}",
-            datetime.utcnow().isoformat()
+            datetime.now(timezone.utc).isoformat()
         )
 
     # Count all logs
@@ -141,7 +141,7 @@ def test_log_with_context():
         "wf-123",
         "ERROR",
         "Task failed",
-        datetime.utcnow().isoformat(),
+        datetime.now(timezone.utc).isoformat(),
         context=context
     )
 
@@ -156,7 +156,7 @@ def test_filter_by_task_id():
     """Test filtering logs by task ID."""
     store = WorkflowStore(":memory:")
 
-    ts = datetime.utcnow().isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
     # Create logs for different tasks
     store.save_log("exec-123", "task-1", "wf-123", "INFO", "Task 1 log", ts)
     store.save_log("exec-456", "task-2", "wf-123", "INFO", "Task 2 log", ts)
@@ -172,7 +172,7 @@ def test_combined_filters():
     """Test combining multiple filters."""
     store = WorkflowStore(":memory:")
 
-    ts = datetime.utcnow().isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
     # Create varied logs
     store.save_log("exec-123", "task-1", "wf-123", "INFO", "Starting deployment", ts)
     store.save_log("exec-123", "task-1", "wf-123", "ERROR", "Deployment failed", ts)
@@ -195,7 +195,7 @@ def test_query_by_workflow_execution_id():
     """Test querying logs by workflow execution ID."""
     store = WorkflowStore(":memory:")
 
-    ts = datetime.utcnow().isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
     # Create logs for tasks in the same workflow
     store.save_log("exec-task1", "task-1", "wf-123", "INFO", "Task 1 log", ts)
     store.save_log("exec-task2", "task-2", "wf-123", "INFO", "Task 2 log", ts)

@@ -236,7 +236,7 @@ async def probe(llama_cpp_url: str, profile_path: Optional[Path] = None) -> Mode
             supports_tools=supports_tools,
             supports_system_prompt=supports_system,
             eos_token=eos_token,
-            probed_at=datetime.datetime.utcnow().isoformat() + "Z",
+            probed_at=datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
             probe_model_id=model_id,
             **budgets,
         )

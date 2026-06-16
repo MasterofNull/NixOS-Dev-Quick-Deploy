@@ -81,7 +81,34 @@ _CONVERSATIONAL_INTENTS: frozenset[str] = frozenset({
     "can you explain",
     "describe ",
     "summarize ",
-    "what would you",
+    # Short affirmatives — continuation replies stay on fast-path rather than
+    # going agentic with no conversation context (which causes 504 timeouts).
+    "yes",
+    "yeah",
+    "sure",
+    "ok",
+    "okay",
+    "sounds good",
+    "go ahead",
+    "let's go",
+    "proceed",
+    "perfect",
+    "great",
+})
+
+# Phrases that force agentic even when a conversational phrase matched earlier
+# in the same message. "how are you? what would you like to start working on?"
+# contains "how are you" (conversational) but also "start working on" (agentic
+# override) — the agent needs discover_objectives, not a fast-path response.
+_AGENTIC_OVERRIDE_PHRASES: frozenset[str] = frozenset({
+    "start working on",
+    "what to work on",
+    "what should we work",
+    "what would you like to start",
+    "what would you like to work",
+    "what to do next",
+    "where should we start",
+    "what are we working on",
 })
 
 
@@ -114,6 +141,13 @@ def classify_chat_intent(text: str) -> TurnClassification:
     # Greeting / purely conversational phrases — bypass coordinator (~50s overhead)
     for phrase in _CONVERSATIONAL_INTENTS:
         if phrase in lower:
+            # Agentic override: some prompts mix a greeting with a task directive
+            # (e.g. "how are you? what would you like to start working on?").
+            # If an agentic-override phrase is present, the agent needs tools —
+            # route agentic even though a conversational phrase also matched.
+            for override in _AGENTIC_OVERRIDE_PHRASES:
+                if override in lower:
+                    return TurnClassification("agentic", 0.90, None)
             return TurnClassification("conversational", 0.80, phrase)
 
     # Conservative default: agentic

@@ -12,7 +12,7 @@ Extracted from http_server.py (Phase 12.4 decomposition).
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from aiohttp import web
@@ -246,7 +246,7 @@ async def handle_hints_feedback(request: web.Request) -> web.Response:
         return web.json_response({"error": "helpful or score required"}, status=400)
 
     entry = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "hint_id": hint_id,
         "helpful": helpful,
         "score": score_val,
