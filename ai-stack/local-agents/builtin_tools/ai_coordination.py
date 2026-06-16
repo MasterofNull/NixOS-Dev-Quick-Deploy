@@ -266,6 +266,137 @@ async def execute_workflow_handler(
         return {"success": False, "error": str(e)}
 
 
+async def discover_objectives_handler(
+    context: str = "",
+    limit: int = 5,
+) -> Dict:
+    """
+    Research the codebase and propose ranked objectives for user approval.
+
+    Queries AIDB, issues-backlog.md, RESUME.json, and PULSE.log to surface
+    actionable objectives. Returns a structured proposal that MUST be presented
+    to the user verbatim — the agent must not take any action after calling this.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    proposal: Dict = {
+        "proposal_type": "objective_discovery",
+        "instruction": (
+            "STOP — do not call any more tools. Present the ranked objectives below "
+            "to the user as a numbered list with source, priority, and reasoning. "
+            "End with: 'Please reply with a number to select, or describe a different goal.' "
+            "Wait for their approval before taking any action."
+        ),
+        "objectives": [],
+        "evidence_sources": [],
+        "recommendation": "",
+    }
+
+    repo_root = _Path(os.environ.get("REPO_ROOT", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"))
+
+    # 1. RESUME.json — highest priority: in-flight work
+    try:
+        resume_path = repo_root / ".agent" / "collaboration" / "RESUME.json"
+        if resume_path.exists():
+            resume = _json.loads(resume_path.read_text())
+            current = resume.get("current_objective", "")
+            pending = [t for t in resume.get("todo_snapshot", []) if not t.startswith("DONE")]
+            if current or pending:
+                proposal["objectives"].append({
+                    "rank": 1,
+                    "source": "RESUME.json",
+                    "title": f"Resume: {current}" if current else "Resume in-flight work",
+                    "detail": pending[:3],
+                    "reasoning": "Active work in progress — highest priority to maintain continuity.",
+                    "priority": "critical",
+                })
+            proposal["evidence_sources"].append(f"RESUME.json: {len(pending)} pending item(s)")
+    except Exception as e:
+        proposal["evidence_sources"].append(f"RESUME.json error: {e}")
+
+    # 2. issues-backlog.md — open/critical items
+    try:
+        backlog_path = repo_root / ".agent" / "memory" / "issues-backlog.md"
+        if backlog_path.exists():
+            lines = backlog_path.read_text().splitlines()
+            open_items = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if any(tag in stripped for tag in ("[ ]", "OPEN", "CRITICAL", "TODO", "PENDING-REBUILD")):
+                    open_items.append(stripped.lstrip("- ").lstrip("[ ] ").strip())
+            for item in open_items[:3]:
+                if any(o["title"][:60] == item[:60] for o in proposal["objectives"]):
+                    continue
+                priority = "high" if any(t in item for t in ("CRITICAL", "PENDING-REBUILD")) else "medium"
+                proposal["objectives"].append({
+                    "rank": len(proposal["objectives"]) + 1,
+                    "source": "issues-backlog.md",
+                    "title": item[:120],
+                    "reasoning": "Tracked open issue requiring resolution.",
+                    "priority": priority,
+                })
+            proposal["evidence_sources"].append(f"issues-backlog.md: {len(open_items)} open item(s)")
+    except Exception as e:
+        proposal["evidence_sources"].append(f"issues-backlog.md error: {e}")
+
+    # 3. AIDB error-solutions — known patterns needing attention
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            query = context or "pending high priority fix error"
+            resp = await client.post(f"{AIDB_URL}/vector/search", json={
+                "query": query,
+                "collection": "error-solutions",
+                "limit": 3,
+            })
+            if resp.status_code == 200:
+                hits = resp.json().get("results", [])
+                for hit in hits:
+                    payload = hit.get("payload", {})
+                    title = (payload.get("title") or payload.get("problem", ""))[:100]
+                    if not title:
+                        continue
+                    if any(o["title"][:60] == title[:60] for o in proposal["objectives"]):
+                        continue
+                    score = hit.get("score", 0)
+                    proposal["objectives"].append({
+                        "rank": len(proposal["objectives"]) + 1,
+                        "source": "aidb:error-solutions",
+                        "title": title,
+                        "reasoning": f"Known error pattern (relevance {score:.2f}).",
+                        "priority": "high" if score > 0.65 else "medium",
+                        "score": round(score, 3),
+                    })
+                proposal["evidence_sources"].append(f"AIDB error-solutions: {len(hits)} match(es)")
+    except Exception as e:
+        proposal["evidence_sources"].append(f"AIDB unavailable: {e}")
+
+    # 4. Recent PULSE.log — last activity for context
+    try:
+        pulse_path = repo_root / ".agent" / "collaboration" / "PULSE.log"
+        if pulse_path.exists():
+            recent = pulse_path.read_text().splitlines()
+            last = next((ln for ln in reversed(recent) if ln.strip()), "")
+            if last:
+                proposal["evidence_sources"].append(f"Last PULSE entry: {last[-120:]}")
+    except Exception:
+        pass
+
+    # Re-rank and cap at limit
+    objectives = proposal["objectives"][:limit]
+    for i, obj in enumerate(objectives, 1):
+        obj["rank"] = i
+    proposal["objectives"] = objectives
+    proposal["recommendation"] = (
+        objectives[0]["title"] if objectives
+        else "No clear pending objectives found. Please describe what you'd like to work on."
+    )
+
+    return proposal
+
+
 async def get_workflow_status_handler(workflow_id: str) -> Dict:
     """
     Get status of a running workflow.
@@ -1057,6 +1188,35 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         category=ToolCategory.AI_COORD,
         safety_policy=SafetyPolicy.READ_ONLY,
         handler=web_research_fetch_handler,
+    ))
+
+    # discover_objectives
+    registry.register(ToolDefinition(
+        name="discover_objectives",
+        description=(
+            "Research the codebase and propose ranked objectives for user approval. "
+            "Call when you need direction or no explicit task was given. "
+            "Queries AIDB, issues-backlog.md, RESUME.json, and PULSE.log. "
+            "AFTER CALLING: present results to user as a numbered list and STOP — "
+            "do not call any other tools or take any action until the user confirms."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "context": {
+                    "type": "string",
+                    "description": "Optional focus context to narrow the AIDB search (e.g. 'AppArmor', 'coordinator')",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of objectives to propose (default 5)",
+                    "default": 5,
+                },
+            },
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=discover_objectives_handler,
     ))
 
     # delegate_to_aider

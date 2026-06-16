@@ -91,18 +91,25 @@ _AEXEC_MEMORY_KW = frozenset(["remember", "store", "save", "record", "note", "me
 _AEXEC_WORKFLOW_KW = frozenset(["workflow", "pipeline", "prsi", "self-improve", "optimization"])
 _AEXEC_DELEGATE_KW = frozenset(["delegate", "remote", "escalate", "assign", "handoff", "codex", "claude", "opencode"])
 _AEXEC_HEALTH_KW = frozenset(["health", "status", "check", "verify", "diagnose", "monitor", "running", "alive"])
-_AEXEC_MESH_KW = frozenset(["mesh", "agents", "discover", "team", "capabilities", "federated", "who can"])
+_AEXEC_MESH_KW = frozenset(["mesh", "agents", "team", "capabilities", "federated", "who can"])
+_AEXEC_OBJECTIVE_KW = frozenset(["objective", "what to work", "no task", "need direction", "what should", "propose", "suggest work"])
 
 # Tool names that are always present (never hot-swapped in/out).
 _AEXEC_ALWAYS_TOOLS: frozenset[str] = frozenset(["read_file", "write_file", "edit_file", "run_command", "git_add", "git_commit"])
 # Tools eligible for hot-swap injection keyed by the keyword set that triggers them.
 _AEXEC_HOTSWAP_MAP: list[tuple[frozenset[str], list[str]]] = [
-    (_AEXEC_MEMORY_KW,   ["store_memory"]),
-    (_AEXEC_WORKFLOW_KW, ["get_workflow_status", "execute_workflow"]),
-    (_AEXEC_DELEGATE_KW, ["delegate_to_remote"]),
-    (_AEXEC_HEALTH_KW,   ["harness_health"]),
-    (_AEXEC_MESH_KW,     ["mesh_discovery"]),
+    (_AEXEC_MEMORY_KW,    ["store_memory"]),
+    (_AEXEC_WORKFLOW_KW,  ["get_workflow_status", "execute_workflow"]),
+    (_AEXEC_DELEGATE_KW,  ["delegate_to_remote"]),
+    (_AEXEC_HEALTH_KW,    ["harness_health"]),
+    (_AEXEC_MESH_KW,      ["mesh_discovery"]),
+    (_AEXEC_OBJECTIVE_KW, ["discover_objectives"]),
 ]
+
+# Tools that gate the loop: after one of these returns, inject a synthesis nudge
+# and return immediately instead of continuing the tool call loop.
+# This prevents the agent from taking action before the user approves a proposal.
+_TERMINAL_TOOLS: frozenset[str] = frozenset({"discover_objectives"})
 
 
 def _refresh_active_tools(
@@ -1295,6 +1302,28 @@ class LocalAgentExecutor:
                     "tool_hotswap: +%d tools after %s (total=%d)",
                     len(_active_tools) - _prev_tool_count, result.tool_name, len(_active_tools),
                 )
+
+            # Terminal tool gate: discover_objectives (and any future proposal tools) must
+            # not be followed by action — the user must approve first. Inject a synthesis
+            # nudge and return immediately so the agent produces a human-readable proposal
+            # instead of continuing the tool loop.
+            if result.tool_name in _TERMINAL_TOOLS:
+                _cancel_watchdog()
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Present the proposed objectives above as a numbered list. "
+                        "For each include: rank, source, priority, and reasoning. "
+                        "End with: 'Please reply with a number to select, or describe a different goal.' "
+                        "Do NOT call any tools. Do NOT take any action."
+                    ),
+                })
+                synthesis, syn_tok = await self._call_llama(
+                    messages, role=role, max_tokens=AGENT_TASK_MAX_TOKENS,
+                )
+                total_tokens += syn_tok
+                logger.info("terminal_tool_gate: %s → synthesis returned", result.tool_name)
+                return synthesis.strip() if synthesis.strip() else formatted_result, total_tokens
 
             # Observation stall nudge: too many harness query calls without any action.
             if _observations_without_action == _MAX_OBSERVATIONS_WITHOUT_ACTION and not _observation_nudge_sent:
