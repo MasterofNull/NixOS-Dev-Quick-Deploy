@@ -401,10 +401,12 @@ def record_delegation_feedback(
     final_runtime_id: str,
     requesting_agent: str = "human",
     requester_role: str = "orchestrator",
+    event_type: str = "delegation_outcome",
 ) -> None:
     # Log all outcomes (success and failure) so aq-report can compute accurate success rates
     # Previously only logged failures, which prevented tracking overall delegation reliability
     payload = {
+        "event_type": event_type,
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "task_excerpt": task[:280],
         "requested_profile": requested_profile,
@@ -426,6 +428,13 @@ def record_delegation_feedback(
         "improvement_actions": classification.get("improvement_actions") or [],
     }
     append_jsonl(delegation_feedback_log_path(), payload)
+    # Feed outcome into PerformanceWindow so routing thresholds adapt to delegation health.
+    try:
+        from core.config import performance_window as _pw
+        bucket = f"delegate:{final_profile}"
+        _pw.record(bucket, success=payload["outcome"] == "success")
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

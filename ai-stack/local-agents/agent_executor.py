@@ -665,6 +665,18 @@ class LocalAgentExecutor:
                 f"Task {task.id} completed: {task.execution_time_ms:.1f}ms, "
                 f"{len(task.tool_calls_made)} tool calls"
             )
+            # Trigger training ingest in background to capture this completion.
+            _ingest_script = _REPO_ROOT_PATH / "ai-stack" / "local-agents" / "training_ingest.py"
+            if _ingest_script.exists():
+                try:
+                    asyncio.create_task(asyncio.to_thread(
+                        lambda: __import__("subprocess").run(
+                            [sys.executable, str(_ingest_script), "--hours", "2"],
+                            capture_output=True, timeout=60,
+                        )
+                    ))
+                except Exception:
+                    pass
             await self._emit_terminal_agent_event(
                 task,
                 "agent_complete",

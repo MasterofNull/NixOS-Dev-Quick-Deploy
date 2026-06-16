@@ -1,4 +1,16 @@
 ## OPEN ISSUES
+
+[PENDING-REBUILD 4cdc6fdf] embed-ubatch-size-512-too-small — llama-cpp-embed rejects chunks >512 tokens with HTTP 500
+  Root cause: llama-cpp-embed default --ubatch-size=512 tokens (physical batch). Dense code tokenizes at ~2.8 chars/tok → 2000-char chunk = 700+ tokens → 500 "input too large to process". Also .forks/ (45k files) inflated eligible file count from 3189→48391.
+  Severity: high (codebase-context indexing fails for any chunk >512 tokens)
+  Fix: (1) index-codebase.py: CHUNK_SIZE 3000→1000, skip .forks/ and .reports/; (2) facts.nix: --ubatch-size 2048 added (PENDING-REBUILD — after rebuild chunk size can return to 2000 for better retrieval context)
+  Files: scripts/data/index-codebase.py; nix/hosts/hyperd/facts.nix
+
+[FIXED c10b43d8] local-agent-runtime-missing-logger — aq-chat local-tool-calling returned 500/local_agent_failed after rebuild
+  Root cause: local_agent_runtime.py used logger.warning/logger.info at lines 889/893 (switchboard handshake retry path) but never imported `logging` or instantiated the module-level `logger`. Subprocess exited rc=1 with NameError JSON; coordinator returned 500.
+  Severity: critical (every aq-chat local-tool-calling turn failed post-rebuild)
+  Fix: add `import logging` to stdlib imports block; `logger = logging.getLogger(__name__)` after httpx import. (c10b43d8)
+  File: ai-stack/agents/runtimes/local_agent_runtime.py:29-38
 <!-- Phase 165 behavioral contract hardening COMPLETE (2026-06-13):
   iter 16-21 resolved: slim-manifest, read-limit, backlog-update-step, embedded-newlines-parse, synthesis-guard@call0.
   aq-qa covers: 0.10.15-19 (5 new Phase 165 checks). Dataset=309. Backlog clear.
