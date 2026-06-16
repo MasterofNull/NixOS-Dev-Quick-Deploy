@@ -243,6 +243,29 @@ async def store_memory_handler(
         return {"success": False, "error": str(e)}
 
 
+async def execute_workflow_handler(
+    yaml_file: str,
+    inputs: Optional[Dict] = None,
+    async_mode: bool = False,
+) -> Dict:
+    """Execute a YAML workflow via the coordinator's /api/workflows/execute endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/api/workflows/execute",
+                json={
+                    "workflow_file": yaml_file,
+                    "inputs": inputs or {},
+                    "async_mode": async_mode,
+                },
+            )
+            if resp.status_code == 200:
+                return {"success": True, **resp.json()}
+            return {"success": False, "error": resp.text, "status_code": resp.status_code}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def get_workflow_status_handler(workflow_id: str) -> Dict:
     """
     Get status of a running workflow.
@@ -805,6 +828,37 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         category=ToolCategory.AI_COORD,
         safety_policy=SafetyPolicy.READ_ONLY,
         handler=get_workflow_status_handler,
+    ))
+
+    # execute_workflow
+    registry.register(ToolDefinition(
+        name="execute_workflow",
+        description=(
+            "Execute a YAML workflow from file through the harness coordinator. "
+            "Dispatches each workflow node as a sub-agent task. "
+            "Returns execution_id and status when complete."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "yaml_file": {
+                    "type": "string",
+                    "description": "Path to workflow YAML file (relative to repo root or absolute)",
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "Input parameters for the workflow (key-value dict)",
+                },
+                "async_mode": {
+                    "type": "boolean",
+                    "description": "Run in background (default false — wait for result)",
+                },
+            },
+            "required": ["yaml_file"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.WRITE_SAFE,
+        handler=execute_workflow_handler,
     ))
 
     # run_opencode
