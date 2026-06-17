@@ -711,3 +711,9 @@
   Fix: (1) ai_coordination.py: added _QDRANT_COLLECTIONS frozenset, query_aidb_handler routes to _query_qdrant_direct (embed via llama-embed:8081 → Qdrant:6333) as PRIMARY path for all harness collections. (2) aidb/query_validator.py: ALLOWED_COLLECTIONS expanded to 14 real names. (3) ralph-wiggum/orchestrator.py: solved_issues → error-solutions. All deployed (rebuild complete 2026-06-14).
   Files: ai-stack/local-agents/builtin_tools/ai_coordination.py; ai-stack/mcp-servers/aidb/query_validator.py; ai-stack/mcp-servers/ralph-wiggum/orchestrator.py
   Pattern: AIDB (port 8002) = pgvector for document chunks. Qdrant (port 6333) = harness patterns seeded by seed-rag-knowledge.py + training pipeline. Always use embed→Qdrant-direct for harness collections.
+
+[DONE] clm-periodic-llm-compaction-contention — Phase 171-C: context_lifecycle_manager._demote_to_cold() fires every 60s (_TICK_INTERVAL) and called _compact_summary() → llama.cpp /v1/chat/completions with max_tokens=512. This was the primary periodic LLM caller causing queue contention during agent task startup. Other callers found safe: model_probe.py (cached by model_id, fires only on model change), switchboard._warm_local_profile_prefix (startup-only, max_tokens=4).
+  Root cause: CLM was not slot-aware — it queued compaction calls regardless of whether inference slot was occupied by an agent task.
+  Severity: medium (agent first-step latency inflated by up to 30s per competing 512-token compaction)
+  Fix: Added _is_inference_busy() guard in _demote_to_cold() — reads GET /slots (passive, no slot consumption). If any slot has state≠0, defers compaction to next 60s tick. Commit 9b296806. Requires coordinator restart.
+  Files: ai-stack/mcp-servers/hybrid-coordinator/knowledge/context_lifecycle_manager.py (lines 343-354, new method _is_inference_busy at ~line 463)

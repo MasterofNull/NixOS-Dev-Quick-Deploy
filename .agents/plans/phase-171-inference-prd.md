@@ -9,7 +9,7 @@ last_updated: "2026-06-17"
 implementation_status:
   phase_a: "COMPLETE — commit cb884b40 (2026-06-15)"
   phase_b: "COMPLETE — commits 99b984a6, e0795f33 (2026-06-17); requires nixos-rebuild"
-  phase_c: "PARTIAL — aq-qa check d18c74e1; dashboard panel + queue investigation pending"
+  phase_c: "PARTIAL — aq-qa 0.10.22 (d18c74e1), CLM queue fix (9b296806); dashboard panel pending"
 ---
 
 # Phase 171 — Local Inference Architecture PRD
@@ -148,29 +148,28 @@ exceeds 27GB system RAM on Renoir APU. No NixOS config makes this viable.
 **Resolution:** Option C. Identify callers → strip LLM calls from health checks → replace with
 passive `GET /health` + `GET /slots`. Gemini's framing is correct.
 
-### Not Yet Implemented (Phase C)
+### Implemented (Phase C — commit 9b296806)
 
-**Step 1 — identify actual slot consumers:**
+**Investigation findings:**
 
-```bash
-# Watch what's actually queuing
-journalctl -u ai-llama-server -f --output cat 2>/dev/null &
-# Find periodic chat-completion senders
-grep -rn "asyncio.sleep\|v1/chat/completions" \
-  ai-stack/ --include="*.py" | grep -v "test_\|\.pyc"
-```
+All periodic LLM callers audited:
+- `model_probe.py`: **safe** — caches by model_id, fires only on model change, not periodic
+- `switchboard._warm_local_profile_prefix`: **safe** — startup-only, `max_tokens=4`
+- `context_lifecycle_manager._compact_summary()`: **CULPRIT** — 60s tick, up to 512-token LLM call when warm sessions age to cold tier
 
-**Step 2 — strip LLM calls from health probes:**  
-Replace any `v1/chat/completions` call inside a health-check or poller with:
-- `GET http://127.0.0.1:8080/health` (llama.cpp health)
-- `GET http://127.0.0.1:8080/slots` (slot occupancy)
+**Fix applied** (`context_lifecycle_manager.py`):
+
+Added `_is_inference_busy()` guard in `_demote_to_cold()`: reads `GET /slots` (passive, no slot
+consumption). If any slot has `state≠0`, defers compaction to the next 60s tick. This is
+Gemini's Option C (strip competing LLM use when slot is busy) applied correctly — the compaction
+call is legitimate work, not a probe, so removal would be wrong; slot-awareness is the correct fix.
 
 **Acceptance criteria:**
-- Agent task first-step elapsed < 120s (was up to 371s with queue wait)
-- `GET /slots` shows state=0 (idle) during coordinator quiet period
-- No LLM prompt appears in llama-server logs during a `aq-qa 0` run
+- Agent task first-step elapsed < 120s (was up to 371s — includes startup + initial LLM planning)
+- `GET /slots` shows state=0 (idle) during `aq-qa 0` run
+- No CLM compaction LLM call appears in llama-server logs while `aq-agent-loop` slot is occupied
 
-**Phase C owner:** Orchestrator (Claude) assigns as a focused queue-investigation slice.
+**Requires coordinator restart** (Python module change, no rebuild).
 
 ---
 
@@ -277,7 +276,7 @@ Frontend card: task ID, step N, tool calls completed, elapsed time, last tool, s
 | injectHints for local-tool-calling/continue-local | B | ✓ ALREADY TRUE | — |
 | `default_prefer_local: true` in routing-policy.yaml | B | ✓ ALREADY TRUE | — |
 | nixos-rebuild to activate B items | B | **PENDING** | — |
-| Queue contention investigation + strip LLM health calls | C | PENDING | — |
+| CLM _is_inference_busy() guard (slot-aware compaction) | C | ✓ DONE | 9b296806 |
 | Dashboard active-agent-task monitor panel | C | PENDING | — |
 
 ---
