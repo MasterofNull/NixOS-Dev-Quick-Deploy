@@ -497,3 +497,66 @@ async def handle_reload_intent_map(request) -> Any:
         "changed": changed,
         "intent_count": len(clf.get_routing_map()),
     })
+
+
+# ---------------------------------------------------------------------------
+# Phase 171 — Routing class SSOT
+# ---------------------------------------------------------------------------
+# Single canonical place for the routing decision. Previously scattered across:
+#   - ai_coordinator_handlers.py (_LONG_RUNNING_TASK_PHRASES, ad-hoc frozenset)
+#   - chat_intent.py (fast-path check, separate keyword list)
+# Now consolidated here so adding a new long-running task class = one-line edit.
+
+from enum import Enum
+
+
+class RoutingClass(str, Enum):
+    FAST_PATH      = "fast_path"       # conversational, no tools, <60s
+    SYNC_DELEGATE  = "sync_delegate"   # ≤2 tool calls, <200s estimated wall-clock
+    ASYNC_DELEGATE = "async_delegate"  # 3-10 tool calls, 200s–2000s estimated
+    AGENT_LOOP     = "agent_loop"      # >10 tool calls or explicit long-agent intent
+    DIRECT         = "direct"          # no-tool analysis, draft, debate
+
+
+# Tasks that must never block a synchronous 360s timeout.
+# Moved from ai_coordinator_handlers._LONG_RUNNING_TASK_PHRASES (Phase 171).
+_ASYNC_TASK_SIGNALS: frozenset[str] = frozenset({
+    "self improvement", "self-improvement", "run a slice", "improvement slice",
+    "run training ingest", "training ingest", "run the learning loop",
+    "run learning loop", "run the continuous learning", "run continuous learning",
+    "run continuous improvement", "autonomous improvement",
+})
+
+# Tasks that require the full aq-agent-loop (no coordinator timeout at all).
+_AGENT_LOOP_SIGNALS: frozenset[str] = frozenset({
+    "run agent loop", "start agent loop", "start aq-agent-loop",
+    "full agent session", "long running agent",
+})
+
+# Intent categories that route to DIRECT (no tools, analysis only).
+_DIRECT_INTENTS: frozenset[str] = frozenset({
+    "summarize", "draft", "analyze", "debate", "explain",
+})
+
+
+def classify_routing(query: str, intent: str = "unknown", tool_count_hint: int = 0) -> RoutingClass:
+    """
+    Return the canonical RoutingClass for a task.
+
+    Priority order:
+      1. Explicit agent-loop signals (longest tasks, must bypass coordinator timeout)
+      2. Known async signals (33-min class, must bypass 360s sync timeout)
+      3. Intent-based direct routing (no-tool tasks)
+      4. Tool-count heuristic (>2 tools → async to avoid 504)
+      5. Default: sync delegate (short tasks that fit the timeout window)
+    """
+    q = query.lower()
+    if any(sig in q for sig in _AGENT_LOOP_SIGNALS):
+        return RoutingClass.AGENT_LOOP
+    if any(sig in q for sig in _ASYNC_TASK_SIGNALS):
+        return RoutingClass.ASYNC_DELEGATE
+    if intent in _DIRECT_INTENTS:
+        return RoutingClass.DIRECT
+    if tool_count_hint > 2:
+        return RoutingClass.ASYNC_DELEGATE
+    return RoutingClass.SYNC_DELEGATE
