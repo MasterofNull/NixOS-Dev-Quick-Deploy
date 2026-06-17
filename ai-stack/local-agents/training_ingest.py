@@ -59,6 +59,22 @@ except ImportError:
     HYBRID_EVENTS          = TELEMETRY_DIR / "hybrid-events.jsonl"
     USER_EVENTS_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
 
+# PII guard: strip actual secrets (API keys, tokens) from training content before
+# quality scoring or writing. Uses redact_secrets (not scrub_telemetry_payload —
+# that hashes the entire field, destroying training signal).
+try:
+    _SHARED_PATH = str(_SCRIPT_DIR.parent / "mcp-servers")
+    if _SHARED_PATH not in sys.path:
+        sys.path.insert(0, _SHARED_PATH)
+    from shared.telemetry_privacy import redact_secrets as _redact_secrets  # noqa: E402
+
+    def _scrub_text(text: str) -> str:
+        cleaned, _ = _redact_secrets(text)
+        return cleaned
+except ImportError:
+    def _scrub_text(text: str) -> str:  # type: ignore[misc]
+        return text
+
 # ── quality thresholds ────────────────────────────────────────────────────────
 
 # Events with latency below this are likely cached/trivial — skip as training signal.
@@ -125,6 +141,8 @@ _STRUCTURED_MARKERS = (
     "## ", "### ", "1. ", "2. ", "- [", "* ", "| ",  # markdown / lists
     '"function"', '"arguments"',  # JSON tool-call blobs from agent_step_complete
     "COMPLETED:",  # agent synthesis guard output — verified task completion sentence
+    '{"success": true',   # short tool result JSON (success path)
+    '{"result":',         # tool result JSON wrapper
 )
 
 
@@ -165,7 +183,10 @@ def _is_useful_hybrid_event(event: Dict) -> bool:
     """Return True for events that represent a completed successful inference."""
     etype = event.get("event_type", "")
     if etype not in ("inference_complete", "chat_completion", "hybrid_completion",
-                     "local_inference", "agent_step_complete"):
+                     "local_inference", "agent_step_complete", "tool_result"):
+        return False
+    # tool_result events must explicitly succeed; other events use absence-of-error signal.
+    if etype == "tool_result" and not event.get("success", False):
         return False
     if event.get("error") or event.get("success") is False:
         return False
@@ -276,12 +297,20 @@ class TrainingIngestor:
             if _token_count(response) < MIN_RESPONSE_TOKENS:
                 continue
 
+            # PII guard: strip secrets from content before scoring or writing.
+            response = _scrub_text(response)
+            query = _scrub_text(query)
+
             score = _quality_score(response, query)
-            # agent_step_complete events are verified direct model outputs from
-            # DirectRunner — apply a lower quality floor since we know the
-            # inference completed successfully (keyword coverage is a poor
-            # signal for structured/code agent responses).
-            floor = 0.40 if event.get("event_type") == "agent_step_complete" else self.min_quality
+            # agent_step_complete: verified DirectRunner outputs — lower floor acceptable.
+            # tool_result: success is binary (bool flag); lower floor acceptable.
+            etype = event.get("event_type")
+            if etype == "agent_step_complete":
+                floor = 0.40
+            elif etype == "tool_result":
+                floor = 0.35
+            else:
+                floor = self.min_quality
             if score < floor:
                 continue
 
@@ -297,7 +326,7 @@ class TrainingIngestor:
                     {"role": "user", "content": query},
                     {"role": "assistant", "content": response},
                 ],
-                "source": "hybrid-events",
+                "source": event.get("event_type", "hybrid-events"),
                 "source_hash": content_hash,
                 "quality_score": round(score, 3),
                 "latency_ms": event.get("latency_ms"),
