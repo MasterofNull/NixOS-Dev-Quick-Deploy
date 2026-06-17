@@ -960,6 +960,52 @@ async def delegate_to_aider_handler(
         return {"success": False, "error": str(e)}
 
 
+_HARNESS_CLI_WHITELIST = frozenset({
+    "aq-qa", "aq-hints", "aq-report", "aq-session-start",
+    "aq-commit-facts", "aq-lesson-promote", "aq-crystallize",
+    "aqd",
+})
+
+
+async def run_harness_cli_handler(tool: str, args: Optional[list] = None) -> Dict:
+    """
+    Run an aq-* harness CLI tool with a fixed security whitelist.
+
+    Args:
+        tool: Harness tool name (must be in whitelist: aq-qa, aq-hints, aq-report, etc.)
+        args: Optional list of string arguments to pass to the tool
+
+    Returns:
+        {"success": bool, "output": str, "tool": str, "error": str (if failed)}
+    """
+    if tool not in _HARNESS_CLI_WHITELIST:
+        return {
+            "success": False,
+            "error": f"Tool '{tool}' not in harness whitelist. Allowed: {sorted(_HARNESS_CLI_WHITELIST)}",
+        }
+    cmd_args = [tool] + [str(a) for a in (args or [])]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return {"success": False, "tool": tool, "error": "timed out after 60s"}
+        output = stdout.decode("utf-8", errors="replace").strip()
+        # Trim to 3000 chars to respect tool result cap
+        if len(output) > 3000:
+            output = output[:3000] + "\n[output truncated]"
+        return {"success": proc.returncode == 0, "tool": tool, "output": output}
+    except FileNotFoundError:
+        return {"success": False, "tool": tool, "error": f"'{tool}' not found in PATH"}
+    except Exception as e:
+        return {"success": False, "tool": tool, "error": str(e)}
+
+
 def register_ai_coordination_tools(registry: ToolRegistry):
     """Register all AI coordination tools in the registry"""
 
@@ -1358,6 +1404,36 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=discover_objectives_handler,
     ))
 
+    # run_harness_cli
+    registry.register(ToolDefinition(
+        name="run_harness_cli",
+        description=(
+            "Run an aq-* harness CLI tool (aq-qa, aq-hints, aq-report, aq-session-start, "
+            "aq-commit-facts, aq-lesson-promote, aq-crystallize, aqd). "
+            "Use for health checks, hint queries, and harness reports. "
+            "Returns the tool output as a string."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "tool": {
+                    "type": "string",
+                    "description": "Harness tool name (e.g. 'aq-qa', 'aq-hints', 'aq-report')",
+                    "enum": sorted(_HARNESS_CLI_WHITELIST),
+                },
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional arguments (e.g. ['0'] for aq-qa phase 0)",
+                },
+            },
+            "required": ["tool"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=run_harness_cli_handler,
+    ))
+
     # delegate_to_aider
     registry.register(ToolDefinition(
         name="delegate_to_aider",
@@ -1391,4 +1467,4 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=delegate_to_aider_handler,
     ))
 
-    logger.info("Registered 17 AI coordination tools")
+    logger.info("Registered 20 AI coordination tools")
