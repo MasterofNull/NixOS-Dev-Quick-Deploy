@@ -73,13 +73,29 @@ def _inject_role(messages: list, role: str) -> list:
     return msgs
 
 
-# Token budget constants — override at call site or via LLAMA_MAX_TOKENS env var.
-# At 8-12 tok/s on Renoir APU (Qwen3-35B quantised):
-#   256 tokens = ~25s @ 10 tok/s per tool call
-#   800 tokens = ~80s @ 10 tok/s for synthesis
-# Delegate inner timeout = 210s (240s outer - 30s slack).
-# Budget math: 4 tool calls × 25s + 80s synthesis = 180s < 210s limit.
-# Reduced from 512/1200 (was 273s at 10 tok/s → consistent 504).
+# ---------------------------------------------------------------------------
+# Throughput anchor — Phase 171
+# ---------------------------------------------------------------------------
+# Measured generation throughput: Renoir APU, Qwen3-35B MTP Q5_K_S, --n-gpu-layers 12.
+# Source: llamacpp:predicted_tokens_seconds from GET http://127.0.0.1:8080/metrics.
+# Update this constant when the model or quantisation changes.
+# aq-qa check: verify measured tps is within 50% of this value before each session.
+LOCAL_TOK_PER_SEC: float = float(os.environ.get("LOCAL_TOK_PER_SEC", "3.45"))
+
+# Queue overhead: llama.cpp --parallel 1. Monitoring services may have deferred requests
+# queued at agent task startup. Observed: 3 deferred → ~26s wait. Conservative budget: 60s.
+LOCAL_QUEUE_OVERHEAD_SECONDS: int = 60
+
+# ---------------------------------------------------------------------------
+# Token budget constants — derived from throughput anchor above.
+# ---------------------------------------------------------------------------
+# Budget math (Phase 171, 3.45 tok/s measured):
+#   Tool call target: 74s × 3.45 = 256 tokens  (kept at 256 for JSON completeness margin)
+#   Synthesis target: 232s × 3.45 = 800 tokens
+#   Sync-safe window: 2 tool calls × 74s + 232s synthesis + 60s queue = 500s
+#   → delegateTimeoutSeconds must be ≥ 530s for 2-tool sync tasks (500s + 30s slack)
+#   → 3+ tool tasks must route to async_mode=True
+# Override at call site or via LLAMA_MAX_TOKENS env var.
 AGENT_TOOL_CALL_MAX_TOKENS = 256   # Tool call JSON (50-100 tokens) + short summaries
 AGENT_TASK_MAX_TOKENS = 800        # Multi-turn agent task responses
 PROBE_MAX_TOKENS = 20              # Speed / health probes

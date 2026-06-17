@@ -53,6 +53,7 @@ from uuid import uuid4
 
 # Stability Backbone (Phase 55.2)
 from shared.circuit_breaker import CircuitBreakerOpenError
+from shared.llm_config import build_llama_payload
 from shared.retry_backoff import retry_with_backoff
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -1900,7 +1901,7 @@ async def route_search(
                             llm_resp = await _call_llm_with_resilience(
                                 client=llama_cpp_client,
                                 path="/chat/completions",
-                                payload={"messages": fallback_messages, "temperature": 0.2, "max_tokens": local_max_tokens},
+                                payload=build_llama_payload(fallback_messages, temperature=0.2, max_tokens=local_max_tokens, task_type="reasoning"),
                                 timeout=Config.LLAMA_CPP_INFERENCE_TIMEOUT,
                                 service_name="llama",
                             )

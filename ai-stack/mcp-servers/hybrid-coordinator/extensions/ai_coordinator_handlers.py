@@ -1590,23 +1590,18 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
             # Auto-async: long-running intents are promoted to async_mode automatically.
             # These tasks complete in 20-40 minutes — synchronous blocking always times out
             # regardless of delegateTimeoutSeconds. The caller receives 202+task_id and polls.
-            # Phrase list mirrors intent_classifier.py's harness_self_improvement prototype set.
-            _LONG_RUNNING_TASK_PHRASES: frozenset = frozenset({
-                "self improvement", "self-improvement", "run a slice",
-                "improvement slice", "run training ingest", "training ingest",
-                "run the learning loop", "run learning loop",
-                "run the continuous learning", "run continuous learning",
-            })
-            _task_lower_for_async = user_task.lower()
+            # Phase 171: phrase list consolidated into intent_classifier.RoutingClass SSOT.
+            from intent_classifier import classify_routing, RoutingClass as _RoutingClass
+            _routing_cls = classify_routing(user_task)
             if (
                 not bool(data.get("async_mode", False))
-                and any(p in _task_lower_for_async for p in _LONG_RUNNING_TASK_PHRASES)
+                and _routing_cls in (_RoutingClass.ASYNC_DELEGATE, _RoutingClass.AGENT_LOOP)
             ):
                 data = dict(data)
                 data["async_mode"] = True
                 logger.info(
-                    "delegate_auto_async: task=%r promoted to async_mode — long-running intent",
-                    user_task[:100],
+                    "delegate_auto_async: task=%r promoted to async_mode — routing_class=%s",
+                    user_task[:100], _routing_cls.value,
                 )
 
             # Phase 8.6 — Async dispatch: return task_id immediately, caller polls.

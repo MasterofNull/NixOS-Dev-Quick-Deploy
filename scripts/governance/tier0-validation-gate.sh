@@ -578,6 +578,31 @@ gate_cross_surface_contract() {
   fi
 }
 
+# Phase 171 — build_llama_payload SSOT compliance
+# Detects inline raw payload dicts that bypass build_llama_payload(), risking
+# silent enable_thinking omission on Qwen3-35B (thinking tokens fill entire context).
+# Excludes: the function definition itself, test fixtures, remote-API callers,
+# embedding endpoint (uses /v1/embeddings with a different schema).
+gate_llama_payload_ssot() {
+  log "Checking build_llama_payload SSOT compliance..."
+  local violations
+  # Require "messages": (dict key with colon) to avoid false positives on
+  # string lists like ["task", "messages", "max_tokens"] in manifest files.
+  violations=$(grep -rn \
+    '"messages"\s*:' \
+    ai-stack/ --include="*.py" \
+    | grep -v "build_llama_payload\|#\|test_\|\.pyc\|embeddings\|embed_url\|embed-url\|8081\|remote\|claude\|gemini\|openai\|anthropic\|def \|\"\"\"" \
+    | grep '"max_tokens"\|"model"' \
+    2>/dev/null || true)
+  if [[ -n "$violations" ]]; then
+    fail "build_llama_payload SSOT: raw llama.cpp payload found (use build_llama_payload()):"
+    printf '%s\n' "$violations" >&2
+    return 1
+  else
+    pass "build_llama_payload SSOT compliant — no raw payload construction"
+  fi
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -602,6 +627,7 @@ gate_roadmap_verification || true
 gate_qa_phase0 || true
 gate_env_contract || true
 gate_cross_surface_contract || true
+gate_llama_payload_ssot || true
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then

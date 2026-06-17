@@ -30,6 +30,7 @@ from uuid import uuid4
 
 from config import Config, performance_window as _default_perf_window
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct, Range
+from shared.llm_config import build_llama_payload
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -489,7 +490,7 @@ JSON:"""
     try:
         response = await _llama_cpp.post(
             "/chat/completions",
-            json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.3, "max_tokens": 500},
+            json=build_llama_payload([{"role": "user", "content": prompt}], max_tokens=500, temperature=0.3, task_type="reasoning"),
             timeout=60.0,
         )
         response.raise_for_status()
