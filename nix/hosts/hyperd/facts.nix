@@ -91,10 +91,11 @@
                             opencode = "qwen/qwen3-coder-32b";
                           };
                           aiHarness.eval.faithfulnessEnabled = true;
-                          # 360s outer / 330s inner gives headroom for 4 tool calls × 25s
-                          # + 80s synthesis = 180s at 10 tok/s (Qwen3-35B quantised).
-                          # Default 240s was consistently hit by multi-tool agentic tasks.
-                          aiHarness.runtime.delegateTimeoutSeconds = 360;
+                          # Phase 171: calibrated for actual 3.45 tok/s throughput.
+                          # Sync-safe budget: 2 tool calls × 74s + 232s synthesis
+                          # + 60s queue overhead + 30s slack = 500s → outer = 530s.
+                          # Tasks estimated >200s auto-route to async_mode via RoutingClass SSOT.
+                          aiHarness.runtime.delegateTimeoutSeconds = 530;
                           autonomousImprovement.enable = true;
                         };
   };
