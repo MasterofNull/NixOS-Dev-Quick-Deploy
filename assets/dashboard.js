@@ -4102,6 +4102,36 @@ async function loadTrainingData() {
     .join("");
 }
 
+async function loadTrainingHealth() {
+  const el = document.getElementById("trainingHealthDetails");
+  const badge = document.getElementById("trainingHealthBadge");
+  if (!el) return;
+  try {
+    const d = await apiFetch("/aistack/training/health", {}, 5000);
+    if (!d) {
+      el.innerHTML = fwRow("Status", "Unavailable", "warn");
+      return;
+    }
+
+    if (badge) {
+      const s = d.ragas_status || "INSUFFICIENT";
+      badge.textContent = s;
+      badge.className = "card-badge " + (s === "OK" ? "badge-ok" : (s === "PRELIMINARY" ? "badge-warn" : "badge-err"));
+    }
+
+    el.innerHTML = [
+      fwRow("Dataset size", d.dataset_size),
+      fwRow("Ingest rate", (d.ingest_rate_24h || 0).toFixed(2) + "/hr"),
+      fwRow("Rejection rate", (d.rejection_rate_24h || 0).toFixed(2) + "%"),
+      fwRow("RAGAS samples", d.ragas_sample_count),
+      fwRow("Tool result", d.tool_result_samples),
+      fwRow("Last ingest", relTime(d.last_ingest_ts)),
+    ].join("");
+  } catch (e) {
+    el.innerHTML = `<div class="err">${e.message}</div>`;
+  }
+}
+
 // ─── OPERATIONS: SYSTEM CONTROLS ─────────────────────────────────────────────
 async function ctrlAction(endpoint, method, body, confirmMsg) {
   if (confirmMsg && !confirm(confirmMsg)) return;
@@ -4134,6 +4164,7 @@ async function loadOperations() {
     loadLearnPipeline(),
     loadRalph(),
     loadTrainingData(),
+    loadTrainingHealth(),
     loadParityScorecard(),
     loadFleetSummary(),
     loadBudgetPolicy(),

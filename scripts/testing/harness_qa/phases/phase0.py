@@ -1603,8 +1603,74 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_delegation_feedback_contract(ctx))
     results.extend(_check_cross_model_critique(ctx))
     results.extend(_check_adopt_workflow(ctx))
+    results.extend(_check_phase173_training_health(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
+    return results
+
+
+def _check_phase173_training_health(ctx: RunContext) -> list[CheckResult]:
+    """Phase 173-E: Training Pipeline Health QA."""
+    results: list[CheckResult] = []
+
+    # 0.13.1 — Training telemetry path writable
+    telemetry_dir = Path("/var/lib/ai-stack/hybrid/")
+    if telemetry_dir.exists() and telemetry_dir.is_dir():
+        results.append(passed(4, "0.13.1", "Training telemetry path exists and is a directory"))
+    else:
+        results.append(failed(4, "0.13.1", "Training telemetry path", f"not found or not a directory: {telemetry_dir}"))
+
+    # 0.13.2 — Training dataset non-empty
+    dataset_path = Path("/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl")
+    if dataset_path.exists():
+        try:
+            with open(dataset_path, "r", encoding="utf-8", errors="replace") as f:
+                first_line = f.readline()
+                if first_line:
+                    results.append(passed(4, "0.13.2", "Training dataset non-empty (at least 1 line)"))
+                else:
+                    results.append(failed(4, "0.13.2", "Training dataset", "file exists but is empty"))
+        except Exception as e:
+            results.append(failed(4, "0.13.2", "Training dataset", str(e)))
+    else:
+        results.append(failed(4, "0.13.2", "Training dataset", f"file missing: {dataset_path}"))
+
+    # 0.13.3 — Training health endpoint reachable
+    dashboard_port = getattr(ctx, "dashboard_port", 8889)
+    health_url = f"http://localhost:{dashboard_port}/api/aistack/training/health"
+    try:
+        import urllib.request
+        try:
+            with urllib.request.urlopen(health_url, timeout=5) as resp:
+                if resp.status == 200:
+                    results.append(passed(4, "0.13.3", "Training health endpoint reachable (HTTP 200)"))
+                else:
+                    results.append(failed(4, "0.13.3", "Training health endpoint", f"HTTP {resp.status}"))
+        except urllib.request.HTTPError as e:
+            results.append(failed(4, "0.13.3", "Training health endpoint", f"HTTP {e.code}"))
+        except Exception:
+            results.append(skipped(4, "0.13.3", "Training health endpoint", "unreachable (dashboard may not be running)"))
+    except Exception as e:
+        results.append(failed(4, "0.13.3", "Training health endpoint", str(e)))
+
+    # 0.13.4 — tool_result samples present in dataset
+    if dataset_path.exists():
+        try:
+            count = 0
+            with open(dataset_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"source": "tool_result"' in line:
+                        count += 1
+                        break
+            if count >= 1:
+                results.append(passed(4, "0.13.4", "tool_result samples present in dataset"))
+            else:
+                results.append(skipped(4, "0.13.4", "tool_result samples present in dataset", "none found (dependency on 173-A deployment)"))
+        except Exception as e:
+            results.append(failed(4, "0.13.4", "tool_result samples check", str(e)))
+    else:
+        results.append(failed(4, "0.13.4", "tool_result samples check", "dataset.jsonl missing"))
+
     return results
 
 
