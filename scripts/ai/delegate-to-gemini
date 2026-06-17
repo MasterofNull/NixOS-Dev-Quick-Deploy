@@ -43,6 +43,11 @@ OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 GEMINI_BIN="${GEMINI_BIN:-$HOME/.npm-global/bin/gemini}"
 
+# Phase 173: minimum meaningful content bytes to treat a non-zero-exit run as partial-success.
+# Raw byte threshold (200) is fooled by large error-only logs (stack traces, retry attempts).
+# _gemini_meaningful_bytes() strips known header/warning/error lines before measuring.
+GEMINI_MIN_CONTENT_BYTES=500
+
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
@@ -51,6 +56,18 @@ source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-gemini] $*"; }
+
+# Return byte count of lines that are NOT Gemini CLI headers, warnings, or network error lines.
+# Used to distinguish "real content produced" from "error-only output" on non-zero exits.
+_gemini_meaningful_bytes() {
+    local file="$1"
+    # Strip Gemini CLI warnings, retry messages, Node.js stack traces, and JS error
+    # config dumps — all produced when the API call fails before the model responds.
+    # Real model output never contains node_modules paths or googleapis.com URLs.
+    grep -Ev \
+        "^Warning:|^YOLO mode|^Attempt [0-9]+ failed\.|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis\.com|GaxiosError|AbortSignal|errorRedactor|paramsSerializer|validateStatus|<<REDACTED|Symbol\(|'s-gaxios-error'\]|response: undefined|'Content-Type'|'User-Agent'|'x-goog-api-client'|^\s+[a-zA-Z_]+: [\"'{[]|^\s*[{}],?\s*$|type: 'system'" \
+        "$file" 2>/dev/null | wc -c || echo 0
+}
 
 require_gemini() {
     [[ -x "$GEMINI_BIN" ]] || die "Gemini CLI not found at $GEMINI_BIN
@@ -223,6 +240,10 @@ PYEOF
     # Resolve relative paths
     [[ "$output_file" = /* ]] || output_file="$REPO_ROOT/$output_file"
     [[ -f "$output_file" ]] || die "Output file not found: $output_file (task may still be running)"
+    local meaningful_bytes; meaningful_bytes="$(_gemini_meaningful_bytes "$output_file")"
+    if [[ "$meaningful_bytes" -le "$GEMINI_MIN_CONTENT_BYTES" ]]; then
+        echo "[delegate-to-gemini] WARN: output may be incomplete (${meaningful_bytes}B meaningful content — check for network errors below)" >&2
+    fi
     cat "$output_file"
 }
 
@@ -289,26 +310,26 @@ ${prompt}"
         info "Running in blocking mode..."
         "${cmd[@]}" 2>&1 | tee "$output_file"
         local exit_code="${PIPESTATUS[0]}"
-        local output_bytes; output_bytes="$(wc -c < "$output_file" 2>/dev/null || echo 0)"
+        local meaningful_bytes; meaningful_bytes="$(_gemini_meaningful_bytes "$output_file")"
         if [[ "$exit_code" -eq 0 ]]; then
             registry_update_status "$id" "done"
             "$SCRIPT_DIR/lib/pending-update" "done" "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "success" "0" "completed: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id completed successfully."
-        elif [[ "$output_bytes" -gt 200 ]]; then
-            # Router error but response was generated — treat as partial-success
+        elif [[ "$meaningful_bytes" -gt "$GEMINI_MIN_CONTENT_BYTES" ]]; then
+            # Non-zero exit but model produced real content — treat as partial-success.
             registry_update_status "$id" "partial-success"
             "$SCRIPT_DIR/lib/pending-update" partial-success "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "partial-success" "0" "partial-success exit=${exit_code}: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
-            info "Task $id partial-success (exit $exit_code, output ${output_bytes}B)."
+            info "Task $id partial-success (exit $exit_code, meaningful ${meaningful_bytes}B)."
         else
             registry_update_status "$id" "failed"
             "$SCRIPT_DIR/lib/pending-update" failed "$id" 2>/dev/null || true
             audit_event_end "gemini" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
-            info "Task $id failed (exit $exit_code)."
+            info "Task $id failed (exit $exit_code, meaningful ${meaningful_bytes}B — below ${GEMINI_MIN_CONTENT_BYTES}B threshold)."
         fi
     else
         # Background mode: fully detach so it survives session eviction
@@ -342,9 +363,9 @@ with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
                 \"$SCRIPT_DIR/lib/pending-update\" done \"$id\" 2>/dev/null || true
             else
-                _output_bytes=\$(wc -c < \"$output_file\" 2>/dev/null || echo 0)
-                if [[ \$_output_bytes -gt 200 ]]; then
-                    bash \"$_audit_helper\" \"$_coord_url\" task_completed gemini partial-success \"\$_lat\" \"$id\" \"partial-success exit=\$exit_code: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
+                _meaningful_bytes=\$(grep -Ev '^Warning:|^YOLO mode|^Attempt [0-9]+ failed|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis|GaxiosError|AbortSignal|errorRedactor|paramsSerializer|validateStatus|Symbol\(|response: undefined|^\s+[a-zA-Z_]+: |^\s+'\''[^'\'']+'\'': |^\s*[{}],*\s*$' \"$output_file\" 2>/dev/null | wc -c || echo 0)
+                if [[ \$_meaningful_bytes -gt ${GEMINI_MIN_CONTENT_BYTES} ]]; then
+                    bash \"$_audit_helper\" \"$_coord_url\" task_completed gemini partial-success \"\$_lat\" \"$id\" \"partial-success exit=\$exit_code meaningful=\${_meaningful_bytes}B: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
                     python3 - \"$REGISTRY\" \"$id\" partial-success <<'PYEOF'
 import sys, json
 rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]

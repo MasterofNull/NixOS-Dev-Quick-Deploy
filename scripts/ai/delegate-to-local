@@ -73,6 +73,7 @@ TIMEOUT=300
 ROLE="implement"
 WAIT=false
 TOOL_MANIFEST="full"
+TASK_TYPE=""  # Phase 173: "research"|"analysis"|"prd" raises stagnation read limits to 15/25
 SUBCMD=""
 SUBCMD_ARG=""
 
@@ -85,6 +86,7 @@ while [[ $# -gt 0 ]]; do
         --role)           ROLE="$2";           shift 2 ;;
         --wait)           WAIT=true;           shift   ;;
         --tool-manifest)  TOOL_MANIFEST="$2";  shift 2 ;;
+        --task-type)      TASK_TYPE="$2";      shift 2 ;;
         --check)       SUBCMD="check";    SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";   SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";     shift   ;;
@@ -161,6 +163,7 @@ case "${SUBCMD:-}" in
             --ralph-url      "http://127.0.0.1:${RALPH_PORT}"
             --script-dir     "$SCRIPT_DIR"
         )
+        [[ -n "$TASK_TYPE" ]] && _DISPATCH_ARGS+=(--task-type "$TASK_TYPE")
 
         if [[ "$WAIT" == "true" ]]; then
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."

@@ -847,11 +847,13 @@ class LocalAgentExecutor:
         _TOOL_FAILURE_HARD_LIMIT = 5
 
         # Exploration stagnation: tracks reads since the last edit/write tool call.
-        # Models in self-improvement mode should read 1-3 files then act. More than
-        # 8 reads without any edit is over-exploration; nudge the model. 12 = hard abort.
+        # Research/analysis/PRD tasks legitimately read 10+ files before writing — use
+        # higher limits for those task_types. Implementation tasks default to 8/12.
         _reads_without_edit = 0
-        _MAX_READS_WITHOUT_EDIT = 8
-        _READS_HARD_LIMIT = 12
+        _RESEARCH_TASK_TYPES = frozenset({"research", "analysis", "prd", "reasoning"})
+        _is_research_task = (task.task_type or "").lower() in _RESEARCH_TASK_TYPES
+        _MAX_READS_WITHOUT_EDIT = 15 if _is_research_task else 8
+        _READS_HARD_LIMIT = 25 if _is_research_task else 12
         _exploration_nudge_sent = False
         _validation_passes_without_commit = 0
         _VALIDATION_STALL_NUDGE = 3
@@ -1348,14 +1350,19 @@ class LocalAgentExecutor:
             # Appears before the next LLM call so the model can course-correct without aborting.
             if _reads_without_edit == _MAX_READS_WITHOUT_EDIT and not _exploration_nudge_sent:
                 _exploration_nudge_sent = True
-                messages.append({
-                    "role": "user",
-                    "content": (
+                if _is_research_task:
+                    nudge_content = (
+                        f"RESEARCH TASK: You have read {_reads_without_edit} files. "
+                        f"Continue gathering context as needed (hard limit: {_READS_HARD_LIMIT} reads). "
+                        "Begin writing your output file by that point."
+                    )
+                else:
+                    nudge_content = (
                         f"EXPLORATION WARNING: You have read {_reads_without_edit} files without "
                         "making any edits. You have enough context. Execute the required "
                         "edit_file calls from the BEHAVIORAL CONTRACT now."
-                    ),
-                })
+                    )
+                messages.append({"role": "user", "content": nudge_content})
                 logger.info(
                     "exploration-nudge injected after %d reads without edit at call %d",
                     _reads_without_edit, tool_call_count,
