@@ -1322,6 +1322,25 @@ def _check_local_agent_store_memory_contract(ctx: RunContext) -> list[CheckResul
     return [failed(1, "0.10.14", "local-agent store_memory contract", detail)]
 
 
+def _check_phase171_throughput_calibration(ctx: RunContext) -> list[CheckResult]:
+    """Phase 171: verify LOCAL_TOK_PER_SEC constant is within 50% of measured throughput."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-local-inference-throughput.py"
+    if not check.exists():
+        return [failed(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration", "test-local-inference-throughput.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration", detail)]
+
+
 def _check_token_usage_coverage(ctx: RunContext) -> list[CheckResult]:
     """0.10.2 — token_usage coverage ≥ 50% of model_call events over last 100 events."""
     results: list[CheckResult] = []
@@ -1401,6 +1420,7 @@ def _dashboard_safe_host_only_skips() -> list[CheckResult]:
         _dashboard_host_only_skip(1, "0.10.9", "local delegation artifact persistence"),
         _dashboard_host_only_skip(1, "0.10.13", "local inference budget"),
         _dashboard_host_only_skip(1, "0.10.14", "local-agent store_memory contract"),
+        _dashboard_host_only_skip(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration"),
         _dashboard_host_only_skip(1, "0.150.1", "candidate lifecycle manager"),
         _dashboard_host_only_skip(4, "83.1", "dag_manager.py syntax"),
         _dashboard_host_only_skip(4, "83.2", "context-merger.py syntax"),
@@ -1483,6 +1503,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     if not ctx.dashboard_safe:
         results.extend(_check_local_inference_budget(ctx))
         results.extend(_check_local_agent_store_memory_contract(ctx))
+        results.extend(_check_phase171_throughput_calibration(ctx))
         results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_golden_eval_parity(ctx))
