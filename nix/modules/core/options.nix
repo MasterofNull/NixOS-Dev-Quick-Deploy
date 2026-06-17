@@ -2061,6 +2061,18 @@
             '';
           };
 
+          delegateSyncMaxEstimatedSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 200;
+            description = ''
+              Maximum estimated wall-clock seconds for a task to be routed
+              synchronously. Tasks whose estimated duration exceeds this threshold
+              are auto-promoted to async_mode by the RoutingClass SSOT
+              (classify_routing in intent_classifier.py). At 3.45 tok/s and 74s
+              per tool call, 200s ≈ 2 tool calls — so 3+ tool tasks route async.
+            '';
+          };
+
           safetyPolicy = lib.mkOption {
             type = lib.types.attrs;
             default = {
