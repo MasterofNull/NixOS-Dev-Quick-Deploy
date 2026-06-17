@@ -190,9 +190,12 @@ def _is_useful_hybrid_event(event: Dict) -> bool:
         return False
     if event.get("error") or event.get("success") is False:
         return False
-    latency = event.get("latency_ms", 0.0)
-    if latency < MIN_LATENCY_MS:
-        return False
+    # tool_result latency reflects tool execution speed, not inference quality.
+    # Skip the latency gate for tool_result — tools complete in <500ms by design.
+    if etype != "tool_result":
+        latency = event.get("latency_ms", 0.0)
+        if latency < MIN_LATENCY_MS:
+            return False
     return True
 
 
