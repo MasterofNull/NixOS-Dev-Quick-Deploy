@@ -30,8 +30,8 @@ if hard and soft:
     if not (s < h):
         print(f"FAIL: soft ({s}) must be < hard ({h})")
         sys.exit(1)
-    if h > 20:
-        print(f"FAIL: hard limit too large ({h}), should be <= 20 to prevent runaway loops")
+    if h > 30:
+        print(f"FAIL: hard limit too large ({h}), should be <= 30 to prevent runaway loops (research mode may use up to 25)")
         sys.exit(1)
 
 print("PASS: exploration stagnation guard present and thresholds reasonable")
