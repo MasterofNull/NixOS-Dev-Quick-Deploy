@@ -144,11 +144,51 @@ same standardized process every time, every agent, every task type.
 
 #### Phase 6 — Plan Consolidation + Consensus Sign-off
 - Same pattern as Phases 3-4 applied to plans. Inter-slice dependencies resolved explicitly.
-- Output: `.agents/plans/<NAME>-PLAN-CONSOLIDATED.md`
+- **Consolidation must produce an inter-slice dependency table.** For every slice pair that shares a
+  boundary (A's output is B's input, A calls an endpoint B exposes, A writes a file B reads, etc.):
+
+  | Slice A | Owner | Slice B | Owner | Boundary description | Contract status |
+  |---------|-------|---------|-------|----------------------|-----------------|
+
+- Slices with no dependencies: proceed independently after consensus.
+- Slices with dependencies: both owners must negotiate and sign an integration contract before either
+  begins implementation. Isolation is a failure mode — tool stubs and mismatched interfaces are the
+  direct result of agents implementing shared surfaces without coordination.
+- Output: `.agents/plans/<NAME>-PLAN-CONSOLIDATED.md` (includes the dependency table)
+
+#### Phase 6.5 — Integration Contract Negotiation (dependency pairs only)
+
+For each pair identified in the Phase 6 dependency table:
+- Both agents independently propose the shared interface (endpoint shape, data schema, call contract,
+  error behaviour, auth requirements).
+- Divergences are surfaced and resolved between the two agents directly — not by the orchestrator.
+- Agreed interface is documented before any code is written.
+- Output: `.agent/collaboration/integration-contracts/<slice-a>--<slice-b>.md`
+
+Minimum contract template:
+```markdown
+# Integration Contract: <Slice A> ↔ <Slice B>
+## Shared Interface
+## Data Schema
+## Error Behaviour
+## Auth / Trust Requirements
+## Sign-off
+- [ ] <Agent A>: AGREED / REVISION NEEDED — <reason if revision>
+- [ ] <Agent B>: AGREED / REVISION NEEDED — <reason if revision>
+```
+
+**Neither agent may begin implementation until both have signed AGREED.**
+If an agent is unavailable, orchestrator files proxy sign-off and notes it explicitly.
 
 #### Phase 7 — Delegation
-- **Only after both PRD and plan carry all-agent sign-off** are task delegations issued.
+- **Only after both PRD and plan carry all-agent sign-off AND all integration contracts carry mutual
+  AGREED sign-off** are task delegations issued.
 - Delegations reference the locked plan slice by ID — no ad-hoc "do this" dispatches.
+- **Dispatch prompts must include integration context.** Each agent's dispatch prompt names:
+  - The slice they own
+  - The integration contracts they are party to
+  - The agents they must coordinate with at each boundary
+  An agent dispatched without this context will implement in isolation and produce stubs.
 
 **Key rules**:
 - Never draft a PRD solo and then ask others to review — that anchors all other teams to your framing.
@@ -156,6 +196,10 @@ same standardized process every time, every agent, every task type.
 - The consolidator role is **logistics only**, not authority — surfaces conflicts, does not resolve them.
 - If an agent is unavailable, the orchestrator fills that agent's role and marks it as proxy sign-off.
   Never skip a sign-off slot silently.
+- An integration contract not yet at mutual AGREED blocks both dependent slices. Surface it explicitly;
+  do not bypass it by implementing a stub and calling it "good enough for now."
+- Dynamic slice assignment: slices are assigned to the most available and competent agent at execution
+  time, not predetermined by agent identity. Competency is judged per-slice, not per-session.
 
 ---
 
