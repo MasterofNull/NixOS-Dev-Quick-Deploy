@@ -6729,6 +6729,49 @@ async function loadSystemNavigator() {
   }
 }
 
+// ─── Phase 171-C — Active Agent Task Monitor ─────────────────────────────────
+async function loadActiveAgentTasks() {
+  const el = document.getElementById("agentTaskBody");
+  const badge = document.getElementById("agentTaskBadge");
+  if (!el) return;
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const r = await fetch("/api/aistack/agent-tasks/active", { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const tasks = data.tasks || [];
+    if (badge) {
+      badge.textContent = tasks.length > 0 ? `${tasks.length} running` : "idle";
+      badge.className = `card-badge ${tasks.length > 0 ? "badge-info" : "badge-ok"}`;
+    }
+    if (tasks.length === 0) {
+      el.innerHTML = '<tr><td colspan="5" style="color:var(--fg3);padding:.5rem">No active tasks</td></tr>';
+      return;
+    }
+    el.innerHTML = tasks.map(t => {
+      const shortId = t.task_id.slice(-8);
+      const stepCls = t.last_tool_success === false ? "warn" : "ok";
+      const elapsedMin = t.elapsed_s >= 60 ? `${Math.floor(t.elapsed_s / 60)}m ${t.elapsed_s % 60}s` : `${t.elapsed_s}s`;
+      const obj = t.objective_preview ? t.objective_preview.slice(0, 60) + (t.objective_preview.length > 60 ? "…" : "") : "—";
+      return `<tr>
+        <td style="font-family:monospace;font-size:.55rem">${shortId}</td>
+        <td class="fv ${stepCls}">${t.tool_call_count}</td>
+        <td style="font-size:.55rem">${t.last_tool || "—"}</td>
+        <td>${elapsedMin}</td>
+        <td style="font-size:.52rem;color:var(--fg2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.objective_preview || ""}">${obj}</td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    clearTimeout(tid);
+    if (e.name !== "AbortError") {
+      if (badge) { badge.textContent = "err"; badge.className = "card-badge badge-warn"; }
+      el.innerHTML = `<tr><td colspan="5" style="color:var(--fg3)">${e.message}</td></tr>`;
+    }
+  }
+}
+
 async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add("overview");
@@ -6753,6 +6796,7 @@ async function refreshAll() {
   loadAIDB();
   loadObservability();
   loadLens(activeLens);
+  loadActiveAgentTasks();
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -6778,6 +6822,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ]).then(() => {
     loadInferenceSlots();
     loadAIDB();
+    loadActiveAgentTasks();
   });
   // Deferred: DB metrics + slow OSI health + audit + observability panels
   setTimeout(() => {
@@ -6796,6 +6841,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(loadAlerts, 30_000);
   setInterval(loadDatabase, 60_000);
   setInterval(loadSystemNavigator, 120_000); // artifact refreshes every 15m; poll every 2m
+  setInterval(loadActiveAgentTasks, 10_000); // agent tasks change fast
   setInterval(() => {
     loadHardwareState().then(() => {
       loadInferenceSlots();
