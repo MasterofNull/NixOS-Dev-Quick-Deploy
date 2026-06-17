@@ -1904,6 +1904,42 @@ async def get_delegate_stats() -> Dict[str, Any]:
     return result
 
 
+@router.get("/agent-tasks/active")
+async def get_active_agent_tasks() -> Dict[str, Any]:
+    """Return in-progress agent tasks from *.progress.json files (Phase 171-C)."""
+    outputs_dir = _repo_root() / ".agents" / "delegation" / "outputs"
+    now = time.time()
+    tasks = []
+    stale_cutoff = 1800  # 30 minutes — older tasks are considered stale
+    try:
+        for path in sorted(outputs_dir.glob("*.progress.json")):
+            try:
+                mtime = path.stat().st_mtime
+                if now - mtime > stale_cutoff:
+                    continue
+                data = json.loads(path.read_text())
+                if data.get("status") not in ("running", "pending"):
+                    continue
+                task_id = path.name.replace(".log.progress.json", "")
+                last_ts = data.get("timestamp", "")
+                tasks.append({
+                    "task_id": task_id,
+                    "status": data.get("status", "running"),
+                    "tool_call_count": data.get("tool_call_count", 0),
+                    "last_tool": data.get("last_tool", ""),
+                    "last_tool_success": data.get("last_tool_success", True),
+                    "elapsed_s": int(data.get("elapsed_s", now - mtime)),
+                    "objective_preview": (data.get("objective_preview") or "")[:120],
+                    "last_updated_s": int(now - mtime),
+                    "timestamp": last_ts,
+                })
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return {"tasks": tasks, "count": len(tasks), "timestamp": int(now)}
+
+
 @router.get("/discovery/signals")
 async def get_discovery_signals() -> Dict[str, Any]:
     """Return keyword/discovery signal data from the current local source when available."""
