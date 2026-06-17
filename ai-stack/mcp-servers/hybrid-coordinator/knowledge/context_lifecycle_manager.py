@@ -341,10 +341,15 @@ class ContextLifecycleManager:
             logger.warning("clm.demote_to_warm_failed session=%s exc=%s", session_id, exc)
 
     async def _demote_to_cold(self, session_id: str, state: Dict[str, Any]) -> None:
-        """Summarize via Qwen (thermal-gated) and archive to AIDB episodic."""
+        """Summarize via Qwen (thermal-gated, slot-aware) and archive to AIDB episodic."""
         # AM-G4: skip if thermal critical/shutdown
         if self._thermal_tier() in ("critical", "shutdown"):
             logger.debug("clm.demote_to_cold deferred thermal=%s", self._thermal_tier())
+            return
+        # Phase 171 (queue isolation): skip if inference slot is occupied to avoid
+        # contention with agent tasks. Deferred to next 60s tick.
+        if await self._is_inference_busy():
+            logger.debug("clm.demote_to_cold deferred slot_busy session=%s", session_id)
             return
 
         summary = await self._compact_summary(session_id, state)
@@ -445,6 +450,26 @@ class ContextLifecycleManager:
             return get_scheduler()._thermal_tier
         except Exception:
             return "normal"
+
+    async def _is_inference_busy(self) -> bool:
+        """Return True if the llama.cpp inference slot is currently occupied.
+
+        Uses GET /slots (passive, no slot consumption) per Phase 171 queue isolation.
+        Conservative default: False (allow compaction if /slots is unreachable).
+        """
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(
+                    f"{self._llm_url}/slots",
+                    timeout=aiohttp.ClientTimeout(total=2.0),
+                ) as resp:
+                    if resp.status == 200:
+                        slots = await resp.json()
+                        return any(s.get("state", 0) != 0 for s in slots)
+        except Exception:
+            pass
+        return False
 
     async def _hot_redis_mb(self) -> float:
         """Estimate Hot-tier Redis memory usage in MB."""
