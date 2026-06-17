@@ -6724,6 +6724,77 @@ async def get_training_dataset_health() -> Dict[str, Any]:
     }
 
 
+@router.get("/training/health")
+async def get_training_health() -> Dict[str, Any]:
+    """Slice 173-E: Training pipeline health metrics."""
+    dataset_size = 0
+    tool_result_samples = 0
+    last_ingest_ts = None
+    ingest_count_24h = 0
+
+    now = datetime.now(timezone.utc)
+    one_day_ago = now - timedelta(days=1)
+
+    if _FINETUNE_DATASET_PATH.exists():
+        try:
+            def scan_dataset():
+                d_size = 0
+                tr_samples = 0
+                max_ts = None
+                in_24h = 0
+                with open(_FINETUNE_DATASET_PATH, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        d_size += 1
+                        if '"source": "tool_result"' in line:
+                            tr_samples += 1
+
+                        try:
+                            idx = line.find('"timestamp": "')
+                            if idx != -1:
+                                start = idx + 14
+                                end = line.find('"', start)
+                                if end != -1:
+                                    ts_str = line[start:end]
+                                    ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                                    if not max_ts or ts > max_ts:
+                                        max_ts = ts
+                                    if ts > one_day_ago:
+                                        in_24h += 1
+                        except (ValueError, IndexError):
+                            continue
+                return d_size, tr_samples, max_ts, in_24h
+
+            dataset_size, tool_result_samples, last_ingest_ts, ingest_count_24h = \
+                await asyncio.to_thread(scan_dataset)
+        except Exception:
+            pass
+
+    # RAGAS fields from hybrid coordinator
+    ragas_sample_count = 0
+    ragas_status = "INSUFFICIENT"
+    try:
+        coord_url = "http://127.0.0.1:8003/eval/trend"
+        res = await fetch_with_fallback(coord_url, fallback={})
+        if res:
+            ragas_sample_count = res.get("ragas_sample_count", 0)
+            ragas_status = res.get("ragas_status", "INSUFFICIENT")
+    except Exception:
+        pass
+
+    return {
+        "dataset_size": dataset_size,
+        "ingest_rate_24h": round(float(ingest_count_24h) / 24.0, 2),
+        "rejection_rate_24h": 0.0,
+        "ragas_sample_count": ragas_sample_count,
+        "ragas_status": ragas_status,
+        "last_ingest_ts": last_ingest_ts.isoformat() if last_ingest_ts else None,
+        "tool_result_samples": tool_result_samples
+    }
+
+
 @router.get("/stats/telemetry/event-distribution")
 async def get_event_distribution(hours: int = 24) -> Dict[str, Any]:
     """Panel G — Agent-run event type distribution (last N hours)."""

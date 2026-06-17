@@ -44,6 +44,7 @@ logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 
 MAX_PATTERN_PROMPT_CHARS = 4000
 MAX_PATTERN_RESPONSE_CHARS = 12000
+RAGAS_MIN_SAMPLES = 20
 
 
 def _read_secret(path: str) -> str:
@@ -289,7 +290,7 @@ class ContinuousLearningPipeline:
             os.getenv("CONTINUOUS_LEARNING_CHECKPOINT_DIR", str(data_root / "checkpoints"))
         )
         self.checkpointer = Checkpointer(checkpoints_dir)
-        self.checkpoint_interval = 100  # Checkpoint every N events
+        self.checkpoint_interval = 50  # Checkpoint every N events
         self.processed_count = 0
 
         # Load last checkpoint to resume from where we left off
@@ -549,10 +550,15 @@ class ContinuousLearningPipeline:
 
         # Deduplicate and limit batch size
         unique: List[OptimizationProposal] = []
+        sample_count = len(self.patterns)
         for proposal in proposals:
             proposal_hash = self._proposal_hash(proposal)
             if proposal_hash in self.proposal_hashes:
                 continue
+            
+            if sample_count < RAGAS_MIN_SAMPLES:
+                proposal.status = "PRELIMINARY"
+
             self._record_proposal(proposal, proposal_hash)
             unique.append(proposal)
             if len(unique) >= self.proposal_batch_limit:
