@@ -1030,9 +1030,13 @@ in {
         description = "AI hybrid coordinator (local/remote LLM routing)";
         wantedBy = ["ai-stack.target"];
         partOf = ["ai-stack.target"];
-        after = hybridDeps;
+        # Phase 172-A: llama-cpp.service is a soft dep (wants, not requires) so the
+        # coordinator doesn't fail if the model is absent. after= ensures ordering:
+        # coordinator starts after llama.cpp process launches, giving the model a head
+        # start on loading before the first delegation request arrives.
+        after = hybridDeps ++ (lib.optional llama.enable "llama-cpp.service");
         requires = hybridDeps;
-        wants = ["network-online.target"];
+        wants = ["network-online.target"] ++ (lib.optional llama.enable "llama-cpp.service");
         # Phase 62.1: nsjail execution sandbox.
         # Phase 164.x: qa_check subprocesses invoke plain `python3`; keep them
         # on the coordinator's packaged Python env so harness checks see the

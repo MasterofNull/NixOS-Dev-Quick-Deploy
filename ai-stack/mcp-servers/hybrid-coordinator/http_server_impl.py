@@ -2818,6 +2818,40 @@ async def run_http_mode(port: int) -> None:
     )
     intake_gateway.register_routes(http_app)
 
+    # Phase 172-C — /readyz: per-component readiness probe
+    async def handle_readyz(request):
+        """GET /readyz — structured readiness for all downstream components.
+
+        Returns 200 when all components are ready, 503 when any are degraded/unavailable.
+        Safe to call without auth (registered in PUBLIC_PATHS).
+        """
+        import aiohttp as _aiohttp
+        components: dict = {}
+        try:
+            async with _aiohttp.ClientSession() as _s:
+                async with _s.get(
+                    f"{Config.LLAMA_CPP_URL}/health",
+                    timeout=_aiohttp.ClientTimeout(total=3.0),
+                ) as _r:
+                    components["llama_cpp"] = "ready" if _r.status == 200 else "degraded"
+        except Exception:
+            components["llama_cpp"] = "unavailable"
+        try:
+            async with _aiohttp.ClientSession() as _s:
+                async with _s.get(
+                    f"{Config.AIDB_URL}/health",
+                    timeout=_aiohttp.ClientTimeout(total=2.0),
+                ) as _r:
+                    components["aidb"] = "ready" if _r.status == 200 else "degraded"
+        except Exception:
+            components["aidb"] = "unavailable"
+        components["coordinator"] = "ready"
+        overall = "ready" if all(v == "ready" for v in components.values()) else "degraded"
+        status_code = 200 if overall == "ready" else 503
+        return web.json_response({"status": overall, "components": components}, status=status_code)
+
+    http_app.router.add_get("/readyz", handle_readyz)
+
     # Phase 20: World Model — /world/forecast (inline handler)
     async def handle_world_forecast(request):
         """GET /world/forecast — current intent predictions + latest warming log."""
