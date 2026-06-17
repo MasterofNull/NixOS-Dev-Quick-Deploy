@@ -54,6 +54,7 @@ AUTH_PROFILE_POLICY = {
 PUBLIC_PATHS = frozenset({
     "/health",
     "/metrics",
+    "/readyz",
     "/.well-known/mcp.json",
     "/.well-known/agent.json",
     "/.well-known/agent-card.json",

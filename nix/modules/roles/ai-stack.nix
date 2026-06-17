@@ -1056,6 +1056,22 @@ in {
           Group = "llama";
           Restart = "on-failure";
           RestartSec = "5s";
+          # Phase 172-B: extend startup timeout to cover full model-load time
+          # (22GB GGUF on Renoir APU takes up to 90s; 180s gives 2x headroom).
+          TimeoutStartSec = "180";
+          # Phase 172-B: poll /health until model is loaded and serving.
+          # systemd marks the service active only after this probe succeeds,
+          # so ai-hybrid-coordinator (after=llama-cpp.service) starts only when
+          # the model is genuinely ready for inference.
+          ExecStartPost = pkgs.writeShellScript "llama-cpp-ready-probe" ''
+            for i in $(${pkgs.coreutils}/bin/seq 60); do
+              if ${pkgs.curl}/bin/curl -sf "http://127.0.0.1:${toString llama.port}/health" >/dev/null 2>&1; then
+                exit 0
+              fi
+              ${pkgs.coreutils}/bin/sleep 2
+            done
+            exit 1
+          '';
           StateDirectory = "llama-cpp";
           RuntimeDirectory = "llama-cpp";
           # Phase 5.2.2: allow model weights to be locked in RAM (mlockall).

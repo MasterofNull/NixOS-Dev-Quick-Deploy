@@ -1341,6 +1341,93 @@ def _check_phase171_throughput_calibration(ctx: RunContext) -> list[CheckResult]
     return [failed(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration", detail)]
 
 
+# ---------------------------------------------------------------------------
+# Phase 172 — Coordination & Delegation health checks (0.12.1-0.12.4)
+# ---------------------------------------------------------------------------
+
+def _check_phase172_delegation_health(ctx: RunContext) -> list[CheckResult]:
+    """Phase 172: coordinator readiness gate, delegation success rate, feedback
+    event_type coverage, and llama.cpp slot availability."""
+    import json as _json
+    from pathlib import Path as _Path
+    import datetime as _dt
+
+    results: list[CheckResult] = []
+    coordinator_url = "http://127.0.0.1:8003"
+    llama_url = "http://127.0.0.1:8080"
+
+    # 0.12.1 — /readyz endpoint exists (200 or 503, not 404)
+    try:
+        import urllib.request as _ur
+        try:
+            with _ur.urlopen(f"{coordinator_url}/readyz", timeout=5) as _r:
+                status = _r.status
+        except Exception as _e:
+            # urllib raises HTTPError for non-2xx; catch 503 as valid
+            status = getattr(_e, "code", 0)
+        if status in (200, 503):
+            results.append(passed(1, "0.12.1", "coordinator /readyz endpoint exists"))
+        else:
+            results.append(failed(1, "0.12.1", "coordinator /readyz endpoint", f"unexpected HTTP {status}"))
+    except Exception as exc:
+        results.append(failed(1, "0.12.1", "coordinator /readyz endpoint", str(exc)))
+
+    # 0.12.2 — delegation success rate ≥ 50% over last 24h (warn < 80%, fail < 50%)
+    try:
+        feedback_log = _Path("/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
+        if not feedback_log.exists():
+            results.append(skipped(1, "0.12.2", "delegation success rate 24h", "feedback log not found"))
+        else:
+            cutoff = (_dt.datetime.utcnow() - _dt.timedelta(hours=24)).isoformat()
+            lines = feedback_log.read_text().strip().splitlines()
+            events = [_json.loads(l) for l in lines if l.strip()]
+            recent = [e for e in events if (e.get("timestamp") or "") >= cutoff]
+            if not recent:
+                results.append(skipped(1, "0.12.2", "delegation success rate 24h", "no events in last 24h"))
+            else:
+                success = sum(1 for e in recent if e.get("outcome") == "success")
+                rate = success / len(recent)
+                label = f"{success}/{len(recent)} = {rate:.0%}"
+                if rate >= 0.80:
+                    results.append(passed(1, "0.12.2", f"delegation success rate 24h ({label})"))
+                elif rate >= 0.50:
+                    results.append(skipped(1, "0.12.2", f"delegation success rate 24h ({label}) — below 80% target", "degraded but above minimum"))
+                else:
+                    results.append(failed(1, "0.12.2", "delegation success rate 24h", f"{label} — below 50% minimum"))
+    except Exception as exc:
+        results.append(failed(1, "0.12.2", "delegation success rate 24h", str(exc)))
+
+    # 0.12.3 — feedback event_type coverage: null fraction = 0 in last 20 events
+    try:
+        feedback_log = _Path("/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
+        if not feedback_log.exists():
+            results.append(skipped(1, "0.12.3", "feedback event_type coverage", "feedback log not found"))
+        else:
+            lines = feedback_log.read_text().strip().splitlines()
+            recent_20 = [_json.loads(l) for l in lines[-20:] if l.strip()]
+            null_count = sum(1 for e in recent_20 if e.get("event_type") is None)
+            if null_count == 0:
+                results.append(passed(1, "0.12.3", "feedback event_type coverage (0 null in last 20)"))
+            else:
+                results.append(failed(1, "0.12.3", "feedback event_type coverage", f"{null_count}/20 events have null event_type"))
+    except Exception as exc:
+        results.append(failed(1, "0.12.3", "feedback event_type coverage", str(exc)))
+
+    # 0.12.4 — llama.cpp has at least 1 idle slot (state == 0); skip if llama.cpp is down
+    try:
+        with _ur.urlopen(f"{llama_url}/slots", timeout=4) as _r:
+            slots = _json.loads(_r.read())
+            idle = [s for s in slots if s.get("state", -1) == 0]
+            if idle:
+                results.append(passed(1, "0.12.4", f"llama.cpp slot available ({len(idle)} idle)"))
+            else:
+                results.append(failed(1, "0.12.4", "llama.cpp slot available", f"0/{len(slots)} slots idle"))
+    except Exception:
+        results.append(skipped(1, "0.12.4", "llama.cpp slot available", "llama.cpp unreachable — skip"))
+
+    return results
+
+
 def _check_token_usage_coverage(ctx: RunContext) -> list[CheckResult]:
     """0.10.2 — token_usage coverage ≥ 50% of model_call events over last 100 events."""
     results: list[CheckResult] = []
@@ -1421,6 +1508,10 @@ def _dashboard_safe_host_only_skips() -> list[CheckResult]:
         _dashboard_host_only_skip(1, "0.10.13", "local inference budget"),
         _dashboard_host_only_skip(1, "0.10.14", "local-agent store_memory contract"),
         _dashboard_host_only_skip(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration"),
+        _dashboard_host_only_skip(1, "0.12.1", "coordinator /readyz endpoint"),
+        _dashboard_host_only_skip(1, "0.12.2", "delegation success rate 24h"),
+        _dashboard_host_only_skip(1, "0.12.3", "feedback event_type coverage"),
+        _dashboard_host_only_skip(1, "0.12.4", "llama.cpp slot available"),
         _dashboard_host_only_skip(1, "0.150.1", "candidate lifecycle manager"),
         _dashboard_host_only_skip(4, "83.1", "dag_manager.py syntax"),
         _dashboard_host_only_skip(4, "83.2", "context-merger.py syntax"),
@@ -1504,6 +1595,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
         results.extend(_check_local_inference_budget(ctx))
         results.extend(_check_local_agent_store_memory_contract(ctx))
         results.extend(_check_phase171_throughput_calibration(ctx))
+        results.extend(_check_phase172_delegation_health(ctx))
         results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_golden_eval_parity(ctx))

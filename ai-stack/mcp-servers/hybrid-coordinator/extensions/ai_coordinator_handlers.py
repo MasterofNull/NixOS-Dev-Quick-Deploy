@@ -291,6 +291,43 @@ _LOCAL_SUBPROCESS_LEASES: asyncio.Semaphore = asyncio.Semaphore(_LOCAL_SUBPROCES
 _DELEGATE_TASK_TTL_S: float = 600.0
 
 # ---------------------------------------------------------------------------
+# Phase 172-D — Outbound circuit breaker for llama_cpp_client
+# Trips after _LLAMA_CB_THRESHOLD consecutive provider_http_error /
+# provider_request_error failures; resets after _LLAMA_CB_RESET_S seconds.
+# Fast-fails delegation with 503 while open so the MLFQ queue stays clear.
+# ---------------------------------------------------------------------------
+_llama_cb_failures: int = 0
+_llama_cb_open_until: float = 0.0
+_LLAMA_CB_THRESHOLD: int = 3
+_LLAMA_CB_RESET_S: float = 30.0
+
+
+def _llama_cb_is_open() -> bool:
+    if _llama_cb_open_until and time.monotonic() < _llama_cb_open_until:
+        return True
+    return False
+
+
+def _llama_cb_record_failure() -> None:
+    global _llama_cb_failures, _llama_cb_open_until
+    _llama_cb_failures += 1
+    if _llama_cb_failures >= _LLAMA_CB_THRESHOLD:
+        _llama_cb_open_until = time.monotonic() + _LLAMA_CB_RESET_S
+        logger.warning(
+            "llama_cpp_circuit_opened failures=%d reset_in=%.0fs",
+            _llama_cb_failures, _LLAMA_CB_RESET_S,
+        )
+
+
+def _llama_cb_record_success() -> None:
+    global _llama_cb_failures, _llama_cb_open_until
+    if _llama_cb_failures > 0 or _llama_cb_open_until:
+        logger.info("llama_cpp_circuit_closed was_failures=%d", _llama_cb_failures)
+    _llama_cb_failures = 0
+    _llama_cb_open_until = 0.0
+
+
+# ---------------------------------------------------------------------------
 # Injected dependencies
 # ---------------------------------------------------------------------------
 _AGENT_POOL_MANAGER: Optional[Any] = None
@@ -869,6 +906,16 @@ async def handle_curated_research_fetch(request: web.Request) -> web.Response:
 async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
     """Run a bounded delegated task through the selected ai-coordinator lane."""
     try:
+        # Phase 172-D: fast-fail while llama.cpp circuit breaker is open
+        if _llama_cb_is_open():
+            return web.json_response(
+                {
+                    "error": "llama_cpp_circuit_open",
+                    "detail": "local model unavailable — circuit breaker open, retry in ~30s",
+                    "retry_after_s": int(_llama_cb_open_until - time.monotonic()),
+                },
+                status=503,
+            )
         data = await request.json()
         task = str(data.get("task") or data.get("query") or "").strip()
         if not task:
@@ -2260,6 +2307,12 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 )
             except OSError as exc:
                 logger.error("delegation_feedback_write_failed error=%s", exc)
+        # Phase 172-D: update llama.cpp circuit breaker based on final outcome
+        _fc = final_classification.get("primary_failure_class", "")
+        if _fc in ("provider_http_error", "provider_request_error"):
+            _llama_cb_record_failure()
+        elif not final_classification.get("is_failure"):
+            _llama_cb_record_success()
         request["audit_metadata"] = {
             "selected_runtime_id": effective_runtime_id,
             "selected_profile": effective_profile,
