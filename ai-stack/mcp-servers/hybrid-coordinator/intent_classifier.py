@@ -518,6 +518,14 @@ class RoutingClass(str, Enum):
     DIRECT         = "direct"          # no-tool analysis, draft, debate
 
 
+# Max estimated seconds for a sync-safe task. Tasks that would exceed this
+# (at LOCAL_TOK_PER_SEC = 3.45 tok/s, 74s per 256-token tool call) are promoted
+# to async. Configurable via AI_DELEGATE_SYNC_MAX_ESTIMATED_S (Nix B1).
+_SYNC_MAX_ESTIMATED_S: int = int(os.environ.get("AI_DELEGATE_SYNC_MAX_ESTIMATED_S", "200"))
+# 74s per tool call at 3.45 tok/s × 256 tokens
+_TOOL_CALL_ESTIMATED_S: int = 74
+_SYNC_TOOL_BUDGET: int = max(1, _SYNC_MAX_ESTIMATED_S // _TOOL_CALL_ESTIMATED_S)
+
 # Tasks that must never block a synchronous 360s timeout.
 # Moved from ai_coordinator_handlers._LONG_RUNNING_TASK_PHRASES (Phase 171).
 _ASYNC_TASK_SIGNALS: frozenset[str] = frozenset({
@@ -547,7 +555,7 @@ def classify_routing(query: str, intent: str = "unknown", tool_count_hint: int =
       1. Explicit agent-loop signals (longest tasks, must bypass coordinator timeout)
       2. Known async signals (33-min class, must bypass 360s sync timeout)
       3. Intent-based direct routing (no-tool tasks)
-      4. Tool-count heuristic (>2 tools → async to avoid 504)
+      4. Tool-count heuristic (>_SYNC_TOOL_BUDGET tools → async to avoid 504)
       5. Default: sync delegate (short tasks that fit the timeout window)
     """
     q = query.lower()
@@ -557,6 +565,6 @@ def classify_routing(query: str, intent: str = "unknown", tool_count_hint: int =
         return RoutingClass.ASYNC_DELEGATE
     if intent in _DIRECT_INTENTS:
         return RoutingClass.DIRECT
-    if tool_count_hint > 2:
+    if tool_count_hint > _SYNC_TOOL_BUDGET:
         return RoutingClass.ASYNC_DELEGATE
     return RoutingClass.SYNC_DELEGATE
