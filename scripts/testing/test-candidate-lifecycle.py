@@ -17,8 +17,8 @@ def test_lifecycle():
     try:
         cand_file = Path(tmpdir) / "candidates.json"
         initial_data = [
-            {"id": "C1", "name": "Candidate One"},
-            {"id": "C2", "name": "Candidate Two"}
+            {"id": "C1", "name": "Candidate One", "category": "test", "title": "Test Candidate One"},
+            {"id": "C2", "name": "Candidate Two", "category": "test", "title": "Test Candidate Two"},
         ]
         with open(cand_file, "w") as f:
             json.dump(initial_data, f)
