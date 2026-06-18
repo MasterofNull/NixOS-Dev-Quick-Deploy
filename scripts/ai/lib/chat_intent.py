@@ -54,8 +54,12 @@ TOOL_FREE_SPEC_PHRASES: frozenset[str] = frozenset({
 })
 
 # ---------------------------------------------------------------------------
-# Phrases that are clearly conversational (no tool needed).
-# These are additional signals beyond the "tool free" directives above.
+# Full-phrase conversational patterns — safe to substring-match because they
+# are specific enough to not fire on agentic queries.
+# Removed from prior version: "explain ", "what does", "what is", "what are",
+# "how does", "why does", "can you explain", "describe ", "summarize " — these
+# are too broad and fired on system-context queries like "what are the open
+# issues?", sending them to fast-path without tools.
 # ---------------------------------------------------------------------------
 
 _CONVERSATIONAL_INTENTS: frozenset[str] = frozenset({
@@ -72,17 +76,12 @@ _CONVERSATIONAL_INTENTS: frozenset[str] = frozenset({
     "thanks",
     "thank you",
     "cheers",
-    "explain ",
-    "what does",
-    "what is",
-    "what are",
-    "how does",
-    "why does",
-    "can you explain",
-    "describe ",
-    "summarize ",
-    # Short affirmatives — continuation replies stay on fast-path rather than
-    # going agentic with no conversation context (which causes 504 timeouts).
+})
+
+# Short affirmatives — standalone continuation replies. Only match when the ENTIRE
+# utterance is ≤ 3 words so "ok, implement the endpoint" (4+ words) falls through
+# to the agentic default instead of being fast-pathed without tools.
+_CONVERSATIONAL_AFFIRMATIVES: frozenset[str] = frozenset({
     "yes",
     "yeah",
     "sure",
@@ -94,6 +93,34 @@ _CONVERSATIONAL_INTENTS: frozenset[str] = frozenset({
     "proceed",
     "perfect",
     "great",
+})
+
+# System-context keywords: queries about live system state always require tool calls.
+# Pre-empts any conversational phrase match to ensure correct routing to coordinator.
+_SYSTEM_CONTEXT_KEYWORDS: frozenset[str] = frozenset({
+    "current state",
+    "current status",
+    "recent commit",
+    "recent change",
+    "recent error",
+    "open issue",
+    "last commit",
+    "last run",
+    "how many",
+    "is it running",
+    "is the service",
+    "are there any",
+    "list the",
+    "show me the",
+    "find the",
+    "check the",
+    "what port",
+    "what version",
+    "which file",
+    "does it exist",
+    "does the file",
+    "what's happening",
+    "what is happening",
 })
 
 # Phrases that force agentic even when a conversational phrase matched earlier
@@ -126,6 +153,7 @@ def classify_chat_intent(text: str) -> TurnClassification:
         TurnClassification with mode, confidence, and matched_phrase.
     """
     lower = " ".join(text.lower().split())
+    word_count = len(lower.split())
 
     # Explicit tool-free directives — highest confidence
     for phrase in TOOL_FREE_PHRASES:
@@ -138,7 +166,13 @@ def classify_chat_intent(text: str) -> TurnClassification:
             if phrase in lower:
                 return TurnClassification("conversational", 0.85, phrase)
 
-    # Greeting / purely conversational phrases — bypass coordinator (~50s overhead)
+    # System-context gate: queries about live system state always need tools.
+    # Takes precedence over any matching conversational phrase below.
+    for kw in _SYSTEM_CONTEXT_KEYWORDS:
+        if kw in lower:
+            return TurnClassification("agentic", 0.95, None)
+
+    # Greeting / purely conversational full-phrase matches
     for phrase in _CONVERSATIONAL_INTENTS:
         if phrase in lower:
             # Agentic override: some prompts mix a greeting with a task directive
@@ -149,6 +183,16 @@ def classify_chat_intent(text: str) -> TurnClassification:
                 if override in lower:
                     return TurnClassification("agentic", 0.90, None)
             return TurnClassification("conversational", 0.80, phrase)
+
+    # Short affirmatives — only when the ENTIRE utterance is ≤ 3 words.
+    # "ok" (1 word) → conversational. "ok, implement the endpoint" (4 words) → agentic.
+    if word_count <= 3:
+        for phrase in _CONVERSATIONAL_AFFIRMATIVES:
+            if phrase in lower:
+                for override in _AGENTIC_OVERRIDE_PHRASES:
+                    if override in lower:
+                        return TurnClassification("agentic", 0.90, None)
+                return TurnClassification("conversational", 0.80, phrase)
 
     # Conservative default: agentic
     return TurnClassification("agentic", 1.0, None)

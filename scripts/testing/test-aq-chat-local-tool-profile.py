@@ -68,12 +68,12 @@ def main() -> None:
         "aq-chat should identify the local-tool-calling profile to the coordinator",
     )
     assert_true(
-        '"stream": False' in text,
-        "aq-chat should consume coordinator local delegation as a completed JSON response",
+        '"streaming_mode"' in text and "streaming_mode" in text,
+        "aq-chat coordinator delegation should request SSE streaming from coordinator",
     )
     assert_true(
-        "response = await self.client.post(target_url, json=payload, headers=headers)" in text,
-        "aq-chat should consume local delegation as a completed JSON response, not raw token SSE",
+        'async with self.client.stream("POST", target_url' in text,
+        "aq-chat should consume coordinator delegation via SSE streaming, not blocking JSON POST",
     )
     assert_true(
         'target_url = f"{self.hybrid_url}/control/ai-coordinator/delegate"' in text,

@@ -87,7 +87,7 @@ STREAMING_MODE = (
     os.environ.get("AGENT_STREAMING", "false").lower() == "true" and not TOOLS_ENABLED
 )
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-_ARG_BLOCKLIST_CHARS = set(";&|><`\n\r")
+_ARG_BLOCKLIST_CHARS = set(";&|><`$\n\r")
 _AQ_QA_PHASES = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "all", "phase0", "phase1", "phase2", "phase3"}
 _ALLOWED_HARNESS_CLI_TOOLS = {
     "aq-qa": REPO_ROOT / "scripts" / "ai" / "aq-qa",

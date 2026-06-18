@@ -836,20 +836,13 @@ async def mesh_discovery_handler() -> Dict:
 
 
 async def collective_memory_search_handler(query: str, limit: int = 5) -> Dict:
-    """Search historical collaboration records in the collective memory (AIDB)."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{AIDB_URL}/vector/search",
-                json={
-                    "query": query,
-                    "collection": "knowledge",
-                    "limit": limit,
-                },
-            )
-            return resp.json() if resp.status_code == 200 else {"success": False, "error": resp.text}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    """Search historical collaboration records in the collective memory (Qdrant).
+
+    Phase 175-A: was calling AIDB pgvector /vector/search with collection="knowledge"
+    but "knowledge" is a Qdrant collection (_QDRANT_COLLECTIONS), not pgvector. Every
+    call silently returned wrong content. Fixed to route through _query_qdrant_direct.
+    """
+    return await _query_qdrant_direct(query, "knowledge", limit)
 
 
 async def get_unified_stack_health_handler() -> Dict:
