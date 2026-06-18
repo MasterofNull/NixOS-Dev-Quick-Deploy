@@ -1,5 +1,18 @@
 ## OPEN ISSUES
 
+[FIXED 093bb1c0] aq-chat-spinner-swallows-streaming — agentic coordinator path produces empty responses
+  Root cause: `with console.status(...)` wrapped both setup AND the entire streaming loop in aq-chat.
+  Rich's Live display was active during streaming. console.print(token, end="") inside an active Live
+  context buffers tokens until the context exits; when the with-block exited via `return`, Rich tore
+  down the Live area and all buffered tokens were discarded. User saw only blank lines (from the two
+  print() calls at top/bottom of the stream loop). The fast-path (continue-local) was unaffected
+  because it uses plain print() outside of any Live context.
+  Severity: critical (all agentic coordinator responses appeared empty)
+  Fix: Store Status object as _setup_status, call _setup_status.stop() after payload setup and BEFORE
+  the try:/streaming block. Spinner covers only setup phase; tokens stream directly to terminal.
+  Status.stop() is idempotent so Rich's __exit__ double-call is harmless.
+  Files: scripts/ai/aq-chat (lines 793, 857)
+
 [FIXED 6e7a4be3] aq-chat-504-stuck-semaphore — aq-chat 504 local_agent_timeout on every turn
   Root cause: two bugs combined: (1) _CONVERSATIONAL_INTENTS in chat_intent.py defined but never used — "how are you?" classified as agentic, sent to coordinator subprocess path; (2) _profile_for_role("coder") returned "local-tool-calling" which hits switchboard's _execute_local_tool_calling (expects built-in server tools, not subprocess agent schemas). Request reached llama.cpp, held _local_sem (SWB_LOCAL_CONCURRENCY=1). After coordinator proc.kill() at 210s, TCP closed but switchboard kept sem until llama.cpp finished (~150s), blocking ALL local inference requests.
   Severity: critical (aq-chat completely broken for all agentic turns)
@@ -717,3 +730,10 @@
   Severity: medium (agent first-step latency inflated by up to 30s per competing 512-token compaction)
   Fix: Added _is_inference_busy() guard in _demote_to_cold() — reads GET /slots (passive, no slot consumption). If any slot has state≠0, defers compaction to next 60s tick. Commit 9b296806. Requires coordinator restart.
   Files: ai-stack/mcp-servers/hybrid-coordinator/knowledge/context_lifecycle_manager.py (lines 343-354, new method _is_inference_busy at ~line 463)
+
+[FIXED f3cc7513+pending-swb-restart] aq-chat-tools-never-execute — aq-chat local agent described tool calls in prose but never executed them. Three-layer failure: (1) aq-chat sent streaming_mode=True which forced coordinator to set AGENT_TOOLS_ENABLED=false for all SSE paths; (2) local_agent_runtime.py used 'local-tool-calling' switchboard profile when TOOLS_ENABLED=True — that profile runs _execute_local_tool_calling which rejects any tool not in the built-in server registry (route_search, recall_memory, get_hint etc. are NOT built-ins) → 400; (3) switchboard had no passthrough for external tool schemas.
+  Root cause: streaming and tool execution are mutually exclusive in local_agent_runtime.py but aq-chat always requested streaming; profile selection bug documented in _profile_for_role() comment but not fixed in the TOOLS_ENABLED=True branch.
+  Severity: critical (all tool calls silently reduced to descriptive prose; agent appeared functional but produced no evidence-backed answers)
+  Fix: (a) aq-chat._build_coordinator_delegate_payload: tools_enabled=True + streaming_mode=False for tool turns; new non-streaming response branch with spinner. (b) switchboard: _tools_are_all_external() + _passthrough_local_tool_inference() bypass _execute_local_tool_calling for agent-runtime schemas. (c) local_agent_runtime.py: 'local-agent' profile (toolExecution:None, 8k/4k context) instead of 'local-tool-calling' when TOOLS_ENABLED. (d) switchboard stream-exemption: added 'local-agent' to the profiles exempt from forced stream=True override (fixes resp.json() parse error on SSE response).
+  Files: scripts/ai/aq-chat (lines 409-433, 886-926), ai-stack/switchboard/switchboard.py (_tools_are_all_external, _passthrough_local_tool_inference, stream-exemption list), ai-stack/agents/runtimes/local_agent_runtime.py (line 1228)
+  Activation: switchboard changes require restart (live-repo); runtime change required nixos-rebuild (now done).

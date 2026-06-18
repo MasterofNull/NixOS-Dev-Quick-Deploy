@@ -2902,7 +2902,7 @@ async def proxy(path: str, request: Request):
     if (
         target_type == "local"
         and path == "chat/completions"
-        and profile not in ("coordinator-internal", "embedding-local", "local-tool-calling")
+        and profile not in ("coordinator-internal", "embedding-local", "local-tool-calling", "local-agent")
         and isinstance(payload, dict)
         and not payload.get("stream")
     ):
