@@ -390,8 +390,8 @@ DEFAULT_PROFILE_CATALOG = {
         "injectHints": True,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
-        # 12000 input + 1024 output = 13024 < 16384 ctx headroom; env-override for rebuild flexibility
-        "maxInputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_INPUT_TOKENS", "12000")),
+        # 6000 input + 2048 output = 8048 ≤ n_ctx=8192; was 12000 (wrong comment cited 16384 ctx)
+        "maxInputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_INPUT_TOKENS", "6000")),
         "maxMessages": 20,
         "maxOutputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS", "2048")),
         "embeddingsOnly": False,
@@ -2313,6 +2313,29 @@ def _rewrite_model(payload: dict, profile: str) -> dict:
         payload["model"] = alias_model
     return payload
 
+def _apply_local_ssot_guards(payload: dict, profile: str, target_type: str) -> dict:
+    """Inject SSOT guards for all local-target requests in proxy().
+
+    Fills gaps that bypass build_llama_payload(): ensures actual usage tokens
+    flow to telemetry (stream_options.include_usage) and that tool-calling
+    profiles don't suffer frequency_penalty JSON truncation.
+    """
+    if not isinstance(payload, dict) or target_type != "local":
+        return payload
+    payload = dict(payload)
+    # Actual usage tokens from llama.cpp instead of estimator fallback.
+    stream_opts = dict(payload.get("stream_options") or {})
+    stream_opts["include_usage"] = True
+    payload["stream_options"] = stream_opts
+    # Tool-calling profiles: frequency_penalty=0.0 prevents cumulative token
+    # penalty on `"` chars from truncating dense JSON outputs early (EOS at ~60 lines).
+    if "tool" in profile.lower():
+        payload["frequency_penalty"] = 0.0
+        payload.setdefault("repeat_penalty", 1.08)
+        payload.setdefault("repeat_last_n", 64)
+    return payload
+
+
 def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str) -> dict:
     # Disable thinking for all local targets by default — thinking tokens are
     # filtered from the OpenAI response content field, producing empty responses
@@ -2355,7 +2378,7 @@ async def _call_upstream_with_resilience(
     # Remote services (e.g. OpenRouter) use REMOTE_CIRCUIT_BREAKERS,
     # Local services (e.g. local models, tools) use LOCAL_CIRCUIT_BREAKERS.
     if service_name == "llama":
-        breaker = None
+        breaker = LOCAL_CIRCUIT_BREAKERS.get("llama")
     elif service_name in ["remote", "openrouter"]:
         breaker = REMOTE_CIRCUIT_BREAKERS.get(service_name)
     else:
@@ -2733,6 +2756,7 @@ async def proxy(path: str, request: Request):
         if remote_working_set:
             tool_working_set = remote_working_set
         payload = _apply_local_thinking_profile(payload, profile, target_type)
+        payload = _apply_local_ssot_guards(payload, profile, target_type)
         payload = _apply_compact_local_response_budget(payload, profile)
         if path == "chat/completions":
             msgs = payload.get("messages")
