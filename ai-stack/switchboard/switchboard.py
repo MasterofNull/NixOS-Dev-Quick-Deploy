@@ -2972,11 +2972,14 @@ async def proxy(path: str, request: Request):
                     and not is_stream
                 ):
                     try:
-                        # Agent-subprocess payloads carry their own external tool schemas
-                        # (route_search, recall_memory, get_hint, etc.) that the switchboard
-                        # cannot execute. Bypass the built-in tool loop and send directly to
-                        # llama.cpp so the model generates tool_calls for the agent to dispatch.
-                        if _tools_are_all_external(payload):
+                        # local-agent profile: ALWAYS passthrough — this profile is for
+                        # coordinator-spawned runtimes that dispatch tools themselves.
+                        # _tools_are_all_external() incorrectly returns False when tool
+                        # names (read_file, run_command, get_hint …) match built-in names;
+                        # the profile's toolExecution:None is the authoritative signal.
+                        # local-tool-calling: check whether tools are external; if so,
+                        # passthrough so the model generates tool_calls for the agent.
+                        if profile == "local-agent" or _tools_are_all_external(payload):
                             local_body, local_tool_calls_used = await _passthrough_local_tool_inference(payload, run_id=run_id)
                         else:
                             local_body, local_tool_calls_used = await _execute_local_tool_calling(payload, run_id=run_id)
