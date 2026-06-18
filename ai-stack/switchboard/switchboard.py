@@ -2875,6 +2875,9 @@ async def proxy(path: str, request: Request):
         async with sem:
             local_active_request_id = ""
             retain_local_request_until_stream_close = False
+            # run_id must be defined unconditionally — the streaming _iter() closure
+            # references it for token_usage events on all local paths, not just tool-calling.
+            run_id = request.headers.get("x-agent-run-id") or (payload.get("session_id") if isinstance(payload, dict) else None) or "unknown-run"
             if target_type == "local" and path == "chat/completions":
                 local_active_request_id = _begin_local_active_request(path, profile, payload, is_stream)
             try:
@@ -2886,7 +2889,6 @@ async def proxy(path: str, request: Request):
                     and not is_stream
                 ):
                     try:
-                        run_id = request.headers.get("x-agent-run-id") or payload.get("session_id") or "unknown-run"
                         local_body, local_tool_calls_used = await _execute_local_tool_calling(payload, run_id=run_id)
                         if isinstance(local_body, dict) and isinstance(local_body.get("tool_working_set"), dict):
                             tool_working_set = local_body.get("tool_working_set")
