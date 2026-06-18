@@ -463,7 +463,7 @@ class LocalAgentExecutor:
             "task_id": task_id,
             "seq": seq,
             "event_type": event_type,
-            "ts": datetime.now(timezone.utc).isoformat() + "Z",
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z",
             **payload,
         }
         asyncio.create_task(self._async_append_jsonl(path, event))
@@ -754,7 +754,11 @@ class LocalAgentExecutor:
             },
             {
                 "role": "user",
-                "content": task.objective,
+                "content": (
+                    "Think step by step before calling any tools. "
+                    "State your reasoning (Thought: ...) before each tool call.\n\n"
+                    + task.objective
+                ),
             },
         ]
 
@@ -1025,8 +1029,18 @@ class LocalAgentExecutor:
                 )
             elif _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 6:
                 # Fallback for 6 < len ≤ 8: can't do full pinned+sliding, just shed oldest pair.
-                messages = messages[:2] + messages[4:]
-                logger.debug("context_prune(shed-oldest-pair): messages now %d", len(messages))
+                # Verify messages[2:4] form a valid (assistant, tool) pair before dropping —
+                # a dangling role:tool without its role:assistant corrupts the conversation graph.
+                _m2_role = messages[2].get("role") if len(messages) > 2 else None
+                _m3_role = messages[3].get("role") if len(messages) > 3 else None
+                if _m2_role == "assistant" and _m3_role == "tool":
+                    messages = messages[:2] + messages[4:]
+                    logger.debug("context_prune(shed-oldest-pair): messages now %d", len(messages))
+                else:
+                    logger.debug(
+                        "context_prune(shed-oldest-pair): SKIP — messages[2:4] roles=%s/%s not assistant/tool pair",
+                        _m2_role, _m3_role,
+                    )
 
             # Call model — use larger budget once tools have been used so that
             # the final synthesis turn (no tool_call in response) isn't capped at
