@@ -209,3 +209,37 @@ shared interface before any of the three begin implementation.
 *Drafted independently by Claude Sonnet 4.6 (Data Pipeline Architect + MLOps Systems Engineer)*
 *Phase 2 of Flat Collaborative Design Protocol — no cross-agent visibility during drafting*
 *Date: 2026-06-17*
+
+## Addendum: Local Agent/Inference Failure Assessment
+*Added post-PRD-drafting, Phase 173 review session*
+
+### Failure 1 — Qwen3 PRD Draft: Exploration Stagnation Guard
+
+**Root cause (confirmed from log):**
+`Exploration stagnation: 12 consecutive reads without any edit_file or write_file — aborting at tool call 12.`
+
+Code: `ai-stack/local-agents/agent_executor.py:854` — `_READS_HARD_LIMIT = 12`
+Comment in code: *"Models in self-improvement mode should read 1-3 files then act."*
+
+This guard was calibrated for **implementation tasks** (where reading 12 files before acting is pathological over-exploration). PRD drafting is a **research task** — reading 5–10 files before writing is the correct behavior, not a stagnation signal. There is no task-type differentiation in the current dispatcher.
+
+**Fix:** Add `--task-type research` flag to `delegate-to-local` → passes `task_type="research"` to `aq-agent-loop` → `agent_executor.py` sets `_READS_HARD_LIMIT = 25`, `_MAX_READS_WITHOUT_EDIT = 15` when `task_type == "research"`. The soft nudge at 8 should include context: *"Research task detected — continue reading, but begin writing your output by read 15."*
+
+### Failure 2 — Gemini Sign-off "No Output" Misdiagnosis
+
+**Root cause:** `delegate-to-gemini --check` was stripping or hiding content. The raw log (`gemini-20260617-143606-23smc6.log`) DOES contain a full APPROVED verdict — it was only invisible through the `--check` display path. The proxy fill was unnecessary.
+
+**Monitoring gap exposed:** The orchestrator had no automated way to distinguish "Gemini produced content" from "Gemini produced only warnings" without reading the raw log file directly. The `--check` output path must validate content density — if the output file is below a threshold (e.g., <500 bytes above the ~300-byte YOLO header), report `partial-success` not `completed`.
+
+### Failure 3 — Gemini Addendum Dispatch: True Empty Output
+
+The addendum log (428 bytes, warnings only) is a genuine failure — no Gemini API response. Dispatched immediately after the sign-off; likely hit a per-minute rate limit or the background `nohup` process did not start correctly. This is distinct from Failure 2.
+
+**Fix:** Add a `GEMINI_MIN_CONTENT_BYTES = 500` check in the dispatch registry update. If output bytes ≤ YOLO_HEADER_BYTES + 500, mark task as `partial-success` and emit an attention queue alert so the orchestrator knows a retry is needed.
+
+### Systemic Assessment
+
+All three failure modes share a common root: **no output contract enforcement at dispatch boundary.** The orchestrator has no schema to validate that an agent task produced the expected artifact (PRD file written, sign-off verdict present, addendum section appended). Adding structural validation at task close would catch all three without requiring task-specific logic.
+
+*Drafted by Claude Sonnet 4.6 (Data Pipeline Architect + MLOps Systems Engineer)*
+*Date: 2026-06-17*
