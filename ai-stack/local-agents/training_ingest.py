@@ -103,8 +103,12 @@ def _parse_ts(ts_str) -> Optional[datetime]:
         except (OSError, OverflowError, ValueError):
             return None
     try:
-        # Python 3.7+ fromisoformat handles most ISO-8601 but not trailing Z
-        return datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+        # Python 3.7+ fromisoformat handles most ISO-8601 but not trailing Z.
+        # Some producers emit +00:00Z (double suffix) — strip trailing Z first.
+        ts_clean = str(ts_str)
+        ts_clean = ts_clean.replace("+00:00Z", "+00:00")
+        ts_clean = ts_clean.replace("Z", "+00:00")
+        return datetime.fromisoformat(ts_clean)
     except ValueError:
         return None
 

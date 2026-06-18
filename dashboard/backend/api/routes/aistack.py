@@ -6758,7 +6758,7 @@ async def get_training_health() -> Dict[str, Any]:
                                 end = line.find('"', start)
                                 if end != -1:
                                     ts_str = line[start:end]
-                                    ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                                    ts = datetime.fromisoformat(ts_str.replace('+00:00Z', '+00:00').replace('Z', '+00:00'))
                                     if not max_ts or ts > max_ts:
                                         max_ts = ts
                                     if ts > one_day_ago:

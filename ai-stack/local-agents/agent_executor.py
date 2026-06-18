@@ -884,7 +884,7 @@ class LocalAgentExecutor:
 
         def _emit_step_telemetry(tc_result, call_number: int, prose_before: str) -> None:
             """Write per-tool-call telemetry to all three observability surfaces."""
-            ts = datetime.now(timezone.utc).isoformat() + "Z"
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
             elapsed = time.time() - _loop_start
 
             # 1. hybrid-events.jsonl — feeds dashboard + training_ingest
@@ -915,6 +915,28 @@ class LocalAgentExecutor:
                         "objective_preview": task.objective[:120],
                         "model": os.getenv("LLAMA_MODEL_NAME", "local"),
                     }))
+                    # tool_result event: successful tool calls → training pairs.
+                    # query = task objective + tool invocation context.
+                    # response = the actual tool output (training signal for tool-use).
+                    if tc_result.status == "completed" and tc_result.result is not None:
+                        _args_str = json.dumps(tc_result.arguments)[:200] if hasattr(tc_result, "arguments") else ""
+                        try:
+                            _res_str = json.dumps(tc_result.result)[:1500]
+                        except (TypeError, ValueError):
+                            _res_str = str(tc_result.result)[:1500]
+                        events.append(json.dumps({
+                            "event_type": "tool_result",
+                            "timestamp": ts,
+                            "task_id": task.id,
+                            "session_id": task.id,
+                            "tool_name": tc_result.tool_name,
+                            "query": f"Task: {task.objective[:200]} | Tool: {tc_result.tool_name}({_args_str})",
+                            "response": _res_str,
+                            "success": True,
+                            "execution_time_ms": tc_result.execution_time_ms,
+                            "elapsed_s": round(elapsed, 1),
+                            "model": os.getenv("LLAMA_MODEL_NAME", "local"),
+                        }))
                     with open(_HYBRID_EVENTS, "a", encoding="utf-8") as _hef:
                         _hef.write("\n".join(events) + "\n")
                 except Exception:
