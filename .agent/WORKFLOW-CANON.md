@@ -75,6 +75,55 @@ asum <file>                             # structural overview (Py, JS, Go, Nix)
 
 ---
 
+### Step 2a: MULTI-AGENT REVIEW BOARD (applies to multi-agent review phases)
+
+**Purpose**: Give all participating agents shared real-time visibility into each other's findings,
+so later agents build on prior work rather than duplicating it.
+
+**Board lifecycle**:
+1. **Orchestrator creates the board key** before dispatching any agent:
+   `board_key = f"phase{N}-review-board"` — pass this key in every agent's dispatch prompt.
+
+2. **Each agent reads the board first** (before writing its own findings):
+   ```python
+   read_review_board(board_key)  # returns all prior findings from other agents
+   ```
+   Review prior findings to identify gaps, duplications, and opportunities to agree/disagree.
+
+3. **Each agent posts findings as they're discovered** (not just at the end):
+   ```python
+   post_review_finding(
+       board_key   = board_key,
+       component   = "switchboard|coordinator|aq-chat|...",
+       severity    = "P0|P1|P2",
+       finding     = "description of the finding",
+       file_line   = "file.py:line",
+       agent_name  = "gemini|claude|qwen3|...",
+   )
+   ```
+   Post each finding immediately after discovering it — do not batch at end.
+
+4. **Consolidation reads the full board** to produce the consolidated PRD:
+   `read_review_board(board_key)` returns all entries; orchestrator merges into severity matrix.
+
+5. **Post-phase AIDB seeding** (orchestrator responsibility):
+   ```bash
+   python3 scripts/data/seed-rag-knowledge.py \
+     --from-prd .agent/phaseN-PRD-CONSOLIDATED.md \
+     --collections skills-patterns best-practices
+   ```
+   Seeds findings indexed by `component + severity` — NOT by timestamp.
+   Future agents query: `query_aidb("switchboard inference", collection="skills-patterns")`
+
+**Anti-recency-bias invariant**: AIDB entries from this board are tagged by component + severity.
+Retrieval is weighted by component match, not by recency. A P0 finding from Phase 175 is as
+relevant in Phase 300 as it was when first discovered.
+
+**Self-improvement slice anti-pattern**: Do NOT target uncommitted git changes as the improvement
+item. Always resolve OPEN issues from the backlog (`memory/issues-backlog.md`).
+
+---
+
 ### Step 3: PRD / PLAN
 
 **Purpose**: Write down what you're doing and why before writing any code.
