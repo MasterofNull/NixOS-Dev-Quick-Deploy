@@ -845,6 +845,68 @@ async def collective_memory_search_handler(query: str, limit: int = 5) -> Dict:
     return await _query_qdrant_direct(query, "knowledge", limit)
 
 
+async def post_review_finding_handler(
+    board_key: str,
+    component: str,
+    severity: str,
+    finding: str,
+    file_line: str = "",
+    agent_name: str = "agent",
+) -> Dict:
+    """Post a review finding to the collaborative review board in coordinator memory.
+
+    Findings are stored as semantic memories tagged with board_key so that
+    subsequent agents can read them via read_review_board before writing their own.
+    """
+    importance = 0.9 if severity == "P0" else 0.7 if severity == "P1" else 0.5
+    content = (
+        f"[review-board:{board_key}] {severity} {component} — {finding}"
+        + (f" ({file_line})" if file_line else "")
+        + f" [agent:{agent_name}]"
+    )
+    return await store_memory_handler(
+        content=content,
+        context_type="semantic",
+        importance=importance,
+        tags=["review-board", board_key, severity, component, agent_name],
+    )
+
+
+async def read_review_board_handler(board_key: str) -> Dict:
+    """Read all findings posted to a collaborative review board.
+
+    Queries coordinator semantic memory for entries tagged with the board_key.
+    Returns findings from all agents that have posted to the board.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/memory/recall",
+                json={
+                    "query": f"review-board {board_key}",
+                    "memory_types": ["semantic"],
+                    "limit": 50,
+                },
+            )
+            if resp.status_code != 200:
+                return {"success": False, "error": resp.text}
+            data = resp.json()
+            memories = data.get("memories", []) if isinstance(data, dict) else []
+            board_tag = f"review-board:{board_key}"
+            board_entries = [
+                m for m in memories
+                if isinstance(m, dict) and board_tag in str(m.get("content", ""))
+            ]
+            return {
+                "success": True,
+                "board_key": board_key,
+                "findings": board_entries,
+                "count": len(board_entries),
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def get_unified_stack_health_handler() -> Dict:
     """Get a comprehensive health snapshot of the local AI stack."""
     try:
@@ -1460,4 +1522,49 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         handler=delegate_to_aider_handler,
     ))
 
-    logger.info("Registered 20 AI coordination tools")
+    # post_review_finding
+    registry.register(ToolDefinition(
+        name="post_review_finding",
+        description=(
+            "Post a finding to the collaborative review board in coordinator memory. "
+            "Use during multi-agent reviews to share discoveries with other agents. "
+            "Other agents read the board via read_review_board before writing their findings."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "board_key": {"type": "string", "description": "Review board identifier (e.g. 'phase175-review-board')"},
+                "component": {"type": "string", "description": "Component affected (e.g. 'switchboard', 'coordinator', 'aq-chat')"},
+                "severity": {"type": "string", "enum": ["P0", "P1", "P2"], "description": "Severity: P0=blocking, P1=degraded, P2=quality"},
+                "finding": {"type": "string", "description": "Description of the finding"},
+                "file_line": {"type": "string", "description": "File path and line number (e.g. 'switchboard.py:394')"},
+                "agent_name": {"type": "string", "description": "Name of the agent posting the finding"},
+            },
+            "required": ["board_key", "component", "severity", "finding"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.SYSTEM_MODIFY,
+        handler=post_review_finding_handler,
+    ))
+
+    # read_review_board
+    registry.register(ToolDefinition(
+        name="read_review_board",
+        description=(
+            "Read all findings posted to a collaborative review board. "
+            "Call at the start of a review to see what other agents have already found. "
+            "Prevents duplicate findings and enables cross-agent synthesis."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "board_key": {"type": "string", "description": "Review board identifier (e.g. 'phase175-review-board')"},
+            },
+            "required": ["board_key"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=read_review_board_handler,
+    ))
+
+    logger.info("Registered 22 AI coordination tools")

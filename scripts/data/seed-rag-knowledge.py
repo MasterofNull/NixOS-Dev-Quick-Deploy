@@ -20,6 +20,7 @@ Env:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -1821,6 +1822,133 @@ def _clear_wrong_type_points(collection: str, dry_run: bool = False) -> int:
 
 
 # ---------------------------------------------------------------------------
+# PRD findings ingestion (--from-prd)
+# ---------------------------------------------------------------------------
+
+_COMPONENT_MAP = {
+    "switchboard.py":           "inference",
+    "agent_executor.py":        "agent",
+    "aq-chat":                  "cli",
+    "ai_coordination.py":       "coordination",
+    "local_agent_runtime.py":   "runtime",
+    "chat_intent.py":           "routing",
+    "tool_registry.py":         "agent",
+    "llm_config.py":            "inference",
+    "ai_coordinator_handlers.py": "coordinator",
+}
+_SEV_VALUE = {"P0": 0.95, "P1": 0.80, "P2": 0.65}
+_SEV_ENDORSEMENT = {"P0": 4, "P1": 3, "P2": 2}
+
+
+def _component_from_file_line(file_line: str) -> str:
+    for key, comp in _COMPONENT_MAP.items():
+        if key in file_line:
+            return comp
+    return "harness"
+
+
+def parse_prd_findings(path: str) -> list:
+    """Parse severity matrix tables from a consolidated PRD markdown file.
+
+    Expected format:
+      ## Critical Findings — Consolidated Severity Matrix
+      ### P0 — Blocking / Security
+      | # | Finding | Agent Source | File:Line | Impact |
+      |---|...
+      | P0-1 | ... | ... | ... | ... |
+
+    Returns list of dicts: {id, severity, finding, agent_source, file_line, impact, component}
+    """
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+
+    section_match = re.search(r"## Critical Findings.*?(?=^## |\Z)", text, re.S | re.M)
+    if not section_match:
+        print(f"  WARNING: no '## Critical Findings' section found in {path}", file=sys.stderr)
+        return []
+    section = section_match.group(0)
+
+    findings = []
+    current_severity = None
+    for line in section.splitlines():
+        sev_match = re.match(r"###\s+(P[012])\s*[—–-]", line)
+        if sev_match:
+            current_severity = sev_match.group(1)
+            continue
+        if not current_severity or not line.startswith("|"):
+            continue
+        if re.match(r"\|\s*[-:]+\s*\|", line):
+            continue
+        cols = [c.strip() for c in line.strip("|").split("|")]
+        if len(cols) < 5:
+            continue
+        row_id, finding_text, agent_source, file_line, impact = (
+            cols[0], cols[1], cols[2], cols[3], cols[4]
+        )
+        if not re.match(r"P[012]-\d+", row_id):
+            continue
+        finding_text = re.sub(r"`([^`]+)`", r"\1", finding_text)
+        file_line     = re.sub(r"`([^`]+)`", r"\1", file_line)
+        impact        = re.sub(r"`([^`]+)`", r"\1", impact)
+        findings.append({
+            "id":           row_id,
+            "severity":     current_severity,
+            "finding":      finding_text,
+            "agent_source": agent_source,
+            "file_line":    file_line,
+            "impact":       impact,
+            "component":    _component_from_file_line(file_line),
+        })
+    return findings
+
+
+def findings_to_skills_patterns(findings: list, prd_name: str) -> list:
+    records = []
+    for f in findings:
+        safe_id = re.sub(r"[^a-z0-9_]", "_", f["id"].lower())
+        records.append({
+            "skill_name":       f"prd_{prd_name}_{safe_id}",
+            "description":      f"{f['severity']} — {f['finding']}",
+            "usage_pattern":    (
+                f"Impact: {f['impact']}. "
+                f"File: {f['file_line']}. "
+                f"Source: {f['agent_source']}."
+            ),
+            "success_examples": [],
+            "failure_examples": [f["impact"]],
+            "prerequisites":    [],
+            "related_skills":   [],
+            "value_score":      _SEV_VALUE.get(f["severity"], 0.70),
+            "last_updated":     NOW,
+            "tags":             [f["severity"], f["component"], prd_name],
+            "source_prd":       prd_name,
+            "file_line":        f["file_line"],
+        })
+    return records
+
+
+def findings_to_best_practices(findings: list, prd_name: str) -> list:
+    records = []
+    for f in findings:
+        records.append({
+            "category":         f["component"],
+            "title":            f"{f['id']}: {f['finding'][:80]}",
+            "description":      (
+                f"Finding from {prd_name} expert review "
+                f"(agents: {f['agent_source']}). "
+                f"File: {f['file_line']}. "
+                f"Impact: {f['impact']}"
+            ),
+            "examples":         [],
+            "anti_patterns":    [f["impact"]],
+            "endorsement_count": _SEV_ENDORSEMENT.get(f["severity"], 2),
+            "tags":             [f["severity"], f["component"], prd_name],
+            "source_prd":       prd_name,
+        })
+    return records
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1860,7 +1988,39 @@ def main() -> None:
     parser.add_argument("--collection", default="all", help="Collection to seed (default: all)")
     parser.add_argument("--clear-wrong-type", action="store_true",
                         help="Delete wrong-schema points from error-solutions before seeding")
+    parser.add_argument("--from-prd", metavar="PATH",
+                        help="Parse severity matrix tables from PRD and seed skills-patterns + best-practices")
+    parser.add_argument("--collections", nargs="+",
+                        default=["skills-patterns", "best-practices"],
+                        metavar="COLLECTION",
+                        help="Collections to seed when using --from-prd (default: skills-patterns best-practices)")
     args = parser.parse_args()
+
+    if args.from_prd:
+        print(f"Parsing PRD findings from: {args.from_prd}")
+        findings = parse_prd_findings(args.from_prd)
+        if not findings:
+            print("No findings parsed — check PRD format.", file=sys.stderr)
+            sys.exit(1)
+        p0 = sum(1 for f in findings if f["severity"] == "P0")
+        p1 = sum(1 for f in findings if f["severity"] == "P1")
+        p2 = sum(1 for f in findings if f["severity"] == "P2")
+        print(f"Parsed {len(findings)} findings ({p0} P0, {p1} P1, {p2} P2)")
+        prd_name = os.path.splitext(os.path.basename(args.from_prd))[0]
+        prd_name = re.sub(r"-PRD-CONSOLIDATED$|-PRD$", "", prd_name)
+
+        prd_collections: dict = {}
+        if "skills-patterns" in args.collections:
+            prd_collections["skills-patterns"] = findings_to_skills_patterns(findings, prd_name)
+        if "best-practices" in args.collections:
+            prd_collections["best-practices"] = findings_to_best_practices(findings, prd_name)
+
+        total = 0
+        for name, records in prd_collections.items():
+            seed_collection(name, records, dry_run=args.dry_run, clear_wrong=False)
+            total += len(records)
+        print(f"\ndone — {total} records processed across {len(prd_collections)} collections (from PRD)")
+        return
 
     collections = SEED_DATA if args.collection == "all" else {args.collection: SEED_DATA[args.collection]}
 
