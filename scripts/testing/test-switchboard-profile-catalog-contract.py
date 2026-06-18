@@ -29,7 +29,7 @@ EXPECTED = {
         "maxOutputTokens": 2048,
     },
     "local-tool-calling": {
-        "maxInputTokens": 12000,
+        "maxInputTokens": 6000,  # Phase 175-B: was 12000+2048=14048 > n_ctx=8192; fixed to 6000+2048=8048
         "maxMessages": 20,
         "maxOutputTokens": 2048,
     },

@@ -894,19 +894,16 @@ async def _post_completion_with_fallback(
                 await asyncio.sleep(2.0)
                 continue
                 
-            logger.info("Falling back to direct llama.cpp due to switchboard timeout/error")
-            state["fallback_backend"] = "llama.cpp"
-            state["fallback_reason"] = f"switchboard_error: {type(exc).__name__}"
+            # Phase 175-B: fail cleanly rather than bypassing switchboard.
+            # Direct llama.cpp fallback silently skips telemetry, circuit breakers,
+            # and hint injection. Raise so the coordinator marks the task failed.
+            state["fallback_backend"] = "none"
+            state["fallback_reason"] = f"switchboard_unavailable: {type(exc).__name__}"
             _write_state(state)
-            start_time = time.perf_counter()
-            resp = await client.post(
-                f"{LLAMA_CPP_URL}/v1/chat/completions",
-                json=_payload_for_direct_llama(payload),
-                headers={},
-                timeout=httpx.Timeout(AGENT_TIMEOUT, connect=30.0)
+            raise RuntimeError(
+                f"switchboard_unavailable: {exc}. "
+                "Refusing direct llama.cpp fallback to preserve telemetry and circuit-breaker integrity."
             )
-            state["inference_latency_ms"] = int((time.perf_counter() - start_time) * 1000)
-            return resp
     
     # Should not reach here
     raise RuntimeError("Inference delivery failed after all attempts")

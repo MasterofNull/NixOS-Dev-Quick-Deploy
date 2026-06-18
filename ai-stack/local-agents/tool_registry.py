@@ -614,6 +614,10 @@ class ToolRegistry:
                             result.append("\\t")
                             i += 1
                             continue
+                        elif ord(ch) < 0x20:
+                            result.append(f"\\u{ord(ch):04x}")
+                            i += 1
+                            continue
                     else:
                         if ch == '"':
                             in_str = True
