@@ -65,6 +65,42 @@ writing delegation prompts for other agents.
 
 ---
 
+## NixOS System Contract (MANDATORY — all Gemini tasks)
+
+This system is **NixOS-first and flake-based**. Every package, service, and configuration change must be declared in Nix. Gemini must never propose or execute imperative package installs.
+
+| Want to… | Correct path | NEVER propose |
+|-----------|-------------|---------------|
+| Add a Python package | `python3.withPackages [...]` in `nix/home/base.nix` | `pip install` |
+| Add a Node.js tool | `nodePackages.*` in nixpkgs | `npm install -g` |
+| Add a Rust binary | `pkgs.<name>` in nixpkgs | `cargo install` |
+| Add a system service | `nix/modules/services/` or `nix/modules/roles/` | `systemctl enable` directly |
+| Set a port/URL | `nix/modules/core/options.nix` SSOT | hardcode in Python/shell |
+| Enable a feature flag | `nix/modules/profiles/ai-dev.nix` | runtime env var booleans |
+| Update packages | `nix flake update` → `nixos-rebuild switch` | manual installs |
+
+**Package discovery**: `nix search nixpkgs#<name>` — always check nixpkgs before deciding unavailable. Custom derivations go in `nix/pkgs/`.
+
+**Rebuild commands** (for instructions to human/orchestrator; Gemini cannot run these):
+```bash
+sudo nixos-rebuild switch --flake .#hyperd-ai-dev   # system changes
+home-manager switch --flake .#hyperd                # user changes only
+nix flake update                                     # update all flake inputs
+```
+
+**Nix file SSOT**:
+- User packages/tools → `nix/home/base.nix`
+- System services → `nix/modules/services/` or `nix/modules/roles/`
+- Per-host config → `nix/hosts/hyperd/`
+- Port/URL constants → `nix/modules/core/options.nix`
+- AI stack → `nix/modules/roles/ai-stack.nix`
+- Feature flags → `nix/modules/profiles/ai-dev.nix`
+
+**Hardware constraints (never violate in any suggestion)**:
+- GPU layers ceiling: 12 (Renoir APU, 4 GB shared VRAM)
+- Total RAM: 27 GB (model 22.5 GB + KV 1.0 GB + OS 3.0 GB)
+- `enable_thinking` MUST be in `chat_template_kwargs`, never top-level for local inference
+
 ## Behavioral Rules (Canonical — all agents)
 
 | # | Rule | Contract |

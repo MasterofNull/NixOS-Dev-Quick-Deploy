@@ -15,7 +15,7 @@
       systemRamGb = 27;
       isMobile = true;
       firmwareType = "efi";
-      earlyKmsPolicy = "off";
+      earlyKmsPolicy = "auto";
       nixosHardwareModule = "lenovo-thinkpad-p14s-amd-gen2";
     };
     kernel = {

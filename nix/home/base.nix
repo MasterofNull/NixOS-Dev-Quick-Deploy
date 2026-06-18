@@ -151,22 +151,6 @@ let
     };
   };
 
-  # Google.geminicodeassist — "Gemini Code Assist" — bumped to 2.81.0
-  # to fix preview channel bugs and support paid subscriptions properly.
-  geminiCodeAssist = pkgs.vscode-utils.buildVscodeExtension {
-    pname = "Google-geminicodeassist";
-    version = "2.81.0";
-    vscodeExtPublisher = "Google";
-    vscodeExtName = "geminicodeassist";
-    vscodeExtUniqueId = "Google.geminicodeassist";
-    vscodeExtVersion = "2.81.0";
-    src = pkgs.fetchurl {
-      url = "https://open-vsx.org/api/Google/geminicodeassist/2.81.0/file/Google.geminicodeassist-2.81.0.vsix";
-      hash = "sha256-QX0YPHPQPYl2LRHGmXTL146Kxty/YMlvRo503eWEMpg=";
-      name = "Google-geminicodeassist.zip";
-    };
-  };
-
   # Continue CLI — declarative npm packaging
   continueCli = pkgs.callPackage ../pkgs/continue-cli.nix {};
 
@@ -255,11 +239,6 @@ let
     "continue.telemetryEnabled" = false;
     "continue.enableTabAutocomplete" = true;
     "continue.showInlineTip" = true;
-    "geminicodeassist.updateChannel" = "Default"; # Prevent preview channel lock-in
-    "geminicodeassist.localCodebaseAwareness" = true;
-    # System instructions for Gemini Code Assist — mirrors .agent/GEMINI.md canonical workflow.
-    # Full 7-step contract: .agent/WORKFLOW-CANON.md
-    "geminicodeassist.rules" = "AGENT MODE — execute only bounded, reviewable slices after the required plan and evidence checks. Full workflow: .agent/WORKFLOW-CANON.md. 7 steps: ORIENT(aq-prime+aq-hints+recall-memory) → RESEARCH(agrep/als/acat/asum+web-search) → PRD/PLAN(.agent/+.agents/plans/) → MEMORY-CHECKPOINT(store before executing) → EXECUTE(one-slice,read-before-edit,no-hallucinated-deps) → VALIDATE(tier0-gate+security-checklist) → COMMIT(atomic+Co-Authored-By). QUALITY GATES: verify every new import/file is git-tracked; compare producer/consumer schemas for cross-boundary changes; never ship placeholder/future telemetry through production endpoints; confirm intended tests are collected; validate deployment-sensitive paths under runtime context; keep slices small enough for Claude/Codex review before acceptance. SECURITY: no hardcoded secrets/ports; verify all new deps exist; no injection patterns; treat LLM output as untrusted; run tier0-validation-gate.sh before every commit. ARCHITECTURE: NixOS-first flake-based; ports from nix/modules/core/options.nix only; feature flags via ai-dev.nix. PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889. PLACEMENT: PRD→.agent/ plans→.agents/plans/ cmds→.gemini/commands/. ROLE: orchestrator first — plan and delegate before coding. Sub-agents execute assigned slices only.";
     "cSpell.import" = [];
     "extensions.autoUpdate" = false;
     "extensions.autoCheckUpdates" = false;
@@ -881,8 +860,6 @@ in {
         # All extensions below are confirmed in nixpkgs 25.11.
         # Note: Google scope uses capital G (pkgs.vscode-extensions."Google").
         ++ vsExt "anthropic" "claude-code" # Claude Code
-        ++ vsExt "Google" "gemini-cli-vscode-ide-companion" # Gemini CLI companion
-        ++ [geminiCodeAssist] # Gemini Code Assist (Open VSX)
         ++ [openaiCodex] # Codex — OpenAI's coding agent (Open VSX)
         ++ [cyberpunkThemeExtension] # Cyberpunk theme (local template)
         # ── Data / serialisation formats ───────────────────────────────────
@@ -989,21 +966,17 @@ in {
     unset settings_file
   '';
 
-  # Enforce Gemini Code Assist and Codex extension settings on every activation.
+  # Enforce Codex extension settings on every activation.
   # settings.json is mutable (seeded once), so policy-critical keys must be
   # patched here rather than relying on the one-shot createVSCodiumSettings.
   #
-  # Gemini: inject rules (system instructions) and pin updateChannel to Default.
   # Codex:  set chatgpt.cliExecutable to the npm-global binary; prune stale
   #         no-op keys (codex.*, gpt-codex.*, etc.) that the extension ignores.
-  home.activation.enforceGeminiAndCodexVscodeSettings = lib.hm.dag.entryAfter ["migrateClaudeVscodeSettings"] ''
+  home.activation.enforceCodexVscodeSettings = lib.hm.dag.entryAfter ["migrateClaudeVscodeSettings"] ''
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
       if jq '
-        .["geminicodeassist.updateChannel"] = "Default" |
-        .["geminicodeassist.localCodebaseAwareness"] = true |
-        .["geminicodeassist.rules"] = "AGENT MODE \u2014 execute only bounded, reviewable slices after the required plan and evidence checks. Full workflow: .agent/WORKFLOW-CANON.md. 7 steps: ORIENT(aq-prime+aq-hints+recall-memory) \u2192 RESEARCH(agrep/als/acat/asum+web-search) \u2192 PRD/PLAN(.agent/+.agents/plans/) \u2192 MEMORY-CHECKPOINT(mcp_server_store_memory) \u2192 EXECUTE(one-slice,read-before-edit,no-hallucinated-deps) \u2192 VALIDATE(tier0-gate+security-checklist) \u2192 COMMIT(atomic+Co-Authored-By). QUALITY GATES: verify every new import/file is git-tracked; compare producer/consumer schemas for cross-boundary changes; never ship placeholder/future telemetry through production endpoints; confirm intended tests are collected; validate deployment-sensitive paths under runtime context; keep slices small enough for Claude/Codex review before acceptance. SECURITY: no hardcoded secrets/ports; verify all new deps exist; no injection patterns; treat LLM output as untrusted. ARCHITECTURE: NixOS-first flake-based; ports from nix/modules/core/options.nix; feature flags via ai-dev.nix. PORTS: llama:8080 embed:8081 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dash:8889. PLACEMENT: PRD\u2192.agent/ plans\u2192.agents/plans/ cmds\u2192.gemini/commands/. ROLE: orchestrator first \u2014 plan and delegate before coding. Full access to aq-* and agentic CLI tools enabled." |
         .["chatgpt.cliExecutable"] = (env.HOME + "/.npm-global/bin/codex") |
         del(
           .["gpt-codex.executablePath"], .["gpt-codex.environmentVariables"], .["gpt-codex.autoStart"],
@@ -1116,15 +1089,11 @@ in {
 
   # Smart-prune AI-extension globalStorage caches to prevent extension-host freeze.
   #
-  # Root cause: Gemini and Qwen Code write unbounded state into state.vscdb via
+  # Root cause: Qwen Code writes unbounded state into state.vscdb via
   # VSCode's globalState API instead of globalStorageUri (disk files).  Loading
   # 2+ MB on startup blocks the extension host for several seconds.
   #
   # What we strip (preserves all conversation text):
-  #   google.geminicodeassist:
-  #     - workspaceChange per message  — stale file snapshots from agent mode,
-  #       already applied/discarded; fully recoverable from git. (68% of size)
-  #     - ideContext on non-final messages — file content at send-time; stale.
   #   qwenlm.qwen-code-vscode-ide-companion:
   #     - Conversations with zero messages (empty "New Chat" sessions)
   #     - Oldest conversations beyond the 30 most-recent
@@ -1272,8 +1241,6 @@ in {
           sys.exit(0)
       prefixes = (
           "continue.",
-          "google.geminicodeassist-",
-          "google.gemini-cli-vscode-ide-companion-",
           "qwenlm.qwen-code-vscode-ide-companion-",
           "openai.chatgpt-",
           "anthropic.claude-code-",
@@ -1335,60 +1302,6 @@ in {
       cur = con.cursor()
       total_saved = 0
 
-      def prune_gemini(data):
-          changed = False
-          raw = data.get("geminiCodeAssist.chatThreads")
-          if not raw:
-              return data, changed
-
-          def _safe_load(val):
-              if not val: return {}
-              if isinstance(val, dict):
-                  # Detect character-mapped corruption: {"0": "{", "1": "\"", ...}
-                  if "0" in val and all(k.isdigit() for k in val.keys() if len(k) < 8):
-                      try:
-                          keys = sorted([int(k) for k in val.keys() if k.isdigit()])
-                          return json.loads("".join([val[str(k)] for k in keys]))
-                      except: return {}
-                  return val
-              try: return json.loads(val)
-              except: return {}
-
-          outer = _safe_load(raw)
-          if not isinstance(outer, dict): return data, changed
-
-          # If the entire chatThreads payload is still huge, clear it aggressively
-          if len(json.dumps(outer)) > 1024 * 1024:
-              data["geminiCodeAssist.chatThreads"] = "{}"
-              return data, True
-
-          for account, acct_raw in outer.items():
-              inner = _safe_load(acct_raw)
-              if not isinstance(inner, dict): continue
-              for tid in list(inner.keys()):
-                  t = _safe_load(inner[tid])
-                  if not isinstance(t, dict): continue
-
-                  hist = t.get("history", [])
-                  last_idx = len(hist) - 1
-                  for i, msg in enumerate(hist):
-                      if not isinstance(msg, dict): continue
-                      ws = msg.get("workspaceChange")
-                      if ws and len(json.dumps(ws)) > 64:
-                          msg["workspaceChange"] = {}
-                          changed = True
-                      if i < last_idx:
-                          ctx = msg.get("ideContext")
-                          if ctx and len(json.dumps(ctx)) > 64:
-                              msg["ideContext"] = {}
-                              changed = True
-                  inner[tid] = json.dumps(t, separators=(",", ":"))
-              outer[account] = json.dumps(inner, separators=(",", ":"))
-
-          if changed:
-              data["geminiCodeAssist.chatThreads"] = json.dumps(outer, separators=(",", ":"))
-          return data, changed
-
       def prune_qwen(data):
           changed = False
           convs = data.get("conversations", [])
@@ -1406,7 +1319,6 @@ in {
           return data, changed
 
       for ext_key, fn in [
-          ("google.geminicodeassist", prune_gemini),
           ("qwenlm.qwen-code-vscode-ide-companion", prune_qwen),
       ]:
           cur.execute("SELECT value FROM ItemTable WHERE key=?", (ext_key,))

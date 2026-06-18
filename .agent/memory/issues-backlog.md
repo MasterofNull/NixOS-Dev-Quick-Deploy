@@ -748,3 +748,8 @@
   Severity: critical (every aq-chat agentic turn via coordinator fails with 500 after Phase 177 restart)
   Fix: change dispatch condition from `if _tools_are_all_external(payload):` to `if profile == "local-agent" or _tools_are_all_external(payload):` — local-agent profile always takes the passthrough path regardless of tool name collision.
   Files: ai-stack/switchboard/switchboard.py line 2982 (dispatch condition in _handle_local_tool_calling_request)
+
+[PENDING] antigravity-cli-migration-pending — Google sunset individual/consumer-tier Gemini CLI access on 2026-06-18. Replacement is "Antigravity CLI" (Google product). @google/gemini-cli npm v0.47.0 binary still exists but will return 403/401 for individual accounts. No official @google/antigravity-cli npm package published as of 2026-06-18; antigravity.google website has minimal content. Third-party packages (opencode-antigravity-auth, unofficial-antigravity-sdk) suggest Antigravity may be accessed via "opencode" tool. delegate-to-gemini updated with deprecation notice. Gemini Code Assist VSCode extension removed from base.nix (also deprecated for individuals).
+  Severity: high (all delegate-to-gemini calls fail for individual accounts; Gemini architect role unavailable)
+  Action: monitor antigravity.google and npm @google/ namespace for official CLI package; install via nix/pkgs/ derivation once available; update GEMINI_BIN in delegate-to-gemini line 44; update delegate-to-gemini install instructions line 74; test with delegate-to-gemini --prompt "hello"; update noise filter regex for new CLI output format.
+  Files: scripts/ai/delegate-to-gemini (line 44 GEMINI_BIN, line 73 require_gemini, line 68 noise filter), nix/home/base.nix (Gemini extensions removed)
