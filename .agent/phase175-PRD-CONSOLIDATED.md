@@ -11,7 +11,7 @@ source_drafts:
   - .agent/phase175-PRD-qwen3.md          # Qwen3: PENDING (timed out — proxy fill below)
 phase: "Phase 3 — Consolidated PRD"
 date: 2026-06-17
-status: draft-pending-sign-off
+status: complete
 ---
 
 # Phase 175: Local Inference + aq-chat — Consolidated Expert Review PRD
