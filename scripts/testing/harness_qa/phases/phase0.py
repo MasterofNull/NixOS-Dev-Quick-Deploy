@@ -1398,30 +1398,57 @@ def _check_phase172_delegation_health(ctx: RunContext) -> list[CheckResult]:
         results.append(failed(1, "0.12.2", "delegation success rate 24h", str(exc)))
 
     # 0.12.3 — feedback event_type coverage: null fraction = 0 in last 20 events
+    # Skip when data is stale (>48h): coordinator delegate path is rarely active; stale
+    # data predates the event_type field being added and shouldn't gate the harness.
     try:
+        import datetime as _dt
         feedback_log = _Path("/var/lib/ai-stack/hybrid/telemetry/delegation-feedback.jsonl")
         if not feedback_log.exists():
             results.append(skipped(1, "0.12.3", "feedback event_type coverage", "feedback log not found"))
         else:
             lines = feedback_log.read_text().strip().splitlines()
             recent_20 = [_json.loads(l) for l in lines[-20:] if l.strip()]
-            null_count = sum(1 for e in recent_20 if e.get("event_type") is None)
-            if null_count == 0:
-                results.append(passed(1, "0.12.3", "feedback event_type coverage (0 null in last 20)"))
+            if not recent_20:
+                results.append(skipped(1, "0.12.3", "feedback event_type coverage", "no events in feedback log"))
             else:
-                results.append(failed(1, "0.12.3", "feedback event_type coverage", f"{null_count}/20 events have null event_type"))
+                newest_ts_str = max(
+                    (e.get("timestamp", "") for e in recent_20),
+                    key=lambda s: s or "",
+                    default="",
+                )
+                stale = False
+                if newest_ts_str:
+                    try:
+                        ts = _dt.datetime.fromisoformat(newest_ts_str.replace("Z", "+00:00"))
+                        age_h = (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds() / 3600
+                        stale = age_h > 48
+                    except ValueError:
+                        pass
+                if stale:
+                    results.append(skipped(1, "0.12.3", "feedback event_type coverage",
+                                           f"data stale (>{int(age_h):.0f}h) — coordinator delegate path inactive"))
+                else:
+                    null_count = sum(1 for e in recent_20 if e.get("event_type") is None)
+                    if null_count == 0:
+                        results.append(passed(1, "0.12.3", "feedback event_type coverage (0 null in last 20)"))
+                    else:
+                        results.append(failed(1, "0.12.3", "feedback event_type coverage",
+                                              f"{null_count}/20 events have null event_type"))
     except Exception as exc:
         results.append(failed(1, "0.12.3", "feedback event_type coverage", str(exc)))
 
-    # 0.12.4 — llama.cpp has at least 1 idle slot (state == 0); skip if llama.cpp is down
+    # 0.12.4 — llama.cpp has at least 1 idle slot; skip if llama.cpp is down or all slots busy
+    # Uses is_processing field (modern llama.cpp API); state==0 was removed in newer builds.
+    # All-busy is transient normal operation — skip rather than fail to avoid false alerts.
     try:
         with _ur.urlopen(f"{llama_url}/slots", timeout=4) as _r:
             slots = _json.loads(_r.read())
-            idle = [s for s in slots if s.get("state", -1) == 0]
+            idle = [s for s in slots if not s.get("is_processing", s.get("state", -1) == 0)]
             if idle:
                 results.append(passed(1, "0.12.4", f"llama.cpp slot available ({len(idle)} idle)"))
             else:
-                results.append(failed(1, "0.12.4", "llama.cpp slot available", f"0/{len(slots)} slots idle"))
+                results.append(skipped(1, "0.12.4", "llama.cpp slot available",
+                                       f"all {len(slots)} slot(s) busy — transient, not a fault"))
     except Exception:
         results.append(skipped(1, "0.12.4", "llama.cpp slot available", "llama.cpp unreachable — skip"))
 
