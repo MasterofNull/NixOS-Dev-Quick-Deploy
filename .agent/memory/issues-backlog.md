@@ -742,3 +742,9 @@
   Severity: critical (every aq-chat agentic turn via coordinator fails)
   Fix: (1) LOCAL_AGENT_CARD minimal ~50-token card; (2) injectHints=False for local-agent; (3) tool dispatch gate extended to include local-agent; (4) _passthrough_local_tool_inference caps tools to 7. All in switchboard.py — restart only.
   Files: ai-stack/switchboard/switchboard.py lines 196-199 (card), 306 (hints), 2962-2965 (gate), 1445-1449 (tool cap)
+
+[FIXED pending-restart] tools-are-all-external-false-negative — _tools_are_all_external() in switchboard.py returns False when the agent-runtime's tool names (read_file, run_command, get_hint, harness_health, etc.) match switchboard built-in registry names, even though they are entirely different implementations. When it returns False for a local-agent profile request, execution falls through to _execute_local_tool_calling() which cannot handle agent-runtime schemas and raises ValueError → 400 Bad Request → coordinator receives 500 local_agent_failed.
+  Root cause: _tools_are_all_external iterates tool names against the built-in registry; name collision causes false non-external classification. The profile's toolExecution:None field is the authoritative signal, not tool name membership.
+  Severity: critical (every aq-chat agentic turn via coordinator fails with 500 after Phase 177 restart)
+  Fix: change dispatch condition from `if _tools_are_all_external(payload):` to `if profile == "local-agent" or _tools_are_all_external(payload):` — local-agent profile always takes the passthrough path regardless of tool name collision.
+  Files: ai-stack/switchboard/switchboard.py line 2982 (dispatch condition in _handle_local_tool_calling_request)
