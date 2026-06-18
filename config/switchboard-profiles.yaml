@@ -105,12 +105,12 @@ profiles:
     injectHints: true
     modelAlias: null
     advertisedContextWindow: null  # LLAMA_CTX_SIZE
-    maxInputTokens: 8000
+    maxInputTokens: 5500
     maxMessages: 16
-    maxOutputTokens: 4096
+    maxOutputTokens: 1500
     embeddingsOnly: false
     toolExecution: null
-    ctxSize_min: 13000
+    ctxSize_min: 7592
     profileCard: |
       /no_think
       [profile-card:local-agent]
@@ -219,12 +219,12 @@ profiles:
     injectHints: true
     modelAlias: null
     advertisedContextWindow: null  # LLAMA_CTX_SIZE
-    maxInputTokens: 6000  # Phase 175-B: was 12000; 12000+2048=14048 > n_ctx=8192. 6000+2048=8048 ≤ 8192
+    maxInputTokens: 5200  # Phase 178-B: 5200+1500=6700 <= LLAMA_CTX_SIZE-600 on default n_ctx=8192.
     maxMessages: 20
-    maxOutputTokens: 2048
+    maxOutputTokens: 1500
     embeddingsOnly: false
     toolExecution: "built-in"
-    ctxSize_min: 15000
+    ctxSize_min: 7592
     profileCard: |
       /no_think
       [profile-card:local-tool-calling]
@@ -296,12 +296,12 @@ profiles:
     injectHints: false
     modelAlias: null
     advertisedContextWindow: null  # LLAMA_CTX_SIZE
-    maxInputTokens: 8000
+    maxInputTokens: 5500
     maxMessages: 20
-    maxOutputTokens: 4096
+    maxOutputTokens: 1500
     embeddingsOnly: false
     toolExecution: null
-    ctxSize_min: 13000
+    ctxSize_min: 7592
     profileCard: ""
 
   local-coding:
