@@ -219,4 +219,5 @@ config/rocm-promotion-state.json
 LEAN-CTX.md
 .cursorrules
 ai-stack/local-agents/.agent/
+ai-stack/local-agents/.agents/
 .agents/improvement/candidates.lock

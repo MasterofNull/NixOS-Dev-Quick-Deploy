@@ -90,3 +90,20 @@ Transition from a single heuristic to event-type-specific scoring:
 
 ---
 *Drafted by Gemini-CLI (Architect Role) — 2026-06-17*
+
+## Addendum: Local Agent/Inference Failure Assessment
+*Added post-PRD-drafting, Phase 173 review session*
+
+### Pipeline Reliability Impact
+Agentic research/analysis tasks are currently structurally penalized by implementation-focused safety guards. The Qwen3 "stagnation" failure (12 consecutive reads without an edit) demonstrates that fixed exploration limits are insufficient for complex knowledge synthesis. This "Agentic Stagnation" prevents the pipeline from drafting high-fidelity PRDs for large-scale architectural changes, bottlenecking the upstream design phase.
+
+### Monitoring Gaps
+Both observed failures were silent at the orchestration layer. The Gemini "silent sign-off" is particularly critical; the orchestrator received a successful return code despite the agent failing to produce any content. There is currently no **Content Density Validation** or **Schema Enforcement** to verify that a sign-off or PRD draft actually meets minimum structural requirements (e.g., presence of verdicts or headers).
+
+### Proposed Fixes
+1.  **Context-Aware Intent Guards:** Update `agent_executor.py` to distinguish between `IMPLEMENTATION` and `RESEARCH` intents. Research tasks should allow 3-4x higher read counts or adaptive limits based on the identified "Knowledge Horizon."
+2.  **Structural Validation Gates:** Implement a `SignOffValidator` in the `local-orchestrator` that regex-validates agent output for critical tokens (APPROVED/REVISION) before closing a task.
+3.  **Heartbeat Emission:** Agents stalled in research phases should be required to emit "Interim Insights" to the log every 3 reads to prevent the executor from triggering the stagnation kill-switch.
+
+### Phase 173 Safety Assessment
+These failures do not impact the immediate safety of Phase 173 implementation code, as they occurred during the "Advisory" PRD drafting phase. However, they indicate that fully autonomous "Self-Correction" cycles are at high risk of silent failure until structural output validation is enforced.

@@ -213,3 +213,36 @@ If > 100: reduce to 50 for finer position granularity.
 *Qwen3 dispatch failed: provider_request_error (llama.cpp connection refused — Phase 172 root cause still active during agent load window)*
 *Per WORKFLOW-CANON §Step 3 Extension: "If an agent is unavailable, the orchestrator fills that agent's role and marks it as proxy sign-off. Never skip a sign-off slot silently."*
 *Date: 2026-06-17*
+
+## Addendum: Local Agent/Inference Failure Assessment (Code Analyst)
+
+*Produced by Qwen3-35B via --mode direct (no agent loop, no stagnation guard). Direct mode confirmed working. Task completed in ~3 minutes.*
+
+**1. Root Cause: Exploration Stagnation (confirmed)**
+The failure stems from a rigid global counter (`_reads_without_edit`) at `agent_executor.py:852-854`.
+- Soft nudge at `_MAX_READS_WITHOUT_EDIT = 8`
+- Hard abort at `_READS_HARD_LIMIT = 12`
+- PRD drafting read files 1-12 without writing → hard abort before synthesis began.
+The counter penalizes legitimate research workflows. It assumes immediate execution, ignoring tasks requiring extensive context ingestion.
+
+**2. Code Fix: Dynamic Read Limits via Task Typing**
+Decouple read limits from global constants. Introduce `task_type` parameter in agent invocation:
+- Modify `agent_executor.py` to accept `max_reads_without_edit` as optional override at init
+- Default to 8 (implementation tasks); set to 25+ for `"research"` or `"analysis"` types
+- Reset `_reads_without_edit` only on write/edit OR when task-specific limit reached
+- `delegate-to-local --task-type research` → `aq-agent-loop --task-type research` → agent_executor receives override
+
+**3. Research Mode Nudge Strategy**
+At `_MAX_READS_WITHOUT_EDIT` threshold, if `task_type == "research"`, inject:
+*"You are in research mode. Continue gathering necessary context before synthesizing your output. Begin writing by read 20."*
+This reinforces confidence to continue reading rather than forcing premature writes.
+
+**4. Gemini Sign-off: Output Contract Mismatch**
+The 428-byte output (warnings only) on the addendum dispatch likely resulted from either:
+(a) Per-minute rate limiting immediately after a prior Gemini call
+(b) The task prompt size triggering a silent context limit in Gemini CLI
+Gemini DOES produce content when given adequate time between dispatches — the sign-off log confirmed APPROVED with full reasoning. The issue is the dispatcher has no minimum-content check before marking a task completed.
+
+**Fix:** Add `GEMINI_MIN_CONTENT_BYTES = 500` check in `delegate-to-gemini`. If output ≤ YOLO_HEADER_SIZE + 500 bytes, mark as `partial-success` and push to attention queue.
+
+*Qwen3-35B direct mode analysis — 2026-06-17*
