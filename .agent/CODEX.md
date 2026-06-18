@@ -91,6 +91,38 @@ Follow the canonical low-friction order:
 
 If a preferred tool is unavailable, use one documented fallback and move on. Do not waste turns rediscovering the same absence.
 
+## NixOS System Contract (MANDATORY — all Codex tasks)
+
+This is a **NixOS-first, flake-based system**. Every package, service, and configuration change must go through the declarative Nix config. Violations bypass the audit trail and break reproducibility.
+
+| Want to… | Correct path | NEVER do |
+|-----------|-------------|----------|
+| Add a Python package | `python3.withPackages [...]` in `nix/home/base.nix` | `pip install` |
+| Add a Node.js package | `nodePackages.*` in nixpkgs or `nix/pkgs/` | `npm install -g` |
+| Add a Rust binary | `pkgs.<name>` in nixpkgs | `cargo install` |
+| Add a system service | declare in `nix/modules/services/` or `nix/modules/roles/` | `systemctl enable` directly |
+| Add a user package | `home.packages` in `nix/home/base.nix` | apt/brew/manual |
+| Set a port/URL | `nix/modules/core/options.nix` SSOT → env var at runtime | hardcode in Python/shell |
+| Enable a feature flag | `nix/modules/profiles/ai-dev.nix` | runtime env var booleans |
+| Update packages | `nix flake update` → `nixos-rebuild switch` | manual version pins in code |
+
+**Package discovery**: before concluding a package "isn't in nixpkgs", run `nix search nixpkgs#<name>`. Custom packages that don't exist in nixpkgs go in `nix/pkgs/` as derivations.
+
+**Rebuild commands**:
+```bash
+sudo nixos-rebuild switch --flake .#hyperd-ai-dev   # system changes
+home-manager switch --flake .#hyperd                # user/home changes only
+nix flake update                                     # update all flake inputs
+```
+
+**When touching Nix files**: always run `nix eval .#nixosConfigurations.hyperd.config.system.build.toplevel` (or a smaller eval target) to verify the config evaluates before committing.
+
+**Hardware constraints (never violate)**:
+- GPU layers: `--n-gpu-layers 12` ceiling (Renoir APU, 4 GB shared VRAM)
+- Total RAM: 27 GB — account for model UMBM (22.5 GB) + KV (1.0 GB) + OS (3.0 GB)
+- Kernel track: `latest-stable` — do not downgrade
+- `enable_thinking: false` MUST be in `chat_template_kwargs` (NOT top-level) for local inference
+
 ## Routing discipline
 
 Use the narrowest matching canonical profile and keep the object model distinct:

@@ -65,14 +65,18 @@ _gemini_meaningful_bytes() {
     # config dumps — all produced when the API call fails before the model responds.
     # Real model output never contains node_modules paths or googleapis.com URLs.
     grep -Ev \
-        "^Warning:|^YOLO mode|^Attempt [0-9]+ failed\.|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis\.com|GaxiosError|AbortSignal|errorRedactor|paramsSerializer|validateStatus|<<REDACTED|Symbol\(|'s-gaxios-error'\]|response: undefined|'Content-Type'|'User-Agent'|'x-goog-api-client'|^\s+[a-zA-Z_]+: [\"'{[]|^\s*[{}],?\s*$|type: 'system'" \
+        "^Warning:|^YOLO mode|^Attempt [0-9]+ failed\.|An unexpected critical|FetchError|ETIMED|EAI_AGAIN|ENOTFOUND|retrying with backoff|^\s+at |node_modules|googleapis\.com|GaxiosError|AbortSignal|errorRedactor|paramsSerializer|validateStatus|<<REDACTED|Symbol\(|'s-gaxios-error'\]|response: undefined|'Content-Type'|'User-Agent'|'x-goog-api-client'|^\s+[a-zA-Z_]+: [\"'{[]|^\s*[{}],?\s*$|type: 'system'|stop serving requests|migrate to Antigravity|gemini-cli-migration|unpaid tiers" \
         "$file" 2>/dev/null | wc -c || echo 0
 }
 
 require_gemini() {
     [[ -x "$GEMINI_BIN" ]] || die "Gemini CLI not found at $GEMINI_BIN
   Install: npm install -g @google/gemini-cli
-  Or set:  export GEMINI_BIN=/path/to/gemini"
+  Or set:  export GEMINI_BIN=/path/to/gemini
+  NOTE: As of 2026-06-18 Google sunset individual/consumer-tier access to Gemini CLI.
+  If you see 403/401 errors, your account is on the deprecated free tier.
+  Migration: install Antigravity CLI once the official package is published.
+  See: .agent/memory/issues-backlog.md (antigravity-cli-migration-pending)"
 }
 
 ensure_gemini_rg() {

@@ -64,6 +64,37 @@ They apply regardless of which model is loaded. Hitting them causes OOM kills or
 
 ---
 
+## NixOS System Contract (MANDATORY — read before any system change)
+
+This system is **NixOS-first and flake-based**. All package, service, and config changes go through the declarative Nix config. No exceptions.
+
+| Want to… | Correct path | NEVER do |
+|-----------|-------------|----------|
+| Add a Python package | `python3.withPackages [...]` in `nix/home/base.nix` | `pip install` |
+| Add a Node.js tool | `nodePackages.*` in nixpkgs | `npm install -g` |
+| Add a system service | `nix/modules/services/` or `nix/modules/roles/` | `systemctl enable` |
+| Change a port/URL | `nix/modules/core/options.nix` SSOT → injected env var | hardcode in scripts |
+| Enable a feature | `nix/modules/profiles/ai-dev.nix` | runtime boolean env vars |
+| Update all packages | `nix flake update` → rebuild | version-pin in code |
+
+**Package lookup**: `nix search nixpkgs#<name>` before concluding something isn't available.
+
+**Rebuild commands** (run from repo root, requires `sudo`):
+```bash
+sudo nixos-rebuild switch --flake .#hyperd-ai-dev   # full system
+home-manager switch --flake .#hyperd                # user packages only
+```
+
+**Nix file locations**:
+- System packages/services: `nix/modules/`
+- User packages/tools: `nix/home/base.nix`
+- Per-host overrides: `nix/hosts/hyperd/`
+- Port/URL constants: `nix/modules/core/options.nix` (single source of truth)
+- AI stack config: `nix/modules/roles/ai-stack.nix`
+- Feature flags: `nix/modules/profiles/ai-dev.nix`
+
+**Do NOT propose** changes to flake.nix, overlays, or NixOS modules without first checking that the change is within your assigned slice. Nix eval errors fail the build — always verify with `nix eval` before committing.
+
 ## Skill Index
 
 Before starting any task, check for a relevant skill. Skills save context by putting
