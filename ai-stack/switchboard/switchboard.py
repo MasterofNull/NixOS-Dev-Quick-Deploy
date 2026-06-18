@@ -193,9 +193,12 @@ Project Exploration:
 git add <specific files> && scripts/governance/tier0-validation-gate.sh --pre-commit && git commit -m "type(scope): msg\\n\\nCo-Authored-By: AQ <noreply@harness.local>"
 """
 
-LOCAL_AGENT_CARD = f"""/no_think
+# Minimal card — coordinator-spawned runtimes already receive task + system prompt
+# from AGENT_TASK/AGENT_SYSTEM_PROMPT env vars. The full HARNESS_AWARE_BODY adds
+# ~1500 tokens of repeated instructions that inflate prefill past the APU timeout.
+LOCAL_AGENT_CARD = """/no_think
 [profile-card:local-agent]
-{HARNESS_AWARE_BODY}
+You are AQ, a systems developer in the NixOS-Dev-Quick-Deploy harness. Execute the assigned task using available tools. Show evidence first, then act. Never guess file paths or service state — verify with tools.
 """
 
 REMOTE_DEFAULT_CARD = """[profile-card:remote-default]
@@ -303,7 +306,7 @@ DEFAULT_PROFILE_CATALOG = {
     },
     "local-agent": {
         "forceProvider": "local",
-        "injectHints": True,
+        "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
         "maxInputTokens": 8000,
@@ -1441,6 +1444,11 @@ async def _passthrough_local_tool_inference(payload: dict, run_id: str = "unknow
     import httpx as _httpx
     request_payload = {k: v for k, v in payload.items() if k not in {"tool_choice"}}
     request_payload.setdefault("stream", False)
+    # Cap tool schemas to avoid context overflow on constrained APU hardware.
+    # 7 schemas ≈ 700 tokens — matches active_schema_limit in tool_working_set config.
+    tools = request_payload.get("tools")
+    if isinstance(tools, list) and len(tools) > 7:
+        request_payload["tools"] = tools[:7]
     async with _httpx.AsyncClient(timeout=_timeout_for("local", False)) as client:
         try:
             resp = await _call_upstream_with_resilience(
@@ -2958,7 +2966,7 @@ async def proxy(path: str, request: Request):
             try:
                 if (
                     path == "chat/completions"
-                    and profile == "local-tool-calling"
+                    and profile in ("local-tool-calling", "local-agent")
                     and target_type == "local"
                     and isinstance(payload, dict)
                     and not is_stream
