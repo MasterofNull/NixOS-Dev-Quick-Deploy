@@ -566,6 +566,32 @@ def _write_state(state: dict) -> None:
         p.write_text(json.dumps(state))
 
 
+async def _post_agent_event(
+    client: httpx.AsyncClient,
+    *,
+    event_type: str,
+    sub_type: str,
+    outcome: str = "success",
+    summary: str = "",
+    latency_ms: int = 0,
+    tags: list[str] | None = None,
+) -> None:
+    payload = {
+        "event_type": event_type,
+        "sub_type": sub_type,
+        "agent": "local",
+        "outcome": outcome,
+        "summary": summary[:400],
+        "task_id": AGENT_ID,
+        "latency_ms": int(max(0, latency_ms)),
+        "tags": tags or ["local_agent_runtime"],
+    }
+    try:
+        await client.post(f"{HYBRID_URL}/api/agent-events", json=payload, timeout=5.0)
+    except Exception as exc:
+        logger.debug("agent_event_post_failed event_type=%s sub_type=%s err=%s", event_type, sub_type, exc)
+
+
 def _build_inference_payload(messages: list[dict], selected_tools: list[dict] | None = None) -> dict:
     extra: dict = {"stop": STOP_SEQUENCES}
     if TOOLS_ENABLED:
@@ -1237,6 +1263,13 @@ async def run() -> None:
         _active_tools: list[dict] | None = list(_selected_tools) if _selected_tools is not None else None
 
         async with httpx.AsyncClient(timeout=AGENT_TIMEOUT) as client:
+            await _post_agent_event(
+                client,
+                event_type="delegation_start",
+                sub_type="local_agent_runtime",
+                summary=AGENT_TASK,
+                tags=["local_agent_runtime", "tools_enabled" if TOOLS_ENABLED else "tool_free"],
+            )
             if STREAMING_MODE:
                 content_parts = []
                 stream_payload = _streaming_payload(messages)
@@ -1295,6 +1328,14 @@ async def run() -> None:
                     "finish_reason": "stop",
                 })
                 _write_state(state)
+                await _post_agent_event(
+                    client,
+                    event_type="delegation_end",
+                    sub_type="local_agent_runtime",
+                    summary=content,
+                    latency_ms=int((state["completed_at"] - state["started_at"]) * 1000),
+                    tags=["local_agent_runtime", "streaming"],
+                )
                 sys.stdout.write(
                     json.dumps({"done": True, "ok": True, "content": content, "agent_id": AGENT_ID})
                     + "\n"
@@ -1343,6 +1384,13 @@ async def run() -> None:
                     except Exception:
                         tc_args = {}
                     tc_result = await _dispatch_tool(client, tc_name, tc_args)
+                    await _post_agent_event(
+                        client,
+                        event_type="workflow",
+                        sub_type="tool_call",
+                        summary=f"{tc_name}: {tc_result[:240]}",
+                        tags=["local_agent_runtime", "tool_call", tc_name[:64]],
+                    )
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc_id,
@@ -1376,6 +1424,15 @@ async def run() -> None:
             "finish_reason": (data.get("choices") or [{}])[0].get("finish_reason", "stop"),
         })
         _write_state(state)
+        async with httpx.AsyncClient(timeout=5.0) as event_client:
+            await _post_agent_event(
+                event_client,
+                event_type="delegation_end",
+                sub_type="local_agent_runtime",
+                summary=content,
+                latency_ms=int((state["completed_at"] - state["started_at"]) * 1000),
+                tags=["local_agent_runtime", "tools_enabled" if TOOLS_ENABLED else "tool_free"],
+            )
         print(json.dumps({"ok": True, "content": content, "agent_id": AGENT_ID}))
 
     except Exception as exc:
@@ -1384,6 +1441,16 @@ async def run() -> None:
             error_text = "local_agent_timeout"
         state.update({"status": "failed", "error": error_text, "completed_at": time.time()})
         _write_state(state)
+        async with httpx.AsyncClient(timeout=5.0) as event_client:
+            await _post_agent_event(
+                event_client,
+                event_type="delegation_end",
+                sub_type="local_agent_runtime",
+                outcome="failure",
+                summary=error_text,
+                latency_ms=int((state["completed_at"] - state["started_at"]) * 1000),
+                tags=["local_agent_runtime", "error"],
+            )
         print(
             json.dumps({"ok": False, "error": error_text, "agent_id": AGENT_ID}),
             file=sys.stderr,

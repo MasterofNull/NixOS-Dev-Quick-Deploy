@@ -116,6 +116,10 @@ class _FakeAsyncClient:
 
     async def post(self, url, json=None, headers=None, timeout=None):
         self.post_calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
+        if url.endswith("/api/agent-events"):
+            return _FakeResponse({"ok": True})
+        if not self.post_plan:
+            return _FakeResponse({"ok": True})
         action = self.post_plan.pop(0)
         if isinstance(action, Exception):
             raise action
@@ -143,12 +147,12 @@ class _FakeProcess:
         self.killed = True
 
 
-def test_post_completion_falls_back_to_llama_and_strips_tool_payload():
+def test_post_completion_retries_switchboard_without_direct_llama_bypass():
     module = _load_runtime(AGENT_TOOLS_ENABLED="true")
     fake_client = _FakeAsyncClient(
         post_plan=[
             httpx.ConnectError("switchboard unavailable"),
-            _FakeResponse({"choices": [{"message": {"content": "fallback answer"}, "finish_reason": "stop"}]}),
+            _FakeResponse({"choices": [{"message": {"content": "retry answer"}, "finish_reason": "stop"}]}),
         ]
     )
     state = {"id": "test-agent"}
@@ -162,15 +166,34 @@ def test_post_completion_falls_back_to_llama_and_strips_tool_payload():
         )
     )
 
-    assert response.json()["choices"][0]["message"]["content"] == "fallback answer"
+    assert response.json()["choices"][0]["message"]["content"] == "retry answer"
     assert fake_client.post_calls[0]["url"] == "http://switchboard.test/v1/chat/completions"
-    assert fake_client.post_calls[1]["url"] == "http://llama.test/v1/chat/completions"
-    assert fake_client.post_calls[1]["headers"] == {}
-    assert "tools" not in fake_client.post_calls[1]["json"]
-    assert "tool_choice" not in fake_client.post_calls[1]["json"]
+    assert fake_client.post_calls[1]["url"] == "http://switchboard.test/v1/chat/completions"
+    assert "tools" in fake_client.post_calls[1]["json"]
+    assert "tool_choice" in fake_client.post_calls[1]["json"]
     assert fake_client.post_calls[1]["json"]["chat_template_kwargs"] == {"enable_thinking": False}
-    assert state["fallback_backend"] == "llama.cpp"
-    assert state["fallback_reason"] == "switchboard_timeout_or_unreachable"
+    assert "fallback_backend" not in state
+    assert "fallback_reason" not in state
+
+
+def test_post_agent_event_posts_to_coordinator():
+    module = _load_runtime()
+    fake_client = _FakeAsyncClient()
+
+    asyncio.run(
+        module._post_agent_event(
+            fake_client,
+            event_type="delegation_start",
+            sub_type="local_agent_runtime",
+            summary="starting",
+            tags=["local_agent_runtime"],
+        )
+    )
+
+    assert fake_client.post_calls[0]["url"] == "http://hybrid.test/api/agent-events"
+    assert fake_client.post_calls[0]["json"]["agent"] == "local"
+    assert fake_client.post_calls[0]["json"]["event_type"] == "delegation_start"
+    assert fake_client.post_calls[0]["json"]["task_id"] == "test-agent"
 
 def test_build_inference_payload_disables_thinking_when_runtime_is_off():
     module = _load_runtime(AGENT_THINKING_MODE="off")
@@ -185,7 +208,7 @@ def test_build_inference_payload_omits_thinking_override_when_runtime_is_on():
 
     payload = module._build_inference_payload([{"role": "user", "content": "Reason carefully."}])
 
-    assert "chat_template_kwargs" not in payload
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable(monkeypatch):
@@ -217,6 +240,8 @@ def test_run_streaming_falls_back_to_llama_when_switchboard_is_unreachable(monke
     assert fake_client.stream_calls[0]["url"] == "http://switchboard.test/v1/chat/completions"
     assert fake_client.stream_calls[1]["url"] == "http://llama.test/v1/chat/completions"
     assert fake_client.stream_calls[1]["headers"] == {}
+    event_posts = [call for call in fake_client.post_calls if call["url"] == "http://hybrid.test/api/agent-events"]
+    assert [call["json"]["event_type"] for call in event_posts] == ["delegation_start", "delegation_end"]
 
 
 def test_run_reports_named_timeout_for_empty_timeout_exceptions(monkeypatch):
@@ -239,7 +264,7 @@ def test_run_reports_named_timeout_for_empty_timeout_exceptions(monkeypatch):
         raise AssertionError("expected local agent runtime to exit on timeout")
 
     payload = json.loads(stderr.getvalue().strip())
-    assert payload["error"] == "local_agent_timeout"
+    assert payload["error"].startswith("switchboard_unavailable:")
 
 
 def test_run_harness_cli_executes_aq_qa_with_json_default():

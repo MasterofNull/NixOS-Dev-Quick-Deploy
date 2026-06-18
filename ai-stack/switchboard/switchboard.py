@@ -309,9 +309,9 @@ DEFAULT_PROFILE_CATALOG = {
         "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
-        "maxInputTokens": 8000,
+        "maxInputTokens": int(os.environ.get("SWB_LOCAL_AGENT_MAX_INPUT_TOKENS", "5500")),
         "maxMessages": 16,
-        "maxOutputTokens": 4096,
+        "maxOutputTokens": int(os.environ.get("SWB_LOCAL_AGENT_MAX_OUTPUT_TOKENS", "1500")),
         "embeddingsOnly": False,
         "toolExecution": None,
         "profileCard": LOCAL_AGENT_CARD,
@@ -393,10 +393,10 @@ DEFAULT_PROFILE_CATALOG = {
         "injectHints": True,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
-        # 6000 input + 2048 output = 8048 ≤ n_ctx=8192; was 12000 (wrong comment cited 16384 ctx)
-        "maxInputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_INPUT_TOKENS", "6000")),
+        # 5200 input + 1500 output = 6700 <= LLAMA_CTX_SIZE-600 on the default 8192 ctx.
+        "maxInputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_INPUT_TOKENS", "5200")),
         "maxMessages": 20,
-        "maxOutputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS", "2048")),
+        "maxOutputTokens": int(os.environ.get("SWB_LOCAL_TOOL_MAX_OUTPUT_TOKENS", "1500")),
         "embeddingsOnly": False,
         "toolExecution": "built-in",
         "profileCard": LOCAL_TOOL_CALLING_CARD,
@@ -430,9 +430,9 @@ DEFAULT_PROFILE_CATALOG = {
         "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
-        "maxInputTokens": 8000,
+        "maxInputTokens": int(os.environ.get("SWB_COORDINATOR_INTERNAL_MAX_INPUT_TOKENS", "5500")),
         "maxMessages": 20,
-        "maxOutputTokens": 4096,
+        "maxOutputTokens": int(os.environ.get("SWB_COORDINATOR_INTERNAL_MAX_OUTPUT_TOKENS", "1500")),
         "embeddingsOnly": False,
         "toolExecution": None,
         "profileCard": "",
@@ -1433,6 +1433,32 @@ def _tools_are_all_external(payload: dict) -> bool:
     if not tool_names:
         return False
     return all(n not in available for n in tool_names)
+
+
+_AGENT_RUNTIME_TOOL_NAMES = frozenset({
+    "route_search",
+    "recall_memory",
+    "run_harness_cli",
+    "query_aidb",
+    "store_memory",
+    "get_working_memory",
+    "collective_memory_search",
+    "delegate_to_remote",
+    "mesh_discovery",
+    "recommend_agent_for_task",
+    "get_workflow_status",
+    "get_prsi_pending",
+    "prsi_orchestrate",
+})
+
+
+def _payload_has_agent_runtime_tools(payload: dict) -> bool:
+    tools = payload.get("tools")
+    if not isinstance(tools, list) or not tools:
+        return False
+    names = {_tool_name(t) for t in tools}
+    names.discard("")
+    return bool(names & _AGENT_RUNTIME_TOOL_NAMES)
 
 
 async def _passthrough_local_tool_inference(payload: dict, run_id: str = "unknown-run") -> tuple[dict, int]:
@@ -2977,9 +3003,14 @@ async def proxy(path: str, request: Request):
                         # _tools_are_all_external() incorrectly returns False when tool
                         # names (read_file, run_command, get_hint …) match built-in names;
                         # the profile's toolExecution:None is the authoritative signal.
-                        # local-tool-calling: check whether tools are external; if so,
-                        # passthrough so the model generates tool_calls for the agent.
-                        if profile == "local-agent" or _tools_are_all_external(payload):
+                        # local-tool-calling: passthrough agent-runtime schemas even
+                        # when names overlap switchboard built-ins; otherwise execute
+                        # switchboard's built-in tools locally.
+                        if (
+                            profile == "local-agent"
+                            or _payload_has_agent_runtime_tools(payload)
+                            or _tools_are_all_external(payload)
+                        ):
                             local_body, local_tool_calls_used = await _passthrough_local_tool_inference(payload, run_id=run_id)
                         else:
                             local_body, local_tool_calls_used = await _execute_local_tool_calling(payload, run_id=run_id)

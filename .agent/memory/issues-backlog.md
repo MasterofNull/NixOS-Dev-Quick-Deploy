@@ -1,5 +1,15 @@
 ## OPEN ISSUES
 
+[DONE] phase178b-local-context-budget-overflow — local switchboard profile defaults exceeded LLAMA_CTX_SIZE headroom
+  Severity: high
+  Action: Reduced local-agent, local-tool-calling, and coordinator-internal default maxInputTokens/maxOutputTokens so each fits LLAMA_CTX_SIZE-600; added matching env-contract entries.
+  File: ai-stack/switchboard/switchboard.py ~line 307
+
+[DONE] local-agent-runtime-event-gap — local runtime subprocesses did not emit agent events to /api/agent-events
+  Severity: medium
+  Action: Added delegation_start, delegation_end, workflow/tool_call, and failure event posts through HYBRID_URL with non-blocking error handling; added unit coverage.
+  File: ai-stack/agents/runtimes/local_agent_runtime.py ~line 562
+
 [FIXED 093bb1c0] aq-chat-spinner-swallows-streaming — agentic coordinator path produces empty responses
   Root cause: `with console.status(...)` wrapped both setup AND the entire streaming loop in aq-chat.
   Rich's Live display was active during streaming. console.print(token, end="") inside an active Live

@@ -229,9 +229,9 @@ let
       injectHints = true;
       modelAlias = null;
       advertisedContextWindow = ai.llamaCpp.ctxSize;
-      maxInputTokens = 8000;
+      maxInputTokens = 5500;
       maxMessages = 16;
-      maxOutputTokens = 4096;
+      maxOutputTokens = 1500;
       embeddingsOnly = false;
       toolExecution = null;
       profileCard = localAgentCard;
@@ -345,9 +345,9 @@ let
       injectHints = false;
       modelAlias = null;
       advertisedContextWindow = ai.llamaCpp.ctxSize;
-      maxInputTokens = 6000; # Phase 175-B: was 12000; 12000+2048=14048 > n_ctx=8192. 6000+2048=8048 ≤ 8192
+      maxInputTokens = 5200; # Phase 178-B: 5200+1500=6700 <= LLAMA_CTX_SIZE-600 on default n_ctx=8192.
       maxMessages = 20;
-      maxOutputTokens = 2048;
+      maxOutputTokens = 1500;
       embeddingsOnly = false;
       toolExecution = "built-in";
       profileCard = localToolCallingCard;
@@ -385,9 +385,9 @@ let
       injectHints = false;
       modelAlias = null;
       advertisedContextWindow = ai.llamaCpp.ctxSize;
-      maxInputTokens = 8000;
+      maxInputTokens = 5500;
       maxMessages = 20;
-      maxOutputTokens = 4096;
+      maxOutputTokens = 1500;
       embeddingsOnly = false;
       toolExecution = null;
       profileCard = "";
