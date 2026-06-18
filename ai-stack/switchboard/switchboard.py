@@ -1409,6 +1409,57 @@ async def _finalize_after_local_tool_limit(
     return _local_tool_limit_fallback(body, tool_calls_used)
 
 
+def _tools_are_all_external(payload: dict) -> bool:
+    """Return True when every tool in the payload is NOT in the switchboard's built-in registry.
+
+    Agent-subprocess runtimes (local_agent_runtime.py) send their own tool schemas
+    (route_search, recall_memory, get_hint, etc.) which the switchboard cannot execute.
+    Those payloads should bypass _execute_local_tool_calling and go directly to llama.cpp
+    so the model can generate tool_calls that the agent dispatches itself.
+    """
+    tools = payload.get("tools")
+    if not isinstance(tools, list) or not tools:
+        return False
+    registry, _ = _load_local_tool_registry()
+    available = set(_local_tool_schema_catalog(registry))
+    tool_names = []
+    for t in tools:
+        name = _tool_name(t)
+        if name:
+            tool_names.append(name)
+    if not tool_names:
+        return False
+    return all(n not in available for n in tool_names)
+
+
+async def _passthrough_local_tool_inference(payload: dict, run_id: str = "unknown-run") -> tuple[dict, int]:
+    """Send payload directly to llama.cpp and return the raw response.
+
+    Used when agent-subprocess tools are detected — the model generates tool_calls
+    that the caller (agent runtime) dispatches itself rather than the switchboard.
+    """
+    import httpx as _httpx
+    request_payload = {k: v for k, v in payload.items() if k not in {"tool_choice"}}
+    request_payload.setdefault("stream", False)
+    async with _httpx.AsyncClient(timeout=_timeout_for("local", False)) as client:
+        try:
+            resp = await _call_upstream_with_resilience(
+                client=client,
+                method="POST",
+                url=f"{LLAMA_URL}/v1/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json_body=request_payload,
+                service_name="llama",
+            )
+        except CircuitBreakerOpenError as exc:
+            raise RuntimeError(f"Circuit breaker is OPEN: {exc}")
+        body = resp.json()
+        if resp.status_code >= 400:
+            msg = body.get("error", {}).get("message") if isinstance(body, dict) else str(body)
+            raise RuntimeError(f"llama.cpp passthrough failed: {msg or resp.text}")
+        return body, 0
+
+
 async def _execute_local_tool_calling(payload: dict, run_id: str = "unknown-run") -> tuple[dict, int]:
     registry, tool_call_cls = _load_local_tool_registry()
     messages = list(payload.get("messages") or [])
@@ -2913,7 +2964,14 @@ async def proxy(path: str, request: Request):
                     and not is_stream
                 ):
                     try:
-                        local_body, local_tool_calls_used = await _execute_local_tool_calling(payload, run_id=run_id)
+                        # Agent-subprocess payloads carry their own external tool schemas
+                        # (route_search, recall_memory, get_hint, etc.) that the switchboard
+                        # cannot execute. Bypass the built-in tool loop and send directly to
+                        # llama.cpp so the model generates tool_calls for the agent to dispatch.
+                        if _tools_are_all_external(payload):
+                            local_body, local_tool_calls_used = await _passthrough_local_tool_inference(payload, run_id=run_id)
+                        else:
+                            local_body, local_tool_calls_used = await _execute_local_tool_calling(payload, run_id=run_id)
                         if isinstance(local_body, dict) and isinstance(local_body.get("tool_working_set"), dict):
                             tool_working_set = local_body.get("tool_working_set")
                         if isinstance(local_body, dict) and isinstance(local_body.get("context_output_gc"), dict):

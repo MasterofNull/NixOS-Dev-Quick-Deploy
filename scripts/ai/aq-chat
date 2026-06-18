@@ -406,11 +406,12 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         tool_free_turn: bool,
     ) -> Dict[str, Any]:
         """Build the canonical coordinator delegate payload for local aq-chat turns."""
+        _use_tools = self.local_tools_enabled and not tool_free_turn
         payload: Dict[str, Any] = {
             "task": prompt,
             "messages": request_messages,
-            "profile": "local-tool-calling" if self.local_tools_enabled and not tool_free_turn else "default",
-            "role": "orchestrator" if self.local_tools_enabled and not tool_free_turn else "reviewer",
+            "profile": "local-tool-calling" if _use_tools else "default",
+            "role": "orchestrator" if _use_tools else "reviewer",
             "agent_type": "human",
             "temperature": self.temperature,
             "max_tokens": 1024,
@@ -418,7 +419,14 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             "frequency_penalty": 0.0,
         }
         payload["chat_template_kwargs"] = {"enable_thinking": False}
-        payload["streaming_mode"] = True
+        # SSE streaming and tool execution are mutually exclusive in local_agent_runtime.py.
+        # Tool turns: non-streaming sync response so the agent executor can run the full
+        # tool loop. Non-tool turns: SSE streaming for live token feedback.
+        if _use_tools:
+            payload["tools_enabled"] = True
+            payload["streaming_mode"] = False
+        else:
+            payload["streaming_mode"] = True
         if tool_free_turn:
             payload["tools"] = []
             payload["tool_choice"] = "none"
@@ -875,6 +883,48 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                         "seq": self._next_routing_seq(),
                         "ts": time.time(),
                     }))
+                    # Non-streaming tool execution path (streaming_mode=False + tools_enabled=True).
+                    # The coordinator runs the full agent tool loop and returns a completed
+                    # OpenAI chat.completion JSON response. Show spinner during execution.
+                    if not payload.get("streaming_mode", True):
+                        with console.status("[bold #00d9ff]Executing tools...[/]", spinner="dots"):
+                            _tool_resp = await self.client.post(
+                                target_url, json=payload, headers=headers,
+                            )
+                        if _tool_resp.status_code == 202:
+                            try:
+                                _async_body = _tool_resp.json()
+                            except Exception:
+                                _async_body = {}
+                            _tid = _async_body.get("task_id", "unknown")
+                            _poll = _async_body.get("poll_url", f"/control/ai-coordinator/delegate/status/{_tid}")
+                            _bg_msg = (
+                                f"Task dispatched to background agent (this takes 20-40 min).\n\n"
+                                f"**Task ID:** `{_tid}`\n"
+                                f"**Poll:** `curl -s -H 'Authorization: Bearer <key>' "
+                                f"http://127.0.0.1:8003{_poll}`\n"
+                                f"**Or list all:** `python3 scripts/ai/lib/pending-update list`"
+                            )
+                            self._record_and_render_assistant_response(prompt, _bg_msg)
+                            return
+                        if _tool_resp.status_code != 200:
+                            detail = self._response_error_detail(_tool_resp)
+                            suffix = f" {detail}" if detail else ""
+                            console.print(f"[bold red]Error: Received {_tool_resp.status_code} from local backend.[/]{suffix}")
+                            return
+                        try:
+                            _body = _tool_resp.json()
+                        except Exception:
+                            _body = {}
+                        _full = (
+                            (_body.get("choices") or [{}])[0]
+                            .get("message", {})
+                            .get("content", "") or ""
+                        )
+                        self._last_turn_had_tool_calls = bool(_full)
+                        self._record_and_render_assistant_response(prompt, _full)
+                        return
+
                     # Phase 175-A: streaming coordinator delegate (SSE).
                     # The coordinator returns SSE when streaming_mode=True.
                     # Exception: if it auto-promotes to async-dispatch it returns 202+JSON

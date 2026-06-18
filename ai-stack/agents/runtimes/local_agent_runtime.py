@@ -1221,7 +1221,11 @@ async def run() -> None:
             {"role": "system", "content": _sys},
             {"role": "user", "content": task_content},
         ]
-        profile = "local-tool-calling" if TOOLS_ENABLED else _profile_for_role(AGENT_ROLE)
+        # "local-tool-calling" profile intercepts the tools array against its built-in
+        # server registry, causing 400 for agent-runtime tools (route_search, recall_memory,
+        # get_hint, etc. are not switchboard built-ins). Use "local-agent" which has
+        # toolExecution: None — passes tools through to llama.cpp, agent dispatches itself.
+        profile = "local-agent" if TOOLS_ENABLED else _profile_for_role(AGENT_ROLE)
         headers = {"X-AI-Profile": profile, "X-AI-Route": "local"}
         content = ""
         data: dict = {}
