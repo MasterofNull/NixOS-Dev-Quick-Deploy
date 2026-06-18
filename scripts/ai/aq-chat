@@ -790,7 +790,8 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             return
 
         thinking_msg = f"Synthesizing via [bold]{self.active_profile}[/]..."
-        with console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots"):
+        _setup_status = console.status(f"[bold #00d9ff]{thinking_msg}", spinner="dots")
+        with _setup_status:
             local_model_id = os.getenv("AI_LOCAL_MODEL_ID", "local")
             local_snapshot = await self._build_local_snapshot(prompt)
             tool_free_turn = self._should_bypass_tools_for_turn(prompt)
@@ -854,6 +855,11 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
             else:
                 target_url = f"{self.hybrid_url}/v1/orchestrate"
                 self._wire_profile = self.active_profile
+
+            # Stop spinner before streaming begins — tokens must print directly to
+            # terminal without Rich Live display interference. Status is stopped here
+            # manually; __exit__ will call stop() again, which is idempotent in Rich.
+            _setup_status.stop()
 
             try:
                 if self.active_profile in {"local", "local-tool-calling"} or local_snapshot or tool_free_turn:
