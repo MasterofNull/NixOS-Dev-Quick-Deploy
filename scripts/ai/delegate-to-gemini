@@ -74,9 +74,20 @@ require_gemini() {
   Install: npm install -g @google/gemini-cli
   Or set:  export GEMINI_BIN=/path/to/gemini
   NOTE: As of 2026-06-18 Google sunset individual/consumer-tier access to Gemini CLI.
-  If you see 403/401 errors, your account is on the deprecated free tier.
+  If you see 403/401 errors or 'Resource has been exhausted' on onboardUser, your
+  account is on the deprecated free tier — this is a PERMANENT service termination.
+  Bypass: set GEMINI_API_KEY from https://aistudio.google.com/apikey (uses
+  generativelanguage.googleapis.com instead of cloudcode-pa.googleapis.com).
   Migration: install Antigravity CLI once the official package is published.
   See: .agent/memory/issues-backlog.md (antigravity-cli-migration-pending)"
+}
+
+# Return 0 if output file contains Gemini CLI sunset/quota-termination error patterns.
+# "Resource has been exhausted" on onboardUser is how Google surfaces the sunset for
+# individual accounts — it is NOT a transient quota limit, it is permanent.
+_gemini_sunset_error() {
+    local file="$1"
+    grep -qE "Resource has been exhausted|onboardUser|migrate to Antigravity|stop serving requests" "$file" 2>/dev/null
 }
 
 ensure_gemini_rg() {
@@ -334,6 +345,11 @@ ${prompt}"
             audit_event_end "gemini" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role"
             audit_save_session "gemini" "$id" "$prompt" "$output_file"
             info "Task $id failed (exit $exit_code, meaningful ${meaningful_bytes}B — below ${GEMINI_MIN_CONTENT_BYTES}B threshold)."
+            if _gemini_sunset_error "$output_file"; then
+                info "SUNSET_ERROR: cloudcode-pa.googleapis.com/onboardUser rejected individual access (2026-06-18 sunset). This is PERMANENT, not a transient quota hit."
+                info "  Bypass: export GEMINI_API_KEY=<key> from https://aistudio.google.com/apikey"
+                info "  See: .agent/memory/issues-backlog.md (antigravity-cli-migration-pending)"
+            fi
         fi
     else
         # Background mode: fully detach so it survives session eviction
@@ -404,6 +420,8 @@ with open(rf) as f:
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
                     \"$SCRIPT_DIR/lib/pending-update\" failed \"$id\" 2>/dev/null || true
+                    grep -qE 'Resource has been exhausted|onboardUser|migrate to Antigravity|stop serving requests' \"$output_file\" 2>/dev/null && \
+                        echo 'SUNSET_ERROR: cloudcode-pa.googleapis.com terminated individual access (2026-06-18). PERMANENT. Fix: export GEMINI_API_KEY=<key> from https://aistudio.google.com/apikey or await Antigravity CLI. See issues-backlog.md:antigravity-cli-migration-pending' >> \"$output_file\" || true
                 fi
             fi
         " > /dev/null 2>&1 &
