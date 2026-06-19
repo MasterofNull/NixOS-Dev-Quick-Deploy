@@ -1,5 +1,10 @@
 ## OPEN ISSUES
 
+[DONE] llama-cpp-no-backends-after-nixified-ai-update — `nixos-rebuild switch` failed because `llama-cpp.service` could not load any backend
+  Severity: critical
+  Action: The `llama-server-unconfined` wrapper copied only the binary; llama.cpp 9222 loads CPU/Vulkan backends from `bin/libggml-*.so`. Copy those backend plugins beside the renamed binary so `--list-devices` and model loading can find them.
+  File: nix/modules/roles/ai-stack.nix ~line 200
+
 [DONE] phase178b-local-context-budget-overflow — local switchboard profile defaults exceeded LLAMA_CTX_SIZE headroom
   Severity: high
   Action: Reduced local-agent, local-tool-calling, and coordinator-internal default maxInputTokens/maxOutputTokens so each fits LLAMA_CTX_SIZE-600; added matching env-contract entries.
@@ -760,6 +765,10 @@
   Files: ai-stack/switchboard/switchboard.py line 2982 (dispatch condition in _handle_local_tool_calling_request)
 
 [PENDING] antigravity-cli-migration-pending — Google sunset individual/consumer-tier Gemini CLI access on 2026-06-18. Replacement is "Antigravity CLI" (Google product). @google/gemini-cli npm v0.47.0 binary still exists but will return 403/401 for individual accounts. No official @google/antigravity-cli npm package published as of 2026-06-18; antigravity.google website has minimal content. Third-party packages (opencode-antigravity-auth, unofficial-antigravity-sdk) suggest Antigravity may be accessed via "opencode" tool. delegate-to-gemini updated with deprecation notice. Gemini Code Assist VSCode extension removed from base.nix (also deprecated for individuals).
+  Root cause confirmed 2026-06-18: error surfaces as GaxiosError "Resource has been exhausted" on cloudcode-pa.googleapis.com/v1internal:onboardUser — NOT a transient quota hit, it is permanent service termination for individual OAuth accounts. OAuth tokens remain valid; the API endpoint rejects them.
+  Bypass (immediate, no migration required): set GEMINI_API_KEY from https://aistudio.google.com/apikey. This routes the Gemini CLI through generativelanguage.googleapis.com (AI Studio) instead of cloudcode-pa.googleapis.com. Free tier available. Once key is obtained: export GEMINI_API_KEY=<key> in ~/.zshrc or NixOS home.sessionVariables.
+  VSCodium cleanup done 2026-06-18: 5 stale geminicodeassist.* keys removed from ~/.config/VSCodium/User/settings.json (inlineSuggestions.enableAuto, localCodebaseAwareness, project, updateChannel, rules). a2a-server.mjs (PID 680469) will terminate when VSCodium is restarted. Extension directory still installed at ~/.vscode-oss/extensions/google.geminicodeassist-2.82.0-universal/ — user should uninstall via VSCodium Extensions panel.
+  delegate-to-gemini updated 2026-06-18: _gemini_sunset_error() helper + sunset detection in both wait-mode and background-mode failure paths — operators now see SUNSET_ERROR with fix instructions instead of silent failure.
   Severity: high (all delegate-to-gemini calls fail for individual accounts; Gemini architect role unavailable)
-  Action: monitor antigravity.google and npm @google/ namespace for official CLI package; install via nix/pkgs/ derivation once available; update GEMINI_BIN in delegate-to-gemini line 44; update delegate-to-gemini install instructions line 74; test with delegate-to-gemini --prompt "hello"; update noise filter regex for new CLI output format.
-  Files: scripts/ai/delegate-to-gemini (line 44 GEMINI_BIN, line 73 require_gemini, line 68 noise filter), nix/home/base.nix (Gemini extensions removed)
+  Action: (1) IMMEDIATE: set GEMINI_API_KEY from aistudio.google.com/apikey and test with delegate-to-gemini --prompt "hello"; (2) ONGOING: monitor antigravity.google and npm @google/ namespace for official CLI package; install via nix/pkgs/ derivation once available; update GEMINI_BIN in delegate-to-gemini line 44; update noise filter regex for new CLI output format.
+  Files: scripts/ai/delegate-to-gemini (line 44 GEMINI_BIN, line 73 require_gemini, line 68 noise filter, new _gemini_sunset_error()), nix/home/base.nix (Gemini extensions removed), ~/.config/VSCodium/User/settings.json (geminicodeassist.* removed)
