@@ -165,6 +165,26 @@ if [[ ! -d "${GEMINI_DIR}" ]]; then
   emit_result 0
 fi
 
+# Detect oauth-personal auth type — sunset 2026-06-18, always fails on
+# cloudcode-pa.googleapis.com/v1internal:onboardUser with "Resource has been
+# exhausted". Report unhealthy immediately so callers don't waste a delegation.
+SETTINGS_FILE="${GEMINI_DIR}/settings.json"
+if [[ -f "${SETTINGS_FILE}" ]]; then
+  SELECTED_TYPE="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('${SETTINGS_FILE}'))
+    print(d.get('security', {}).get('auth', {}).get('selectedType', ''))
+except Exception:
+    pass
+" 2>/dev/null || true)"
+  if [[ "${SELECTED_TYPE}" == "oauth-personal" ]]; then
+    STATUS="unhealthy"
+    REASON="auth.selectedType=oauth-personal: cloudcode-pa.googleapis.com sunset 2026-06-18. Fix: run 'gemini' interactively with GEMINI_API_KEY set from https://aistudio.google.com/apikey"
+    emit_result 1
+  fi
+fi
+
 if gemini_help_ok; then
   STATUS="healthy"
   REASON="gemini --help succeeds with live state directory"

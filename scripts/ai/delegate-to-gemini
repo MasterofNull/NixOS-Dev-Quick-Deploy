@@ -73,13 +73,19 @@ require_gemini() {
     [[ -x "$GEMINI_BIN" ]] || die "Gemini CLI not found at $GEMINI_BIN
   Install: npm install -g @google/gemini-cli
   Or set:  export GEMINI_BIN=/path/to/gemini
-  NOTE: As of 2026-06-18 Google sunset individual/consumer-tier access to Gemini CLI.
-  If you see 403/401 errors or 'Resource has been exhausted' on onboardUser, your
-  account is on the deprecated free tier — this is a PERMANENT service termination.
-  Bypass: set GEMINI_API_KEY from https://aistudio.google.com/apikey (uses
-  generativelanguage.googleapis.com instead of cloudcode-pa.googleapis.com).
-  Migration: install Antigravity CLI once the official package is published.
-  See: .agent/memory/issues-backlog.md (antigravity-cli-migration-pending)"
+
+  AUTH NOTE (2026-06-18): Google sunset individual OAuth access permanently.
+  This script delegates via the @google/gemini-cli npm binary using API-key auth
+  stored in ~/.gemini/gemini-credentials.json (NOT oauth-personal).
+  ~/.gemini/settings.json must have auth.selectedType=gemini-api-key.
+
+  If credentials are wiped: set GEMINI_API_KEY from https://aistudio.google.com/apikey
+  and run 'gemini' once interactively to re-seed the credential store. Add the key to
+  nix/hosts/hyperd/home-deploy-options.nix (gitignored) as home.sessionVariables.GEMINI_API_KEY.
+
+  Antigravity CLI (pkgs.antigravity, now installed) is a VS Code IDE — NOT a CLI
+  delegation tool. 'antigravity chat' opens a GUI window. Do not set GEMINI_BIN=antigravity.
+  See: .agent/GEMINI.md §Auth Architecture and .agent/memory/issues-backlog.md"
 }
 
 # Return 0 if output file contains Gemini CLI sunset/quota-termination error patterns.
