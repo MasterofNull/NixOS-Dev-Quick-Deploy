@@ -62,6 +62,35 @@
     )
     mergedPackageNames
   );
+  prismLauncherDevPackages = with pkgs; [
+    binutils
+    ccache
+    extra-cmake-modules
+    ninja
+    pkg-config
+    python3
+    llvmPackages.clang-tools
+    qt6.qtbase
+    qt6.qtbase.dev
+    qt6.qtdeclarative
+    qt6.qtdeclarative.dev
+    qt6.qtimageformats
+    qt6.qtnetworkauth
+    qt6.qtnetworkauth.dev
+    qt6.qtshadertools
+    qt6.qtshadertools.dev
+    qt6.qtsvg
+    qt6.qtsvg.dev
+    qt6.qtwayland
+    qt6.qtwayland.dev
+    kdePackages.wrapQtAppsHook
+    jdk8
+    jdk17
+    jdk21
+    jdk25
+  ];
+  profileDevPackages =
+    lib.optionals (cfg.profile == "ai-dev") prismLauncherDevPackages;
   # Phase 16.1.1 — tier computed by shared library function.
   _computeTier = import ../../lib/hardware-tier.nix {inherit lib;};
   hardwareTier = _computeTier {
@@ -234,7 +263,7 @@ in {
       binfmt = lib.mkDefault true;
     };
 
-    environment.systemPackages = resolvedPackages ++ devHelperPackages;
+    environment.systemPackages = resolvedPackages ++ profileDevPackages ++ devHelperPackages;
 
     systemd.tmpfiles.rules = lib.mkIf cfg.deployment.mutableSpaces.enable (
       (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserPaths)
