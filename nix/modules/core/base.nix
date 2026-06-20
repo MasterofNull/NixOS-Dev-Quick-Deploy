@@ -50,6 +50,7 @@
     "ruby"
     "neovim"
     "opencode"
+    "antigravity"
   ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
   missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) mergedPackageNames;
