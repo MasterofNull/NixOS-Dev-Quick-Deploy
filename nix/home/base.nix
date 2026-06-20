@@ -715,6 +715,15 @@ in {
         (( _n > 0 )) && print -P "%F{red}%B[ ATTN: $_n PENDING ALERT(S) — run aq-alerts ]%b%f"
       }
       precmd_functions+=(_aq_alert_precmd)
+
+      # Load Gemini / AI Studio API key from SOPS-managed secret at shell startup.
+      # The key is decrypted to /run/secrets/gemini_api_key by sops-nix at boot.
+      # This avoids storing the key in the Nix store or any tracked file.
+      # To add the key: sops <secrets-file>  →  add entry:  gemini_api_key: AIza...
+      # Secret is owned by primaryUser:users mode 0400 (see nix/modules/core/secrets.nix).
+      if [[ -r /run/secrets/gemini_api_key ]]; then
+        export GEMINI_API_KEY="$(< /run/secrets/gemini_api_key)"
+      fi
     '';
   };
 
