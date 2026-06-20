@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[OPEN] opencode-undici-bun-crash — opencode v1.3.0 crashes on every invocation with `ReferenceError: undici is not defined` (Bun v1.3.3, Linux x64).
+  Root cause: opencode 1.3.0 bundle (`$bunfs/root/src/index.js`) imports `undici` as an npm module, but Bun 1.3.3 does not expose `undici` as a built-in. opencode is installed from Nix store at /nix/store/2rn57ci5bp1s8q401zwwy8isbx4v3im9-opencode-1.3.0; nixpkgs channel has opencode-0.3.112 (nixos.opencode) / 1.1.14 (nix eval). The 1.3.0 build likely requires a newer Bun version or Node.js runtime.
+  Severity: medium (opencode is a potential Antigravity/multi-provider agent but is not currently in the delegation chain)
+  Action: (1) Try nixpkgs version: add `pkgs.opencode` to system packages (gets 0.3.112 or 1.1.14); (2) OR update flake nixpkgs to get opencode ≥1.3.0 with matching Bun; (3) Test `opencode --version` after change.
+  Files: nix/hosts/hyperd/facts.nix or system packages (add pkgs.opencode)
+
 [DONE] llama-cpp-no-backends-after-nixified-ai-update — `nixos-rebuild switch` failed because `llama-cpp.service` could not load any backend
   Severity: critical
   Action: The `llama-server-unconfined` wrapper copied only the binary; llama.cpp 9222 loads CPU/Vulkan backends from `bin/libggml-*.so`. Copy those backend plugins beside the renamed binary so `--list-devices` and model loading can find them.
