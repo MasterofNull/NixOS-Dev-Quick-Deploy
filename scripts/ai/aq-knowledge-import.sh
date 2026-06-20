@@ -42,7 +42,7 @@ if [[ -z "$AIDB_KEY" ]]; then
   exit 1
 fi
 
-# ── Generate content via Gemini ───────────────────────────────────────────────
+# ── Generate content via delegate-to-antigravity ──────────────────────────────
 printf 'Generating explanation for: %s\n' "${TOPIC}"
 PROMPT="You are a NixOS systems expert. Write a comprehensive, accurate reference \
 document (600-1200 words) explaining: ${TOPIC}
@@ -55,20 +55,25 @@ Include:
 
 Format as plain text with section headers. Be precise and practical."
 
-if command -v timeout >/dev/null 2>&1; then
-  CONTENT="$(timeout "${GEMINI_TIMEOUT_SECONDS}" gemini -p "$PROMPT" 2>/dev/null)" || {
-    printf 'ERROR: gemini CLI timed out after %ss for topic: %s\n' "${GEMINI_TIMEOUT_SECONDS}" "${TOPIC}" >&2
-    exit 1
-  }
-else
-  CONTENT="$(gemini -p "$PROMPT" 2>/dev/null)" || {
-    printf 'ERROR: gemini CLI failed. Is it installed? export PATH="$HOME/.npm-global/bin:$PATH"\n' >&2
-    exit 1
-  }
+ANTIGRAVITY_BIN="${SCRIPT_DIR}/delegate-to-antigravity"
+if [[ ! -x "$ANTIGRAVITY_BIN" ]]; then
+  printf 'ERROR: delegate-to-antigravity not found at %s\n' "$ANTIGRAVITY_BIN" >&2
+  exit 1
 fi
 
+TID="$(timeout "${GEMINI_TIMEOUT_SECONDS}" "$ANTIGRAVITY_BIN" \
+  --prompt "$PROMPT" --mode fast --role implementer --wait \
+  2>/dev/null | tail -1)" || {
+  printf 'ERROR: delegate-to-antigravity failed for topic: %s\n' "${TOPIC}" >&2
+  exit 1
+}
+CONTENT="$("$ANTIGRAVITY_BIN" --check "$TID" 2>/dev/null)" || {
+  printf 'ERROR: could not retrieve output for task %s\n' "${TID}" >&2
+  exit 1
+}
+
 if [[ -z "$CONTENT" ]]; then
-  printf 'ERROR: gemini returned empty content\n' >&2
+  printf 'ERROR: delegate-to-antigravity returned empty content\n' >&2
   exit 1
 fi
 

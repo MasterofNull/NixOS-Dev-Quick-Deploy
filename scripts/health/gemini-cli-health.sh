@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# DEPRECATED (2026-06-20): delegate-to-gemini (npm CLI) is retired.
+# Use scripts/health/antigravity-health.sh for the current delegation path.
+# This script is kept for historical reference only and will not succeed
+# because the gemini npm CLI auth is broken (credits exhausted, OAuth sunset).
+#
 # Check and optionally repair Gemini CLI state-directory corruption that causes
 # `gemini --help` to hang under the real home directory.
 #
