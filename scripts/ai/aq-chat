@@ -283,6 +283,59 @@ class AQChat:
         detail = stdout.splitlines()[0][:120] if stdout else (stderr or f"exit {returncode}")
         return label, status, detail
 
+    def _is_alert_resolution_prompt(self, prompt: str) -> bool:
+        text = prompt.lower()
+        if "aq-alert" not in text and "alert" not in text:
+            return False
+        intent_words = ("resolve", "pending", "check", "review", "triage", "fix", "clear")
+        return any(word in text for word in intent_words)
+
+    def _build_alerts_fast_path_response(self) -> str:
+        count_result = self._run_snapshot_command(
+            "alerts_count",
+            [str(REPO_ROOT / "scripts/ai/aq-alerts"), "--count"],
+            timeout=10,
+        )
+        alerts_result = self._run_snapshot_command(
+            "alerts_list",
+            [str(REPO_ROOT / "scripts/ai/aq-alerts")],
+            timeout=15,
+        )
+        if count_result.get("returncode") != 0:
+            detail = count_result.get("stderr") or count_result.get("stdout") or f"exit {count_result.get('returncode')}"
+            return f"I could not read aq-alerts deterministically: {detail.strip()}"
+
+        count_text = str(count_result.get("stdout") or "").strip()
+        try:
+            pending_count = int(count_text)
+        except ValueError:
+            pending_count = -1
+
+        alerts_text = str(alerts_result.get("stdout") or alerts_result.get("stderr") or "").strip()
+        if pending_count == 0:
+            return (
+                "No pending aq-alerts. I checked `scripts/ai/aq-alerts --count` and "
+                "`scripts/ai/aq-alerts`; the queue is clear. The local-agent tool loop was not used."
+            )
+
+        if alerts_result.get("returncode") != 0:
+            detail = alerts_text or f"exit {alerts_result.get('returncode')}"
+            return f"aq-alerts reports {count_text or 'unknown'} pending alert(s), but listing failed: {detail}"
+
+        return (
+            f"aq-alerts reports {count_text} pending alert(s). I listed them with `scripts/ai/aq-alerts` "
+            "without using the local-agent tool loop. Review the listed IDs, then use `aq-review <id>` "
+            "followed by `aq-approve`, `aq-reject`, or `aq-defer` for each human-gated item.\n\n"
+            f"{alerts_text}"
+        )
+
+    def _handle_alerts_fast_path(self, prompt: str) -> bool:
+        if not self._is_alert_resolution_prompt(prompt):
+            return False
+        response = self._build_alerts_fast_path_response()
+        self._record_and_render_assistant_response(prompt, response)
+        return True
+
     async def _build_harness_system_prompt(self) -> str:
         """Fetch live coordinator state and build a harness-aware system prompt.
 
@@ -786,6 +839,10 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
         #   6. no snapshot required (snapshot turns always need coordinator context)
         # -----------------------------------------------------------------------
         is_local_profile = self.active_profile in {"local", "local-tool-calling"}
+        if is_local_profile and self.tool_mode == ToolMode.ENABLED and self._handle_alerts_fast_path(prompt):
+            self._last_turn_had_tool_calls = False
+            return
+
         if (
             is_local_profile
             and self.tool_mode == ToolMode.ENABLED
