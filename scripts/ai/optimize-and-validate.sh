@@ -92,8 +92,9 @@ import_knowledge() {
         return 0
     fi
 
-    if ! command -v gemini >/dev/null 2>&1; then
-        log_warning "gemini CLI not available in PATH; skipping topic import"
+    local _anta_bin; _anta_bin="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delegate-to-antigravity"
+    if [[ ! -x "$_anta_bin" ]]; then
+        log_warning "delegate-to-antigravity not found; skipping topic import"
         return 0
     fi
 

@@ -1,0 +1,586 @@
+#!/usr/bin/env python3
+"""delegate-to-antigravity — Headless Gemini REST API delegation (Antigravity era).
+
+Replaces @google/gemini-cli npm dependency. Calls generativelanguage.googleapis.com
+directly. Auth priority: gcloud ADC (subscription) → SOPS secret → env var → die.
+
+Usage:
+  delegate-to-antigravity --prompt "task description"   # background dispatch
+  delegate-to-antigravity --prompt "..." --wait         # blocking, prints output
+  delegate-to-antigravity --check <task-id>             # read output
+  delegate-to-antigravity --status <task-id>            # check status
+  delegate-to-antigravity --list                        # list all tasks
+
+Auth setup (one time — uses your Google subscription, no AI Studio credits):
+  nix-env -iA nixpkgs.google-cloud-sdk   # or add to nix/modules/core/base.nix
+  gcloud auth application-default login   # browser-based, one time
+
+Fallback auth (AI Studio free-tier key):
+  sops <secrets-file> → gemini_api_key: AIza...
+  nixos-rebuild switch --flake .#hyperd-ai-dev
+"""
+
+import argparse
+import fcntl
+import json
+import os
+import random
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+# ── paths ──────────────────────────────────────────────────────────────────
+# CRITICAL: use REPO_ROOT env var — this script may run from read-only Nix store.
+_HERE = Path(__file__).resolve().parent
+_REPO = Path(os.environ.get("REPO_ROOT", str(_HERE.parent.parent)))
+_DELEGATION_DIR = _REPO / ".agents" / "delegation"
+_OUTPUTS_DIR = _DELEGATION_DIR / "outputs"
+_REGISTRY = _DELEGATION_DIR / "registry.jsonl"
+_PENDING_UPDATE = _HERE / "lib" / "pending-update"
+_AUDIT_WRITE = _HERE / "lib" / "audit-write.sh"
+_ADC_PATH = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+_SOPS_KEY_PATH = Path("/run/secrets/gemini_api_key")
+
+# ── constants ──────────────────────────────────────────────────────────────
+_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_MIN_CONTENT_BYTES = 200  # below this → failed, not partial-success
+_MAX_CONCURRENT = 3       # prevent runaway loops from exhausting daily quota
+
+_MODEL_MAP = {
+    "fast":        "gemini-2.0-flash-lite",      # free tier, 30 RPM
+    "flash":       "gemini-2.0-flash",            # free tier, 15 RPM
+    "pro":         "gemini-2.5-pro-preview-06-05", # paid / subscription
+    "architect":   "gemini-2.5-flash",            # free tier, 10 RPM
+    "implementer": "gemini-2.0-flash",            # alias for flash
+    "reviewer":    "gemini-2.0-flash-lite",       # alias for fast
+}
+_MODEL_RE = re.compile(r"^gemini-[a-z0-9][a-z0-9.\-]*$")
+
+_VALID_ROLES = {
+    "orchestrator", "architect", "implementer", "reviewer",
+    "full-expert-team",
+    "plan", "implement", "review", "research",  # legacy aliases
+}
+
+_HARNESS_SYSTEM = (
+    "You are an AI agent in the NixOS-Dev-Quick-Deploy harness.\n"
+    "SCOPE LOCK: Work only on what the task requests. No unsolicited refactors.\n"
+    "PRD GATE: Write a brief plan to .agent/collaboration/PULSE.log before editing.\n"
+    "PORT POLICY: Never hardcode ports/URLs. Source: nix/modules/core/options.nix.\n"
+    "SECURITY: No hardcoded secrets, tokens, or credentials.\n"
+    "ATOMIC PULSE: Append one line to PULSE.log after every file write.\n"
+    "ATOMIC RESUME: Update .agent/collaboration/RESUME.json at every phase start.\n"
+    "DO NOT COMMIT — the orchestrator (Claude) reviews and commits.\n"
+)
+
+# ── auth ───────────────────────────────────────────────────────────────────
+
+def _oauth2_token() -> "str | None":
+    """Exchange gcloud ADC refresh token for an access token (stdlib only)."""
+    import urllib.request, urllib.parse
+    if not _ADC_PATH.exists():
+        return None
+    try:
+        creds = json.loads(_ADC_PATH.read_text())
+    except Exception:
+        return None
+    if creds.get("type") != "authorized_user":
+        return None
+    try:
+        body = urllib.parse.urlencode({
+            "client_id":     creds["client_id"],
+            "client_secret": creds["client_secret"],
+            "refresh_token": creds["refresh_token"],
+            "grant_type":    "refresh_token",
+        }).encode()
+        req = urllib.request.Request(
+            _TOKEN_URL, data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read()).get("access_token")
+    except Exception:
+        return None
+
+
+def _resolve_auth() -> "tuple[str, str]":
+    """Returns (header_name, header_value). Exits with guidance if no auth."""
+    # 1. gcloud ADC — uses Google account subscription, no AI Studio credits
+    token = _oauth2_token()
+    if token:
+        return ("Authorization", f"Bearer {token}")
+
+    # 2. SOPS secret (AI Studio free-tier key)
+    if _SOPS_KEY_PATH.exists() and _SOPS_KEY_PATH.stat().st_size > 0:
+        key = _SOPS_KEY_PATH.read_text().strip()
+        if key:
+            return ("x-goog-api-key", key)
+
+    # 3. Environment variable fallback
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if key:
+        return ("x-goog-api-key", key)
+
+    sys.exit(
+        "ERROR: No Gemini credentials found.\n\n"
+        "Option 1 — Use your Google subscription (no extra cost):\n"
+        "  Add google-cloud-sdk to nix/modules/core/base.nix, rebuild, then:\n"
+        "  gcloud auth application-default login\n\n"
+        "Option 2 — Free-tier AI Studio API key (no billing needed):\n"
+        "  Create key at: https://aistudio.google.com/apikey\n"
+        "  sops <secrets-file> → gemini_api_key: AIza...\n"
+        "  nixos-rebuild switch --flake .#hyperd-ai-dev\n\n"
+        "Option 3 — Session variable:\n"
+        "  export GEMINI_API_KEY=AIza...\n"
+    )
+
+# ── task id & registry ─────────────────────────────────────────────────────
+
+def _task_id() -> str:
+    rand = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=6))
+    return f"antigravity-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{rand}"
+
+
+def _ensure_dirs():
+    _OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    _REGISTRY.touch(exist_ok=True)
+
+
+def _registry_append(task_id: str, role: str, description: str, output_file: Path):
+    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    entry = {
+        "id": task_id, "agent": "antigravity", "role": role,
+        "description": description[:200],
+        "output_file": str(output_file.relative_to(_REPO)),
+        "pid": None, "status": "running",
+        "tokens_in": None, "tokens_out": None, "created": ts,
+    }
+    with open(_REGISTRY, "a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        fh.write(json.dumps(entry) + "\n")
+        fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def _registry_set_pid(task_id: str, pid: int):
+    _registry_update(task_id, "running", pid=pid)
+
+
+def _registry_update(task_id: str, status: str, *,
+                     tokens_in: "int | None" = None,
+                     tokens_out: "int | None" = None,
+                     pid: "int | None" = None):
+    if not _REGISTRY.exists():
+        return
+    lines = []
+    for line in _REGISTRY.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                e["status"] = status
+                if pid is not None:       e["pid"] = pid
+                if tokens_in is not None:  e["tokens_in"] = tokens_in
+                if tokens_out is not None: e["tokens_out"] = tokens_out
+            lines.append(json.dumps(e))
+        except Exception:
+            lines.append(line)
+    with open(_REGISTRY, "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        fh.write("\n".join(lines) + "\n")
+        fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
+def _count_running() -> int:
+    if not _REGISTRY.exists():
+        return 0
+    count = 0
+    for line in _REGISTRY.read_text().splitlines():
+        try:
+            e = json.loads(line)
+            if e.get("agent") == "antigravity" and e.get("status") == "running":
+                pid = e.get("pid")
+                if pid and _pid_alive(int(pid)):
+                    count += 1
+        except Exception:
+            pass
+    return count
+
+# ── streaming ──────────────────────────────────────────────────────────────
+
+def _stream_task(task_id: str, prompt: str, role: str, model: str,
+                 max_tokens: int, timeout: int, log_path: Path,
+                 print_to_stdout: bool = False) -> "tuple[str, int, int]":
+    """Stream Gemini SSE response to log_path. Returns (status, tokens_in, tokens_out)."""
+    import urllib.request, urllib.error, http.client, socket
+
+    auth_hdr, auth_val = _resolve_auth()
+
+    role_prefix = f"[ROLE: {role}]\n\n"
+    full_prompt = role_prefix + _HARNESS_SYSTEM + "\n" + prompt
+
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.2},
+        "safetySettings": [
+            {"category": c, "threshold": "BLOCK_NONE"} for c in [
+                "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT",
+            ]
+        ],
+    }
+
+    # ?alt=sse is REQUIRED — without it the API returns a JSON array (not incremental SSE)
+    url = f"{_BASE_URL}/models/{model}:streamGenerateContent?alt=sse"
+    data = json.dumps(payload).encode()
+    headers = {
+        "Content-Type":  "application/json",
+        "Accept":        "text/event-stream",
+        "User-Agent":    "delegate-to-antigravity/1",
+        auth_hdr:        auth_val,
+    }
+
+    tokens_in = tokens_out = 0
+    text_bytes = 0
+
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=timeout) as resp, \
+                 open(log_path, "a") as log_fh:
+                buf = b""
+                for chunk in iter(lambda: resp.read(4096), b""):
+                    buf += chunk
+                    # SSE messages are separated by double newline
+                    while b"\n\n" in buf:
+                        msg, buf = buf.split(b"\n\n", 1)
+                        for raw_line in msg.splitlines():
+                            if not raw_line.startswith(b"data: "):
+                                continue
+                            raw = raw_line[6:].strip()
+                            if not raw or raw == b"[DONE]":
+                                continue
+                            try:
+                                obj = json.loads(raw)
+                            except Exception:
+                                continue
+                            for cand in obj.get("candidates", []):
+                                for part in cand.get("content", {}).get("parts", []):
+                                    txt = part.get("text", "")
+                                    if txt:
+                                        log_fh.write(txt)
+                                        log_fh.flush()
+                                        text_bytes += len(txt.encode())
+                                        if print_to_stdout:
+                                            sys.stdout.write(txt)
+                                            sys.stdout.flush()
+                            if "usageMetadata" in obj:
+                                meta = obj["usageMetadata"]
+                                tokens_in  = meta.get("promptTokenCount", 0)
+                                tokens_out = meta.get("candidatesTokenCount", 0)
+            if print_to_stdout:
+                sys.stdout.write("\n")
+            status = "done" if text_bytes >= _MIN_CONTENT_BYTES else "failed"
+            return status, tokens_in, tokens_out
+
+        except urllib.error.HTTPError as exc:
+            try:
+                body = exc.read().decode(errors="replace")
+            except Exception:
+                body = ""
+
+            if exc.code in (401, 403):
+                msg = (
+                    "ERROR: Authentication failed.\n"
+                    + ("  Run: gcloud auth application-default login\n"
+                       if auth_hdr == "Authorization"
+                       else "  API key invalid/expired — create new key at https://aistudio.google.com/apikey\n")
+                )
+                with open(log_path, "a") as f:
+                    f.write(msg)
+                return "failed", 0, 0
+
+            if exc.code == 429:
+                # Distinguish billing exhaustion from rate limiting
+                if any(w in body.lower() for w in ("credits", "prepayment", "billing")):
+                    with open(log_path, "a") as f:
+                        f.write(
+                            "ERROR: Billing/prepaid credits exhausted (HTTP 429).\n"
+                            "Switch to Google account auth (no extra cost):\n"
+                            "  gcloud auth application-default login\n"
+                            "Or get a free-tier key: https://aistudio.google.com/apikey\n"
+                        )
+                    return "failed", 0, 0
+                # Rate limit — retry with Retry-After
+                retry_s = int(exc.headers.get("Retry-After", 30 * (2 ** attempt)))
+                jitter = random.uniform(0, min(retry_s * 0.1, 5))
+                time.sleep(retry_s + jitter)
+                continue
+
+            if exc.code == 400 and attempt == 0:
+                # Retry once without safetySettings (some account tiers reject BLOCK_NONE)
+                payload_safe = {k: v for k, v in payload.items() if k != "safetySettings"}
+                data = json.dumps(payload_safe).encode()
+                continue
+
+            if exc.code >= 500:
+                time.sleep(2.0 * (2 ** attempt) + random.uniform(0, 1))
+                continue
+
+            with open(log_path, "a") as f:
+                f.write(f"ERROR: HTTP {exc.code}: {body[:300]}\n")
+            return "failed", 0, 0
+
+        except (OSError, socket.timeout, http.client.IncompleteRead):
+            if attempt < 2:
+                time.sleep(2.0 * (2 ** attempt))
+                continue
+            with open(log_path, "a") as f:
+                f.write("ERROR: Connection error after 3 attempts.\n")
+            return "failed", 0, 0
+
+    return "failed", 0, 0
+
+# ── pending / audit helpers ─────────────────────────────────────────────────
+
+def _pending_update(*args):
+    try:
+        subprocess.run(
+            [sys.executable, str(_PENDING_UPDATE)] + list(args),
+            timeout=5, check=False, capture_output=True,
+        )
+    except Exception:
+        pass
+
+
+def _audit(verb: str, *args):
+    try:
+        subprocess.run(
+            ["bash", "-c",
+             f'source "{_AUDIT_WRITE}" 2>/dev/null && audit_event_{verb} antigravity "$@"',
+             "--"] + [str(a) for a in args],
+            timeout=5, check=False, capture_output=True,
+        )
+    except Exception:
+        pass
+
+# ── subcommands ────────────────────────────────────────────────────────────
+
+def cmd_list():
+    if not _REGISTRY.exists():
+        print("No delegated tasks yet.")
+        return
+    header = f"{'TASK ID':<38}  {'STATUS':<16}  {'ROLE':<12}  {'IN':>6}  {'OUT':>7}  DESCRIPTION"
+    print(header)
+    print("-" * len(header))
+    for line in _REGISTRY.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            e = json.loads(line)
+            if e.get("agent") != "antigravity":
+                continue
+            ti  = str(e.get("tokens_in") or "-")
+            to  = str(e.get("tokens_out") or "-")
+            desc = e.get("description", "")[:50]
+            print(f"{e['id']:<38}  {e.get('status','?'):<16}  "
+                  f"{e.get('role','?'):<12}  {ti:>6}  {to:>7}  {desc}")
+        except Exception:
+            pass
+
+
+def cmd_status(task_id: str):
+    if not _REGISTRY.exists():
+        sys.exit(f"Task not found: {task_id}")
+    for line in _REGISTRY.read_text().splitlines():
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                print(json.dumps(e, indent=2))
+                pid = e.get("pid")
+                if pid and _pid_alive(int(pid)):
+                    print(f"[delegate-to-antigravity] Process {pid} is still running.")
+                else:
+                    print("[delegate-to-antigravity] Process no longer running.")
+                return
+        except Exception:
+            pass
+    sys.exit(f"Task not found: {task_id}")
+
+
+def cmd_check(task_id: str):
+    if not _REGISTRY.exists():
+        sys.exit(f"Task not found: {task_id}")
+    for line in _REGISTRY.read_text().splitlines():
+        try:
+            e = json.loads(line)
+            if e.get("id") == task_id:
+                out = e.get("output_file", "")
+                out_path = (_REPO / out) if not Path(out).is_absolute() else Path(out)
+                if not out_path.exists():
+                    sys.exit(f"Output not found: {out_path}  (task may still be running)")
+                sys.stdout.write(out_path.read_text())
+                return
+        except Exception:
+            pass
+    sys.exit(f"Task not found: {task_id}")
+
+
+def cmd_delegate(prompt: str, role: str, mode: str,
+                 model_override: "str | None", max_tokens: int,
+                 timeout: int, wait: bool):
+    _ensure_dirs()
+
+    # Concurrent task guard
+    running_count = _count_running()
+    if running_count >= _MAX_CONCURRENT:
+        sys.exit(
+            f"ERROR: {running_count} antigravity tasks already running (max {_MAX_CONCURRENT}).\n"
+            "Wait for current tasks or read them with --check <id>."
+        )
+
+    model = model_override or _MODEL_MAP.get(mode, "gemini-2.0-flash-lite")
+    if not _MODEL_RE.match(model):
+        sys.exit(f"ERROR: Invalid model ID '{model}'. Must match: gemini-[a-z0-9][a-z0-9.-]*")
+
+    tid = _task_id()
+    log_path = _OUTPUTS_DIR / f"{tid}.log"
+    rel_log = f".agents/delegation/outputs/{tid}.log"
+
+    def _info(s: str):
+        print(f"[delegate-to-antigravity] {s}")
+
+    _info(f"Delegating task: {tid}")
+    _info(f"Role:            {role}")
+    _info(f"Model:           {model} (--mode {mode})")
+    _info(f"Output file:     {log_path}")
+
+    # Register before dispatch so task is findable even if fork fails
+    _registry_append(tid, role, prompt, log_path)
+    _pending_update("add", tid, "antigravity", rel_log, prompt[:120])
+    _audit("start", tid, prompt[:200])
+
+    if wait:
+        status, ti, to = _stream_task(
+            tid, prompt, role, model, max_tokens, timeout, log_path,
+            print_to_stdout=True,
+        )
+        _registry_update(tid, status, tokens_in=ti, tokens_out=to)
+        _pending_update(status, tid)
+        _audit("end", tid, "success" if status == "done" else "error", "0",
+               f"{status}: {prompt[:100]}", role)
+        _info(f"Task {tid} {status} (tokens: {ti}→{to})")
+        print(tid)
+        return
+
+    # Background mode: clear API key from child process environment
+    os.environ.pop("GEMINI_API_KEY", None)
+
+    child = os.fork()
+    if child > 0:
+        # Parent: record PID and return immediately
+        _registry_set_pid(tid, child)
+        _info(f"Task {tid} started in background (pid {child})")
+        _info(f"Check output:  delegate-to-antigravity --check {tid}")
+        _info(f"Check status:  delegate-to-antigravity --status {tid}")
+        print(tid)
+        return
+
+    # Child: detach from terminal, run delegation, update registry, exit
+    os.setsid()
+    devnull = os.open("/dev/null", os.O_RDWR)
+    os.dup2(devnull, sys.stdin.fileno())
+    os.close(devnull)
+
+    try:
+        status, ti, to = _stream_task(
+            tid, prompt, role, model, max_tokens, timeout, log_path,
+        )
+        _registry_update(tid, status, tokens_in=ti, tokens_out=to)
+        _pending_update(status, tid)
+        _audit("end", tid, "success" if status == "done" else "error", "0",
+               f"{status}: {prompt[:100]}", role)
+    except Exception as exc:
+        try:
+            with open(log_path, "a") as f:
+                f.write(f"FATAL: unhandled exception in child: {exc}\n")
+        except Exception:
+            pass
+        _registry_update(tid, "failed")
+        _pending_update("failed", tid)
+
+    os._exit(0)
+
+# ── argument parsing ────────────────────────────────────────────────────────
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="delegate-to-antigravity",
+        description="Headless Gemini delegation via direct REST API (Antigravity era).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--prompt",      metavar="TEXT", help="Task prompt")
+    p.add_argument("--prompt-file", metavar="FILE", help="Read prompt from file")
+    p.add_argument("--role", default="implementer",
+                   help=f"Agent role [{', '.join(sorted(_VALID_ROLES))}]  [default: implementer]")
+    p.add_argument("--mode", default="fast",
+                   help=f"Model mode [{', '.join(sorted(_MODEL_MAP))}]  [default: fast]")
+    p.add_argument("--model", metavar="MODEL_ID",
+                   help="Gemini model ID override (bypasses --mode)")
+    p.add_argument("--max-tokens", type=int, default=8192,
+                   help="Max output tokens [default: 8192, range: 1–32768]")
+    p.add_argument("--timeout", type=int, default=900,
+                   help="HTTP read timeout in seconds [default: 900]")
+    p.add_argument("--wait",   action="store_true", help="Block until completion, print output")
+    p.add_argument("--check",  metavar="ID", help="Print output of a completed task")
+    p.add_argument("--status", metavar="ID", help="Show status JSON for a task")
+    p.add_argument("--list",   action="store_true", help="List all antigravity tasks")
+    return p
+
+
+def main():
+    p = _build_parser()
+    args = p.parse_args()
+
+    if args.role not in _VALID_ROLES:
+        p.error(f"Invalid --role '{args.role}'. Valid: {', '.join(sorted(_VALID_ROLES))}")
+    if args.mode not in _MODEL_MAP:
+        p.error(f"Invalid --mode '{args.mode}'. Valid: {', '.join(sorted(_MODEL_MAP))}")
+    if not (1 <= args.max_tokens <= 32768):
+        p.error("--max-tokens must be 1–32768")
+
+    _ensure_dirs()
+
+    if args.list:
+        cmd_list()
+    elif args.check:
+        cmd_check(args.check)
+    elif args.status:
+        cmd_status(args.status)
+    else:
+        prompt = args.prompt or ""
+        if args.prompt_file:
+            pf = Path(args.prompt_file)
+            if not pf.exists():
+                p.error(f"Prompt file not found: {pf}")
+            prompt = pf.read_text()
+        if not prompt.strip():
+            p.error("Provide --prompt TEXT or --prompt-file FILE")
+        cmd_delegate(prompt, args.role, args.mode, args.model,
+                     args.max_tokens, args.timeout, args.wait)
+
+
+if __name__ == "__main__":
+    main()

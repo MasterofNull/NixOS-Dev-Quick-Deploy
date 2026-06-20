@@ -51,6 +51,7 @@
     "neovim"
     "opencode"
     "antigravity"
+    "google-cloud-sdk"
   ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
   missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) mergedPackageNames;

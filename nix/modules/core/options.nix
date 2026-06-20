@@ -953,7 +953,7 @@
         geminiApiKey = lib.mkOption {
           type = lib.types.str;
           default = "gemini_api_key";
-          description = "SOPS key name for Google AI Studio (Gemini) API key used by delegate-to-gemini and the gemini npm CLI.";
+          description = "SOPS key name for Google Gemini API key. Used by delegate-to-antigravity (fallback auth) and switchboard remote-gemini profile (via remoteApiKeyFile). Primary auth for delegate-to-antigravity is gcloud ADC (OAuth2 — no AI Studio credits needed).";
         };
       };
     };
@@ -1639,10 +1639,14 @@
         remoteUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          example = "https://openrouter.ai/api";
+          example = "https://generativelanguage.googleapis.com/v1beta/openai";
           description = ''
-            OpenAI-compatible remote endpoint base URL.
+            OpenAI-compatible remote endpoint base URL for switchboard remote profiles.
             Expected form: https://host[/api] (without /v1 suffix is preferred).
+            For Gemini direct (recommended — uses subscription key, no OpenRouter): set to
+            "https://generativelanguage.googleapis.com/v1beta/openai" and point
+            remoteApiKeyFile at /run/secrets/gemini_api_key.
+            For OpenRouter: "https://openrouter.ai/api".
           '';
         };
 
@@ -1663,10 +1667,13 @@
           gemini = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            example = "google/gemini-2.5-pro";
+            example = "gemini-2.5-flash";
             description = ''
               Remote model alias used for Gemini-backed orchestration, planning,
               and synthesis requests routed through the harness front door.
+              When remoteUrl points to generativelanguage.googleapis.com/v1beta/openai,
+              use bare model names (e.g. "gemini-2.5-flash", "gemini-2.0-flash").
+              When using OpenRouter, prefix with "google/" (e.g. "google/gemini-2.5-pro").
             '';
           };
 
