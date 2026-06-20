@@ -54,7 +54,7 @@ apply_preset() {
     llama-cpp)
       SERVICE="${SERVICE:-llama-cpp.service}"
       HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
-      EXPECTED_LIB="${EXPECTED_LIB:-libggml-vulkan}"
+      EXPECTED_LIB="${EXPECTED_LIB:-libggml}"
       SUCCESS_PATTERN="${SUCCESS_PATTERN:-Vulkan0|Vulkan_Host}"
       JOURNAL_PATTERN="${JOURNAL_PATTERN:-usable GPU|dedicated memory|CPU_Mapped|Vulkan0|Vulkan_Host|ggml_vulkan|KV buffer|compute buffer|output buffer}"
       PROBE_CMD="${PROBE_CMD:-__ENV__ __BINARY__ --list-devices}"
@@ -280,7 +280,11 @@ healthy=0
 if [[ "$service_active" != "active" ]]; then
   classification="service_inactive"
   recommendation="Start the unit and inspect systemd/journal output first."
-elif [[ "$linked_expected" == "no" ]]; then
+elif [[ "$linked_expected" == "no" && "$health_status" != "ok" ]]; then
+  # Only flag linkage mismatch when the service is also unhealthy. libggml-vulkan
+  # is a dlopen plugin (not a direct link dep in llama.cpp ≥9222), so ldd will
+  # never find it even on a healthy GPU-backed build. A healthy service with a
+  # probe mismatch falls through to runtime_probe_mismatch below.
   classification="package_linkage_mismatch"
   recommendation="Fix the package/overlay so the expected runtime library is linked."
 elif [[ "$health_status" == "fail" ]]; then
