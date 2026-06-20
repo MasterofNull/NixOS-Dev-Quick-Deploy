@@ -226,11 +226,11 @@
         "nixpkgs": "nixpkgs_3"
       },
       "locked": {
-        "lastModified": 1781767375,
-        "narHash": "sha256-8Qdu+OpM98UYD/+C08ejv771/7bdd4FZ0eeKYFqpNhA=",
+        "lastModified": 1781807193,
+        "narHash": "sha256-sH1DAUj0MDfV4GG/AzUaJr0mBvUqTkuyTriQz9AWpfM=",
         "owner": "nixified-ai",
         "repo": "flake",
-        "rev": "823985a4f5557144a6bf8d5d7dd325f33d3f0f42",
+        "rev": "bbd3a04fa1ae294096154e924d80908e607bcebd",
         "type": "github"
       },
       "original": {

@@ -200,7 +200,9 @@ let
     renamedServer = pkgs.runCommand "llama-server-unconfined" {} ''
       mkdir -p "$out/bin"
       cp ${pkgs.llama-cpp}/bin/llama-server "$out/bin/llama-server-unconfined"
+      cp ${pkgs.llama-cpp}/bin/libggml-*.so "$out/bin/" 2>/dev/null || true
       chmod 0555 "$out/bin/llama-server-unconfined"
+      chmod 0444 "$out/bin"/libggml-*.so 2>/dev/null || true
     '';
   in "${renamedServer}/bin/llama-server-unconfined";
 
