@@ -949,6 +949,12 @@
           default = "crowdsec_bouncer_api_key";
           description = "SOPS key name for CrowdSec firewall bouncer API key.";
         };
+
+        geminiApiKey = lib.mkOption {
+          type = lib.types.str;
+          default = "gemini_api_key";
+          description = "SOPS key name for Google AI Studio (Gemini) API key used by delegate-to-gemini and the gemini npm CLI.";
+        };
       };
     };
 
