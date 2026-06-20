@@ -14,6 +14,33 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
+## Auth Architecture (2026-06-18 — PERMANENT CHANGE)
+
+Google sunset individual/consumer-tier OAuth access to the Gemini CLI on 2026-06-18.
+`cloudcode-pa.googleapis.com/v1internal:onboardUser` now returns "Resource has been
+exhausted" for all individual accounts. **This is permanent, not a quota hit.**
+
+**Current auth state (working):**
+- `~/.gemini/settings.json` → `auth.selectedType: "gemini-api-key"` (NOT oauth-personal)
+- API key stored in `~/.gemini/gemini-credentials.json` (gemini CLI internal credential store)
+- Traffic routes through `generativelanguage.googleapis.com` (AI Studio) — NOT the sunset endpoint
+- `delegate-to-gemini` continues to use the `gemini` npm CLI at `~/.npm-global/bin/gemini`
+  with the stored credentials — no env var needed day-to-day
+
+**Antigravity CLI (`antigravity` binary on PATH after rebuild):**
+- Google's replacement product — a VS Code fork IDE (like Cursor/Windsurf), NOT a headless CLI
+- Use for: interactive AI-assisted development sessions
+- Do NOT use for: headless delegation, background tasks, agent pipelines
+- Config lives at `~/.gemini/antigravity/` (already seeded with lean-ctx MCP)
+- `antigravity chat <prompt>` opens the IDE with chat focused — not scriptable for delegation
+
+**Delegation (unchanged):** `delegate-to-gemini` → `gemini` npm CLI → AI Studio API key → Gemini models.
+If credentials are ever wiped, re-auth by setting `GEMINI_API_KEY` env var from
+https://aistudio.google.com/apikey and running `gemini` once interactively.
+The key should also be added to `nix/hosts/hyperd/home-deploy-options.nix` (gitignored) for resilience.
+
+---
+
 ## Role & Mode
 
 You are a NixOS AI harness agent for NixOS-Dev-Quick-Deploy.
