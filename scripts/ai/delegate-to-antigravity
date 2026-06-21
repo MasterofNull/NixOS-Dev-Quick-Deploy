@@ -2,7 +2,18 @@
 """delegate-to-antigravity — Headless Gemini REST API delegation (Antigravity era).
 
 Replaces @google/gemini-cli npm dependency. Calls generativelanguage.googleapis.com
-directly. Auth priority: gcloud ADC (subscription) → SOPS secret → env var → die.
+directly using an API key. Auth priority: SOPS secret → env var → die.
+
+NOTE: generativelanguage.googleapis.com is a consumer API that only accepts API keys.
+gcloud ADC / OAuth2 Bearer tokens are rejected with ACCESS_TOKEN_SCOPE_INSUFFICIENT.
+OAuth2 works only for the Vertex AI endpoint (aiplatform.googleapis.com), which
+requires a GCP project and different billing. API keys are the correct auth for this API.
+
+Auth setup — free-tier AI Studio key (no billing, no credits needed, 15-30 RPM):
+  1. Create key at https://aistudio.google.com/apikey
+  2. Add to SOPS: sops <secrets-file> → gemini_api_key: AIza...
+  3. Rebuild: nixos-rebuild switch --flake .#hyperd-ai-dev
+  (or for testing: export GEMINI_API_KEY=AIza...)
 
 Usage:
   delegate-to-antigravity --prompt "task description"   # background dispatch
@@ -10,14 +21,6 @@ Usage:
   delegate-to-antigravity --check <task-id>             # read output
   delegate-to-antigravity --status <task-id>            # check status
   delegate-to-antigravity --list                        # list all tasks
-
-Auth setup (one time — uses your Google subscription, no AI Studio credits):
-  nix-env -iA nixpkgs.google-cloud-sdk   # or add to nix/modules/core/base.nix
-  gcloud auth application-default login   # browser-based, one time
-
-Fallback auth (AI Studio free-tier key):
-  sops <secrets-file> → gemini_api_key: AIza...
-  nixos-rebuild switch --flake .#hyperd-ai-dev
 """
 
 import argparse
@@ -41,12 +44,10 @@ _OUTPUTS_DIR = _DELEGATION_DIR / "outputs"
 _REGISTRY = _DELEGATION_DIR / "registry.jsonl"
 _PENDING_UPDATE = _HERE / "lib" / "pending-update"
 _AUDIT_WRITE = _HERE / "lib" / "audit-write.sh"
-_ADC_PATH = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
 _SOPS_KEY_PATH = Path("/run/secrets/gemini_api_key")
 
 # ── constants ──────────────────────────────────────────────────────────────
 _BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _MIN_CONTENT_BYTES = 200  # below this → failed, not partial-success
 _MAX_CONCURRENT = 3       # prevent runaway loops from exhausting daily quota
 
@@ -78,63 +79,31 @@ _HARNESS_SYSTEM = (
 )
 
 # ── auth ───────────────────────────────────────────────────────────────────
-
-def _oauth2_token() -> "str | None":
-    """Exchange gcloud ADC refresh token for an access token (stdlib only)."""
-    import urllib.request, urllib.parse
-    if not _ADC_PATH.exists():
-        return None
-    try:
-        creds = json.loads(_ADC_PATH.read_text())
-    except Exception:
-        return None
-    if creds.get("type") != "authorized_user":
-        return None
-    try:
-        body = urllib.parse.urlencode({
-            "client_id":     creds["client_id"],
-            "client_secret": creds["client_secret"],
-            "refresh_token": creds["refresh_token"],
-            "grant_type":    "refresh_token",
-        }).encode()
-        req = urllib.request.Request(
-            _TOKEN_URL, data=body,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read()).get("access_token")
-    except Exception:
-        return None
-
+# NOTE: generativelanguage.googleapis.com only accepts API keys.
+# gcloud ADC / OAuth2 Bearer tokens are rejected (ACCESS_TOKEN_SCOPE_INSUFFICIENT).
+# API key is the only valid auth for this endpoint.
 
 def _resolve_auth() -> "tuple[str, str]":
     """Returns (header_name, header_value). Exits with guidance if no auth."""
-    # 1. gcloud ADC — uses Google account subscription, no AI Studio credits
-    token = _oauth2_token()
-    if token:
-        return ("Authorization", f"Bearer {token}")
-
-    # 2. SOPS secret (AI Studio free-tier key)
+    # 1. SOPS secret (AI Studio free-tier key — no billing needed)
     if _SOPS_KEY_PATH.exists() and _SOPS_KEY_PATH.stat().st_size > 0:
         key = _SOPS_KEY_PATH.read_text().strip()
         if key:
             return ("x-goog-api-key", key)
 
-    # 3. Environment variable fallback
+    # 2. Environment variable fallback
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     if key:
         return ("x-goog-api-key", key)
 
     sys.exit(
-        "ERROR: No Gemini credentials found.\n\n"
-        "Option 1 — Use your Google subscription (no extra cost):\n"
-        "  Add google-cloud-sdk to nix/modules/core/base.nix, rebuild, then:\n"
-        "  gcloud auth application-default login\n\n"
-        "Option 2 — Free-tier AI Studio API key (no billing needed):\n"
-        "  Create key at: https://aistudio.google.com/apikey\n"
+        "ERROR: No Gemini API key found.\n\n"
+        "generativelanguage.googleapis.com requires an API key (not OAuth2/ADC).\n\n"
+        "Option 1 — SOPS secret (persistent, recommended):\n"
+        "  Create free key at: https://aistudio.google.com/apikey\n"
         "  sops <secrets-file> → gemini_api_key: AIza...\n"
         "  nixos-rebuild switch --flake .#hyperd-ai-dev\n\n"
-        "Option 3 — Session variable:\n"
+        "Option 2 — Session variable (testing only):\n"
         "  export GEMINI_API_KEY=AIza...\n"
     )
 
