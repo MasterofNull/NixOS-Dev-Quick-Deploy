@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 CATALOG_METADATA: Dict[str, Any] = {
     "catalog_version": "phase154-local-model-catalog",
-    "catalog_reviewed_at": "2026-06-09T00:00:00Z",
-    "source_reviewed_at": "2026-06-09T00:00:00Z",
+    "catalog_reviewed_at": "2026-06-21T18:31:31Z",
+    "source_reviewed_at": "2026-06-21T18:31:31Z",
     "freshness_max_age_days": 45,
     "freshness_policy": "review static catalog entries, active model profile, and model availability within policy window",
 }

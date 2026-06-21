@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""
+aq-antigravity-agent — Headless Antigravity agent loop.
+
+Runs a Gemini-backed agent loop with local tool access.
+Forces remote reasoning via hybrid-coordinator/switchboard while maintaining
+local MCP tool execution. Designed to be dispatched by delegate-to-antigravity --loop.
+
+The outer delegate-to-antigravity task already handles registry tracking.
+This script handles execution only.
+
+Usage:
+    aq-antigravity-agent --task "implement X"
+    aq-antigravity-agent --task "..." --role architect
+    aq-antigravity-agent --task "..." --mode pro --output /path/to/output.log
+"""
+
+import argparse
+import asyncio
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+
+# ── path setup ───────────────────────────────────────────────────────────────
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = Path(os.environ.get("REPO_ROOT", str(_SCRIPT_DIR.parent.parent)))
+_LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
+_BUILTIN_TOOLS = _LOCAL_AGENTS / "builtin_tools"
+
+for _p in [str(_LOCAL_AGENTS), str(_BUILTIN_TOOLS), str(_SCRIPT_DIR / "lib")]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    from tool_registry import ToolRegistry
+    from agent_executor import LocalAgentExecutor, Task, AgentType, TaskStatus
+    from file_operations import register_file_tools
+    from shell_tools import register_shell_tools
+    from git_tools import register_git_tools
+    from ai_coordination import register_ai_coordination_tools
+except ImportError as e:
+    print(f"ERROR: Failed to import infrastructure: {e}", file=sys.stderr)
+    sys.exit(1)
+
+# Service endpoints
+COORDINATOR_URL = os.environ.get("COORDINATOR_URL", "http://127.0.0.1:8003")
+LLAMA_URL       = os.environ.get("LLAMA_URL",       "http://127.0.0.1:8080")
+
+# Map --mode aliases to switchboard remote profiles.
+# Valid profiles per nix/modules/services/switchboard.nix:
+#   remote-default, remote-gemini, remote-free, remote-coding,
+#   remote-reasoning, remote-toolcalling, remote-opencode
+_MODE_PROFILE = {
+    "fast":        "remote-free",
+    "flash":       "remote-gemini",
+    "pro":         "remote-reasoning",
+    "architect":   "remote-reasoning",
+    "implementer": "remote-gemini",
+    "reviewer":    "remote-free",
+}
+
+# ── logging ───────────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.WARNING,
+    format="[aq-antigravity-agent] %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+# ── implementation ────────────────────────────────────────────────────────────
+
+def build_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    register_file_tools(registry)
+    register_shell_tools(registry)
+    register_git_tools(registry)
+    register_ai_coordination_tools(registry)
+    return registry
+
+
+async def run_agent(
+    task_text: str,
+    role: str | None,
+    output_file: str | None,
+    mode: str | None = None,
+    model: str | None = None,
+) -> int:
+    registry = build_registry()
+
+    executor = LocalAgentExecutor(
+        tool_registry=registry,
+        fallback_endpoint=COORDINATOR_URL,
+        llama_endpoint=LLAMA_URL,
+        enable_fallback=True,
+        offline_mode=False,
+        allow_degraded_local_execution=False,
+    )
+
+    tid = f"antigravity-{int(time.time())}"
+    if not output_file:
+        output_file = str(
+            _REPO_ROOT / ".agents" / "delegation" / "outputs" / f"{tid}.log"
+        )
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    os.environ["AGENT_PROGRESS_FILE"] = f"{output_file}.progress.json"
+    os.environ["AGENT_STEPS_FILE"]    = f"{output_file}.steps.jsonl"
+
+    remote_profile = _MODE_PROFILE.get(mode, None) if mode else None
+
+    task = Task(
+        id=tid,
+        objective=task_text,
+        force_remote=True,
+        role=role,
+        remote_profile=remote_profile,
+        remote_model=model,
+    )
+
+    print(f"[aq-antigravity-agent] Task ID: {tid}")
+    print(f"[aq-antigravity-agent] Profile: {remote_profile or 'auto'}")
+    print(f"[aq-antigravity-agent] Running...\n")
+
+    start = time.time()
+    try:
+        result_task = await executor.execute_task(task, AgentType.AGENT)
+        elapsed = time.time() - start
+        success = result_task.status == TaskStatus.COMPLETED
+        status_label = "done" if success else "failed"
+
+        with open(output_file, "w") as fh:
+            if success:
+                fh.write(result_task.result or "")
+            else:
+                fh.write(f"ERROR: {result_task.error}")
+
+        print(f"\n[aq-antigravity-agent] Status:  {status_label}")
+        print(f"[aq-antigravity-agent] Elapsed: {elapsed:.1f}s")
+
+        if success:
+            print(f"\n--- Result ---\n{result_task.result}\n")
+        else:
+            print(f"\n--- Error ---\n{result_task.error}\n", file=sys.stderr)
+
+        return 0 if success else 1
+
+    except Exception as e:
+        print(f"CRITICAL ERROR: {e}", file=sys.stderr)
+        return 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Headless Antigravity Agent Loop")
+    parser.add_argument("--task",   required=True, help="Task objective")
+    parser.add_argument("--role",   help="Agent role (architect, implementer, etc.)")
+    parser.add_argument("--mode",   help="Model mode: fast|flash|pro|architect|implementer|reviewer")
+    parser.add_argument("--model",  help="Gemini model ID override (e.g. gemini-2.5-flash)")
+    parser.add_argument("--output", help="Output log file path")
+    args = parser.parse_args()
+    sys.exit(asyncio.run(run_agent(args.task, args.role, args.output, args.mode, args.model)))
+
+
+if __name__ == "__main__":
+    main()
