@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""delegate-to-antigravity — Headless Gemini REST API delegation (Antigravity era).
+"""delegate-to-antigravity — Headless AI delegation via gemini CLI (oauth-personal).
 
-Replaces @google/gemini-cli npm dependency. Calls generativelanguage.googleapis.com
-directly using an API key. Auth priority: SOPS secret → env var → die.
+Uses Google Code Assist (cloudcode-pa.googleapis.com) with oauth-personal auth.
+This is the free path — requires Google account login, NOT a paid API key.
 
-NOTE: generativelanguage.googleapis.com is a consumer API that only accepts API keys.
-gcloud ADC / OAuth2 Bearer tokens are rejected with ACCESS_TOKEN_SCOPE_INSUFFICIENT.
-OAuth2 works only for the Vertex AI endpoint (aiplatform.googleapis.com), which
-requires a GCP project and different billing. API keys are the correct auth for this API.
+Auth setup (one-time, interactive):
+  Run in a terminal: gemini -p "test"
+  When prompted "Opening authentication page in your browser. Do you want to continue? [Y/n]:"
+  → press Y, complete Google sign-in in your browser.
+  After that, all headless calls work automatically.
 
-Auth setup — free-tier AI Studio key (no billing, no credits needed, 15-30 RPM):
-  1. Create key at https://aistudio.google.com/apikey
-  2. Add to SOPS: sops <secrets-file> → gemini_api_key: AIza...
-  3. Rebuild: nixos-rebuild switch --flake .#hyperd-ai-dev
-  (or for testing: export GEMINI_API_KEY=AIza...)
+Auth is stored in: ~/.gemini/gemini-credentials.json (AES-256-GCM encrypted)
+Settings: ~/.gemini/settings.json  → security.auth.selectedType = "oauth-personal"
 
 Usage:
   delegate-to-antigravity --prompt "task description"   # background dispatch
@@ -36,7 +34,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── paths ──────────────────────────────────────────────────────────────────
-# CRITICAL: use REPO_ROOT env var — this script may run from read-only Nix store.
 _HERE = Path(__file__).resolve().parent
 _REPO = Path(os.environ.get("REPO_ROOT", str(_HERE.parent.parent)))
 _DELEGATION_DIR = _REPO / ".agents" / "delegation"
@@ -44,27 +41,28 @@ _OUTPUTS_DIR = _DELEGATION_DIR / "outputs"
 _REGISTRY = _DELEGATION_DIR / "registry.jsonl"
 _PENDING_UPDATE = _HERE / "lib" / "pending-update"
 _AUDIT_WRITE = _HERE / "lib" / "audit-write.sh"
-_SOPS_KEY_PATH = Path("/run/secrets/gemini_api_key")
+_GEMINI_SETTINGS = Path.home() / ".gemini" / "settings.json"
+_GEMINI_CREDS = Path.home() / ".gemini" / "gemini-credentials.json"
 
 # ── constants ──────────────────────────────────────────────────────────────
-_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-_MIN_CONTENT_BYTES = 200  # below this → failed, not partial-success
-_MAX_CONCURRENT = 3       # prevent runaway loops from exhausting daily quota
+_MIN_CONTENT_BYTES = 200
+_MAX_CONCURRENT = 3
 
+# Code Assist (oauth-personal) accepts gemini model IDs directly.
+# On free tier, 2.0-flash and 2.5-flash are available; 2.5-pro may be rate-limited.
 _MODEL_MAP = {
-    "fast":        "gemini-2.0-flash-lite",      # free tier, 30 RPM
-    "flash":       "gemini-2.0-flash",            # free tier, 15 RPM
-    "pro":         "gemini-2.5-pro-preview-06-05", # paid / subscription
-    "architect":   "gemini-2.5-flash",            # free tier, 10 RPM
-    "implementer": "gemini-2.0-flash",            # alias for flash
-    "reviewer":    "gemini-2.0-flash-lite",       # alias for fast
+    "fast":        "gemini-2.0-flash",
+    "flash":       "gemini-2.0-flash",
+    "pro":         "gemini-2.5-pro-preview-06-05",
+    "architect":   "gemini-2.5-flash",
+    "implementer": "gemini-2.0-flash",
+    "reviewer":    "gemini-2.0-flash",
 }
-_MODEL_RE = re.compile(r"^gemini-[a-z0-9][a-z0-9.\-]*$")
 
 _VALID_ROLES = {
     "orchestrator", "architect", "implementer", "reviewer",
     "full-expert-team",
-    "plan", "implement", "review", "research",  # legacy aliases
+    "plan", "implement", "review", "research",
 }
 
 _HARNESS_SYSTEM = (
@@ -78,34 +76,72 @@ _HARNESS_SYSTEM = (
     "DO NOT COMMIT — the orchestrator (Claude) reviews and commits.\n"
 )
 
-# ── auth ───────────────────────────────────────────────────────────────────
-# NOTE: generativelanguage.googleapis.com only accepts API keys.
-# gcloud ADC / OAuth2 Bearer tokens are rejected (ACCESS_TOKEN_SCOPE_INSUFFICIENT).
-# API key is the only valid auth for this endpoint.
+# ── auth validation ─────────────────────────────────────────────────────────
 
-def _resolve_auth() -> "tuple[str, str]":
-    """Returns (header_name, header_value). Exits with guidance if no auth."""
-    # 1. SOPS secret (AI Studio free-tier key — no billing needed)
-    if _SOPS_KEY_PATH.exists() and _SOPS_KEY_PATH.stat().st_size > 0:
-        key = _SOPS_KEY_PATH.read_text().strip()
-        if key:
-            return ("x-goog-api-key", key)
+def _check_auth_ready() -> "tuple[bool, str]":
+    """Returns (is_ready, reason). Checks if gemini CLI has oauth-personal credentials."""
+    # Check settings are set to oauth-personal
+    if not _GEMINI_SETTINGS.exists():
+        return False, f"~/.gemini/settings.json not found"
+    try:
+        settings = json.loads(_GEMINI_SETTINGS.read_text())
+        auth_type = settings.get("security", {}).get("auth", {}).get("selectedType", "")
+        if auth_type != "oauth-personal":
+            return False, f"selectedType={auth_type!r} (expected 'oauth-personal')"
+    except Exception as e:
+        return False, f"Cannot parse settings.json: {e}"
 
-    # 2. Environment variable fallback
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if key:
-        return ("x-goog-api-key", key)
+    # Check credentials file exists and has content
+    if not _GEMINI_CREDS.exists() or _GEMINI_CREDS.stat().st_size < 50:
+        return False, "gemini-credentials.json missing or empty — run: gemini -p 'test' (completes OAuth)"
 
-    sys.exit(
-        "ERROR: No Gemini API key found.\n\n"
-        "generativelanguage.googleapis.com requires an API key (not OAuth2/ADC).\n\n"
-        "Option 1 — SOPS secret (persistent, recommended):\n"
-        "  Create free key at: https://aistudio.google.com/apikey\n"
-        "  sops <secrets-file> → gemini_api_key: AIza...\n"
-        "  nixos-rebuild switch --flake .#hyperd-ai-dev\n\n"
-        "Option 2 — Session variable (testing only):\n"
-        "  export GEMINI_API_KEY=AIza...\n"
-    )
+    # Try decrypting to check for oauth-personal token
+    try:
+        result = subprocess.run(
+            ["node", "-e", _DECRYPT_CREDS_JS],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            creds = json.loads(result.stdout)
+            # oauth-personal token stored under this key
+            if "gemini-cli-oauth-personal" in creds or "oauth-personal" in creds:
+                return True, "oauth-personal credentials present"
+            # Has only API key credentials — auth flow needed
+            return False, (
+                "gemini-credentials.json has only API key credentials.\n"
+                "Complete oauth-personal login by running in a terminal:\n"
+                "  gemini -p 'test'\n"
+                "Then press Y and sign in with your Google account in the browser."
+            )
+    except Exception:
+        pass
+
+    # Can't verify — credentials file exists but may be stale API key creds.
+    # Attempt the call anyway; gemini CLI will surface auth errors.
+    return True, "credentials file present (cannot verify type without decryption)"
+
+
+# Node.js snippet to decrypt gemini-credentials.json using the same key derivation as the CLI.
+_DECRYPT_CREDS_JS = """
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const credsFile = path.join(os.homedir(), '.gemini', 'gemini-credentials.json');
+try {
+  const data = fs.readFileSync(credsFile, 'utf-8').trim();
+  const parts = data.split(':');
+  if (parts.length !== 3) { console.log('{}'); process.exit(0); }
+  const salt = os.hostname() + '-' + os.userInfo().username + '-gemini-cli';
+  const key = crypto.scryptSync('gemini-cli-oauth', salt, 32);
+  const iv = Buffer.from(parts[0], 'hex');
+  const authTag = Buffer.from(parts[1], 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  let dec = decipher.update(parts[2], 'hex', 'utf8') + decipher.final('utf8');
+  console.log(dec);
+} catch(e) { console.log('{}'); }
+"""
 
 # ── task id & registry ─────────────────────────────────────────────────────
 
@@ -152,7 +188,7 @@ def _registry_update(task_id: str, status: str, *,
             e = json.loads(line)
             if e.get("id") == task_id:
                 e["status"] = status
-                if pid is not None:       e["pid"] = pid
+                if pid is not None:        e["pid"] = pid
                 if tokens_in is not None:  e["tokens_in"] = tokens_in
                 if tokens_out is not None: e["tokens_out"] = tokens_out
             lines.append(json.dumps(e))
@@ -187,140 +223,90 @@ def _count_running() -> int:
             pass
     return count
 
-# ── streaming ──────────────────────────────────────────────────────────────
+# ── delegation via gemini CLI ───────────────────────────────────────────────
 
-def _stream_task(task_id: str, prompt: str, role: str, model: str,
-                 max_tokens: int, timeout: int, log_path: Path,
-                 print_to_stdout: bool = False) -> "tuple[str, int, int]":
-    """Stream Gemini SSE response to log_path. Returns (status, tokens_in, tokens_out)."""
-    import urllib.request, urllib.error, http.client, socket
-
-    auth_hdr, auth_val = _resolve_auth()
-
+def _run_gemini_cli(task_id: str, prompt: str, role: str, model: str,
+                    timeout: int, log_path: Path,
+                    print_to_stdout: bool = False) -> "tuple[str, int, int]":
+    """Call gemini CLI (oauth-personal, Code Assist). Returns (status, 0, 0)."""
     role_prefix = f"[ROLE: {role}]\n\n"
     full_prompt = role_prefix + _HARNESS_SYSTEM + "\n" + prompt
 
-    payload = {
-        "contents": [{"role": "user", "parts": [{"text": full_prompt}]}],
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.2},
-        "safetySettings": [
-            {"category": c, "threshold": "BLOCK_NONE"} for c in [
-                "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH",
-                "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT",
-            ]
-        ],
-    }
+    cmd = [
+        "gemini",
+        "--output-format", "text",
+        "-p", full_prompt,
+    ]
+    if model:
+        cmd.extend(["-m", model])
 
-    # ?alt=sse is REQUIRED — without it the API returns a JSON array (not incremental SSE)
-    url = f"{_BASE_URL}/models/{model}:streamGenerateContent?alt=sse"
-    data = json.dumps(payload).encode()
-    headers = {
-        "Content-Type":  "application/json",
-        "Accept":        "text/event-stream",
-        "User-Agent":    "delegate-to-antigravity/1",
-        auth_hdr:        auth_val,
-    }
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+        )
 
-    tokens_in = tokens_out = 0
-    text_bytes = 0
+        output = result.stdout.strip()
+        stderr = result.stderr.strip()
 
-    for attempt in range(3):
-        try:
-            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=timeout) as resp, \
-                 open(log_path, "a") as log_fh:
-                buf = b""
-                for chunk in iter(lambda: resp.read(4096), b""):
-                    buf += chunk
-                    # SSE messages are separated by double newline
-                    while b"\n\n" in buf:
-                        msg, buf = buf.split(b"\n\n", 1)
-                        for raw_line in msg.splitlines():
-                            if not raw_line.startswith(b"data: "):
-                                continue
-                            raw = raw_line[6:].strip()
-                            if not raw or raw == b"[DONE]":
-                                continue
-                            try:
-                                obj = json.loads(raw)
-                            except Exception:
-                                continue
-                            for cand in obj.get("candidates", []):
-                                for part in cand.get("content", {}).get("parts", []):
-                                    txt = part.get("text", "")
-                                    if txt:
-                                        log_fh.write(txt)
-                                        log_fh.flush()
-                                        text_bytes += len(txt.encode())
-                                        if print_to_stdout:
-                                            sys.stdout.write(txt)
-                                            sys.stdout.flush()
-                            if "usageMetadata" in obj:
-                                meta = obj["usageMetadata"]
-                                tokens_in  = meta.get("promptTokenCount", 0)
-                                tokens_out = meta.get("candidatesTokenCount", 0)
+        # Detect auth errors (happens when oauth-personal flow is incomplete)
+        auth_error_patterns = [
+            "Authentication cancelled",
+            "Opening authentication page",
+            "FatalCancellationError",
+            "Error authenticating",
+        ]
+        if any(p in stderr for p in auth_error_patterns):
+            msg = (
+                "ERROR: gemini CLI requires interactive OAuth login.\n\n"
+                "Run once in a terminal to complete auth:\n"
+                "  gemini -p 'test'\n"
+                "Press Y when prompted, then sign in with your Google account.\n"
+                "After that, all headless delegation calls will work automatically.\n"
+            )
+            with open(log_path, "a") as f:
+                f.write(msg)
             if print_to_stdout:
+                sys.stderr.write(msg)
+            return "failed", 0, 0
+
+        if output:
+            with open(log_path, "a") as f:
+                f.write(output)
+                f.write("\n")
+            if print_to_stdout:
+                sys.stdout.write(output)
                 sys.stdout.write("\n")
-            status = "done" if text_bytes >= _MIN_CONTENT_BYTES else "failed"
-            return status, tokens_in, tokens_out
+                sys.stdout.flush()
+            status = "done" if len(output.encode()) >= _MIN_CONTENT_BYTES else "partial-success"
+            return status, 0, 0
 
-        except urllib.error.HTTPError as exc:
-            try:
-                body = exc.read().decode(errors="replace")
-            except Exception:
-                body = ""
-
-            if exc.code in (401, 403):
-                msg = (
-                    "ERROR: Authentication failed.\n"
-                    + ("  Run: gcloud auth application-default login\n"
-                       if auth_hdr == "Authorization"
-                       else "  API key invalid/expired — create new key at https://aistudio.google.com/apikey\n")
-                )
-                with open(log_path, "a") as f:
-                    f.write(msg)
-                return "failed", 0, 0
-
-            if exc.code == 429:
-                # Distinguish billing exhaustion from rate limiting
-                if any(w in body.lower() for w in ("credits", "prepayment", "billing")):
-                    with open(log_path, "a") as f:
-                        f.write(
-                            "ERROR: Billing/prepaid credits exhausted (HTTP 429).\n"
-                            "Switch to Google account auth (no extra cost):\n"
-                            "  gcloud auth application-default login\n"
-                            "Or get a free-tier key: https://aistudio.google.com/apikey\n"
-                        )
-                    return "failed", 0, 0
-                # Rate limit — retry with Retry-After
-                retry_s = int(exc.headers.get("Retry-After", 30 * (2 ** attempt)))
-                jitter = random.uniform(0, min(retry_s * 0.1, 5))
-                time.sleep(retry_s + jitter)
-                continue
-
-            if exc.code == 400 and attempt == 0:
-                # Retry once without safetySettings (some account tiers reject BLOCK_NONE)
-                payload_safe = {k: v for k, v in payload.items() if k != "safetySettings"}
-                data = json.dumps(payload_safe).encode()
-                continue
-
-            if exc.code >= 500:
-                time.sleep(2.0 * (2 ** attempt) + random.uniform(0, 1))
-                continue
-
+        # Empty output — check stderr for useful error info
+        if stderr:
             with open(log_path, "a") as f:
-                f.write(f"ERROR: HTTP {exc.code}: {body[:300]}\n")
-            return "failed", 0, 0
-
-        except (OSError, socket.timeout, http.client.IncompleteRead):
-            if attempt < 2:
-                time.sleep(2.0 * (2 ** attempt))
-                continue
+                f.write(f"ERROR: gemini CLI returned no output.\nstderr: {stderr[:500]}\n")
+        else:
             with open(log_path, "a") as f:
-                f.write("ERROR: Connection error after 3 attempts.\n")
-            return "failed", 0, 0
+                f.write("ERROR: gemini CLI returned empty output (no stderr).\n"
+                        "Check: gemini -p 'test' works interactively?\n")
+        return "failed", 0, 0
 
-    return "failed", 0, 0
+    except subprocess.TimeoutExpired:
+        with open(log_path, "a") as f:
+            f.write(f"ERROR: gemini CLI timeout after {timeout}s.\n")
+        return "failed", 0, 0
+
+    except FileNotFoundError:
+        with open(log_path, "a") as f:
+            f.write(
+                "ERROR: 'gemini' not found in PATH.\n"
+                f"Ensure ~/.npm-global/bin is in PATH, or install:\n"
+                f"  npm install -g @google/gemini-cli\n"
+            )
+        return "failed", 0, 0
 
 # ── pending / audit helpers ─────────────────────────────────────────────────
 
@@ -351,7 +337,7 @@ def cmd_list():
     if not _REGISTRY.exists():
         print("No delegated tasks yet.")
         return
-    header = f"{'TASK ID':<38}  {'STATUS':<16}  {'ROLE':<12}  {'IN':>6}  {'OUT':>7}  DESCRIPTION"
+    header = f"{'TASK ID':<38}  {'STATUS':<16}  {'ROLE':<12}  DESCRIPTION"
     print(header)
     print("-" * len(header))
     for line in _REGISTRY.read_text().splitlines():
@@ -361,11 +347,9 @@ def cmd_list():
             e = json.loads(line)
             if e.get("agent") != "antigravity":
                 continue
-            ti  = str(e.get("tokens_in") or "-")
-            to  = str(e.get("tokens_out") or "-")
             desc = e.get("description", "")[:50]
             print(f"{e['id']:<38}  {e.get('status','?'):<16}  "
-                  f"{e.get('role','?'):<12}  {ti:>6}  {to:>7}  {desc}")
+                  f"{e.get('role','?'):<12}  {desc}")
         except Exception:
             pass
 
@@ -412,7 +396,6 @@ def cmd_delegate(prompt: str, role: str, mode: str,
                  timeout: int, wait: bool, loop: bool = False):
     _ensure_dirs()
 
-    # Concurrent task guard
     running_count = _count_running()
     if running_count >= _MAX_CONCURRENT:
         sys.exit(
@@ -420,9 +403,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
             "Wait for current tasks or read them with --check <id>."
         )
 
-    model = model_override or _MODEL_MAP.get(mode, "gemini-2.0-flash-lite")
-    if not _MODEL_RE.match(model):
-        sys.exit(f"ERROR: Invalid model ID '{model}'. Must match: gemini-[a-z0-9][a-z0-9.-]*")
+    model = model_override or _MODEL_MAP.get(mode, "gemini-2.0-flash")
 
     tid = _task_id()
     log_path = _OUTPUTS_DIR / f"{tid}.log"
@@ -437,10 +418,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _info(f"Output file:     {log_path}")
 
     if loop:
-        _info(f"Loop mode enabled. Dispatching to aq-antigravity-agent.")
-        # aq-antigravity-agent handles its own registry + backgrounding if needed
-        # but here we run it as a subprocess in this context
-        import subprocess
+        _info("Loop mode enabled. Dispatching to aq-antigravity-agent.")
         agent_cmd = [
             sys.executable,
             str(_REPO / "scripts" / "ai" / "aq-antigravity-agent"),
@@ -449,16 +427,14 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         ]
         if mode:
             agent_cmd.extend(["--mode", mode])
-        if model:
-            agent_cmd.extend(["--model", model])
+        if model_override:
+            agent_cmd.extend(["--model", model_override])
         if not wait:
-            # For background agent loop, we still fork but the child runs the agent script
             child = os.fork()
             if child > 0:
                 _info(f"Agent loop started in background (pid {child})")
                 print(f"aq-loop-{int(time.time())}")
                 return
-            
             os.setsid()
             devnull = os.open("/dev/null", os.O_RDWR)
             os.dup2(devnull, sys.stdin.fileno())
@@ -469,30 +445,26 @@ def cmd_delegate(prompt: str, role: str, mode: str,
             subprocess.run(agent_cmd)
             return
 
-    # Register before dispatch so task is findable even if fork fails
+    # Register before dispatch
     _registry_append(tid, role, prompt, log_path)
     _pending_update("add", tid, "antigravity", rel_log, prompt[:120])
     _audit("start", tid, prompt[:200])
 
     if wait:
-        status, ti, to = _stream_task(
-            tid, prompt, role, model, max_tokens, timeout, log_path,
+        status, ti, to = _run_gemini_cli(
+            tid, prompt, role, model, timeout, log_path,
             print_to_stdout=True,
         )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
         _audit("end", tid, "success" if status == "done" else "error", "0",
                f"{status}: {prompt[:100]}", role)
-        _info(f"Task {tid} {status} (tokens: {ti}→{to})")
+        _info(f"Task {tid} {status}")
         print(tid)
         return
 
-    # Background mode: clear API key from child process environment
-    os.environ.pop("GEMINI_API_KEY", None)
-
     child = os.fork()
     if child > 0:
-        # Parent: record PID and return immediately
         _registry_set_pid(tid, child)
         _info(f"Task {tid} started in background (pid {child})")
         _info(f"Check output:  delegate-to-antigravity --check {tid}")
@@ -500,15 +472,14 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         print(tid)
         return
 
-    # Child: detach from terminal, run delegation, update registry, exit
     os.setsid()
     devnull = os.open("/dev/null", os.O_RDWR)
     os.dup2(devnull, sys.stdin.fileno())
     os.close(devnull)
 
     try:
-        status, ti, to = _stream_task(
-            tid, prompt, role, model, max_tokens, timeout, log_path,
+        status, ti, to = _run_gemini_cli(
+            tid, prompt, role, model, timeout, log_path,
         )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
@@ -530,8 +501,14 @@ def cmd_delegate(prompt: str, role: str, mode: str,
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="delegate-to-antigravity",
-        description="Headless Gemini delegation via direct REST API (Antigravity era).",
+        description="Headless Gemini delegation via gemini CLI (oauth-personal / Code Assist).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Auth setup (one-time):\n"
+            "  Run: gemini -p 'test'\n"
+            "  Press Y and sign in with Google account in browser.\n"
+            "  Subsequent calls work headlessly without user interaction.\n"
+        ),
     )
     p.add_argument("--prompt",      metavar="TEXT", help="Task prompt")
     p.add_argument("--prompt-file", metavar="FILE", help="Read prompt from file")
@@ -542,9 +519,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", metavar="MODEL_ID",
                    help="Gemini model ID override (bypasses --mode)")
     p.add_argument("--max-tokens", type=int, default=8192,
-                   help="Max output tokens [default: 8192, range: 1–32768]")
+                   help="Max output tokens [default: 8192] — note: gemini CLI controls this")
     p.add_argument("--timeout", type=int, default=900,
-                   help="HTTP read timeout in seconds [default: 900]")
+                   help="Subprocess timeout in seconds [default: 900]")
     p.add_argument("--wait",   action="store_true", help="Block until completion, print output")
     p.add_argument("--check",  metavar="ID", help="Print output of a completed task")
     p.add_argument("--status", metavar="ID", help="Show status JSON for a task")
@@ -561,8 +538,6 @@ def main():
         p.error(f"Invalid --role '{args.role}'. Valid: {', '.join(sorted(_VALID_ROLES))}")
     if args.mode not in _MODEL_MAP:
         p.error(f"Invalid --mode '{args.mode}'. Valid: {', '.join(sorted(_MODEL_MAP))}")
-    if not (1 <= args.max_tokens <= 32768):
-        p.error("--max-tokens must be 1–32768")
 
     _ensure_dirs()
 

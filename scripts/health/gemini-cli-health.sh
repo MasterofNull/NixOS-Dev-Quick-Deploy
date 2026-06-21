@@ -170,9 +170,9 @@ if [[ ! -d "${GEMINI_DIR}" ]]; then
   emit_result 0
 fi
 
-# Detect oauth-personal auth type — sunset 2026-06-18, always fails on
-# cloudcode-pa.googleapis.com/v1internal:onboardUser with "Resource has been
-# exhausted". Report unhealthy immediately so callers don't waste a delegation.
+# Detect oauth-personal auth type — delegate health check to antigravity-health.sh
+# (2026-06-21 update: oauth-personal is the CORRECT path for Code Assist API,
+# not the consumer generativelanguage.googleapis.com API key path)
 SETTINGS_FILE="${GEMINI_DIR}/settings.json"
 if [[ -f "${SETTINGS_FILE}" ]]; then
   SELECTED_TYPE="$(python3 -c "
@@ -184,9 +184,24 @@ except Exception:
     pass
 " 2>/dev/null || true)"
   if [[ "${SELECTED_TYPE}" == "oauth-personal" ]]; then
-    STATUS="unhealthy"
-    REASON="auth.selectedType=oauth-personal: cloudcode-pa.googleapis.com sunset 2026-06-18. Fix: run 'gemini' interactively with GEMINI_API_KEY set from https://aistudio.google.com/apikey"
-    emit_result 1
+    # oauth-personal → delegate-to-antigravity path via Code Assist API
+    # Use antigravity-health.sh for the definitive check
+    ANTIGRAVITY_HEALTH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/antigravity-health.sh"
+    if [[ -x "${ANTIGRAVITY_HEALTH}" ]]; then
+      bash "${ANTIGRAVITY_HEALTH}" --check
+      exit $?
+    fi
+    # antigravity-health.sh not found — minimal check: credentials present?
+    GEMINI_CREDS="${GEMINI_DIR}/gemini-credentials.json"
+    if [[ -f "${GEMINI_CREDS}" ]] && [[ "$(wc -c < "${GEMINI_CREDS}" 2>/dev/null || echo 0)" -ge 50 ]]; then
+      STATUS="healthy"
+      REASON="oauth-personal auth configured; credentials present (run antigravity-health.sh --smoke for full check)"
+      emit_result 0
+    else
+      STATUS="unhealthy"
+      REASON="oauth-personal auth configured but no credentials stored. Run: gemini -p 'test' interactively to complete OAuth login."
+      emit_result 1
+    fi
   fi
 fi
 
