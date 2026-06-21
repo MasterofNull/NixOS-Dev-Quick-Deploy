@@ -770,12 +770,12 @@
   Fix: change dispatch condition from `if _tools_are_all_external(payload):` to `if profile == "local-agent" or _tools_are_all_external(payload):` — local-agent profile always takes the passthrough path regardless of tool name collision.
   Files: ai-stack/switchboard/switchboard.py line 2982 (dispatch condition in _handle_local_tool_calling_request)
 
-[MONITOR] antigravity-cli-migration — Migration from sunset Gemini CLI OAuth to API-key auth + Antigravity IDE is complete as of 2026-06-19.
-  RESOLVED: delegate-to-gemini now routes via @google/gemini-cli npm (v0.47.0) with API-key auth stored in ~/.gemini/gemini-credentials.json. auth.selectedType=gemini-api-key in ~/.gemini/settings.json. 17/17 delegation success rate 2026-06-18/19. No env var needed day-to-day (key cached in credential store).
-  RESOLVED: pkgs.antigravity (v1.11.14, VS Code IDE fork) added to NixOS base packages (nix/modules/core/base.nix commit f69068ee). Available as `antigravity` binary after rebuild. ~/.gemini/antigravity/ already seeded with lean-ctx MCP config.
-  RESOLVED: VSCodium geminicodeassist.* stale keys removed. delegate-to-gemini has sunset detection + SUNSET_ERROR messaging.
-  RESOLVED: GEMINI.md updated with auth architecture section (2026-06-19). gemini-cli-health.sh now detects oauth-personal selectedType and reports unhealthy immediately.
-  ARCHITECTURE: Antigravity is a GUI IDE (like Cursor), NOT a headless CLI. `antigravity chat` opens a window — cannot replace delegate-to-gemini pipeline. Delegation continues via gemini npm CLI. Antigravity = interactive AI IDE for human sessions.
-  RESILIENCE GAP (MONITOR): GEMINI_API_KEY not in NixOS session env. Template added to nix/hosts/hyperd/home-deploy-options.nix (gitignored). User must uncomment and fill in key to ensure re-auth after credential cache wipe.
-  Severity: monitor (system functional; one resilience gap remaining)
-  Files: scripts/ai/delegate-to-gemini, scripts/health/gemini-cli-health.sh, .agent/GEMINI.md, nix/modules/core/base.nix, nix/hosts/hyperd/home-deploy-options.nix
+[ACTION_NEEDED] antigravity-delegation-oauth — delegate-to-antigravity uses oauth-personal (Code Assist API), requires one-time browser auth (2026-06-21).
+  CONTEXT: Prior session assumed API-key was correct path. Corrected: generativelanguage.googleapis.com requires paid credits. The free path is oauth-personal → cloudcode-pa.googleapis.com (Code Assist).
+  RESOLVED: delegate-to-antigravity rewritten to call `gemini -p "..."` subprocess (da4e47d0). No API key, no SOPS secret needed. auth.selectedType=oauth-personal in ~/.gemini/settings.json.
+  RESOLVED: antigravity-health.sh rewritten for oauth-personal check. gemini-cli-health.sh no longer blocks on oauth-personal type.
+  ACTION_NEEDED (user, once): Run `gemini -p 'test'` in a terminal → press Y → complete Google browser sign-in. Stores oauth-personal token in ~/.gemini/gemini-credentials.json. After this, all delegate-to-antigravity calls work headlessly.
+  Detection: antigravity-health.sh --check returns status=auth_pending (exit 0) until OAuth done; --smoke returns unhealthy (exit 1) until done.
+  ARCHITECTURE: Antigravity is a GUI IDE (not a headless CLI). `antigravity chat` opens a window. Delegation is via gemini npm CLI (oauth-personal), NOT Antigravity binary.
+  Severity: action_needed (delegation non-functional until user completes browser OAuth)
+  Files: scripts/ai/delegate-to-antigravity, scripts/health/antigravity-health.sh, scripts/health/gemini-cli-health.sh, .agent/GEMINI.md
