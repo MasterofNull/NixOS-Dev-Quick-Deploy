@@ -14,73 +14,76 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
-## Auth Architecture (2026-06-21 — ANTIGRAVITY ERA, KEY-ONLY)
+## Auth Architecture (2026-06-21 — ANTIGRAVITY ERA, OAUTH-PERSONAL)
 
 **`delegate-to-gemini` (npm CLI) is RETIRED.** Delegation now goes through
-`delegate-to-antigravity` — a Python stdlib script calling
-`generativelanguage.googleapis.com` directly with zero npm dependency.
+`delegate-to-antigravity` — a Python script that calls `gemini -p "..."` (Google's Gemini CLI)
+using the `oauth-personal` auth type (Google Code Assist API). No API key needed.
 
-**Auth: API key only (gcloud ADC does NOT work for this endpoint):**
-- `generativelanguage.googleapis.com` is a consumer API — it only accepts `x-goog-api-key`.
-- gcloud ADC / OAuth2 Bearer tokens are rejected with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`.
-  OAuth2 works for Vertex AI (`aiplatform.googleapis.com`) which requires a GCP project
-  and different billing — not applicable here.
-- **Free-tier API key is completely free** (no billing, no credits): 15-30 RPM.
-  The "exhausted credits" were for paid npm CLI usage above free tier — a new free key
-  resets to free quota with no payment required.
+**Auth: oauth-personal via gemini CLI → Code Assist (NOT API key, NOT REST direct):**
+- `delegate-to-antigravity` calls `gemini --output-format text -p "..."` as a subprocess.
+- The gemini CLI handles auth via `oauth-personal` → `cloudcode-pa.googleapis.com`.
+- **FREE** — uses your Google account subscription. No paid API key, no prepaid credits.
+- `generativelanguage.googleapis.com` (requires paid API key) is no longer used.
+- `~/.gemini/settings.json` → `security.auth.selectedType = "oauth-personal"` ← REQUIRED.
 
-**Obtaining a key:**
-1. Go to `https://aistudio.google.com/apikey` → Create API key
-2. Add to SOPS: `sops <secrets-file>` → `gemini_api_key: AIza...`
-3. Rebuild so `/run/secrets/gemini_api_key` is provisioned
+**One-time auth setup (must be done interactively in a terminal):**
+1. Run: `gemini -p "test"` in a terminal (NOT headlessly)
+2. When prompted "Opening authentication page... [Y/n]:" → press Y
+3. Complete Google sign-in in browser (already logged in via Antigravity? May be instant)
+4. Token stored in `~/.gemini/gemini-credentials.json` under key `gemini-cli-oauth-personal`
+5. All subsequent `delegate-to-antigravity` calls work headlessly without user interaction
 
-**Auth priority in script:** SOPS `/run/secrets/gemini_api_key` → `GEMINI_API_KEY` env → die with guidance
+**Health check:** `scripts/health/antigravity-health.sh --smoke` detects auth state.
 
 **Antigravity IDE (`antigravity` binary on PATH after rebuild):**
 - VS Code fork IDE — NOT a headless CLI. Opens GUI when invoked.
-- Use for: interactive AI-assisted development sessions
-- Do NOT invoke from delegation scripts — `antigravity chat` opens a GUI window
-- Config: `~/.gemini/antigravity/` (lean-ctx MCP already wired)
+- Shares Google account auth with the gemini CLI (same Google account).
+- Do NOT invoke from delegation scripts — `antigravity chat` opens a GUI window.
+- Config: `~/.gemini/antigravity/` (lean-ctx MCP already wired).
 
 **Delegation chain (current):**
 - Background: `scripts/ai/delegate-to-antigravity --prompt "..." [--mode fast|flash|pro|architect]`
 - Blocking:   `scripts/ai/delegate-to-antigravity --prompt "..." --wait`
 - Check:      `scripts/ai/delegate-to-antigravity --check <task-id>`
 - List:       `scripts/ai/delegate-to-antigravity --list`
-- Legacy:     `delegate-to-gemini` — DO NOT USE (npm CLI broken, credits exhausted)
+- Health:     `scripts/health/antigravity-health.sh --smoke`
+- Legacy:     `delegate-to-gemini` — DO NOT USE (RETIRED)
 
-**Model map:**
+**Model map (Code Assist routes; names passed through to gemini CLI -m flag):**
 | Alias | Model |
 |-------|-------|
-| `fast` | gemini-2.0-flash-lite |
+| `fast` | gemini-2.0-flash |
 | `flash` | gemini-2.0-flash |
 | `pro` | gemini-2.5-pro-preview-06-05 |
 | `architect` | gemini-2.5-flash |
 | `implementer` | gemini-2.0-flash |
-| `reviewer` | gemini-2.0-flash-lite |
+| `reviewer` | gemini-2.0-flash |
 
-**Billing guard (HARD):** On HTTP 429 with "credits"/"prepayment"/"billing" in response body →
-hard stop, zero retries. This is not a transient rate limit.
+**Auth error detection:** If gemini CLI outputs "Authentication cancelled" / "FatalCancellationError"
+→ script detects and prints guidance. Fix: run `gemini -p "test"` interactively to complete OAuth.
 
 ---
 
-## Switchboard remote-gemini Profile (2026-06-20)
+## Switchboard remote-gemini Profile (2026-06-20, updated 2026-06-21)
 
-The `remote-gemini` switchboard profile routes through `REMOTE_LLM_URL`. To use the
-Gemini direct endpoint (no OpenRouter, no extra billing) add to
+The `remote-gemini` switchboard profile routes through `REMOTE_LLM_URL`. This requires an
+OpenAI-compatible endpoint. Direct Gemini integration via `delegate-to-antigravity` (oauth-personal)
+is now the preferred path for delegation — the switchboard remote-gemini profile is secondary.
+
+If you still need switchboard remote-gemini (e.g. for aq-antigravity-agent --loop), configure
 `nix/hosts/hyperd/deploy-options.local.nix` (gitignored — secrets only):
 
 ```nix
 services.nixos-ai-stack.mcpServers.switchboard = {
   remoteUrl        = "https://generativelanguage.googleapis.com/v1beta/openai";
-  remoteApiKeyFile = "/run/secrets/gemini_api_key";
+  remoteApiKeyFile = "/run/secrets/gemini_api_key";  # requires paid AI Studio key
   remoteModelAliases.gemini = "gemini-2.5-flash";
 };
 ```
 
-Then rebuild (`sudo nixos-rebuild switch --flake .#hyperd-ai-dev`).
-The SOPS `gemini_api_key` (free AI Studio key, no billing) must be provisioned — see Auth Architecture above.
-Free-tier key is sufficient for switchboard remote-gemini (15-30 RPM); no OpenRouter subscription needed.
+Note: this path requires a paid Gemini API key (AI Studio). Prefer `delegate-to-antigravity`
+(oauth-personal) for free delegation without API keys.
 
 ---
 
