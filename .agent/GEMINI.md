@@ -14,24 +14,27 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
-## Auth Architecture (2026-06-20 — ANTIGRAVITY ERA MIGRATION)
+## Auth Architecture (2026-06-21 — ANTIGRAVITY ERA, KEY-ONLY)
 
-**`delegate-to-gemini` (npm CLI) is RETIRED.** The npm CLI's prepaid AI Studio credits were
-exhausted and the active paid subscription is through Antigravity/Google. Delegation now goes
-through `delegate-to-antigravity` — a Python stdlib script calling
+**`delegate-to-gemini` (npm CLI) is RETIRED.** Delegation now goes through
+`delegate-to-antigravity` — a Python stdlib script calling
 `generativelanguage.googleapis.com` directly with zero npm dependency.
 
-**Primary auth — Google account subscription (zero extra cost):**
-- Uses gcloud Application Default Credentials (ADC)
-- One-time setup (after rebuild): `gcloud auth application-default login` (browser-based)
-- Credentials at `~/.config/gcloud/application_default_credentials.json`
-- Script exchanges refresh token → Bearer access token — uses Google subscription, NOT AI Studio credits
-- `google-cloud-sdk` declared in `nix/modules/core/base.nix` `basePackageNames` (rebuild required)
+**Auth: API key only (gcloud ADC does NOT work for this endpoint):**
+- `generativelanguage.googleapis.com` is a consumer API — it only accepts `x-goog-api-key`.
+- gcloud ADC / OAuth2 Bearer tokens are rejected with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`.
+  OAuth2 works for Vertex AI (`aiplatform.googleapis.com`) which requires a GCP project
+  and different billing — not applicable here.
+- **Free-tier API key is completely free** (no billing, no credits): 15-30 RPM.
+  The "exhausted credits" were for paid npm CLI usage above free tier — a new free key
+  resets to free quota with no payment required.
 
-**Fallback auth — AI Studio free-tier API key (no billing):**
-- SOPS: `/run/secrets/gemini_api_key` → `GEMINI_API_KEY` env var
-- Free tier only: 15-30 RPM
-- Auth priority in script: ADC → SOPS secret → `GEMINI_API_KEY` env → die with guidance
+**Obtaining a key:**
+1. Go to `https://aistudio.google.com/apikey` → Create API key
+2. Add to SOPS: `sops <secrets-file>` → `gemini_api_key: AIza...`
+3. Rebuild so `/run/secrets/gemini_api_key` is provisioned
+
+**Auth priority in script:** SOPS `/run/secrets/gemini_api_key` → `GEMINI_API_KEY` env → die with guidance
 
 **Antigravity IDE (`antigravity` binary on PATH after rebuild):**
 - VS Code fork IDE — NOT a headless CLI. Opens GUI when invoked.
@@ -76,8 +79,8 @@ services.nixos-ai-stack.mcpServers.switchboard = {
 ```
 
 Then rebuild (`sudo nixos-rebuild switch --flake .#hyperd-ai-dev`).
-The SOPS `gemini_api_key` must be provisioned — see Auth Architecture above.
-Free-tier key is sufficient (15-30 RPM); no OpenRouter subscription needed.
+The SOPS `gemini_api_key` (free AI Studio key, no billing) must be provisioned — see Auth Architecture above.
+Free-tier key is sufficient for switchboard remote-gemini (15-30 RPM); no OpenRouter subscription needed.
 
 ---
 
