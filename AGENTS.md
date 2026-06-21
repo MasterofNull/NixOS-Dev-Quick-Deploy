@@ -293,6 +293,8 @@ Prefer 3-5 repo-only slices before `nixos-quick-deploy.sh`. Deploy earlier only 
 - `ai-stack/mcp-servers/hybrid-coordinator/` — MCP + UAG lifecycle
 - `nix/modules/roles/ai-stack.nix` — service wiring
 - `scripts/ai/` — harness CLIs (`aq-insights` for local model harness analysis)
+  - `delegate-to-antigravity` — direct Gemini REST API delegation (replaces `delegate-to-gemini`)
+  - `aq-antigravity-agent` — headless agent loop via LocalAgentExecutor + `force_remote=True`
 - `.agent/CODEX.md` — Codex-specific instruction projection
 - `.agent/LOCAL-AGENT.md` — local inference agent (model-agnostic; current model + swap checklist)
 

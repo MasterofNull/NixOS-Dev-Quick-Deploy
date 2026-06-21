@@ -2,8 +2,8 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-06-09",
-    "reviewed_at": "2026-06-09T00:00:00Z",
+    "last_updated": "2026-06-21",
+    "reviewed_at": "2026-06-21T18:31:31Z",
     "freshness_policy": "phase154-profile-and-active-model-review"
   },
   "model_id": "active.gguf",
@@ -24,7 +24,7 @@
   "ctx_budget_synthesis": 2193,
   "ctx_budget_reasoning": 1842,
   "profile_version": 2,
-  "probed_at": "2026-05-07T17:41:53.741214Z",
+  "probed_at": "2026-06-21T18:31:31.984734Z",
   "probe_model_id": "active.gguf",
   "freshness_max_age_days": 45,
   "freshness_review_required": false

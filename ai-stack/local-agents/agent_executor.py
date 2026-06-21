@@ -271,6 +271,11 @@ class Task:
     # Use "research" or "deep_reasoning" for PRSI / multi-hop planning tasks.
     task_type: Optional[str] = None
 
+    # Headless Antigravity — force remote routing
+    force_remote: bool = False
+    remote_profile: Optional[str] = None
+    remote_model: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -290,6 +295,9 @@ class Task:
             "tool_calls_count": len(self.tool_calls_made),
             "role": self.role,
             "reviewer_id": self.reviewer_id,
+            "force_remote": self.force_remote,
+            "remote_profile": self.remote_profile,
+            "remote_model": self.remote_model,
         }
 
 
@@ -481,6 +489,11 @@ class LocalAgentExecutor:
             (use_local, reason)
         """
         remote_routing_available = self.enable_fallback and not self.offline_mode
+
+        if task.force_remote:
+            if not remote_routing_available and self.allow_degraded_local_execution:
+                return True, "Task forced to remote but remote routing unavailable; degrading to local"
+            return False, "Task forced to remote"
 
         # Always use remote for flagship-required tasks
         if task.requires_flagship:
@@ -1634,6 +1647,8 @@ class LocalAgentExecutor:
 
     def _select_remote_profile(self, task: Task) -> str:
         """Map local-agent fallback tasks onto canonical coordinator profiles."""
+        if task.remote_profile:
+            return task.remote_profile
         objective = str(task.objective or "")
         if task.requires_flagship or task.quality_critical:
             return "remote-reasoning"
@@ -1643,7 +1658,7 @@ class LocalAgentExecutor:
 
     def _build_remote_delegate_payload(self, task: Task, profile: str) -> Dict[str, Any]:
         """Build coordinator delegate payload for local-agent fallback."""
-        return {
+        payload = {
             "task": task.objective,
             "profile": profile,
             "prefer_local": False,
@@ -1659,6 +1674,9 @@ class LocalAgentExecutor:
                 "complexity": task.complexity,
             },
         }
+        if task.remote_model:
+            payload["model"] = task.remote_model
+        return payload
 
     def _extract_remote_response_text(self, data: Any) -> str:
         """Extract assistant text from common coordinator/delegate payloads."""

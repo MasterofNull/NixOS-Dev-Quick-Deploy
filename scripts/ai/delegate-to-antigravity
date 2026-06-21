@@ -409,7 +409,7 @@ def cmd_check(task_id: str):
 
 def cmd_delegate(prompt: str, role: str, mode: str,
                  model_override: "str | None", max_tokens: int,
-                 timeout: int, wait: bool):
+                 timeout: int, wait: bool, loop: bool = False):
     _ensure_dirs()
 
     # Concurrent task guard
@@ -435,6 +435,39 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _info(f"Role:            {role}")
     _info(f"Model:           {model} (--mode {mode})")
     _info(f"Output file:     {log_path}")
+
+    if loop:
+        _info(f"Loop mode enabled. Dispatching to aq-antigravity-agent.")
+        # aq-antigravity-agent handles its own registry + backgrounding if needed
+        # but here we run it as a subprocess in this context
+        import subprocess
+        agent_cmd = [
+            sys.executable,
+            str(_REPO / "scripts" / "ai" / "aq-antigravity-agent"),
+            "--task", prompt,
+            "--role", role,
+        ]
+        if mode:
+            agent_cmd.extend(["--mode", mode])
+        if model:
+            agent_cmd.extend(["--model", model])
+        if not wait:
+            # For background agent loop, we still fork but the child runs the agent script
+            child = os.fork()
+            if child > 0:
+                _info(f"Agent loop started in background (pid {child})")
+                print(f"aq-loop-{int(time.time())}")
+                return
+            
+            os.setsid()
+            devnull = os.open("/dev/null", os.O_RDWR)
+            os.dup2(devnull, sys.stdin.fileno())
+            os.close(devnull)
+            subprocess.run(agent_cmd)
+            os._exit(0)
+        else:
+            subprocess.run(agent_cmd)
+            return
 
     # Register before dispatch so task is findable even if fork fails
     _registry_append(tid, role, prompt, log_path)
@@ -516,6 +549,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check",  metavar="ID", help="Print output of a completed task")
     p.add_argument("--status", metavar="ID", help="Show status JSON for a task")
     p.add_argument("--list",   action="store_true", help="List all antigravity tasks")
+    p.add_argument("--loop",   action="store_true", help="Run as agentic loop (aq-antigravity-agent)")
     return p
 
 
@@ -548,7 +582,7 @@ def main():
         if not prompt.strip():
             p.error("Provide --prompt TEXT or --prompt-file FILE")
         cmd_delegate(prompt, args.role, args.mode, args.model,
-                     args.max_tokens, args.timeout, args.wait)
+                     args.max_tokens, args.timeout, args.wait, args.loop)
 
 
 if __name__ == "__main__":
