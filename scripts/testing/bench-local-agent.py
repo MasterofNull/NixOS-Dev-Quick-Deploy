@@ -188,14 +188,26 @@ def _score_A2_sops_failure_mode(resp: dict, elapsed: float) -> tuple[int, str]:
 
 def _score_A3_frequency_penalty(resp: dict, elapsed: float) -> tuple[int, str]:
     """A3: Why does frequency_penalty truncate JSON output from llama.cpp. Max 3 pts."""
+    import re as _re
     text = _content(resp).lower()
     pts = 0
     notes = []
-    if any(w in text for w in ["cumulative", "penalty", "logit", "count", "occurrence"]):
+    # Expanded per Qwen3-35B review (2026-06-22): original trigger words too narrow
+    if any(w in text for w in [
+        "cumulative", "penalty", "logit", "count", "occurrence",
+        "accumulat", "penalty adds", "penalty increases",
+    ]):
         pts += 1; notes.append("+1 cumulative penalty mechanism")
-    if any(w in text for w in ["quote", '"', "quotation mark", "repeated token", "eos"]):
+    if any(w in text for w in [
+        "quote", '"', "quotation mark", "quotation", "repeated token", "eos",
+        "high-frequency token", "common token", "json delimiter",
+        "structural character", "double quote", "dense json",
+    ]):
         pts += 1; notes.append('+1 " token identified')
-    if any(w in text for w in ["0.0", "disable", "set to zero", "repeat_penalty", "repeat_last_n"]):
+    if any(w in text for w in [
+        "0.0", "disable", "set to zero", "repeat_penalty", "repeat_last_n",
+        "turn off", "remove", "frequency.*zero",
+    ]) or _re.search(r"set\s+to\s+zero|frequency.{0,15}0\.0|penalty.{0,10}0\.0", text):
         pts += 1; notes.append("+1 fix named")
     return pts, "; ".join(notes) or "no relevant content"
 
