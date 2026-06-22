@@ -949,12 +949,6 @@
           default = "crowdsec_bouncer_api_key";
           description = "SOPS key name for CrowdSec firewall bouncer API key.";
         };
-
-        geminiApiKey = lib.mkOption {
-          type = lib.types.str;
-          default = "gemini_api_key";
-          description = "SOPS key name for Google Gemini API key. Used by delegate-to-antigravity (fallback auth) and switchboard remote-gemini profile (via remoteApiKeyFile). Primary auth for delegate-to-antigravity is gcloud ADC (OAuth2 — no AI Studio credits needed).";
-        };
       };
     };
 
@@ -1643,9 +1637,6 @@
           description = ''
             OpenAI-compatible remote endpoint base URL for switchboard remote profiles.
             Expected form: https://host[/api] (without /v1 suffix is preferred).
-            For Gemini direct (recommended — uses subscription key, no OpenRouter): set to
-            "https://generativelanguage.googleapis.com/v1beta/openai" and point
-            remoteApiKeyFile at /run/secrets/gemini_api_key.
             For OpenRouter: "https://openrouter.ai/api".
           '';
         };

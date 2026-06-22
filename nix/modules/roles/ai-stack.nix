@@ -1947,6 +1947,48 @@ in {
       };
     })
 
+    # Scheduled AI stack health monitor — runs aq-qa 0 every 15 min and pushes
+    # failures to the attention queue so they surface on the next shell prompt.
+    (lib.mkIf roleEnabled {
+      systemd.services.ai-stack-health-monitor = {
+        description = "AI stack health monitor (aq-qa 0 → attention queue)";
+        after = ["ai-stack.target" "ai-hybrid-coordinator.service"];
+        wants = ["ai-hybrid-coordinator.service"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          Environment = [
+            "REPO_ROOT=${cfg.mcpServers.repoPath}"
+          ];
+          ExecStart = let
+            py = pkgs.python3.withPackages (ps: with ps; [ pyyaml ]);
+            script = "${cfg.mcpServers.repoPath}/scripts/health/ai-stack-health-monitor.py";
+          in "${py}/bin/python3 ${script}";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          # Attention queue lives in .agents/attention/ inside the repo.
+          ReadWritePaths = ["${cfg.mcpServers.repoPath}/.agents"];
+          PrivateTmp = true;
+          TimeoutStartSec = "180";
+          MemoryMax = "256M";
+        };
+      };
+
+      systemd.timers.ai-stack-health-monitor = {
+        description = "AI stack health monitor timer (every 15 min)";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnBootSec = "5min";
+          OnUnitActiveSec = "15min";
+          Persistent = false;
+        };
+      };
+    })
+
     # Phase 18.5.2 — Weekly report auto-imports to AIDB every Sunday 08:00.
     (lib.mkIf roleEnabled {
       systemd.services.ai-weekly-report = {
