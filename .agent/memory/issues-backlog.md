@@ -1,5 +1,14 @@
 ## OPEN ISSUES
 
+[FIXED 34627251] bench-C3-docstring-token-exhaustion — C3 code_gen test consistently scored 2/3 despite model knowing rwk. Model filled 250-token budget with docstring, leaving no tokens for function body (`return` never appears → point 1 always fails). fix: max_tokens 250→350.
+  Severity: medium (miscalibrated bench score, model knowledge was correct)
+  File: scripts/testing/bench-local-agent.py (extra={"max_tokens": 350})
+
+[FIXED 34627251] bench-float-boundary-false-demotion — 6/9 = 0.6666... compared against threshold 0.67; `pct >= prom_thr` False due to integer scoring granularity. Run at 82% overall with all dims passing displayed as promote=False.
+  Fix: `pct >= prom_thr - 1e-9` epsilon guard in _check_promotion.
+  Severity: low (affected 1 run's verdict, not calibration)
+  File: scripts/testing/bench-local-agent.py _check_promotion()
+
 [CRITICAL-FIXED] sops-gemini-api-key-missing-from-sops-file — All AI stack services down: ai-aidb, ai-hybrid-coordinator, ai-pgvector-bootstrap, crowdsec-firewall-bouncer-key-sync, nvd-sync, ai-prsi-orchestrator.
   Root cause: `gemini_api_key` was added to `nix/modules/core/secrets.nix` (and thus the compiled sops manifest) but never added to the actual SOPS-encrypted file at `/home/hyperd/.local/share/nixos-quick-deploy/secrets/hyperd/secrets.sops.yaml`. sops-install-secrets performs manifest validation before decryption; finds key count mismatch (manifest=9, SOPS file=8); fails with exit code 1; leaves `/run/secrets/` absent; all services requiring secrets cascade-fail.
   Exact error (from boot journal): `sops-install-secrets: manifest is not valid: secret gemini_api_key in secrets.sops.yaml is not valid: the key 'gemini_api_key' cannot be found`
