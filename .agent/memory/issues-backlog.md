@@ -1,5 +1,9 @@
 ## OPEN ISSUES
 
+[FIXED] intent-routing-map-not-hot-reloadable — coordinator read intent-routing-map.json from Nix store (repoSource, read-only). POST /control/intent/reload returned changed=false on live edits. Fix: added INTENT_ROUTING_MAP=${mcp.repoPath}/config/intent-routing-map.json to coordinator env in mcp-servers.nix so the live checkout is used. Requires rebuild to activate.
+  Severity: low (routing worked, but live edits required rebuild to take effect)
+  File: nix/modules/services/mcp-servers.nix line ~1237
+
 [FIXED] continuous-learning-inotify-eacces — ai-hybrid-coordinator logs `learning_loop_error` every 5 min: `[Errno 13] Permission denied: '.agents/telemetry'`. Root cause: `_wait_for_changes()` passes ALL telemetry parent dirs to `awatch()`, including repo-local `.agents/telemetry/` owned by `hyperd`. `ProtectHome=read-only` mounts `/home` as MS_RDONLY bind mount; `inotify_add_watch` returns EACCES on read-only bind mounts. Fix: filter `watch_dirs` to `os.access(dir, os.W_OK)` only — read-only user-spool paths still get read in scheduled processing.
   Severity: medium (coordinator running; learning loop retries every 300s; log noise only)
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py line 668

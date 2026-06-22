@@ -1,152 +1,152 @@
 {
-  "_meta": {
-    "version": "1.1",
-    "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-05-21"
-  },
-  "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
-  "_version": "1.2",
-  "_updated": "2026-06-11",
-  "intents": {
-    "code_generation": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.4,
-      "fallback_profile": "default",
-      "memory_recall": false,
-      "rag_project": "logic-patterns,best-practices,semantic"
+    "_meta": {
+        "version": "1.2",
+        "owner": "claude-sonnet-4-6",
+        "last_updated": "2026-06-22"
     },
-    "code_review": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.4,
-      "fallback_profile": "default",
-      "memory_recall": false,
-      "rag_project": "logic-patterns,best-practices"
-    },
-    "knowledge_lookup": {
-      "profile": "default",
-      "min_confidence": 0.3,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "semantic,best-practices"
-    },
-    "planning": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.4,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "episodic,semantic"
-    },
-    "math_reasoning": {
-      "profile": "default",
-      "min_confidence": 0.5,
-      "fallback_profile": "default",
-      "memory_recall": false,
-      "rag_project": "semantic"
-    },
-    "tool_execution": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.4,
-      "fallback_profile": "default",
-      "memory_recall": false,
-      "rag_project": "logic-patterns,procedural"
-    },
-    "troubleshooting": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.4,
-      "fallback_profile": "remote-free",
-      "memory_recall": true,
-      "rag_project": "error-solutions,logic-patterns,semantic"
-    },
-    "delegation": {
-      "profile": "default",
-      "min_confidence": 0.5,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "procedural,semantic"
-    },
-    "unknown": {
-      "profile": "default",
-      "min_confidence": 0.0,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "semantic"
-    },
-    "harness_operation": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.4,
-      "fallback_profile": "local",
-      "memory_recall": false,
-      "rag_project": "procedural"
-    },
-    "security_analysis": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.45,
-      "fallback_profile": "local-tool-calling",
-      "memory_recall": true,
-      "rag_project": "security-findings,best-practices,semantic"
-    },
-    "systems_software": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.4,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "nix-systems-patterns,logic-patterns,procedural"
-    },
-    "embedded_hardware": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.45,
-      "fallback_profile": "local-tool-calling",
-      "memory_recall": true,
-      "rag_project": "embedded-hardware-patterns,semantic"
-    },
-    "mobile_web": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.4,
-      "fallback_profile": "local-tool-calling",
-      "memory_recall": true,
-      "rag_project": "mobile-web-patterns,best-practices,semantic"
-    },
-    "scientific_research": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.4,
-      "fallback_profile": "local-tool-calling",
-      "memory_recall": true,
-      "rag_project": "scientific-research-patterns,semantic"
-    },
-    "gis_systems": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.4,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "gis-systems-patterns,semantic"
-    },
-    "osint_reconnaissance": {
-      "profile": "remote-reasoning",
-      "min_confidence": 0.45,
-      "fallback_profile": "local-tool-calling",
-      "memory_recall": true,
-      "rag_project": "osint-intelligence,codebase-context,semantic"
-    },
-    "operator_intelligence": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.35,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "semantic,best-practices"
-    },
-    "model_integrity": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.35,
-      "fallback_profile": "remote-reasoning",
-      "memory_recall": true,
-      "rag_project": "security-findings,best-practices"
-    },
-    "harness_self_improvement": {
-      "profile": "local-tool-calling",
-      "min_confidence": 0.35,
-      "fallback_profile": "default",
-      "memory_recall": true,
-      "rag_project": "procedural,best-practices"
+    "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
+    "_version": "1.2",
+    "_updated": "2026-06-22",
+    "intents": {
+        "code_generation": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "default",
+            "memory_recall": false,
+            "rag_project": "logic-patterns,best-practices,semantic"
+        },
+        "code_review": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "default",
+            "memory_recall": false,
+            "rag_project": "logic-patterns,best-practices"
+        },
+        "knowledge_lookup": {
+            "profile": "default",
+            "min_confidence": 0.25,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "semantic,best-practices"
+        },
+        "planning": {
+            "profile": "remote-reasoning",
+            "min_confidence": 0.35,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "episodic,semantic"
+        },
+        "math_reasoning": {
+            "profile": "default",
+            "min_confidence": 0.5,
+            "fallback_profile": "default",
+            "memory_recall": false,
+            "rag_project": "semantic"
+        },
+        "tool_execution": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "default",
+            "memory_recall": false,
+            "rag_project": "logic-patterns,procedural"
+        },
+        "troubleshooting": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "remote-reasoning",
+            "memory_recall": true,
+            "rag_project": "error-solutions,logic-patterns,semantic"
+        },
+        "delegation": {
+            "profile": "default",
+            "min_confidence": 0.5,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "procedural,semantic"
+        },
+        "unknown": {
+            "profile": "default",
+            "min_confidence": 0.0,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "semantic"
+        },
+        "harness_operation": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "local",
+            "memory_recall": false,
+            "rag_project": "procedural"
+        },
+        "security_analysis": {
+            "profile": "remote-reasoning",
+            "min_confidence": 0.45,
+            "fallback_profile": "local-tool-calling",
+            "memory_recall": true,
+            "rag_project": "security-findings,best-practices,semantic"
+        },
+        "systems_software": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "nix-systems-patterns,logic-patterns,procedural"
+        },
+        "embedded_hardware": {
+            "profile": "remote-reasoning",
+            "min_confidence": 0.45,
+            "fallback_profile": "local-tool-calling",
+            "memory_recall": true,
+            "rag_project": "embedded-hardware-patterns,semantic"
+        },
+        "mobile_web": {
+            "profile": "remote-reasoning",
+            "min_confidence": 0.4,
+            "fallback_profile": "local-tool-calling",
+            "memory_recall": true,
+            "rag_project": "mobile-web-patterns,best-practices,semantic"
+        },
+        "scientific_research": {
+            "profile": "remote-reasoning",
+            "min_confidence": 0.4,
+            "fallback_profile": "local-tool-calling",
+            "memory_recall": true,
+            "rag_project": "scientific-research-patterns,semantic"
+        },
+        "gis_systems": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.4,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "gis-systems-patterns,semantic"
+        },
+        "osint_reconnaissance": {
+            "profile": "remote-reasoning",
+            "min_confidence": 0.45,
+            "fallback_profile": "local-tool-calling",
+            "memory_recall": true,
+            "rag_project": "osint-intelligence,codebase-context,semantic"
+        },
+        "operator_intelligence": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.35,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "semantic,best-practices"
+        },
+        "model_integrity": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.35,
+            "fallback_profile": "remote-reasoning",
+            "memory_recall": true,
+            "rag_project": "security-findings,best-practices"
+        },
+        "harness_self_improvement": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.35,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "procedural,best-practices"
+        }
     }
-  }
 }
