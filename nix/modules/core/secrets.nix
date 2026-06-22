@@ -100,17 +100,6 @@ in {
             group = aiSvcGroup;
           };
         }
-        // {
-          # Gemini / AI Studio API key — used by the primary user's shell session
-          # and the delegate-to-gemini script. Owned by primaryUser, not ai-stack,
-          # because this key is for interactive and CLI delegation (not system svcs).
-          # To add the key: sops <secrets-file> → add key: gemini_api_key
-          "${sec.names.geminiApiKey}" = {
-            mode = "0400";
-            owner = cfg.primaryUser;
-            group = secretsGroup;
-          };
-        }
         // lib.optionalAttrs needsCrowdsecSecret {
           "${sec.names.crowdsecBouncerApiKey}" = {
             mode = "0400";

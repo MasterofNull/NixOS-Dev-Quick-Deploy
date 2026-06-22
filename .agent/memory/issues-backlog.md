@@ -1,5 +1,37 @@
 ## OPEN ISSUES
 
+[CRITICAL-FIXED] sops-gemini-api-key-missing-from-sops-file — All AI stack services down: ai-aidb, ai-hybrid-coordinator, ai-pgvector-bootstrap, crowdsec-firewall-bouncer-key-sync, nvd-sync, ai-prsi-orchestrator.
+  Root cause: `gemini_api_key` was added to `nix/modules/core/secrets.nix` (and thus the compiled sops manifest) but never added to the actual SOPS-encrypted file at `/home/hyperd/.local/share/nixos-quick-deploy/secrets/hyperd/secrets.sops.yaml`. sops-install-secrets performs manifest validation before decryption; finds key count mismatch (manifest=9, SOPS file=8); fails with exit code 1; leaves `/run/secrets/` absent; all services requiring secrets cascade-fail.
+  Exact error (from boot journal): `sops-install-secrets: manifest is not valid: secret gemini_api_key in secrets.sops.yaml is not valid: the key 'gemini_api_key' cannot be found`
+  Severity: critical (all AI stack services unavailable)
+  Action: (1) Run `SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops ~/.local/share/nixos-quick-deploy/secrets/hyperd/secrets.sops.yaml` and add `gemini_api_key: <value-or-placeholder>` (2) `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` — activation will now pass validation and write all 9 secrets.
+  Pattern: any new `sops.secrets.*` entry in secrets.nix MUST be followed immediately by `sops <file>` to add the key. The Nix rebuild compiles the manifest; the SOPS file must match. Never add a key to secrets.nix without the corresponding SOPS edit.
+  Files: nix/modules/core/secrets.nix ~line 107-113; /home/hyperd/.local/share/nixos-quick-deploy/secrets/hyperd/secrets.sops.yaml
+
+[LOW-HARDENING] sops-age-key-in-home-directory — Age private key for sops-nix lives at `/home/hyperd/.config/sops/age/keys.txt`. Root bypasses DAC today, but `ProtectHome=true` or AppArmor tightening on the activation service would re-break secrets at boot.
+  Root cause: `deploy-options.local.nix` overrides `mySystem.secrets.ageKeyFile` from the canonical default `/var/lib/sops-nix/key.txt` to the user home path.
+  Severity: low (latent breakage risk on security hardening)
+  Action: (1) `sudo mkdir -p /var/lib/sops-nix && sudo cp ~/.config/sops/age/keys.txt /var/lib/sops-nix/key.txt && sudo chmod 400 /var/lib/sops-nix/key.txt` (2) Remove `mySystem.secrets.ageKeyFile = lib.mkForce "..."` from `nix/hosts/hyperd/deploy-options.local.nix` (default is already `/var/lib/sops-nix/key.txt` in options.nix:894) (3) Rebuild.
+  Files: nix/hosts/hyperd/deploy-options.local.nix; nix/modules/core/options.nix:894
+
+[OPEN] codex-startup-local-state-warnings — Codex startup emitted deprecated `codex_hooks` feature warning and stale arg0 temp cleanup permission warning.
+  Root cause: `/home/hyperd/.codex/config.toml` contained the legacy `[features].codex_hooks = true` alias alongside `hooks = true`, and active Codex processes rehydrated that alias from their startup state after edits. Separately, `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` was stale but owned by root:root, so user-owned Codex could not clean it.
+  Severity: low
+  Action: Arg0 cleanup fixed; `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` no longer exists. `codex_hooks` reappeared in `/home/hyperd/.codex/config.toml` during the active Codex session, so remove it after exiting all Codex sessions or from a fresh session started after the line is gone.
+  File: /home/hyperd/.codex/config.toml ~line 36; /home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE
+
+[PENDING-REBUILD] codex-doctor-terminfo-env-noise — `codex doctor --summary` reports terminal failure because inherited TERMINFO_DIRS contains missing profile paths.
+  Root cause: `TERMINFO_DIRS` includes nonexistent Flatpak/Nix profile terminfo directories before the valid `/run/current-system/sw/share/terminfo`; `infocmp xterm-256color` succeeds from the valid NixOS terminfo path. One-shot override with `TERMINFO=/run/current-system/sw/share/terminfo TERMINFO_DIRS=/run/current-system/sw/share/terminfo codex doctor --summary` drops the terminal finding from fail to warning. Remaining warning is terminal height 20 rows, not terminfo.
+  Severity: low
+  Action: Added `TERMINFO` and `TERMINFO_DIRS` to Home Manager session variables and VSCodium AI extension environment; activate with `home-manager switch --flake .#hyperd` or the host deploy path, then start a new shell/editor. Run Codex in a terminal pane at least 24 rows high to clear the remaining height warning.
+  File: nix/home/base.nix ~line 100
+
+[PENDING-REBUILD] home-manager-insecure-gradio-policy-block — Home Manager activation eval refused insecure `python3.13-gradio-sans-reverse-dependencies-5.49.1`.
+  Root cause: `gradio` was included in the always-installed Home Manager Python AI/dev bundle, but nixpkgs marks Gradio v5 reverse dependencies insecure/unmaintained with CVEs. This forced `NIXPKGS_ALLOW_INSECURE=1` for unrelated Home Manager validation.
+  Severity: medium
+  Action: Removed `gradio` from the shared Home Manager Python bundle; use a project-local virtualenv only when a demo UI explicitly needs Gradio.
+  File: nix/home/base.nix ~line 587
+
 [OPEN] opencode-undici-bun-crash — opencode v1.3.0 crashes on every invocation with `ReferenceError: undici is not defined` (Bun v1.3.3, Linux x64).
   Root cause: opencode 1.3.0 bundle (`$bunfs/root/src/index.js`) imports `undici` as an npm module, but Bun 1.3.3 does not expose `undici` as a built-in. opencode is installed from Nix store at /nix/store/2rn57ci5bp1s8q401zwwy8isbx4v3im9-opencode-1.3.0; nixpkgs channel has opencode-0.3.112 (nixos.opencode) / 1.1.14 (nix eval). The 1.3.0 build likely requires a newer Bun version or Node.js runtime.
   Severity: medium (opencode is a potential Antigravity/multi-provider agent but is not currently in the delegation chain)

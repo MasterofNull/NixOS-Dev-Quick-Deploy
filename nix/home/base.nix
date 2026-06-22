@@ -97,6 +97,7 @@ let
   # ~/.npm-global/bin is added so the Gemini CLI companion and Codex extensions
   # can find their respective CLIs (gemini, codex) when VSCodium is launched
   # from the desktop (where the shell profile may not have run yet).
+  terminfoDir = "/run/current-system/sw/share/terminfo";
   vscodiumPathValue = "${config.home.homeDirectory}/.local/bin:${config.home.homeDirectory}/.npm-global/bin:${config.home.homeDirectory}/.nix-profile/bin:/run/current-system/sw/bin:\${env:PATH}";
   vscodiumAiEnv = [
     {
@@ -106,6 +107,14 @@ let
     {
       name = "OPENAI_BASE_URL";
       value = aiOpenAIBaseUrl;
+    }
+    {
+      name = "TERMINFO";
+      value = terminfoDir;
+    }
+    {
+      name = "TERMINFO_DIRS";
+      value = terminfoDir;
     }
     {
       name = "OPENAI_API_BASE";
@@ -575,7 +584,9 @@ in {
         chromadb
         faiss
         dask
-        gradio
+        # Gradio v5 is currently marked insecure in nixpkgs; keep it out of the
+        # always-installed Home Manager Python bundle and use a project venv
+        # when a demo UI explicitly needs it.
         # Playwright for browser automation — uses system chromium (no download needed)
         playwright
       ]))
@@ -652,8 +663,9 @@ in {
       gs = "git status";
       gd = "git diff";
       gl = "git log --oneline --graph --decorate -20";
-      # NixOS rebuild shortcuts
-      nrs = "sudo nixos-rebuild switch --flake .";
+      # NixOS rebuild shortcuts — nrs runs preflight first, nrs-force skips it
+      nrs = "scripts/governance/pre-rebuild-preflight.sh && sudo nixos-rebuild switch --flake .";
+      nrs-force = "sudo nixos-rebuild switch --flake .";
       nrb = "sudo nixos-rebuild boot --flake .";
       nrd = "sudo nixos-rebuild dry-build --flake .";
       hms = "home-manager switch --flake .";
@@ -716,14 +728,6 @@ in {
       }
       precmd_functions+=(_aq_alert_precmd)
 
-      # Load Gemini / AI Studio API key from SOPS-managed secret at shell startup.
-      # The key is decrypted to /run/secrets/gemini_api_key by sops-nix at boot.
-      # This avoids storing the key in the Nix store or any tracked file.
-      # To add the key: sops <secrets-file>  →  add entry:  gemini_api_key: AIza...
-      # Secret is owned by primaryUser:users mode 0400 (see nix/modules/core/secrets.nix).
-      if [[ -r /run/secrets/gemini_api_key ]]; then
-        export GEMINI_API_KEY="$(< /run/secrets/gemini_api_key)"
-      fi
     '';
   };
 
@@ -811,6 +815,8 @@ in {
     VISUAL = "micro";
     PAGER = "less";
     LESS = "-FRX";
+    TERMINFO = terminfoDir;
+    TERMINFO_DIRS = terminfoDir;
     # npm global prefix for AI CLI tools (Continue, pi, etc.)
     NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.npm-global";
     # Playwright — use nix-installed chromium; never download browsers at runtime
