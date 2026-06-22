@@ -1,5 +1,9 @@
 ## OPEN ISSUES
 
+[FIXED] continuous-learning-inotify-eacces — ai-hybrid-coordinator logs `learning_loop_error` every 5 min: `[Errno 13] Permission denied: '.agents/telemetry'`. Root cause: `_wait_for_changes()` passes ALL telemetry parent dirs to `awatch()`, including repo-local `.agents/telemetry/` owned by `hyperd`. `ProtectHome=read-only` mounts `/home` as MS_RDONLY bind mount; `inotify_add_watch` returns EACCES on read-only bind mounts. Fix: filter `watch_dirs` to `os.access(dir, os.W_OK)` only — read-only user-spool paths still get read in scheduled processing.
+  Severity: medium (coordinator running; learning loop retries every 300s; log noise only)
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/continuous_learning.py line 668
+
 [FIXED 34627251] bench-C3-docstring-token-exhaustion — C3 code_gen test consistently scored 2/3 despite model knowing rwk. Model filled 250-token budget with docstring, leaving no tokens for function body (`return` never appears → point 1 always fails). fix: max_tokens 250→350.
   Severity: medium (miscalibrated bench score, model knowledge was correct)
   File: scripts/testing/bench-local-agent.py (extra={"max_tokens": 350})
