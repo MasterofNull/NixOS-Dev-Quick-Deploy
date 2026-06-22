@@ -297,12 +297,12 @@ def _score_C1_python_async_pattern(resp: dict, elapsed: float) -> tuple[int, str
     notes = []
     if "async def" in text:
         pts += 1; notes.append("+1 async def")
-    if "asyncio.to_thread" in text or "run_in_executor" in text:
-        pts += 1; notes.append("+1 to_thread/executor")
+    if "asyncio.to_thread" in text or "run_in_executor" in text or "aiofiles" in text:
+        pts += 1; notes.append("+1 async IO library (to_thread/executor/aiofiles)")
     if "open(" in text and ("await" in text or "async with" in text):
         pts += 1; notes.append("+1 awaited IO")
-    elif "open(" in text and "asyncio.to_thread" in text:
-        pts += 1; notes.append("+1 sync IO in to_thread")
+    elif "open(" in text and ("asyncio.to_thread" in text or "aiofiles" in text):
+        pts += 1; notes.append("+1 sync IO in async wrapper")
     return pts, "; ".join(notes) or "no code produced"
 
 
@@ -377,7 +377,7 @@ def _score_D2_no_think_leak(resp: dict, elapsed: float) -> tuple[int, str]:
 
 def _build_tests(model: str) -> list[dict]:
     """Return ordered test spec list. Each entry has id, dim, prompt, tools, max_score, evaluator."""
-    base = {"model": model, "max_tokens": 400, "temperature": 0.1}
+    base = {"model": model, "max_tokens": 200, "temperature": 0.1}
 
     def _t(tid, dim, prompt, evaluator, max_score=3, tools=None, extra=None):
         return {
@@ -425,16 +425,16 @@ def _build_tests(model: str) -> list[dict]:
         _t("C1", "code_gen",
            "Write a Python async aiohttp handler that reads a large JSONL audit log file without "
            "blocking the event loop. Show only the function body, no explanation.",
-           _score_C1_python_async_pattern),
+           _score_C1_python_async_pattern, extra={"max_tokens": 150}),
         _t("C2", "code_gen",
            "Write a minimal NixOS module snippet that exposes a port option for a new service, "
            "sourcing the default from the central options.nix. No hardcoded port numbers.",
-           _score_C2_nix_module_snippet),
+           _score_C2_nix_module_snippet, extra={"max_tokens": 150}),
         _t("C3", "code_gen",
            "Write a Python function `apparmor_sqlite_rule(db_path: str) -> str` that returns a "
            "valid AppArmor file rule string for a SQLite database path. Include read, write, and "
            "file-lock permissions. Do NOT include the 'c' (create) permission keyword.",
-           _score_C3_python_apparmor_rule),
+           _score_C3_python_apparmor_rule, extra={"max_tokens": 250}),
         # D1 is a multi-turn test — handled specially in run_d1_multiturn()
         _t("D2", "coherence",
            "What is the purpose of the nix/modules/core/options.nix file in this NixOS flake? "
@@ -495,7 +495,7 @@ def run_d1_multiturn(model: str, timeout: int) -> dict:
 def run_test(spec: dict) -> dict:
     payload = {
         "messages": [{"role": "user", "content": spec["prompt"]}],
-        "max_tokens": spec.get("max_tokens", 400),
+        "max_tokens": spec.get("extra", {}).get("max_tokens", spec.get("max_tokens", 400)),
         "temperature": spec.get("temperature", 0.1),
         "model": spec["model"],
     }
