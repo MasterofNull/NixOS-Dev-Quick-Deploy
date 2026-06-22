@@ -664,10 +664,10 @@ in {
       gd = "git diff";
       gl = "git log --oneline --graph --decorate -20";
       # NixOS rebuild shortcuts — nrs runs preflight first, nrs-force skips it
-      nrs = "scripts/governance/pre-rebuild-preflight.sh && sudo nixos-rebuild switch --flake .";
-      nrs-force = "sudo nixos-rebuild switch --flake .";
-      nrb = "sudo nixos-rebuild boot --flake .";
-      nrd = "sudo nixos-rebuild dry-build --flake .";
+      nrs = "scripts/governance/pre-rebuild-preflight.sh && sudo nixos-rebuild switch --flake .#hyperd-ai-dev";
+      nrs-force = "sudo nixos-rebuild switch --flake .#hyperd-ai-dev";
+      nrb = "sudo nixos-rebuild boot --flake .#hyperd-ai-dev";
+      nrd = "sudo nixos-rebuild dry-build --flake .#hyperd-ai-dev";
       hms = "home-manager switch --flake .";
       # AI CLI tools
       continue = "cn"; # Continue CLI shorthand
