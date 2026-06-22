@@ -668,7 +668,7 @@ in {
       nrs-force = "sudo nixos-rebuild switch --flake .#hyperd-ai-dev";
       nrb = "sudo nixos-rebuild boot --flake .#hyperd-ai-dev";
       nrd = "sudo nixos-rebuild dry-build --flake .#hyperd-ai-dev";
-      hms = "home-manager switch --flake .";
+      hms = "home-manager switch --flake .#hyperd";
       # AI CLI tools
       continue = "cn"; # Continue CLI shorthand
       # Agentic CLI Tools (Token-optimized)
