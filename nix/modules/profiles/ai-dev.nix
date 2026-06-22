@@ -11,6 +11,7 @@ in {
   config = lib.mkIf (cfg.profile == "ai-dev") {
     # ── Role Activation ─────────────────────────────────────────────────────────
     mySystem.roles.aiStack.enable = lib.mkDefault true;
+    mySystem.roles.cppDev.enable = lib.mkDefault true;
     mySystem.roles.virtualization.enable = lib.mkDefault true;
     mySystem.roles.gaming.enable = lib.mkDefault false;
     mySystem.roles.desktop.enable = lib.mkDefault true;
