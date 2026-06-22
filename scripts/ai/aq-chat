@@ -88,6 +88,64 @@ COMMANDS = [
 ]
 command_completer = WordCompleter(COMMANDS, ignore_case=True)
 
+_BENCH_DIR = REPO_ROOT / ".agents" / "bench" / "llama"
+
+def _load_bench_calibration() -> str:
+    """Read latest bench run and return a compact calibration section for the system prompt."""
+    runs = sorted(_BENCH_DIR.glob("run-*.json"))
+    if not runs:
+        return ""
+    try:
+        data = json.loads(runs[-1].read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    scores = data.get("scores", {})
+    overall = scores.get("overall_pct", 0)
+    dims = scores.get("dims", {})
+    verdict = data.get("verdict", {})
+    run_id = data.get("run_id", "?")
+
+    dim_lines = []
+    for dim, v in dims.items():
+        pct = v.get("pct", 0)
+        bar = "█" * round(pct * 5) + "░" * (5 - round(pct * 5))
+        dim_lines.append(f"  {dim:<12} [{bar}] {pct:.0%}")
+
+    status = "PROMOTED ✓" if verdict.get("promote") else ("BELOW THRESHOLD" if verdict.get("demote") else "in range")
+    known_gaps = []
+    for r in (data.get("results") or []):
+        if r.get("score", 0) < r.get("max_score", 3):
+            known_gaps.append(f"  {r['id']}: {r.get('note','')[:80]}")
+
+    gap_block = ("\nKnown gaps (score < max):\n" + "\n".join(known_gaps[:6])) if known_gaps else ""
+
+    return (
+        f"\n=== BENCH CALIBRATION ({run_id}) ===\n"
+        f"Status: {status} | Overall: {overall:.0%}\n"
+        + "\n".join(dim_lines)
+        + gap_block
+    )
+
+
+def _bench_hud_line() -> str:
+    """Return a compact one-line bench summary for the HUD banner, or '' if no run exists."""
+    runs = sorted(_BENCH_DIR.glob("run-*.json"))
+    if not runs:
+        return ""
+    try:
+        data = json.loads(runs[-1].read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    scores = data.get("scores", {})
+    overall = scores.get("overall_pct", 0)
+    verdict = data.get("verdict", {})
+    dims = scores.get("dims", {})
+    status = "PROMOTED" if verdict.get("promote") else ("⚠ BELOW" if verdict.get("demote") else "~ok")
+    dim_str = " | ".join(f"{d[:4]}:{v.get('pct',0):.0%}" for d, v in dims.items())
+    run_ts = data.get("run_id", "?").replace("run-", "")
+    return f"{status} {overall:.0%} [{dim_str}] @ {run_ts}"
+
+
 class AQChat:
     def __init__(self, args: argparse.Namespace):
         self.llama_url = args.llama_url or os.getenv("LLAMA_URL", DEFAULT_LLAMA_URL)
@@ -372,6 +430,7 @@ class AQChat:
         )
 
         repo = str(REPO_ROOT)
+        bench_section = _load_bench_calibration()
         return f"""You are AQ, the expert coding and systems developer for NixOS-Dev-Quick-Deploy (ThinkPad P14s AMD, Cezanne APU, 27 GB RAM, NixOS flake).
 
 STACK: llama.cpp :8080 ({model_id}, n_gpu_layers={ngl or 12}/12) | embed :8081 | coordinator :8003 | switchboard :8085 | AIDB :8002 | dashboard :8889
@@ -400,7 +459,32 @@ REPO_ROOT={repo}
 3. NIXOS MASTERY: Apply best practices for NixOS and declarative configuration.
 4. TOOL DISCIPLINE: When the coordinator/local-agent tool executor is available, use it for live evidence. Never print pseudo tool calls such as run_command(...) or JSON tool arrays as the final answer. If tool execution is unavailable, say so and answer only from available evidence.
 
-BEHAVIORAL RULES: casual chat → plain text no tools | search before answering (harness-first) | max 2 retries → stop | commits: type(scope): desc + Co-Authored-By"""
+BEHAVIORAL RULES: casual chat → plain text no tools | search before answering (harness-first) | max 2 retries → stop | commits: type(scope): desc + Co-Authored-By
+
+=== COMMIT FORMAT — MANDATORY ===
+Pattern: type(scope): short description
+Example: fix(dispatch): set frequency_penalty=0.0 to prevent JSON truncation
+Types: feat|fix|docs|refactor|chore|test|ci|perf|style
+Trailer (always): Co-Authored-By: claude-sonnet-4-6 <noreply@anthropic.com>
+CRITICAL: (scope) is not optional — "fix: description" is WRONG. Always include it.
+
+=== TOOL RESULT MESSAGES ===
+CRITICAL: Tool result messages MUST use role:"tool". role:"function" is silently dropped by
+the Qwen3 chat template — the model never sees the result and hallucinates on subsequent turns.
+
+=== APPARMOR RULES ===
+- SQLite rule: rwk (read+write+lock). 'c' is INVALID in AppArmor — rwkc fails with syntax error.
+- Directory rules: file rules do NOT cover mkdir(). Directory creation needs an explicit rule.
+- NoNewPrivileges=true blocks Ux/Px transitions — use ix only in such service units.
+- After any profile change: check journalctl -u apparmor.service for syntax errors.
+
+=== FREQUENCY PENALTY WARNING ===
+frequency_penalty ≠ 0.0 causes cumulative logit penalties proportional to each token's total
+occurrence count. In dense JSON, '"' appears 300+ times → penalty 15.0 → unprintable → early EOS
+at ~line 59. ALWAYS use frequency_penalty=0.0 for structured/code output. Use repeat_penalty=1.08
++ repeat_last_n=64 (sliding window) for loop prevention instead.
+
+{bench_section}"""
 
     async def _discover_pool(self):
         """Discover available agents from the system pool."""
@@ -1472,10 +1556,12 @@ BEHAVIORAL RULES: casual chat → plain text no tools | search before answering 
                 f"Tools: {tool_count} available[/dim]"
             )
 
+        _bench_summary = _bench_hud_line()
         console.print(Panel.fit(
             f"[bold #00d9ff]Command Center HUD v2.3[/]\n"
             f"[dim]Unified routing: coordinator + fast-path.[/]\n"
-            f"Active: [bold #ff00ff]{self.active_profile}[/] ({self.model_name})",
+            f"Active: [bold #ff00ff]{self.active_profile}[/] ({self.model_name})"
+            + (f"\n[dim]Bench: {_bench_summary}[/]" if _bench_summary else ""),
             border_style="#00d9ff"
         ))
 

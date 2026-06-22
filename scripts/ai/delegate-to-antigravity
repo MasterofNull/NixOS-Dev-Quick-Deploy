@@ -65,7 +65,7 @@ _VALID_ROLES = {
     "plan", "implement", "review", "research",
 }
 
-_HARNESS_SYSTEM = (
+_HARNESS_SYSTEM_BASE = (
     "You are an AI agent in the NixOS-Dev-Quick-Deploy harness.\n"
     "SCOPE LOCK: Work only on what the task requests. No unsolicited refactors.\n"
     "PRD GATE: Write a brief plan to .agent/collaboration/PULSE.log before editing.\n"
@@ -75,6 +75,22 @@ _HARNESS_SYSTEM = (
     "ATOMIC RESUME: Update .agent/collaboration/RESUME.json at every phase start.\n"
     "DO NOT COMMIT — the orchestrator (Claude) reviews and commits.\n"
 )
+
+def _load_harness_grounding() -> str:
+    """Load config/local-agent-grounding.md if present. Returns '' if absent."""
+    gf = _REPO / "config" / "local-agent-grounding.md"
+    try:
+        return gf.read_text().strip()
+    except OSError:
+        return ""
+
+def _build_harness_system() -> str:
+    grounding = _load_harness_grounding()
+    if grounding:
+        return _HARNESS_SYSTEM_BASE + "\n\n" + grounding + "\n"
+    return _HARNESS_SYSTEM_BASE
+
+_HARNESS_SYSTEM = _build_harness_system()
 
 # ── auth validation ─────────────────────────────────────────────────────────
 

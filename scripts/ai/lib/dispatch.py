@@ -349,6 +349,49 @@ def classify_task_type(prompt: str, mode: str = "direct") -> str:
     return "code"
 
 
+# ── harness grounding supplement ─────────────────────────────────────────────
+
+_GROUNDING_FILE = Path(os.environ.get(
+    "HARNESS_GROUNDING_FILE",
+    str(_REPO_ROOT / "config" / "local-agent-grounding.md"),
+))
+
+def _load_grounding() -> str:
+    """Load harness grounding supplement from file. Returns '' if absent."""
+    try:
+        return _GROUNDING_FILE.read_text().strip()
+    except OSError:
+        return ""
+
+def _prepend_grounding(messages: list, config) -> list:  # type: ignore[type-arg]
+    """Insert grounding as a system message if the grounding file exists.
+
+    Safe to call even when file is absent — returns messages unchanged.
+    If a system message already exists (e.g. from role injection), the grounding
+    is prepended to it rather than inserted as a second system message.
+    """
+    grounding = _load_grounding()
+    if not grounding:
+        return messages
+    msgs = list(messages)
+    sys_idx = next((i for i, m in enumerate(msgs) if m.get("role") == "system"), None)
+    if sys_idx is not None:
+        msgs[sys_idx] = {
+            "role": "system",
+            "content": grounding + "\n\n" + msgs[sys_idx]["content"],
+        }
+    else:
+        msgs.insert(0, {"role": "system", "content": grounding})
+    return msgs
+
+def _augment_prompt_with_grounding(prompt: str) -> str:
+    """Prepend grounding text to a prompt string (used by AgentRunner --task path)."""
+    grounding = _load_grounding()
+    if not grounding:
+        return prompt
+    return f"[HARNESS CONTEXT]\n{grounding}\n[/HARNESS CONTEXT]\n\n{prompt}"
+
+
 # ── runners ──────────────────────────────────────────────────────────────────
 
 class DirectRunner:
@@ -368,7 +411,8 @@ class DirectRunner:
         """
         wait_for_slot(config.llama_url, config.timeout_secs)
 
-        messages = [{"role": "user", "content": prompt}]
+        messages = _prepend_grounding([], config)
+        messages.append({"role": "user", "content": prompt})
         payload = build_llama_payload(
             messages,
             max_tokens=config.max_tokens,
@@ -571,9 +615,10 @@ class AgentRunner:
             output_file.write_text(f"Error: aq-agent-loop not found at {self.agent_loop}")
             return False
         wall_clock = _compute_agent_wall_clock(config.timeout_secs, max_calls)
+        grounded_prompt = _augment_prompt_with_grounding(prompt)
         cmd = [
             sys.executable, str(self.agent_loop),
-            "--task", prompt,
+            "--task", grounded_prompt,
             "--output", str(output_file),
             "--timeout", str(config.timeout_secs),
             "--max-calls", str(max_calls),
