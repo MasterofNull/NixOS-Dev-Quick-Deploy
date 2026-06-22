@@ -1,0 +1,40 @@
+{
+  "_comment": "Promotion/demotion thresholds for Qwen3-35B as primary dev agent.",
+  "_schema_version": "1",
+  "promotion": {
+    "reasoning_pct_min": 0.67,
+    "tool_use_pct_min": 0.75,
+    "code_gen_pct_min": 0.67,
+    "coherence_pct_min": 0.67,
+    "overall_pct_min": 0.72,
+    "required_consecutive_runs": 2,
+    "latency_p95_s_max": 180,
+    "ragas_faithfulness_min": 0.65,
+    "_rationale": "tool_use bar is highest (0.75) — wrong collection or destructive call causes silent prod failures. overall 0.72 = 28/39 points, above RAGAS avg 0.6. 2 consecutive runs prevents lucky-run promotion."
+  },
+  "demotion": {
+    "reasoning_pct_floor": 0.50,
+    "tool_use_pct_floor": 0.58,
+    "code_gen_pct_floor": 0.50,
+    "coherence_pct_floor": 0.50,
+    "overall_pct_floor": 0.55,
+    "latency_p95_s_max": 240,
+    "ragas_faithfulness_floor": 0.50,
+    "_rationale": "Floors are 17-18 pct-points below promotion thresholds to prevent score-boundary flapping."
+  },
+  "regression_alert": {
+    "score_drop_pct": 0.10,
+    "_rationale": "Any dimension dropping >= 10 pct-points vs previous run triggers attention queue alert."
+  },
+  "dimensions": {
+    "reasoning":  {"tests": ["A1","A2","A3","A4"], "max_score": 12},
+    "tool_use":   {"tests": ["B1","B2","B3","B4"], "max_score": 12},
+    "code_gen":   {"tests": ["C1","C2","C3"],      "max_score": 9},
+    "coherence":  {"tests": ["D1","D2"],            "max_score": 6}
+  },
+  "existing_aq_report_signals": {
+    "ragas_faithfulness": "aq-report eval_scores.ragas_faithfulness",
+    "latency_p95": "LLAMA_BENCHMARK_RUNS_DIR latest run latency_p95_s",
+    "routing_local_pct": "aq-report routing_health.local_pct (informational only)"
+  }
+}
