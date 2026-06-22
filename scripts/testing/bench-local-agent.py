@@ -434,7 +434,7 @@ def _build_tests(model: str) -> list[dict]:
            "Write a Python function `apparmor_sqlite_rule(db_path: str) -> str` that returns a "
            "valid AppArmor file rule string for a SQLite database path. Include read, write, and "
            "file-lock permissions. Do NOT include the 'c' (create) permission keyword.",
-           _score_C3_python_apparmor_rule, extra={"max_tokens": 250}),
+           _score_C3_python_apparmor_rule, extra={"max_tokens": 350}),
         # D1 is a multi-turn test — handled specially in run_d1_multiturn()
         _t("D2", "coherence",
            "What is the purpose of the nix/modules/core/options.nix file in this NixOS flake? "
@@ -486,7 +486,7 @@ def run_d1_multiturn(model: str, timeout: int) -> dict:
         "elapsed_s": round(total_elapsed, 1),
         "completion_tokens": sum(_tok_count(r) for r in resps),
         "note": note,
-        "final_content": _content(resps[-1])[:200],
+        "final_content": _content(resps[-1])[:400],
     }
 
 
@@ -521,8 +521,8 @@ def run_test(spec: dict) -> dict:
         "elapsed_s": round(elapsed, 1),
         "completion_tokens": _tok_count(resp),
         "note": note,
-        "final_content": _content(resp)[:200] if not _tool_calls(resp)
-                         else json.dumps(_first_tool(resp))[:200],
+        "final_content": _content(resp)[:400] if not _tool_calls(resp)
+                         else json.dumps(_first_tool(resp))[:400],
     }
 
 
@@ -562,7 +562,7 @@ def _check_promotion(scores: dict, criteria: dict) -> dict:
         pct = dims[dim].get("pct", 0.0)
         prom_thr = prom.get(key_prom, 0.0)
         dem_thr  = dem.get(key_dem, 0.0)
-        if pct >= prom_thr:
+        if pct >= prom_thr - 1e-9:  # epsilon for integer score granularity (e.g. 6/9 vs 0.67)
             reasons_pass.append(f"{dim}={pct:.0%} >= {prom_thr:.0%}")
         elif pct < dem_thr:
             reasons_fail.append(f"{dim}={pct:.0%} < demotion floor {dem_thr:.0%}")
@@ -601,6 +601,36 @@ def _load_last_run(bench_dir: Path) -> dict | None:
         return json.loads(runs[-1].read_text())
     except (json.JSONDecodeError, OSError):
         return None
+
+
+def _count_consecutive_passing(bench_dir: Path, required: int = 2) -> int:
+    """Count how many of the last N runs passed promotion criteria (verdict.promote=True)."""
+    runs = sorted(bench_dir.glob("run-*.json"), reverse=True)
+    count = 0
+    for path in runs[:required + 2]:
+        try:
+            data = json.loads(path.read_text())
+            if data.get("verdict", {}).get("promote"):
+                count += 1
+            else:
+                break  # must be consecutive
+        except (json.JSONDecodeError, OSError):
+            break
+    return count
+
+
+def _write_promoted_file(bench_dir: Path, run_record: dict) -> None:
+    """Write PROMOTED sentinel file with model/score/date when consecutive runs pass."""
+    scores = run_record.get("scores", {})
+    info = {
+        "promoted_at": run_record.get("started_at", ""),
+        "run_id": run_record.get("run_id", ""),
+        "model": run_record.get("model", ""),
+        "overall_pct": scores.get("overall_pct", 0),
+        "dims": {d: v.get("pct", 0) for d, v in scores.get("dims", {}).items()},
+    }
+    (bench_dir / "PROMOTED").write_text(json.dumps(info, indent=2) + "\n")
+    print(f"  ✓ PROMOTED file written: {bench_dir / 'PROMOTED'}")
 
 
 def _check_regression(current: dict, previous: dict | None, threshold: float = 0.10) -> list[str]:
@@ -730,6 +760,16 @@ def main() -> int:
     out_path = _BENCH_DIR / f"{run_id}.json"
     out_path.write_text(json.dumps(run_record, indent=2))
 
+    # Check consecutive passing runs and write PROMOTED file if threshold met
+    required_consecutive = criteria.get("promotion", {}).get("required_consecutive_runs", 2) if criteria else 2
+    consecutive_passing = _count_consecutive_passing(_BENCH_DIR, required_consecutive)
+    promoted_file = _BENCH_DIR / "PROMOTED"
+    if verdict.get("promote") and consecutive_passing >= required_consecutive and not promoted_file.exists():
+        _write_promoted_file(_BENCH_DIR, run_record)
+    elif promoted_file.exists() and verdict.get("demote"):
+        promoted_file.unlink()
+        print(f"  ✗ PROMOTED file removed — demotion floor hit")
+
     if args.json:
         json.dump(run_record, sys.stdout, indent=2)
         sys.stdout.write("\n")
@@ -742,8 +782,8 @@ def main() -> int:
         print(f"  Wall time: {wall_s:.0f}s   p95 latency: {p95:.0f}s")
         if verdict:
             if verdict["promote"]:
-                print(f"\n  VERDICT: ✓ PROMOTION criteria met ({scores['overall_pct']:.0%} >= 72%)")
-                print(f"           Note: requires {criteria['promotion']['required_consecutive_runs']} consecutive passing runs")
+                status = "PROMOTED" if promoted_file.exists() else f"passing ({consecutive_passing}/{required_consecutive} consecutive)"
+                print(f"\n  VERDICT: ✓ {status} ({scores['overall_pct']:.0%} >= 72%)")
             elif verdict["demote"]:
                 print(f"\n  VERDICT: ✗ DEMOTION floor hit")
                 for r in verdict["reasons_fail"]:

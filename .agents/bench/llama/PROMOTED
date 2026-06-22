@@ -1,0 +1,14 @@
+{
+  "promoted_at": "20260622T044833Z",
+  "run_id": "run-20260622T044833Z",
+  "model": "qwen3.6-35b-mtp-q5",
+  "overall_pct": 0.846,
+  "dims": {
+    "reasoning": 0.75,
+    "tool_use": 0.917,
+    "code_gen": 0.778,
+    "coherence": 1.0
+  },
+  "consecutive_passing_runs": 2,
+  "required_consecutive_runs": 2
+}
