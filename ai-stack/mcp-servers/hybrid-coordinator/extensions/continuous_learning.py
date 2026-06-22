@@ -665,7 +665,15 @@ class ContinuousLearningPipeline:
         """9.2.2: Wait for telemetry file updates via watchfiles/inotify."""
         if awatch is None or not self.watch_enabled:
             return False
-        watch_dirs = sorted({str(path.parent) for path in self.telemetry_paths if path.parent.exists()})
+        # Only watch directories that are writable — inotify_add_watch fails with EACCES
+        # on read-only bind mounts (systemd ProtectHome=read-only).  Paths from
+        # REPO_ROOT/.agents/telemetry/ are read-only for ai-hybrid; they're still
+        # read during scheduled processing via self.telemetry_paths.
+        watch_dirs = sorted({
+            str(path.parent)
+            for path in self.telemetry_paths
+            if path.parent.exists() and os.access(str(path.parent), os.W_OK)
+        })
         if not watch_dirs:
             return False
         tracked_files = {path.name for path in self.telemetry_paths}
