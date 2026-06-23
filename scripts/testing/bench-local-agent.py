@@ -776,7 +776,7 @@ def main() -> int:
     required_consecutive = criteria.get("promotion", {}).get("required_consecutive_runs", 2) if criteria else 2
     consecutive_passing = _count_consecutive_passing(_BENCH_DIR, required_consecutive)
     promoted_file = _BENCH_DIR / "PROMOTED"
-    if verdict.get("promote") and consecutive_passing >= required_consecutive and not promoted_file.exists():
+    if verdict.get("promote") and consecutive_passing >= required_consecutive:
         _write_promoted_file(_BENCH_DIR, run_record)
     elif promoted_file.exists() and verdict.get("demote"):
         promoted_file.unlink()
