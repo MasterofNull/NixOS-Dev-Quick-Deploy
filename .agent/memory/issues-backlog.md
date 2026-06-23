@@ -31,6 +31,20 @@
   Action: (1) `sudo mkdir -p /var/lib/sops-nix && sudo cp ~/.config/sops/age/keys.txt /var/lib/sops-nix/key.txt && sudo chmod 400 /var/lib/sops-nix/key.txt` (2) Remove `mySystem.secrets.ageKeyFile = lib.mkForce "..."` from `nix/hosts/hyperd/deploy-options.local.nix` (default is already `/var/lib/sops-nix/key.txt` in options.nix:894) (3) Rebuild.
   Files: nix/hosts/hyperd/deploy-options.local.nix; nix/modules/core/options.nix:894
 
+[OPEN] gemini-cli-onboardUser-429-persistent — `gemini -p "test"` fails on every cold start with 429 rateLimitExceeded at `cloudcode-pa.googleapis.com/v1internal:onboardUser`. Persistent since Jun 19 (4+ days), confirming this is NOT an hourly/daily quota reset issue.
+  Root cause: gemini-cli 0.47.0 calls `_doSetupUser()` → `onboardUser` on EVERY cold start (in-memory cache only, no persistent skip). The OAuth browser flow succeeds (Bearer token obtained, google_accounts.json updated), but the Code Assist registration step returns 429. `tierId:"standard-tier"` suggests account provisioning may be incomplete or the per-account registration quota is exhausted at the Google backend. `delegate-to-antigravity` is therefore fully blocked (calls `gemini -p "..."` internally).
+  Severity: medium (Gemini delegation chain blocked; Qwen3-35B at 92.3% covers most tasks)
+  Options:
+    (A) Upgrade gemini-cli to 0.48.0-preview.0 — may have changed onboardUser behavior; easy to try.
+        `npm install -g @google/gemini-cli@0.48.0-preview.0`
+    (B) Get new AI Studio free-tier API key (aistudio.google.com/apikey) + store in SOPS:
+        - free tier: 2.0-flash 15 RPM / 2.5-pro 5 RPM (sufficient for delegation)
+        - Change ~/.gemini/settings.json security.auth.selectedType to "api-key"
+        - Modify delegate-to-antigravity to support api-key mode (skips onboardUser entirely)
+        - SOPS add: gemini_api_key must be added to secrets.sops.yaml BEFORE secrets.nix (HARD rule)
+    (C) Wait — may eventually clear but no evidence of time-based reset in 4 days
+  File: ~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/chunk-SBG6CUNK.js line 307684
+
 [OPEN] codex-startup-local-state-warnings — Codex startup emitted deprecated `codex_hooks` feature warning and stale arg0 temp cleanup permission warning.
   Root cause: `/home/hyperd/.codex/config.toml` contained the legacy `[features].codex_hooks = true` alias alongside `hooks = true`, and active Codex processes rehydrated that alias from their startup state after edits. Separately, `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` was stale but owned by root:root, so user-owned Codex could not clean it.
   Severity: low
