@@ -1,14 +1,19 @@
 {
-  "promoted_at": "20260622T044833Z",
-  "run_id": "run-20260622T044833Z",
+  "promoted_at": "20260623T182038Z",
+  "run_id": "run-20260623T182038Z",
   "model": "qwen3.6-35b-mtp-q5",
-  "overall_pct": 0.846,
+  "overall_pct": 0.923,
   "dims": {
-    "reasoning": 0.75,
+    "reasoning": 0.833,
     "tool_use": 0.917,
-    "code_gen": 0.778,
+    "code_gen": 1.0,
     "coherence": 1.0
   },
-  "consecutive_passing_runs": 2,
-  "required_consecutive_runs": 2
+  "consecutive_passing_runs": 3,
+  "required_consecutive_runs": 2,
+  "known_gaps": [
+    "A3: freq_penalty fix named (denies premise)",
+    "A4: explicit role:tool example",
+    "B4: type(scope) mandatory format"
+  ]
 }
