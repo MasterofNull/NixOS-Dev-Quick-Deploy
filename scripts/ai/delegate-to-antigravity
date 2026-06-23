@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""delegate-to-antigravity — Headless AI delegation via gemini CLI (oauth-personal).
+"""delegate-to-antigravity — Headless AI delegation via the harness switchboard.
 
-Uses Google Code Assist (cloudcode-pa.googleapis.com) with oauth-personal auth.
-This is the free path — requires Google account login, NOT a paid API key.
+Routes prompts through the switchboard's remote profiles (remote-gemini,
+remote-reasoning, etc.).  The switchboard handles provider routing, circuit
+breaking, token budgets, and telemetry.  Backend (model / API key / endpoint)
+is configured once in deploy-options.local.nix — this script never changes
+when the provider changes.
 
-Auth setup (one-time, interactive):
-  Run in a terminal: gemini -p "test"
-  When prompted "Opening authentication page in your browser. Do you want to continue? [Y/n]:"
-  → press Y, complete Google sign-in in your browser.
-  After that, all headless calls work automatically.
+Deployment-time configuration (deploy-options.local.nix):
+  mySystem.ai.switchboard.remoteUrl            = "https://openrouter.ai/api/v1";
+  mySystem.ai.switchboard.remoteModelAliases.gemini = "google/gemini-2.5-flash";
 
-Auth is stored in: ~/.gemini/gemini-credentials.json (AES-256-GCM encrypted)
-Settings: ~/.gemini/settings.json  → security.auth.selectedType = "oauth-personal"
+Runtime environment override:
+  SWITCHBOARD_URL=http://127.0.0.1:8085   (default: port from options.nix)
 
 Usage:
   delegate-to-antigravity --prompt "task description"   # background dispatch
@@ -19,17 +20,20 @@ Usage:
   delegate-to-antigravity --check <task-id>             # read output
   delegate-to-antigravity --status <task-id>            # check status
   delegate-to-antigravity --list                        # list all tasks
+  delegate-to-antigravity --prompt "..." --loop         # agentic loop (tool use)
 """
 
 import argparse
 import fcntl
+import http.client
 import json
 import os
 import random
-import re
-import subprocess
+import socket
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,22 +45,31 @@ _OUTPUTS_DIR = _DELEGATION_DIR / "outputs"
 _REGISTRY = _DELEGATION_DIR / "registry.jsonl"
 _PENDING_UPDATE = _HERE / "lib" / "pending-update"
 _AUDIT_WRITE = _HERE / "lib" / "audit-write.sh"
-_GEMINI_SETTINGS = Path.home() / ".gemini" / "settings.json"
-_GEMINI_CREDS = Path.home() / ".gemini" / "gemini-credentials.json"
+
+# ── runtime configuration ──────────────────────────────────────────────────
+# Port sourced from env; default matches nix/modules/core/options.nix switchboard default.
+_SWITCHBOARD_URL = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085").rstrip("/")
 
 # ── constants ──────────────────────────────────────────────────────────────
 _MIN_CONTENT_BYTES = 200
-_MAX_CONCURRENT = 3
+_MAX_CONCURRENT    = 3
 
-# Code Assist (oauth-personal) accepts gemini model IDs directly.
-# On free tier, 2.0-flash and 2.5-flash are available; 2.5-pro may be rate-limited.
-_MODEL_MAP = {
-    "fast":        "gemini-2.0-flash",
-    "flash":       "gemini-2.0-flash",
-    "pro":         "gemini-2.5-pro-preview-06-05",
-    "architect":   "gemini-2.5-flash",
-    "implementer": "gemini-2.0-flash",
-    "reviewer":    "gemini-2.0-flash",
+# Maps --mode to switchboard profile names.
+# Profiles are defined in nix/modules/services/switchboard.nix and tuned via
+# deploy-options.local.nix (remoteModelAliases).  Changing the backend never
+# requires editing this script.
+#
+# Current mapping: remote-free (Llama 3.3 70B via OpenRouter free tier).
+# Intended mapping when OpenRouter Gemini credits are available:
+#   fast/flash/implementer/reviewer → remote-gemini  (gemini-2.5-flash-lite)
+#   pro/architect                   → remote-reasoning (claude-sonnet / gemini-pro)
+_PROFILE_MAP: dict[str, str] = {
+    "fast":        "remote-free",        # lightweight: quick answers, discovery
+    "flash":       "remote-free",        # same lane
+    "pro":         "remote-free",        # high-judgment: architecture, review
+    "architect":   "remote-free",
+    "implementer": "remote-free",
+    "reviewer":    "remote-free",
 }
 
 _VALID_ROLES = {
@@ -77,7 +90,6 @@ _HARNESS_SYSTEM_BASE = (
 )
 
 def _load_harness_grounding() -> str:
-    """Load config/local-agent-grounding.md if present. Returns '' if absent."""
     gf = _REPO / "config" / "local-agent-grounding.md"
     try:
         return gf.read_text().strip()
@@ -92,72 +104,179 @@ def _build_harness_system() -> str:
 
 _HARNESS_SYSTEM = _build_harness_system()
 
-# ── auth validation ─────────────────────────────────────────────────────────
+# ── switchboard readiness ──────────────────────────────────────────────────
 
-def _check_auth_ready() -> "tuple[bool, str]":
-    """Returns (is_ready, reason). Checks if gemini CLI has oauth-personal credentials."""
-    # Check settings are set to oauth-personal
-    if not _GEMINI_SETTINGS.exists():
-        return False, f"~/.gemini/settings.json not found"
+def _check_switchboard_ready() -> "tuple[bool, str]":
+    """Returns (is_ready, reason). Verifies switchboard is up and remote is configured."""
     try:
-        settings = json.loads(_GEMINI_SETTINGS.read_text())
-        auth_type = settings.get("security", {}).get("auth", {}).get("selectedType", "")
-        if auth_type != "oauth-personal":
-            return False, f"selectedType={auth_type!r} (expected 'oauth-personal')"
-    except Exception as e:
-        return False, f"Cannot parse settings.json: {e}"
-
-    # Check credentials file exists and has content
-    if not _GEMINI_CREDS.exists() or _GEMINI_CREDS.stat().st_size < 50:
-        return False, "gemini-credentials.json missing or empty — run: gemini -p 'test' (completes OAuth)"
-
-    # Try decrypting to check for oauth-personal token
-    try:
-        result = subprocess.run(
-            ["node", "-e", _DECRYPT_CREDS_JS],
-            capture_output=True, text=True, timeout=5,
+        req = urllib.request.Request(f"{_SWITCHBOARD_URL}/health")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, socket.timeout, OSError) as e:
+        return False, (
+            f"Switchboard not reachable at {_SWITCHBOARD_URL}: {e}\n"
+            "Ensure ai-switchboard service is running."
         )
-        if result.returncode == 0:
-            creds = json.loads(result.stdout)
-            # oauth-personal token stored under this key
-            if "gemini-cli-oauth-personal" in creds or "oauth-personal" in creds:
-                return True, "oauth-personal credentials present"
-            # Has only API key credentials — auth flow needed
-            return False, (
-                "gemini-credentials.json has only API key credentials.\n"
-                "Complete oauth-personal login by running in a terminal:\n"
-                "  gemini -p 'test'\n"
-                "Then press Y and sign in with your Google account in the browser."
+    except Exception as e:
+        return False, f"Switchboard health check failed: {e}"
+
+    if data.get("status") != "ok":
+        return False, f"Switchboard status={data.get('status')!r}"
+
+    if not data.get("remote_configured"):
+        return False, (
+            "Switchboard remote backend not configured.\n"
+            "Set mySystem.ai.switchboard.remoteUrl in deploy-options.local.nix,\n"
+            "then rebuild: sudo nixos-rebuild switch --flake .#hyperd-ai-dev"
+        )
+
+    return True, "switchboard healthy, remote configured"
+
+# ── response parsing ───────────────────────────────────────────────────────
+
+def _parse_switchboard_response(raw: bytes) -> "tuple[str, int, int]":
+    """Parse switchboard response (JSON or SSE). Returns (content, tokens_in, tokens_out)."""
+    text = raw.decode(errors="replace").strip()
+
+    # SSE stream — collect content deltas and final usage chunk
+    if text.startswith("data: "):
+        parts: list[str] = []
+        tokens_in = tokens_out = 0
+        for line in text.splitlines():
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            try:
+                chunk = json.loads(line[6:])
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                if "content" in delta and delta["content"]:
+                    parts.append(delta["content"])
+                usage = chunk.get("usage") or {}
+                if usage.get("prompt_tokens"):
+                    tokens_in = usage["prompt_tokens"]
+                if usage.get("completion_tokens"):
+                    tokens_out = usage["completion_tokens"]
+            except (json.JSONDecodeError, IndexError, KeyError):
+                pass
+        return "".join(parts).strip(), tokens_in, tokens_out
+
+    # Regular JSON completion
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Unexpected response format (not JSON, not SSE): {e}") from e
+
+    if "error" in data:
+        err = data["error"]
+        raise ValueError(f"Switchboard error: {err.get('message', err)}")
+
+    content = (
+        data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        or ""
+    ).strip()
+
+    usage = data.get("usage") or {}
+    tokens_in  = usage.get("prompt_tokens", 0)
+    tokens_out = usage.get("completion_tokens", 0)
+    return content, tokens_in, tokens_out
+
+# ── delegation via switchboard ─────────────────────────────────────────────
+
+_MAX_RETRIES    = 3
+_RETRY_BASE_SEC = 35   # matches OpenRouter free-tier Retry-After default
+
+
+def _run_via_switchboard(
+    task_id: str,
+    prompt: str,
+    role: str,
+    profile: str,
+    timeout: int,
+    log_path: Path,
+    print_to_stdout: bool = False,
+) -> "tuple[str, int, int]":
+    """POST to switchboard /v1/chat/completions. Returns (status, tokens_in, tokens_out)."""
+    url = f"{_SWITCHBOARD_URL}/v1/chat/completions"
+    payload = json.dumps({
+        "model": profile,
+        "messages": [
+            {"role": "system", "content": _HARNESS_SYSTEM},
+            {"role": "user",   "content": f"[ROLE: {role}]\n\n{prompt}"},
+        ],
+        "stream": False,
+    }).encode()
+
+    def _write_log(msg: str):
+        with open(log_path, "a") as f:
+            f.write(msg)
+        if print_to_stdout:
+            sys.stderr.write(msg)
+
+    raw: bytes = b""
+    for attempt in range(1, _MAX_RETRIES + 1):
+        req = urllib.request.Request(url, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("x-ai-profile", profile)   # switchboard profile selection header
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+            break  # success
+        except urllib.error.HTTPError as e:
+            body = e.read(2000).decode(errors="replace")
+            if e.code == 429 and attempt < _MAX_RETRIES:
+                wait = _RETRY_BASE_SEC
+                try:
+                    err_data = json.loads(body)
+                    wait = int(err_data.get("error", {}).get("metadata", {})
+                               .get("retry_after_seconds", wait)) + 2
+                except (ValueError, KeyError):
+                    pass
+                _write_log(
+                    f"[attempt {attempt}/{_MAX_RETRIES}] 429 rate-limited"
+                    f" on profile={profile} — retrying in {wait}s\n"
+                )
+                time.sleep(wait)
+                continue
+            _write_log(
+                f"ERROR: switchboard HTTP {e.code} on profile={profile}\n"
+                f"Body: {body}\n"
+                f"Check: is the remote backend configured and reachable?\n"
             )
-    except Exception:
-        pass
+            return "failed", 0, 0
+        except (urllib.error.URLError, socket.timeout, OSError) as e:
+            _write_log(
+                f"ERROR: switchboard unreachable at {_SWITCHBOARD_URL}: {e}\n"
+                "Check: ai-switchboard service running?\n"
+            )
+            return "failed", 0, 0
+    else:
+        _write_log(f"ERROR: exhausted {_MAX_RETRIES} retries (all 429) on profile={profile}\n")
+        return "failed", 0, 0
 
-    # Can't verify — credentials file exists but may be stale API key creds.
-    # Attempt the call anyway; gemini CLI will surface auth errors.
-    return True, "credentials file present (cannot verify type without decryption)"
+    try:
+        content, tokens_in, tokens_out = _parse_switchboard_response(raw)
+    except ValueError as e:
+        _write_log(f"ERROR: {e}\nRaw response (first 500 bytes): {raw[:500]!r}\n")
+        return "failed", 0, 0
 
+    if not content:
+        _write_log(
+            f"ERROR: empty content from switchboard profile={profile}\n"
+            f"Raw response (first 500 bytes): {raw[:500]!r}\n"
+        )
+        return "failed", 0, 0
 
-# Node.js snippet to decrypt gemini-credentials.json using the same key derivation as the CLI.
-_DECRYPT_CREDS_JS = """
-const crypto = require('crypto');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const credsFile = path.join(os.homedir(), '.gemini', 'gemini-credentials.json');
-try {
-  const data = fs.readFileSync(credsFile, 'utf-8').trim();
-  const parts = data.split(':');
-  if (parts.length !== 3) { console.log('{}'); process.exit(0); }
-  const salt = os.hostname() + '-' + os.userInfo().username + '-gemini-cli';
-  const key = crypto.scryptSync('gemini-cli-oauth', salt, 32);
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  let dec = decipher.update(parts[2], 'hex', 'utf8') + decipher.final('utf8');
-  console.log(dec);
-} catch(e) { console.log('{}'); }
-"""
+    with open(log_path, "a") as f:
+        f.write(content)
+        f.write("\n")
+    if print_to_stdout:
+        sys.stdout.write(content)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    status = "done" if len(content.encode()) >= _MIN_CONTENT_BYTES else "partial-success"
+    return status, tokens_in, tokens_out
 
 # ── task id & registry ─────────────────────────────────────────────────────
 
@@ -239,96 +358,13 @@ def _count_running() -> int:
             pass
     return count
 
-# ── delegation via gemini CLI ───────────────────────────────────────────────
-
-def _run_gemini_cli(task_id: str, prompt: str, role: str, model: str,
-                    timeout: int, log_path: Path,
-                    print_to_stdout: bool = False) -> "tuple[str, int, int]":
-    """Call gemini CLI (oauth-personal, Code Assist). Returns (status, 0, 0)."""
-    role_prefix = f"[ROLE: {role}]\n\n"
-    full_prompt = role_prefix + _HARNESS_SYSTEM + "\n" + prompt
-
-    cmd = [
-        "gemini",
-        "--output-format", "text",
-        "-p", full_prompt,
-    ]
-    if model:
-        cmd.extend(["-m", model])
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            stdin=subprocess.DEVNULL,
-        )
-
-        output = result.stdout.strip()
-        stderr = result.stderr.strip()
-
-        # Detect auth errors (happens when oauth-personal flow is incomplete)
-        auth_error_patterns = [
-            "Authentication cancelled",
-            "Opening authentication page",
-            "FatalCancellationError",
-            "Error authenticating",
-        ]
-        if any(p in stderr for p in auth_error_patterns):
-            msg = (
-                "ERROR: gemini CLI requires interactive OAuth login.\n\n"
-                "Run once in a terminal to complete auth:\n"
-                "  gemini -p 'test'\n"
-                "Press Y when prompted, then sign in with your Google account.\n"
-                "After that, all headless delegation calls will work automatically.\n"
-            )
-            with open(log_path, "a") as f:
-                f.write(msg)
-            if print_to_stdout:
-                sys.stderr.write(msg)
-            return "failed", 0, 0
-
-        if output:
-            with open(log_path, "a") as f:
-                f.write(output)
-                f.write("\n")
-            if print_to_stdout:
-                sys.stdout.write(output)
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-            status = "done" if len(output.encode()) >= _MIN_CONTENT_BYTES else "partial-success"
-            return status, 0, 0
-
-        # Empty output — check stderr for useful error info
-        if stderr:
-            with open(log_path, "a") as f:
-                f.write(f"ERROR: gemini CLI returned no output.\nstderr: {stderr[:500]}\n")
-        else:
-            with open(log_path, "a") as f:
-                f.write("ERROR: gemini CLI returned empty output (no stderr).\n"
-                        "Check: gemini -p 'test' works interactively?\n")
-        return "failed", 0, 0
-
-    except subprocess.TimeoutExpired:
-        with open(log_path, "a") as f:
-            f.write(f"ERROR: gemini CLI timeout after {timeout}s.\n")
-        return "failed", 0, 0
-
-    except FileNotFoundError:
-        with open(log_path, "a") as f:
-            f.write(
-                "ERROR: 'gemini' not found in PATH.\n"
-                f"Ensure ~/.npm-global/bin is in PATH, or install:\n"
-                f"  npm install -g @google/gemini-cli\n"
-            )
-        return "failed", 0, 0
-
 # ── pending / audit helpers ─────────────────────────────────────────────────
+
+import subprocess as _subprocess
 
 def _pending_update(*args):
     try:
-        subprocess.run(
+        _subprocess.run(
             [sys.executable, str(_PENDING_UPDATE)] + list(args),
             timeout=5, check=False, capture_output=True,
         )
@@ -338,7 +374,7 @@ def _pending_update(*args):
 
 def _audit(verb: str, *args):
     try:
-        subprocess.run(
+        _subprocess.run(
             ["bash", "-c",
              f'source "{_AUDIT_WRITE}" 2>/dev/null && audit_event_{verb} antigravity "$@"',
              "--"] + [str(a) for a in args],
@@ -408,7 +444,7 @@ def cmd_check(task_id: str):
 
 
 def cmd_delegate(prompt: str, role: str, mode: str,
-                 model_override: "str | None", max_tokens: int,
+                 profile_override: "str | None", max_tokens: int,
                  timeout: int, wait: bool, loop: bool = False):
     _ensure_dirs()
 
@@ -419,7 +455,12 @@ def cmd_delegate(prompt: str, role: str, mode: str,
             "Wait for current tasks or read them with --check <id>."
         )
 
-    model = model_override or _MODEL_MAP.get(mode, "gemini-2.0-flash")
+    profile = profile_override or _PROFILE_MAP.get(mode, "remote-gemini")
+
+    # Fast-fail before forking: verify switchboard is reachable and remote is configured.
+    ok, reason = _check_switchboard_ready()
+    if not ok:
+        sys.exit(f"ERROR: {reason}")
 
     tid = _task_id()
     log_path = _OUTPUTS_DIR / f"{tid}.log"
@@ -430,7 +471,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
 
     _info(f"Delegating task: {tid}")
     _info(f"Role:            {role}")
-    _info(f"Model:           {model} (--mode {mode})")
+    _info(f"Profile:         {profile} (--mode {mode})")
     _info(f"Output file:     {log_path}")
 
     if loop:
@@ -443,8 +484,8 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         ]
         if mode:
             agent_cmd.extend(["--mode", mode])
-        if model_override:
-            agent_cmd.extend(["--model", model_override])
+        if profile_override:
+            agent_cmd.extend(["--model", profile_override])
         if not wait:
             child = os.fork()
             if child > 0:
@@ -455,10 +496,10 @@ def cmd_delegate(prompt: str, role: str, mode: str,
             devnull = os.open("/dev/null", os.O_RDWR)
             os.dup2(devnull, sys.stdin.fileno())
             os.close(devnull)
-            subprocess.run(agent_cmd)
+            _subprocess.run(agent_cmd)
             os._exit(0)
         else:
-            subprocess.run(agent_cmd)
+            _subprocess.run(agent_cmd)
             return
 
     # Register before dispatch
@@ -467,15 +508,15 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _audit("start", tid, prompt[:200])
 
     if wait:
-        status, ti, to = _run_gemini_cli(
-            tid, prompt, role, model, timeout, log_path,
+        status, ti, to = _run_via_switchboard(
+            tid, prompt, role, profile, timeout, log_path,
             print_to_stdout=True,
         )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
         _audit("end", tid, "success" if status == "done" else "error", "0",
                f"{status}: {prompt[:100]}", role)
-        _info(f"Task {tid} {status}")
+        _info(f"Task {tid} {status}  (in={ti} out={to})")
         print(tid)
         return
 
@@ -494,8 +535,8 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     os.close(devnull)
 
     try:
-        status, ti, to = _run_gemini_cli(
-            tid, prompt, role, model, timeout, log_path,
+        status, ti, to = _run_via_switchboard(
+            tid, prompt, role, profile, timeout, log_path,
         )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
@@ -517,13 +558,19 @@ def cmd_delegate(prompt: str, role: str, mode: str,
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="delegate-to-antigravity",
-        description="Headless Gemini delegation via gemini CLI (oauth-personal / Code Assist).",
+        description=(
+            "Headless AI delegation via the harness switchboard.\n"
+            "Routes through remote-gemini / remote-reasoning profiles.\n"
+            "Backend (model, API key, provider) is configured in deploy-options.local.nix."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Auth setup (one-time):\n"
-            "  Run: gemini -p 'test'\n"
-            "  Press Y and sign in with Google account in browser.\n"
-            "  Subsequent calls work headlessly without user interaction.\n"
+            "Deployment configuration (deploy-options.local.nix):\n"
+            "  mySystem.ai.switchboard.remoteUrl = \"https://openrouter.ai/api/v1\";\n"
+            "  mySystem.ai.switchboard.remoteModelAliases.gemini = \"google/gemini-2.5-flash\";\n\n"
+            "Profile override (advanced):\n"
+            "  --model remote-coding     # use a specific switchboard profile\n"
+            "  --model remote-reasoning  # high-judgment lane\n"
         ),
     )
     p.add_argument("--prompt",      metavar="TEXT", help="Task prompt")
@@ -531,18 +578,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--role", default="implementer",
                    help=f"Agent role [{', '.join(sorted(_VALID_ROLES))}]  [default: implementer]")
     p.add_argument("--mode", default="fast",
-                   help=f"Model mode [{', '.join(sorted(_MODEL_MAP))}]  [default: fast]")
-    p.add_argument("--model", metavar="MODEL_ID",
-                   help="Gemini model ID override (bypasses --mode)")
+                   help=f"Model lane [{', '.join(sorted(_PROFILE_MAP))}]  [default: fast]")
+    p.add_argument("--model", metavar="PROFILE",
+                   help="Switchboard profile override (bypasses --mode; e.g. remote-coding)")
     p.add_argument("--max-tokens", type=int, default=8192,
-                   help="Max output tokens [default: 8192] — note: gemini CLI controls this")
+                   help="Max output tokens hint [default: 8192] — enforced by switchboard profile")
     p.add_argument("--timeout", type=int, default=900,
-                   help="Subprocess timeout in seconds [default: 900]")
+                   help="HTTP request timeout in seconds [default: 900]")
     p.add_argument("--wait",   action="store_true", help="Block until completion, print output")
     p.add_argument("--check",  metavar="ID", help="Print output of a completed task")
     p.add_argument("--status", metavar="ID", help="Show status JSON for a task")
     p.add_argument("--list",   action="store_true", help="List all antigravity tasks")
-    p.add_argument("--loop",   action="store_true", help="Run as agentic loop (aq-antigravity-agent)")
+    p.add_argument("--loop",   action="store_true",
+                   help="Run as agentic loop with tool access (aq-antigravity-agent)")
     return p
 
 
@@ -552,8 +600,8 @@ def main():
 
     if args.role not in _VALID_ROLES:
         p.error(f"Invalid --role '{args.role}'. Valid: {', '.join(sorted(_VALID_ROLES))}")
-    if args.mode not in _MODEL_MAP:
-        p.error(f"Invalid --mode '{args.mode}'. Valid: {', '.join(sorted(_MODEL_MAP))}")
+    if args.mode not in _PROFILE_MAP:
+        p.error(f"Invalid --mode '{args.mode}'. Valid: {', '.join(sorted(_PROFILE_MAP))}")
 
     _ensure_dirs()
 
