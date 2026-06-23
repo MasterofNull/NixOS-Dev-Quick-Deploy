@@ -31,19 +31,29 @@
   Action: (1) `sudo mkdir -p /var/lib/sops-nix && sudo cp ~/.config/sops/age/keys.txt /var/lib/sops-nix/key.txt && sudo chmod 400 /var/lib/sops-nix/key.txt` (2) Remove `mySystem.secrets.ageKeyFile = lib.mkForce "..."` from `nix/hosts/hyperd/deploy-options.local.nix` (default is already `/var/lib/sops-nix/key.txt` in options.nix:894) (3) Rebuild.
   Files: nix/hosts/hyperd/deploy-options.local.nix; nix/modules/core/options.nix:894
 
-[OPEN] gemini-cli-onboardUser-429-persistent — `gemini -p "test"` fails on every cold start with 429 rateLimitExceeded at `cloudcode-pa.googleapis.com/v1internal:onboardUser`. Persistent since Jun 19 (4+ days), confirming this is NOT an hourly/daily quota reset issue.
-  Root cause: gemini-cli 0.47.0 calls `_doSetupUser()` → `onboardUser` on EVERY cold start (in-memory cache only, no persistent skip). The OAuth browser flow succeeds (Bearer token obtained, google_accounts.json updated), but the Code Assist registration step returns 429. `tierId:"standard-tier"` suggests account provisioning may be incomplete or the per-account registration quota is exhausted at the Google backend. `delegate-to-antigravity` is therefore fully blocked (calls `gemini -p "..."` internally).
-  Severity: medium (Gemini delegation chain blocked; Qwen3-35B at 92.3% covers most tasks)
-  Options:
-    (A) Upgrade gemini-cli to 0.48.0-preview.0 — may have changed onboardUser behavior; easy to try.
-        `npm install -g @google/gemini-cli@0.48.0-preview.0`
-    (B) Get new AI Studio free-tier API key (aistudio.google.com/apikey) + store in SOPS:
-        - free tier: 2.0-flash 15 RPM / 2.5-pro 5 RPM (sufficient for delegation)
-        - Change ~/.gemini/settings.json security.auth.selectedType to "api-key"
-        - Modify delegate-to-antigravity to support api-key mode (skips onboardUser entirely)
-        - SOPS add: gemini_api_key must be added to secrets.sops.yaml BEFORE secrets.nix (HARD rule)
-    (C) Wait — may eventually clear but no evidence of time-based reset in 4 days
+[SUPERSEDED → see delegate-to-antigravity-switchboard-migration] gemini-cli-onboardUser-429-persistent — gemini-cli 0.47.0 onboardUser 429 persistent since Jun 19. delegate-to-antigravity was rewritten (0ccb644f) to route via switchboard instead of gemini-cli subprocess. gemini-cli path is no longer the delegation mechanism — this issue is moot for delegation. gemini-cli may still be needed for interactive use; onboardUser issue remains at the Google backend.
   File: ~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/chunk-SBG6CUNK.js line 307684
+
+[OPEN] delegate-to-antigravity-switchboard-migration — delegate-to-antigravity rewritten (0ccb644f) to use switchboard HTTP routing. Script routes through remote-free (meta-llama/llama-3.3-70b-instruct:free via OpenRouter). Smoke tests pass after rate-limit cooldown; burst testing triggers 429 → circuit breaker trip. Normal production use (non-burst) is unaffected.
+  Current state: remote-free profile works in normal use; all modes map to remote-free.
+  Intended Gemini path (two options):
+    (A) Add OpenRouter credits → change deploy-options.nix remoteModelAliases.gemini to
+        restore remote-gemini profile for fast/flash/implementer/reviewer lanes.
+        No code changes required — just credits + profile map update in delegate-to-antigravity.
+    (B) Direct Gemini API (free, recommended): Get AI Studio key (aistudio.google.com/apikey,
+        free: gemini-2.0-flash 15 RPM). Store in SOPS as gemini_api_key (add to secrets.sops.yaml
+        FIRST, then secrets.nix — HARD rule). In deploy-options.local.nix:
+          mySystem.aiStack.switchboard.remoteUrl = lib.mkForce "https://generativelanguage.googleapis.com/v1beta/openai";
+          mySystem.aiStack.switchboard.remoteApiKeyFile = lib.mkForce "/run/secrets/gemini_api_key";
+          mySystem.aiStack.switchboard.remoteModelAliases.gemini = lib.mkForce "gemini-2.5-flash";
+          mySystem.aiStack.switchboard.remoteModelAliases.free = lib.mkForce "gemini-2.0-flash-lite";
+        Then in scripts/ai/delegate-to-antigravity _PROFILE_MAP restore:
+          fast/flash/implementer/reviewer -> remote-gemini
+          pro/architect -> remote-reasoning
+        Run nrs. No other code changes needed — switchboard Bearer auth works with Google's
+        OpenAI-compat endpoint (generativelanguage.googleapis.com/v1beta/openai uses Bearer).
+  Severity: low (Llama 3.3 70B on remote-free handles delegation; Gemini routes available when configured)
+  File: scripts/ai/delegate-to-antigravity _PROFILE_MAP; nix/hosts/hyperd/deploy-options.local.nix
 
 [OPEN] codex-startup-local-state-warnings — Codex startup emitted deprecated `codex_hooks` feature warning and stale arg0 temp cleanup permission warning.
   Root cause: `/home/hyperd/.codex/config.toml` contained the legacy `[features].codex_hooks = true` alias alongside `hooks = true`, and active Codex processes rehydrated that alias from their startup state after edits. Separately, `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` was stale but owned by root:root, so user-owned Codex could not clean it.
