@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """delegate-to-antigravity — Headless AI delegation via the harness switchboard.
 
-Routes prompts through the switchboard's remote profiles (remote-gemini,
+Routes prompts through the switchboard's remote profiles (antigravity-collective,
 remote-reasoning, etc.).  The switchboard handles provider routing, circuit
 breaking, token budgets, and telemetry.  Backend (model / API key / endpoint)
 is configured once in deploy-options.local.nix — this script never changes
@@ -60,9 +60,9 @@ _MAX_CONCURRENT    = 3
 # requires editing this script.
 #
 # Current mapping: remote-free (Llama 3.3 70B via OpenRouter free tier).
-# Intended mapping when OpenRouter Gemini credits are available:
-#   fast/flash/implementer/reviewer → remote-gemini  (gemini-2.5-flash-lite)
-#   pro/architect                   → remote-reasoning (claude-sonnet / gemini-pro)
+# Intended mapping when OpenRouter credits are available:
+#   fast/flash/implementer/reviewer → antigravity-collective  (primary orchestration lane)
+#   pro/architect                   → remote-reasoning (high-judgment tasks)
 _PROFILE_MAP: dict[str, str] = {
     "fast":        "remote-free",        # lightweight: quick answers, discovery
     "flash":       "remote-free",        # same lane

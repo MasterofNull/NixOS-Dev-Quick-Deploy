@@ -32,6 +32,18 @@ _MCP_SERVERS_PATH = str(Path(__file__).resolve().parents[1] / "mcp-servers")
 if _MCP_SERVERS_PATH not in sys.path:
     sys.path.insert(0, _MCP_SERVERS_PATH)
 
+# Phase 184: Antigravity Collective Integration
+# lib/l4-coord uses a hyphen — not importable via dotted path. Add the agents
+# subdir directly so imports work without renaming the on-disk directory.
+_L4_COORD_AGENTS = str(Path(__file__).resolve().parents[2] / "lib" / "l4-coord" / "agents")
+if _L4_COORD_AGENTS not in sys.path:
+    sys.path.insert(0, _L4_COORD_AGENTS)
+
+from collaborative_planning import (  # noqa: E402
+    CollaborativePlanning, PlanningMode, PhaseType
+)
+from collective_memory import CollectiveMemory  # noqa: E402
+
 from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS  # noqa: E402
 from tool_registry import ToolCall, ToolRegistry, get_registry
 
@@ -1910,6 +1922,76 @@ class LocalAgentExecutor:
         except Exception as exc:
             logger.info("Remote fallback probe failed for %s: %s", health_url, exc)
             return False
+
+
+    async def execute_collaborative_task(
+        self,
+        task: Task,
+        team_id: str = "default-collective",
+        mode: PlanningMode = PlanningMode.PARALLEL
+    ) -> Task:
+        """
+        Execute a task using the multi-agent collaborative collective (MACC).
+        Uses CollaborativePlanning to synthesize a multi-phase strategy and
+        then executes each phase using specialized agents.
+        """
+        logger.info("Executing collaborative task: %s (team=%s)", task.objective, team_id)
+
+        planner = CollaborativePlanning()
+        memory = CollectiveMemory()
+        plan_id = planner.create_plan(task.id, team_id, mode=mode)
+
+        # Register team in collective memory
+        memory.blackboard_set(team_id, "status", "planning")
+        memory.blackboard_set(team_id, "objective", task.objective)
+
+        # Initial 'lead' contribution for planning
+        contribution_content = f"Orchestrating collective for task: {task.objective}"
+        planner.add_contribution(
+            plan_id,
+            "antigravity-lead",
+            contribution_content,
+            confidence=0.9
+        )
+        memory.blackboard_set(team_id, "latest_contribution", contribution_content)
+
+        # Synthesize and finalize plan (simplified for now)
+        plan = planner.synthesize_plan(plan_id)
+        plan = planner.finalize_plan(plan_id)
+
+        task.result = f"Collective Plan Finalized (ID: {plan_id})\n"
+        task.result += f"Phases: {len(plan.phases)}\n"
+
+        for i, phase in enumerate(plan.phases):
+            task.result += f"Phase {i+1}: [{phase.phase_type.value}] {phase.description}\n"
+            # In a full implementation, we would spawn specialized agents here.
+            # For the initial integration, we execute the description as a sub-task.
+            phase_task = Task(
+                id=f"{task.id}-p{i}",
+                objective=phase.description,
+                complexity=task.complexity / len(plan.phases),
+                latency_critical=task.latency_critical
+            )
+            logger.info("Executing phase %d: %s", i+1, phase.description)
+            result = await self.execute_task(phase_task)
+            task.result += f"  Status: {result.status.value}\n"
+            if result.result:
+                task.result += f"  Output: {result.result[:200]}...\n"
+
+        task.status = TaskStatus.COMPLETED
+        task.execution_time_ms = (time.time() - task.start_time) * 1000 if task.start_time else 0
+
+        # Archive collaboration
+        await memory.archive_collaboration(team_id, {
+            "task_id": task.id,
+            "objective": task.objective,
+            "outcome": "success",
+            "plan_id": plan_id,
+            "duration_ms": task.execution_time_ms
+        })
+        memory.blackboard_set(team_id, "status", "completed")
+
+        return task
 
 
 # Global executor instance
