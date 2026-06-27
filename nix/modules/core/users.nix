@@ -50,6 +50,15 @@ in {
       # NO hashedPassword / initialPassword / hashedPasswordFile here.
       # Passwords are managed by the OS via passwd(1); they survive rebuilds
       # because users.mutableUsers = true preserves /etc/shadow.
+
+      # Allow AI stack service users (ai-hybrid, ai-aidb, etc.) to traverse the
+      # home directory tree to reach live repo config files (e.g., the hot-reload
+      # intent-routing-map.json).  Mode 0711 = owner rwx, others --x (traverse
+      # only; no directory listing for non-owners).
+      # This is the idiomatic NixOS declaration: 'install -d -m <homeMode>' in
+      # the users activation script applies the mode on every rebuild, so no
+      # separate activation script is needed.
+      homeMode = "0711";
     };
 
     # Force default login shell to zsh so it wins over upstream bash defaults.
