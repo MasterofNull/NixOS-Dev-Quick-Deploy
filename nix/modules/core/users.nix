@@ -61,11 +61,12 @@ in {
       homeMode = "0711";
     };
 
-    # Ensure home directory is traversable by AI service users on every rebuild.
-    # homeMode=0711 above only applies at home creation; this script runs after
-    # the users activation script on every rebuild, keeping the mode correct.
-    # deps=["users"] is critical — without it the users script runs AFTER this
-    # script and resets the mode back to 700.
+    # Ensure home directory is traversable by AI service users.
+    # Three-layer approach (homeMode alone does not update existing dirs):
+    # 1. homeMode="0711" above — sets mode at home directory CREATION (new installs)
+    # 2. activationScripts — sets mode on every nixos-rebuild switch
+    # 3. systemd.tmpfiles.rules — adjusts existing paths on every boot and
+    #    on systemd-tmpfiles --create (independent of activation script ordering)
     system.activationScripts.aiStackHomeDirTraversal = {
       deps = [ "users" ];
       text = ''
@@ -74,6 +75,14 @@ in {
         fi
       '';
     };
+
+    # z-type tmpfiles rule: "adjust access mode of existing path".
+    # Runs via systemd-tmpfiles on every boot and after nixos-rebuild switch,
+    # independent of activation script ordering. Belt-and-suspenders for the
+    # activation script above.
+    systemd.tmpfiles.rules = [
+      "z /home/${cfg.primaryUser} 0711 ${cfg.primaryUser} users -"
+    ];
 
     # Force default login shell to zsh so it wins over upstream bash defaults.
     users.defaultUserShell = lib.mkForce pkgs.zsh;
