@@ -189,6 +189,9 @@ ASCII `\x08` (backspace) injected by editors corrupts regex patterns silently. A
 
 ---
 
+### `_os` alias scoped to `_vectorize_doc_to_qdrant` only — use `os` elsewhere in server.py (WARN)
+`_vectorize_doc_to_qdrant` in `aidb/server.py` does `import os as _os` at line 3033 (local import to avoid touching outer scope). Any new code in the same file that uses `_os.environ` outside that function gets `NameError: name '_os' is not defined` at runtime (not caught by py_compile). Always use `os` (the module-level import at line 12) in new handler code. Pattern: check import aliases before copy-pasting code from `_vectorize_doc_to_qdrant`.
+
 ### /vector/search only searches PostgreSQL document_embeddings — not Qdrant collections (CRITICAL)
 AIDB's `/vector/search` → `search_vectors()` → PostgreSQL `document_embeddings` table (pgvector). Qdrant collections are write-only from AIDB's perspective — vectors are pushed to Qdrant via `schedule_qdrant_vectorization` but NEVER read back via `/vector/search`. This means any data stored only in Qdrant (e.g., `interaction-history` backfill) is invisible to the coordinator RAG augmentor. Fix: add a `/vector/search/qdrant` endpoint in AIDB server.py that embeds the query, posts to `http://${QDRANT_URL}/collections/{name}/points/search`, and returns hits in the standard result format. Update `rag_augmentor._QDRANT_COLLECTIONS` frozenset to route those project names to the new endpoint instead of `/vector/search`.
 

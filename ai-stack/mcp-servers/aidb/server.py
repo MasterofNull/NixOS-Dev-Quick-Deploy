@@ -1867,7 +1867,7 @@ class MonitoringServer:
             from query_validator import ALLOWED_COLLECTIONS
             if collection not in ALLOWED_COLLECTIONS:
                 raise HTTPException(status_code=400, detail=f"Unknown collection: {collection}")
-            qdrant_url = _os.environ.get("QDRANT_URL", "").rstrip("/")
+            qdrant_url = os.environ.get("QDRANT_URL", "").rstrip("/")
             if not qdrant_url:
                 raise HTTPException(status_code=503, detail="QDRANT_URL not configured")
             try:
