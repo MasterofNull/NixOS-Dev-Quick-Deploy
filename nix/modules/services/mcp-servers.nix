@@ -1369,28 +1369,6 @@ in {
           };
       };
 
-      # ── Activation: ensure primary user home is traversable by AI service users ──
-      # Problem: /home/${svcUser} defaults to mode 0700 (owner-only). AI stack services
-      # run as non-owner UIDs (e.g., ${hybridUser}) and need to reach files under the
-      # live repo path — specifically config/intent-routing-map.json so that
-      # POST /control/intent/reload can hot-reload the routing map without a rebuild.
-      # ProtectHome=read-only + ReadWritePaths grants namespace access but does NOT
-      # bypass POSIX DAC — the kernel checks file permissions, not the bind-mount.
-      # chmod o+x (0701) adds the execute/traverse bit for others only; it does NOT
-      # add read (no listing of home contents), so the security surface is minimal.
-      # This activation script runs on every rebuild and is therefore persistent.
-      system.activationScripts.aiStackHomeDirTraversal = {
-        text = ''
-          if [ -d /home/${svcUser} ]; then
-            chmod o+x /home/${svcUser}
-            echo "aiStackHomeDirTraversal: /home/${svcUser} -> $(stat -c '%a' /home/${svcUser})"
-          fi
-        '';
-        # Must run after 'users' — NixOS user management runs 'install -d -m 700'
-        # on every activation, which resets /home/${svcUser} to 0700 regardless
-        # of prior state. Without this dep, our chmod fires before the reset.
-        deps = ["users"];
-      };
     })
 
     # ── Ralph Wiggum — loop orchestrator + agent chain execution ─────────────
