@@ -1,12 +1,7 @@
 {
-    "_meta": {
-        "version": "1.2",
-        "owner": "claude-sonnet-4-6",
-        "last_updated": "2026-06-22"
-    },
-    "_comment": "Intent-to-profile routing map (Phase 54.2). Hot-reloadable via POST /control/intent/reload",
-    "_version": "1.2",
-    "_updated": "2026-06-22",
+    "_comment": "Intent-to-profile routing map. Hot-reloadable via POST /control/intent/reload",
+    "_version": "1.3",
+    "_updated": "2026-06-26",
     "intents": {
         "code_generation": {
             "profile": "local-tool-calling",
@@ -147,6 +142,40 @@
             "fallback_profile": "default",
             "memory_recall": true,
             "rag_project": "procedural,best-practices"
+        },
+        "multi_agent_collaboration": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.35,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "skills-patterns,best-practices,procedural"
+        },
+        "data_engineering": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.35,
+            "fallback_profile": "default",
+            "memory_recall": false,
+            "rag_project": "error-solutions,best-practices"
+        },
+        "mlops_training": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.35,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "skills-patterns,error-solutions,best-practices"
+        },
+        "workflow_automation": {
+            "profile": "local-tool-calling",
+            "min_confidence": 0.30,
+            "fallback_profile": "default",
+            "memory_recall": true,
+            "rag_project": "procedural,skills-patterns,best-practices"
         }
+    },
+    "_meta": {
+        "version": "1.3",
+        "owner": "claude-sonnet-4-6",
+        "last_updated": "2026-06-26",
+        "changelog": "Phase 185 — added multi_agent_collaboration, data_engineering, mlops_training, workflow_automation to reduce unknown intent from 31%"
     }
 }

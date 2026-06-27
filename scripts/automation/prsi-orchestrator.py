@@ -35,6 +35,7 @@ ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-st
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
 PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", str(REPO_ROOT / "config/runtime-prsi-policy.json")))
 PRSI_STATE_PATH = Path(os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"))
+_DELEGATION_FEEDBACK = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")) / "delegation-feedback.jsonl"
 
 
 DEFAULT_POLICY: Dict[str, Any] = {
@@ -331,10 +332,63 @@ def _fetch_report(since: str) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _fetch_delegation_feedback_actions(since: str) -> List[Dict[str, Any]]:
+    """Convert failed delegation outcomes with improvement_actions into PRSI structured actions."""
+    if not _DELEGATION_FEEDBACK.exists():
+        return []
+    from datetime import timedelta
+    try:
+        n = int(since.rstrip("dh"))
+        unit = since[-1]
+        delta = timedelta(days=n) if unit == "d" else timedelta(hours=n)
+        cutoff = datetime.now(timezone.utc) - delta
+    except (ValueError, IndexError):
+        cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+
+    seen: set = set()
+    actions: List[Dict[str, Any]] = []
+    try:
+        with open(_DELEGATION_FEEDBACK, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("outcome") != "failed":
+                    continue
+                ts_str = entry.get("timestamp", "")
+                if ts_str:
+                    try:
+                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if ts < cutoff:
+                            continue
+                    except ValueError:
+                        pass
+                for imp in entry.get("improvement_actions", []):
+                    if not imp or imp in seen:
+                        continue
+                    seen.add(imp)
+                    actions.append({
+                        "type": "maintenance",
+                        "action": imp,
+                        "reason": f"delegation_feedback:{entry.get('failure_class','unknown')}",
+                        "safe": True,
+                        "topic": "delegation-reliability",
+                        "source": "delegation-feedback.jsonl",
+                    })
+    except OSError:
+        pass
+    return actions
+
+
 def _fetch_structured_actions(since: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     report = _fetch_report(since)
-    actions = report.get("structured_actions", [])
-    return [a for a in actions if isinstance(a, dict)], report
+    actions = [a for a in report.get("structured_actions", []) if isinstance(a, dict)]
+    actions += _fetch_delegation_feedback_actions(since)
+    return actions, report
 
 
 def _compute_degradation_flags(report: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]:

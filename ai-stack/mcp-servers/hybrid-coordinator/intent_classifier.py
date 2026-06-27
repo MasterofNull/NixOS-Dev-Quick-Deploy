@@ -149,6 +149,42 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
         "projection", "crs", "epsg", "raster", "vector", "spatial", "qgis",
         "ogr", "postgis", "spatialite", "wgs84", "map layer", "geopandas",
     ],
+    # Phase 185 — multi-agent collaboration, data engineering, mlops, workflow
+    "multi_agent_collaboration": [
+        "multi-agent", "agent team", "agent collaboration", "agent collective",
+        "macc", "collective task", "aq-collective", "delegate to local",
+        "delegate to remote", "delegate this to", "antigravity agent", "qwen agent", "codex agent",
+        "agent roles", "team of agents", "collaborative", "all agents",
+        "engage agents", "agent coordination", "switchboard profile",
+        "remote agent", "local agent task", "agent handoff", "agent pipeline",
+        "fanout", "multi-expert", "expert roles", "playing expert", "dynamic roles",
+    ],
+    "data_engineering": [
+        "seed qdrant", "seed collection", "vector collection", "seed the collection",
+        "qdrant", "pgvector", "vector db", "vector database", "embed", "embedding",
+        "pipeline", "etl", "data flow", "ingest", "data pipeline",
+        "postgres schema", "migration", "data seed", "knowledge base",
+        "training data", "dataset", "jsonl", "telemetry pipeline",
+        "aidb", "collection points", "index documents", "vector index",
+    ],
+    "mlops_training": [
+        "training loop", "training ingest", "fine-tuning", "fine tune",
+        "model training", "benchmark", "bench-local-agent", "run bench", "eval score",
+        "ragas", "faithfulness", "answer relevance", "context precision",
+        "continuous learning", "learning loop", "model eval", "inference speed",
+        "tokens per second", "tok/s", "gpu layers", "n_gpu_layers",
+        "llama.cpp", "quantization", "gguf", "lora", "prsi loop",
+        "autonomous improvement", "self-improvement cycle",
+    ],
+    "workflow_automation": [
+        "workflow", "orchestrate", "orchestration", "run the cycle",
+        "run a phase", "execute plan", "phase plan", "run all cycles",
+        "prsi", "prsi cycle", "prsi orchestrator", "autonomous",
+        "continuous", "loop", "agentic workflow", "agent loop",
+        "development cycle", "dev cycle", "harness workflow",
+        "run the harness", "full pass", "bring-up", "bring up",
+        "drop zone", "drop task", "at-rule", "phase 185",
+    ],
 }
 
 # Load path for routing map
@@ -263,6 +299,35 @@ SEMANTIC_PROTOTYPES: Dict[str, List[str]] = {
         "run passive DNS recon against this domain and build a target profile",
         "gather open-source intelligence on this organization using maltego and breach databases",
         "perform subdomain enumeration and identify shadow IT infrastructure",
+    ],
+    # Phase 185 — semantic prototypes for new intent classes
+    "multi_agent_collaboration": [
+        "coordinate the local Qwen agent and remote Antigravity agent to execute this task together",
+        "delegate this planning slice to the architect agent while the implementer builds the scaffold",
+        "run aq-collective with the full agent team to synthesize a solution collaboratively",
+        "engage all agents — orchestrator assigns, implementers execute, reviewer validates",
+        "use MACC to plan and execute this multi-phase objective with dynamic expert role selection",
+    ],
+    "data_engineering": [
+        "seed the error-solutions Qdrant collection with the bug patterns from this session",
+        "run the training ingest pipeline to capture tool call quality signals from telemetry",
+        "create the pgvector schema migration and apply it to the AIDB postgres database",
+        "seed all four empty domain collections: mlops-patterns, qa-patterns, trading-patterns, osint-intelligence",
+        "vector index the newly stored AIDB documents so they are retrievable by semantic search",
+    ],
+    "mlops_training": [
+        "run bench-local-agent to benchmark Qwen3-35B and check if promotion threshold is met",
+        "check the RAGAS answer relevance score and diagnose why context precision dropped",
+        "run the continuous learning loop and verify that at least 5 samples were added",
+        "evaluate model faithfulness using the Qwen judge and report the mean score",
+        "the training ingest added 0 samples — find and fix the checkpoint path and quality floor",
+    ],
+    "workflow_automation": [
+        "execute all dev cycles A through D with the full multi-agent team playing expert roles",
+        "run the PRSI orchestrator cycle and verify the autonomous improvement timer fired",
+        "start the full harness bring-up pass covering delegation, AIDB, continuous learning, and PRSI",
+        "the Phase 185B facts.nix stanza needs to activate the autonomous improvement timer",
+        "wire the delegation-feedback.jsonl into the PRSI orchestrator structured actions pipeline",
     ],
 }
 

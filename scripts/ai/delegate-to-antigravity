@@ -196,6 +196,7 @@ def _run_via_switchboard(
     profile: str,
     timeout: int,
     log_path: Path,
+    max_tokens: int = 8192,
     print_to_stdout: bool = False,
 ) -> "tuple[str, int, int]":
     """POST to switchboard /v1/chat/completions. Returns (status, tokens_in, tokens_out)."""
@@ -206,6 +207,7 @@ def _run_via_switchboard(
             {"role": "system", "content": _HARNESS_SYSTEM},
             {"role": "user",   "content": f"[ROLE: {role}]\n\n{prompt}"},
         ],
+        "max_tokens": min(max_tokens, 8192),
         "stream": False,
     }).encode()
 
@@ -548,7 +550,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         with _profile_lock(profile):
             status, ti, to = _run_via_switchboard(
                 tid, prompt, role, profile, timeout, log_path,
-                print_to_stdout=True,
+                max_tokens=max_tokens, print_to_stdout=True,
             )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
@@ -576,6 +578,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         with _profile_lock(profile):
             status, ti, to = _run_via_switchboard(
                 tid, prompt, role, profile, timeout, log_path,
+                max_tokens=max_tokens,
             )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
