@@ -133,7 +133,7 @@ profiles:
       Use brief answers first, expand only when requested.
       Avoid restating long policy docs unless explicitly asked.
 
-  remote-gemini:
+  antigravity-collective:
     forceProvider: "remote"
     injectHints: false
     modelAlias: null  # SWB_REMOTE_MODEL_ALIAS_GEMINI (or SWB_REMOTE_MODEL_ALIAS_FREE)
@@ -145,7 +145,7 @@ profiles:
     toolExecution: null
     ctxSize_min: null
     profileCard: |
-      [profile-card:remote-gemini]
+      [profile-card:antigravity-collective]
       Use Gemini as the front-door remote orchestration lane for discovery, planning, and synthesis.
       ${HARNESS_AWARE_BODY}
       Keep the output handoff-ready and explicitly trigger local tools, embeddings, or local models when they should take over.

@@ -12,12 +12,12 @@
     - query_gaps 1,536 low-score queries (mostly meta: "list tools", "continuation from session")
   Severity: info (audit complete; all stores live and capturing data)
 
-[OPEN 2026-06-27] interaction-history-qdrant-gap — Qdrant `interaction-history` collection has 1 point; PostgreSQL `interaction_history` has 18,944 rows. Semantic search over past interactions is non-functional. All interaction data is captured (PG + AIDB telemetry) but not vectorized to Qdrant, so RAG recall of similar past agent turns is broken.
-  Root cause: AIDB background_vectorization queue shows pending=0, completed=0 — interaction records are never submitted to the vectorization pipeline. The AIDB /vector/index endpoint exists but is not called automatically for interaction_history inserts. Related: aidb-vector-index-silent-noop (existing issue) may mean even if triggered, vectors silently drop.
-  Impact: hybrid-coordinator's context injection does not benefit from past interaction RAG; agent prompt coaching cannot reference similar solved cases.
-  Action: (1) Investigate aidb-vector-index-silent-noop first (blocking); (2) Add a scheduled job or trigger in interaction_history.py to submit new rows to /vector/index; (3) Backfill: batch-submit existing 18,944 rows via /vector/index POST.
-  Severity: medium (data captured in PG; vector recall broken; fix requires code change + backfill)
-  Files: ai-stack/mcp-servers/aidb/interaction_history.py (add vectorization on insert); ai-stack/mcp-servers/aidb/vector_indexer.py (investigate silent noop)
+[FIXED-FORWARD 2026-06-27 — BACKFILL PENDING] interaction-history-qdrant-gap — Qdrant `interaction-history` collection had 1 point vs 18,962 PG rows. Forward-fix deployed: /history/record handler now fires schedule_qdrant_vectorization(collection="interaction-history") after every successful insert. Collection param threaded through schedule→_runner→_vectorize_doc_to_qdrant (backward-compat; existing callers unchanged → still route to "knowledge").
+  Backfill: scripts/ai/backfill-interaction-history-qdrant.py created (httpx-only; dry-run verified 18,962 rows; batch=20, sleep=1.0s throttle; idempotent via Qdrant scroll dedup). Run off-peak: `python3 scripts/ai/backfill-interaction-history-qdrant.py` (~18 min).
+  Multi-agent review: Codex (PASS-WITH-CONDITIONS), Local/Qwen3 (APPROVE-WITH-CONDITIONS), antigravity (self-fixed delegation routing simultaneously). All blocking conditions resolved.
+  Remaining WARNs (deferred): (1) LOGGER.warning→LOGGER.exception in _runner for full traceback; (2) vectorized_at DB column for native dedup; (3) chunking for interactions >1200 chars.
+  Severity: medium → resolved (forward-fix deployed; backfill needed for historical 18,962 rows)
+  Files: ai-stack/mcp-servers/aidb/server.py (handler + schedule_qdrant_vectorization + _vectorize_doc_to_qdrant); scripts/ai/backfill-interaction-history-qdrant.py (NEW)
 
 [FIXED d217462d] cross-agent-knowledge-silo — Claude Code's ~/.claude/memory/ contained 35+ promoted bug
   patterns, infrastructure constraints, and feedback rules INVISIBLE to Gemini, Codex, and Local/Qwen3.
