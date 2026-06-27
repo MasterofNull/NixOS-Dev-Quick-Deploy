@@ -160,6 +160,16 @@ Every fetch in Promise.allSettled needs AbortController. Unbounded fetches block
 
 ---
 
+## Switchboard / Delegation (continued)
+
+### delegation_slot_busy_advance leaks local-explicit requests to remote (CRITICAL)
+`_select_local_slot_busy_advance_target()` in `ai_coordinator_handlers.py` falls through to the remote fallback chain when the local Qwen3 slot is busy — even when the caller explicitly requested a local profile (`local-tool-calling`, `local-coding`, `local-agent`, etc.). This causes 402 errors from OpenRouter (no credits for the unintended request) → 500 to the caller. Root cause: function had no guard for local-profile names. Fix: import `_LOCAL_PROFILE_NAMES` frozenset from `ai_coordinator.py` (line 425); add `if requested_profile in _LOCAL_PROFILE_NAMES: return None` before the fallback chain. **Requires nixos-rebuild switch to activate** (coordinator reads PYTHONPATH from Nix store closure). Pattern: any new local profile name MUST be added to `_LOCAL_PROFILE_NAMES` — coordinator will silently advance it to remote otherwise.
+
+### agent_executor.py _select_remote_profile: stale profile names (WARN)
+`_select_remote_profile()` used `remote-coding` and `remote-free` profile names that had no active backend. Consolidated to `antigravity-collective` (Gemini). **Pattern: when adding new profiles, update `_select_remote_profile()` in `agent_executor.py` in the same PR or the fallback will route to a dead endpoint.**
+
+---
+
 ## Governance / Workflow
 
 ### Coverage gap → silent breakage
@@ -176,4 +186,4 @@ ASCII `\x08` (backspace) injected by editors corrupts regex patterns silently. A
 
 ---
 
-*Last updated: 2026-06-26 | Maintained by all agents | Seed to RAG after adding patterns*
+*Last updated: 2026-06-27 | Maintained by all agents | Seed to RAG after adding patterns*

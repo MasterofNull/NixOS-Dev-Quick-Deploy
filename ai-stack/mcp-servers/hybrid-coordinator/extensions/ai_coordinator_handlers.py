@@ -73,6 +73,7 @@ from metrics import (
     REAL_TIME_LEARNING_EVENTS,
 )
 from ai_coordinator import (
+    _LOCAL_PROFILE_NAMES,
     build_messages as _ai_coordinator_build_messages,
     build_reasoning_finalization_messages as _ai_coordinator_build_reasoning_finalization_messages,
     build_tool_call_finalization_messages as _ai_coordinator_build_tool_call_finalization_messages,
@@ -448,6 +449,8 @@ def _select_local_slot_busy_advance_target(
     remote_configured: bool,
 ) -> Optional[Dict[str, Any]]:
     if not remote_configured:
+        return None
+    if requested_profile in _LOCAL_PROFILE_NAMES:
         return None
     fallback_chain = _build_delegation_fallback_chain(
         task,
