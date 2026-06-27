@@ -64,12 +64,12 @@ _MAX_CONCURRENT    = 3
 #   fast/flash/implementer/reviewer → antigravity-collective  (primary orchestration lane)
 #   pro/architect                   → remote-reasoning (high-judgment tasks)
 _PROFILE_MAP: dict[str, str] = {
-    "fast":        "remote-free",        # lightweight: quick answers, discovery
-    "flash":       "remote-free",        # same lane
-    "pro":         "remote-free",        # high-judgment: architecture, review
-    "architect":   "remote-free",
-    "implementer": "remote-free",
-    "reviewer":    "remote-free",
+    "fast":        "antigravity-collective",   # primary orchestration lane (Gemini)
+    "flash":       "antigravity-collective",
+    "pro":         "remote-reasoning",        # high-judgment: reasoning-optimized
+    "architect":   "remote-reasoning",
+    "implementer": "antigravity-collective",
+    "reviewer":    "antigravity-collective",
 }
 
 _VALID_ROLES = {

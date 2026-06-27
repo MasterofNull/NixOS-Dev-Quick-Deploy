@@ -1854,6 +1854,16 @@ class MonitoringServer:
             self._require_api_key(request)
             try:
                 interaction_id = await self.mcp_server._interaction_history.record_interaction(payload)
+                query = payload.get("query") or ""
+                response = payload.get("response") or ""
+                self.mcp_server.schedule_qdrant_vectorization(
+                    title=query[:80],
+                    content=query + "\n\n" + response,
+                    project=payload.get("project", "default"),
+                    relative_path=f"interaction/{interaction_id}",
+                    source_trust_level="internal",
+                    collection="interaction-history",
+                )
                 return {"status": "ok", "interaction_id": interaction_id}
             except Exception as exc:
                 raise HTTPException(
@@ -2849,6 +2859,7 @@ class MCPServer:
         project: str,
         relative_path: str,
         source_trust_level: str = "unknown",
+        collection: str = "knowledge",
     ) -> bool:
         """Schedule bounded background vectorization without starving foreground search."""
         max_queue = max(0, _QDRANT_VECTORIZE_MAX_QUEUE)
@@ -2878,6 +2889,7 @@ class MCPServer:
                             project=project,
                             relative_path=relative_path,
                             source_trust_level=source_trust_level,
+                            collection=collection,
                         ),
                         timeout=max(1.0, _QDRANT_VECTORIZE_TIMEOUT_S),
                     )
@@ -2955,11 +2967,13 @@ class MCPServer:
         project: str,
         relative_path: str,
         source_trust_level: str,
+        collection: str = "knowledge",
     ) -> None:
-        """Embed a document and upsert it into the Qdrant 'knowledge' collection.
+        """Embed content and upsert into the named Qdrant collection (default: 'knowledge').
 
-        Called as a fire-and-forget background task after POST /documents so that
-        the hybrid-coordinator can retrieve imported documents via semantic search.
+        Called as a fire-and-forget background task after POST /documents (knowledge)
+        or POST /history/record (interaction-history). The hybrid-coordinator uses
+        the resulting vectors for semantic search and RAG context injection.
         Failures are logged but never surface to the caller.
         """
         import hashlib as _hashlib
@@ -2992,7 +3006,7 @@ class MCPServer:
         body = {"points": [{"id": point_id, "vector": vector, "payload": payload}]}
         try:
             resp = await self._external_http.put(
-                f"{qdrant_url}/collections/knowledge/points?wait=false",
+                f"{qdrant_url}/collections/{collection}/points?wait=false",
                 json=body,
                 timeout=10.0,
             )
