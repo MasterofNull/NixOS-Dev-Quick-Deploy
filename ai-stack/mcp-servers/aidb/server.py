@@ -1848,6 +1848,59 @@ class MonitoringServer:
                 )
 
 
+        # Qdrant direct-collection search (interaction-history and other Qdrant-native collections)
+        @self.app.post("/vector/search/qdrant")
+        async def vector_search_qdrant(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+            """Search a Qdrant collection directly.
+
+            Accepts: {"collection": str, "query": str, "limit": int}
+            Returns: {"results": [{"content", "score", "project", "title", "interaction_id"}]}
+
+            Used by the coordinator RAG augmentor for interaction-history recall.
+            """
+            self._require_api_key(request)
+            collection = payload.get("collection", "")
+            query_text = payload.get("query", "")
+            limit = int(payload.get("limit", 5))
+            if not collection or not query_text:
+                raise HTTPException(status_code=400, detail="collection and query are required")
+            from query_validator import ALLOWED_COLLECTIONS
+            if collection not in ALLOWED_COLLECTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown collection: {collection}")
+            qdrant_url = _os.environ.get("QDRANT_URL", "").rstrip("/")
+            if not qdrant_url:
+                raise HTTPException(status_code=503, detail="QDRANT_URL not configured")
+            try:
+                embedding = (await self.mcp_server.embed_texts([query_text]))[0]
+                resp = await self.mcp_server._external_http.post(
+                    f"{qdrant_url}/collections/{collection}/points/search",
+                    json={"vector": embedding, "limit": limit, "with_payload": True},
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                hits = resp.json().get("result", [])
+                results = []
+                for h in hits:
+                    p = h.get("payload", {})
+                    query_part = str(p.get("query") or p.get("title") or "")
+                    response_part = str(p.get("response") or p.get("content") or "")
+                    content = (query_part + "\n\n" + response_part).strip()[:1200]
+                    results.append({
+                        "content": content,
+                        "score": h.get("score", 0.0),
+                        "project": p.get("project", "default"),
+                        "title": query_part[:80],
+                        "interaction_id": p.get("interaction_id"),
+                        "agent_type": p.get("agent_type"),
+                    })
+                return {"results": results, "collection": collection, "total": len(results)}
+            except HTTPException:
+                raise
+            except Exception as exc:
+                LOGGER.exception("Qdrant search failed collection=%s", collection)
+                raise HTTPException(status_code=500, detail=_error_detail("qdrant_search_failed", exc))
+
+
         # Phase 1.4 — Interaction History endpoints
         @self.app.post("/history/record")
         async def record_interaction(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
