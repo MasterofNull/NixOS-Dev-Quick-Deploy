@@ -1382,14 +1382,14 @@ in {
       system.activationScripts.aiStackHomeDirTraversal = {
         text = ''
           if [ -d /home/${svcUser} ]; then
-            current=$(stat -c '%a' /home/${svcUser})
-            if [ "$current" = "700" ] || [ "$current" = "750" ]; then
-              chmod o+x /home/${svcUser}
-              echo "aiStackHomeDirTraversal: set /home/${svcUser} to $(stat -c '%a' /home/${svcUser})"
-            fi
+            chmod o+x /home/${svcUser}
+            echo "aiStackHomeDirTraversal: /home/${svcUser} -> $(stat -c '%a' /home/${svcUser})"
           fi
         '';
-        deps = [];
+        # Must run after 'users' — NixOS user management runs 'install -d -m 700'
+        # on every activation, which resets /home/${svcUser} to 0700 regardless
+        # of prior state. Without this dep, our chmod fires before the reset.
+        deps = ["users"];
       };
     })
 
