@@ -1,5 +1,25 @@
 ## OPEN ISSUES
 
+[FIXED 4531d494] macc-collaborative-planning-logger-kwarg-crash — collaborative_planning.py used structlog-style kwargs with stdlib logging (6 sites). logger.info("key", plan_id=plan_id) raises Logger._log() got an unexpected keyword argument 'plan_id'. All 6 sites fixed to positional %-format.
+  Severity: critical (MACC execute_collaborative_task crashes immediately at create_plan call)
+  File: lib/l4-coord/agents/collaborative_planning.py lines 294, 329, 462, 483, 500, 530
+
+[FIXED 4531d494] macc-synthesize-plan-missing-await — execute_collaborative_task called async synthesize_plan() without await. Returns coroutine object instead of executing. plan.phases then a coroutine, not a list. RuntimeWarning emitted.
+  Severity: high (plan synthesis silently skipped; phase execution uses wrong object)
+  File: ai-stack/local-agents/agent_executor.py line 1959
+
+[FIXED 4531d494] macc-task-start-time-missing-field — execute_collaborative_task accessed task.start_time but Task dataclass has no start_time field. AttributeError not interceptable by `if task.start_time`. Fixed to local _start_time = time.time() pattern.
+  Severity: high (AttributeError crashes after phases complete)
+  File: ai-stack/local-agents/agent_executor.py line 1982
+
+[FIXED 4531d494] macc-archive-collaboration-metadata-mismatch — archive_collaboration() called with wrong keys (task_id/objective/plan_id/duration_ms) vs expected (task_summary/roles/outcome/duration_s/patterns). Also: AIDB key not found (CLI env vars unset) — added /run/secrets/aidb_api_key SOPS fallback.
+  Severity: medium (collaboration records written with empty content; AIDB archives lost)
+  Files: ai-stack/local-agents/agent_executor.py ~1985; ai-stack/local-agents/collective_memory.py _aidb_key()
+
+[MONITOR] macc-phase-execution-cli-env — aq-collective runs MACC planning layer correctly but individual phase tasks fail with "Request URL is missing protocol" in CLI context (LLAMA_API_URL unset). Expected: aq-collective is designed for harness context (systemd env injection). Not a bug but confirm working via delegate-to-local path.
+  Severity: low (MACC collective planning works; phase execution requires harness env)
+  File: scripts/ai/aq-collective
+
 [FIXED] intent-routing-map-not-hot-reloadable — coordinator read intent-routing-map.json from Nix store (repoSource, read-only). POST /control/intent/reload returned changed=false on live edits. Fix: added INTENT_ROUTING_MAP=${mcp.repoPath}/config/intent-routing-map.json to coordinator env in mcp-servers.nix so the live checkout is used. Requires rebuild to activate.
   Severity: low (routing worked, but live edits required rebuild to take effect)
   File: nix/modules/services/mcp-servers.nix line ~1237
@@ -34,7 +54,7 @@
 [SUPERSEDED → see delegate-to-antigravity-switchboard-migration] gemini-cli-onboardUser-429-persistent — gemini-cli 0.47.0 onboardUser 429 persistent since Jun 19. delegate-to-antigravity was rewritten (0ccb644f) to route via switchboard instead of gemini-cli subprocess. gemini-cli path is no longer the delegation mechanism — this issue is moot for delegation. gemini-cli may still be needed for interactive use; onboardUser issue remains at the Google backend.
   File: ~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/chunk-SBG6CUNK.js line 307684
 
-[OPEN] delegate-to-antigravity-switchboard-migration — delegate-to-antigravity rewritten (0ccb644f) to use switchboard HTTP routing. Script routes through remote-free (meta-llama/llama-3.3-70b-instruct:free via OpenRouter). Smoke tests pass after rate-limit cooldown; burst testing triggers 429 → circuit breaker trip. Normal production use (non-burst) is unaffected.
+[OPEN] delegate-to-antigravity-switchboard-migration — delegate-to-antigravity rewritten (0ccb644f) to use switchboard HTTP routing. Script routes through remote-free (meta-llama/llama-3.3-70b-instruct:free via OpenRouter). Rate-limit fix applied (4531d494): wait-queue replaces hard-fail; fcntl profile lock serializes concurrent processes; _MAX_RETRIES 3→4. Normal production use (non-burst) is unaffected; burst integration tests still exhaust Venice per-account quota. Mitigation: avoid rapid-fire test calls; production spaced calls work correctly.
   Current state: remote-free profile works in normal use; all modes map to remote-free.
   Intended Gemini path (via Code Assist / oauth-personal — free with Google account, NOT AI Studio):
     gemini-cli onboardUser 429 blocks the Code Assist registration step.
