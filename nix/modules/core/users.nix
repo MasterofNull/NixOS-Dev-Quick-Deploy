@@ -55,10 +55,24 @@ in {
       # home directory tree to reach live repo config files (e.g., the hot-reload
       # intent-routing-map.json).  Mode 0711 = owner rwx, others --x (traverse
       # only; no directory listing for non-owners).
-      # This is the idiomatic NixOS declaration: 'install -d -m <homeMode>' in
-      # the users activation script applies the mode on every rebuild, so no
-      # separate activation script is needed.
+      # homeMode sets the mode at home-directory CREATION only — it does not
+      # update existing directories on rebuild. The activation script below
+      # (deps=["users"]) handles existing installs.
       homeMode = "0711";
+    };
+
+    # Ensure home directory is traversable by AI service users on every rebuild.
+    # homeMode=0711 above only applies at home creation; this script runs after
+    # the users activation script on every rebuild, keeping the mode correct.
+    # deps=["users"] is critical — without it the users script runs AFTER this
+    # script and resets the mode back to 700.
+    system.activationScripts.aiStackHomeDirTraversal = {
+      deps = [ "users" ];
+      text = ''
+        if [ -d /home/${config.mySystem.primaryUser} ]; then
+          chmod o+x /home/${config.mySystem.primaryUser}
+        fi
+      '';
     };
 
     # Force default login shell to zsh so it wins over upstream bash defaults.
