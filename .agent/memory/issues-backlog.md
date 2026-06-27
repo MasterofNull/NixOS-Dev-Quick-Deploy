@@ -1,5 +1,27 @@
 ## OPEN ISSUES
 
+[FIXED d217462d] cross-agent-knowledge-silo — Claude Code's ~/.claude/memory/ contained 35+ promoted bug
+  patterns, infrastructure constraints, and feedback rules INVISIBLE to Gemini, Codex, and Local/Qwen3.
+  Each agent session re-discovered known failures. Fix: created .agent/PROMOTED-BUG-PATTERNS.md (35+ patterns)
+  and .agent/INFRASTRUCTURE-CONSTRAINTS.md (hardware, ports, NixOS rules). All 4 agent instruction files
+  updated with Required Shared Knowledge sections and new rules 8a/8b/11 (ATOMIC PULSE, ATOMIC RESUME, ISSUE
+  LOGGING). GEMINI.md auth section corrected from stale oauth-personal/gemini-CLI text to current switchboard
+  HTTP POST (commit 0ccb644f). Local agent E2E validated: 4 tool calls PASS (2653.5s, search_files → list_files
+  → read_file → run_command). Stagnation guard fired correctly on over-reading planning task (Phase 165 — expected).
+  Severity: high → resolved
+  Files: .agent/PROMOTED-BUG-PATTERNS.md (NEW), .agent/INFRASTRUCTURE-CONSTRAINTS.md (NEW),
+    .agent/CODEX.md, .agent/LOCAL-AGENT.md, .agent/GEMINI.md, .claude/CLAUDE.md
+
+[MONITOR] stagnation-guard-too-aggressive-for-planning — Exploration stagnation guard (Phase 165) fired on
+  a Qwen3 implementation planning task after 12 consecutive reads with no edits. The task was legitimately
+  a read-heavy analysis task. Guard is correct for stuck loops but may cut off valid planning sequences.
+  Current threshold: 12 reads. Consider: task-type tag (planning vs implementation) to relax guard for
+  planning tasks dispatched with --mode direct. No action taken yet (guard behavior is per spec).
+  Severity: low (expected guard behavior; planning tasks should use --mode direct not --mode agent)
+  File: ai-stack/local-agents/agent_executor.py (stagnation guard logic)
+
+
+
 [FIXED 6c75890f] intent-routing-map-permission-denied — coordinator `_load_routing_map` silently caught `[Errno 13] Permission denied`. `ai-hybrid` cannot traverse `/home/hyperd` (mode 0700). `ReadWritePaths` + `ProtectHome=read-only` do NOT bypass POSIX DAC. Final idiomatic fix: `users.users.hyperd.homeMode = "0711"` in `nix/modules/core/users.nix`. NixOS `install -d -m 0711 /home/hyperd` runs in the users activation script on every rebuild — no bespoke activation script needed. Prior activation script approach (2865a1d7, 70297669) was ad-hoc; removed in 6c75890f.
   Pattern: For home dir permissions, use `users.users.<n>.homeMode`, not `system.activationScripts`. Mode 0711 = traverse without listing; no group coupling required.
   Severity: high → resolved
