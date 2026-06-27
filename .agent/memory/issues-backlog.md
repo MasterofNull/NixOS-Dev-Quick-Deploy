@@ -1,5 +1,13 @@
 ## OPEN ISSUES
 
+[FIXED no-commit] intent-routing-map-permission-denied — coordinator `_load_routing_map` silently caught `[Errno 13] Permission denied` on every reload call. `ai-hybrid` user (uid=976, gid=ai-stack only) cannot traverse `/home/hyperd` (mode 700). `ReadWritePaths = mcp.repoPath` grants namespace access but does not bypass POSIX DAC. Fix: `chmod o+x /home/hyperd` adds execute/traverse for others; POST /control/intent/reload confirms `intent_count=24`. Permanent fix for rebuild: either (a) keep `chmod o+x /home/hyperd` in system activation, (b) copy map to `/var/lib/ai-stack/config/` and update INTENT_ROUTING_MAP env var in mcp-servers.nix.
+  Severity: high (intent routing silently fell back to empty map; all intent classification degraded to unknown)
+  File: ai-stack/mcp-servers/hybrid-coordinator/intent_classifier.py _load_routing_map(); /home/hyperd permissions
+
+[FIXED no-commit] vscodium-obsolete-ai-markers — `obsolete_ai_markers` budget check (budget=0) failing because `/home/hyperd/.vscode-oss/extensions/.obsolete` contained 2 stale AI extension entries: `google.geminicodeassist-2.81.0` and `qwenlm.qwen-code-vscode-ide-companion-0.18.4-universal`. Fix: cleared `.obsolete` to `{}` (removes stale markers). Refreshed `/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json` snapshot so aq-qa 0.5.7 reads updated state. VSCodium running at time of fix — if extensions reinstalled these entries may reappear.
+  Severity: low (aq-qa 0.5.7 was failing; no runtime impact)
+  File: /home/hyperd/.vscode-oss/extensions/.obsolete; /var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json
+
 [FIXED 393141d7] delegate-to-antigravity-max-tokens-not-wired — cmd_delegate received max_tokens (default 8192) from CLI but never forwarded it to _run_via_switchboard. Switchboard computed remaining token budget from model context (57505 tokens for Venice Llama). Venice rejected HTTP 400 "max_tokens or max_completion_tokens of 57505 exceeds 16384". Fix: added max_tokens param to _run_via_switchboard, wired through both --wait and background fork call sites, capped at min(value, 8192) in payload.
   Severity: high (any complex prompt to remote-free → HTTP 400 → task failed)
   Files: scripts/ai/delegate-to-antigravity _run_via_switchboard() line ~200, cmd_delegate() lines ~549,579
