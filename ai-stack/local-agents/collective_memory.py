@@ -173,6 +173,7 @@ class CollectiveMemory:
             "project": "agent-collaborations",
             "title": f"collab-{team_id}",
             "relative_path": f"collaborations/{team_id}.json",
+            "source_trust_level": "generated",
         }
 
         headers = {"Content-Type": "application/json"}
@@ -186,14 +187,31 @@ class CollectiveMemory:
                     json=payload,
                     headers=headers,
                 )
-                if resp.status_code in (200, 201):
-                    logger.info("Archived collaboration team=%s to AIDB", team_id)
-                    return True
-                logger.warning(
-                    "archive_collaboration AIDB %d: %s",
-                    resp.status_code, resp.text[:200],
-                )
-                return False
+                if resp.status_code not in (200, 201):
+                    logger.warning(
+                        "archive_collaboration AIDB %d: %s",
+                        resp.status_code, resp.text[:200],
+                    )
+                    return False
+                doc_id = None
+                try:
+                    doc_id = resp.json().get("id") or resp.json().get("document_id")
+                except Exception:
+                    pass
+                if doc_id:
+                    # Vector-index the document so it's searchable via recall_agent_memory.
+                    idx_resp = await client.post(
+                        f"{self._aidb_url}/vector/index",
+                        json={"items": [{"document_id": doc_id}], "collection": "skills-patterns"},
+                        headers=headers,
+                    )
+                    if idx_resp.status_code not in (200, 201, 202):
+                        logger.warning(
+                            "archive_collaboration vector index %d: %s",
+                            idx_resp.status_code, idx_resp.text[:200],
+                        )
+                logger.info("Archived collaboration team=%s to AIDB (doc_id=%s)", team_id, doc_id)
+                return True
         except Exception as exc:
             logger.warning("archive_collaboration failed (non-fatal): %s", exc)
             return False
