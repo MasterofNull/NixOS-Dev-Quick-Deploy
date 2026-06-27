@@ -189,4 +189,7 @@ ASCII `\x08` (backspace) injected by editors corrupts regex patterns silently. A
 
 ---
 
+### /vector/search only searches PostgreSQL document_embeddings — not Qdrant collections (CRITICAL)
+AIDB's `/vector/search` → `search_vectors()` → PostgreSQL `document_embeddings` table (pgvector). Qdrant collections are write-only from AIDB's perspective — vectors are pushed to Qdrant via `schedule_qdrant_vectorization` but NEVER read back via `/vector/search`. This means any data stored only in Qdrant (e.g., `interaction-history` backfill) is invisible to the coordinator RAG augmentor. Fix: add a `/vector/search/qdrant` endpoint in AIDB server.py that embeds the query, posts to `http://${QDRANT_URL}/collections/{name}/points/search`, and returns hits in the standard result format. Update `rag_augmentor._QDRANT_COLLECTIONS` frozenset to route those project names to the new endpoint instead of `/vector/search`.
+
 *Last updated: 2026-06-27 | Maintained by all agents | Seed to RAG after adding patterns*

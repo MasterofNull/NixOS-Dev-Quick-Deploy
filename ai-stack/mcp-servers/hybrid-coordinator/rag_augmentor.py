@@ -255,11 +255,22 @@ class RagAugmentor:
             "source": "graph_augment",
         }
 
+    # Qdrant-native collections that bypass PostgreSQL vector search
+    _QDRANT_COLLECTIONS = frozenset({"interaction-history"})
+
     async def _search(self, query: str, project: Optional[str], top_k: int) -> Dict[str, Any]:
-        """Call AIDB /vector/search. project=None performs unfiltered search."""
+        """Call AIDB vector search. Routes to /vector/search/qdrant for Qdrant-native collections."""
         headers = {"Content-Type": "application/json"}
         if self._key:
             headers["X-API-Key"] = self._key
+        if project in self._QDRANT_COLLECTIONS:
+            resp = await self._client.post(
+                "/vector/search/qdrant",
+                json={"collection": project, "query": query, "limit": top_k},
+                headers=headers,
+            )
+            resp.raise_for_status()
+            return resp.json()
         payload: Dict[str, Any] = {"query": query, "limit": top_k}
         if project:
             payload["project"] = project

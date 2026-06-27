@@ -77,6 +77,11 @@ INTENT_SIGNALS: Dict[str, List[str]] = {
         "aq-qa", "aq-report", "aq-hints", "harness health", "system status",
         "check logs", "run diagnostics", "qa check", "system report",
         "maintenance", "uptime", "services list",
+        # Health probes and operational meta-queries
+        "ping", "health check", "heartbeat", "liveness",
+        # Context and session management
+        "context limit", "exceeds context", "compact", "compaction",
+        "context window", "too long", "context full", "context overflow",
     ],
     # Phase 54.2+ — domain-specific intent signals (wired to routing map v1.1)
     "troubleshooting": [
