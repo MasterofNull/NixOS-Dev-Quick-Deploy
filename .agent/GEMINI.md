@@ -14,18 +14,32 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
-## Auth Architecture (2026-06-21 — ANTIGRAVITY ERA, OAUTH-PERSONAL)
+## Auth Architecture (2026-06-26 UPDATE — SWITCHBOARD ERA)
 
-**`delegate-to-gemini` (npm CLI) is RETIRED.** Delegation now goes through
-`delegate-to-antigravity` — a Python script that calls `gemini -p "..."` (Google's Gemini CLI)
-using the `oauth-personal` auth type (Google Code Assist API). No API key needed.
+**`delegate-to-gemini` (npm CLI) is RETIRED.**
+
+**`delegate-to-antigravity` rewritten (commit 0ccb644f, 2026-06-23):** now routes through
+**switchboard HTTP POST** (not gemini CLI subprocess). x-ai-profile header selects profile.
+Current backend: `remote-free` → `meta-llama/llama-3.3-70b-instruct:free` via OpenRouter.
+
+**gemini-cli onboardUser 429 status:** Persistent 4+ days (Google backend structural issue).
+oauth-personal path currently blocked. Options: (A) wait/retry `gemini -p "test"` periodically;
+(B) add OpenRouter credits (remote-gemini = `google/gemini-2.5-flash-lite` already configured).
+
+**Delegation chain (current):**
+- Background: `scripts/ai/delegate-to-antigravity --prompt "..." [--mode fast|flash|pro|architect]`
+- Blocking:   `scripts/ai/delegate-to-antigravity --prompt "..." --wait`
+- Profile:    x-ai-profile header (NOT model body); all modes → remote-free currently
+- Health:     `scripts/health/antigravity-health.sh --smoke`
+- Legacy:     `delegate-to-gemini` — DO NOT USE (RETIRED)
+
+---
+
+### oauth-personal Setup (for when gemini CLI onboardUser unblocks)
 
 **Auth: oauth-personal via gemini CLI → Code Assist (NOT API key, NOT REST direct):**
-- `delegate-to-antigravity` calls `gemini --output-format text -p "..."` as a subprocess.
-- The gemini CLI handles auth via `oauth-personal` → `cloudcode-pa.googleapis.com`.
-- **FREE** — uses your Google account subscription. No paid API key, no prepaid credits.
-- `generativelanguage.googleapis.com` (requires paid API key) is no longer used.
 - `~/.gemini/settings.json` → `security.auth.selectedType = "oauth-personal"` ← REQUIRED.
+- `generativelanguage.googleapis.com` (requires paid API key) is no longer used.
 
 **One-time auth setup (must be done interactively in a terminal):**
 1. Run: `gemini -p "test"` in a terminal (NOT headlessly)
@@ -174,6 +188,14 @@ nix flake update                                     # update all flake inputs
 - Total RAM: 27 GB (model 22.5 GB + KV 1.0 GB + OS 3.0 GB)
 - `enable_thinking` MUST be in `chat_template_kwargs`, never top-level for local inference
 
+## Required Shared Knowledge (load at session start)
+
+All agents share these canonical references — read before any non-trivial task:
+- `.agent/PROMOTED-BUG-PATTERNS.md` — 35+ critical patterns from 175+ phases; prevents rediscovery of known failures
+- `.agent/INFRASTRUCTURE-CONSTRAINTS.md` — hardware limits, service ports, delegation status, NixOS error patterns
+
+---
+
 ## Behavioral Rules (Canonical — all agents)
 
 | # | Rule | Contract |
@@ -187,8 +209,11 @@ nix flake update                                     # update all flake inputs
 | 7 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
 | 8 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
 | 9 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 9a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
+| 9b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task AND after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. This is the compaction anchor — survives context summarization failures. |
 | 10 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
 | 11 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+| 11a | **ISSUE LOGGING** | Any discovered error, friction, misconfiguration, or system limitation — fixed now or deferred — MUST be recorded in `memory/issues-backlog.md`: status, scope, root cause, file+line, severity, action. Never silently discard a found issue. |
 | 12 | **NO DELETE — ARCHIVE** | Never use `rm`/`rmdir` to delete files or directories. Move to a timestamped path instead: `mv <path> .agent/archive/<YYYYMMDD>-<name>`. Use a context-appropriate archive dir (`.agent/archive/`, `.agents/archive/`, etc.) if a closer one exists. |
 | 13 | **SCOPE LOCK (HARD)** | Before editing ANY file, verify it is within the scope of your current task. If a file is not in scope → STOP, report to orchestrator, do not edit. Never touch infrastructure/Nix files (overlays, flake.nix, modules, packages) unless the task explicitly assigns them. Nix overlay edits require `nix eval .#<target>` to pass before committing — `final.mySystem` does not exist in overlay context (only `final`/`prev` pkgs). |
 | 14 | **TOOL DEDUPLICATION** | Never call the same tool with identical arguments more than once in the same session. Before each tool call: check whether an identical call was already made this session. If yes — the result will not change. Write findings to working memory (`store_memory`) and act on them instead of re-querying. Repeated read/search calls without intervening action are a stagnation signal — stop querying and act on what you have. |

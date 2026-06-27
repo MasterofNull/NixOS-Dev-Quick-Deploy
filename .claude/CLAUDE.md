@@ -22,6 +22,14 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 /explore-harness                           # interactive harness capability tour
 ```
 
+## Required Shared Knowledge (all agents — load at session start)
+
+Cross-agent canonical references — read before any non-trivial task:
+- `.agent/PROMOTED-BUG-PATTERNS.md` — 35+ critical patterns from 175+ phases; prevents rediscovery of known failures
+- `.agent/INFRASTRUCTURE-CONSTRAINTS.md` — hardware limits, service ports, delegation status, NixOS error patterns, model config
+
+---
+
 ## Session Start (Every Session)
 
 ```bash
@@ -204,6 +212,9 @@ Never hardcode these values in Python or shell — always read from injected env
 
 | Topic | File |
 |-------|------|
+| **Shared (all agents)** | |
+| Promoted bug patterns | `.agent/PROMOTED-BUG-PATTERNS.md` |
+| Infrastructure constraints | `.agent/INFRASTRUCTURE-CONSTRAINTS.md` |
 | Full policy | `AGENTS.md` |
 | PRD | `.agent/PROJECT-PRD.md` |
 | Rules | `.agent/GLOBAL-RULES.md` |
