@@ -221,3 +221,22 @@ LEAN-CTX.md
 ai-stack/local-agents/.agent/
 ai-stack/local-agents/.agents/
 .agents/improvement/candidates.lock
+
+# ==============================================================================
+# Agent collaboration runtime outputs — only validated code/docs in repo
+# Most delegation/spool paths are covered above; these fill the remaining gaps.
+# ==============================================================================
+
+# Bench run data (generated per run; PROMOTED file tracks current state)
+.agents/bench/**/run-*.json
+
+# Pure-date archive dirs created by Rule 12 (No Delete — ARCHIVE).
+# Named archives like 20260531-docs/ are preserved for historical reference;
+# bare YYYYMMDD/ directories are ephemeral stray-file captures.
+.agent/archive/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/
+
+# Workflow optimization baseline/optimized JSON snapshots (generated; not source)
+.agent/workflows/optimization-reports/
+
+# profile lock files from delegate-to-antigravity (fcntl runtime locks)
+.agents/delegation/*.lock
