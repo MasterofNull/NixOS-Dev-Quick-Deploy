@@ -83,6 +83,10 @@ def main() -> None:
         "expected slot_busy remote advance to stop when remote routing is not configured",
     )
     assert_true(
+        "if requested_profile in _LOCAL_PROFILE_NAMES:" in handlers_text,
+        "expected explicit local profiles to avoid remote advance on local_slot_busy",
+    )
+    assert_true(
         "delegation_slot_busy_advance" in handlers_text,
         "expected delegate handler to log slot_busy advance event",
     )
@@ -125,7 +129,7 @@ def main() -> None:
         "expected deployed hybrid coordinator env to tune local slot retry behavior",
     )
 
-    print("PASS: local-slot-busy fast-fail is wired end-to-end (switchboard → runtime → coordinator → remote advance)")
+    print("PASS: local-slot-busy fast-fail is wired end-to-end with explicit-local remote advance guarded")
 
 
 if __name__ == "__main__":

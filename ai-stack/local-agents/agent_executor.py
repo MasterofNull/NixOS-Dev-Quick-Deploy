@@ -1663,10 +1663,10 @@ class LocalAgentExecutor:
             return task.remote_profile
         objective = str(task.objective or "")
         if task.requires_flagship or task.quality_critical:
-            return "remote-reasoning"
+            return "antigravity-collective"
         if _CODE_TASK_RE.search(objective):
-            return "remote-coding"
-        return "remote-free"
+            return "antigravity-collective"
+        return "antigravity-collective"
 
     def _build_remote_delegate_payload(self, task: Task, profile: str) -> Dict[str, Any]:
         """Build coordinator delegate payload for local-agent fallback."""
@@ -2016,7 +2016,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     async def test():
-        from tool_registry import initialize_builtin_tools
+        from local_agents import initialize_builtin_tools
 
         # Initialize tools
         registry = get_registry()

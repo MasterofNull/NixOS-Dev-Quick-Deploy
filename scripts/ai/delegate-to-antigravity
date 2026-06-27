@@ -61,13 +61,12 @@ _MAX_CONCURRENT    = 3
 #
 # Current mapping: remote-free (Llama 3.3 70B via OpenRouter free tier).
 # Intended mapping when OpenRouter credits are available:
-#   fast/flash/implementer/reviewer → antigravity-collective  (primary orchestration lane)
-#   pro/architect                   → remote-reasoning (high-judgment tasks)
+#   all modes → antigravity-collective (Gemini paid subscription; eliminates OpenRouter credit dependency)
 _PROFILE_MAP: dict[str, str] = {
-    "fast":        "antigravity-collective",   # primary orchestration lane (Gemini)
+    "fast":        "antigravity-collective",   # primary orchestration lane (Paid Gemini)
     "flash":       "antigravity-collective",
-    "pro":         "remote-reasoning",        # high-judgment: reasoning-optimized
-    "architect":   "remote-reasoning",
+    "pro":         "antigravity-collective",   # use paid sub even for reasoning (Gemini 2.x Pro/Flash)
+    "architect":   "antigravity-collective",
     "implementer": "antigravity-collective",
     "reviewer":    "antigravity-collective",
 }
