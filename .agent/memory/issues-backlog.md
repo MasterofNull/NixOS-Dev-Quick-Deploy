@@ -1,5 +1,24 @@
 ## OPEN ISSUES
 
+[INFO 2026-06-27] data-store-audit-findings — Full audit of all data stores completed. Summary:
+  HEALTHY: Qdrant (14 collections, 50k+ pts), Redis (17,731 keys), PostgreSQL (39 tables, 354k+ rows), AIDB (ok, 58 skills, 354k telemetry events), RALPH/8004 (healthy), embedding-service/8081 (ok).
+  Key PostgreSQL counts: telemetry_events=354k, query_traces=30.6k, imported_documents=19.8k, interaction_history=18.9k, learning_feedback=17k, eval_results=2.6k, hint_feedback_events=919, query_gaps=1536.
+  Redis: affective:reciprocity 17,592 keys = per-session give/receive counter (by design, TTL-expiring), aidb:* 119, embedding:* 14.
+  Qdrant → PG mapping confirmed: nixos-dev-quick-deploy(12,845 docs) → codebase-context(25,980 pts, 2×chunk ratio); ai-research-feeds(3,204 docs) → knowledge(12,680 pts, 4× ratio).
+  Gaps (see separate entries below):
+    - interaction-history Qdrant: 1 pt vs PG: 18,944 rows
+    - aidb-vector-index-silent-noop (existing issue, line ~42) — still MONITOR
+    - pgvector embedding column: 0/19,788 (by design — Qdrant is primary vector store)
+    - query_gaps 1,536 low-score queries (mostly meta: "list tools", "continuation from session")
+  Severity: info (audit complete; all stores live and capturing data)
+
+[OPEN 2026-06-27] interaction-history-qdrant-gap — Qdrant `interaction-history` collection has 1 point; PostgreSQL `interaction_history` has 18,944 rows. Semantic search over past interactions is non-functional. All interaction data is captured (PG + AIDB telemetry) but not vectorized to Qdrant, so RAG recall of similar past agent turns is broken.
+  Root cause: AIDB background_vectorization queue shows pending=0, completed=0 — interaction records are never submitted to the vectorization pipeline. The AIDB /vector/index endpoint exists but is not called automatically for interaction_history inserts. Related: aidb-vector-index-silent-noop (existing issue) may mean even if triggered, vectors silently drop.
+  Impact: hybrid-coordinator's context injection does not benefit from past interaction RAG; agent prompt coaching cannot reference similar solved cases.
+  Action: (1) Investigate aidb-vector-index-silent-noop first (blocking); (2) Add a scheduled job or trigger in interaction_history.py to submit new rows to /vector/index; (3) Backfill: batch-submit existing 18,944 rows via /vector/index POST.
+  Severity: medium (data captured in PG; vector recall broken; fix requires code change + backfill)
+  Files: ai-stack/mcp-servers/aidb/interaction_history.py (add vectorization on insert); ai-stack/mcp-servers/aidb/vector_indexer.py (investigate silent noop)
+
 [FIXED d217462d] cross-agent-knowledge-silo — Claude Code's ~/.claude/memory/ contained 35+ promoted bug
   patterns, infrastructure constraints, and feedback rules INVISIBLE to Gemini, Codex, and Local/Qwen3.
   Each agent session re-discovered known failures. Fix: created .agent/PROMOTED-BUG-PATTERNS.md (35+ patterns)
@@ -22,10 +41,16 @@
 
 
 
-[FIXED 6c75890f] intent-routing-map-permission-denied — coordinator `_load_routing_map` silently caught `[Errno 13] Permission denied`. `ai-hybrid` cannot traverse `/home/hyperd` (mode 0700). `ReadWritePaths` + `ProtectHome=read-only` do NOT bypass POSIX DAC. Final idiomatic fix: `users.users.hyperd.homeMode = "0711"` in `nix/modules/core/users.nix`. NixOS `install -d -m 0711 /home/hyperd` runs in the users activation script on every rebuild — no bespoke activation script needed. Prior activation script approach (2865a1d7, 70297669) was ad-hoc; removed in 6c75890f.
-  Pattern: For home dir permissions, use `users.users.<n>.homeMode`, not `system.activationScripts`. Mode 0711 = traverse without listing; no group coupling required.
-  Severity: high → resolved
-  Files: nix/modules/core/users.nix (homeMode); ai-stack/mcp-servers/hybrid-coordinator/intent_classifier.py _load_routing_map()
+[PENDING-REBUILD ea1df9d7] intent-routing-map-permission-denied — ai-hybrid EACCES on /home/hyperd (mode 0700) → intent_classifier._load_routing_map() silently catches exception → _routing_map={} → intent_count=0 → all queries use default profile. Blocking: code_generation/planning/review profiles never selected; RAGAS answer_relevance 0.51 (expected to improve after fix).
+  Root cause chain: ReadWritePaths+ProtectHome=read-only sets namespace bind-mount but POSIX DAC (inode uid/gid/mode) is NOT bypassed. homeMode=0711 only applies at home-directory CREATION (install -d -m), not on subsequent rebuilds of existing directories (empirically confirmed — mode stayed 0700 after 6c75890f rebuild). The users activation script ran at line 18, activation script at line 31 (correct), but something post-activation (suspected: ai-post-deploy-converge.service) resets mode back to 0700.
+  Three-layer fix committed (ea1df9d7):
+    1. homeMode=0711 — creation only (new installs)
+    2. activationScripts.aiStackHomeDirTraversal deps=["users"] — runs after users script on rebuild
+    3. systemd.tmpfiles.rules z /home/hyperd 0711 — adjusts existing path on every boot + systemd-tmpfiles --create
+  Immediate fix (before rebuild): user runs `sudo chmod o+x /home/hyperd` then `curl -X POST http://localhost:8003/control/intent/reload`
+  After rebuild: run `sudo systemd-tmpfiles --create` to apply tmpfiles rule, then reload intent map.
+  Severity: high (blocking intent routing; aq-qa 1.0.5 FAIL; all intent profiles bypassed)
+  Files: nix/modules/core/users.nix (homeMode + activationScripts + tmpfiles.rules); ai-stack/mcp-servers/hybrid-coordinator/intent_classifier.py _load_routing_map()
 
 [FIXED no-commit] vscodium-obsolete-ai-markers — `obsolete_ai_markers` budget check (budget=0) failing because `/home/hyperd/.vscode-oss/extensions/.obsolete` contained 2 stale AI extension entries: `google.geminicodeassist-2.81.0` and `qwenlm.qwen-code-vscode-ide-companion-0.18.4-universal`. Fix: cleared `.obsolete` to `{}` (removes stale markers). Refreshed `/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json` snapshot so aq-qa 0.5.7 reads updated state. VSCodium running at time of fix — if extensions reinstalled these entries may reappear.
   Severity: low (aq-qa 0.5.7 was failing; no runtime impact)
