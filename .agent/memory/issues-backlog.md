@@ -1,5 +1,17 @@
 ## OPEN ISSUES
 
+[FIXED 393141d7] delegate-to-antigravity-max-tokens-not-wired — cmd_delegate received max_tokens (default 8192) from CLI but never forwarded it to _run_via_switchboard. Switchboard computed remaining token budget from model context (57505 tokens for Venice Llama). Venice rejected HTTP 400 "max_tokens or max_completion_tokens of 57505 exceeds 16384". Fix: added max_tokens param to _run_via_switchboard, wired through both --wait and background fork call sites, capped at min(value, 8192) in payload.
+  Severity: high (any complex prompt to remote-free → HTTP 400 → task failed)
+  Files: scripts/ai/delegate-to-antigravity _run_via_switchboard() line ~200, cmd_delegate() lines ~549,579
+
+[FIXED 393141d7] prsi-delegation-feedback-not-consumed — PRSI _fetch_structured_actions only read aq-report structured_actions, never delegation-feedback.jsonl. Failed delegations with improvement_actions never fed back into PRSI improvement queue. Fix: added _fetch_delegation_feedback_actions() reading recent failed delegation outcomes; extended _fetch_structured_actions() to merge both sources.
+  Severity: medium (PRSI closed loop broken; delegation failures not driving self-improvement)
+  File: scripts/automation/prsi-orchestrator.py _fetch_structured_actions() line ~334
+
+[MONITOR] aidb-vector-index-silent-noop — POST /vector/index returns {"status":"ok","indexed":1} but Qdrant collection shows 0 points. AIDB confirms document stored (GET /documents returns doc), but embedding → Qdrant upsert step is silently dropping vectors. Workaround: bypass AIDB indexing, embed directly via llama-embed:8081 and upsert to Qdrant:6333. Affects collective_memory.py archive_collaboration() (added vector/index call as best-effort, non-fatal). Domain collections mlops-patterns, qa-patterns, trading-patterns seeded via direct Qdrant upsert.
+  Severity: medium (documents stored but not searchable via vector recall until direct Qdrant path used)
+  File: ai-stack/local-agents/collective_memory.py archive_collaboration(); aidb/vector_indexer.py (investigate)
+
 [FIXED 4531d494] macc-collaborative-planning-logger-kwarg-crash — collaborative_planning.py used structlog-style kwargs with stdlib logging (6 sites). logger.info("key", plan_id=plan_id) raises Logger._log() got an unexpected keyword argument 'plan_id'. All 6 sites fixed to positional %-format.
   Severity: critical (MACC execute_collaborative_task crashes immediately at create_plan call)
   File: lib/l4-coord/agents/collaborative_planning.py lines 294, 329, 462, 483, 500, 530
