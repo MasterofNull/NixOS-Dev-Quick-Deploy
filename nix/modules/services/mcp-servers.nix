@@ -1807,8 +1807,12 @@ in {
             ];
             Restart = "on-failure";
             RestartSec = "5s";
-            # ReadWritePaths override: daemon moves/archives files in the live repo drops dir.
-            ReadWritePaths = serviceWritablePaths ++ [mcp.repoPath];
+            # ReadWritePaths: scoped to only the paths the daemon actually writes.
+            # Principle of least privilege — do not grant write to the entire repo.
+            ReadWritePaths = serviceWritablePaths ++ [
+              "${mcp.repoPath}/.agents/drops"      # task files: read, archive, delete
+              "${mcp.repoPath}/.agents/attention"  # attention_queue alerts
+            ];
             Environment = [
               "LLAMA_URL=http://127.0.0.1:${toString ports.llamaCpp}"
               "HYBRID_URL=http://127.0.0.1:${toString ports.mcpHybrid}"

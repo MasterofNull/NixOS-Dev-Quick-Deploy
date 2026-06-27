@@ -1,9 +1,9 @@
 ## OPEN ISSUES
 
-[FIXED 2865a1d7] intent-routing-map-permission-denied — coordinator `_load_routing_map` silently caught `[Errno 13] Permission denied` on every reload call. `ai-hybrid` user (uid=976, gid=ai-stack only) cannot traverse `/home/hyperd` (mode 700). `ProtectHome=read-only` + `ReadWritePaths = mcp.repoPath` grants namespace-level access but does NOT bypass POSIX DAC — kernel checks inode permissions against UID/GID, not the bind-mount overlay. Fix: `system.activationScripts.aiStackHomeDirTraversal` added in mcp-servers.nix; runs on every rebuild, does `chmod o+x /home/hyperd` only when mode is 700 or 750 (idempotent). Runtime fix was `chmod o+x /home/hyperd`; declarative fix committed for persistence across rebuilds.
-  Pattern: ReadWritePaths does not bypass POSIX DAC. ProtectHome=read-only requires the directory tree to be traversable by the service UID via file permissions, not just namespace grants.
-  Severity: high (intent routing silently fell back to empty map; all intent classification degraded to unknown)
-  Files: nix/modules/services/mcp-servers.nix (activationScripts.aiStackHomeDirTraversal); ai-stack/mcp-servers/hybrid-coordinator/intent_classifier.py _load_routing_map()
+[FIXED 6c75890f] intent-routing-map-permission-denied — coordinator `_load_routing_map` silently caught `[Errno 13] Permission denied`. `ai-hybrid` cannot traverse `/home/hyperd` (mode 0700). `ReadWritePaths` + `ProtectHome=read-only` do NOT bypass POSIX DAC. Final idiomatic fix: `users.users.hyperd.homeMode = "0711"` in `nix/modules/core/users.nix`. NixOS `install -d -m 0711 /home/hyperd` runs in the users activation script on every rebuild — no bespoke activation script needed. Prior activation script approach (2865a1d7, 70297669) was ad-hoc; removed in 6c75890f.
+  Pattern: For home dir permissions, use `users.users.<n>.homeMode`, not `system.activationScripts`. Mode 0711 = traverse without listing; no group coupling required.
+  Severity: high → resolved
+  Files: nix/modules/core/users.nix (homeMode); ai-stack/mcp-servers/hybrid-coordinator/intent_classifier.py _load_routing_map()
 
 [FIXED no-commit] vscodium-obsolete-ai-markers — `obsolete_ai_markers` budget check (budget=0) failing because `/home/hyperd/.vscode-oss/extensions/.obsolete` contained 2 stale AI extension entries: `google.geminicodeassist-2.81.0` and `qwenlm.qwen-code-vscode-ide-companion-0.18.4-universal`. Fix: cleared `.obsolete` to `{}` (removes stale markers). Refreshed `/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json` snapshot so aq-qa 0.5.7 reads updated state. VSCodium running at time of fix — if extensions reinstalled these entries may reappear.
   Severity: low (aq-qa 0.5.7 was failing; no runtime impact)
