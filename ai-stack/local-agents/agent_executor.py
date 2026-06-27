@@ -420,7 +420,7 @@ class LocalAgentExecutor:
             else allow_degraded_local_execution
         )
         self.remote_timeout_seconds = (
-            _env_float("LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS", 60.0)
+            _env_float("LOCAL_AGENT_REMOTE_TIMEOUT_SECONDS", 600.0)
             if remote_timeout_seconds is None
             else remote_timeout_seconds
         )
@@ -1936,6 +1936,7 @@ class LocalAgentExecutor:
         then executes each phase using specialized agents.
         """
         logger.info("Executing collaborative task: %s (team=%s)", task.objective, team_id)
+        _start_time = time.time()
 
         planner = CollaborativePlanning()
         memory = CollectiveMemory()
@@ -1956,7 +1957,7 @@ class LocalAgentExecutor:
         memory.blackboard_set(team_id, "latest_contribution", contribution_content)
 
         # Synthesize and finalize plan (simplified for now)
-        plan = planner.synthesize_plan(plan_id)
+        plan = await planner.synthesize_plan(plan_id)
         plan = planner.finalize_plan(plan_id)
 
         task.result = f"Collective Plan Finalized (ID: {plan_id})\n"
@@ -1979,15 +1980,19 @@ class LocalAgentExecutor:
                 task.result += f"  Output: {result.result[:200]}...\n"
 
         task.status = TaskStatus.COMPLETED
-        task.execution_time_ms = (time.time() - task.start_time) * 1000 if task.start_time else 0
+        task.execution_time_ms = (time.time() - _start_time) * 1000
 
         # Archive collaboration
+        phase_outcomes = []
+        for i, phase in enumerate(plan.phases):
+            phase_outcomes.append(f"phase{i+1}:{phase.phase_type.value}")
         await memory.archive_collaboration(team_id, {
-            "task_id": task.id,
-            "objective": task.objective,
+            "task_summary": task.objective,
+            "roles": ["orchestrator", "implementer", "reviewer"],
             "outcome": "success",
+            "duration_s": task.execution_time_ms / 1000.0,
+            "patterns": phase_outcomes,
             "plan_id": plan_id,
-            "duration_ms": task.execution_time_ms
         })
         memory.blackboard_set(team_id, "status", "completed")
 

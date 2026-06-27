@@ -183,8 +183,10 @@ def _parse_switchboard_response(raw: bytes) -> "tuple[str, int, int]":
 
 # ── delegation via switchboard ─────────────────────────────────────────────
 
-_MAX_RETRIES    = 3
+_MAX_RETRIES    = 4    # increased for free tier stability
 _RETRY_BASE_SEC = 35   # matches OpenRouter free-tier Retry-After default
+_QUEUE_TIMEOUT  = 300  # max seconds to wait in queue
+_QUEUE_POLL_SEC = 5    # interval to re-check queue
 
 
 def _run_via_switchboard(
@@ -358,6 +360,42 @@ def _count_running() -> int:
             pass
     return count
 
+
+def _wait_in_queue(task_id: str):
+    """Wait until running count is below _MAX_CONCURRENT."""
+    start_wait = time.time()
+    while True:
+        running = _count_running()
+        if running < _MAX_CONCURRENT:
+            return
+        elapsed = time.time() - start_wait
+        if elapsed > _QUEUE_TIMEOUT:
+            sys.exit(f"ERROR: Task {task_id} timed out waiting in queue after {_QUEUE_TIMEOUT}s.")
+        time.sleep(_QUEUE_POLL_SEC + random.uniform(0, 2))
+
+
+def _profile_lock(profile: str):
+    """Acquire a per-profile lock to serialize requests to rate-sensitive backends."""
+    from contextlib import contextmanager
+    
+    lock_file = _DELEGATION_DIR / f"{profile}.lock"
+    
+    @contextmanager
+    def locker():
+        if profile != "remote-free":
+            # Only lock for rate-sensitive free tiers for now
+            yield
+            return
+
+        _ensure_dirs()
+        with open(lock_file, "w") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    return locker()
+
 # ── pending / audit helpers ─────────────────────────────────────────────────
 
 import subprocess as _subprocess
@@ -449,13 +487,12 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _ensure_dirs()
 
     running_count = _count_running()
-    if running_count >= _MAX_CONCURRENT:
-        sys.exit(
-            f"ERROR: {running_count} antigravity tasks already running (max {_MAX_CONCURRENT}).\n"
-            "Wait for current tasks or read them with --check <id>."
-        )
-
     profile = profile_override or _PROFILE_MAP.get(mode, "remote-gemini")
+    tid = _task_id()
+
+    if running_count >= _MAX_CONCURRENT:
+        print(f"[delegate-to-antigravity] Busy ({running_count}/{_MAX_CONCURRENT} tasks). Waiting in queue...")
+        _wait_in_queue(tid)
 
     # Fast-fail before forking: verify switchboard is reachable and remote is configured.
     ok, reason = _check_switchboard_ready()
@@ -508,10 +545,11 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _audit("start", tid, prompt[:200])
 
     if wait:
-        status, ti, to = _run_via_switchboard(
-            tid, prompt, role, profile, timeout, log_path,
-            print_to_stdout=True,
-        )
+        with _profile_lock(profile):
+            status, ti, to = _run_via_switchboard(
+                tid, prompt, role, profile, timeout, log_path,
+                print_to_stdout=True,
+            )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
         _audit("end", tid, "success" if status == "done" else "error", "0",
@@ -535,9 +573,10 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     os.close(devnull)
 
     try:
-        status, ti, to = _run_via_switchboard(
-            tid, prompt, role, profile, timeout, log_path,
-        )
+        with _profile_lock(profile):
+            status, ti, to = _run_via_switchboard(
+                tid, prompt, role, profile, timeout, log_path,
+            )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
         _audit("end", tid, "success" if status == "done" else "error", "0",

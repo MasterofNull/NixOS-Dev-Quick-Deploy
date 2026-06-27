@@ -291,11 +291,8 @@ class CollaborativePlanning:
 
         self.active_plans[plan_id] = plan
 
-        logger.info("plan_created",
-                   plan_id=plan_id,
-                   task_id=task_id,
-                   team_id=team_id,
-                   mode=mode.value)
+        logger.info("plan_created: plan_id=%s task_id=%s team_id=%s mode=%s",
+                   plan_id, task_id, team_id, mode.value)
 
         return plan_id
 
@@ -326,10 +323,8 @@ class CollaborativePlanning:
 
         plan.contributions.append(contribution)
 
-        logger.info("contribution_added",
-                   plan_id=plan_id,
-                   agent_id=agent_id,
-                   contribution_id=contribution_id)
+        logger.info("contribution_added: plan_id=%s agent_id=%s contribution_id=%s",
+                   plan_id, agent_id, contribution_id)
 
         return contribution_id
 
@@ -459,12 +454,8 @@ class CollaborativePlanning:
         # Increment version
         plan.version += 1
 
-        logger.info("plan_synthesized",
-                   plan_id=plan_id,
-                   phases=len(plan.phases),
-                   feasibility=plan.feasibility_score,
-                   completeness=plan.completeness_score,
-                   coherence=plan.coherence_score)
+        logger.info("plan_synthesized: plan_id=%s phases=%d feasibility=%.2f completeness=%.2f coherence=%.2f",
+                   plan_id, len(plan.phases), plan.feasibility_score, plan.completeness_score, plan.coherence_score)
 
         return plan
 
@@ -480,7 +471,7 @@ class CollaborativePlanning:
         # Check dependencies
         dep_issues = self.validator.check_dependencies(plan.phases)
         if dep_issues:
-            logger.warning("dependency_issues", plan_id=plan_id, issues=dep_issues)
+            logger.warning("dependency_issues: plan_id=%s issues=%s", plan_id, dep_issues)
 
         # Check completeness
         plan.completeness_score = self.validator.check_completeness(
@@ -497,11 +488,8 @@ class CollaborativePlanning:
             available_agents
         )
 
-        logger.info("plan_validated",
-                   plan_id=plan_id,
-                   feasibility=plan.feasibility_score,
-                   completeness=plan.completeness_score,
-                   coherence=plan.coherence_score)
+        logger.info("plan_validated: plan_id=%s feasibility=%.2f completeness=%.2f coherence=%.2f",
+                   plan_id, plan.feasibility_score, plan.completeness_score, plan.coherence_score)
 
         return plan
 
@@ -527,7 +515,7 @@ class CollaborativePlanning:
 
         self._save_state()
 
-        logger.info("plan_finalized", plan_id=plan_id)
+        logger.info("plan_finalized: plan_id=%s", plan_id)
 
         return plan
 

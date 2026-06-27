@@ -57,7 +57,14 @@ def _aidb_key() -> str:
             return open(key_file).read().strip()
         except OSError:
             pass
-    return os.environ.get("AIDB_API_KEY", "")
+    env_key = os.environ.get("AIDB_API_KEY", "")
+    if env_key:
+        return env_key
+    # Fallback to SOPS secret path (readable by hyperd in dev sessions)
+    try:
+        return open("/run/secrets/aidb_api_key").read().strip()
+    except OSError:
+        return ""
 
 _BLACKBOARD_TTL: int = int(os.environ.get("AGENT_MESH_BLACKBOARD_TTL", "3600"))
 
