@@ -349,11 +349,69 @@ class AutonomousLoop:
             self.update_cycle(cycle)
             raise
 
+    def _prsi_sync_execute(self) -> Dict[str, Any]:
+        """
+        Sync PRSI action queue from aq-report + delegation-feedback.jsonl,
+        then execute approved actions. Closes the loop between delegation
+        failures and the autonomous improvement queue.
+
+        Non-fatal: any failure is logged and skipped.
+        """
+        import subprocess
+        # Resolve prsi-orchestrator.py relative to the autonomous-improvement dir
+        _script_dir = Path(__file__).resolve().parent
+        _repo_root = _script_dir.parent.parent
+        prsi_script = _repo_root / "scripts" / "automation" / "prsi-orchestrator.py"
+        if not prsi_script.exists():
+            print(f"   ⚠  PRSI script not found at {prsi_script}")
+            return {}
+        result = {"sync": {}, "execute": {}}
+        try:
+            sync_run = subprocess.run(
+                [sys.executable, str(prsi_script), "sync", "--since", "1d"],
+                capture_output=True, text=True, timeout=120,
+                env={**os.environ, "REPO_ROOT": str(_repo_root)},
+            )
+            if sync_run.stdout:
+                try:
+                    result["sync"] = json.loads(sync_run.stdout.strip())
+                    added = result["sync"].get("added", 0)
+                    print(f"   ✅ PRSI sync: +{added} actions discovered")
+                except json.JSONDecodeError:
+                    print(f"   ✅ PRSI sync completed (non-JSON output)")
+            if sync_run.returncode != 0 and sync_run.stderr:
+                print(f"   ⚠  PRSI sync warning: {sync_run.stderr[:120]}")
+        except Exception as e:
+            print(f"   ⚠  PRSI sync failed (non-fatal): {e}")
+        if not self.dry_run:
+            try:
+                exec_run = subprocess.run(
+                    [sys.executable, str(prsi_script), "execute"],
+                    capture_output=True, text=True, timeout=300,
+                    env={**os.environ, "REPO_ROOT": str(_repo_root)},
+                )
+                if exec_run.stdout:
+                    try:
+                        result["execute"] = json.loads(exec_run.stdout.strip())
+                        executed = result["execute"].get("executed", 0)
+                        print(f"   ✅ PRSI execute: {executed} actions run")
+                    except json.JSONDecodeError:
+                        print(f"   ✅ PRSI execute completed")
+                if exec_run.returncode != 0 and exec_run.stderr:
+                    print(f"   ⚠  PRSI execute warning: {exec_run.stderr[:120]}")
+            except Exception as e:
+                print(f"   ⚠  PRSI execute failed (non-fatal): {e}")
+        return result
+
     async def run_once(self) -> bool:
         """
-        Run one improvement cycle check
-        Returns True if cycle was executed, False if no trigger
+        Run one improvement cycle check.
+        Starts with a PRSI sync+execute pass to consume delegation feedback
+        actions before running the trigger-based improvement cycle.
+        Returns True if cycle was executed, False if no trigger.
         """
+        print("🔧 PRSI sync+execute (delegation feedback → action queue)...")
+        self._prsi_sync_execute()
         cycle = await self.run_improvement_cycle(cycle_type="scheduled")
         return cycle is not None
 

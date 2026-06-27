@@ -882,3 +882,7 @@
   ARCHITECTURE: Antigravity is a GUI IDE (not a headless CLI). `antigravity chat` opens a window. Delegation is via gemini npm CLI (oauth-personal), NOT Antigravity binary.
   Severity: action_needed (delegation non-functional until user completes browser OAuth)
   Files: scripts/ai/delegate-to-antigravity, scripts/health/antigravity-health.sh, scripts/health/gemini-cli-health.sh, .agent/GEMINI.md
+
+[FIXED 6b258bf9+pending] autonomous-loop-prsi-not-wired — autonomous_loop.py ran its trigger → research → experiment cycle but never called prsi-orchestrator.py. Delegation failures discovered by PRSI were never consumed by the improvement loop. Fix: added _prsi_sync_execute() in autonomous_loop.py — calls prsi-orchestrator.py sync --since 1d then prsi-orchestrator.py execute at the start of every run_once() call. Closes Phase 185B Problem 3.
+  Severity: medium (autonomous loop firing but not consuming PRSI delegation feedback; improvement queue stale)
+  Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/automation/prsi-orchestrator.py _fetch_structured_actions()
