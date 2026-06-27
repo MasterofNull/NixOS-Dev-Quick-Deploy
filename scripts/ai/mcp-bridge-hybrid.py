@@ -427,6 +427,19 @@ TOOLS = [
         },
     },
     {
+        "name": "collective_task",
+        "description": "Execute a task using the multi-agent collaborative collective (MACC). Optimized for complex architecture, planning, and multi-file implementation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "Complex task objective"},
+                "team_id": {"type": "string", "description": "Optional team name", "default": "default-collective"},
+                "mode": {"type": "string", "enum": ["parallel", "sequential"], "default": "parallel"}
+            },
+            "required": ["task"]
+        },
+    },
+    {
         "name": "project_init_workflow",
         "description": (
             "Run AQD guided /project-init workflow for empty-dir project initialization."
@@ -1390,6 +1403,20 @@ def _call_tool(name: str, args: dict) -> str:
             return _format_result(result)
         except Exception as e:
             return _format_result({"error": f"Failed to parse SOP: {str(e)}"})
+
+    if name == "collective_task":
+        # Call aq-collective via subprocess
+        task_str = args.get("task", "")
+        team_id = args.get("team_id", "default-collective")
+        mode = args.get("mode", "parallel")
+        cmd = [
+            os.path.join(REPO_ROOT, "scripts", "ai", "aq-collective"),
+            "--task", task_str,
+            "--team", team_id,
+            "--mode", mode
+        ]
+        r = _run_local(cmd)
+        return _format_result(r)
 
     if name == "execute_sop":
         from pathlib import Path

@@ -114,9 +114,9 @@ let
     Use brief answers first, expand only when requested.
     Avoid restating long policy docs unless explicitly asked.
   '';
-  remoteGeminiCard = ''
-    [profile-card:remote-gemini]
-    Use Gemini as the front-door remote orchestration lane for discovery, planning, and synthesis.
+  antigravityCollectiveCard = ''
+    [profile-card:antigravity-collective]
+    Use the Antigravity Collective as the primary multi-agent orchestration lane for complex discovery, planning, and synthesis.
     ${harnessAwareBody}
     Keep the output handoff-ready and explicitly trigger local tools, embeddings, or local models when they should take over.
   '';
@@ -262,7 +262,7 @@ let
       toolExecution = null;
       profileCard = remoteDefaultCard;
     };
-    "remote-gemini" = {
+    "antigravity-collective" = {
       forceProvider = "remote";
       injectHints = false;
       modelAlias =
@@ -275,7 +275,7 @@ let
       maxOutputTokens = 1400;
       embeddingsOnly = false;
       toolExecution = null;
-      profileCard = remoteGeminiCard;
+      profileCard = antigravityCollectiveCard;
     };
     "remote-free" = {
       forceProvider = "remote";

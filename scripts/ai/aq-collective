@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""
+aq-collective — Multi-Agent Collaborative Collective CLI
+
+Orchestrates multiple agents to solve complex tasks using the local AI harness.
+Integrates the Antigravity IDE with the collaborative planning layer.
+
+Usage:
+  aq-collective --task "complex objective" [--team team-id] [--mode parallel|sequential]
+"""
+
+import argparse
+import asyncio
+import logging
+import sys
+import time
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "ai-stack" / "local-agents"))
+# lib/l4-coord uses a hyphen — add agents subdir directly (same fix as agent_executor.py)
+sys.path.insert(0, str(_REPO / "lib" / "l4-coord" / "agents"))
+
+from agent_executor import Task, get_executor
+from collaborative_planning import PlanningMode
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger("aq-collective")
+
+async def run_collective(objective: str, team_id: str, mode_str: str):
+    executor = get_executor()
+
+    mode = PlanningMode.PARALLEL
+    if mode_str == "sequential":
+        mode = PlanningMode.SEQUENTIAL
+
+    task = Task(
+        id=f"coll-{int(time.time())}",
+        objective=objective,
+        complexity=0.8,
+    )
+
+    print(f"[*] Initializing Collective for task: {objective}")
+    print(f"[*] Team: {team_id}")
+    print(f"[*] Mode: {mode.value}")
+    print("-" * 60)
+
+    try:
+        result = await executor.execute_collaborative_task(task, team_id=team_id, mode=mode)
+
+        print("-" * 60)
+        print(f"[*] Collective Task Status: {result.status.value}")
+        print(f"[*] Final Synthesis:\n{result.result}")
+
+        return 0 if result.status.value == "completed" else 1
+
+    except Exception as e:
+        logger.error("Collective execution failed: %s", e)
+        return 1
+
+def main():
+    parser = argparse.ArgumentParser(description="Multi-Agent Collaborative Collective")
+    parser.add_argument("--task", required=True, help="Task objective")
+    parser.add_argument("--team", default="default-collective", help="Team ID")
+    parser.add_argument("--mode", default="parallel", choices=["parallel", "sequential"], help="Planning mode")
+
+    args = parser.parse_args()
+
+    sys.exit(asyncio.run(run_collective(args.task, args.team, args.mode)))
+
+if __name__ == "__main__":
+    main()

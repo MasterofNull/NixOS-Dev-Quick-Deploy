@@ -570,6 +570,8 @@ in {
         ps."pytest-cov"
         ps."pytest-xdist"
         ps.trio
+        ps.httpx
+        ps.redis
         # Note: pytest-anyio doesn't exist in nixpkgs; anyio includes pytest plugin
         jupyterlab
         notebook
@@ -1654,14 +1656,14 @@ in {
           "maxTokens": ${toString continueRemoteMaxTokens}
         },
         {
-          "title": "Remote Gemini (Switchboard)",
+          "title": "Antigravity Collective",
           "provider": "openai",
           "apiKey": "dummy",
           "apiBase": "${continueApiBase}",
           "model": "AUTODETECT",
           "requestOptions": {
             "headers": {
-              "X-AI-Profile": "remote-gemini"
+              "X-AI-Profile": "antigravity-collective"
             }
           },
           "contextLength": ${toString continueRemoteContextLength},
