@@ -49,7 +49,13 @@ Full 8-step sequence: ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT →
 
 ## Skill Index
 
-Before starting any non-trivial task, check the skill index for relevant knowledge modules.
+Before starting any non-trivial task, auto-select and test relevant local skills:
+
+```bash
+scripts/ai/aq-skill-auto "<task or user prompt>" --agent codex --json --test
+```
+
+Load the returned `reference_skills` before planning or editing. If the selector is unavailable, fall back to the skill index.
 
 **Scan**: `read_file(".agent/SKILL_INDEX.md")` — tags column identifies relevant skills.
 **Load**: `read_file(".agent/skills/<name>/SKILL.md")` — full detail when needed.

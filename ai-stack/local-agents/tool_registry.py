@@ -647,13 +647,13 @@ class ToolRegistry:
                         data = json.loads(_sanitize_json(output[brace:]))
 
             # Check if it's a function call
-            if "function" not in data:
+            if not isinstance(data, dict) or "function" not in data:
                 return None
 
             tool_call = ToolCall(
                 id=hashlib.md5(f"{data['function']}{time.time()}".encode()).hexdigest()[:16],
                 tool_name=data["function"],
-                arguments=data.get("arguments", {}),
+                arguments=data.get("arguments") or {},
             )
 
             return tool_call

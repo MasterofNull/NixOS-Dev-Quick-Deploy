@@ -91,6 +91,26 @@ def main() -> int:
         "manifest omits agent_lessons_registry",
     )
 
+    security_query = "run a supply chain vulnerability and secret scan with trivy"
+    security_tools = workflow_tool_catalog(security_query)
+    security_tool_names = [tool["name"] for tool in security_tools]
+    assert_true("trivy_fs_scan" in security_tool_names, "security query missing trivy_fs_scan")
+    security_manifest = build_tooling_manifest(security_query, security_tools)
+    assert_true(
+        any(tool["name"] == "trivy_fs_scan" for tool in security_manifest["tools"]),
+        "manifest omits trivy_fs_scan",
+    )
+
+    nix_query = "run nixos flake static analysis with statix and deadnix"
+    nix_tools = workflow_tool_catalog(nix_query)
+    nix_tool_names = [tool["name"] for tool in nix_tools]
+    assert_true("nix_static_analysis" in nix_tool_names, "nix query missing nix_static_analysis")
+
+    observability_query = "inspect observability metrics and aq-report health report"
+    observability_tools = workflow_tool_catalog(observability_query)
+    observability_tool_names = [tool["name"] for tool in observability_tools]
+    assert_true("observability_report" in observability_tool_names, "observability query missing observability_report")
+
     print("PASS: tooling manifest exposes Ralph loop orchestration only when agentic workflow intent is present")
     return 0
 

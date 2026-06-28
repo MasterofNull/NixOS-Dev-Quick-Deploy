@@ -240,3 +240,12 @@ ai-stack/local-agents/.agents/
 
 # profile lock files from delegate-to-antigravity (fcntl runtime locks)
 .agents/delegation/*.lock
+
+# Capability intake audit cache (runtime state)
+.cache/capability-intake-tool-audit-cache.json
+
+# Understand-Anything local scratch; knowledge-graph.json may be committed intentionally.
+.understand-anything/intermediate/
+.understand-anything/tmp/
+.understand-anything/diff-overlay.json
+.understand-anything/.trash-*/

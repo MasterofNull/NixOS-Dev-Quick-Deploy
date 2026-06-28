@@ -9,7 +9,7 @@ while IFS= read -r skill_file; do
   rel="${skill_file#./}"
 
   case "$rel" in
-    .agent/skills/*|.agent/python_skills/*|ai-stack/agents/skills/*|archive/*)
+    .agent/skills/*|.agent/python_skills/*|ai-stack/agents/skills/*|.agent/archive/*|.agents/archive/*|archive/*)
       ;;
     .claude/*)
       echo "FAIL: legacy .claude skill path detected: $skill_file" >&2

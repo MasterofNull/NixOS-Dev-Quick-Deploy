@@ -253,6 +253,17 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "mcp://osint_recon",
             "Run automated OSINT reconnaissance for usernames, domains, and behavioral profiling.",
         )
+    if any(k in q for k in ("osint", "research database", "source research", "public data", "website research", "curated research")):
+        add(
+            "osint_research_ingest",
+            "mcp://osint_research_ingest",
+            "Run passive curated OSINT research and return ledger records for osint-intelligence.",
+        )
+        add(
+            "osint_research_query",
+            "mcp://osint_research_query",
+            "Query persisted osint-intelligence evidence records by topic, source, or workflow.",
+        )
     
     if any(k in q for k in ("mlops", "model health", "inference latency", "context compression", "crystallize")):
         add(
@@ -266,6 +277,27 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "qa_chaos_test",
             "mcp://qa_chaos_test",
             "Trigger chaos experiments or run automated UI/accessibility audits.",
+        )
+
+    if any(k in q for k in ("security scan", "vulnerability", "supply chain", "secret scan", "misconfig", "trivy")):
+        add(
+            "trivy_fs_scan",
+            "cli://trivy/fs",
+            "Run bounded Trivy filesystem vulnerability, secret, and misconfiguration checks with redacted reports.",
+        )
+
+    if any(k in q for k in ("nix", "nixos", "flake", "deadnix", "statix", "nix lint")):
+        add(
+            "nix_static_analysis",
+            "cli://scripts/governance/nix-static-analysis.sh",
+            "Run read-only Nix static analysis through statix/deadnix/alejandra wrapper.",
+        )
+
+    if any(k in q for k in ("observability", "metrics", "aq-report", "health report", "journal summary", "dashboard gap")):
+        add(
+            "observability_report",
+            "cli://aq-report",
+            "Read machine-mode harness telemetry, health, metric, and report summaries.",
         )
 
     if "route_search" not in seen:
@@ -340,6 +372,24 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "mcp_tool": "run_qa_check",
         "args": ["phase", "format", "timeout_seconds"],
         "output_focus": "QA phase summary with pass/fail/skipped counts and failing checks only.",
+    },
+    "trivy_fs_scan": {
+        "method": "CLI",
+        "mcp_tool": "",
+        "args": ["fs", "--scanners", "vuln,secret,misconfig", "--skip-db-update", "--exit-code", "0", "."],
+        "output_focus": "Redacted vulnerability, secret, and misconfiguration findings; no raw secret values.",
+    },
+    "nix_static_analysis": {
+        "method": "CLI",
+        "mcp_tool": "",
+        "args": ["--non-blocking", "--quiet"],
+        "output_focus": "Statix/deadnix/alejandra pass/fail summary for Nix files.",
+    },
+    "observability_report": {
+        "method": "CLI",
+        "mcp_tool": "",
+        "args": ["--machine"],
+        "output_focus": "Machine-readable harness metrics, service health, and dashboard/report gaps.",
     },
     "health": {
         "method": "GET",
@@ -438,6 +488,18 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "mcp_tool": "osint_recon",
         "args": ["target", "tool"],
         "output_focus": "Structured reconnaissance findings (accounts, subdomains, dossiers).",
+    },
+    "osint_research_ingest": {
+        "method": "MCP",
+        "mcp_tool": "osint_research_ingest",
+        "args": ["workflow", "inputs", "max_text_chars"],
+        "output_focus": "Passive public-source excerpts plus STIX-like ledger records for osint-intelligence.",
+    },
+    "osint_research_query": {
+        "method": "MCP",
+        "mcp_tool": "osint_research_query",
+        "args": ["query", "limit", "workflow"],
+        "output_focus": "Source-grounded evidence records previously persisted under osint-intelligence.",
     },
     "trading_market_data": {
         "method": "MCP",

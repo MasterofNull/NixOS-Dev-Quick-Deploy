@@ -12,6 +12,45 @@
         "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key"
       },
       "trust": true
+    },
+    "Playwright MCP": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.76",
+        "--headless",
+        "--isolated",
+        "--host",
+        "127.0.0.1",
+        "--allowed-hosts",
+        "127.0.0.1,localhost",
+        "--allowed-origins",
+        "http://127.0.0.1:*;http://localhost:*",
+        "--block-service-workers",
+        "--image-responses",
+        "omit",
+        "--timeout-action",
+        "5000",
+        "--timeout-navigation",
+        "30000"
+      ],
+      "env": {
+        "PLAYWRIGHT_MCP_ALLOWED_ORIGINS": "http://127.0.0.1:*;http://localhost:*"
+      },
+      "trust": false
+    },
+    "Semgrep MCP": {
+      "command": "nix",
+      "args": [
+        "shell",
+        "nixpkgs#uv",
+        "-c",
+        "uvx",
+        "semgrep-mcp==0.9.0",
+        "--transport",
+        "stdio"
+      ],
+      "trust": false
     }
   }
 }

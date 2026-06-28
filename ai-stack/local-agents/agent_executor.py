@@ -396,10 +396,10 @@ class LocalAgentExecutor:
 
     def __init__(
         self,
-        llama_endpoint: str = os.environ.get("LLAMA_CPP_URL", ""),
+        llama_endpoint: str = os.environ.get("LLAMA_CPP_URL", os.environ.get("LLAMA_URL", "http://127.0.0.1:8080")),
         tool_registry: Optional[ToolRegistry] = None,
         enable_fallback: bool = True,
-        fallback_endpoint: str = os.environ.get("COORDINATOR_URL", ""),
+        fallback_endpoint: str = os.environ.get("COORDINATOR_URL", os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003")),
         offline_mode: Optional[bool] = None,
         allow_degraded_local_execution: Optional[bool] = None,
         remote_timeout_seconds: Optional[float] = None,
@@ -1026,7 +1026,7 @@ class LocalAgentExecutor:
             #   Combined = PINNED + SLIDING when len(messages) > 8.
             #   When len ≤ 8, all messages fit; no pruning needed.
             _CTX_CHAR_BUDGET = 12000  # ~3000 tokens (4 chars/tok)
-            _ctx_chars = sum(len(str(m.get("content", ""))) for m in messages)
+            _ctx_chars = sum(len((m.get("content") or "")) for m in messages)
             if _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 8:
                 pinned = messages[:4]   # system + user + first_assistant + first_tool
                 sliding = messages[-4:]  # last 2 assistant+tool pairs
@@ -1039,7 +1039,7 @@ class LocalAgentExecutor:
                 if self.fallback_endpoint:
                     _dropped = messages[4:-4]
                     _prune_text = " | ".join(
-                        str(m.get("content", ""))[:120]
+                        (m.get("content") or "")[:120]
                         for m in _dropped
                         if m.get("role") in {"assistant", "tool"} and m.get("content")
                     )[:600]
@@ -1088,7 +1088,7 @@ class LocalAgentExecutor:
                 # Retry once with a nudge before failing the task. Empty responses happen
                 # when the server is cold or the model stalls — a single retry recovers most
                 # transient cases without burning the full budget.
-                _ctx_chars_at_fail = sum(len(str(m.get("content", "") or "")) for m in messages)
+                _ctx_chars_at_fail = sum(len((m.get("content") or "")) for m in messages)
                 logger.warning(
                     "empty response at call %d (ctx ~%d chars) — retrying once with nudge",
                     tool_call_count + 1, _ctx_chars_at_fail,
@@ -1233,8 +1233,11 @@ class LocalAgentExecutor:
 
             # File-not-found stagnation: if the same path keeps returning an error
             # (file not found), the model is stuck in a search loop. Abort early.
-            if result.tool_name == "read_file" and not result.result.get("success", True):
-                _fp = result.arguments.get("file_path", "")
+            if result.tool_name == "read_file" and (
+                result.status == "failed"
+                or (result.result is not None and not result.result.get("success", True))
+            ):
+                _fp = (result.arguments or {}).get("file_path", "")
                 if _fp:
                     _failed_reads[_fp] = _failed_reads.get(_fp, 0) + 1
                     if _failed_reads[_fp] >= _FAILED_READ_LIMIT:
@@ -1254,9 +1257,15 @@ class LocalAgentExecutor:
             # Catches loops like harness_health(fail)→store_memory(ok)→harness_health(fail)
             # that reset the observation counter but never make forward progress.
             _is_tool_failure = (
-                not result.result.get("success", True)
-                or result.result.get("exit_code", 0) not in (None, 0)
-                or result.result.get("error") is not None
+                result.status == "failed"
+                or (
+                    result.result is not None
+                    and (
+                        not result.result.get("success", True)
+                        or result.result.get("exit_code", 0) not in (None, 0)
+                        or result.result.get("error") is not None
+                    )
+                )
             )
             if _is_tool_failure:
                 _tool_failure_counts[result.tool_name] = _tool_failure_counts.get(result.tool_name, 0) + 1

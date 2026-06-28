@@ -839,6 +839,27 @@
       "timeout_seconds": 15
     },
     {
+      "id": "osint-research-ingest",
+      "description": "Passive OSINT research ingest emits bounded osint-intelligence ledger records",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/web_research.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/browser_research.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/research_workflows.py",
+        "ai-stack/local-agents/builtin_tools/ai_coordination.py",
+        "config/curated-web-research-sources.json",
+        "scripts/testing/test-osint-research-ingest.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-osint-research-ingest.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true
+    },
+    {
       "id": "useful-token-metrics",
       "description": "Phase 93.5 useful-token aggregation in aq-report --machine",
       "trigger_paths": [

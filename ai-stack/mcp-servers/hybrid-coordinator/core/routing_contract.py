@@ -192,6 +192,11 @@ def _build_profile_registry() -> Dict[str, ProfileEntry]:
             model_alias=alias_gemini,
             description="Gemini model via OpenRouter free tier",
         ),
+        "antigravity-collective": ProfileEntry(
+            tier=RoutingTier.REMOTE_FREE,
+            model_alias=alias_gemini,
+            description="Antigravity Collective lane (Gemini-backed)",
+        ),
         "remote-default": ProfileEntry(
             tier=RoutingTier.REMOTE_FREE,
             model_alias=alias_gemini,
@@ -278,8 +283,8 @@ def profile_for_model_alias(model_alias: str, *, tier_hint: Optional[RoutingTier
         "llama-cpp-local": "local",
         "qwen-coder": "remote-coding",
         "gemini-free": "remote-free",
-        "gemini": "remote-gemini",
-        "gemini-2.0-flash": "remote-gemini",
+        "gemini": "antigravity-collective",
+        "gemini-2.0-flash": "antigravity-collective",
         "claude-sonnet": "remote-reasoning",
         "opencode": "opencode",
         # Until switchboard exposes a distinct flagship profile, critical

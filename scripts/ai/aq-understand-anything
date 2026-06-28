@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_URL="${UA_REPO_URL:-https://github.com/Egonex-AI/Understand-Anything.git}"
+REPO_DIR="${UA_DIR:-$HOME/.understand-anything/repo}"
+PLUGIN_ROOT="$REPO_DIR/understand-anything-plugin"
+DEFAULT_PLATFORMS=(codex gemini antigravity)
+
+usage() {
+  cat <<'EOF'
+Usage:
+  aq-understand-anything ensure [platform ...]
+  aq-understand-anything status [project-dir]
+  aq-understand-anything dashboard [project-dir]
+  aq-understand-anything dashboard-command [project-dir]
+
+Platforms are passed through to upstream install.sh. Common values:
+  codex gemini antigravity vscode opencode openclaw pi vibe hermes cline kimi trae nanobot kiro
+
+Environment:
+  UA_REPO_URL   Override upstream clone URL
+  UA_DIR        Override checkout directory (default: ~/.understand-anything/repo)
+EOF
+}
+
+project_dir() {
+  local candidate="${1:-$PWD}"
+  cd "$candidate" 2>/dev/null && pwd -P
+}
+
+clone_or_update() {
+  if [[ -d "$REPO_DIR/.git" ]]; then
+    git -C "$REPO_DIR" pull --ff-only
+  else
+    mkdir -p "$(dirname "$REPO_DIR")"
+    git clone --depth 1 "$REPO_URL" "$REPO_DIR"
+  fi
+}
+
+ensure_plugin() {
+  local platforms=("$@")
+  if [[ ${#platforms[@]} -eq 0 ]]; then
+    platforms=("${DEFAULT_PLATFORMS[@]}")
+  fi
+
+  clone_or_update
+
+  if [[ ! -x "$REPO_DIR/install.sh" ]]; then
+    chmod +x "$REPO_DIR/install.sh"
+  fi
+
+  local platform
+  for platform in "${platforms[@]}"; do
+    UA_DIR="$REPO_DIR" bash "$REPO_DIR/install.sh" "$platform"
+  done
+}
+
+plugin_status() {
+  local project
+  project="$(project_dir "${1:-$PWD}")"
+
+  echo "Understand-Anything status"
+  echo "  upstream: $REPO_URL"
+  echo "  checkout: $REPO_DIR"
+  if [[ -d "$REPO_DIR/.git" ]]; then
+    echo "  checkout_state: present"
+    echo "  checkout_commit: $(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  else
+    echo "  checkout_state: missing"
+  fi
+
+  if [[ -d "$PLUGIN_ROOT" ]]; then
+    echo "  plugin_root: $PLUGIN_ROOT"
+  else
+    echo "  plugin_root: missing"
+  fi
+
+  if [[ -L "$HOME/.understand-anything-plugin" || -e "$HOME/.understand-anything-plugin" ]]; then
+    echo "  universal_link: $HOME/.understand-anything-plugin"
+  else
+    echo "  universal_link: missing"
+  fi
+
+  if [[ -e "$HOME/.agents/skills/understand/SKILL.md" ]]; then
+    echo "  agents_skill: present ($HOME/.agents/skills/understand)"
+  else
+    echo "  agents_skill: missing"
+  fi
+
+  if [[ -e "$HOME/.gemini/antigravity/skills/understand-anything" ]]; then
+    echo "  antigravity_skill: present ($HOME/.gemini/antigravity/skills/understand-anything)"
+  else
+    echo "  antigravity_skill: missing"
+  fi
+
+  echo "  project: $project"
+  if [[ -f "$project/.understand-anything/knowledge-graph.json" ]]; then
+    echo "  graph: present ($project/.understand-anything/knowledge-graph.json)"
+  else
+    echo "  graph: missing"
+  fi
+}
+
+resolve_plugin_root() {
+  local candidates=(
+    "${CLAUDE_PLUGIN_ROOT:-}"
+    "$HOME/.understand-anything-plugin"
+    "$PLUGIN_ROOT"
+    "$HOME/.codex/understand-anything/understand-anything-plugin"
+    "$HOME/.opencode/understand-anything/understand-anything-plugin"
+    "$HOME/.pi/understand-anything/understand-anything-plugin"
+    "$HOME/understand-anything/understand-anything-plugin"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -d "$candidate/packages/dashboard" ]]; then
+      cd "$candidate" && pwd -P
+      return 0
+    fi
+  done
+
+  echo "Cannot find Understand-Anything plugin root. Run: scripts/ai/aq-understand-anything ensure" >&2
+  return 1
+}
+
+dashboard_command() {
+  local project plugin dashboard
+  project="$(project_dir "${1:-$PWD}")"
+  if [[ ! -f "$project/.understand-anything/knowledge-graph.json" ]]; then
+    echo "No knowledge graph found at $project/.understand-anything/knowledge-graph.json" >&2
+    echo "Run the upstream understand skill first." >&2
+    return 1
+  fi
+
+  plugin="$(resolve_plugin_root)"
+  dashboard="$plugin/packages/dashboard"
+
+  cat <<EOF
+cd "$plugin" && pnpm --filter @understand-anything/core build
+cd "$dashboard" && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install)
+cd "$dashboard" && GRAPH_DIR="$project" npx vite --host 127.0.0.1
+EOF
+}
+
+launch_dashboard() {
+  local project plugin dashboard
+  project="$(project_dir "${1:-$PWD}")"
+  if [[ ! -f "$project/.understand-anything/knowledge-graph.json" ]]; then
+    echo "No knowledge graph found at $project/.understand-anything/knowledge-graph.json" >&2
+    echo "Run the upstream understand skill first." >&2
+    return 1
+  fi
+
+  plugin="$(resolve_plugin_root)"
+  dashboard="$plugin/packages/dashboard"
+
+  cd "$plugin"
+  pnpm --filter @understand-anything/core build
+  cd "$dashboard"
+  pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+  echo "Starting dashboard. Copy the full Dashboard URL including ?token= from the output."
+  GRAPH_DIR="$project" npx vite --host 127.0.0.1
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    ensure|install|sync)
+      shift
+      ensure_plugin "$@"
+      ;;
+    status)
+      shift
+      plugin_status "${1:-$PWD}"
+      ;;
+    dashboard-command)
+      shift
+      dashboard_command "${1:-$PWD}"
+      ;;
+    dashboard)
+      shift
+      launch_dashboard "${1:-$PWD}"
+      ;;
+    -h|--help|help|"")
+      usage
+      ;;
+    *)
+      echo "Unknown command: $cmd" >&2
+      usage >&2
+      return 2
+      ;;
+  esac
+}
+
+main "$@"

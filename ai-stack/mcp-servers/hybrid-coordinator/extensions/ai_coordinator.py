@@ -36,6 +36,7 @@ _ALLOWED_ROUTING_PROFILES = {
     "local-coding",
     "embedded-assist",
     "remote-gemini",
+    "antigravity-collective",
     "remote-free",
     "remote-coding",
     "remote-reasoning",
@@ -180,7 +181,7 @@ def runtime_defaults(now: int | None = None) -> List[Dict[str, Any]]:
         _runtime_record(
             "openrouter-gemini",
             name="OpenRouter Gemini Agent Lane",
-            profile="remote-gemini",
+            profile="antigravity-collective",
             runtime_class="remote-agent",
             tags=["remote", "openrouter", "gemini", "planner", "synthesis"],
             status=remote_gemini_status,
@@ -357,12 +358,12 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
     if profile in {"embedded-assist", "embedded", "assist"}:
         return "embedded-assist"
     if profile in {"explore", "exploration", "discover", "discovery"}:
-        return "remote-gemini"
+        return "antigravity-collective"
     if profile in {"plan", "planner", "planning"}:
-        return "remote-gemini"
+        return "antigravity-collective"
     if profile == "local-tool-calling":
         return "local-tool-calling"
-    if profile in {"remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
+    if profile in {"remote-gemini", "antigravity-collective", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling"}:
         return profile
 
     lowered = str(task or "").lower()
@@ -375,8 +376,8 @@ def infer_profile(task: str, requested_profile: str = "") -> str:
     if any(token in lowered for token in ("code", "patch", "implement", "refactor", "fix", "debug")):
         return "remote-coding"
     if any(token in lowered for token in ("gemini", "discover", "discovery", "research", "explore", "synthesize", "synthesis")):
-        return "remote-gemini"
-    return "remote-gemini"
+        return "antigravity-collective"
+    return "antigravity-collective"
 
 
 # ---------------------------------------------------------------------------
@@ -568,7 +569,7 @@ def route_by_complexity(
             route_name = "plan" if task_archetype == "planning" else "explore"
             recommended = _frontdoor_profile(route_name)
         else:
-            recommended = "remote-gemini"
+            recommended = "antigravity-collective"
         model_class = "lightweight"
     elif task_archetype == "continuation" and complexity != "architecture":
         recommended = _frontdoor_profile("continuation") if _frontdoor_routing_enabled() else "default"
@@ -588,10 +589,10 @@ def route_by_complexity(
         recommended = _frontdoor_profile("reasoning") if _frontdoor_routing_enabled() else "remote-reasoning"
         model_class = "heavy-reasoning"
     elif complexity == "simple":
-        recommended = _frontdoor_profile("explore") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-gemini")
+        recommended = _frontdoor_profile("explore") if _frontdoor_routing_enabled() else ("default" if prefer_local else "antigravity-collective")
         model_class = "lightweight"
     elif complexity == "medium":
-        recommended = _frontdoor_profile("default") if _frontdoor_routing_enabled() else ("default" if prefer_local else "remote-gemini")
+        recommended = _frontdoor_profile("default") if _frontdoor_routing_enabled() else ("default" if prefer_local else "antigravity-collective")
         model_class = "lightweight"
     else:
         recommended = _frontdoor_profile("implementation") if _frontdoor_routing_enabled() else "remote-coding"
@@ -710,12 +711,12 @@ def delegated_response_budget(
     ):
         cap = 48
     elif task_archetype in {"planning", "retrieval", "continuation", "general"}:
-        cap = 128 if profile_name in {"default", "embedded-assist", "remote-gemini", "remote-free"} else 96
+        cap = 128 if profile_name in {"default", "embedded-assist", "remote-gemini", "antigravity-collective", "remote-free"} else 96
     elif task_archetype == "implementation" and complexity == "simple":
         cap = 192
     elif complexity == "simple":
         cap = 160
-    elif complexity == "medium" and profile_name in {"default", "embedded-assist", "remote-gemini", "remote-free"}:
+    elif complexity == "medium" and profile_name in {"default", "embedded-assist", "remote-gemini", "antigravity-collective", "remote-free"}:
         cap = 256
     else:
         cap = 0
@@ -875,6 +876,7 @@ def default_runtime_id_for_profile(profile: str) -> str:
         "continue-local": "local-hybrid",
         "local-tool-calling": "local-tool-calling",
         "remote-gemini": "openrouter-gemini",
+        "antigravity-collective": "openrouter-gemini",
         "remote-free": "openrouter-free",
         "remote-coding": "openrouter-coding",
         "remote-reasoning": "openrouter-reasoning",

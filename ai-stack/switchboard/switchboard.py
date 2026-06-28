@@ -213,6 +213,12 @@ Use Gemini as the front-door remote orchestration lane for discovery, planning, 
 Keep the output handoff-ready and explicitly trigger local tools, embeddings, or local models when they should take over.
 """
 
+ANTIGRAVITY_COLLECTIVE_CARD = f"""[profile-card:antigravity-collective]
+Use Gemini as the front-door remote orchestration lane for discovery, planning, and synthesis.
+{HARNESS_AWARE_BODY}
+Keep the output handoff-ready and explicitly trigger local tools, embeddings, or local models when they should take over.
+"""
+
 REMOTE_FREE_CARD = """[profile-card:remote-free]
 Use low-cost or free remote capacity for probing, not for unrestricted context bloat.
 Keep prompts compact and prefer retrieval before raising token spend.
@@ -294,7 +300,7 @@ DEFAULT_PROFILE_CATALOG = {
     },
     "continue-local": {
         "forceProvider": "local",
-        "injectHints": True,
+        "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
         "maxInputTokens": int(os.environ.get("SWB_CONTINUE_LOCAL_MAX_INPUT_TOKENS", "4000")),
@@ -339,6 +345,18 @@ DEFAULT_PROFILE_CATALOG = {
         "embeddingsOnly": False,
         "toolExecution": None,
         "profileCard": REMOTE_GEMINI_CARD,
+    },
+    "antigravity-collective": {
+        "forceProvider": "remote",
+        "injectHints": False,
+        "modelAlias": os.environ.get("SWB_REMOTE_MODEL_ALIAS_GEMINI", os.environ.get("SWB_REMOTE_MODEL_ALIAS_FREE")),
+        "advertisedContextWindow": None,
+        "maxInputTokens": 3500,
+        "maxMessages": 16,
+        "maxOutputTokens": 1400,
+        "embeddingsOnly": False,
+        "toolExecution": None,
+        "profileCard": ANTIGRAVITY_COLLECTIVE_CARD,
     },
     "remote-free": {
         "forceProvider": "remote",
@@ -2516,6 +2534,8 @@ def _effective_profile(request: Request) -> str:
     profile = request.headers.get(PROFILE_HINT_HEADER, "").strip().lower()
     if not profile:
         profile = request.query_params.get("ai_profile", "").strip().lower()
+    if profile == "remote-gemini":
+        profile = "antigravity-collective"
     allowed = tuple(PROFILE_CATALOG.keys()) or ("default",)
     return profile if profile in allowed else "default"
 
@@ -2785,7 +2805,7 @@ async def proxy(path: str, request: Request):
         _routing_ring.append(_rec)
         # Persist asynchronously — survives restarts, trimmed by data-retention (14d TTL).
         asyncio.create_task(asyncio.to_thread(_routing_log_append, _ts, target_type == "local", profile))
-    if profile in ("remote-default", "remote-gemini", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
+    if profile in ("remote-default", "remote-gemini", "antigravity-collective", "remote-free", "remote-coding", "remote-reasoning", "remote-tool-calling") and not REMOTE_URL:
         return JSONResponse(
             status_code=503,
             content={

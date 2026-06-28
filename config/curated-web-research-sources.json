@@ -207,6 +207,63 @@
       ]
     },
     {
+      "slug": "website-design-research",
+      "description": "Public UX, responsive design, and accessibility research pack for website creation workflows.",
+      "max_urls": 3,
+      "default_max_text_chars": 1600,
+      "inputs": [
+        {
+          "name": "topic",
+          "required": false,
+          "description": "Optional website topic, audience, or design question recorded with the workflow request."
+        },
+        {
+          "name": "industry",
+          "required": false,
+          "description": "Optional industry or site category recorded with the workflow request."
+        }
+      ],
+      "sources": [
+        {
+          "name": "webdev-responsive-design",
+          "url": "https://web.dev/learn/design/",
+          "fetch_mode": "http",
+          "selectors": [
+            "main",
+            "article",
+            ".devsite-article-body",
+            ".content"
+          ],
+          "purpose": "Responsive design, layout, typography, media, theming, accessibility, and interaction guidance."
+        },
+        {
+          "name": "w3c-wcag-quickref",
+          "url": "https://www.w3.org/WAI/WCAG22/quickref/",
+          "fetch_mode": "http",
+          "selectors": [
+            "main",
+            "#main",
+            "#content",
+            "article"
+          ],
+          "purpose": "Authoritative WCAG success criteria and techniques for accessibility requirements."
+        },
+        {
+          "name": "nngroup-ux-articles",
+          "url": "https://www.nngroup.com/articles/",
+          "fetch_mode": "http",
+          "fallback_fetch_mode": "browser",
+          "selectors": [
+            "main",
+            "article",
+            ".content",
+            ".article-list"
+          ],
+          "purpose": "UX and usability research article index for evidence-backed design decisions."
+        }
+      ]
+    },
+    {
       "slug": "security-advisories",
       "description": "Security advisory and CVE research pack.",
       "max_urls": 4,

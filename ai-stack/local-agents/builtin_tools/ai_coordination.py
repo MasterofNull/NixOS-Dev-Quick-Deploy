@@ -967,6 +967,138 @@ async def web_research_fetch_handler(
         return {"success": False, "error": str(e)}
 
 
+async def osint_research_ingest_handler(
+    workflow: str,
+    inputs: Optional[dict] = None,
+    max_text_chars: Optional[int] = None,
+    persist: bool = False,
+) -> Dict:
+    """Run a passive curated OSINT workflow and return osint-intelligence ledger records."""
+    try:
+        payload: Dict = {"workflow_slug": workflow}
+        if inputs:
+            payload["inputs"] = inputs
+        if max_text_chars is not None:
+            payload["max_text_chars"] = max_text_chars
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/research/workflows/curated-fetch",
+                json=payload,
+            )
+            if resp.status_code != 200:
+                return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+            result = resp.json()
+            ledger_records = []
+            for item in result.get("results", []) or []:
+                page = item.get("result") if isinstance(item.get("result"), dict) else {}
+                excerpt = str(page.get("text_excerpt") or "").strip()
+                if not excerpt:
+                    continue
+                requested_url = str(item.get("requested_url") or page.get("requested_url") or page.get("url") or "").strip()
+                ledger_records.append(
+                    {
+                        "type": "observed-data",
+                        "spec_version": "2.1",
+                        "namespace": "osint-intelligence",
+                        "schema_version": "stix-2.1-lite",
+                        "workflow": str((result.get("workflow") or {}).get("slug") or workflow),
+                        "source_name": str(item.get("source_name") or ""),
+                        "selector": ",".join(str(sel).strip() for sel in (item.get("selectors") or []) if str(sel).strip()) or requested_url,
+                        "source_url": requested_url,
+                        "fact_type": "public_web_extract",
+                        "status": str(item.get("status") or "ok"),
+                        "confidence": 0.75 if item.get("status") == "ok" else 0.35,
+                        "title": str(page.get("title") or ""),
+                        "content": excerpt[:4000],
+                        "links": page.get("links") if isinstance(page.get("links"), list) else [],
+                    }
+                )
+            persisted = []
+            if persist:
+                for record in ledger_records:
+                    stored = await store_memory_handler(
+                        content=record["content"],
+                        context_type="semantic",
+                        importance=0.65,
+                        tags=[
+                            "osint-intelligence",
+                            "stix-2.1-lite",
+                            str(record.get("workflow") or workflow),
+                            str(record.get("source_name") or "source"),
+                        ],
+                    )
+                    persisted.append(stored)
+            return {
+                "success": True,
+                "namespace": "osint-intelligence",
+                "schema": "stix-2.1-lite",
+                "ledger_count": len(ledger_records),
+                "ledger_records": ledger_records,
+                "persisted_count": len([item for item in persisted if isinstance(item, dict) and not item.get("error")]),
+                "persisted": persisted,
+                "research": result,
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def osint_research_query_handler(
+    query: str,
+    max_results: int = 8,
+    workflow: str = "",
+) -> Dict:
+    """Query shared memory for previously persisted osint-intelligence evidence."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{HYBRID_COORDINATOR_URL}/memory/recall",
+                json={
+                    "query": f"osint-intelligence {query}",
+                    "memory_types": ["semantic", "episodic"],
+                    "limit": max(1, min(int(max_results), 25)),
+                },
+            )
+            if resp.status_code != 200:
+                return {"success": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+            data = resp.json()
+            evidence = []
+            wanted_workflow = str(workflow or "").strip()
+            for row in data.get("results", []) or []:
+                metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                context = row.get("context") if isinstance(row.get("context"), dict) else {}
+                payload = metadata or context
+                record = payload.get("record") if isinstance(payload.get("record"), dict) else {}
+                tags = {str(tag) for tag in row.get("tags", [])} if isinstance(row.get("tags"), list) else set()
+                namespace = payload.get("namespace") or record.get("namespace")
+                if namespace != "osint-intelligence" and "osint-intelligence" not in tags:
+                    continue
+                record_workflow = str(payload.get("workflow") or record.get("workflow") or "")
+                if wanted_workflow and record_workflow != wanted_workflow:
+                    continue
+                evidence.append(
+                    {
+                        "score": row.get("score"),
+                        "summary": row.get("summary") or str(row.get("content") or "")[:160],
+                        "content": row.get("content") or record.get("content"),
+                        "source_url": payload.get("source_url") or record.get("source_url"),
+                        "source_name": payload.get("source_name") or record.get("source_name"),
+                        "workflow": record_workflow,
+                        "fact_type": payload.get("fact_type") or record.get("fact_type"),
+                        "title": record.get("title"),
+                        "record": record,
+                    }
+                )
+            return {
+                "success": True,
+                "namespace": "osint-intelligence",
+                "query": query,
+                "count": len(evidence),
+                "evidence": evidence,
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def delegate_to_aider_handler(
     prompt: str,
     files: Optional[list] = None,
@@ -1428,6 +1560,70 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         category=ToolCategory.AI_COORD,
         safety_policy=SafetyPolicy.READ_ONLY,
         handler=web_research_fetch_handler,
+    ))
+
+    registry.register(ToolDefinition(
+        name="osint_research_ingest",
+        description=(
+            "Run a passive curated OSINT research workflow and return STIX-like ledger "
+            "records for the osint-intelligence database. Use this for website/client "
+            "research, public source aggregation, and multi-source design discovery. "
+            "Does not perform active scanning."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "workflow": {
+                    "type": "string",
+                    "description": "Curated research workflow slug",
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": "Workflow input values such as topic, domain, organization, or query",
+                },
+                "max_text_chars": {
+                    "type": "integer",
+                    "description": "Maximum extracted characters per source",
+                },
+                "persist": {
+                    "type": "boolean",
+                    "description": "Persist bounded ledger records into shared harness memory",
+                },
+            },
+            "required": ["workflow"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=osint_research_ingest_handler,
+    ))
+
+    registry.register(ToolDefinition(
+        name="osint_research_query",
+        description=(
+            "Query persisted passive OSINT evidence from the osint-intelligence database. "
+            "Use after osint_research_ingest with persist=true, or when answering from the shared research ledger."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Evidence query",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum evidence records to return",
+                },
+                "workflow": {
+                    "type": "string",
+                    "description": "Optional workflow slug filter",
+                },
+            },
+            "required": ["query"],
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=osint_research_query_handler,
     ))
 
     # discover_objectives

@@ -10,6 +10,12 @@
 3. For simple lookups (e.g. "what port is X?"), the tag line may be enough
 4. Skills are lazy-loaded — only pull what the current task needs
 
+Machine-readable auto-selection:
+```bash
+aq-skill-auto "<task or user prompt>" --agent codex --json --test
+```
+Agents and recursive self-improvement loops should call this before planning when the user did not explicitly name skills. Pass `reference_skills` by name to sub-agents; do not inline full skill content.
+
 ---
 
 ## Harness-Specific Skills (this codebase)
@@ -17,12 +23,14 @@
 | Skill | Tags (excerpt) | When to Use |
 |-------|----------------|-------------|
 | `self-improvement` | self-improvement, issues-backlog, PRD, aq-report, roadmap, slice, priority | When asked to "run a self-improvement slice" or "improve the harness" — discover priority from issues-backlog/PRDs/reports, propose 3 options, then execute |
+| `capability-intake` | plugins, skills, tools, mcp, admission | Security-gated review before adding external agent capabilities |
 | `system-dev` | pre-commit, doc-sync, rule11, RAG-seed, tier0 | Pre-commit sequence; doc sync check; issue logging; any commit workflow |
 | `nixos-system` | nix, flake, rebuild, options.nix, module, AppArmor | Adding Nix module/option; triggering rebuild; NixOS-specific Python env; port SSOT |
 | `apparmor-rules` | apparmor, profile, ix, Ux, NoNewPrivileges, deny | Writing AppArmor rules; diagnosing EPERM; profile reload; denial→rule workflow |
 | `aq-workflow` | aq-resume, aq-qa, health, drop-zone, HITL, commit-gate | Session start/resume; health checks; drop zone ops; HITL queue; commit gate |
 | `coordinator-api` | coordinator, 8003, auth, loopback, /query, /memory | Calling coordinator API; auth headers; loopback exemption list; route catalog |
 | `rag-operations` | rag, qdrant, 8003, collection, embedding, seed | RAG queries; seeding knowledge; collection names; threshold tuning |
+| `osint-systems` | osint, research, public-source, website, data-source, stix, ledger | Passive public-source research; website/client discovery; osint-intelligence ledger ingestion |
 | `testing-patterns` | qa, harness_qa, http_get, check, phase, mock, timeout | Writing QA checks; debugging check failures; http_get tuple unpacking; xfail |
 | `context-efficiency` | context, tokens, RESUME, PULSE, sub-agent, slicing | Compaction recovery; sub-agent context slicing; RESUME.json authoring; token budget |
 | `provider-request-error-recovery` | delegation, error-handling, llama-cpp, provider, retry | Provider call fails (empty response, 4xx, timeout, thinking bleed); simplify payload; single retry |
@@ -77,6 +85,7 @@
 
 | Skill | Tags (excerpt) | When to Use |
 |-------|----------------|-------------|
+| `capability-intake` | plugins, skills, tools, mcp, admission | Security-gated review before adding external agent capabilities |
 | `security-audit` | owasp, injection, xss, sql, secrets | Pre-commit security review; OWASP top 10 check |
 | `security-scanner` | scan, vulnerability, hardening, config | Config audit; vulnerability scanning workflows |
 | `flake-review` | supply-chain, flake, hash, trust | Nix flake supply-chain review; input integrity |
@@ -90,6 +99,7 @@
 | `ai-stack-qa` | qa, smoke, phase, stack | Full stack QA runs; phase verification |
 | `prsi-review` | prsi, review, autonomous, claude | PRSI autonomous review workflow |
 | `tradingagents` | trading, analysis, buy, hold, sell | Financial analysis via multi-agent team |
+| `understand-anything` | graph, visualization, architecture, dashboard, diff | Generate/use codebase knowledge graphs; visualize harness/OS topology; graph-backed change impact |
 | `lean-ctx` | context, compress, token, mcp, read, shell | File reads, shell output, any task where token usage is a concern; 10 read modes, 62 tools |
 
 ---

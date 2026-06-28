@@ -40,7 +40,7 @@ remote_profiles:
   # Profiles that force remote routing.
   primary:
     - "remote-default"
-    - "remote-gemini"
+    - "antigravity-collective"
     - "remote-free"
     - "remote-coding"
     - "remote-reasoning"
