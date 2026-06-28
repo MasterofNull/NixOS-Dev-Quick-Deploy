@@ -1715,7 +1715,16 @@ class AIInsightsService:
             "hotspots": hotspots,
             "top_bottlenecks": top_bottlenecks,
             "optimization_recommendations": optimization_recommendations,
-            "route_latency": route_latency,
+            "route_latency": {
+                **route_latency,
+                # dashboard.js reads backend_valid_p95_ms; alias overall/actionable
+                "backend_valid_p95_ms": (
+                    route_latency.get("backend_valid_p95_ms")
+                    or route_latency.get("overall_p95_ms")
+                    or route_latency.get("actionable_p95_ms")
+                    or route_latency.get("p95_ms")
+                ),
+            } if route_latency else {},
             "cache": cache,
             "retrieval_breadth": retrieval_breadth,
             "retrieval_breadth_windows": retrieval_windows,
