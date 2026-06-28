@@ -407,7 +407,7 @@ def record_delegation_feedback(
     # Previously only logged failures, which prevented tracking overall delegation reliability
     payload = {
         "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         "task_excerpt": task[:280],
         "requested_profile": requested_profile,
         "selected_profile": selected_profile,
