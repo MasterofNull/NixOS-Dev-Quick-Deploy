@@ -163,9 +163,6 @@ in {
         LEAN_CTX_BIN="${leanCtxBin}"
         PY3="${pkgs.python3}/bin/python3"
 
-        # Ensure the parent directory exists with correct ownership
-        install -d -m 700 -o ${user} -g users "$(dirname "$CLAUDE_JSON")"
-
         if [ ! -f "$CLAUDE_JSON" ]; then
           # File absent — seed it with the lean-ctx entry only
           printf '{\n  "mcpServers": {\n    "lean-ctx": {\n      "command": "%s",\n      "args": [],\n      "type": "stdio"\n    }\n  }\n}\n' \
