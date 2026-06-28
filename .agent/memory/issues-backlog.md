@@ -122,12 +122,13 @@
 [SUPERSEDED → see delegate-to-antigravity-switchboard-migration] gemini-cli-onboardUser-429-persistent — gemini-cli 0.47.0 onboardUser 429 persistent since Jun 19. delegate-to-antigravity was rewritten (0ccb644f) to route via switchboard instead of gemini-cli subprocess. gemini-cli path is no longer the delegation mechanism — this issue is moot for delegation. gemini-cli may still be needed for interactive use; onboardUser issue remains at the Google backend.
   File: ~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/chunk-SBG6CUNK.js line 307684
 
-[OPEN] delegate-to-antigravity-switchboard-migration — delegate-to-antigravity rewritten (0ccb644f) to use switchboard HTTP routing. Script routes through remote-free (meta-llama/llama-3.3-70b-instruct:free via OpenRouter). Rate-limit fix applied (4531d494): wait-queue replaces hard-fail; fcntl profile lock serializes concurrent processes; _MAX_RETRIES 3→4. Normal production use (non-burst) is unaffected; burst integration tests still exhaust Venice per-account quota. Mitigation: avoid rapid-fire test calls; production spaced calls work correctly.
-  Current state: remote-free profile works in normal use; all modes map to remote-free.
-  Intended Gemini path (via Code Assist / oauth-personal — free with Google account, NOT AI Studio):
-    gemini-cli onboardUser 429 blocks the Code Assist registration step.
-    Root cause: `caServer.onboardUser()` called unconditionally on every cold start — no skip path,
-    no env var bypass. Confirmed identical behavior in 0.47.0 and 0.48.0-preview.0 (tested 2026-06-23).
+[OPEN] openrouter-credits-depleted — remote-gemini (google/gemini-2.5-flash-lite) returns HTTP 402 Insufficient credits. All paid remote profiles (remote-gemini, remote-reasoning→claude-sonnet-4-5, remote-coding→claude-sonnet-4-5, remote-tool-calling→o4-mini) require OpenRouter credits. Only remote-free (meta-llama/llama-3.3-70b-instruct:free) works without credits.
+  Scope: delegate-to-antigravity (antigravity agent = paid Gemini lane), agent_executor.py fallback, aq-antigravity-agent
+  Severity: HIGH — antigravity delegation non-functional until credits added
+  Action needed (USER): Add credits at https://openrouter.ai/settings/credits
+  Current workaround: remote-free (Llama 3.3 70B) for non-Gemini tasks
+
+[RESOLVED 0462be4c/047bb33a] delegate-to-antigravity-switchboard-migration — rewritten (0ccb644f) to use switchboard HTTP routing. All modes now correctly mapped to remote-gemini (paid Gemini lane) via 047bb33a. Prior sessions had invalid 'antigravity-collective' profile causing HTTP 400. Profiles restored to valid switchboard registry names.
     Google backend rate-limits the onboardUser endpoint; account provisioning never completes.
     Resolution options:
     (A) Wait for Google to provision the account — onboardUser 429 may clear on its own eventually.
