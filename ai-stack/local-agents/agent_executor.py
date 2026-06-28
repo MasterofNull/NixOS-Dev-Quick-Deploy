@@ -1663,10 +1663,10 @@ class LocalAgentExecutor:
             return task.remote_profile
         objective = str(task.objective or "")
         if task.requires_flagship or task.quality_critical:
-            return "antigravity-collective"
+            return "remote-reasoning"
         if _CODE_TASK_RE.search(objective):
-            return "antigravity-collective"
-        return "antigravity-collective"
+            return "remote-coding"
+        return "remote-free"
 
     def _build_remote_delegate_payload(self, task: Task, profile: str) -> Dict[str, Any]:
         """Build coordinator delegate payload for local-agent fallback."""

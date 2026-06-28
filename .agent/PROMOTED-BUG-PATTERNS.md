@@ -126,6 +126,9 @@ When a local agent tool calls a coordinator endpoint and gets `{"error":"unautho
 ### journalctl --since needs local time
 `datetime.fromtimestamp(ts, tz=timezone.utc).strftime(...)` produces UTC timestamp string. journalctl `--since` expects LOCAL time. Use `datetime.fromtimestamp(ts).strftime(...)` (no tz arg). UTC format returns no results silently.
 
+### Agent sessions can invent non-existent switchboard profile names (CRITICAL)
+Remote delegation agents may output profile names like `antigravity-collective` that don't exist in the switchboard. The switchboard returns HTTP 400 "not a valid model ID" for unknown profiles. Valid remote profiles are: `remote-free`, `remote-gemini`, `remote-coding`, `remote-reasoning`, `remote-tool-calling`, `remote-default`. Always verify profile names against switchboard `/health` → `profiles` keys before accepting an agent's suggested profile name. Affected files: `scripts/ai/delegate-to-antigravity` `_PROFILE_MAP`, `scripts/ai/aq-antigravity-agent` `_MODE_PROFILE`, `ai-stack/local-agents/agent_executor.py` `_select_remote_profile()`.
+
 ### datetime.isoformat() + "Z" produces invalid ISO 8601 (CRITICAL — breaks timestamp filter)
 `datetime.now(timezone.utc).isoformat()` produces `2026-06-27T18:11:48+00:00` (already has `+00:00`). Appending `"Z"` makes `+00:00Z` — two conflicting UTC markers. `datetime.fromisoformat()` raises `ValueError` on this, causing parsers to return `None` → all entries filtered out → `sample_n=0` → null metric. Fix writer: `datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")`. Fix parser defensively: strip trailing `Z` when `+00:00Z` suffix present before calling `fromisoformat()`. Affected: `delegation_feedback.py` writer → `ai_insights.py` `_logic_discipline_summary()` → `logic_discipline_rate: null` → `vLogicDiscipline` tile shows `--`.
 
