@@ -118,7 +118,9 @@ def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
     if not isinstance(value, str) or not value.strip():
         return None
     text = value.strip()
-    if text.endswith("Z"):
+    if text.endswith("+00:00Z"):
+        text = text[:-1]  # strip extra Z when offset already present
+    elif text.endswith("Z"):
         text = text[:-1] + "+00:00"
     try:
         parsed = datetime.fromisoformat(text)
