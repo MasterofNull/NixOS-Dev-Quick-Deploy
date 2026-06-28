@@ -54,9 +54,10 @@
 
 
 
-[PENDING-REBUILD ea1df9d7] intent-routing-map-permission-denied — ai-hybrid EACCES on /home/hyperd (mode 0700) → intent_classifier._load_routing_map() silently catches exception → _routing_map={} → intent_count=0 → all queries use default profile. Blocking: code_generation/planning/review profiles never selected; RAGAS answer_relevance 0.51 (expected to improve after fix).
+[FIXED 1a76021e — needs rebuild] intent-routing-map-permission-denied — ai-hybrid EACCES on /home/hyperd (mode 0700) → intent_classifier._load_routing_map() silently catches exception → _routing_map={} → intent_count=0 → all queries use default profile. Blocking: code_generation/planning/review profiles never selected; RAGAS answer_relevance 0.51 (expected to improve after fix).
   Root cause chain: ReadWritePaths+ProtectHome=read-only sets namespace bind-mount but POSIX DAC (inode uid/gid/mode) is NOT bypassed. homeMode=0711 only applies at home-directory CREATION (install -d -m), not on subsequent rebuilds of existing directories (empirically confirmed — mode stayed 0700 after 6c75890f rebuild). The users activation script ran at line 18, activation script at line 31 (correct), but something post-activation (suspected: ai-post-deploy-converge.service) resets mode back to 0700.
-  Three-layer fix committed (ea1df9d7):
+  ACTUAL ROOT CAUSE (1a76021e): cpp-dev.nix cppDevLeanCtxMcp activation script ran 'install -d -m 700 /home/hyperd' because claudeJson="/home/hyperd/.claude.json" → dirname=home dir. GNU install -d changes mode of EXISTING dirs. This ran AFTER aiStackHomeDirTraversal and reset mode back to 0700 on every rebuild. Fix: removed the install -d line (home dir guaranteed to exist, managed by users module).
+  Three-layer declarative fix committed (ea1df9d7):
     1. homeMode=0711 — creation only (new installs)
     2. activationScripts.aiStackHomeDirTraversal deps=["users"] — runs after users script on rebuild
     3. systemd.tmpfiles.rules z /home/hyperd 0711 — adjusts existing path on every boot + systemd-tmpfiles --create
