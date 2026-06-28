@@ -1,0 +1,187 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions — uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+
+# --- From .gitignore (uncomment to exclude) ---
+
+# /test_delegate*.py
+# /test_delegation*.py
+# *.backup.*
+# .config-backups/
+# /package.json
+# /package-lock.json
+# /routing_metrics.db
+# .agent/codebase-index-checkpoint.json
+# .claude/settings.local.json
+# result
+# result-*
+# .direnv/
+# .DS_Store
+# *.tmp
+# *.swp
+# *~
+# .nvimlog
+# /core
+# /core.*
+# .nixos-quick-deploy-version
+# .nixos-deploy-last-backup
+# ai-stack/mcp-servers/hybrid-coordinator/venv/
+# *.pyc
+# *.key
+# *.pem
+# *.p12
+# *.pfx
+# *.crt
+# *.csr
+# *.age
+# age.key
+# id_rsa
+# id_ed25519
+# id_ecdsa
+# secrets.yaml
+# secrets.json
+# secrets.toml
+# *.sops.yaml
+# ai-stack/compose/secrets/*
+# !ai-stack/compose/secrets/.gitkeep
+# /*-SUMMARY*.md
+# /*-COMPLETE*.md
+# /*-FIX*.md
+# /*-FIXES*.md
+# /*-IMPLEMENTATION*.md
+# /*-UPGRADE*.md
+# /*-DEPLOYMENT*.md
+# /*-SESSION*.md
+# /*-WORK*.md
+# /*-PROGRESS*.md
+# /*-ERROR*.md
+# /*-DEBUG*.md
+# /*-CONTAINER-*.md
+# /*-MIGRATION*.md
+# !README.md
+# !CONTRIBUTING.md
+# !LICENSE.md
+# !HOSPITAL-DEPLOYMENT-STATUS.md
+# !SYSTEM-UPGRADE-ROADMAP.md
+# !SYSTEM-UPGRADE-ROADMAP-UPDATES.md
+# !.github/
+# !.github/**
+# !docs/**/*.md
+# .reports/
+# /reports/
+# /artifacts/
+# ai-stack/eval/results/eval-*.json
+# ai-stack/eval/results/eval-*-summary.txt
+# ai-stack/eval/results/scores.sqlite
+# dist/harness-sdk-provenance/provenance.json
+# data/prsi-artifacts/*-latest.json
+# data/prsi-artifacts/runs/
+# .local/
+# **/nixos-system-dashboard/
+# **/nixos-ai-stack/telemetry/aidb-events.jsonl
+# **/nixos-ai-stack/telemetry/hybrid-events.jsonl
+data/registry/
+data/dashboard/
+data/hybrid/
+# !data/
+# !data/patterns/
+# !data/fine-tuning/
+# !data/collections/
+# !data/telemetry/snapshots/
+# !data/metrics/
+# data/**/*.tmp
+# data/**/*.bak
+# data/**/*.backup
+# !data/**/README.md
+# !data/**/.gitkeep
+# .env
+# ai-stack/compose/.env
+# ai-stack/compose/.env.*
+# !ai-stack/compose/.env.example
+# ai-stack/compose/secrets/
+# !ai-stack/compose/secrets/.gitkeep
+# backups/
+# ai-stack/backups/
+# nix/hosts/*/deploy-options.local.nix
+# nix/hosts/*/facts.nix
+# nix/hosts/*/secrets.sops.yaml
+# nix/hosts/*/.sops.yaml
+# .claude/settings.json
+# .claude/*.lock
+# .upstream/
+# .forks/
+# .workflow-sessions.json
+# .agents/sessions/
+# .agents/scratchpad/
+# .agent/collaboration/HANDOFF.md
+# .agent/collaboration/PENDING.json
+# .agent/collaboration/PULSE.log
+# .agent/collaboration/RESUME.json
+# .agent/comms/command.json
+# .agent/comms/output.json
+# .agent/comms/output.txt
+# .agents/attention/ATTENTION.json
+# .agents/attention/ATTENTION_ARCHIVE.jsonl
+.agents/delegation/registry.jsonl
+# .agents/delegation/training-loop-checkpoint.json
+# .agents/delegation/training-loop-results.jsonl
+.agents/telemetry/*.jsonl
+.agents/delegation/outputs/
+# .agents/delegation/fanout/
+.agents/dag-sessions/
+# .agents/proposals/
+# .agents/improvement/candidates.json
+# tmp/
+# .agent/impeccable-cache/
+# .continue/prompts/new-prompt.md
+# .continue/mcpServers/new-mcp-server.yaml
+# config/rocm-promotion-state.json
+# .agents/drops/*.drop.yaml
+# .agents/drops/archive/*.drop.yaml
+# .agents/drops/failed/*.drop.yaml
+# .agents/drops/.lock
+# .agent/archive/tool-audit-*.jsonl
+# *.lean-ctx.bak
+# LEAN-CTX.md
+# .cursorrules
+# ai-stack/local-agents/.agent/
+# ai-stack/local-agents/.agents/
+# .agents/improvement/candidates.lock
+# .agents/bench/**/run-*.json
+# .agent/archive/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/
+# .agent/workflows/optimization-reports/
+# .agents/delegation/*.lock
+# .understand-anything/intermediate/
+# .understand-anything/tmp/
+# .understand-anything/diff-overlay.json
+# .understand-anything/.trash-*/
+
+# --- Detected directories (uncomment to exclude) ---
+
+# docs/
+# scripts/
+# tests/
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# JS / TS
+# *.test.*
+# *.spec.*
+# *.snap
+# C# / .NET
+# **/*Tests.cs
+# **/*Test.cs
+# **/*Fixture.cs
+# **/*.Tests.csproj
+# Java / Kotlin
+# **/src/test/**
+# **/*Test.java
+# **/*IT.java
+# **/*Spec.kt
+# Go
+# **/*_test.go

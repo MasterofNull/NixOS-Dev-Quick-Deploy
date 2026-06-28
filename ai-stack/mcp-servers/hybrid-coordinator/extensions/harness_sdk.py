@@ -690,6 +690,7 @@ class HarnessClient:
         max_text_chars: Optional[int] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {"workflow": workflow}
+        payload["workflow_slug"] = workflow
         if inputs is not None:
             payload["inputs"] = inputs
         if max_text_chars is not None:

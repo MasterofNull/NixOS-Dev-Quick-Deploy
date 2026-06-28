@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Auto-select and validate local skills for an agent task."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SKILLS_DIR = REPO_ROOT / ".agent" / "skills"
+VALIDATOR_PATH = REPO_ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions" / "skill_validator.py"
+
+AGENT_LIMITS = {"local": 2, "gemini": 3, "codex": 3, "claude": 4, "any": 3}
+
+DOMAIN_BOOSTS = {
+    "plugin": ["capability-intake", "mcp-server", "security-scanner"],
+    "plugins": ["capability-intake", "mcp-server", "security-scanner"],
+    "mcp": ["capability-intake", "mcp-server", "mcp-builder"],
+    "tool": ["capability-intake", "agent-tool-map", "security-scanner"],
+    "tools": ["capability-intake", "agent-tool-map", "security-scanner"],
+    "skill": ["capability-intake", "skill-creator", "context-efficiency"],
+    "skills": ["capability-intake", "skill-creator", "context-efficiency"],
+    "security": ["capability-intake", "security-scanner", "security-audit"],
+    "self": ["self-improvement", "aq-workflow", "reviewer-gate"],
+    "improvement": ["self-improvement", "aq-workflow", "reviewer-gate"],
+    "loop": ["self-improvement", "aq-workflow", "multi-agent-collab"],
+    "recursive": ["self-improvement", "aq-workflow", "multi-agent-collab"],
+    "nix": ["nixos-system", "nixos-deployment", "flake-review"],
+    "nixos": ["nixos-system", "nixos-deployment", "flake-review"],
+    "dashboard": ["understand-anything", "webapp-testing", "frontend-design"],
+    "visual": ["understand-anything", "webapp-testing", "frontend-design"],
+    "frontend": ["frontend-design", "webapp-testing", "impeccable"],
+    "test": ["testing-patterns", "ai-stack-qa", "test-remediation"],
+    "qa": ["ai-stack-qa", "testing-patterns", "reviewer-gate"],
+    "debug": ["debug-workflow", "test-remediation", "provider-request-error-recovery"],
+    "rag": ["rag-operations", "rag-techniques", "aidb-knowledge"],
+    "memory": ["context-efficiency", "aidb-knowledge", "rag-operations"],
+    "async": ["async-delegation", "multi-agent-collab", "aq-workflow"],
+    "agent": ["multi-agent-collab", "role-contracts", "task-eligibility"],
+    "agents": ["multi-agent-collab", "role-contracts", "task-eligibility"],
+}
+
+
+def _load_validator():
+    spec = importlib.util.spec_from_file_location("skill_validator", VALIDATOR_PATH)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9][a-z0-9._-]*", text.lower())
+
+
+def _sections(text: str) -> list[str]:
+    return [m.group(1).strip() for m in re.finditer(r"^#{1,6}\s+(.+)$", text, re.MULTILINE)]
+
+
+def _frontmatter_description(text: str) -> str:
+    for line in text.splitlines()[:12]:
+        if line.strip().lower().startswith("description:"):
+            return line.split(":", 1)[1].strip().strip('"')
+    return ""
+
+
+def load_skills() -> list[dict[str, Any]]:
+    skills: list[dict[str, Any]] = []
+    if not SKILLS_DIR.is_dir():
+        return skills
+    for skill_dir in sorted(SKILLS_DIR.iterdir()):
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.is_file():
+            continue
+        text = skill_file.read_text(encoding="utf-8")
+        tags: list[str] = []
+        when = ""
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped == "## Tags" and i + 1 < len(lines):
+                tags = [part.strip() for part in lines[i + 1].split(",") if part.strip()]
+            if stripped == "## When to Use":
+                parts: list[str] = []
+                for item in lines[i + 1 : i + 8]:
+                    item = item.strip()
+                    if item.startswith("#"):
+                        break
+                    if item.startswith("-"):
+                        parts.append(item[1:].strip())
+                    elif item:
+                        parts.append(item)
+                when = " ".join(parts)
+        skills.append(
+            {
+                "name": skill_dir.name,
+                "path": str(skill_file.relative_to(REPO_ROOT)),
+                "description": _frontmatter_description(text),
+                "tags": tags,
+                "when_to_use": when,
+                "sections": _sections(text),
+            }
+        )
+    return skills
+
+
+def score_skill(skill: dict[str, Any], task: str) -> int:
+    task_words = _words(task)
+    task_set = set(task_words)
+    score = 0
+    name = skill["name"].lower()
+    tags = [str(tag).lower() for tag in skill.get("tags", [])]
+    haystack = " ".join([name, skill.get("description", ""), skill.get("when_to_use", ""), " ".join(tags)]).lower()
+    for word in task_words:
+        if word == name or word in name.split("-"):
+            score += 12
+        if word in tags:
+            score += 10
+        elif any(word in tag or tag in word for tag in tags):
+            score += 5
+        if re.search(rf"\b{re.escape(word)}\b", haystack):
+            score += 3
+    for trigger, skill_names in DOMAIN_BOOSTS.items():
+        if trigger in task_set and skill["name"] in skill_names:
+            score += 15
+    if skill["name"] == "capability-intake" and task_set & {"plugin", "plugins", "mcp", "tool", "tools", "skill", "skills", "import"}:
+        score += 20
+    if skill["name"] == "self-improvement" and task_set & {"recursive", "self", "improvement", "loop", "loops"}:
+        score += 20
+    return score
+
+
+def select_skills(task: str, agent: str, limit: int | None) -> list[dict[str, Any]]:
+    limit = limit or AGENT_LIMITS.get(agent, AGENT_LIMITS["any"])
+    scored = [(score_skill(skill, task), skill) for skill in load_skills()]
+    scored = [(score, skill) for score, skill in scored if score > 0]
+    scored.sort(key=lambda item: (-item[0], item[1]["name"]))
+    selected = []
+    for score, skill in scored[:limit]:
+        selected.append({**skill, "score": score})
+    return selected
+
+
+def validate_selected(skills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    validator = _load_validator()
+    results = []
+    for skill in skills:
+        content = (REPO_ROOT / skill["path"]).read_text(encoding="utf-8")
+        if validator is None:
+            validation = {"valid": True, "quality_score": None, "errors": [], "warnings": ["validator unavailable"]}
+        else:
+            validation = validator.validate_skill_content(content, skill["name"]).to_dict()
+        results.append({"name": skill["name"], "path": skill["path"], **validation})
+    return results
+
+
+def run_reference_checks() -> dict[str, Any]:
+    checks = []
+    for command in (["scripts/testing/check-skill-source-of-truth.sh"], ["scripts/testing/validate-skill-references.sh"]):
+        proc = subprocess.run(command, cwd=REPO_ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        checks.append(
+            {
+                "command": " ".join(command),
+                "returncode": proc.returncode,
+                "ok": proc.returncode == 0,
+                "stdout": proc.stdout.strip()[-1000:],
+                "stderr": proc.stderr.strip()[-1000:],
+            }
+        )
+    return {"ok": all(item["ok"] for item in checks), "checks": checks}
+
+
+def build_payload(task: str, agent: str, limit: int | None, run_tests: bool) -> dict[str, Any]:
+    selected = select_skills(task, agent, limit)
+    validation = validate_selected(selected)
+    reference_checks = run_reference_checks() if run_tests else {"ok": None, "checks": []}
+    return {
+        "status": "ok" if selected and reference_checks.get("ok") is not False else "needs_review",
+        "task": task,
+        "agent": agent,
+        "selected_skills": selected,
+        "reference_skills": [item["name"] for item in selected],
+        "validation": validation,
+        "reference_checks": reference_checks,
+        "agent_instruction": "At task start, load selected local SKILL.md files. For sub-agents, pass reference_skills by name only. Treat validation security_issues as warnings for already-local skills; use capability-intake before importing external skills.",
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("task", help="Task or user prompt text")
+    parser.add_argument("--agent", default="any", choices=sorted(AGENT_LIMITS), help="Agent type")
+    parser.add_argument("--limit", type=int, default=None, help="Max skills to select")
+    parser.add_argument("--json", action="store_true", help="Emit JSON")
+    parser.add_argument("--test", action="store_true", help="Run local skill reference/source checks")
+    parser.add_argument("--names-only", action="store_true", help="Print comma-separated skill names")
+    args = parser.parse_args(argv)
+
+    payload = build_payload(args.task, args.agent, args.limit, args.test)
+    if args.names_only:
+        print(",".join(payload["reference_skills"]))
+    elif args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"status={payload['status']}")
+        print(f"reference_skills={','.join(payload['reference_skills'])}")
+        for item in payload["selected_skills"]:
+            print(f"- {item['name']} score={item['score']} path={item['path']}")
+    return 0 if payload["status"] == "ok" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

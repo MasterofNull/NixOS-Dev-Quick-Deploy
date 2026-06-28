@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Security-gated intake helper for external agent capabilities."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REGISTRY_PATH = REPO_ROOT / "config" / "agent-capability-intake-candidates.json"
+POLICY_PATH = REPO_ROOT / "config" / "runtime-tool-security-policy.json"
+CACHE_PATH = REPO_ROOT / ".cache" / "capability-intake-tool-audit-cache.json"
+
+
+def _load_auditor():
+    sys.path.insert(0, str(REPO_ROOT / "ai-stack" / "mcp-servers"))
+    from shared.tool_security_auditor import ToolSecurityAuditor  # type: ignore
+
+    return ToolSecurityAuditor(
+        service_name="capability-intake",
+        policy_path=POLICY_PATH,
+        cache_path=CACHE_PATH,
+        enabled=True,
+        enforce=False,
+        cache_ttl_hours=24,
+    )
+
+
+def _load_registry(path: Path = REGISTRY_PATH) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict) or not isinstance(payload.get("candidates"), list):
+        raise ValueError(f"invalid candidate registry: {path}")
+    return payload
+
+
+def _candidate_by_id(registry: dict[str, Any], candidate_id: str) -> dict[str, Any]:
+    for candidate in registry["candidates"]:
+        if candidate.get("id") == candidate_id:
+            return candidate
+    raise KeyError(f"candidate not found: {candidate_id}")
+
+
+def _risk_flags(candidate: dict[str, Any]) -> list[str]:
+    flags: list[str] = []
+    install = candidate.get("install") if isinstance(candidate.get("install"), dict) else {}
+    command = str(install.get("command", "")).strip()
+    args = [str(arg) for arg in install.get("args", []) if arg is not None]
+    source_url = str(candidate.get("source_url", "")).strip()
+    permissions = candidate.get("permissions") if isinstance(candidate.get("permissions"), dict) else {}
+
+    joined = " ".join([command, *args]).lower()
+    if "@latest" in joined or ":latest" in joined:
+        flags.append("unpinned-version")
+    if command in {"npx", "uvx", "pip", "pipx", "npm", "pnpm", "docker", "curl", "bash", "sh"}:
+        flags.append(f"dynamic-installer:{command}")
+    if "curl" in joined and ("|" in joined or "bash" in joined or "sh" in joined):
+        flags.append("curl-pipe-install")
+    if source_url and not (source_url.startswith("https://github.com/") or source_url == "local"):
+        flags.append("non-github-source")
+    report_only_writes = {"reports-only", "report-output-only", "knowledge-graph-output"}
+    if permissions.get("writes") not in {False, "false", None, *report_only_writes}:
+        flags.append("write-capable-or-report-writing")
+    if permissions.get("secrets") not in {False, "false", None}:
+        flags.append("secret-or-token-required")
+    if permissions.get("network") not in {False, "false", None, "localhost"}:
+        flags.append("network-capable")
+    if re.search(r"\b(sudo|rm|delete|exec|shell)\b", joined):
+        flags.append("dangerous-command-keyword")
+
+    for risk in candidate.get("risks", []):
+        if isinstance(risk, str) and risk and risk not in flags:
+            flags.append(risk)
+
+    return flags
+
+
+def _review_accepts_mitigations(candidate: dict[str, Any], risk_flags: list[str], tool_results: list[dict[str, Any]]) -> bool:
+    if candidate.get("review_status") != "accepted-with-mitigations":
+        return False
+    if not candidate.get("pinned_version"):
+        return False
+    if not candidate.get("mitigations"):
+        return False
+    if any(result.get("safe") is False for result in tool_results):
+        return False
+    non_mitigable = {"curl-pipe-install", "unpinned-version", "secret-or-token-required"}
+    return not any(flag in non_mitigable for flag in risk_flags)
+
+
+def _admission(candidate: dict[str, Any], risk_flags: list[str], tool_results: list[dict[str, Any]]) -> str:
+    if _review_accepts_mitigations(candidate, risk_flags, tool_results):
+        return "accepted-with-mitigations"
+    hard_blockers = {
+        "curl-pipe-install",
+        "dangerous-command-keyword",
+    }
+    if any(flag in hard_blockers for flag in risk_flags):
+        return "blocked"
+    if any(result.get("safe") is False for result in tool_results):
+        return "needs-review"
+    if any(flag.startswith("dynamic-installer:") or flag in {"unpinned-version", "secret-or-token-required"} for flag in risk_flags):
+        return "needs-review"
+    if risk_flags:
+        return "review-recommended"
+    return "low-risk"
+
+
+def audit_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    auditor = _load_auditor()
+    install = candidate.get("install") if isinstance(candidate.get("install"), dict) else {}
+    tool_results: list[dict[str, Any]] = []
+    for tool_name in candidate.get("tool_allowlist", []):
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            continue
+        metadata = {
+            "endpoint": f"candidate://{candidate.get('id')}/{tool_name}",
+            "reason": f"candidate capability tool: {candidate.get('category', 'unknown')}",
+            "manifest": {
+                "name": candidate.get("id"),
+                "version": candidate.get("pinned_version", ""),
+                "source_url": candidate.get("source_url"),
+                "install_type": install.get("type"),
+                "command_name": install.get("command"),
+            },
+            "parameters": {
+                "tool": tool_name,
+                "permission_network": (candidate.get("permissions") or {}).get("network"),
+                "permission_writes": (candidate.get("permissions") or {}).get("writes"),
+            },
+        }
+        tool_results.append(auditor.audit_tool(tool_name, metadata))
+
+    flags = _risk_flags(candidate)
+    return {
+        "id": candidate.get("id"),
+        "name": candidate.get("name"),
+        "priority": candidate.get("priority"),
+        "state": candidate.get("state"),
+        "source_url": candidate.get("source_url"),
+        "risk_flags": flags,
+        "admission": _admission(candidate, flags, tool_results),
+        "tool_count": len(tool_results),
+        "unsafe_tool_count": sum(1 for result in tool_results if result.get("safe") is False),
+        "tool_audits": [
+            {
+                "tool_name": result.get("tool_name"),
+                "safe": result.get("safe"),
+                "approved": result.get("approved"),
+                "cached": result.get("cached"),
+                "reasons": result.get("reasons", []),
+            }
+            for result in tool_results
+        ],
+        "activation_notes": candidate.get("activation_notes", ""),
+    }
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    registry = _load_registry(Path(args.registry))
+    rows = registry["candidates"]
+    if args.json:
+        print(json.dumps(rows, indent=2, sort_keys=True))
+        return 0
+    for candidate in rows:
+        print(f"{candidate.get('id')}\t{candidate.get('priority')}\t{candidate.get('state')}\t{candidate.get('name')}")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    registry = _load_registry(Path(args.registry))
+    if args.all:
+        candidates = registry["candidates"]
+    else:
+        candidates = [_candidate_by_id(registry, args.candidate_id)]
+    reports = [audit_candidate(candidate) for candidate in candidates]
+    if args.json:
+        print(json.dumps({"version": registry.get("version"), "reports": reports}, indent=2, sort_keys=True))
+        return 0
+    for report in reports:
+        flags = ",".join(report["risk_flags"]) if report["risk_flags"] else "-"
+        print(f"{report['id']}: admission={report['admission']} priority={report['priority']} risks={flags}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--registry", default=str(REGISTRY_PATH), help="Candidate registry path")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    list_parser = sub.add_parser("list", help="List candidate capabilities")
+    list_parser.add_argument("--json", action="store_true", help="Emit JSON")
+    list_parser.set_defaults(func=cmd_list)
+
+    audit_parser = sub.add_parser("audit", help="Audit one candidate or all candidates")
+    target = audit_parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("candidate_id", nargs="?", help="Candidate id")
+    target.add_argument("--all", action="store_true", help="Audit all candidates")
+    audit_parser.add_argument("--json", action="store_true", help="Emit JSON")
+    audit_parser.set_defaults(func=cmd_audit)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -133,27 +133,21 @@
   Action: (1) `sudo mkdir -p /var/lib/sops-nix && sudo cp ~/.config/sops/age/keys.txt /var/lib/sops-nix/key.txt && sudo chmod 400 /var/lib/sops-nix/key.txt` (2) Remove `mySystem.secrets.ageKeyFile = lib.mkForce "..."` from `nix/hosts/hyperd/deploy-options.local.nix` (default is already `/var/lib/sops-nix/key.txt` in options.nix:894) (3) Rebuild.
   Files: nix/hosts/hyperd/deploy-options.local.nix; nix/modules/core/options.nix:894
 
-[SUPERSEDED → see delegate-to-antigravity-switchboard-migration] gemini-cli-onboardUser-429-persistent — gemini-cli 0.47.0 onboardUser 429 persistent since Jun 19. delegate-to-antigravity was rewritten (0ccb644f) to route via switchboard instead of gemini-cli subprocess. gemini-cli path is no longer the delegation mechanism — this issue is moot for delegation. gemini-cli may still be needed for interactive use; onboardUser issue remains at the Google backend.
-  File: ~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/chunk-SBG6CUNK.js line 307684
-
-[OPEN] openrouter-credits-depleted — remote-gemini (google/gemini-2.5-flash-lite) returns HTTP 402 Insufficient credits. All paid remote profiles (remote-gemini, remote-reasoning→claude-sonnet-4-5, remote-coding→claude-sonnet-4-5, remote-tool-calling→o4-mini) require OpenRouter credits. Only remote-free (meta-llama/llama-3.3-70b-instruct:free) works without credits.
-  ALSO CONFIRMED (2026-06-28): gemini-cli oauth-personal path (Google Code Assist cloudcode-pa.googleapis.com) STILL blocked — caServer.onboardUser() returns "Resource has been exhausted (e.g. check quota)". This is the same error that prompted the switchboard migration on 0ccb644f. NOT resolved.
-  Scope: delegate-to-antigravity (antigravity agent = paid Gemini lane), agent_executor.py fallback, aq-antigravity-agent
-  Severity: HIGH — all Gemini/remote delegation paths non-functional until one path is fixed
-  Action needed (USER): Either (A) Add OpenRouter credits at https://openrouter.ai/settings/credits, OR (B) wait for Google to fix Code Assist quota
-  Current workaround: remote-free (Llama 3.3 70B) for non-Gemini tasks
-
-[RESOLVED 0462be4c/047bb33a] delegate-to-antigravity-switchboard-migration — rewritten (0ccb644f) to use switchboard HTTP routing. All modes now correctly mapped to remote-gemini (paid Gemini lane) via 047bb33a. Prior sessions had invalid 'antigravity-collective' profile causing HTTP 400. Profiles restored to valid switchboard registry names.
-    Google backend rate-limits the onboardUser endpoint; account provisioning never completes.
-    Resolution options:
-    (A) Wait for Google to provision the account — onboardUser 429 may clear on its own eventually.
-        Test periodically: `gemini -p "test"`. If it succeeds, Code Assist path is unblocked.
-    (B) Add OpenRouter credits → remoteModelAliases.gemini in deploy-options.nix already has
-        `google/gemini-2.5-flash-lite`. Just restore _PROFILE_MAP in delegate-to-antigravity:
-          fast/flash/implementer/reviewer → remote-gemini
-          pro/architect → remote-reasoning
-        No code changes required beyond credits.
-  Note: AI Studio key (aistudio.google.com) is NOT the path — it is a separate paid service.
+[OPEN — GOOGLE BACKEND BLOCKER] gemini-cli-onboardUser-429-persistent — Code Assist account provisioning blocked since Jun 19 (9+ days).
+  Root cause: gemini-cli calls cloudcode-pa.googleapis.com/v1internal:onboardUser on EVERY cold start (no persistent session cache). Google's provisioning endpoint returns 429 rateLimitExceeded. This creates a circular dependency:
+    onboardUser → creates cloudaicompanionProject → loadCodeAssist works
+         ↑ blocked by 429                           ↓ 403 without project
+  Result: no cloudaicompanionProject ever provisioned → loadCodeAssist returns 403 → ALL gemini-cli paths fail.
+  Tested (2026-06-28):
+    - gemini -p "test" → 429 on onboardUser (even after successful browser OAuth)
+    - GOOGLE_GENAI_USE_GCA bypass → still hits loadCodeAssist → 403 (no quota project)
+    - gcloud auth login (cjlnorcal@gmail.com) + GOOGLE_CLOUD_ACCESS_TOKEN → same 403
+    - gemini-cli 0.47.0 → 0.48.0-preview.0 → 0.49.0 → 0.51.0-nightly: all have onboardUser call, no bypass
+    - GEMINI_CLI_TRUST_WORKSPACE, GEMINI_FORCE_FILE_STORAGE: no effect on onboardUser
+  Scope: delegate-to-antigravity, entire Google Code Assist path for cjlnorcal@gmail.com
+  Severity: CRITICAL — antigravity delegation fully blocked; gemini-cli oauth-personal path unusable
+  Resolution: Google-side only. Monitor periodically: `gemini -p "test"`. When onboardUser succeeds once, credentials are written and all subsequent headless calls work automatically.
+  Note: delegate-to-antigravity script (7affca42) is correctly implemented for the gemini-cli path and will work immediately when onboardUser unblocks.
   Severity: low (Llama 3.3 70B on remote-free handles delegation; Gemini routes available when credits/oauth fixed)
   File: scripts/ai/delegate-to-antigravity _PROFILE_MAP
 
@@ -476,10 +470,10 @@
 
 ## PENDING-REBUILD
 
-[PENDING-REBUILD] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
+[DONE] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
   Severity: high
-  Action: Restored `continue-local.injectHints=false` in the switchboard profile catalog while leaving `local-tool-calling.injectHints=true`. Requires switchboard reload/rebuild for live `/health` and aq-qa 0.5 checks to reflect the fix.
-  File: config/switchboard-profiles.yaml ~25
+  Fix: Restored `continue-local.injectHints=false` in the switchboard profile catalog and Python fallback while leaving `local-tool-calling.injectHints=true`; added a regression test; restarted switchboard and verified live `/health` reports `continue_local_injectHints=False`.
+  File: config/switchboard-profiles.yaml; ai-stack/switchboard/switchboard.py; scripts/testing/test-switchboard-profile-policy.py
 
 [PENDING-REBUILD] coordinator-qa-check-wrapper-empty-capture — after rebuild, the deployed `aq-qa` wrapper and `_aq-qa-bash` both emitted JSON when run directly, but live `/qa/check` still reported `parse_error: aq-qa produced empty stdout` for the wrapper command — Root cause: unresolved live coordinator capture/scheduler mismatch on the wrapper path; no fresh AppArmor denial was observed, and the direct deployed wrapper produced JSON with failure evidence.
   Severity: high
@@ -956,5 +950,34 @@
   Files: scripts/ai/delegate-to-antigravity, scripts/health/antigravity-health.sh, scripts/health/gemini-cli-health.sh, .agent/GEMINI.md
 
 [FIXED 6b258bf9+pending] autonomous-loop-prsi-not-wired — autonomous_loop.py ran its trigger → research → experiment cycle but never called prsi-orchestrator.py. Delegation failures discovered by PRSI were never consumed by the improvement loop. Fix: added _prsi_sync_execute() in autonomous_loop.py — calls prsi-orchestrator.py sync --since 1d then prsi-orchestrator.py execute at the start of every run_once() call. Closes Phase 185B Problem 3.
-  Severity: medium (autonomous loop firing but not consuming PRSI delegation feedback; improvement queue stale)
-  Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/automation/prsi-orchestrator.py _fetch_structured_actions()
+Severity: medium (autonomous loop firing but not consuming PRSI delegation feedback; improvement queue stale)
+Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/automation/prsi-orchestrator.py _fetch_structured_actions()
+[DONE] validation — tier0 pre-commit PTY returned no output and kept the tool session open after no matching process was visible; interrupted after repeated polls during Understand-Anything integration.
+  Severity: low
+  Action: Resolved on 2026-06-28. `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine` passed 115/0/2, then `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 180 scripts/governance/tier0-validation-gate.sh --pre-commit` passed 21/0.
+  File: scripts/governance/tier0-validation-gate.sh
+
+[OPEN] github-mcp-readonly — GitHub MCP cannot be safely enabled in this environment yet — `gh auth status` reports the existing GitHub token is invalid, and no Docker, Podman, or `github-mcp-server` runtime is available on PATH.
+  Severity: medium
+  Action: Re-authenticate with a scoped read-only GitHub OAuth/PAT path and choose a pinned local or remote MCP runtime before moving `github-mcp-readonly` out of `blocked-auth-runtime`.
+  File: config/agent-capability-intake-candidates.json
+
+[OPEN] osint-active-recon-runtime-gated — Passive OSINT research is active, but active recon engines remain gated — Maigret and MOSAIC are intentionally not activated because insecure package paths are still held, and BBOT remains provisioning-only in the OSINT MCP server.
+  Severity: medium
+  Action: Add pinned secure Nix/runtime packages for BBOT, Maigret/Sherlock-compatible identity enumeration, and MOSAIC or approved replacements; then extend `osint-tools` from passive/fallback status to active execution with tests and AppArmor/service bounds.
+  File: ai-stack/mcp-servers/osint-tools/server.py; nix/lib/overlays/osint-tools.nix
+
+[DONE] design-skills-autoselect-validation-gap — `aq-skill-auto --test` selected `frontend-design` and `canvas-design` for website work, but both failed required skill-section validation because their bodies lacked `## Description` and `## When to Use` headings.
+  Severity: low
+  Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
+  File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
+
+[DONE] safe-feature-candidate-promotion — Installed/read-only capability candidates were still `proposed`, so agents could not reliably auto-select Trivy, observability report, or Nix static analysis even though the local runtimes were available.
+  Severity: medium
+  Action: Promoted Trivy 0.66.0, observability query, and Nix static-analysis pack to `enabled` with accepted mitigations; declared OSV 2.2.4, Syft 1.38.0, and Grype 0.104.1 in Nix as `pending-rebuild`; kept GitHub MCP and graph-backed code intelligence blocked until prerequisites exist; added tooling-manifest discovery and tests.
+  File: config/agent-capability-intake-candidates.json; nix/modules/roles/ai-stack.nix; ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py; scripts/testing/test-enabled-external-mcp-candidates.py; scripts/testing/test-tooling-manifest.py
+
+[DONE] design-skills-autoselect-validation-gap — `aq-skill-auto --test` selected `frontend-design` and `canvas-design` for website work, but both failed required skill-section validation because their bodies lacked `## Description` and `## When to Use` headings.
+  Severity: low
+  Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
+  File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md

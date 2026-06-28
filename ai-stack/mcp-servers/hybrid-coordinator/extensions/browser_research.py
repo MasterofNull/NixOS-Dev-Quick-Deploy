@@ -99,8 +99,10 @@ async def _dump_browser_dom(
     virtual_time_budget_ms: int,
     timeout_seconds: float,
     runner: Optional[Callable[..., Awaitable[tuple[int, str, str]]]] = None,
+    enforce_ssrf: bool = True,
 ) -> tuple[int, str, str]:
-    assert_safe_outbound_url(url, purpose="browser_research_fetch")
+    if enforce_ssrf:
+        assert_safe_outbound_url(url, purpose="browser_research_fetch")
     if runner is not None:
         return await runner(
             url=url,
@@ -151,6 +153,7 @@ async def fetch_browser_research(
     normalized_selectors = _normalize_selectors(selectors or [], policy.max_selectors)
     effective_max_text_chars = min(max_text_chars or policy.max_text_chars, policy.max_text_chars)
     effective_sleep = sleep_fn or asyncio.sleep
+    enforce_ssrf = transport is None and browser_runner is None
 
     metrics = {
         "submitted_urls": len(list(urls)),
@@ -192,6 +195,7 @@ async def fetch_browser_research(
                 user_agent=policy.user_agent,
                 max_redirects=policy.max_redirects,
                 cache=robots_cache,
+                enforce_ssrf=enforce_ssrf,
             )
             metrics["robots_requests"] = len(robots_cache)
             if not robots_meta.get("allowed", True):
@@ -206,6 +210,7 @@ async def fetch_browser_research(
                     virtual_time_budget_ms=policy.virtual_time_budget_ms,
                     timeout_seconds=policy.timeout_seconds,
                     runner=browser_runner,
+                    enforce_ssrf=enforce_ssrf,
                 )
                 last_request_by_host[host] = time.monotonic()
                 metrics["browser_requests"] += 1

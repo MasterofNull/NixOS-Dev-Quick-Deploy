@@ -97,8 +97,14 @@ home-manager switch --flake .#hyperd                # user packages only
 
 ## Skill Index
 
-Before starting any task, check for a relevant skill. Skills save context by putting
+Before starting any task, auto-select and test relevant local skills. Skills save context by putting
 the right knowledge in view without loading the full codebase.
+
+```bash
+scripts/ai/aq-skill-auto "<task or user prompt>" --agent local --json --test
+```
+
+Load the returned `reference_skills` before planning or editing. If the selector is unavailable, fall back to the skill index.
 
 **Scan** (MCP tool): `hybrid_search` query "skill <topic>" in `skills-patterns` collection
 **Or read**: `.agent/SKILL_INDEX.md` then load `.agent/skills/<name>/SKILL.md`
@@ -152,7 +158,7 @@ When asked to run a "self-improvement slice" or "improve the harness":
 
 **NEVER** start with documentation cleanup or hypothetical planning. Always:
 
-1. **Load the skill**: read `.agent/skills/self-improvement/SKILL.md`
+1. **Auto-select skills**: run `scripts/ai/aq-skill-auto "<task>" --agent local --json --test`, then load `.agent/skills/self-improvement/SKILL.md` if selected
 2. **Scan authoritative sources** for open P1/P2 work:
    - `memory/issues-backlog.md` — open bugs and blockers (highest signal)
    - `.agent/collaboration/RESUME.json` — in-flight objective
@@ -263,7 +269,7 @@ Fix: added `"/search/"` to `LOOPBACK_AGENT_PREFIXES` in `middleware/auth.py`. Re
 ### Phase 162B — Coordinator git_tools, injectHints, local-first routing (2026-06-11, requires rebuild)
 
 - `ai-stack/local-agents/__init__.py`: `initialize_builtin_tools()` now calls `register_git_tools()` — coordinator MCP protocol exposes git tools.
-- `ai-stack/switchboard/switchboard.py`: `injectHints: True` for `continue-local` and `local-tool-calling` profiles — aq-chat and Continue sessions now receive context injection (~200 tokens per request).
+- `ai-stack/switchboard/switchboard.py`: `injectHints: True` only for context-aware agent/tool profiles; `continue-local` remains hint-free for compact editor latency and config parity.
 - `config/routing-policy.yaml`: `default_prefer_local: true` — callers without an explicit profile route local by default.
 - `ai-stack/meta-optimization/meta_optimizer.py` + `ai-stack/autoresearch/local_model_optimizer.py`: `build_llama_payload()` migration; both are imported by coordinator endpoints.
 

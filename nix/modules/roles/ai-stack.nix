@@ -1722,6 +1722,10 @@ in {
         pkgs.holehe
         pkgs.sherlock
         pkgs.bbot-placeholder
+        # Supply-chain scanners admitted for agent use after security-gated intake.
+        pkgs.osv-scanner
+        pkgs.syft
+        pkgs.grype
         # Phase 86: desktop notifications for human-gate alerts
         pkgs.libnotify
         # Sprint 2: zstd CLI required by continuous_learning.py log rotation

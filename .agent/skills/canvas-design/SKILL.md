@@ -4,6 +4,16 @@ description: Create beautiful visual art in .png and .pdf documents using design
 license: Complete terms in LICENSE.txt
 ---
 
+## Description
+
+Create highly crafted static visual artifacts by first defining a design philosophy, then expressing it as a PNG or PDF canvas with minimal text and strong visual composition.
+
+## When to Use
+
+Use this skill when the task asks for posters, art pieces, static visual concepts, printable one-page designs, visual philosophies, or PNG/PDF design artifacts. Do not use it for interactive websites or production frontend code.
+
+## Usage
+
 These are instructions for creating design philosophies - aesthetic movements that are then EXPRESSED VISUALLY. Output only .md files, .pdf files, and .png files.
 
 Complete this in two steps:

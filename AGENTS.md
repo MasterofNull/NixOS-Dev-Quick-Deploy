@@ -29,11 +29,12 @@ ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VA
 
 ## Skill Index — Lazy-Loaded Knowledge Modules
 
-Before starting any non-trivial task, check for a relevant skill. Skills are agent-agnostic
+Before starting any non-trivial task, auto-select and test relevant local skills. Skills are agent-agnostic
 knowledge modules that provide the right context without bloating conversation history.
 
 ```bash
 # Claude / Codex / shell-capable agents:
+aq-skill-auto "<task description>" --agent codex --json --test  # select + validate skills
 aq-skill-suggest "<task description>"           # suggest by keyword
 aq-skill-suggest --list                         # list all skills
 aq-skill-suggest --agent gemini "delegation"    # filter for agent constraints
@@ -43,6 +44,8 @@ read_file(".agent/SKILL_INDEX.md")              # scan routing table
 read_file(".agent/skills/<name>/SKILL.md")      # load specific skill
 ```
 
+Use `aq-skill-auto` when the user did not explicitly name skills. Load the returned
+`reference_skills` before planning/editing. Pass skill names (not content) to sub-agents.
 **Skill loading rule**: load max 2-3 skills per task. Pass skill names (not content) to sub-agents.
 **Routing table**: `.agent/SKILL_INDEX.md` — always-in-context compact index.
 **Skill files**: `.agent/skills/<name>/SKILL.md`

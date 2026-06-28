@@ -1072,6 +1072,40 @@ TOOL_DEFINITIONS: List[Tool] = [
         },
     ),
     Tool(
+        name="osint_research_ingest",
+        description=(
+            "Run a passive, manifest-backed OSINT research workflow and return STIX-like "
+            "ledger facts for the osint-intelligence namespace. Uses bounded public web "
+            "research only; does not perform active scanning."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "workflow": {"type": "string", "description": "Curated research workflow slug"},
+                "inputs": {"type": "object", "description": "Workflow input values, for example topic or domain"},
+                "max_text_chars": {"type": "integer", "description": "Maximum extracted characters per source"},
+                "persist": {"type": "boolean", "description": "Persist bounded ledger records to harness memory with osint-intelligence metadata"},
+            },
+            "required": ["workflow"],
+        },
+    ),
+    Tool(
+        name="osint_research_query",
+        description=(
+            "Query previously ingested passive OSINT ledger evidence from the "
+            "osint-intelligence namespace and return source-grounded facts."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Evidence query"},
+                "limit": {"type": "integer", "description": "Maximum evidence records to return"},
+                "workflow": {"type": "string", "description": "Optional workflow slug filter"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
         name="trading_market_data",
         description="Fetch market data and run Bull/Bear sentiment debates.",
         inputSchema={
@@ -1208,6 +1242,89 @@ async def _call_mcp_server(executable_path: Path, tool_name: str, arguments: Dic
     except Exception as e:
         return json.dumps({"error": f"MCP communication error: {str(e)}", "status": "error"})
 
+
+def _build_osint_ledger_records(research_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Convert curated research output into bounded ledger records for osint-intelligence."""
+    workflow = research_result.get("workflow") if isinstance(research_result.get("workflow"), dict) else {}
+    workflow_slug = str(workflow.get("slug") or "").strip()
+    records: List[Dict[str, Any]] = []
+    for item in research_result.get("results", []) or []:
+        if not isinstance(item, dict):
+            continue
+        page = item.get("result") if isinstance(item.get("result"), dict) else {}
+        excerpt = str(page.get("text_excerpt") or "").strip()
+        if not excerpt:
+            continue
+        requested_url = str(item.get("requested_url") or page.get("requested_url") or page.get("url") or "").strip()
+        source_name = str(item.get("source_name") or "").strip()
+        selector = ",".join(str(sel).strip() for sel in (item.get("selectors") or []) if str(sel).strip())
+        records.append(
+            {
+                "type": "observed-data",
+                "spec_version": "2.1",
+                "namespace": "osint-intelligence",
+                "schema_version": "stix-2.1-lite",
+                "workflow": workflow_slug,
+                "source_name": source_name,
+                "selector": selector or requested_url,
+                "source_url": requested_url,
+                "fact_type": "public_web_extract",
+                "status": str(item.get("status") or "ok"),
+                "confidence": 0.75 if item.get("status") == "ok" else 0.35,
+                "title": str(page.get("title") or "").strip(),
+                "content": excerpt[:4000],
+                "links": page.get("links") if isinstance(page.get("links"), list) else [],
+                "imported_at": int(_time.time()),
+            }
+        )
+    return records
+
+
+def _extract_osint_metadata(row: Dict[str, Any]) -> Dict[str, Any]:
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    context = row.get("context") if isinstance(row.get("context"), dict) else {}
+    payload = metadata or context
+    record = payload.get("record") if isinstance(payload.get("record"), dict) else {}
+    return {
+        "namespace": payload.get("namespace") or record.get("namespace"),
+        "schema": payload.get("schema") or record.get("schema_version"),
+        "source_url": payload.get("source_url") or record.get("source_url"),
+        "source_name": payload.get("source_name") or record.get("source_name"),
+        "workflow": payload.get("workflow") or record.get("workflow"),
+        "fact_type": payload.get("fact_type") or record.get("fact_type"),
+        "record": record,
+    }
+
+
+def _shape_osint_recall_rows(rows: List[Dict[str, Any]], *, workflow: str = "") -> List[Dict[str, Any]]:
+    shaped: List[Dict[str, Any]] = []
+    wanted_workflow = str(workflow or "").strip()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        metadata = _extract_osint_metadata(row)
+        if metadata.get("namespace") != "osint-intelligence":
+            tags = row.get("tags") if isinstance(row.get("tags"), list) else []
+            if "osint-intelligence" not in {str(tag) for tag in tags}:
+                continue
+        if wanted_workflow and str(metadata.get("workflow") or "") != wanted_workflow:
+            continue
+        record = metadata.get("record") if isinstance(metadata.get("record"), dict) else {}
+        shaped.append(
+            {
+                "score": row.get("score"),
+                "summary": row.get("summary") or row.get("content", "")[:160],
+                "content": row.get("content") or record.get("content"),
+                "source_url": metadata.get("source_url"),
+                "source_name": metadata.get("source_name"),
+                "workflow": metadata.get("workflow"),
+                "fact_type": metadata.get("fact_type"),
+                "title": record.get("title"),
+                "record": record,
+            }
+        )
+    return shaped
+
 async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
     """Dispatch an MCP tool call by name."""
     _start = _time.perf_counter()
@@ -1220,6 +1337,79 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/osint-tools/server.py", tool, args)
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=result_text)]
+
+        if name == "osint_research_ingest":
+            from research_workflows import run_curated_research_workflow  # type: ignore[import]
+
+            workflow = str(arguments.get("workflow") or "").strip()
+            if not workflow:
+                return [TextContent(type="text", text=json.dumps({"status": "failed", "error": "workflow is required"}))]
+            result = await run_curated_research_workflow(
+                workflow_slug=workflow,
+                inputs=arguments.get("inputs") if isinstance(arguments.get("inputs"), dict) else {},
+                max_text_chars=arguments.get("max_text_chars"),
+            )
+            ledger = _build_osint_ledger_records(result)
+            persisted = []
+            if bool(arguments.get("persist")):
+                if _store_memory is None:
+                    persisted.append({"status": "skipped", "reason": "memory_store_unavailable"})
+                else:
+                    for record in ledger:
+                        summary = f"OSINT {record.get('workflow')}: {record.get('title') or record.get('source_name')}"
+                        stored = await _store_memory(
+                            memory_type="semantic",
+                            summary=summary,
+                            content=record.get("content", ""),
+                            metadata={
+                                "namespace": "osint-intelligence",
+                                "schema": "stix-2.1-lite",
+                                "source_url": record.get("source_url"),
+                                "source_name": record.get("source_name"),
+                                "workflow": record.get("workflow"),
+                                "fact_type": record.get("fact_type"),
+                                "record": record,
+                            },
+                        )
+                        persisted.append(stored)
+            payload = {
+                "status": result.get("status", "ok"),
+                "namespace": "osint-intelligence",
+                "schema": "stix-2.1-lite",
+                "workflow": result.get("workflow", {}),
+                "ledger_count": len(ledger),
+                "ledger_records": ledger,
+                "persisted_count": len([item for item in persisted if isinstance(item, dict) and not item.get("error")]),
+                "persisted": persisted,
+                "research": result,
+            }
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(payload, sort_keys=True))]
+
+        if name == "osint_research_query":
+            query = str(arguments.get("query") or "").strip()
+            if not query:
+                return [TextContent(type="text", text=json.dumps({"status": "failed", "error": "query is required"}))]
+            if _recall_memory is None:
+                return [TextContent(type="text", text=json.dumps({"status": "failed", "error": "memory recall unavailable"}))]
+            limit = max(1, min(int(arguments.get("limit") or 8), 25))
+            recall = await _recall_memory(
+                query=f"osint-intelligence {query}",
+                memory_types=["semantic", "episodic"],
+                limit=limit,
+                retrieval_mode="hybrid",
+            )
+            rows = recall.get("results", []) if isinstance(recall, dict) else []
+            evidence = _shape_osint_recall_rows(rows, workflow=str(arguments.get("workflow") or ""))
+            payload = {
+                "status": "ok",
+                "namespace": "osint-intelligence",
+                "query": query,
+                "count": len(evidence),
+                "evidence": evidence[:limit],
+            }
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(payload, sort_keys=True))]
 
         elif name == "trading_market_data":
             action = arguments.get("action", "data")

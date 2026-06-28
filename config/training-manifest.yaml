@@ -112,7 +112,7 @@ agent_scope:
     - remote-free
     - remote-coding
     - remote-reasoning
-    - remote-gemini
+    - antigravity-collective
   eval_mode: hybrid   # always route eval cases through hybrid-coordinator
 
 # ── Fine-tuning policy ────────────────────────────────────────────────────────

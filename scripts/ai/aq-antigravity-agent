@@ -51,15 +51,15 @@ LLAMA_URL       = os.environ.get("LLAMA_URL",       "http://127.0.0.1:8080")
 
 # Map --mode aliases to switchboard remote profiles.
 # Valid profiles per nix/modules/services/switchboard.nix:
-#   remote-default, remote-gemini, remote-free, remote-coding,
+#   remote-default, antigravity-collective, remote-free, remote-coding,
 #   remote-reasoning, remote-toolcalling, remote-opencode
 _MODE_PROFILE = {
-    "fast":        "remote-gemini",
-    "flash":       "remote-gemini",
-    "pro":         "remote-gemini",
-    "architect":   "remote-gemini",
-    "implementer": "remote-gemini",
-    "reviewer":    "remote-gemini",
+    "fast":        "antigravity-collective",
+    "flash":       "antigravity-collective",
+    "pro":         "antigravity-collective",
+    "architect":   "antigravity-collective",
+    "implementer": "antigravity-collective",
+    "reviewer":    "antigravity-collective",
 }
 
 # ── logging ───────────────────────────────────────────────────────────────────

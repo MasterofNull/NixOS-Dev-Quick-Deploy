@@ -83,7 +83,11 @@ The operator reviews the commit; they do not pre-approve each step.
 
 Once a slice is selected:
 
-1. **Check for a relevant skill first**: `aq-skill-suggest "<slice description>"`
+1. **Auto-select and test relevant skills first**:
+   ```bash
+   scripts/ai/aq-skill-auto "<slice description>" --agent local --json --test
+   ```
+   Load the returned `reference_skills` before edits. Pass only the skill names to sub-agents.
 2. **Write RESUME.json** with `current_objective` = chosen slice title
 3. **Append to PULSE.log**: `[ISO] [local-agent] [plan]: <slice-title> — starting`
 4. **Scope check**: Note in the commit message if a nixos-rebuild is required to activate the change.

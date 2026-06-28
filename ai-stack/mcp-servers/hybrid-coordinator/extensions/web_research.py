@@ -148,11 +148,13 @@ async def _fetch_with_redirects(
     *,
     max_redirects: int,
     max_response_bytes: int,
+    enforce_ssrf: bool = True,
 ) -> Dict[str, Any]:
     current_url = url
     redirect_history: List[str] = []
     for _ in range(max_redirects + 1):
-        assert_safe_outbound_url(current_url, purpose="web_research_fetch")
+        if enforce_ssrf:
+            assert_safe_outbound_url(current_url, purpose="web_research_fetch")
         async with client.stream("GET", current_url, follow_redirects=False) as response:
             status_code = int(response.status_code)
             if status_code in {301, 302, 303, 307, 308}:
@@ -160,7 +162,8 @@ async def _fetch_with_redirects(
                 if not location:
                     raise RuntimeError(f"redirect missing location header for {current_url}")
                 redirect_url = urljoin(current_url, location)
-                assert_safe_outbound_url(redirect_url, purpose="web_research_redirect")
+                if enforce_ssrf:
+                    assert_safe_outbound_url(redirect_url, purpose="web_research_redirect")
                 redirect_history.append(redirect_url)
                 current_url = redirect_url
                 continue
@@ -184,6 +187,7 @@ async def _robots_allowed(
     user_agent: str,
     max_redirects: int,
     cache: Dict[str, Dict[str, Any]],
+    enforce_ssrf: bool = True,
 ) -> Dict[str, Any]:
     parsed = urlparse(url)
     host = (parsed.hostname or "").strip().lower()
@@ -204,6 +208,7 @@ async def _robots_allowed(
                 robots_url,
                 max_redirects=max_redirects,
                 max_response_bytes=128_000,
+                enforce_ssrf=enforce_ssrf,
             )
             if int(payload["status_code"]) < 400:
                 parser = RobotFileParser()
@@ -304,6 +309,7 @@ async def fetch_web_research(
     normalized_selectors = _normalize_selectors(selectors or [], policy.max_selectors)
     effective_max_text_chars = min(max_text_chars or policy.max_text_chars, policy.max_text_chars)
     effective_sleep = sleep_fn or asyncio.sleep
+    enforce_ssrf = transport is None
 
     metrics = {
         "submitted_urls": len(list(urls)),
@@ -345,6 +351,7 @@ async def fetch_web_research(
                 user_agent=policy.user_agent,
                 max_redirects=policy.max_redirects,
                 cache=robots_cache,
+                enforce_ssrf=enforce_ssrf,
             )
             metrics["robots_requests"] = len(robots_cache)
             if not robots_meta.get("allowed", True):
@@ -358,6 +365,7 @@ async def fetch_web_research(
                     url,
                     max_redirects=policy.max_redirects,
                     max_response_bytes=policy.max_response_bytes,
+                    enforce_ssrf=enforce_ssrf,
                 )
                 last_request_by_host[host] = time.monotonic()
                 metrics["page_requests"] += 1

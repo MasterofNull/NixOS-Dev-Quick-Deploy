@@ -1,0 +1,384 @@
+{
+  "$schema": "./schemas/agent-capability-intake-candidates.schema.json",
+  "version": "2026-06-28",
+  "owner": "codex",
+  "policy": {
+    "default_state": "proposed",
+    "activation_requires": [
+      "pinned_version",
+      "tool_allowlist",
+      "supply_chain_scan",
+      "runtime_sandbox",
+      "dashboard_or_aq_report_visibility",
+      "rollback_path"
+    ]
+  },
+  "candidates": [
+    {
+      "id": "playwright-mcp",
+      "name": "Playwright MCP / CLI skill",
+      "category": "browser-automation",
+      "source_url": "https://github.com/microsoft/playwright-mcp",
+      "maturity": "official",
+      "priority": "very-high",
+      "state": "enabled",
+      "pinned_version": "0.0.76",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "pinned npm package version",
+        "headless browser mode",
+        "isolated browser profile",
+        "localhost host binding",
+        "explicit localhost allowed-origins preference",
+        "service workers blocked",
+        "image responses omitted",
+        "no unrestricted file access flag",
+        "no secrets configured",
+        "regression test covers enabled config"
+      ],
+      "install": {
+        "type": "mcp",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@playwright/mcp@0.0.76",
+          "--headless",
+          "--isolated",
+          "--host",
+          "127.0.0.1",
+          "--allowed-hosts",
+          "127.0.0.1,localhost",
+          "--allowed-origins",
+          "http://127.0.0.1:*;http://localhost:*",
+          "--block-service-workers",
+          "--image-responses",
+          "omit",
+          "--timeout-action",
+          "5000",
+          "--timeout-navigation",
+          "30000"
+        ]
+      },
+      "tool_allowlist": [
+        "browser_snapshot",
+        "browser_click",
+        "browser_type",
+        "browser_navigate",
+        "browser_take_screenshot"
+      ],
+      "permissions": {
+        "network": "restricted-localhost-preferred",
+        "filesystem": "workspace-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Live dashboard verification, visual regression, accessibility snapshots, and UI workflow checks for agents.",
+      "risks": ["browser-network-egress", "npm-package-execution"],
+      "activation_notes": "Enabled with pinned npm package, headless isolated context, localhost origin preference, service workers blocked, image responses omitted, and no unrestricted file access flag."
+    },
+    {
+      "id": "semgrep-mcp",
+      "name": "Semgrep MCP",
+      "category": "security-scanning",
+      "source_url": "https://github.com/semgrep/mcp",
+      "maturity": "official",
+      "priority": "very-high",
+      "state": "enabled",
+      "pinned_version": "0.9.0",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "pinned semgrep-mcp PyPI package version",
+        "Nix-provided uv runtime",
+        "stdio transport only",
+        "no SEMGREP_APP_TOKEN configured",
+        "workspace-read security scanning use only",
+        "regression test covers enabled config"
+      ],
+      "install": {
+        "type": "mcp",
+        "command": "nix",
+        "args": ["shell", "nixpkgs#uv", "-c", "uvx", "semgrep-mcp==0.9.0", "--transport", "stdio"]
+      },
+      "tool_allowlist": [
+        "security_check",
+        "semgrep_scan",
+        "semgrep_scan_with_custom_rule",
+        "get_abstract_syntax_tree"
+      ],
+      "permissions": {
+        "network": "package-bootstrap-only",
+        "filesystem": "workspace-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Agent-triggered generated-code security scans and custom rule validation.",
+      "risks": ["python-package-execution", "nix-package-bootstrap"],
+      "activation_notes": "Enabled with Nix-provided uv, pinned semgrep-mcp package, stdio transport, and no Semgrep cloud token."
+    },
+    {
+      "id": "github-mcp-readonly",
+      "name": "GitHub MCP read-only",
+      "category": "repo-collaboration",
+      "source_url": "https://github.com/github/github-mcp-server",
+      "maturity": "official",
+      "priority": "high",
+      "state": "blocked-auth-runtime",
+      "review_status": "blocked",
+      "blocked_reason": "gh auth token is invalid and no Docker, Podman, or github-mcp-server runtime is available on PATH.",
+      "unblock_condition": "Provide a scoped GitHub OAuth/PAT path and a pinned local/remote MCP runtime before enabling.",
+      "install": {
+        "type": "mcp",
+        "command": "github-mcp-server",
+        "args": ["--read-only", "--toolsets", "context,repos,issues,pull_requests,actions,code_security"]
+      },
+      "tool_allowlist": [
+        "get_file_contents",
+        "search_code",
+        "issue_read",
+        "pull_request_read",
+        "list_workflow_runs",
+        "get_code_scanning_alert"
+      ],
+      "permissions": {
+        "network": "github-api",
+        "filesystem": "none",
+        "writes": false,
+        "secrets": "GITHUB_PERSONAL_ACCESS_TOKEN"
+      },
+      "value": "PR, issue, Actions, and code-security context without write access.",
+      "risks": ["external-api-token", "repository-metadata-exposure"],
+      "activation_notes": "Do not enable write tools until a separate promotion review."
+    },
+    {
+      "id": "osv-scanner",
+      "name": "OSV-Scanner",
+      "category": "supply-chain-security",
+      "source_url": "https://github.com/google/osv-scanner",
+      "maturity": "official",
+      "priority": "very-high",
+      "state": "pending-rebuild",
+      "pinned_version": "2.2.4",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "Nix-packaged osv-scanner declared in ai-stack system packages",
+        "read-only source scanning only",
+        "no secrets configured",
+        "external OSV API use is explicit and visible in candidate permissions",
+        "candidate remains pending-rebuild until the binary is on PATH"
+      ],
+      "unblock_condition": "Run the NixOS rebuild, verify osv-scanner is on PATH, then promote state to enabled.",
+      "install": {
+        "type": "cli",
+        "command": "osv-scanner",
+        "args": ["scan", "source", "."]
+      },
+      "tool_allowlist": ["osv_scan_source", "osv_scan_sbom"],
+      "permissions": {
+        "network": "osv-api",
+        "filesystem": "workspace-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Dependency vulnerability scanning for imported plugins and repo lockfiles.",
+      "risks": ["external-vulnerability-api"],
+      "activation_notes": "Declared through Nix system packages at version 2.2.4; pending rebuild before live use."
+    },
+    {
+      "id": "trivy",
+      "name": "Trivy",
+      "category": "supply-chain-security",
+      "source_url": "https://github.com/aquasecurity/trivy",
+      "maturity": "mature",
+      "priority": "very-high",
+      "state": "enabled",
+      "pinned_version": "0.66.0",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "Nix/system-provided trivy binary already on PATH",
+        "default command uses filesystem scan only",
+        "no secrets configured",
+        "report output only under .reports/security when output is requested",
+        "secret findings must be redacted before sharing or committing reports",
+        "vulnerability DB updates are treated as networked maintenance, not implicit import-time execution"
+      ],
+      "install": {
+        "type": "cli",
+        "command": "trivy",
+        "args": ["fs", "--scanners", "vuln,secret,misconfig", "--skip-db-update", "--exit-code", "0", "."]
+      },
+      "tool_allowlist": ["trivy_fs_scan", "trivy_config_scan", "trivy_sbom_scan"],
+      "permissions": {
+        "network": "vulnerability-db-updates",
+        "filesystem": "workspace-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Filesystem, secrets, misconfiguration, SBOM, and container/Nix-adjacent security checks.",
+      "risks": ["external-db-update", "secret-finding-output-sensitive"],
+      "activation_notes": "Enabled with installed Trivy 0.66.0 and safe default scan args. Cache vulnerability DB outside repo; redact secret values in reports."
+    },
+    {
+      "id": "syft-grype",
+      "name": "Syft and Grype",
+      "category": "supply-chain-security",
+      "source_url": "https://github.com/anchore/syft",
+      "secondary_source_url": "https://github.com/anchore/grype",
+      "maturity": "mature",
+      "priority": "high",
+      "state": "pending-rebuild",
+      "pinned_version": "syft-1.38.0+grype-0.104.1",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "Nix-packaged syft and grype declared in ai-stack system packages",
+        "SBOM writes are report-output-only",
+        "raw local SBOMs are not committed by default",
+        "no secrets configured",
+        "candidate remains pending-rebuild until both binaries are on PATH"
+      ],
+      "unblock_condition": "Run the NixOS rebuild, verify syft and grype are on PATH, then promote state to enabled.",
+      "install": {
+        "type": "cli",
+        "command": "syft",
+        "args": ["dir:.", "-o", "spdx-json"]
+      },
+      "tool_allowlist": ["syft_generate_sbom", "grype_scan_sbom"],
+      "permissions": {
+        "network": "vulnerability-db-updates",
+        "filesystem": "workspace-read",
+        "writes": "report-output-only",
+        "secrets": false
+      },
+      "value": "Generate SBOMs and scan them before imported capabilities are promoted.",
+      "risks": ["report-artifact-management", "external-db-update"],
+      "activation_notes": "Declared through Nix system packages at syft 1.38.0 and grype 0.104.1; pending rebuild before live use. Write reports under .reports/security/ and never commit raw local-only SBOMs by default."
+    },
+    {
+      "id": "mcp-admission-controller",
+      "name": "Local MCP admission controller",
+      "category": "agent-security",
+      "source_url": "local",
+      "maturity": "local-build",
+      "priority": "very-high",
+      "state": "enabled",
+      "pinned_version": "local-2026-06-28",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "local repo CLI only",
+        "no network access",
+        "no secrets",
+        "reports-only writes",
+        "tool security auditor checks every allowlisted tool",
+        "regression tests cover enabled candidate policy"
+      ],
+      "install": {
+        "type": "local-skill",
+        "command": "scripts/ai/aq-capability-intake",
+        "args": ["audit", "--all"]
+      },
+      "tool_allowlist": ["candidate_audit", "tool_schema_diff", "allowlist_check"],
+      "permissions": {
+        "network": false,
+        "filesystem": "workspace-read",
+        "writes": "reports-only",
+        "secrets": false
+      },
+      "value": "Deny-by-default admission and audit reporting before enabling third-party MCP/plugin tools.",
+      "risks": [],
+      "activation_notes": "Promote this before enabling any write-capable external tool."
+    },
+    {
+      "id": "observability-query-skill",
+      "name": "Observability query skill",
+      "category": "operations",
+      "source_url": "local",
+      "maturity": "local-build",
+      "priority": "high",
+      "state": "enabled",
+      "pinned_version": "local-2026-06-28",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "local harness CLI only",
+        "machine-readable status output",
+        "localhost telemetry only",
+        "no secrets configured",
+        "read-only log and metric summarization",
+        "operators must redact sensitive log excerpts before external sharing"
+      ],
+      "install": {
+        "type": "local-skill",
+        "command": "aq-report",
+        "args": ["--machine"]
+      },
+      "tool_allowlist": ["aq_report_query", "journal_summary", "metrics_snapshot"],
+      "permissions": {
+        "network": "localhost",
+        "filesystem": "logs-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Agent-readable health, metrics, journal, and dashboard gap summaries.",
+      "risks": ["log-sensitive-data"],
+      "activation_notes": "Enabled through aq-report --machine. Redact secrets and surface status in dashboard/aq-report."
+    },
+    {
+      "id": "nixos-specialist-tool-pack",
+      "name": "NixOS specialist tool pack",
+      "category": "nixos",
+      "source_url": "local",
+      "maturity": "local-build",
+      "priority": "high",
+      "state": "enabled",
+      "pinned_version": "statix-0.5.8+deadnix-1.3.1",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "statix and deadnix are already available on PATH",
+        "canonical wrapper runs read-only static checks",
+        "non-blocking mode available for exploratory agent use",
+        "Nix builds and rebuilds remain separately approval/gate controlled",
+        "no secrets configured"
+      ],
+      "install": {
+        "type": "local-skill",
+        "command": "scripts/governance/nix-static-analysis.sh",
+        "args": ["--non-blocking", "--quiet"]
+      },
+      "tool_allowlist": ["statix_check", "deadnix_check", "nix_flake_check", "nix_eval", "nix_why_depends"],
+      "permissions": {
+        "network": "nix-substituters-only",
+        "filesystem": "workspace-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Nix-specific linting, dependency reasoning, and service hardening analysis.",
+      "risks": ["nix-evaluation-cost", "substituter-network"],
+      "activation_notes": "Enabled with statix 0.5.8 and deadnix 1.3.1 through the canonical Nix static-analysis wrapper. Use read-only/eval commands by default; gate builds separately."
+    },
+    {
+      "id": "code-intelligence-graph-layer",
+      "name": "Code intelligence graph layer",
+      "category": "code-understanding",
+      "source_url": "local",
+      "maturity": "local-build",
+      "priority": "medium-high",
+      "state": "blocked-graph-incomplete",
+      "review_status": "blocked",
+      "blocked_reason": "Understand-Anything integration is installed, but the repo knowledge graph is still missing.",
+      "unblock_condition": "Complete Understand-Anything batch analysis and generate .understand-anything/knowledge-graph.json before enabling graph-backed impact tools.",
+      "install": {
+        "type": "local-skill",
+        "command": "scripts/ai/aq-understand-anything",
+        "args": ["status"]
+      },
+      "tool_allowlist": ["graph_query", "symbol_lookup", "impact_path"],
+      "permissions": {
+        "network": false,
+        "filesystem": "workspace-read",
+        "writes": "knowledge-graph-output",
+        "secrets": false
+      },
+      "value": "Combine Understand-Anything, lean-ctx, and language-aware indexes for deterministic impact answers.",
+      "risks": ["llm-generated-graph-inaccuracy"],
+      "activation_notes": "Use graph as advisory; verify deploy/security conclusions against source and live checks."
+    }
+  ]
+}
