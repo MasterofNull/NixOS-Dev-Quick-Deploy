@@ -59,15 +59,15 @@ _MAX_CONCURRENT    = 3
 # deploy-options.local.nix (remoteModelAliases).  Changing the backend never
 # requires editing this script.
 #
-# Current mapping: canonical switchboard profiles (provider-neutral).
-# Switchboard routes each profile to the configured backend.
+# All modes route to remote-gemini (google/gemini-2.5-flash-lite via OpenRouter).
+# This is the antigravity/Gemini paid subscription lane — NOT the free Llama tier.
 _PROFILE_MAP: dict[str, str] = {
-    "fast":        "remote-free",        # quick tasks — low-cost general remote
-    "flash":       "remote-gemini",      # discovery / synthesis
-    "pro":         "remote-reasoning",   # high-judgment analysis (large model)
-    "architect":   "remote-reasoning",   # architecture / tradeoff analysis
-    "implementer": "remote-coding",      # implementation / refactoring
-    "reviewer":    "remote-reasoning",   # policy / acceptance review
+    "fast":        "remote-gemini",
+    "flash":       "remote-gemini",
+    "pro":         "remote-gemini",
+    "architect":   "remote-gemini",
+    "implementer": "remote-gemini",
+    "reviewer":    "remote-gemini",
 }
 
 _VALID_ROLES = {

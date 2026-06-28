@@ -54,12 +54,12 @@ LLAMA_URL       = os.environ.get("LLAMA_URL",       "http://127.0.0.1:8080")
 #   remote-default, remote-gemini, remote-free, remote-coding,
 #   remote-reasoning, remote-toolcalling, remote-opencode
 _MODE_PROFILE = {
-    "fast":        "remote-free",
+    "fast":        "remote-gemini",
     "flash":       "remote-gemini",
-    "pro":         "remote-reasoning",
-    "architect":   "remote-reasoning",
-    "implementer": "remote-coding",
-    "reviewer":    "remote-reasoning",
+    "pro":         "remote-gemini",
+    "architect":   "remote-gemini",
+    "implementer": "remote-gemini",
+    "reviewer":    "remote-gemini",
 }
 
 # ── logging ───────────────────────────────────────────────────────────────────
