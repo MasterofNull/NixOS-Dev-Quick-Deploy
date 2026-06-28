@@ -1,5 +1,18 @@
 ## OPEN ISSUES
 
+[FIXED 2a98887e] dashboard-vlatP95-field-name-mismatch — vLatP95 tile showed "N/A" despite route latency data being available.
+  Root cause: dashboard.js:717 reads route_latency.backend_valid_p95_ms but the API response from get_performance_hotspots() returned route_latency.overall_p95_ms (from aq-report route_search_latency_decomposition). Field name mismatch: dashboard expected backend_valid_p95_ms; backend only populated overall/actionable_p95_ms.
+  Fix: ai_insights.py get_performance_hotspots() now injects backend_valid_p95_ms alias falling through: backend_valid_p95_ms → overall_p95_ms → actionable_p95_ms → p95_ms. Result: vLatP95 now shows 2300ms.
+  Severity: medium (KPI tile blank; route latency monitoring invisible to users)
+  File: dashboard/backend/api/services/ai_insights.py get_performance_hotspots() ~line 1718
+
+[FIXED a0a29880] dashboard-vlogic-discipline-timestamp-double-utc — vLogicDiscipline tile showed "--".
+  Root cause: delegation_feedback.py wrote datetime.now(timezone.utc).isoformat() + "Z" → "+00:00Z" double UTC marker; _parse_iso_timestamp converted to "+00:00+00:00" (still invalid) → fromisoformat ValueError → all entries filtered → sample_n=0 → score=None.
+  Fix (parser, hot): ai_insights.py _parse_iso_timestamp() — strip extra Z when +00:00Z suffix detected. Result: sample_n=30, score=100%.
+  Fix (writer, needs rebuild): delegation_feedback.py — strftime("%Y-%m-%dT%H:%M:%SZ") format.
+  Severity: high (logic discipline metric invisible; coordination health unmonitored)
+  Files: dashboard/backend/api/services/ai_insights.py; ai-stack/mcp-servers/hybrid-coordinator/workflow/delegation_feedback.py
+
 [INFO 2026-06-27] data-store-audit-findings — Full audit of all data stores completed. Summary:
   HEALTHY: Qdrant (14 collections, 50k+ pts), Redis (17,731 keys), PostgreSQL (39 tables, 354k+ rows), AIDB (ok, 58 skills, 354k telemetry events), RALPH/8004 (healthy), embedding-service/8081 (ok).
   Key PostgreSQL counts: telemetry_events=354k, query_traces=30.6k, imported_documents=19.8k, interaction_history=18.9k, learning_feedback=17k, eval_results=2.6k, hint_feedback_events=919, query_gaps=1536.
@@ -123,9 +136,10 @@
   File: ~/.npm-global/lib/node_modules/@google/gemini-cli/bundle/chunk-SBG6CUNK.js line 307684
 
 [OPEN] openrouter-credits-depleted — remote-gemini (google/gemini-2.5-flash-lite) returns HTTP 402 Insufficient credits. All paid remote profiles (remote-gemini, remote-reasoning→claude-sonnet-4-5, remote-coding→claude-sonnet-4-5, remote-tool-calling→o4-mini) require OpenRouter credits. Only remote-free (meta-llama/llama-3.3-70b-instruct:free) works without credits.
+  ALSO CONFIRMED (2026-06-28): gemini-cli oauth-personal path (Google Code Assist cloudcode-pa.googleapis.com) STILL blocked — caServer.onboardUser() returns "Resource has been exhausted (e.g. check quota)". This is the same error that prompted the switchboard migration on 0ccb644f. NOT resolved.
   Scope: delegate-to-antigravity (antigravity agent = paid Gemini lane), agent_executor.py fallback, aq-antigravity-agent
-  Severity: HIGH — antigravity delegation non-functional until credits added
-  Action needed (USER): Add credits at https://openrouter.ai/settings/credits
+  Severity: HIGH — all Gemini/remote delegation paths non-functional until one path is fixed
+  Action needed (USER): Either (A) Add OpenRouter credits at https://openrouter.ai/settings/credits, OR (B) wait for Google to fix Code Assist quota
   Current workaround: remote-free (Llama 3.3 70B) for non-Gemini tasks
 
 [RESOLVED 0462be4c/047bb33a] delegate-to-antigravity-switchboard-migration — rewritten (0ccb644f) to use switchboard HTTP routing. All modes now correctly mapped to remote-gemini (paid Gemini lane) via 047bb33a. Prior sessions had invalid 'antigravity-collective' profile causing HTTP 400. Profiles restored to valid switchboard registry names.
