@@ -327,6 +327,7 @@
       "description": "embedded-hardware domain baseline artifact and hardware-matrix presence check",
       "trigger_paths": [
         ".agent/PROJECT-EMBEDDED-HARDWARE-PRD.md",
+        ".agent/PROJECT-EMBEDDED-HARDWARE-PLAN.md",
         ".agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md",
         "config/capability-lifecycle-registry.json",
         "config/hardware-capability-matrix.json",
@@ -335,7 +336,7 @@
       "command": [
         "python3",
         "-c",
-        "import json,sys,os,stat; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'embedded-hardware' in ids, 'embedded-hardware not in registry'; assert os.path.exists('.agent/PROJECT-EMBEDDED-HARDWARE-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md'), 'instructions missing'; matrix='config/hardware-capability-matrix.json'; assert os.path.exists(matrix), f'{matrix} missing (hardware SSOT gone)'; disc='scripts/governance/discover-system-facts.sh'; assert os.path.exists(disc), f'{disc} missing'; s=os.stat(disc); assert s.st_mode & stat.S_IXUSR, f'{disc} not executable'; print('embedded-hardware domain: baseline artifacts and hardware-matrix present')"
+        "import json,sys,os,stat; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'embedded-hardware' in ids, 'embedded-hardware not in registry'; assert os.path.exists('.agent/PROJECT-EMBEDDED-HARDWARE-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/PROJECT-EMBEDDED-HARDWARE-PLAN.md'), 'PLAN missing'; assert os.path.exists('.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md'), 'instructions missing'; matrix='config/hardware-capability-matrix.json'; assert os.path.exists(matrix), f'{matrix} missing (hardware SSOT gone)'; disc='scripts/governance/discover-system-facts.sh'; assert os.path.exists(disc), f'{disc} missing'; s=os.stat(disc); assert s.st_mode & stat.S_IXUSR, f'{disc} not executable'; print('embedded-hardware domain: baseline artifacts and hardware-matrix present')"
       ],
       "tier": "behavioral",
       "timeout_seconds": 15,
@@ -347,13 +348,14 @@
       "description": "mobile-web domain baseline artifact presence check",
       "trigger_paths": [
         ".agent/PROJECT-MOBILE-WEB-PRD.md",
+        ".agent/PROJECT-MOBILE-WEB-PLAN.md",
         ".agent/MOBILE-WEB-INSTRUCTIONS.md",
         "config/capability-lifecycle-registry.json"
       ],
       "command": [
         "python3",
         "-c",
-        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'mobile-web' in ids, 'mobile-web not in registry'; assert os.path.exists('.agent/PROJECT-MOBILE-WEB-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/MOBILE-WEB-INSTRUCTIONS.md'), 'instructions missing'; print('mobile-web domain: baseline artifacts present')"
+        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'mobile-web' in ids, 'mobile-web not in registry'; assert os.path.exists('.agent/PROJECT-MOBILE-WEB-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/PROJECT-MOBILE-WEB-PLAN.md'), 'PLAN missing'; assert os.path.exists('.agent/MOBILE-WEB-INSTRUCTIONS.md'), 'instructions missing'; print('mobile-web domain: baseline artifacts present')"
       ],
       "tier": "behavioral",
       "timeout_seconds": 15,
@@ -365,13 +367,14 @@
       "description": "scientific-research domain baseline artifact presence check",
       "trigger_paths": [
         ".agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md",
+        ".agent/PROJECT-SCIENTIFIC-RESEARCH-PLAN.md",
         ".agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md",
         "config/capability-lifecycle-registry.json"
       ],
       "command": [
         "python3",
         "-c",
-        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'scientific-research' in ids, 'scientific-research not in registry'; assert os.path.exists('.agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md'), 'instructions missing'; print('scientific-research domain: baseline artifacts present')"
+        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'scientific-research' in ids, 'scientific-research not in registry'; assert os.path.exists('.agent/PROJECT-SCIENTIFIC-RESEARCH-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/PROJECT-SCIENTIFIC-RESEARCH-PLAN.md'), 'PLAN missing'; assert os.path.exists('.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md'), 'instructions missing'; print('scientific-research domain: baseline artifacts present')"
       ],
       "tier": "behavioral",
       "timeout_seconds": 15,
@@ -383,13 +386,14 @@
       "description": "gis-systems domain baseline artifact presence check",
       "trigger_paths": [
         ".agent/PROJECT-GIS-SYSTEMS-PRD.md",
+        ".agent/PROJECT-GIS-SYSTEMS-PLAN.md",
         ".agent/GIS-SYSTEMS-INSTRUCTIONS.md",
         "config/capability-lifecycle-registry.json"
       ],
       "command": [
         "python3",
         "-c",
-        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'gis-systems' in ids, 'gis-systems not in registry'; assert os.path.exists('.agent/PROJECT-GIS-SYSTEMS-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/GIS-SYSTEMS-INSTRUCTIONS.md'), 'instructions missing'; print('gis-systems domain: baseline artifacts present')"
+        "import json,os; reg=json.load(open('config/capability-lifecycle-registry.json')); ids=[c['id'] for c in reg['capabilities']]; assert 'gis-systems' in ids, 'gis-systems not in registry'; assert os.path.exists('.agent/PROJECT-GIS-SYSTEMS-PRD.md'), 'PRD missing'; assert os.path.exists('.agent/PROJECT-GIS-SYSTEMS-PLAN.md'), 'PLAN missing'; assert os.path.exists('.agent/GIS-SYSTEMS-INSTRUCTIONS.md'), 'instructions missing'; print('gis-systems domain: baseline artifacts present')"
       ],
       "tier": "behavioral",
       "timeout_seconds": 15,
