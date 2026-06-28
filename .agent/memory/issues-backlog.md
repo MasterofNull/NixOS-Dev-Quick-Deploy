@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-28] skill-auto-selected-invalid-skills — `aq-skill-auto --test` could select local skills that failed the same validation payload returned to agents, so recursive improvement/capability prompts could hand agents invalid skill references without failing regression tests.
+  Root cause: auto-selection tests asserted reference checks existed but did not assert every selected skill had `valid=true`; selected harness skills were missing validator-required body sections, and self-improvement contained a markdown table phrase that tripped the coarse shell-pattern scanner.
+  Fix: tightened `scripts/testing/test-skill-auto.py` with selected-skill validity assertions plus a real-world capability availability prompt; added required Description/Usage/When-to-Use body sections to selected skills; reworded the false-positive table phrase.
+  Severity: medium
+  Files: scripts/testing/test-skill-auto.py; .agent/skills/aq-workflow/SKILL.md; .agent/skills/capability-intake/SKILL.md; .agent/skills/mcp-builder/SKILL.md; .agent/skills/self-improvement/SKILL.md
+
 [FIXED 2a98887e] dashboard-vlatP95-field-name-mismatch — vLatP95 tile showed "N/A" despite route latency data being available.
   Root cause: dashboard.js:717 reads route_latency.backend_valid_p95_ms but the API response from get_performance_hotspots() returned route_latency.overall_p95_ms (from aq-report route_search_latency_decomposition). Field name mismatch: dashboard expected backend_valid_p95_ms; backend only populated overall/actionable_p95_ms.
   Fix: ai_insights.py get_performance_hotspots() now injects backend_valid_p95_ms alias falling through: backend_valid_p95_ms → overall_p95_ms → actionable_p95_ms → p95_ms. Result: vLatP95 now shows 2300ms.

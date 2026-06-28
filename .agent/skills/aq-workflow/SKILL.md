@@ -9,8 +9,14 @@ description: "AQ Workflow Skill"
 ---
 
 # AQ Workflow Skill — NixOS-Dev-Quick-Deploy Harness
+
+## Description
+Canonical workflow reference for NixOS-Dev-Quick-Deploy agent sessions, QA checks,
+delegation routes, validation gates, recovery files, and commit conventions.
+
 ## Tags
 aq-resume, aq-qa, aq-health, HITL, drop-zone, delegation, session, commit-gate, validation, aq-hints
+
 ## When to Use
 Session start/resume after compaction; running health/QA checks; HITL alert queue; drop zone task dispatch;
 choosing delegation mode (direct/agent/hybrid/auto); understanding aq-* CLI commands.
@@ -18,6 +24,10 @@ choosing delegation mode (direct/agent/hybrid/auto); understanding aq-* CLI comm
 ## Purpose
 Canonical reference for all harness CLI tools, delegation modes, QA commands, and
 session management. Use before reaching for raw shell commands.
+
+## Usage
+Load this skill at the start of non-trivial harness work to choose the correct
+session, QA, delegation, validation, and handoff commands before executing a slice.
 
 ---
 

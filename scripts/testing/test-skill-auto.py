@@ -28,6 +28,11 @@ def names(payload: dict) -> set[str]:
     return set(payload["reference_skills"])
 
 
+def assert_selected_valid(payload: dict) -> None:
+    invalid = [item for item in payload.get("validation", []) if not item.get("valid")]
+    assert not invalid, f"invalid selected skills: {[item.get('name') for item in invalid]}"
+
+
 def main() -> int:
     plugin_payload = run_auto("review and import a new MCP plugin with security checks", "--agent", "codex")
     assert "capability-intake" in names(plugin_payload)
@@ -44,6 +49,17 @@ def main() -> int:
     assert "self-improvement" in names(loop_payload)
     assert loop_payload["reference_checks"]["ok"] is True
     assert loop_payload["validation"]
+    assert_selected_valid(loop_payload)
+
+    capability_payload = run_auto(
+        "real-world system improvement capability availability smoke MCP tools skills local database stores",
+        "--agent",
+        "codex",
+        "--test",
+    )
+    assert {"capability-intake", "self-improvement"} <= names(capability_payload)
+    assert capability_payload["reference_checks"]["ok"] is True
+    assert_selected_valid(capability_payload)
 
     print("PASS: automatic skill selection checks")
     return 0

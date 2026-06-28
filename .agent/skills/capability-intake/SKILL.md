@@ -5,6 +5,10 @@ description: Security-gated intake workflow for external plugins, skills, MCP se
 
 # Capability Intake
 
+## Description
+
+Run the deny-by-default review workflow for external capabilities before agents enable plugins, skills, MCP servers, connectors, or CLIs.
+
 ## Tags
 plugins, skills, tools, mcp, security, admission, supply-chain, allowlist, import
 
@@ -38,6 +42,10 @@ Use it for:
    - sandbox/permission boundary
    - dashboard or `aq-report` visibility
    - rollback path
+
+## Usage
+
+Start with `scripts/ai/aq-capability-intake audit <candidate-id> --json`, review admission status and mitigations, and only promote candidates that are `low-risk` or `accepted-with-mitigations`.
 
 ## Files
 - Candidate registry: `config/agent-capability-intake-candidates.json`

@@ -6,6 +6,18 @@ license: Complete terms in LICENSE.txt
 
 # MCP Server Development Guide
 
+## Description
+
+Design, implement, test, and evaluate high-quality MCP servers with secure tool schemas, clear transport choices, and realistic read-only evaluations.
+
+## When to Use
+
+Use this skill when creating or modifying MCP servers, adding MCP tools, reviewing MCP server quality, or building evaluations for MCP-backed agent capabilities.
+
+## Usage
+
+Follow the four-phase workflow: research and plan, implement server/tool schemas, review and test, then create evaluations that verify realistic tool use.
+
 ## Overview
 
 Create MCP (Model Context Protocol) servers that enable LLMs to interact with external services through well-designed tools. The quality of an MCP server is measured by how well it enables LLMs to accomplish real-world tasks.
