@@ -10,10 +10,18 @@ description: "How to identify and execute the next highest-priority self-improve
 
 # Self-Improvement Slice Workflow
 
+## Description
+
+Choose and execute the next highest-value harness improvement from backlog, PRD, plan, QA, report, and roadmap evidence.
+
 ## When to Use
 When asked to "run a self-improvement slice", "improve the harness", "find the next best thing to work on",
 or any variant of autonomous harness improvement. **Do NOT invent work from scratch** — always derive it
 from authoritative sources first.
+
+## Usage
+
+Select one evidence-backed slice, update resume/pulse state, implement the smallest root fix, validate with focused checks plus tier0, and commit with notes.
 
 ---
 
@@ -140,5 +148,5 @@ After execution:
 | `.agent/collaboration/HANDOFF.md` | Session-to-session continuity |
 | `.agents/plans/*.md` | Active implementation plans |
 | `.agent/PROJECT-PRD.md` | Current project priorities |
-| `aq-report` | Live system health snapshot |
+| `aq-report` | Live system health report |
 | `aq-qa 0` | Pass/fail check suite |
