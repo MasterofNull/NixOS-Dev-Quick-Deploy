@@ -1,5 +1,17 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] ai-capability-backlog-dashboard-parity-validator — Backlog validator rejected valid visibility notes that named panels or aq-report but not the literal word "dashboard".
+  Root cause: `test-ai-capability-implementation-backlog.py` required the literal substring `dashboard`, while the project accepts dashboard panels, aq-report visibility, and explicit panel surfaces as valid delivery gates.
+  Fix: validator now accepts `dashboard`, `aq-report`, or `panel` in `dashboard_parity`; backlog entries now explicitly name dashboard visibility where needed.
+  Severity: low
+  File: scripts/testing/test-ai-capability-implementation-backlog.py
+
+[DONE 2026-06-29] ai-capability-backlog-prd-frontmatter — Focused CI rejected the new backlog PRD because required frontmatter `id` was missing.
+  Root cause: `.agent/PROJECT-AI-CAPABILITY-BACKLOG-PRD.md` declared `doc_type: prd` without the schema-required `id`.
+  Fix: added `id: ai-capability-backlog`; reran focused CI.
+  Severity: low
+  File: .agent/PROJECT-AI-CAPABILITY-BACKLOG-PRD.md
+
 [DONE 2026-06-29] suggested-ai-repo-browser-use-gate — Candidate catalog validation rejected `browser-use` because its row had browser-specific gates but omitted the explicit `capability-intake` gate required for every suggested external repo.
   Root cause: initial catalog entry listed sandbox/domain/credential controls but missed the canonical admission gate string enforced by `test-suggested-ai-repo-candidates.py`.
   Fix: added `capability-intake audit` to `browser-use.security_gates`; reran focused candidate validation.

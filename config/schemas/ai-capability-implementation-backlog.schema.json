@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Capability Implementation Backlog",
+  "type": "object",
+  "required": ["version", "owner", "policy", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"type": "string"},
+    "owner": {"type": "string"},
+    "policy": {
+      "type": "object",
+      "required": ["source_of_truth", "default_status", "activation_gate"],
+      "additionalProperties": false,
+      "properties": {
+        "source_of_truth": {"type": "string"},
+        "default_status": {"const": "backlog"},
+        "activation_gate": {"const": "capability-intake"},
+        "notes": {"type": "string"}
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "priority",
+          "status",
+          "candidate_urls",
+          "local_equivalents",
+          "gap_type",
+          "runtime_authority",
+          "data_access_class",
+          "suggested_first_slice",
+          "security_gates",
+          "observability_required",
+          "validation",
+          "dashboard_parity",
+          "owner"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "domain": {"type": "string"},
+          "priority": {"enum": ["critical", "high", "medium", "low"]},
+          "status": {"enum": ["backlog", "ready-for-prd", "defer", "blocked"]},
+          "candidate_urls": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "local_equivalents": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "gap_type": {"enum": ["missing", "weaker", "blocked", "duplicate", "mature-alternative"]},
+          "runtime_authority": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "data_access_class": {"type": "string"},
+          "suggested_first_slice": {"type": "string"},
+          "security_gates": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "observability_required": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "validation": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "dashboard_parity": {"type": "string"},
+          "owner": {"type": "string"},
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  }
+}

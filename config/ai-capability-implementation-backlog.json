@@ -1,0 +1,242 @@
+{
+  "$schema": "./schemas/ai-capability-implementation-backlog.schema.json",
+  "version": "2026-06-29",
+  "owner": "codex",
+  "policy": {
+    "source_of_truth": "config/ai-capability-implementation-backlog.json",
+    "default_status": "backlog",
+    "activation_gate": "capability-intake",
+    "notes": "This backlog records high-value AI system capability areas for later PRD and slice cycles. Items are not enabled capabilities and must not be imported, installed, or granted runtime authority until admitted through capability-intake."
+  },
+  "items": [
+    {
+      "id": "llm-eval-redteam-suite",
+      "domain": "evaluation-redteam",
+      "priority": "critical",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/promptfoo/promptfoo",
+        "https://github.com/confident-ai/deepeval",
+        "https://github.com/vibrantlabsai/ragas",
+        "https://github.com/NVIDIA/garak",
+        "https://github.com/Giskard-AI/giskard-oss"
+      ],
+      "local_equivalents": ["scripts/ai/aq-qa", "scripts/governance/tier0-validation-gate.sh", "dashboard-observability"],
+      "gap_type": "weaker",
+      "runtime_authority": ["localhost-model-access", "test-fixture-read", "reports-only-write"],
+      "data_access_class": "evaluation-prompts-and-agent-traces",
+      "suggested_first_slice": "Create an `aq-eval` repo-local wrapper that runs existing aq-qa fixtures plus static JSON eval definitions; do not import external eval packages yet.",
+      "security_gates": ["capability-intake audit", "prompt injection review", "red-team fixture provenance", "no external API keys", "report redaction"],
+      "observability_required": ["eval_count", "pass_rate", "regression_delta", "redteam_failures", "dashboard badge"],
+      "validation": ["python3 scripts/testing/test-suggested-ai-repo-candidates.py", "new focused aq-eval contract test"],
+      "dashboard_parity": "Expose eval health and red-team failure counts in aq-report and the dashboard quality/validation area.",
+      "owner": "qa-automation",
+      "notes": "Highest leverage next slice because it creates acceptance criteria for every later integration."
+    },
+    {
+      "id": "otel-ai-observability",
+      "domain": "observability",
+      "priority": "critical",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/openlit/openlit",
+        "https://github.com/langfuse/langfuse",
+        "https://github.com/Arize-ai/phoenix"
+      ],
+      "local_equivalents": ["dashboard-observability", "scripts/ai/aq-report", "telemetry_events", "query_traces"],
+      "gap_type": "weaker",
+      "runtime_authority": ["localhost-telemetry-read", "trace-export-write"],
+      "data_access_class": "agent-traces-tool-calls-model-metrics",
+      "suggested_first_slice": "Add an internal OTLP-shaped trace envelope for switchboard, local-agent, AIDB, and tool calls before adopting any external observability service.",
+      "security_gates": ["capability-intake audit", "trace redaction", "secret scrubbing", "retention policy", "localhost-only collector default"],
+      "observability_required": ["trace_count", "tool_call_latency", "model_latency", "token_count", "cost_estimate", "error_rate"],
+      "validation": ["new trace envelope schema test", "aq-report machine output contract test"],
+      "dashboard_parity": "Dashboard must show trace ingestion health, recent failing spans, and per-agent latency/error summaries.",
+      "owner": "qa-automation",
+      "notes": "Pattern extraction from OpenLIT/Langfuse/Phoenix should happen before any service install."
+    },
+    {
+      "id": "self-improving-prompt-programming",
+      "domain": "recursive-self-improvement",
+      "priority": "high",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/stanfordnlp/dspy",
+        "https://github.com/pydantic/pydantic-ai"
+      ],
+      "local_equivalents": ["self-improvement", "auto-skill-selection", "workflow-blueprints", "skills-patterns"],
+      "gap_type": "weaker",
+      "runtime_authority": ["local-model-access", "eval-fixture-read", "repo-config-write-after-review"],
+      "data_access_class": "prompts-skills-eval-results",
+      "suggested_first_slice": "Add a repo-local prompt/skill experiment ledger that records candidate prompt changes, eval scores, reviewer verdicts, and rollback pointers.",
+      "security_gates": ["capability-intake audit", "reviewer-gate approval", "prompt injection review", "no automatic promotion", "rollback path"],
+      "observability_required": ["experiment_count", "accepted_count", "regressed_count", "eval_delta", "review_status"],
+      "validation": ["new prompt experiment ledger schema test", "existing test-skill-auto.py"],
+      "dashboard_parity": "Dashboard must show self-improvement experiments, status, and accepted/regressed deltas.",
+      "owner": "agent-runtime"
+    },
+    {
+      "id": "agent-control-plane-parity",
+      "domain": "agent-control-plane",
+      "priority": "high",
+      "status": "backlog",
+      "candidate_urls": [
+        "https://github.com/agno-agi/agno",
+        "https://github.com/OpenHands/OpenHands"
+      ],
+      "local_equivalents": ["local-agent-delegation", "async-delegation", "dashboard-observability", "role-contracts"],
+      "gap_type": "weaker",
+      "runtime_authority": ["agent-run-read", "agent-control-write-gated", "approval-queue-write"],
+      "data_access_class": "agent-runs-approvals-audit-events",
+      "suggested_first_slice": "Add an agent-run control-plane parity matrix that compares local scheduler, approval, RBAC, trace history, and audit surfaces against mature platforms.",
+      "security_gates": ["capability-intake audit", "RBAC review", "human approval for write/control actions", "audit log immutability"],
+      "observability_required": ["active_runs", "queued_runs", "approval_waiting", "cancelled_runs", "audit_event_count"],
+      "validation": ["agent-run API contract test", "dashboard replay/control tests"],
+      "dashboard_parity": "Expose queued/running/blocked/approval-waiting local-agent runs in one operator panel.",
+      "owner": "agent-runtime"
+    },
+    {
+      "id": "local-inference-runtime-matrix",
+      "domain": "local-inference",
+      "priority": "high",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/ggml-org/llama.cpp",
+        "https://github.com/vllm-project/vllm",
+        "https://github.com/sgl-project/sglang",
+        "https://github.com/ollama/ollama",
+        "https://github.com/ml-explore/mlx"
+      ],
+      "local_equivalents": ["ai-switchboard.service", "ai-hybrid-coordinator.service", "local-agent-delegation"],
+      "gap_type": "weaker",
+      "runtime_authority": ["localhost-model-server-read", "benchmark-report-write", "no-public-bind"],
+      "data_access_class": "model-performance-telemetry",
+      "suggested_first_slice": "Create `aq-inference-bench` to compare TTFT, tokens/sec, memory, thermal, context reliability, and strict JSON/tool-call validity for existing local endpoints.",
+      "security_gates": ["capability-intake audit", "localhost bind check", "no model server public exposure", "thermal guard", "resource quota"],
+      "observability_required": ["ttft_ms", "tokens_per_sec", "context_tokens", "json_valid_rate", "thermal_tier", "memory_pressure"],
+      "validation": ["new inference bench fixture test", "aq-qa local inference smoke"],
+      "dashboard_parity": "Show runtime backend, throughput, TTFT, context health, and thermal throttling in inference panels.",
+      "owner": "mlops-engineering"
+    },
+    {
+      "id": "local-training-finetune-lane",
+      "domain": "training-finetuning",
+      "priority": "medium",
+      "status": "backlog",
+      "candidate_urls": [
+        "https://github.com/axolotl-ai-cloud/axolotl",
+        "https://github.com/hiyouga/LLaMA-Factory",
+        "https://github.com/unslothai/unsloth",
+        "https://github.com/huggingface/trl",
+        "https://github.com/huggingface/peft"
+      ],
+      "local_equivalents": ["aq-local-training-loop", "eval_results", "learning_feedback"],
+      "gap_type": "missing",
+      "runtime_authority": ["dataset-read", "gpu-or-cpu-training", "model-artifact-write-gated"],
+      "data_access_class": "training-datasets-feedback-model-artifacts",
+      "suggested_first_slice": "Define a training data provenance ledger and eval-before/eval-after gate before any fine-tuning tool is enabled.",
+      "security_gates": ["capability-intake audit", "dataset provenance", "license review", "PII scan", "model artifact quarantine", "rollback model alias"],
+      "observability_required": ["dataset_rows", "training_runtime", "eval_before", "eval_after", "regression_count", "artifact_hash"],
+      "validation": ["training ledger schema test", "offline fixture-only smoke"],
+      "dashboard_parity": "Dashboard must show training job status, dataset provenance, artifact hash, and eval delta before promotion.",
+      "owner": "mlops-engineering"
+    },
+    {
+      "id": "analytics-and-graph-data-layer",
+      "domain": "data-store",
+      "priority": "high",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/duckdb/duckdb",
+        "https://github.com/ClickHouse/ClickHouse",
+        "https://github.com/lancedb/lancedb",
+        "https://github.com/neo4j/neo4j",
+        "https://github.com/FalkorDB/FalkorDB",
+        "https://github.com/opensearch-project/OpenSearch",
+        "https://github.com/meilisearch/meilisearch"
+      ],
+      "local_equivalents": ["aidb-rag-stores", "telemetry_events", "query_traces", "osint-intelligence"],
+      "gap_type": "missing",
+      "runtime_authority": ["local-db-read", "derived-index-write"],
+      "data_access_class": "telemetry-osint-code-graph-derived-indexes",
+      "suggested_first_slice": "Add a DuckDB-backed read-only analytics snapshot exporter for telemetry/eval/OSINT records before adding heavier graph/search stores.",
+      "security_gates": ["capability-intake audit", "data classification", "PII redaction", "read-only source connection", "derived artifact retention"],
+      "observability_required": ["snapshot_rows", "query_latency", "index_freshness", "failed_exports"],
+      "validation": ["analytics snapshot schema test", "OSINT provenance fixture test"],
+      "dashboard_parity": "Dashboard must show analytics snapshot freshness and query health.",
+      "owner": "rag-operations"
+    },
+    {
+      "id": "passive-osint-ingest-expansion",
+      "domain": "osint",
+      "priority": "high",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/unclecode/crawl4ai",
+        "https://github.com/adbar/trafilatura",
+        "https://github.com/scrapy/scrapy",
+        "https://github.com/OpenCTI-Platform/opencti",
+        "https://github.com/MISP/MISP",
+        "https://github.com/simonw/datasette"
+      ],
+      "local_equivalents": ["osint-research-store", "playwright-mcp", "aidb-rag-stores"],
+      "gap_type": "weaker",
+      "runtime_authority": ["public-web-read-gated", "evidence-record-write", "source-cache-write"],
+      "data_access_class": "public-source-evidence-and-provenance",
+      "suggested_first_slice": "Add source provenance, extraction method, confidence, and citation fields to OSINT records; keep collection passive and domain-scoped.",
+      "security_gates": ["capability-intake audit", "passive-only policy", "domain allowlist", "robots/terms review", "PII minimization", "source citation required"],
+      "observability_required": ["sources_ingested", "extract_failures", "citation_coverage", "domain_allowlist_hits"],
+      "validation": ["test-osint-research-ingest.py", "new OSINT provenance schema test"],
+      "dashboard_parity": "Dashboard must show source counts, extraction failures, and citation coverage for research jobs.",
+      "owner": "osint-systems"
+    },
+    {
+      "id": "visualization-and-graph-ui-pack",
+      "domain": "visualization",
+      "priority": "medium",
+      "status": "backlog",
+      "candidate_urls": [
+        "https://github.com/apache/echarts",
+        "https://github.com/cytoscape/cytoscape.js",
+        "https://github.com/jacomyal/sigma.js",
+        "https://github.com/grafana/grafana",
+        "https://github.com/vega/vega-lite"
+      ],
+      "local_equivalents": ["dashboard-observability", "understand-anything", "osint-research-store"],
+      "gap_type": "weaker",
+      "runtime_authority": ["dashboard-read", "static-asset-build"],
+      "data_access_class": "derived-telemetry-code-graph-osint-graph",
+      "suggested_first_slice": "Create a visualization parity matrix for dashboard metrics, code graph, OSINT graph, and workflow DAG views; implement one static fixture view first.",
+      "security_gates": ["capability-intake audit", "asset supply-chain review", "no remote CDN", "data redaction"],
+      "observability_required": ["render_success", "empty_state_count", "data_freshness", "panel_error_count"],
+      "validation": ["dashboard visual fixture test", "Playwright screenshot smoke"],
+      "dashboard_parity": "Dashboard visualizations must show nonblank data or explicit no_data reasons.",
+      "owner": "frontend-design"
+    },
+    {
+      "id": "supply-chain-provenance-hardening",
+      "domain": "security",
+      "priority": "critical",
+      "status": "ready-for-prd",
+      "candidate_urls": [
+        "https://github.com/sigstore/cosign",
+        "https://github.com/slsa-framework/slsa-verifier",
+        "https://github.com/in-toto/in-toto",
+        "https://github.com/open-policy-agent/opa",
+        "https://github.com/gitleaks/gitleaks",
+        "https://github.com/Yelp/detect-secrets",
+        "https://github.com/containers/bubblewrap"
+      ],
+      "local_equivalents": ["capability-intake", "semgrep-mcp", "trivy", "syft-grype", "osv-scanner"],
+      "gap_type": "weaker",
+      "runtime_authority": ["workspace-read", "artifact-signature-read", "policy-eval-read"],
+      "data_access_class": "source-dependencies-artifacts-secrets-findings",
+      "suggested_first_slice": "Extend capability-intake reports with provenance/signature/license/secret-scan fields before adding new scanners.",
+      "security_gates": ["capability-intake audit", "signature verification", "SBOM required", "secret scan", "license review", "sandbox profile"],
+      "observability_required": ["admission_pass_rate", "scanner_failures", "unverified_artifacts", "policy_denials"],
+      "validation": ["test-capability-intake.py", "test-enabled-external-mcp-candidates.py", "new provenance report schema test"],
+      "dashboard_parity": "Show admission gate failures and unverified artifacts in security status panels.",
+      "owner": "security-systems"
+    }
+  ]
+}
