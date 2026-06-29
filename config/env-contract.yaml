@@ -47,6 +47,27 @@ variables:
     consumers: [service-endpoints.sh]
     description: "Host for llama.cpp inference server"
 
+  - canonical: LLAMA_CHUNK_TIMEOUT
+    aliases: []
+    default: "14400"
+    layer: shell
+    consumers: [local-agents]
+    description: "Per-SSE-chunk read timeout in seconds for local agent llama.cpp streaming calls"
+
+  - canonical: LLAMA_MAX_TOKENS
+    aliases: []
+    default: "512"
+    layer: shell
+    consumers: [local-agents]
+    description: "Default max output tokens per local agent inference call when not overridden by task profile"
+
+  - canonical: LLAMA_USE_STREAMING
+    aliases: []
+    default: "true"
+    layer: shell
+    consumers: [local-agents]
+    description: "Enable SSE streaming for local agent llama.cpp calls so long generations remain observable"
+
   - canonical: LLAMA_CTX_SIZE
     aliases: []
     default: "8192"

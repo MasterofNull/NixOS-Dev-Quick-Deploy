@@ -30,6 +30,8 @@ def main() -> int:
     require("Stagnation detected:" in executor, "agent_executor must retain runaway progress guard")
     require("_store_prune_checkpoint" in executor, "agent_executor must retain prune checkpoint memory path")
     require("_refresh_active_tools" in executor, "agent_executor must retain hot-swap tool expansion")
+    require("llm_streaming" in executor, "agent_executor must heartbeat progress while LLM tokens stream")
+    require("AGENT_PROGRESS_FILE" in executor, "agent_executor must update progress sidecar during streaming")
 
     require("for _round in range(max_rounds)" not in runtime, "local runtime must not hard-cap tool rounds")
     require("while True:" in runtime, "local runtime tool loop should be progress-guarded")
@@ -42,6 +44,7 @@ def main() -> int:
 
     require("Deprecated compatibility flag; ignored" in aq_agent_loop, "aq-agent-loop --max-calls must be deprecated")
     require("del max_calls" in aq_agent_loop, "aq-agent-loop must ignore legacy max_calls")
+    require("max(14400.0, float(timeout_secs) * 8)" in aq_agent_loop, "aq-agent-loop must allow long-horizon local stream silence")
     require(".agents\" / \"telemetry\" / \"hybrid-events.jsonl" in aq_agent_loop, "training signal must use user telemetry spool")
     require("incomplete_result" in aq_agent_loop, "aq-agent-loop summary must expose incomplete_result")
 

@@ -1074,7 +1074,12 @@ class LocalAgentExecutor:
             call_max_tokens = AGENT_TASK_MAX_TOKENS if tool_call_count > 0 else AGENT_TOOL_CALL_MAX_TOKENS
             try:
                 response, tok = await self._call_llama(
-                    messages, role=role, max_tokens=call_max_tokens, task_type=task.task_type
+                    messages,
+                    role=role,
+                    max_tokens=call_max_tokens,
+                    task_type=task.task_type,
+                    task_id=task.id,
+                    call_number=tool_call_count + 1,
                 )
             except Exception as _llm_err:
                 # Retry once with reduced budget on transient failures (timeout, connection drop).
@@ -1082,7 +1087,13 @@ class LocalAgentExecutor:
                     "LLM call %d failed (%r), retrying with 512 tokens",
                     tool_call_count + 1, str(_llm_err)[:120],
                 )
-                response, tok = await self._call_llama(messages, role=role, max_tokens=512)
+                response, tok = await self._call_llama(
+                    messages,
+                    role=role,
+                    max_tokens=512,
+                    task_id=task.id,
+                    call_number=tool_call_count + 1,
+                )
             total_tokens += tok
             if not response.strip():
                 # Retry once with a nudge before failing the task. Empty responses happen
@@ -1098,7 +1109,11 @@ class LocalAgentExecutor:
                     "content": "Your previous response was empty. Please provide a JSON tool call or a plain-text final answer now.",
                 }]
                 response, _retry_tok = await self._call_llama(
-                    _nudge_messages, role=role, max_tokens=AGENT_TASK_MAX_TOKENS,
+                    _nudge_messages,
+                    role=role,
+                    max_tokens=AGENT_TASK_MAX_TOKENS,
+                    task_id=task.id,
+                    call_number=tool_call_count + 1,
                 )
                 total_tokens += _retry_tok
                 if response.strip():
@@ -1135,7 +1150,13 @@ class LocalAgentExecutor:
                             "No JSON. No tool calls."
                         ),
                     })
-                    prose, syn_tokens = await self._call_llama(messages, role=role, max_tokens=256)
+                    prose, syn_tokens = await self._call_llama(
+                        messages,
+                        role=role,
+                        max_tokens=256,
+                        task_id=task.id,
+                        call_number=tool_call_count + 1,
+                    )
                     total_tokens += syn_tokens
                     _cancel_watchdog()
                     return prose.strip() if prose.strip() else response, total_tokens
@@ -1391,7 +1412,11 @@ class LocalAgentExecutor:
                     ),
                 })
                 synthesis, syn_tok = await self._call_llama(
-                    messages, role=role, max_tokens=AGENT_TASK_MAX_TOKENS,
+                    messages,
+                    role=role,
+                    max_tokens=AGENT_TASK_MAX_TOKENS,
+                    task_id=task.id,
+                    call_number=tool_call_count + 1,
                 )
                 total_tokens += syn_tok
                 logger.info("terminal_tool_gate: %s → synthesis returned", result.tool_name)
@@ -1462,6 +1487,8 @@ class LocalAgentExecutor:
         role: Optional[str] = None,
         max_tokens: int = AGENT_TOOL_CALL_MAX_TOKENS,
         task_type: Optional[str] = None,
+        task_id: Optional[str] = None,
+        call_number: int = 0,
     ) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
@@ -1523,8 +1550,32 @@ class LocalAgentExecutor:
 
         collected: List[str] = []
         tokens_used = 0
+        progress_file = os.getenv("AGENT_PROGRESS_FILE")
+        last_progress_write = 0.0
+
+        def _write_stream_progress(status: str, force: bool = False) -> None:
+            nonlocal last_progress_write
+            if not progress_file:
+                return
+            now = time.time()
+            if not force and len(collected) % 10 != 0 and now - last_progress_write < 30:
+                return
+            try:
+                Path(progress_file).write_text(json.dumps({
+                    "task_id": task_id,
+                    "status": status,
+                    "tool_call_count": call_number,
+                    "llm_stream_chunks": len(collected),
+                    "llm_stream_chars": sum(len(part) for part in collected),
+                    "max_tokens": max_tokens,
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z",
+                }, indent=2))
+                last_progress_write = now
+            except Exception:
+                pass
 
         try:
+            _write_stream_progress("llm_waiting", force=True)
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
                     "POST",
@@ -1551,11 +1602,13 @@ class LocalAgentExecutor:
                             usage = chunk.get("usage", {})
                             if usage:
                                 tokens_used = usage.get("total_tokens", 0)
+                                _write_stream_progress("llm_usage", force=True)
                             continue
                         delta = choices[0].get("delta", {})
                         token = delta.get("content") or ""
                         if token:
                             collected.append(token)
+                            _write_stream_progress("llm_streaming")
         except httpx.ReadTimeout:
             raise RuntimeError(
                 f"LLM prefill/generation timeout: server silent for >{chunk_timeout:.0f}s "
