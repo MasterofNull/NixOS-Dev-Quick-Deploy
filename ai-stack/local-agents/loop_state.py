@@ -148,10 +148,15 @@ def is_completed(result: dict) -> bool:
         return False
     if result.get("incomplete_result"):
         return False
-    r = (result.get("result") or "").lower()
-    if r.startswith("completed:"):
-        return True
+    r = (result.get("result") or "").strip()
+    r_lower = r.lower()
+    # Check first 3 non-empty lines for COMPLETED: signal (tolerates leading whitespace)
+    for line in r.splitlines()[:3]:
+        if line.strip().lower().startswith("completed:"):
+            return True
     # Secondary: status=completed and result contains action evidence
-    if result.get("status") == "completed" and ("commit" in r or "fixed" in r or "done" in r):
+    if result.get("status") == "completed" and (
+        "commit" in r_lower or "fixed" in r_lower or "done" in r_lower
+    ):
         return True
     return False
