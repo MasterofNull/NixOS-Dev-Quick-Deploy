@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 from typing import Dict, Optional
 
 import httpx
@@ -1099,6 +1100,65 @@ async def osint_research_query_handler(
         return {"success": False, "error": str(e)}
 
 
+def _local_osint_selector_kind(target: str) -> str:
+    value = str(target or "").strip()
+    if not value:
+        return "missing"
+    if "://" in value or "/" in value:
+        return "url"
+    if "@" in value:
+        return "email"
+    if "." in value:
+        return "domain"
+    return "username"
+
+
+async def osint_recon_status_handler(target: str = "", tool: str = "") -> Dict:
+    """Return local active-OSINT admission state without executing recon."""
+    active_enabled = os.getenv("OSINT_ACTIVE_RECON_ENABLE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    return {
+        "success": True,
+        "status": "ok",
+        "mode": "active-recon-admission",
+        "default_action": "deny",
+        "active_recon_enabled": active_enabled,
+        "selector_kind": _local_osint_selector_kind(target),
+        "requested_tool": tool or None,
+        "runtimes": {
+            "maigret": {
+                "state": "blocked-insecure-package",
+                "installed": bool(shutil.which("maigret")),
+                "execution_allowed": False,
+            },
+            "sherlock": {
+                "state": "available" if shutil.which("sherlock") else "missing",
+                "installed": bool(shutil.which("sherlock")),
+                "execution_allowed": active_enabled and bool(shutil.which("sherlock")),
+            },
+            "bbot": {
+                "state": "provisioning-only",
+                "installed": bool(shutil.which("bbot")),
+                "execution_allowed": False,
+            },
+            "mosaic": {
+                "state": "blocked-insecure-package",
+                "installed": bool(shutil.which("mosaic-osint")),
+                "execution_allowed": False,
+            },
+        },
+        "required_gates": [
+            "explicit_target_scope",
+            "scope_ack=true",
+            "allow_active_recon=true",
+            "OSINT_ACTIVE_RECON_ENABLE=true",
+            "runtime_installed",
+            "capability_intake_accepted",
+            "bounded_output_to_osint-intelligence",
+        ],
+        "safe_default_tools": ["osint_research_query", "osint_research_ingest"],
+    }
+
+
 async def delegate_to_aider_handler(
     prompt: str,
     files: Optional[list] = None,
@@ -1624,6 +1684,30 @@ def register_ai_coordination_tools(registry: ToolRegistry):
         category=ToolCategory.AI_COORD,
         safety_policy=SafetyPolicy.READ_ONLY,
         handler=osint_research_query_handler,
+    ))
+
+    registry.register(ToolDefinition(
+        name="osint_recon_status",
+        description=(
+            "Return machine-readable active OSINT runtime availability and policy gates. "
+            "Does not execute reconnaissance; use before considering osint_recon."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Optional selector used only for scope classification",
+                },
+                "tool": {
+                    "type": "string",
+                    "description": "Optional requested tool: maigret, sherlock, bbot, or mosaic",
+                },
+            },
+        },
+        category=ToolCategory.AI_COORD,
+        safety_policy=SafetyPolicy.READ_ONLY,
+        handler=osint_recon_status_handler,
     ))
 
     # discover_objectives

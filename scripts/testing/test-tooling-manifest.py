@@ -129,6 +129,25 @@ def main() -> int:
         "handoff phase does not expose context_sandbox_offload",
     )
 
+    osint_query = "osint recon footprint for a username with public evidence"
+    osint_tools = workflow_tool_catalog(osint_query)
+    osint_tool_names = [tool["name"] for tool in osint_tools]
+    assert_true("osint_recon_status" in osint_tool_names, "OSINT recon query missing osint_recon_status")
+    assert_true("osint_recon" not in osint_tool_names, "OSINT recon query should not auto-select active execution")
+    assert_true("osint_research_ingest" in osint_tool_names, "OSINT query missing passive ingest")
+    assert_true("osint_research_query" in osint_tool_names, "OSINT query missing passive query")
+    osint_manifest = build_tooling_manifest(osint_query, osint_tools)
+    assert_true(
+        any(phase["id"] == "discover" and "osint_recon_status" in phase["tools"] for phase in osint_manifest["phases"]),
+        "discover phase does not expose osint_recon_status",
+    )
+
+    active_osint_query = "authorized active recon with scope_ack using run sherlock"
+    active_osint_tools = workflow_tool_catalog(active_osint_query)
+    active_osint_tool_names = [tool["name"] for tool in active_osint_tools]
+    assert_true("osint_recon_status" in active_osint_tool_names, "authorized recon still needs osint_recon_status")
+    assert_true("osint_recon" in active_osint_tool_names, "authorized recon query missing gated osint_recon")
+
     collab_query = "enable flat model-team collaboration with cross-review and consensus PRD validation"
     collab_tools = workflow_tool_catalog(collab_query)
     collab_tool_names = [tool["name"] for tool in collab_tools]
