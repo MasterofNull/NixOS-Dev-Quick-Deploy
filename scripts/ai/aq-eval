@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""Repo-local eval/red-team wrapper for static AQ harness suites."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_SUITE_FILE = ROOT / "config" / "aq-eval-suites.json"
+REQUIRED_CASE_FIELDS = {"id", "prompt", "expected_keywords", "forbidden_keywords", "risk_tags"}
+REQUIRED_COMMAND_FIELDS = {"id", "command", "timeout_seconds", "required"}
+ALLOWED_COMMAND_PREFIXES = {
+    ("python3", "scripts/testing/test-suggested-ai-repo-candidates.py"),
+    ("python3", "scripts/testing/test-ai-capability-implementation-backlog.py"),
+    ("python3", "scripts/testing/test-system-capability-catalog.py"),
+    ("python3", "scripts/testing/test-local-delegation-artifact.py"),
+}
+
+
+def load_payload(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def select_suites(payload: dict[str, Any], suite_id: str | None) -> list[dict[str, Any]]:
+    suites = payload.get("suites", [])
+    if suite_id is None:
+        return [suite for suite in suites if suite.get("status") == "enabled"]
+    selected = [suite for suite in suites if suite.get("id") == suite_id]
+    if not selected:
+        raise ValueError(f"unknown suite: {suite_id}")
+    return selected
+
+
+def validate_payload(payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    policy = payload.get("policy", {})
+    if policy.get("default_mode") != "dry-run":
+        errors.append("policy.default_mode must be dry-run")
+    if policy.get("external_frameworks_enabled") is not False:
+        errors.append("policy.external_frameworks_enabled must be false")
+    if policy.get("activation_gate") != "capability-intake":
+        errors.append("policy.activation_gate must be capability-intake")
+
+    suites = payload.get("suites")
+    if not isinstance(suites, list) or not suites:
+        return errors + ["suites must be a non-empty list"]
+
+    seen_suites: set[str] = set()
+    for index, suite in enumerate(suites):
+        prefix = f"suites[{index}]"
+        if not isinstance(suite, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        suite_id = str(suite.get("id", ""))
+        if not suite_id:
+            errors.append(f"{prefix}.id is required")
+        if suite_id in seen_suites:
+            errors.append(f"duplicate suite id: {suite_id}")
+        seen_suites.add(suite_id)
+        if suite.get("status") not in {"enabled", "disabled", "draft"}:
+            errors.append(f"{suite_id}.status is not allowed")
+
+        for command in suite.get("commands", []):
+            missing = sorted(REQUIRED_COMMAND_FIELDS - set(command))
+            if missing:
+                errors.append(f"{suite_id}.commands missing: {', '.join(missing)}")
+                continue
+            command_args = command.get("command")
+            if not isinstance(command_args, list) or not command_args:
+                errors.append(f"{suite_id}.{command['id']}.command must be a non-empty list")
+                continue
+            if tuple(command_args[:2]) not in ALLOWED_COMMAND_PREFIXES:
+                errors.append(f"{suite_id}.{command['id']}.command is not allowlisted: {command_args}")
+            if not all(isinstance(part, str) and part for part in command_args):
+                errors.append(f"{suite_id}.{command['id']}.command parts must be non-empty strings")
+
+        seen_cases: set[str] = set()
+        for case in suite.get("cases", []):
+            missing = sorted(REQUIRED_CASE_FIELDS - set(case))
+            if missing:
+                errors.append(f"{suite_id}.cases missing: {', '.join(missing)}")
+                continue
+            case_id = str(case["id"])
+            if case_id in seen_cases:
+                errors.append(f"duplicate case id in {suite_id}: {case_id}")
+            seen_cases.add(case_id)
+            if not case.get("expected_keywords"):
+                errors.append(f"{suite_id}.{case_id}.expected_keywords must not be empty")
+            if not case.get("risk_tags"):
+                errors.append(f"{suite_id}.{case_id}.risk_tags must not be empty")
+    return errors
+
+
+def summarize(payload: dict[str, Any]) -> dict[str, Any]:
+    suites = payload.get("suites", [])
+    return {
+        "version": payload.get("version"),
+        "suite_count": len(suites),
+        "case_count": sum(len(suite.get("cases", [])) for suite in suites),
+        "command_count": sum(len(suite.get("commands", [])) for suite in suites),
+        "suites": [
+            {
+                "id": suite["id"],
+                "domain": suite["domain"],
+                "status": suite["status"],
+                "cases": len(suite.get("cases", [])),
+                "commands": len(suite.get("commands", [])),
+            }
+            for suite in suites
+        ],
+    }
+
+
+def run_command(command: dict[str, Any]) -> dict[str, Any]:
+    command_args = [str(part) for part in command["command"]]
+    try:
+        result = subprocess.run(
+            command_args,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=int(command["timeout_seconds"]),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "id": command["id"],
+            "status": "timeout",
+            "required": bool(command["required"]),
+            "command": command_args,
+        }
+    return {
+        "id": command["id"],
+        "status": "pass" if result.returncode == 0 else "fail",
+        "required": bool(command["required"]),
+        "returncode": result.returncode,
+        "command": command_args,
+        "stdout_tail": result.stdout[-500:],
+        "stderr_tail": result.stderr[-500:],
+    }
+
+
+def run_suites(payload: dict[str, Any], suite_id: str | None, execute: bool) -> dict[str, Any]:
+    suites = select_suites(payload, suite_id)
+    suite_results = []
+    failed_required = 0
+    for suite in suites:
+        commands = []
+        for command in suite.get("commands", []):
+            if execute:
+                result = run_command(command)
+                if result["required"] and result["status"] != "pass":
+                    failed_required += 1
+            else:
+                result = {
+                    "id": command["id"],
+                    "status": "dry-run",
+                    "required": bool(command["required"]),
+                    "command": command["command"],
+                }
+            commands.append(result)
+        suite_results.append(
+            {
+                "id": suite["id"],
+                "domain": suite["domain"],
+                "status": "pass" if execute and failed_required == 0 else "dry-run",
+                "commands": commands,
+                "cases": [
+                    {
+                        "id": case["id"],
+                        "status": "defined",
+                        "risk_tags": case["risk_tags"],
+                        "expected_keywords": case["expected_keywords"],
+                        "forbidden_keywords": case["forbidden_keywords"],
+                    }
+                    for case in suite.get("cases", [])
+                ],
+            }
+        )
+    return {
+        "mode": "execute" if execute else "dry-run",
+        "status": "fail" if failed_required else "pass",
+        "suite_count": len(suite_results),
+        "failed_required": failed_required,
+        "suites": suite_results,
+    }
+
+
+def emit(payload: dict[str, Any], json_only: bool) -> None:
+    if json_only:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    print(f"status: {payload.get('status', 'ok')}")
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--suite-file", default=str(DEFAULT_SUITE_FILE))
+    parser.add_argument("--json", action="store_true", help="Emit JSON only")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("validate")
+    sub.add_parser("list")
+    run_parser = sub.add_parser("run")
+    run_parser.add_argument("--suite", help="Run one suite id; default runs all enabled suites")
+    run_parser.add_argument("--execute", action="store_true", help="Execute local allowlisted command checks")
+
+    args = parser.parse_args()
+    suite_file = Path(args.suite_file)
+    payload = load_payload(suite_file)
+    errors = validate_payload(payload)
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    if args.command == "validate":
+        emit({"status": "pass", **summarize(payload)}, args.json)
+        return 0
+    if args.command == "list":
+        emit({"status": "pass", **summarize(payload)}, args.json)
+        return 0
+    if args.command == "run":
+        try:
+            result = run_suites(payload, args.suite, args.execute)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        emit(result, args.json)
+        return 1 if result["status"] == "fail" else 0
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

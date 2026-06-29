@@ -627,6 +627,21 @@ class AgentRunner:
         if getattr(config, "tool_manifest", "full") != "full":
             cmd += ["--tool-manifest", config.tool_manifest]
         try:
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            if not output_file.exists():
+                output_file.write_text(
+                    "Agent task started; waiting for aq-agent-loop output.\n",
+                    encoding="utf-8",
+                )
+            _write_progress(
+                Path(str(output_file) + ".progress.json"),
+                tokens_out=0,
+                max_tokens=config.max_tokens,
+                elapsed_s=0.0,
+                tok_per_sec=0.0,
+                eta_s=None,
+                status="agent-loop-started",
+            )
             result = subprocess.run(cmd, timeout=wall_clock)
             return result.returncode == 0
         except subprocess.TimeoutExpired as _te:

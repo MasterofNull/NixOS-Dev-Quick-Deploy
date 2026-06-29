@@ -29,6 +29,26 @@
   },
   "entries": [
     {
+      "id": "aq-eval-harness",
+      "name": "AQ Eval Harness",
+      "category": "evaluation-redteam",
+      "kind": "repo-cli",
+      "state": "enabled",
+      "maturity": "integrated",
+      "owner": "qa-automation",
+      "summary": "Repo-local static eval and red-team suite wrapper for capability, agent-safety, and governance checks.",
+      "agent_access": ["codex", "claude", "gemini", "local-agent"],
+      "primary_refs": ["scripts/ai/aq-eval", "config/aq-eval-suites.json", "scripts/testing/test-aq-eval.py"],
+      "security": {
+        "admission": "local-governance",
+        "risk": "medium",
+        "required_gate": "python3 scripts/testing/test-aq-eval.py"
+      },
+      "validation": ["python3 scripts/testing/test-aq-eval.py"],
+      "parity_targets": ["Promptfoo", "DeepEval", "Ragas", "Garak", "agent red-team suites"],
+      "data_stores": ["model-evaluations", "eval_results"]
+    },
+    {
       "id": "capability-intake",
       "name": "Capability Intake",
       "category": "security-governance",

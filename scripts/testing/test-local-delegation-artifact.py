@@ -14,6 +14,7 @@ import importlib.util
 import json
 import sys
 import tempfile
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -144,6 +145,56 @@ def test_registry_entry_exists_before_service_check():
     print("PASS  registry.append() present in main() scope")
 
 
+def test_agent_runner_creates_initial_output_artifacts():
+    """Agent-mode dispatch must create visible output/progress artifacts before long child runs."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        script_dir = tmp_path / "scripts"
+        script_dir.mkdir()
+        agent_loop = script_dir / "aq-agent-loop"
+        agent_loop.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        agent_loop.chmod(0o755)
+        output_file = tmp_path / "delegation" / "outputs" / "agent.log"
+
+        dispatch_mod = _load_dispatch()
+        config = dispatch_mod.TaskConfig(
+            mode="agent",
+            role="architect",
+            timeout_secs=5,
+            max_tokens=20,
+            llama_url="http://127.0.0.1:19999",
+            hybrid_url="http://127.0.0.1:19999",
+            ralph_url="http://127.0.0.1:19999",
+            task_type="agent",
+        )
+
+        calls = []
+        original_run = dispatch_mod.subprocess.run
+
+        def fake_run(cmd, timeout):
+            calls.append((cmd, timeout))
+            assert_true(output_file.exists(), "agent output file should exist before subprocess.run")
+            assert_true(
+                Path(str(output_file) + ".progress.json").exists(),
+                "agent progress sidecar should exist before subprocess.run",
+            )
+            return subprocess.CompletedProcess(cmd, 0)
+
+        try:
+            dispatch_mod.subprocess.run = fake_run
+            ok = dispatch_mod.AgentRunner(script_dir).run(config, "probe", output_file, max_calls=1)
+        finally:
+            dispatch_mod.subprocess.run = original_run
+
+        assert_true(ok, "AgentRunner should return success from fake subprocess")
+        assert_true(calls, "AgentRunner did not invoke subprocess.run")
+        assert_true(
+            "Agent task started" in output_file.read_text(encoding="utf-8"),
+            "initial output file should contain a running marker",
+        )
+        print("PASS  agent runner creates initial output/progress artifacts")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -151,6 +202,7 @@ if __name__ == "__main__":
         test_dispatch_task_accepts_pre_registered,
         test_service_down_still_creates_registry_entry,
         test_registry_entry_exists_before_service_check,
+        test_agent_runner_creates_initial_output_artifacts,
     ]
     for t in tests:
         try:
