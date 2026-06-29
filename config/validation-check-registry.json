@@ -1430,6 +1430,23 @@
       "enabled": true
     },
     {
+      "id": "aq-inference-bench",
+      "description": "AQ inference benchmark matrix validates local-only backend definitions, dry-run mode, localhost guardrails, and fake endpoint execution",
+      "trigger_paths": [
+        "scripts/ai/aq-inference-bench",
+        "config/aq-inference-benchmarks.json",
+        "config/schemas/aq-inference-benchmarks.schema.json",
+        "scripts/testing/test-aq-inference-bench.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-inference-bench.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 90,
+      "enabled": true
+    },
+    {
       "id": "system-capability-catalog",
       "description": "System capability catalog SSOT validates references, external intake gates, and generated reference sheet freshness",
       "trigger_paths": [
