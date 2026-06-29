@@ -1,0 +1,9 @@
+https://github.com/Gitlawb/openclaude
+https://github.com/milla-jovovich/mempalace
+https://github.com/coleam00/archon
+https://github.com/tianon/gosu
+https://github.com/mksglu/context-mode
+https://github.com/pbakaus/impeccable
+https://github.com/tauricresearch/tradingagents
+https://github.com/VILA-Lab/Dive-into-Claude-Code
+https://github.com/strands-agents

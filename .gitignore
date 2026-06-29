@@ -247,5 +247,6 @@ ai-stack/local-agents/.agents/
 # Understand-Anything local scratch; knowledge-graph.json may be committed intentionally.
 .understand-anything/intermediate/
 .understand-anything/tmp/
+.understand-anything/ua-batch-processor.py
 .understand-anything/diff-overlay.json
 .understand-anything/.trash-*/

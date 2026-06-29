@@ -18,11 +18,28 @@
       "state": "research-only",
       "maturity_signal": "Large active orchestration project with durable execution, memory, human-in-the-loop, and tracing surfaces.",
       "why_research": "Closest parity target for graph-based workflow execution and recursive self-improvement loops.",
-      "local_gap_targets": ["workflow-blueprints", "auto-skill-selection", "dashboard-observability"],
-      "parity_checks": ["Compare state graph primitives to config/workflow-blueprints.json.", "Map interrupts and checkpoints to local delegation resume files.", "Identify dashboard metrics needed for graph execution visibility."],
-      "security_gates": ["capability-intake audit", "pinned dependency review", "prompt-injection review for tool routing", "sandboxed example run only"],
+      "local_gap_targets": [
+        "workflow-blueprints",
+        "auto-skill-selection",
+        "dashboard-observability"
+      ],
+      "parity_checks": [
+        "Compare state graph primitives to config/workflow-blueprints.json.",
+        "Map interrupts and checkpoints to local delegation resume files.",
+        "Identify dashboard metrics needed for graph execution visibility."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "pinned dependency review",
+        "prompt-injection review for tool routing",
+        "sandboxed example run only"
+      ],
       "intake_action": "Research API patterns before any dependency import.",
-      "delegation_targets": ["local-agent", "codex", "claude"]
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
     },
     {
       "id": "google-adk-python",
@@ -33,11 +50,27 @@
       "state": "research-only",
       "maturity_signal": "Open-source code-first Python framework with workflow runtime, fanout/fanin, retry, state, and human-in-the-loop primitives.",
       "why_research": "Good parity target for local workflow runtime behavior and evaluation/deployment lifecycle.",
-      "local_gap_targets": ["workflow-blueprints", "local-agent-delegation", "coordinator-api"],
-      "parity_checks": ["Compare workflow graph semantics to local workflow DSL.", "Check whether ADK eval patterns improve aq-qa coverage.", "Map agent lifecycle hooks to hybrid coordinator routes."],
-      "security_gates": ["capability-intake audit", "dependency pinning", "no credential-bearing sample configs", "runtime sandbox"],
+      "local_gap_targets": [
+        "workflow-blueprints",
+        "local-agent-delegation",
+        "coordinator-api"
+      ],
+      "parity_checks": [
+        "Compare workflow graph semantics to local workflow DSL.",
+        "Check whether ADK eval patterns improve aq-qa coverage.",
+        "Map agent lifecycle hooks to hybrid coordinator routes."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "dependency pinning",
+        "no credential-bearing sample configs",
+        "runtime sandbox"
+      ],
       "intake_action": "Extract lifecycle and evaluation patterns only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "openai-agents-python",
@@ -48,11 +81,28 @@
       "state": "research-only",
       "maturity_signal": "Lightweight multi-agent framework with handoffs, tools, MCP, guardrails, sessions, tracing, and realtime agent concepts.",
       "why_research": "Useful parity target for agent handoff contracts, guardrails, tracing, and MCP tool exposure.",
-      "local_gap_targets": ["multi-agent-collab", "coordinator-api", "dashboard-observability"],
-      "parity_checks": ["Compare handoff semantics to local role contracts.", "Compare guardrails to capability-intake and reviewer gates.", "Map tracing fields to aq-report and dashboard metrics."],
-      "security_gates": ["capability-intake audit", "official source review", "no model-key assumptions", "MCP tool allowlist"],
+      "local_gap_targets": [
+        "multi-agent-collab",
+        "coordinator-api",
+        "dashboard-observability"
+      ],
+      "parity_checks": [
+        "Compare handoff semantics to local role contracts.",
+        "Compare guardrails to capability-intake and reviewer gates.",
+        "Map tracing fields to aq-report and dashboard metrics."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "official source review",
+        "no model-key assumptions",
+        "MCP tool allowlist"
+      ],
       "intake_action": "Research design patterns and tests before any SDK adoption.",
-      "delegation_targets": ["local-agent", "codex", "claude"]
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
     },
     {
       "id": "microsoft-autogen-agent-framework",
@@ -63,11 +113,27 @@
       "state": "research-only",
       "maturity_signal": "AutoGen has a large installed base, but the repository indicates maintenance mode and migration toward Microsoft Agent Framework.",
       "why_research": "Use as migration-pattern research, not as a direct enablement target.",
-      "local_gap_targets": ["multi-agent-collab", "workflow-blueprints", "agent-tool-map"],
-      "parity_checks": ["Identify durable multi-agent conversation patterns.", "Compare MCP and A2A alignment in the successor framework.", "Flag deprecated patterns to avoid."],
-      "security_gates": ["capability-intake audit", "maintenance-mode review", "dependency freshness review", "no runtime enablement without successor review"],
+      "local_gap_targets": [
+        "multi-agent-collab",
+        "workflow-blueprints",
+        "agent-tool-map"
+      ],
+      "parity_checks": [
+        "Identify durable multi-agent conversation patterns.",
+        "Compare MCP and A2A alignment in the successor framework.",
+        "Flag deprecated patterns to avoid."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "maintenance-mode review",
+        "dependency freshness review",
+        "no runtime enablement without successor review"
+      ],
       "intake_action": "Defer implementation; research successor only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "crewai",
@@ -78,11 +144,27 @@
       "state": "research-only",
       "maturity_signal": "Active role-playing agent orchestration project with recent releases.",
       "why_research": "Comparable role/task crew model for local multi-agent collaboration and workflow blueprints.",
-      "local_gap_targets": ["role-contracts", "multi-agent-collab", "aq-workflow"],
-      "parity_checks": ["Compare role/task declarations to docs/architecture/role-matrix.md.", "Map crew planning to local workflow blueprints.", "Identify reusable test fixtures for delegated task execution."],
-      "security_gates": ["capability-intake audit", "dependency pinning", "tool execution sandbox", "prompt injection review"],
+      "local_gap_targets": [
+        "role-contracts",
+        "multi-agent-collab",
+        "aq-workflow"
+      ],
+      "parity_checks": [
+        "Compare role/task declarations to docs/architecture/role-matrix.md.",
+        "Map crew planning to local workflow blueprints.",
+        "Identify reusable test fixtures for delegated task execution."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "dependency pinning",
+        "tool execution sandbox",
+        "prompt injection review"
+      ],
       "intake_action": "Research orchestration patterns only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "openhands",
@@ -93,11 +175,28 @@
       "state": "research-only",
       "maturity_signal": "Large self-hosted coding-agent control center supporting local, remote, and cloud backends.",
       "why_research": "Direct parity target for coding agent control planes, sandboxing, and agent backend adapters.",
-      "local_gap_targets": ["local-agent-delegation", "dashboard-observability", "capability-intake"],
-      "parity_checks": ["Compare backend adapter model to delegate-to-local and switchboard profiles.", "Identify sandbox defaults and unsafe modes.", "Map observability and session replay features."],
-      "security_gates": ["capability-intake audit", "sandbox review mandatory", "no unrestricted filesystem mode", "supply-chain scan"],
+      "local_gap_targets": [
+        "local-agent-delegation",
+        "dashboard-observability",
+        "capability-intake"
+      ],
+      "parity_checks": [
+        "Compare backend adapter model to delegate-to-local and switchboard profiles.",
+        "Identify sandbox defaults and unsafe modes.",
+        "Map observability and session replay features."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "sandbox review mandatory",
+        "no unrestricted filesystem mode",
+        "supply-chain scan"
+      ],
       "intake_action": "Research architecture and sandbox constraints; no install.",
-      "delegation_targets": ["local-agent", "codex", "claude"]
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
     },
     {
       "id": "aider",
@@ -108,11 +207,27 @@
       "state": "research-only",
       "maturity_signal": "Mature terminal pair-programming agent with a large user base.",
       "why_research": "Useful parity target for repo editing loops, git-aware coding flows, and minimal CLI UX.",
-      "local_gap_targets": ["system-dev", "testing-patterns", "local-agent-delegation"],
-      "parity_checks": ["Compare git-aware edit workflow to Codex/local-agent handoff.", "Assess commit hygiene and test retry patterns.", "Identify small CLI affordances to add to aq-workflow."],
-      "security_gates": ["capability-intake audit", "patch-only sandbox", "git operation allowlist", "dependency pinning"],
+      "local_gap_targets": [
+        "system-dev",
+        "testing-patterns",
+        "local-agent-delegation"
+      ],
+      "parity_checks": [
+        "Compare git-aware edit workflow to Codex/local-agent handoff.",
+        "Assess commit hygiene and test retry patterns.",
+        "Identify small CLI affordances to add to aq-workflow."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "patch-only sandbox",
+        "git operation allowlist",
+        "dependency pinning"
+      ],
       "intake_action": "Mine workflow patterns and tests only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "continue",
@@ -123,11 +238,25 @@
       "state": "defer",
       "maturity_signal": "Prominent open-source coding-agent project, but the repository reports it is no longer actively maintained.",
       "why_research": "Can inform IDE integration patterns, but should not drive new implementation until successor status is clear.",
-      "local_gap_targets": ["agent-tool-map", "local-agent-delegation"],
-      "parity_checks": ["Extract stable config/schema ideas only.", "Avoid stale extension dependencies.", "Compare user-facing model/provider config patterns."],
-      "security_gates": ["maintenance review", "no dependency import", "capability-intake audit if reopened"],
+      "local_gap_targets": [
+        "agent-tool-map",
+        "local-agent-delegation"
+      ],
+      "parity_checks": [
+        "Extract stable config/schema ideas only.",
+        "Avoid stale extension dependencies.",
+        "Compare user-facing model/provider config patterns."
+      ],
+      "security_gates": [
+        "maintenance review",
+        "no dependency import",
+        "capability-intake audit if reopened"
+      ],
       "intake_action": "Defer; research docs only if needed for IDE parity.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "browser-use",
@@ -138,11 +267,29 @@
       "state": "research-only",
       "maturity_signal": "Large browser-agent project focused on making websites accessible to AI agents.",
       "why_research": "High-value parity target for website creation research, browser-assisted QA, and OSINT collection workflows.",
-      "local_gap_targets": ["playwright-mcp", "osint-research-store", "webapp-testing"],
-      "parity_checks": ["Compare browser session model to Playwright MCP.", "Identify allowed-domain and credential handling practices.", "Map browser traces into OSINT evidence records."],
-      "security_gates": ["capability-intake audit", "domain allowlist", "credential isolation", "captcha/anti-abuse policy review", "runtime sandbox"],
+      "local_gap_targets": [
+        "playwright-mcp",
+        "osint-research-store",
+        "webapp-testing"
+      ],
+      "parity_checks": [
+        "Compare browser session model to Playwright MCP.",
+        "Identify allowed-domain and credential handling practices.",
+        "Map browser traces into OSINT evidence records."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "domain allowlist",
+        "credential isolation",
+        "captcha/anti-abuse policy review",
+        "runtime sandbox"
+      ],
       "intake_action": "Research guarded browser-agent patterns; do not enable autonomous browsing by default.",
-      "delegation_targets": ["local-agent", "codex", "claude"]
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
     },
     {
       "id": "modelcontextprotocol-servers",
@@ -153,11 +300,28 @@
       "state": "research-only",
       "maturity_signal": "Official reference implementations and pointers to the MCP registry.",
       "why_research": "Baseline for MCP server discovery, reference implementations, and registry parity.",
-      "local_gap_targets": ["mcp-server", "capability-intake", "all-mcp-directory"],
-      "parity_checks": ["Compare local MCP catalog to official reference and registry categories.", "Identify missing server classes useful for repo, memory, time, filesystem, and fetch flows.", "Flag educational-only reference servers before production use."],
-      "security_gates": ["capability-intake audit", "server allowlist", "filesystem scope review", "network egress review"],
+      "local_gap_targets": [
+        "mcp-server",
+        "capability-intake",
+        "all-mcp-directory"
+      ],
+      "parity_checks": [
+        "Compare local MCP catalog to official reference and registry categories.",
+        "Identify missing server classes useful for repo, memory, time, filesystem, and fetch flows.",
+        "Flag educational-only reference servers before production use."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "server allowlist",
+        "filesystem scope review",
+        "network egress review"
+      ],
       "intake_action": "Use as registry baseline and security comparison source.",
-      "delegation_targets": ["local-agent", "codex", "claude"]
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
     },
     {
       "id": "mcp-use",
@@ -168,11 +332,27 @@
       "state": "research-only",
       "maturity_signal": "Full-stack framework for developing MCP apps and servers.",
       "why_research": "Potential parity target for MCP app composition and server developer experience.",
-      "local_gap_targets": ["mcp-builder", "mcp-server", "agent-tool-map"],
-      "parity_checks": ["Compare MCP app/server abstraction to local MCP builder guidance.", "Assess schema and auth patterns.", "Identify reusable validation ideas for MCP integrations."],
-      "security_gates": ["capability-intake audit", "SDK dependency pinning", "tool schema review", "sandboxed examples only"],
+      "local_gap_targets": [
+        "mcp-builder",
+        "mcp-server",
+        "agent-tool-map"
+      ],
+      "parity_checks": [
+        "Compare MCP app/server abstraction to local MCP builder guidance.",
+        "Assess schema and auth patterns.",
+        "Identify reusable validation ideas for MCP integrations."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "SDK dependency pinning",
+        "tool schema review",
+        "sandboxed examples only"
+      ],
       "intake_action": "Research SDK ergonomics; no runtime enablement.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "mem0",
@@ -183,11 +363,28 @@
       "state": "research-only",
       "maturity_signal": "Large memory layer project for AI agents with temporal and entity-linked retrieval concepts.",
       "why_research": "Direct parity target for local agent memory, AIDB knowledge stores, and self-improvement loops.",
-      "local_gap_targets": ["aidb-rag-stores", "rag-operations", "self-improvement"],
-      "parity_checks": ["Compare episodic/semantic/procedural memory model to local stores.", "Map retrieval scoring to AIDB query traces.", "Identify privacy and deletion controls."],
-      "security_gates": ["capability-intake audit", "data retention review", "PII handling review", "self-hosted auth review"],
+      "local_gap_targets": [
+        "aidb-rag-stores",
+        "rag-operations",
+        "self-improvement"
+      ],
+      "parity_checks": [
+        "Compare episodic/semantic/procedural memory model to local stores.",
+        "Map retrieval scoring to AIDB query traces.",
+        "Identify privacy and deletion controls."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "data retention review",
+        "PII handling review",
+        "self-hosted auth review"
+      ],
       "intake_action": "Research memory algorithms and privacy controls before implementation.",
-      "delegation_targets": ["local-agent", "codex", "claude"]
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
     },
     {
       "id": "letta",
@@ -198,11 +395,27 @@
       "state": "research-only",
       "maturity_signal": "Stateful agent platform focused on advanced memory and self-improvement.",
       "why_research": "Useful parity target for long-lived agent state, tool memory, and learning loops.",
-      "local_gap_targets": ["aidb-rag-stores", "self-improvement", "local-agent-delegation"],
-      "parity_checks": ["Compare stateful agent object model to local memory tiers.", "Map self-improvement controls to reviewer gates.", "Identify observability for memory mutations."],
-      "security_gates": ["capability-intake audit", "memory mutation audit", "data retention policy", "sandboxed local-only review"],
+      "local_gap_targets": [
+        "aidb-rag-stores",
+        "self-improvement",
+        "local-agent-delegation"
+      ],
+      "parity_checks": [
+        "Compare stateful agent object model to local memory tiers.",
+        "Map self-improvement controls to reviewer gates.",
+        "Identify observability for memory mutations."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "memory mutation audit",
+        "data retention policy",
+        "sandboxed local-only review"
+      ],
       "intake_action": "Research design patterns only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "llama-index",
@@ -213,11 +426,27 @@
       "state": "research-only",
       "maturity_signal": "Established document-agent and retrieval ecosystem.",
       "why_research": "Parity target for document ingestion, query engines, and RAG evaluation.",
-      "local_gap_targets": ["rag-operations", "osint-research-store", "aidb-rag-stores"],
-      "parity_checks": ["Compare ingestion pipeline abstractions to OSINT research store.", "Identify query evaluation fixtures.", "Map document provenance into evidence records."],
-      "security_gates": ["capability-intake audit", "untrusted document parsing review", "dependency pinning", "network connector allowlist"],
+      "local_gap_targets": [
+        "rag-operations",
+        "osint-research-store",
+        "aidb-rag-stores"
+      ],
+      "parity_checks": [
+        "Compare ingestion pipeline abstractions to OSINT research store.",
+        "Identify query evaluation fixtures.",
+        "Map document provenance into evidence records."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "untrusted document parsing review",
+        "dependency pinning",
+        "network connector allowlist"
+      ],
       "intake_action": "Research ingestion and eval patterns only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "swe-agent",
@@ -228,11 +457,27 @@
       "state": "research-only",
       "maturity_signal": "Software engineering agent project oriented around benchmarked repo work.",
       "why_research": "Useful for comparing coding-agent loop structure, benchmark harnesses, and failure remediation.",
-      "local_gap_targets": ["test-remediation", "local-agent-delegation", "reviewer-gate"],
-      "parity_checks": ["Compare task loop to local delegate-to-local agent mode.", "Map benchmark signals to aq-qa.", "Identify issue reproduction and patch validation patterns."],
-      "security_gates": ["capability-intake audit", "sandbox review", "git operation allowlist", "benchmark data provenance review"],
+      "local_gap_targets": [
+        "test-remediation",
+        "local-agent-delegation",
+        "reviewer-gate"
+      ],
+      "parity_checks": [
+        "Compare task loop to local delegate-to-local agent mode.",
+        "Map benchmark signals to aq-qa.",
+        "Identify issue reproduction and patch validation patterns."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "sandbox review",
+        "git operation allowlist",
+        "benchmark data provenance review"
+      ],
       "intake_action": "Research loop/test patterns only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "camel",
@@ -243,11 +488,27 @@
       "state": "research-only",
       "maturity_signal": "Multi-agent framework and research ecosystem.",
       "why_research": "Potential source for society-of-agents patterns and task decomposition comparisons.",
-      "local_gap_targets": ["multi-agent-collab", "role-contracts", "async-delegation"],
-      "parity_checks": ["Compare role-play and workforce abstractions to local role matrix.", "Identify reusable delegation metrics.", "Check alignment with local security boundaries."],
-      "security_gates": ["capability-intake audit", "dependency pinning", "tool execution review", "prompt injection review"],
+      "local_gap_targets": [
+        "multi-agent-collab",
+        "role-contracts",
+        "async-delegation"
+      ],
+      "parity_checks": [
+        "Compare role-play and workforce abstractions to local role matrix.",
+        "Identify reusable delegation metrics.",
+        "Check alignment with local security boundaries."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "dependency pinning",
+        "tool execution review",
+        "prompt injection review"
+      ],
       "intake_action": "Research multi-agent patterns only.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     },
     {
       "id": "autogpt-platform",
@@ -258,11 +519,245 @@
       "state": "research-only",
       "maturity_signal": "Long-running AI automation platform with broad community awareness.",
       "why_research": "Useful as a historical and UI/workflow parity comparison, not a first implementation target.",
-      "local_gap_targets": ["workflow-blueprints", "dashboard-observability", "self-improvement"],
-      "parity_checks": ["Compare agent automation UI patterns.", "Identify failure modes and sandbox boundaries.", "Extract only mature, still-maintained patterns."],
-      "security_gates": ["capability-intake audit", "maintenance review", "dependency freshness review", "no runtime enablement"],
+      "local_gap_targets": [
+        "workflow-blueprints",
+        "dashboard-observability",
+        "self-improvement"
+      ],
+      "parity_checks": [
+        "Compare agent automation UI patterns.",
+        "Identify failure modes and sandbox boundaries.",
+        "Extract only mature, still-maintained patterns."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "maintenance review",
+        "dependency freshness review",
+        "no runtime enablement"
+      ],
       "intake_action": "Low-priority research queue.",
-      "delegation_targets": ["local-agent", "codex"]
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
+    },
+    {
+      "id": "mempalace",
+      "name": "MemPalace",
+      "source_url": "https://github.com/mempalace/mempalace",
+      "category": "memory-rag",
+      "priority": "high",
+      "state": "research-only",
+      "maturity_signal": "Verbatim storage RAG memory palace architecture using method of loci.",
+      "why_research": "Source for local-first episodic memory systems mapping conversation history verbatim.",
+      "local_gap_targets": [
+        "aidb-rag-stores",
+        "rag-operations"
+      ],
+      "parity_checks": [
+        "Compare spatial rooms memory allocation to local diary buffers.",
+        "Formulate verbatim snapshot indexing tests."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "dependency pinning",
+        "filesystem paths visibility check"
+      ],
+      "intake_action": "Research local RAG integration.",
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
+    },
+    {
+      "id": "zep-graphiti",
+      "name": "Zep Graphiti",
+      "source_url": "https://github.com/getzep/zep",
+      "category": "memory-rag",
+      "priority": "high",
+      "state": "research-only",
+      "maturity_signal": "Temporal knowledge graph-based agent memory layer tracking changes over time.",
+      "why_research": "Reference for temporal fact and entity evaluation graphs.",
+      "local_gap_targets": [
+        "aidb-rag-stores",
+        "rag-operations"
+      ],
+      "parity_checks": [
+        "Compare graph structure with local AIDB temporal_facts schema.",
+        "Assess Neo4j/LanceDB dynamic graphs."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "temporal graph query isolation check"
+      ],
+      "intake_action": "Research temporal graph algorithms.",
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
+    },
+    {
+      "id": "context-mode-sandbox",
+      "name": "Context Mode Tool Sandbox",
+      "source_url": "https://github.com/mksglu/context-mode",
+      "category": "mcp-infrastructure",
+      "priority": "high",
+      "state": "research-only",
+      "maturity_signal": "MCP server designed to mitigate context bloat by sandboxing tool outputs.",
+      "why_research": "Main tool target for preventing agent mode context window overload (98% reduction).",
+      "local_gap_targets": [
+        "agent-tool-map",
+        "context-management"
+      ],
+      "parity_checks": [
+        "Verify SQLite session database schemas.",
+        "Compare L-curve compression filters vs project inline rules."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "schema compliance checking",
+        "subprocess token gating"
+      ],
+      "intake_action": "High-priority research for tool integrations.",
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
+    },
+    {
+      "id": "vllm-engine",
+      "name": "vLLM High-Throughput Server",
+      "source_url": "https://github.com/vllm-project/vllm",
+      "category": "benchmark",
+      "priority": "medium",
+      "state": "research-only",
+      "maturity_signal": "Standard enterprise high-throughput local LLM server using PagedAttention.",
+      "why_research": "Parity target for scaling local-endpoint inference and performance benchmarking.",
+      "local_gap_targets": [
+        "llm-performance",
+        "speculative-decoding"
+      ],
+      "parity_checks": [
+        "Measure vulcan/cuda concurrency limits vs llama.cpp latency.",
+        "Map structured json output speed."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "port isolation",
+        "system token verification"
+      ],
+      "intake_action": "Benchmark side-by-side with llama.cpp.",
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
+    },
+    {
+      "id": "sglang-engine",
+      "name": "SGLang Inference Engine",
+      "source_url": "https://github.com/sgl-project/sglang",
+      "category": "benchmark",
+      "priority": "medium",
+      "state": "research-only",
+      "maturity_signal": "Fast runtime with structured generation for strict json schemas.",
+      "why_research": "Parity target for improving JSON-schema reliability and parser execution speed.",
+      "local_gap_targets": [
+        "strict-json-generation"
+      ],
+      "parity_checks": [
+        "Test strict schema formatting accuracy.",
+        "Compare generation speeds for nested objects."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "sandbox capability verification"
+      ],
+      "intake_action": "Research Structured Generation compiler logic.",
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
+    },
+    {
+      "id": "bubblewrap-sandbox",
+      "name": "Bubblewrap Tool Isolation Sandbox",
+      "source_url": "https://github.com/containers/bubblewrap",
+      "category": "mcp-infrastructure",
+      "priority": "high",
+      "state": "research-only",
+      "maturity_signal": "Lightweight unprivileged sandboxing utility utilizing Linux namespaces.",
+      "why_research": "Reference for implementing hard-coded process and filesystem locks (e.g. Claude Code).",
+      "local_gap_targets": [
+        "hardcoded-command-blocking"
+      ],
+      "parity_checks": [
+        "Create mount namespace wrapper prototypes.",
+        "Compare network block speeds."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "namespace bounds analysis"
+      ],
+      "intake_action": "Research system policy and namespace rules.",
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
+    },
+    {
+      "id": "aider-coder",
+      "name": "Aider CLI Coding Agent",
+      "source_url": "https://github.com/aider-chat/aider",
+      "category": "agent-framework",
+      "priority": "high",
+      "state": "research-only",
+      "maturity_signal": "Git-native CLI pair-programming agent with multi-file map editing.",
+      "why_research": "Parity study for local git-native auto-commit loops.",
+      "local_gap_targets": [
+        "autonomous-coding-loop"
+      ],
+      "parity_checks": [
+        "Compare search-and-replace block formatting vs standard diffs.",
+        "Map map-context graph logic."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "git command validation"
+      ],
+      "intake_action": "Compare developer ergonomics vs current local loops.",
+      "delegation_targets": [
+        "local-agent",
+        "codex",
+        "claude"
+      ]
+    },
+    {
+      "id": "temporal-durable-loops",
+      "name": "Temporal Durable Execution Engine",
+      "source_url": "https://github.com/temporalio/temporal",
+      "category": "agent-framework",
+      "priority": "medium",
+      "state": "research-only",
+      "maturity_signal": "Industry-standard durable execution runtime ensuring multi-step task safety.",
+      "why_research": "Design reference for long-duration task queues and state checkpoints.",
+      "local_gap_targets": [
+        "durable-running-loops"
+      ],
+      "parity_checks": [
+        "Compare Temporal workflow checkpoints with .agent/collaboration state files."
+      ],
+      "security_gates": [
+        "capability-intake audit",
+        "network port permission check"
+      ],
+      "intake_action": "Analyze workflow persistence patterns.",
+      "delegation_targets": [
+        "local-agent",
+        "codex"
+      ]
     }
   ]
 }

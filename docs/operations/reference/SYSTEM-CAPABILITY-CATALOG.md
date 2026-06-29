@@ -22,6 +22,8 @@ External ingestion gate: `capability-intake`
 
 | ID | Category | Kind | State | Security | Agents | Validation |
 |---|---|---|---|---|---|---|
+| affective-engine-module | agent-runtime | system-service | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-affective-reciprocity-wiring.py` |
+| identity-kernel-service | agent-runtime | system-service | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-agent-identity-envelope.py` |
 | local-agent-delegation | agent-runtime | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-delegate-local-agent.py` |
 | auto-skill-selection | agent-skills | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-skill-auto.py` |
 | tooling-manifest | agent-tools | python-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-tooling-manifest.py` |
@@ -39,6 +41,32 @@ External ingestion gate: `capability-intake`
 | workflow-blueprints | workflow | config-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-workflow-blueprints.py` |
 
 ## Entries
+
+### affective-engine-module
+
+Computational agent temperament modulator hosting a local reciprocity debt tracker.
+
+- Name: Affective Engine Module
+- Owner: coprocessor-engineering
+- Maturity: integrated
+- State: enabled
+- Primary refs: `ai-stack/affective-engine/reciprocity_tracker.py`, `nix/modules/services/affective-engine.nix`
+- Data stores: `temperament_states`, `reciprocity_debts`
+- Parity targets: agent affective modulators, social-cognition loops
+- Security gate: `python3 scripts/testing/test-affective-reciprocity-wiring.py`
+
+### identity-kernel-service
+
+Core identity preservation module hosting the narrative engine, value constitution profiles, and session checkpointers.
+
+- Name: Identity Kernel Service
+- Owner: coprocessor-engineering
+- Maturity: integrated
+- State: enabled
+- Primary refs: `ai-stack/identity-kernel/checkpoint_service.py`, `nix/modules/services/identity-kernel.nix`, `config/identity-values.yaml`
+- Data stores: `identity_narrative`, `checkpoints`
+- Parity targets: Letta agent identities, Mem0 profile managers
+- Security gate: `python3 scripts/testing/test-agent-identity-envelope.py`
 
 ### local-agent-delegation
 
