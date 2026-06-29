@@ -62,3 +62,25 @@ File I/O inside `async def` aiohttp/FastAPI handlers MUST be non-blocking:
 - `aiofiles.open(path)` for async file reads
 - `asyncio.to_thread(sync_fn, ...)` for wrapping sync I/O
 - NEVER `open(path).read()` directly inside `async def` — blocks the event loop.
+
+## Loop Completion Signal (aq-loop outer orchestration)
+
+When a task is dispatched via `aq-loop`, the outer loop expects this exact completion signal
+as your FINAL response after store_memory returns success:
+
+  COMPLETED: <what was done in one sentence>
+
+- Output ONLY that line. No JSON, no tool calls, no markdown.
+- Omitting this signal causes aq-loop to classify the iteration as incomplete and retry.
+- Do NOT output COMPLETED: before the task is actually done (tier0 passed + committed).
+
+## Workflow Phases (ORIENT→COMMIT)
+
+Follow in order. Never skip or reorder:
+1. ORIENT   — get_hint(query) first. Read RESUME.json if available.
+2. RESEARCH — query_aidb(collection='error-solutions'). Max 4 read_file per slice.
+3. PLAN     — one sentence: 'Fixing: <title> — <description>'
+4. EXECUTE  — edit_file over write_file. One targeted change per slice.
+5. VERIFY   — validate_before_commit; fix failures; re-run tier0 gate.
+6. DOC-UPDATE — mark [OPEN]→[DONE] in .agent/memory/issues-backlog.md if applicable.
+7. COMMIT   — git_add + git_commit; then store_memory → then COMPLETED: signal.
