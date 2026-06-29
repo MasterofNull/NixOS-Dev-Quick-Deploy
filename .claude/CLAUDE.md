@@ -57,6 +57,13 @@ aq-skill-suggest "<task description>"                 # suggest relevant skills 
 aq-skill-suggest --list                               # list all available skills
 aq-skill-suggest --show <skill-name>                  # print full skill content
 scripts/governance/tier0-validation-gate.sh --pre-commit  # required before every commit
+
+# Outer agentic loop (autonomous multi-iteration task execution):
+aq-loop --list-open                                   # list [OPEN] backlog items
+aq-loop --from-backlog --dry-run                      # preview grounded prompt for top issue
+aq-loop --from-backlog                                # execute top [OPEN] issue autonomously
+aq-loop --intent "implement X"                        # explicit task with auto-loop + retry
+aq-loop --check                                       # print current LOOP_STATE.json
 ```
 
 ## Skill Index
