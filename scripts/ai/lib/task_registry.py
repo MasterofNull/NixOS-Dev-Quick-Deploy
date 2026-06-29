@@ -162,6 +162,88 @@ class TaskRegistry:
     def list_running(self) -> list[dict]:
         return [e for e in self._read_registry() if e.get("status") == "running"]
 
+    def _pid_alive(self, pid: object) -> bool:
+        if pid in (None, "", "null", "None"):
+            return False
+        try:
+            value = int(pid)
+        except (TypeError, ValueError):
+            return False
+        try:
+            os.kill(value, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _resolve_output_path(self, entry: dict) -> Optional[Path]:
+        output_file = entry.get("output_file")
+        if not output_file:
+            return None
+        path = Path(output_file)
+        return path if path.is_absolute() else self.repo_root / path
+
+    def _infer_terminal_status(self, entry: dict) -> tuple[str, str]:
+        output_path = self._resolve_output_path(entry)
+        if output_path:
+            progress_path = Path(str(output_path) + ".progress.json")
+            if progress_path.exists():
+                try:
+                    progress = json.loads(progress_path.read_text())
+                    status = progress.get("status")
+                    if status in {"done", "failed", "cancelled"}:
+                        return status, f"progress sidecar reported {status}"
+                except Exception:
+                    pass
+            if output_path.exists():
+                try:
+                    text = output_path.read_text(errors="replace")
+                except Exception:
+                    text = ""
+                lower = text.lower()
+                failure_markers = (
+                    "repeated-read stagnation",
+                    "exploration stagnation",
+                    "analysis checkpoint stagnation",
+                    "agent runner error:",
+                    "traceback",
+                    "timed out",
+                    '"status": "failed"',
+                    '"success": false',
+                )
+                if any(marker in lower for marker in failure_markers):
+                    return "failed", "output artifact reported failure"
+                if '"success": true' in lower or '"status": "done"' in lower:
+                    return "done", "output artifact reported success"
+                if text.strip() and not text.startswith("Agent task started; waiting for aq-agent-loop output."):
+                    return "failed", "process exited before registry completion; output requires review"
+        return "stale", "registry said running, but pid is missing or no longer alive"
+
+    def reconcile_running(self, task_id: Optional[str] = None) -> int:
+        """Mark running entries with dead PIDs as terminal before status/check/list reads."""
+        changed = 0
+        for entry in self._read_registry():
+            if task_id and entry.get("id") != task_id:
+                continue
+            current_status = entry.get("status")
+            if current_status not in {"running", "done", "completed"}:
+                continue
+            if current_status == "running" and self._pid_alive(entry.get("pid")):
+                continue
+            status, reason = self._infer_terminal_status(entry)
+            if current_status in {"done", "completed"} and status != "failed":
+                continue
+            updates = {
+                "status": status,
+                "stale_since": _now(),
+                "stale_reason": reason,
+            }
+            self._update_registry(entry.get("id"), updates)
+            self.record_completion(entry.get("id"), status)
+            changed += 1
+        return changed
+
     # ── PENDING.json + HANDOFF.md ────────────────────────────────────────────
 
     def _load_pending(self) -> dict:
@@ -330,6 +412,7 @@ class TaskRegistry:
     # ── subcommand helpers (used by dispatch.py CLI) ─────────────────────────
 
     def cmd_list(self) -> None:
+        self.reconcile_running()
         entries = self.list_all()
         if not entries:
             print("No delegated tasks yet.")
@@ -350,6 +433,7 @@ class TaskRegistry:
             ))
 
     def cmd_status(self, task_id: str) -> int:
+        self.reconcile_running(task_id)
         e = self.get(task_id)
         if not e:
             print(f"Task not found: {task_id}", file=sys.stderr)
@@ -358,6 +442,7 @@ class TaskRegistry:
         return 0
 
     def cmd_check(self, task_id: str, repo_root: Optional[Path] = None) -> int:
+        self.reconcile_running(task_id)
         output_file = self.get_output_file(task_id)
         if not output_file:
             print(f"Task not found in registry: {task_id}", file=sys.stderr)

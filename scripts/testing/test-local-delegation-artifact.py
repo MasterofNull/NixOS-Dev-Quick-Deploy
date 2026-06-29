@@ -282,6 +282,49 @@ def test_agent_runner_defaults_allow_long_horizon_work():
     print("PASS  agent runner defaults allow long-horizon work")
 
 
+def test_registry_status_reconciles_dead_agent_failure():
+    """Status reads must not leave dead local-agent tasks marked running."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        output_file = delegation_dir / "outputs" / "dead-agent.log"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_text(
+            '{"status": "completed", "success": true, "result": "Repeated-read stagnation: .agent/memory/issues-backlog.md", "error": null}\n',
+            encoding="utf-8",
+        )
+
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        task_id = "dead-agent-reconcile"
+        registry.append(
+            task_id=task_id,
+            description="analysis-only probe",
+            output_file=str(output_file),
+            mode="agent",
+            role="architect",
+            pid=99999999,
+        )
+        registry.record_dispatch(
+            task_id=task_id,
+            agent="local-agent",
+            output_file=str(output_file),
+            objective="analysis-only probe",
+        )
+        registry.update_status(task_id, "done")
+
+        rc = registry.cmd_status(task_id)
+        entry = registry.get(task_id)
+        assert_true(rc == 0, "cmd_status should succeed for reconciled task")
+        assert_true(entry is not None, "registry entry missing after reconcile")
+        assert_true(entry.get("status") == "failed", f"expected failed, got {entry.get('status')}")
+        assert_true("output artifact reported failure" in entry.get("stale_reason", ""), "failure reason missing")
+        pending = json.loads((tmp_path / ".agent" / "collaboration" / "PENDING.json").read_text())
+        statuses = [t.get("status") for t in pending.get("in_flight", []) if t.get("id") == task_id]
+        assert_true(statuses == ["failed"], f"pending status not reconciled: {statuses}")
+        print("PASS  registry status reconciles dead agent failure")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -292,6 +335,7 @@ if __name__ == "__main__":
         test_agent_runner_creates_initial_output_artifacts,
         test_agent_runner_reaps_no_progress_child,
         test_agent_runner_defaults_allow_long_horizon_work,
+        test_registry_status_reconciles_dead_agent_failure,
     ]
     for t in tests:
         try:

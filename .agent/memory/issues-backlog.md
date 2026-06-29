@@ -1026,6 +1026,11 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
   File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
 
+[DONE] local-agent-stagnation-false-success — Local-agent task `local-20260629-081304-dx1xx2` produced a `Repeated-read stagnation` result after a long run, but `aq-agent-loop` wrote `success: true` / `status: completed`, and the registry initially presented the task as successful.
+Severity: high
+Fix: `aq-agent-loop` now treats repeated-read and analysis-checkpoint stagnation as incomplete failed results, writes `status: failed`, exits non-zero, and avoids training-signal emission for those runs. `TaskRegistry` now reconciles dead or inconsistent running/done entries before list/status/check and marks artifacts containing failure markers as failed. Stale delegated prompts should use the existing canonical path `docs/system-centric-ai-repos-recommendations.md`.
+File: scripts/ai/aq-agent-loop; scripts/ai/lib/task_registry.py; scripts/ai/aq-delegation-registry; scripts/testing/test-local-delegation-artifact.py; scripts/testing/test-local-agent-progress-guarded-tools.py
+
 [DONE] aq-qa-machine-mode-stall — Standalone `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` produced no output for roughly two minutes during context-risk compaction validation, while the Tier 0 gate's embedded QA phase 0 completed successfully.
 Severity: medium
 Fix: Added `_exec_bash_fallback()` in scripts/ai/aq-qa that applies `timeout --foreground ${AQ_QA_MACHINE_TIMEOUT_SECONDS:-300}` + `NO_COLOR=1` when `--machine` is set and falling back to bash path. Committed in same session (ea1df9d7 era).

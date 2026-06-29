@@ -47,6 +47,9 @@ def main() -> int:
     require("max(14400.0, float(timeout_secs) * 8)" in aq_agent_loop, "aq-agent-loop must allow long-horizon local stream silence")
     require(".agents\" / \"telemetry\" / \"hybrid-events.jsonl" in aq_agent_loop, "training signal must use user telemetry spool")
     require("incomplete_result" in aq_agent_loop, "aq-agent-loop summary must expose incomplete_result")
+    require("repeated-read stagnation:" in aq_agent_loop, "aq-agent-loop must fail repeated-read stagnation results")
+    require("analysis checkpoint stagnation:" in aq_agent_loop, "aq-agent-loop must fail analysis checkpoint stagnation results")
+    require('status_label = "failed" if incomplete_result else result_task.status.value' in aq_agent_loop, "aq-agent-loop must write failed status for incomplete results")
 
     print("PASS: local-agent tool loops are progress-guarded, not max-call capped")
     return 0
