@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] suggested-ai-repo-browser-use-gate — Candidate catalog validation rejected `browser-use` because its row had browser-specific gates but omitted the explicit `capability-intake` gate required for every suggested external repo.
+  Root cause: initial catalog entry listed sandbox/domain/credential controls but missed the canonical admission gate string enforced by `test-suggested-ai-repo-candidates.py`.
+  Fix: added `capability-intake audit` to `browser-use.security_gates`; reran focused candidate validation.
+  Severity: low
+  File: config/suggested-ai-repo-candidates.json
+
 [DONE 2026-06-29] system-capability-catalog-prd-frontmatter — Focused CI rejected the new catalog PRD because `title` was missing from the required PRD frontmatter.
   Root cause: new `.agent/PROJECT-SYSTEM-CAPABILITY-CATALOG-PRD.md` used `doc_type: prd` but only declared `id/status/owner/last_updated`.
   Fix: added `title: System Capability Catalog`; reran focused CI and tier0 successfully.

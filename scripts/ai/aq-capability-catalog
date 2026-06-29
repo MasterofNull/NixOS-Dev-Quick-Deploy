@@ -129,6 +129,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "- Agents should search this catalog before adding tools, plugins, MCP servers, datasets, workflows, or feature surfaces.",
         "- External candidates remain deny-by-default until `capability-intake` records admission, mitigations, and validation.",
         "- Parity discovery should compare each entry's `parity_targets` against mature external repos, then open a bounded capability-intake slice for any proposed ingestion.",
+        "- Suggested external repo candidates live in `config/suggested-ai-repo-candidates.json`; they are research inputs, not enabled capabilities.",
         "",
         "## Reference",
         "",

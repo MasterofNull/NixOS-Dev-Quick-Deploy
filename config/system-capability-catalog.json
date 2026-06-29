@@ -23,6 +23,7 @@
     "tooling_manifest": "ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py",
     "workflow_blueprints": "config/workflow-blueprints.json",
     "validation_registry": "config/validation-check-registry.json",
+    "suggested_ai_repos": "config/suggested-ai-repo-candidates.json",
     "skill_index": ".agent/SKILL_INDEX.md"
   },
   "entries": [
