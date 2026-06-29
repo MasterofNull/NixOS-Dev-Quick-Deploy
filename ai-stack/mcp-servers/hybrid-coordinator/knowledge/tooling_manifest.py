@@ -182,6 +182,8 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "autonomous",
             "delegate",
             "delegation",
+            "flat collaboration",
+            "flat model-team",
             "long-running",
             "long running",
             "loop",
@@ -210,6 +212,23 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "loop_status",
             "/workflow/orchestrate/{task_id}",
             "Poll Ralph loop execution state and optionally fetch final results.",
+        )
+    if any(
+        k in q
+        for k in (
+            "flat collaboration",
+            "flat model-team",
+            "model-team proposal",
+            "cross-review",
+            "consensus prd",
+            "reviewer separation",
+            "collaborative workflow",
+        )
+    ):
+        add(
+            "flat_prd_gate",
+            "cli://scripts/ai/aq-flat-prd-gate",
+            "Validate proposal, cross-review, consensus, and reviewer-separation evidence before treating model-team output as integrated.",
         )
 
     # --- Phase 24: Frontend Design (impeccable) ---
@@ -423,6 +442,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["--json", "--label", "--kind", "--summary-chars", "--input-file"],
         "output_focus": "Context-offload status, checkpoint ids, compact summaries, and artifact pointers; never raw large payloads.",
     },
+    "flat_prd_gate": {
+        "method": "CLI",
+        "mcp_tool": "",
+        "args": ["--machine", "--topic"],
+        "output_focus": "Pass/fail rollout flags, proposal/review/consensus artifact counts, reviewer-separation failures, and supported collaboration modes.",
+    },
     "health": {
         "method": "GET",
         "mcp_tool": "",
@@ -562,7 +587,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
 
     phases = [
         {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry", "context_sandbox_offload"])},
-        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "context_sandbox_offload"])},
+        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "context_sandbox_offload", "flat_prd_gate"])},
         {
             "id": "execute",
             "tools": pick(
@@ -580,8 +605,8 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                 ]
             ),
         },
-        {"id": "validate", "tools": pick(["qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
-        {"id": "handoff", "tools": pick(["context_sandbox_offload", "feedback", "learning_stats"])},
+        {"id": "validate", "tools": pick(["flat_prd_gate", "qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
+        {"id": "handoff", "tools": pick(["flat_prd_gate", "context_sandbox_offload", "feedback", "learning_stats"])},
     ]
     return [phase for phase in phases if phase["tools"]]
 
@@ -613,6 +638,7 @@ def build_tooling_manifest(
         "loop_status": 90,
         "workflow_run_start": 85,
         "context_sandbox_offload": 82,
+        "flat_prd_gate": 81,
         "qa_check": 80,
         "harness_eval": 75,
     }
