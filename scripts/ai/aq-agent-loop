@@ -375,13 +375,13 @@ def main() -> int:
     parser.add_argument("--list-tools", action="store_true", help="List registered tools and exit")
     parser.add_argument(
         "--task-type",
-        default=None,
+        default="agent",
         choices=["structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning"],
         help=(
-            "LLM task profile. Controls temperature, thinking_budget, and enable_thinking. "
+            "LLM task profile. Controls temperature, frequency_penalty, and enable_thinking. "
             "'research' enables thinking (100 tok budget, 0.4 temp) for PRSI/discovery tasks. "
             "'deep_reasoning' enables thinking (150 tok budget, 0.5 temp) for planning tasks. "
-            "Default: None (uses agent profile: enable_thinking=False, temperature=0.2)."
+            "Default: 'agent' (frequency_penalty=0.0, temperature=0.3 — prevents JSON truncation)."
         ),
     )
     parser.add_argument(

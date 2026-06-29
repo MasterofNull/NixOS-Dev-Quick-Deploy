@@ -1572,8 +1572,8 @@ class LocalAgentExecutor:
         Args:
             messages: Conversation messages
             task_type: Optional llm_config profile name. When set, profile drives
-                temperature, thinking_budget, and enable_thinking. When None, the
-                hardcoded temperature=0.2 default is used (no profile).
+                temperature, frequency_penalty, thinking_budget, and enable_thinking.
+                When None, hardcoded temperature=0.2, frequency_penalty=0.05 (legacy).
 
         Returns:
             (response_text, tokens_used) — tokens_used is total_tokens from the usage chunk.
