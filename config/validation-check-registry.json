@@ -1413,6 +1413,23 @@
       "enabled": true
     },
     {
+      "id": "aq-eval-harness",
+      "description": "AQ eval harness validates local static eval/red-team suites and allowlisted command execution",
+      "trigger_paths": [
+        "scripts/ai/aq-eval",
+        "config/aq-eval-suites.json",
+        "config/schemas/aq-eval-suites.schema.json",
+        "scripts/testing/test-aq-eval.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-eval.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 90,
+      "enabled": true
+    },
+    {
       "id": "system-capability-catalog",
       "description": "System capability catalog SSOT validates references, external intake gates, and generated reference sheet freshness",
       "trigger_paths": [

@@ -28,6 +28,7 @@ External ingestion gate: `capability-intake`
 | playwright-mcp | browser-automation | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | understand-anything | code-intelligence | repo-skill | enabled | local-governance / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything ensure` |
 | aidb-rag-stores | data-store | service-dataset | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
+| aq-eval-harness | evaluation-redteam | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-eval.py` |
 | dashboard-observability | observability | feature-surface | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | osint-research-store | osint | dataset-workflow | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-osint-research-ingest.py` |
 | github-mcp-readonly | repository-intelligence | external-mcp | blocked-auth-runtime | needs-review / high | codex, claude | `python3 scripts/testing/test-capability-intake.py` |
@@ -115,6 +116,19 @@ AIDB, Qdrant, Postgres, and Redis-backed knowledge, memory, telemetry, and inter
 - Data stores: `knowledge`, `codebase-context`, `skills-patterns`, `error-solutions`, `best-practices`, `interaction-history`, `agent-memory-episodic`, `agent-memory-semantic`, `agent-memory-procedural`
 - Parity targets: agent memory stores, RAG vector databases, long-term learning stores
 - Security gate: `curl -sS --max-time 10 http://127.0.0.1:8002/health`
+
+### aq-eval-harness
+
+Repo-local static eval and red-team suite wrapper for capability, agent-safety, and governance checks.
+
+- Name: AQ Eval Harness
+- Owner: qa-automation
+- Maturity: integrated
+- State: enabled
+- Primary refs: `scripts/ai/aq-eval`, `config/aq-eval-suites.json`, `scripts/testing/test-aq-eval.py`
+- Data stores: `model-evaluations`, `eval_results`
+- Parity targets: Promptfoo, DeepEval, Ragas, Garak, agent red-team suites
+- Security gate: `python3 scripts/testing/test-aq-eval.py`
 
 ### dashboard-observability
 

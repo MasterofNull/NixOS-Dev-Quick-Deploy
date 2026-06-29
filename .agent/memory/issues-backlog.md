@@ -1,5 +1,17 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] local-agent-agent-mode-output-blind-while-running — `delegate-to-local --check local-20260628-204716-mr8jql` reported the task might still be running because the registered output file did not exist while `aq-agent-loop` was active.
+  Root cause: `AgentRunner` passed `--output` to the child but did not create an initial output file or progress sidecar before `subprocess.run`, so long agent-mode tasks had no visible artifact until completion.
+  Fix: `AgentRunner` now writes an initial running marker and `.progress.json` before launching `aq-agent-loop`; regression test covers artifact creation before subprocess execution.
+  Severity: medium
+  Files: scripts/ai/lib/dispatch.py; scripts/testing/test-local-delegation-artifact.py
+
+[DONE 2026-06-29] aq-capability-catalog-render-shell-redirection-blocked — Attempting to refresh the generated capability reference with shell redirection was blocked by the execution environment.
+  Root cause: `ctx_shell` forbids file writes via `>` redirection; generated docs must be updated via `apply_patch` or another approved write path.
+  Fix: updated `docs/operations/reference/SYSTEM-CAPABILITY-CATALOG.md` with `apply_patch` and verified `aq-capability-catalog check-doc`.
+  Severity: low
+  File: docs/operations/reference/SYSTEM-CAPABILITY-CATALOG.md
+
 [DONE 2026-06-29] ai-capability-backlog-dashboard-parity-validator — Backlog validator rejected valid visibility notes that named panels or aq-report but not the literal word "dashboard".
   Root cause: `test-ai-capability-implementation-backlog.py` required the literal substring `dashboard`, while the project accepts dashboard panels, aq-report visibility, and explicit panel surfaces as valid delivery gates.
   Fix: validator now accepts `dashboard`, `aq-report`, or `panel` in `dashboard_parity`; backlog entries now explicitly name dashboard visibility where needed.
