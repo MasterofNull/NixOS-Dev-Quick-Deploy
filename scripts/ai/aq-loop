@@ -199,11 +199,36 @@ def build_grounded_prompt(
 
 # ── inner loop runner ─────────────────────────────────────────────────────────
 
+def _claim_backlog_item(line_text: str) -> None:
+    """Mark a backlog issue [IN-PROGRESS] so other agents skip it."""
+    if not _BACKLOG_PATH.exists():
+        return
+    content = _BACKLOG_PATH.read_text()
+    slug = line_text.strip()[:80]
+    updated = content.replace(slug, slug.replace("[OPEN]", "[IN-PROGRESS]", 1), 1)
+    if updated != content:
+        _BACKLOG_PATH.write_text(updated)
+
+
+def _release_backlog_item(line_text: str, success: bool) -> None:
+    """Release [IN-PROGRESS] → [DONE] on success or [OPEN] on failure."""
+    if not _BACKLOG_PATH.exists():
+        return
+    content = _BACKLOG_PATH.read_text()
+    slug = line_text.strip()[:80]
+    in_prog = slug.replace("[OPEN]", "[IN-PROGRESS]", 1)
+    target = slug.replace("[OPEN]", "[DONE]", 1) if success else slug
+    updated = content.replace(in_prog, target, 1)
+    if updated != content:
+        _BACKLOG_PATH.write_text(updated)
+
+
 def run_inner_loop(
     grounded_prompt: str,
     loop_id: str,
     iteration: int,
     timeout: int = 3600,
+    tool_manifest: str = "full",
 ) -> dict:
     """Invoke aq-agent-loop and return its JSON result summary."""
     out_fd, out_path = tempfile.mkstemp(
@@ -216,11 +241,12 @@ def run_inner_loop(
         str(_SCRIPT_DIR / "aq-agent-loop"),
         "--task", grounded_prompt,
         "--output", out_path,
+        "--tool-manifest", tool_manifest,
     ]
     env = os.environ.copy()
     env["REPO_ROOT"] = str(_REPO_ROOT)
 
-    print(f"[aq-loop] iter {iteration} — launching aq-agent-loop ...")
+    print(f"[aq-loop] iter {iteration} — launching aq-agent-loop (manifest={tool_manifest}) ...")
     rc = subprocess.run(cmd, env=env, timeout=timeout)
     if rc.returncode not in (0, 1):
         return {"success": False, "error": f"aq-agent-loop exit {rc.returncode}", "tool_calls": []}
@@ -261,7 +287,14 @@ def write_escalation(state: LoopState) -> None:
 
 # ── main loop ─────────────────────────────────────────────────────────────────
 
-def run_loop(intent: str, max_iter: int = 3, dry_run: bool = False, timeout: int = 3600) -> int:
+def run_loop(
+    intent: str,
+    max_iter: int = 3,
+    dry_run: bool = False,
+    timeout: int = 3600,
+    tool_manifest: str = "full",
+    backlog_line: str = "",
+) -> int:
     """Run the outer orchestration loop. Returns 0 on success, 1 on escalation."""
     loop_id = _loop_id()
 
@@ -279,7 +312,12 @@ def run_loop(intent: str, max_iter: int = 3, dry_run: bool = False, timeout: int
     print(f"\n[aq-loop] {loop_id}")
     print(f"[aq-loop] Intent   : {intent[:100]}")
     print(f"[aq-loop] Max iter : {max_iter}")
+    print(f"[aq-loop] Manifest : {tool_manifest}")
     print()
+
+    # Claim backlog item so parallel agents skip it
+    if backlog_line:
+        _claim_backlog_item(backlog_line)
 
     # Ground once (hints/skills are stable across iterations)
     state.phase = "GROUND"
@@ -308,7 +346,7 @@ def run_loop(intent: str, max_iter: int = 3, dry_run: bool = False, timeout: int
 
         print(f"\n[aq-loop] === Iteration {iteration}/{max_iter} ===")
         t0 = time.time()
-        result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout)
+        result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout, tool_manifest=tool_manifest)
         elapsed = round(time.time() - t0, 1)
 
         evidence = extract_evidence(result)
@@ -333,6 +371,8 @@ def run_loop(intent: str, max_iter: int = 3, dry_run: bool = False, timeout: int
             append_pulse(loop_id, iteration, "COMPLETE", "loop finished")
             update_resume(intent, "COMPLETE", "completed", loop_id)
             archive_state(state)
+            if backlog_line:
+                _release_backlog_item(backlog_line, success=True)
             print(f"\n[aq-loop] Loop completed in {iteration} iteration(s).")
             return 0
 
@@ -345,6 +385,8 @@ def run_loop(intent: str, max_iter: int = 3, dry_run: bool = False, timeout: int
     append_pulse(loop_id, max_iter, "ESCALATED", "max iterations reached")
     update_resume(intent, "ESCALATED", "escalated", loop_id)
     write_escalation(state)
+    if backlog_line:
+        _release_backlog_item(backlog_line, success=False)  # restore [OPEN]
     print(f"\n[aq-loop] Escalated after {max_iter} iterations. See issues-backlog.md.")
     return 1
 
@@ -370,6 +412,8 @@ def main() -> int:
                         help="List [OPEN] items from issues-backlog.md and exit")
     parser.add_argument("--timeout", type=int, default=3600,
                         help="Per-iteration timeout in seconds (default: 3600)")
+    parser.add_argument("--tool-manifest", choices=["full", "self-improvement"], default=None,
+                        help="Tool set passed to aq-agent-loop (auto: self-improvement for backlog, full for --intent)")
 
     args = parser.parse_args()
 
@@ -385,14 +429,19 @@ def main() -> int:
         list_open()
         return 0
 
+    backlog_line = ""
     if args.from_backlog:
         intent, lineno = pop_from_backlog()
         if intent is None:
             print("[aq-loop] No [OPEN] items in issues-backlog.md")
             return 1
+        backlog_line = intent  # track for claim/release
         print(f"[aq-loop] Popped from backlog (line {lineno}): {intent[:100]}")
+        # Default to self-improvement manifest for backlog tasks unless overridden
+        manifest = args.tool_manifest or "self-improvement"
     elif args.intent:
         intent = args.intent
+        manifest = args.tool_manifest or "full"
     else:
         parser.print_help()
         return 1
@@ -402,6 +451,8 @@ def main() -> int:
         max_iter=args.max_iter,
         dry_run=args.dry_run,
         timeout=args.timeout,
+        tool_manifest=manifest,
+        backlog_line=backlog_line,
     )
 
 
