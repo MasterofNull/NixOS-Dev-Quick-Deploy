@@ -26,6 +26,7 @@ import argparse
 import json
 import math
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -575,10 +576,11 @@ class RalphRunner:
 # dynamic computation. Used for ops/debug. Default: 0 (= use dynamic formula).
 _AGENT_WALL_CLOCK_OVERRIDE = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "0"))
 
-# RUNAWAY_HARD_CAP: absolute maximum wall-clock for any agent task (3 hours).
-# Prevents true runaway agents from holding a slot indefinitely. Any task
-# exceeding this is considered a runaway and terminated.
-_RUNAWAY_HARD_CAP_SECS = 10800
+# RUNAWAY_HARD_CAP: absolute maximum wall-clock for any agent task.
+# Default supports overnight/day-long local work while still bounding abandoned
+# agents. Override for multi-day jobs with AGENT_RUNAWAY_HARD_CAP_SECS.
+_RUNAWAY_HARD_CAP_SECS = int(os.environ.get("AGENT_RUNAWAY_HARD_CAP_SECS", "172800"))
+_AGENT_NO_PROGRESS_OVERRIDE = int(os.environ.get("AGENT_NO_PROGRESS_SECS", "0"))
 
 
 def _compute_agent_wall_clock(timeout_secs: int, max_calls: int) -> int:
@@ -601,6 +603,55 @@ def _compute_agent_wall_clock(timeout_secs: int, max_calls: int) -> int:
     per_call = chunk_timeout + 1200  # worst-case prefill silence + generation
     computed = int(per_call * max_calls) + 120
     return min(computed, _RUNAWAY_HARD_CAP_SECS)
+
+
+def _compute_agent_no_progress_timeout(timeout_secs: int) -> int:
+    """Return the max silence window before an agent-loop child is reaped."""
+    if _AGENT_NO_PROGRESS_OVERRIDE > 0:
+        return _AGENT_NO_PROGRESS_OVERRIDE
+    return int(max(14400.0, timeout_secs * 8))
+
+
+def _artifact_mtime(paths: list[Path]) -> float:
+    """Return the newest mtime among existing agent artifacts."""
+    newest = 0.0
+    for path in paths:
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def _terminate_agent_process(proc: subprocess.Popen, grace_seconds: float = 10.0) -> None:
+    """Terminate the agent-loop process group, falling back to kill on timeout."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            return
+    try:
+        proc.wait(timeout=grace_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            return
+    try:
+        proc.wait(timeout=grace_seconds)
+    except Exception:
+        pass
 
 
 class AgentRunner:
@@ -642,22 +693,66 @@ class AgentRunner:
                 eta_s=None,
                 status="agent-loop-started",
             )
-            result = subprocess.run(cmd, timeout=wall_clock)
-            return result.returncode == 0
-        except subprocess.TimeoutExpired as _te:
-            # Include last-known progress state in the timeout message for debugging.
-            # The progress sidecar is written after each tool call by aq-agent-loop.
             progress_path = Path(str(output_file) + ".progress.json")
+            steps_path = Path(str(output_file) + ".steps.jsonl")
+            artifact_paths = [output_file, progress_path, steps_path]
+            start = time.monotonic()
+            last_progress_at = start
+            last_seen_mtime = _artifact_mtime(artifact_paths)
+            no_progress_timeout = _compute_agent_no_progress_timeout(config.timeout_secs)
+            proc = subprocess.Popen(cmd, start_new_session=True)
+            timeout_reason = ""
+            while True:
+                if proc.poll() is not None:
+                    return proc.returncode == 0
+                now = time.monotonic()
+                newest_mtime = _artifact_mtime(artifact_paths)
+                if newest_mtime > last_seen_mtime:
+                    last_seen_mtime = newest_mtime
+                    last_progress_at = now
+                if now - start >= wall_clock:
+                    timeout_reason = (
+                        f"Agent wall-clock timeout after {wall_clock}s "
+                        f"(dynamic: {max_calls} calls × {config.timeout_secs}s timeout)."
+                    )
+                    break
+                if now - last_progress_at >= no_progress_timeout:
+                    timeout_reason = (
+                        f"Agent no-progress timeout after {no_progress_timeout}s "
+                        f"(no output/progress/steps artifact changed)."
+                    )
+                    break
+                time.sleep(2.0)
+
+            _terminate_agent_process(proc)
             progress_snippet = ""
             try:
                 progress_snippet = f"\nLast progress: {progress_path.read_text()[:400]}"
             except Exception:
                 pass
-            output_file.write_text(
-                f"Agent wall-clock timeout after {wall_clock}s "
-                f"(dynamic: {max_calls} calls × {config.timeout_secs}s timeout)."
-                f"{progress_snippet}"
+            _write_progress(
+                progress_path,
+                tokens_out=0,
+                max_tokens=config.max_tokens,
+                elapsed_s=time.monotonic() - start,
+                tok_per_sec=0.0,
+                eta_s=None,
+                status="failed",
             )
+            output_file.write_text(f"{timeout_reason}{progress_snippet}")
+            return False
+        except Exception as exc:
+            progress_path = Path(str(output_file) + ".progress.json")
+            _write_progress(
+                progress_path,
+                tokens_out=0,
+                max_tokens=config.max_tokens,
+                elapsed_s=0.0,
+                tok_per_sec=0.0,
+                eta_s=None,
+                status="failed",
+            )
+            output_file.write_text(f"Agent runner error: {exc}")
             return False
 
 
