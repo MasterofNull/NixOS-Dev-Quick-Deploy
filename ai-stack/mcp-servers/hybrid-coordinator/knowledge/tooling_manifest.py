@@ -152,6 +152,32 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
     if any(
         k in q
         for k in (
+            "context bloat",
+            "context window",
+            "context-mode",
+            "context sandbox",
+            "context offload",
+            "large output",
+            "large logs",
+            "raw output",
+            "tool output",
+            "browser snapshot",
+            "playwright snapshot",
+            "token bloat",
+            "compact output",
+            "compaction",
+            "artifact pointer",
+        )
+    ):
+        add(
+            "context_sandbox_offload",
+            "cli://scripts/ai/aq-context-sandbox",
+            "Use local context lifecycle tools and switchboard artifact compaction to store high-payload outputs as compact summaries plus artifact pointers.",
+        )
+
+    if any(
+        k in q
+        for k in (
             "agentic",
             "autonomous",
             "delegate",
@@ -391,6 +417,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["--machine"],
         "output_focus": "Machine-readable harness metrics, service health, and dashboard/report gaps.",
     },
+    "context_sandbox_offload": {
+        "method": "CLI",
+        "mcp_tool": "",
+        "args": ["--json", "--label", "--kind", "--summary-chars", "--input-file"],
+        "output_focus": "Context-offload status, checkpoint ids, compact summaries, and artifact pointers; never raw large payloads.",
+    },
     "health": {
         "method": "GET",
         "mcp_tool": "",
@@ -529,8 +561,8 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         return [name for name in names if name in tool_names]
 
     phases = [
-        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry"])},
-        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery"])},
+        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry", "context_sandbox_offload"])},
+        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "context_sandbox_offload"])},
         {
             "id": "execute",
             "tools": pick(
@@ -541,6 +573,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                     "browser_research_fetch",
                     "curated_research_fetch",
                     "workflow_run_start",
+                    "context_sandbox_offload",
                     "ai_coordinator_delegate",
                     "loop_orchestrate",
                     "feedback",
@@ -548,7 +581,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
             ),
         },
         {"id": "validate", "tools": pick(["qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
-        {"id": "handoff", "tools": pick(["feedback", "learning_stats"])},
+        {"id": "handoff", "tools": pick(["context_sandbox_offload", "feedback", "learning_stats"])},
     ]
     return [phase for phase in phases if phase["tools"]]
 
@@ -579,6 +612,7 @@ def build_tooling_manifest(
         "loop_orchestrate": 95,
         "loop_status": 90,
         "workflow_run_start": 85,
+        "context_sandbox_offload": 82,
         "qa_check": 80,
         "harness_eval": 75,
     }

@@ -111,6 +111,24 @@ def main() -> int:
     observability_tool_names = [tool["name"] for tool in observability_tools]
     assert_true("observability_report" in observability_tool_names, "observability query missing observability_report")
 
+    context_query = "compact large Playwright snapshot and raw tool output with context-mode style artifact pointers"
+    context_tools = workflow_tool_catalog(context_query)
+    context_tool_names = [tool["name"] for tool in context_tools]
+    assert_true("context_sandbox_offload" in context_tool_names, "context-heavy query missing context_sandbox_offload")
+    context_manifest = build_tooling_manifest(context_query, context_tools)
+    assert_true(
+        any(tool["name"] == "context_sandbox_offload" for tool in context_manifest["tools"]),
+        "manifest omits context_sandbox_offload",
+    )
+    assert_true(
+        any(phase["id"] == "plan" and "context_sandbox_offload" in phase["tools"] for phase in context_manifest["phases"]),
+        "plan phase does not expose context_sandbox_offload",
+    )
+    assert_true(
+        any(phase["id"] == "handoff" and "context_sandbox_offload" in phase["tools"] for phase in context_manifest["phases"]),
+        "handoff phase does not expose context_sandbox_offload",
+    )
+
     print("PASS: tooling manifest exposes Ralph loop orchestration only when agentic workflow intent is present")
     return 0
 

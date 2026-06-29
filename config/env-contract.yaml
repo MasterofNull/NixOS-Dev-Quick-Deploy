@@ -266,7 +266,7 @@ variables:
     aliases: []
     default: "/home/$USER/.local/share/nixos-ai-stack/local-agents/switchboard-artifacts"
     layer: nix
-    consumers: [switchboard]
+    consumers: [switchboard, aq-context-sandbox]
     description: "Writable directory where switchboard stores raw local tool output artifacts"
 
   - canonical: SWB_TOOL_RESULT_DEDUPE_ENABLED

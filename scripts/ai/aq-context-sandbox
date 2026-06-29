@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Store high-payload context as an artifact and return a compact JSON envelope."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ARTIFACT_DIR = ROOT / ".agents" / "context-artifacts"
+
+
+def _artifact_dir() -> Path:
+    raw = os.environ.get("SWB_CONTEXT_ARTIFACT_DIR", "").strip()
+    if raw:
+        return Path(os.path.expandvars(os.path.expanduser(raw)))
+    return DEFAULT_ARTIFACT_DIR
+
+
+def _read_input(args: argparse.Namespace) -> tuple[str, str]:
+    if args.input_file:
+        path = Path(args.input_file)
+        return path.read_text(encoding="utf-8", errors="replace"), str(path)
+    return sys.stdin.read(), "stdin"
+
+
+def _summarize(text: str, limit: int) -> str:
+    compact = " ".join(text.replace("\x00", "").split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _safe_label(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in value.lower())
+    cleaned = "-".join(part for part in cleaned.split("-") if part)
+    return (cleaned or "context")[:64]
+
+
+def sandbox(args: argparse.Namespace) -> dict:
+    text, source = _read_input(args)
+    encoded = text.encode("utf-8", errors="replace")
+    digest = hashlib.sha256(encoded).hexdigest()
+    artifact_dir = _artifact_dir()
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    suffix = ".txt" if args.kind == "text" else f".{args.kind}.txt"
+    artifact_path = artifact_dir / f"{_safe_label(args.label)}-{digest[:16]}{suffix}"
+    artifact_path.write_bytes(encoded)
+
+    return {
+        "status": "stored",
+        "kind": args.kind,
+        "label": args.label,
+        "source": source,
+        "artifact_path": str(artifact_path),
+        "sha256": digest,
+        "bytes": len(encoded),
+        "chars": len(text),
+        "summary_chars": args.summary_chars,
+        "summary": _summarize(text, args.summary_chars),
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "usage": "Pass artifact_path and summary forward; do not paste the raw payload into model context.",
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input-file", help="Read payload from file instead of stdin")
+    parser.add_argument("--label", default="context-output", help="Short artifact label")
+    parser.add_argument("--kind", default="text", choices=["text", "log", "html", "json", "snapshot"])
+    parser.add_argument("--summary-chars", type=int, default=900)
+    parser.add_argument("--json", action="store_true", help="Emit JSON")
+    args = parser.parse_args()
+
+    payload = sandbox(args)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"stored {payload['bytes']} bytes at {payload['artifact_path']}")
+        print(payload["summary"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
