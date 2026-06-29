@@ -1430,6 +1430,22 @@
       "tier": "behavioral",
       "timeout_seconds": 20,
       "enabled": true
+    },
+    {
+      "id": "suggested-ai-repo-candidates",
+      "description": "Suggested external AI repo candidates stay deny-by-default and include parity, delegation, and security gates",
+      "trigger_paths": [
+        "config/suggested-ai-repo-candidates.json",
+        "config/schemas/suggested-ai-repo-candidates.schema.json",
+        "scripts/testing/test-suggested-ai-repo-candidates.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-suggested-ai-repo-candidates.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 20,
+      "enabled": true
     }
   ]
 }
