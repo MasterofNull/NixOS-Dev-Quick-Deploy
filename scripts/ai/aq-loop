@@ -253,6 +253,7 @@ def run_inner_loop(
     iteration: int,
     timeout: int = 3600,
     tool_manifest: str = "full",
+    task_type: str | None = None,
 ) -> dict:
     """Invoke aq-agent-loop and return its JSON result summary."""
     out_fd, out_path = tempfile.mkstemp(
@@ -267,10 +268,12 @@ def run_inner_loop(
         "--output", out_path,
         "--tool-manifest", tool_manifest,
     ]
+    if task_type:
+        cmd += ["--task-type", task_type]
     env = os.environ.copy()
     env["REPO_ROOT"] = str(_REPO_ROOT)
 
-    print(f"[aq-loop] iter {iteration} — launching aq-agent-loop (manifest={tool_manifest}) ...")
+    print(f"[aq-loop] iter {iteration} — launching aq-agent-loop (manifest={tool_manifest} task_type={task_type or 'agent'}) ...")
     rc = subprocess.run(cmd, env=env, timeout=timeout)
     if rc.returncode not in (0, 1):
         return {"success": False, "error": f"aq-agent-loop exit {rc.returncode}", "tool_calls": []}
@@ -318,6 +321,7 @@ def run_loop(
     timeout: int = 3600,
     tool_manifest: str = "full",
     backlog_line: str = "",
+    task_type: str | None = None,
 ) -> int:
     """Run the outer orchestration loop. Returns 0 on success, 1 on escalation."""
     loop_id = _loop_id()
@@ -376,7 +380,7 @@ def run_loop(
 
         print(f"\n[aq-loop] === Iteration {iteration}/{max_iter} ===")
         t0 = time.time()
-        result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout, tool_manifest=tool_manifest)
+        result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout, tool_manifest=tool_manifest, task_type=task_type)
         elapsed = round(time.time() - t0, 1)
 
         evidence = extract_evidence(result)
@@ -444,6 +448,15 @@ def main() -> int:
                         help="Per-iteration timeout in seconds (default: 3600)")
     parser.add_argument("--tool-manifest", choices=["full", "self-improvement"], default=None,
                         help="Tool set passed to aq-agent-loop (auto: self-improvement for backlog, full for --intent)")
+    parser.add_argument(
+        "--task-type",
+        default=None,
+        choices=["structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning"],
+        help=(
+            "LLM task profile passed to aq-agent-loop. Default: 'agent' (implementation tasks). "
+            "Use 'deep_reasoning' for research/planning tasks to enable long-horizon read guard."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -483,6 +496,7 @@ def main() -> int:
         timeout=args.timeout,
         tool_manifest=manifest,
         backlog_line=backlog_line,
+        task_type=args.task_type,
     )
 
 
