@@ -1,5 +1,10 @@
 ## OPEN ISSUES
 
+[OPEN 2026-06-29] local-agent-timeout-watchdog-not-reaping-agent-loop — `local-20260628-204716-mr8jql` remains running after 36+ minutes even though the parent dispatch command included `--timeout 300`; child `aq-agent-loop` is idle in `do_epoll_wait` and no output/progress file exists for this pre-fix task.
+  Severity: medium
+  Action: Add or verify parent/child timeout enforcement for agent-mode delegation, then safely retire the stale process after confirming no output can be recovered.
+  File: scripts/ai/lib/dispatch.py; scripts/ai/aq-agent-loop
+
 [DONE 2026-06-29] local-agent-agent-mode-output-blind-while-running — `delegate-to-local --check local-20260628-204716-mr8jql` reported the task might still be running because the registered output file did not exist while `aq-agent-loop` was active.
   Root cause: `AgentRunner` passed `--output` to the child but did not create an initial output file or progress sidecar before `subprocess.run`, so long agent-mode tasks had no visible artifact until completion.
   Fix: `AgentRunner` now writes an initial running marker and `.progress.json` before launching `aq-agent-loop`; regression test covers artifact creation before subprocess execution.

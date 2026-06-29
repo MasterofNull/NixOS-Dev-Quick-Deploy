@@ -29,6 +29,7 @@ External ingestion gate: `capability-intake`
 | understand-anything | code-intelligence | repo-skill | enabled | local-governance / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything ensure` |
 | aidb-rag-stores | data-store | service-dataset | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | aq-eval-harness | evaluation-redteam | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-eval.py` |
+| aq-inference-bench | local-inference | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-inference-bench.py` |
 | dashboard-observability | observability | feature-surface | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | osint-research-store | osint | dataset-workflow | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-osint-research-ingest.py` |
 | github-mcp-readonly | repository-intelligence | external-mcp | blocked-auth-runtime | needs-review / high | codex, claude | `python3 scripts/testing/test-capability-intake.py` |
@@ -129,6 +130,19 @@ Repo-local static eval and red-team suite wrapper for capability, agent-safety, 
 - Data stores: `model-evaluations`, `eval_results`
 - Parity targets: Promptfoo, DeepEval, Ragas, Garak, agent red-team suites
 - Security gate: `python3 scripts/testing/test-aq-eval.py`
+
+### aq-inference-bench
+
+Local-only benchmark matrix for comparing enabled and planned inference backends across latency, throughput, strict JSON reliability, thermal, and memory signals.
+
+- Name: AQ Inference Benchmark Matrix
+- Owner: mlops-engineering
+- Maturity: integrated
+- State: enabled
+- Primary refs: `scripts/ai/aq-inference-bench`, `config/aq-inference-benchmarks.json`, `scripts/testing/test-aq-inference-bench.py`
+- Data stores: `model-evaluations`, `performance-metrics`
+- Parity targets: llama.cpp, vLLM, SGLang, Ollama, MLX
+- Security gate: `python3 scripts/testing/test-aq-inference-bench.py`
 
 ### dashboard-observability
 

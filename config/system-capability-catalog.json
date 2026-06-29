@@ -49,6 +49,26 @@
       "data_stores": ["model-evaluations", "eval_results"]
     },
     {
+      "id": "aq-inference-bench",
+      "name": "AQ Inference Benchmark Matrix",
+      "category": "local-inference",
+      "kind": "repo-cli",
+      "state": "enabled",
+      "maturity": "integrated",
+      "owner": "mlops-engineering",
+      "summary": "Local-only benchmark matrix for comparing enabled and planned inference backends across latency, throughput, strict JSON reliability, thermal, and memory signals.",
+      "agent_access": ["codex", "claude", "gemini", "local-agent"],
+      "primary_refs": ["scripts/ai/aq-inference-bench", "config/aq-inference-benchmarks.json", "scripts/testing/test-aq-inference-bench.py"],
+      "security": {
+        "admission": "local-governance",
+        "risk": "medium",
+        "required_gate": "python3 scripts/testing/test-aq-inference-bench.py"
+      },
+      "validation": ["python3 scripts/testing/test-aq-inference-bench.py"],
+      "parity_targets": ["llama.cpp", "vLLM", "SGLang", "Ollama", "MLX"],
+      "data_stores": ["model-evaluations", "performance-metrics"]
+    },
+    {
       "id": "capability-intake",
       "name": "Capability Intake",
       "category": "security-governance",

@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""Local-only inference benchmark matrix for harness agents."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_BENCH = ROOT / "config" / "aq-inference-benchmarks.json"
+REQUIRED_OBSERVABILITY = {
+    "ttft_ms",
+    "tokens_per_sec",
+    "context_tokens",
+    "json_valid_rate",
+    "thermal_tier",
+    "memory_pressure",
+}
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def localhost_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}
+
+
+def validate_config(payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    policy = payload.get("policy", {})
+    if policy.get("source_of_truth") != "config/aq-inference-benchmarks.json":
+        errors.append("policy.source_of_truth must point at config/aq-inference-benchmarks.json")
+    if policy.get("default_mode") != "dry-run":
+        errors.append("policy.default_mode must be dry-run")
+    if policy.get("localhost_only") is not True:
+        errors.append("policy.localhost_only must be true")
+    if policy.get("external_runtimes_enabled") is not False:
+        errors.append("policy.external_runtimes_enabled must be false")
+    if policy.get("activation_gate") != "capability-intake":
+        errors.append("policy.activation_gate must be capability-intake")
+
+    ids: set[str] = set()
+    for index, backend in enumerate(payload.get("backends", [])):
+        prefix = f"backends[{index}]"
+        backend_id = str(backend.get("id", ""))
+        if not backend_id:
+            errors.append(f"{prefix}.id is required")
+            continue
+        if backend_id in ids:
+            errors.append(f"duplicate backend id: {backend_id}")
+        ids.add(backend_id)
+        if not localhost_url(str(backend.get("base_url", ""))):
+            errors.append(f"{backend_id}.base_url must be http localhost")
+        if backend.get("status") not in {"enabled", "planned"}:
+            errors.append(f"{backend_id}.status must be enabled or planned")
+        if backend.get("status") == "enabled":
+            for field in ("health_path", "chat_path"):
+                if not backend.get(field):
+                    errors.append(f"{backend_id}.{field} is required for enabled backends")
+            missing_metrics = REQUIRED_OBSERVABILITY - set(backend.get("observability", []))
+            if missing_metrics:
+                errors.append(f"{backend_id}.observability missing: {', '.join(sorted(missing_metrics))}")
+
+    if not payload.get("cases"):
+        errors.append("cases must be non-empty")
+    for case in payload.get("cases", []):
+        if not case.get("id") or not case.get("prompt") or not case.get("validation"):
+            errors.append("each case must include id, prompt, and validation")
+        if int(case.get("max_tokens", 0)) <= 0:
+            errors.append(f"{case.get('id', '<unknown>')}.max_tokens must be positive")
+    return errors
+
+
+def emit(payload: dict[str, Any], as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    status = payload.get("status", "ok")
+    print(f"{status.upper()}: {payload.get('message', 'aq-inference-bench')}")
+
+
+def request_json(method: str, url: str, timeout: float, payload: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]]:
+    data = None
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        body = response.read().decode("utf-8", errors="replace")
+        return response.status, json.loads(body) if body else {}
+
+
+def extract_text(body: dict[str, Any]) -> str:
+    choices = body.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            message = first.get("message")
+            if isinstance(message, dict):
+                return str(message.get("content", ""))
+            return str(first.get("text", ""))
+    return str(body.get("content", ""))
+
+
+def completion_tokens(body: dict[str, Any], text: str) -> int:
+    usage = body.get("usage")
+    if isinstance(usage, dict):
+        value = usage.get("completion_tokens") or usage.get("output_tokens")
+        if isinstance(value, int):
+            return value
+    return max(1, len(text.split()))
+
+
+def validate_output(text: str, validation: str) -> bool:
+    stripped = text.strip()
+    if validation.startswith("exact:"):
+        return stripped == validation.split(":", 1)[1]
+    if validation.startswith("json_object_keys:"):
+        required = {item.strip() for item in validation.split(":", 1)[1].split(",") if item.strip()}
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(parsed, dict) and required.issubset(parsed)
+    if validation == "non_empty":
+        return bool(stripped)
+    return False
+
+
+def memory_pressure() -> str:
+    meminfo = Path("/proc/meminfo")
+    if not meminfo.exists():
+        return "unknown"
+    values: dict[str, int] = {}
+    for line in meminfo.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, _, rest = line.partition(":")
+        token = rest.strip().split(" ", 1)[0]
+        if token.isdigit():
+            values[key] = int(token)
+    total = values.get("MemTotal", 0)
+    available = values.get("MemAvailable", 0)
+    if total <= 0:
+        return "unknown"
+    used_ratio = 1.0 - (available / total)
+    if used_ratio >= 0.9:
+        return "critical"
+    if used_ratio >= 0.75:
+        return "high"
+    if used_ratio >= 0.55:
+        return "medium"
+    return "low"
+
+
+def thermal_tier() -> str:
+    zones = Path("/sys/class/thermal")
+    if not zones.exists():
+        return "unknown"
+    max_c = 0.0
+    for path in zones.glob("thermal_zone*/temp"):
+        try:
+            max_c = max(max_c, int(path.read_text(encoding="utf-8").strip()) / 1000.0)
+        except (OSError, ValueError):
+            continue
+    if max_c <= 0:
+        return "unknown"
+    if max_c >= 90:
+        return "critical"
+    if max_c >= 80:
+        return "high"
+    if max_c >= 65:
+        return "medium"
+    return "low"
+
+
+def backend_by_id(payload: dict[str, Any], backend_id: str) -> dict[str, Any] | None:
+    for backend in payload.get("backends", []):
+        if backend.get("id") == backend_id:
+            return backend
+    return None
+
+
+def chat_payload(case: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "model": "local",
+        "messages": [{"role": "user", "content": case["prompt"]}],
+        "temperature": 0,
+        "max_tokens": int(case["max_tokens"]),
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+
+
+def run_backend(backend: dict[str, Any], cases: list[dict[str, Any]], timeout: float, execute: bool) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "backend": backend["id"],
+        "runtime": backend["runtime"],
+        "status": "dry-run",
+        "execute": execute,
+        "base_url": backend["base_url"],
+        "case_results": [],
+        "metrics": {
+            "ttft_ms": None,
+            "tokens_per_sec": None,
+            "context_tokens": None,
+            "json_valid_rate": None,
+            "thermal_tier": "unknown",
+            "memory_pressure": "unknown",
+        },
+    }
+    if not execute:
+        result["message"] = "dry-run only; pass --execute to call the localhost backend"
+        return result
+    if backend.get("status") != "enabled":
+        result["status"] = "blocked"
+        result["message"] = "backend is not enabled"
+        return result
+    if not localhost_url(backend["base_url"]):
+        result["status"] = "blocked"
+        result["message"] = "backend base_url is not localhost"
+        return result
+
+    base = backend["base_url"].rstrip("/")
+    try:
+        health_status, _ = request_json("GET", base + backend["health_path"], timeout)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        result["status"] = "fail"
+        result["message"] = f"health check failed: {exc}"
+        return result
+    if health_status >= 400:
+        result["status"] = "fail"
+        result["message"] = f"health check returned HTTP {health_status}"
+        return result
+
+    total_ms = 0.0
+    total_tokens = 0
+    valid_count = 0
+    for case in cases:
+        started = time.perf_counter()
+        try:
+            _, body = request_json("POST", base + backend["chat_path"], timeout, chat_payload(case))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            result["case_results"].append({"case": case["id"], "status": "fail", "message": str(exc)})
+            continue
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        text = extract_text(body)
+        tokens = completion_tokens(body, text)
+        valid = validate_output(text, case["validation"])
+        total_ms += elapsed_ms
+        total_tokens += tokens
+        valid_count += 1 if valid else 0
+        result["case_results"].append(
+            {
+                "case": case["id"],
+                "status": "pass" if valid else "fail",
+                "elapsed_ms": round(elapsed_ms, 2),
+                "completion_tokens": tokens,
+                "validation": case["validation"],
+            }
+        )
+
+    case_count = len(cases)
+    elapsed_seconds = total_ms / 1000.0 if total_ms > 0 else 0.0
+    result["status"] = "pass" if case_count and valid_count == case_count else "fail"
+    result["metrics"] = {
+        "ttft_ms": round(total_ms / case_count, 2) if case_count else None,
+        "tokens_per_sec": round(total_tokens / elapsed_seconds, 2) if elapsed_seconds else None,
+        "context_tokens": sum(len(case["prompt"].split()) for case in cases),
+        "json_valid_rate": round(valid_count / case_count, 3) if case_count else None,
+        "thermal_tier": thermal_tier(),
+        "memory_pressure": memory_pressure(),
+    }
+    return result
+
+
+def command_validate(payload: dict[str, Any], as_json: bool) -> int:
+    errors = validate_config(payload)
+    output = {
+        "status": "pass" if not errors else "fail",
+        "message": "inference benchmark config valid" if not errors else "inference benchmark config invalid",
+        "backend_count": len(payload.get("backends", [])),
+        "case_count": len(payload.get("cases", [])),
+        "errors": errors,
+    }
+    emit(output, as_json)
+    return 0 if not errors else 1
+
+
+def command_list(payload: dict[str, Any], as_json: bool) -> int:
+    output = {
+        "status": "pass",
+        "message": "inference benchmark backends",
+        "backends": [
+            {
+                "id": backend["id"],
+                "runtime": backend["runtime"],
+                "status": backend["status"],
+                "service": backend["service"],
+                "base_url": backend["base_url"],
+            }
+            for backend in payload.get("backends", [])
+        ],
+        "cases": [{"id": case["id"], "validation": case["validation"]} for case in payload.get("cases", [])],
+    }
+    emit(output, as_json)
+    return 0
+
+
+def command_run(payload: dict[str, Any], args: argparse.Namespace) -> int:
+    errors = validate_config(payload)
+    if errors:
+        emit({"status": "fail", "message": "inference benchmark config invalid", "errors": errors}, args.as_json)
+        return 1
+    backends = payload.get("backends", [])
+    if args.backend:
+        selected = backend_by_id(payload, args.backend)
+        if selected is None:
+            emit({"status": "fail", "message": f"unknown backend: {args.backend}"}, args.as_json)
+            return 1
+        backends = [selected]
+    else:
+        backends = [backend for backend in backends if backend.get("status") == "enabled"]
+    results = [run_backend(backend, payload["cases"], args.timeout_seconds, args.execute) for backend in backends]
+    status = "pass" if all(item["status"] in {"pass", "dry-run"} for item in results) else "fail"
+    emit(
+        {
+            "status": status,
+            "message": "inference benchmark run complete",
+            "mode": "execute" if args.execute else "dry-run",
+            "results": results,
+        },
+        args.as_json,
+    )
+    return 0 if status == "pass" else 1
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bench-file", default=str(DEFAULT_BENCH), help="Benchmark matrix JSON path")
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit JSON")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("validate")
+    subparsers.add_parser("list")
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--backend", help="Backend id to run")
+    run_parser.add_argument("--execute", action="store_true", help="Call the enabled localhost backend")
+    run_parser.add_argument("--timeout-seconds", type=float, default=20.0)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    bench_path = Path(args.bench_file)
+    if not bench_path.is_absolute():
+        bench_path = ROOT / bench_path
+    payload = load_json(bench_path)
+    if args.command == "validate":
+        return command_validate(payload, args.as_json)
+    if args.command == "list":
+        return command_list(payload, args.as_json)
+    if args.command == "run":
+        return command_run(payload, args)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

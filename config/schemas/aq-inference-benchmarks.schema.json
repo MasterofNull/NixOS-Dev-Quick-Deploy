@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AQ Inference Benchmarks",
+  "type": "object",
+  "required": ["version", "owner", "policy", "backends", "cases"],
+  "properties": {
+    "version": { "type": "string" },
+    "owner": { "type": "string" },
+    "policy": {
+      "type": "object",
+      "required": ["source_of_truth", "default_mode", "localhost_only", "external_runtimes_enabled", "activation_gate"],
+      "properties": {
+        "source_of_truth": { "type": "string" },
+        "default_mode": { "type": "string", "enum": ["dry-run"] },
+        "localhost_only": { "type": "boolean", "const": true },
+        "external_runtimes_enabled": { "type": "boolean", "const": false },
+        "activation_gate": { "type": "string", "const": "capability-intake" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "backends": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "runtime", "status", "base_url", "chat_path", "health_path", "metrics_path", "service", "authority", "observability"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "runtime": { "type": "string" },
+          "status": { "type": "string", "enum": ["enabled", "planned"] },
+          "base_url": { "type": "string" },
+          "chat_path": { "type": "string" },
+          "health_path": { "type": "string" },
+          "metrics_path": { "type": "string" },
+          "service": { "type": "string" },
+          "authority": { "type": "array", "items": { "type": "string" } },
+          "observability": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "prompt", "max_tokens", "validation"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "prompt": { "type": "string" },
+          "max_tokens": { "type": "integer", "minimum": 1, "maximum": 4096 },
+          "validation": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}
