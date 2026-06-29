@@ -129,6 +129,20 @@ def main() -> int:
         "handoff phase does not expose context_sandbox_offload",
     )
 
+    collab_query = "enable flat model-team collaboration with cross-review and consensus PRD validation"
+    collab_tools = workflow_tool_catalog(collab_query)
+    collab_tool_names = [tool["name"] for tool in collab_tools]
+    assert_true("flat_prd_gate" in collab_tool_names, "flat collaboration query missing flat_prd_gate")
+    collab_manifest = build_tooling_manifest(collab_query, collab_tools)
+    assert_true(
+        any(tool["name"] == "flat_prd_gate" for tool in collab_manifest["tools"]),
+        "manifest omits flat_prd_gate",
+    )
+    assert_true(
+        any(phase["id"] == "validate" and "flat_prd_gate" in phase["tools"] for phase in collab_manifest["phases"]),
+        "validate phase does not expose flat_prd_gate",
+    )
+
     print("PASS: tooling manifest exposes Ralph loop orchestration only when agentic workflow intent is present")
     return 0
 

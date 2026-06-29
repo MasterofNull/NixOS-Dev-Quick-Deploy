@@ -39,6 +39,8 @@ def test_repo_gate_installed() -> None:
     assert_true(proc.returncode == 0, proc.stdout + proc.stderr)
     payload = json.loads(proc.stdout)
     assert_true(payload["ok"] is True, "repo-level flat PRD gate should pass")
+    assert_true(payload["feature_flags"]["multi_agent_collaboration"] is True, "local-agent collaboration flag should be enabled")
+    assert_true(payload["feature_flags"]["collaborative_workflows"] is True, "workflow collaboration flag should be enabled")
     assert_true("proposal_candidate" in payload["modes_supported"], "mode detector should expose proposal_candidate")
     assert_true("consensus_synthesis" in payload["modes_supported"], "mode detector should expose consensus_synthesis")
 
@@ -48,8 +50,8 @@ def test_topic_gate_blocks_missing_consensus() -> None:
         repo = Path(tmp)
         write(repo / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md", (ROOT / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md").read_text(encoding="utf-8"))
         write(repo / ".agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md")
-        write(repo / "config/local-agent-config.yaml", "multi_agent_collaboration: false\n")
-        write(repo / "config/workflow-automation.yaml", "collaborative_workflows: false\n")
+        write(repo / "config/local-agent-config.yaml", "multi_agent_collaboration: true\n")
+        write(repo / "config/workflow-automation.yaml", "collaborative_workflows: true\n")
         write(repo / ".agents/plans/model-proposals/tokenomics/codex-proposal.md")
 
         proc = run_gate("--topic", "tokenomics", repo_root=repo)
@@ -63,8 +65,8 @@ def test_topic_gate_accepts_consensus_package() -> None:
         repo = Path(tmp)
         write(repo / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md", (ROOT / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md").read_text(encoding="utf-8"))
         write(repo / ".agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md")
-        write(repo / "config/local-agent-config.yaml", "multi_agent_collaboration: false\n")
-        write(repo / "config/workflow-automation.yaml", "collaborative_workflows: false\n")
+        write(repo / "config/local-agent-config.yaml", "multi_agent_collaboration: true\n")
+        write(repo / "config/workflow-automation.yaml", "collaborative_workflows: true\n")
         write(repo / ".agents/plans/model-proposals/tokenomics/codex-proposal.md")
         write(repo / ".agents/plans/model-proposals/tokenomics/local-proposal.md")
         write(repo / ".agents/plans/model-proposals/tokenomics/reviews/codex-on-local.md")
@@ -84,10 +86,48 @@ def test_topic_gate_accepts_consensus_package() -> None:
         )
 
 
+def test_repo_gate_blocks_disabled_rollout_flags() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md", (ROOT / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md").read_text(encoding="utf-8"))
+        write(repo / ".agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md")
+        write(repo / "config/local-agent-config.yaml", "multi_agent_collaboration: false\n")
+        write(repo / "config/workflow-automation.yaml", "collaborative_workflows: false\n")
+
+        proc = run_gate(repo_root=repo)
+        assert_true(proc.returncode == 1, "disabled rollout flags must fail once flat collaboration is enabled")
+        payload = json.loads(proc.stdout)
+        assert_true(any("multi_agent_collaboration must be true" in item for item in payload["failures"]), "local flag failure expected")
+        assert_true(any("collaborative_workflows must be true" in item for item in payload["failures"]), "workflow flag failure expected")
+
+
+def test_topic_gate_blocks_self_review() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md", (ROOT / ".agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md").read_text(encoding="utf-8"))
+        write(repo / ".agents/prompts/GEMINI_WORKFLOW_REMEDIATION_HANDOFF.md")
+        write(repo / "config/local-agent-config.yaml", "multi_agent_collaboration: true\n")
+        write(repo / "config/workflow-automation.yaml", "collaborative_workflows: true\n")
+        write(repo / ".agents/plans/model-proposals/tokenomics/codex-proposal.md")
+        write(repo / ".agents/plans/model-proposals/tokenomics/local-proposal.md")
+        write(repo / ".agents/plans/model-proposals/tokenomics/reviews/codex-on-codex.md")
+        write(repo / ".agents/plans/model-proposals/tokenomics/reviews/local-on-codex.md")
+        write(repo / ".agents/plans/tokenomics-CONSENSUS-PRD.md")
+        write(repo / ".agents/plans/tokenomics-SLICE-BACKLOG.md")
+        write(repo / ".agents/plans/tokenomics-DECISION-LOG.md")
+
+        proc = run_gate("--topic", "tokenomics", repo_root=repo)
+        assert_true(proc.returncode == 1, "self-review must fail")
+        payload = json.loads(proc.stdout)
+        assert_true(any("self-review is not allowed" in item for item in payload["failures"]), "self-review failure expected")
+
+
 def main() -> int:
     test_repo_gate_installed()
     test_topic_gate_blocks_missing_consensus()
     test_topic_gate_accepts_consensus_package()
+    test_repo_gate_blocks_disabled_rollout_flags()
+    test_topic_gate_blocks_self_review()
     print("PASS: flat PRD gate enforces proposal/review/consensus artifacts")
     return 0
 

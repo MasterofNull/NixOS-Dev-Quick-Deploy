@@ -299,7 +299,7 @@ features:
     llm_powered_generation: false
     distributed_execution: false
     workflow_versioning: false
-    collaborative_workflows: false
+    collaborative_workflows: true
 
   # Beta features
   beta:

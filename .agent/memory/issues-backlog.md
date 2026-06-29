@@ -574,9 +574,9 @@
 
 ## IN-FLIGHT
 
-[IN-FLIGHT] flat-collaboration-disabled — desired flat model-team workflow is documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still has `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still has `collaborative_workflows: false`, while active Gemini/direct paths can write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.
+[DONE] flat-collaboration-disabled — desired flat model-team workflow was documented but not enabled/enforced — Root cause: `config/local-agent-config.yaml` still had `multi_agent_collaboration: false` and `config/workflow-automation.yaml` still had `collaborative_workflows: false`, while active Gemini/direct paths could write PRD/policy artifacts without proposal, cross-review, consensus, validation-state, or reviewer separation gates.
   Severity: high
-  Action: Added first-pass `aq-flat-prd-gate` and aq-qa 0.10.6 to require at least two model proposals, two cross-reviews, and consensus PRD/slice/decision artifacts before a topic can be treated as integrated consensus. Broad collaboration flags remain disabled until direct delegation artifacts and validation evidence gates are reliable.
+  Action: Enabled both collaboration rollout flags, upgraded `aq-flat-prd-gate` so disabled rollout flags fail, blocked same-author cross-review artifacts, and exposed `flat_prd_gate` through tooling-manifest auto-selection for flat model-team / consensus PRD prompts. Validation: `python3 scripts/testing/test-flat-prd-gate.py`, `python3 scripts/testing/test-tooling-manifest.py`, `scripts/ai/aq-flat-prd-gate --machine`, `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine`.
   File: scripts/ai/aq-flat-prd-gate; scripts/testing/test-flat-prd-gate.py; config/local-agent-config.yaml; config/workflow-automation.yaml; .agents/prompts/FLAT_MODEL_TEAM_PRD_PROTOCOL.md
 
 ## RESOLVED / DONE

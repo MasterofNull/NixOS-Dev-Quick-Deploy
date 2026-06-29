@@ -288,7 +288,7 @@ features:
   fine_tuning: false  # Not yet implemented
   ab_testing: false  # Not yet implemented
   web_browsing: false  # Not yet implemented
-  multi_agent_collaboration: false  # Future
+  multi_agent_collaboration: true  # Gate-backed rollout via aq-flat-prd-gate
 
 # Alerts Integration
 alerts:

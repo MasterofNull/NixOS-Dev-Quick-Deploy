@@ -36,6 +36,16 @@ def _has_yaml_flag(path: Path, key: str, expected: str) -> bool:
     return bool(pattern.search(_read(path)))
 
 
+def _yaml_bool(path: Path, key: str) -> bool | None:
+    if not path.exists():
+        return None
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*:\s*(true|false)\s*(?:#.*)?$", re.IGNORECASE | re.MULTILINE)
+    match = pattern.search(_read(path))
+    if not match:
+        return None
+    return match.group(1).lower() == "true"
+
+
 def detect_mode(path: Path) -> str:
     """Classify a collaboration artifact path for governance checks."""
     parts = path.as_posix().split("/")
@@ -79,6 +89,8 @@ def validate(repo: Path, topic: str | None = None) -> dict[str, Any]:
         "Consensus Merge",
         "Slice Delegation",
         "At least two independent model-team proposals",
+        "No model reviews its own implementation slice",
+        "All model outputs are traceable",
     ]
     for term in required_terms:
         if term not in protocol_text:
@@ -86,10 +98,12 @@ def validate(repo: Path, topic: str | None = None) -> dict[str, Any]:
     if not gemini.exists():
         failures.append("Gemini remediation companion missing")
 
-    if not _has_yaml_flag(local_cfg, "multi_agent_collaboration", "false"):
-        warnings.append("multi_agent_collaboration is not explicitly false; broad mode requires gate-backed rollout")
-    if not _has_yaml_flag(workflow_cfg, "collaborative_workflows", "false"):
-        warnings.append("collaborative_workflows is not explicitly false; broad mode requires gate-backed rollout")
+    local_enabled = _yaml_bool(local_cfg, "multi_agent_collaboration")
+    workflow_enabled = _yaml_bool(workflow_cfg, "collaborative_workflows")
+    if local_enabled is not True:
+        failures.append("multi_agent_collaboration must be true for gate-backed flat collaboration rollout")
+    if workflow_enabled is not True:
+        failures.append("collaborative_workflows must be true for gate-backed flat collaboration rollout")
 
     topic_summary: dict[str, Any] | None = None
     if topic:
@@ -104,6 +118,10 @@ def validate(repo: Path, topic: str | None = None) -> dict[str, Any]:
             failures.append(f"topic {topic}: expected >=2 independent proposals, got {len(proposals)}")
         if len(reviews) < 2:
             failures.append(f"topic {topic}: expected >=2 cross-reviews, got {len(reviews)}")
+        for review in reviews:
+            match = re.match(r"(?P<reviewer>[^/]+)-on-(?P<author>[^/]+)\.md$", review.name)
+            if match and match.group("reviewer") == match.group("author"):
+                failures.append(f"topic {topic}: self-review is not allowed: {review.name}")
         missing_consensus = [p.name for p in consensus if not p.exists()]
         if missing_consensus:
             failures.append(f"topic {topic}: missing consensus artifacts: {', '.join(missing_consensus)}")
@@ -121,6 +139,10 @@ def validate(repo: Path, topic: str | None = None) -> dict[str, Any]:
         "status": "pass" if not failures else "fail",
         "warnings": warnings,
         "failures": failures,
+        "feature_flags": {
+            "multi_agent_collaboration": local_enabled,
+            "collaborative_workflows": workflow_enabled,
+        },
         "modes_supported": sorted(ACTIVE_MODES),
         "topic": topic_summary,
     }
