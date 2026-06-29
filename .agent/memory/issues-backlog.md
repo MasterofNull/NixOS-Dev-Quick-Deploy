@@ -1026,6 +1026,11 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
   File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
 
+[OPEN] aq-qa-machine-mode-stall — Standalone `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` produced no output for roughly two minutes during context-risk compaction validation, while the Tier 0 gate's embedded QA phase 0 completed successfully.
+Severity: medium
+Action: Investigate `aq-qa --machine` streaming/termination behavior separately; preserve current validation evidence from focused tests plus `scripts/governance/tier0-validation-gate.sh --pre-commit`.
+File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
+
 [DONE] safe-feature-candidate-promotion — Installed/read-only capability candidates were still `proposed`, so agents could not reliably auto-select Trivy, observability report, or Nix static analysis even though the local runtimes were available.
   Severity: medium
   Action: Promoted Trivy 0.66.0, observability query, and Nix static-analysis pack to `enabled` with accepted mitigations; declared OSV 2.2.4, Syft 1.38.0, and Grype 0.104.1 in Nix as `pending-rebuild`; kept GitHub MCP and graph-backed code intelligence blocked until prerequisites exist; added tooling-manifest discovery and tests.

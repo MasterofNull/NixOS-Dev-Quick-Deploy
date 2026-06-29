@@ -13,6 +13,7 @@ if _LIB_PATH not in sys.path:
     sys.path.insert(0, _LIB_PATH)
 
 import agent_run_events as _are
+from context_risk import compact_context_if_needed, context_risk_empty_stats
 
 import asyncio
 import collections
@@ -1297,6 +1298,7 @@ def _context_gc_empty_stats() -> dict:
         "raw_chars_pruned": 0,
         "duplicate_tool_calls": 0,
         "tool_observations_compacted": 0,
+        **context_risk_empty_stats(),
     }
 
 
@@ -1325,36 +1327,32 @@ def _tool_result_summary(tool_name: str, result_text: str, max_chars: int) -> di
 
 def _compact_tool_result_if_needed(tool_name: str, tool_call_id: str, result_text: str, stats: dict) -> str:
     raw = str(result_text or "")
-    if not CONTEXT_OUTPUT_GC_ENABLED or len(raw) < CONTEXT_OUTPUT_GC_MIN_CHARS:
+    if not CONTEXT_OUTPUT_GC_ENABLED:
         return raw
-    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()
-    artifact_dir = pathlib.Path(CONTEXT_ARTIFACT_DIR).expanduser()
     try:
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path = artifact_dir / f"{int(time.time())}-{tool_name}-{digest[:12]}.json"
-        artifact_payload = {
-            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds") + "Z",
-            "tool": tool_name,
-            "tool_call_id": tool_call_id,
-            "sha256": digest,
-            "raw_chars": len(raw),
-            "content": raw,
-        }
-        artifact_path.write_text(json.dumps(artifact_payload, ensure_ascii=True, indent=2), encoding="utf-8")
+        compact, metadata = compact_context_if_needed(
+            raw,
+            source=tool_name,
+            label=tool_name,
+            kind="tool-result",
+            tool_call_id=tool_call_id,
+            min_chars=CONTEXT_OUTPUT_GC_MIN_CHARS,
+            summary_chars=CONTEXT_OUTPUT_GC_SUMMARY_CHARS,
+            artifact_dir=pathlib.Path(CONTEXT_ARTIFACT_DIR).expanduser(),
+        )
     except Exception as exc:
         print(f"[switchboard] context_output_gc_failed tool={tool_name} error={exc}", file=sys.stderr)
         return raw
-    summary = _tool_result_summary(tool_name, raw, CONTEXT_OUTPUT_GC_SUMMARY_CHARS)
-    summary.update({
-        "artifact_path": str(artifact_path),
-        "sha256": digest,
-        "raw_chars": len(raw),
-        "raw_output_compacted": True,
-    })
-    compact = json.dumps(summary, ensure_ascii=True, sort_keys=True)
+    if not metadata.get("context_risk"):
+        return raw
     stats["artifacts_written"] = int(stats.get("artifacts_written", 0) or 0) + 1
     stats["raw_chars_pruned"] = int(stats.get("raw_chars_pruned", 0) or 0) + max(0, len(raw) - len(compact))
     stats["tool_observations_compacted"] = int(stats.get("tool_observations_compacted", 0) or 0) + 1
+    stats["context_risk_routes"] = int(stats.get("context_risk_routes", 0) or 0) + 1
+    stats["context_risk_chars"] = int(stats.get("context_risk_chars", 0) or 0) + int(metadata.get("raw_chars", 0) or 0)
+    reasons = stats.setdefault("context_risk_reasons", {})
+    for reason in metadata.get("risk_reasons", []):
+        reasons[reason] = int(reasons.get(reason, 0) or 0) + 1
     return compact
 
 

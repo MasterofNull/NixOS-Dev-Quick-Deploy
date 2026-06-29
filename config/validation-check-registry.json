@@ -1448,6 +1448,23 @@
       "enabled": true
     },
     {
+      "id": "context-compaction-sandwich",
+      "description": "Context-risk routing stores high-payload outputs as artifacts with aq-context-manage resume guidance",
+      "trigger_paths": [
+        "scripts/ai/lib/context_risk.py",
+        "ai-stack/switchboard/switchboard.py",
+        "ai-stack/local-agents/agent_executor.py",
+        "scripts/testing/test-context-compaction-sandwich.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-context-compaction-sandwich.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
       "id": "aq-inference-bench",
       "description": "AQ inference benchmark matrix validates local-only backend definitions, dry-run mode, localhost guardrails, and fake endpoint execution",
       "trigger_paths": [

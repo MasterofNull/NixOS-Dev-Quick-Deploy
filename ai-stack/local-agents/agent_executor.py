@@ -31,6 +31,9 @@ import httpx
 _MCP_SERVERS_PATH = str(Path(__file__).resolve().parents[1] / "mcp-servers")
 if _MCP_SERVERS_PATH not in sys.path:
     sys.path.insert(0, _MCP_SERVERS_PATH)
+_AI_LIB_PATH = str(Path(__file__).resolve().parents[2] / "scripts" / "ai" / "lib")
+if _AI_LIB_PATH not in sys.path:
+    sys.path.insert(0, _AI_LIB_PATH)
 
 # Phase 184: Antigravity Collective Integration
 # lib/l4-coord uses a hyphen — not importable via dotted path. Add the agents
@@ -46,6 +49,7 @@ from collective_memory import CollectiveMemory  # noqa: E402
 
 from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS  # noqa: E402
 from tool_registry import ToolCall, ToolRegistry, get_registry
+from context_risk import compact_context_if_needed
 
 # Phase 164B — MIC-G context sanitizer: scrub prompt-injection patterns from tool results
 # before they are injected into the LLM context window.  Import is best-effort; if the
@@ -1234,6 +1238,30 @@ class LocalAgentExecutor:
                         )
                 except Exception as _san_err:
                     logger.debug("context_sanitizer error (non-fatal): %s", _san_err)
+            try:
+                compacted_result, _context_risk = compact_context_if_needed(
+                    formatted_result,
+                    source=result.tool_name,
+                    label=f"{task.id}-{result.tool_name}",
+                    kind="agent-tool-result",
+                    min_chars=int(os.getenv("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "2400")),
+                    summary_chars=int(os.getenv("SWB_CONTEXT_OUTPUT_GC_SUMMARY_CHARS", "900")),
+                )
+                if _context_risk.get("context_risk"):
+                    await self._emit_agent_event(
+                        task.id, "context_compaction",
+                        {
+                            "tool_name": result.tool_name,
+                            "artifact_path": _context_risk.get("artifact_path"),
+                            "raw_chars": _context_risk.get("raw_chars"),
+                            "risk_reasons": _context_risk.get("risk_reasons", []),
+                            "context_route": _context_risk.get("context_route"),
+                        },
+                        _watchdog_last_activity,
+                    )
+                    formatted_result = compacted_result
+            except Exception as _compact_err:
+                logger.debug("context compaction error (non-fatal): %s", _compact_err)
 
             # Stagnation detection: same (tool_name, result_prefix) repeated beyond
             # threshold → model is looping without state change. Abort early via a
