@@ -1668,6 +1668,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
         results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_aq_eval_harness(ctx))
+    results.extend(_check_context_compaction_sandwich(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -1843,6 +1844,24 @@ def _check_aq_eval_harness(ctx: RunContext) -> list[CheckResult]:
         return [failed(1, "0.10.25", "aq-eval static harness", detail)]
     except Exception as exc:
         return [failed(1, "0.10.25", "aq-eval static harness", str(exc))]
+
+
+def _check_context_compaction_sandwich(ctx: RunContext) -> list[CheckResult]:
+    """Repo-local context-risk routing through switchboard artifacts and aq-context-manage guidance."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-context-compaction-sandwich.py"
+    if not check.exists():
+        return [failed(1, "0.10.26", "context compaction sandwich", "test-context-compaction-sandwich.py missing")]
+    try:
+        rc = subprocess.run(
+            ["python3", str(check)],
+            capture_output=True, text=True, timeout=60,
+        )
+        if rc.returncode == 0:
+            return [passed(1, "0.10.26", "context-risk outputs route through artifact compaction + aq-context-manage guidance")]
+        detail = rc.stdout.strip() or rc.stderr.strip() or f"exit {rc.returncode}"
+        return [failed(1, "0.10.26", "context compaction sandwich", detail)]
+    except Exception as exc:
+        return [failed(1, "0.10.26", "context compaction sandwich", str(exc))]
 
 
 def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:
