@@ -866,6 +866,27 @@ variables:
     consumers: [hybrid-coordinator (ai_coordinator_handlers.py)]
     description: "Maximum concurrent local subprocess delegates; default 1 matches single-slot llama.cpp hosts and prevents timeout cascades"
 
+  - canonical: AGENT_WALL_CLOCK_SECS
+    aliases: []
+    default: "0"
+    layer: shell
+    consumers: [delegate-scripts]
+    description: "Override wall-clock seconds for local agent-mode delegation; 0 uses dynamic long-horizon budget"
+
+  - canonical: AGENT_RUNAWAY_HARD_CAP_SECS
+    aliases: []
+    default: "172800"
+    layer: shell
+    consumers: [delegate-scripts]
+    description: "Maximum wall-clock seconds for local agent-mode delegation before runaway termination; default 48 hours"
+
+  - canonical: AGENT_NO_PROGRESS_SECS
+    aliases: []
+    default: "0"
+    layer: shell
+    consumers: [delegate-scripts]
+    description: "Override no-progress watchdog seconds for local agent-mode delegation; 0 uses conservative slow-generation default"
+
   - canonical: RUNTIME_SAFETY_POLICY_FILE
     aliases: []
     default: ""

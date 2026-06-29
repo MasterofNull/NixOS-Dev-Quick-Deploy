@@ -169,30 +169,117 @@ def test_agent_runner_creates_initial_output_artifacts():
         )
 
         calls = []
-        original_run = dispatch_mod.subprocess.run
+        original_popen = dispatch_mod.subprocess.Popen
 
-        def fake_run(cmd, timeout):
-            calls.append((cmd, timeout))
+        class FakeProcess:
+            pid = 999999
+            returncode = 0
+
+            def poll(self):
+                return self.returncode
+
+        def fake_popen(cmd, start_new_session=False):
+            calls.append((cmd, start_new_session))
             assert_true(output_file.exists(), "agent output file should exist before subprocess.run")
             assert_true(
                 Path(str(output_file) + ".progress.json").exists(),
                 "agent progress sidecar should exist before subprocess.run",
             )
-            return subprocess.CompletedProcess(cmd, 0)
+            assert_true(start_new_session, "AgentRunner should isolate child process group")
+            return FakeProcess()
 
         try:
-            dispatch_mod.subprocess.run = fake_run
+            dispatch_mod.subprocess.Popen = fake_popen
             ok = dispatch_mod.AgentRunner(script_dir).run(config, "probe", output_file, max_calls=1)
         finally:
-            dispatch_mod.subprocess.run = original_run
+            dispatch_mod.subprocess.Popen = original_popen
 
         assert_true(ok, "AgentRunner should return success from fake subprocess")
-        assert_true(calls, "AgentRunner did not invoke subprocess.run")
+        assert_true(calls, "AgentRunner did not invoke subprocess.Popen")
         assert_true(
             "Agent task started" in output_file.read_text(encoding="utf-8"),
             "initial output file should contain a running marker",
         )
         print("PASS  agent runner creates initial output/progress artifacts")
+
+
+def test_agent_runner_reaps_no_progress_child():
+    """Agent-mode dispatch must terminate a child that makes no artifact progress."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        script_dir = tmp_path / "scripts"
+        script_dir.mkdir()
+        agent_loop = script_dir / "aq-agent-loop"
+        agent_loop.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        agent_loop.chmod(0o755)
+        output_file = tmp_path / "delegation" / "outputs" / "agent.log"
+
+        dispatch_mod = _load_dispatch()
+        config = dispatch_mod.TaskConfig(
+            mode="agent",
+            role="architect",
+            timeout_secs=5,
+            max_tokens=20,
+            llama_url="http://127.0.0.1:19999",
+            hybrid_url="http://127.0.0.1:19999",
+            ralph_url="http://127.0.0.1:19999",
+            task_type="agent",
+        )
+
+        class FakeProcess:
+            pid = 999998
+            returncode = None
+
+            def poll(self):
+                return self.returncode
+
+        fake_proc = FakeProcess()
+        original_popen = dispatch_mod.subprocess.Popen
+        original_terminate = dispatch_mod._terminate_agent_process
+        original_no_progress = dispatch_mod._compute_agent_no_progress_timeout
+        original_monotonic = dispatch_mod.time.monotonic
+        original_sleep = dispatch_mod.time.sleep
+        terminated = []
+        clock = iter([0.0, 2.0, 3.0])
+
+        def fake_popen(cmd, start_new_session=False):
+            return fake_proc
+
+        def fake_terminate(proc):
+            terminated.append(proc.pid)
+            proc.returncode = -15
+
+        try:
+            dispatch_mod.subprocess.Popen = fake_popen
+            dispatch_mod._terminate_agent_process = fake_terminate
+            dispatch_mod._compute_agent_no_progress_timeout = lambda timeout_secs: 1
+            dispatch_mod.time.monotonic = lambda: next(clock, 3.0)
+            dispatch_mod.time.sleep = lambda seconds: None
+            ok = dispatch_mod.AgentRunner(script_dir).run(config, "probe", output_file, max_calls=1)
+        finally:
+            dispatch_mod.subprocess.Popen = original_popen
+            dispatch_mod._terminate_agent_process = original_terminate
+            dispatch_mod._compute_agent_no_progress_timeout = original_no_progress
+            dispatch_mod.time.monotonic = original_monotonic
+            dispatch_mod.time.sleep = original_sleep
+
+        assert_true(not ok, "AgentRunner should fail a no-progress child")
+        assert_true(terminated == [fake_proc.pid], "AgentRunner should terminate the stalled child")
+        assert_true(
+            "Agent no-progress timeout" in output_file.read_text(encoding="utf-8"),
+            "timeout artifact should explain the no-progress watchdog",
+        )
+        print("PASS  agent runner reaps no-progress child")
+
+
+def test_agent_runner_defaults_allow_long_horizon_work():
+    """Default agent watchdog policy should allow overnight/day-long local tasks."""
+    dispatch_mod = _load_dispatch()
+    wall_clock = dispatch_mod._compute_agent_wall_clock(timeout_secs=300, max_calls=50)
+    no_progress = dispatch_mod._compute_agent_no_progress_timeout(timeout_secs=300)
+    assert_true(wall_clock >= 86400, f"agent wall clock should allow day-long work, got {wall_clock}s")
+    assert_true(no_progress >= 14400, f"no-progress watchdog should allow slow generations, got {no_progress}s")
+    print("PASS  agent runner defaults allow long-horizon work")
 
 
 if __name__ == "__main__":
@@ -203,6 +290,8 @@ if __name__ == "__main__":
         test_service_down_still_creates_registry_entry,
         test_registry_entry_exists_before_service_check,
         test_agent_runner_creates_initial_output_artifacts,
+        test_agent_runner_reaps_no_progress_child,
+        test_agent_runner_defaults_allow_long_horizon_work,
     ]
     for t in tests:
         try:
