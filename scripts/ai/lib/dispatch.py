@@ -709,9 +709,15 @@ class AgentRunner:
             )
             progress_path = Path(str(output_file) + ".progress.json")
             steps_path = Path(str(output_file) + ".steps.jsonl")
+            # heartbeat_path is NOT in artifact_paths — watcher writes it every
+            # 60s so external monitors can detect a stuck (LLM-queued) agent.
+            # Keeping it out of artifact_paths prevents heartbeat writes from
+            # resetting last_progress_at and masking genuine no-progress stalls.
+            heartbeat_path = Path(str(output_file) + ".heartbeat.json")
             artifact_paths = [output_file, progress_path, steps_path]
             start = time.monotonic()
             last_progress_at = start
+            last_heartbeat_at = start
             last_seen_mtime = _artifact_mtime(artifact_paths)
             no_progress_timeout = _compute_agent_no_progress_timeout(config.timeout_secs)
             proc = subprocess.Popen(cmd, start_new_session=True)
@@ -724,6 +730,27 @@ class AgentRunner:
                 if newest_mtime > last_seen_mtime:
                     last_seen_mtime = newest_mtime
                     last_progress_at = now
+                # Heartbeat: written every 60s to a sidecar not tracked for
+                # progress — lets dashboards/pending-update show "alive but waiting"
+                # without disrupting the no-progress stall detector.
+                if now - last_heartbeat_at >= 60.0:
+                    last_heartbeat_at = now
+                    elapsed = now - start
+                    child_idle_s = now - last_progress_at
+                    try:
+                        _tmp = heartbeat_path.with_suffix(".heartbeat.tmp")
+                        _tmp.write_text(json.dumps({
+                            "status": "agent-loop-waiting",
+                            "pid": proc.pid,
+                            "elapsed_s": round(elapsed, 1),
+                            "child_idle_s": round(child_idle_s, 1),
+                            "no_progress_timeout_s": no_progress_timeout,
+                            "wall_clock_s": wall_clock,
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        }))
+                        _tmp.rename(heartbeat_path)
+                    except Exception:
+                        pass
                 if now - start >= wall_clock:
                     timeout_reason = (
                         f"Agent wall-clock timeout after {wall_clock}s "
