@@ -103,34 +103,58 @@ def _is_issue_line(line: str) -> bool:
     ))
 
 
+_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+
+
+def _parse_open_issues() -> list[dict]:
+    """Parse all [OPEN] issues from backlog, extracting severity from following lines."""
+    if not _BACKLOG_PATH.exists():
+        return []
+    lines = _BACKLOG_PATH.read_text().splitlines()
+    issues: list[dict] = []
+    for i, line in enumerate(lines):
+        if not _is_issue_line(line):
+            continue
+        text = line.strip().lstrip("|").strip()
+        # Scan up to 6 following lines for Severity: field
+        severity = "unknown"
+        for j in range(i + 1, min(i + 7, len(lines))):
+            lo = lines[j].lower()
+            if "severity:" in lo:
+                for level in ("critical", "high", "medium", "low"):
+                    if level in lo:
+                        severity = level
+                        break
+                break
+            if _is_issue_line(lines[j]):
+                break  # next issue started
+        issues.append({"text": text, "lineno": i + 1, "severity": severity})
+    return issues
+
+
 def pop_from_backlog() -> tuple[str, int] | tuple[None, None]:
-    """Find first real [OPEN] issue in issues-backlog.md.
+    """Return highest-priority [OPEN] issue (critical→high→medium→low→unknown).
 
     Returns (intent_text, line_number) or (None, None).
     """
-    if not _BACKLOG_PATH.exists():
+    issues = _parse_open_issues()
+    if not issues:
         return None, None
-    lines = _BACKLOG_PATH.read_text().splitlines()
-    for i, line in enumerate(lines):
-        if _is_issue_line(line):
-            text = line.strip().lstrip("|").strip()
-            return text, i + 1
-    return None, None
+    best = min(issues, key=lambda x: _SEVERITY_RANK.get(x["severity"], 4))
+    return best["text"], best["lineno"]
 
 
 def list_open() -> None:
-    """Print all [OPEN] issue entries from issues-backlog.md."""
-    if not _BACKLOG_PATH.exists():
-        print("[aq-loop] issues-backlog.md not found")
-        return
-    lines = _BACKLOG_PATH.read_text().splitlines()
-    found = [(i + 1, l.strip()) for i, l in enumerate(lines) if _is_issue_line(l)]
-    if not found:
+    """Print all [OPEN] issues sorted by severity."""
+    issues = _parse_open_issues()
+    if not issues:
         print("[aq-loop] No [OPEN] items in issues-backlog.md")
         return
-    print(f"[aq-loop] {len(found)} open issue(s):\n")
-    for lineno, text in found:
-        print(f"  line {lineno:4d}: {text[:120]}")
+    sorted_issues = sorted(issues, key=lambda x: _SEVERITY_RANK.get(x["severity"], 4))
+    print(f"[aq-loop] {len(sorted_issues)} open issue(s) (priority order):\n")
+    for item in sorted_issues:
+        sev = item["severity"].upper()
+        print(f"  [{sev:8s}] line {item['lineno']:4d}: {item['text'][:100]}")
 
 
 # ── prompt builder ────────────────────────────────────────────────────────────
@@ -313,6 +337,12 @@ def run_loop(
     print(f"[aq-loop] Intent   : {intent[:100]}")
     print(f"[aq-loop] Max iter : {max_iter}")
     print(f"[aq-loop] Manifest : {tool_manifest}")
+    # Show severity of backlog item for observability
+    if backlog_line:
+        issues = _parse_open_issues()
+        sev = next((x["severity"] for x in issues
+                    if x["text"][:60] in backlog_line), "unknown")
+        print(f"[aq-loop] Severity : {sev}")
     print()
 
     # Claim backlog item so parallel agents skip it
