@@ -37,16 +37,36 @@
       "maturity": "integrated",
       "owner": "qa-automation",
       "summary": "Repo-local static eval and red-team suite wrapper for capability, agent-safety, and governance checks.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["scripts/ai/aq-eval", "config/aq-eval-suites.json", "scripts/testing/test-aq-eval.py"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/aq-eval",
+        "config/aq-eval-suites.json",
+        "scripts/testing/test-aq-eval.py"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "python3 scripts/testing/test-aq-eval.py"
       },
-      "validation": ["python3 scripts/testing/test-aq-eval.py"],
-      "parity_targets": ["Promptfoo", "DeepEval", "Ragas", "Garak", "agent red-team suites"],
-      "data_stores": ["model-evaluations", "eval_results"]
+      "validation": [
+        "python3 scripts/testing/test-aq-eval.py"
+      ],
+      "parity_targets": [
+        "Promptfoo",
+        "DeepEval",
+        "Ragas",
+        "Garak",
+        "agent red-team suites"
+      ],
+      "data_stores": [
+        "model-evaluations",
+        "eval_results"
+      ]
     },
     {
       "id": "aq-inference-bench",
@@ -57,16 +77,36 @@
       "maturity": "integrated",
       "owner": "mlops-engineering",
       "summary": "Local-only benchmark matrix for comparing enabled and planned inference backends across latency, throughput, strict JSON reliability, thermal, and memory signals.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["scripts/ai/aq-inference-bench", "config/aq-inference-benchmarks.json", "scripts/testing/test-aq-inference-bench.py"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/aq-inference-bench",
+        "config/aq-inference-benchmarks.json",
+        "scripts/testing/test-aq-inference-bench.py"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "python3 scripts/testing/test-aq-inference-bench.py"
       },
-      "validation": ["python3 scripts/testing/test-aq-inference-bench.py"],
-      "parity_targets": ["llama.cpp", "vLLM", "SGLang", "Ollama", "MLX"],
-      "data_stores": ["model-evaluations", "performance-metrics"]
+      "validation": [
+        "python3 scripts/testing/test-aq-inference-bench.py"
+      ],
+      "parity_targets": [
+        "llama.cpp",
+        "vLLM",
+        "SGLang",
+        "Ollama",
+        "MLX"
+      ],
+      "data_stores": [
+        "model-evaluations",
+        "performance-metrics"
+      ]
     },
     {
       "id": "capability-intake",
@@ -77,16 +117,30 @@
       "maturity": "production",
       "owner": "security-systems",
       "summary": "Deny-by-default admission workflow for external tools, plugins, skills, and MCP servers.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["scripts/ai/aq-capability-intake", ".agent/skills/capability-intake/SKILL.md"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/aq-capability-intake",
+        ".agent/skills/capability-intake/SKILL.md"
+      ],
       "security": {
         "admission": "local-governance",
         "intake_candidate_id": "mcp-admission-controller",
         "risk": "low",
         "required_gate": "scripts/ai/aq-capability-intake audit --all --json"
       },
-      "validation": ["python3 scripts/testing/test-capability-intake.py"],
-      "parity_targets": ["mcp security gateways", "plugin registries", "agent tool admission controllers"],
+      "validation": [
+        "python3 scripts/testing/test-capability-intake.py"
+      ],
+      "parity_targets": [
+        "mcp security gateways",
+        "plugin registries",
+        "agent tool admission controllers"
+      ],
       "data_stores": []
     },
     {
@@ -98,16 +152,32 @@
       "maturity": "production",
       "owner": "agent-runtime",
       "summary": "Selects and validates local skills for agent prompts without a human choosing each skill.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["scripts/ai/aq-skill-auto", "scripts/testing/test-skill-auto.py"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/aq-skill-auto",
+        "scripts/testing/test-skill-auto.py"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "low",
         "required_gate": "scripts/testing/check-skill-source-of-truth.sh"
       },
-      "validation": ["python3 scripts/testing/test-skill-auto.py"],
-      "parity_targets": ["Claude skills", "Codex skills", "OpenAI plugin skill bundles"],
-      "data_stores": ["skills-patterns"]
+      "validation": [
+        "python3 scripts/testing/test-skill-auto.py"
+      ],
+      "parity_targets": [
+        "Claude skills",
+        "Codex skills",
+        "OpenAI plugin skill bundles"
+      ],
+      "data_stores": [
+        "skills-patterns"
+      ]
     },
     {
       "id": "tooling-manifest",
@@ -118,16 +188,33 @@
       "maturity": "production",
       "owner": "hybrid-coordinator",
       "summary": "Compact code-execution-friendly tool catalog used to auto-select workflow tools from user intent.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "python3 scripts/testing/test-tooling-manifest.py"
       },
-      "validation": ["python3 scripts/testing/test-tooling-manifest.py"],
-      "parity_targets": ["MCP registry discovery", "LangGraph tool routers", "AutoGen tool selection"],
-      "data_stores": ["codebase-context", "skills-patterns", "error-solutions"]
+      "validation": [
+        "python3 scripts/testing/test-tooling-manifest.py"
+      ],
+      "parity_targets": [
+        "MCP registry discovery",
+        "LangGraph tool routers",
+        "AutoGen tool selection"
+      ],
+      "data_stores": [
+        "codebase-context",
+        "skills-patterns",
+        "error-solutions"
+      ]
     },
     {
       "id": "local-agent-delegation",
@@ -138,16 +225,34 @@
       "maturity": "production",
       "owner": "local-agent",
       "summary": "Runs long local inference tasks through direct, agent, hybrid, or auto delegation lanes.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["scripts/ai/delegate-to-local", "docs/architecture/local-agent-task-eligibility.md"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/delegate-to-local",
+        "docs/architecture/local-agent-task-eligibility.md"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "python3 scripts/testing/test-delegate-local-agent.py"
       },
-      "validation": ["python3 scripts/testing/test-delegate-local-agent.py"],
-      "parity_targets": ["local coding agents", "agentic loop runners", "long-context local inference"],
-      "data_stores": ["agent-memory-episodic", "agent-memory-semantic", "agent-memory-procedural"]
+      "validation": [
+        "python3 scripts/testing/test-delegate-local-agent.py"
+      ],
+      "parity_targets": [
+        "local coding agents",
+        "agentic loop runners",
+        "long-context local inference"
+      ],
+      "data_stores": [
+        "agent-memory-episodic",
+        "agent-memory-semantic",
+        "agent-memory-procedural"
+      ]
     },
     {
       "id": "playwright-mcp",
@@ -158,16 +263,29 @@
       "maturity": "official",
       "owner": "qa-automation",
       "summary": "Headless browser automation for dashboard and website validation.",
-      "agent_access": ["codex", "claude", "local-agent"],
-      "primary_refs": ["config/agent-capability-intake-candidates.json", ".agent/skills/webapp-testing/SKILL.md"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "config/agent-capability-intake-candidates.json",
+        ".agent/skills/webapp-testing/SKILL.md"
+      ],
       "security": {
         "admission": "accepted-with-mitigations",
         "intake_candidate_id": "playwright-mcp",
         "risk": "high",
         "required_gate": "python3 scripts/testing/test-enabled-external-mcp-candidates.py"
       },
-      "validation": ["python3 scripts/testing/test-enabled-external-mcp-candidates.py"],
-      "parity_targets": ["browser-use agents", "Playwright MCP releases", "visual regression agents"],
+      "validation": [
+        "python3 scripts/testing/test-enabled-external-mcp-candidates.py"
+      ],
+      "parity_targets": [
+        "browser-use agents",
+        "Playwright MCP releases",
+        "visual regression agents"
+      ],
       "data_stores": []
     },
     {
@@ -179,16 +297,28 @@
       "maturity": "official",
       "owner": "security-systems",
       "summary": "Pinned Semgrep MCP scanner for generated-code security review.",
-      "agent_access": ["codex", "claude", "local-agent"],
-      "primary_refs": ["config/agent-capability-intake-candidates.json"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "config/agent-capability-intake-candidates.json"
+      ],
       "security": {
         "admission": "accepted-with-mitigations",
         "intake_candidate_id": "semgrep-mcp",
         "risk": "high",
         "required_gate": "python3 scripts/testing/test-enabled-external-mcp-candidates.py"
       },
-      "validation": ["python3 scripts/testing/test-enabled-external-mcp-candidates.py"],
-      "parity_targets": ["Semgrep MCP releases", "MCP security scanners", "SAST agent integrations"],
+      "validation": [
+        "python3 scripts/testing/test-enabled-external-mcp-candidates.py"
+      ],
+      "parity_targets": [
+        "Semgrep MCP releases",
+        "MCP security scanners",
+        "SAST agent integrations"
+      ],
       "data_stores": []
     },
     {
@@ -200,16 +330,27 @@
       "maturity": "official",
       "owner": "agent-runtime",
       "summary": "Read-only GitHub repository and PR intelligence; blocked until token scope and runtime are reviewed.",
-      "agent_access": ["codex", "claude"],
-      "primary_refs": ["config/agent-capability-intake-candidates.json"],
+      "agent_access": [
+        "codex",
+        "claude"
+      ],
+      "primary_refs": [
+        "config/agent-capability-intake-candidates.json"
+      ],
       "security": {
         "admission": "needs-review",
         "intake_candidate_id": "github-mcp-readonly",
         "risk": "high",
         "required_gate": "scripts/ai/aq-capability-intake audit github-mcp-readonly --json"
       },
-      "validation": ["python3 scripts/testing/test-capability-intake.py"],
-      "parity_targets": ["GitHub MCP releases", "code review agents", "CI diagnosis agents"],
+      "validation": [
+        "python3 scripts/testing/test-capability-intake.py"
+      ],
+      "parity_targets": [
+        "GitHub MCP releases",
+        "code review agents",
+        "CI diagnosis agents"
+      ],
       "data_stores": []
     },
     {
@@ -221,16 +362,32 @@
       "maturity": "integrated",
       "owner": "agent-runtime",
       "summary": "Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": [".agent/skills/understand-anything/SKILL.md", "scripts/ai/aq-understand-anything"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        ".agent/skills/understand-anything/SKILL.md",
+        "scripts/ai/aq-understand-anything"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "scripts/ai/aq-understand-anything ensure"
       },
-      "validation": ["scripts/ai/aq-understand-anything ensure"],
-      "parity_targets": ["repo graph agents", "impact analysis tools", "codebase visualization systems"],
-      "data_stores": ["codebase-context"]
+      "validation": [
+        "scripts/ai/aq-understand-anything ensure"
+      ],
+      "parity_targets": [
+        "repo graph agents",
+        "impact analysis tools",
+        "codebase visualization systems"
+      ],
+      "data_stores": [
+        "codebase-context"
+      ]
     },
     {
       "id": "osint-research-store",
@@ -241,16 +398,32 @@
       "maturity": "integrated",
       "owner": "osint-systems",
       "summary": "Passive public-source ingest and query path for source-grounded OSINT research records.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["scripts/testing/test-osint-research-ingest.py", ".agent/OSINT-SYSTEMS-INSTRUCTIONS.md"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/testing/test-osint-research-ingest.py",
+        ".agent/OSINT-SYSTEMS-INSTRUCTIONS.md"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "python3 scripts/testing/test-osint-research-ingest.py"
       },
-      "validation": ["python3 scripts/testing/test-osint-research-ingest.py"],
-      "parity_targets": ["public-source research pipelines", "STIX-like evidence stores", "browser-assisted research agents"],
-      "data_stores": ["osint-intelligence"]
+      "validation": [
+        "python3 scripts/testing/test-osint-research-ingest.py"
+      ],
+      "parity_targets": [
+        "public-source research pipelines",
+        "STIX-like evidence stores",
+        "browser-assisted research agents"
+      ],
+      "data_stores": [
+        "osint-intelligence"
+      ]
     },
     {
       "id": "aidb-rag-stores",
@@ -261,16 +434,40 @@
       "maturity": "production",
       "owner": "rag-operations",
       "summary": "AIDB, Qdrant, Postgres, and Redis-backed knowledge, memory, telemetry, and interaction collections.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["docs/architecture/memory-system-design.md", "docs/agent-guides/30-QDRANT-OPERATIONS.md"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "docs/architecture/memory-system-design.md",
+        "docs/agent-guides/30-QDRANT-OPERATIONS.md"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "curl -sS --max-time 10 http://127.0.0.1:8002/health"
       },
-      "validation": ["AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine"],
-      "parity_targets": ["agent memory stores", "RAG vector databases", "long-term learning stores"],
-      "data_stores": ["knowledge", "codebase-context", "skills-patterns", "error-solutions", "best-practices", "interaction-history", "agent-memory-episodic", "agent-memory-semantic", "agent-memory-procedural"]
+      "validation": [
+        "AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine"
+      ],
+      "parity_targets": [
+        "agent memory stores",
+        "RAG vector databases",
+        "long-term learning stores"
+      ],
+      "data_stores": [
+        "knowledge",
+        "codebase-context",
+        "skills-patterns",
+        "error-solutions",
+        "best-practices",
+        "interaction-history",
+        "agent-memory-episodic",
+        "agent-memory-semantic",
+        "agent-memory-procedural"
+      ]
     },
     {
       "id": "workflow-blueprints",
@@ -281,15 +478,30 @@
       "maturity": "production",
       "owner": "agent-runtime",
       "summary": "Reusable MCP workflow blueprints and graph templates for orchestration.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["config/workflow-blueprints.json", "docs/architecture/workflow-dsl-reference.md"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "config/workflow-blueprints.json",
+        "docs/architecture/workflow-dsl-reference.md"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "python3 scripts/testing/test-workflow-blueprints.py"
       },
-      "validation": ["python3 scripts/testing/test-workflow-blueprints.py"],
-      "parity_targets": ["LangGraph", "AutoGen workflows", "CrewAI flows", "ADK orchestration"],
+      "validation": [
+        "python3 scripts/testing/test-workflow-blueprints.py"
+      ],
+      "parity_targets": [
+        "LangGraph",
+        "AutoGen workflows",
+        "CrewAI flows",
+        "ADK orchestration"
+      ],
       "data_stores": []
     },
     {
@@ -301,16 +513,29 @@
       "maturity": "integrated",
       "owner": "systems-software",
       "summary": "Statix, deadnix, and formatting checks routed through the canonical Nix static analysis wrapper.",
-      "agent_access": ["codex", "claude", "local-agent"],
-      "primary_refs": ["scripts/governance/nix-static-analysis.sh", "config/agent-capability-intake-candidates.json"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/governance/nix-static-analysis.sh",
+        "config/agent-capability-intake-candidates.json"
+      ],
       "security": {
         "admission": "accepted-with-mitigations",
         "intake_candidate_id": "nixos-specialist-tool-pack",
         "risk": "medium",
         "required_gate": "scripts/governance/nix-static-analysis.sh --help"
       },
-      "validation": ["python3 scripts/testing/test-enabled-external-mcp-candidates.py"],
-      "parity_targets": ["Nix AI agents", "declarative deployment analyzers", "flake review tools"],
+      "validation": [
+        "python3 scripts/testing/test-enabled-external-mcp-candidates.py"
+      ],
+      "parity_targets": [
+        "Nix AI agents",
+        "declarative deployment analyzers",
+        "flake review tools"
+      ],
       "data_stores": []
     },
     {
@@ -322,16 +547,107 @@
       "maturity": "production",
       "owner": "qa-automation",
       "summary": "Operator-facing telemetry, dashboard cards, aq-report machine output, and health gates.",
-      "agent_access": ["codex", "claude", "gemini", "local-agent"],
-      "primary_refs": ["dashboard/backend/api/services/ai_insights.py", "scripts/ai/aq-report"],
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "dashboard/backend/api/services/ai_insights.py",
+        "scripts/ai/aq-report"
+      ],
       "security": {
         "admission": "local-governance",
         "risk": "medium",
         "required_gate": "AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine"
       },
-      "validation": ["AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine"],
-      "parity_targets": ["agent observability dashboards", "OpenTelemetry GenAI surfaces", "AI runtime scorecards"],
-      "data_stores": ["telemetry_events", "query_traces", "learning_feedback"]
+      "validation": [
+        "AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine"
+      ],
+      "parity_targets": [
+        "agent observability dashboards",
+        "OpenTelemetry GenAI surfaces",
+        "AI runtime scorecards"
+      ],
+      "data_stores": [
+        "telemetry_events",
+        "query_traces",
+        "learning_feedback"
+      ]
+    },
+    {
+      "id": "identity-kernel-service",
+      "name": "Identity Kernel Service",
+      "category": "agent-runtime",
+      "kind": "system-service",
+      "state": "enabled",
+      "maturity": "integrated",
+      "owner": "coprocessor-engineering",
+      "summary": "Core identity preservation module hosting the narrative engine, value constitution profiles, and session checkpointers.",
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "ai-stack/identity-kernel/checkpoint_service.py",
+        "nix/modules/services/identity-kernel.nix",
+        "config/identity-values.yaml"
+      ],
+      "security": {
+        "admission": "local-governance",
+        "risk": "low",
+        "required_gate": "python3 scripts/testing/test-agent-identity-envelope.py"
+      },
+      "validation": [
+        "python3 scripts/testing/test-agent-identity-envelope.py"
+      ],
+      "parity_targets": [
+        "Letta agent identities",
+        "Mem0 profile managers"
+      ],
+      "data_stores": [
+        "identity_narrative",
+        "checkpoints"
+      ]
+    },
+    {
+      "id": "affective-engine-module",
+      "name": "Affective Engine Module",
+      "category": "agent-runtime",
+      "kind": "system-service",
+      "state": "enabled",
+      "maturity": "integrated",
+      "owner": "coprocessor-engineering",
+      "summary": "Computational agent temperament modulator hosting a local reciprocity debt tracker.",
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "ai-stack/affective-engine/reciprocity_tracker.py",
+        "nix/modules/services/affective-engine.nix"
+      ],
+      "security": {
+        "admission": "local-governance",
+        "risk": "low",
+        "required_gate": "python3 scripts/testing/test-affective-reciprocity-wiring.py"
+      },
+      "validation": [
+        "python3 scripts/testing/test-affective-reciprocity-wiring.py"
+      ],
+      "parity_targets": [
+        "agent affective modulators",
+        "social-cognition loops"
+      ],
+      "data_stores": [
+        "temperament_states",
+        "reciprocity_debts"
+      ]
     }
   ]
 }
