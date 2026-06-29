@@ -16,6 +16,7 @@ External ingestion gate: `capability-intake`
 - External candidates remain deny-by-default until `capability-intake` records admission, mitigations, and validation.
 - Parity discovery should compare each entry's `parity_targets` against mature external repos, then open a bounded capability-intake slice for any proposed ingestion.
 - Suggested external repo candidates live in `config/suggested-ai-repo-candidates.json`; they are research inputs, not enabled capabilities.
+- Broader future capability areas live in `config/ai-capability-implementation-backlog.json`; each item must define its first safe repo-local slice.
 
 ## Reference
 

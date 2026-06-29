@@ -1446,6 +1446,22 @@
       "tier": "behavioral",
       "timeout_seconds": 20,
       "enabled": true
+    },
+    {
+      "id": "ai-capability-implementation-backlog",
+      "description": "AI capability implementation backlog records candidate domains with first safe slices, security gates, validation, and dashboard parity",
+      "trigger_paths": [
+        "config/ai-capability-implementation-backlog.json",
+        "config/schemas/ai-capability-implementation-backlog.schema.json",
+        "scripts/testing/test-ai-capability-implementation-backlog.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-ai-capability-implementation-backlog.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 20,
+      "enabled": true
     }
   ]
 }

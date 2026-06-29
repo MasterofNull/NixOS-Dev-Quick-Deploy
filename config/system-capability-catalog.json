@@ -24,6 +24,7 @@
     "workflow_blueprints": "config/workflow-blueprints.json",
     "validation_registry": "config/validation-check-registry.json",
     "suggested_ai_repos": "config/suggested-ai-repo-candidates.json",
+    "ai_capability_backlog": "config/ai-capability-implementation-backlog.json",
     "skill_index": ".agent/SKILL_INDEX.md"
   },
   "entries": [
