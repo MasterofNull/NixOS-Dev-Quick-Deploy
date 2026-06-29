@@ -1089,8 +1089,17 @@
 </div>
 
 <!-- ── AGENT OBSERVABILITY ── -->
-<div class="panel" id="panel-observe">
+    <div class="panel" id="panel-observe">
   <div class="panel-grid g2">
+
+    <!-- Local Inference Queue -->
+    <div class="card" id="section-local-agent-monitor">
+      <div class="card-hd">
+        <span class="card-title">Local Inference Queue</span>
+        <span class="card-badge badge-info" id="localAgentMonitorBadge">--</span>
+      </div>
+      <div id="localAgentMonitorDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    </div>
 
     <!-- Effectiveness Scorecard — full width -->
     <div class="card full" id="section-effectiveness-scorecard">
