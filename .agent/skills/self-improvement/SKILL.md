@@ -150,3 +150,26 @@ After execution:
 | `.agent/PROJECT-PRD.md` | Current project priorities |
 | `aq-report` | Live system health report |
 | `aq-qa 0` | Pass/fail check suite |
+
+---
+
+## Outer Loop Entry Point (aq-loop)
+
+When operating as **orchestrator** or when asked to "run autonomously", prefer `aq-loop` over
+executing this SKILL manually. `aq-loop` wraps the entire SKILL workflow with:
+- Automatic backlog claim/release (`[OPEN]`→`[IN-PROGRESS]`→`[DONE]` / restored on failure)
+- Retry up to 3 iterations if the COMPLETED: signal is not detected
+- Auto tool-manifest selection (`self-improvement` = 8 tools, ~2500 fewer tokens than full)
+- Durable STATE in `.agent/collaboration/LOOP_STATE.json` (survives compaction)
+
+```bash
+aq-loop --list-open                   # see what's actionable
+aq-loop --from-backlog --dry-run      # preview grounded prompt for top issue
+aq-loop --from-backlog                # execute autonomously (claim→implement→verify→release)
+aq-loop --check                       # show active loop state
+```
+
+Use this SKILL (manual Steps 1–4) only when:
+- Debugging a loop iteration or understanding why it failed
+- Called as the implementer sub-agent from inside aq-loop
+- The outer loop is unavailable or blocked
