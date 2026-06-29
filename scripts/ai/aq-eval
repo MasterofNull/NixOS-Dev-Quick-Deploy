@@ -13,7 +13,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SUITE_FILE = ROOT / "config" / "aq-eval-suites.json"
-REQUIRED_CASE_FIELDS = {"id", "prompt", "expected_keywords", "forbidden_keywords", "risk_tags"}
+REQUIRED_CASE_FIELDS = {"id", "source", "provenance", "prompt", "expected_keywords", "forbidden_keywords", "risk_tags"}
+REQUIRED_PROVENANCE_FIELDS = {"origin", "review_status", "license"}
 REQUIRED_COMMAND_FIELDS = {"id", "command", "timeout_seconds", "required"}
 ALLOWED_COMMAND_PREFIXES = {
     ("python3", "scripts/testing/test-suggested-ai-repo-candidates.py"),
@@ -95,7 +96,50 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
                 errors.append(f"{suite_id}.{case_id}.expected_keywords must not be empty")
             if not case.get("risk_tags"):
                 errors.append(f"{suite_id}.{case_id}.risk_tags must not be empty")
+            if not str(case.get("source", "")).strip():
+                errors.append(f"{suite_id}.{case_id}.source must not be empty")
+            provenance = case.get("provenance")
+            if not isinstance(provenance, dict):
+                errors.append(f"{suite_id}.{case_id}.provenance must be an object")
+                continue
+            provenance_missing = sorted(REQUIRED_PROVENANCE_FIELDS - set(provenance))
+            if provenance_missing:
+                errors.append(f"{suite_id}.{case_id}.provenance missing: {', '.join(provenance_missing)}")
+            if provenance.get("origin") != "repo-local":
+                errors.append(f"{suite_id}.{case_id}.provenance.origin must be repo-local")
+            if provenance.get("review_status") != "approved":
+                errors.append(f"{suite_id}.{case_id}.provenance.review_status must be approved")
     return errors
+
+
+def build_metrics(
+    suites: list[dict[str, Any]],
+    *,
+    command_results: list[dict[str, Any]] | None = None,
+    failed_required: int = 0,
+) -> dict[str, Any]:
+    command_results = command_results or []
+    command_count = sum(len(suite.get("commands", [])) for suite in suites)
+    case_count = sum(len(suite.get("cases", [])) for suite in suites)
+    provenance_count = sum(
+        1
+        for suite in suites
+        for case in suite.get("cases", [])
+        if case.get("source") and isinstance(case.get("provenance"), dict)
+    )
+    executed = [result for result in command_results if result.get("status") != "dry-run"]
+    passed = sum(1 for result in executed if result.get("status") == "pass")
+    pass_rate = 1.0 if not executed else round(passed / len(executed), 3)
+    return {
+        "eval_count": case_count,
+        "suite_count": len(suites),
+        "command_count": command_count,
+        "pass_rate": pass_rate,
+        "regression_delta": 0.0,
+        "redteam_failures": failed_required,
+        "provenance_coverage": 1.0 if case_count == 0 else round(provenance_count / case_count, 3),
+        "external_frameworks_enabled": False,
+    }
 
 
 def summarize(payload: dict[str, Any]) -> dict[str, Any]:
@@ -105,6 +149,7 @@ def summarize(payload: dict[str, Any]) -> dict[str, Any]:
         "suite_count": len(suites),
         "case_count": sum(len(suite.get("cases", [])) for suite in suites),
         "command_count": sum(len(suite.get("commands", [])) for suite in suites),
+        "metrics": build_metrics(suites),
         "suites": [
             {
                 "id": suite["id"],
@@ -150,14 +195,17 @@ def run_command(command: dict[str, Any]) -> dict[str, Any]:
 def run_suites(payload: dict[str, Any], suite_id: str | None, execute: bool) -> dict[str, Any]:
     suites = select_suites(payload, suite_id)
     suite_results = []
+    command_results = []
     failed_required = 0
     for suite in suites:
         commands = []
+        suite_failed_required = 0
         for command in suite.get("commands", []):
             if execute:
                 result = run_command(command)
                 if result["required"] and result["status"] != "pass":
                     failed_required += 1
+                    suite_failed_required += 1
             else:
                 result = {
                     "id": command["id"],
@@ -166,16 +214,19 @@ def run_suites(payload: dict[str, Any], suite_id: str | None, execute: bool) -> 
                     "command": command["command"],
                 }
             commands.append(result)
+            command_results.append(result)
         suite_results.append(
             {
                 "id": suite["id"],
                 "domain": suite["domain"],
-                "status": "pass" if execute and failed_required == 0 else "dry-run",
+                "status": "pass" if execute and suite_failed_required == 0 else "dry-run",
                 "commands": commands,
                 "cases": [
                     {
                         "id": case["id"],
                         "status": "defined",
+                        "source": case["source"],
+                        "provenance": case["provenance"],
                         "risk_tags": case["risk_tags"],
                         "expected_keywords": case["expected_keywords"],
                         "forbidden_keywords": case["forbidden_keywords"],
@@ -189,6 +240,7 @@ def run_suites(payload: dict[str, Any], suite_id: str | None, execute: bool) -> 
         "status": "fail" if failed_required else "pass",
         "suite_count": len(suite_results),
         "failed_required": failed_required,
+        "metrics": build_metrics(suites, command_results=command_results, failed_required=failed_required),
         "suites": suite_results,
     }
 

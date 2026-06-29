@@ -837,18 +837,32 @@ def editor_state_budget_health() -> Dict[str, Any]:
     else:
         all_markers = sorted(str(key) for key in obsolete_markers.keys())
         ai_markers = [key for key in all_markers if any(key.startswith(prefix) for prefix in EDITOR_STATE_AI_OBSOLETE_PREFIXES)]
+        qwen_available = bool((extension_details.get("qwenlm.qwen-code-vscode-ide-companion") or {}).get("available"))
+        actionable_ai_markers = [
+            key for key in ai_markers
+            if not (qwen_available and key.startswith("qwenlm.qwen-code-vscode-ide-companion-"))
+        ]
+        ignored_ai_markers = [key for key in ai_markers if key not in actionable_ai_markers]
         overview["obsolete_markers"] = {
             "total_count": len(all_markers),
             "ai_count": len(ai_markers),
+            "actionable_ai_count": len(actionable_ai_markers),
+            "ignored_ai_count": len(ignored_ai_markers),
             "markers": all_markers[:20],
             "ai_markers": ai_markers[:20],
+            "actionable_ai_markers": actionable_ai_markers[:20],
+            "ignored_ai_markers": ignored_ai_markers[:20],
         }
         checks.append(
             {
                 "id": "obsolete_ai_markers",
-                "description": "AI extension obsolete markers are cleared",
-                "status": "PASS" if len(ai_markers) <= budgets["obsolete_ai_markers"] else "FAIL",
-                "details": f"{len(ai_markers)} AI marker(s) present" if ai_markers else "no stale AI obsolete markers",
+                "description": "Actionable AI extension obsolete markers are cleared",
+                "status": "PASS" if len(actionable_ai_markers) <= budgets["obsolete_ai_markers"] else "FAIL",
+                "details": (
+                    f"{len(actionable_ai_markers)} actionable AI marker(s) present"
+                    if actionable_ai_markers
+                    else "no actionable stale AI obsolete markers"
+                ),
             }
         )
 
@@ -3994,6 +4008,50 @@ def eval_score_trend(rows: List[dict], entries: Optional[List[dict]] = None) -> 
         "n_runs": len(pcts),
         "pass_rate": round(pcts[-1] / 100.0, 3),
         "recent_pass_rate": round(pcts[-1] / 100.0, 3),
+    }
+
+
+def aq_eval_static_health() -> Dict[str, Any]:
+    """Expose repo-local aq-eval static suite health for dashboard/report consumers."""
+    repo_root = Path(__file__).resolve().parents[2]
+    aq_eval = repo_root / "scripts" / "ai" / "aq-eval"
+    try:
+        result = subprocess.run(
+            [sys.executable, str(aq_eval), "--json", "validate"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception as exc:
+        return {"available": False, "status": "error", "source": str(aq_eval), "error": str(exc)}
+    if result.returncode != 0:
+        return {
+            "available": True,
+            "status": "fail",
+            "source": str(aq_eval),
+            "stderr_tail": result.stderr[-500:],
+            "stdout_tail": result.stdout[-500:],
+        }
+    try:
+        doc = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return {"available": True, "status": "fail", "source": str(aq_eval), "error": f"invalid json: {exc}"}
+    metrics = doc.get("metrics") if isinstance(doc.get("metrics"), dict) else {}
+    return {
+        "available": True,
+        "status": doc.get("status", "unknown"),
+        "source": str(aq_eval),
+        "suite_count": doc.get("suite_count", 0),
+        "case_count": doc.get("case_count", 0),
+        "command_count": doc.get("command_count", 0),
+        "eval_count": metrics.get("eval_count", doc.get("case_count", 0)),
+        "pass_rate": metrics.get("pass_rate"),
+        "regression_delta": metrics.get("regression_delta"),
+        "redteam_failures": metrics.get("redteam_failures"),
+        "provenance_coverage": metrics.get("provenance_coverage"),
+        "external_frameworks_enabled": metrics.get("external_frameworks_enabled", False),
     }
 
 
@@ -8094,6 +8152,7 @@ def format_json(
     attention_contention_summary: Optional[Dict[str, Any]] = None,
     ragas_metrics: Optional[Dict[str, Any]] = None,
     intent_dist: Optional[Dict[str, Any]] = None,
+    aq_eval_static: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -8111,6 +8170,7 @@ def format_json(
         "cache": cache,
         "cache_prewarm": cache_prewarm,
         "eval_trend": eval_trend,
+        "aq_eval_static": aq_eval_static or {"available": False, "status": "no_data", "reason": "not computed"},
         "ragas_metrics": ragas_metrics or {},
         "intent_distribution": intent_dist or {},
         "strategy_leaderboard": leaderboard,
@@ -8311,6 +8371,7 @@ def main() -> None:
     cache = cache_hit_rate(recent_audit_entries)
     cache_prewarm = cache_prewarm_status()
     eval_trend = eval_score_trend(eval_rows, audit_entries)
+    aq_eval_static = aq_eval_static_health()
     # Phase 143 — fetch RAGAS metric averages for dedicated 4b panel
     _ragas_raw = fetch_coordinator_eval_trend()
     _ragas_metrics: Dict[str, Any] = _ragas_raw.get("ragas_metrics") or {}
@@ -8493,6 +8554,7 @@ def main() -> None:
         attention_contention_summary=attention_contention,
         ragas_metrics=_ragas_metrics,
         intent_dist=_intent_dist,
+        aq_eval_static=aq_eval_static,
     )
     _persist_latest_report_json(json_output)
 

@@ -51,10 +51,21 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["id", "prompt", "expected_keywords", "forbidden_keywords", "risk_tags"],
+              "required": ["id", "source", "provenance", "prompt", "expected_keywords", "forbidden_keywords", "risk_tags"],
               "additionalProperties": false,
               "properties": {
                 "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+                "source": {"type": "string", "minLength": 1},
+                "provenance": {
+                  "type": "object",
+                  "required": ["origin", "review_status", "license"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "origin": {"const": "repo-local"},
+                    "review_status": {"const": "approved"},
+                    "license": {"type": "string", "minLength": 1}
+                  }
+                },
                 "prompt": {"type": "string"},
                 "expected_keywords": {"type": "array", "minItems": 1, "items": {"type": "string"}},
                 "forbidden_keywords": {"type": "array", "items": {"type": "string"}},

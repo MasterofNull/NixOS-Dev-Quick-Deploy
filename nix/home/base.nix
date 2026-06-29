@@ -1062,6 +1062,12 @@ in {
     ext_root = pathlib.Path(sys.argv[1])
     registry = pathlib.Path(sys.argv[2])
     obsolete = pathlib.Path(sys.argv[3])
+    ai_obsolete_prefixes = (
+        "continue.",
+        "qwenlm.qwen-code-vscode-ide-companion-",
+        "openai.chatgpt-",
+        "anthropic.claude-code-",
+    )
 
     def load_json(path, default):
         try:
@@ -1094,7 +1100,7 @@ in {
         if isinstance(data, dict):
             removed = False
             for key in list(data.keys()):
-                if not (ext_root / key).exists():
+                if key.lower().startswith(ai_obsolete_prefixes) or not (ext_root / key).exists():
                     data.pop(key, None)
                     removed = True
             if removed:
@@ -1199,8 +1205,43 @@ in {
         fi
         env -u NIXOS_OZONE_WL "$_codium" --install-extension "$ext_id" --force 2>/dev/null || true
       done
-      unset ext_root ext_id alias_path
+      obsolete="$ext_root/.obsolete"
+      if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); prefixes=("continue.","qwenlm.qwen-code-vscode-ide-companion-","openai.chatgpt-","anthropic.claude-code-"); data=json.loads(p.read_text(encoding="utf-8")); changed=False
+if isinstance(data, dict):
+    for key in list(data):
+        if key.lower().startswith(prefixes):
+            data.pop(key, None); changed=True
+if changed:
+    p.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")' "$obsolete" || true
+      fi
+      unset ext_root ext_id alias_path obsolete
     fi
+  '';
+
+  home.activation.clearAiVscodeObsoleteMarkers = lib.hm.dag.entryAfter [
+    "createContinueConfig"
+    "createVSCodiumSettings"
+    "enforceCodexVscodeSettings"
+    "ensureMutableRuntimeVscodeExtensions"
+    "migrateClaudeVscodeSettings"
+    "pruneHeavyExtensionGlobalState"
+    "reconcileVscodeExtensionAliases"
+    "resetContinueVscodeState"
+    "seedClaudeSettings"
+    "vscodeProfiles"
+  ] ''
+    obsolete="$HOME/.vscode-oss/extensions/.obsolete"
+    if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
+      python3 -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); prefixes=("continue.","qwenlm.qwen-code-vscode-ide-companion-","openai.chatgpt-","anthropic.claude-code-"); data=json.loads(p.read_text(encoding="utf-8")); changed=False
+if isinstance(data, dict):
+    for key in list(data):
+        if key.lower().startswith(prefixes):
+            data.pop(key, None); changed=True
+if changed:
+    p.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")' "$obsolete" || true
+    fi
+    unset obsolete
   '';
 
   home.activation.cleanupVscodiumDesktopEntries = lib.hm.dag.entryAfter ["writeBoundary"] ''
