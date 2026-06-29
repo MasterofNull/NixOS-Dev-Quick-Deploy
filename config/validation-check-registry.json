@@ -1411,6 +1411,25 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "system-capability-catalog",
+      "description": "System capability catalog SSOT validates references, external intake gates, and generated reference sheet freshness",
+      "trigger_paths": [
+        "config/system-capability-catalog.json",
+        "config/schemas/system-capability-catalog.schema.json",
+        "docs/operations/reference/SYSTEM-CAPABILITY-CATALOG.md",
+        "docs/SKILLS-AND-MCP-INVENTORY.md",
+        "scripts/ai/aq-capability-catalog",
+        "scripts/testing/test-system-capability-catalog.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-system-capability-catalog.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 20,
+      "enabled": true
     }
   ]
 }

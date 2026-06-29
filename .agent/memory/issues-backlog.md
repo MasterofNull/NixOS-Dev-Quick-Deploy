@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] system-capability-catalog-prd-frontmatter — Focused CI rejected the new catalog PRD because `title` was missing from the required PRD frontmatter.
+  Root cause: new `.agent/PROJECT-SYSTEM-CAPABILITY-CATALOG-PRD.md` used `doc_type: prd` but only declared `id/status/owner/last_updated`.
+  Fix: added `title: System Capability Catalog`; reran focused CI and tier0 successfully.
+  Severity: low
+  File: .agent/PROJECT-SYSTEM-CAPABILITY-CATALOG-PRD.md
+
 [DONE 2026-06-28] skill-auto-selected-invalid-skills — `aq-skill-auto --test` could select local skills that failed the same validation payload returned to agents, so recursive improvement/capability prompts could hand agents invalid skill references without failing regression tests.
   Root cause: auto-selection tests asserted reference checks existed but did not assert every selected skill had `valid=true`; selected harness skills were missing validator-required body sections, and self-improvement contained a markdown table phrase that tripped the coarse shell-pattern scanner.
   Fix: tightened `scripts/testing/test-skill-auto.py` with selected-skill validity assertions plus a real-world capability availability prompt; added required Description/Usage/When-to-Use body sections to selected skills; reworded the false-positive table phrase.
