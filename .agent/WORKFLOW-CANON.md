@@ -1,9 +1,28 @@
 # WORKFLOW-CANON — Canonical Agent Workflow
 **SSOT for all agents: Claude, Gemini, Codex, local Qwen, remote lanes**
-Maintained by: hyperd | Updated: 2026-05-30
+Maintained by: hyperd | Updated: 2026-06-29
 
 > "The gap between models matters less than the gap between workflows."
 > — Addy Osmani, AI Coding Workflow 2026
+
+---
+
+## Outer Loop (Orchestrators — use before Step 1)
+
+When operating as **orchestrator** or running autonomously, use `aq-loop` to manage the full
+task lifecycle including retry, state tracking, and backlog integration:
+
+```bash
+aq-loop --list-open                    # see what's actionable in issues-backlog.md
+aq-loop --from-backlog --dry-run       # preview what would run
+aq-loop --from-backlog                 # pop, claim, execute, verify, release autonomously
+aq-loop --intent "implement X"         # explicit task with hint grounding + retry
+aq-loop --check                        # show current LOOP_STATE.json
+```
+
+`aq-loop` wraps Steps 1–8 below: it grounds the intent with hints + skills, runs the inner
+agent loop (aq-agent-loop), detects the `COMPLETED:` signal, retries up to 3× on failure,
+and escalates to the backlog if exhausted. Implementer agents run Steps 1–8 directly.
 
 ---
 

@@ -205,7 +205,7 @@
   Severity: low (Llama 3.3 70B on remote-free handles delegation; Gemini routes available when credits/oauth fixed)
   File: scripts/ai/delegate-to-antigravity _PROFILE_MAP
 
-[OPEN] codex-startup-local-state-warnings — Codex startup emitted deprecated `codex_hooks` feature warning and stale arg0 temp cleanup permission warning.
+[IN-PROGRESS] codex-startup-local-state-warnings — Codex startup emitted deprecated `codex_hooks` feature warning and stale arg0 temp cleanup permission warning.
   Root cause: `/home/hyperd/.codex/config.toml` contained the legacy `[features].codex_hooks = true` alias alongside `hooks = true`, and active Codex processes rehydrated that alias from their startup state after edits. Separately, `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` was stale but owned by root:root, so user-owned Codex could not clean it.
   Severity: low
   Action: Arg0 cleanup fixed; `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` no longer exists. `codex_hooks` reappeared in `/home/hyperd/.codex/config.toml` during the active Codex session, so remove it after exiting all Codex sessions or from a fresh session started after the line is gone.
@@ -1026,9 +1026,9 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
   File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
 
-[OPEN] aq-qa-machine-mode-stall — Standalone `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` produced no output for roughly two minutes during context-risk compaction validation, while the Tier 0 gate's embedded QA phase 0 completed successfully.
+[DONE] aq-qa-machine-mode-stall — Standalone `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` produced no output for roughly two minutes during context-risk compaction validation, while the Tier 0 gate's embedded QA phase 0 completed successfully.
 Severity: medium
-Action: Investigate `aq-qa --machine` streaming/termination behavior separately; preserve current validation evidence from focused tests plus `scripts/governance/tier0-validation-gate.sh --pre-commit`.
+Fix: Added `_exec_bash_fallback()` in scripts/ai/aq-qa that applies `timeout --foreground ${AQ_QA_MACHINE_TIMEOUT_SECONDS:-300}` + `NO_COLOR=1` when `--machine` is set and falling back to bash path. Committed in same session (ea1df9d7 era).
 File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
 
 [DONE] safe-feature-candidate-promotion — Installed/read-only capability candidates were still `proposed`, so agents could not reliably auto-select Trivy, observability report, or Nix static analysis even though the local runtimes were available.
