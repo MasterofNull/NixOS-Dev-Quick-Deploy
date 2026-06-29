@@ -497,7 +497,7 @@ class TaskRegistry:
         print(p.read_text(), end="")
         return 0
 
-    def cmd_monitor(self, limit: int = 20) -> int:
+    def monitor_payload(self, limit: int = 20) -> dict:
         observed = [self._with_inferred_status(e) for e in self.list_all()]
         active = [
             e for e in observed
@@ -520,7 +520,7 @@ class TaskRegistry:
                 "description": entry.get("description", "")[:120],
                 "artifacts": self._artifact_snapshot(entry),
             })
-        payload = {
+        return {
             "ok": True,
             "mode": "read_only",
             "counts": {
@@ -531,12 +531,63 @@ class TaskRegistry:
             },
             "tasks": tasks,
         }
-        print(json.dumps(payload, indent=2))
+
+    def cmd_monitor(self, limit: int = 20) -> int:
+        print(json.dumps(self.monitor_payload(limit=limit), indent=2))
         return 0
+
+    def repair_stale(self, apply: bool = False) -> dict:
+        candidates = []
+        for entry in self._read_registry():
+            observed = self._with_inferred_status(entry)
+            if not observed.get("inferred_only"):
+                continue
+            if observed.get("registry_status") != "running":
+                continue
+            if observed.get("pid_alive") is not False:
+                continue
+            reason = str(observed.get("inferred_reason") or "")
+            if reason not in {
+                "registry said running, but pid is missing or no longer alive",
+                "output artifact reported failure",
+                "process exited before registry completion; output requires review",
+            }:
+                continue
+            candidates.append({
+                "id": observed.get("id"),
+                "from_status": observed.get("registry_status"),
+                "to_status": observed.get("status"),
+                "reason": reason,
+                "pid": observed.get("pid"),
+            })
+        repaired = 0
+        if apply:
+            for candidate in candidates:
+                task_id = candidate.get("id")
+                if not task_id:
+                    continue
+                self._update_registry(task_id, {
+                    "status": candidate["to_status"],
+                    "stale_since": _now(),
+                    "stale_reason": candidate["reason"],
+                })
+                self.record_completion(task_id, str(candidate["to_status"]))
+                repaired += 1
+        return {
+            "ok": True,
+            "mode": "apply" if apply else "dry_run",
+            "candidate_count": len(candidates),
+            "repaired_count": repaired,
+            "candidates": candidates,
+        }
 
     def cmd_repair_status(self, task_id: str) -> int:
         changed = self.reconcile_running(task_id)
         print(json.dumps({"task_id": task_id, "repaired": changed}, indent=2))
+        return 0
+
+    def cmd_repair_stale(self, apply: bool = False) -> int:
+        print(json.dumps(self.repair_stale(apply=apply), indent=2))
         return 0
 
     def cmd_cancel(self, task_id: str) -> int:

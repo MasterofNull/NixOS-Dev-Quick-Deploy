@@ -55,6 +55,10 @@ except ImportError:
         LocalModelClient = model_client.LocalModelClient
     except Exception:
         LocalModelClient = None
+try:
+    from task_registry import TaskRegistry
+except Exception:
+    TaskRegistry = None
 
 # ---------------------------------------------------------------------------
 # Configuration (env-var driven — never hardcoded per project policy)
@@ -93,6 +97,8 @@ AGENT_LESSON_EXCLUDED_AGENTS = {
     "system",
     "unknown",
 }
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DELEGATION_DIR = REPO_ROOT / ".agents" / "delegation"
 AGENT_LESSON_EXCLUDED_HINT_PREFIXES = (
     "seed_",
     "health_probe_",
@@ -8105,6 +8111,30 @@ def validation_health() -> Dict[str, Any]:
     }
 
 
+def local_agent_monitor_summary(limit: int = 20) -> Dict[str, Any]:
+    """Expose local delegation monitor data without reconciling registry state."""
+    if TaskRegistry is None:
+        return {
+            "available": False,
+            "status": "unavailable",
+            "reason": "TaskRegistry import failed",
+        }
+    try:
+        registry = TaskRegistry(DELEGATION_DIR, repo_root=REPO_ROOT)
+        payload = registry.monitor_payload(limit=limit)
+        payload["available"] = True
+        payload["status"] = "ok"
+        payload["source"] = str(registry.registry_file)
+        return payload
+    except Exception as exc:
+        return {
+            "available": False,
+            "status": "error",
+            "reason": str(exc),
+            "source": str(DELEGATION_DIR / "TASK_REGISTRY.jsonl"),
+        }
+
+
 def format_json(
     since_label: str,
     tool_stats: Dict[str, dict],
@@ -8153,6 +8183,7 @@ def format_json(
     ragas_metrics: Optional[Dict[str, Any]] = None,
     intent_dist: Optional[Dict[str, Any]] = None,
     aq_eval_static: Optional[Dict[str, Any]] = None,
+    local_agent_monitor: Optional[Dict[str, Any]] = None,
 ) -> str:
     doc = {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -8181,6 +8212,7 @@ def format_json(
         "query_gaps": [g for g in gaps[:10] if not _is_synthetic_gap(str(g.get("query_text", "")))],
         "rag_posture": rag_posture_summary,
         "recent_health": recent_health,
+        "local_agent_monitor": local_agent_monitor or {"available": False, "status": "no_data", "reason": "not computed"},
         "continue_editor": continue_editor,
         "continue_editor_windows": continue_editor_windows,
         "editor_rescue_windows": editor_rescue_windows_summary,
@@ -8445,6 +8477,7 @@ def main() -> None:
     useful_tokens_summary = useful_token_metrics(since_dt)
     # Phase 93.11 — validation health from latest focused-CI artifact
     validation_health_summary = validation_health()
+    local_agent_monitor = local_agent_monitor_summary()
     # Phase 93.14 — attention queue lock contention
     attention_contention = attention_contention_summary(since_dt)
     # Phase 93.12 — effectiveness scorecard (computed after all inputs are ready)
@@ -8555,6 +8588,7 @@ def main() -> None:
         ragas_metrics=_ragas_metrics,
         intent_dist=_intent_dist,
         aq_eval_static=aq_eval_static,
+        local_agent_monitor=local_agent_monitor,
     )
     _persist_latest_report_json(json_output)
 

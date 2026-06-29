@@ -18,6 +18,7 @@ Usage (called by the delegate-to-local bash shim):
     python3 dispatch.py check  ID  --delegation-dir DIR
     python3 dispatch.py monitor    --delegation-dir DIR
     python3 dispatch.py repair-status ID --delegation-dir DIR
+    python3 dispatch.py repair-stale [--apply] --delegation-dir DIR
     python3 dispatch.py cancel ID  --delegation-dir DIR
     python3 dispatch.py kill-all   --delegation-dir DIR
 """
@@ -1144,6 +1145,11 @@ def _build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name)
         p.add_argument("--delegation-dir", required=True)
 
+    rs = sub.add_parser("repair-stale")
+    rs.add_argument("--delegation-dir", required=True)
+    rs.add_argument("--apply", action="store_true")
+    rs.add_argument("--dry-run", action="store_true")
+
     for name in ("status", "check", "repair-status", "cancel"):
         p = sub.add_parser(name)
         p.add_argument("task_id")
@@ -1252,6 +1258,9 @@ def main() -> int:
 
     if args.subcmd == "monitor":
         return registry.cmd_monitor()
+
+    if args.subcmd == "repair-stale":
+        return registry.cmd_repair_stale(apply=bool(getattr(args, "apply", False)))
 
     if args.subcmd == "kill-all":
         return registry.cmd_kill_all()
