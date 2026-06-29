@@ -63,6 +63,29 @@ File I/O inside `async def` aiohttp/FastAPI handlers MUST be non-blocking:
 - `asyncio.to_thread(sync_fn, ...)` for wrapping sync I/O
 - NEVER `open(path).read()` directly inside `async def` — blocks the event loop.
 
+## Timestamped Monitor Pattern (standard for all long-running agentic tasks)
+
+Every Monitor arm for a long-running multi-step task MUST prefix events with an ISO 8601
+UTC timestamp so elapsed time between events is immediately readable.
+
+Standard wrapper (pipe after any grep/filter):
+```bash
+| while IFS= read -r line; do printf "[%s] %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line"; done
+```
+
+Full example — watch a batch processor log:
+```bash
+tail -f /tmp/run.log | grep -E --line-buffered "progress|FAIL|done" \
+  | while IFS= read -r line; do printf "[%s] %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line"; done
+```
+
+Rules:
+- Apply this wrapper to EVERY Monitor command — no exceptions for long-running tasks.
+- Long-running scripts (batch processors, training loops, deploy scripts) must also prefix
+  their own `print()` / `echo` output with `$(date -u +%Y-%m-%dT%H:%M:%SZ)` at the source.
+- When re-arming a monitor (e.g. after a session break), stop the old monitor via TaskStop
+  before arming the new one to avoid duplicate untimstamped events.
+
 ## Loop Completion Signal (aq-loop outer orchestration)
 
 When a task is dispatched via `aq-loop`, the outer loop expects this exact completion signal
