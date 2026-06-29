@@ -1130,6 +1130,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-osint-active-recon-gate.py"
     _check 1 "0.10.24" "analysis-only local-agent stagnation mode" \
       python3 "${REPO_ROOT}/scripts/testing/test-analysis-only-stagnation-mode.py"
+    _check 1 "0.10.25" "aq-eval static red-team harness metrics + provenance" \
+      python3 "${REPO_ROOT}/scripts/testing/test-aq-eval.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
