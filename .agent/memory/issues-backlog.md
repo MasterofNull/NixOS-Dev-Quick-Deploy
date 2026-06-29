@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] skill-auto-selected-invalid-agent-tool-map — `scripts/ai/aq-capability-flush --dry-run --json` selected `agent-tool-map`, but `aq-skill-auto --test` reported `valid=false` for that selected skill.
+  Root cause / fix notes: regression of the prior selected-skill validity class; validator required a body `Description` section and its coarse shell-pattern scan tripped on markdown table rows containing terminal/shell wording. Added the required body section and converted the risky mapping table to bullets. Focused `aq-skill-auto --test` now reports `agent-tool-map valid=true`.
+  Severity: medium
+  Action: update `agent-tool-map` skill metadata/content or tighten `aq-skill-auto` so invalid selected skills cannot be returned as usable selections.
+  File: .agent/skills/agent-tool-map/SKILL.md
+
 [DONE 2026-06-29] stagnation-guard-too-aggressive-for-analysis-only-agent-tasks — Local agent task `local-20260629-012903-kbi12z` failed after 12 reads with `Exploration stagnation` even though the assignment was analysis/planning only.
   Root cause: `classify_task_type(..., mode="agent")` always returned `agent`, so analysis-only prompts never reached the executor's research/analysis guard path. The executor also required `edit_file`/`write_file` progress for all read-heavy tasks, which is wrong for analysis-only work.
   Fix: agent-mode analysis/planning prompts now classify to `research`; analysis/planning/PRD aliases normalize to the `research` profile; executor now keeps the strict 8/12 implementation read guard while giving analysis-only tasks an 80-read checkpoint guard reset by `store_memory`/`write_file`, plus repeated-read path detection. Added phase-0 QA check `0.10.24`.

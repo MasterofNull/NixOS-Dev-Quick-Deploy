@@ -1136,6 +1136,8 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-context-compaction-sandwich.py"
     _check 1 "0.10.27" "local-agent monitor dashboard and QA visibility" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-agent-monitor-visibility.py"
+    _check 1 "0.10.28" "capability flush harness exercises skills, intake, OSINT/RAG, and local monitor" \
+      python3 "${REPO_ROOT}/scripts/testing/test-capability-flush.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
