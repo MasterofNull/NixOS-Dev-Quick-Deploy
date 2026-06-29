@@ -25,12 +25,26 @@ for arg in "$@"; do
   fi
 done
 
+# Shared fallback: exec into _aq-qa-bash, applying machine-mode guards when needed.
+# Machine mode: adds NO_COLOR=1 and an outer timeout so CI callers never block
+# indefinitely (smoke scripts like smoke-continue-editor-flow.sh can stall 270s+
+# on repeated 429s with no stdout — Tier 0 has its own timeout wrapper, standalone
+# callers do not).
+_exec_bash_fallback() {
+    if [[ "${MACHINE_MODE}" == "true" ]]; then
+        local _t="${AQ_QA_MACHINE_TIMEOUT_SECONDS:-300}"
+        NO_COLOR=1 exec timeout --foreground "${_t}" bash "${SCRIPT_DIR}/_aq-qa-bash" "$@"
+    else
+        exec bash "${SCRIPT_DIR}/_aq-qa-bash" "$@"
+    fi
+}
+
 if [[ ! -f "${HARNESS_PY}" ]]; then
-  exec bash "${SCRIPT_DIR}/_aq-qa-bash" "${ARGS[@]}"
+  _exec_bash_fallback "${ARGS[@]}"
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
-  exec bash "${SCRIPT_DIR}/_aq-qa-bash" "${ARGS[@]}"
+  _exec_bash_fallback "${ARGS[@]}"
 fi
 
 if [[ "${MACHINE_MODE}" == "true" ]]; then
