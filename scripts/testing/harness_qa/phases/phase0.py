@@ -1341,6 +1341,25 @@ def _check_phase171_throughput_calibration(ctx: RunContext) -> list[CheckResult]
     return [failed(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration", detail)]
 
 
+def _check_osint_active_recon_gate(ctx: RunContext) -> list[CheckResult]:
+    """OSINT active recon is fail-closed behind machine-readable admission gates."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-osint-active-recon-gate.py"
+    if not check.exists():
+        return [failed(1, "0.10.23", "OSINT active recon gate", "test-osint-active-recon-gate.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.23", "OSINT active recon gate fail-closed")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.23", "OSINT active recon gate", detail)]
+
+
 # ---------------------------------------------------------------------------
 # Phase 172 — Coordination & Delegation health checks (0.12.1-0.12.4)
 # ---------------------------------------------------------------------------
@@ -1535,6 +1554,7 @@ def _dashboard_safe_host_only_skips() -> list[CheckResult]:
         _dashboard_host_only_skip(1, "0.10.13", "local inference budget"),
         _dashboard_host_only_skip(1, "0.10.14", "local-agent store_memory contract"),
         _dashboard_host_only_skip(1, "0.10.22", "LOCAL_TOK_PER_SEC throughput calibration"),
+        _dashboard_host_only_skip(1, "0.10.23", "OSINT active recon gate"),
         _dashboard_host_only_skip(1, "0.12.1", "coordinator /readyz endpoint"),
         _dashboard_host_only_skip(1, "0.12.2", "delegation success rate 24h"),
         _dashboard_host_only_skip(1, "0.12.3", "feedback event_type coverage"),
@@ -1622,6 +1642,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
         results.extend(_check_local_inference_budget(ctx))
         results.extend(_check_local_agent_store_memory_contract(ctx))
         results.extend(_check_phase171_throughput_calibration(ctx))
+        results.extend(_check_osint_active_recon_gate(ctx))
         results.extend(_check_phase172_delegation_health(ctx))
         results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))

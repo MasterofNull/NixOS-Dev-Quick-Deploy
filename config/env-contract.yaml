@@ -656,6 +656,13 @@ variables:
     consumers: [ai-system-state, hybrid-coordinator]
     description: "Absolute path to the Phase 115 system intelligence artifact JSON (Phase 115.2)"
 
+  - canonical: HYBRID_TELEMETRY_PATH
+    aliases: []
+    default: "/var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl"
+    layer: service
+    consumers: [local-agents, hybrid-coordinator]
+    description: "Path to hybrid coordinator telemetry event JSONL used for recent-error context and local-agent diagnostics"
+
   - canonical: QDRANT_URL
     aliases: []
     default: "http://127.0.0.1:6333"

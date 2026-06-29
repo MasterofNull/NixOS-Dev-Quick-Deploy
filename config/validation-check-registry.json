@@ -864,6 +864,24 @@
       "enabled": true
     },
     {
+      "id": "osint-active-recon-gate",
+      "description": "Active OSINT recon stays fail-closed behind runtime admission gates",
+      "trigger_paths": [
+        "ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py",
+        "ai-stack/local-agents/builtin_tools/ai_coordination.py",
+        "ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py",
+        "scripts/testing/test-osint-active-recon-gate.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-osint-active-recon-gate.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true
+    },
+    {
       "id": "useful-token-metrics",
       "description": "Phase 93.5 useful-token aggregation in aq-report --machine",
       "trigger_paths": [

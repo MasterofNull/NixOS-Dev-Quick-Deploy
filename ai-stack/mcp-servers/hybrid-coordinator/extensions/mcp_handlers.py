@@ -1061,14 +1061,33 @@ TOOL_DEFINITIONS: List[Tool] = [
     # Phase 60/61 — Domain Specific MCP Proxies
     Tool(
         name="osint_recon",
-        description="Run automated OSINT reconnaissance (maigret, bbot, mosaic-osint).",
+        description=(
+            "Security-gated active OSINT reconnaissance. Defaults to policy/status responses; "
+            "execution requires explicit scope acknowledgement and OSINT_ACTIVE_RECON_ENABLE=true."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "target": {"type": "string", "description": "Username, domain, or selector"},
-                "tool": {"type": "string", "enum": ["maigret", "bbot", "mosaic"], "default": "maigret"}
+                "tool": {"type": "string", "enum": ["maigret", "sherlock", "bbot", "mosaic"], "default": "maigret"},
+                "scope_ack": {"type": "boolean", "description": "Caller confirms explicit authorization for this selector"},
+                "allow_active_recon": {"type": "boolean", "description": "Caller explicitly requests active recon execution after reviewing status"},
             },
             "required": ["target"]
+        },
+    ),
+    Tool(
+        name="osint_recon_status",
+        description=(
+            "Return machine-readable active OSINT runtime availability and policy state. "
+            "Use before osint_recon; does not execute recon."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Optional selector used only for scope classification"},
+                "tool": {"type": "string", "enum": ["maigret", "sherlock", "bbot", "mosaic"]},
+            },
         },
     ),
     Tool(
@@ -1325,18 +1344,110 @@ def _shape_osint_recall_rows(rows: List[Dict[str, Any]], *, workflow: str = "") 
         )
     return shaped
 
+
+def _osint_selector_kind(target: str) -> str:
+    value = str(target or "").strip()
+    if not value:
+        return "missing"
+    if "://" in value or "/" in value:
+        return "url"
+    if "@" in value:
+        return "email"
+    if "." in value:
+        return "domain"
+    return "username"
+
+
+def _osint_runtime_status(target: str = "", requested_tool: str = "") -> Dict[str, Any]:
+    active_enabled = os.getenv("OSINT_ACTIVE_RECON_ENABLE", "false").strip().lower() in {"1", "true", "yes", "on"}
+    runtimes = {
+        "maigret": {
+            "state": "blocked-insecure-package",
+            "installed": bool(shutil.which("maigret")),
+            "execution_allowed": False,
+            "reason": "Maigret remains gated by insecure package/dependency review; use passive OSINT first.",
+        },
+        "sherlock": {
+            "state": "available" if shutil.which("sherlock") else "missing",
+            "installed": bool(shutil.which("sherlock")),
+            "execution_allowed": active_enabled and bool(shutil.which("sherlock")),
+            "reason": "Sherlock is the only identity-enumeration fallback eligible for strict scoped execution.",
+        },
+        "bbot": {
+            "state": "provisioning-only",
+            "installed": bool(shutil.which("bbot")),
+            "execution_allowed": False,
+            "reason": "BBOT remains provisioning-only; active infrastructure mapping is not enabled.",
+        },
+        "mosaic": {
+            "state": "blocked-insecure-package",
+            "installed": bool(shutil.which("mosaic-osint")),
+            "execution_allowed": False,
+            "reason": "MOSAIC remains gated by insecure package/runtime review.",
+        },
+    }
+    return {
+        "status": "ok",
+        "mode": "active-recon-admission",
+        "default_action": "deny",
+        "active_recon_enabled": active_enabled,
+        "selector_kind": _osint_selector_kind(target),
+        "requested_tool": requested_tool or None,
+        "runtimes": runtimes,
+        "required_gates": [
+            "explicit_target_scope",
+            "scope_ack=true",
+            "allow_active_recon=true",
+            "OSINT_ACTIVE_RECON_ENABLE=true",
+            "runtime_installed",
+            "capability_intake_accepted",
+            "bounded_output_to_osint-intelligence",
+        ],
+        "safe_default_tools": ["osint_research_query", "osint_research_ingest"],
+    }
+
+
+def _osint_recon_denial(target: str, tool: str, reason: str) -> Dict[str, Any]:
+    status = _osint_runtime_status(target, tool)
+    return {
+        "status": "blocked",
+        "tool": tool,
+        "target_kind": status["selector_kind"],
+        "reason": reason,
+        "admission": status,
+    }
+
 async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
     """Dispatch an MCP tool call by name."""
     _start = _time.perf_counter()
     try:
         if name == "osint_recon":
-            tool = arguments.get("tool", "maigret")
-            target = arguments.get("target", "")
-            # Mapping bbot -> bbot to match server.py internal tool names
-            args = {"username": target} if tool == "maigret" else {"target": target} if tool == "bbot" else {"selector": target}
-            result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/osint-tools/server.py", tool, args)
+            tool = str(arguments.get("tool") or "maigret").strip().lower()
+            target = str(arguments.get("target") or "").strip()
+            if tool == "maigret":
+                return [TextContent(type="text", text=json.dumps(_osint_recon_denial(target, tool, "maigret is held; request sherlock after reviewing osint_recon_status"), sort_keys=True))]
+            status = _osint_runtime_status(target, tool)
+            runtime = status["runtimes"].get(tool)
+            if not target:
+                result_text = json.dumps(_osint_recon_denial(target, tool, "target is required"), sort_keys=True)
+            elif not bool(arguments.get("scope_ack")):
+                result_text = json.dumps(_osint_recon_denial(target, tool, "scope_ack=true is required for active recon"), sort_keys=True)
+            elif not bool(arguments.get("allow_active_recon")):
+                result_text = json.dumps(_osint_recon_denial(target, tool, "allow_active_recon=true is required after status review"), sort_keys=True)
+            elif not runtime or not runtime.get("execution_allowed"):
+                result_text = json.dumps(_osint_recon_denial(target, tool, str((runtime or {}).get("reason") or "runtime not admitted")), sort_keys=True)
+            else:
+                # Mapping bbot -> bbot to match server.py internal tool names.
+                server_tool = "maigret" if tool == "sherlock" else tool
+                args = {"username": target} if server_tool == "maigret" else {"target": target} if server_tool == "bbot" else {"selector": target}
+                result_text = await _call_mcp_server(_REPO_ROOT / "ai-stack/mcp-servers/osint-tools/server.py", server_tool, args)
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=result_text)]
+
+        if name == "osint_recon_status":
+            payload = _osint_runtime_status(str(arguments.get("target") or ""), str(arguments.get("tool") or ""))
+            _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(payload, sort_keys=True))]
 
         if name == "osint_research_ingest":
             from research_workflows import run_curated_research_workflow  # type: ignore[import]

@@ -1010,10 +1010,10 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Re-authenticate with a scoped read-only GitHub OAuth/PAT path and choose a pinned local or remote MCP runtime before moving `github-mcp-readonly` out of `blocked-auth-runtime`.
   File: config/agent-capability-intake-candidates.json
 
-[OPEN] osint-active-recon-runtime-gated — Passive OSINT research is active, but active recon engines remain gated — Maigret and MOSAIC are intentionally not activated because insecure package paths are still held, and BBOT remains provisioning-only in the OSINT MCP server.
+[DONE] osint-active-recon-runtime-gated — Passive OSINT research is active, and active recon engines are now guarded by a fail-closed runtime admission surface — Maigret and MOSAIC remain intentionally not activated because insecure package paths are still held, and BBOT remains provisioning-only in the OSINT MCP server.
   Severity: medium
-  Action: Add pinned secure Nix/runtime packages for BBOT, Maigret/Sherlock-compatible identity enumeration, and MOSAIC or approved replacements; then extend `osint-tools` from passive/fallback status to active execution with tests and AppArmor/service bounds.
-  File: ai-stack/mcp-servers/osint-tools/server.py; nix/lib/overlays/osint-tools.nix
+  Action: Added `osint_recon_status` for coordinator/local agents, made `osint_recon` deny by default unless explicit scope, request acknowledgement, policy enablement, and admitted runtime are present, and updated tooling-manifest routing to prefer passive OSINT plus active-status inspection. Remaining future work is secure package/runtime enablement for approved replacements.
+  File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py; ai-stack/local-agents/builtin_tools/ai_coordination.py; ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py; scripts/testing/test-osint-active-recon-gate.py
 
 [DONE] design-skills-autoselect-validation-gap — `aq-skill-auto --test` selected `frontend-design` and `canvas-design` for website work, but both failed required skill-section validation because their bodies lacked `## Description` and `## When to Use` headings.
   Severity: low

@@ -294,9 +294,9 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
 
     if any(k in q for k in ("osint", "recon", "reconnaissance", "footprint", "whois", "shodan", "maigret", "bbot")):
         add(
-            "osint_recon",
-            "mcp://osint_recon",
-            "Run automated OSINT reconnaissance for usernames, domains, and behavioral profiling.",
+            "osint_recon_status",
+            "mcp://osint_recon_status",
+            "Inspect active OSINT runtime availability and admission gates before any recon attempt.",
         )
     if any(k in q for k in ("osint", "research database", "source research", "public data", "website research", "curated research")):
         add(
@@ -308,6 +308,12 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
             "osint_research_query",
             "mcp://osint_research_query",
             "Query persisted osint-intelligence evidence records by topic, source, or workflow.",
+        )
+    if any(k in q for k in ("authorized active recon", "scope_ack", "active osint execution", "run sherlock")):
+        add(
+            "osint_recon",
+            "mcp://osint_recon",
+            "Fail-closed active OSINT execution path; requires status review, explicit scope acknowledgement, policy enablement, and admitted runtime.",
         )
     
     if any(k in q for k in ("mlops", "model health", "inference latency", "context compression", "crystallize")):
@@ -543,8 +549,14 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
     "osint_recon": {
         "method": "MCP",
         "mcp_tool": "osint_recon",
+        "args": ["target", "tool", "scope_ack", "allow_active_recon"],
+        "output_focus": "Admission result, blocked reason, or bounded structured findings; never raw unbounded recon dumps.",
+    },
+    "osint_recon_status": {
+        "method": "MCP",
+        "mcp_tool": "osint_recon_status",
         "args": ["target", "tool"],
-        "output_focus": "Structured reconnaissance findings (accounts, subdomains, dossiers).",
+        "output_focus": "Machine-readable installed/blocked/provisioning-only runtime status and required gates.",
     },
     "osint_research_ingest": {
         "method": "MCP",
@@ -586,8 +598,8 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         return [name for name in names if name in tool_names]
 
     phases = [
-        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry", "context_sandbox_offload"])},
-        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "context_sandbox_offload", "flat_prd_gate"])},
+        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry", "osint_research_query", "osint_recon_status", "context_sandbox_offload"])},
+        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "osint_recon_status", "context_sandbox_offload", "flat_prd_gate"])},
         {
             "id": "execute",
             "tools": pick(
@@ -597,6 +609,9 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                     "web_research_fetch",
                     "browser_research_fetch",
                     "curated_research_fetch",
+                    "osint_research_ingest",
+                    "osint_research_query",
+                    "osint_recon",
                     "workflow_run_start",
                     "context_sandbox_offload",
                     "ai_coordinator_delegate",
@@ -605,7 +620,7 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
                 ]
             ),
         },
-        {"id": "validate", "tools": pick(["flat_prd_gate", "qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
+        {"id": "validate", "tools": pick(["osint_recon_status", "flat_prd_gate", "qa_check", "harness_eval", "health", "loop_status", "learning_stats"])},
         {"id": "handoff", "tools": pick(["flat_prd_gate", "context_sandbox_offload", "feedback", "learning_stats"])},
     ]
     return [phase for phase in phases if phase["tools"]]
