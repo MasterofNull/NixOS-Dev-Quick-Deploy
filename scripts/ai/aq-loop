@@ -132,16 +132,24 @@ def _parse_open_issues() -> list[dict]:
     return issues
 
 
-def pop_from_backlog() -> tuple[str, int] | tuple[None, None]:
+def pop_from_backlog() -> tuple[str, str, int] | tuple[None, None, None]:
     """Return highest-priority [OPEN] issue (critical→high→medium→low→unknown).
 
-    Returns (intent_text, line_number) or (None, None).
+    Returns (clean_intent, raw_line_text, line_number) or (None, None, None).
+    clean_intent has the [OPEN] prefix stripped (for readable task prompts).
+    raw_line_text is the full original line (for claim/release replacement in backlog).
     """
     issues = _parse_open_issues()
     if not issues:
-        return None, None
+        return None, None, None
     best = min(issues, key=lambda x: _SEVERITY_RANK.get(x["severity"], 4))
-    return best["text"], best["lineno"]
+    raw = best["text"]
+    clean = raw
+    for prefix in ("[OPEN]", "[IN-PROGRESS]", "[MONITOR]"):
+        if clean.startswith(prefix):
+            clean = clean[len(prefix):].strip()
+            break
+    return clean, raw, best["lineno"]
 
 
 def list_open() -> None:
@@ -349,8 +357,8 @@ def run_loop(
         print(f"[aq-loop] Severity : {sev}")
     print()
 
-    # Claim backlog item so parallel agents skip it
-    if backlog_line:
+    # Claim backlog item so parallel agents skip it (skip on dry-run — no real work done)
+    if backlog_line and not dry_run:
         _claim_backlog_item(backlog_line)
 
     # Ground once (hints/skills are stable across iterations)
@@ -474,11 +482,11 @@ def main() -> int:
 
     backlog_line = ""
     if args.from_backlog:
-        intent, lineno = pop_from_backlog()
+        intent, raw_line, lineno = pop_from_backlog()
         if intent is None:
             print("[aq-loop] No [OPEN] items in issues-backlog.md")
             return 1
-        backlog_line = intent  # track for claim/release
+        backlog_line = raw_line  # raw text (with [OPEN]) used for claim/release in backlog
         print(f"[aq-loop] Popped from backlog (line {lineno}): {intent[:100]}")
         # Default to self-improvement manifest for backlog tasks unless overridden
         manifest = args.tool_manifest or "self-improvement"

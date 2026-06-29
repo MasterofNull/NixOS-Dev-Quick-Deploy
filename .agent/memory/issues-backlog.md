@@ -235,7 +235,7 @@
   Action: Removed `gradio` from the shared Home Manager Python bundle; use a project-local virtualenv only when a demo UI explicitly needs Gradio.
   File: nix/home/base.nix ~line 587
 
-[OPEN] opencode-undici-bun-crash — opencode v1.3.0 crashes on every invocation with `ReferenceError: undici is not defined` (Bun v1.3.3, Linux x64).
+[IN-PROGRESS] opencode-undici-bun-crash — opencode v1.3.0 crashes on every invocation with `ReferenceError: undici is not defined` (Bun v1.3.3, Linux x64).
   Root cause: opencode 1.3.0 bundle (`$bunfs/root/src/index.js`) imports `undici` as an npm module, but Bun 1.3.3 does not expose `undici` as a built-in. opencode is installed from Nix store at /nix/store/2rn57ci5bp1s8q401zwwy8isbx4v3im9-opencode-1.3.0; nixpkgs channel has opencode-0.3.112 (nixos.opencode) / 1.1.14 (nix eval). The 1.3.0 build likely requires a newer Bun version or Node.js runtime.
   Severity: medium (opencode is a potential Antigravity/multi-provider agent but is not currently in the delegation chain)
   Action: (1) Try nixpkgs version: add `pkgs.opencode` to system packages (gets 0.3.112 or 1.1.14); (2) OR update flake nixpkgs to get opencode ≥1.3.0 with matching Bun; (3) Test `opencode --version` after change.
@@ -1023,9 +1023,9 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Resolved on 2026-06-28. `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine` passed 115/0/2, then `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 180 scripts/governance/tier0-validation-gate.sh --pre-commit` passed 21/0.
   File: scripts/governance/tier0-validation-gate.sh
 
-[OPEN] github-mcp-readonly — GitHub MCP cannot be safely enabled in this environment yet — `gh auth status` reports the existing GitHub token is invalid, and no Docker, Podman, or `github-mcp-server` runtime is available on PATH.
-  Severity: medium
-  Action: Re-authenticate with a scoped read-only GitHub OAuth/PAT path and choose a pinned local or remote MCP runtime before moving `github-mcp-readonly` out of `blocked-auth-runtime`.
+[OPEN] github-mcp-readonly — GitHub MCP cannot be safely enabled yet — `github-mcp-server` binary not on PATH and no Docker/Podman available. Note: gh auth is now valid (gho_ token, repo+workflow scopes). Package available in nixpkgs as `github-mcp-server` 0.20.2. Next step: add to nix packages + wire Claude MCP config + SOPS token.
+  Severity: low
+  Action: Add github-mcp-server to system.packages in NixOS flake, add MCP config to Claude settings, wire SOPS secret for GH_TOKEN. Requires nixos-rebuild.
   File: config/agent-capability-intake-candidates.json
 
 [DONE] osint-active-recon-runtime-gated — Passive OSINT research is active, and active recon engines are now guarded by a fail-closed runtime admission surface — Maigret and MOSAIC remain intentionally not activated because insecure package paths are still held, and BBOT remains provisioning-only in the OSINT MCP server.
