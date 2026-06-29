@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] capability-flush-dispatch-used-hybrid-retrieval-lane — `scripts/ai/aq-capability-flush --dispatch-local --json` created `local-20260629-142546-igct2v`, but the output was only three retrieval-result lines and monitor inferred failed status.
+  Root cause / fix notes: `--dispatch-local` used `delegate-to-local --mode hybrid`, which is a retrieval/query lane rather than the long-horizon local agent lane. Changed dispatch to `--mode agent` while keeping the prompt analysis-only/no-edit/no-install.
+  Severity: medium
+  Action: validate a new dispatch starts in the local agent lane and remains monitorable.
+  File: scripts/ai/aq-capability-flush
+
 [DONE 2026-06-29] skill-auto-selected-invalid-agent-tool-map — `scripts/ai/aq-capability-flush --dry-run --json` selected `agent-tool-map`, but `aq-skill-auto --test` reported `valid=false` for that selected skill.
   Root cause / fix notes: regression of the prior selected-skill validity class; validator required a body `Description` section and its coarse shell-pattern scan tripped on markdown table rows containing terminal/shell wording. Added the required body section and converted the risky mapping table to bullets. Focused `aq-skill-auto --test` now reports `agent-tool-map valid=true`.
   Severity: medium

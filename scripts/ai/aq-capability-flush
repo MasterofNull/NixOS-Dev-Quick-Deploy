@@ -220,7 +220,7 @@ def dispatch_local(task: str) -> dict[str, Any]:
         [
             "scripts/ai/delegate-to-local",
             "--mode",
-            "hybrid",
+            "agent",
             "--role",
             "architect",
             "--task-type",
@@ -234,6 +234,8 @@ def dispatch_local(task: str) -> dict[str, Any]:
     )
     stdout = result.get("stdout")
     task_id = stdout if isinstance(stdout, str) else ""
+    match = re.search(r"\blocal-\d{8}-\d{6}-[a-z0-9]+\b", task_id)
+    task_id = match.group(0) if match else ""
     if not task_id and result.get("stderr"):
         match = re.search(r"\blocal-\d{8}-\d{6}-[a-z0-9]+\b", str(result.get("stderr")))
         task_id = match.group(0) if match else ""

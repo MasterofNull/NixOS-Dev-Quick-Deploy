@@ -46,6 +46,7 @@ def test_static_wiring() -> None:
         "curated-web-research-sources.json",
         "/api/aistack/local-agent/monitor",
         "/query",
+        '"agent"',
     ]
     for needle in required:
         if needle not in source:
