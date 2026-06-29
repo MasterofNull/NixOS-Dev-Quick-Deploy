@@ -16,6 +16,8 @@ Usage (called by the delegate-to-local bash shim):
     python3 dispatch.py list       --delegation-dir DIR
     python3 dispatch.py status ID  --delegation-dir DIR
     python3 dispatch.py check  ID  --delegation-dir DIR
+    python3 dispatch.py monitor    --delegation-dir DIR
+    python3 dispatch.py repair-status ID --delegation-dir DIR
     python3 dispatch.py cancel ID  --delegation-dir DIR
     python3 dispatch.py kill-all   --delegation-dir DIR
 """
@@ -1138,11 +1140,11 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--script-dir",    default=None)
 
     # subcommands that act on the registry
-    for name in ("list", "kill-all"):
+    for name in ("list", "monitor", "kill-all"):
         p = sub.add_parser(name)
         p.add_argument("--delegation-dir", required=True)
 
-    for name in ("status", "check", "cancel"):
+    for name in ("status", "check", "repair-status", "cancel"):
         p = sub.add_parser(name)
         p.add_argument("task_id")
         p.add_argument("--delegation-dir", required=True)
@@ -1248,6 +1250,9 @@ def main() -> int:
         registry.cmd_list()
         return 0
 
+    if args.subcmd == "monitor":
+        return registry.cmd_monitor()
+
     if args.subcmd == "kill-all":
         return registry.cmd_kill_all()
 
@@ -1256,6 +1261,9 @@ def main() -> int:
 
     if args.subcmd == "check":
         return registry.cmd_check(args.task_id)
+
+    if args.subcmd == "repair-status":
+        return registry.cmd_repair_status(args.task_id)
 
     if args.subcmd == "cancel":
         return registry.cmd_cancel(args.task_id)

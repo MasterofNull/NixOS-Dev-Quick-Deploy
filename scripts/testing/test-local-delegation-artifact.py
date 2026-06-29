@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -143,6 +145,21 @@ def test_registry_entry_exists_before_service_check():
     # Note: _service_ok() is called inside dispatch_task() which is after main()'s append
     # The static check: pre-register block before dispatch_task() call (covered by test above)
     print("PASS  registry.append() present in main() scope")
+
+
+def test_delegate_to_local_exposes_repair_status():
+    """Operator repair must be explicit; list/status/check remain read-only monitor paths."""
+    shim = (ROOT / "scripts" / "ai" / "delegate-to-local").read_text()
+    dispatch_src = (LIB / "dispatch.py").read_text()
+    assert_true("--monitor" in shim, "delegate-to-local missing --monitor option")
+    assert_true("--repair-status" in shim, "delegate-to-local missing --repair-status option")
+    assert_true('SUBCMD="monitor"' in shim, "delegate-to-local does not parse monitor")
+    assert_true('SUBCMD="repair-status"' in shim, "delegate-to-local does not parse repair-status")
+    assert_true('"monitor"' in dispatch_src, "dispatch missing monitor subcommand")
+    assert_true('"repair-status"' in dispatch_src, "dispatch missing repair-status subcommand")
+    assert_true("cmd_monitor" in dispatch_src, "dispatch does not call TaskRegistry.cmd_monitor")
+    assert_true("cmd_repair_status" in dispatch_src, "dispatch does not call TaskRegistry.cmd_repair_status")
+    print("PASS  delegate-to-local exposes read-only monitor and explicit repair-status")
 
 
 def test_agent_runner_creates_initial_output_artifacts():
@@ -283,7 +300,7 @@ def test_agent_runner_defaults_allow_long_horizon_work():
 
 
 def test_registry_status_reconciles_dead_agent_failure():
-    """Status reads must not leave dead local-agent tasks marked running."""
+    """Status reads infer failures without mutating; repair-status writes explicitly."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         delegation_dir = tmp_path / "delegation"
@@ -313,16 +330,75 @@ def test_registry_status_reconciles_dead_agent_failure():
         )
         registry.update_status(task_id, "done")
 
-        rc = registry.cmd_status(task_id)
-        entry = registry.get(task_id)
-        assert_true(rc == 0, "cmd_status should succeed for reconciled task")
+        original_update = registry._update_registry
+        original_completion = registry.record_completion
+
+        def fail_write(*args, **kwargs):
+            raise AssertionError("read-only status must not write registry state")
+
+        registry._update_registry = fail_write
+        registry.record_completion = fail_write
+        try:
+            rc = registry.cmd_status(task_id)
+            entry = registry.get(task_id)
+        finally:
+            registry._update_registry = original_update
+            registry.record_completion = original_completion
+
+        assert_true(rc == 0, "cmd_status should succeed with inferred task status")
         assert_true(entry is not None, "registry entry missing after reconcile")
+        assert_true(entry.get("status") == "done", f"read-only status mutated registry: {entry.get('status')}")
+
+        changed = registry.reconcile_running(task_id)
+        entry = registry.get(task_id)
+        assert_true(changed == 1, f"repair should update one task, got {changed}")
+        assert_true(entry is not None, "registry entry missing after repair")
         assert_true(entry.get("status") == "failed", f"expected failed, got {entry.get('status')}")
         assert_true("output artifact reported failure" in entry.get("stale_reason", ""), "failure reason missing")
         pending = json.loads((tmp_path / ".agent" / "collaboration" / "PENDING.json").read_text())
         statuses = [t.get("status") for t in pending.get("in_flight", []) if t.get("id") == task_id]
         assert_true(statuses == ["failed"], f"pending status not reconciled: {statuses}")
-        print("PASS  registry status reconciles dead agent failure")
+        print("PASS  registry status infers read-only and repair reconciles dead agent failure")
+
+
+def test_registry_monitor_is_read_only_json():
+    """Monitor view must be parseable and safe when registry writes are unavailable."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        output_file = delegation_dir / "outputs" / "monitor-agent.log"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_text("Agent task started; waiting for aq-agent-loop output.\n", encoding="utf-8")
+
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        registry.append(
+            task_id="monitor-agent",
+            description="monitor probe",
+            output_file=str(output_file),
+            mode="agent",
+            role="architect",
+            pid=99999999,
+        )
+
+        original_reconcile = registry.reconcile_running
+        registry.reconcile_running = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("monitor must not call mutating reconcile")
+        )
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = registry.cmd_monitor()
+        finally:
+            registry.reconcile_running = original_reconcile
+        assert_true(rc == 0, "cmd_monitor should return success")
+        payload = json.loads(buf.getvalue())
+        assert_true(payload.get("mode") == "read_only", "monitor mode should be read_only")
+        assert_true(payload.get("tasks"), "monitor should include task entries")
+        assert_true(payload["tasks"][0]["status"] == "stale", "monitor should infer stale status")
+        entry = registry.get("monitor-agent")
+        assert_true(entry is not None and entry.get("status") == "running", "monitor mutated registry status")
+        print("PASS  registry monitor is read-only JSON")
 
 
 if __name__ == "__main__":
@@ -332,10 +408,12 @@ if __name__ == "__main__":
         test_dispatch_task_accepts_pre_registered,
         test_service_down_still_creates_registry_entry,
         test_registry_entry_exists_before_service_check,
+        test_delegate_to_local_exposes_repair_status,
         test_agent_runner_creates_initial_output_artifacts,
         test_agent_runner_reaps_no_progress_child,
         test_agent_runner_defaults_allow_long_horizon_work,
         test_registry_status_reconciles_dead_agent_failure,
+        test_registry_monitor_is_read_only_json,
     ]
     for t in tests:
         try:

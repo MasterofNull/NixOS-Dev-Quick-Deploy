@@ -18,6 +18,7 @@ import fcntl
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -220,27 +221,68 @@ class TaskRegistry:
                     return "failed", "process exited before registry completion; output requires review"
         return "stale", "registry said running, but pid is missing or no longer alive"
 
+    def _with_inferred_status(self, entry: dict) -> dict:
+        observed = dict(entry)
+        current_status = observed.get("status")
+        if current_status not in {"running", "done", "completed"}:
+            return observed
+        if current_status == "running" and self._pid_alive(observed.get("pid")):
+            observed["pid_alive"] = True
+            return observed
+        status, reason = self._infer_terminal_status(observed)
+        if current_status in {"done", "completed"} and status != "failed":
+            return observed
+        observed["registry_status"] = current_status
+        observed["status"] = status
+        observed["inferred_status"] = status
+        observed["inferred_reason"] = reason
+        observed["inferred_only"] = True
+        if current_status == "running":
+            observed["pid_alive"] = False
+        return observed
+
+    def _artifact_snapshot(self, entry: dict) -> dict:
+        output_path = self._resolve_output_path(entry)
+        paths = {
+            "output": output_path,
+            "progress": Path(str(output_path) + ".progress.json") if output_path else None,
+            "steps": Path(str(output_path) + ".steps.jsonl") if output_path else None,
+        }
+        snapshot: dict[str, dict] = {}
+        now = time.time()
+        for name, path in paths.items():
+            if not path:
+                snapshot[name] = {"exists": False}
+                continue
+            try:
+                stat = path.stat()
+                snapshot[name] = {
+                    "exists": True,
+                    "path": str(path),
+                    "size_bytes": stat.st_size,
+                    "mtime": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "age_seconds": round(now - stat.st_mtime, 1),
+                }
+            except FileNotFoundError:
+                snapshot[name] = {"exists": False, "path": str(path)}
+        return snapshot
+
     def reconcile_running(self, task_id: Optional[str] = None) -> int:
         """Mark running entries with dead PIDs as terminal before status/check/list reads."""
         changed = 0
         for entry in self._read_registry():
             if task_id and entry.get("id") != task_id:
                 continue
-            current_status = entry.get("status")
-            if current_status not in {"running", "done", "completed"}:
-                continue
-            if current_status == "running" and self._pid_alive(entry.get("pid")):
-                continue
-            status, reason = self._infer_terminal_status(entry)
-            if current_status in {"done", "completed"} and status != "failed":
+            observed = self._with_inferred_status(entry)
+            if not observed.get("inferred_only"):
                 continue
             updates = {
-                "status": status,
+                "status": observed["status"],
                 "stale_since": _now(),
-                "stale_reason": reason,
+                "stale_reason": observed.get("inferred_reason"),
             }
             self._update_registry(entry.get("id"), updates)
-            self.record_completion(entry.get("id"), status)
+            self.record_completion(entry.get("id"), observed["status"])
             changed += 1
         return changed
 
@@ -412,8 +454,7 @@ class TaskRegistry:
     # ── subcommand helpers (used by dispatch.py CLI) ─────────────────────────
 
     def cmd_list(self) -> None:
-        self.reconcile_running()
-        entries = self.list_all()
+        entries = [self._with_inferred_status(e) for e in self.list_all()]
         if not entries:
             print("No delegated tasks yet.")
             return
@@ -433,16 +474,15 @@ class TaskRegistry:
             ))
 
     def cmd_status(self, task_id: str) -> int:
-        self.reconcile_running(task_id)
         e = self.get(task_id)
         if not e:
             print(f"Task not found: {task_id}", file=sys.stderr)
             return 1
+        e = self._with_inferred_status(e)
         print(json.dumps(e, indent=2))
         return 0
 
     def cmd_check(self, task_id: str, repo_root: Optional[Path] = None) -> int:
-        self.reconcile_running(task_id)
         output_file = self.get_output_file(task_id)
         if not output_file:
             print(f"Task not found in registry: {task_id}", file=sys.stderr)
@@ -455,6 +495,48 @@ class TaskRegistry:
             print(f"Output file not found: {p} (task may still be running)", file=sys.stderr)
             return 1
         print(p.read_text(), end="")
+        return 0
+
+    def cmd_monitor(self, limit: int = 20) -> int:
+        observed = [self._with_inferred_status(e) for e in self.list_all()]
+        active = [
+            e for e in observed
+            if e.get("status") == "running" or e.get("registry_status") == "running"
+        ]
+        recent = active[-limit:] if active else observed[-limit:]
+        tasks = []
+        for entry in recent:
+            tasks.append({
+                "id": entry.get("id"),
+                "agent": entry.get("agent"),
+                "role": entry.get("role"),
+                "status": entry.get("status"),
+                "registry_status": entry.get("registry_status"),
+                "pid": entry.get("pid"),
+                "pid_alive": entry.get("pid_alive"),
+                "inferred_only": entry.get("inferred_only", False),
+                "inferred_reason": entry.get("inferred_reason"),
+                "created": entry.get("created"),
+                "description": entry.get("description", "")[:120],
+                "artifacts": self._artifact_snapshot(entry),
+            })
+        payload = {
+            "ok": True,
+            "mode": "read_only",
+            "counts": {
+                "total": len(observed),
+                "running": sum(1 for e in observed if e.get("status") == "running"),
+                "inferred_stale": sum(1 for e in observed if e.get("status") == "stale" and e.get("inferred_only")),
+                "failed": sum(1 for e in observed if e.get("status") == "failed"),
+            },
+            "tasks": tasks,
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    def cmd_repair_status(self, task_id: str) -> int:
+        changed = self.reconcile_running(task_id)
+        print(json.dumps({"task_id": task_id, "repaired": changed}, indent=2))
         return 0
 
     def cmd_cancel(self, task_id: str) -> int:
