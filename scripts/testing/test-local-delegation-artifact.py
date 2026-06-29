@@ -153,13 +153,19 @@ def test_delegate_to_local_exposes_repair_status():
     dispatch_src = (LIB / "dispatch.py").read_text()
     assert_true("--monitor" in shim, "delegate-to-local missing --monitor option")
     assert_true("--repair-status" in shim, "delegate-to-local missing --repair-status option")
+    assert_true("--repair-stale" in shim, "delegate-to-local missing --repair-stale option")
+    assert_true("--dry-run" in shim, "delegate-to-local missing --dry-run option")
+    assert_true("--apply" in shim, "delegate-to-local missing --apply option")
     assert_true('SUBCMD="monitor"' in shim, "delegate-to-local does not parse monitor")
     assert_true('SUBCMD="repair-status"' in shim, "delegate-to-local does not parse repair-status")
+    assert_true('SUBCMD="repair-stale"' in shim, "delegate-to-local does not parse repair-stale")
     assert_true('"monitor"' in dispatch_src, "dispatch missing monitor subcommand")
     assert_true('"repair-status"' in dispatch_src, "dispatch missing repair-status subcommand")
+    assert_true('"repair-stale"' in dispatch_src, "dispatch missing repair-stale subcommand")
     assert_true("cmd_monitor" in dispatch_src, "dispatch does not call TaskRegistry.cmd_monitor")
     assert_true("cmd_repair_status" in dispatch_src, "dispatch does not call TaskRegistry.cmd_repair_status")
-    print("PASS  delegate-to-local exposes read-only monitor and explicit repair-status")
+    assert_true("cmd_repair_stale" in dispatch_src, "dispatch does not call TaskRegistry.cmd_repair_stale")
+    print("PASS  delegate-to-local exposes read-only monitor and explicit repair paths")
 
 
 def test_agent_runner_creates_initial_output_artifacts():
@@ -401,6 +407,60 @@ def test_registry_monitor_is_read_only_json():
         print("PASS  registry monitor is read-only JSON")
 
 
+def test_registry_repair_stale_dry_run_and_apply():
+    """Bulk repair previews stale candidates before explicit registry mutation."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        output_file = delegation_dir / "outputs" / "repair-stale-agent.log"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_text("Agent task started; waiting for aq-agent-loop output.\n", encoding="utf-8")
+
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        task_id = "repair-stale-agent"
+        registry.append(
+            task_id=task_id,
+            description="repair stale probe",
+            output_file=str(output_file),
+            mode="agent",
+            role="architect",
+            pid=99999999,
+        )
+        registry.record_dispatch(
+            task_id=task_id,
+            agent="local-agent",
+            output_file=str(output_file),
+            objective="repair stale probe",
+        )
+
+        preview = registry.repair_stale(apply=False)
+        entry = registry.get(task_id)
+        assert_true(preview.get("mode") == "dry_run", "repair_stale dry run mode missing")
+        assert_true(preview.get("candidate_count") == 1, f"expected one stale candidate: {preview}")
+        assert_true(preview.get("repaired_count") == 0, "dry run should not repair candidates")
+        assert_true(entry is not None and entry.get("status") == "running", "dry run mutated registry")
+
+        applied = registry.repair_stale(apply=True)
+        entry = registry.get(task_id)
+        assert_true(applied.get("mode") == "apply", "repair_stale apply mode missing")
+        assert_true(applied.get("repaired_count") == 1, f"expected one repaired task: {applied}")
+        assert_true(entry is not None and entry.get("status") == "stale", f"expected stale, got {entry}")
+        pending = json.loads((tmp_path / ".agent" / "collaboration" / "PENDING.json").read_text())
+        statuses = [t.get("status") for t in pending.get("in_flight", []) if t.get("id") == task_id]
+        assert_true(statuses == ["stale"], f"pending status not reconciled: {statuses}")
+        print("PASS  registry repair-stale supports dry-run and explicit apply")
+
+
+def test_aq_report_exposes_local_agent_monitor():
+    """Machine report must include the local-agent monitor visibility surface."""
+    report_src = (ROOT / "scripts" / "ai" / "aq-report").read_text()
+    assert_true("def local_agent_monitor_summary" in report_src, "aq-report missing local monitor summary")
+    assert_true("monitor_payload(limit=limit)" in report_src, "aq-report does not reuse registry monitor payload")
+    assert_true('"local_agent_monitor": local_agent_monitor' in report_src, "aq-report JSON missing local_agent_monitor")
+    print("PASS  aq-report exposes local-agent monitor in machine JSON")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -414,6 +474,8 @@ if __name__ == "__main__":
         test_agent_runner_defaults_allow_long_horizon_work,
         test_registry_status_reconciles_dead_agent_failure,
         test_registry_monitor_is_read_only_json,
+        test_registry_repair_stale_dry_run_and_apply,
+        test_aq_report_exposes_local_agent_monitor,
     ]
     for t in tests:
         try:

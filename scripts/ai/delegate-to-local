@@ -28,6 +28,9 @@
 #   --status ID        Show task status
 #   --monitor          Show compact read-only JSON monitor for active/recent tasks
 #   --repair-status ID Reconcile inferred terminal status into the registry
+#   --repair-stale     Dry-run stale running-task repair unless --apply is provided
+#   --dry-run          Preview repair-stale candidates without mutating registry
+#   --apply            Apply repair-stale registry reconciliation
 #   --list             List all registered tasks
 #   --cancel ID        Cancel a running task
 #   --kill-all         Kill all running tasks
@@ -78,6 +81,7 @@ TOOL_MANIFEST="full"
 TASK_TYPE=""  # Phase 173: "research"|"analysis"|"prd" raises stagnation read limits to 15/25
 SUBCMD=""
 SUBCMD_ARG=""
+REPAIR_STALE_APPLY=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -92,6 +96,9 @@ while [[ $# -gt 0 ]]; do
         --check)         SUBCMD="check";         SUBCMD_ARG="$2"; shift 2 ;;
         --status)        SUBCMD="status";        SUBCMD_ARG="$2"; shift 2 ;;
         --repair-status) SUBCMD="repair-status"; SUBCMD_ARG="$2"; shift 2 ;;
+        --repair-stale)  SUBCMD="repair-stale";  shift   ;;
+        --dry-run)       REPAIR_STALE_APPLY=false; shift ;;
+        --apply)         REPAIR_STALE_APPLY=true;  shift ;;
         --list)          SUBCMD="list";          shift   ;;
         --monitor)       SUBCMD="monitor";       shift   ;;
         --cancel)        SUBCMD="cancel";        SUBCMD_ARG="$2"; shift 2 ;;
@@ -130,6 +137,11 @@ case "${SUBCMD:-}" in
         ;;
     repair-status)
         python3 "$DISPATCH" repair-status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
+        ;;
+    repair-stale)
+        _REPAIR_ARGS=(python3 "$DISPATCH" repair-stale --delegation-dir "$DELEGATION_DIR")
+        [[ "$REPAIR_STALE_APPLY" == "true" ]] && _REPAIR_ARGS+=(--apply)
+        "${_REPAIR_ARGS[@]}"
         ;;
     cancel)
         python3 "$DISPATCH" cancel "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
