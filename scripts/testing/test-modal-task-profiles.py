@@ -3,7 +3,7 @@
 Phase 162 regression: modal task profiles for local dispatch.
 
 Tests:
-- TASK_PROFILES contains all 5 required profiles
+- TASK_PROFILES contains all required profiles
 - Each profile has required fields (temperature, frequency_penalty, enable_thinking,
   suggested_remote_profile, description)
 - build_llama_payload(task_type=X) applies correct profile parameters
@@ -66,10 +66,10 @@ def _load_task_config():
 def test_task_profiles_all_present():
     mod = _load_llm_config()
     profiles = mod.TASK_PROFILES
-    required = {"structured", "lookup", "code", "reasoning", "agent"}
+    required = {"structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning"}
     for name in required:
         assert_true(name in profiles, f"TASK_PROFILES missing '{name}' profile")
-    print("PASS  TASK_PROFILES contains all 5 required profiles")
+    print("PASS  TASK_PROFILES contains all required profiles")
 
 
 def test_task_profiles_fields():
@@ -186,6 +186,13 @@ def test_classify_task_type_mode_overrides():
     print("PASS  classify_task_type: mode overrides (ralph→structured, agent→agent)")
 
 
+def test_classify_task_type_agent_analysis_only():
+    mod = _load_dispatch()
+    prompt = "analysis only: read these local artifacts, produce ranked remaining slices, do not edit files"
+    assert_eq(mod.classify_task_type(prompt, "agent"), "research", "agent analysis-only → research")
+    print("PASS  classify_task_type: agent analysis-only prompts → 'research'")
+
+
 def test_task_config_has_task_type():
     mod = _load_task_config()
     cfg = mod.TaskConfig.from_args(
@@ -200,6 +207,22 @@ def test_task_config_has_task_type():
     )
     assert_eq(cfg.task_type, "reasoning", "TaskConfig.task_type")
     print("PASS  TaskConfig.from_args() accepts and stores task_type")
+
+
+def test_task_config_analysis_aliases_to_research():
+    mod = _load_task_config()
+    cfg = mod.TaskConfig.from_args(
+        mode="agent",
+        role="architect",
+        timeout_secs=300,
+        max_tokens=None,
+        llama_url="http://127.0.0.1:8080",
+        hybrid_url="http://127.0.0.1:8003",
+        ralph_url="http://127.0.0.1:8004",
+        task_type="analysis",
+    )
+    assert_eq(cfg.task_type, "research", "analysis alias normalizes to research")
+    print("PASS  TaskConfig.from_args() normalizes analysis aliases to research")
 
 
 def test_task_config_invalid_task_type_fallback():
@@ -227,6 +250,8 @@ def test_all_profiles_have_remote_profile():
         "code": "remote-coding",
         "reasoning": "remote-reasoning",
         "agent": "local-agent",
+        "research": "remote-reasoning",
+        "deep_reasoning": "remote-reasoning",
     }
     for task_type, expected_remote in expected_profiles.items():
         p = mod.TASK_PROFILES[task_type]
@@ -260,7 +285,9 @@ if __name__ == "__main__":
         test_classify_task_type_reasoning,
         test_classify_task_type_code,
         test_classify_task_type_mode_overrides,
+        test_classify_task_type_agent_analysis_only,
         test_task_config_has_task_type,
+        test_task_config_analysis_aliases_to_research,
         test_task_config_invalid_task_type_fallback,
         test_all_profiles_have_remote_profile,
         test_get_task_profile_helper,

@@ -876,13 +876,29 @@ class LocalAgentExecutor:
         _TOOL_FAILURE_HARD_LIMIT = 5
 
         # Exploration stagnation: tracks reads since the last edit/write tool call.
-        # Research/analysis/PRD tasks legitimately read 10+ files before writing — use
-        # higher limits for those task_types. Implementation tasks default to 8/12.
+        # Implementation tasks abort early on over-exploration. Analysis-only work may
+        # read much more, but must checkpoint through store_memory/write_file and may
+        # not spin on the same file path.
         _reads_without_edit = 0
-        _RESEARCH_TASK_TYPES = frozenset({"research", "analysis", "prd", "reasoning"})
-        _is_research_task = (task.task_type or "").lower() in _RESEARCH_TASK_TYPES
-        _MAX_READS_WITHOUT_EDIT = 15 if _is_research_task else 8
-        _READS_HARD_LIMIT = 25 if _is_research_task else 12
+        _read_path_counts: dict = {}
+        _ANALYSIS_ONLY_TASK_TYPES = frozenset({
+            "research", "analysis", "analysis_only", "research_only",
+            "planning", "prd", "deep_reasoning",
+        })
+        _is_analysis_only_task = (task.task_type or "").lower() in _ANALYSIS_ONLY_TASK_TYPES
+        _IMPLEMENTATION_MAX_READS_WITHOUT_EDIT = 8
+        _IMPLEMENTATION_READS_HARD_LIMIT = 12
+        _ANALYSIS_MAX_READS_WITHOUT_CHECKPOINT = 24
+        _ANALYSIS_READS_HARD_LIMIT = 80
+        _REPEATED_READ_PATH_LIMIT = 4
+        _MAX_READS_WITHOUT_EDIT = (
+            _ANALYSIS_MAX_READS_WITHOUT_CHECKPOINT
+            if _is_analysis_only_task else _IMPLEMENTATION_MAX_READS_WITHOUT_EDIT
+        )
+        _READS_HARD_LIMIT = (
+            _ANALYSIS_READS_HARD_LIMIT
+            if _is_analysis_only_task else _IMPLEMENTATION_READS_HARD_LIMIT
+        )
         _exploration_nudge_sent = False
         _validation_passes_without_commit = 0
         _VALIDATION_STALL_NUDGE = 3
@@ -1308,8 +1324,27 @@ class LocalAgentExecutor:
             # without acting (prevents over-exploration in self-improvement tasks).
             if result.tool_name == "read_file":
                 _reads_without_edit += 1
+                read_path = str(result.arguments.get("file_path") or result.arguments.get("path") or "")
+                if read_path:
+                    _read_path_counts[read_path] = _read_path_counts.get(read_path, 0) + 1
+                    if _read_path_counts[read_path] >= _REPEATED_READ_PATH_LIMIT:
+                        stagnation_msg = (
+                            f"Repeated-read stagnation: {read_path!r} was read "
+                            f"{_read_path_counts[read_path]} times without progress. "
+                            f"Aborting at tool call {tool_call_count}."
+                        )
+                        logger.warning(
+                            "repeated-read stagnation: path=%r reads=%d call=%d",
+                            read_path, _read_path_counts[read_path], tool_call_count,
+                        )
+                        _cancel_watchdog()
+                        return stagnation_msg, total_tokens
             elif result.tool_name in ("edit_file", "write_file"):
                 _reads_without_edit = 0
+                _read_path_counts.clear()
+            elif _is_analysis_only_task and result.tool_name == "store_memory":
+                _reads_without_edit = 0
+                _read_path_counts.clear()
 
             # Validation stall: detect repeated validate_before_commit/run_command
             # without any intervening commit. Model validated the code is ready but
@@ -1326,14 +1361,21 @@ class LocalAgentExecutor:
                 _observations_without_action = 0
 
             if _reads_without_edit >= _READS_HARD_LIMIT:
-                stagnation_msg = (
-                    f"Exploration stagnation: {_reads_without_edit} consecutive reads without "
-                    f"any edit_file or write_file — model stuck in exploration phase. "
-                    f"Aborting at tool call {tool_call_count}."
-                )
+                if _is_analysis_only_task:
+                    stagnation_msg = (
+                        f"Analysis checkpoint stagnation: {_reads_without_edit} consecutive "
+                        f"reads without store_memory or write_file checkpoint — model stuck "
+                        f"in analysis phase. Aborting at tool call {tool_call_count}."
+                    )
+                else:
+                    stagnation_msg = (
+                        f"Exploration stagnation: {_reads_without_edit} consecutive reads without "
+                        f"any edit_file or write_file — model stuck in exploration phase. "
+                        f"Aborting at tool call {tool_call_count}."
+                    )
                 logger.warning(
-                    "exploration stagnation: %d reads without edit — aborting at call %d",
-                    _reads_without_edit, tool_call_count,
+                    "exploration/checkpoint stagnation: %d reads task_type=%r call=%d",
+                    _reads_without_edit, task.task_type, tool_call_count,
                 )
                 _cancel_watchdog()
                 return stagnation_msg, total_tokens
@@ -1445,11 +1487,12 @@ class LocalAgentExecutor:
             # Appears before the next LLM call so the model can course-correct without aborting.
             if _reads_without_edit == _MAX_READS_WITHOUT_EDIT and not _exploration_nudge_sent:
                 _exploration_nudge_sent = True
-                if _is_research_task:
+                if _is_analysis_only_task:
                     nudge_content = (
-                        f"RESEARCH TASK: You have read {_reads_without_edit} files. "
-                        f"Continue gathering context as needed (hard limit: {_READS_HARD_LIMIT} reads). "
-                        "Begin writing your output file by that point."
+                        f"ANALYSIS TASK: You have read {_reads_without_edit} files. "
+                        f"Continue gathering context as needed, but checkpoint before "
+                        f"{_READS_HARD_LIMIT} reads with store_memory or write_file. "
+                        "Do not keep rereading the same files."
                     )
                 else:
                     nudge_content = (

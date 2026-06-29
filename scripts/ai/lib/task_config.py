@@ -45,7 +45,18 @@ _VALID_MODES = {"agent", "hybrid", "direct", "ralph"}
 
 # Valid task profile names — kept in sync with llm_config.TASK_PROFILES.
 # "auto" is a sentinel resolved by classify_task_type() before TaskConfig is built.
-_VALID_TASK_TYPES = {"structured", "lookup", "code", "reasoning", "agent"}
+_VALID_TASK_TYPES = {
+    "structured", "lookup", "code", "reasoning", "agent",
+    "research", "deep_reasoning",
+}
+
+_TASK_TYPE_ALIASES = {
+    "analysis": "research",
+    "analysis_only": "research",
+    "research_only": "research",
+    "planning": "research",
+    "prd": "research",
+}
 
 
 def normalize_role(role: str) -> str:
@@ -62,7 +73,7 @@ class TaskConfig:
     llama_url: str
     hybrid_url: str
     ralph_url: str
-    task_type: str      # modal payload profile (structured/lookup/code/reasoning/agent)
+    task_type: str      # modal payload profile (structured/lookup/code/reasoning/agent/research/deep_reasoning)
     tool_manifest: str = "full"  # agent mode only: "full" | "self-improvement"
 
     @classmethod
@@ -91,7 +102,8 @@ class TaskConfig:
             )
 
         resolved_tokens = cls._resolve_tokens(mode, max_tokens, hint=max_tokens_hint)
-        resolved_task_type = task_type if task_type in _VALID_TASK_TYPES else "code"
+        aliased_task_type = _TASK_TYPE_ALIASES.get(task_type, task_type)
+        resolved_task_type = aliased_task_type if aliased_task_type in _VALID_TASK_TYPES else "code"
 
         return cls(
             mode=mode,

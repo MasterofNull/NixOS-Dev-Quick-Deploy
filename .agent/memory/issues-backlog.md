@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-29] stagnation-guard-too-aggressive-for-analysis-only-agent-tasks — Local agent task `local-20260629-012903-kbi12z` failed after 12 reads with `Exploration stagnation` even though the assignment was analysis/planning only.
+  Root cause: `classify_task_type(..., mode="agent")` always returned `agent`, so analysis-only prompts never reached the executor's research/analysis guard path. The executor also required `edit_file`/`write_file` progress for all read-heavy tasks, which is wrong for analysis-only work.
+  Fix: agent-mode analysis/planning prompts now classify to `research`; analysis/planning/PRD aliases normalize to the `research` profile; executor now keeps the strict 8/12 implementation read guard while giving analysis-only tasks an 80-read checkpoint guard reset by `store_memory`/`write_file`, plus repeated-read path detection. Added phase-0 QA check `0.10.24`.
+  Severity: medium
+  Files: scripts/ai/lib/dispatch.py; scripts/ai/lib/task_config.py; ai-stack/local-agents/agent_executor.py; scripts/testing/test-analysis-only-stagnation-mode.py
+
 [DONE 2026-06-29] local-agent-timeout-watchdog-not-reaping-agent-loop — `local-20260628-204716-mr8jql` remained running after 36+ minutes even though the parent dispatch command included `--timeout 300`; child `aq-agent-loop` was idle in `do_epoll_wait` and no main output artifact existed for this pre-fix task.
   Root cause: `AgentRunner` used a blocking `subprocess.run()` with a dynamic wall clock up to the runaway hard cap, while `aq-agent-loop` ignores `--max-calls`; stalled children could remain alive without producing the registered output file.
   Fix: `AgentRunner` now launches `aq-agent-loop` in an isolated process group, monitors output/progress/steps artifact mtimes, supports long-horizon default wall-clock runs, reaps no-progress children with SIGTERM/SIGKILL fallback, writes a failed progress sidecar, and records a timeout artifact. The stale pre-fix process was terminated after confirming no recoverable main output file existed.
@@ -92,12 +98,12 @@
   Files: .agent/PROMOTED-BUG-PATTERNS.md (NEW), .agent/INFRASTRUCTURE-CONSTRAINTS.md (NEW),
     .agent/CODEX.md, .agent/LOCAL-AGENT.md, .agent/GEMINI.md, .claude/CLAUDE.md
 
-[MONITOR] stagnation-guard-too-aggressive-for-planning — Exploration stagnation guard (Phase 165) fired on
+[DONE 2026-06-29] stagnation-guard-too-aggressive-for-planning — Exploration stagnation guard (Phase 165) fired on
   a Qwen3 implementation planning task after 12 consecutive reads with no edits. The task was legitimately
   a read-heavy analysis task. Guard is correct for stuck loops but may cut off valid planning sequences.
-  Current threshold: 12 reads. Consider: task-type tag (planning vs implementation) to relax guard for
-  planning tasks dispatched with --mode direct. No action taken yet (guard behavior is per spec).
-  Severity: low (expected guard behavior; planning tasks should use --mode direct not --mode agent)
+  Fix: task-type tag/alias support now routes analysis-only agent prompts to the research profile and uses
+  checkpoint-based analysis limits while preserving the strict implementation limit.
+  Severity: low
   File: ai-stack/local-agents/agent_executor.py (stagnation guard logic)
 
 
