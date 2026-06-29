@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+"""Exercise the local capability stack without enabling new external code."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TASK = (
+    "Use local skills, MCP/tool catalog, capability intake, OSINT sources, RAG, "
+    "dashboard monitor, and local inference to rank high-value AI harness integrations."
+)
+
+
+def _run(args: list[str], timeout: int = 45) -> dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            args,
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+    except Exception as exc:
+        return {"ok": False, "args": args, "error": str(exc)}
+    payload: Any = None
+    if proc.stdout.strip():
+        try:
+            payload = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            payload = proc.stdout.strip()
+    return {
+        "ok": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "stdout": payload,
+        "stderr": proc.stderr.strip()[-1200:],
+    }
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, dict) else {}
+    except Exception as exc:
+        return {"_error": str(exc)}
+
+
+def _http_json(url: str, method: str = "GET", body: dict[str, Any] | None = None, timeout: int = 8) -> dict[str, Any]:
+    data = None
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        return {"ok": True, "payload": json.loads(raw)}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def skill_selection(task: str) -> dict[str, Any]:
+    result = _run(["scripts/ai/aq-skill-auto", task, "--agent", "local", "--json", "--test"])
+    payload = result.get("stdout") if isinstance(result.get("stdout"), dict) else {}
+    return {
+        "ok": bool(result.get("ok") and payload),
+        "status": payload.get("status"),
+        "selected": [entry.get("name") for entry in payload.get("selected_skills", []) if isinstance(entry, dict)],
+        "reference": payload.get("reference_skills", []),
+        "validation": payload.get("validation", {}),
+        "stderr": result.get("stderr", ""),
+    }
+
+
+def capability_summary() -> dict[str, Any]:
+    catalog = _load_json(REPO_ROOT / "config" / "system-capability-catalog.json")
+    suggested = _load_json(REPO_ROOT / "config" / "suggested-ai-repo-candidates.json")
+    entries = catalog.get("entries", [])
+    if not isinstance(entries, list):
+        entries = []
+    candidates = suggested.get("candidates", [])
+    if not isinstance(candidates, list):
+        candidates = []
+    states: dict[str, int] = {}
+    for entry in entries:
+        if isinstance(entry, dict):
+            state = str(entry.get("state", "unknown"))
+            states[state] = states.get(state, 0) + 1
+    priorities: dict[str, int] = {}
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            priority = str(candidate.get("priority", "unknown"))
+            priorities[priority] = priorities.get(priority, 0) + 1
+    return {
+        "catalog_entries": len(entries),
+        "catalog_states": states,
+        "suggested_candidates": len(candidates),
+        "candidate_priorities": priorities,
+        "top_candidates": [
+            {
+                "id": candidate.get("id"),
+                "category": candidate.get("category"),
+                "priority": candidate.get("priority"),
+                "state": candidate.get("state"),
+                "gap_targets": candidate.get("local_gap_targets", [])[:4],
+                "security_gates": candidate.get("security_gates", [])[:4],
+            }
+            for candidate in candidates[:10]
+            if isinstance(candidate, dict)
+        ],
+    }
+
+
+def intake_summary() -> dict[str, Any]:
+    result = _run(["scripts/ai/aq-capability-intake", "audit", "--all", "--json"], timeout=60)
+    payload = result.get("stdout") if isinstance(result.get("stdout"), dict) else {}
+    reports = payload.get("reports", []) if isinstance(payload, dict) else []
+    admissions: dict[str, int] = {}
+    risk_flags: dict[str, int] = {}
+    for report in reports if isinstance(reports, list) else []:
+        if not isinstance(report, dict):
+            continue
+        admission = str(report.get("admission", "unknown"))
+        admissions[admission] = admissions.get(admission, 0) + 1
+        for flag in report.get("risk_flags", []):
+            risk_flags[str(flag)] = risk_flags.get(str(flag), 0) + 1
+    return {
+        "ok": bool(result.get("ok")),
+        "reports": len(reports) if isinstance(reports, list) else 0,
+        "admissions": admissions,
+        "top_risk_flags": sorted(risk_flags.items(), key=lambda item: (-item[1], item[0]))[:8],
+        "stderr": result.get("stderr", ""),
+    }
+
+
+def osint_summary() -> dict[str, Any]:
+    payload = _load_json(REPO_ROOT / "config" / "curated-web-research-sources.json")
+    workflows = payload.get("workflows", [])
+    if not isinstance(workflows, list):
+        workflows = []
+    return {
+        "workflow_count": len(workflows),
+        "workflows": [
+            {
+                "slug": workflow.get("slug"),
+                "max_urls": workflow.get("max_urls"),
+                "source_count": len(workflow.get("sources", [])) if isinstance(workflow.get("sources"), list) else 0,
+            }
+            for workflow in workflows[:8]
+            if isinstance(workflow, dict)
+        ],
+    }
+
+
+def rag_probe() -> dict[str, Any]:
+    body = {"query": "capability catalog local agent OSINT RAG integration parity", "limit": 3}
+    response = _http_json("http://127.0.0.1:8003/query", method="POST", body=body, timeout=10)
+    payload = response.get("payload") if isinstance(response.get("payload"), dict) else {}
+    return {
+        "ok": bool(response.get("ok")),
+        "keys": sorted(payload.keys())[:12] if payload else [],
+        "result_count": len(payload.get("results", [])) if isinstance(payload.get("results"), list) else None,
+        "error": response.get("error"),
+    }
+
+
+def monitor_summary() -> dict[str, Any]:
+    response = _http_json("http://127.0.0.1:8889/api/aistack/local-agent/monitor", timeout=8)
+    payload = response.get("payload") if isinstance(response.get("payload"), dict) else {}
+    counts = payload.get("counts", {}) if isinstance(payload.get("counts"), dict) else {}
+    return {
+        "ok": bool(response.get("ok") and payload.get("available", payload.get("ok", False))),
+        "status": payload.get("status"),
+        "activity": payload.get("activity"),
+        "counts": counts,
+        "repair_candidates": payload.get("repair_candidates"),
+        "source": payload.get("source"),
+        "error": response.get("error"),
+    }
+
+
+def dry_run(task: str) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "mode": "dry-run",
+        "task": task,
+        "selected_skills": skill_selection(task),
+        "capability_catalog": capability_summary(),
+        "security_gate_summary": intake_summary(),
+        "osint_workflows": osint_summary(),
+        "rag_probe": rag_probe(),
+        "monitor": monitor_summary(),
+    }
+
+
+def dispatch_local(task: str) -> dict[str, Any]:
+    prompt = (
+        "Analysis only. Do not edit files, install dependencies, enable external MCP servers, "
+        "or use secrets. Use the local capability catalog, suggested repo candidates, OSINT "
+        "workflow references, RAG/query surfaces, capability-intake gates, and local-agent "
+        "monitoring to rank the next 10 high-value AI harness integrations. Produce a compact "
+        "JSON-first report with candidate ids, parity gaps, security gates, dashboard metrics, "
+        "and the first safe repo-local slice for each. Task: "
+        + task
+    )
+    result = _run(
+        [
+            "scripts/ai/delegate-to-local",
+            "--mode",
+            "hybrid",
+            "--role",
+            "architect",
+            "--task-type",
+            "research",
+            "--timeout",
+            "900",
+            "--prompt",
+            prompt,
+        ],
+        timeout=20,
+    )
+    stdout = result.get("stdout")
+    task_id = stdout if isinstance(stdout, str) else ""
+    if not task_id and result.get("stderr"):
+        match = re.search(r"\blocal-\d{8}-\d{6}-[a-z0-9]+\b", str(result.get("stderr")))
+        task_id = match.group(0) if match else ""
+    return {
+        "status": "ok" if result.get("ok") and task_id else "warn",
+        "mode": "dispatch-local",
+        "task": task,
+        "dispatch": {"ok": result.get("ok"), "task_id": task_id, "stderr": result.get("stderr", "")},
+        "monitor": monitor_summary(),
+    }
+
+
+def status() -> dict[str, Any]:
+    return {"status": "ok", "mode": "status", "monitor": monitor_summary()}
+
+
+def validate(task: str) -> dict[str, Any]:
+    payload = dry_run(task)
+    checks = {
+        "skill_auto": bool(payload["selected_skills"].get("selected")),
+        "capability_catalog": payload["capability_catalog"].get("catalog_entries", 0) > 0,
+        "suggested_candidates": payload["capability_catalog"].get("suggested_candidates", 0) > 0,
+        "capability_intake": payload["security_gate_summary"].get("reports", 0) > 0,
+        "osint_sources": payload["osint_workflows"].get("workflow_count", 0) > 0,
+        "local_monitor": bool(payload["monitor"].get("ok")),
+    }
+    payload["mode"] = "validate"
+    payload["validation"] = {"checks": checks, "passed": all(checks.values())}
+    payload["status"] = "ok" if payload["validation"]["passed"] else "warn"
+    return payload
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--task", default=TASK)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--dispatch-local", action="store_true")
+    parser.add_argument("--status", action="store_true")
+    parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    if sum(bool(mode) for mode in [args.dry_run, args.dispatch_local, args.status, args.validate]) > 1:
+        parser.error("choose only one mode")
+    if args.dispatch_local:
+        payload = dispatch_local(args.task)
+    elif args.status:
+        payload = status()
+    elif args.validate:
+        payload = validate(args.task)
+    else:
+        payload = dry_run(args.task)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    if payload.get("mode") == "validate" and not payload.get("validation", {}).get("passed"):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

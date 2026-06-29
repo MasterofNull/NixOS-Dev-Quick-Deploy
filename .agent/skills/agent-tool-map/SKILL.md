@@ -4,6 +4,9 @@ description: "Agent Tool Map Skill"
 ---
 
 # Agent Tool Map Skill
+## Description
+Maps common operations to the correct tool names for Claude, Gemini, Codex, and the local agent so delegated prompts do not ask an agent to call unavailable tools.
+
 ## Tags
 gemini, codex, claude, tools, tool-names, grep_search, run_shell_command, read_file, replace
 ## When to Use
@@ -14,18 +17,15 @@ tool name to use in a delegation prompt for a specific agent.
 
 ## 1. Tool Name Mapping by Agent
 
-Each agent has different tool names for the same operation. Use the correct name when writing
-prompts or delegation instructions.
+Each agent has different tool names for the same operation. Use the correct name when writing prompts or delegation instructions.
 
-| Operation | Claude Code | Gemini CLI | Codex CLI | Local (Qwen3) |
-|-----------|------------|------------|-----------|---------------|
-| Read file | Read | `read_file` | `read_file` | `read_file` / Read |
-| Search content | Grep | `grep_search` | `grep_search` | `grep_search` |
-| Find files | Glob | `find_files` | `find_files` | `find_files` |
-| Edit file | Edit | `replace` | `apply_patch` | `replace` |
-| Write new file | Write | `write_file` | `write_file` | `write_file` |
-| Run shell cmd | Bash | **does not exist** | Bash | `run_command` |
-| Web fetch | WebFetch | `web_fetch` | n/a | n/a |
+- Read file: Claude Code `Read`; Gemini CLI `read_file`; Codex CLI `read_file`; local agent `read_file` / `Read`.
+- Search content: Claude Code `Grep`; Gemini CLI `grep_search`; Codex CLI `grep_search`; local agent `grep_search`.
+- Find files: Claude Code `Glob`; Gemini CLI `find_files`; Codex CLI `find_files`; local agent `find_files`.
+- Edit file: Claude Code `Edit`; Gemini CLI `replace`; Codex CLI `apply_patch`; local agent `replace`.
+- Write new file: Claude Code `Write`; Gemini CLI `write_file`; Codex CLI `write_file`; local agent `write_file`.
+- Terminal command: Claude Code `Bash`; Gemini CLI unavailable in `auto_edit`; Codex CLI terminal tool; local agent `run_command`.
+- Web fetch: Claude Code `WebFetch`; Gemini CLI `web_fetch`; Codex CLI n/a; local agent n/a.
 
 ### Critical: Gemini `run_shell_command` Does Not Exist
 In Gemini CLI `auto_edit` mode, `run_shell_command` is NOT available. Any attempt returns
