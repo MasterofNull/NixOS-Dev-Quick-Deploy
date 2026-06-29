@@ -8,8 +8,13 @@ src = EXECUTOR.read_text()
 
 checks = [
     ("reads_without_edit counter", "_reads_without_edit" in src),
+    ("analysis-only task type set", "_ANALYSIS_ONLY_TASK_TYPES" in src),
     ("soft nudge threshold", "_MAX_READS_WITHOUT_EDIT" in src),
     ("hard abort threshold", "_READS_HARD_LIMIT" in src),
+    ("implementation hard limit", "_IMPLEMENTATION_READS_HARD_LIMIT = 12" in src),
+    ("analysis hard limit", "_ANALYSIS_READS_HARD_LIMIT = 80" in src),
+    ("repeated read path guard", "_read_path_counts" in src and "_REPEATED_READ_PATH_LIMIT" in src),
+    ("analysis checkpoint reset", '"store_memory"' in src and "Analysis checkpoint stagnation" in src),
     ("reset on edit/write", '"edit_file"' in src and '"write_file"' in src and "_reads_without_edit = 0" in src),
     ("exploration stagnation abort", "Exploration stagnation" in src),
     ("nudge injection into messages", "_exploration_nudge_sent" in src),
@@ -23,15 +28,21 @@ if failed:
 
 # Verify threshold values are reasonable
 import re
-hard = re.search(r"_READS_HARD_LIMIT\s*=\s*(\d+)", src)
-soft = re.search(r"_MAX_READS_WITHOUT_EDIT\s*=\s*(\d+)", src)
-if hard and soft:
-    h, s = int(hard.group(1)), int(soft.group(1))
-    if not (s < h):
-        print(f"FAIL: soft ({s}) must be < hard ({h})")
+impl_hard = re.search(r"_IMPLEMENTATION_READS_HARD_LIMIT\s*=\s*(\d+)", src)
+impl_soft = re.search(r"_IMPLEMENTATION_MAX_READS_WITHOUT_EDIT\s*=\s*(\d+)", src)
+analysis_hard = re.search(r"_ANALYSIS_READS_HARD_LIMIT\s*=\s*(\d+)", src)
+analysis_soft = re.search(r"_ANALYSIS_MAX_READS_WITHOUT_CHECKPOINT\s*=\s*(\d+)", src)
+if impl_hard and impl_soft and analysis_hard and analysis_soft:
+    ih, isoft = int(impl_hard.group(1)), int(impl_soft.group(1))
+    ah, asoft = int(analysis_hard.group(1)), int(analysis_soft.group(1))
+    if not (isoft < ih <= 12):
+        print(f"FAIL: implementation soft/hard limits invalid ({isoft}/{ih})")
         sys.exit(1)
-    if h > 30:
-        print(f"FAIL: hard limit too large ({h}), should be <= 30 to prevent runaway loops (research mode may use up to 25)")
+    if not (12 < asoft < ah):
+        print(f"FAIL: analysis soft/hard limits invalid ({asoft}/{ah})")
+        sys.exit(1)
+    if ah > 120:
+        print(f"FAIL: analysis hard limit too large ({ah}), checkpoint guard should still bound runaway reads")
         sys.exit(1)
 
 print("PASS: exploration stagnation guard present and thresholds reasonable")

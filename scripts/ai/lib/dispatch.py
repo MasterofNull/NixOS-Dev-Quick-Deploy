@@ -62,6 +62,8 @@ except ImportError:
             "code":       {"temperature": 0.15, "frequency_penalty": 0.0,  "enable_thinking": False},
             "reasoning":  {"temperature": 0.5,  "frequency_penalty": 0.05, "enable_thinking": False},
             "agent":      {"temperature": 0.3,  "frequency_penalty": 0.0,  "enable_thinking": False},
+            "research":   {"temperature": 0.4,  "frequency_penalty": 0.05, "enable_thinking": False},
+            "deep_reasoning": {"temperature": 0.5, "frequency_penalty": 0.05, "enable_thinking": False},
         }
         _profile = _FALLBACK_PROFILES.get(task_type or "code", _FALLBACK_PROFILES["code"])
         _max = max_tokens or int(os.environ.get("LLAMA_MAX_TOKENS", str(AGENT_TASK_MAX_TOKENS)))
@@ -318,12 +320,21 @@ _TASK_CODE_SIGNALS = frozenset([
     "add endpoint", "create class", "build the ", "add the ",
 ])
 
+_TASK_ANALYSIS_ONLY_SIGNALS = frozenset([
+    "analysis only", "analysis-only", "research only", "research-only",
+    "planning only", "planning-only", "prd", "no edits", "do not edit",
+    "do not implement", "do not install", "do not write files",
+    "ranked remaining slices", "dependency order", "validation plan",
+    "read these local artifacts", "catalog", "synthesis", "assess and plan",
+])
+
 
 def classify_task_type(prompt: str, mode: str = "direct") -> str:
     """Map prompt + dispatch mode to a modal task profile name (Phase 162).
 
-    Profiles: structured, lookup, code, reasoning, agent
-    Mode-driven overrides take priority over keyword matching.
+    Profiles: structured, lookup, code, reasoning, agent, research, deep_reasoning
+    Mode-driven overrides take priority except analysis-only agent prompts, which
+    need the research profile so the long-horizon executor guard uses checkpoints.
     Defaults to 'code' when no signal is detected (most common direct task).
 
     Examples:
@@ -332,13 +343,16 @@ def classify_task_type(prompt: str, mode: str = "direct") -> str:
         classify_task_type("Write a function to sort", "direct") -> "code"
         classify_task_type("yes or no", "direct")                -> "lookup"
         classify_task_type("any prompt", "ralph")                -> "structured"
-        classify_task_type("any prompt", "agent")                -> "agent"
+        classify_task_type("anything", "agent")                 -> "agent"
+        classify_task_type("analysis only", "agent")            -> "research"
     """
     if mode == "ralph":
         return "structured"
+    p = prompt.lower()
+    if any(k in p for k in _TASK_ANALYSIS_ONLY_SIGNALS):
+        return "research"
     if mode == "agent":
         return "agent"
-    p = prompt.lower()
     if any(k in p for k in _RALPH_KEYWORDS):
         return "structured"
     if any(k in p for k in _TINY_SIGNALS):
@@ -1075,7 +1089,11 @@ def _build_parser() -> argparse.ArgumentParser:
                    choices=["auto", "agent", "hybrid", "direct", "ralph"],
                    help="Routing mode; 'auto' runs classify_mode() heuristic (default)")
     d.add_argument("--task-type",     default=None,
-                   choices=["auto", "structured", "lookup", "code", "reasoning", "agent"],
+                   choices=[
+                       "auto", "structured", "lookup", "code", "reasoning", "agent",
+                       "research", "analysis", "analysis_only", "research_only",
+                       "planning", "prd", "deep_reasoning",
+                   ],
                    help="Modal payload profile; None/'auto' runs classify_task_type() (default)")
     d.add_argument("--role",          required=True)
     d.add_argument("--prompt",        required=True)
