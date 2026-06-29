@@ -26,6 +26,8 @@
 #   --wait             Block until task completes (default: background)
 #   --check ID         Print output of a completed task
 #   --status ID        Show task status
+#   --monitor          Show compact read-only JSON monitor for active/recent tasks
+#   --repair-status ID Reconcile inferred terminal status into the registry
 #   --list             List all registered tasks
 #   --cancel ID        Cancel a running task
 #   --kill-all         Kill all running tasks
@@ -87,11 +89,13 @@ while [[ $# -gt 0 ]]; do
         --wait)           WAIT=true;           shift   ;;
         --tool-manifest)  TOOL_MANIFEST="$2";  shift 2 ;;
         --task-type)      TASK_TYPE="$2";      shift 2 ;;
-        --check)       SUBCMD="check";    SUBCMD_ARG="$2"; shift 2 ;;
-        --status)      SUBCMD="status";   SUBCMD_ARG="$2"; shift 2 ;;
-        --list)        SUBCMD="list";     shift   ;;
-        --cancel)      SUBCMD="cancel";   SUBCMD_ARG="$2"; shift 2 ;;
-        --kill-all)    SUBCMD="kill-all"; shift   ;;
+        --check)         SUBCMD="check";         SUBCMD_ARG="$2"; shift 2 ;;
+        --status)        SUBCMD="status";        SUBCMD_ARG="$2"; shift 2 ;;
+        --repair-status) SUBCMD="repair-status"; SUBCMD_ARG="$2"; shift 2 ;;
+        --list)          SUBCMD="list";          shift   ;;
+        --monitor)       SUBCMD="monitor";       shift   ;;
+        --cancel)        SUBCMD="cancel";        SUBCMD_ARG="$2"; shift 2 ;;
+        --kill-all)      SUBCMD="kill-all";      shift   ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
@@ -115,11 +119,17 @@ case "${SUBCMD:-}" in
     list)
         python3 "$DISPATCH" list --delegation-dir "$DELEGATION_DIR"
         ;;
+    monitor)
+        python3 "$DISPATCH" monitor --delegation-dir "$DELEGATION_DIR"
+        ;;
     status)
         python3 "$DISPATCH" status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
         ;;
     check)
         python3 "$DISPATCH" check "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
+        ;;
+    repair-status)
+        python3 "$DISPATCH" repair-status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
         ;;
     cancel)
         python3 "$DISPATCH" cancel "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"

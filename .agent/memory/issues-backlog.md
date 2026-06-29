@@ -1030,6 +1030,10 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
 Severity: high
 Fix: `aq-agent-loop` now treats repeated-read and analysis-checkpoint stagnation as incomplete failed results, writes `status: failed`, exits non-zero, and avoids training-signal emission for those runs. `TaskRegistry` now reconciles dead or inconsistent running/done entries before list/status/check and marks artifacts containing failure markers as failed. Stale delegated prompts should use the existing canonical path `docs/system-centric-ai-repos-recommendations.md`.
 File: scripts/ai/aq-agent-loop; scripts/ai/lib/task_registry.py; scripts/ai/aq-delegation-registry; scripts/testing/test-local-delegation-artifact.py; scripts/testing/test-local-agent-progress-guarded-tools.py
+[DONE] local-agent-monitor-required-write-access — `delegate-to-local --list` failed in restricted monitoring contexts because status observation called mutating reconciliation and attempted to rewrite `.agents/delegation/registry.jsonl`.
+Severity: high
+Fix: `list`, `status`, and `check` now use read-only inferred status. Added explicit `delegate-to-local --repair-status <id>` for mutating reconciliation and `delegate-to-local --monitor` for parseable read-only JSON showing active/recent task status, PID liveness, artifact paths, mtimes, and stale inference reasons.
+File: scripts/ai/lib/task_registry.py; scripts/ai/lib/dispatch.py; scripts/ai/delegate-to-local; scripts/testing/test-local-delegation-artifact.py
 
 [DONE] aq-qa-machine-mode-stall — Standalone `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` produced no output for roughly two minutes during context-risk compaction validation, while the Tier 0 gate's embedded QA phase 0 completed successfully.
 Severity: medium
