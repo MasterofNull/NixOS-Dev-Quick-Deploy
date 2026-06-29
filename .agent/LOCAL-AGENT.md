@@ -154,7 +154,19 @@ The user's confirmation is the gate. No approval → no action.
 
 ## Self-Improvement Workflow (MANDATORY — do not invent work)
 
-When asked to run a "self-improvement slice" or "improve the harness":
+When asked to run a "self-improvement slice", "improve the harness", or "run autonomously":
+
+**Preferred path — use `aq-loop` for full autonomous execution:**
+```bash
+aq-loop --list-open                  # see what's actionable
+aq-loop --from-backlog --dry-run     # preview grounded prompt
+aq-loop --from-backlog               # execute autonomously (claim→implement→verify→release)
+aq-loop --intent "implement X"       # explicit task with retry loop
+```
+`aq-loop` handles: backlog claim/release, hint grounding, retry on incomplete COMPLETED: signal,
+tool-manifest auto-selection (self-improvement=8 tools), LOOP_STATE.json for compaction survival.
+
+**Manual path — use when inside an aq-loop iteration or outer loop unavailable:**
 
 **NEVER** start with documentation cleanup or hypothetical planning. Always:
 
