@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+"""
+aq-loop — Outer orchestration loop for autonomous agent task execution.
+
+Loop-engineering pattern (Schedule→Triage→STATE→Implementer→Verifier→Escalate):
+
+  1. TRIAGE   — pop task from backlog or accept --intent
+  2. GROUND   — load hints + skills, build structured prompt
+  3. EXECUTE  — run aq-agent-loop (inner ReAct loop with full tool set)
+  4. VERIFY   — check output for COMPLETED: marker + success indicators
+  5. LOOP     — if incomplete and iterations remain, rebuild prompt with evidence
+  6. ESCALATE — after max iterations, write escalation to issues-backlog.md
+
+Usage:
+  aq-loop --intent "implement X"          explicit task
+  aq-loop --from-backlog                  pop first [OPEN] from issues-backlog.md
+  aq-loop --from-backlog --dry-run        show grounded prompt, no execution
+  aq-loop --intent "task" --max-iter 5   override max iterations (default 3)
+  aq-loop --check                         print current LOOP_STATE.json
+  aq-loop --list-open                     list [OPEN] items from issues-backlog.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parent.parent
+_LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
+_BACKLOG_PATH = _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md"
+
+# Ensure loop_state module is importable
+if str(_LOCAL_AGENTS) not in sys.path:
+    sys.path.insert(0, str(_LOCAL_AGENTS))
+
+from loop_state import (  # noqa: E402
+    LoopState, write_state, read_state, archive_state,
+    append_pulse, update_resume, extract_evidence, is_completed,
+)
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _loop_id() -> str:
+    return f"loop-{int(time.time())}"
+
+
+def _run_capture(cmd: list[str], timeout: int = 20) -> str:
+    """Run a CLI tool and capture stdout; return '' on failure."""
+    try:
+        r = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=timeout, cwd=str(_REPO_ROOT),
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def get_hints(intent: str) -> str:
+    """Fetch ranked hints for the intent from aq-hints."""
+    out = _run_capture(
+        [str(_SCRIPT_DIR / "aq-hints"), intent, "--max", "3", "--compact"],
+        timeout=15,
+    )
+    if not out:
+        out = _run_capture(
+            [str(_SCRIPT_DIR / "aq-hints"), intent, "--max", "3"],
+            timeout=15,
+        )
+    return out[:1000] if out else ""
+
+
+def get_skills(intent: str) -> str:
+    """Fetch skill suggestions for the intent from aq-skill-suggest."""
+    out = _run_capture(
+        [str(_SCRIPT_DIR / "aq-skill-suggest"), intent],
+        timeout=15,
+    )
+    return out[:600] if out else ""
+
+
+def _is_issue_line(line: str) -> bool:
+    """True if line is an actual [OPEN] issue entry (not a code string or comment)."""
+    stripped = line.strip()
+    # Must start with [OPEN] directly (real issue) or as first table cell (| [OPEN] ...)
+    # Not embedded in quotes/code strings (those have leading spaces or content before [OPEN])
+    return bool(stripped and (
+        stripped.startswith("[OPEN]") or
+        (stripped.startswith("|") and "| [OPEN]" in stripped and stripped.index("[OPEN]") < 6)
+    ))
+
+
+def pop_from_backlog() -> tuple[str, int] | tuple[None, None]:
+    """Find first real [OPEN] issue in issues-backlog.md.
+
+    Returns (intent_text, line_number) or (None, None).
+    """
+    if not _BACKLOG_PATH.exists():
+        return None, None
+    lines = _BACKLOG_PATH.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if _is_issue_line(line):
+            text = line.strip().lstrip("|").strip()
+            return text, i + 1
+    return None, None
+
+
+def list_open() -> None:
+    """Print all [OPEN] issue entries from issues-backlog.md."""
+    if not _BACKLOG_PATH.exists():
+        print("[aq-loop] issues-backlog.md not found")
+        return
+    lines = _BACKLOG_PATH.read_text().splitlines()
+    found = [(i + 1, l.strip()) for i, l in enumerate(lines) if _is_issue_line(l)]
+    if not found:
+        print("[aq-loop] No [OPEN] items in issues-backlog.md")
+        return
+    print(f"[aq-loop] {len(found)} open issue(s):\n")
+    for lineno, text in found:
+        print(f"  line {lineno:4d}: {text[:120]}")
+
+
+# ── prompt builder ────────────────────────────────────────────────────────────
+
+_WORKFLOW_CANON = """\
+WORKFLOW PHASES (follow in order — do not skip):
+1. ORIENT   — read RESUME.json + issues-backlog.md via get_hint() first.
+2. RESEARCH — call get_hint(query) and query_aidb(collection='error-solutions')
+              before reading any file. Max 4 read_file calls per slice.
+3. PLAN     — announce ONE sentence: 'Fixing: <title> — <one-line description>'
+4. EXECUTE  — use edit_file over write_file. One targeted change per slice.
+5. VERIFY   — run validate_before_commit; fix any failure; re-run tier0 gate.
+6. DOC-UPDATE — mark [OPEN] → [DONE] in issues-backlog.md if applicable.
+7. COMMIT   — git_add + git_commit (type(scope): description); then store_memory.
+
+COMPLETION SIGNAL (mandatory):
+After store_memory succeeds your FINAL output MUST start with exactly:
+  COMPLETED: <what was done in one sentence>
+Output ONLY that line. No JSON. No tool calls. STOP."""
+
+
+def build_grounded_prompt(
+    intent: str,
+    state: LoopState,
+    hints: str,
+    skills: str,
+) -> str:
+    """Build the structured prompt sent to aq-agent-loop --task."""
+
+    iteration_header = (
+        f"[LOOP CONTEXT — Iteration {state.iteration}/{state.max_iterations}]\n"
+        f"Loop ID : {state.loop_id}\n"
+        f"Phase   : EXECUTE\n"
+        f"Intent  : {intent}\n"
+    )
+
+    # Previous iteration evidence (iteration ≥ 2)
+    prior_evidence = ""
+    if state.history:
+        lines = ["", "PRIOR ITERATION EVIDENCE:"]
+        for ev in state.history[-2:]:  # last 2 iterations max
+            lines.append(
+                f"  iter {ev.get('task_id','?')}: "
+                f"success={ev.get('success')} "
+                f"incomplete={ev.get('incomplete_result')} "
+                f"tool_calls={ev.get('tool_calls',0)}\n"
+                f"  result: {ev.get('result_preview','')[:200]}"
+            )
+        prior_evidence = "\n".join(lines)
+
+    hints_section = f"\nHINTS:\n{hints}" if hints else ""
+    skills_section = f"\nSUGGESTED SKILLS: {skills}" if skills else ""
+
+    return "\n".join(filter(None, [
+        iteration_header,
+        hints_section,
+        skills_section,
+        prior_evidence,
+        "",
+        _WORKFLOW_CANON,
+        "",
+        "TASK:",
+        intent,
+    ]))
+
+
+# ── inner loop runner ─────────────────────────────────────────────────────────
+
+def run_inner_loop(
+    grounded_prompt: str,
+    loop_id: str,
+    iteration: int,
+    timeout: int = 3600,
+) -> dict:
+    """Invoke aq-agent-loop and return its JSON result summary."""
+    out_fd, out_path = tempfile.mkstemp(
+        prefix=f"aq-loop-{loop_id}-iter{iteration}-",
+        suffix=".json",
+    )
+    os.close(out_fd)
+
+    cmd = [
+        str(_SCRIPT_DIR / "aq-agent-loop"),
+        "--task", grounded_prompt,
+        "--output", out_path,
+    ]
+    env = os.environ.copy()
+    env["REPO_ROOT"] = str(_REPO_ROOT)
+
+    print(f"[aq-loop] iter {iteration} — launching aq-agent-loop ...")
+    rc = subprocess.run(cmd, env=env, timeout=timeout)
+    if rc.returncode not in (0, 1):
+        return {"success": False, "error": f"aq-agent-loop exit {rc.returncode}", "tool_calls": []}
+
+    try:
+        with open(out_path) as f:
+            result = json.load(f)
+        return result
+    except Exception as e:
+        return {"success": False, "error": f"parse output: {e}", "tool_calls": []}
+    finally:
+        try:
+            os.unlink(out_path)
+        except Exception:
+            pass
+
+
+# ── escalation ────────────────────────────────────────────────────────────────
+
+def write_escalation(state: LoopState) -> None:
+    """Append escalation notice to issues-backlog.md."""
+    ts = _now_iso()[:10]
+    slug = state.intent[:60].replace(" ", "-").replace("/", "-").lower()
+    notice = (
+        f"\n[OPEN] aq-loop-escalation-{slug} — "
+        f"Loop {state.loop_id} exhausted {state.max_iterations} iterations without COMPLETED signal. "
+        f"Intent: {state.intent[:120]}. "
+        f"Last status: {(state.history[-1] or {}).get('status','unknown') if state.history else 'no history'}. "
+        f"Escalated at {ts}. Manual review required."
+    )
+    try:
+        with open(_BACKLOG_PATH, "a") as f:
+            f.write(notice + "\n")
+        print(f"[aq-loop] Escalation written to issues-backlog.md")
+    except Exception as e:
+        print(f"[aq-loop] Could not write escalation: {e}", file=sys.stderr)
+
+
+# ── main loop ─────────────────────────────────────────────────────────────────
+
+def run_loop(intent: str, max_iter: int = 3, dry_run: bool = False, timeout: int = 3600) -> int:
+    """Run the outer orchestration loop. Returns 0 on success, 1 on escalation."""
+    loop_id = _loop_id()
+
+    state = LoopState(
+        loop_id=loop_id,
+        intent=intent,
+        iteration=0,
+        max_iterations=max_iter,
+        phase="TRIAGE",
+    )
+    write_state(state)
+    append_pulse(loop_id, 0, "TRIAGE", "started", intent[:80])
+    update_resume(intent, "TRIAGE", "in-progress", loop_id)
+
+    print(f"\n[aq-loop] {loop_id}")
+    print(f"[aq-loop] Intent   : {intent[:100]}")
+    print(f"[aq-loop] Max iter : {max_iter}")
+    print()
+
+    # Ground once (hints/skills are stable across iterations)
+    state.phase = "GROUND"
+    write_state(state)
+    hints = get_hints(intent)
+    skills = get_skills(intent)
+    if hints:
+        print(f"[aq-loop] Hints loaded ({len(hints)} chars)")
+    if skills:
+        print(f"[aq-loop] Skills: {skills[:120]}")
+
+    for iteration in range(1, max_iter + 1):
+        state.iteration = iteration
+        state.phase = "EXECUTE"
+        write_state(state)
+        append_pulse(loop_id, iteration, "EXECUTE", f"starting iter {iteration}/{max_iter}")
+        update_resume(intent, f"EXECUTE iter {iteration}", "in-progress", loop_id)
+
+        grounded = build_grounded_prompt(intent, state, hints, skills)
+
+        if dry_run:
+            print(f"\n[aq-loop] DRY RUN — grounded prompt:\n{'='*60}")
+            print(grounded)
+            print('=' * 60)
+            return 0
+
+        print(f"\n[aq-loop] === Iteration {iteration}/{max_iter} ===")
+        t0 = time.time()
+        result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout)
+        elapsed = round(time.time() - t0, 1)
+
+        evidence = extract_evidence(result)
+        evidence["iteration"] = iteration
+        state.history.append(evidence)
+
+        state.phase = "VERIFY"
+        write_state(state)
+
+        completed = is_completed(result)
+        status = "COMPLETED" if completed else "INCOMPLETE"
+        print(f"[aq-loop] iter {iteration} — {status}  elapsed={elapsed}s  tools={evidence['tool_calls']}")
+
+        if evidence.get("result_preview"):
+            print(f"[aq-loop] result: {evidence['result_preview'][:200]}")
+
+        append_pulse(loop_id, iteration, "VERIFY", status, f"elapsed={elapsed}s")
+
+        if completed:
+            state.phase = "COMPLETE"
+            write_state(state)
+            append_pulse(loop_id, iteration, "COMPLETE", "loop finished")
+            update_resume(intent, "COMPLETE", "completed", loop_id)
+            archive_state(state)
+            print(f"\n[aq-loop] Loop completed in {iteration} iteration(s).")
+            return 0
+
+        if iteration < max_iter:
+            print(f"[aq-loop] Incomplete — will retry (iter {iteration+1}/{max_iter})")
+
+    # Exhausted iterations
+    state.phase = "ESCALATED"
+    write_state(state)
+    append_pulse(loop_id, max_iter, "ESCALATED", "max iterations reached")
+    update_resume(intent, "ESCALATED", "escalated", loop_id)
+    write_escalation(state)
+    print(f"\n[aq-loop] Escalated after {max_iter} iterations. See issues-backlog.md.")
+    return 1
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Outer orchestration loop for autonomous local-agent task execution",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    src = parser.add_mutually_exclusive_group()
+    src.add_argument("--intent", help="Explicit task description")
+    src.add_argument("--from-backlog", action="store_true",
+                     help="Pop first [OPEN] from issues-backlog.md")
+    parser.add_argument("--max-iter", type=int, default=3,
+                        help="Max iterations before escalation (default: 3)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print grounded prompt without executing")
+    parser.add_argument("--check", action="store_true",
+                        help="Print current LOOP_STATE.json and exit")
+    parser.add_argument("--list-open", action="store_true",
+                        help="List [OPEN] items from issues-backlog.md and exit")
+    parser.add_argument("--timeout", type=int, default=3600,
+                        help="Per-iteration timeout in seconds (default: 3600)")
+
+    args = parser.parse_args()
+
+    if args.check:
+        state = read_state()
+        if state:
+            print(json.dumps(state.to_dict(), indent=2))
+        else:
+            print("[aq-loop] No active loop state.")
+        return 0
+
+    if args.list_open:
+        list_open()
+        return 0
+
+    if args.from_backlog:
+        intent, lineno = pop_from_backlog()
+        if intent is None:
+            print("[aq-loop] No [OPEN] items in issues-backlog.md")
+            return 1
+        print(f"[aq-loop] Popped from backlog (line {lineno}): {intent[:100]}")
+    elif args.intent:
+        intent = args.intent
+    else:
+        parser.print_help()
+        return 1
+
+    return run_loop(
+        intent=intent,
+        max_iter=args.max_iter,
+        dry_run=args.dry_run,
+        timeout=args.timeout,
+    )
+
+
+if __name__ == "__main__":
+    sys.exit(main())

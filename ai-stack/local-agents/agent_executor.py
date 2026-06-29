@@ -1983,13 +1983,31 @@ class LocalAgentExecutor:
         tools_desc = "\n\nTools: " + "  ".join(_minimal_tool(t) for t in tools)
         extensions = self._load_prompt_extensions()
 
+        # Inject active aq-loop STATE context when a loop run is detected.
+        # Reads LOOP_STATE.json lazily — zero cost when not in a loop.
+        _loop_ctx = ""
+        _loop_state_path = Path(__file__).resolve().parents[2] / ".agent" / "collaboration" / "LOOP_STATE.json"
+        if _loop_state_path.exists():
+            try:
+                import json as _json
+                _ls = _json.loads(_loop_state_path.read_text())
+                if _ls.get("phase") in ("EXECUTE", "VERIFY"):
+                    _loop_ctx = (
+                        f"\n\n[LOOP STATE — iter {_ls.get('iteration')}/{_ls.get('max_iterations')} "
+                        f"loop={_ls.get('loop_id','')}]\n"
+                        f"Intent: {_ls.get('intent','')[:120]}\n"
+                        "After store_memory succeeds, output ONLY: COMPLETED: <one sentence>. STOP."
+                    )
+            except Exception:
+                pass
+
         # AGENT type gets behavioral contract always; SI slice only for self-improvement tasks.
         # Non-SI tasks save ~722 tokens (self-improvement step-by-step is irrelevant noise
         # for factory, research, delegation, and monitoring tasks).
         if agent_type == AgentType.AGENT:
             _workflow_contract = _behavioral_contract + (_si_slice if _is_si_task else "")
-            return base_prompt[agent_type] + _workflow_contract + _tool_call_format + tools_desc + extensions
-        return base_prompt[agent_type] + _tool_call_format + tools_desc + extensions
+            return base_prompt[agent_type] + _workflow_contract + _loop_ctx + _tool_call_format + tools_desc + extensions
+        return base_prompt[agent_type] + _loop_ctx + _tool_call_format + tools_desc + extensions
 
     def _load_prompt_extensions(self) -> str:
         """Load learned gap rules from harness-prompt-extensions.yaml.
