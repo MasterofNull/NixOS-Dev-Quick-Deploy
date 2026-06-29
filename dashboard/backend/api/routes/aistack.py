@@ -4894,6 +4894,68 @@ async def get_effectiveness_scorecard() -> Dict[str, Any]:
     }
 
 
+@router.get("/local-agent/monitor")
+async def get_local_agent_monitor() -> Dict[str, Any]:
+    """Return current local delegation registry monitor state without mutation."""
+    def _finalize_monitor_payload(payload: Dict[str, Any], source: str) -> Dict[str, Any]:
+        counts = payload.get("counts") or {}
+        tasks = payload.get("tasks") or []
+        repair_candidates = sum(
+            1
+            for task in tasks
+            if task.get("registry_status") == "running"
+            and task.get("inferred_only")
+            and task.get("pid_alive") is False
+        )
+        status = "stale" if repair_candidates or counts.get("inferred_stale", 0) else "healthy"
+        return {
+            **payload,
+            "available": True,
+            "status": status,
+            "activity": "active" if counts.get("running", 0) else "idle",
+            "repair_candidates": repair_candidates,
+            "source": source,
+        }
+
+    def _report_artifact_fallback(reason: str) -> Dict[str, Any]:
+        aq_report_latest = Path(
+            os.getenv("AQ_REPORT_LATEST_JSON", "/var/lib/ai-stack/hybrid/telemetry/latest-aq-report.json")
+        )
+        try:
+            report = json.loads(aq_report_latest.read_text(encoding="utf-8"))
+            monitor = report.get("local_agent_monitor") or {}
+            if monitor:
+                payload = _finalize_monitor_payload(monitor, str(aq_report_latest))
+                payload["fallback_reason"] = reason
+                return payload
+        except Exception as exc:
+            reason = f"{reason}; aq-report fallback failed: {exc}"
+        return {
+            "available": False,
+            "status": "blocked",
+            "reason": reason,
+            "counts": {},
+            "tasks": [],
+            "repair_candidates": 0,
+        }
+
+    repo_root = Path(__file__).resolve().parents[4]
+    lib_dir = repo_root / "scripts" / "ai" / "lib"
+    if str(lib_dir) not in sys.path:
+        sys.path.insert(0, str(lib_dir))
+    try:
+        from task_registry import TaskRegistry  # type: ignore
+    except Exception as exc:
+        return _report_artifact_fallback(f"TaskRegistry import failed: {exc}")
+
+    try:
+        registry = TaskRegistry(repo_root / ".agents" / "delegation", repo_root=repo_root)
+        payload = registry.monitor_payload(limit=20)
+        return _finalize_monitor_payload(payload, str(registry.registry_file))
+    except Exception as exc:
+        return _report_artifact_fallback(str(exc))
+
+
 def _synthesize_scorecard_from_report(report: dict) -> dict:
     """Build a minimal scorecard from existing aq-report fields when full scorecard absent."""
     blocking: list[str] = []

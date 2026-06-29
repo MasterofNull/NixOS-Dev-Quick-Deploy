@@ -7133,6 +7133,77 @@ function _obsScoreDim(label, dim) {
   </div>`;
 }
 
+async function loadLocalAgentMonitor() {
+  const el = document.getElementById("localAgentMonitorDetails");
+  const badge = document.getElementById("localAgentMonitorBadge");
+  if (!el) return;
+  const d = await apiFetch("/aistack/local-agent/monitor", {}, 10000).catch(
+    () => null
+  );
+  if (!d || d.available === false) {
+    if (badge) {
+      badge.textContent = "BLOCKED";
+      badge.className = "card-badge badge-err";
+    }
+    el.innerHTML = fwRow(
+      "Status",
+      (d && (d.reason || d.status)) || "monitor unavailable",
+      "err"
+    );
+    return;
+  }
+
+  const counts = d.counts || {};
+  const running = counts.running || 0;
+  const stale = counts.inferred_stale || 0;
+  const failed = counts.failed || 0;
+  const repair = d.repair_candidates || 0;
+  const status = d.status || (repair || stale ? "stale" : "healthy");
+  const badgeClass =
+    status === "healthy"
+      ? running > 0
+        ? "badge-info"
+        : "badge-ok"
+      : status === "stale"
+      ? "badge-warn"
+      : "badge-err";
+
+  if (badge) {
+    badge.textContent =
+      running > 0 ? `${running} RUNNING` : status === "stale" ? "STALE" : "IDLE";
+    badge.className = `card-badge ${badgeClass}`;
+  }
+
+  const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+  const latest = tasks[tasks.length - 1] || {};
+  const artifacts = latest.artifacts || {};
+  const latestArtifact =
+    artifacts.output && artifacts.output.exists
+      ? artifacts.output
+      : artifacts.progress && artifacts.progress.exists
+      ? artifacts.progress
+      : artifacts.steps && artifacts.steps.exists
+      ? artifacts.steps
+      : null;
+  const latestId = latest.id ? String(latest.id).slice(-12) : "--";
+  const latestAge =
+    latestArtifact && latestArtifact.age_seconds != null
+      ? `${Math.round(latestArtifact.age_seconds / 60)}m`
+      : "--";
+  const reason = latest.inferred_reason || latest.status || "--";
+
+  el.innerHTML = [
+    fwRow("State", status, status === "healthy" ? "ok" : status === "stale" ? "warn" : "err"),
+    fwRow("Running", running, running > 0 ? "info" : "ok"),
+    fwRow("Inferred Stale", stale, stale > 0 ? "warn" : "ok"),
+    fwRow("Failed", failed, failed > 0 ? "warn" : "ok"),
+    fwRow("Repair Candidates", repair, repair > 0 ? "warn" : "ok"),
+    fwRow("Latest Task", latestId),
+    fwRow("Artifact Age", latestAge, latestAge === "--" ? "info" : ""),
+    fwRow("Reason", String(reason).slice(0, 48), status === "stale" ? "warn" : "info"),
+  ].join("");
+}
+
 async function loadEffectivenessScorecard() {
   const el = document.getElementById("effScoreDetails");
   const badge = document.getElementById("effScoreBadge");
@@ -7793,6 +7864,7 @@ async function sendControl(action) {
 
 async function loadObservability() {
   await Promise.allSettled([
+    loadLocalAgentMonitor(),
     loadEffectivenessScorecard(),
     loadSwimlane(),
     loadRaceComparison(),

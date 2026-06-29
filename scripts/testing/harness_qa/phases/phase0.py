@@ -1493,6 +1493,85 @@ def _check_phase172_delegation_health(ctx: RunContext) -> list[CheckResult]:
     return results
 
 
+def _check_local_agent_monitor_visibility(ctx: RunContext) -> list[CheckResult]:
+    """Local delegation monitor must be visible through CLI, report, QA, and dashboard."""
+    results: list[CheckResult] = []
+    monitor = ctx.repo_root / "scripts" / "ai" / "delegate-to-local"
+    registry = ctx.repo_root / ".agents" / "delegation" / "TASK_REGISTRY.jsonl"
+
+    try:
+        before = registry.read_bytes() if registry.exists() else b""
+        rc = subprocess.run(
+            [str(monitor), "--monitor"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(ctx.repo_root),
+        )
+        after = registry.read_bytes() if registry.exists() else b""
+        if rc.returncode != 0:
+            results.append(failed(4, "0.12.5", "local-agent monitor CLI JSON", rc.stderr.strip()[:160]))
+        else:
+            payload = json.loads(rc.stdout)
+            ok = payload.get("mode") == "read_only" and isinstance(payload.get("counts"), dict)
+            if ok and before == after:
+                counts = payload.get("counts") or {}
+                results.append(passed(
+                    4,
+                    "0.12.5",
+                    f"local-agent monitor CLI read-only JSON (running={counts.get('running', 0)}, stale={counts.get('inferred_stale', 0)})",
+                ))
+            elif before != after:
+                results.append(failed(4, "0.12.5", "local-agent monitor CLI read-only JSON", "registry mutated during monitor read"))
+            else:
+                results.append(failed(4, "0.12.5", "local-agent monitor CLI read-only JSON", "missing mode=read_only or counts"))
+    except Exception as exc:
+        results.append(failed(4, "0.12.5", "local-agent monitor CLI read-only JSON", str(exc)))
+
+    try:
+        report_src = (ctx.repo_root / "scripts" / "ai" / "aq-report").read_text()
+        if "local_agent_monitor_summary" in report_src and '"local_agent_monitor"' in report_src:
+            results.append(passed(4, "0.12.6", "aq-report --machine exposes local_agent_monitor"))
+        else:
+            results.append(failed(4, "0.12.6", "aq-report --machine exposes local_agent_monitor", "field or summary helper missing"))
+    except Exception as exc:
+        results.append(failed(4, "0.12.6", "aq-report --machine exposes local_agent_monitor", str(exc)))
+
+    try:
+        route_src = (ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py").read_text()
+        html = (ctx.repo_root / "dashboard.html").read_text()
+        js = (ctx.repo_root / "assets" / "dashboard.js").read_text()
+        missing = []
+        if '@router.get("/local-agent/monitor")' not in route_src:
+            missing.append("dashboard route")
+        if "section-local-agent-monitor" not in html or "localAgentMonitorDetails" not in html:
+            missing.append("dashboard card")
+        if "async function loadLocalAgentMonitor" not in js or "/aistack/local-agent/monitor" not in js:
+            missing.append("dashboard loader")
+        if "loadLocalAgentMonitor()" not in js:
+            missing.append("observability wiring")
+        if missing:
+            results.append(failed(4, "0.12.7", "local-agent monitor dashboard surface", f"missing: {', '.join(missing)}"))
+        else:
+            results.append(passed(4, "0.12.7", "local-agent monitor dashboard surface wired"))
+    except Exception as exc:
+        results.append(failed(4, "0.12.7", "local-agent monitor dashboard surface", str(exc)))
+
+    try:
+        dashboard_url = f"http://127.0.0.1:{getattr(ctx, 'dashboard_port', 8889)}"
+        data = http_json(f"{dashboard_url}/api/aistack/local-agent/monitor", timeout=5)
+        if data and data.get("available") is True and isinstance(data.get("counts"), dict):
+            results.append(passed(5, "0.12.8", "dashboard local-agent monitor endpoint returns counts"))
+        elif data:
+            results.append(failed(5, "0.12.8", "dashboard local-agent monitor endpoint returns counts", str(data)[:160]))
+        else:
+            results.append(skipped(5, "0.12.8", "dashboard local-agent monitor endpoint", "route not active yet or dashboard service unavailable"))
+    except Exception as exc:
+        results.append(skipped(5, "0.12.8", "dashboard local-agent monitor endpoint", str(exc)[:160]))
+
+    return results
+
+
 def _check_token_usage_coverage(ctx: RunContext) -> list[CheckResult]:
     """0.10.2 — token_usage coverage ≥ 50% of model_call events over last 100 events."""
     results: list[CheckResult] = []
@@ -1665,6 +1744,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
         results.extend(_check_osint_active_recon_gate(ctx))
         results.extend(_check_analysis_only_stagnation_mode(ctx))
         results.extend(_check_phase172_delegation_health(ctx))
+        results.extend(_check_local_agent_monitor_visibility(ctx))
         results.extend(_check_candidate_lifecycle(ctx))
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_aq_eval_harness(ctx))
