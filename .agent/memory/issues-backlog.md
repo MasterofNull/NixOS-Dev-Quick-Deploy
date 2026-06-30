@@ -1074,6 +1074,11 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Restart/redeploy the dashboard API so commit `2160fca7` is loaded, then verify `/api/aistack/graph/vectorization`.
   File: dashboard/backend/api/routes/aistack.py
 
+[IN-FLIGHT] understand-anything-fallback-batches-not-complete — Understand-Anything batch processing produced all 296 `batch-*.json` files, but prior logs show degraded fallback batches 246, 247, 248, 251, 252, 253, and 255 after LLM JSON parse failures; no final `knowledge-graph.json` exists.
+  Severity: high
+  Action: Reprocess degraded batches in strict no-fallback mode, then run merge-batch-graphs.py and `scripts/ai/aq-understand-anything validate-batches` before calling the graph complete.
+  File: .understand-anything/ua-batch-processor.py; scripts/ai/aq-understand-anything
+
 [DONE] local-agent-stagnation-false-success — Local-agent task `local-20260629-081304-dx1xx2` produced a `Repeated-read stagnation` result after a long run, but `aq-agent-loop` wrote `success: true` / `status: completed`, and the registry initially presented the task as successful.
 Severity: high
 Fix: `aq-agent-loop` now treats repeated-read and analysis-checkpoint stagnation as incomplete failed results, writes `status: failed`, exits non-zero, and avoids training-signal emission for those runs. `TaskRegistry` now reconciles dead or inconsistent running/done entries before list/status/check and marks artifacts containing failure markers as failed. Stale delegated prompts should use the existing canonical path `docs/system-centric-ai-repos-recommendations.md`.

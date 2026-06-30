@@ -11,6 +11,7 @@ usage() {
 Usage:
   aq-understand-anything ensure [platform ...]
   aq-understand-anything status [project-dir]
+  aq-understand-anything validate-batches [project-dir]
   aq-understand-anything dashboard [project-dir]
   aq-understand-anything dashboard-command [project-dir]
 
@@ -101,6 +102,70 @@ plugin_status() {
   fi
 }
 
+validate_batches() {
+  local project
+  project="$(project_dir "${1:-$PWD}")"
+
+  PROJECT="$project" python3 - <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+project = Path(os.environ["PROJECT"])
+ua_dir = project / ".understand-anything"
+intermediate = ua_dir / "intermediate"
+batches_file = intermediate / "batches.json"
+expected = None
+if batches_file.exists():
+    try:
+        batches = json.loads(batches_file.read_text(encoding="utf-8"))
+        if isinstance(batches, list):
+            expected = max((int(b.get("batchIndex", 0)) for b in batches if isinstance(b, dict)), default=0)
+    except Exception:
+        expected = None
+if not expected:
+    expected = 296
+
+missing = []
+invalid = []
+empty = []
+fallback = []
+for idx in range(1, expected + 1):
+    path = intermediate / f"batch-{idx}.json"
+    if not path.exists():
+        missing.append(idx)
+        continue
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        invalid.append({"batch": idx, "error": str(exc)})
+        continue
+    nodes = data.get("nodes") or []
+    edges = data.get("edges") or []
+    if not nodes and not edges:
+        empty.append(idx)
+    metadata = data.get("metadata") or {}
+    if metadata.get("analysisMode") == "fallback":
+        fallback.append(idx)
+
+graph_path = ua_dir / "knowledge-graph.json"
+graph_present = graph_path.exists()
+payload = {
+    "ok": not (missing or invalid or empty or fallback) and graph_present,
+    "project": str(project),
+    "expected_batches": expected,
+    "missing": missing,
+    "invalid": invalid,
+    "empty": empty,
+    "fallback": fallback,
+    "graph_present": graph_present,
+}
+print(json.dumps(payload, indent=2))
+sys.exit(0 if payload["ok"] else 1)
+PY
+}
+
 resolve_plugin_root() {
   local candidates=(
     "${CLAUDE_PLUGIN_ROOT:-}"
@@ -173,6 +238,10 @@ main() {
     status)
       shift
       plugin_status "${1:-$PWD}"
+      ;;
+    validate-batches)
+      shift
+      validate_batches "${1:-$PWD}"
       ;;
     dashboard-command)
       shift
