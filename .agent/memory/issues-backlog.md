@@ -1064,6 +1064,16 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Add per-check timeout enforcement inside `_check` / `_check_output` or split the discovery scanner into a bounded smoke path for tier0.
   File: scripts/ai/_aq-qa-bash
 
+[OPEN] delegate-to-local-status-missing-arg — `scripts/ai/delegate-to-local --status` exits with `line 97: $2: unbound variable` instead of showing usage or a clear missing task-id error.
+  Severity: low
+  Action: Guard subcommands that require an argument before reading `$2`, matching the existing help contract.
+  File: scripts/ai/delegate-to-local
+
+[PENDING-REBUILD] vectorization-posture-route-not-live — The committed `/api/aistack/graph/vectorization` dashboard route returned 404 from the running dashboard service during validation, while the older `/api/aistack/knowledge/observatory` route worked.
+  Severity: medium
+  Action: Restart/redeploy the dashboard API so commit `2160fca7` is loaded, then verify `/api/aistack/graph/vectorization`.
+  File: dashboard/backend/api/routes/aistack.py
+
 [DONE] local-agent-stagnation-false-success — Local-agent task `local-20260629-081304-dx1xx2` produced a `Repeated-read stagnation` result after a long run, but `aq-agent-loop` wrote `success: true` / `status: completed`, and the registry initially presented the task as successful.
 Severity: high
 Fix: `aq-agent-loop` now treats repeated-read and analysis-checkpoint stagnation as incomplete failed results, writes `status: failed`, exits non-zero, and avoids training-signal emission for those runs. `TaskRegistry` now reconciles dead or inconsistent running/done entries before list/status/check and marks artifacts containing failure markers as failed. Stale delegated prompts should use the existing canonical path `docs/system-centric-ai-repos-recommendations.md`.
