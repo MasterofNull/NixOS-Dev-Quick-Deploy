@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-06-30] local-agent-planning-loop-marked-success — Capability flush local task `local-20260629-143000-uhh7l2` ran for 6,610.6s and wrote `"success": true`, but the final `result` was repeated `Thought:` planning text with no ranked integration report.
+  Root cause / fix notes: for analysis-only tasks, the executor's observation-stall path nudged the model to "act" after repeated query tools instead of forcing a final answer, and `aq-agent-loop._is_incomplete_result()` only recognized explicit failure/stagnation markers. Added forced `COMPLETED:` synthesis for analysis-only observation stalls, plus a repeated-thought/no-completion classifier and phase-0 QA coverage.
+  Severity: high
+  Action: future local-agent analysis tasks finalize from gathered context before continuing tool loops; repeated planning-only output writes `success=false`, `incomplete_result=true`, and a failed progress sidecar.
+  File: ai-stack/local-agents/agent_executor.py; scripts/ai/aq-agent-loop; scripts/testing/test-agent-loop-result-quality.py; scripts/testing/test-agent-executor-analysis-finalization.py
+
 [DONE 2026-06-29] capability-flush-dispatch-used-hybrid-retrieval-lane — `scripts/ai/aq-capability-flush --dispatch-local --json` created `local-20260629-142546-igct2v`, but the output was only three retrieval-result lines and monitor inferred failed status.
   Root cause / fix notes: `--dispatch-local` used `delegate-to-local --mode hybrid`, which is a retrieval/query lane rather than the long-horizon local agent lane. Changed dispatch to `--mode agent` while keeping the prompt analysis-only/no-edit/no-install.
   Severity: medium

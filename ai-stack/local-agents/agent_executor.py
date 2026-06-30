@@ -1493,6 +1493,36 @@ class LocalAgentExecutor:
                 return synthesis.strip() if synthesis.strip() else formatted_result, total_tokens
 
             # Observation stall nudge: too many harness query calls without any action.
+            # Analysis-only tasks should finalize into a report at this point; asking
+            # them to "act" can send the model back into planning/tool loops.
+            if (
+                _is_analysis_only_task
+                and _observations_without_action == _MAX_OBSERVATIONS_WITHOUT_ACTION
+                and not _observation_nudge_sent
+            ):
+                _observation_nudge_sent = True
+                _cancel_watchdog()
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "FINALIZE NOW. Do not call another tool. Do not continue planning. "
+                        "Use the tool results already in context to answer the original task. "
+                        "Start with 'COMPLETED:' and include concrete findings, ranked items "
+                        "or decisions when requested, security/validation notes, and next safe "
+                        "repo-local slice recommendations."
+                    ),
+                })
+                synthesis, syn_tok = await self._call_llama(
+                    messages,
+                    role=role,
+                    max_tokens=AGENT_TASK_MAX_TOKENS,
+                    task_type=task.task_type,
+                    task_id=task.id,
+                    call_number=tool_call_count + 1,
+                )
+                total_tokens += syn_tok
+                return synthesis.strip(), total_tokens
+
             if _observations_without_action == _MAX_OBSERVATIONS_WITHOUT_ACTION and not _observation_nudge_sent:
                 _observation_nudge_sent = True
                 messages.append({
