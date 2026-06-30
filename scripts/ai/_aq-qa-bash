@@ -68,6 +68,67 @@ FAIL=0
 SKIP=0
 RESULTS=()  # "PASS|FAIL|SKIP id description"
 START_TS=$(date +%s)
+_QA_PROGRESS_HEARTBEAT_PID=""
+
+_qa_progress_emit() {
+  local state="$1" layer="${2:-}" id="${3:-}" desc="${4:-}" detail="${5:-}"
+  local now elapsed
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  elapsed=$(( $(date +%s) - START_TS ))
+  [[ -n "${AQ_QA_PROGRESS_JSON:-}" || -n "${AQ_QA_PROGRESS_JSONL:-}" ]] || return 0
+  STATE="$state" LAYER="$layer" CHECK_ID="$id" DESC="$desc" DETAIL="$detail" NOW="$now" ELAPSED="$elapsed" \
+  PASS_N="$PASS" FAIL_N="$FAIL" SKIP_N="$SKIP" PROGRESS_JSON="${AQ_QA_PROGRESS_JSON:-}" PROGRESS_JSONL="${AQ_QA_PROGRESS_JSONL:-}" \
+    python3 - <<'PY' 2>/dev/null || true
+import json, os, pathlib
+payload = {
+    "state": os.environ.get("STATE"),
+    "layer": os.environ.get("LAYER") or None,
+    "check_id": os.environ.get("CHECK_ID") or None,
+    "description": os.environ.get("DESC") or None,
+    "detail": os.environ.get("DETAIL") or None,
+    "timestamp": os.environ.get("NOW"),
+    "elapsed_s": int(os.environ.get("ELAPSED") or 0),
+    "counts": {
+        "pass": int(os.environ.get("PASS_N") or 0),
+        "fail": int(os.environ.get("FAIL_N") or 0),
+        "skip": int(os.environ.get("SKIP_N") or 0),
+    },
+}
+if os.environ.get("PROGRESS_JSON"):
+    path = pathlib.Path(os.environ["PROGRESS_JSON"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+if os.environ.get("PROGRESS_JSONL"):
+    path = pathlib.Path(os.environ["PROGRESS_JSONL"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(payload, separators=(",", ":")) + "\n")
+PY
+}
+
+_qa_progress_start() {
+  local layer="$1" id="$2" desc="$3"
+  _qa_progress_emit "running" "$layer" "$id" "$desc"
+  if [[ -n "${AQ_QA_PROGRESS_JSON:-}" || -n "${AQ_QA_PROGRESS_JSONL:-}" ]]; then
+    (
+      while true; do
+        sleep "${AQ_QA_PROGRESS_HEARTBEAT_SECONDS:-10}"
+        _qa_progress_emit "heartbeat" "$layer" "$id" "$desc"
+      done
+    ) &
+    _QA_PROGRESS_HEARTBEAT_PID="$!"
+  fi
+}
+
+_qa_progress_stop() {
+  local state="$1" layer="$2" id="$3" desc="$4" detail="${5:-}"
+  if [[ -n "${_QA_PROGRESS_HEARTBEAT_PID:-}" ]]; then
+    kill "${_QA_PROGRESS_HEARTBEAT_PID}" 2>/dev/null || true
+    wait "${_QA_PROGRESS_HEARTBEAT_PID}" 2>/dev/null || true
+    _QA_PROGRESS_HEARTBEAT_PID=""
+  fi
+  _qa_progress_emit "$state" "$layer" "$id" "$desc" "$detail"
+}
 
 _pass() { local layer="$1" id="$2" desc="$3"; ((++PASS)); RESULTS+=("PASS|$layer|$id|$desc"); }
 _fail() { local layer="$1" id="$2" desc="$3" reason="${4:-}"; ((++FAIL)); RESULTS+=("FAIL|$layer|$id|$desc${reason:+ ($reason)}"); }
@@ -86,10 +147,13 @@ _should_run() {
 _check() {
   local layer="$1" id="$2" desc="$3"; shift 3
   if ! _should_run "$layer"; then return 0; fi
+  _qa_progress_start "$layer" "$id" "$desc"
   if "$@" >/dev/null 2>&1; then
     _pass "$layer" "$id" "$desc"
+    _qa_progress_stop "pass" "$layer" "$id" "$desc"
   else
     _fail "$layer" "$id" "$desc"
+    _qa_progress_stop "fail" "$layer" "$id" "$desc"
   fi
 }
 
@@ -98,11 +162,14 @@ _check_output() {
   local layer="$1" id="$2" desc="$3" pattern="$4"; shift 4
   if ! _should_run "$layer"; then return 0; fi
   local out
-  out=$("$@" 2>&1) || { _fail "$layer" "$id" "$desc" "command failed"; return; }
+  _qa_progress_start "$layer" "$id" "$desc"
+  out=$("$@" 2>&1) || { _fail "$layer" "$id" "$desc" "command failed"; _qa_progress_stop "fail" "$layer" "$id" "$desc" "command failed"; return; }
   if printf '%s' "$out" | grep -qE "$pattern"; then
     _pass "$layer" "$id" "$desc"
+    _qa_progress_stop "pass" "$layer" "$id" "$desc"
   else
     _fail "$layer" "$id" "$desc" "output: ${out:0:80}"
+    _qa_progress_stop "fail" "$layer" "$id" "$desc" "output: ${out:0:80}"
   fi
 }
 
@@ -201,13 +268,18 @@ _http_health() {
   local layer="$1" id="$2" desc="$3" url="$4"
   if ! _should_run "$layer"; then return 0; fi
   local status
+  _qa_progress_start "$layer" "$id" "$desc"
   status=$(curl -sf --max-time 5 "$url" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
   if [[ "$status" == "ok" ]]; then
     _pass "$layer" "$id" "$desc"
+    _qa_progress_stop "pass" "$layer" "$id" "$desc"
   else
     _fail "$layer" "$id" "$desc" "status='$status' url=$url"
+    _qa_progress_stop "fail" "$layer" "$id" "$desc" "status='$status' url=$url"
   fi
 }
+
+_qa_progress_emit "phase_start" "$LAYER_FILTER" "$PHASE" "aq-qa phase ${PHASE}"
 
 _continue_config_ok() {
   local cfg
@@ -1142,6 +1214,12 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-agent-loop-result-quality.py"
     _check 1 "0.10.30" "analysis-only local-agent observation loops force final synthesis" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-executor-analysis-finalization.py"
+    _check 1 "0.10.31" "vectorization visualization dashboard surface" \
+      python3 "${REPO_ROOT}/scripts/testing/test-vectorization-visualization.py"
+    _check 1 "0.10.32" "local-agent first-token no-progress timeout" \
+      python3 "${REPO_ROOT}/scripts/testing/test-local-agent-first-token-timeout.py"
+    _check 1 "0.10.33" "aq-qa rolling progress heartbeat artifacts" \
+      python3 "${REPO_ROOT}/scripts/testing/test-aq-qa-progress-heartbeat.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

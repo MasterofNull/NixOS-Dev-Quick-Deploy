@@ -165,6 +165,7 @@ function loadLens(id) {
     initTopo();
     loadWorkflowGraph();
     loadVectorGraph();
+    loadVectorizationPosture();
   } else if (id === "logic") initLogic();
   else if (id === "fleet") loadFleet();
   else if (id === "spider") loadSpider();
@@ -2513,6 +2514,73 @@ async function loadVectorGraph() {
   const hud = document.getElementById("vectorHud");
   if (hud)
     hud.innerHTML = `<span style="font-size:.55rem">${projLegend}</span><br>NODES:${data.nodes.length} EDGES:${edges.length}`;
+}
+
+async function loadVectorizationPosture() {
+  const d = await apiFetch("/graph/vectorization", {}, T_SLOW);
+  const el = document.getElementById("vectorPostureDetails");
+  const badge = document.getElementById("vectorPostureBadge");
+  if (!el) return;
+  if (!d || !d.available) {
+    if (badge) {
+      badge.textContent = "offline";
+      badge.className = "card-badge badge-warn";
+    }
+    el.innerHTML = fwRow("Status", "Unavailable", "warn");
+    return;
+  }
+
+  const status = d.status || "unknown";
+  if (badge) {
+    badge.textContent = status;
+    badge.className =
+      status === "ok" ? "card-badge badge-ok" : "card-badge badge-warn";
+  }
+
+  const vectors = d.vectors || {};
+  const memory = d.memory || {};
+  const quality = d.quality || {};
+  const rows = [
+    fwRow("Total Vectors", (vectors.total_points ?? 0).toLocaleString(), "cy"),
+    fwRow(
+      "Collections",
+      `${vectors.active_collections ?? 0}/${vectors.total_collections ?? 0} active`,
+      vectors.active_collections > 0 ? "ok" : "warn"
+    ),
+    fwRow("Memory Vectors", (memory.total_points ?? 0).toLocaleString(), "info"),
+    fwRow(
+      "RAGAS Samples",
+      quality.available ? quality.sample_count ?? "--" : "not seeded",
+      quality.available ? "ok" : "warn"
+    ),
+    fwRow(
+      "Faithfulness",
+      quality.faithfulness != null ? quality.faithfulness.toFixed(3) : "--",
+      quality.faithfulness != null && quality.faithfulness < 0.7 ? "warn" : "ok"
+    ),
+    fwRow(
+      "Context Precision",
+      quality.context_precision != null
+        ? quality.context_precision.toFixed(3)
+        : "--",
+      quality.context_precision != null && quality.context_precision < 0.7
+        ? "warn"
+        : "ok"
+    ),
+  ];
+
+  const top = (vectors.top_collections || [])
+    .slice(0, 6)
+    .map((c) => {
+      const max = Math.max(...(vectors.top_collections || []).map((x) => x.points || 0), 1);
+      const w = Math.max(3, Math.round(((c.points || 0) / max) * 100));
+      return `<tr><td>${c.label || c.name}</td><td class="coll-type-${(c.type || "other").slice(0, 5)}">${c.type || "other"}</td><td>${(c.points || 0).toLocaleString()}</td><td><span class="coll-bar-wrap"><span class="coll-bar" style="width:${w}%"></span></span></td></tr>`;
+    })
+    .join("");
+
+  el.innerHTML = `${rows.join("")}<table class="coll-table" style="margin-top:.45rem"><thead><tr><th>Collection</th><th>Type</th><th>Points</th><th>Load</th></tr></thead><tbody>${
+    top || '<tr><td colspan="4" style="color:var(--fg3)">No vector collections found</td></tr>'
+  }</tbody></table>`;
 }
 
 // ─── INTELLIGENCE: TASK CLASSIFIER STATS ─────────────────────────────────────

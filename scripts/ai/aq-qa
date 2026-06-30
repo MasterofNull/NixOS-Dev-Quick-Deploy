@@ -31,6 +31,10 @@ done
 # on repeated 429s with no stdout — Tier 0 has its own timeout wrapper, standalone
 # callers do not).
 _exec_bash_fallback() {
+    local _progress_dir="${AQ_QA_PROGRESS_DIR:-${REPO_ROOT}/.agent/qa}"
+    mkdir -p "${_progress_dir}" 2>/dev/null || true
+    export AQ_QA_PROGRESS_JSON="${AQ_QA_PROGRESS_JSON:-${_progress_dir}/latest-progress.json}"
+    export AQ_QA_PROGRESS_JSONL="${AQ_QA_PROGRESS_JSONL:-${_progress_dir}/latest-progress.jsonl}"
     if [[ "${MACHINE_MODE}" == "true" ]]; then
         local _t="${AQ_QA_MACHINE_TIMEOUT_SECONDS:-300}"
         NO_COLOR=1 exec timeout --foreground "${_t}" bash "${SCRIPT_DIR}/_aq-qa-bash" "$@"

@@ -1610,6 +1610,10 @@ class LocalAgentExecutor:
         """
         use_streaming = _env_flag("LLAMA_USE_STREAMING", default=True)
         chunk_timeout = _env_float("LLAMA_CHUNK_TIMEOUT", default=120.0)
+        first_token_timeout = _env_float(
+            "LLAMA_FIRST_TOKEN_TIMEOUT",
+            default=min(chunk_timeout, 600.0),
+        )
 
         # Agent tool calls: 512 tokens (50-100 for JSON + 400 for summary).
         # At 1-2 tok/s on Renoir APU, 512 tokens = 256-512s max generation.
@@ -1647,7 +1651,8 @@ class LocalAgentExecutor:
         if task_type:
             _stream_kwargs["task_type"] = task_type
         payload = build_llama_payload(messages, **_stream_kwargs)
-        timeout = httpx.Timeout(connect=10.0, read=chunk_timeout, write=10.0, pool=5.0)
+        read_timeout = min(chunk_timeout, first_token_timeout)
+        timeout = httpx.Timeout(connect=10.0, read=read_timeout, write=10.0, pool=5.0)
 
         collected: List[str] = []
         tokens_used = 0
@@ -1712,8 +1717,9 @@ class LocalAgentExecutor:
                             _write_stream_progress("llm_streaming")
         except httpx.ReadTimeout:
             raise RuntimeError(
-                f"LLM prefill/generation timeout: server silent for >{chunk_timeout:.0f}s "
-                f"(context may be too large; LLAMA_CHUNK_TIMEOUT={chunk_timeout:.0f})"
+                f"LLM no-progress timeout: server silent for >{read_timeout:.0f}s "
+                f"(first_token_timeout={first_token_timeout:.0f}, chunk_timeout={chunk_timeout:.0f}; "
+                "context may be too large or the inference slot may be wedged)"
             )
         except httpx.ConnectError as _ce:
             raise RuntimeError(f"LLM connection refused at {self.llama_endpoint}: {_ce}") from _ce
