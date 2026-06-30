@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +49,8 @@ STATUSES = {
 
 SPEC_VARIANTS = {"markdown", "html", "visual_html"}
 SECRET_KEY_FRAGMENTS = ("secret", "token", "password", "passwd", "api_key", "apikey", "credential", "authorization")
+SAFE_TELEMETRY_KEYS = {"tokens_in", "tokens_out", "max_tokens", "token_count", "total_tokens"}
+SERVICE_EVENT_PATH = Path("/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 
 
 def now_iso() -> str:
@@ -76,7 +80,7 @@ def redact_payload(payload: dict[str, Any] | None) -> tuple[dict[str, Any], list
             for key, nested in value.items():
                 child_path = f"{path}.{key}" if path else str(key)
                 lowered = str(key).lower()
-                if any(fragment in lowered for fragment in SECRET_KEY_FRAGMENTS):
+                if lowered not in SAFE_TELEMETRY_KEYS and any(fragment in lowered for fragment in SECRET_KEY_FRAGMENTS):
                     secret_fields.append(child_path)
                     redacted[str(key)] = "[REDACTED]"
                 else:
@@ -260,6 +264,81 @@ def append_jsonl(path: Path, event: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+def repo_root() -> Path:
+    """Resolve the repository root for user-writable observability spools."""
+    env_root = os.getenv("REPO_ROOT")
+    if env_root:
+        return Path(env_root)
+    return Path(__file__).resolve().parents[3]
+
+
+def repo_event_path(root: Path | None = None) -> Path:
+    """Return the repo-local canonical agent-run event spool."""
+    return (root or repo_root()) / ".agents" / "telemetry" / "agent-run-events.jsonl"
+
+
+def default_event_path(root: Path | None = None) -> Path:
+    """Return the canonical write path for agent-run events.
+
+    Service processes can set AQ_AGENT_RUN_EVENTS_PATH or write to the service
+    telemetry path. User-space CLIs fall back to a repo-local spool with the
+    same schema so dashboard readers can merge both streams.
+    """
+    env_path = os.getenv("AQ_AGENT_RUN_EVENTS_PATH")
+    if env_path:
+        return Path(env_path)
+    if SERVICE_EVENT_PATH.parent.exists() and os.access(str(SERVICE_EVENT_PATH.parent), os.W_OK):
+        return SERVICE_EVENT_PATH
+    return repo_event_path(root)
+
+
+def _safe_run_id(run_id: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", run_id).strip("._")
+    return (safe or stable_digest(run_id))[:160]
+
+
+def latest_projection_path(run_id: str, root: Path | None = None) -> Path:
+    """Return the repo-local latest-state projection path for one run."""
+    return (root or repo_root()) / ".agents" / "observability" / "latest" / f"{_safe_run_id(run_id)}.json"
+
+
+def write_latest_projection(event: dict[str, Any], root: Path | None = None) -> Path:
+    """Atomically write the latest observed state for a run.
+
+    This is a projection of agent-run-events.jsonl, not a second source of
+    truth. Existing dashboards and CLIs can read it for low-latency status.
+    """
+    validate_event(event)
+    path = latest_projection_path(str(event["run_id"]), root)
+    projection = {
+        "schema_version": f"{SCHEMA_VERSION}.latest",
+        "run_id": event["run_id"],
+        "updated_at": now_iso(),
+        "latest_event": event,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(projection, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+    return path
+
+
+def emit_event(
+    event_type: str,
+    *,
+    root: Path | None = None,
+    event_path: Path | None = None,
+    write_latest: bool = True,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Create, append, and project one canonical agent-run event."""
+    event = make_event(event_type, **kwargs)
+    append_jsonl(event_path or default_event_path(root), event)
+    if write_latest:
+        write_latest_projection(event, root)
+    return event
 
 
 def load_jsonl(path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:

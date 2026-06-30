@@ -184,6 +184,7 @@ nix/hosts/*/.sops.yaml
 .agents/delegation/training-loop-checkpoint.json
 .agents/delegation/training-loop-results.jsonl
 .agents/telemetry/*.jsonl
+.agents/observability/
 # Agent delegation task output logs and local registry are runtime state.
 .agents/delegation/outputs/
 .agents/delegation/fanout/

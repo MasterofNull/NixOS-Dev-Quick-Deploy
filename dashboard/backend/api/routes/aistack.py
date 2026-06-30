@@ -4237,6 +4237,7 @@ async def get_orchestration_events(
 _AGENT_RUN_EVENTS_PATH = Path(
     os.getenv("AQ_AGENT_RUN_EVENTS_PATH", "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl")
 )
+_REPO_AGENT_RUN_EVENTS_PATH = Path(__file__).parents[4] / ".agents" / "telemetry" / "agent-run-events.jsonl"
 # User-space spool written by aq-agent-loop (agent_thinking, agent_tool_call, agent_step_complete).
 # These events use task_id/session_id keys instead of run_id — merged on replay for aq-* run IDs.
 _USER_EVENTS_SPOOL_PATH = Path(
@@ -4281,9 +4282,15 @@ def _load_agent_run_events(
     events: list[dict] = []
     source_label = "no_data"
 
-    if _AGENT_RUN_EVENTS_PATH.exists():
+    event_paths: list[tuple[Path, str]] = [(_AGENT_RUN_EVENTS_PATH, "agent-run-events")]
+    if _REPO_AGENT_RUN_EVENTS_PATH != _AGENT_RUN_EVENTS_PATH:
+        event_paths.append((_REPO_AGENT_RUN_EVENTS_PATH, "repo-agent-run-events"))
+
+    for event_path, event_label in event_paths:
+        if not event_path.exists():
+            continue
         try:
-            with _AGENT_RUN_EVENTS_PATH.open("r", encoding="utf-8") as fh:
+            with event_path.open("r", encoding="utf-8") as fh:
                 for line in fh:
                     if not line.strip():
                         continue
@@ -4305,9 +4312,12 @@ def _load_agent_run_events(
                             continue
                     events.append(record)
             if events:
-                source_label = "agent-run-events"
+                if source_label == "no_data":
+                    source_label = event_label
+                elif event_label not in source_label:
+                    source_label = f"{source_label}+{event_label}"
         except OSError as exc:
-            logger.warning("agent-run-events read error: %s", exc)
+            logger.warning("agent-run-events read error from %s: %s", event_path, exc)
 
     # User-spool fallback: aq-agent-loop writes agent_thinking/agent_tool_call/agent_step_complete
     # events to .agents/telemetry/hybrid-events.jsonl using task_id/session_id (not run_id).

@@ -120,6 +120,32 @@ def test_jsonl_round_trip() -> None:
     assert_true(loaded == [event], "expected JSONL round trip to preserve event")
 
 
+def test_emit_event_writes_canonical_stream_and_latest_projection() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        path = root / "events" / "agent-run-events.jsonl"
+        event = events.emit_event(
+            "model_call",
+            root=root,
+            event_path=path,
+            source="test-agent-run-event-envelope",
+            run_id="run/with spaces",
+            status="running",
+            payload={"progress": "streaming", "api_token": "do-not-leak", "tokens_out": 12, "max_tokens": 1200},
+            tokens={"output": 12},
+        )
+        loaded = events.load_jsonl(path)
+        latest = events.latest_projection_path("run/with spaces", root)
+        projection = json.loads(latest.read_text(encoding="utf-8"))
+
+    assert_true(loaded == [event], "emit_event must append to canonical stream")
+    assert_true(latest.name == "run_with_spaces.json", "latest projection must sanitize run_id")
+    assert_true(projection["latest_event"]["event_id"] == event["event_id"], "latest projection must track newest event")
+    assert_true(projection["latest_event"]["payload"]["api_token"] == "[REDACTED]", "projection must use redacted event")
+    assert_true(projection["latest_event"]["payload"]["tokens_out"] == 12, "numeric token telemetry must stay visible")
+    assert_true(projection["latest_event"]["payload"]["max_tokens"] == 1200, "numeric max-token telemetry must stay visible")
+
+
 def test_validation_rejects_bad_data() -> None:
     try:
         events.make_event("not_real", source="test", run_id="run")
@@ -140,6 +166,7 @@ def main() -> int:
     test_schema_contract()
     test_full_replay_fixture()
     test_jsonl_round_trip()
+    test_emit_event_writes_canonical_stream_and_latest_projection()
     test_validation_rejects_bad_data()
     print("PASS: agent-run event envelope schema, redaction, replay, useful-token attribution")
     return 0
