@@ -1138,6 +1138,10 @@ for p in profiles:
       python3 "${REPO_ROOT}/scripts/testing/test-local-agent-monitor-visibility.py"
     _check 1 "0.10.28" "capability flush harness exercises skills, intake, OSINT/RAG, and local monitor" \
       python3 "${REPO_ROOT}/scripts/testing/test-capability-flush.py"
+    _check 1 "0.10.29" "agent loop marks repeated planning-only thought output incomplete" \
+      python3 "${REPO_ROOT}/scripts/testing/test-agent-loop-result-quality.py"
+    _check 1 "0.10.30" "analysis-only local-agent observation loops force final synthesis" \
+      python3 "${REPO_ROOT}/scripts/testing/test-agent-executor-analysis-finalization.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

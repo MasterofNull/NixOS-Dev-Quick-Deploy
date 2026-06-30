@@ -28,6 +28,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -166,7 +167,26 @@ def _is_incomplete_result(result: str | None) -> bool:
         "repeated-read stagnation:",
         "analysis checkpoint stagnation:",
     )
-    return any(marker in text for marker in incomplete_markers)
+    if any(marker in text for marker in incomplete_markers):
+        return True
+    normalized = " ".join(text.split())
+    thought_count = normalized.count("thought:")
+    completion_markers = (
+        "completed:",
+        "result:",
+        "recommendation",
+        "ranked",
+        "validation",
+        "implemented",
+        "fixed",
+        "commit",
+    )
+    if thought_count >= 3 and not any(marker in normalized for marker in completion_markers):
+        return True
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", normalized) if s.strip()]
+    if thought_count >= 3 and len(set(sentences)) <= max(3, len(sentences) // 2):
+        return True
+    return False
 
 
 async def run_task(
