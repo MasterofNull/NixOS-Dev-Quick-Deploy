@@ -1044,6 +1044,26 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
   File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
 
+[DONE] local-agent-llm-wait-no-progress — Local-agent test task `local-20260629-182011-pbd3dk` held the host inference slot in `llm_waiting` with `llm_stream_chunks=0` and `llm_stream_chars=0` until manually cancelled, which paused vectorization batch auto-restart.
+  Severity: high
+  Action: Added `LLAMA_FIRST_TOKEN_TIMEOUT` wiring in `aq-agent-loop` and capped executor streaming read timeout so silent first-token waits fail with `LLM no-progress timeout` before pinning the slot indefinitely.
+  File: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py; scripts/testing/test-local-agent-first-token-timeout.py
+
+[OPEN] sandbox-monitor-pid-namespace-false-stale — Sandboxed `delegate-to-local --monitor` inferred task `local-20260629-182011-pbd3dk` stale because host PID 2722737 was invisible inside the sandbox PID namespace, while host-level monitor correctly reported it running.
+  Severity: medium
+  Action: Teach monitor payload to mark PID liveness as `unknown` when running under sandbox/PID namespace isolation, or route dashboard monitor checks through a host-side service instead of local process probing.
+  File: scripts/ai/lib/task_registry.py
+
+[DONE] aq-qa-machine-mode-black-box — `aq-qa 0 --machine` could run silently for minutes, leaving agents with only an outer timeout and no near-time current-check visibility.
+  Severity: high
+  Action: Added rolling QA progress artifacts at `.agent/qa/latest-progress.json` and `.agent/qa/latest-progress.jsonl`, including phase_start, per-check running/pass/fail, and heartbeat events controlled by `AQ_QA_PROGRESS_HEARTBEAT_SECONDS`.
+  File: scripts/ai/aq-qa; scripts/ai/_aq-qa-bash; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[OPEN] aq-qa-discovery-check-timeout-boundary — During tier0 pre-commit validation, QA phase 0 remained in `0.10.4 discovery agent opportunity scanner` with live heartbeats past 300 seconds and required manual interruption of the parent gate.
+  Severity: high
+  Action: Add per-check timeout enforcement inside `_check` / `_check_output` or split the discovery scanner into a bounded smoke path for tier0.
+  File: scripts/ai/_aq-qa-bash
+
 [DONE] local-agent-stagnation-false-success — Local-agent task `local-20260629-081304-dx1xx2` produced a `Repeated-read stagnation` result after a long run, but `aq-agent-loop` wrote `success: true` / `status: completed`, and the registry initially presented the task as successful.
 Severity: high
 Fix: `aq-agent-loop` now treats repeated-read and analysis-checkpoint stagnation as incomplete failed results, writes `status: failed`, exits non-zero, and avoids training-signal emission for those runs. `TaskRegistry` now reconciles dead or inconsistent running/done entries before list/status/check and marks artifacts containing failure markers as failed. Stale delegated prompts should use the existing canonical path `docs/system-centric-ai-repos-recommendations.md`.

@@ -6099,6 +6099,79 @@ async def get_vector_graph() -> Dict[str, Any]:
     return payload
 
 
+@router.get("/graph/vectorization")
+async def get_vectorization_posture() -> Dict[str, Any]:
+    """Return compact vectorization posture for the dashboard map lens."""
+    observatory, memory, ragas = await asyncio.gather(
+        knowledge_observatory(),
+        get_memory_collections(),
+        get_ragas_scores(),
+        return_exceptions=True,
+    )
+
+    if not isinstance(observatory, dict):
+        observatory = {
+            "total_points": 0,
+            "total_collections": 0,
+            "active_collections": 0,
+            "collections": [],
+        }
+    if not isinstance(memory, dict):
+        memory = {"available": False, "total_memory_points": 0, "collections": {}}
+    if not isinstance(ragas, dict):
+        ragas = {"available": False}
+
+    collections = observatory.get("collections") or []
+    if not isinstance(collections, list):
+        collections = []
+    top_collections = [
+        {
+            "name": str(row.get("name") or ""),
+            "label": str(row.get("label") or row.get("name") or ""),
+            "type": str(row.get("type") or "other"),
+            "points": int(row.get("points") or 0),
+            "active": bool(row.get("active")),
+        }
+        for row in collections[:10]
+        if isinstance(row, dict)
+    ]
+
+    total_points = int(observatory.get("total_points") or 0)
+    active_collections = int(observatory.get("active_collections") or 0)
+    total_collections = int(observatory.get("total_collections") or len(collections))
+    memory_points = int(memory.get("total_memory_points") or 0)
+    ragas_available = bool(ragas.get("available"))
+    status = "ok" if total_points > 0 and active_collections > 0 else "warn"
+    if total_collections == 0:
+        status = "degraded"
+
+    return {
+        "available": True,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "vectors": {
+            "total_points": total_points,
+            "total_collections": total_collections,
+            "active_collections": active_collections,
+            "inactive_collections": max(total_collections - active_collections, 0),
+            "top_collections": top_collections,
+        },
+        "memory": {
+            "available": bool(memory.get("available")),
+            "total_points": memory_points,
+            "collections": memory.get("collections") or {},
+        },
+        "quality": {
+            "available": ragas_available,
+            "answer_relevance": ragas.get("answer_relevance"),
+            "context_precision": ragas.get("context_precision"),
+            "faithfulness": ragas.get("faithfulness"),
+            "sample_count": ragas.get("sample_count"),
+            "generated_at": ragas.get("generated_at"),
+        },
+    }
+
+
 _WORKFLOW_GRAPH_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _WORKFLOW_GRAPH_TTL_S = 30.0
 
