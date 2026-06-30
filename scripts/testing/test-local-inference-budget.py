@@ -178,6 +178,43 @@ def test_write_progress_atomic_no_tmp_leak():
     print("PASS  _write_progress is atomic — no .tmp leak")
 
 
+def test_write_progress_emits_agent_run_event():
+    mod = _load_dispatch()
+    saved_path = os.environ.get("AQ_AGENT_RUN_EVENTS_PATH")
+    saved_root = os.environ.get("REPO_ROOT")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            event_path = Path(tmp) / "agent-run-events.jsonl"
+            os.environ["AQ_AGENT_RUN_EVENTS_PATH"] = str(event_path)
+            os.environ["REPO_ROOT"] = tmp
+            p = Path(tmp) / "out.log.progress.json"
+            mod._write_progress(
+                p,
+                tokens_out=10,
+                max_tokens=500,
+                elapsed_s=10.0,
+                tok_per_sec=1.0,
+                eta_s=490.0,
+                status="running",
+                run_id="test-progress-run",
+            )
+            events = [json.loads(line) for line in event_path.read_text(encoding="utf-8").splitlines()]
+            latest = Path(tmp) / ".agents" / "observability" / "latest" / "test-progress-run.json"
+            assert_eq(events[-1]["run_id"], "test-progress-run", "progress event run_id")
+            assert_eq(events[-1]["event_type"], "model_call", "progress event type")
+            assert_true(latest.exists(), "progress event latest projection missing")
+    finally:
+        if saved_path is None:
+            os.environ.pop("AQ_AGENT_RUN_EVENTS_PATH", None)
+        else:
+            os.environ["AQ_AGENT_RUN_EVENTS_PATH"] = saved_path
+        if saved_root is None:
+            os.environ.pop("REPO_ROOT", None)
+        else:
+            os.environ["REPO_ROOT"] = saved_root
+    print("PASS  _write_progress emits canonical agent-run event and latest projection")
+
+
 # ---------------------------------------------------------------------------
 # task_config hint fallback
 # ---------------------------------------------------------------------------
@@ -335,6 +372,7 @@ if __name__ == "__main__":
         test_write_progress_creates_sidecar,
         test_write_progress_no_eta_when_done,
         test_write_progress_atomic_no_tmp_leak,
+        test_write_progress_emits_agent_run_event,
         test_task_config_hint_used_when_no_env,
         test_task_config_env_overrides_hint,
         test_task_config_explicit_overrides_hint,

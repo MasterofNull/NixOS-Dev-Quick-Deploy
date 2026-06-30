@@ -78,8 +78,10 @@ _qa_progress_emit() {
   [[ -n "${AQ_QA_PROGRESS_JSON:-}" || -n "${AQ_QA_PROGRESS_JSONL:-}" ]] || return 0
   STATE="$state" LAYER="$layer" CHECK_ID="$id" DESC="$desc" DETAIL="$detail" NOW="$now" ELAPSED="$elapsed" \
   PASS_N="$PASS" FAIL_N="$FAIL" SKIP_N="$SKIP" PROGRESS_JSON="${AQ_QA_PROGRESS_JSON:-}" PROGRESS_JSONL="${AQ_QA_PROGRESS_JSONL:-}" \
+  REPO_ROOT="${REPO_ROOT}" PHASE="${PHASE:-unknown}" \
     python3 - <<'PY' 2>/dev/null || true
 import json, os, pathlib
+import sys
 payload = {
     "state": os.environ.get("STATE"),
     "layer": os.environ.get("LAYER") or None,
@@ -103,6 +105,25 @@ if os.environ.get("PROGRESS_JSONL"):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, separators=(",", ":")) + "\n")
+try:
+    repo_root = pathlib.Path(os.environ["REPO_ROOT"])
+    sys.path.insert(0, str(repo_root / "scripts" / "ai" / "lib"))
+    import agent_run_events as events
+    state = payload["state"]
+    status = "succeeded" if state == "pass" else "failed" if state == "fail" else "running"
+    events.emit_event(
+        "validation",
+        source="aq-qa",
+        run_id=f"aq-qa-{os.environ.get('PHASE') or 'unknown'}",
+        status=status,
+        task_id=payload.get("check_id"),
+        slice_id=payload.get("layer"),
+        duration_ms=payload["elapsed_s"] * 1000,
+        tool_name="aq-qa",
+        payload=payload,
+    )
+except Exception:
+    pass
 PY
 }
 

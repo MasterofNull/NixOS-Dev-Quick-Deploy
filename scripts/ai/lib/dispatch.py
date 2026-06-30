@@ -39,6 +39,11 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+try:
+    import agent_run_events as _agent_events
+except Exception:  # pragma: no cover - observability must never block dispatch
+    _agent_events = None  # type: ignore[assignment]
+
 # ── path: shared/llm_config.py ───────────────────────────────────────────────
 # dispatch.py lives at scripts/ai/lib/dispatch.py
 # REPO_ROOT = scripts/ai/lib/../../.. = repo root
@@ -137,10 +142,16 @@ def _write_progress(
     tok_per_sec: float,
     eta_s: Optional[float],
     status: str,
+    *,
+    run_id: Optional[str] = None,
+    source: str = "delegate-to-local",
+    role: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> None:
-    """Atomically update a .progress.json sidecar for dispatch.py watch to read.
+    """Atomically update progress projection and canonical agent-run event stream.
 
-    Uses write-then-rename so readers never see a partial file.
+    The .progress.json file is a compatibility projection. The durable source
+    of truth is agent-run-events.jsonl via scripts/ai/lib/agent_run_events.py.
     Silently no-ops on any I/O error — never blocks the main inference path.
     """
     data: dict = {
@@ -156,6 +167,25 @@ def _write_progress(
         tmp = progress_file.with_suffix(".progress.tmp")
         tmp.write_text(json.dumps(data))
         tmp.rename(progress_file)
+    except Exception:
+        pass
+    if _agent_events is None:
+        return
+    try:
+        event_status = "succeeded" if status in {"done", "succeeded"} else "failed" if status == "failed" else "running"
+        _agent_events.emit_event(
+            "model_call",
+            source=source,
+            run_id=run_id or progress_file.name.replace(".progress.json", ""),
+            status=event_status,
+            duration_ms=round(elapsed_s * 1000, 1),
+            model=model or os.getenv("LLAMA_MODEL_NAME") or "local-llama",
+            role=role,
+            route_profile="local-direct",
+            tokens={"output": max(tokens_out, 0), "total": max(tokens_out, 0)},
+            artifact={"path": str(progress_file), "kind": "progress", "accepted": event_status == "succeeded"},
+            payload=data,
+        )
     except Exception:
         pass
 

@@ -1044,6 +1044,11 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
   File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
 
+[DONE] agent-observability-ssot-fragmentation — Agent delegation and inference progress used compatibility sidecars and service-owned telemetry paths without a repo-writable canonical agent-run event helper, creating fragmented observability for local agents and long-running inference.
+  Severity: high
+  Action: Added `agent_run_events.emit_event()` with repo-local fallback and latest-state projection, routed `dispatch.py` progress updates through the canonical agent-run stream, and made the dashboard merge service and repo-local `agent-run-events.jsonl`.
+  File: scripts/ai/lib/agent_run_events.py; scripts/ai/lib/dispatch.py; dashboard/backend/api/routes/aistack.py; scripts/testing/test-agent-run-event-envelope.py; scripts/testing/test-local-inference-budget.py
+
 [DONE] local-agent-llm-wait-no-progress — Local-agent test task `local-20260629-182011-pbd3dk` held the host inference slot in `llm_waiting` with `llm_stream_chunks=0` and `llm_stream_chars=0` until manually cancelled, which paused vectorization batch auto-restart.
   Severity: high
   Action: Added `LLAMA_FIRST_TOKEN_TIMEOUT` wiring in `aq-agent-loop` and capped executor streaming read timeout so silent first-token waits fail with `LLM no-progress timeout` before pinning the slot indefinitely.
@@ -1061,7 +1066,7 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
 
 [OPEN] aq-qa-discovery-check-timeout-boundary — During tier0 pre-commit validation, QA phase 0 remained in `0.10.4 discovery agent opportunity scanner` with live heartbeats past 300 seconds and required manual interruption of the parent gate.
   Severity: high
-  Action: Add per-check timeout enforcement inside `_check` / `_check_output` or split the discovery scanner into a bounded smoke path for tier0.
+  Action: Add per-check timeout enforcement inside `_check` / `_check_output` or split the discovery scanner into a bounded smoke path for tier0. Reproduced again on 2026-06-30: `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 240 scripts/governance/tier0-validation-gate.sh --pre-commit` exited 124 while `.agent/qa/latest-progress.json` still showed heartbeat in `0.10.4` at elapsed 209s with pass=25/fail=40/skip=4.
   File: scripts/ai/_aq-qa-bash
 
 [OPEN] delegate-to-local-status-missing-arg — `scripts/ai/delegate-to-local --status` exits with `line 97: $2: unbound variable` instead of showing usage or a clear missing task-id error.
