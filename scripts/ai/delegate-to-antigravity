@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""delegate-to-antigravity — Headless AI delegation via gemini CLI (oauth-personal).
+"""delegate-to-antigravity — Headless AI delegation via switchboard antigravity-collective profile.
 
-Uses Google Code Assist (cloudcode-pa.googleapis.com) with oauth-personal auth.
-This is the Google subscription path — uses your Google account, NOT OpenRouter.
+Routes through the local switchboard (http://127.0.0.1:8085) using the
+'antigravity-collective' profile, which forces provider=remote and uses the
+configured remote backend (OpenRouter → google/gemini-2.5-flash-lite or equivalent).
 
-Auth setup (one-time, interactive):
-  Run in a terminal: gemini -p "test"
-  When prompted "Opening authentication page in your browser. Do you want to continue? [Y/n]:"
-  → press Y, complete Google sign-in in your browser.
-  After that, all headless calls work automatically.
+Auth: handled by switchboard via /run/secrets/remote_llm_api_key (SOPS-managed, no
+manual setup required).
 
-Auth is stored in: ~/.gemini/gemini-credentials.json (AES-256-GCM encrypted)
-Settings:          ~/.gemini/settings.json → security.auth.selectedType = "oauth-personal"
+Note: @google/gemini-cli (npm) and the oauth-personal/Code Assist path are RETIRED
+as of 2026-07 (IneligibleTierError for free-tier). Do NOT use 'gemini' npm binary.
 
 Usage:
   delegate-to-antigravity --prompt "task description"   # background dispatch
@@ -27,9 +25,12 @@ import fcntl
 import json
 import os
 import random
+import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,23 +42,32 @@ _OUTPUTS_DIR = _DELEGATION_DIR / "outputs"
 _REGISTRY = _DELEGATION_DIR / "registry.jsonl"
 _PENDING_UPDATE = _HERE / "lib" / "pending-update"
 _AUDIT_WRITE = _HERE / "lib" / "audit-write.sh"
-_GEMINI_SETTINGS = Path.home() / ".gemini" / "settings.json"
-_GEMINI_CREDS = Path.home() / ".gemini" / "gemini-credentials.json"
 
 # ── constants ──────────────────────────────────────────────────────────────
 _MIN_CONTENT_BYTES = 200
 _MAX_CONCURRENT = 3
 
-# Code Assist (oauth-personal) accepts gemini model IDs directly.
-# Models available via Google Code Assist subscription.
+# Switchboard profile for Antigravity delegation.
+# remote-free: forceProvider=remote → OpenRouter → meta-llama/llama-3.3-70b-instruct:free (no credits needed)
+# antigravity-collective: forceProvider=remote → OpenRouter → google/gemini-2.5-flash-lite (requires credits)
+# Switch to "antigravity-collective" when OpenRouter credits are available.
+_SWB_PROFILE = os.environ.get("ANTIGRAVITY_SWB_PROFILE", "remote-free")
+
+# Model hints passed to switchboard (profile may alias/override these).
+# Use gemini model names; switchboard translates to OpenRouter model IDs.
 _MODEL_MAP = {
     "fast":        "gemini-2.0-flash",
     "flash":       "gemini-2.0-flash",
-    "pro":         "gemini-2.5-pro-preview-06-05",
+    "pro":         "gemini-2.5-flash",
     "architect":   "gemini-2.5-flash",
     "implementer": "gemini-2.0-flash",
     "reviewer":    "gemini-2.0-flash",
 }
+
+def _swb_url() -> str:
+    port = os.environ.get("SWITCHBOARD_PORT", os.environ.get("SWB_PORT", "8085"))
+    host = os.environ.get("SWITCHBOARD_HOST", "127.0.0.1")
+    return f"http://{host}:{port}/v1/chat/completions"
 
 _VALID_ROLES = {
     "orchestrator", "architect", "implementer", "reviewer",
@@ -91,64 +101,20 @@ def _build_harness_system() -> str:
 
 _HARNESS_SYSTEM = _build_harness_system()
 
-# ── auth validation ─────────────────────────────────────────────────────────
+# ── switchboard health check ─────────────────────────────────────────────────
 
-# Node.js snippet to decrypt gemini-credentials.json using the same key derivation as the CLI.
-_DECRYPT_CREDS_JS = r"""
-const crypto = require('crypto');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const credsFile = path.join(os.homedir(), '.gemini', 'gemini-credentials.json');
-try {
-  const data = fs.readFileSync(credsFile, 'utf-8').trim();
-  const parts = data.split(':');
-  if (parts.length !== 3) { console.log('{}'); process.exit(0); }
-  const salt = os.hostname() + '-' + os.userInfo().username + '-gemini-cli';
-  const key = crypto.scryptSync('gemini-cli-oauth', salt, 32);
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
-  let dec = decipher.update(parts[2], 'hex', 'utf8') + decipher.final('utf8');
-  console.log(dec);
-} catch(e) { console.log('{}'); }
-"""
-
-def _check_auth_ready() -> "tuple[bool, str]":
-    """Returns (is_ready, reason). Checks if gemini CLI has oauth-personal credentials."""
-    if not _GEMINI_SETTINGS.exists():
-        return False, "~/.gemini/settings.json not found"
+def _check_switchboard_ready() -> "tuple[bool, str]":
+    """Check if local switchboard is reachable and has remote configured."""
     try:
-        settings = json.loads(_GEMINI_SETTINGS.read_text())
-        auth_type = settings.get("security", {}).get("auth", {}).get("selectedType", "")
-        if auth_type != "oauth-personal":
-            return False, f"selectedType={auth_type!r} (expected 'oauth-personal')"
-    except Exception as e:
-        return False, f"Cannot parse settings.json: {e}"
-
-    if not _GEMINI_CREDS.exists() or _GEMINI_CREDS.stat().st_size < 50:
-        return False, "gemini-credentials.json missing or empty — run: gemini -p 'test' (completes OAuth)"
-
-    try:
-        result = subprocess.run(
-            ["node", "-e", _DECRYPT_CREDS_JS],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            creds = json.loads(result.stdout)
-            if "gemini-cli-oauth-personal" in creds or "oauth-personal" in creds:
-                return True, "oauth-personal credentials present"
-            return False, (
-                "gemini-credentials.json has only API key credentials.\n"
-                "Complete oauth-personal login by running in a terminal:\n"
-                "  gemini -p 'test'\n"
-                "Then press Y and sign in with your Google account in the browser."
-            )
-    except Exception:
-        pass
-
-    return True, "credentials file present (cannot verify type without decryption)"
+        port = os.environ.get("SWITCHBOARD_PORT", os.environ.get("SWB_PORT", "8085"))
+        url = f"http://127.0.0.1:{port}/health"
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            d = json.loads(resp.read())
+            if not d.get("remote_configured"):
+                return False, "switchboard remote not configured (check REMOTE_LLM_URL and remote_llm_api_key secret)"
+            return True, f"switchboard ok, remote_configured=True"
+    except Exception as exc:
+        return False, f"switchboard unreachable: {exc}"
 
 # ── task id & registry ─────────────────────────────────────────────────────
 
@@ -230,83 +196,119 @@ def _count_running() -> int:
             pass
     return count
 
-# ── delegation via gemini CLI ───────────────────────────────────────────────
+# ── delegation via switchboard ────────────────────────────────────────────────
 
-def _run_gemini_cli(task_id: str, prompt: str, role: str, model: str,
-                    timeout: int, log_path: Path,
-                    print_to_stdout: bool = False) -> "tuple[str, int, int]":
-    """Call gemini CLI (oauth-personal, Google Code Assist). Returns (status, 0, 0)."""
+def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
+                     timeout: int, log_path: Path,
+                     print_to_stdout: bool = False) -> "tuple[str, int, int]":
+    """POST to switchboard antigravity-collective profile. Returns (status, tokens_in, tokens_out)."""
     role_prefix = f"[ROLE: {role}]\n\n"
     full_prompt = role_prefix + _HARNESS_SYSTEM + "\n" + prompt
 
-    cmd = ["gemini", "--output-format", "text", "-p", full_prompt]
-    if model:
-        cmd.extend(["-m", model])
+    payload = json.dumps({
+        "model": model or "gemini-2.5-flash",
+        "messages": [{"role": "user", "content": full_prompt}],
+        "max_tokens": 2000,
+        "stream": False,
+    }).encode()
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            stdin=subprocess.DEVNULL,
+    url = _swb_url()
+
+    # Try configured profile; if remote rate-limits or requires credits, fall back to local.
+    profiles_to_try = [_SWB_PROFILE]
+    if _SWB_PROFILE not in ("local-coding", "local-tool-calling"):
+        profiles_to_try.append("local-coding")  # local Qwen3-35B fallback
+
+    for current_profile in profiles_to_try:
+        if current_profile != profiles_to_try[0]:
+            sys.stderr.write(f"[delegate-to-antigravity] falling back to {current_profile} profile\n")
+        attempt_req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-AI-Profile": current_profile,
+            },
+            method="POST",
         )
+        for attempt in range(1, 3):  # up to 2 attempts per profile
+            try:
+                with urllib.request.urlopen(attempt_req, timeout=timeout) as resp:
+                    result = json.loads(resp.read())
+                    content = (
+                        result.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                        or ""
+                    )
+                    usage = result.get("usage", {})
+                    tokens_in  = usage.get("prompt_tokens", 0) or 0
+                    tokens_out = usage.get("completion_tokens", 0) or 0
 
-        output = result.stdout.strip()
-        stderr = result.stderr.strip()
+                    if content:
+                        with open(log_path, "a") as f:
+                            f.write(content.strip() + "\n")
+                        if print_to_stdout:
+                            sys.stdout.write(content.strip() + "\n")
+                            sys.stdout.flush()
+                        status = "done" if len(content.encode()) >= _MIN_CONTENT_BYTES else "partial-success"
+                        return status, tokens_in, tokens_out
 
-        auth_error_patterns = [
-            "Authentication cancelled",
-            "Opening authentication page",
-            "FatalCancellationError",
-            "Error authenticating",
-            "Resource has been exhausted",
-        ]
-        if any(p in stderr for p in auth_error_patterns):
-            msg = (
-                "ERROR: gemini CLI authentication error.\n\n"
-                "If auth is incomplete, run once interactively:\n"
-                "  gemini -p 'test'\n"
-                "Press Y when prompted, then sign in with your Google account.\n"
-                f"\ngemini stderr: {stderr[:500]}\n"
-            )
-            with open(log_path, "a") as f:
-                f.write(msg)
-            if print_to_stdout:
-                sys.stderr.write(msg)
-            return "failed", 0, 0
+                    with open(log_path, "a") as f:
+                        f.write(f"ERROR: switchboard returned empty content ({current_profile}).\nResponse: {json.dumps(result)[:400]}\n")
+                    break  # empty content — try next profile
 
-        if output:
-            with open(log_path, "a") as f:
-                f.write(output)
-                f.write("\n")
-            if print_to_stdout:
-                sys.stdout.write(output)
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-            status = "done" if len(output.encode()) >= _MIN_CONTENT_BYTES else "partial-success"
-            return status, 0, 0
+            except urllib.error.HTTPError as exc:
+                body = ""
+                try:
+                    body = exc.read().decode(errors="replace")[:400]
+                except Exception:
+                    pass
+                if exc.code in (429, 402) and attempt < 2:
+                    # Rate-limited or no credits — wait briefly then try next profile
+                    retry_after = 5
+                    try:
+                        parsed = json.loads(body)
+                        ra = parsed.get("error", {}).get("metadata", {}).get("retry_after_seconds", 5)
+                        retry_after = min(int(ra), 10)
+                    except Exception:
+                        pass
+                    sys.stderr.write(f"[delegate-to-antigravity] HTTP {exc.code} on {current_profile} (attempt {attempt}), waiting {retry_after}s\n")
+                    time.sleep(retry_after)
+                    continue
+                elif exc.code in (429, 402):
+                    # Exhausted retries on this profile — try next
+                    sys.stderr.write(f"[delegate-to-antigravity] HTTP {exc.code} on {current_profile} — trying next profile\n")
+                    break
+                with open(log_path, "a") as f:
+                    f.write(f"ERROR: switchboard HTTP {exc.code} ({current_profile}): {body}\n")
+                return "failed", 0, 0
 
-        with open(log_path, "a") as f:
-            if stderr:
-                f.write(f"ERROR: gemini CLI returned no output.\nstderr: {stderr[:500]}\n")
-            else:
-                f.write("ERROR: gemini CLI returned empty output (no stderr).\n"
-                        "Check: gemini -p 'test' works interactively?\n")
-        return "failed", 0, 0
+            except (socket.timeout, TimeoutError, urllib.error.URLError) as exc:
+                if current_profile in ("local-coding", "local-tool-calling"):
+                    # Local inference is slow (Renoir APU, 1 tok/s); slot may be busy.
+                    with open(log_path, "a") as f:
+                        f.write(f"ERROR: local inference timeout/unavailable ({current_profile}): {exc}\n"
+                                f"  slot may be busy with another request — retry manually later\n")
+                else:
+                    sys.stderr.write(f"[delegate-to-antigravity] network error on {current_profile}: {exc}\n")
+                break  # try next profile
 
-    except subprocess.TimeoutExpired:
-        with open(log_path, "a") as f:
-            f.write(f"ERROR: gemini CLI timeout after {timeout}s.\n")
-        return "failed", 0, 0
+            except json.JSONDecodeError as exc:
+                # Empty or malformed response body — can happen when inference just started
+                # and the switchboard returned before llama.cpp buffered the response.
+                with open(log_path, "a") as f:
+                    f.write(f"ERROR: empty response from {current_profile} (inference may still be running): {exc}\n")
+                break  # try next profile
 
-    except FileNotFoundError:
-        with open(log_path, "a") as f:
-            f.write(
-                "ERROR: 'gemini' not found in PATH.\n"
-                "Install: npm install -g @google/gemini-cli\n"
-            )
-        return "failed", 0, 0
+            except Exception as exc:
+                with open(log_path, "a") as f:
+                    f.write(f"ERROR: switchboard call failed ({current_profile}): {exc}\n")
+                break  # try next profile
+
+    with open(log_path, "a") as f:
+        f.write("ERROR: all profiles exhausted — remote rate-limited and local fallback failed\n")
+    return "failed", 0, 0
 
 # ── pending / audit helpers ─────────────────────────────────────────────────
 
@@ -450,7 +452,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _audit("start", tid, prompt[:200])
 
     if wait:
-        status, ti, to = _run_gemini_cli(
+        status, ti, to = _run_switchboard(
             tid, prompt, role, model, timeout, log_path,
             print_to_stdout=True,
         )
@@ -477,7 +479,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     os.close(devnull)
 
     try:
-        status, ti, to = _run_gemini_cli(
+        status, ti, to = _run_switchboard(
             tid, prompt, role, model, timeout, log_path,
         )
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
@@ -501,15 +503,16 @@ def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="delegate-to-antigravity",
         description=(
-            "Headless Gemini delegation via gemini CLI (oauth-personal / Google Code Assist).\n"
-            "Uses your Google subscription — NOT OpenRouter, NOT an API key."
+            "Headless Gemini delegation via switchboard antigravity-collective profile.\n"
+            "Routes: local switchboard → forceProvider=remote → OpenRouter → google/gemini-2.5-flash-lite."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Auth setup (one-time):\n"
-            "  Run: gemini -p 'test'\n"
-            "  Press Y and sign in with Google account in browser.\n"
-            "  Subsequent calls work headlessly without user interaction.\n"
+            "Backend: switchboard remote-free profile (default)\n"
+            "  → forceProvider=remote → OpenRouter → meta-llama/llama-3.3-70b-instruct:free\n"
+            "  Auth managed by switchboard via /run/secrets/remote_llm_api_key\n"
+            "  Set ANTIGRAVITY_SWB_PROFILE=antigravity-collective to use google/gemini-2.5-flash-lite\n"
+            "  (requires OpenRouter credits).\n"
         ),
     )
     p.add_argument("--prompt",      metavar="TEXT", help="Task prompt")

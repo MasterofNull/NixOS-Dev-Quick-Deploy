@@ -14,71 +14,41 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
-## Auth Architecture (2026-07-01 UPDATE — GEMINI-CLI PATH RESTORED)
+## Auth Architecture (2026-07-01 — SWITCHBOARD PATH)
 
 **`delegate-to-gemini` (npm CLI) is RETIRED.**
+**`@google/gemini-cli` npm package is DEAD** — returns `IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals`. Do NOT call the `gemini` binary from any delegation script.
 
-**`delegate-to-antigravity` RESTORED to gemini-cli path (reverted 0ccb644f 2026-06-28):**
-Routes through gemini-cli subprocess → oauth-personal → Google Code Assist
-(cloudcode-pa.googleapis.com). `_run_gemini_cli()` calls `gemini --output-format text -p <prompt> -m <model>`.
-NOT switchboard. NOT OpenRouter.
+**`delegate-to-antigravity` routes through local switchboard (http://127.0.0.1:8085):**
+POSTs to `/v1/chat/completions` with `X-AI-Profile` header. No CLI subprocess, no oauth, no gemini binary.
 
-**Auth setup required (one-time interactive):**
-Run `! gemini -p 'test'` in the session terminal → press Y → complete Google sign-in in browser.
-After that, all headless delegation calls work automatically.
-Credentials: `~/.gemini/gemini-credentials.json`. Settings: `~/.gemini/settings.json` → `oauth-personal`.
+**Profile fallback chain (automatic — no manual config needed):**
+1. `remote-free` (default) → OpenRouter → `meta-llama/llama-3.3-70b-instruct:free` (no credits)
+2. `local-coding` (auto-fallback on HTTP 429/402) → local Qwen3-35B via llama.cpp:8080
+3. Override profile: `ANTIGRAVITY_SWB_PROFILE=antigravity-collective` → `google/gemini-2.5-flash-lite` (requires OpenRouter credits)
 
-**Delegation chain (current):**
-- Background: `scripts/ai/delegate-to-antigravity --prompt "..." [--mode fast|flash|pro|architect]`
-- Blocking:   `scripts/ai/delegate-to-antigravity --prompt "..." --wait`
-- Check:      `scripts/ai/delegate-to-antigravity --check <task-id>`
-- List:       `scripts/ai/delegate-to-antigravity --list`
-- Health:     `scripts/health/antigravity-health.sh --smoke`
-- Legacy:     `delegate-to-gemini` — DO NOT USE (RETIRED)
-
----
-
-### oauth-personal Setup (for when gemini CLI onboardUser unblocks)
-
-**Auth: oauth-personal via gemini CLI → Code Assist (NOT API key, NOT REST direct):**
-- `~/.gemini/settings.json` → `security.auth.selectedType = "oauth-personal"` ← REQUIRED.
-- `generativelanguage.googleapis.com` (requires paid API key) is no longer used.
-
-**One-time auth setup (must be done interactively in a terminal):**
-1. Run: `gemini -p "test"` in a terminal (NOT headlessly)
-2. When prompted "Opening authentication page... [Y/n]:" → press Y
-3. Complete Google sign-in in browser (already logged in via Antigravity? May be instant)
-4. Token stored in `~/.gemini/gemini-credentials.json` under key `gemini-cli-oauth-personal`
-5. All subsequent `delegate-to-antigravity` calls work headlessly without user interaction
-
-**Health check:** `scripts/health/antigravity-health.sh --smoke` detects auth state.
-
-**Antigravity IDE (`antigravity` binary on PATH after rebuild):**
-- VS Code fork IDE — NOT a headless CLI. Opens GUI when invoked.
-- Shares Google account auth with the gemini CLI (same Google account).
-- Do NOT invoke from delegation scripts — `antigravity chat` opens a GUI window.
-- Config: `~/.gemini/antigravity/` (lean-ctx MCP already wired).
+**Auth:** handled by switchboard via `/run/secrets/remote_llm_api_key` (SOPS-managed). No user action required.
 
 **Delegation chain (current):**
 - Background: `scripts/ai/delegate-to-antigravity --prompt "..." [--mode fast|flash|pro|architect]`
 - Blocking:   `scripts/ai/delegate-to-antigravity --prompt "..." --wait`
 - Check:      `scripts/ai/delegate-to-antigravity --check <task-id>`
 - List:       `scripts/ai/delegate-to-antigravity --list`
-- Health:     `scripts/health/antigravity-health.sh --smoke`
+- Health:     `curl -sf http://127.0.0.1:8085/health | jq .`
 - Legacy:     `delegate-to-gemini` — DO NOT USE (RETIRED)
 
-**Model map (Code Assist routes; names passed through to gemini CLI -m flag):**
-| Alias | Model |
-|-------|-------|
-| `fast` | gemini-2.0-flash |
-| `flash` | gemini-2.0-flash |
-| `pro` | gemini-2.5-pro-preview-06-05 |
-| `architect` | gemini-2.5-flash |
-| `implementer` | gemini-2.0-flash |
-| `reviewer` | gemini-2.0-flash |
+**Model map (hint only — switchboard profile may override):**
+| Alias | Hint passed | Actual model (remote-free profile) |
+|-------|-------------|-----------------------------------|
+| `fast` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
+| `flash` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
+| `pro` | gemini-2.5-flash | llama-3.3-70b-instruct:free |
+| `architect` | gemini-2.5-flash | llama-3.3-70b-instruct:free |
+| `implementer` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
+| `reviewer` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
 
-**Auth error detection:** If gemini CLI outputs "Authentication cancelled" / "FatalCancellationError"
-→ script detects and prints guidance. Fix: run `gemini -p "test"` interactively to complete OAuth.
+**Antigravity IDE (`antigravity` binary on PATH):**
+- VS Code fork IDE — NOT a headless CLI. Do NOT invoke from delegation scripts.
 
 ---
 
@@ -111,25 +81,20 @@ CONCERNS verdict is treated as APPROVED (warnings noted in PULSE.log, not blocki
 
 ---
 
-## Switchboard remote-gemini Profile (2026-06-20, updated 2026-06-21)
+## Switchboard Profiles (2026-07-01)
 
-The `remote-gemini` switchboard profile routes through `REMOTE_LLM_URL`. This requires an
-OpenAI-compatible endpoint. Direct Gemini integration via `delegate-to-antigravity` (oauth-personal)
-is now the preferred path for delegation — the switchboard remote-gemini profile is secondary.
+`delegate-to-antigravity` uses switchboard profiles via `X-AI-Profile` header.
+Current profiles relevant to delegation:
 
-If you still need switchboard remote-gemini (e.g. for aq-antigravity-agent --loop), configure
-`nix/hosts/hyperd/deploy-options.local.nix` (gitignored — secrets only):
+| Profile | Backend | Model | Notes |
+|---------|---------|-------|-------|
+| `remote-free` | OpenRouter | llama-3.3-70b-instruct:free | Default — no credits needed |
+| `antigravity-collective` | OpenRouter | google/gemini-2.5-flash-lite | Requires OpenRouter credits |
+| `local-coding` | local llama.cpp | Qwen3-35B | Auto-fallback on 429/402 |
 
-```nix
-services.nixos-ai-stack.mcpServers.switchboard = {
-  remoteUrl        = "https://generativelanguage.googleapis.com/v1beta/openai";
-  remoteApiKeyFile = "/run/secrets/gemini_api_key";  # requires paid AI Studio key
-  remoteModelAliases.gemini = "gemini-2.5-flash";
-};
-```
+Override: `ANTIGRAVITY_SWB_PROFILE=antigravity-collective delegate-to-antigravity --prompt "..."`
 
-Note: this path requires a paid Gemini API key (AI Studio). Prefer `delegate-to-antigravity`
-(oauth-personal) for free delegation without API keys.
+Full profile catalog: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
 
 ---
 
