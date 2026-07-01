@@ -211,11 +211,22 @@ async def run_task(
     os.environ["LLAMA_CHUNK_TIMEOUT"] = str(max(14400.0, float(timeout_secs) * 8))
     os.environ["LLAMA_FIRST_TOKEN_TIMEOUT"] = os.environ.get(
         "LLAMA_FIRST_TOKEN_TIMEOUT",
-        str(max(120.0, min(600.0, float(timeout_secs) * 0.5))),
+        # Cap at 1800s (30 min) for long-horizon tasks — large-context prefill on Renoir APU
+        # can exceed the prior 600s ceiling for full-manifest prompts.
+        str(max(120.0, min(1800.0, float(timeout_secs) * 0.5))),
     )
-    # 512 tok/call: tool call JSON is 50-100 tokens; final summary fits in 400.
-    # Prevents abandoned-connection slot locks (4096 tokens @ 1-2 tok/s = 34-68 min).
-    os.environ["LLAMA_MAX_TOKENS"] = os.environ.get("LLAMA_MAX_TOKENS", "512")
+    # Token budget per LLM call. Tool-call JSON fits in 512; analysis/research output
+    # needs 1200+ to produce a complete artifact (ranked lists, summaries, COMPLETED: signal).
+    # research/deep_reasoning tasks get 2048 to avoid truncated final reports.
+    # Slot-lock risk: 2048 @ 1-2 tok/s ≈ 17-34 min worst case — acceptable for overnight runs.
+    if not os.environ.get("LLAMA_MAX_TOKENS"):
+        _task_type_default = task_type or ""
+        if _task_type_default in ("research", "deep_reasoning"):
+            os.environ["LLAMA_MAX_TOKENS"] = "2048"
+        elif _task_type_default in ("agent", "code", "reasoning"):
+            os.environ["LLAMA_MAX_TOKENS"] = "1200"
+        else:
+            os.environ["LLAMA_MAX_TOKENS"] = "1200"  # upgrade from legacy 512
 
     # Observability: wire sidecar paths so agent_executor can stream per-step
     # telemetry without knowing the output file path.

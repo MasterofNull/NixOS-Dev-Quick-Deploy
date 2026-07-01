@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -46,6 +47,12 @@ def _aidb_url() -> str:
         os.environ.get("AGENT_MESH_AIDB_URL")
         or os.environ.get("AIDB_URL", "http://127.0.0.1:8002")
     )
+
+def _embed_url() -> str:
+    return os.environ.get("LLAMA_EMBED_URL", "http://127.0.0.1:8081")
+
+def _qdrant_url() -> str:
+    return os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
 
 def _aidb_key() -> str:
     key_file = (
@@ -198,23 +205,60 @@ class CollectiveMemory:
                     doc_id = resp.json().get("id") or resp.json().get("document_id")
                 except Exception:
                     pass
-                if doc_id:
-                    # Vector-index the document so it's searchable via recall_agent_memory.
-                    idx_resp = await client.post(
-                        f"{self._aidb_url}/vector/index",
-                        json={"items": [{"document_id": doc_id}], "collection": "skills-patterns"},
-                        headers=headers,
-                    )
-                    if idx_resp.status_code not in (200, 201, 202):
-                        logger.warning(
-                            "archive_collaboration vector index %d: %s",
-                            idx_resp.status_code, idx_resp.text[:200],
-                        )
-                logger.info("Archived collaboration team=%s to AIDB (doc_id=%s)", team_id, doc_id)
+                # /documents POST returns {"status":"ok"} with no id — /vector/index
+                # is therefore never called. Bypass: embed directly via llama-embed
+                # and upsert to Qdrant (the known-working path per issues-backlog.md
+                # aidb-vector-index-silent-noop).
+                await self._embed_and_upsert(content, {
+                    "team_id": team_id,
+                    "outcome": metadata.get("outcome", ""),
+                    "patterns": metadata.get("patterns", []),
+                    "source": "archive_collaboration",
+                }, client)
+                logger.info("Archived collaboration team=%s to AIDB+Qdrant", team_id)
                 return True
         except Exception as exc:
             logger.warning("archive_collaboration failed (non-fatal): %s", exc)
             return False
+
+    async def _embed_and_upsert(
+        self,
+        text: str,
+        payload: Dict[str, Any],
+        client: httpx.AsyncClient,
+        collection: str = "skills-patterns",
+    ) -> None:
+        """Embed text via llama-embed and upsert to Qdrant directly.
+
+        Bypasses the broken AIDB /vector/index path (silent noop — /documents
+        POST returns no id so the index call is never reached).
+        """
+        embed_url = _embed_url()
+        qdrant_url = _qdrant_url()
+        try:
+            emb_resp = await client.post(
+                f"{embed_url}/v1/embeddings",
+                json={"model": "embed", "input": text[:4096]},
+                timeout=30.0,
+            )
+            embedding = emb_resp.json()["data"][0]["embedding"]
+        except Exception as exc:
+            logger.warning("archive_collaboration embed failed (non-fatal): %s", exc)
+            return
+
+        point_id = str(uuid.uuid4())
+        try:
+            upsert_resp = await client.put(
+                f"{qdrant_url}/collections/{collection}/points",
+                json={"points": [{"id": point_id, "vector": embedding,
+                                   "payload": {**payload, "text": text[:1000]}}]},
+                timeout=15.0,
+            )
+            if upsert_resp.status_code not in (200, 201):
+                logger.warning("archive_collaboration qdrant upsert %d: %s",
+                               upsert_resp.status_code, upsert_resp.text[:200])
+        except Exception as exc:
+            logger.warning("archive_collaboration qdrant upsert failed (non-fatal): %s", exc)
 
     # ── Active teams ───────────────────────────────────────────────────────
 
