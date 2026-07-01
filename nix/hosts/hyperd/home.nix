@@ -1,4 +1,4 @@
-{lib, ...}:
+{lib, pkgs, ...}:
 # Per-host Home Manager config for hyperd.
 # home.username and home.homeDirectory are injected by flake.nix from
 # mySystem.primaryUser — do NOT declare them here.
@@ -13,5 +13,7 @@
   # ---- Machine-specific packages ------------------------------------------
   # Packages already in nix/home/base.nix (ripgrep, fd, jq, git, etc.) do not
   # need to be repeated here.
-  # home.packages = with pkgs; [ ];
+  home.packages = with pkgs; [
+    github-mcp-server  # GitHub MCP server for Claude/Codex agent GitHub tool access
+  ];
 }

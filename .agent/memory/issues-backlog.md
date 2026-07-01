@@ -1029,10 +1029,9 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Resolved on 2026-06-28. `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 120 scripts/ai/aq-qa 0 --machine` passed 115/0/2, then `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 180 scripts/governance/tier0-validation-gate.sh --pre-commit` passed 21/0.
   File: scripts/governance/tier0-validation-gate.sh
 
-[OPEN] github-mcp-readonly — GitHub MCP cannot be safely enabled yet — `github-mcp-server` binary not on PATH and no Docker/Podman available. Note: gh auth is now valid (gho_ token, repo+workflow scopes). Package available in nixpkgs as `github-mcp-server` 0.20.2. Next step: add to nix packages + wire Claude MCP config + SOPS token.
-  Severity: low
-  Action: Add github-mcp-server to system.packages in NixOS flake, add MCP config to Claude settings, wire SOPS secret for GH_TOKEN. Requires nixos-rebuild.
-  File: config/agent-capability-intake-candidates.json
+[FIXED 2026-07-01] github-mcp-readonly — github-mcp-server 0.20.2 installed via nix profile + home.packages. Token wired via scripts/ai/mcp-github-server wrapper (SOPS /run/secrets/github_mcp_token → gh auth token fallback). ~/.mcp/config.json updated with "github" server entry. SOPS key added, options.nix+secrets.nix updated (takes effect after next nixos-rebuild). All agents share access via harness tool catalog (see below).
+  Severity: low — RESOLVED
+  File: scripts/ai/mcp-github-server; nix/hosts/hyperd/home.nix; nix/modules/core/options.nix; nix/modules/core/secrets.nix
 
 [DONE] osint-active-recon-runtime-gated — Passive OSINT research is active, and active recon engines are now guarded by a fail-closed runtime admission surface — Maigret and MOSAIC remain intentionally not activated because insecure package paths are still held, and BBOT remains provisioning-only in the OSINT MCP server.
   Severity: medium

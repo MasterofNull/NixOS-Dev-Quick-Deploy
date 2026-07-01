@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# MCP server wrapper for github-mcp-server. Token resolution order:
+#   1. /run/secrets/github_mcp_token  (SOPS-managed, available after nixos-rebuild)
+#   2. GITHUB_PERSONAL_ACCESS_TOKEN env var (if pre-set by caller)
+#   3. gh auth token (gh CLI keyring — development fallback)
+# Avoids hardcoding token in any tracked config file.
+set -euo pipefail
+if [[ -f /run/secrets/github_mcp_token ]]; then
+    GITHUB_PERSONAL_ACCESS_TOKEN="$(cat /run/secrets/github_mcp_token)"
+elif [[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]; then
+    GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token 2>/dev/null || true)"
+fi
+if [[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]; then
+    printf '{"error":"No GitHub token available — add SOPS github_mcp_token or run: gh auth login"}\n' >&2
+    exit 1
+fi
+export GITHUB_PERSONAL_ACCESS_TOKEN
+exec github-mcp-server stdio "$@"

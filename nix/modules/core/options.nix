@@ -949,6 +949,12 @@
           default = "crowdsec_bouncer_api_key";
           description = "SOPS key name for CrowdSec firewall bouncer API key.";
         };
+
+        githubMcpToken = lib.mkOption {
+          type = lib.types.str;
+          default = "github_mcp_token";
+          description = "SOPS key name for GitHub MCP server personal access token (repo+workflow scopes).";
+        };
       };
     };
 
