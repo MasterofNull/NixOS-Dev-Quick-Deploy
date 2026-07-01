@@ -1080,9 +1080,9 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Restart/redeploy the dashboard API so commit `2160fca7` is loaded, then verify `/api/aistack/graph/vectorization`.
   File: dashboard/backend/api/routes/aistack.py
 
-[IN-FLIGHT] understand-anything-fallback-batches-not-complete — Understand-Anything batch processing produced all 296 `batch-*.json` files, but prior logs show degraded fallback batches 246, 247, 248, 251, 252, 253, and 255 after LLM JSON parse failures; no final `knowledge-graph.json` exists.
+[DONE] understand-anything-fallback-batches-not-complete — Understand-Anything batch processing produced all 296 `batch-*.json` files, but prior logs show degraded fallback batches 246, 247, 248, 251, 252, 253, and 255 after LLM JSON parse failures; no final `knowledge-graph.json` existed.
   Severity: high
-  Action: Reprocess degraded batches in strict no-fallback mode, then run merge-batch-graphs.py and `scripts/ai/aq-understand-anything validate-batches` before calling the graph complete.
+  Action: Reprocessed degraded batches 246, 247, 248, 251, 252, 253, and 255 in strict no-fallback LLM mode. `scripts/ai/aq-understand-anything validate-batches` now reports ok=true, expected_batches=296, missing/invalid/empty/fallback all empty, and graph_present=true. Final graph: `.understand-anything/knowledge-graph.json` with 6257 nodes and 1870 edges.
   File: .understand-anything/ua-batch-processor.py; scripts/ai/aq-understand-anything
 
 [DONE] local-agent-stagnation-false-success — Local-agent task `local-20260629-081304-dx1xx2` produced a `Repeated-read stagnation` result after a long run, but `aq-agent-loop` wrote `success: true` / `status: completed`, and the registry initially presented the task as successful.
