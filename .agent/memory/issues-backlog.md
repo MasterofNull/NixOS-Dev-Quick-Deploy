@@ -150,9 +150,9 @@
   Severity: medium (PRSI closed loop broken; delegation failures not driving self-improvement)
   File: scripts/automation/prsi-orchestrator.py _fetch_structured_actions() line ~334
 
-[MONITOR] aidb-vector-index-silent-noop — POST /vector/index returns {"status":"ok","indexed":1} but Qdrant collection shows 0 points. AIDB confirms document stored (GET /documents returns doc), but embedding → Qdrant upsert step is silently dropping vectors. Workaround: bypass AIDB indexing, embed directly via llama-embed:8081 and upsert to Qdrant:6333. Affects collective_memory.py archive_collaboration() (added vector/index call as best-effort, non-fatal). Domain collections mlops-patterns, qa-patterns, trading-patterns seeded via direct Qdrant upsert.
-  Severity: medium (documents stored but not searchable via vector recall until direct Qdrant path used)
-  File: ai-stack/local-agents/collective_memory.py archive_collaboration(); aidb/vector_indexer.py (investigate)
+[FIXED e876733a 2026-07-01] aidb-vector-index-silent-noop — Root cause: POST /documents returns {"status":"ok"} with no id field; doc_id=None so /vector/index call was never reached. Fix: _embed_and_upsert() in collective_memory.py embeds via llama-embed:8081 /v1/embeddings and upserts to Qdrant PUT /collections/skills-patterns/points directly. Verified: skills-patterns 2142→2143 after archive_collaboration(). AIDB /vector/index path remains broken upstream (aidb/vector_indexer.py) but bypassed.
+  Severity: medium — RESOLVED
+  File: ai-stack/local-agents/collective_memory.py
 
 [FIXED 4531d494] macc-collaborative-planning-logger-kwarg-crash — collaborative_planning.py used structlog-style kwargs with stdlib logging (6 sites). logger.info("key", plan_id=plan_id) raises Logger._log() got an unexpected keyword argument 'plan_id'. All 6 sites fixed to positional %-format.
   Severity: critical (MACC execute_collaborative_task crashes immediately at create_plan call)
