@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""
+aq-loop-overnight — Sequential multi-item outer agentic loop for overnight runs.
+
+Pulls [OPEN] items from issues-backlog.md one at a time, runs each via
+aq-loop --from-backlog, waits for completion, then pulls the next.
+Designed for unattended overnight / workday execution.
+
+Usage:
+    aq-loop-overnight [--max N] [--task-type TYPE] [--timeout SECS] [--dry-run]
+
+Options:
+    --max N          Max backlog items to process (default: 10)
+    --task-type TYPE Task type passed to inner aq-agent-loop (default: research)
+    --timeout SECS   Per-inference timeout for inner loop (default: 7200)
+    --dry-run        Preview items without running
+    --pause SECS     Pause between items to let LLM cool down (default: 60)
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_BACKLOG = _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md"
+_PULSE   = _REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _count_open() -> int:
+    if not _BACKLOG.exists():
+        return 0
+    return sum(1 for l in _BACKLOG.read_text().splitlines() if l.strip().startswith("[OPEN]"))
+
+
+def _pulse(msg: str) -> None:
+    try:
+        with open(_PULSE, "a") as f:
+            f.write(f"[{_now()}] [aq-loop-overnight] [RUN]: {msg}\n")
+    except Exception:
+        pass
+
+
+def _run_one(task_type: str, timeout: int) -> int:
+    """Run one aq-loop --from-backlog iteration. Returns exit code."""
+    cmd = [
+        str(_REPO_ROOT / "scripts" / "ai" / "aq-loop"),
+        "--from-backlog",
+        "--task-type", task_type,
+        "--timeout", str(timeout),
+    ]
+    print(f"[{_now()}] Running: {' '.join(cmd)}", flush=True)
+    result = subprocess.run(cmd, cwd=str(_REPO_ROOT))
+    return result.returncode
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Overnight sequential agentic loop")
+    parser.add_argument("--max",       type=int, default=10,       help="Max items to process")
+    parser.add_argument("--task-type", default="research",         help="Task type for inner loop")
+    parser.add_argument("--timeout",   type=int, default=7200,     help="Per-inference timeout (s)")
+    parser.add_argument("--dry-run",   action="store_true",        help="Preview without running")
+    parser.add_argument("--pause",     type=int, default=60,       help="Pause between items (s)")
+    args = parser.parse_args()
+
+    open_count = _count_open()
+    print(f"[{_now()}] [aq-loop-overnight] open={open_count} max={args.max} "
+          f"task_type={args.task_type} timeout={args.timeout}s", flush=True)
+
+    if open_count == 0:
+        print(f"[{_now()}] No [OPEN] items — nothing to do", flush=True)
+        return 0
+
+    if args.dry_run:
+        print(f"[{_now()}] --dry-run: would process up to {min(args.max, open_count)} items", flush=True)
+        return 0
+
+    processed = failed = 0
+    t0 = time.time()
+
+    for i in range(args.max):
+        remaining = _count_open()
+        if remaining == 0:
+            print(f"[{_now()}] No more [OPEN] items after {processed} processed", flush=True)
+            break
+
+        print(f"[{_now()}] === Item {i+1}/{args.max} (open={remaining}) ===", flush=True)
+        _pulse(f"starting item {i+1}/{args.max}, open={remaining}")
+
+        rc = _run_one(args.task_type, args.timeout)
+        if rc == 0:
+            processed += 1
+            elapsed = time.time() - t0
+            _pulse(f"item {i+1} DONE in {elapsed:.0f}s total, processed={processed}")
+        else:
+            failed += 1
+            _pulse(f"item {i+1} FAILED rc={rc}, processed={processed} failed={failed}")
+            print(f"[{_now()}] Item {i+1} failed (rc={rc}) — continuing", flush=True)
+
+        if i < args.max - 1 and _count_open() > 0:
+            print(f"[{_now()}] Pausing {args.pause}s before next item...", flush=True)
+            time.sleep(args.pause)
+
+    elapsed_total = time.time() - t0
+    print(f"\n[{_now()}] [aq-loop-overnight] done: processed={processed} failed={failed} "
+          f"elapsed={elapsed_total/3600:.1f}h", flush=True)
+    _pulse(f"completed: processed={processed} failed={failed} elapsed={elapsed_total:.0f}s")
+    return 1 if failed > 0 else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

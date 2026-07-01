@@ -21,7 +21,7 @@ def main() -> None:
     qa = QA.read_text(encoding="utf-8")
 
     require("LLAMA_FIRST_TOKEN_TIMEOUT" in loop, "aq-agent-loop must set first-token timeout")
-    require("min(600.0, float(timeout_secs) * 0.5)" in loop, "timeout must be bounded below outer timeout")
+    require("min(1800.0, float(timeout_secs) * 0.5)" in loop, "timeout must be bounded below outer timeout (cap 1800s for large-context overnight tasks)")
     require("first_token_timeout = _env_float(" in executor, "executor must read first-token timeout")
     require("read_timeout = min(chunk_timeout, first_token_timeout)" in executor, "read timeout must cap silent waits")
     require("LLM no-progress timeout" in executor, "timeout error must identify no-progress failure")
