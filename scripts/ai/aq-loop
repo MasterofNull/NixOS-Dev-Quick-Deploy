@@ -1,23 +1,30 @@
 #!/usr/bin/env python3
 """
-aq-loop — Outer orchestration loop for autonomous agent task execution.
+aq-loop — Outer orchestration loop for autonomous multi-agent task execution.
 
-Loop-engineering pattern (Schedule→Triage→STATE→Implementer→Verifier→Escalate):
+Loop-engineering pattern (Schedule→Triage→Ground→Execute→Verify→Escalate):
 
   1. TRIAGE   — pop task from backlog or accept --intent
-  2. GROUND   — load hints + skills, build structured prompt
+  2. GROUND   — load hints + skills; fan-out parallel research probes to local agent
+                (Qwen3-35B) and antigravity (Gemini) for grounded context
   3. EXECUTE  — run aq-agent-loop (inner ReAct loop with full tool set)
-  4. VERIFY   — check output for COMPLETED: marker + success indicators
+  4. VERIFY   — check COMPLETED: marker; fan-out acceptance review to antigravity reviewer;
+                re-queue with review findings if reviewer REJECTED
   5. LOOP     — if incomplete and iterations remain, rebuild prompt with evidence
   6. ESCALATE — after max iterations, write escalation to issues-backlog.md
 
+Fan-out is on by default. Use --no-fanout to disable. Fan-out is best-effort:
+delegation failures fall back gracefully to hints-only grounding.
+
 Usage:
-  aq-loop --intent "implement X"          explicit task
-  aq-loop --from-backlog                  pop first [OPEN] from issues-backlog.md
-  aq-loop --from-backlog --dry-run        show grounded prompt, no execution
-  aq-loop --intent "task" --max-iter 5   override max iterations (default 3)
-  aq-loop --check                         print current LOOP_STATE.json
-  aq-loop --list-open                     list [OPEN] items from issues-backlog.md
+  aq-loop --intent "implement X"                  explicit task (fan-out enabled)
+  aq-loop --from-backlog                          pop first [OPEN] from issues-backlog.md
+  aq-loop --from-backlog --dry-run                show grounded prompt, no execution
+  aq-loop --intent "task" --max-iter 5            override max iterations (default 3)
+  aq-loop --intent "task" --no-fanout             skip parallel probes (local only)
+  aq-loop --intent "task" --fanout-timeout 60     shorter probe wait (default 120s)
+  aq-loop --check                                 print current LOOP_STATE.json
+  aq-loop --list-open                             list [OPEN] items from issues-backlog.md
 """
 
 from __future__ import annotations
@@ -36,6 +43,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent
 _LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
 _BACKLOG_PATH = _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md"
+_DELEGATION_OUTPUTS = _REPO_ROOT / ".agents" / "delegation" / "outputs"
 
 # Ensure loop_state module is importable
 if str(_LOCAL_AGENTS) not in sys.path:
@@ -90,6 +98,156 @@ def get_skills(intent: str) -> str:
         timeout=15,
     )
     return out[:600] if out else ""
+
+
+def _dispatch_local_probe(intent: str, loop_id: str) -> "str | None":
+    """Fire a background research probe to delegate-to-local. Returns task ID or None."""
+    probe = (
+        f"RESEARCH PROBE for loop {loop_id}:\n"
+        f"Research the following task and return a concise analysis (max 600 words):\n"
+        f"  {intent}\n\n"
+        f"Include: relevant existing code/config, known failure patterns, recommended approach. "
+        f"Output ONLY the analysis — no tool calls, no file edits."
+    )
+    try:
+        r = subprocess.run(
+            [str(_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent",
+             "--role", "research", "--prompt", probe,
+             "--tool-manifest", "self-improvement"],
+            capture_output=True, text=True, timeout=15, cwd=str(_REPO_ROOT),
+        )
+        # Last non-empty line of stdout is the task ID
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        tid = lines[-1].strip() if lines else None
+        if tid and tid.startswith("local-"):
+            return tid
+    except Exception:
+        pass
+    return None
+
+
+def _dispatch_antigravity_probe(intent: str, loop_id: str) -> "str | None":
+    """Fire a background architecture probe to delegate-to-antigravity. Returns task ID or None."""
+    probe = (
+        f"ARCHITECTURE PROBE for loop {loop_id}:\n"
+        f"Provide architectural guidance and risk assessment for this task (max 500 words):\n"
+        f"  {intent}\n\n"
+        f"Include: design considerations, edge cases, NixOS-specific constraints, suggested approach. "
+        f"Output ONLY the analysis — no file edits."
+    )
+    try:
+        r = subprocess.run(
+            [str(_SCRIPT_DIR / "delegate-to-antigravity"), "--mode", "architect",
+             "--role", "architect", "--prompt", probe],
+            capture_output=True, text=True, timeout=15, cwd=str(_REPO_ROOT),
+        )
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        # Last line should be the task ID (antigravity prints tid as last line)
+        tid = lines[-1].strip() if lines else None
+        if tid and (tid.startswith("antigravity-") or tid.startswith("gemini-")):
+            return tid
+    except Exception:
+        pass
+    return None
+
+
+def _collect_probe_output(task_id: str, timeout_s: float) -> "str | None":
+    """Poll .agents/delegation/outputs/<task_id>.log until non-empty or timeout."""
+    log_path = _DELEGATION_OUTPUTS / f"{task_id}.log"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if log_path.exists():
+            try:
+                content = log_path.read_text(errors="replace")
+                # Wait for meaningful content (> 100 bytes) and no partial writes
+                if len(content) > 100:
+                    return content[:2000]
+            except Exception:
+                pass
+        time.sleep(5)
+    return None
+
+
+def fanout_ground(
+    intent: str, loop_id: str, fanout_timeout: int = 120,
+) -> str:
+    """Dispatch parallel research probes; return combined context string (best-effort)."""
+    print(f"[aq-loop] GROUND: dispatching fan-out probes (timeout={fanout_timeout}s) ...")
+
+    local_tid = _dispatch_local_probe(intent, loop_id)
+    anti_tid = _dispatch_antigravity_probe(intent, loop_id)
+
+    if local_tid:
+        print(f"[aq-loop] GROUND: local research probe → {local_tid}")
+    if anti_tid:
+        print(f"[aq-loop] GROUND: antigravity architecture probe → {anti_tid}")
+
+    if not local_tid and not anti_tid:
+        print("[aq-loop] GROUND: no fan-out probes dispatched (delegation unavailable)")
+        return ""
+
+    # Allocate timeout: wait for both in parallel via sequential polling with deadline
+    deadline = time.monotonic() + fanout_timeout
+    local_result = anti_result = None
+    while time.monotonic() < deadline and (
+        (local_tid and local_result is None) or (anti_tid and anti_result is None)
+    ):
+        if local_tid and local_result is None:
+            local_result = _collect_probe_output(local_tid, timeout_s=5)
+        if anti_tid and anti_result is None:
+            anti_result = _collect_probe_output(anti_tid, timeout_s=5)
+        if not ((local_tid and local_result is None) or (anti_tid and anti_result is None)):
+            break
+        time.sleep(5)
+
+    parts = []
+    if local_result:
+        parts.append(f"[LOCAL AGENT RESEARCH]\n{local_result.strip()[:1200]}")
+    if anti_result:
+        parts.append(f"[GEMINI ARCHITECTURE PROBE]\n{anti_result.strip()[:1200]}")
+
+    if parts:
+        received = len(parts)
+        total = sum(1 for t in [local_tid, anti_tid] if t)
+        print(f"[aq-loop] GROUND: fan-out collected {received}/{total} probe results")
+        return "\n\n".join(parts)
+    else:
+        print(f"[aq-loop] GROUND: fan-out probes dispatched but no results within {fanout_timeout}s — proceeding")
+        return ""
+
+
+def fanout_verify(
+    intent: str, result_summary: str, loop_id: str, iteration: int,
+) -> "dict | None":
+    """Dispatch completed result to antigravity reviewer. Returns verdict or None."""
+    probe = (
+        f"ACCEPTANCE REVIEW for loop {loop_id} iter {iteration}:\n"
+        f"Task: {intent}\n\n"
+        f"Completed output summary:\n{result_summary[:1500]}\n\n"
+        f"Review this output for correctness, completeness, NixOS policy compliance, "
+        f"and security. Output exactly one of:\n"
+        f"  APPROVED: <one-line reason>\n"
+        f"  CONCERNS: <specific issues to address>\n"
+        f"  REJECTED: <specific failures>\n"
+        f"Then a brief explanation (max 200 words)."
+    )
+    try:
+        r = subprocess.run(
+            [str(_SCRIPT_DIR / "delegate-to-antigravity"),
+             "--mode", "reviewer", "--role", "reviewer",
+             "--prompt", probe, "--wait"],
+            capture_output=True, text=True, timeout=180, cwd=str(_REPO_ROOT),
+        )
+        output = r.stdout
+        verdict = "unknown"
+        for kw in ("APPROVED", "CONCERNS", "REJECTED"):
+            if kw in output:
+                verdict = kw
+                break
+        return {"verdict": verdict, "output": output[:1000]}
+    except Exception as exc:
+        print(f"[aq-loop] VERIFY: antigravity review skipped ({exc})")
+        return None
 
 
 def _is_issue_line(line: str) -> bool:
@@ -189,6 +347,7 @@ def build_grounded_prompt(
     state: LoopState,
     hints: str,
     skills: str,
+    research_context: str = "",
 ) -> str:
     """Build the structured prompt sent to aq-agent-loop --task."""
 
@@ -211,15 +370,21 @@ def build_grounded_prompt(
                 f"tool_calls={ev.get('tool_calls',0)}\n"
                 f"  result: {ev.get('result_preview','')[:200]}"
             )
+            # Include review findings if any
+            review = ev.get("review_findings")
+            if review:
+                lines.append(f"  REVIEW: {review[:300]}")
         prior_evidence = "\n".join(lines)
 
     hints_section = f"\nHINTS:\n{hints}" if hints else ""
     skills_section = f"\nSUGGESTED SKILLS: {skills}" if skills else ""
+    research_section = f"\nMULTI-AGENT RESEARCH CONTEXT:\n{research_context}" if research_context else ""
 
     return "\n".join(filter(None, [
         iteration_header,
         hints_section,
         skills_section,
+        research_section,
         prior_evidence,
         "",
         _WORKFLOW_CANON,
@@ -330,6 +495,8 @@ def run_loop(
     tool_manifest: str = "full",
     backlog_line: str = "",
     task_type: str | None = None,
+    fanout: bool = True,
+    fanout_timeout: int = 120,
 ) -> int:
     """Run the outer orchestration loop. Returns 0 on success, 1 on escalation."""
     loop_id = _loop_id()
@@ -371,6 +538,13 @@ def run_loop(
     if skills:
         print(f"[aq-loop] Skills: {skills[:120]}")
 
+    # Fan-out: dispatch parallel research + architecture probes (iteration 1 only)
+    research_context = ""
+    if fanout and not dry_run:
+        research_context = fanout_ground(intent, loop_id, fanout_timeout=fanout_timeout)
+    append_pulse(loop_id, 0, "GROUND", "grounded",
+                 f"hints={bool(hints)} skills={bool(skills)} fanout_context={bool(research_context)}")
+
     for iteration in range(1, max_iter + 1):
         state.iteration = iteration
         state.phase = "EXECUTE"
@@ -378,7 +552,7 @@ def run_loop(
         append_pulse(loop_id, iteration, "EXECUTE", f"starting iter {iteration}/{max_iter}")
         update_resume(intent, f"EXECUTE iter {iteration}", "in-progress", loop_id)
 
-        grounded = build_grounded_prompt(intent, state, hints, skills)
+        grounded = build_grounded_prompt(intent, state, hints, skills, research_context)
 
         if dry_run:
             print(f"\n[aq-loop] DRY RUN — grounded prompt:\n{'='*60}")
@@ -408,6 +582,23 @@ def run_loop(
         append_pulse(loop_id, iteration, "VERIFY", status, f"elapsed={elapsed}s")
 
         if completed:
+            # Fan-out VERIFY: dispatch completed result to antigravity reviewer
+            review_verdict = None
+            if fanout:
+                result_summary = evidence.get("result_preview", intent[:300])
+                review_verdict = fanout_verify(intent, result_summary, loop_id, iteration)
+                if review_verdict:
+                    verdict = review_verdict["verdict"]
+                    print(f"[aq-loop] VERIFY review: {verdict}")
+                    append_pulse(loop_id, iteration, "VERIFY-REVIEW", verdict,
+                                 review_verdict["output"][:200])
+                    if verdict == "REJECTED" and iteration < max_iter:
+                        # Inject review findings for next iteration and continue
+                        evidence["review_findings"] = review_verdict["output"][:500]
+                        state.history[-1] = evidence
+                        print(f"[aq-loop] Reviewer rejected — retrying with findings (iter {iteration+1})")
+                        continue
+
             state.phase = "COMPLETE"
             write_state(state)
             append_pulse(loop_id, iteration, "COMPLETE", "loop finished")
@@ -465,6 +656,10 @@ def main() -> int:
             "Use 'deep_reasoning' for research/planning tasks to enable long-horizon read guard."
         ),
     )
+    parser.add_argument("--no-fanout", action="store_true",
+                        help="Disable multi-agent fan-out (skip parallel research/review probes)")
+    parser.add_argument("--fanout-timeout", type=int, default=120,
+                        help="Seconds to wait for fan-out probe results (default: 120)")
 
     args = parser.parse_args()
 
@@ -505,6 +700,8 @@ def main() -> int:
         tool_manifest=manifest,
         backlog_line=backlog_line,
         task_type=args.task_type,
+        fanout=not args.no_fanout,
+        fanout_timeout=args.fanout_timeout,
     )
 
 

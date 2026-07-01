@@ -158,13 +158,26 @@ When asked to run a "self-improvement slice", "improve the harness", or "run aut
 
 **Preferred path — use `aq-loop` for full autonomous execution:**
 ```bash
-aq-loop --list-open                  # see what's actionable
-aq-loop --from-backlog --dry-run     # preview grounded prompt
-aq-loop --from-backlog               # execute autonomously (claim→implement→verify→release)
-aq-loop --intent "implement X"       # explicit task with retry loop
+aq-loop --list-open                               # see what's actionable
+aq-loop --from-backlog --dry-run                  # preview grounded prompt
+aq-loop --from-backlog                            # execute autonomously (fan-out enabled by default)
+aq-loop --intent "implement X"                    # explicit task with retry loop
+aq-loop --intent "task" --no-fanout              # skip parallel probes (local only, faster)
+aq-loop --intent "task" --fanout-timeout 60      # shorter probe wait (default 120s)
+aq-loop-overnight --max 5                         # overnight sequential runner
 ```
 `aq-loop` handles: backlog claim/release, hint grounding, retry on incomplete COMPLETED: signal,
 tool-manifest auto-selection (self-improvement=8 tools), LOOP_STATE.json for compaction survival.
+
+**Multi-agent fan-out (enabled by default in aq-loop):**
+- GROUND phase: local agent (Qwen3-35B) receives research probe via `delegate-to-local --mode agent`;
+  antigravity (Gemini) receives architecture probe via `delegate-to-antigravity --mode architect`.
+  Both fire in background; results collected within fanout_timeout (120s default).
+- VERIFY phase: completed output dispatched to `delegate-to-antigravity --mode reviewer` for
+  acceptance review. REJECTED verdict re-queues with findings for next iteration.
+- As local agent, you will receive research probes from aq-loop's GROUND phase. Respond with
+  concise analysis (≤600 words): relevant code, known failure patterns, recommended approach.
+  Do NOT emit file edits or COMPLETED: in probe responses — analysis only.
 
 **Manual path — use when inside an aq-loop iteration or outer loop unavailable:**
 

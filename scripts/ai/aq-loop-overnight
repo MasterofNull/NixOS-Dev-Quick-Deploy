@@ -47,7 +47,7 @@ def _pulse(msg: str) -> None:
         pass
 
 
-def _run_one(task_type: str, timeout: int) -> int:
+def _run_one(task_type: str, timeout: int, no_fanout: bool = False) -> int:
     """Run one aq-loop --from-backlog iteration. Returns exit code."""
     cmd = [
         str(_REPO_ROOT / "scripts" / "ai" / "aq-loop"),
@@ -55,6 +55,8 @@ def _run_one(task_type: str, timeout: int) -> int:
         "--task-type", task_type,
         "--timeout", str(timeout),
     ]
+    if no_fanout:
+        cmd.append("--no-fanout")
     print(f"[{_now()}] Running: {' '.join(cmd)}", flush=True)
     result = subprocess.run(cmd, cwd=str(_REPO_ROOT))
     return result.returncode
@@ -67,6 +69,7 @@ def main() -> int:
     parser.add_argument("--timeout",   type=int, default=7200,     help="Per-inference timeout (s)")
     parser.add_argument("--dry-run",   action="store_true",        help="Preview without running")
     parser.add_argument("--pause",     type=int, default=60,       help="Pause between items (s)")
+    parser.add_argument("--no-fanout", action="store_true",        help="Disable multi-agent fan-out probes")
     args = parser.parse_args()
 
     open_count = _count_open()
@@ -93,7 +96,7 @@ def main() -> int:
         print(f"[{_now()}] === Item {i+1}/{args.max} (open={remaining}) ===", flush=True)
         _pulse(f"starting item {i+1}/{args.max}, open={remaining}")
 
-        rc = _run_one(args.task_type, args.timeout)
+        rc = _run_one(args.task_type, args.timeout, no_fanout=args.no_fanout)
         if rc == 0:
             processed += 1
             elapsed = time.time() - t0

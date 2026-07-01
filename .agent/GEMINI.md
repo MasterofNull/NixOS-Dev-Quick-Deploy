@@ -14,22 +14,25 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
-## Auth Architecture (2026-06-26 UPDATE — SWITCHBOARD ERA)
+## Auth Architecture (2026-07-01 UPDATE — GEMINI-CLI PATH RESTORED)
 
 **`delegate-to-gemini` (npm CLI) is RETIRED.**
 
-**`delegate-to-antigravity` rewritten (commit 0ccb644f, 2026-06-23):** now routes through
-**switchboard HTTP POST** (not gemini CLI subprocess). x-ai-profile header selects profile.
-Current backend: `remote-free` → `meta-llama/llama-3.3-70b-instruct:free` via OpenRouter.
+**`delegate-to-antigravity` RESTORED to gemini-cli path (reverted 0ccb644f 2026-06-28):**
+Routes through gemini-cli subprocess → oauth-personal → Google Code Assist
+(cloudcode-pa.googleapis.com). `_run_gemini_cli()` calls `gemini --output-format text -p <prompt> -m <model>`.
+NOT switchboard. NOT OpenRouter.
 
-**gemini-cli onboardUser 429 status:** Persistent 4+ days (Google backend structural issue).
-oauth-personal path currently blocked. Options: (A) wait/retry `gemini -p "test"` periodically;
-(B) add OpenRouter credits (remote-gemini = `google/gemini-2.5-flash-lite` already configured).
+**Auth setup required (one-time interactive):**
+Run `! gemini -p 'test'` in the session terminal → press Y → complete Google sign-in in browser.
+After that, all headless delegation calls work automatically.
+Credentials: `~/.gemini/gemini-credentials.json`. Settings: `~/.gemini/settings.json` → `oauth-personal`.
 
 **Delegation chain (current):**
 - Background: `scripts/ai/delegate-to-antigravity --prompt "..." [--mode fast|flash|pro|architect]`
 - Blocking:   `scripts/ai/delegate-to-antigravity --prompt "..." --wait`
-- Profile:    x-ai-profile header (NOT model body); all modes → remote-free currently
+- Check:      `scripts/ai/delegate-to-antigravity --check <task-id>`
+- List:       `scripts/ai/delegate-to-antigravity --list`
 - Health:     `scripts/health/antigravity-health.sh --smoke`
 - Legacy:     `delegate-to-gemini` — DO NOT USE (RETIRED)
 
@@ -76,6 +79,35 @@ oauth-personal path currently blocked. Options: (A) wait/retry `gemini -p "test"
 
 **Auth error detection:** If gemini CLI outputs "Authentication cancelled" / "FatalCancellationError"
 → script detects and prints guidance. Fix: run `gemini -p "test"` interactively to complete OAuth.
+
+---
+
+## Multi-Agent Fan-out Role (aq-loop integration)
+
+`aq-loop` auto-dispatches to `delegate-to-antigravity` at two phases:
+
+**GROUND phase — Architecture probe (--mode architect):**
+Receive a concise task description. Return architectural guidance:
+- Design considerations and NixOS-specific constraints
+- Edge cases and risk areas
+- Recommended approach (≤500 words, analysis only — no file edits)
+
+**VERIFY phase — Acceptance review (--mode reviewer, --wait):**
+Receive task intent + completed output summary. Return exactly one verdict line:
+```
+APPROVED: <one-line reason>
+CONCERNS: <specific issues to address>
+REJECTED: <specific failures>
+```
+Then brief explanation (≤200 words). Check:
+- Correctness against task intent
+- NixOS declarative-only compliance (no runtime chmod/chown without Nix declaration)
+- Port policy (no hardcoded ports — source: `nix/modules/core/options.nix`)
+- Security (no hardcoded secrets, tokens, or credentials)
+- COMPLETED: signal present and meaningful
+
+REJECTED verdict triggers a re-execution iteration with your findings in context.
+CONCERNS verdict is treated as APPROVED (warnings noted in PULSE.log, not blocking).
 
 ---
 
