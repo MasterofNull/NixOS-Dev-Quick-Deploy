@@ -1075,9 +1075,9 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Severity: low — RESOLVED
   File: scripts/ai/delegate-to-local
 
-[PENDING-REBUILD] vectorization-posture-route-not-live — The committed `/api/aistack/graph/vectorization` dashboard route returned 404 from the running dashboard service during validation, while the older `/api/aistack/knowledge/observatory` route worked.
+[DONE] vectorization-posture-route-not-live — The committed `/api/aistack/graph/vectorization` dashboard route returned 404 from the running dashboard service during validation, while the older `/api/aistack/knowledge/observatory` route worked.
   Severity: medium
-  Action: Restart/redeploy the dashboard API so commit `2160fca7` is loaded, then verify `/api/aistack/graph/vectorization`.
+  Action: Restarted `command-center-dashboard-api.service` and verified live `/api/aistack/graph/vectorization` returns `status:"ok"`; `python3 scripts/testing/test-vectorization-visualization.py` passes.
   File: dashboard/backend/api/routes/aistack.py
 
 [DONE] understand-anything-fallback-batches-not-complete — Understand-Anything batch processing produced all 296 `batch-*.json` files, but prior logs show degraded fallback batches 246, 247, 248, 251, 252, 253, and 255 after LLM JSON parse failures; no final `knowledge-graph.json` existed.
