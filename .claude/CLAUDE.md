@@ -66,7 +66,7 @@ aq-loop --intent "implement X"                        # explicit task with auto-
 aq-loop --intent "X" --no-fanout                      # disable parallel probes (local only)
 aq-loop --intent "X" --fanout-timeout 60              # shorter probe wait (default 120s)
 aq-loop --check                                       # print current LOOP_STATE.json
-aq-loop-overnight --max 5 [--no-fanout]               # overnight sequential runner
+aq-loop-queue --max 5 [--no-fanout]                   # sequential queue runner (anytime)
 ```
 
 ## Skill Index

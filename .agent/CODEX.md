@@ -322,7 +322,7 @@ aq-loop --list-open                    # list [OPEN] backlog items
 aq-loop --from-backlog                 # execute top item autonomously (fan-out enabled)
 aq-loop --intent "implement X"         # explicit task
 aq-loop --intent "X" --no-fanout      # local-only, no parallel probes
-aq-loop-overnight --max 5             # overnight sequential runner
+aq-loop-queue --max 5                 # sequential queue runner (anytime — not just overnight)
 ```
 
 **Fan-out phases (automatic, best-effort):**

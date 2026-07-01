@@ -164,7 +164,7 @@ aq-loop --from-backlog                            # execute autonomously (fan-ou
 aq-loop --intent "implement X"                    # explicit task with retry loop
 aq-loop --intent "task" --no-fanout              # skip parallel probes (local only, faster)
 aq-loop --intent "task" --fanout-timeout 60      # shorter probe wait (default 120s)
-aq-loop-overnight --max 5                         # overnight sequential runner
+aq-loop-queue --max 5                             # sequential queue runner (anytime — not just overnight)
 ```
 `aq-loop` handles: backlog claim/release, hint grounding, retry on incomplete COMPLETED: signal,
 tool-manifest auto-selection (self-improvement=8 tools), LOOP_STATE.json for compaction survival.
