@@ -92,6 +92,11 @@ in {
             owner = aiSvcOwner;
             group = aiSvcGroup;
           };
+          "${sec.names.githubMcpToken}" = {
+            mode = "0440";
+            owner = "root";
+            group = secretsGroup;
+          };
         }
         // lib.optionalAttrs needsRemoteLlmSecret {
           "${sec.names.remoteLlmApiKey}" = {
