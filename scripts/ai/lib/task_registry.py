@@ -175,8 +175,35 @@ class TaskRegistry:
         except ProcessLookupError:
             return False
         except PermissionError:
+            # POSIX: EPERM means process exists but we lack permission to signal it.
             return True
         return True
+
+    def _heartbeat_alive(self, entry: dict, ttl_s: float = 180.0) -> bool:
+        """True if the task's heartbeat file was updated within ttl_s seconds.
+
+        Used as a fallback when os.kill() reports the PID missing due to
+        sandbox PID-namespace isolation (the process runs on the host but is
+        invisible inside the sandboxed monitor).  The watcher writes the
+        heartbeat file every 60s so a 180s TTL gives 3× margin.
+        """
+        output_path = self._resolve_output_path(entry)
+        if not output_path:
+            return False
+        heartbeat_path = Path(str(output_path) + ".heartbeat.json")
+        if not heartbeat_path.exists():
+            return False
+        try:
+            hb = json.loads(heartbeat_path.read_text())
+            hb_at = hb.get("heartbeat_at") or hb.get("last_heartbeat")
+            if not hb_at:
+                return False
+            from datetime import datetime, timezone
+            ts = datetime.fromisoformat(hb_at.replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - ts).total_seconds()
+            return age < ttl_s
+        except Exception:
+            return False
 
     def _resolve_output_path(self, entry: dict) -> Optional[Path]:
         output_file = entry.get("output_file")
@@ -228,6 +255,13 @@ class TaskRegistry:
             return observed
         if current_status == "running" and self._pid_alive(observed.get("pid")):
             observed["pid_alive"] = True
+            return observed
+        # Fallback: heartbeat file liveness (survives sandbox PID-namespace isolation).
+        # Host PID is invisible inside Claude Code sandbox, so os.kill() returns False
+        # even for a running task. Heartbeat file written every 60s proves liveness.
+        if current_status == "running" and self._heartbeat_alive(observed):
+            observed["pid_alive"] = True
+            observed["heartbeat_liveness"] = True
             return observed
         status, reason = self._infer_terminal_status(observed)
         if current_status in {"done", "completed"} and status != "failed":

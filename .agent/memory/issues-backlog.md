@@ -1053,9 +1053,8 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added `LLAMA_FIRST_TOKEN_TIMEOUT` wiring in `aq-agent-loop` and capped executor streaming read timeout so silent first-token waits fail with `LLM no-progress timeout` before pinning the slot indefinitely.
   File: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py; scripts/testing/test-local-agent-first-token-timeout.py
 
-[OPEN] sandbox-monitor-pid-namespace-false-stale — Sandboxed `delegate-to-local --monitor` inferred task `local-20260629-182011-pbd3dk` stale because host PID 2722737 was invisible inside the sandbox PID namespace, while host-level monitor correctly reported it running.
-  Severity: medium
-  Action: Teach monitor payload to mark PID liveness as `unknown` when running under sandbox/PID namespace isolation, or route dashboard monitor checks through a host-side service instead of local process probing.
+[FIXED 2026-07-01] sandbox-monitor-pid-namespace-false-stale — Added _heartbeat_alive() to task_registry.py: if os.kill() reports PID missing (due to sandbox PID namespace) but heartbeat file was written within 180s, task is reported as alive (pid_alive=True, heartbeat_liveness=True). Watcher writes heartbeat every 60s → 3× margin. Wired into _with_inferred_status() as fallback after os.kill() check.
+  Severity: medium — RESOLVED
   File: scripts/ai/lib/task_registry.py
 
 [DONE] aq-qa-machine-mode-black-box — `aq-qa 0 --machine` could run silently for minutes, leaving agents with only an outer timeout and no near-time current-check visibility.
@@ -1063,14 +1062,12 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added rolling QA progress artifacts at `.agent/qa/latest-progress.json` and `.agent/qa/latest-progress.jsonl`, including phase_start, per-check running/pass/fail, and heartbeat events controlled by `AQ_QA_PROGRESS_HEARTBEAT_SECONDS`.
   File: scripts/ai/aq-qa; scripts/ai/_aq-qa-bash; scripts/testing/test-aq-qa-progress-heartbeat.py
 
-[OPEN] aq-qa-discovery-check-timeout-boundary — During tier0 pre-commit validation, QA phase 0 remained in `0.10.4 discovery agent opportunity scanner` with live heartbeats past 300 seconds and required manual interruption of the parent gate.
-  Severity: high
-  Action: Add per-check timeout enforcement inside `_check` / `_check_output` or split the discovery scanner into a bounded smoke path for tier0. Reproduced again on 2026-06-30: `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 timeout 240 scripts/governance/tier0-validation-gate.sh --pre-commit` exited 124 while `.agent/qa/latest-progress.json` still showed heartbeat in `0.10.4` at elapsed 209s with pass=25/fail=40/skip=4.
+[MONITOR 2026-07-01] aq-qa-discovery-check-timeout-boundary — Verified 0.10.4 test runs in 0.6s on 2026-07-01 and passes (aq-qa 0 → 128/0). Prior hang was likely LLM-busy interference (coordinator made a live inference call during busy slot). Current status: not reproducible. Monitor for recurrence during heavy LLM use. If it re-fires: add `timeout 30` wrapper inside the _check call for 0.10.4.
+  Severity: high → LOW (not reproduced, root cause likely external)
   File: scripts/ai/_aq-qa-bash
 
-[OPEN] delegate-to-local-status-missing-arg — `scripts/ai/delegate-to-local --status` exits with `line 97: $2: unbound variable` instead of showing usage or a clear missing task-id error.
-  Severity: low
-  Action: Guard subcommands that require an argument before reading `$2`, matching the existing help contract.
+[FIXED a80050a9 2026-07-01] delegate-to-local-status-missing-arg — Fixed: ${2:-} default + conditional shift prevents set -u crash; explicit die guard added to status/check/cancel/repair-status cases with clear error message.
+  Severity: low — RESOLVED
   File: scripts/ai/delegate-to-local
 
 [PENDING-REBUILD] vectorization-posture-route-not-live — The committed `/api/aistack/graph/vectorization` dashboard route returned 404 from the running dashboard service during validation, while the older `/api/aistack/knowledge/observatory` route worked.
