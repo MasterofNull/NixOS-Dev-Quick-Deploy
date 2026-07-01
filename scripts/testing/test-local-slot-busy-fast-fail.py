@@ -48,9 +48,20 @@ def main() -> None:
         "expected local agent runtime to check for 503 before raise_for_status",
     )
     assert_true(
-        'await _wait_for_llama_slot(client)' in runtime_text
+        'await _wait_for_llama_slot(client, state=state)' in runtime_text
         and "continue" in runtime_text,
         "expected local agent runtime to wait and retry on named local_slot_busy error",
+    )
+    assert_true(
+        'client.get(f"{LLAMA_CPP_URL}/slots"' in runtime_text
+        and 'client.get(f"{LLAMA_CPP_URL}/health"' not in runtime_text,
+        "expected local agent runtime to use /slots, not /health, for slot availability",
+    )
+    assert_true(
+        '"waiting_for_slot"' in runtime_text
+        and '"queue_wait_s"' in runtime_text
+        and '"slot_wait_state"' in runtime_text,
+        "expected local agent runtime to expose queue-wait state while waiting for a slot",
     )
 
     # Coordinator: translates local_slot_busy into a 503 response (not 500)

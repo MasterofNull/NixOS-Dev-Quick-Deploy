@@ -1053,6 +1053,11 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added `LLAMA_FIRST_TOKEN_TIMEOUT` wiring in `aq-agent-loop` and capped executor streaming read timeout so silent first-token waits fail with `LLM no-progress timeout` before pinning the slot indefinitely.
   File: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py; scripts/testing/test-local-agent-first-token-timeout.py
 
+[DONE] local-inference-queue-wait-misclassified — During concurrent UA batch repair and another agent's local-inference test, helpers treated `/health` as slot availability and treated `/slots` failure/timeout as permission to submit anyway, causing queue waits to look like first-token/model failures and allowing extra direct load behind a busy single-slot llama.cpp server.
+  Severity: high
+  Action: `slot_scheduler.wait_for_slot()` now fails closed with `SlotWaitTimeout` when the slot cannot be observed free, `DirectRunner` surfaces `queued_timeout` instead of submitting extra direct load, and `local_agent_runtime._wait_for_llama_slot()` polls `/slots` while writing `waiting_for_slot`, `queue_wait_s`, and `slot_wait_state` to runtime state before retrying.
+  File: scripts/ai/lib/slot_scheduler.py; scripts/ai/lib/dispatch.py; ai-stack/agents/runtimes/local_agent_runtime.py; scripts/testing/test-local-inference-budget.py; scripts/testing/test-local-slot-busy-fast-fail.py
+
 [FIXED 2026-07-01] sandbox-monitor-pid-namespace-false-stale — Added _heartbeat_alive() to task_registry.py: if os.kill() reports PID missing (due to sandbox PID namespace) but heartbeat file was written within 180s, task is reported as alive (pid_alive=True, heartbeat_liveness=True). Watcher writes heartbeat every 60s → 3× margin. Wired into _with_inferred_status() as fallback after os.kill() check.
   Severity: medium — RESOLVED
   File: scripts/ai/lib/task_registry.py
