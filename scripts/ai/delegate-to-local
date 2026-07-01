@@ -93,15 +93,15 @@ while [[ $# -gt 0 ]]; do
         --wait)           WAIT=true;           shift   ;;
         --tool-manifest)  TOOL_MANIFEST="$2";  shift 2 ;;
         --task-type)      TASK_TYPE="$2";      shift 2 ;;
-        --check)         SUBCMD="check";         SUBCMD_ARG="$2"; shift 2 ;;
-        --status)        SUBCMD="status";        SUBCMD_ARG="$2"; shift 2 ;;
-        --repair-status) SUBCMD="repair-status"; SUBCMD_ARG="$2"; shift 2 ;;
+        --check)         SUBCMD="check";         SUBCMD_ARG="${2:-}"; shift; [[ -n "${2:-}" ]] && shift ;;
+        --status)        SUBCMD="status";        SUBCMD_ARG="${2:-}"; shift; [[ -n "${2:-}" ]] && shift ;;
+        --repair-status) SUBCMD="repair-status"; SUBCMD_ARG="${2:-}"; shift; [[ -n "${2:-}" ]] && shift ;;
         --repair-stale)  SUBCMD="repair-stale";  shift   ;;
         --dry-run)       REPAIR_STALE_APPLY=false; shift ;;
         --apply)         REPAIR_STALE_APPLY=true;  shift ;;
         --list)          SUBCMD="list";          shift   ;;
         --monitor)       SUBCMD="monitor";       shift   ;;
-        --cancel)        SUBCMD="cancel";        SUBCMD_ARG="$2"; shift 2 ;;
+        --cancel)        SUBCMD="cancel";        SUBCMD_ARG="${2:-}"; shift; [[ -n "${2:-}" ]] && shift ;;
         --kill-all)      SUBCMD="kill-all";      shift   ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
@@ -130,12 +130,15 @@ case "${SUBCMD:-}" in
         python3 "$DISPATCH" monitor --delegation-dir "$DELEGATION_DIR"
         ;;
     status)
+        [[ -n "$SUBCMD_ARG" ]] || die "--status requires a task ID  (e.g. --status local-20260701-...)"
         python3 "$DISPATCH" status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
         ;;
     check)
+        [[ -n "$SUBCMD_ARG" ]] || die "--check requires a task ID"
         python3 "$DISPATCH" check "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
         ;;
     repair-status)
+        [[ -n "$SUBCMD_ARG" ]] || die "--repair-status requires a task ID"
         python3 "$DISPATCH" repair-status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
         ;;
     repair-stale)
@@ -144,6 +147,7 @@ case "${SUBCMD:-}" in
         "${_REPAIR_ARGS[@]}"
         ;;
     cancel)
+        [[ -n "$SUBCMD_ARG" ]] || die "--cancel requires a task ID"
         python3 "$DISPATCH" cancel "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
         ;;
     kill-all)
