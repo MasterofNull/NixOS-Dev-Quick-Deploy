@@ -111,7 +111,7 @@ except ImportError:
 
 from task_config import TaskConfig  # type: ignore  # noqa: E402
 from task_registry import TaskRegistry  # type: ignore  # noqa: E402
-from slot_scheduler import wait_for_slot  # type: ignore  # noqa: E402
+from slot_scheduler import SlotWaitTimeout, wait_for_slot  # type: ignore  # noqa: E402
 
 
 # ── Phase 163: local inference budget + visibility ───────────────────────────
@@ -457,7 +457,25 @@ class DirectRunner:
         in real time rather than waiting for the full response to complete.
         A .progress.json sidecar is updated every 10 tokens for live metrics.
         """
-        wait_for_slot(config.llama_url, config.timeout_secs)
+        progress_file = Path(str(output_file) + ".progress.json")
+        _start = time.monotonic()
+        try:
+            wait_for_slot(config.llama_url, config.timeout_secs)
+        except SlotWaitTimeout as exc:
+            elapsed = time.monotonic() - _start
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(f"Queued behind busy local inference slot: {exc}")
+            _write_progress(
+                progress_file,
+                0,
+                config.max_tokens,
+                elapsed,
+                0.0,
+                None,
+                "queued_timeout",
+                role=config.role,
+            )
+            return False
 
         messages = _prepend_grounding([], config)
         messages.append({"role": "user", "content": prompt})
@@ -475,9 +493,6 @@ class DirectRunner:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        progress_file = Path(str(output_file) + ".progress.json")
-        _start = time.monotonic()
-
         try:
             with urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
                 tokens_in = tokens_out = 0

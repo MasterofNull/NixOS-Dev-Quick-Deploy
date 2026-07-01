@@ -215,6 +215,24 @@ def test_write_progress_emits_agent_run_event():
     print("PASS  _write_progress emits canonical agent-run event and latest projection")
 
 
+def test_slot_scheduler_fails_closed_when_slot_unavailable():
+    src = (LIB / "slot_scheduler.py").read_text(encoding="utf-8")
+    assert_true(
+        "class SlotWaitTimeout" in src,
+        "slot_scheduler must expose a typed queue-wait timeout",
+    )
+    assert_true(
+        "raise SlotWaitTimeout" in src,
+        "slot_scheduler must fail closed instead of submitting when slot wait expires",
+    )
+    assert_true(
+        "return  # /slots unavailable" not in src
+        and "submit anyway" not in src,
+        "slot_scheduler must not submit extra load when /slots is unavailable",
+    )
+    print("PASS  slot_scheduler fails closed when local slot cannot be observed free")
+
+
 # ---------------------------------------------------------------------------
 # task_config hint fallback
 # ---------------------------------------------------------------------------
@@ -350,6 +368,11 @@ def test_progress_sidecar_update_in_direct_runner():
         "DirectRunner.run() must call _write_progress() for sidecar updates",
     )
     assert_true(
+        "except SlotWaitTimeout as exc:" in runner_body
+        and '"queued_timeout"' in runner_body,
+        "DirectRunner.run() must surface slot-wait timeout as queued_timeout",
+    )
+    assert_true(
         '"running"' in runner_body,
         "DirectRunner.run() must write 'running' status during stream",
     )
@@ -373,6 +396,7 @@ if __name__ == "__main__":
         test_write_progress_no_eta_when_done,
         test_write_progress_atomic_no_tmp_leak,
         test_write_progress_emits_agent_run_event,
+        test_slot_scheduler_fails_closed_when_slot_unavailable,
         test_task_config_hint_used_when_no_env,
         test_task_config_env_overrides_hint,
         test_task_config_explicit_overrides_hint,

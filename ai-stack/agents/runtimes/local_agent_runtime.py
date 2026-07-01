@@ -878,17 +878,36 @@ async def _wait_for_llama_slot(
     client: httpx.AsyncClient,
     timeout: float = AGENT_TIMEOUT,
     poll_interval: float = 3.0,
+    state: dict | None = None,
 ) -> None:
-    """Poll llama.cpp /health until a slot is available or timeout is reached."""
+    """Poll llama.cpp /slots until a slot is available or timeout is reached."""
     deadline = time.perf_counter() + timeout
+    started = time.perf_counter()
+    last_observation = "no slot observation yet"
     while time.perf_counter() < deadline:
         try:
-            r = await client.get(f"{LLAMA_CPP_URL}/health", timeout=5.0)
+            r = await client.get(f"{LLAMA_CPP_URL}/slots", timeout=5.0)
             if r.status_code == 200:
-                return
-        except Exception:
-            pass
+                slots = r.json()
+                if slots and not bool(slots[0].get("is_processing", True)):
+                    if state is not None:
+                        state["status"] = "running"
+                        state["queue_wait_s"] = round(time.perf_counter() - started, 1)
+                        state["slot_wait_state"] = "slot_available"
+                        _write_state(state)
+                    return
+                last_observation = "slot busy"
+            else:
+                last_observation = f"/slots HTTP {r.status_code}"
+        except Exception as exc:
+            last_observation = f"/slots unavailable: {type(exc).__name__}: {exc}"
+        if state is not None:
+            state["status"] = "waiting_for_slot"
+            state["queue_wait_s"] = round(time.perf_counter() - started, 1)
+            state["slot_wait_state"] = last_observation
+            _write_state(state)
         await asyncio.sleep(poll_interval)
+    raise TimeoutError(f"local inference slot unavailable after {timeout}s ({last_observation})")
 
 
 async def _post_completion_with_fallback(
@@ -1359,7 +1378,7 @@ async def run() -> None:
                         err_body = {}
                     if (err_body.get("error") or {}).get("type") == "local_slot_busy":
                         # Wait for a free slot then retry this round instead of failing.
-                        await _wait_for_llama_slot(client)
+                        await _wait_for_llama_slot(client, state=state)
                         continue
                 resp.raise_for_status()
                 data = resp.json()
