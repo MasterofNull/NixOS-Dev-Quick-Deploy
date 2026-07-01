@@ -314,6 +314,28 @@ Single source of truth: `nix/modules/core/options.nix`. Never hardcode these.
 
 ---
 
+## Autonomous Loop + Multi-Agent Fan-out
+
+`aq-loop` is the outer orchestration loop — use it for any autonomous task:
+```bash
+aq-loop --list-open                    # list [OPEN] backlog items
+aq-loop --from-backlog                 # execute top item autonomously (fan-out enabled)
+aq-loop --intent "implement X"         # explicit task
+aq-loop --intent "X" --no-fanout      # local-only, no parallel probes
+aq-loop-overnight --max 5             # overnight sequential runner
+```
+
+**Fan-out phases (automatic, best-effort):**
+- GROUND: parallel research probe → `delegate-to-local --mode agent` (Qwen3-35B) +
+  architecture probe → `delegate-to-antigravity --mode architect` (Gemini).
+  Results collected within 120s and injected into the grounded prompt.
+- VERIFY: completed result dispatched to `delegate-to-antigravity --mode reviewer`.
+  REJECTED verdict re-queues iteration with review findings.
+
+**Codex role in fan-out:** When invoked as reviewer, check:
+completed output against task intent, NixOS policy compliance (declarative-only, port policy,
+no hardcoded secrets), and correctness. Emit `APPROVED:`, `CONCERNS:`, or `REJECTED:` + explanation.
+
 ## File Placement Contract
 
 1. PRD / rules / workflow evidence → `.agent/`

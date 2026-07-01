@@ -58,12 +58,15 @@ aq-skill-suggest --list                               # list all available skill
 aq-skill-suggest --show <skill-name>                  # print full skill content
 scripts/governance/tier0-validation-gate.sh --pre-commit  # required before every commit
 
-# Outer agentic loop (autonomous multi-iteration task execution):
+# Outer agentic loop (autonomous multi-iteration task execution, fan-out enabled by default):
 aq-loop --list-open                                   # list [OPEN] backlog items
 aq-loop --from-backlog --dry-run                      # preview grounded prompt for top issue
-aq-loop --from-backlog                                # execute top [OPEN] issue autonomously
+aq-loop --from-backlog                                # execute top [OPEN] issue (fan-out to local+Gemini)
 aq-loop --intent "implement X"                        # explicit task with auto-loop + retry
+aq-loop --intent "X" --no-fanout                      # disable parallel probes (local only)
+aq-loop --intent "X" --fanout-timeout 60              # shorter probe wait (default 120s)
 aq-loop --check                                       # print current LOOP_STATE.json
+aq-loop-overnight --max 5 [--no-fanout]               # overnight sequential runner
 ```
 
 ## Skill Index

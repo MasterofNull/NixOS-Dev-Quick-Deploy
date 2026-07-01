@@ -59,6 +59,7 @@ Agents and recursive self-improvement loops should call this before planning whe
 | `agent-tool-map` | gemini, codex, claude, tool-names, run_shell_command | Writing Gemini/Codex prompts; tool call failures; agent-specific tool name lookup |
 | `llm-config` | llama, qwen3, enable_thinking, switchboard, profile | llama.cpp payloads; token budget chain; switchboard profile selection; role:"tool" |
 | `async-delegation` | delegation, background, dispatch, pending, fanout | Async task dispatch; checking delegation outputs; fanout patterns |
+| `aq-loop-fanout` | fanout, aq-loop, multi-agent, GROUND, VERIFY, research-probe | Multi-agent fan-out in aq-loop: research probe (local agent) + architecture probe (Gemini) in GROUND; acceptance review (Gemini reviewer) in VERIFY; --no-fanout to disable |
 
 ---
 
