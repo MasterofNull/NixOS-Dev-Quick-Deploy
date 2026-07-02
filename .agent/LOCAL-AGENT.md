@@ -626,6 +626,11 @@ Source of truth: `nix/modules/core/options.nix`. Never hardcode.
 | Active hints | `http://localhost:8003/hints?q=<task>` |
 | Working memory | `http://localhost:8003/api/memory/facts` |
 | Reasoning profiles | `http://localhost:8003/control/reasoning/profiles` |
+| **Wiki & Knowledge Graph** | |
+| Wiki index | `.understand-anything/wiki/README.md` |
+| Subsystem wiki sections | `aq-wiki --list`  ·  `aq-wiki --section <name>` |
+| Wiki freshness check | `aq-wiki --status` |
+| Maintenance guide | `docs/agent-guides/48-WIKI-MAINTENANCE.md` |
 | **Domain Instructions** | |
 | osint-systems | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
 | trading-agents | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |

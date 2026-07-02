@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-01] aq-qa-0.6.1-check-timeout-function-scope — `aq-qa 0` check `0.6.1` "flagship agent CLI help smokes" fails with exit 127 when called via `_check_timeout`.
+  Root cause: `_check_timeout` runs `timeout --foreground "$timeout_s" "$@"` where `"$@"` is the bash function name `_flagship_cli_surface_smoke`. `timeout` exec()'s the name as an external command; bash functions are not exported and not accessible to the child process. Exit 127 = command not found.
+  Severity: medium (pre-existing in uncommitted _aq-qa-bash changes; blocks tier0 gate)
+  Action: Change line 772 of `scripts/ai/_aq-qa-bash` to pass `bash "${REPO_ROOT}/scripts/testing/smoke-flagship-cli-surfaces.sh"` directly with inlined env vars instead of the function wrapper. Smoke script already passes when run directly.
+  File: scripts/ai/_aq-qa-bash:772, scripts/testing/smoke-flagship-cli-surfaces.sh
+
 [DONE 2026-06-30] local-agent-planning-loop-marked-success — Capability flush local task `local-20260629-143000-uhh7l2` ran for 6,610.6s and wrote `"success": true`, but the final `result` was repeated `Thought:` planning text with no ranked integration report.
   Root cause / fix notes: for analysis-only tasks, the executor's observation-stall path nudged the model to "act" after repeated query tools instead of forcing a final answer, and `aq-agent-loop._is_incomplete_result()` only recognized explicit failure/stagnation markers. Added forced `COMPLETED:` synthesis for analysis-only observation stalls, plus a repeated-thought/no-completion classifier and phase-0 QA coverage.
   Severity: high
@@ -1067,9 +1073,35 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added rolling QA progress artifacts at `.agent/qa/latest-progress.json` and `.agent/qa/latest-progress.jsonl`, including phase_start, per-check running/pass/fail, and heartbeat events controlled by `AQ_QA_PROGRESS_HEARTBEAT_SECONDS`.
   File: scripts/ai/aq-qa; scripts/ai/_aq-qa-bash; scripts/testing/test-aq-qa-progress-heartbeat.py
 
-[MONITOR 2026-07-01] aq-qa-discovery-check-timeout-boundary — Verified 0.10.4 test runs in 0.6s on 2026-07-01 and passes (aq-qa 0 → 128/0). Prior hang was likely LLM-busy interference (coordinator made a live inference call during busy slot). Current status: not reproducible. Monitor for recurrence during heavy LLM use. If it re-fires: add `timeout 30` wrapper inside the _check call for 0.10.4.
-  Severity: high → LOW (not reproduced, root cause likely external)
-  File: scripts/ai/_aq-qa-bash
+[DONE] aq-qa-discovery-check-timeout-boundary — 0.10.4 re-fired under real system load: direct `aq-qa 0 --machine` and coordinator `/qa/check` both held silent stdout until their outer timeouts, leaving only heartbeat artifacts for visibility.
+  Severity: high
+  Action: Added `_check_timeout()` to the bash QA runner and routed 0.10.4 through `AQ_QA_DISCOVERY_OPPORTUNITY_TIMEOUT_SECONDS` (default 30s), so this high-risk probe fails with an explicit per-check timeout detail instead of consuming the whole QA wrapper budget.
+  File: scripts/ai/_aq-qa-bash; config/env-contract.yaml; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[DONE] aq-qa-retired-continue-health-gate — Live wrapper validation stalled at `0.5.1 Continue CLI help works`; this was a stale QA dependency on the retired Continue extension path, not a current local-agent runtime route.
+  Severity: high
+  Action: Retired the Continue/editor phase-0 gates in both bash and Python QA paths. Replaced 0.5.1/0.5.2 with switchboard `local-agent` and `local-coding` profile checks, and converted Continue-specific 0.5.3-0.5.6 checks into explicit skips documenting the retired route.
+  File: scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[DONE] aq-qa-flagship-cli-aggregate-timeout — After retiring the stale Continue gate, live phase-0 validation advanced to `0.6.1 flagship agent CLI help smokes` and could still hold the wrapper budget because the aggregate script checks multiple external CLIs.
+  Severity: high
+  Action: Routed 0.6.1 through `_check_timeout()` with `AQ_QA_FLAGSHIP_CLI_SURFACE_TIMEOUT_SECONDS` and set a tighter phase-0 `AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS` default for the aggregate helper.
+  File: scripts/ai/_aq-qa-bash; config/env-contract.yaml; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[DONE] aq-qa-render-skipped-by-set-e-probe — Live phase-0 validation completed through `0.10.33` but returned empty stdout with exit 1 because the later `86.2` attention-queue probe ran a bare Python command under `set -e`, exiting before `_render_results`.
+  Severity: high
+  Action: Guarded the `86.2` Python probe in an `if ...; then _pass; else _fail; fi` block so probe failures become visible QA rows and the final summary renderer always runs.
+  File: scripts/ai/_aq-qa-bash; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[DONE] aq-qa-systemd-port-sandbox-false-negatives — Phase-0 QA reported active host services and listening ports as down because bash checks relied on `systemctl is-active` and `ss -tlnp`, both of which can be denied in restricted agent execution even when `systemctl show` and TCP socket connects work.
+  Severity: high
+  Action: Added `_systemd_unit_state()` with `systemctl show ActiveState` fallback and explicit sandbox-denied state, added `_tcp_port_open()` socket checks before `ss`, converted denied host port probes into skips, and mirrored the systemd denial handling in Python phase-0 service checks.
+  File: scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[OPEN] discovery-agent-opportunity-test-hangs — Direct `timeout 120 python3 scripts/testing/test-discovery-agent-opportunities.py` produced no stdout and exited 124, proving the current `0.10.4` timeout is exposing a real scanner/test hang rather than causing a false QA failure.
+  Severity: high
+  Action: Next slice should profile `test-discovery-agent-opportunities.py` and the scanner it invokes, add internal progress/timeout boundaries, and make the test deterministic under local-agent load.
+  File: scripts/testing/test-discovery-agent-opportunities.py
 
 [FIXED a80050a9 2026-07-01] delegate-to-local-status-missing-arg — Fixed: ${2:-} default + conditional shift prevents set -u crash; explicit die guard added to status/check/cancel/repair-status cases with clear error message.
   Severity: low — RESOLVED

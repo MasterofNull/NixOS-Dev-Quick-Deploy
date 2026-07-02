@@ -441,6 +441,11 @@ Single source of truth: `nix/modules/core/options.nix`
 | Port options | `nix/modules/core/options.nix` |
 | AI stack wiring | `nix/modules/roles/ai-stack.nix` |
 | Switchboard profiles | `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` |
+| **Wiki & Knowledge Graph** | |
+| Wiki index | `.understand-anything/wiki/README.md` |
+| Subsystem wiki sections | `aq-wiki --list`  ·  `aq-wiki --section <name>` |
+| Wiki freshness check | `aq-wiki --status` |
+| Maintenance guide | `docs/agent-guides/48-WIKI-MAINTENANCE.md` |
 | **Domain Instructions** | |
 | osint-systems | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
 | trading-agents | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |

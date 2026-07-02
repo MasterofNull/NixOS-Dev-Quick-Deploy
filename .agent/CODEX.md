@@ -369,6 +369,11 @@ no hardcoded secrets), and correctness. Emit `APPROVED:`, `CONCERNS:`, or `REJEC
 | AI stack wiring | `nix/modules/roles/ai-stack.nix` |
 | Switchboard profiles | `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` |
 | Role matrix | `docs/architecture/role-matrix.md` |
+| **Wiki & Knowledge Graph** | |
+| Wiki index | `.understand-anything/wiki/README.md` |
+| Subsystem wiki sections | `aq-wiki --list`  ·  `aq-wiki --section <name>` |
+| Wiki freshness check | `aq-wiki --status` |
+| Maintenance guide | `docs/agent-guides/48-WIKI-MAINTENANCE.md` |
 | **Domain Instructions** | |
 | osint-systems | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
 | trading-agents | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |

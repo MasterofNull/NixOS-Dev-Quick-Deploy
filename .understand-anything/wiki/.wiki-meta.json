@@ -1,0 +1,57 @@
+{
+  "hybrid-coordinator": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 685,
+    "generated": "2026-07-02T01:49:23.497515Z"
+  },
+  "local-agent": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 71,
+    "generated": "2026-07-02T01:49:23.499347Z"
+  },
+  "agent-runtimes": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 2,
+    "generated": "2026-07-02T01:49:23.500008Z"
+  },
+  "aidb": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 95,
+    "generated": "2026-07-02T01:49:23.501085Z"
+  },
+  "nix-modules": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 70,
+    "generated": "2026-07-02T01:49:23.501892Z"
+  },
+  "nix-hosts": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 16,
+    "generated": "2026-07-02T01:49:23.502509Z"
+  },
+  "ai-scripts": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 225,
+    "generated": "2026-07-02T01:49:23.503378Z"
+  },
+  "governance": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 79,
+    "generated": "2026-07-02T01:49:23.504183Z"
+  },
+  "configuration": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 111,
+    "generated": "2026-07-02T01:49:23.504826Z"
+  },
+  "testing": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 689,
+    "generated": "2026-07-02T01:49:23.506006Z"
+  },
+  "switchboard": {
+    "graph_generated": "2026-07-01T16:10:40Z",
+    "node_count": 1,
+    "generated": "2026-07-02T01:49:23.498364Z"
+  }
+}
