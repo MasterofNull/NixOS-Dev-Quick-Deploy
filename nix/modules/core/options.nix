@@ -2150,6 +2150,28 @@
                   ];
                   network_policy = "loopback";
                 };
+                "worktree-guarded" = {
+                  workspace_root = "/var/lib/nixos-ai-stack/mutable/program/agent-worktrees";
+                  allow_workspace_write = true;
+                  allowed_processes = [
+                    "agrep"
+                    "als"
+                    "acat"
+                    "asum"
+                    "rg"
+                    "fd"
+                    "cat"
+                    "ls"
+                    "jq"
+                    "yq"
+                    "sed"
+                    "bash"
+                    "python3"
+                    "node"
+                    "git"
+                  ];
+                  network_policy = "loopback";
+                };
               };
             };
             description = "Declarative per-mode runtime isolation profiles for workflow runs.";

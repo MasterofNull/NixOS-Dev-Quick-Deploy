@@ -612,10 +612,12 @@ in {
         script = ''
           set -euo pipefail
           create_path() {
-            local path="$1"
-            ${pkgs.coreutils}/bin/install -d -m 0750 -o ${lib.escapeShellArg svcUser} -g ${lib.escapeShellArg aiGroup} "$path"
+            local mode="$1"
+            local path="$2"
+            ${pkgs.coreutils}/bin/install -d -m "$mode" -o ${lib.escapeShellArg svcUser} -g ${lib.escapeShellArg aiGroup} "$path"
           }
-          ${lib.concatMapStringsSep "\n" (path: "create_path ${lib.escapeShellArg path}") (lib.unique (runtimeWorkspaceRoots ++ mutableProgramPaths ++ cfg.deployment.mutableSpaces.userWritablePaths))}
+          ${lib.concatMapStringsSep "\n" (path: "create_path 0750 ${lib.escapeShellArg path}") (lib.unique (mutableProgramPaths ++ cfg.deployment.mutableSpaces.userWritablePaths))}
+          ${lib.concatMapStringsSep "\n" (path: "create_path 0770 ${lib.escapeShellArg path}") (lib.unique runtimeWorkspaceRoots)}
         '';
       };
 
@@ -700,7 +702,10 @@ in {
             (builtins.dirOf cfg.deployment.npmSecurity.incidentLogFile)
           ])
         )
-        ++ map (root: "d ${root} 0750 ${svcUser} ${aiGroup} -") runtimeWorkspaceRoots;
+        # Runtime workspace roots are group-writable so ai-stack service users can
+        # create agent-run artifacts while the repo remains mounted read-only.
+        ++ map (root: "d ${root} 0770 ${svcUser} ${aiGroup} -") runtimeWorkspaceRoots
+        ++ map (root: "z ${root} 0770 ${svcUser} ${aiGroup} -") runtimeWorkspaceRoots;
     })
 
     (lib.mkIf active {

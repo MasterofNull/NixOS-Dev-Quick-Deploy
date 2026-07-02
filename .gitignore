@@ -21,6 +21,7 @@
 result
 result-*
 .direnv/
+/target/
 
 # MacOS
 .DS_Store

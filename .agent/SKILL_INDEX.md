@@ -158,5 +158,5 @@ Loading 1 skill ≈ 400–1000 tokens. Load max 2–3 skills per delegation.
 1. Create directory: `mkdir -p .agent/skills/<name>`
 2. Write `SKILL.md` with `## Tags` and `## When to Use` sections as first sections
 3. Add a row to this index under the appropriate category
-4. If skill fixes a recurring problem (2+ sessions): add to MEMORY.md index too
+4. If skill fixes a recurring problem (2+ sessions): add it to the `ai-stack/agent-memory/MEMORY.md` index too
 5. Run `scripts/governance/tier0-validation-gate.sh --pre-commit` before committing

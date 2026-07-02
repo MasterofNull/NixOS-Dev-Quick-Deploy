@@ -38,6 +38,18 @@ For any service-facing component:
 3. Prefer `StateDirectory`, `RuntimeDirectory`, tmpfiles, or explicit Nix options over ad hoc path creation.
 4. If a path must vary, inject it through env vars and give it a writable state-dir default.
 
+## Agentic File Creation Contract
+
+Declarative switch: `deployment.mutableSpaces.enable` provisions mutable roots for managed agent workflows.
+
+Service-created agent files must target workspace roots declared in `config/runtime-isolation-profiles.json`, currently:
+- `/var/lib/nixos-ai-stack/mutable/program/agent-runs`
+- `/var/lib/nixos-ai-stack/mutable/program/agent-worktrees`
+
+Those roots must be included in service `ReadWritePaths` and created by tmpfiles/bootstrap with mode `0770`, owner `${primaryUser}`, and group `ai-stack`. `ReadWritePaths` only permits the mount namespace; POSIX DAC still controls whether service users can create files.
+
+Do not make the repo generally writable to system services to fix agentic file creation. Add a profile workspace root or a `deployment.mutableSpaces.programWritablePaths` entry, then declare tmpfiles ownership and a focused test.
+
 ## Classification
 
 Use this split consistently:
@@ -73,6 +85,8 @@ Examples of correct writable defaults:
 - `/var/lib/ai-stack/hybrid/playbooks`
 - `/var/lib/ai-stack/hybrid/telemetry/...`
 - `/var/lib/ai-stack/security/...`
+- `/var/lib/nixos-ai-stack/mutable/program/agent-runs`
+- `/var/lib/nixos-ai-stack/mutable/program/agent-worktrees`
 
 ## Notes
 

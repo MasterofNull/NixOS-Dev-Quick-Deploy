@@ -99,6 +99,6 @@ JSON response:
 ```
 
 ## References
-- MEMORY.md: "mixed prose+JSON parse break" — `rfind('{"function"')` extraction pattern
+- `ai-stack/agent-memory/MEMORY.md`: "mixed prose+JSON parse break" — `rfind('{"function"')` extraction pattern
 - `tool_registry.parse_tool_call_from_llama` — existing implementation of this pattern
 - Companion skill: `provider-request-error-recovery` — handles what to do when this contract is violated

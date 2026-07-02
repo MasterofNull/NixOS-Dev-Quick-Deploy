@@ -138,7 +138,7 @@ If you are reviewing this repository, we recommend evaluating the following key 
 2.  **Validation Rigor:** Run `scripts/governance/tier0-validation-gate.sh --pre-commit` to see the automated quality gates in action.
 3.  **Instruction Projection:** Check `.agent/SYSTEMS-SOFTWARE-INSTRUCTIONS.md` to see how domain-specific knowledge is projected to agents.
 4.  **Telemetry Surface:** View `dashboard.html` to understand the measurement-driven philosophy of the platform.
-5.  **Audit Trail:** Inspect `AGENTS.md` and the `MEMORY.md` patterns to see how multi-agent collaboration state is preserved.
+5.  **Audit Trail:** Inspect `AGENTS.md` and `ai-stack/agent-memory/MEMORY.md` to see how multi-agent collaboration state is preserved.
 
 ---
 

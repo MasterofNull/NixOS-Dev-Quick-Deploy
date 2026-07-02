@@ -126,6 +126,7 @@
           ({lib, ...}: {
             mySystem.nixpkgsTrack = lib.mkDefault nixpkgsTrack;
             nixpkgs.pkgs = mkPkgs selectedNixpkgs system';
+            nixpkgs.hostPlatform = lib.mkDefault system';
             warnings =
               lib.optional (nixpkgsTrack == "unstable" && !hasUnstableInput)
               "Host '${hostName}' requested mySystem.nixpkgsTrack=unstable, but flake input 'nixpkgs-unstable' is unavailable; falling back to stable nixpkgs.";
@@ -313,6 +314,18 @@
           deadnix
           alejandra
         ];
+      };
+      rust = pkgs'.mkShell {
+        packages = with pkgs'; [
+          cargo
+          rustc
+          clippy
+          rustfmt
+        ];
+        shellHook = ''
+          export RUST_DOMAIN_SHELL=1
+          echo "rust shell: cargo, rustc, clippy, rustfmt"
+        '';
       };
       bitnet-benchmark = pkgs'.mkShell {
         packages = with pkgs'; [

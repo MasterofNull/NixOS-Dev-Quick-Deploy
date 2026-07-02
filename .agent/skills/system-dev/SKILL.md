@@ -68,7 +68,7 @@ When starting a new user task OR completing a todo item:
 | Bug fix (reproducible) | `HANDOFF.md` (root cause + fix), `memory/issues-backlog.md` (mark DONE) |
 | New CLI script | `HANDOFF.md`, `AGENTS.md` key commands table if user-facing |
 | AppArmor rule change | `HANDOFF.md` (profile + rule added), `memory/apparmor-enforce.md` |
-| Phase completion | `HANDOFF.md` summary, `MEMORY.md` phase entry (collapse to 1-line pointer after 2 sessions) |
+| Phase completion | `HANDOFF.md` summary, `ai-stack/agent-memory/MEMORY.md` phase entry (collapse to 1-line pointer after 2 sessions) |
 | Architecture change | `docs/architecture/` relevant file, `AGENTS.md` if affects agent workflow |
 | New QA check | `scripts/testing/harness_qa/phases/phase0.py` + `scripts/ai/_aq-qa-bash` (both, always) |
 | New agent instruction | `.agent/<AGENT>.md` + `CLAUDE.md` table if new agent type |
@@ -91,7 +91,7 @@ MUST be recorded. Never silently discard a finding.
   Fixed: commit hash (if DONE)
 ```
 
-After adding to issues-backlog.md, update `MEMORY.md` Issues index.
+After adding to issues-backlog.md, update the `ai-stack/agent-memory/MEMORY.md` Issues index.
 
 **Trigger: any time you discover something broken, slow, incorrect, or missing.**
 This includes: AppArmor denials, service restarts needed, metric gaps, stale .pyc files,

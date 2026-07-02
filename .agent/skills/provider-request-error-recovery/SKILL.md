@@ -61,11 +61,11 @@ with the captured error details. Never loop on the same failure (RETRY BUDGET ru
 
 ### Step 4 — Seed the fix
 If you discover a new provider-specific failure mode, seed it to `error-solutions` RAG collection
-and add a row to the MEMORY.md Promoted Bug Patterns section.
+and add a row to the `ai-stack/agent-memory/MEMORY.md` Promoted Bug Patterns section.
 
 ## References
-- MEMORY.md: "local delegate 504 = token budget too large"
-- MEMORY.md: "mixed prose+JSON parse break"
-- MEMORY.md: `enable_thinking` must be in `chat_template_kwargs`, not top-level
+- `ai-stack/agent-memory/MEMORY.md`: "local delegate 504 = token budget too large"
+- `ai-stack/agent-memory/MEMORY.md`: "mixed prose+JSON parse break"
+- `ai-stack/agent-memory/MEMORY.md`: `enable_thinking` must be in `chat_template_kwargs`, not top-level
 - `ai-stack/local-agents/ai_coordinator.py`: `_LOCAL_MAX_TOKENS_HARD_CEILING`
 - `scripts/ai/lib/build_llama_payload` SSOT
