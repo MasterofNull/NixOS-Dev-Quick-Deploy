@@ -68,12 +68,29 @@ if [[ ! -f "$BASELINE_PATH" ]]; then
 fi
 
 tmp_file="$(mktemp)"
+tmp_err="$(mktemp)"
 cleanup() {
-  rm -f "$tmp_file"
+  rm -f "$tmp_file" "$tmp_err"
 }
 trap cleanup EXIT
 
-"${GENERATOR}" --flake-ref "$FLAKE_REF" --output "$tmp_file" >/dev/null
+is_sandbox_denied_nix_eval() {
+  grep -qiE "nix/var/nix/daemon-socket|cannot connect to socket.*daemon-socket|Operation not permitted" "$tmp_err"
+}
+
+if ! "${GENERATOR}" --flake-ref "$FLAKE_REF" --output "$tmp_file" > /dev/null 2> "$tmp_err"; then
+  if is_sandbox_denied_nix_eval; then
+    echo "[SKIP] Package count drift guard requires Nix daemon access; current sandbox denied it." >&2
+    exit 77
+  fi
+  cat "$tmp_err" >&2
+  exit 1
+fi
+
+if is_sandbox_denied_nix_eval; then
+  echo "[SKIP] Package count drift guard requires Nix daemon access; current sandbox denied it." >&2
+  exit 77
+fi
 
 if ! diff -u "$BASELINE_PATH" "$tmp_file" >/dev/null; then
   echo "Package count drift detected against baseline: ${BASELINE_PATH}" >&2

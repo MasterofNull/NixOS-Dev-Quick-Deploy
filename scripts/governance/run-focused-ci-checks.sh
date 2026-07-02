@@ -46,6 +46,8 @@ with open(registry_path) as f:
 
 import subprocess as sp
 
+SKIP_EXIT_CODES = {77}
+
 def collect_changed_files(mode):
     if mode == "--pre-commit":
         r = sp.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
@@ -147,6 +149,9 @@ for check in registry.get("checks", []):
             sys.stderr.write(stderr_captured)
         if exit_code == 0:
             print(f"[focused-ci] PASS: {desc}")
+        elif exit_code in SKIP_EXIT_CODES:
+            print(f"[focused-ci] SKIP: {desc}")
+            result_status = "skip"
         else:
             print(f"[focused-ci] FAIL: {desc}", file=sys.stderr)
             any_failed = True
@@ -179,7 +184,7 @@ for check in registry.get("checks", []):
             "trigger_paths_matched": matched_paths,
             "command": final_cmd,
             "status": result_status,
-            "skip_reason": None,
+            "skip_reason": _tail(stderr_captured or stdout_captured, 3) if result_status == "skip" else None,
             "duration_ms": duration_ms,
             "exit_code": exit_code,
             "stdout_tail": _tail(stdout_captured),
@@ -194,14 +199,26 @@ if not ran_any:
 # in aq-report reflects the latest gate result rather than staying no_data.
 if json_out_path:
     import datetime
+    checks_ran = sum(1 for r in check_results if r["status"] not in ("skip",))
+    checks_passed = sum(1 for r in check_results if r["status"] == "pass")
+    checks_failed = sum(1 for r in check_results if r["status"] in ("fail", "timeout"))
+    checks_skipped = sum(1 for r in check_results if r["status"] == "skip")
+    if any_failed:
+        overall_status = "fail"
+    elif checks_ran > 0:
+        overall_status = "pass"
+    elif checks_skipped > 0:
+        overall_status = "skip"
+    else:
+        overall_status = "skip"
     doc = {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "mode": mode,
-        "overall_status": "fail" if any_failed else ("pass" if ran_any else "skip"),
-        "checks_ran": sum(1 for r in check_results if r["status"] not in ("skip",)),
-        "checks_passed": sum(1 for r in check_results if r["status"] == "pass"),
-        "checks_failed": sum(1 for r in check_results if r["status"] in ("fail", "timeout")),
-        "checks_skipped": sum(1 for r in check_results if r["status"] == "skip"),
+        "overall_status": overall_status,
+        "checks_ran": checks_ran,
+        "checks_passed": checks_passed,
+        "checks_failed": checks_failed,
+        "checks_skipped": checks_skipped,
         "checks": check_results,
     }
     try:
