@@ -2437,6 +2437,37 @@ def _apply_local_ssot_guards(payload: dict, profile: str, target_type: str) -> d
     return payload
 
 
+# Phase B (local scaling): adaptive load-aware output budget for LOCAL reasoning
+# requests. Flag-gated (default off) until validated at the next rebuild.
+# Rationale: local Qwen runs single-slot on Renoir APU (~1-3.45 tok/s); a reasoning
+# request that thinks up to its full max_tokens can hold the slot for many minutes.
+# When the slot is IDLE, allow the fuller budget (deeper thinking); when BUSY
+# (another local request in flight), clamp so the slot frees faster and queued
+# sub-agents are not starved. Applies to LOCAL reasoning profiles only — never remote
+# (this function early-returns for target_type != "local"), never non-reasoning.
+_ADAPTIVE_LOCAL_BUDGET = os.environ.get("SWB_ADAPTIVE_LOCAL_BUDGET", "0").strip() in ("1", "true", "yes", "on")
+_ADAPTIVE_LOCAL_IDLE_MAX = int(os.environ.get("SWB_ADAPTIVE_LOCAL_IDLE_MAX_TOKENS", "1200"))
+_ADAPTIVE_LOCAL_BUSY_MAX = int(os.environ.get("SWB_ADAPTIVE_LOCAL_BUSY_MAX_TOKENS", "400"))
+
+
+def _adaptive_local_output_budget(is_reasoning: bool, slot_busy: bool,
+                                  requested_max, idle_max: int, busy_max: int):
+    """Pure decision: effective max_tokens for a LOCAL reasoning request.
+
+    - Non-reasoning profiles are unaffected (return requested_max unchanged).
+    - Reasoning + slot busy  -> clamp to busy_max (free the single slot sooner).
+    - Reasoning + slot idle   -> allow up to idle_max (deeper thinking on idle capacity).
+    A caller-supplied smaller max_tokens is always respected (never raised).
+    Returns the max_tokens to set (int) or requested_max unchanged.
+    """
+    if not is_reasoning:
+        return requested_max
+    ceiling = busy_max if slot_busy else idle_max
+    if isinstance(requested_max, int) and requested_max > 0:
+        return min(requested_max, ceiling)
+    return ceiling
+
+
 def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str) -> dict:
     # Disable thinking for all local targets by default — thinking tokens are
     # filtered from the OpenAI response content field, producing empty responses
@@ -2461,6 +2492,17 @@ def _apply_local_thinking_profile(payload: dict, profile: str, target_type: str)
         kwargs = dict(kwargs)
         kwargs["enable_thinking"] = False
         payload["chat_template_kwargs"] = kwargs
+
+    # Phase B: adaptive output budget for local reasoning requests (flag-gated).
+    if _ADAPTIVE_LOCAL_BUDGET and is_reasoning_profile:
+        try:
+            slot_busy = bool(_local_sem.locked()) if _local_sem is not None else False
+        except Exception:
+            slot_busy = False
+        payload["max_tokens"] = _adaptive_local_output_budget(
+            True, slot_busy, payload.get("max_tokens"),
+            _ADAPTIVE_LOCAL_IDLE_MAX, _ADAPTIVE_LOCAL_BUSY_MAX,
+        )
     return payload
 
 async def _call_upstream_with_resilience(
