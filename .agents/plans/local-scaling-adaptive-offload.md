@@ -46,7 +46,18 @@ Route heavy work to remote (scales natively), keep local for bounded tasks.
 Acceptance: a `--task-type deep_reasoning` / long-context task routes remote; a bounded
 edit/lookup stays local. Verify via coordinator route logs + `aq-qa` routing checks.
 
-# Phase B — adaptive local thinking budget (idle-capacity use)
+# Phase B — adaptive local thinking budget (idle-capacity use)  [IMPLEMENTED flag-gated 2026-07-02]
+
+STATUS: implemented behind `SWB_ADAPTIVE_LOCAL_BUDGET` (default off) in
+switchboard.py `_apply_local_thinking_profile` + pure helper `_adaptive_local_output_budget`
+(unit-tested: scripts/testing/test-switchboard-adaptive-local-budget.py, 9 cases).
+Mechanism landed: LOCAL reasoning requests get max_tokens clamped by slot state —
+`_local_sem.locked()` (idle→SWB_ADAPTIVE_LOCAL_IDLE_MAX_TOKENS 1200; busy→
+SWB_ADAPTIVE_LOCAL_BUSY_MAX_TOKENS 400). Non-reasoning and remote unaffected; caller's
+smaller max_tokens always respected. LIVE-VALIDATE at next switchboard rebuild, then flip
+the flag on. Note: the "budget" is per-profile max_tokens (there is no separate
+thinking_budget constant in switchboard); enable_thinking stays False for non-reasoning.
+
 
 Let a lone local task think deeper when nothing else is queued; clamp under contention.
 
