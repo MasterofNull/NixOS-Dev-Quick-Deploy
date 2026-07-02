@@ -198,6 +198,66 @@ def _count_running() -> int:
 
 # ── delegation via switchboard ────────────────────────────────────────────────
 
+def _parse_completion_response(raw: bytes) -> "tuple[str, int, int]":
+    """Parse a chat/completions body that may be JSON or Server-Sent Events.
+
+    Switchboard FORCES stream=True for local profiles (local-coding,
+    local-tool-calling) regardless of the requested stream flag, so the local
+    fallback body arrives as SSE (``data: {...}``) not a single JSON object.
+    A plain json.loads() then fails with "Expecting value: line 1 column 1"
+    and the fallback is wrongly reported as failed. Handle both:
+      - non-streaming JSON: choices[0].message.content (remote honors stream=False)
+      - streaming SSE:       accumulate choices[0].delta.content across chunks
+    Returns (content, tokens_in, tokens_out).
+    """
+    text = raw.decode("utf-8", "replace").strip()
+    if not text:
+        return "", 0, 0
+
+    if not text.lstrip().startswith("data:"):
+        try:
+            result = json.loads(text)
+            content = (
+                result.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                or ""
+            )
+            usage = result.get("usage", {})
+            return (content,
+                    usage.get("prompt_tokens", 0) or 0,
+                    usage.get("completion_tokens", 0) or 0)
+        except json.JSONDecodeError:
+            pass  # fall through to SSE parsing
+
+    parts = []
+    tokens_in = tokens_out = 0
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        chunk = line[len("data:"):].strip()
+        if not chunk or chunk == "[DONE]":
+            continue
+        try:
+            obj = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        choices = obj.get("choices") or []
+        if choices:
+            delta = choices[0].get("delta") or {}
+            piece = delta.get("content")
+            if piece is None:
+                piece = (choices[0].get("message") or {}).get("content")
+            if piece:
+                parts.append(piece)
+        usage = obj.get("usage") or {}
+        if usage:
+            tokens_in = usage.get("prompt_tokens", tokens_in) or tokens_in
+            tokens_out = usage.get("completion_tokens", tokens_out) or tokens_out
+    return "".join(parts), tokens_in, tokens_out
+
+
 def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
                      timeout: int, log_path: Path,
                      print_to_stdout: bool = False) -> "tuple[str, int, int]":
@@ -234,16 +294,7 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
         for attempt in range(1, 3):  # up to 2 attempts per profile
             try:
                 with urllib.request.urlopen(attempt_req, timeout=timeout) as resp:
-                    result = json.loads(resp.read())
-                    content = (
-                        result.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                        or ""
-                    )
-                    usage = result.get("usage", {})
-                    tokens_in  = usage.get("prompt_tokens", 0) or 0
-                    tokens_out = usage.get("completion_tokens", 0) or 0
+                    content, tokens_in, tokens_out = _parse_completion_response(resp.read())
 
                     if content:
                         with open(log_path, "a") as f:
