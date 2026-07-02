@@ -1,0 +1,615 @@
+#!/usr/bin/env python3
+"""aq-wiki — Structured codebase wiki from knowledge-graph.json (OpenWiki pattern).
+
+Reads .understand-anything/knowledge-graph.json → generates per-subsystem
+markdown wiki sections in .understand-anything/wiki/<subsystem>.md.
+
+Agents reference sections lazily (by path) instead of embedding raw files.
+This mirrors OpenWiki's design: append references to instruction files,
+let agents discover and fetch docs as needed.
+
+Modes:
+  aq-wiki --init          Full generation (all subsystems)
+  aq-wiki --update        Differential: only subsystems with recent git changes
+  aq-wiki --status        Wiki freshness and coverage table
+  aq-wiki --list          List available sections with line counts
+  aq-wiki --section NAME  Print named section to stdout
+  aq-wiki --seed-aidb     Seed sections into AIDB wiki-sections collection
+
+Usage by agents:
+  cat .understand-anything/wiki/hybrid-coordinator.md  # direct read
+  aq-wiki --section switchboard                        # CLI read
+  aq-wiki --status                                     # freshness check before architecture work
+
+Refresh cadence:
+  After any code change:  aq-wiki --update  (adds to DOC-UPDATE step 7)
+  After graph refresh:    aq-wiki --init --force
+  In CI (if enabled):     aq-wiki --update && aq-wiki --seed-aidb
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parent.parent.parent
+_GRAPH = _REPO / ".understand-anything" / "knowledge-graph.json"
+_WIKI_DIR = _REPO / ".understand-anything" / "wiki"
+_WIKI_META = _WIKI_DIR / ".wiki-meta.json"
+_AIDB_URL = os.environ.get("AIDB_URL", f"http://127.0.0.1:{os.environ.get('AIDB_PORT', '8002')}")
+
+# Subsystem map: name → path prefix in repo + description + related docs.
+# Prefix matching is done on filePath field of graph nodes (may be truncated to ~60 chars).
+SUBSYSTEMS = {
+    "hybrid-coordinator": {
+        "prefix": "ai-stack/mcp-servers/hybrid-coordinator",
+        "desc": "AI request routing, tool execution, intent classification, progressive disclosure",
+        "related_docs": [
+            "docs/architecture/AI-STACK-ARCHITECTURE.md",
+            "docs/architecture/REQUEST-ROUTING-FLOW.md",
+            "docs/agent-guides/47-AGENT-TOOL-CONTRACT.md",
+            "docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md",
+        ],
+    },
+    "switchboard": {
+        "prefix": "ai-stack/switchboard",
+        "desc": "Profile-based model routing, circuit breakers, remote/local delegation",
+        "related_docs": [
+            "docs/agent-guides/46-SWITCHBOARD-PROFILES.md",
+            "docs/architecture/routing-profile-inventory.md",
+        ],
+    },
+    "local-agent": {
+        "prefix": "ai-stack/local-agents",
+        "desc": "Local Qwen3-35B agent runtime, outer loop, grounding, task state management",
+        "related_docs": [
+            ".agent/LOCAL-AGENT.md",
+            "docs/architecture/local-agent-agentic-capabilities.md",
+        ],
+    },
+    "agent-runtimes": {
+        "prefix": "ai-stack/agents/runtimes",
+        "desc": "Agent runtime implementations: slot scheduling, local_agent_runtime",
+        "related_docs": [
+            ".agent/CODEX.md",
+            "docs/architecture/local-agent-task-eligibility.md",
+        ],
+    },
+    "aidb": {
+        "prefix": "ai-stack/mcp-servers/aidb",
+        "desc": "AIDB RAG server, Qdrant collections, knowledge ingestion, semantic retrieval",
+        "related_docs": [
+            "docs/architecture/memory-system-design.md",
+            "docs/agent-guides/62-MEMORY-SYSTEM.md",
+        ],
+    },
+    "nix-modules": {
+        "prefix": "nix/modules",
+        "desc": "NixOS module declarations for all AI stack services and options SSOT",
+        "related_docs": [
+            "docs/agent-guides/40-HYBRID-WORKFLOW.md",
+        ],
+    },
+    "nix-hosts": {
+        "prefix": "nix/hosts",
+        "desc": "Per-host NixOS configuration, deploy options, secrets wiring (gitignored)",
+        "related_docs": [],
+    },
+    "ai-scripts": {
+        "prefix": "scripts/ai",
+        "desc": "Agent CLI scripts: aq-loop, aq-wiki, delegate-to-*, aq-qa, aq-hints, aq-agent-loop",
+        "related_docs": [
+            "docs/agent-guides/47-AGENT-TOOL-CONTRACT.md",
+        ],
+    },
+    "governance": {
+        "prefix": "scripts/governance",
+        "desc": "Pre-commit gates, tier0 validation, repo structure linting",
+        "related_docs": [],
+    },
+    "configuration": {
+        "prefix": "config",
+        "desc": "System config: progressive disclosure domains, doc schema, switchboard profiles",
+        "related_docs": [
+            "docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md",
+            "docs/agent-guides/46-SWITCHBOARD-PROFILES.md",
+        ],
+    },
+    "testing": {
+        "prefix": "scripts/testing",
+        "desc": "Test harness scripts, inference budget tests, slot scheduling tests",
+        "related_docs": [],
+    },
+}
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _load_graph():
+    if not _GRAPH.exists():
+        sys.exit(
+            f"Knowledge graph not found: {_GRAPH}\n"
+            "Run: scripts/ai/aq-understand-anything ensure\n"
+            "Then: /understand  (in Claude Code)  or  aq-understand-anything validate-batches"
+        )
+    with open(_GRAPH, "rb") as f:
+        return json.loads(f.read())
+
+
+def _load_meta() -> dict:
+    if _WIKI_META.exists():
+        try:
+            return json.loads(_WIKI_META.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_meta(meta: dict):
+    _WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    _WIKI_META.write_text(json.dumps(meta, indent=2))
+
+
+def _git_changed_paths_since(since_ts: str) -> set:
+    """Return set of file paths changed since ISO timestamp (git log)."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(_REPO), "log", "--name-only", "--pretty=format:",
+             f"--since={since_ts}"],
+            capture_output=True, text=True, timeout=15,
+        )
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    except Exception:
+        return set()
+
+
+def _nodes_for_subsystem(nodes: list, prefix: str) -> list:
+    return [n for n in nodes if (n.get("filePath") or "").startswith(prefix)]
+
+
+def _complexity_key(n: dict) -> int:
+    return {"complex": 0, "medium": 1, "moderate": 1, "simple": 2}.get(
+        n.get("complexity", "simple"), 3
+    )
+
+
+# ── rendering ─────────────────────────────────────────────────────────────────
+
+def _render_section(name: str, info: dict, nodes: list, graph_meta: dict) -> str:
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    files = sorted([n for n in nodes if n.get("type") == "file"], key=_complexity_key)
+    funcs = sorted(
+        [n for n in nodes if n.get("type") in ("function", "function:")],
+        key=_complexity_key,
+    )
+    classes = sorted([n for n in nodes if n.get("type") == "class"], key=_complexity_key)
+
+    title = name.replace("-", " ").title()
+
+    out = [
+        "---",
+        "doc_type: reference",
+        f'title: "Wiki: {title}"',
+        f"subsystem: {name}",
+        f"generated: {now}",
+        f"graph_generated: {graph_meta.get('generated', 'unknown')}",
+        f"graph_nodes: {len(nodes)}",
+        "---",
+        "",
+        f"# {title}",
+        "",
+        f"> {info['desc']}",
+        "",
+        "*Auto-generated from `knowledge-graph.json`. Do not edit manually.*  ",
+        "*Refresh: `aq-wiki --update`  ·  Full regeneration: `aq-wiki --init --force`*",
+        "",
+    ]
+
+    # Key files
+    if files:
+        out += [
+            "## Key Files",
+            "",
+            "| File | Summary | Complexity |",
+            "|------|---------|------------|",
+        ]
+        for f in files[:25]:
+            fname = f.get("name") or Path(f.get("filePath", "?")).name
+            summary = (f.get("summary") or "—").strip().replace("|", "\\|")[:90]
+            cplx = f.get("complexity", "?")
+            out.append(f"| `{fname}` | {summary} | {cplx} |")
+        out.append("")
+
+    # Public functions / entry points (complex ones first)
+    if funcs:
+        out += [
+            "## Key Functions",
+            "",
+            "| Function | File | Summary |",
+            "|----------|------|---------|",
+        ]
+        for fn in funcs[:20]:
+            fname = fn.get("name", "?")
+            ffile = Path(fn.get("filePath", "?")).name
+            summary = (fn.get("summary") or "—").strip().replace("|", "\\|")[:90]
+            out.append(f"| `{fname}` | `{ffile}` | {summary} |")
+        out.append("")
+
+    # Classes
+    if classes:
+        out += [
+            "## Classes",
+            "",
+            "| Class | File | Summary |",
+            "|-------|------|---------|",
+        ]
+        for cl in classes[:15]:
+            cname = cl.get("name", "?")
+            cfile = Path(cl.get("filePath", "?")).name
+            summary = (cl.get("summary") or "—").strip().replace("|", "\\|")[:90]
+            out.append(f"| `{cname}` | `{cfile}` | {summary} |")
+        out.append("")
+
+    # Related docs
+    related = info.get("related_docs", [])
+    if related:
+        out += ["## Related Documentation", ""]
+        for doc in related:
+            out.append(f"- `{doc}`")
+        out.append("")
+
+    # Coverage
+    out += [
+        "## Coverage",
+        "",
+        f"- **Nodes**: {len(nodes)} total "
+        f"({len(files)} files, {len(funcs)} functions, {len(classes)} classes)",
+        f"- **Path prefix**: `{info['prefix']}/`",
+        f"- **Graph**: `.understand-anything/knowledge-graph.json`"
+        f"  (generated {graph_meta.get('generated', '?')})",
+        "",
+    ]
+
+    return "\n".join(out)
+
+
+def _write_index(wiki_meta: dict, graph_meta: dict):
+    """Write wiki/README.md — the navigation entry point for agents."""
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    lines = [
+        "# Codebase Wiki — Navigation Index",
+        "",
+        f"Auto-generated from `knowledge-graph.json` ({graph_meta.get('generated', now)}).  ",
+        "**Do not edit manually.** Refresh: `aq-wiki --update`",
+        "",
+        "## Quick Reference",
+        "",
+        "```bash",
+        "aq-wiki --section <name>    # print a section",
+        "aq-wiki --status            # freshness check",
+        "aq-wiki --update            # differential refresh after code changes",
+        "aq-wiki --seed-aidb         # push to AIDB for semantic search",
+        "```",
+        "",
+        "## Subsystem Sections",
+        "",
+        "| Section | Nodes | Description |",
+        "|---------|-------|-------------|",
+    ]
+    for name, info in SUBSYSTEMS.items():
+        rec = wiki_meta.get(name, {})
+        nc = rec.get("node_count", "—")
+        lines.append(f"| [`{name}`]({name}.md) | {nc} | {info['desc']} |")
+
+    lines += [
+        "",
+        "## Agent Usage Pattern (OpenWiki-style)",
+        "",
+        "Agents load wiki sections **on demand by path** — not embedded in context:",
+        "",
+        "```bash",
+        "# Before architecture work on the coordinator:",
+        "cat .understand-anything/wiki/hybrid-coordinator.md",
+        "",
+        "# Before switchboard profile changes:",
+        "aq-wiki --section switchboard",
+        "",
+        "# Before NixOS module work:",
+        "aq-wiki --section nix-modules",
+        "",
+        "# Before delegation script changes:",
+        "aq-wiki --section ai-scripts",
+        "```",
+        "",
+        "## Progressive Disclosure Integration",
+        "",
+        "Wiki sections are wired into `config/progressive-disclosure-domains.json`.",
+        "At `standard` and `full` disclosure levels, the relevant wiki section is",
+        "automatically referenced in domain context. Agents can also query AIDB:",
+        "",
+        "```bash",
+        "# Semantic search across wiki sections (after --seed-aidb):",
+        "aq-hints 'how does switchboard route requests' --source wiki-sections",
+        "```",
+        "",
+    ]
+
+    (_WIKI_DIR / "README.md").write_text("\n".join(lines))
+
+
+# ── commands ──────────────────────────────────────────────────────────────────
+
+def cmd_init(force: bool = False):
+    graph = _load_graph()
+    nodes = graph.get("nodes", [])
+    graph_meta = graph.get("metadata", {})
+
+    _WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    wiki_meta = _load_meta()
+    generated = []
+
+    for name, info in SUBSYSTEMS.items():
+        out_path = _WIKI_DIR / f"{name}.md"
+        if out_path.exists() and not force:
+            rec = wiki_meta.get(name, {})
+            if rec.get("graph_generated") == graph_meta.get("generated"):
+                print(f"  skip  {name:<25}  (up to date)")
+                continue
+
+        sub_nodes = _nodes_for_subsystem(nodes, info["prefix"])
+        if not sub_nodes:
+            print(f"  skip  {name:<25}  (0 nodes for prefix '{info['prefix']}')")
+            continue
+
+        content = _render_section(name, info, sub_nodes, graph_meta)
+        out_path.write_text(content)
+        wiki_meta[name] = {
+            "graph_generated": graph_meta.get("generated", "?"),
+            "node_count": len(sub_nodes),
+            "generated": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        print(f"  wrote {name:<25}  ({len(sub_nodes):4d} nodes,  {len(content):6d} chars)")
+        generated.append(name)
+
+    _write_index(wiki_meta, graph_meta)
+    _save_meta(wiki_meta)
+
+    print(f"\n{len(generated)} sections → .understand-anything/wiki/")
+    if generated:
+        print("Next: aq-wiki --seed-aidb   (push to AIDB for semantic search)")
+
+
+def cmd_update():
+    graph = _load_graph()
+    nodes = graph.get("nodes", [])
+    graph_meta = graph.get("metadata", {})
+
+    wiki_meta = _load_meta()
+    if not wiki_meta:
+        print("No previous wiki run — running full init.")
+        cmd_init()
+        return
+
+    last_gen = min(
+        (v["generated"] for v in wiki_meta.values() if v.get("generated")),
+        default="",
+    )
+    if not last_gen:
+        cmd_init()
+        return
+
+    changed = _git_changed_paths_since(last_gen)
+    if not changed:
+        print(f"No git changes since {last_gen}. Wiki is current.")
+        return
+
+    print(f"Git changes since {last_gen}: {len(changed)} paths")
+
+    updated = []
+    for name, info in SUBSYSTEMS.items():
+        prefix = info["prefix"]
+        if not any(p.startswith(prefix) for p in changed):
+            # Also refresh if graph itself is newer than section
+            rec = wiki_meta.get(name, {})
+            if rec.get("graph_generated") == graph_meta.get("generated"):
+                continue
+
+        sub_nodes = _nodes_for_subsystem(nodes, prefix)
+        if not sub_nodes:
+            continue
+
+        out_path = _WIKI_DIR / f"{name}.md"
+        content = _render_section(name, info, sub_nodes, graph_meta)
+        out_path.write_text(content)
+        wiki_meta[name] = {
+            "graph_generated": graph_meta.get("generated", "?"),
+            "node_count": len(sub_nodes),
+            "generated": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        print(f"  updated {name}")
+        updated.append(name)
+
+    if updated:
+        _write_index(wiki_meta, graph_meta)
+        _save_meta(wiki_meta)
+        print(f"\nUpdated: {', '.join(updated)}")
+    else:
+        print("No sections needed update.")
+
+
+def cmd_status():
+    graph = _load_graph()
+    graph_meta = graph.get("metadata", {})
+    wiki_meta = _load_meta()
+
+    print(f"Knowledge graph: {graph_meta.get('generated', 'unknown')}")
+    print(f"  Nodes: {len(graph.get('nodes', []))}, Edges: {len(graph.get('edges', []))}")
+    print(f"\nWiki (.understand-anything/wiki/):")
+    print(f"  {'Section':<28} {'Nodes':>6}  {'Generated':<22}  Status")
+    print("  " + "-" * 70)
+
+    for name, info in SUBSYSTEMS.items():
+        rec = wiki_meta.get(name, {})
+        path = _WIKI_DIR / f"{name}.md"
+        nc = str(rec.get("node_count", "—")) if rec else "—"
+        gen = rec.get("generated", "—")[:19] if rec else "—"
+        if not path.exists():
+            status = "MISSING — run: aq-wiki --init"
+        elif rec.get("graph_generated") != graph_meta.get("generated"):
+            status = "STALE — run: aq-wiki --update"
+        else:
+            status = "OK"
+        print(f"  {name:<28} {nc:>6}  {gen:<22}  {status}")
+
+    readme = _WIKI_DIR / "README.md"
+    print(f"\n  Index: {'present' if readme.exists() else 'MISSING'} ({readme})")
+    print(f"\nRefresh: aq-wiki --update  (diff)  |  aq-wiki --init --force  (full)")
+
+
+def cmd_list():
+    if not _WIKI_DIR.exists():
+        print("No wiki sections yet. Run: aq-wiki --init")
+        return
+    sections = sorted(p for p in _WIKI_DIR.glob("*.md") if p.stem != "README")
+    if not sections:
+        print("No wiki sections found. Run: aq-wiki --init")
+        return
+    print("Available wiki sections:")
+    for path in sections:
+        lc = len(path.read_text().splitlines())
+        info = SUBSYSTEMS.get(path.stem, {})
+        desc = info.get("desc", "")[:60]
+        print(f"  {path.stem:<28}  ({lc:3d} lines)  {desc}")
+
+
+def cmd_section(name: str):
+    path = _WIKI_DIR / f"{name}.md"
+    if not path.exists():
+        candidates = [p for p in _WIKI_DIR.glob("*.md") if name.lower() in p.stem.lower()]
+        if len(candidates) == 1:
+            path = candidates[0]
+        else:
+            available = [p.stem for p in _WIKI_DIR.glob("*.md") if p.stem != "README"]
+            sys.exit(
+                f"Wiki section not found: {name}\n"
+                f"Available: {', '.join(sorted(available))}\n"
+                f"Hint: run 'aq-wiki --init' if wiki hasn't been generated yet."
+            )
+    sys.stdout.write(path.read_text())
+
+
+def cmd_seed_aidb():
+    if not _WIKI_DIR.exists():
+        sys.exit("No wiki sections. Run: aq-wiki --init")
+
+    seeded = failed = 0
+    for path in sorted(_WIKI_DIR.glob("*.md")):
+        if path.stem == "README":
+            continue
+        name = path.stem
+        info = SUBSYSTEMS.get(name, {})
+        doc = {
+            "collection": "wiki-sections",
+            "doc_id": f"wiki-{name}",
+            "content": path.read_text(),
+            "metadata": {
+                "subsystem": name,
+                "description": info.get("desc", ""),
+                "type": "wiki-section",
+                "path": str(path.relative_to(_REPO)),
+                "prefix": info.get("prefix", ""),
+            },
+        }
+        try:
+            payload = json.dumps(doc).encode()
+            req = urllib.request.Request(
+                f"{_AIDB_URL}/ingest",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read())
+                ok = result.get("status") in ("ok", "stored", "success", "indexed", "upserted")
+                print(f"  {'OK' if ok else 'WARN'} {name}")
+                seeded += 1
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode(errors="replace")[:200]
+            except Exception:
+                pass
+            print(f"  FAIL {name}: HTTP {exc.code} — {body}")
+            # 404 on collection may mean wiki-sections not in ALLOWED_COLLECTIONS
+            if exc.code == 404:
+                print("  HINT: Add 'wiki-sections' to AIDB ALLOWED_COLLECTIONS in options.nix")
+            failed += 1
+        except Exception as exc:
+            print(f"  FAIL {name}: {exc}")
+            failed += 1
+
+    print(f"\nSeeded {seeded} sections to AIDB, {failed} failed.")
+    if failed:
+        print("HINT: Ensure AIDB is running and 'wiki-sections' is in ALLOWED_COLLECTIONS")
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    p = argparse.ArgumentParser(
+        prog="aq-wiki",
+        description=(
+            "OpenWiki-pattern structured wiki from knowledge-graph.json.\n"
+            "Generates .understand-anything/wiki/<subsystem>.md for agent reference."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  aq-wiki --init                    # first-time generation\n"
+            "  aq-wiki --update                  # after code changes\n"
+            "  aq-wiki --section hybrid-coordinator  # read a section\n"
+            "  aq-wiki --status                  # freshness check\n"
+            "  aq-wiki --seed-aidb               # push to AIDB\n"
+        ),
+    )
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--init", action="store_true",
+                   help="Full wiki generation from knowledge graph")
+    g.add_argument("--update", action="store_true",
+                   help="Differential update (recent git changes only)")
+    g.add_argument("--status", action="store_true",
+                   help="Show wiki freshness and coverage")
+    g.add_argument("--list", action="store_true",
+                   help="List available wiki sections")
+    g.add_argument("--section", metavar="NAME",
+                   help="Print a specific wiki section to stdout")
+    g.add_argument("--seed-aidb", action="store_true",
+                   help="Seed wiki sections into AIDB wiki-sections collection")
+    p.add_argument("--force", action="store_true",
+                   help="Force regeneration (use with --init)")
+    args = p.parse_args()
+
+    if args.init:
+        cmd_init(force=args.force)
+    elif args.update:
+        cmd_update()
+    elif args.status:
+        cmd_status()
+    elif args.list:
+        cmd_list()
+    elif args.section:
+        cmd_section(args.section)
+    elif args.seed_aidb:
+        cmd_seed_aidb()
+    else:
+        p.print_help()
+
+
+if __name__ == "__main__":
+    main()

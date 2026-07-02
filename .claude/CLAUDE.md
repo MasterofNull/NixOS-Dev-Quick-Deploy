@@ -235,6 +235,12 @@ Never hardcode these values in Python or shell — always read from injected env
 | Switchboard profiles | `docs/agent-guides/46-SWITCHBOARD-PROFILES.md` |
 | Role matrix SSOT | `docs/architecture/role-matrix.md` |
 | Kernel declaration | `docs/architecture/canonical-kernel-declaration.md` |
+| **Wiki & Knowledge Graph** | |
+| Wiki index (start here) | `.understand-anything/wiki/README.md` |
+| Subsystem wiki sections | `aq-wiki --list` (or `cat .understand-anything/wiki/<name>.md`) |
+| Wiki freshness check | `aq-wiki --status` |
+| Wiki maintenance guide | `docs/agent-guides/48-WIKI-MAINTENANCE.md` |
+| Knowledge graph (raw JSON) | `.understand-anything/knowledge-graph.json` |
 | **Domain Instructions** | |
 | osint-systems | `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md` |
 | trading-agents | `.agent/TRADING-AGENTS-INSTRUCTIONS.md` |

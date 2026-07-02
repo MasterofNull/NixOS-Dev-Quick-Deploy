@@ -1,6 +1,6 @@
 # WORKFLOW-CANON — Canonical Agent Workflow
 **SSOT for all agents: Claude, Gemini, Codex, local Qwen, remote lanes**
-Maintained by: hyperd | Updated: 2026-06-29
+Maintained by: hyperd | Updated: 2026-07-01
 
 > "The gap between models matters less than the gap between workflows."
 > — Addy Osmani, AI Coding Workflow 2026
@@ -364,7 +364,22 @@ python3 scripts/data/seed-rag-knowledge.py --collection error-solutions --text "
 python3 scripts/data/seed-rag-knowledge.py --collection best-practices --text "..."
 ```
 
-**Rule**: No commit without updating at least HANDOFF.md. No code change without checking whether a new error pattern should be seeded to RAG.
+#### Wiki maintenance (codebase documentation):
+```bash
+# After any code change — differential wiki refresh (fast, git-diff based):
+aq-wiki --update
+
+# After significant architectural changes — check wiki freshness:
+aq-wiki --status
+
+# After full graph refresh (/understand in Claude Code):
+aq-wiki --init --force && aq-wiki --seed-aidb
+```
+
+The wiki (`.understand-anything/wiki/`) is the O(1) entry point for architecture questions.
+Future agents reading a stale wiki will get wrong context. Keep it current.
+
+**Rule**: No commit without updating at least HANDOFF.md. No code change without checking whether a new error pattern should be seeded to RAG. For architecture/subsystem changes, run `aq-wiki --update` so future agents can navigate without re-reading raw files.
 
 ---
 
@@ -512,12 +527,13 @@ If this fails, either wire/remove the new module or add a reviewed baseline entr
 ## Quick Reference Card
 
 ```
-ORIENT   →  aq-prime + aq-hints + recall memory
-RESEARCH →  grep/read codebase + web search best practices + check OWASP if security-sensitive
+ORIENT   →  aq-prime + aq-hints + recall memory + aq-wiki --status (architecture tasks)
+RESEARCH →  aq-wiki --section <subsystem> FIRST, then grep/read source + web best practices
 PRD/PLAN →  .agent/PRD.md + .agents/plans/phase-N.md (scope, criteria, rollback)
 MEMORY   →  mcp_server_store_memory / aq-memory store (before executing)
 EXECUTE  →  one slice, read before edit, no hallucinated deps
 VALIDATE →  tier0-validation-gate.sh + security checklist + tests
+DOC      →  aq-wiki --update (after code changes) + HANDOFF.md + RAG seed
 COMMIT   →  git add <specific files> + small message with evidence + Co-Authored-By
 ```
 

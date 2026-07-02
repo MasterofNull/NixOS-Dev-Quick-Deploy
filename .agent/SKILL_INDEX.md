@@ -100,7 +100,8 @@ Agents and recursive self-improvement loops should call this before planning whe
 | `ai-stack-qa` | qa, smoke, phase, stack | Full stack QA runs; phase verification |
 | `prsi-review` | prsi, review, autonomous, claude | PRSI autonomous review workflow |
 | `tradingagents` | trading, analysis, buy, hold, sell | Financial analysis via multi-agent team |
-| `understand-anything` | graph, visualization, architecture, dashboard, diff | Generate/use codebase knowledge graphs; visualize harness/OS topology; graph-backed change impact |
+| `understand-anything` | graph, visualization, architecture, dashboard, diff, knowledge-graph | Generate/use codebase knowledge graphs; visualize harness/OS topology; graph-backed change impact; feeds aq-wiki |
+| `wiki-navigation` | wiki, knowledge-graph, architecture, subsystem, function-discovery, context-efficient | Read .understand-anything/wiki/<subsystem>.md before raw files; aq-wiki --section, --status, --update; AIDB wiki-sections semantic search |
 | `lean-ctx` | context, compress, token, mcp, read, shell | File reads, shell output, any task where token usage is a concern; 10 read modes, 62 tools |
 
 ---

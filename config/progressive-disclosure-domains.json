@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-05-20"
+    "last_updated": "2026-07-01"
   },
   "version": "1.0.0",
   "description": "Progressive disclosure domain mapping for minimal-token, high-impact agent context loading",
@@ -180,7 +180,10 @@
         "delegation",
         "harness",
         "ai-stack",
-        "telemetry"
+        "telemetry",
+        "wiki",
+        "knowledge-graph",
+        "understand-anything"
       ],
       "disclosure": {
         "minimal": {
@@ -201,7 +204,8 @@
             "aq-optimizer",
             "aq-patterns",
             "aq-gap-auto-remediate",
-            "aq-autoresearch"
+            "aq-autoresearch",
+            "aq-wiki"
           ],
           "mcp_endpoints": [
             "/workflow/plan",
@@ -212,18 +216,27 @@
           "skills": [
             "ai-stack-qa",
             "mcp-builder",
-            "health-monitoring"
+            "health-monitoring",
+            "understand-anything",
+            "wiki-navigation"
           ],
           "docs": [
             "CLAUDE.md",
-            "docs/agent-guides/01-QUICK-START.md"
+            "docs/agent-guides/01-QUICK-START.md",
+            "docs/agent-guides/48-WIKI-MAINTENANCE.md"
+          ],
+          "wiki_sections": [
+            "aq-wiki --section hybrid-coordinator",
+            "aq-wiki --section ai-scripts"
           ]
         },
         "full": {
           "extends": "standard",
           "tools": [
             "mcp-bridge-hybrid.py",
-            "aqd"
+            "aqd",
+            "aq-wiki",
+            "aq-understand-anything"
           ],
           "mcp_endpoints": [
             "/control/ai-coordinator/delegate",
@@ -232,7 +245,9 @@
           ],
           "skills": [
             "rag-techniques",
-            "skill-creator"
+            "skill-creator",
+            "understand-anything",
+            "wiki-navigation"
           ],
           "memory_recall": [
             "mcp",
@@ -244,6 +259,14 @@
           "research_packs": [
             "tech-documentation",
             "security-advisories"
+          ],
+          "graph_queries": [
+            ".understand-anything/wiki/README.md",
+            ".understand-anything/knowledge-graph.json"
+          ],
+          "wiki_sections": [
+            "aq-wiki --list",
+            "aq-wiki --status"
           ]
         }
       }
@@ -463,7 +486,7 @@
     },
     "documentation": {
       "name": "Documentation & Communication",
-      "description": "Technical writing, documentation, and internal communications",
+      "description": "Technical writing, documentation, codebase wiki, and internal communications",
       "triggers": [
         "doc",
         "documentation",
@@ -472,47 +495,76 @@
         "tutorial",
         "report",
         "presentation",
-        "slides"
+        "slides",
+        "wiki",
+        "understand-anything",
+        "knowledge-graph",
+        "progressive-disclosure"
       ],
       "disclosure": {
         "minimal": {
-          "context": "Documentation work. Keep it concise and actionable.",
+          "context": "Documentation work. Keep it concise and actionable. Check wiki sections before reading raw source files.",
           "tools": [
-            "markdown-lint"
+            "markdown-lint",
+            "aq-wiki"
           ],
           "hints": [
             "Use headers for structure",
-            "Include code examples"
+            "Include code examples",
+            "Check .understand-anything/wiki/ before reading raw source for architecture docs"
           ]
         },
         "standard": {
           "extends": "minimal",
           "tools": [
             "pandoc",
-            "mermaid"
+            "mermaid",
+            "aq-wiki",
+            "aq-understand-anything"
           ],
           "mcp_endpoints": [],
           "skills": [
             "pdf",
             "pptx",
-            "internal-comms"
+            "internal-comms",
+            "wiki-navigation",
+            "understand-anything"
           ],
-          "docs": []
+          "docs": [
+            "docs/agent-guides/48-WIKI-MAINTENANCE.md",
+            "docs/DOCUMENTATION-INDEX.md"
+          ],
+          "wiki_sections": [
+            "aq-wiki --list"
+          ]
         },
         "full": {
           "extends": "standard",
           "tools": [
             "latex",
-            "sphinx"
+            "sphinx",
+            "aq-wiki",
+            "aq-understand-anything"
           ],
           "skills": [
             "brand-guidelines",
-            "theme-factory"
+            "theme-factory",
+            "wiki-navigation",
+            "understand-anything"
           ],
           "memory_recall": [
             "documentation",
             "guide",
-            "readme"
+            "readme",
+            "wiki",
+            "knowledge-graph"
+          ],
+          "graph_queries": [
+            ".understand-anything/wiki/README.md",
+            "aq-wiki --status"
+          ],
+          "wiki_sections": [
+            "aq-wiki --section <subsystem>  # replace <subsystem> with relevant domain"
           ]
         }
       }
