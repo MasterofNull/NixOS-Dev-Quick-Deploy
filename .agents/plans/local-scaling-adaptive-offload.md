@@ -1,6 +1,6 @@
 ---
 title: Local inference scaling — adaptive budget + complexity routing + embed offload
-status: PLANNED
+status: A+B IMPLEMENTED (flag-gated, pending rebuild validation); C VERIFIED ALREADY DONE
 owner: hyperd
 author: claude-sonnet-4-6
 created: 2026-07-02
@@ -82,7 +82,25 @@ Let a lone local task think deeper when nothing else is queued; clamp under cont
 Acceptance: idle deep task gets larger budget; under 2+ queued tasks, budget clamps.
 No slot lock > configured ceiling. Regression test in scripts/testing/.
 
-# Phase C — offload embedding-amenable work to embed:8081 (4 slots)
+# Phase C — offload embedding-amenable work to embed:8081 (4 slots)  [VERIFIED ALREADY IMPLEMENTED 2026-07-02]
+
+STATUS: inventory complete — the offload is ALREADY comprehensively done across the
+harness. Every embeddable op already routes to llama-embed:8081, NOT the gen slot:
+- switchboard `_text_similarity` (switchboard.py:743-755) -> embed:8081 /v1/embeddings
+- switchboard semantic prune (switchboard.py:1911-1921) -> embed:8081
+- intent_classifier semantic-similarity prototypes (intent_classifier.py:378-386) -> embeddings
+- drift_analyzer (drift_analyzer.py:105) -> embeddings
+- eval_runner.score_answer_relevance (eval_runner.py:169-179) -> "Uses llama-embed:8081"
+- eval_runner.score_context_precision -> embedding-based
+
+CONCLUSION: the gen slot (8080) is not blocked by embeddable work; the 4-slot embed
+server already absorbs similarity/semantic/relevance/drift. No new offload needed — the
+user's "fully utilize + offload to the embed model" ask is satisfied by existing design.
+Remaining gen-model uses (LLM-as-judge, actual generation) are deliberate quality choices,
+not offload candidates. If future profiling shows a specific gen-slot hotspot that is really
+similarity, revisit; otherwise Phase C is closed.
+
+## (original Phase C plan retained below for reference)
 
 The embed server has 4 parallel slots and does only embeddings — use it for work that
 can be reframed as embed+similarity instead of blocking the single generation slot.
