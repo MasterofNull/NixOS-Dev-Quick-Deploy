@@ -16,9 +16,17 @@
       "creative": "claude-fable-5"
     },
     "google": {
-      "flagship": "gemini-2.5-pro",
-      "balanced": "gemini-2.5-flash",
-      "fast": "gemini-2.5-flash-lite"
+      "_comment": "Gemini 3.x via the antigravity wrapper (delegate-to-antigravity / aq-antigravity-agent -> switchboard -> Gemini backend; NOT OpenRouter, which is unused). Effort levels low|medium|high. CONFIRM before rebuild: (a) exact api id strings, (b) whether effort is a reasoning_effort request param or encoded in the id. Default remote lane = flash-3.5 medium; complex/critical = 3.1-pro high.",
+      "flagship": "gemini-3.1-pro",
+      "flagship_effort": "high",
+      "flagship_economy": "gemini-3.1-pro",
+      "flagship_economy_effort": "low",
+      "balanced": "gemini-flash-3.5",
+      "balanced_effort": "medium",
+      "fast": "gemini-flash-3.5",
+      "fast_effort": "low",
+      "deep": "gemini-flash-3.5",
+      "deep_effort": "high"
     },
     "openai": {
       "flagship": "gpt-5.5"
