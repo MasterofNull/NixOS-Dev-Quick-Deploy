@@ -1195,3 +1195,8 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Also found: zombie `gemini` npm CLI process (PID from old ping test) still running despite gemini CLI being retired (IneligibleTierError) — needs reaping.
   Severity: high (remote fan-out lane unreliable until rebuild; local fallback works now)
   File: nix/hosts/hyperd/deploy-options.nix (remoteUrl + aliases); scripts/ai/delegate-to-antigravity (_parse_completion_response + comments); SOPS remote_llm_api_key
+
+[DONE 2026-07-02] agent-model-versions-stale-no-tier-routing — Agent pools were pinned to superseded model ids (Opus 4.5, Sonnet 4.5, Haiku 3.5, gpt-4o, qwen2.5-coder, gemini-2.0) with no single place to route by version; newest models (Fable 5, Opus 4.8, Sonnet 4.6, Haiku 4.5, gpt-5.5) were absent. Version selection was scattered across 3 files (remote_agents.py, delegate-to-antigravity _MODEL_MAP, switchboard aliases) and drifted independently.
+  Fix: added `tiers` + `tier_routing` version SSOT to config/model-coordinator.json (v1.1) — per-provider flagship/balanced/fast/creative → concrete current ids; complexity→tier map. Bumped remote_agents.py to current-gen + added CLAUDE_FABLE (creative tier); GPT_4O/_MINI renamed GPT_5/_MINI with back-compat enum aliases. Bumped delegate-to-antigravity _MODEL_MAP gemini 2.0→2.5. Going forward: bump ids in tiers block only.
+  Severity: medium (capability/routing gap; no runtime break — direct-API pool is secondary to switchboard lane)
+  File: config/model-coordinator.json (tiers/tier_routing); ai-stack/local-orchestrator/remote_agents.py; scripts/ai/delegate-to-antigravity
