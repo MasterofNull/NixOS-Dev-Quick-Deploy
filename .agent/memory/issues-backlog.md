@@ -1045,9 +1045,14 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py; ai-stack/local-agents/builtin_tools/ai_coordination.py; ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py; scripts/testing/test-osint-active-recon-gate.py
 
 [DONE] design-skills-autoselect-validation-gap — `aq-skill-auto --test` selected `frontend-design` and `canvas-design` for website work, but both failed required skill-section validation because their bodies lacked `## Description` and `## When to Use` headings.
-  Severity: low
-  Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
-  File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
+Severity: low
+Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
+File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
+
+[DONE] phase0-runtime-probe-false-negatives — Phase 0 QA treated sandbox-denied HTTP/systemd/database probes as failed runtime checks, causing false failures and black-box waits while local-agent observability work was otherwise healthy.
+Severity: high
+Fix: Added sandbox-aware HTTP POST/GET handling, bounded Python fallback probes, systemd show fallback skips, idempotent attention archive validation, and explicit datastore socket-denial skips for Qdrant/Postgres/Redis. Focused layer 1 and layer 5 runs now have zero failures; tier0 QA phase 0 reaches PASS.
+File: scripts/ai/_aq-qa-bash; scripts/testing/test-aq-qa-progress-heartbeat.py; scripts/testing/test-local-subprocess-discipline-smoke.py
 
 [DONE] agent-observability-ssot-fragmentation — Agent delegation and inference progress used compatibility sidecars and service-owned telemetry paths without a repo-writable canonical agent-run event helper, creating fragmented observability for local agents and long-running inference.
   Severity: high
