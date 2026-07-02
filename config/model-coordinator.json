@@ -36,8 +36,8 @@
     },
     "local": {
       "_comment": "Local Qwen (single slot, SWB_LOCAL_CONCURRENCY=1, ~1-3.45 tok/s on Renoir APU / 27GB RAM). DEFENSIVE CEILINGS APPLY HERE ONLY: switchboard injects enable_thinking=false (in chat_template_kwargs) and a small local thinking_budget (~200) to prevent a single unbounded thinking loop from locking the harness ~40min or ballooning the KV cache into a GPU OOM. These ceilings must NEVER be applied to remote lanes.",
-      "coding": "qwen3-35b",
-      "chat": "qwen3-35b"
+      "coding": "qwen3.6-35b",
+      "chat": "qwen3.6-35b"
     }
   },
   "tier_routing": {
