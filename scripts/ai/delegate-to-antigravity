@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """delegate-to-antigravity — Headless AI delegation via switchboard antigravity-collective profile.
 
-Routes through the local switchboard (http://127.0.0.1:8085) using the
-'antigravity-collective' profile, which forces provider=remote and uses the
-configured remote backend (OpenRouter → google/gemini-2.5-flash-lite or equivalent).
+Routes through the local switchboard (http://127.0.0.1:8085) using a remote
+profile that forces provider=remote and uses the configured remote backend.
+Remote backend = Google Gemini direct (generativelanguage.googleapis.com/v1beta/openai);
+the "antigravity" name reflects Google's Gemini agentic product. All remote model
+aliases are bare Gemini model ids (gemini-2.5-pro/flash/flash-lite). On remote
+error (429/5xx) or when the remote key is absent, delegation falls back to the
+local Qwen3-35B profile (local-coding).
 
-Auth: handled by switchboard via /run/secrets/remote_llm_api_key (SOPS-managed, no
-manual setup required).
+Auth: handled by switchboard via /run/secrets/remote_llm_api_key (SOPS-managed).
+That secret must hold a Google AI Studio API key (NOT an OpenRouter key).
 
 Note: @google/gemini-cli (npm) and the oauth-personal/Code Assist path are RETIRED
 as of 2026-07 (IneligibleTierError for free-tier). Do NOT use 'gemini' npm binary.
@@ -48,13 +52,13 @@ _MIN_CONTENT_BYTES = 200
 _MAX_CONCURRENT = 3
 
 # Switchboard profile for Antigravity delegation.
-# remote-free: forceProvider=remote → OpenRouter → meta-llama/llama-3.3-70b-instruct:free (no credits needed)
-# antigravity-collective: forceProvider=remote → OpenRouter → google/gemini-2.5-flash-lite (requires credits)
-# Switch to "antigravity-collective" when OpenRouter credits are available.
+# remote-free: forceProvider=remote → Google Gemini → gemini-2.5-flash-lite (free alias)
+# antigravity-collective: forceProvider=remote → Google Gemini → gemini-2.5-flash (gemini alias)
+# On 429/5xx or missing remote key, switchboard/this client fall back to local-coding (Qwen3-35B).
 _SWB_PROFILE = os.environ.get("ANTIGRAVITY_SWB_PROFILE", "remote-free")
 
-# Model hints passed to switchboard (profile may alias/override these).
-# Use gemini model names; switchboard translates to OpenRouter model IDs.
+# Model hints passed to switchboard (profile aliases override these to bare
+# Gemini model ids per nix/hosts/hyperd/deploy-options.nix).
 _MODEL_MAP = {
     "fast":        "gemini-2.0-flash",
     "flash":       "gemini-2.0-flash",
