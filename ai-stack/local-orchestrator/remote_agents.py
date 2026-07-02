@@ -23,13 +23,19 @@ logger = logging.getLogger(__name__)
 
 class RemoteAgentType(Enum):
     """Types of remote agents."""
-    CLAUDE_OPUS = "claude-opus"
-    CLAUDE_SONNET = "claude-sonnet"
-    CLAUDE_HAIKU = "claude-haiku"
-    GPT_4O = "gpt-4o"
-    GPT_4O_MINI = "gpt-4o-mini"
-    QWEN_CODER = "qwen-coder"
+    CLAUDE_OPUS = "claude-opus"      # tier: anthropic/flagship
+    CLAUDE_SONNET = "claude-sonnet"  # tier: anthropic/balanced
+    CLAUDE_HAIKU = "claude-haiku"    # tier: anthropic/fast
+    CLAUDE_FABLE = "claude-fable"    # tier: anthropic/creative
+    GPT_5 = "gpt-5"                  # tier: openai/flagship
+    GPT_5_MINI = "gpt-5-mini"        # tier: openai/fast
+    QWEN_CODER = "qwen-coder"        # tier: local/coding
     OPENROUTER = "openrouter"  # Generic OpenRouter access
+
+    # Back-compat aliases (old enum names → current members) so existing
+    # references (e.g. routing tables) keep resolving after the version bump.
+    GPT_4O = "gpt-5"
+    GPT_4O_MINI = "gpt-5-mini"
 
 
 @dataclass
@@ -62,7 +68,7 @@ class AgentConfig:
 AGENT_CONFIGS: Dict[RemoteAgentType, AgentConfig] = {
     RemoteAgentType.CLAUDE_OPUS: AgentConfig(
         agent_type=RemoteAgentType.CLAUDE_OPUS,
-        model_id="claude-opus-4-5-20251101",
+        model_id="claude-opus-4-8",
         api_base="https://api.anthropic.com/v1",
         api_key_env="ANTHROPIC_API_KEY",
         capabilities=AgentCapabilities(
@@ -78,7 +84,7 @@ AGENT_CONFIGS: Dict[RemoteAgentType, AgentConfig] = {
     ),
     RemoteAgentType.CLAUDE_SONNET: AgentConfig(
         agent_type=RemoteAgentType.CLAUDE_SONNET,
-        model_id="claude-sonnet-4-5-20250929",
+        model_id="claude-sonnet-4-6",
         api_base="https://api.anthropic.com/v1",
         api_key_env="ANTHROPIC_API_KEY",
         capabilities=AgentCapabilities(
@@ -94,7 +100,7 @@ AGENT_CONFIGS: Dict[RemoteAgentType, AgentConfig] = {
     ),
     RemoteAgentType.CLAUDE_HAIKU: AgentConfig(
         agent_type=RemoteAgentType.CLAUDE_HAIKU,
-        model_id="claude-3-5-haiku-20241022",
+        model_id="claude-haiku-4-5-20251001",
         api_base="https://api.anthropic.com/v1",
         api_key_env="ANTHROPIC_API_KEY",
         capabilities=AgentCapabilities(
@@ -108,29 +114,45 @@ AGENT_CONFIGS: Dict[RemoteAgentType, AgentConfig] = {
             strengths=["quick_tasks", "simple_implementation", "documentation"],
         ),
     ),
-    RemoteAgentType.GPT_4O: AgentConfig(
-        agent_type=RemoteAgentType.GPT_4O,
-        model_id="gpt-4o",
+    RemoteAgentType.CLAUDE_FABLE: AgentConfig(
+        agent_type=RemoteAgentType.CLAUDE_FABLE,
+        model_id="claude-fable-5",
+        api_base="https://api.anthropic.com/v1",
+        api_key_env="ANTHROPIC_API_KEY",
+        capabilities=AgentCapabilities(
+            max_context=200000,
+            supports_tools=True,
+            supports_vision=True,
+            supports_code=True,
+            cost_per_mtok_input=3.0,
+            cost_per_mtok_output=15.0,
+            latency_class="medium",
+            strengths=["creative", "narrative", "ideation", "synthesis"],
+        ),
+    ),
+    RemoteAgentType.GPT_5: AgentConfig(
+        agent_type=RemoteAgentType.GPT_5,
+        model_id="gpt-5.5",
         api_base="https://api.openai.com/v1",
         api_key_env="OPENAI_API_KEY",
         capabilities=AgentCapabilities(
-            max_context=128000,
+            max_context=400000,
             supports_tools=True,
             supports_vision=True,
             supports_code=True,
             cost_per_mtok_input=5.0,
             cost_per_mtok_output=15.0,
             latency_class="medium",
-            strengths=["general_purpose", "code_generation", "analysis"],
+            strengths=["general_purpose", "code_generation", "analysis", "tool_use"],
         ),
     ),
-    RemoteAgentType.GPT_4O_MINI: AgentConfig(
-        agent_type=RemoteAgentType.GPT_4O_MINI,
-        model_id="gpt-4o-mini",
+    RemoteAgentType.GPT_5_MINI: AgentConfig(
+        agent_type=RemoteAgentType.GPT_5_MINI,
+        model_id="gpt-5-mini",
         api_base="https://api.openai.com/v1",
         api_key_env="OPENAI_API_KEY",
         capabilities=AgentCapabilities(
-            max_context=128000,
+            max_context=400000,
             supports_tools=True,
             supports_vision=True,
             supports_code=True,
@@ -142,7 +164,7 @@ AGENT_CONFIGS: Dict[RemoteAgentType, AgentConfig] = {
     ),
     RemoteAgentType.QWEN_CODER: AgentConfig(
         agent_type=RemoteAgentType.QWEN_CODER,
-        model_id="qwen/qwen-2.5-coder-32b-instruct",
+        model_id="qwen/qwen3-coder-32b-instruct",
         api_base="https://openrouter.ai/api/v1",
         api_key_env="OPENROUTER_API_KEY",
         capabilities=AgentCapabilities(

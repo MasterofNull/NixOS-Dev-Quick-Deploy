@@ -1,12 +1,42 @@
 {
   "_meta": {
-    "version": "1.0",
+    "version": "1.1",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-05-20"
+    "last_updated": "2026-07-02"
   },
   "$schema": "./schemas/model-coordinator-schema.json",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Model coordinator configuration for dual-model routing and task classification",
+  "tiers": {
+    "_comment": "Version SSOT. Route phase/slice complexity -> tier -> concrete current model id. When a new model version ships, bump the id HERE only; downstream pools (remote_agents.py, delegate-to-antigravity _MODEL_MAP) should read these ids rather than hardcoding their own. Prevents the drift where pools stay pinned to superseded versions.",
+    "anthropic": {
+      "flagship": "claude-opus-4-8",
+      "balanced": "claude-sonnet-4-6",
+      "fast": "claude-haiku-4-5-20251001",
+      "creative": "claude-fable-5"
+    },
+    "google": {
+      "flagship": "gemini-2.5-pro",
+      "balanced": "gemini-2.5-flash",
+      "fast": "gemini-2.5-flash-lite"
+    },
+    "openai": {
+      "flagship": "gpt-5.5"
+    },
+    "local": {
+      "coding": "qwen3-35b",
+      "chat": "qwen3-35b"
+    }
+  },
+  "tier_routing": {
+    "_comment": "Maps task/phase/slice complexity to a tier. Each provider resolves the tier to its concrete model id via `tiers`. complexity is set by the coordinator's intent classifier (trivial|simple|medium|complex|critical) or explicitly per phase.",
+    "trivial": "fast",
+    "simple": "fast",
+    "medium": "balanced",
+    "complex": "flagship",
+    "critical": "flagship",
+    "creative": "creative"
+  },
   "models": {
     "claude-orchestrator": {
       "role": "orchestrator",
