@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import sys
 import tempfile
@@ -27,6 +28,9 @@ def _write(path: Path, content: str) -> None:
 
 
 async def main() -> int:
+    source = inspect.getsource(DiscoveryAgent.discover_opportunities)
+    assert_true("return await asyncio.to_thread" not in source, "discovery wrapper must not use asyncio.to_thread")
+
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
         feedback = repo / "delegation-feedback.jsonl"

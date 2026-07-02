@@ -59,11 +59,21 @@ def _check_services(ctx: RunContext) -> list[CheckResult]:
     for svc in _SERVICES:
         unit = f"{svc}.service"
         r = subprocess.run(
-            ["systemctl", "is-active", "--quiet", unit],
-            capture_output=True, timeout=5,
+            ["systemctl", "is-active", unit],
+            capture_output=True, text=True, timeout=5,
         )
-        if r.returncode == 0:
+        active = r.returncode == 0
+        if not active:
+            show = subprocess.run(
+                ["systemctl", "show", unit, "--property=ActiveState", "--value"],
+                capture_output=True, text=True, timeout=5,
+            )
+            active = show.stdout.strip() == "active"
+        if active:
             results.append(passed(1, f"0.1.1:{svc}", f"unit {unit} active"))
+        elif "operation not permitted" in (r.stderr or "").lower() or "failed to connect" in (r.stderr or "").lower():
+            results.append(skipped(1, f"0.1.1:{svc}", f"unit {unit} active",
+                                   "systemd probe denied in current sandbox"))
         else:
             results.append(failed(1, f"0.1.1:{svc}", f"unit {unit} active", "not active"))
     return results
@@ -337,87 +347,33 @@ def _check_continue(ctx: RunContext) -> list[CheckResult]:
     results = []
     if not ctx.should_run(7):
         return results
-    cli = _find_continue_cli(ctx)
-    if cli:
-        env = {
-            **os.environ,
-            "HOME": ctx.primary_home,
-            "USER": ctx.primary_user,
-            "LOGNAME": ctx.primary_user,
-            "PATH": ctx.primary_user_path,
-        }
-        if cmd_ok(cli, "--help", env=env):
-            results.append(passed(7, "0.5.1", "Continue CLI help works"))
-        else:
-            results.append(failed(7, "0.5.1", "Continue CLI help works"))
-    else:
-        results.append(failed(7, "0.5.1", "Continue CLI help works", "cn binary not found"))
-
-    # 0.5.2 switchboard ingress with local harness chat lane and continue-local tab lane validation
-    # Checks: apiBase") == "http://127.0.0.1:8085/v1" and profile-derived context windows
-    try:
-        cfg_path = Path(ctx.primary_home) / ".continue" / "config.json"
-        ok, reason = _check_continue_config(cfg_path, ctx.switchboard_url)
-        _desc_052 = "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane"  # 0.5.2
-        if ok:
-            results.append(passed(7, "0.5.2", _desc_052))
-        else:
-            results.append(failed(7, "0.5.2", _desc_052, reason))
-    except Exception as e:
-        _desc_052 = "Continue config targets switchboard ingress with local harness chat lane and continue-local tab lane"  # 0.5.2
-        results.append(failed(7, "0.5.2", _desc_052, str(e)))
-
-    # 0.5.3 VSCodium Continue extension
-    try:
-        env = {**os.environ, "HOME": ctx.primary_home, "USER": ctx.primary_user, "LOGNAME": ctx.primary_user,
-               "PATH": ctx.primary_user_path}
-        r = subprocess.run(
-            ["bash", "--noprofile", "--norc", "-c",
-             "codium --list-extensions 2>/dev/null | tr '[:upper:]' '[:lower:]'"],
-            capture_output=True, text=True, env=env, timeout=15,
-        )
-        if "continue.continue" in r.stdout:
-            results.append(passed(7, "0.5.3", "VSCodium has Continue extension installed"))
-        else:
-            results.append(failed(7, "0.5.3", "VSCodium has Continue extension installed",
-                                  "not found in extension list"))
-    except Exception as e:
-        results.append(failed(7, "0.5.3", "VSCodium has Continue extension installed", str(e)))
-
-    # 0.5.4 continue-local profile
     try:
         data = http_json(f"{ctx.switchboard_url}/health", timeout=8)
         if data:
-            profile = ((data.get("profiles") or {}).get("continue-local") or {})
-            ok = (
-                str(profile.get("forceProvider") or "") == "local"
-                and int(profile.get("maxOutputTokens") or 0) > 0
-                and int(profile.get("maxInputTokens") or 0) > 0
-                and len(str(profile.get("profileCard") or "")) > 0
-            )
-            if ok:
-                results.append(passed(7, "0.5.4", "continue-local switchboard profile ready"))
+            profiles = data.get("profiles") or {}
+            if profiles.get("local-agent"):
+                results.append(passed(7, "0.5.1", "switchboard exposes local-agent profile"))
             else:
-                results.append(failed(7, "0.5.4", "continue-local switchboard profile ready",
-                                      str(profile)[:80]))
+                results.append(failed(7, "0.5.1", "switchboard exposes local-agent profile", "profile missing"))
+            if profiles.get("local-coding"):
+                results.append(passed(7, "0.5.2", "switchboard exposes local-coding profile"))
+            else:
+                results.append(failed(7, "0.5.2", "switchboard exposes local-coding profile", "profile missing"))
         else:
-            results.append(failed(7, "0.5.4", "continue-local switchboard profile ready", "no switchboard response"))
+            results.append(failed(7, "0.5.1", "switchboard exposes local-agent profile", "no switchboard response"))
+            results.append(failed(7, "0.5.2", "switchboard exposes local-coding profile", "no switchboard response"))
     except Exception as e:
-        results.append(failed(7, "0.5.4", "continue-local switchboard profile ready", str(e)))
+        results.append(failed(7, "0.5.1", "switchboard exposes local-agent profile", str(e)))
+        results.append(failed(7, "0.5.2", "switchboard exposes local-coding profile", str(e)))
 
-    # 0.5.5 continue-local large context trim
-    script = ctx.repo_root / "scripts" / "testing" / "test-switchboard-continue-context-window.sh"
-    if cmd_ok("bash", str(script)):
-        results.append(passed(7, "0.5.5", "continue-local trims oversized dense prompts"))
-    else:
-        results.append(failed(7, "0.5.5", "continue-local trims oversized dense prompts"))
-
-    # 0.5.6 editor flow smoke — up to 60s: 5 HTTP calls × up to ~10s each under load
-    flow_script = ctx.repo_root / "scripts" / "testing" / "smoke-continue-editor-flow.sh"
-    if cmd_ok("bash", str(flow_script), timeout=60):
-        results.append(passed(7, "0.5.6", "Continue/editor prompt to feedback smoke"))
-    else:
-        results.append(failed(7, "0.5.6", "Continue/editor prompt to feedback smoke"))
+    results.append(skipped(7, "0.5.3", "Continue extension health gate",
+                           "retired; local agents route through switchboard profiles"))
+    results.append(skipped(7, "0.5.4", "continue-local switchboard profile ready",
+                           "retired; use local-agent/local-coding profiles"))
+    results.append(skipped(7, "0.5.5", "continue-local context trimming",
+                           "retired; context budgets are enforced by switchboard profiles"))
+    results.append(skipped(7, "0.5.6", "Continue/editor prompt to feedback smoke",
+                           "retired; no local-agent runtime dependency"))
 
     # 0.5.7 editor corpus budget
     if os.environ.get("AQ_QA_SKIP_REPORT_BACKED_CHECKS", "0") == "1":

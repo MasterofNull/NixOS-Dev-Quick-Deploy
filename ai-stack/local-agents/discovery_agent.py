@@ -93,7 +93,11 @@ class DiscoveryAgent:
 
     async def discover_opportunities(self, persist: bool = True) -> Dict[str, Any]:
         logger.info("Scanning for system and code optimization opportunities.")
-        return await asyncio.to_thread(self._discover_sync, persist)
+        # The scanner is deterministic local file/JSON work and should complete
+        # quickly. Running it through asyncio.to_thread() has hung asyncio.run()
+        # shutdown in sandboxed Python 3.13 agent contexts because the default
+        # executor worker remains alive after the scan returns.
+        return self._discover_sync(persist)
 
     def _discover_sync(self, persist: bool) -> Dict[str, Any]:
         candidates: List[Dict[str, Any]] = []

@@ -57,6 +57,25 @@ fail() {
   _tap_results+=("not_ok:${tap_index}:$*")
 }
 
+log_failed_qa_rows() {
+  local output="$1"
+  local max_rows="${2:-30}"
+  local failed_rows
+
+  failed_rows=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep '✗' | head -n "${max_rows}" || true)
+  if [[ -n "${failed_rows}" ]]; then
+    log "QA failed rows (first ${max_rows}):"
+    while IFS= read -r row; do
+      [[ -n "${row}" ]] && log "  ${row}"
+    done <<< "${failed_rows}"
+  else
+    log "QA output tail:"
+    echo "$output" | tail -10 | while IFS= read -r row; do
+      [[ -n "${row}" ]] && log "  ${row}"
+    done
+  fi
+}
+
 skip() {
   ((tap_index++)) || true
   printf '[tier0] SKIP: %s\n' "$*"
@@ -432,7 +451,7 @@ gate_qa_phase0() {
     timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1
   ) || status=$?
   if [[ "${status}" -eq 124 ]]; then
-    log "Debug output: $(echo "$output" | tail -3)"
+    log_failed_qa_rows "$output" 30
     fail "QA phase 0 timed out after ${qa_timeout}s (continue-local=${continue_local_timeout}s, flagship-help=${flagship_help_timeout}s)"
     return 1
   fi
@@ -470,7 +489,7 @@ gate_qa_phase0() {
     fi
   fi
 
-  log "Debug output: $(echo "$output" | tail -3)"
+  log_failed_qa_rows "$output" 30
   fail "QA phase 0 failed"
   return 1
 }
