@@ -257,6 +257,26 @@ DEFAULT_PROFILES: Dict[str, ModelProfile] = {
 }
 
 
+# Phase A (local scaling): complexity -> lane bias. Flag-gated (default off) until
+# the remote Gemini lane is live and validated. Heavy tasks route to the lane that
+# scales natively (remote); bounded tasks stay on the single-slot local APU.
+# Mirrors config/model-coordinator.json tier_routing (complex/critical -> flagship
+# remote; trivial/simple/medium -> local/balanced).
+_COMPLEXITY_LANE_ROUTING = os.environ.get("AI_COMPLEXITY_LANE_ROUTING", "0").strip() in ("1", "true", "yes", "on")
+_REMOTE_LANE_COMPLEXITIES = frozenset({"complex", "critical", "architecture"})
+
+
+def _complexity_preferred_lane(complexity: str) -> str:
+    """Pure decision: which lane a task complexity prefers.
+
+    Returns "remote" for heavy tasks (they scale natively off-box), "local" for
+    bounded tasks (trivial/simple/medium). Unknown complexity -> "local" (safe
+    default: keep work on the box we control). Callers only NARROW candidate lists
+    when a matching candidate exists, so this never forces an unavailable lane.
+    """
+    return "remote" if str(complexity).lower() in _REMOTE_LANE_COMPLEXITIES else "local"
+
+
 @dataclass
 class RoutingDecision:
     """Result of model routing decision."""
@@ -360,6 +380,20 @@ class ModelCoordinator:
                 local_candidates = [p for p in primary_candidates if p.is_local]
                 if local_candidates:
                     primary_candidates = local_candidates
+
+            # Phase A (flag-gated): when the caller did not force local, bias the lane
+            # by task complexity — heavy tasks prefer remote (scales natively), bounded
+            # tasks prefer local. Only narrows when a matching candidate exists.
+            elif _COMPLEXITY_LANE_ROUTING:
+                lane = _complexity_preferred_lane(classification.complexity)
+                if lane == "remote":
+                    remote_candidates = [p for p in primary_candidates if not p.is_local]
+                    if remote_candidates:
+                        primary_candidates = remote_candidates
+                else:
+                    local_candidates = [p for p in primary_candidates if p.is_local]
+                    if local_candidates:
+                        primary_candidates = local_candidates
 
             if cost_sensitive:
                 primary_candidates.sort(key=lambda p: p.cost_per_1k_tokens)
