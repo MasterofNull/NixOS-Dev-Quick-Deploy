@@ -31,7 +31,17 @@ User decision (2026-07-02): do A + B + embed-offload. NOT C (second local gen mo
 - Embed server: `inference_param_manager.py:113` already polls embed:8081 slots (runs
   `--parallel 4`, ctx 4096) — 4 parallel slots, generation slot is separate.
 
-# Phase A — complexity → lane routing (highest ROI, software-only)
+# Phase A — complexity → lane routing (highest ROI, software-only)  [IMPLEMENTED flag-gated 2026-07-02]
+
+STATUS: implemented behind `AI_COMPLEXITY_LANE_ROUTING` (default off) in
+extensions/model_coordinator.py `classify_and_route` + pure helper
+`_complexity_preferred_lane` (unit-tested: scripts/testing/test-complexity-lane-routing.py,
+10 cases). When the caller has not forced prefer_local, heavy complexities
+(complex/critical/architecture) bias to remote candidates (scale natively), bounded
+(trivial/simple/medium/unknown) bias to local — only NARROWS candidates when a matching
+lane exists, never forces an unavailable lane. LIVE-VALIDATE after the Gemini remote lane
+is up (needs the rebuild) so remote candidates actually exist, then flip the flag on.
+
 
 Route heavy work to remote (scales natively), keep local for bounded tasks.
 
