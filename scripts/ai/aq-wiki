@@ -42,6 +42,15 @@ _GRAPH = _REPO / ".understand-anything" / "knowledge-graph.json"
 _WIKI_DIR = _REPO / ".understand-anything" / "wiki"
 _WIKI_META = _WIKI_DIR / ".wiki-meta.json"
 _AIDB_URL = os.environ.get("AIDB_URL", f"http://127.0.0.1:{os.environ.get('AIDB_PORT', '8002')}")
+_AIDB_KEY_FILE = os.environ.get("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key")
+_AIDB_PROJECT = "wiki-sections"
+
+
+def _aidb_key() -> str:
+    try:
+        return Path(_AIDB_KEY_FILE).read_text().strip()
+    except OSError:
+        return os.environ.get("AIDB_API_KEY", "")
 
 # Subsystem map: name → path prefix in repo + description + related docs.
 # Prefix matching is done on filePath field of graph nodes (may be truncated to ~60 chars).
@@ -508,36 +517,46 @@ def cmd_seed_aidb():
     if not _WIKI_DIR.exists():
         sys.exit("No wiki sections. Run: aq-wiki --init")
 
+    key = _aidb_key()
+    if not key:
+        sys.exit(
+            f"No AIDB API key found at {_AIDB_KEY_FILE} and AIDB_API_KEY env is unset.\n"
+            "Ensure the AIDB secret is provisioned before seeding."
+        )
+
     seeded = failed = 0
     for path in sorted(_WIKI_DIR.glob("*.md")):
         if path.stem == "README":
             continue
         name = path.stem
         info = SUBSYSTEMS.get(name, {})
+        rel_path = str(path.relative_to(_REPO))
         doc = {
-            "collection": "wiki-sections",
-            "doc_id": f"wiki-{name}",
             "content": path.read_text(),
+            "project": _AIDB_PROJECT,
+            "relative_path": rel_path,
+            "title": f"wiki: {name}",
             "metadata": {
                 "subsystem": name,
                 "description": info.get("desc", ""),
                 "type": "wiki-section",
-                "path": str(path.relative_to(_REPO)),
                 "prefix": info.get("prefix", ""),
             },
         }
         try:
             payload = json.dumps(doc).encode()
             req = urllib.request.Request(
-                f"{_AIDB_URL}/ingest",
+                f"{_AIDB_URL}/documents",
                 data=payload,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": key,
+                },
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
-                result = json.loads(resp.read())
-                ok = result.get("status") in ("ok", "stored", "success", "indexed", "upserted")
-                print(f"  {'OK' if ok else 'WARN'} {name}")
+                ok = resp.status in (200, 201)
+                print(f"  {'OK' if ok else 'WARN'} {name} [{resp.status}]")
                 seeded += 1
         except urllib.error.HTTPError as exc:
             body = ""
@@ -546,9 +565,6 @@ def cmd_seed_aidb():
             except Exception:
                 pass
             print(f"  FAIL {name}: HTTP {exc.code} — {body}")
-            # 404 on collection may mean wiki-sections not in ALLOWED_COLLECTIONS
-            if exc.code == 404:
-                print("  HINT: Add 'wiki-sections' to AIDB ALLOWED_COLLECTIONS in options.nix")
             failed += 1
         except Exception as exc:
             print(f"  FAIL {name}: {exc}")
@@ -556,7 +572,7 @@ def cmd_seed_aidb():
 
     print(f"\nSeeded {seeded} sections to AIDB, {failed} failed.")
     if failed:
-        print("HINT: Ensure AIDB is running and 'wiki-sections' is in ALLOWED_COLLECTIONS")
+        print("HINT: Ensure AIDB is running at", _AIDB_URL)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────

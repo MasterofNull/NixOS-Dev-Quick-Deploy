@@ -35,6 +35,7 @@ ALLOWED_COLLECTIONS: Set[str] = {
     'osint-intelligence',
     'mlops-patterns',
     'qa-patterns',
+    'wiki-sections',            # aq-wiki OpenWiki-pattern sections (added 2026-07-01)
     # Legacy names (stale — not in Qdrant, kept for backward compat)
     'nixos_docs',
     'solved_issues',
