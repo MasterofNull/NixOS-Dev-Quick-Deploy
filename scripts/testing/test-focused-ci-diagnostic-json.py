@@ -115,6 +115,41 @@ def test_json_schema_fields() -> None:
     Path(tmp_path).unlink(missing_ok=True)
 
 
+def test_exit_77_is_recorded_as_skip() -> None:
+    minimal_registry = {
+        "checks": [
+            {
+                "id": "sandbox-skip-test",
+                "description": "sandbox skip exit code test",
+                "trigger_paths": ["scripts/governance/run-focused-ci-checks.sh"],
+                "command": [
+                    sys.executable,
+                    "-c",
+                    "import sys; print('sandbox denied', file=sys.stderr); sys.exit(77)",
+                ],
+                "enabled": True,
+                "always_run": True,
+                "timeout_seconds": 5,
+            }
+        ]
+    }
+    with tempfile.TemporaryDirectory() as tmpdir:
+        reg_path = Path(tmpdir) / "registry.json"
+        reg_path.write_text(json.dumps(minimal_registry))
+        json_path = str(Path(tmpdir) / "focused.json")
+        env = {**os.environ, "REGISTRY": str(reg_path), "FOCUSED_CI_JSON": json_path, "MODE": "--pre-commit"}
+        result = subprocess.run(
+            ["bash", str(RUNNER), "--pre-commit"],
+            capture_output=True, text=True, env=env,
+        )
+        assert_true(result.returncode == 0, f"runner treated skip as failure: {result.returncode}\n{result.stderr}")
+        doc = json.loads(Path(json_path).read_text())
+        assert_true(doc["overall_status"] == "skip", "all-skipped focused-CI run is skip")
+        assert_true(doc["checks_skipped"] == 1, "skip count recorded")
+        assert_true(doc["checks"][0]["status"] == "skip", "check status recorded as skip")
+        assert_true(doc["checks"][0]["exit_code"] == 77, "skip exit code recorded")
+
+
 def test_validation_health_reads_artifact() -> None:
     import importlib.util
     from importlib.machinery import SourceFileLoader
@@ -172,6 +207,7 @@ if __name__ == "__main__":
     tests = [
         ("JSON written when env set", test_json_written_when_env_set),
         ("JSON schema fields", test_json_schema_fields),
+        ("exit 77 recorded as skip", test_exit_77_is_recorded_as_skip),
         ("validation_health reads artifact", test_validation_health_reads_artifact),
         ("validation_health no_data when absent", test_validation_health_no_data_when_absent),
     ]

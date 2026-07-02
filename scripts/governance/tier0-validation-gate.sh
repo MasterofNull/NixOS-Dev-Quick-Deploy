@@ -41,6 +41,21 @@ log() {
   printf '[tier0] %s\n' "$*"
 }
 
+path_accepts_write() {
+  local target="$1"
+  local dir
+  local probe
+  dir="$(dirname "${target}")"
+  mkdir -p "${dir}" 2>/dev/null || return 1
+  probe="${dir}/.tier0-write-probe.$$"
+  if (: > "${probe}") 2>/dev/null; then
+    rm -f "${probe}" 2>/dev/null || true
+    return 0
+  fi
+  rm -f "${probe}" 2>/dev/null || true
+  return 1
+}
+
 pass() {
   ((pass_count++)) || true
   ((tap_index++)) || true
@@ -402,7 +417,7 @@ gate_focused_ci_checks() {
   local _ci_primary="/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json"
   local _ci_fallback="${HOME}/.cache/nixos-ai-stack/latest-focused-ci.json"
   local _ci_artifact=""
-  if [[ -w "${_ci_primary}" ]]; then
+  if path_accepts_write "${_ci_primary}"; then
     _ci_artifact="${_ci_primary}"
   else
     mkdir -p "$(dirname "${_ci_fallback}")"
