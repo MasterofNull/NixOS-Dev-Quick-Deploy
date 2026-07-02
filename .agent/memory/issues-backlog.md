@@ -1206,10 +1206,20 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Severity: low (declarative-only; remote lane pending rebuild)
   File: config/model-coordinator.json (tiers.google); nix/hosts/hyperd/deploy-options.nix; scripts/ai/delegate-to-antigravity
 
-[OPEN] switchboard-remote-lane-ceiling-isolation — Ensure the switchboard's LOCAL defensive ceilings (enable_thinking=false in chat_template_kwargs, local thinking_budget ~200, single-slot throttle) are gated to LOCAL profiles ONLY and NEVER applied to remote-gemini/remote-* profiles. Rationale (user 2026-07-02): ceilings exist solely because local Qwen runs single-slot on Renoir APU (~1-3.45 tok/s) where an unbounded thinking loop locks the harness ~40min / risks KV-cache OOM. Remote Gemini has none of these limits — it scales to native API ceilings (large context, high concurrency, fast gen). Leaking local ceilings onto remote would needlessly cripple Gemini. OPTIONAL: map tier → remote thinking_level (flagship→high, balanced→medium, fast→minimal per tiers.google) for reasoning-depth tuning — opt-in, not required. Verify after Gemini-direct rebuild.
-  Severity: medium (correctness: local ceilings must not leak to remote; reasoning-depth mapping is optional)
+[LARGELY-VERIFIED 2026-07-02] switchboard-remote-lane-ceiling-isolation — CONFIRMED mostly handled: switchboard.py:2440 _apply_local_thinking_profile early-returns for target_type != "local" (line 2444), so enable_thinking/thinking ceilings do NOT reach remote. Remaining verify: single-slot semaphore (_local_sem) + any max_tokens clamps likewise local-gated (check after Gemini rebuild). Rationale (user 2026-07-02): ceilings exist solely because local Qwen runs single-slot on Renoir APU (~1-3.45 tok/s) where an unbounded thinking loop locks the harness ~40min / risks KV-cache OOM. Remote Gemini scales to native API ceilings; leaking local ceilings would needlessly cripple it. OPTIONAL: map tier → remote thinking_level for reasoning-depth tuning (opt-in). Superseded/extended by plan .agents/plans/local-scaling-adaptive-offload.md.
+  Severity: medium (mostly resolved; verify semaphore gating post-rebuild)
   File: ai-stack/switchboard/switchboard.py (remote vs local payload construction)
 
 [MONITOR 2026-07-02] aidb-reindex-project-knowledge-partial — Full-system flush aidb-reindex.sh finished status=partial (3440s): logic_patterns exit=0, domain_knowledge exit=0, project_knowledge exit=2 (some document POSTs failed during ~8150-chunk / 1549-file ingest; bulk succeeded, secret-redaction worked). Non-blocking — corpus largely reindexed. Re-run `scripts/automation/aidb-reindex.sh` off-peak or inspect which files 413'd/timed out if AIDB recall quality regresses.
   Severity: low (soft-partial; majority ingested)
   File: scripts/automation/aidb-reindex.sh; ai-stack/mcp-servers/aidb/ (document ingest)
+
+[DONE] rust-contract-validator-governance-gap — Writable-state policy validation existed as a direct script but was not registered as its own path-gated validation check, so drift in runtime workspace profiles or Nix writable-root policy could avoid focused CI unless another broad gate happened to run.
+  Severity: medium
+  Action: Added dependency-free Rust `harness-contracts` validator crate, converted the writable-state and memory-surface Python tests into compatibility wrappers, added Rust fixture tests for source-layout drift, and registered `nixos-writable-state-policy` plus Rust trigger paths in `config/validation-check-registry.json`.
+  File: Cargo.toml; crates/contract-validator/src/main.rs; scripts/testing/test-nixos-writable-state-policy.py; scripts/testing/test-agent-memory-surface-registry.py; config/validation-check-registry.json
+
+[DONE] package-count-hostplatform-eval-gap — Staging a `flake.nix` change triggered the package-count focused-CI guard, which failed to evaluate NixOS targets because host configs set `nixpkgs.pkgs` but did not explicitly set `nixpkgs.hostPlatform`; the generator then compared a zero-target NixOS map against the baseline.
+  Severity: medium
+  Action: Added `nixpkgs.hostPlatform = lib.mkDefault system'` in the host configuration module so package-count evaluation and modules requiring hostPlatform have an explicit platform, then refreshed `config/package-count-baseline.json` from the corrected evaluator.
+  File: flake.nix; config/package-count-baseline.json; scripts/data/generate-package-counts.sh; scripts/testing/check-package-count-drift.sh
