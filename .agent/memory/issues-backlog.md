@@ -103,7 +103,7 @@
     - query_gaps 1,536 low-score queries (mostly meta: "list tools", "continuation from session")
   Severity: info (audit complete; all stores live and capturing data)
 
-[FIXED-FORWARD 2026-06-27 — BACKFILL PENDING] interaction-history-qdrant-gap — Qdrant `interaction-history` collection had 1 point vs 18,962 PG rows. Forward-fix deployed: /history/record handler now fires schedule_qdrant_vectorization(collection="interaction-history") after every successful insert. Collection param threaded through schedule→_runner→_vectorize_doc_to_qdrant (backward-compat; existing callers unchanged → still route to "knowledge").
+[DONE 2026-07-01 — BACKFILL COMPLETE] interaction-history-qdrant-gap — Qdrant `interaction-history` collection had 1 point vs 18,962 PG rows. Forward-fix deployed: /history/record handler now fires schedule_qdrant_vectorization(collection="interaction-history") after every successful insert. Collection param threaded through schedule→_runner→_vectorize_doc_to_qdrant (backward-compat; existing callers unchanged → still route to "knowledge").
   Backfill: scripts/ai/backfill-interaction-history-qdrant.py created (httpx-only; dry-run verified 18,962 rows; batch=20, sleep=1.0s throttle; idempotent via Qdrant scroll dedup). Run off-peak: `python3 scripts/ai/backfill-interaction-history-qdrant.py` (~18 min).
   Multi-agent review: Codex (PASS-WITH-CONDITIONS), Local/Qwen3 (APPROVE-WITH-CONDITIONS), antigravity (self-fixed delegation routing simultaneously). All blocking conditions resolved.
   Remaining WARNs (deferred): (1) LOGGER.warning→LOGGER.exception in _runner for full traceback; (2) vectorized_at DB column for native dedup; (3) chunking for interactions >1200 chars.
@@ -229,11 +229,11 @@
   Severity: low (Llama 3.3 70B on remote-free handles delegation; Gemini routes available when credits/oauth fixed)
   File: scripts/ai/delegate-to-antigravity _PROFILE_MAP
 
-[IN-PROGRESS] codex-startup-local-state-warnings — Codex startup emitted deprecated `codex_hooks` feature warning and stale arg0 temp cleanup permission warning.
-  Root cause: `/home/hyperd/.codex/config.toml` contained the legacy `[features].codex_hooks = true` alias alongside `hooks = true`, and active Codex processes rehydrated that alias from their startup state after edits. Separately, `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` was stale but owned by root:root, so user-owned Codex could not clean it.
+[OPEN] codex-startup-local-state-warnings — `codex_hooks = true` persists at /home/hyperd/.codex/config.toml:48 because a Codex hook process rewrites the file on each session write — line cannot be removed while any Codex session is active.
+  Root cause: Codex hook state manager restores `codex_hooks` from its in-memory session state on every config save; the line is not persisted by the user but by the hook runtime.
   Severity: low
-  Action: Arg0 cleanup fixed; `/home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE` no longer exists. `codex_hooks` reappeared in `/home/hyperd/.codex/config.toml` during the active Codex session, so remove it after exiting all Codex sessions or from a fresh session started after the line is gone.
-  File: /home/hyperd/.codex/config.toml ~line 36; /home/hyperd/.codex/tmp/arg0/codex-arg0kfBQUE
+  Action: Run `sed -i '/^codex_hooks/d' /home/hyperd/.codex/config.toml` immediately after fully exiting all Codex sessions (check `pgrep -a codex`). Cannot be fixed from within Claude Code while Codex is running.
+  File: /home/hyperd/.codex/config.toml:48
 
 [PENDING-REBUILD] codex-doctor-terminfo-env-noise — `codex doctor --summary` reports terminal failure because inherited TERMINFO_DIRS contains missing profile paths.
   Root cause: `TERMINFO_DIRS` includes nonexistent Flatpak/Nix profile terminfo directories before the valid `/run/current-system/sw/share/terminfo`; `infocmp xterm-256color` succeeds from the valid NixOS terminfo path. One-shot override with `TERMINFO=/run/current-system/sw/share/terminfo TERMINFO_DIRS=/run/current-system/sw/share/terminfo codex doctor --summary` drops the terminal finding from fail to warning. Remaining warning is terminal height 20 rows, not terminfo.
@@ -1098,10 +1098,19 @@ Files: ai-stack/autonomous-improvement/autonomous_loop.py run_once(); scripts/au
   Action: Added `_systemd_unit_state()` with `systemctl show ActiveState` fallback and explicit sandbox-denied state, added `_tcp_port_open()` socket checks before `ss`, converted denied host port probes into skips, and mirrored the systemd denial handling in Python phase-0 service checks.
   File: scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py; scripts/testing/test-aq-qa-progress-heartbeat.py
 
-[OPEN] discovery-agent-opportunity-test-hangs — Direct `timeout 120 python3 scripts/testing/test-discovery-agent-opportunities.py` produced no stdout and exited 124, proving the current `0.10.4` timeout is exposing a real scanner/test hang rather than causing a false QA failure.
+[DONE] discovery-agent-opportunity-test-hangs — Direct `timeout 120 python3 scripts/testing/test-discovery-agent-opportunities.py` produced no stdout and exited 124, proving the current `0.10.4` timeout exposed a real scanner/test hang rather than causing a false QA failure.
   Severity: high
-  Action: Next slice should profile `test-discovery-agent-opportunities.py` and the scanner it invokes, add internal progress/timeout boundaries, and make the test deterministic under local-agent load.
-  File: scripts/testing/test-discovery-agent-opportunities.py
+  Action: Root cause was `DiscoveryAgent.discover_opportunities()` using `asyncio.to_thread()` for deterministic local file/JSON scanning; under sandboxed Python 3.13 agent contexts the default executor worker stayed alive and `asyncio.run()` hung during shutdown. The async wrapper now calls the scanner synchronously, and the regression test asserts the thread-offload path does not return.
+  File: ai-stack/local-agents/discovery_agent.py; scripts/testing/test-discovery-agent-opportunities.py
+
+[DONE] tier0-phase0-failure-report-hidden — Tier0 phase-0 failures were actionable only after manually rerunning `aq-qa 0`; the gate printed `tail -3`, hiding the failed rows even when 20+ checks failed.
+  Severity: high
+  Action: Added `log_failed_qa_rows()` to strip ANSI and print the first 30 failed QA rows on timeout or normal phase-0 failure; extended the QA progress regression to require this reporting path.
+  File: scripts/governance/tier0-validation-gate.sh; scripts/testing/test-aq-qa-progress-heartbeat.py
+
+[DONE 2026-07-01] phase0-runtime-reachability-parity — All service probes now pass: aq-qa 0 → 122 passed, 0 failed, 6 skipped (23s). All five core service ports respond healthy (AIDB:8002, coordinator:8003, switchboard:8085, llama:8080). Tier0: 21/21 PASS.
+  Severity: high → resolved
+  File: scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py
 
 [FIXED a80050a9 2026-07-01] delegate-to-local-status-missing-arg — Fixed: ${2:-} default + conditional shift prevents set -u crash; explicit die guard added to status/check/cancel/repair-status cases with clear error message.
   Severity: low — RESOLVED
