@@ -16,6 +16,7 @@ from ..core.helpers import (
     cmd_ok, cmd_output, output_matches, port_bound,
     http_health_ok, http_get, http_json, http_post_json,
     file_exists, file_readable, json_valid,
+    host_observer_service_status, is_sandbox_denied,
 )
 from ..core.result import CheckResult, passed, failed, skipped
 
@@ -71,9 +72,16 @@ def _check_services(ctx: RunContext) -> list[CheckResult]:
             active = show.stdout.strip() == "active"
         if active:
             results.append(passed(1, f"0.1.1:{svc}", f"unit {unit} active"))
-        elif "operation not permitted" in (r.stderr or "").lower() or "failed to connect" in (r.stderr or "").lower():
-            results.append(skipped(1, f"0.1.1:{svc}", f"unit {unit} active",
-                                   "systemd probe denied in current sandbox"))
+        elif is_sandbox_denied((r.stdout or "") + (r.stderr or "")):
+            observed = host_observer_service_status(svc)
+            if observed and observed.get("status") == "healthy":
+                results.append(passed(1, f"0.1.1:{svc}", f"unit {unit} active via host observer"))
+            elif observed:
+                detail = str(observed.get("status") or observed.get("systemd") or "unhealthy")
+                results.append(failed(1, f"0.1.1:{svc}", f"unit {unit} active", detail[:120]))
+            else:
+                results.append(skipped(1, f"0.1.1:{svc}", f"unit {unit} active",
+                                       "systemd probe denied and host observer unavailable"))
         else:
             results.append(failed(1, f"0.1.1:{svc}", f"unit {unit} active", "not active"))
     return results

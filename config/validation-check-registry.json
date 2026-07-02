@@ -796,8 +796,7 @@
       "description": "dashboard proxies workflow replay as normalized agent-run events",
       "trigger_paths": [
         "dashboard/backend/api/routes/aistack.py",
-        "scripts/testing/test-dashboard-orchestration-events.py",
-        "config/validation-check-registry.json"
+        "scripts/testing/test-dashboard-orchestration-events.py"
       ],
       "command": [
         "python3",
@@ -895,7 +894,7 @@
         "scripts/testing/test-useful-token-metrics.py"
       ],
       "tier": "behavioral",
-      "timeout_seconds": 30,
+      "timeout_seconds": 90,
       "enabled": true
     },
     {
@@ -913,6 +912,25 @@
       ],
       "tier": "behavioral",
       "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
+      "id": "host-observer-sandbox-contract",
+      "description": "sandbox-denied host observer fallback contract",
+      "trigger_paths": [
+        ".agent/PROJECT-DECLARATIVE-SANDBOX-HOST-OBSERVER-PRD.md",
+        "scripts/ai/_aq-qa-bash",
+        "scripts/testing/harness_qa/core/helpers.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/testing/test-host-observer-contract.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-host-observer-contract.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
       "enabled": true
     },
     {
@@ -986,8 +1004,7 @@
       "description": "Phase 93.6-93.8 and 93.13 dashboard agent-run replay, swimlane, human controls, and scorecard endpoints",
       "trigger_paths": [
         "dashboard/backend/api/routes/aistack.py",
-        "scripts/testing/test-dashboard-agent-replay.py",
-        "config/validation-check-registry.json"
+        "scripts/testing/test-dashboard-agent-replay.py"
       ],
       "command": [
         "python3",

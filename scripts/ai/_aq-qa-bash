@@ -220,6 +220,59 @@ _output_contains() {
   grep -qE "$pattern" <<<"$out"
 }
 
+_host_observer_url() {
+  local path="${1:-/api/health/services/all}"
+  local base="${AQ_HOST_OBSERVER_URL:-${DASHBOARD_API_URL:-http://127.0.0.1:8889}}"
+  printf '%s/%s' "${base%/}" "${path#/}"
+}
+
+_host_observer_service_status() {
+  local service_id="$1" payload
+  local artifact="${AQ_HOST_OBSERVER_FILE:-/var/lib/ai-stack/hybrid/telemetry/latest-system-state.json}"
+  if [[ -r "$artifact" ]]; then
+    OBSERVER_FILE="$artifact" python3 - "$service_id" <<'PY' 2>/dev/null && return 0
+import json
+import os
+import sys
+
+service_id = sys.argv[1]
+try:
+    with open(os.environ["OBSERVER_FILE"], encoding="utf-8") as fh:
+        doc = json.load(fh)
+    services = doc.get("services", [])
+    if isinstance(services, list):
+        for service in services:
+            if not isinstance(service, dict) or service.get("name") != service_id:
+                continue
+            status = service.get("status")
+            print("healthy" if status == "active" else status or "unknown")
+            raise SystemExit(0)
+except Exception:
+    pass
+raise SystemExit(1)
+PY
+  fi
+
+  payload="$(_http_get "$(_host_observer_url)" 5 2>/dev/null)" || return 1
+  OBSERVER_PAYLOAD="$payload" python3 - "$service_id" <<'PY' 2>/dev/null
+import json
+import os
+import sys
+
+service_id = sys.argv[1]
+try:
+    doc = json.loads(os.environ.get("OBSERVER_PAYLOAD", ""))
+    service = doc.get("services", {}).get(service_id, {})
+    status = service.get("status")
+    if status:
+        print(status)
+        raise SystemExit(0)
+except Exception:
+    pass
+raise SystemExit(1)
+PY
+}
+
 _http_get() {
   local url="$1" timeout_s="${2:-5}" api_key="${3:-}"
   local out py_err
@@ -298,6 +351,16 @@ _systemd_unit_state() {
   out="$(systemctl is-active "$unit" 2>&1)" && { printf 'active'; return 0; }
   rc=$?
   if grep -qiE 'operation not permitted|failed to connect' <<<"$out"; then
+    local short observer_status
+    short="${unit%.service}"
+    observer_status="$(_host_observer_service_status "$short" || true)"
+    if [[ "$observer_status" == "healthy" ]]; then
+      printf 'observer:healthy'
+      return 0
+    elif [[ -n "$observer_status" ]]; then
+      printf 'observer:%s' "$observer_status"
+      return 0
+    fi
     state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
     if [[ "$state" == "active" ]]; then
       printf 'active'
@@ -729,6 +792,8 @@ run_phase_0() {
     unit_state="$(_systemd_unit_state "$unit")"
     case "$unit_state" in
       active) _pass 1 "0.1.1:$short" "unit $unit active" ;;
+      observer:healthy) _pass 1 "0.1.1:$short" "unit $unit active via host observer" ;;
+      observer:*) _fail 1 "0.1.1:$short" "unit $unit active" "${unit_state#observer:}" ;;
       denied) _skip 1 "0.1.1:$short" "unit $unit active" "systemd probe denied in current sandbox" ;;
       *) _fail 1 "0.1.1:$short" "unit $unit active" "${unit_state#inactive:}" ;;
     esac

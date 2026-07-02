@@ -41,6 +41,73 @@ def cmd_output(*args: str, cwd: str | None = None, env: dict | None = None, time
         return ""
 
 
+_SANDBOX_DENIED_RE = re.compile(
+    r"operation not permitted|permission denied|failed to connect to bus|"
+    r"cannot connect to socket.*daemon-socket|read-only file system",
+    re.IGNORECASE,
+)
+
+
+def is_sandbox_denied(text: str | None) -> bool:
+    """Return True when probe output represents sandbox/permission denial."""
+    return bool(text and _SANDBOX_DENIED_RE.search(text))
+
+
+def host_observer_url(path: str = "/api/health/services/all") -> str:
+    """Return the declared dashboard host-observer URL for agent-safe probes."""
+    base = os.environ.get("AQ_HOST_OBSERVER_URL", "").strip()
+    if not base:
+        dashboard = os.environ.get("DASHBOARD_API_URL", "http://127.0.0.1:8889").rstrip("/")
+        base = dashboard
+    return f"{base.rstrip('/')}/{path.lstrip('/')}"
+
+
+def host_observer_services(timeout: int = 5) -> dict[str, Any] | None:
+    """Return service health map from the declared host observer, if available."""
+    artifact_path = os.environ.get(
+        "AQ_HOST_OBSERVER_FILE",
+        "/var/lib/ai-stack/hybrid/telemetry/latest-system-state.json",
+    )
+    try:
+        with open(artifact_path, encoding="utf-8") as fh:
+            artifact = json.load(fh)
+        services = artifact.get("services")
+        if isinstance(services, list):
+            mapped = {}
+            for service in services:
+                if not isinstance(service, dict) or not service.get("name"):
+                    continue
+                status = service.get("status")
+                mapped[str(service["name"])] = {
+                    **service,
+                    "status": "healthy" if status == "active" else status,
+                    "systemd": {
+                        "active": status == "active",
+                        "status": status,
+                        "sub_state": service.get("sub_state"),
+                    },
+                }
+            if mapped:
+                return mapped
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+
+    data = http_json(host_observer_url(), timeout=timeout)
+    if not isinstance(data, dict):
+        return None
+    services = data.get("services")
+    return services if isinstance(services, dict) else None
+
+
+def host_observer_service_status(service_id: str, timeout: int = 5) -> dict[str, Any] | None:
+    """Return one service health record from the declared host observer."""
+    services = host_observer_services(timeout=timeout)
+    if not services:
+        return None
+    value = services.get(service_id)
+    return value if isinstance(value, dict) else None
+
+
 def output_matches(pattern: str, *args: str, timeout: int = 15) -> bool:
     """Return True if command output matches the regex pattern."""
     out = cmd_output(*args, timeout=timeout)
