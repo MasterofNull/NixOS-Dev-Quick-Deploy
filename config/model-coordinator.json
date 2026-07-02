@@ -16,22 +16,26 @@
       "creative": "claude-fable-5"
     },
     "google": {
-      "_comment": "Gemini 3.x via the antigravity wrapper (delegate-to-antigravity / aq-antigravity-agent -> switchboard -> Gemini backend; NOT OpenRouter, which is unused). Effort levels low|medium|high. CONFIRM before rebuild: (a) exact api id strings, (b) whether effort is a reasoning_effort request param or encoded in the id. Default remote lane = flash-3.5 medium; complex/critical = 3.1-pro high.",
+      "_comment": "Google Gemini direct (generativelanguage.googleapis.com/v1beta/openai) via the antigravity wrapper -> switchboard -> Gemini backend; NOT OpenRouter (unused). LATEST ids: gemini-3.1-pro (advanced reasoning, complex science/coding), gemini-3.5-flash (high-efficiency, multimodal, speed, agentic loops), gemini-3.1-flash-lite (ultra-efficient, cost-sensitive high-volume). Baseline fallback ids: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash (Vertex AI adds -001 suffix). EFFORT (OPTIONAL, remote-native): the *_thinking_level values below are Google's native reasoning-depth control (thinking_level preset minimal|low|medium|high, or thinking_config.thinking_budget int; Vertex thinkingConfig.thinkingBudget). They tune remote reasoning DEPTH only — they are NOT defensive throttles. The remote lane scales to native API ceilings (large context, high concurrency, fast gen); do NOT apply the local Qwen ceilings (enable_thinking=false / thinking_budget~200) here. /v1beta/openai does NOT support OpenAI reasoning_effort. Default lane = gemini-3.5-flash; complex/critical = gemini-3.1-pro.",
       "flagship": "gemini-3.1-pro",
-      "flagship_effort": "high",
-      "flagship_economy": "gemini-3.1-pro",
-      "flagship_economy_effort": "low",
-      "balanced": "gemini-flash-3.5",
-      "balanced_effort": "medium",
-      "fast": "gemini-flash-3.5",
-      "fast_effort": "low",
-      "deep": "gemini-flash-3.5",
-      "deep_effort": "high"
+      "flagship_thinking_level": "high",
+      "balanced": "gemini-3.5-flash",
+      "balanced_thinking_level": "medium",
+      "fast": "gemini-3.1-flash-lite",
+      "fast_thinking_level": "minimal",
+      "deep": "gemini-3.1-pro",
+      "deep_thinking_level": "high",
+      "baseline_fallback": {
+        "flagship": "gemini-2.5-pro",
+        "balanced": "gemini-2.5-flash",
+        "fast": "gemini-2.5-flash-lite"
+      }
     },
     "openai": {
       "flagship": "gpt-5.5"
     },
     "local": {
+      "_comment": "Local Qwen (single slot, SWB_LOCAL_CONCURRENCY=1, ~1-3.45 tok/s on Renoir APU / 27GB RAM). DEFENSIVE CEILINGS APPLY HERE ONLY: switchboard injects enable_thinking=false (in chat_template_kwargs) and a small local thinking_budget (~200) to prevent a single unbounded thinking loop from locking the harness ~40min or ballooning the KV cache into a GPU OOM. These ceilings must NEVER be applied to remote lanes.",
       "coding": "qwen3-35b",
       "chat": "qwen3-35b"
     }
