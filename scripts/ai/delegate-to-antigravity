@@ -59,16 +59,18 @@ _SWB_PROFILE = os.environ.get("ANTIGRAVITY_SWB_PROFILE", "remote-free")
 
 # Model hints passed to switchboard (profile aliases override these to bare
 # Gemini model ids per nix/hosts/hyperd/deploy-options.nix).
-# Aligned with config/model-coordinator.json tiers.google (Gemini 3.x via the
-# antigravity wrapper): flagship=gemini-3.1-pro, default/balanced=gemini-flash-3.5.
-# Bump here if tiers change. CONFIRM exact id strings before rebuild (post-cutoff).
+# Aligned with config/model-coordinator.json tiers.google (Google Gemini direct
+# via the antigravity wrapper): flagship=gemini-3.1-pro, default=gemini-3.5-flash,
+# fast=gemini-3.1-flash-lite (baseline fallback: gemini-2.5-*). Bump here if tiers
+# change. Effort is a switchboard concern (thinking_level / thinking_config), not
+# a model-id suffix.
 _MODEL_MAP = {
-    "fast":        "gemini-flash-3.5",
-    "flash":       "gemini-flash-3.5",
+    "fast":        "gemini-3.1-flash-lite",
+    "flash":       "gemini-3.1-flash-lite",
     "pro":         "gemini-3.1-pro",
     "architect":   "gemini-3.1-pro",
-    "implementer": "gemini-flash-3.5",
-    "reviewer":    "gemini-flash-3.5",
+    "implementer": "gemini-3.5-flash",
+    "reviewer":    "gemini-3.5-flash",
 }
 
 def _swb_url() -> str:
