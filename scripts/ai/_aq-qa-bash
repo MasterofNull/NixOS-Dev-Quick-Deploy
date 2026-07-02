@@ -220,6 +220,71 @@ _output_contains() {
   grep -qE "$pattern" <<<"$out"
 }
 
+_http_get() {
+  local url="$1" timeout_s="${2:-5}"
+  local out py_err
+  out="$(curl -sf --max-time "${timeout_s}" "$url" 2>/dev/null)" && {
+    printf '%s' "$out"
+    return 0
+  }
+  py_err="$(mktemp)"
+  if python3 - "$url" "$timeout_s" 2>"${py_err}" <<'PY'
+import sys
+from urllib.request import urlopen
+
+url = sys.argv[1]
+timeout_s = float(sys.argv[2])
+with urlopen(url, timeout=timeout_s) as response:
+    sys.stdout.write(response.read().decode("utf-8", "replace"))
+PY
+  then
+    rm -f "${py_err}"
+    return 0
+  fi
+  if grep -qiE 'Operation not permitted|PermissionError' "${py_err}"; then
+    rm -f "${py_err}"
+    return 77
+  fi
+  rm -f "${py_err}"
+  return 1
+}
+
+_http_post_json() {
+  local url="$1" json="$2" timeout_s="${3:-10}" api_key="${4:-}"
+  local out py_err
+  local headers=(-H "Content-Type: application/json")
+  if [[ -n "$api_key" ]]; then
+    headers+=(-H "X-API-Key: ${api_key}")
+  fi
+  out="$(curl -sf --max-time "${timeout_s}" "${headers[@]}" -d "$json" "$url" 2>/dev/null)" && {
+    printf '%s' "$out"
+    return 0
+  }
+  py_err="$(mktemp)"
+  if python3 - "$url" "$json" "$timeout_s" "$api_key" 2>"${py_err}" <<'PY'
+import sys
+from urllib.request import Request, urlopen
+
+url, payload, timeout_s, api_key = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4]
+headers = {"Content-Type": "application/json"}
+if api_key:
+    headers["X-API-Key"] = api_key
+request = Request(url, data=payload.encode("utf-8"), headers=headers, method="POST")
+with urlopen(request, timeout=timeout_s) as response:
+    sys.stdout.write(response.read().decode("utf-8", "replace"))
+PY
+  then
+    rm -f "${py_err}"
+    return 0
+  fi
+  if grep -qiE 'Operation not permitted|PermissionError' "${py_err}"; then
+    rm -f "${py_err}"
+    return 77
+  fi
+  rm -f "${py_err}"
+  return 1
+}
+
 _systemd_unit_state() {
   local unit="$1" out rc state
   out="$(systemctl is-active "$unit" 2>&1)" && { printf 'active'; return 0; }
@@ -338,15 +403,51 @@ _continue_cli_help() {
 _http_health() {
   local layer="$1" id="$2" desc="$3" url="$4"
   if ! _should_run "$layer"; then return 0; fi
-  local status
+  local body rc status
   _qa_progress_start "$layer" "$id" "$desc"
-  status=$(curl -sf --max-time 5 "$url" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
+  set +e
+  body="$(_http_get "$url" 5)"
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 77 ]]; then
+    _skip "$layer" "$id" "$desc" "HTTP probe denied in current sandbox"
+    _qa_progress_stop "skip" "$layer" "$id" "$desc" "HTTP probe denied in current sandbox"
+    return
+  fi
+  status=$(printf '%s' "$body" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
   if [[ "$status" == "ok" ]]; then
     _pass "$layer" "$id" "$desc"
     _qa_progress_stop "pass" "$layer" "$id" "$desc"
   else
     _fail "$layer" "$id" "$desc" "status='$status' url=$url"
     _qa_progress_stop "fail" "$layer" "$id" "$desc" "status='$status' url=$url"
+  fi
+}
+
+_check_http_output() {
+  local layer="$1" id="$2" desc="$3" pattern="$4" url="$5" timeout_s="${6:-5}"
+  if ! _should_run "$layer"; then return 0; fi
+  local out rc
+  _qa_progress_start "$layer" "$id" "$desc"
+  set +e
+  out="$(_http_get "$url" "$timeout_s")"
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 77 ]]; then
+    _skip "$layer" "$id" "$desc" "HTTP probe denied in current sandbox"
+    _qa_progress_stop "skip" "$layer" "$id" "$desc" "HTTP probe denied in current sandbox"
+    return
+  elif [[ "$rc" -ne 0 ]]; then
+    _fail "$layer" "$id" "$desc" "HTTP probe failed"
+    _qa_progress_stop "fail" "$layer" "$id" "$desc" "HTTP probe failed"
+    return
+  fi
+  if printf '%s' "$out" | grep -qE "$pattern"; then
+    _pass "$layer" "$id" "$desc"
+    _qa_progress_stop "pass" "$layer" "$id" "$desc"
+  else
+    _fail "$layer" "$id" "$desc" "output: ${out:0:80}"
+    _qa_progress_stop "fail" "$layer" "$id" "$desc" "output: ${out:0:80}"
   fi
 }
 
@@ -745,17 +846,17 @@ except Exception:
   if _should_run 2; then
     _http_health 2 "0.4.1" "llama-server /health" "${LLAMA_URL}/health"
     _http_health 2 "0.4.2" "embedding server /health" "http://127.0.0.1:8081/health"
-    _check_output 6 "0.4.3" "embedding server returns model info" '"id":' \
-      curl -sf "http://127.0.0.1:8081/v1/models"
+    _check_http_output 6 "0.4.3" "embedding server returns model info" '"id":' \
+      "http://127.0.0.1:8081/v1/models" 5
   fi
 
   # 0.5 Current agent ingress basics. Continue/editor checks are retired:
   # local agent routing now goes through switchboard profiles and delegation CLIs.
   if _should_run 7; then
-    _check_output 7 "0.5.1" "switchboard exposes local-agent profile" '"local-agent"' \
-      curl -sf --max-time 8 "${SWITCHBOARD_URL}/health"
-    _check_output 7 "0.5.2" "switchboard exposes local-coding profile" '"local-coding"' \
-      curl -sf --max-time 8 "${SWITCHBOARD_URL}/health"
+    _check_http_output 7 "0.5.1" "switchboard exposes local-agent profile" '"local-agent"' \
+      "${SWITCHBOARD_URL}/health" 8
+    _check_http_output 7 "0.5.2" "switchboard exposes local-coding profile" '"local-coding"' \
+      "${SWITCHBOARD_URL}/health" 8
     _skip 7 "0.5.3" "Continue extension health gate" "retired; local agents route through switchboard profiles"
     _skip 7 "0.5.4" "continue-local switchboard profile ready" "retired; use local-agent/local-coding profiles"
     _skip 7 "0.5.5" "continue-local context trimming" "retired; context budgets are enforced by switchboard profiles"

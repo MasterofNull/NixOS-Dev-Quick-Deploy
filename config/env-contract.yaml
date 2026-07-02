@@ -1029,6 +1029,27 @@ variables:
     consumers: [aq-qa, harness_qa]
     description: "Timeout in seconds for /query routing checks in aq-qa"
 
+  - canonical: AQ_QA_DISCOVERY_OPPORTUNITY_TIMEOUT_SECONDS
+    aliases: []
+    default: "30"
+    layer: shell
+    consumers: [aq-qa]
+    description: "Timeout in seconds for the discovery-agent opportunity scanner QA check"
+
+  - canonical: AQ_QA_FLAGSHIP_CLI_SURFACE_TIMEOUT_SECONDS
+    aliases: []
+    default: "60"
+    layer: shell
+    consumers: [aq-qa]
+    description: "Outer timeout in seconds for the aggregate flagship agent CLI QA smoke"
+
+  - canonical: AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS
+    aliases: []
+    default: "45"
+    layer: shell
+    consumers: [aq-qa, flagship-cli-smoke]
+    description: "Per-command timeout in seconds for flagship agent CLI help smoke checks"
+
   - canonical: AQ_QA_PORT_RETRY_ATTEMPTS
     aliases: []
     default: "4"
