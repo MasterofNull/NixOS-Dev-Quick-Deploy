@@ -1,0 +1,6 @@
+fatal: ambiguous argument '=== UNSTAGED ===ngit': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+fatal: ambiguous argument '=== UNSTAGED ===ngit': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
