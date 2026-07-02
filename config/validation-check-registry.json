@@ -1342,6 +1342,10 @@
       "description": "Phase 157 \u2014 agent memory, current state, RAG facts, and raw learning feedback surfaces are classified and governed",
       "trigger_paths": [
         ".gitignore",
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/contract-validator/Cargo.toml",
+        "crates/contract-validator/src/main.rs",
         "config/agent-memory-surface-registry.json",
         "docs/operations/agent-memory-state-standard.md",
         "scripts/testing/test-agent-memory-surface-registry.py",
@@ -1353,6 +1357,28 @@
       "command": [
         "python3",
         "scripts/testing/test-agent-memory-surface-registry.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "nixos-writable-state-policy",
+      "description": "Rust-backed NixOS writable-state and agent workspace contract regression",
+      "trigger_paths": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/contract-validator/Cargo.toml",
+        "crates/contract-validator/src/main.rs",
+        "config/runtime-isolation-profiles.json",
+        "docs/development/NIXOS-WRITABLE-STATE-REQUIREMENTS.md",
+        "nix/modules/core/options.nix",
+        "nix/modules/services/mcp-servers.nix",
+        "scripts/testing/test-nixos-writable-state-policy.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-nixos-writable-state-policy.py"
       ],
       "tier": "behavioral",
       "timeout_seconds": 30,

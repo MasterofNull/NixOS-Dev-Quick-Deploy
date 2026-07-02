@@ -3,6 +3,8 @@ AGENTS.md
 .aider.md
 .aiexclude
 # Allowed tracked files at repository root.
+Cargo.lock
+Cargo.toml
 CLAUDE.md
 dashboard.html
 deploy

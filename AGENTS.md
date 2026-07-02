@@ -154,22 +154,22 @@ curl -s http://127.0.0.1:8889/api/<route> | python3 -m json.tool  # live data
 
 | Tier | Location | Rule |
 |------|----------|------|
-| **Hot** | `MEMORY.md` (auto-loaded) | Index + pointers only. Hard limit: 150 lines. Never append phase dumps. |
-| **Warm** | Topic files (e.g. `phase68-audit.md`) | Active work detail. Read on demand. |
-| **Cold** | `archive/` | Write-once. Move warm files here after 2 sessions without reference. |
+| **Hot** | `ai-stack/agent-memory/MEMORY.md` | Index + pointers only. Keep under the line budget in `config/agent-memory-surface-registry.json`. Never append phase dumps. |
+| **Warm** | `.agent/memory/*.md` topic files (e.g. `phase68-audit.md`) | Active work detail. Read on demand. |
+| **Cold** | `.agent/memory/archive/` | Write-once. Move warm files here after 2 sessions without reference. |
 
 **Degradation rules (all agents must follow):**
-1. Phase complete + deployed → collapse MEMORY.md entry to 1-line pointer → topic file
-2. Topic file not referenced in 2+ sessions → move to `archive/`
-3. MEMORY.md never grows — swap entries, don't append
-4. Promote a pattern to MEMORY.md only if it recurs in 2+ separate sessions
-5. Never store session-specific context (current task, in-progress state) in MEMORY.md
-6. `mcp_server_store_memory` writes go to topic files, not raw MEMORY.md dumps
+1. Phase complete + deployed → collapse `ai-stack/agent-memory/MEMORY.md` entry to 1-line pointer → topic file
+2. Topic file not referenced in 2+ sessions → move to `.agent/memory/archive/`
+3. `ai-stack/agent-memory/MEMORY.md` never grows — swap entries, don't append
+4. Promote a pattern to `ai-stack/agent-memory/MEMORY.md` only if it recurs in 2+ separate sessions
+5. Never store session-specific context (current task, in-progress state) in `ai-stack/agent-memory/MEMORY.md`
+6. `mcp_server_store_memory` writes go to topic files, not raw hot-index dumps
 
 **Topic file naming:**
-- Active phase: `memory/phaseNN-<topic>.md`
-- Permanent references: `memory/infra-constraints.md`, `memory/agent-coordination.md`
-- Archive: `memory/archive/<topic>.md`
+- Active phase: `.agent/memory/phaseNN-<topic>.md`
+- Permanent references: `.agent/memory/infra-constraints.md`, `.agent/memory/agent-coordination.md`
+- Archive: `.agent/memory/archive/<topic>.md`
 
 ## Issue Logging (Mandatory — Rule 11)
 
@@ -180,7 +180,7 @@ This applies whether the issue is fixed immediately or deferred. Never silently 
 known hardware/config limitation hit · auth/AppArmor/scheduler block encountered · metric
 anomaly spotted · any "we'll fix this later" moment.
 
-**How to log:** append to `memory/issues-backlog.md` (create if missing):
+**How to log:** append to `.agent/memory/issues-backlog.md` (create if missing):
 ```
 [STATUS] SCOPE — Description — Root cause / fix notes
   Severity: low|medium|high|critical
@@ -189,7 +189,7 @@ anomaly spotted · any "we'll fix this later" moment.
 ```
 Statuses: `[OPEN]` · `[PENDING-REBUILD]` · `[IN-FLIGHT]` · `[DONE]`
 
-**Then:** update the `## Issues Backlog` index entry in `MEMORY.md`.
+**Then:** update the `## Issues Backlog` index entry in `ai-stack/agent-memory/MEMORY.md`.
 
 ## Critical Rules
 - Never hardcode secrets, API keys, ports, or URLs — load from env/`/run/secrets/*`

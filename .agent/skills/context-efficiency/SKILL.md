@@ -113,17 +113,17 @@ Do NOT run both `agrep` AND Grep for the same pattern — pick one.
 
 ---
 
-## 6. MEMORY.md Budget Rules
+## 6. Hot Memory Budget Rules
 
-MEMORY.md has a 200-line hard limit (lines after 200 are truncated on load).
+`ai-stack/agent-memory/MEMORY.md` has a 200-line hard limit (lines after 200 are truncated on load).
 
 Degradation rules:
 1. Phase complete + deployed → collapse to 1-line pointer to topic file
 2. Topic file not referenced in 2+ sessions → move to archive/
-3. MEMORY.md never grows — swap entries, don't append
+3. `ai-stack/agent-memory/MEMORY.md` never grows — swap entries, don't append
 4. Bug patterns promoted only if they hit in 2+ separate sessions
 
-Writing new facts to MEMORY.md: write to a topic file first, add a 1-line pointer to MEMORY.md.
+Writing new facts to hot memory: write to a topic file first, add a 1-line pointer to `ai-stack/agent-memory/MEMORY.md`.
 
 ---
 

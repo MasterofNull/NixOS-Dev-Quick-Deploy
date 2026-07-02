@@ -318,7 +318,7 @@ After every code/config change, keep the system current and hygienic:
 - Update **HANDOFF.md** with what changed and any open follow-ups
 - Update **AGENTS.md** / **WORKFLOW-CANON.md** if workflow rules changed
 - Update relevant agent .md files (GEMINI.md, CODEX.md, LOCAL-AGENT.md, CLAUDE.md) if operating parameters changed
-- Add new **promoted bug patterns** to `memory/MEMORY.md` if a silent bug hit 2+ sessions
+- Add new **promoted bug patterns** to `ai-stack/agent-memory/MEMORY.md` if a silent bug hit 2+ sessions
 - **Seed RAG** collections with new patterns: `python3 scripts/data/seed-rag-knowledge.py --collection error-solutions`
 No commit without at least updating HANDOFF.md. No code change without checking if a new error pattern should be seeded.
 
