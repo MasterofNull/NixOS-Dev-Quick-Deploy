@@ -103,3 +103,10 @@ Learning loops are complete only when their outputs are measurable. Raw events
 should flow into reports, scorecards, or dashboard surfaces before they influence
 automation. If an agent outcome changes a workflow contract, it needs a visible
 metric or QA gate in the same slice.
+
+## Runtime Probe Evidence Rule
+
+QA probes that touch local services, sockets, or systemd must distinguish
+environment-denied access from service failure. Sandbox-denied probes should
+emit explicit `SKIP` rows with the denied surface named; zero-count datastore
+results should only fail when the probe successfully reached the backing store.
