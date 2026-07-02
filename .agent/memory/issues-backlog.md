@@ -1162,3 +1162,35 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Severity: medium (no user impact; coordinator routes serve live requests correctly via other paths)
   Action: Added to config/qa-xfail.yaml; endpoints need implementation or QA probe alignment before expiry.
   File: config/qa-xfail.yaml; ai-stack/mcp-servers/hybrid-coordinator/
+
+[OPEN] sandbox-observability-contract-fragmentation — Agent-side audits still surface routine host-observability denials as command errors or noisy skips even when services are healthy. Evidence from 2026-07-02 audit: `ss -tlnp` denied netlink in the managed agent sandbox until escalated; `systemctl is-active ai-drop-daemon` denied system bus access until escalated; `aq-report` marked cache prewarm state with system-bus denial text; `aq-qa 0 --machine` passed with 55 sandbox/unreachable skips.
+  Severity: medium
+  Action: Define a narrow host-observer contract/API for service state, listening ports, recent logs, QA progress, and sandbox/AppArmor denial summaries; migrate `aq-qa`, `aq-report`, and dashboard health surfaces to shared status classes (`pass`, `fail`, `skip_sandbox_denied`, `skip_not_configured`, `xfail_known_gap`, `error_probe_bug`) instead of ad hoc `systemctl`/`ss`/raw socket probes in agent contexts.
+  File: scripts/ai/aq-report; scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py; dashboard/backend/api/
+
+[OPEN] security-auth-hardening-smoke-stale-source — `scripts/testing/check-api-auth-hardening.sh` fails immediately with `missing http server source` because it still expects `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`, while coordinator auth now lives under `router.py`, `middleware/auth.py`, `core/auth_middleware.py`, and `http_server_impl.py`.
+  Severity: medium
+  Action: Update the smoke to inspect the current auth middleware/source layout and keep the runtime `/workflow/sessions` invalid-key probe; add/adjust a regression test so auth hardening checks fail on missing middleware, not on stale filenames.
+  File: scripts/testing/check-api-auth-hardening.sh; ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py; ai-stack/mcp-servers/hybrid-coordinator/router.py
+
+[OPEN] security-scanner-skill-stale-secret-hygiene-command — `.agent/skills/security-scanner/SKILL.md` tells agents to run `scripts/governance/check-secret-hygiene.sh`, but that script is absent; the fallback grep is too broad and not aligned with the current security wrappers.
+  Severity: low
+  Action: Replace the stale command with the current canonical secret/security check path or add a small compatibility wrapper; rerun skill validation and security smoke after the update.
+  File: .agent/skills/security-scanner/SKILL.md; scripts/security/
+
+[DONE] memory-hot-index-reference-drift — Current agent instructions required a hot `MEMORY.md` index and updates to its `## Issues Backlog` entry without naming the canonical path. The hot index exists at `ai-stack/agent-memory/MEMORY.md`; the defect was stale bare-path references in active docs/skills.
+  Severity: medium
+  Action: Updated active agent instructions and skills to point to `ai-stack/agent-memory/MEMORY.md`, kept warm topics under `.agent/memory/*.md`, and added a registry test to block future stale hot-memory references.
+  File: AGENTS.md; README.md; .agent/SKILL_INDEX.md; .agent/WORKFLOW-CANON.md; .agent/GEMINI.md; .agent/skills/context-efficiency/SKILL.md; scripts/testing/test-agent-memory-surface-registry.py
+
+[PENDING-REBUILD] agentic-runtime-workspace-dac-denial — Runtime isolation profiles declare agent workspace roots under `/var/lib/nixos-ai-stack/mutable/program/`, and MCP services include them in `ReadWritePaths`, but the roots were provisioned `0750` so ai-stack service users could traverse but not create files unless they owned the directory.
+  Severity: high
+  Action: Updated `ai-mutable-path-bootstrap` and tmpfiles rules to create runtime workspace roots as `0770 ${primaryUser}:ai-stack`, preserving read-only repo mounts while permitting service-created agent files. Requires `nixos-rebuild switch` to activate.
+  File: nix/modules/services/mcp-servers.nix; config/runtime-isolation-profiles.json; scripts/testing/test-nixos-writable-state-policy.py
+
+[FIXED-PARTIAL 2026-07-02] antigravity-delegation-dual-lane-failure — delegate-to-antigravity failed on BOTH lanes: (1) remote-free (OpenRouter meta-llama/llama-3.3-70b-instruct:free) HTTP 429 rate-limited on free tier; (2) local-coding fallback then failed with "Expecting value: line 1 column 1 (char 0)" — a JSON parse error.
+  Root cause (lane 2, FIXED): switchboard FORCES stream=True for local profiles (journal: "forced stream=True for local chat/completions profile=local-coding") regardless of the client's stream=False. delegate-to-antigravity did json.loads(resp.read()) on the SSE body (data: {...}) → parse failure → fallback wrongly reported failed. Added _parse_completion_response() handling both SSE and plain JSON. Unit-tested (SSE/JSON/empty/final-message-chunk all pass).
+  Root cause (lane 1, OPEN — needs user decision): remote-free routes to OpenRouter free tier which 429s constantly. The tool is NAMED "antigravity" (Google's Gemini agentic product) but REMOTE_LLM_URL=https://openrouter.ai/api — naming/architecture mismatch. Options: add OpenRouter credits, switch remoteUrl to Google generativelanguage (needs Google API key in SOPS), or make antigravity local-only + rename. Awaiting user architectural decision.
+  Also found: zombie `gemini` npm CLI process (PID from old ping test) still running despite gemini CLI being retired (IneligibleTierError) — needs reaping.
+  Severity: high (remote fan-out lane unreliable; local fallback now works)
+  File: scripts/ai/delegate-to-antigravity (_parse_completion_response); nix/modules/core/options.nix (remoteUrl); nix/modules/services/switchboard.nix
