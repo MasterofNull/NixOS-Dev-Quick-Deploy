@@ -7,7 +7,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 HYB_URL="${HYB_URL:-http://127.0.0.1:8003}"
-HTTP_SERVER="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/http_server.py"
+# Coordinator auth moved out of the old monolithic server module into a dedicated
+# middleware layer (middleware/auth.py + core/auth_middleware.py), with the aiohttp
+# app assembled in http_server_impl.py. Inspect the current auth source so this
+# check fails on MISSING MIDDLEWARE, not on a stale filename.
+AUTH_MIDDLEWARE="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py"
+CORE_AUTH="${ROOT}/ai-stack/mcp-servers/hybrid-coordinator/core/auth_middleware.py"
 
 pass() { echo "[PASS] $*"; }
 warn() { echo "[WARN] $*" >&2; }
@@ -27,17 +32,28 @@ search_file() {
   fi
 }
 
-[[ -f "$HTTP_SERVER" ]] || fail "missing http server source"
+# Fail on missing MIDDLEWARE (a real auth regression), not a stale filename.
+[[ -f "$AUTH_MIDDLEWARE" ]] || fail "auth middleware source missing: middleware/auth.py"
 
-if search_file 'api_key_middleware' "$HTTP_SERVER" >/dev/null; then
-  pass "api_key middleware present"
+if search_file 'def create_api_key_middleware' "$AUTH_MIDDLEWARE" >/dev/null; then
+  pass "api_key middleware present (create_api_key_middleware in middleware/auth.py)"
 else
-  fail "api_key middleware missing"
+  fail "api_key middleware missing (create_api_key_middleware not found in middleware/auth.py)"
 fi
 
-# Ensure explicit public exceptions are minimal.
-pub_count="$({ search_file 'request\.path in \("/health", "/metrics"\)' "$HTTP_SERVER" || true; } | wc -l | tr -d ' ')"
-[[ "$pub_count" -ge 1 ]] || warn "public endpoint exception pattern not found"
+# core/auth_middleware.py must wire the middleware into the app assembly.
+if [[ -f "$CORE_AUTH" ]] && search_file 'create_api_key_middleware' "$CORE_AUTH" >/dev/null; then
+  pass "api_key middleware wired via core/auth_middleware.py"
+else
+  warn "core/auth_middleware.py does not reference create_api_key_middleware"
+fi
+
+# Ensure public exceptions are an explicit, minimal allowlist (PUBLIC_PATHS).
+if search_file 'PUBLIC_PATHS' "$AUTH_MIDDLEWARE" >/dev/null; then
+  pass "public-path allowlist present (PUBLIC_PATHS)"
+else
+  warn "explicit public-path allowlist (PUBLIC_PATHS) not found"
+fi
 
 if curl -fsS "${HYB_URL}/health" >/dev/null 2>&1; then
   code="$(curl -sS -o /tmp/auth-hardening.out -w "%{http_code}" -H 'X-API-Key: invalid' "${HYB_URL}/workflow/sessions" || true)"
