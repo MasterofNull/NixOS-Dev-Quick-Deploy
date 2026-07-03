@@ -129,6 +129,65 @@ PYEOF
     )" 2>/dev/null || true
 fi
 
+# ── 6. Collaborator awareness (multi-agent grounding) ─────────────────────────
+# Grounding must include the current + recent status of OTHER running agents so we
+# don't collide on the shared index, redo their work, or mis-attribute failures.
+# json-only (no PyYAML dep), best-effort, never blocks hydration.
+printf '[6/6] Collaborator awareness...\n'
+_PULSE="${REPO_ROOT}/.agent/collaboration/PULSE.log"
+_PENDING="${REPO_ROOT}/.agent/collaboration/PENDING.json"
+running_agents="$(pgrep -af 'codex|gemini|opencode' 2>/dev/null \
+    | grep -viE 'pgrep|aq-session-start|grep ' \
+    | python3 -c "import sys,re
+seen=set()
+for ln in sys.stdin:
+    for n in ('codex','gemini','opencode'):
+        if re.search(r'\b'+n+r'\b', ln): seen.add(n)
+print(', '.join(sorted(seen)) or '(none detected)')" 2>/dev/null || echo '(unknown)')"
+uncommitted_n="$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+collab_out="$(python3 - "$_PULSE" "$_PENDING" <<'PYEOF'
+import sys, json, re
+from collections import OrderedDict
+pulse_path, pending_path = sys.argv[1], sys.argv[2]
+out=[]
+try:
+    raw=open(pulse_path).read().splitlines()
+    latest=OrderedDict()
+    pat=re.compile(r'^\[?([0-9T:\-Z\.]+)\]?\s*\[?([A-Za-z0-9\-]+)\]?\s*(.*)$')
+    for ln in raw[-100:]:
+        m=pat.match(ln.strip())
+        if not m: continue
+        ts,agent,rest=m.group(1),m.group(2),m.group(3)
+        a=agent.lower()
+        if a in ('claude','codex','gemini','local') or 'claude' in a or 'codex' in a or 'gemini' in a:
+            latest[agent]=(ts, rest[:90])
+    if latest:
+        out.append('Recent activity by agent:')
+        for agent,(ts,act) in list(latest.items())[-6:]:
+            out.append(f'  - {agent}: {act} ({ts[:19]})')
+    for ln in reversed(raw[-50:]):
+        low=ln.lower()
+        if 'rebuild' in low and 'pending' in low:
+            out.append(f'  ! PENDING REBUILD noted: {ln.strip()[:110]}')
+            break
+except Exception:
+    pass
+try:
+    data=json.load(open(pending_path))
+    tasks = data if isinstance(data,list) else (data.get('tasks') or data.get('pending') or [])
+    inflight=[t for t in tasks if isinstance(t,dict) and str(t.get('status','')).lower() in ('pending','in-progress','in_progress','running','dispatched')]
+    if inflight:
+        out.append(f'In-flight delegated tasks: {len(inflight)}')
+        for t in inflight[:5]:
+            owner=t.get('agent') or t.get('owner') or t.get('assignee') or '?'
+            desc=str(t.get('intent') or t.get('task') or t.get('description') or t.get('id') or '')[:70]
+            out.append(f'  - [{owner}] {desc}')
+except Exception:
+    pass
+print('\n'.join(out) if out else '(no recent collaborator activity)')
+PYEOF
+)" 2>/dev/null || collab_out="(collaborator awareness unavailable)"
+
 # ── Build context document ────────────────────────────────────────────────────
 {
     printf '# Session Context — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -191,6 +250,11 @@ PYEOF
         printf '(lessons unavailable)\n'
     fi
 
+    printf '\n## Active Collaborators (multi-agent awareness)\n'
+    printf 'Running agents: %s\n' "$running_agents"
+    printf 'Uncommitted files in shared tree: %s (cross-check ownership via PULSE/HANDOFF before staging; use `git commit -o <pathspec>`)\n' "${uncommitted_n:-?}"
+    printf '%s\n' "$collab_out"
+
     printf '\n## Hierarchical Context (AGENTS.md cascade)\n'
     if [[ -n "$hier_context" ]]; then
         printf '%s\n' "$hier_context" | head -40
@@ -250,6 +314,7 @@ fi
 printf '\n--- Session Brief ---\n'
 printf 'Task : %s\n' "$task"
 printf 'Date : %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+printf 'Collab: running=[%s] uncommitted=%s\n' "$running_agents" "${uncommitted_n:-?}"
 python3 - "$lessons_out" <<'PYEOF'
 import json, sys
 try:
