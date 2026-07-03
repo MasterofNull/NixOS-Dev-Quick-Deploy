@@ -21,6 +21,19 @@ def assert_true(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def _yaml_parser_available() -> bool:
+    """Mirror check-doc-frontmatter's parser gate: PyYAML or yq. On this host's
+    intentionally-minimal gate python neither may be present, in which case the
+    checker cannot load its schema and degrades to a graceful skip."""
+    try:
+        import yaml  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    import shutil
+    return shutil.which("yq") is not None
+
+
 def test_registry_has_pass_staged_files() -> None:
     doc = json.loads(REGISTRY.read_text())
     doc_fm_check = next(
@@ -94,6 +107,17 @@ owner: test-agent
             text=True,
             cwd=str(ROOT),
         )
+        if not _yaml_parser_available():
+            # No YAML parser => the checker cannot parse frontmatter or load the
+            # schema, so it degrades to a graceful skip (exit 0). Invalid doc_types
+            # are only catchable when a parser is present (CI). Assert the skip is
+            # clean and honest rather than a silent pass.
+            assert_true(
+                result.returncode == 0 and "SKIP" in result.stdout,
+                f"no-parser env should skip gracefully; got rc={result.returncode} "
+                f"stdout={result.stdout}",
+            )
+            return
         assert_true(
             result.returncode != 0,
             f"invalid doc_type should fail; stdout: {result.stdout}",

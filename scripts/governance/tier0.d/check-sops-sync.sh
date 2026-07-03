@@ -43,7 +43,13 @@ if [[ ! -f "$SOPS_FILE" ]]; then
 fi
 
 # Extract top-level YAML keys from SOPS file (excluding the 'sops' metadata key).
-sops_keys=$(python3 - "$SOPS_FILE" <<'PYEOF'
+# This check is the "full stack down" guardrail (a secrets.nix/SOPS mismatch fails
+# sops-install-secrets at boot), so it MUST NOT silently degrade when the ambient
+# python lacks PyYAML. Prefer PyYAML for exactness; otherwise fall back to a pure
+# line parser — SOPS files are flat top-level mappings (`secret_name: ENC[...]`
+# plus a `sops:` metadata block), so unindented `key:` lines are the top keys.
+if python3 -c "import yaml" 2>/dev/null; then
+  sops_keys=$(python3 - "$SOPS_FILE" <<'PYEOF'
 import sys, yaml
 with open(sys.argv[1]) as f:
     data = yaml.safe_load(f)
@@ -51,7 +57,11 @@ keys = sorted(k for k in data.keys() if k != 'sops')
 for k in keys:
     print(k)
 PYEOF
-)
+  )
+else
+  echo "$TAG NOTE: PyYAML unavailable — using yaml-free top-level key extraction"
+  sops_keys=$(grep -oE '^[A-Za-z_][A-Za-z0-9_]*:' "$SOPS_FILE" | sed 's/:$//' | grep -vx 'sops' | sort -u)
+fi
 
 # Build a mapping of option attribute name → default string value from options.nix.
 # e.g. "aidbApiKey" -> "aidb_api_key"
