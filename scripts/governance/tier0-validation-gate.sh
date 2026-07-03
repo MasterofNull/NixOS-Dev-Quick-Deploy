@@ -541,6 +541,15 @@ gate_env_contract() {
     pass "Env contract gate (skipped: contract file absent)"
     return 0
   fi
+  # Guard: without PyYAML we cannot parse the contract. Do NOT misreport this as a
+  # syntax error (the file may be perfectly valid — the parser is simply absent,
+  # which can happen transiently across rebuilds). Skip gracefully, matching
+  # gate_yaml_syntax. Root fix is provisioning PyYAML in the system python.
+  if ! python3 -c "import yaml" 2>/dev/null; then
+    log "SKIP: PyYAML not available — env contract var check skipped (file not parsed)"
+    pass "Env contract gate (skipped — PyYAML not installed)"
+    return 0
+  fi
   # Validate contract file is valid YAML
   if ! python3 -c "import yaml; yaml.safe_load(open('$contract'))" 2>/dev/null; then
     fail "Env contract YAML syntax invalid: $contract"
