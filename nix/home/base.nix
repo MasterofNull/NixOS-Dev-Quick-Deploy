@@ -572,6 +572,10 @@ in {
         ps.trio
         ps.httpx
         ps.redis
+        # pyyaml: governance gates (check-doc-frontmatter, env-contract) and several
+        # aq-* CLIs parse YAML; without it they degrade to yaml-free/skip fallbacks.
+        # Provisioning it in the CLI python lets those checks validate fully.
+        ps.pyyaml
         # Note: pytest-anyio doesn't exist in nixpkgs; anyio includes pytest plugin
         jupyterlab
         notebook
