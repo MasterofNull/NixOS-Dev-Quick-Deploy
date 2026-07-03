@@ -53,8 +53,24 @@
     "antigravity"
     "google-cloud-sdk"
   ];
+  # aq-agent-loop / aq-loop and several aq-* CLIs run under the SYSTEM python
+  # (#!/usr/bin/env python3 -> /run/current-system/sw/bin/python3), NOT the
+  # home-manager withPackages python (which is not exposed as python3 on PATH).
+  # The local-agent tool infrastructure imports httpx (required) + redis (lazy in
+  # collective_memory); governance gates parse yaml. Bare `pkgs.python3` lacks
+  # these, so the agentic loop fast-fails "No module named 'httpx'". Provision a
+  # withPackages python and replace the bare one below.
+  cliPython = pkgs.python3.withPackages (ps: with ps; [
+    httpx
+    pyyaml
+    redis
+  ]);
+  cliPythonNames = [ "python3" "python3Full" "python312" "python313" ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
-  missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) mergedPackageNames;
+  # Drop bare python3 names: replaced by cliPython (withPackages) in
+  # environment.systemPackages to avoid a bin/python3 buildEnv collision.
+  filteredPackageNames = builtins.filter (n: !(builtins.elem n cliPythonNames)) mergedPackageNames;
+  missingPackageNames = builtins.filter (name: !(builtins.hasAttr name pkgs)) filteredPackageNames;
   resolvedPackages = builtins.filter (pkg: pkg != null) (
     map (
       name:
@@ -62,7 +78,7 @@
         then pkgs.${name}
         else null
     )
-    mergedPackageNames
+    filteredPackageNames
   );
   prismLauncherDevPackages = with pkgs; [
     binutils
@@ -70,7 +86,9 @@
     extra-cmake-modules
     ninja
     pkg-config
-    python3
+    # python3 intentionally omitted here: the system cliPython (python3 +
+    # httpx/pyyaml/redis) already provides bin/python3 and satisfies the
+    # PrismLauncher build. Re-adding bare python3 causes a buildEnv collision.
     llvmPackages.clang-tools
     qt6.qtbase
     qt6.qtbase.dev
@@ -265,7 +283,7 @@ in {
       binfmt = lib.mkDefault true;
     };
 
-    environment.systemPackages = resolvedPackages ++ profileDevPackages ++ devHelperPackages;
+    environment.systemPackages = resolvedPackages ++ [ cliPython ] ++ profileDevPackages ++ devHelperPackages;
 
     systemd.tmpfiles.rules = lib.mkIf cfg.deployment.mutableSpaces.enable (
       (map (path: "d ${path} 0750 ${cfg.primaryUser} ${primaryGroup} -") mutableUserPaths)
