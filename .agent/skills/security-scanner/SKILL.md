@@ -82,9 +82,16 @@ git log -p | grep -iE "password|secret|api_key|token" | head -20
 # Pre-commit hook check
 git diff --cached | grep -iE "(password|secret|token|key)\s*=\s*['\"]"
 
-# File content scan
-scripts/governance/check-secret-hygiene.sh 2>/dev/null || \
-  grep -rn --include="*.{py,sh,json,yaml}" -E "sk-|ghp_|AIza" .
+# File content scan — canonical secret guards (the old standalone hygiene script
+# was retired; these are the current SSOT paths):
+#   - pre-commit/pre-push hooks enforce the secret-pattern SSOT on staged/pushed diffs
+#   - check-sops-sync.sh verifies every secrets.nix key exists in the encrypted SOPS file
+scripts/governance/tier0.d/check-sops-sync.sh --pre-commit 2>/dev/null || true
+# Ad-hoc scan using the same high-signal patterns as the pre-commit secret guard:
+rg -nI -e 'AKIA[0-9A-Z]{16}' -e 'ghp_[A-Za-z0-9]{36}' -e 'github_pat_[A-Za-z0-9_]{20,}' \
+       -e 'sk-[A-Za-z0-9]{20,}' -e 'xox[baprs]-[A-Za-z0-9-]{10,}' \
+       -e '-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----' . 2>/dev/null \
+  || echo "no high-signal secrets found"
 ```
 
 ### Dependency Vulnerabilities
