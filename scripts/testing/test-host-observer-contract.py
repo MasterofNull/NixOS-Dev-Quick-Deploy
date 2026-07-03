@@ -93,6 +93,9 @@ def test_bash_phase_runner_uses_host_observer() -> None:
     assert_true("AQ_HOST_OBSERVER_FILE" in text, "bash runner reads observer artifact")
     assert_true("observer:healthy" in text, "bash runner maps healthy observer state")
     assert_true("unit $unit active via host observer" in text, "bash runner reports observer-backed pass")
+    assert_true("_host_observer_service_for_port_name" in text, "bash runner maps port checks to observer services")
+    assert_true("host port probe denied in current sandbox" in text, "bash runner preserves denied-port skip fallback")
+    assert_true("$desc via host observer" in text, "bash runner reports observer-backed port pass")
 
 
 if __name__ == "__main__":
