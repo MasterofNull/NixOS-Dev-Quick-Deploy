@@ -273,6 +273,22 @@ raise SystemExit(1)
 PY
 }
 
+_host_observer_service_for_port_name() {
+  case "$1" in
+    redis) printf 'redis-mcp' ;;
+    postgres) printf 'postgresql' ;;
+    qdrant) printf 'qdrant' ;;
+    llama-cpp) printf 'llama-cpp' ;;
+    llama-embed) printf 'llama-cpp-embed' ;;
+    aidb) printf 'ai-aidb' ;;
+    hybrid-coordinator) printf 'ai-hybrid-coordinator' ;;
+    ralph-wiggum) printf 'ai-ralph-wiggum' ;;
+    switchboard) printf 'ai-switchboard' ;;
+    prometheus) printf 'prometheus' ;;
+    *) return 1 ;;
+  esac
+}
+
 _http_get() {
   local url="$1" timeout_s="${2:-5}" api_key="${3:-}"
   local out py_err
@@ -733,6 +749,7 @@ _port() {
   local layer="$1" id="$2" desc="$3" port="$4"
   local attempts="${AQ_QA_PORT_RETRY_ATTEMPTS:-4}"
   local delay="${AQ_QA_PORT_RETRY_DELAY_SECONDS:-1}"
+  local port_name="${id#0.2.1:}"
   local i denied=0
   for ((i=1; i<=attempts; i++)); do
     local port_rc
@@ -755,6 +772,15 @@ _port() {
     (( i < attempts )) && sleep "${delay}"
   done
   if [[ "$denied" -eq 1 ]]; then
+    local observer_service observer_status
+    observer_service="$(_host_observer_service_for_port_name "$port_name" || true)"
+    if [[ -n "$observer_service" ]]; then
+      observer_status="$(_host_observer_service_status "$observer_service" || true)"
+      if [[ "$observer_status" == "healthy" ]]; then
+        _pass "$layer" "$id" "$desc via host observer"
+        return 0
+      fi
+    fi
     _skip "$layer" "$id" "$desc" "host port probe denied in current sandbox"
     return 0
   fi
