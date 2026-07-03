@@ -182,20 +182,13 @@ cmd_plan() {
 
     cd "$COLLAB_DIR"
     python3 -c "
-import asyncio
-from collaborative_planning import CollaborativePlanner
+from collaborative_planning import CollaborativePlanning
 
-async def main():
-    planner = CollaborativePlanner()
-
-    try:
-        plan_id = planner.create_plan('$objective')
-        print(f'✓ Plan created: {plan_id}')
-        print(f'  Objective: $objective')
-    finally:
-        await planner.close()
-
-asyncio.run(main())
+planner = CollaborativePlanning()
+plan_id = planner.create_plan(task_id='$collab_id', team_id='collab')
+planner._save_state()
+print(f'✓ Plan created: {plan_id}')
+print(f'  Objective: $objective')
 "
 }
 
@@ -214,34 +207,33 @@ cmd_synthesize() {
     python3 -c "
 import asyncio
 import json
-from collaborative_planning import CollaborativePlanner
+from collaborative_planning import CollaborativePlanning
 
 async def main():
-    planner = CollaborativePlanner()
+    planner = CollaborativePlanning()
 
-    try:
-        # Get plan
-        plan = planner.active_plans.get('$plan_id')
-        if not plan:
-            print(f'Error: Plan not found: $plan_id')
-            return
+    # Get plan (active_plans is in-memory per-process; cross-invocation synth
+    # requires the plan to have been created in this same process/session)
+    plan = planner.active_plans.get('$plan_id')
+    if not plan:
+        print(f'Error: Plan not found: $plan_id')
+        print('  (plans are held in-memory per invocation — see follow-up: aq-collaborate-plan-persistence)')
+        return
 
-        # Mock agent capabilities for now
-        agent_capabilities = {
-            'agent_1': 0.85,
-            'agent_2': 0.80,
-            'agent_3': 0.90
-        }
+    # Mock agent capabilities (Dict[str, List[str]] as expected by _assign_phases_to_agents)
+    agent_capabilities = {
+        'agent_1': ['implementation', 'testing'],
+        'agent_2': ['analysis', 'review'],
+        'agent_3': ['architecture', 'planning'],
+    }
 
-        # Synthesize
-        synthesized = await planner.synthesize_plan('$plan_id', agent_capabilities)
+    # Synthesize
+    synthesized = await planner.synthesize_plan('$plan_id', agent_capabilities)
 
-        print(f'✓ Plan synthesized: {len(synthesized.synthesized_phases)} phases')
-        for i, phase in enumerate(synthesized.synthesized_phases, 1):
-            print(f'  {i}. {phase.title} ({phase.phase_type.value})')
-            print(f'     Assigned to: {phase.assigned_agent}')
-    finally:
-        await planner.close()
+    print(f'✓ Plan synthesized: {len(synthesized.phases)} phases')
+    for i, phase in enumerate(synthesized.phases, 1):
+        print(f'  {i}. {phase.name} ({phase.phase_type.value})')
+        print(f'     Assigned to: {phase.assigned_agent}')
 
 asyncio.run(main())
 "
