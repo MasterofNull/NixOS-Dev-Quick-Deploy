@@ -44,6 +44,14 @@ _WIKI_META = _WIKI_DIR / ".wiki-meta.json"
 _AIDB_URL = os.environ.get("AIDB_URL", f"http://127.0.0.1:{os.environ.get('AIDB_PORT', '8002')}")
 _AIDB_KEY_FILE = os.environ.get("AIDB_API_KEY_FILE", "/run/secrets/aidb_api_key")
 _AIDB_PROJECT = "wiki-sections"
+# Dedicated Qdrant collection for targeted wiki retrieval. POST /documents always
+# vectorizes into the shared 'knowledge' collection (server default), so a named
+# 'wiki-sections' collection — declared in AIDB ALLOWED_COLLECTIONS and expected by
+# collection-scoped queries — must be created + populated directly here (embed via
+# AIDB /vector/embed, upsert to Qdrant). Mirrors the archive_collaboration workaround.
+_QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333").rstrip("/")
+_WIKI_COLLECTION = "wiki-sections"
+_EMBED_DIM = int(os.environ.get("AIDB_EMBEDDING_DIMENSION", "1024"))
 
 
 def _aidb_key() -> str:
@@ -513,6 +521,74 @@ def cmd_section(name: str):
     sys.stdout.write(path.read_text())
 
 
+def _embed_via_aidb(text: str, key: str) -> list:
+    """Embed text through AIDB /vector/embed (1024-dim, same model as knowledge).
+
+    Truncate to ~512 tokens (~1200 chars) — the embed server 500s on longer input.
+    Matches the server's own _vectorize_doc_to_qdrant convention (server.py:3043).
+    """
+    payload = json.dumps({"texts": [text[:1200]]}).encode()
+    req = urllib.request.Request(
+        f"{_AIDB_URL}/vector/embed",
+        data=payload,
+        headers={"Content-Type": "application/json", "X-API-Key": key},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    embs = data.get("embeddings") or data.get("vectors") or []
+    if not embs:
+        raise ValueError("embed returned no vector")
+    return embs[0]
+
+
+def _ensure_wiki_collection() -> bool:
+    """Create the wiki-sections Qdrant collection if absent (mirrors knowledge: 1024/Cosine)."""
+    try:
+        req = urllib.request.Request(f"{_QDRANT_URL}/collections/{_WIKI_COLLECTION}", method="GET")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status == 200:
+                return True
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            print(f"  WARN: collection probe HTTP {exc.code}")
+    except Exception as exc:
+        print(f"  WARN: Qdrant unreachable at {_QDRANT_URL}: {exc}")
+        return False
+    body = json.dumps({"vectors": {"size": _EMBED_DIM, "distance": "Cosine"}}).encode()
+    req = urllib.request.Request(
+        f"{_QDRANT_URL}/collections/{_WIKI_COLLECTION}",
+        data=body, headers={"Content-Type": "application/json"}, method="PUT",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            ok = resp.status in (200, 201)
+            print(f"  {'CREATED' if ok else 'WARN'} Qdrant collection '{_WIKI_COLLECTION}' [{resp.status}]")
+            return ok
+    except Exception as exc:
+        print(f"  WARN: could not create collection '{_WIKI_COLLECTION}': {exc}")
+        return False
+
+
+def _upsert_wiki_point(name: str, content: str, rel_path: str, info: dict, key: str) -> bool:
+    """Embed a section and upsert it as a point into the wiki-sections Qdrant collection."""
+    import hashlib
+    vector = _embed_via_aidb(f"wiki: {name}\n\n{content}", key)
+    point_id = int(hashlib.md5(rel_path.encode()).hexdigest()[:8], 16)
+    payload = {
+        "project": _AIDB_PROJECT, "title": f"wiki: {name}", "subsystem": name,
+        "relative_path": rel_path, "content": content[:4000],
+        "description": info.get("desc", ""), "type": "wiki-section",
+    }
+    body = json.dumps({"points": [{"id": point_id, "vector": vector, "payload": payload}]}).encode()
+    req = urllib.request.Request(
+        f"{_QDRANT_URL}/collections/{_WIKI_COLLECTION}/points?wait=true",
+        data=body, headers={"Content-Type": "application/json"}, method="PUT",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return resp.status < 300
+
+
 def cmd_seed_aidb():
     if not _WIKI_DIR.exists():
         sys.exit("No wiki sections. Run: aq-wiki --init")
@@ -524,7 +600,9 @@ def cmd_seed_aidb():
             "Ensure the AIDB secret is provisioned before seeding."
         )
 
-    seeded = failed = 0
+    # Ensure the dedicated wiki-sections Qdrant collection exists for targeted retrieval.
+    coll_ready = _ensure_wiki_collection()
+    seeded = failed = coll_upserts = 0
     for path in sorted(_WIKI_DIR.glob("*.md")):
         if path.stem == "README":
             continue
@@ -570,7 +648,16 @@ def cmd_seed_aidb():
             print(f"  FAIL {name}: {exc}")
             failed += 1
 
-    print(f"\nSeeded {seeded} sections to AIDB, {failed} failed.")
+        # Also upsert into the dedicated wiki-sections Qdrant collection (targeted retrieval).
+        if coll_ready:
+            try:
+                if _upsert_wiki_point(name, path.read_text(), rel_path, info, key):
+                    coll_upserts += 1
+            except Exception as exc:
+                print(f"  WARN {name}: wiki-sections upsert failed: {exc}")
+
+    print(f"\nSeeded {seeded} sections to AIDB (knowledge), {failed} failed.")
+    print(f"Upserted {coll_upserts}/{seeded} into dedicated '{_WIKI_COLLECTION}' Qdrant collection.")
     if failed:
         print("HINT: Ensure AIDB is running at", _AIDB_URL)
 
