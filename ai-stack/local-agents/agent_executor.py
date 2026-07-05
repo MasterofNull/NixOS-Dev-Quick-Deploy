@@ -890,11 +890,17 @@ class LocalAgentExecutor:
             "planning", "prd", "deep_reasoning",
         })
         _is_analysis_only_task = (task.task_type or "").lower() in _ANALYSIS_ONLY_TASK_TYPES
-        _IMPLEMENTATION_MAX_READS_WITHOUT_EDIT = 8
-        _IMPLEMENTATION_READS_HARD_LIMIT = 12
-        _ANALYSIS_MAX_READS_WITHOUT_CHECKPOINT = 24
-        _ANALYSIS_READS_HARD_LIMIT = 80
-        _REPEATED_READ_PATH_LIMIT = 4
+        # Stagnation thresholds are env-tunable so we can empirically probe where the
+        # boundary is the GUARD vs the model (capability-envelope experiments). Defaults
+        # unchanged — set AI_AGENT_* only for controlled runs. Large-file multi-edit
+        # tasks legitimately re-read to locate several edit sites; too-tight limits abort
+        # a capable model prematurely.
+        _env_int = lambda name, default: max(1, int(os.environ.get(name, str(default))))
+        _IMPLEMENTATION_MAX_READS_WITHOUT_EDIT = _env_int("AI_AGENT_IMPL_MAX_READS_WITHOUT_EDIT", 8)
+        _IMPLEMENTATION_READS_HARD_LIMIT = _env_int("AI_AGENT_IMPL_READS_HARD_LIMIT", 12)
+        _ANALYSIS_MAX_READS_WITHOUT_CHECKPOINT = _env_int("AI_AGENT_ANALYSIS_MAX_READS", 24)
+        _ANALYSIS_READS_HARD_LIMIT = _env_int("AI_AGENT_ANALYSIS_READS_HARD_LIMIT", 80)
+        _REPEATED_READ_PATH_LIMIT = _env_int("AI_AGENT_REPEATED_READ_PATH_LIMIT", 4)
         _MAX_READS_WITHOUT_EDIT = (
             _ANALYSIS_MAX_READS_WITHOUT_CHECKPOINT
             if _is_analysis_only_task else _IMPLEMENTATION_MAX_READS_WITHOUT_EDIT
