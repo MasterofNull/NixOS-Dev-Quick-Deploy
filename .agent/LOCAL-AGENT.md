@@ -465,6 +465,7 @@ When a task is beyond your capability or tools, say so and request delegation â€
 | List directory | `list_files` | Do not use shell `ls` |
 | Search contents | `search_files` | grep-equivalent, returns matches |
 | Run whitelisted commands | `run_command` | SAFE_COMMANDS whitelist; RTK auto-compresses output when installed (`"compressed": true` in response) |
+| Consult codebase mapping | `run_command('aq-wiki --section <name>')` | understand-anything subsystem wiki (hybrid-coordinator, switchboard, aidb, local-agent, governance, â€¦); `--list`/`--status` for coverage. Use BEFORE scanning raw source for orientation. Now whitelisted in SAFE_COMMANDS. |
 | Git status/diff | `git_status`, `git_diff` | Read-only git introspection |
 | Stage files | `git_add` | Only stage specific files |
 | Validate before commit | `validate_before_commit` | MANDATORY before any commit |
