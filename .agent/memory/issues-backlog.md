@@ -1180,15 +1180,15 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Action: Define a narrow host-observer contract/API for service state, listening ports, recent logs, QA progress, and sandbox/AppArmor denial summaries; migrate `aq-qa`, `aq-report`, and dashboard health surfaces to shared status classes (`pass`, `fail`, `skip_sandbox_denied`, `skip_not_configured`, `xfail_known_gap`, `error_probe_bug`) instead of ad hoc `systemctl`/`ss`/raw socket probes in agent contexts.
   File: scripts/ai/aq-report; scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py; dashboard/backend/api/
 
-[OPEN] security-auth-hardening-smoke-stale-source — `scripts/testing/check-api-auth-hardening.sh` fails immediately with `missing http server source` because it still expects `ai-stack/mcp-servers/hybrid-coordinator/http_server.py`, while coordinator auth now lives under `router.py`, `middleware/auth.py`, `core/auth_middleware.py`, and `http_server_impl.py`.
+[DONE 2026-07-05] security-auth-hardening-smoke-stale-source — `scripts/testing/check-api-auth-hardening.sh` failed immediately with `missing http server source` because it still expected `http_server.py`, while coordinator auth moved to `middleware/auth.py`, `core/auth_middleware.py`, `http_server_impl.py`.
   Severity: medium
-  Action: Update the smoke to inspect the current auth middleware/source layout and keep the runtime `/workflow/sessions` invalid-key probe; add/adjust a regression test so auth hardening checks fail on missing middleware, not on stale filenames.
-  File: scripts/testing/check-api-auth-hardening.sh; ai-stack/mcp-servers/hybrid-coordinator/middleware/auth.py; ai-stack/mcp-servers/hybrid-coordinator/router.py
+  Resolution (commit 043f69d2, claude-opus-4-8): smoke now inspects middleware/auth.py + core/auth_middleware.py (create_api_key_middleware, PUBLIC_PATHS), FAILs on missing middleware source (not stale filename), keeps the runtime /workflow/sessions invalid-key probe. Added regression test-api-auth-hardening-smoke.py (contract: no stale http_server.py path). Verified smoke exit 0 + test PASS. Auth layout found via understand-anything (aq-wiki --section hybrid-coordinator).
+  File: scripts/testing/check-api-auth-hardening.sh; scripts/testing/test-api-auth-hardening-smoke.py
 
-[OPEN] security-scanner-skill-stale-secret-hygiene-command — `.agent/skills/security-scanner/SKILL.md` tells agents to run `scripts/governance/check-secret-hygiene.sh`, but that script is absent; the fallback grep is too broad and not aligned with the current security wrappers.
+[DONE 2026-07-05] security-scanner-skill-stale-secret-hygiene-command — `.agent/skills/security-scanner/SKILL.md` told agents to run an absent `check-secret-hygiene.sh` with an over-broad fallback grep.
   Severity: low
-  Action: Replace the stale command with the current canonical secret/security check path or add a small compatibility wrapper; rerun skill validation and security smoke after the update.
-  File: .agent/skills/security-scanner/SKILL.md; scripts/security/
+  Resolution (commit 4d9a225e, claude-opus-4-8): replaced with canonical guards — tier0.d/check-sops-sync.sh (secrets.nix<->SOPS parity) + an ad-hoc rg using the SAME high-signal patterns as the pre-commit/pre-push secret guard (AKIA/ghp_/github_pat_/sk-/xox/private-keys). No remaining reference to the retired script. Verified paths exist + rg valid.
+  File: .agent/skills/security-scanner/SKILL.md
 
 [DONE] memory-hot-index-reference-drift — Current agent instructions required a hot `MEMORY.md` index and updates to its `## Issues Backlog` entry without naming the canonical path. The hot index exists at `ai-stack/agent-memory/MEMORY.md`; the defect was stale bare-path references in active docs/skills.
   Severity: medium
@@ -1241,9 +1241,10 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Action: Added conventional exit `77` skip semantics to the focused-CI runner, made package-count drift return skip when Nix daemon socket access is sandbox-denied, and changed tier0 focused-CI artifact selection to use a real write probe before falling back to `~/.cache/nixos-ai-stack/latest-focused-ci.json`.
   File: scripts/governance/run-focused-ci-checks.sh; scripts/governance/tier0-validation-gate.sh; scripts/testing/check-package-count-drift.sh; scripts/testing/test-focused-ci-diagnostic-json.py
 
-[OPEN] aq-collaborate-plan-import-error — `aq-collaborate plan <collab-id> <objective>` crashes: ImportError cannot import name 'CollaborativePlanner' from lib/l4-coord/agents/collaborative_planning.py (class is 'CollaborativePlan'). `aq-collaborate start` works; plan/contribute path broken → structured A2A planning unusable, falls back to PULSE.log broadcast.
+[DONE 2026-07-05] aq-collaborate-plan-import-error — `aq-collaborate plan/synthesize` crashed: ImportError CollaborativePlanner (class is CollaborativePlanning), + 3 downstream API mismatches (create_plan signature, phantom close(), .phases/.name attrs).
   Severity: medium (A2A structured-plan path down; broadcast channel still works)
-  File: scripts/ai/aq-collaborate (plan subcommand); lib/l4-coord/agents/collaborative_planning.py
+  Resolution (commits c782521a + 9338aa1c, claude-opus-4-8): c782521a fixed the class name + API (plan cmd works live). 9338aa1c closed the follow-up (aq-collaborate-plan-persistence): create_plan stored plans in-memory only so cross-process synthesize hit "Plan not found" — added from_dict round-trip + active_plans.json persistence. Verified: live CLI `plan` then `synthesize` in separate processes → "3 phases". Regression test-collaborative-plan-persistence.py PASS. Structured A2A planning (aq-collaborate collab_1) now used for real coordination.
+  File: scripts/ai/aq-collaborate; lib/l4-coord/agents/collaborative_planning.py; scripts/testing/test-collaborative-plan-persistence.py
 
 [DONE] declarative-host-observer-contract — Phase-0 service health checks used direct `systemctl` from agent sandboxes and skipped healthy services when system bus access was denied, forcing agents to escalate for routine service-state evidence.
   Severity: medium
