@@ -571,6 +571,11 @@ in {
         ps."pytest-xdist"
         ps.trio
         ps.httpx
+        ps.fastapi
+        ps.uvicorn
+        ps.pydantic
+        ps.requests
+        ps.psutil
         ps.redis
         # pyyaml: governance gates (check-doc-frontmatter, env-contract) and several
         # aq-* CLIs parse YAML; without it they degrade to yaml-free/skip fallbacks.
