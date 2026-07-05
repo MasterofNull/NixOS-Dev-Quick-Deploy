@@ -101,6 +101,10 @@ SAFE_COMMANDS = {
     "aq-qa", "aq-hints", "aq-report", "aq-session-start",
     "aq-commit-facts", "aq-lesson-promote", "aq-crystallize",
     "aq-agent-loop", "aqd",
+    # understand-anything mapping: agents consult subsystem wiki + graph on demand
+    # (aq-wiki --section/--list/--status). Without this the agent cannot benefit
+    # from the codebase mapping during autonomous runs.
+    "aq-wiki",
     # OpenCode CLI (Phase 60 Integration)
     "opencode",
     # JSON/YAML inspection
