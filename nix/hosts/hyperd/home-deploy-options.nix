@@ -9,5 +9,4 @@
       credential.helper = lib.mkDefault "!gh auth git-credential";
     };
   };
-
 }
