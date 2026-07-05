@@ -71,6 +71,21 @@ class PlanContribution:
             "timestamp": self.timestamp.isoformat(),
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PlanContribution":
+        """Reconstruct from a to_dict() payload (inverse of to_dict)."""
+        ts = data.get("timestamp")
+        return cls(
+            contribution_id=data["contribution_id"],
+            agent_id=data["agent_id"],
+            content=data.get("content", ""),
+            suggested_phases=data.get("suggested_phases") or [],
+            dependencies=data.get("dependencies") or [],
+            risks=data.get("risks") or [],
+            confidence=data.get("confidence", 0.5),
+            timestamp=datetime.fromisoformat(ts) if ts else datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class PlanPhase:
@@ -100,6 +115,22 @@ class PlanPhase:
             "success_criteria": self.success_criteria,
             "risks": self.risks,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PlanPhase":
+        """Reconstruct from a to_dict() payload; phase_type back to the PhaseType enum."""
+        return cls(
+            phase_id=data["phase_id"],
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            phase_type=PhaseType(data["phase_type"]),
+            assigned_agent=data.get("assigned_agent"),
+            dependencies=data.get("dependencies") or [],
+            estimated_duration=data.get("estimated_duration", 0),
+            required_capabilities=data.get("required_capabilities") or [],
+            success_criteria=data.get("success_criteria") or [],
+            risks=data.get("risks") or [],
+        )
 
 
 @dataclass
@@ -138,6 +169,36 @@ class CollaborativePlan:
             "created_at": self.created_at.isoformat(),
             "finalized": self.finalized,
         }
+
+    def persist_dict(self) -> Dict[str, Any]:
+        """Lossless serialization for disk persistence.
+
+        to_dict() is intentionally display-oriented and drops the full
+        contributions list (keeps only contributions_count), so it cannot
+        round-trip. persist_dict() augments it with the full contributions.
+        """
+        return {**self.to_dict(), "contributions": [c.to_dict() for c in self.contributions]}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CollaborativePlan":
+        """Reconstruct from a persist_dict() payload (nested phases + contributions)."""
+        created = data.get("created_at")
+        return cls(
+            plan_id=data["plan_id"],
+            task_id=data["task_id"],
+            team_id=data["team_id"],
+            version=data.get("version", 1),
+            contributions=[PlanContribution.from_dict(c) for c in data.get("contributions", [])],
+            phases=[PlanPhase.from_dict(p) for p in data.get("phases", [])],
+            overall_strategy=data.get("overall_strategy", ""),
+            feasibility_score=data.get("feasibility_score", 0.0),
+            completeness_score=data.get("completeness_score", 0.0),
+            coherence_score=data.get("coherence_score", 0.0),
+            total_estimated_duration=data.get("total_estimated_duration", 0),
+            risks=data.get("risks") or [],
+            created_at=datetime.fromisoformat(created) if created else datetime.now(timezone.utc),
+            finalized=data.get("finalized", False),
+        )
 
 
 class PlanValidator:
@@ -255,6 +316,7 @@ class CollaborativePlanning:
     def _load_state(self):
         """Load state from disk."""
         history_file = self.state_dir / "plan_history.json"
+        active_file = self.state_dir / "active_plans.json"
 
         try:
             if history_file.exists():
@@ -264,9 +326,21 @@ class CollaborativePlanning:
         except Exception as e:
             logger.warning(f"Failed to load plan history: {e}")
 
+        # Rehydrate active_plans so a plan created in one process can be
+        # synthesized/looked up in another (cross-invocation persistence).
+        try:
+            if active_file.exists():
+                with open(active_file) as f:
+                    data = json.load(f)
+                for plan_id, plan_data in (data.get("active_plans") or {}).items():
+                    self.active_plans[plan_id] = CollaborativePlan.from_dict(plan_data)
+        except Exception as e:
+            logger.warning(f"Failed to load active plans: {e}")
+
     def _save_state(self):
         """Save state to disk."""
         history_file = self.state_dir / "plan_history.json"
+        active_file = self.state_dir / "active_plans.json"
 
         try:
             # Keep last 100 plans
@@ -275,6 +349,17 @@ class CollaborativePlanning:
                 json.dump({"history": recent_history}, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save plan history: {e}")
+
+        # Persist active plans losslessly (full contributions + phases) so
+        # cross-invocation get_plan/synthesize can find them.
+        try:
+            with open(active_file, 'w') as f:
+                json.dump(
+                    {"active_plans": {pid: p.persist_dict() for pid, p in self.active_plans.items()}},
+                    f, indent=2,
+                )
+        except Exception as e:
+            logger.error(f"Failed to save active plans: {e}")
 
     def create_plan(self,
                    task_id: str,
@@ -290,6 +375,7 @@ class CollaborativePlanning:
         )
 
         self.active_plans[plan_id] = plan
+        self._save_state()
 
         logger.info("plan_created: plan_id=%s task_id=%s team_id=%s mode=%s",
                    plan_id, task_id, team_id, mode.value)
@@ -322,6 +408,7 @@ class CollaborativePlanning:
         )
 
         plan.contributions.append(contribution)
+        self._save_state()
 
         logger.info("contribution_added: plan_id=%s agent_id=%s contribution_id=%s",
                    plan_id, agent_id, contribution_id)
