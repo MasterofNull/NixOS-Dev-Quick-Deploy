@@ -61,6 +61,17 @@ aq-insights --print                          # optional: local model analysis of
   - MCP: `mcp_server_get_working_memory` → `mcp_server_recall_memory`
   - Shell fallback: `aq-memory recall`
 
+**Harness grounding (auto-injected, all agents)**: every delegation lane prepends the
+canonical grounding SSOT `config/local-agent-grounding.md` as a system-message
+supplement, so codex, claude, gemini, local, and antigravity all share the same
+harness facts (commit format, ports, AIDB collection names, async patterns, workflow
+phases). Loaders — do not hand-copy the text:
+- shell lanes (codex/claude/gemini): `scripts/ai/lib/harness-grounding.sh` (`harness_grounding <agent>`)
+- local lane: `scripts/ai/lib/dispatch.py::_prepend_grounding`
+- antigravity lane: `delegate-to-antigravity::_load_harness_grounding`
+Sections tagged `[local-inference]` describe llama.cpp payload behavior and apply only
+to lanes that build the local inference request.
+
 ---
 
 ### Step 2: RESEARCH
