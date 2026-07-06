@@ -73,6 +73,22 @@ Mechanism (per pass, via aq-collaborate):
 ANTI-PATTERN (do NOT): one pass where each agent gets a different role. You then
 cannot tell a role artifact from a real disagreement, and only one model sees each angle.
 
+### Engage ALL available agents (standing requirement)
+
+Every phase — grounding, research, PRD, plans, collaborations, integrations,
+validations — engages ALL available agents, not just the orchestrator. The roster is
+dynamic (the local model changes; currently Qwen). Invocation paths:
+- **claude** — orchestrator + participant (direct).
+- **local** (currently Qwen) — `delegate-to-local --mode agent` (headless, live).
+- **codex** — `delegate-to-codex --prompt` (headless CLI, live).
+- **gemini** — NO headless lane (switchboard remote credential unavailable under
+  current constraints); engages via file/git A2A: post the pass to `aq-collaborate` +
+  PULSE.log, the Antigravity IDE agent reads + submits its vote/contribution async.
+
+Aggregation point = `aq-collaborate` (each agent submits a `review` per pass; `decide`
+computes consensus once all available agents have voted). Do not proceed on a partial
+roster unless an agent is genuinely unavailable — record which agents participated.
+
 ---
 
 ## 3. RESUME.json Schema (exact format)
