@@ -91,6 +91,8 @@ to lanes that build the local inference request.
   disables. Local inference is not charged to the external budget.
 - All three fail OPEN (never hard-break a delegation) and write to
   `.agent/collaboration/a2a-audit.log`.
+- **View the trail**: `aq-a2a-audit` (summary dashboard), `--blocks` (only
+  BLOCK/WARN/secret-flagged), `--since 1h`, `--agent codex`, `--tail 20`, `--json`.
 
 ---
 

@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""aq-a2a-audit — viewer/summary for the A2A safeguard audit trail.
+
+Reads .agent/collaboration/a2a-audit.log (JSONL) written by the delegation-boundary
+safeguards: outbound secret scans (a2a_guard), action-policy decisions
+(agent_action_policy), and dispatch-budget decisions (agent_dispatch_budget). Gives a
+quick security-oriented read of what the harness sent to external agents and every
+ALLOW/WARN/BLOCK the gates made.
+
+Examples:
+  aq-a2a-audit                      # summary dashboard (all time)
+  aq-a2a-audit --since 1h           # only the last hour
+  aq-a2a-audit --tail 20            # last 20 raw events, formatted
+  aq-a2a-audit --agent codex        # filter to one target agent
+  aq-a2a-audit --blocks             # only BLOCK/WARN decisions (security-relevant)
+  aq-a2a-audit --findings           # only events with secret findings
+  aq-a2a-audit --json               # machine-readable summary
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[2]
+_DEFAULT_LOG = _REPO / ".agent" / "collaboration" / "a2a-audit.log"
+
+_DUR = re.compile(r"^(\d+)([smhd])$")
+_MULT = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+_DECISION_RE = re.compile(r"\b(BLOCK|WARN|ALLOW|BLOCKED)\b")
+
+
+def _parse_duration(s: str) -> int:
+    m = _DUR.match(s.strip())
+    if not m:
+        raise argparse.ArgumentTypeError(f"bad duration '{s}' (use e.g. 30m, 2h, 1d)")
+    return int(m.group(1)) * _MULT[m.group(2)]
+
+
+def _parse_ts(s: str) -> float | None:
+    try:
+        return datetime.fromisoformat(s.strip().replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _decision(rec: dict) -> str:
+    """Derive a coarse decision for any record.
+    policy/budget encode it in the summary; outbound = FLAGGED if it has findings."""
+    direction = rec.get("direction", "")
+    if direction == "outbound":
+        return "FLAGGED" if rec.get("secret_findings") else "CLEAN"
+    m = _DECISION_RE.search(rec.get("summary", ""))
+    if m:
+        return "BLOCK" if m.group(1) in ("BLOCK", "BLOCKED") else m.group(1)
+    return "?"
+
+
+def _load(log_path: Path) -> list[dict]:
+    if not log_path.exists():
+        return []
+    out = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def _filter(recs: list[dict], args, now: float) -> list[dict]:
+    res = []
+    for r in recs:
+        if args.direction and r.get("direction") != args.direction:
+            continue
+        if args.agent and r.get("to") != args.agent:
+            continue
+        if args.since:
+            ts = _parse_ts(r.get("ts", ""))
+            if ts is None or now - ts > args.since:
+                continue
+        dec = _decision(r)
+        if args.blocks and dec not in ("BLOCK", "WARN", "FLAGGED"):
+            continue
+        if args.findings and not r.get("secret_findings"):
+            continue
+        res.append(r)
+    return res
+
+
+def _summary(recs: list[dict]) -> dict:
+    by_direction: dict[str, int] = {}
+    by_agent: dict[str, int] = {}
+    by_decision: dict[str, int] = {}
+    findings: dict[str, int] = {}
+    for r in recs:
+        by_direction[r.get("direction", "?")] = by_direction.get(r.get("direction", "?"), 0) + 1
+        by_agent[r.get("to", "?")] = by_agent.get(r.get("to", "?"), 0) + 1
+        d = _decision(r)
+        by_decision[d] = by_decision.get(d, 0) + 1
+        for f in r.get("secret_findings") or []:
+            findings[f] = findings.get(f, 0) + 1
+    return {
+        "total": len(recs),
+        "by_direction": dict(sorted(by_direction.items(), key=lambda x: -x[1])),
+        "by_agent": dict(sorted(by_agent.items(), key=lambda x: -x[1])),
+        "by_decision": dict(sorted(by_decision.items(), key=lambda x: -x[1])),
+        "secret_findings": dict(sorted(findings.items(), key=lambda x: -x[1])),
+    }
+
+
+def _fmt_row(r: dict) -> str:
+    dec = _decision(r)
+    mark = {"BLOCK": "⛔", "WARN": "⚠️ ", "FLAGGED": "🔒", "ALLOW": "✓ ", "CLEAN": "· "}.get(dec, "? ")
+    ts = (r.get("ts", "") or "")[11:19]  # HH:MM:SS
+    find = ",".join(r.get("secret_findings") or [])
+    find = f" [{find}]" if find else ""
+    tid = r.get("task_id", "") or ""
+    tid = f" {tid}" if tid else ""
+    return f"{mark} {ts} {r.get('direction',''):<8} → {r.get('to',''):<12}{tid} {r.get('summary','')[:88]}{find}"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="aq-a2a-audit", description="A2A safeguard audit viewer")
+    ap.add_argument("--log", type=Path, default=_DEFAULT_LOG, help="audit log path")
+    ap.add_argument("--agent", help="filter by target agent (to)")
+    ap.add_argument("--direction", choices=["outbound", "inbound", "policy", "budget"],
+                    help="filter by direction")
+    ap.add_argument("--since", type=_parse_duration, help="only events newer than e.g. 30m, 2h, 1d")
+    ap.add_argument("--blocks", action="store_true", help="only BLOCK/WARN/FLAGGED events")
+    ap.add_argument("--findings", action="store_true", help="only events with secret findings")
+    ap.add_argument("--tail", type=int, metavar="N", help="show last N raw events (formatted)")
+    ap.add_argument("--json", action="store_true", help="JSON summary output")
+    args = ap.parse_args()
+
+    now = datetime.now(timezone.utc).timestamp()
+    recs = _filter(_load(args.log), args, now)
+
+    if not args.log.exists():
+        print(f"no audit log at {args.log} (no A2A traffic recorded yet)", file=sys.stderr)
+        return 0
+
+    if args.tail is not None:
+        for r in recs[-args.tail:]:
+            print(_fmt_row(r))
+        return 0
+
+    summ = _summary(recs)
+    if args.json:
+        print(json.dumps(summ, indent=2))
+        return 0
+
+    scope = []
+    if args.agent:     scope.append(f"agent={args.agent}")
+    if args.direction: scope.append(f"direction={args.direction}")
+    if args.since:     scope.append(f"since={args.since}s")
+    if args.blocks:    scope.append("blocks-only")
+    if args.findings:  scope.append("findings-only")
+    scope_s = f"  ({', '.join(scope)})" if scope else ""
+
+    print(f"A2A audit trail — {summ['total']} events{scope_s}")
+    print(f"  log: {args.log}")
+    if not summ["total"]:
+        return 0
+    print("\n  by direction:  " + ", ".join(f"{k}={v}" for k, v in summ["by_direction"].items()))
+    print("  by decision:   " + ", ".join(f"{k}={v}" for k, v in summ["by_decision"].items()))
+    print("  by agent (to): " + ", ".join(f"{k}={v}" for k, v in summ["by_agent"].items()))
+    if summ["secret_findings"]:
+        print("  🔒 secret findings: " + ", ".join(f"{k}={v}" for k, v in summ["secret_findings"].items()))
+    blocks = summ["by_decision"].get("BLOCK", 0)
+    flagged = summ["by_decision"].get("FLAGGED", 0)
+    warns = summ["by_decision"].get("WARN", 0)
+    if blocks or flagged or warns:
+        print(f"\n  ⚠️  security-relevant: {blocks} blocked, {flagged} secret-flagged, {warns} warned")
+        print("  → detail: aq-a2a-audit --blocks --tail 20")
+    else:
+        print("\n  ✓ no blocks/flags/warnings in scope")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
