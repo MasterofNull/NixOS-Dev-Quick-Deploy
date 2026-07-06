@@ -221,21 +221,24 @@ cmd_contribute() {
 
     echo -e "${BLUE}Adding contribution to plan: $plan_id${NC}"
 
+    # User inputs via ENV, not interpolation (injection fix — see cmd_review).
     cd "$COLLAB_DIR"
-    python3 -c "
+    AQC_PLAN="$plan_id" AQC_AGENT="$agent_id" AQC_CONTENT="$content" AQC_CONF="$confidence" python3 -c "
+import os
 from collaborative_planning import CollaborativePlanning
 
+plan_id = os.environ['AQC_PLAN']; agent = os.environ['AQC_AGENT']
 planner = CollaborativePlanning()
 try:
     cid = planner.add_contribution(
-        plan_id='$plan_id',
-        agent_id='$agent_id',
-        content='''$content''',
-        confidence=$confidence,
+        plan_id=plan_id,
+        agent_id=agent,
+        content=os.environ.get('AQC_CONTENT', ''),
+        confidence=float(os.environ['AQC_CONF']),
     )
-    plan = planner.get_plan('$plan_id')
+    plan = planner.get_plan(plan_id)
     print(f'✓ Contribution added: {cid}')
-    print(f'  Agent: $agent_id | plan contributions: {len(plan.contributions) if plan else \"?\"}')
+    print(f'  Agent: {agent} | plan contributions: {len(plan.contributions) if plan else \"?\"}')
 except ValueError as e:
     print(f'Error: {e} (create the plan first: aq-collaborate plan <collab-id> <objective>)')
 "
@@ -323,31 +326,35 @@ cmd_review() {
 
     echo -e "${BLUE}Submitting review for item: $item_id${NC}"
 
+    # Pass user inputs via ENV (not string interpolation into python -c) — a quote in
+    # --feedback previously broke the literal and is a code-injection vector. Decided
+    # FIX by the corrected expert-team debate (injection-fix-decision, unanimous).
     cd "$COLLAB_DIR"
-    python3 -c "
+    AQC_ITEM="$item_id" AQC_AGENT="$agent_id" AQC_VERDICT="$verdict" \
+    AQC_CONF="$confidence" AQC_FEEDBACK="$feedback" python3 -c "
+import os
 from quality_consensus import QualityConsensus, VoteType
 
+item = os.environ['AQC_ITEM']; agent = os.environ['AQC_AGENT']
 consensus = QualityConsensus()
-# Address the debate by the stable item id; get_or_create_session reuses across
-# separate 'review' invocations (persisted to active_sessions.json).
-session_id = consensus.get_or_create_session(artifact_id='$item_id', team_id='collab')
+session_id = consensus.get_or_create_session(artifact_id=item, team_id='collab')
 try:
     review_id = consensus.submit_review(
         session_id=session_id,
-        reviewer_id='$agent_id',
-        vote=VoteType('$verdict'.strip().lower()),
-        confidence=$confidence,
-        reasoning='$feedback',
+        reviewer_id=agent,
+        vote=VoteType(os.environ['AQC_VERDICT'].strip().lower()),
+        confidence=float(os.environ['AQC_CONF']),
+        reasoning=os.environ.get('AQC_FEEDBACK', ''),
     )
     sess = consensus.active_sessions[session_id]
     print(f'✓ Review submitted: {review_id}')
-    print(f'  Reviewer: $agent_id | Vote: $verdict | Confidence: $confidence')
+    print(f'  Reviewer: {agent} | Vote: {os.environ[\"AQC_VERDICT\"]} | Confidence: {os.environ[\"AQC_CONF\"]}')
     print(f'  Reviews: {len(sess.reviews)}/{sess.required_reviewers} '
-          f'(need {sess.required_reviewers} before: aq-collaborate decide $item_id)')
+          f'(need {sess.required_reviewers} before: aq-collaborate decide {item})')
 except ValueError as e:
     print(f'Error: {e}')
 except Exception as e:
-    print(f'Error: invalid vote \"$verdict\" (use approve|reject|abstain|request_changes): {e}')
+    print(f'Error: invalid vote (use approve|reject|abstain|request_changes): {e}')
 "
 }
 
