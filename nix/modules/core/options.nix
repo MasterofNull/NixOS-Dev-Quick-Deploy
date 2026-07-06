@@ -1624,6 +1624,12 @@
           description = "Number of concurrent local inference requests the switchboard will allow before queuing.";
         };
 
+        remoteConcurrency = lib.mkOption {
+          type = lib.types.int;
+          default = 4;
+          description = "Number of concurrent remote LLM requests the switchboard will allow before queuing.";
+        };
+
         reservedSlots = lib.mkOption {
           type = lib.types.int;
           default = 0;
