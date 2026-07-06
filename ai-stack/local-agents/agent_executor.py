@@ -1559,10 +1559,19 @@ class LocalAgentExecutor:
                         "Do not keep rereading the same files."
                     )
                 else:
+                    # Single-edit-first nudge. Measured (reference-local-agent-capability-
+                    # envelope): the local model read-loops on multi-site edit tasks — it
+                    # can make ONE edit on a large file but drowns planning several at once,
+                    # so a "do all the edits" nudge is ignored. Reframing to "make exactly
+                    # ONE edit now, others later" targets the stuck read->edit transition
+                    # with a step inside the model's proven envelope.
                     nudge_content = (
-                        f"EXPLORATION WARNING: You have read {_reads_without_edit} files without "
-                        "making any edits. You have enough context. Execute the required "
-                        "edit_file calls from the BEHAVIORAL CONTRACT now."
+                        f"STOP READING — you have read {_reads_without_edit} times without "
+                        "editing. Do NOT read again. Make exactly ONE edit now: pick the "
+                        "single most concrete change from the BEHAVIORAL CONTRACT and emit "
+                        "ONE edit_file call for it (exact old_string anchor + new_string). "
+                        "Ignore every other change this turn — you will make them one at a "
+                        "time in the following turns. One edit_file call, now."
                     )
                 messages.append({"role": "user", "content": nudge_content})
                 logger.info(
@@ -1688,6 +1697,7 @@ class LocalAgentExecutor:
 
         try:
             _write_stream_progress("llm_waiting", force=True)
+            _stream_start = time.monotonic()
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
                     "POST",
@@ -1699,6 +1709,19 @@ class LocalAgentExecutor:
                         raise Exception(f"llama.cpp error: {response.status_code} {body.decode()[:200]}")
 
                     async for raw_line in response.aiter_lines():
+                        # Wall-clock first-token watchdog. llama.cpp emits keep-alive/empty
+                        # SSE lines during a long single-slot prefill, which reset httpx's
+                        # per-read timer — so the per-chunk read timeout never bounds
+                        # first-token and a wedged prefill hangs for the full (hours-long)
+                        # chunk_timeout. Enforce an explicit wall-clock bound until the first
+                        # CONTENT token; fires even while keep-alives arrive. Measured: this
+                        # is what let runs wedge 10-23 min with 0 tokens.
+                        if not collected and (time.monotonic() - _stream_start) > first_token_timeout:
+                            raise RuntimeError(
+                                f"LLM first-token timeout: no content within "
+                                f"{first_token_timeout:.0f}s of request start "
+                                "(single-slot prefill wedge or context too large)."
+                            )
                         line = raw_line.strip()
                         if not line or line == "data: [DONE]":
                             continue

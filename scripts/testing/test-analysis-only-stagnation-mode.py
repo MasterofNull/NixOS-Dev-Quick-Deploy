@@ -61,8 +61,8 @@ def test_analysis_alias_normalizes_to_research() -> None:
 
 def test_executor_has_separate_analysis_guard() -> None:
     src = EXECUTOR.read_text()
-    impl_hard = re.search(r"_IMPLEMENTATION_READS_HARD_LIMIT\s*=\s*(\d+)", src)
-    analysis_hard = re.search(r"_ANALYSIS_READS_HARD_LIMIT\s*=\s*(\d+)", src)
+    impl_hard = re.search(r"_IMPLEMENTATION_READS_HARD_LIMIT\s*=\s*_env_int\([^,]+,\s*(\d+)\)", src)
+    analysis_hard = re.search(r"_ANALYSIS_READS_HARD_LIMIT\s*=\s*_env_int\([^,]+,\s*(\d+)\)", src)
     assert_true(impl_hard is not None, "implementation hard limit missing")
     assert_true(analysis_hard is not None, "analysis hard limit missing")
     assert_true(int(impl_hard.group(1)) == 12, "implementation hard limit must stay strict")
@@ -70,6 +70,7 @@ def test_executor_has_separate_analysis_guard() -> None:
     assert_true("Analysis checkpoint stagnation" in src, "analysis checkpoint abort missing")
     assert_true('"store_memory"' in src and "_read_path_counts.clear()" in src, "checkpoint reset missing")
     assert_true("_REPEATED_READ_PATH_LIMIT" in src, "repeated-read guard missing")
+    assert_true("STOP READING" in src and "exactly ONE edit" in src, "single-edit-first nudge missing")
 
 
 if __name__ == "__main__":

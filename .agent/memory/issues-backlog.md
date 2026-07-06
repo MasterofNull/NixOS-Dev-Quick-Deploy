@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-06] local-agent-single-edit-first-nudge — Local-agent implementation tasks could continue broad read loops after the soft read threshold instead of taking the smallest concrete edit step.
+  Root cause / fix notes: the old exploration warning asked for all required edits at once, which was too broad for the local model on multi-site edits. The nudge now tells the model to stop reading and emit exactly one `edit_file` call, and the llama stream path has a wall-clock first-token watchdog so SSE keep-alives cannot mask a wedged prefill.
+  Severity: medium
+  Action: Updated executor nudge and first-token watchdog; refreshed static regression tests for env-backed read limits and single-edit-first wording.
+  File: ai-stack/local-agents/agent_executor.py; scripts/testing/test-exploration-stagnation-guard.py; scripts/testing/test-analysis-only-stagnation-mode.py
+
 [DONE 2026-07-05] declarative-cli-python-dependency-parity — Phase-0 local contract tests failed in the live CLI Python because Home Manager provided only part of the Python runtime surface needed by agent validation.
   Root cause / fix notes: `nix/home/base.nix` included `httpx`, `redis`, and `pyyaml`, but omitted `psutil` for model catalog tests and the FastAPI/uvicorn stack for switchboard import tests. Home Manager activation was also blocked by an imperative `nix profile` `github-mcp-server` duplicate.
   Severity: medium
