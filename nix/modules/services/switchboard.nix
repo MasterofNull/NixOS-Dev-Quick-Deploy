@@ -30,8 +30,13 @@ let
     if ai.embeddingServer.enable
     then "http://${ai.llamaCpp.host}:${toString ai.embeddingServer.port}"
     else "";
+  # In oauth mode the remote lane targets Vertex AI (which accepts the gcloud OAuth
+  # token — generativelanguage rejects OAuth). The Vertex OpenAI-compatible endpoint is
+  # derived from vertexProject/vertexLocation so the switchboard keeps its OpenAI format.
   remoteUrl =
-    if swb.remoteUrl != null
+    if swb.remoteAuthMode == "oauth"
+    then "https://${swb.vertexLocation}-aiplatform.googleapis.com/v1beta1/projects/${swb.vertexProject}/locations/${swb.vertexLocation}/endpoints/openapi"
+    else if swb.remoteUrl != null
     then swb.remoteUrl
     else "";
   remoteEnabled = remoteUrl != "";
@@ -443,6 +448,7 @@ in {
           "DEFAULT_PROVIDER=${swb.defaultProvider}"
           "REMOTE_LLM_URL=${remoteUrl}"
           "REMOTE_LLM_API_KEY_FILE=${remoteKeyFile}"
+          "REMOTE_LLM_AUTH_MODE=${swb.remoteAuthMode}"
           "SWB_REMOTE_MODEL_ALIAS_GEMINI=${
             if swb.remoteModelAliases.gemini != null
             then swb.remoteModelAliases.gemini
