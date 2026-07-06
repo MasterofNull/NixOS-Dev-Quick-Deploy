@@ -48,51 +48,6 @@ ROUTING_MODE = os.environ.get("ROUTING_MODE", "auto").strip().lower()
 DEFAULT_PROVIDER = os.environ.get("DEFAULT_PROVIDER", "local").strip().lower()
 REMOTE_API_KEY = os.environ.get("REMOTE_LLM_API_KEY", "").strip()
 REMOTE_API_KEY_FILE = os.environ.get("REMOTE_LLM_API_KEY_FILE", "").strip()
-# Remote auth mode: "apikey" (default — REMOTE_API_KEY sent as a Bearer token, e.g.
-# OpenRouter or a Google AI Studio key) or "oauth" (mint a fresh Google OAuth access
-# token for the Vertex AI endpoint, letting the paid Antigravity/Gemini account drive
-# the headless remote lane without an API key). generativelanguage rejects OAuth (needs
-# a key); Vertex accepts OAuth Bearer — so oauth mode must point REMOTE_LLM_URL at the
-# Vertex OpenAI-compat endpoint. See _get_remote_bearer().
-REMOTE_AUTH_MODE = os.environ.get("REMOTE_LLM_AUTH_MODE", "apikey").strip().lower()
-REMOTE_OAUTH_TOKEN_CMD = os.environ.get(
-    "REMOTE_LLM_OAUTH_TOKEN_CMD",
-    "gcloud auth application-default print-access-token",
-)
-_REMOTE_OAUTH_TTL = float(os.environ.get("REMOTE_LLM_OAUTH_TTL", "3000"))  # refresh under the ~1h token life
-_remote_oauth_cache = {"token": "", "expires": 0.0}
-
-
-def _get_remote_bearer() -> str:
-    """Bearer credential for the remote lane.
-
-    apikey mode -> the static REMOTE_API_KEY. oauth mode -> a cached, periodically
-    refreshed Google OAuth access token (via gcloud ADC) for the Vertex AI endpoint.
-    Falls back to REMOTE_API_KEY if the token command fails.
-    """
-    if REMOTE_AUTH_MODE != "oauth":
-        return REMOTE_API_KEY
-    import time as _t
-    import subprocess as _sp
-    import shutil as _sh
-    now = _t.time()
-    if _remote_oauth_cache["token"] and now < _remote_oauth_cache["expires"]:
-        return _remote_oauth_cache["token"]
-    # Resolve the token command's binary — the systemd service PATH is minimal and may
-    # not include gcloud, so fall back to the NixOS system profile location.
-    _parts = REMOTE_OAUTH_TOKEN_CMD.split()
-    if _parts and not os.path.isabs(_parts[0]):
-        _resolved = _sh.which(_parts[0]) or f"/run/current-system/sw/bin/{_parts[0]}"
-        if os.path.exists(_resolved):
-            _parts[0] = _resolved
-    try:
-        tok = _sp.run(_parts, capture_output=True, text=True, timeout=20).stdout.strip()
-    except Exception:
-        tok = ""
-    if tok:
-        _remote_oauth_cache["token"] = tok
-        _remote_oauth_cache["expires"] = now + _REMOTE_OAUTH_TTL
-    return tok or REMOTE_API_KEY
 PORT = int(os.environ.get("PORT", "8085"))
 HOST = os.environ.get("HOST", "127.0.0.1")
 ROUTE_HINT_HEADER = "x-ai-route"
@@ -3062,9 +3017,8 @@ async def proxy(path: str, request: Request):
         headers.pop(h, None)
     headers["Accept-Encoding"] = "identity"
     headers["Connection"] = "close"
-    _remote_bearer = _get_remote_bearer() if target_type == "remote" else ""
-    if target_type == "remote" and _remote_bearer:
-        headers["Authorization"] = f"Bearer {_remote_bearer}"
+    if target_type == "remote" and REMOTE_API_KEY:
+        headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
         headers.setdefault("HTTP-Referer", "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy")
         headers.setdefault("X-Title", "NixOS-Dev-Quick-Deploy AI Harness")
 
