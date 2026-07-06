@@ -1544,6 +1544,24 @@
       "enabled": true
     },
     {
+      "id": "aq-tempest-safe-intake",
+      "description": "T3MP3ST facade stays metadata-only and blocks active execution while the external dual-use capability is in security intake",
+      "trigger_paths": [
+        "scripts/ai/aq-tempest",
+        "scripts/testing/test-aq-tempest.py",
+        ".agent/skills/t3mp3st-intake/SKILL.md",
+        ".agent/PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md",
+        "config/agent-capability-intake-candidates.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-aq-tempest.py"
+      ],
+      "tier": "security",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "suggested-ai-repo-candidates",
       "description": "Suggested external AI repo candidates stay deny-by-default and include parity, delegation, and security gates",
       "trigger_paths": [
