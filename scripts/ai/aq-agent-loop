@@ -394,6 +394,48 @@ async def run_task(
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+def _install_self_watchdog(hard_deadline_secs: float) -> None:
+    """Orphan reaper: guarantee this process dies even if its dispatcher does not
+    reap it, so a wedged run cannot hold the single llama slot forever.
+
+    dispatch.py spawns this with start_new_session=True (own session), so when
+    dispatch.py itself is killed/crashes its aq-agent-loop child is reparented to
+    init (ppid=1) with NO enforcer left — the observed cause of 10-40 min zombie
+    runs. This daemon thread:
+      (1) exits promptly once reparented to init (dispatcher died) — frees the slot;
+      (2) hard-exits after an absolute deadline as a backstop.
+    Uses os._exit so it terminates even if the asyncio loop is blocked in a C read.
+    """
+    import threading
+
+    start = time.monotonic()
+    orig_ppid = os.getppid()
+
+    def _reap() -> None:
+        while True:
+            time.sleep(15)
+            try:
+                orphaned = orig_ppid != 1 and os.getppid() == 1
+            except Exception:
+                orphaned = False
+            if orphaned:
+                sys.stderr.write(
+                    "[aq-agent-loop] SELF-WATCHDOG: orphaned (dispatcher died) — "
+                    "exiting to free the llama slot\n"
+                )
+                sys.stderr.flush()
+                os._exit(124)
+            if time.monotonic() - start > hard_deadline_secs:
+                sys.stderr.write(
+                    f"[aq-agent-loop] SELF-WATCHDOG: hard deadline "
+                    f"{hard_deadline_secs:.0f}s exceeded — exiting\n"
+                )
+                sys.stderr.flush()
+                os._exit(124)
+
+    threading.Thread(target=_reap, daemon=True, name="self-watchdog").start()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run local Qwen3.6-35B in a coding agent loop",
@@ -441,6 +483,16 @@ def main() -> int:
 
     if not args.task:
         parser.error("--task is required (or use --list-tools)")
+
+    # Orphan reaper backstop: absolute self-kill deadline (env-tunable). Generous so
+    # legitimate long runs are not cut, but finite so an orphaned/wedged run cannot
+    # hold the single llama slot indefinitely. The ppid-orphan check inside fires
+    # faster (within ~15s of the dispatcher dying).
+    _watchdog_secs = float(os.environ.get(
+        "AGENT_SELF_WATCHDOG_SECS",
+        str(min(7200.0, max(1800.0, float(args.timeout) * 6))),
+    ))
+    _install_self_watchdog(_watchdog_secs)
 
     return asyncio.run(run_task(
         task_text=args.task,
