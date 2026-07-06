@@ -205,7 +205,12 @@ async def handle_lifecycle_advance(request: web.Request) -> web.Response:
     session_id = request.match_info.get("id")
     return web.json_response({"session_id": session_id, "status": "stub_advanced"})
 
+async def handle_lifecycle_replay(request: web.Request) -> web.Response:
+    session_id = request.match_info.get("id")
+    return web.json_response({"session_id": session_id, "error": "session not found"}, status=404)
+
 def register_routes(app: web.Application):
     app.router.add_post("/agent/intake", handle_intake)
     app.router.add_get("/agent/lifecycle/{id}", handle_lifecycle_status)
     app.router.add_post("/agent/lifecycle/{id}/advance", handle_lifecycle_advance)
+    app.router.add_get("/agent/lifecycle/{id}/replay", handle_lifecycle_replay)

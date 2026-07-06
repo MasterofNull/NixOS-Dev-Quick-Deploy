@@ -13,33 +13,4 @@
 #   - Each entry expires 30 days from creation — remove or re-review by then
 #   - tier0 gate treats xfail failures as SKIP (not PASS) so they stay visible in CI output
 
-xfail:
-  - id: "0.9.3"
-    reason: >
-      DAG executor execute/status endpoint returns 405 on GET /workflow/run/{id}/execute/status.
-      Route exists but method/path signature changed from original Phase 38 spec.
-      Not caused by staged QA observability changes — pre-existing API drift.
-      Fix: align check method with current coordinator route registration or implement endpoint.
-    created: "2026-07-01"
-    expires: "2026-07-31"
-    owner: hyperd
-
-  - id: "0.9.2"
-    reason: >
-      UAG lifecycle replay endpoint returns 404 on GET /agent/lifecycle/{id}/replay.
-      Route not yet implemented on coordinator — Phase 37 stub not wired.
-      Not caused by staged QA observability changes — pre-existing gap.
-      Fix: implement /agent/lifecycle/{id}/replay handler in coordinator.
-    created: "2026-07-01"
-    expires: "2026-07-31"
-    owner: hyperd
-
-  - id: "93.8"
-    reason: >
-      Human-agent control endpoint returns 401 (Unauthorized) on POST /agent-runs/{id}/control.
-      Check expects 422 (validation failure for invalid action) but route requires auth token
-      not provided by the test probe. Pre-existing auth gap in QA check.
-      Fix: add auth bypass for internal health probes or mock the check to skip auth.
-    created: "2026-07-01"
-    expires: "2026-07-31"
-    owner: hyperd
+xfail: []

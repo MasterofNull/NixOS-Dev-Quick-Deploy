@@ -326,6 +326,51 @@ PY
   return 1
 }
 
+_http_get_status() {
+  local url="$1" timeout_s="${2:-5}" api_key="${3:-}"
+  local out rc py_err headers=()
+  if [[ -n "$api_key" ]]; then
+    headers+=(-H "X-API-Key: ${api_key}")
+  fi
+  out="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${timeout_s}" "${headers[@]}" "$url" 2>&1)"
+  rc=$?
+  if [[ "$rc" -eq 0 && "$out" =~ ^[0-9]{3}$ ]]; then
+    printf '%s' "$out"
+    return 0
+  fi
+  if grep -qiE 'Operation not permitted|PermissionError' <<<"$out"; then
+    return 77
+  fi
+  py_err="$(mktemp)"
+  if timeout --foreground "$((timeout_s + 1))" python3 - "$url" "$timeout_s" "$api_key" 2>"${py_err}" <<'PY'
+import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+url, api_key = sys.argv[1], sys.argv[3]
+timeout_s = float(sys.argv[2])
+headers = {}
+if api_key:
+    headers["X-API-Key"] = api_key
+request = Request(url, headers=headers, method="GET")
+try:
+    with urlopen(request, timeout=timeout_s) as response:
+        print(response.status, end="")
+except HTTPError as exc:
+    print(exc.code, end="")
+PY
+  then
+    rm -f "${py_err}"
+    return 0
+  fi
+  if grep -qiE 'Operation not permitted|PermissionError' "${py_err}"; then
+    rm -f "${py_err}"
+    return 77
+  fi
+  rm -f "${py_err}"
+  return 1
+}
+
 _http_post_json() {
   local url="$1" json="$2" timeout_s="${3:-10}" api_key="${4:-}"
   local out py_err
@@ -349,6 +394,50 @@ if api_key:
 request = Request(url, data=payload.encode("utf-8"), headers=headers, method="POST")
 with urlopen(request, timeout=timeout_s) as response:
     sys.stdout.write(response.read().decode("utf-8", "replace"))
+PY
+  then
+    rm -f "${py_err}"
+    return 0
+  fi
+  if grep -qiE 'Operation not permitted|PermissionError' "${py_err}"; then
+    rm -f "${py_err}"
+    return 77
+  fi
+  rm -f "${py_err}"
+  return 1
+}
+
+_http_post_json_status() {
+  local url="$1" json="$2" timeout_s="${3:-10}" api_key="${4:-}"
+  local out rc py_err headers=(-H "Content-Type: application/json")
+  if [[ -n "$api_key" ]]; then
+    headers+=(-H "X-API-Key: ${api_key}")
+  fi
+  out="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "${timeout_s}" "${headers[@]}" -d "$json" "$url" 2>&1)"
+  rc=$?
+  if [[ "$rc" -eq 0 && "$out" =~ ^[0-9]{3}$ ]]; then
+    printf '%s' "$out"
+    return 0
+  fi
+  if grep -qiE 'Operation not permitted|PermissionError' <<<"$out"; then
+    return 77
+  fi
+  py_err="$(mktemp)"
+  if timeout --foreground "$((timeout_s + 1))" python3 - "$url" "$json" "$timeout_s" "$api_key" 2>"${py_err}" <<'PY'
+import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+url, payload, timeout_s, api_key = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4]
+headers = {"Content-Type": "application/json"}
+if api_key:
+    headers["X-API-Key"] = api_key
+request = Request(url, data=payload.encode("utf-8"), headers=headers, method="POST")
+try:
+    with urlopen(request, timeout=timeout_s) as response:
+        print(response.status, end="")
+except HTTPError as exc:
+    print(exc.code, end="")
 PY
   then
     rm -f "${py_err}"
@@ -1579,34 +1668,34 @@ print('ok' if ok else 'fail')
   fi
 
   # 0.9.3 DAG executor execute/status endpoint (Phase 38)
-  local _hk093 exec_out exec_rc
+  local _hk093 exec_status exec_rc
   _hk093=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
   set +e
-  exec_out=$(_http_get "${HYBRID_URL}/workflow/run/healthcheck-probe/execute/status" 5 "${_hk093}")
+  exec_status=$(_http_get_status "${HYBRID_URL}/workflow/run/healthcheck-probe/execute/status" 5 "${_hk093}")
   exec_rc=$?
   set -e
   if [[ "$exec_rc" -eq 77 ]]; then
     _skip 4 "0.9.3" "DAG executor endpoint" "HTTP probe denied in current sandbox"
-  elif [[ "$exec_rc" -eq 0 ]]; then
+  elif [[ "$exec_rc" -eq 0 && ( "$exec_status" == "200" || "$exec_status" == "404" ) ]]; then
     _pass 4 "0.9.3" "DAG executor execute/status endpoint wired (GET /workflow/run/{id}/execute/status)"
   else
-    _fail 4 "0.9.3" "DAG executor execute/status endpoint reachable" "out: ${exec_out:0:80}"
+    _fail 4 "0.9.3" "DAG executor execute/status endpoint reachable" "HTTP ${exec_status:-ERR}"
   fi
 
   # 0.9.2 UAG lifecycle replay endpoint (Phase 37)
-  local _hk092 replay_out replay_rc
+  local _hk092 replay_status replay_rc
   _hk092=$(cat /run/secrets/hybrid_coordinator_api_key 2>/dev/null | tr -d '\n' || true)
   # Use a known-invalid session_id: expect 404 (endpoint wired) or 200 (active session)
   set +e
-  replay_out=$(_http_get "${HYBRID_URL}/agent/lifecycle/healthcheck-probe/replay" 5 "${_hk092}")
+  replay_status=$(_http_get_status "${HYBRID_URL}/agent/lifecycle/healthcheck-probe/replay" 5 "${_hk092}")
   replay_rc=$?
   set -e
   if [[ "$replay_rc" -eq 77 ]]; then
     _skip 4 "0.9.2" "UAG lifecycle replay endpoint" "HTTP probe denied in current sandbox"
-  elif [[ "$replay_rc" -eq 0 ]]; then
+  elif [[ "$replay_rc" -eq 0 && ( "$replay_status" == "200" || "$replay_status" == "404" ) ]]; then
     _pass 4 "0.9.2" "UAG lifecycle replay endpoint wired (GET /agent/lifecycle/{id}/replay)"
   else
-    _fail 4 "0.9.2" "UAG lifecycle replay endpoint reachable" "out: ${replay_out:0:80}"
+    _fail 4 "0.9.2" "UAG lifecycle replay endpoint reachable" "HTTP ${replay_status:-ERR}"
   fi
 
   # ── Phase 85: Drop Zone Daemon + Intent Lock v2 (PAEA Phase 2) ──────────────
@@ -1794,17 +1883,17 @@ for fn in ('build_spec_variant_pack', 'validate_spec_variant_pack', 'VARIANTS', 
   fi
 
   # 93.8 — human-agent control endpoint rejects invalid action (Slice 93.8)
-  local _ctrl_out _ctrl_rc
+  local _ctrl_status _ctrl_rc
   set +e
-  _ctrl_out=$(_http_post_json "http://127.0.0.1:${dash_port}/api/aistack/agent-runs/probe-run-id/control" '{"action":"__invalid_action__"}' 5)
+  _ctrl_status=$(_http_post_json_status "http://127.0.0.1:${dash_port}/api/aistack/agent-runs/probe-run-id/control" '{"action":"__invalid_action__"}' 5)
   _ctrl_rc=$?
   set -e
   if [[ "$_ctrl_rc" -eq 77 ]]; then
     _skip 3 "93.8" "human-agent control endpoint" "HTTP probe denied in current sandbox"
-  elif [[ "$_ctrl_rc" -eq 0 ]] || [[ "$_ctrl_out" == *"422"* ]]; then
+  elif [[ "$_ctrl_rc" -eq 0 && "$_ctrl_status" == "422" ]]; then
     _pass 3 "93.8" "human-agent control endpoint validates action (POST /agent-runs/{id}/control returns 422 on invalid)"
   else
-    _fail 3 "93.8" "human-agent control endpoint" "expected validation failure for invalid action"
+    _fail 3 "93.8" "human-agent control endpoint" "expected HTTP 422 for invalid action, got ${_ctrl_status:-ERR}"
   fi
 
   # 93.14 — Attention queue lock contention event schema (Slice 93.14)
