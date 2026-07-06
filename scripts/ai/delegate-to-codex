@@ -69,6 +69,7 @@ PY
   A2A_GUARD_BLOCK=0 to audit-only. Audit: .agent/collaboration/a2a-audit.log"
     fi
     [[ "$verdict" == OK\ ?* ]] && info "A2A guard: audited outbound (findings: ${verdict#OK })"
+    return 0  # never fail the caller under `set -e` (clean prompt = non-matching [[ ]] above)
 }
 
 # A2A action policy gate: authorize the execution MODE before launching the external

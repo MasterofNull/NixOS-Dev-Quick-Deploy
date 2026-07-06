@@ -80,8 +80,8 @@ to lanes that build the local inference request.
   sandbox bypass, gemini `yolo` = auto-approve shell) are allowed + audited by default;
   set `global.privileged_requires_authorization=true` to require `A2A_ALLOW_PRIVILEGED=1`.
 - **Outbound secret scan** (`scripts/ai/lib/a2a_guard.py`): scans/redacts prompts before
-  they leave for an external agent (`delegate-to-codex`) and every event summary at the
-  coordinator hub (`/api/agent-events`).
+  they leave for an external agent (`delegate-to-codex`, `delegate-to-gemini`) and every
+  event summary at the coordinator hub (`/api/agent-events`).
 - Both fail OPEN (never hard-break a delegation) and write to
   `.agent/collaboration/a2a-audit.log`.
 
