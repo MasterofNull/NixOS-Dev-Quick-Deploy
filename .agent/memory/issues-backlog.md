@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-06] aq-agent-loop-orphan-reaper — Delegated local-agent tasks can become stale with no live PID or output artifact, leaving review fan-out unreliable and risking a wedged `aq-agent-loop` holding the single local llama slot.
+  Root cause / fix notes: dispatcher processes can die while child `aq-agent-loop` processes continue in their own session, and older stale registry entries are not automatically reaped. Added a self-watchdog to new `aq-agent-loop` runs and `aq-agent-reap` for dry-run or active cleanup of orphaned or over-age loops.
+  Severity: medium
+  Action: Added `scripts/ai/aq-agent-reap`, pure reaper decision tests, and a self-watchdog in `scripts/ai/aq-agent-loop`.
+  File: scripts/ai/aq-agent-loop; scripts/ai/aq-agent-reap; scripts/testing/test-aq-agent-reap.py
+
 [DONE 2026-07-06] local-agent-single-edit-first-nudge — Local-agent implementation tasks could continue broad read loops after the soft read threshold instead of taking the smallest concrete edit step.
   Root cause / fix notes: the old exploration warning asked for all required edits at once, which was too broad for the local model on multi-site edits. The nudge now tells the model to stop reading and emit exactly one `edit_file` call, and the llama stream path has a wall-clock first-token watchdog so SSE keep-alives cannot mask a wedged prefill.
   Severity: medium
