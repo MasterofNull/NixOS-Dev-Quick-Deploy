@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-opus-4-8",
+    "last_updated": "2026-07-06",
+    "purpose": "Policy gate for EXTERNAL-agent delegation actions, enforced at the delegation boundary by scripts/ai/lib/agent_action_policy.py. Governs the one thing the harness controls when launching an external CLI: the execution MODE (sandbox/approval posture). Path/shell allowlists inside a run are enforced by the agent's own sandbox, not here.",
+    "notes": "Defaults preserve current behavior (privileged modes allowed + audited) so automation is not broken. Tighten by setting global.privileged_requires_authorization=true (then privileged modes need the authorization env), or add a mode to an agent's blocked_modes for an instant central kill-switch with no script edits."
+  },
+  "global": {
+    "privileged_requires_authorization": false,
+    "authorization_env": "A2A_ALLOW_PRIVILEGED",
+    "fail_open": true
+  },
+  "agents": {
+    "codex": {
+      "allowed_modes": ["safe", "edit"],
+      "privileged_modes": ["edit"],
+      "blocked_modes": [],
+      "privileged_reason": "edit -> --dangerously-bypass-approvals-and-sandbox: arbitrary shell + edits with no per-action approval."
+    },
+    "gemini": {
+      "allowed_modes": ["auto_edit", "yolo"],
+      "privileged_modes": ["yolo"],
+      "blocked_modes": [],
+      "privileged_reason": "yolo -> auto-approves ALL tool calls including run_shell_command (no approval prompt)."
+    },
+    "antigravity": {
+      "allowed_modes": ["*"],
+      "privileged_modes": [],
+      "blocked_modes": [],
+      "note": "Inference-only via the switchboard; no local shell execution, so no privileged execution mode to gate."
+    }
+  }
+}

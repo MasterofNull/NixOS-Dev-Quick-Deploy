@@ -58,6 +58,26 @@ source "${SCRIPT_DIR}/lib/harness-grounding.sh" 2>/dev/null || true
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-gemini] $*"; }
 
+# A2A action policy gate: authorize the approval MODE before launching gemini
+# (config/agent-action-policy.json). Blocks invalid/kill-switched modes and — when the
+# policy is hardened — privileged modes (yolo auto-approves run_shell_command) lacking
+# authorization. Every decision is audited. Fails OPEN unless the evaluator returns an
+# explicit BLOCK (rc 3), so a config problem never silently breaks delegation.
+policy_gate_action() {
+    local agent="$1" mode="$2" task_id="$3"
+    local pol="$SCRIPT_DIR/lib/agent_action_policy.py"
+    [[ -f "$pol" ]] || return 0
+    local authorized="0"
+    case "${A2A_ALLOW_PRIVILEGED:-0}" in 1|true|yes|on) authorized="1" ;; esac
+    local verdict rc
+    verdict="$(AQ_TASK_ID="$task_id" python3 "$pol" "$agent" "$mode" "$authorized" 2>/dev/null)"; rc=$?
+    if [[ $rc -eq 3 ]]; then
+        die "A2A action policy BLOCKED this delegation: ${verdict#BLOCK }
+  Hardened privileged mode? Authorize with: export A2A_ALLOW_PRIVILEGED=1
+  Policy: config/agent-action-policy.json | Audit: .agent/collaboration/a2a-audit.log"
+    fi
+}
+
 # Return byte count of lines that are NOT Gemini CLI headers, warnings, or network error lines.
 # Used to distinguish "real content produced" from "error-only output" on non-zero exits.
 _gemini_meaningful_bytes() {
@@ -277,6 +297,8 @@ cmd_delegate() {
     ensure_dirs
 
     local id; id="$(task_id)"
+    # A2A action policy gate: authorize the approval mode before launching gemini.
+    policy_gate_action gemini "$mode" "$id"
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
