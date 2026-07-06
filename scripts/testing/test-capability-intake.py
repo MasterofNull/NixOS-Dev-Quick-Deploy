@@ -31,6 +31,7 @@ def main() -> int:
     assert "playwright-mcp" in ids
     assert "semgrep-mcp" in ids
     assert "mcp-admission-controller" in ids
+    assert "t3mp3st" in ids
 
     all_report = run_json("audit", "--all", "--json")
     reports = {item["id"]: item for item in all_report["reports"]}
@@ -43,6 +44,11 @@ def main() -> int:
     assert reports["mcp-admission-controller"]["state"] == "enabled"
     assert reports["github-mcp-readonly"]["admission"] in {"needs-review", "review-recommended"}
     assert reports["github-mcp-readonly"]["unsafe_tool_count"] == 0
+    assert reports["t3mp3st"]["state"] == "blocked-security-intake"
+    assert reports["t3mp3st"]["admission"] in {"needs-review", "review-recommended", "blocked"}
+    assert "dual-use-offensive-security" in reports["t3mp3st"]["risk_flags"]
+    assert "network-active-scanning" in reports["t3mp3st"]["risk_flags"]
+    assert reports["t3mp3st"]["unsafe_tool_count"] == 0
 
     one_report = run_json("audit", "semgrep-mcp", "--json")
     assert len(one_report["reports"]) == 1

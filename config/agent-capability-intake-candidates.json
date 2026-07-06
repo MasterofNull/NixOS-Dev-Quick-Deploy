@@ -379,6 +379,44 @@
       "value": "Combine Understand-Anything, lean-ctx, and language-aware indexes for deterministic impact answers.",
       "risks": ["llm-generated-graph-inaccuracy"],
       "activation_notes": "Use graph as advisory; verify deploy/security conclusions against source and live checks."
+    },
+    {
+      "id": "t3mp3st",
+      "name": "T3MP3ST offensive-security harness",
+      "category": "security-redteam",
+      "source_url": "https://github.com/elder-plinius/T3MP3ST",
+      "maturity": "third-party-dual-use",
+      "priority": "high",
+      "state": "blocked-security-intake",
+      "review_status": "blocked",
+      "blocked_reason": "Dual-use offensive-security framework with real network, exploit, MCP, and War Room surfaces. Must complete security, license, sandbox, scope, and tool-admission review before cloning, installing, enabling, or exposing tools to agents.",
+      "unblock_condition": "Pin an upstream commit, complete multi-agent security and Nix packaging review, enforce scope receipts and human approval gates, add dashboard or aq-report visibility, and pass focused intake plus tier0 validation.",
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
+      "tool_allowlist": [
+        "tempest_verify_claims_offline",
+        "tempest_scope_gate_validate",
+        "tempest_mcp_metadata_audit"
+      ],
+      "permissions": {
+        "network": "blocked-until-scope-gated",
+        "filesystem": "quarantine-read",
+        "writes": "blocked-until-sandboxed",
+        "secrets": false
+      },
+      "value": "Potentially useful offensive-security orchestration patterns, benchmark verification discipline, scope containment concepts, and MCP/API integration patterns for authorized local harness security testing.",
+      "risks": [
+        "dual-use-offensive-security",
+        "network-active-scanning",
+        "exploit-tool-exposure",
+        "mcp-tool-authority-expansion",
+        "agpl-license-obligations",
+        "npm-package-execution"
+      ],
+      "activation_notes": "Do not install or run in this slice. First safe milestone is a review-only quarantine import with no active scanning, no target execution, no secrets, loopback-only services, and all offensive tools denied by default."
     }
   ]
 }
