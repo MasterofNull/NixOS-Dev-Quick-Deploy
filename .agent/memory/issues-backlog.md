@@ -1287,3 +1287,15 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
 - **Lesson**: local-agent tasks need --timeout large enough that first_token budget ≥ cold-prefill
   (~340s here). Floor now guarantees this regardless of caller timeout. Production aq-loop
   (--timeout 3600+) was always safe (1800s budget); the trap was only small ad-hoc timeouts.
+
+## [DONE] guard_outbound_prompt aborts clean-prompt delegation under set -e (2026-07-06)
+- **Scope**: scripts/ai/delegate-to-codex, scripts/ai/delegate-to-gemini (guard_outbound_prompt helper)
+- **Severity**: HIGH (silent) — a clean-prompt codex delegation would abort with no dispatch, no error
+- **Root cause**: helper's last statement `[[ "$verdict" == OK\ ?* ]] && info ...`. Clean prompt =>
+  no findings => verdict="OK " => [[ ]] returns 1 => function returns 1. Under `set -euo pipefail`
+  with a standalone call site, rc=1 exits the script. Shipped in codex commit 3c382513; undetected
+  because live validations used delegate-to-local, not codex.
+- **Fix**: explicit `return 0` at end of guard_outbound_prompt in both scripts (commit e463e88f).
+- **Lesson**: any bash helper whose LAST line is a `[[ ]] && cmd` (or any conditional) returns that
+  test's status. Under `set -e` at a standalone call site that silently aborts. End such helpers with
+  an explicit `return 0` unless the conditional's failure is genuinely meant to propagate.
