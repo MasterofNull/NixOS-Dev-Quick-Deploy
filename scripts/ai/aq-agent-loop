@@ -211,9 +211,14 @@ async def run_task(
     os.environ["LLAMA_CHUNK_TIMEOUT"] = str(max(14400.0, float(timeout_secs) * 8))
     os.environ["LLAMA_FIRST_TOKEN_TIMEOUT"] = os.environ.get(
         "LLAMA_FIRST_TOKEN_TIMEOUT",
-        # Cap at 1800s (30 min) for long-horizon tasks — large-context prefill on Renoir APU
-        # can exceed the prior 600s ceiling for full-manifest prompts.
-        str(max(120.0, min(1800.0, float(timeout_secs) * 0.5))),
+        # Floor 420s: a COLD prefill of the agent's full-manifest prompt (~5500 tokens:
+        # harness grounding + tool schemas + task) on the single-slot Renoir APU takes
+        # ~340s at the observed ~10 tok/s, emitting ZERO SSE bytes until the first token.
+        # A floor below that makes any small --timeout task fail on a cold llama cache
+        # (httpx read timeout = min(chunk, first_token) fires during the silent prefill),
+        # even though the switchboard passthrough is forwarding correctly. Cap 1800s
+        # (30 min) still bounds a true single-slot wedge. Warm cache -> first token ~1s.
+        str(max(420.0, min(1800.0, float(timeout_secs) * 0.5))),
     )
     # Token budget per LLM call. Tool-call JSON fits in 512; analysis/research output
     # needs 1200+ to produce a complete artifact (ranked lists, summaries, COMPLETED: signal).

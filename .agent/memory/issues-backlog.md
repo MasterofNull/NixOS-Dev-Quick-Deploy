@@ -1267,3 +1267,23 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Severity: low
   Action: Removed `config/validation-check-registry.json` from those two dashboard checks' trigger paths. Registry edits are covered by dedicated registry/contract tests; dashboard TestClient suites still run when dashboard route or test files change.
   File: config/validation-check-registry.json
+
+## [DONE] local-agent-through-switchboard cold-prefill first-token timeout (2026-07-06)
+- **Scope**: scripts/ai/aq-agent-loop:216, ai-stack/switchboard/switchboard.py (local-agent passthrough)
+- **Severity**: HIGH (blocked routing the agentic loop through the switchboard — the "in concert" design)
+- **Root cause (two layers)**:
+  1. Switchboard mutated the local-agent prompt (profile-card injection + trim@maxInputTokens=5500)
+     → changed the llama prompt prefix → prompt-cache MISS → cold re-prefill every call.
+     FIXED: exempt local-agent/local-tool-calling from card injection (7d0758cc) AND from
+     _trim_profile_messages (1736ba9a) → true passthrough; switchboard prefix == direct prefix
+     → cache is shareable (verified cached req = 1s vs 33s cold).
+  2. With passthrough correct, a COLD prefill of the agent's ~5500-tok full-manifest prompt on
+     the single-slot Renoir APU takes ~340s at ~10 tok/s, emitting ZERO SSE bytes until first
+     token. first_token_timeout floor was 120s and formula timeout*0.5 → a small --timeout (e.g.
+     300 → 150s) tripped httpx ReadTimeout mid-prefill. FIXED: raise floor 120→420s (covers cold
+     prefill + margin; 1800s cap still bounds a true wedge). aq-agent-loop:216.
+- **Verified**: end-to-end agent task (aq-wiki --status tool call + final answer) completes through
+  switchboard :8085 with --timeout 900. status=completed, error=null, result correct (6257 nodes).
+- **Lesson**: local-agent tasks need --timeout large enough that first_token budget ≥ cold-prefill
+  (~340s here). Floor now guarantees this regardless of caller timeout. Production aq-loop
+  (--timeout 3600+) was always safe (1800s budget); the trap was only small ad-hoc timeouts.
