@@ -192,6 +192,55 @@ print(f'  Objective: $objective')
 "
 }
 
+cmd_contribute() {
+    if [ $# -lt 1 ]; then
+        echo -e "${RED}Error: plan-id required${NC}"
+        usage
+        exit 1
+    fi
+
+    local plan_id="$1"
+    shift
+
+    local agent_id=""
+    local content=""
+    local confidence="0.7"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --agent)      agent_id="$2"; shift 2 ;;
+            --content)    content="$2"; shift 2 ;;
+            --confidence) confidence="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+
+    if [ -z "$agent_id" ]; then
+        echo -e "${RED}Error: --agent required${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Adding contribution to plan: $plan_id${NC}"
+
+    cd "$COLLAB_DIR"
+    python3 -c "
+from collaborative_planning import CollaborativePlanning
+
+planner = CollaborativePlanning()
+try:
+    cid = planner.add_contribution(
+        plan_id='$plan_id',
+        agent_id='$agent_id',
+        content='''$content''',
+        confidence=$confidence,
+    )
+    plan = planner.get_plan('$plan_id')
+    print(f'✓ Contribution added: {cid}')
+    print(f'  Agent: $agent_id | plan contributions: {len(plan.contributions) if plan else \"?\"}')
+except ValueError as e:
+    print(f'Error: {e} (create the plan first: aq-collaborate plan <collab-id> <objective>)')
+"
+}
+
 cmd_synthesize() {
     if [ $# -lt 1 ]; then
         echo -e "${RED}Error: plan-id required${NC}"
@@ -276,26 +325,29 @@ cmd_review() {
 
     cd "$COLLAB_DIR"
     python3 -c "
-import json
-from quality_consensus import QualityConsensus, ReviewVerdict
+from quality_consensus import QualityConsensus, VoteType
 
 consensus = QualityConsensus()
-
-review_id = consensus.submit_review(
-    item_id='$item_id',
-    reviewer_id='$agent_id',
-    reviewer_capability=0.85,  # Mock value
-    reviewer_reliability=0.90,  # Mock value
-    verdict=ReviewVerdict.${verdict^^},
-    overall_score=$score,
-    feedback='$feedback',
-    confidence=$confidence
-)
-
-print(f'✓ Review submitted: {review_id}')
-print(f'  Reviewer: $agent_id')
-print(f'  Verdict: $verdict')
-print(f'  Score: $score')
+# Address the debate by the stable item id; get_or_create_session reuses across
+# separate 'review' invocations (persisted to active_sessions.json).
+session_id = consensus.get_or_create_session(artifact_id='$item_id', team_id='collab')
+try:
+    review_id = consensus.submit_review(
+        session_id=session_id,
+        reviewer_id='$agent_id',
+        vote=VoteType('$verdict'.strip().lower()),
+        confidence=$confidence,
+        reasoning='$feedback',
+    )
+    sess = consensus.active_sessions[session_id]
+    print(f'✓ Review submitted: {review_id}')
+    print(f'  Reviewer: $agent_id | Vote: $verdict | Confidence: $confidence')
+    print(f'  Reviews: {len(sess.reviews)}/{sess.required_reviewers} '
+          f'(need {sess.required_reviewers} before: aq-collaborate decide $item_id)')
+except ValueError as e:
+    print(f'Error: {e}')
+except Exception as e:
+    print(f'Error: invalid vote \"$verdict\" (use approve|reject|abstain|request_changes): {e}')
 "
 }
 
@@ -312,30 +364,26 @@ cmd_decide() {
 
     cd "$COLLAB_DIR"
     python3 -c "
-import json
+import asyncio, json
 from quality_consensus import QualityConsensus
 
 consensus = QualityConsensus()
+# Find the persisted session for this item.
+session_id = next((sid for sid, s in consensus.active_sessions.items()
+                   if s.artifact_id == '$item_id'), None)
+if not session_id:
+    print('Error: no consensus session for item $item_id — run: aq-collaborate review $item_id --agent A --verdict approve --score 0.8')
+    raise SystemExit(1)
 
-# Check if we have reviews
-pending = len(consensus.pending_reviews.get('$item_id', []))
-if pending == 0:
-    print('Error: No reviews submitted for item $item_id')
-    exit(1)
+sess = consensus.active_sessions[session_id]
+n, need = len(sess.reviews), sess.required_reviewers
+if n < need:
+    print(f'Not enough reviews: {n}/{need}. Need {need - n} more reviewer(s) before deciding.')
+    raise SystemExit(0)
 
-print(f'Processing {pending} reviews...')
-
-decision = consensus.calculate_consensus('$item_id')
-
-print(f'\n✓ Consensus reached:')
-print(f'  Verdict: {decision.final_verdict.value}')
-print(f'  Consensus score: {decision.consensus_score:.2f}')
-print(f'  Approval rate: {decision.approval_rate:.2%}')
-print(f'  Weighted avg: {decision.weighted_average_score:.2f}')
-print(f'  Escalated: {decision.escalated}')
-
-if decision.escalated:
-    print(f'  Escalation reason: {decision.escalation_reason.value}')
+result = asyncio.run(consensus.evaluate_consensus(session_id))
+print('✓ Consensus decision:')
+print(json.dumps(result.to_dict(), indent=2, default=str))
 "
 }
 
@@ -429,6 +477,7 @@ shift
 case "$COMMAND" in
     start) cmd_start "$@" ;;
     plan) cmd_plan "$@" ;;
+    contribute) cmd_contribute "$@" ;;
     synthesize) cmd_synthesize "$@" ;;
     review) cmd_review "$@" ;;
     decide) cmd_decide "$@" ;;
