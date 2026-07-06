@@ -144,6 +144,44 @@
       "data_stores": []
     },
     {
+      "id": "t3mp3st-intake",
+      "name": "T3MP3ST Intake Facade",
+      "category": "security-governance",
+      "kind": "repo-cli",
+      "state": "blocked-security-intake",
+      "maturity": "intake",
+      "owner": "security-systems",
+      "summary": "Metadata-only facade for evaluating the T3MP3ST dual-use offensive-security candidate while blocking clone, install, server, MCP, scan, and exploit actions.",
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/aq-tempest",
+        "scripts/testing/test-aq-tempest.py",
+        ".agent/skills/t3mp3st-intake/SKILL.md",
+        ".agent/PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md"
+      ],
+      "security": {
+        "admission": "blocked-external-dual-use",
+        "intake_candidate_id": "t3mp3st",
+        "risk": "high",
+        "required_gate": "scripts/ai/aq-tempest gates --json && scripts/ai/aq-tempest audit --json"
+      },
+      "validation": [
+        "python3 scripts/testing/test-aq-tempest.py",
+        "python3 scripts/testing/test-capability-intake.py"
+      ],
+      "parity_targets": [
+        "capability intake registries",
+        "MCP admission controllers",
+        "scope-gated red-team tooling"
+      ],
+      "data_stores": []
+    },
+    {
       "id": "auto-skill-selection",
       "name": "Automatic Skill Selection",
       "category": "agent-skills",

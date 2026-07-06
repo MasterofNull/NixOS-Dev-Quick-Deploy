@@ -36,6 +36,7 @@ External ingestion gate: `capability-intake`
 | osint-research-store | osint | dataset-workflow | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-osint-research-ingest.py` |
 | github-mcp-readonly | repository-intelligence | external-mcp | blocked-auth-runtime | needs-review / high | codex, claude | `python3 scripts/testing/test-capability-intake.py` |
 | capability-intake | security-governance | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-capability-intake.py` |
+| t3mp3st-intake | security-governance | repo-cli | blocked-security-intake | blocked-external-dual-use / high | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-tempest.py`<br>`python3 scripts/testing/test-capability-intake.py` |
 | semgrep-mcp | security-scanning | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | nixos-static-analysis | system-tools | repo-cli | enabled | accepted-with-mitigations / medium | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | workflow-blueprints | workflow | config-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-workflow-blueprints.py` |
@@ -223,6 +224,19 @@ Deny-by-default admission workflow for external tools, plugins, skills, and MCP 
 - Data stores: none
 - Parity targets: mcp security gateways, plugin registries, agent tool admission controllers
 - Security gate: `scripts/ai/aq-capability-intake audit --all --json`
+
+### t3mp3st-intake
+
+Metadata-only facade for evaluating the T3MP3ST dual-use offensive-security candidate while blocking clone, install, server, MCP, scan, and exploit actions.
+
+- Name: T3MP3ST Intake Facade
+- Owner: security-systems
+- Maturity: intake
+- State: blocked-security-intake
+- Primary refs: `scripts/ai/aq-tempest`, `scripts/testing/test-aq-tempest.py`, `.agent/skills/t3mp3st-intake/SKILL.md`, `.agent/PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md`
+- Data stores: none
+- Parity targets: capability intake registries, MCP admission controllers, scope-gated red-team tooling
+- Security gate: `scripts/ai/aq-tempest gates --json && scripts/ai/aq-tempest audit --json`
 
 ### semgrep-mcp
 

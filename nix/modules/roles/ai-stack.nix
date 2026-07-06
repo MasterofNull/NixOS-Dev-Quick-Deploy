@@ -390,6 +390,9 @@ let
       (pkgs.writeShellScriptBin "aq-capability-patch-apply" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-patch-apply" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-tempest" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-tempest" "$@"
+      '')
       # --- Knowledge & indexing ---
       (pkgs.writeShellScriptBin "aq-index" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-index" "$@"

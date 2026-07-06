@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Safe intake facade for the blocked T3MP3ST capability candidate."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REGISTRY_PATH = REPO_ROOT / "config" / "agent-capability-intake-candidates.json"
+PRD_PATH = REPO_ROOT / ".agent" / "PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md"
+INTAKE_CMD = REPO_ROOT / "scripts" / "ai" / "aq-capability-intake"
+CANDIDATE_ID = "t3mp3st"
+
+ACTIVE_COMMANDS = {"install", "run", "server", "mcp", "scan", "exploit", "mission", "war-room"}
+PROMOTION_GATES = [
+    "Pin upstream commit and source hash before any clone or package execution.",
+    "Complete SBOM, dependency, and license review, including AGPL obligations.",
+    "Package through Nix with no postinstall execution and no ambient secrets.",
+    "Enforce loopback-only service defaults for any UI, API, or MCP surface.",
+    "Require signed scope receipts for every active network or exploit operation.",
+    "Keep MCP/tool admission deny-by-default with a minimal metadata-only allowlist.",
+    "Add human approval gates for scanning, exploitation, credential, and post-exploitation tools.",
+    "Expose dashboard or aq-report visibility for state, scope, approvals, and denials.",
+    "Document rollback and disable paths before promotion from blocked-security-intake.",
+]
+
+
+def load_candidate() -> dict[str, Any]:
+    payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    for candidate in payload.get("candidates", []):
+        if candidate.get("id") == CANDIDATE_ID:
+            return candidate
+    raise RuntimeError(f"candidate not found: {CANDIDATE_ID}")
+
+
+def audit_report() -> dict[str, Any]:
+    proc = subprocess.run(
+        [str(INTAKE_CMD), "audit", CANDIDATE_ID, "--json"],
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    payload = json.loads(proc.stdout)
+    reports = payload.get("reports", [])
+    if not reports:
+        raise RuntimeError(f"no intake report returned for {CANDIDATE_ID}")
+    return reports[0]
+
+
+def status_payload() -> dict[str, Any]:
+    candidate = load_candidate()
+    report = audit_report()
+    return {
+        "id": CANDIDATE_ID,
+        "name": candidate.get("name"),
+        "state": candidate.get("state"),
+        "review_status": candidate.get("review_status"),
+        "blocked_reason": candidate.get("blocked_reason"),
+        "admission": report.get("admission"),
+        "risk_flags": report.get("risk_flags", []),
+        "unsafe_tool_count": report.get("unsafe_tool_count"),
+        "tool_allowlist": candidate.get("tool_allowlist", []),
+        "permissions": candidate.get("permissions", {}),
+        "prd": str(PRD_PATH.relative_to(REPO_ROOT)),
+        "active_execution": "blocked",
+    }
+
+
+def gates_payload() -> dict[str, Any]:
+    return {
+        "id": CANDIDATE_ID,
+        "state": load_candidate().get("state"),
+        "required_gates": PROMOTION_GATES,
+        "promotion_rule": "No clone, install, server, MCP, scan, or exploit action is allowed until every gate passes and the candidate registry state is explicitly promoted.",
+    }
+
+
+def emit(payload: dict[str, Any], as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    for key, value in payload.items():
+        if isinstance(value, (list, dict)):
+            value = json.dumps(value, sort_keys=True)
+        print(f"{key}: {value}")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    return emit(status_payload(), args.json)
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    return emit({"id": CANDIDATE_ID, "report": audit_report()}, args.json)
+
+
+def cmd_gates(args: argparse.Namespace) -> int:
+    return emit(gates_payload(), args.json)
+
+
+def cmd_blocked(args: argparse.Namespace) -> int:
+    command = args.cmd or "active"
+    print(
+        f"blocked: T3MP3ST is {load_candidate().get('state')}; '{command}' active execution is disabled until security intake gates pass. See {PRD_PATH.relative_to(REPO_ROOT)}.",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    status = sub.add_parser("status", help="Show blocked intake state")
+    status.add_argument("--json", action="store_true", help="Emit JSON")
+    status.set_defaults(func=cmd_status)
+
+    audit = sub.add_parser("audit", help="Run the local intake audit for T3MP3ST")
+    audit.add_argument("--json", action="store_true", help="Emit JSON")
+    audit.set_defaults(func=cmd_audit)
+
+    gates = sub.add_parser("gates", help="List required promotion gates")
+    gates.add_argument("--json", action="store_true", help="Emit JSON")
+    gates.set_defaults(func=cmd_gates)
+
+    for command in sorted(ACTIVE_COMMANDS):
+        blocked = sub.add_parser(command, help="Blocked active execution command")
+        blocked.set_defaults(func=cmd_blocked)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
