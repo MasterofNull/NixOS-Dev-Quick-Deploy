@@ -1179,13 +1179,13 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Action: Added validator-facing `Description`, `When to Use`, and `Usage` sections without changing the existing design workflows; reran auto-selection and both skills now validate.
   File: .agent/skills/frontend-design/SKILL.md; .agent/skills/canvas-design/SKILL.md
 
-[XFAIL 2026-07-01 expires 2026-07-31] coordinator-api-endpoint-gaps — Three coordinator API endpoints return wrong status codes in QA health checks:
+[DONE 2026-07-06] coordinator-api-endpoint-gaps — Three coordinator API endpoints returned wrong status codes in QA health checks:
   - 0.9.3 (DAG/workflow): GET /workflow/run/{id}/execute/status → 405 (route exists, method mismatch from Phase 38 spec drift)
   - 0.9.2 (UAG lifecycle): GET /agent/lifecycle/{id}/replay → 404 (route not implemented)
   - 93.8 (human-agent control): POST /agent-runs/{id}/control → 401 (route requires auth, QA probe sends none)
   Severity: medium (no user impact; coordinator routes serve live requests correctly via other paths)
-  Action: Added to config/qa-xfail.yaml; endpoints need implementation or QA probe alignment before expiry.
-  File: config/qa-xfail.yaml; ai-stack/mcp-servers/hybrid-coordinator/
+  Action: Removed the xfail entries; aligned bash QA with the Python check by probing status codes directly for expected 404/422 contract responses; added the missing legacy UAG replay route registration in the coordinator shim. Repo-local phase-0 machine QA now passes 91/0 under managed sandbox. Rebuild required to deploy the coordinator shim route body into the running Nix store service.
+  File: config/qa-xfail.yaml; scripts/ai/_aq-qa-bash; ai-stack/mcp-servers/hybrid-coordinator/intake_gateway.py
 
 [OPEN] sandbox-observability-contract-fragmentation — Agent-side audits still surface routine host-observability denials as command errors or noisy skips even when services are healthy. Evidence from 2026-07-02 audit: `ss -tlnp` denied netlink in the managed agent sandbox until escalated; `systemctl is-active ai-drop-daemon` denied system bus access until escalated; `aq-report` marked cache prewarm state with system-bus denial text; `aq-qa 0 --machine` passed with 55 sandbox/unreachable skips.
   Severity: medium
@@ -1206,6 +1206,11 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Severity: medium
   Action: Updated active agent instructions and skills to point to `ai-stack/agent-memory/MEMORY.md`, kept warm topics under `.agent/memory/*.md`, and added a registry test to block future stale hot-memory references.
   File: AGENTS.md; README.md; .agent/SKILL_INDEX.md; .agent/WORKFLOW-CANON.md; .agent/GEMINI.md; .agent/skills/context-efficiency/SKILL.md; scripts/testing/test-agent-memory-surface-registry.py
+
+[OPEN] delegate-to-local-task-subcommand-parser-drift — Task-specific `--status`, `--check`, and `--cancel` invocations reject documented positional task IDs, blocking routine monitor/cancel workflows; discovered while attempting the multi-agent reviewer pass for the coordinator endpoint QA slice.
+  Severity: medium
+  Action: Fix `scripts/ai/delegate-to-local` argument parsing so documented `--status ID`, `--check ID`, and `--cancel ID` work consistently, or update CLI help and wrappers to match implemented behavior; add a regression test.
+  File: scripts/ai/delegate-to-local
 
 [PENDING-REBUILD] agentic-runtime-workspace-dac-denial — Runtime isolation profiles declare agent workspace roots under `/var/lib/nixos-ai-stack/mutable/program/`, and MCP services include them in `ReadWritePaths`, but the roots were provisioned `0750` so ai-stack service users could traverse but not create files unless they owned the directory.
   Severity: high

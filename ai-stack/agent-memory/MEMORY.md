@@ -1,7 +1,7 @@
 # Project Memory — NixOS-Dev-Quick-Deploy
 
 ## Issues Backlog
-- Active backlog: `.agent/memory/issues-backlog.md`
+- Active backlog: `.agent/memory/issues-backlog.md` (latest: `delegate-to-local-task-subcommand-parser-drift`)
 
 ## Active Planning Docs
 - **Phase 54 (2026-05-14) COMPLETE ✓ 13/13** — Agentic-First Architecture Elevation (commits 4a6cd30c, 053a459b, b62dd21f): memory_broker.py (MemoryBroker unified typed memory), intent_classifier.py (IntentClassifier wired into handle_query:1611), rag_augmentor.py (active RAG default, L6 health gate at /api/health/rag), workflow/workflow_checkpointer.py (durable DAG + WORKFLOW_DLQ_KEY), trace_collector.py (end-to-end query trace + /api/traces), eval_runner.py (continuous eval + /eval/run + /eval/trend). config/intent-routing-map.json hot-reloadable. aq-qa phase 54: 13/13 PASS. PRD: .agent/PROJECT-AGENTIC-FIRST-ELEVATION-PRD.md. Gemini collab: gemini-20260514-171425-i7ecuo found classify_task at model_coordinator.py:126 was bypassed — now wired.
