@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""aq-sequential-edit — run a multi-edit slice on the local agent as sequential
+single-edit sub-tasks, validating between each.
+
+Why this exists (measured, not assumed): controlled experiments
+(reference-local-agent-capability-envelope) showed the local Qwen agent read-loops
+and never edits on a multi-site task over a large file, but SUCCEEDS at a single
+edit on the same file. Relaxing the stagnation guard did not help — the boundary is
+multi-edit working memory, not the guard. So the fix is to decompose: feed the
+agent ONE atomic edit per run, validate, then the next. Each atomic step is within
+the measured envelope.
+
+Manifest (JSON):
+{
+  "target": "path/to/file.py",
+  "validate_each": "python3 -m py_compile {target}",   # optional; {target} substituted
+  "steps": [
+    {"name": "add-from_dict-contribution", "prompt": "<single-edit instruction>"},
+    ...
+  ]
+}
+
+Usage:
+  aq-sequential-edit run manifest.json [--timeout 500] [--retries 2]
+  aq-sequential-edit run manifest.json --dry-run     # print the plan, dispatch nothing
+
+Each step dispatches `delegate-to-local --mode agent --role implementer` with a
+prompt scoped to exactly one edit, then runs validate_each. Stops on a step that
+fails after its retry budget (Rule 6). Exit 0 iff all steps pass.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Callable, Dict, List, Optional
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def build_step_prompt(target: str, step: Dict, index: int, total: int) -> str:
+    """Compose a single-edit sub-prompt. Kept pure for testing."""
+    return (
+        f"TASK ({index}/{total}): make exactly ONE edit to {target} and nothing else.\n\n"
+        f"{step['prompt'].strip()}\n\n"
+        f"Use edit_file with a precise anchor for this single change. Do NOT make any "
+        f"other edit. Then run_command('python3 -m py_compile {target}'). "
+        f"Then emit: COMPLETED: {step.get('name', 'edit ' + str(index))}."
+    )
+
+
+def _default_dispatch(prompt: str, timeout: int) -> Dict:
+    """Dispatch one single-edit sub-task to the local agent (live)."""
+    cmd = [
+        str(_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent",
+        "--role", "implementer", "--prompt", prompt, "--wait",
+        "--timeout", str(timeout),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    ok = ("COMPLETED:" in out) and ('"error": null' in out or '"error":null' in out or proc.returncode == 0)
+    # A hard signal of failure the loop reports for degraded/incomplete results.
+    if "incomplete result" in out or "stagnation" in out.lower():
+        ok = False
+    return {"ok": ok, "output": out[-800:]}
+
+
+def run_manifest(
+    manifest: Dict,
+    timeout: int = 500,
+    retries: int = 2,
+    dispatch: Optional[Callable[[str, int], Dict]] = None,
+    validate: Optional[Callable[[str], bool]] = None,
+    dry_run: bool = False,
+    log: Callable[[str], None] = print,
+) -> Dict:
+    """Orchestrate sequential single-edit steps. Pure except for injected dispatch/validate."""
+    target = manifest["target"]
+    steps: List[Dict] = manifest.get("steps", [])
+    validate_cmd = manifest.get("validate_each")
+    dispatch = dispatch or (lambda p, t: _default_dispatch(p, t))
+
+    def _run_validate() -> bool:
+        if validate is not None:
+            return validate(target)
+        if not validate_cmd:
+            return True
+        cmd = validate_cmd.replace("{target}", target)
+        return subprocess.run(cmd, shell=True, capture_output=True).returncode == 0
+
+    results = []
+    for i, step in enumerate(steps, 1):
+        name = step.get("name", f"step-{i}")
+        prompt = build_step_prompt(target, step, i, len(steps))
+        if dry_run:
+            log(f"[{i}/{len(steps)}] DRY-RUN {name}\n{prompt}\n")
+            results.append({"name": name, "status": "dry-run"})
+            continue
+
+        status = "failed"
+        for attempt in range(1, retries + 2):  # retries additional attempts (Rule 6: cap)
+            log(f"[{i}/{len(steps)}] {name} — dispatch attempt {attempt}")
+            res = dispatch(prompt, timeout)
+            if res.get("ok") and _run_validate():
+                status = "passed"
+                break
+            log(f"[{i}/{len(steps)}] {name} — attempt {attempt} did not pass "
+                f"(ok={res.get('ok')}); {'retrying' if attempt <= retries else 'exhausted'}")
+        results.append({"name": name, "status": status})
+        if status != "passed":
+            log(f"STOP: step {name} failed after {retries + 1} attempts.")
+            return {"target": target, "completed": i - 1, "total": len(steps),
+                    "success": False, "results": results}
+
+    return {"target": target, "completed": len(steps), "total": len(steps),
+            "success": True, "results": results}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run", help="Run a decomposition manifest")
+    r.add_argument("manifest")
+    r.add_argument("--timeout", type=int, default=500)
+    r.add_argument("--retries", type=int, default=2)
+    r.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+
+    manifest = json.loads(Path(args.manifest).read_text())
+    summary = run_manifest(
+        manifest, timeout=args.timeout, retries=args.retries, dry_run=args.dry_run,
+    )
+    print(json.dumps(summary, indent=2))
+    return 0 if summary["success"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
