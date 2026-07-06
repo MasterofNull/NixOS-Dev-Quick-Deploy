@@ -47,6 +47,34 @@ Pass implementer exactly the slice context. Do NOT pass full HANDOFF.md — pass
 
 ---
 
+## 2b. Multi-Agent Expert-Team Debate (STANDARD for PRD / plan / decision creation)
+
+CORRECT pattern (supersedes assigning a DIFFERENT role per agent — that conflates
+angle-diversity with model-diversity and under-covers each angle):
+
+**Every agent plays the SAME expert-team baseline per PASS. Run MULTIPLE passes to
+cover the different angles.**
+
+- **angle-diversity → passes.** Each pass = ONE expert-team baseline chosen for the
+  goal/task/domain (kernel roles from role-matrix + domain expertise), e.g.
+  pass1=[architect+security], pass2=[implementer+systems], pass3=[reviewer+product].
+- **model-diversity → agents.** Within a pass, Claude + local(Qwen) + Codex + Gemini
+  ALL reason through the SAME baseline, so disagreement reflects genuine model
+  reasoning, not role framing.
+- Multiple same-baseline passes cover EVERY angle with EVERY model — which is what the
+  old AgentType→one-role SSOT tried to approximate with per-agent roles, but couldn't.
+
+Mechanism (per pass, via aq-collaborate):
+1. orchestrator picks the pass's expert-team baseline.
+2. each agent votes: `aq-collaborate review <angle-item> --agent <model>-<baseline> --verdict approve|reject --score S --feedback "..."`
+3. `aq-collaborate decide <angle-item>` → weighted consensus for that angle.
+4. next pass = next baseline; aggregate the passes' consensuses into the final call.
+
+ANTI-PATTERN (do NOT): one pass where each agent gets a different role. You then
+cannot tell a role artifact from a real disagreement, and only one model sees each angle.
+
+---
+
 ## 3. RESUME.json Schema (exact format)
 
 ```json
