@@ -1630,38 +1630,6 @@
           description = "Number of concurrent remote LLM requests the switchboard will allow before queuing.";
         };
 
-        remoteAuthMode = lib.mkOption {
-          type = lib.types.enum ["apikey" "oauth"];
-          default = "apikey";
-          description = ''
-            Remote lane auth. "apikey": REMOTE_LLM_API_KEY (from remoteApiKeyFile) sent as a
-            Bearer token — OpenRouter, or a Google AI Studio key on generativelanguage.
-            "oauth": mint a fresh Google OAuth access token (gcloud ADC) for the Vertex AI
-            endpoint — lets the paid Antigravity/Gemini account drive the headless lane with
-            NO API key. generativelanguage rejects OAuth; Vertex accepts it, so in oauth mode
-            REMOTE_LLM_URL is derived from vertexProject/vertexLocation and model aliases must
-            be the google/gemini-* form. Requires the aiplatform API enabled on vertexProject.
-          '';
-        };
-
-        vertexProject = lib.mkOption {
-          type = lib.types.str;
-          default = "you-keep-giving-me-errors";
-          description = ''
-            Google Cloud PROJECT ID for Vertex AI when remoteAuthMode = "oauth". Must be a real
-            GCP project with billing + the aiplatform API enabled — NOT an arbitrary/per-task
-            name (Vertex validates the project exists). Override in deploy-options.local.nix.
-            Per-task / per-A2A dynamism belongs at the profile/alias/delegation layer, not the
-            immutable GCP project.
-          '';
-        };
-
-        vertexLocation = lib.mkOption {
-          type = lib.types.str;
-          default = "us-central1";
-          description = "Vertex AI location/region for the oauth remote lane (e.g. us-central1).";
-        };
-
         reservedSlots = lib.mkOption {
           type = lib.types.int;
           default = 0;
