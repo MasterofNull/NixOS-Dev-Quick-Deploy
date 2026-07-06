@@ -255,3 +255,6 @@ ai-stack/local-agents/.agents/
 .understand-anything/ua-batch-processor.py
 .understand-anything/diff-overlay.json
 .understand-anything/.trash-*/
+
+# Volatile per-run metadata for harness-prompt-extensions (see training_ingest.py)
+config/.harness-prompt-ext.meta.json
