@@ -41,6 +41,35 @@ source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-codex] $*"; }
 
+# A2A outbound safeguard: scan the prompt for secrets BEFORE it leaves the harness
+# for codex (an external agent runtime = a data-exfiltration path). block=True: if a
+# secret is found, refuse to dispatch and audit the finding (kind only, never the raw
+# value). Fails OPEN if a2a_guard is unavailable — a missing guard must not break
+# delegation, but the common path is guarded. Env A2A_GUARD_BLOCK=0 -> audit-only.
+guard_outbound_prompt() {
+    local prompt="$1" task_id="$2" from_agent="${AQ_AGENT_ROLE:-claude}"
+    local guard="$SCRIPT_DIR/lib/a2a_guard.py"
+    [[ -f "$guard" ]] || return 0
+    local block="True"; [[ "${A2A_GUARD_BLOCK:-1}" == "0" ]] && block="False"
+    local verdict
+    verdict="$(A2A_GUARD_TEXT="$prompt" python3 - "$guard" "$from_agent" "$task_id" "$block" <<'PY' 2>/dev/null
+import os, sys
+from importlib.machinery import SourceFileLoader
+guard_path, from_agent, task_id, block = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "True"
+mod = SourceFileLoader("a2a_guard", guard_path).load_module()
+res = mod.guard_outbound(os.environ.get("A2A_GUARD_TEXT", ""), from_agent=from_agent,
+                         to_agent="codex", task_id=task_id, block=block)
+print("BLOCKED" if not res["ok"] else "OK", ",".join(f["kind"] for f in res["findings"]))
+PY
+)"
+    if [[ "$verdict" == BLOCKED* ]]; then
+        die "A2A outbound blocked — prompt contains secret-like content (${verdict#BLOCKED }).
+  Refusing to send secrets to codex (external runtime). Redact the prompt or set
+  A2A_GUARD_BLOCK=0 to audit-only. Audit: .agent/collaboration/a2a-audit.log"
+    fi
+    [[ "$verdict" == OK\ ?* ]] && info "A2A guard: audited outbound (findings: ${verdict#OK })"
+}
+
 require_codex() {
     [[ -x "$CODEX_BIN" ]] || die "Codex CLI not found at $CODEX_BIN
   Install: npm install -g @openai/codex
@@ -165,6 +194,8 @@ cmd_delegate() {
     ensure_dirs
 
     local id; id="$(task_id)"
+    # A2A safeguard: scan the outbound prompt for secrets before it leaves for codex.
+    guard_outbound_prompt "$prompt" "$id"
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
