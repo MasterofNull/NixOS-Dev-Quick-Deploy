@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "owner": "claude-opus-4-8",
+    "last_updated": "2026-07-06",
+    "purpose": "Rate/budget limit for EXTERNAL-agent dispatches, enforced at the delegation boundary by scripts/ai/lib/agent_dispatch_budget.py. Caps how many times each external agent (and all of them together) can be dispatched within a rolling window — bounds runaway agent loops (cost for paid lanes like codex; outbound-message volume for all).",
+    "notes": "Reads .agents/delegation/registry.jsonl (shared by all lanes; each dispatch has agent + created ts). Counts only the configured external agents toward the global cap, so local inference is not charged. Generous defaults catch runaway loops without breaking legitimate bursts. enforcement=block refuses over-budget dispatch (rc 3); enforcement=warn audits + allows. Bypass one call with the bypass_env; disable entirely by setting global.enabled=false."
+  },
+  "global": {
+    "enabled": true,
+    "fail_open": true,
+    "enforcement": "block",
+    "bypass_env": "A2A_BUDGET_BYPASS",
+    "window_seconds": 300,
+    "max_dispatches": 60
+  },
+  "agents": {
+    "codex": { "window_seconds": 300, "max_dispatches": 20 },
+    "gemini": { "window_seconds": 300, "max_dispatches": 20 },
+    "antigravity": { "window_seconds": 300, "max_dispatches": 20 }
+  }
+}
