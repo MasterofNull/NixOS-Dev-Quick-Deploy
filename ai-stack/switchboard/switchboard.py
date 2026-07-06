@@ -2128,6 +2128,16 @@ def _profile_card(profile: str) -> str:
     return str(_profile_settings(profile).get("profileCard") or "").strip()
 
 def _skip_profile_card_for_messages(profile: str, messages: list) -> bool:
+    # local-agent / local-tool-calling are coordinator-spawned agent RUNTIMES that
+    # already send their own complete system prompt + harness grounding. Injecting a
+    # profile card prepends an extra system message that CHANGES the prompt prefix,
+    # which INVALIDATES llama.cpp's prompt cache — so the runtime's large (~5000-token)
+    # prompt fully re-prefills on EVERY call (>125s first-token on the single-slot APU,
+    # tripping the agent watchdog). Skip the card for these profiles = true passthrough,
+    # so the prefix matches a direct call and the cache is reused. (This is why routing
+    # the agent loop through the switchboard timed out until now.)
+    if profile in ("local-agent", "local-tool-calling"):
+        return True
     if profile not in ("continue-local", "embedded-assist"):
         return False
     return _looks_like_strict_reply_only(messages)

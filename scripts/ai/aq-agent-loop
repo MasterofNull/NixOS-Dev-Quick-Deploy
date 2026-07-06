@@ -447,14 +447,12 @@ def main() -> int:
     parser.add_argument("--max-calls",  type=int, default=0, help="Deprecated compatibility flag; ignored")
     parser.add_argument("--fallback",   action="store_true", help="Allow remote fallback if local fails")
     parser.add_argument("--llama-url", default=None,
-                        help="Explicit inference endpoint (overrides the default + "
-                             "--via-switchboard).")
-    parser.add_argument("--via-switchboard", action="store_true",
-                        help="OPT-IN: route inference through the switchboard (:8085) for "
-                             "central concurrency/observability. Currently gated behind a "
-                             "switchboard local-agent passthrough fix (it hangs on streaming "
-                             "and adds 5-10x latency via card injection) — default is llama.cpp "
-                             "direct (:8080). Enable once that path is repaired.")
+                        help="Explicit inference endpoint (overrides the default + --direct).")
+    parser.add_argument("--direct", action="store_true",
+                        help="Bypass the switchboard; hit llama.cpp directly (:8080) — for "
+                             "isolation testing/debugging a single lane. Default routes through "
+                             "the switchboard (:8085) so the single-slot APU is managed by ONE "
+                             "concurrency/queue/observability point (the in-concert design).")
     parser.add_argument("--timeout",    type=int, default=300, help="Per-inference timeout (seconds) [default: 300]")
     parser.add_argument("--role",       default=None,
                         choices=["orchestrator", "architect", "implementer", "reviewer"],
@@ -502,18 +500,20 @@ def main() -> int:
     ))
     _install_self_watchdog(_watchdog_secs)
 
-    # Resolve the inference endpoint. Routing through the switchboard would give ONE
-    # concurrency/queue point for the single-slot APU (the root fix for first-token
-    # wedges), BUT is measured to hang on the local-agent streaming passthrough and add
-    # 5-10x latency via card injection — so it is OPT-IN (--via-switchboard) until that
-    # switchboard path is repaired. Default stays llama.cpp direct (works today); the
-    # first-token watchdog + orphan reaper remain the contention defense meanwhile.
+    # Resolve the inference endpoint. DEFAULT routes through the switchboard so the
+    # single-slot APU is managed by ONE concurrency/queue/observability point instead
+    # of every agent-loop contending directly on llama.cpp (the root cause of the
+    # first-token wedges). Verified in-concert: a cached local-agent request through
+    # the switchboard is ~2s (vs ~4s direct); the earlier apparent "slowness" was a
+    # one-time llama prompt-cache miss + single-slot queueing + too-short client
+    # timeouts, NOT switchboard overhead. --direct restores the llama.cpp bypass for
+    # isolation testing only.
     if args.llama_url:
         _endpoint = args.llama_url
-    elif args.via_switchboard:
-        _endpoint = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
-    else:
+    elif args.direct:
         _endpoint = os.environ.get("LLAMA_URL", "http://127.0.0.1:8080")
+    else:
+        _endpoint = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085")
 
     return asyncio.run(run_task(
         task_text=args.task,
