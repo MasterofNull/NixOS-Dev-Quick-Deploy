@@ -92,6 +92,26 @@ policy_gate_action() {
     fi
 }
 
+# A2A dispatch budget: rate/budget limit on external dispatches
+# (config/agent-dispatch-budget.json) — counts recent dispatches per agent + globally from
+# the shared registry and refuses when a rolling-window cap is exceeded, bounding runaway
+# loops. Blocks only on an explicit BLOCK (rc 3); fails open otherwise.
+# A2A_BUDGET_BYPASS=1 skips one call.
+budget_gate_dispatch() {
+    local agent="$1"
+    local bud="$SCRIPT_DIR/lib/agent_dispatch_budget.py"
+    [[ -f "$bud" ]] || return 0
+    local verdict rc
+    verdict="$(python3 "$bud" "$agent" 2>/dev/null)"; rc=$?
+    if [[ $rc -eq 3 ]]; then
+        die "A2A dispatch budget BLOCKED this delegation: ${verdict#BLOCK }
+  Too many recent dispatches. Wait for the window to clear, or bypass one call with:
+  export A2A_BUDGET_BYPASS=1  |  Policy: config/agent-dispatch-budget.json"
+    fi
+    [[ "$verdict" == WARN* ]] && info "A2A dispatch budget WARNING: ${verdict#WARN }"
+    return 0  # never fail the caller under `set -e`
+}
+
 require_codex() {
     [[ -x "$CODEX_BIN" ]] || die "Codex CLI not found at $CODEX_BIN
   Install: npm install -g @openai/codex
@@ -216,9 +236,10 @@ cmd_delegate() {
     ensure_dirs
 
     local id; id="$(task_id)"
-    # A2A safeguards: authorize the execution mode, then scan the outbound prompt.
+    # A2A safeguards: authorize the mode, scan the outbound prompt, check the dispatch budget.
     policy_gate_action codex "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
+    budget_gate_dispatch codex
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 

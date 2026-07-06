@@ -453,10 +453,34 @@ def cmd_check(task_id: str):
     sys.exit(f"Task not found: {task_id}")
 
 
+def _dispatch_budget_gate(agent: str = "antigravity") -> None:
+    """A2A dispatch budget: refuse an over-budget external dispatch (rate limit).
+    Reads config/agent-dispatch-budget.json via the shared evaluator. Fails OPEN — a
+    bookkeeping problem must not halt delegation. sys.exit on an explicit BLOCK."""
+    try:
+        from importlib.machinery import SourceFileLoader
+        mod = SourceFileLoader(
+            "agent_dispatch_budget",
+            str(_REPO / "scripts" / "ai" / "lib" / "agent_dispatch_budget.py"),
+        ).load_module()
+        res = mod.check(agent)
+    except Exception:
+        return  # fail open
+    if not res.get("ok", True):
+        sys.exit(
+            f"ERROR: A2A dispatch budget BLOCKED this delegation: {res.get('reason')}\n"
+            "  Too many recent dispatches. Wait for the window to clear, or bypass one\n"
+            "  call with: A2A_BUDGET_BYPASS=1  |  Policy: config/agent-dispatch-budget.json"
+        )
+    if res.get("decision") == "WARN":
+        print(f"[delegate-to-antigravity] A2A dispatch budget WARNING: {res.get('reason')}")
+
+
 def cmd_delegate(prompt: str, role: str, mode: str,
                  model_override: "str | None", max_tokens: int,
                  timeout: int, wait: bool, loop: bool = False):
     _ensure_dirs()
+    _dispatch_budget_gate("antigravity")
 
     running_count = _count_running()
     if running_count >= _MAX_CONCURRENT:

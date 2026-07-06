@@ -82,7 +82,14 @@ to lanes that build the local inference request.
 - **Outbound secret scan** (`scripts/ai/lib/a2a_guard.py`): scans/redacts prompts before
   they leave for an external agent (`delegate-to-codex`, `delegate-to-gemini`) and every
   event summary at the coordinator hub (`/api/agent-events`).
-- Both fail OPEN (never hard-break a delegation) and write to
+- **Dispatch budget / rate limit** (`config/agent-dispatch-budget.json` via
+  `scripts/ai/lib/agent_dispatch_budget.py`): counts recent dispatches per agent and
+  across all external agents from the shared registry (`.agents/delegation/registry.jsonl`)
+  and refuses when a rolling-window cap is exceeded — bounds runaway loops (cost for paid
+  lanes, outbound-message volume for all). Wired into codex/gemini/antigravity.
+  `enforcement=block|warn`; `A2A_BUDGET_BYPASS=1` skips one call; `global.enabled=false`
+  disables. Local inference is not charged to the external budget.
+- All three fail OPEN (never hard-break a delegation) and write to
   `.agent/collaboration/a2a-audit.log`.
 
 ---
