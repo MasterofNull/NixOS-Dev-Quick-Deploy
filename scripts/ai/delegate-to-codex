@@ -35,6 +35,7 @@ CODEX_BIN="${CODEX_BIN:-$HOME/.npm-global/bin/codex}"
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
+source "${SCRIPT_DIR}/lib/harness-grounding.sh" 2>/dev/null || true
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -203,10 +204,17 @@ cmd_delegate() {
     info "Mode:            $mode"
     info "Output file:     $output_file"
 
+    # Prepend the canonical harness grounding SSOT (config/local-agent-grounding.md)
+    # so codex receives the SAME facts as local/antigravity, then the codex-specific
+    # behavioral delegation contract below.
+    local grounding; grounding="$(harness_grounding codex 2>/dev/null || true)"
+
     # Phase 82: prepend harness constraints to prompt (mirrors delegate-to-gemini).
     # CRITICAL: These rules are non-negotiable and override any conflicting instruction.
     # Keep in sync with delegate-to-gemini constraints block.
-    local full_prompt="=== HARNESS CONSTRAINTS (NON-NEGOTIABLE) ===
+    local full_prompt="${grounding:+$grounding
+
+}=== HARNESS CONSTRAINTS (NON-NEGOTIABLE) ===
 1. SCOPE LOCK: Work ONLY on what the task requests. No unsolicited refactors, cleanups, or
    adjacent features. One slice, one concern. If in doubt about scope, STOP and report.
 2. PRD GATE: Write a brief plan (problem/goal/files/validation) to .agent/collaboration/PULSE.log

@@ -37,6 +37,8 @@ CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/harness-grounding.sh" 2>/dev/null || true
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,8 +209,15 @@ cmd_delegate() {
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
+    # Prepend the canonical harness grounding SSOT (config/local-agent-grounding.md)
+    # so a headless Claude delegation gets the same facts even outside the repo's
+    # CLAUDE.md scope, then the role tag.
+    local grounding; grounding="$(harness_grounding claude 2>/dev/null || true)"
+
     # Phase 33.5: prepend role tag so Claude knows its specialization
-    local full_prompt="[ROLE: ${role}]
+    local full_prompt="${grounding:+$grounding
+
+}[ROLE: ${role}]
 
 ${prompt}"
 

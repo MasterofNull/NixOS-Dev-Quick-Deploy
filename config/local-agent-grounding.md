@@ -1,8 +1,14 @@
-# Harness Grounding Supplement — Qwen3-35B
+# Harness Grounding Supplement (canonical SSOT — all agents)
 
-This file is injected into every direct/agent delegation as a system message supplement.
-It encodes harness-specific facts the model cannot derive from general training.
-Keep entries concise — token cost per delegation is real.
+This file is injected into every agent delegation (codex, claude, gemini, local,
+antigravity) as a system-message supplement. It encodes harness-specific facts the
+model cannot derive from general training. Keep entries concise — token cost per
+delegation is real.
+
+NOTE: sections tagged "[local-inference]" describe llama.cpp / local-model payload
+behavior and apply when a lane controls the local inference request (local, aq-chat,
+dispatch). They are harmless context for external agents (codex/claude/gemini) but
+are not actionable there.
 
 ## Commit Format (mandatory)
 
@@ -12,7 +18,7 @@ Types: feat|fix|docs|refactor|chore|test|ci|perf|style
 Trailer: `Co-Authored-By: claude-sonnet-4-6 <noreply@anthropic.com>`
 CRITICAL: `(scope)` is NOT optional. `fix: description` is wrong. Always include it.
 
-## Tool Result Messages
+## Tool Result Messages [local-inference]
 
 Tool result messages MUST use `role: "tool"`. Using `role: "function"` causes the message to
 be silently dropped by the Qwen3 chat template — the model never sees the result and
@@ -26,7 +32,7 @@ hallucinates on all subsequent turns. Always: `{"role": "tool", "tool_call_id": 
 - After profile changes: check `journalctl -u apparmor.service` for syntax errors.
 - Nix store paths in AppArmor: use `/nix/store/**/rest/of/path` glob, NOT the full hash path.
 
-## Frequency Penalty
+## Frequency Penalty [local-inference]
 
 `frequency_penalty != 0.0` applies cumulative logit penalties. In dense JSON where `"`
 appears 300+ times, the penalty reaches 15.0 → `"` becomes unprintable → early EOS
