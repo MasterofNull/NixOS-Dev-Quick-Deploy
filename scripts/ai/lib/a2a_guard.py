@@ -76,7 +76,9 @@ def audit(direction: str, from_agent: str, to_agent: str, summary: str,
         "from": from_agent,
         "to": to_agent,
         "task_id": task_id,
-        "summary": (summary or "")[:200],
+        # Redact BEFORE truncating/writing — the audit line must never itself leak the
+        # secret it is flagging (the log is on disk and may be read/committed).
+        "summary": redact(summary or "")[:200],
         "secret_findings": [f["kind"] for f in (secret_findings or [])],
     }
     try:

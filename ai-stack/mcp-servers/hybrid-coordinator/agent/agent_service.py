@@ -60,6 +60,28 @@ _agent_ops_state: dict = {
     "since": None,
 }
 
+# A2A secret-scan guard (scripts/ai/lib/a2a_guard.py). The coordinator is the
+# canonical A2A hub — every delegate-to-* posts its event summary here, so it is the
+# right central checkpoint to (a) redact secrets before they are persisted to the
+# shared tool-audit.jsonl and (b) flag findings for visibility. Loaded lazily and
+# fails OPEN: a missing/broken guard must never drop a delegation audit event.
+_a2a_guard_mod: Any = None  # None = not tried, False = load failed, module = ready
+
+
+def _get_a2a_guard():
+    global _a2a_guard_mod
+    if _a2a_guard_mod is not None:
+        return _a2a_guard_mod or None
+    try:
+        from importlib.machinery import SourceFileLoader
+        from pathlib import Path
+        guard_path = Path(__file__).resolve().parents[4] / "scripts" / "ai" / "lib" / "a2a_guard.py"
+        _a2a_guard_mod = SourceFileLoader("a2a_guard", str(guard_path)).load_module()
+    except Exception as _exc:  # noqa: BLE001 — fail open, never block audit ingest
+        logger.debug("a2a_guard load failed (audit scan disabled): %s", _exc)
+        _a2a_guard_mod = False
+    return _a2a_guard_mod or None
+
 
 # ---------------------------------------------------------------------------
 # Standalone handlers (converted from closures in http_server.run_http_mode)
@@ -109,6 +131,24 @@ async def handle_agent_events_post(request: web.Request) -> web.Response:
         return web.json_response({"error": "latency_ms must be integer"}, status=400)
     task_id    = str(data.get("task_id") or "")[:64]
 
+    # A2A safeguard: scan the event summary for secret-like content BEFORE it is
+    # persisted to the shared audit log or fed to ContinuousLearning. Redact in place
+    # so the central audit never itself leaks a secret; record finding kinds for
+    # visibility. Fails open — a guard error must not drop the event.
+    _secret_findings: list = []
+    _guard = _get_a2a_guard()
+    if _guard is not None and summary:
+        try:
+            _secret_findings = _guard.scan_secrets(summary)
+            if _secret_findings:
+                summary = _guard.redact(summary)
+                logger.warning(
+                    "a2a_secret_in_event agent=%s task_id=%s kinds=%s (redacted before persist)",
+                    agent, task_id, [f["kind"] for f in _secret_findings],
+                )
+        except Exception as _exc:  # noqa: BLE001 — fail open
+            logger.debug("a2a_guard scan skipped err=%s", _exc)
+
     if event_type not in _VALID_EVENT_TYPES:
         return web.json_response(
             {"error": f"unknown event_type '{event_type}'; valid: {sorted(_VALID_EVENT_TYPES)}"},
@@ -131,6 +171,7 @@ async def handle_agent_events_post(request: web.Request) -> web.Response:
             "sub_type": sub_type,
             "summary": summary,
             "tags": tags,
+            "secret_findings": [f["kind"] for f in _secret_findings],
         },
         "error_message": "" if outcome == "success" else summary[:120],
     }
@@ -201,6 +242,7 @@ async def handle_agent_events_post(request: web.Request) -> web.Response:
         "agent": agent,
         "outcome": outcome,
         "timestamp": ts,
+        "secret_findings": [f["kind"] for f in _secret_findings],
     })
 
 

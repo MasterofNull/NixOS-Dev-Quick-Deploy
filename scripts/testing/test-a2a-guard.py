@@ -64,10 +64,25 @@ def test_audit_writes():
     print("PASS  audit writes a redacted record")
 
 
+def test_audit_summary_redacted():
+    # The audit line must NOT leak the raw secret it is flagging.
+    tmp = Path(tempfile.mkdtemp()) / "audit.log"
+    raw = "auth with api_key=sk-abcdefghij1234567890XYZ now"
+    mod.audit("outbound", "claude", "codex", raw, mod.scan_secrets(raw),
+              task_id="t3", log_path=str(tmp))
+    body = tmp.read_text()
+    if "sk-abcdefghij1234567890XYZ" in body:
+        _fail("audit summary leaked the raw secret")
+    if "[REDACTED-SECRET]" not in body or "openai_key" not in body:
+        _fail("audit summary should be redacted but retain finding kinds")
+    print("PASS  audit summary redacted (no raw secret on disk)")
+
+
 if __name__ == "__main__":
     test_detects_secrets()
     test_clean_text()
     test_redact()
     test_guard_blocks_outbound()
     test_audit_writes()
-    print("\n5/5 a2a-guard tests passed")
+    test_audit_summary_redacted()
+    print("\n6/6 a2a-guard tests passed")
