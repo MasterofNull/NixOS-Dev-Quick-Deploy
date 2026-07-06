@@ -77,6 +77,21 @@ class Review:
             "timestamp": self.timestamp.isoformat(),
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Review":
+        """Reconstruct from a to_dict() payload; vote back to the VoteType enum."""
+        ts = data.get("timestamp")
+        return cls(
+            review_id=data["review_id"],
+            reviewer_id=data["reviewer_id"],
+            vote=VoteType(data["vote"]),
+            confidence=data.get("confidence", 0.5),
+            reasoning=data.get("reasoning", ""),
+            issues_found=data.get("issues_found") or [],
+            suggestions=data.get("suggestions") or [],
+            timestamp=datetime.fromisoformat(ts) if ts else datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class ReviewerWeight:
@@ -174,6 +189,25 @@ class ConsensusSession:
             "created_at": self.created_at.isoformat(),
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConsensusSession":
+        """Reconstruct an active session from a to_dict() payload (reviews + enum).
+
+        `result` and `reviewer_weights` are not restored (weights are recomputed on
+        evaluate; a persisted session is one still being voted on).
+        """
+        created = data.get("created_at")
+        return cls(
+            session_id=data["session_id"],
+            artifact_id=data["artifact_id"],
+            team_id=data["team_id"],
+            threshold=ConsensusThreshold(data["threshold"]),
+            required_reviewers=data.get("required_reviewers", 3),
+            reviews=[Review.from_dict(r) for r in data.get("reviews", [])],
+            timeout=data.get("timeout", 300),
+            created_at=datetime.fromisoformat(created) if created else datetime.now(timezone.utc),
+        )
+
 
 class QualityConsensus:
     """Quality consensus engine with weighted voting."""
@@ -210,10 +244,23 @@ class QualityConsensus:
         except Exception as e:
             logger.warning(f"Failed to load reviewer performance: {e}")
 
+        # Rehydrate active sessions so a review submitted in one process is visible to
+        # `decide`/evaluate in another (cross-invocation consensus — the expert-team debate).
+        try:
+            active_file = self.state_dir / "active_sessions.json"
+            if active_file.exists():
+                with open(active_file) as f:
+                    data = json.load(f)
+                for sid, sdata in (data.get("active_sessions") or {}).items():
+                    self.active_sessions[sid] = ConsensusSession.from_dict(sdata)
+        except Exception as e:
+            logger.warning(f"Failed to load active consensus sessions: {e}")
+
     def _save_state(self):
         """Save state to disk."""
         history_file = self.state_dir / "consensus_history.json"
         performance_file = self.state_dir / "reviewer_performance.json"
+        active_file = self.state_dir / "active_sessions.json"
 
         try:
             # Keep last 100 consensus results
@@ -228,6 +275,27 @@ class QualityConsensus:
                 json.dump({"performance": self.reviewer_performance}, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save reviewer performance: {e}")
+
+        try:
+            with open(active_file, 'w') as f:
+                json.dump(
+                    {"active_sessions": {sid: s.to_dict() for sid, s in self.active_sessions.items()}},
+                    f, indent=2,
+                )
+        except Exception as e:
+            logger.error(f"Failed to save active consensus sessions: {e}")
+
+    def get_or_create_session(self, artifact_id: str, team_id: str = "default",
+                              required_reviewers: int = 2) -> str:
+        """Return the existing consensus session for an artifact, or create one.
+
+        Lets the CLI address a debate by a stable artifact/item id across separate
+        `review` invocations instead of an opaque per-process session_id.
+        """
+        for sid, session in self.active_sessions.items():
+            if session.artifact_id == artifact_id:
+                return sid
+        return self.create_session(artifact_id, team_id, required_reviewers=required_reviewers)
 
     def create_session(self,
                       artifact_id: str,
@@ -248,6 +316,7 @@ class QualityConsensus:
         )
 
         self.active_sessions[session_id] = session
+        self._save_state()
 
         logger.info("consensus_session_created",
                    session_id=session_id,
@@ -322,6 +391,7 @@ class QualityConsensus:
         )
 
         session.reviews.append(review)
+        self._save_state()
 
         logger.info("review_submitted",
                    session_id=session_id,
