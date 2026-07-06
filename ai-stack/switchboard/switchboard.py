@@ -2044,6 +2044,14 @@ async def _trim_profile_messages(messages: list, profile: str) -> tuple[list, bo
     if not isinstance(messages, list):
         return messages, False, 0, 0, "none", 1.0, False
 
+    # local-agent / local-tool-calling are coordinator-spawned agent RUNTIMES that manage
+    # their OWN context window. Trimming their prompt (a) changes the prefix -> llama
+    # prompt-cache miss -> slow cold re-prefill on the single-slot APU (agent watchdog
+    # trips), and (b) silently drops the runtime's grounding/tool schemas, corrupting the
+    # agent. True passthrough: never trim these — forward the exact payload.
+    if profile in ("local-agent", "local-tool-calling"):
+        return messages, False, 0, 0, "none", 1.0, False
+
     profile_settings = _profile_settings(profile)
     max_tokens = profile_settings.get("maxInputTokens")
     max_messages = profile_settings.get("maxMessages")
