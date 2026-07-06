@@ -1653,6 +1653,7 @@ class LocalAgentExecutor:
                     f"{self.llama_endpoint}/v1/chat/completions",
                     json=payload,
                     timeout=300.0,
+                    headers={"x-ai-profile": os.environ.get("AGENT_SWITCHBOARD_PROFILE", "local-agent")},
                 )
                 if response.status_code != 200:
                     raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
@@ -1702,11 +1703,17 @@ class LocalAgentExecutor:
         try:
             _write_stream_progress("llm_waiting", force=True)
             _stream_start = time.monotonic()
+            # x-ai-profile: local-agent -> if the endpoint is the switchboard (:8085),
+            # route to the passthrough local-agent lane (no card injection / payload
+            # transform) so we gain the switchboard's concurrency + observability without
+            # changing agent behavior. Harmless (ignored) when hitting llama.cpp directly.
+            _route_headers = {"x-ai-profile": os.environ.get("AGENT_SWITCHBOARD_PROFILE", "local-agent")}
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
                     "POST",
                     f"{self.llama_endpoint}/v1/chat/completions",
                     json=payload,
+                    headers=_route_headers,
                 ) as response:
                     if response.status_code != 200:
                         body = await response.aread()
