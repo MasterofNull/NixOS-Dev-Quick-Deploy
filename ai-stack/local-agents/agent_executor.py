@@ -1559,19 +1559,15 @@ class LocalAgentExecutor:
                         "Do not keep rereading the same files."
                     )
                 else:
-                    # Single-edit-first nudge. Measured (reference-local-agent-capability-
-                    # envelope): the local model read-loops on multi-site edit tasks — it
-                    # can make ONE edit on a large file but drowns planning several at once,
-                    # so a "do all the edits" nudge is ignored. Reframing to "make exactly
-                    # ONE edit now, others later" targets the stuck read->edit transition
-                    # with a step inside the model's proven envelope.
+                    # NOTE: a single-edit-first reframing of this nudge was tested and did
+                    # NOT unstick the model (reference-local-agent-capability-envelope: the
+                    # model read-looped to call 17 with 0 edits despite it). The model
+                    # ignores in-loop nudges on multi-edit tasks — the working fix is the
+                    # external decomposer (scripts/ai/aq-sequential-edit), not the nudge.
                     nudge_content = (
-                        f"STOP READING — you have read {_reads_without_edit} times without "
-                        "editing. Do NOT read again. Make exactly ONE edit now: pick the "
-                        "single most concrete change from the BEHAVIORAL CONTRACT and emit "
-                        "ONE edit_file call for it (exact old_string anchor + new_string). "
-                        "Ignore every other change this turn — you will make them one at a "
-                        "time in the following turns. One edit_file call, now."
+                        f"EXPLORATION WARNING: You have read {_reads_without_edit} files without "
+                        "making any edits. You have enough context. Execute the required "
+                        "edit_file calls from the BEHAVIORAL CONTRACT now."
                     )
                 messages.append({"role": "user", "content": nudge_content})
                 logger.info(
