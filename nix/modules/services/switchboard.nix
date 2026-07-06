@@ -491,6 +491,7 @@ in {
           "SWB_CONTINUE_LOCAL_MAX_MESSAGES=${toString swb.continueLocal.maxMessages}"
           # Must match --parallel N in facts.nix llamaCpp.extraArgs so the
           # switchboard concurrency ceiling matches llama.cpp's slot count.
+          "SWB_REMOTE_CONCURRENCY=${toString swb.remoteConcurrency}"
           "SWB_LOCAL_CONCURRENCY=${toString swb.localConcurrency}"
           "SWB_RESERVED_SLOTS=${toString swb.reservedSlots}"
           "SWB_INACTIVITY_TIMEOUT=${toString swb.inactivityTimeoutSeconds}"
