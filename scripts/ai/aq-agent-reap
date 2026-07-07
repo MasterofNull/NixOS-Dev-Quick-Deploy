@@ -151,7 +151,7 @@ def should_reap(ppid: int, etimes: int, max_age: int) -> tuple[bool, str]:
     return False, ""
 
 
-def progress_recent(cmd: str, grace: float = 90.0) -> bool:
+def progress_recent(cmd: str, grace: float = 300.0) -> bool:
     """True if the proc is still making progress (its AGENT_PROGRESS_FILE was written within
     `grace`). A working ORPHAN (ppid=1 but streaming) must NOT be reaped — only a wedged one.
     Progress file = the run's --output path + '.progress.json'."""
