@@ -45,6 +45,11 @@ process — it will not appear until it produces a registry delegation.
 - **Thinking tokens (local):** `enable_thinking` is OFF by harness policy (thinking tokens cause empty
   responses on this model), so local "thoughts" appear only as inline content the model emits; true
   thinking-block exposure would require re-enabling it carefully (tracked).
+- **Selections line (per pane):** `⚙ role · model · profile · tools · bundle/zero_trust`. role/
+  model/profile are derived per lane (registry role; lane→model/profile map); `tools` = tool-call
+  count from the progress sidecar. The per-REQUEST switchboard selections (leased bundle,
+  injectHints, zero_trust) are shown as `(F3 OTel)` until F3 emits task-correlated spans — not
+  fabricated.
 - **OTel-native (F3):** this stream is the raw signal; the F3 CapabilityLease/OTel design wraps it as
   spans (turn/tool-call) with capability attributes — the matrix then reads spans, Jaeger/Grafana-compatible.
 
