@@ -261,6 +261,12 @@ let
       (pkgs.writeShellScriptBin "aq-top" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-top" "$@"
       '')
+      # aq-tui-dashboard has hard deps (rich + pgrep/ps) — pin a python-with-rich and put
+      # procps on PATH so the live ops matrix runs regardless of the caller's environment.
+      (pkgs.writeShellScriptBin "aq-tui-dashboard" ''
+        export PATH="${pkgs.procps}/bin:$PATH"
+        exec ${pkgs.python3.withPackages (ps: [ps.rich])}/bin/python3 "${cfg.mcpServers.repoPath}/scripts/ai/aq-tui-dashboard" "$@"
+      '')
       (pkgs.writeShellScriptBin "agrep" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/agrep" "$@"
       '')
