@@ -93,6 +93,9 @@ and the safeguard + monitoring/control point on each flow. Companion to
 - **Control:** `aq-agent-send <id> "msg"` (inject) / `--cancel`; `aq-agent-reap` (reap/reconcile);
   every commit gated. Round control: `aq-collab-round open/status`.
 
+## Round-driver notes
+- `aq-collab-round` now INLINES the `--target` artifact into the fan-out prompt (local[Qwen] chunk-reads a --target file and burns its run; inlining fixes it) — live finding from the f1 round.
+
 ## Known gaps (this map stays honest)
 - Stages 5–6 not automated (manual/orchestrator today).
 - Antigravity inbox lane: harness side (drop dir + protocol) to be built; the IDE must be configured
