@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en" translate="no">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google" content="notranslate">
+    <title>Hardware Budget & Edge AI Limits - AI Harness Grounding</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #080c12;
+            --bg2: #0d1220;
+            --fg: #e2eaf4;
+            --fg2: #8aa4bb;
+            --fg3: #4a6278;
+            --cyan: #00d9ff;
+            --cyan-g: rgba(0, 217, 255, 0.15);
+            --mag: #d400ff;
+            --mag-g: rgba(212, 0, 255, 0.15);
+            --grn: #39ff14;
+            --grn-g: rgba(57, 255, 20, 0.12);
+            --yel: #f9e2af;
+            --yel-g: rgba(249, 226, 175, 0.15);
+            --border: rgba(0, 217, 255, 0.14);
+            --font: 'JetBrains Mono', monospace;
+            --hud: 'Orbitron', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font);
+            background-color: var(--bg);
+            color: var(--fg);
+            line-height: 1.6;
+            padding: 2.5rem;
+            background-image: radial-gradient(var(--border) 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        h1 {
+            font-family: var(--hud);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            font-size: 1.6rem;
+            background: linear-gradient(90deg, var(--cyan), var(--mag));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.3));
+        }
+
+        .back-btn {
+            font-family: var(--hud);
+            text-decoration: none;
+            color: var(--cyan);
+            border: 1px solid var(--cyan);
+            padding: 0.6rem 1.2rem;
+            border-radius: 3px;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+        }
+
+        .back-btn:hover {
+            background: var(--cyan-g);
+            box-shadow: 0 0 12px var(--cyan);
+        }
+
+        .grid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2.5rem;
+        }
+
+        @media (max-width: 800px) {
+            .grid2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1.8rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            position: relative;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--cyan);
+        }
+
+        .card.mag::before {
+            background: var(--mag);
+        }
+
+        .card.yel::before {
+            background: var(--yel);
+        }
+
+        .card-title {
+            font-family: var(--hud);
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 1.2rem;
+            color: var(--cyan);
+            border-bottom: 1px dashed var(--border);
+            padding-bottom: 0.6rem;
+        }
+
+        .kv-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.85rem;
+            font-size: 0.88rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.5rem;
+        }
+
+        .kv-key {
+            color: var(--fg2);
+        }
+
+        .kv-val {
+            color: var(--fg);
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .ref-list {
+            list-style-type: none;
+        }
+
+        .ref-list li {
+            margin-bottom: 0.85rem;
+            font-size: 0.88rem;
+            color: var(--fg);
+        }
+
+        .ref-list li::before {
+            content: '↳ ';
+            color: var(--cyan);
+            margin-right: 0.5rem;
+        }
+
+        .ref-list li a {
+            color: var(--cyan);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--cyan-g);
+            transition: all 0.2s ease;
+        }
+
+        .ref-list li a:hover {
+            color: var(--mag);
+            border-bottom-color: var(--mag);
+            text-shadow: 0 0 4px var(--mag);
+        }
+
+        .edu-text {
+            font-size: 0.92rem;
+            color: var(--fg);
+            line-height: 1.75;
+        }
+
+        .edu-text p {
+            margin-bottom: 1rem;
+        }
+
+        .code-box {
+            background: #030509;
+            border: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            color: var(--yel);
+            white-space: pre-wrap;
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            securityLevel: 'loose',
+            themeVariables: {
+                fontFamily: 'JetBrains Mono, monospace',
+                primaryColor: '#0d1220',
+                primaryTextColor: '#e2eaf4',
+                primaryBorderColor: 'rgba(0, 217, 255, 0.4)',
+                lineColor: '#00d9ff',
+                secondaryColor: '#080c12',
+                tertiaryColor: '#0d1220'
+            }
+        });
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-area">
+                <h1>Hardware Budget & Edge AI Limits</h1>
+            </div>
+            <a href="/index.html" class="back-btn">← Command Center</a>
+        </header>
+
+        <div class="grid2">
+            <!-- Hardware limits values -->
+            <div class="card">
+                <div class="card-title">System Allocation Ceilings</div>
+                <div class="kv-row">
+                    <span class="kv-key">Total System RAM</span>
+                    <span class="kv-val">27.0 GB</span>
+                </div>
+                <div class="kv-row">
+                    <span class="kv-key">Reserved for OS Stability</span>
+                    <span class="kv-val">3.0 GB</span>
+                </div>
+                <div class="kv-row">
+                    <span class="kv-key">Target Quantized LLM Model Sizing</span>
+                    <span class="kv-val">22.5 GB</span>
+                </div>
+                <div class="kv-row">
+                    <span class="kv-key">KV Cache Allocated Space</span>
+                    <span class="kv-val">1.0 GB</span>
+                </div>
+                <div class="kv-row">
+                    <span class="kv-key">GPU Offload Layer Limit (llama.cpp)</span>
+                    <span class="kv-val">12 Layers Max</span>
+                </div>
+                <div class="kv-row">
+                    <span class="kv-key">VRAM Shared Memory ceiling (Renoir APU)</span>
+                    <span class="kv-val">4.0 GB</span>
+                </div>
+            </div>
+
+            <!-- Processing flow -->
+            <div class="card mag">
+                <div class="card-title">Llama.cpp Offload Lifecycle</div>
+                <div class="mermaid"
+                    style="background:#030509; padding: 1.5rem 1rem; border-radius: 4px; border: 1px solid var(--border); overflow-x: auto; display: flex; justify-content: center; min-height: 220px;">
+                    graph TD
+                    A[Prompt Request] -->|REST API| B[llama-server :8080]
+                    B -->|Split layers| C{n_gpu_layers &le; 12}
+                    C -->|Layers 1 to 12| D[GPU VRAM Shared 4GB]
+                    C -->|Remaining layers| E[CPU System RAM]
+                    D & E -->|Compute forward| F[Context Generation]
+                    F -->|Write back| G[Response completion]
+                </div>
+            </div>
+        </div>
+
+        <div class="grid2">
+            <!-- Grounding -->
+            <div class="card yel">
+                <div class="card-title">Memory Allocation Physics</div>
+                <div class="edu-text">
+                    <p>
+                        When utilizing local inference targets like <strong>Qwen3-35B-Instruct</strong>, computational
+                        performance depends strictly on VRAM bandwidth limitations. On APUs (like our Renoir layout),
+                        VRAM is shared directly with system DDR memory.
+                    </p>
+                    <p>
+                        If <code>n_gpu_layers</code> exceeds <strong>12</strong>, the system exceeds the 4GB shared
+                        allocations ceiling, triggering massive system paging, severe token degradation (T/S drop below
+                        1.0), or prompt execution crashes.
+                    </p>
+                    <p>
+                        An agent MUST configure offloads defensively and enforce the <strong>12 layers limit</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- References -->
+            <div class="card">
+                <div class="card-title">References & Studies</div>
+                <div style="font-size:0.85rem; color:var(--fg2); margin-bottom:0.75rem;">
+                    Literature and specifications on system quantization, offload math, and memory limits:
+                </div>
+                <ul class="ref-list">
+                    <li><a href="https://github.com/ggerganov/llama.cpp/discussions" target="_blank">Llama.cpp GPU
+                            Layers Parsing Discussions</a></li>
+                    <li><a href="https://arxiv.org/abs/2208.07339" target="_blank">LLM.int8(): 8-bit Matrix
+                            Multiplication for Transformers (Dettmers et al.)</a></li>
+                    <li><a href="https://arxiv.org/abs/2403.08299" target="_blank">Performance Tuning for Local Small
+                            Language Models</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <footer
+            style="margin-top: 5rem; text-align: center; font-size: 0.75rem; color: var(--fg3); border-top: 1px solid var(--border); padding-top: 1.8rem;">
+            NixOS AI Operating System • Computational Budget Reference
+        </footer>
+    </div>
+</body>
+
+</html>

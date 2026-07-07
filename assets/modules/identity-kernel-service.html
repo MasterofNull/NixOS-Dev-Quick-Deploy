@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en" translate="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="google" content="notranslate">
+  <title>Identity Kernel Service - AI Harness Module Info</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080c12;
+      --bg2: #0d1220;
+      --bg3: rgba(13, 18, 32, 0.96);
+      --fg: #e2eaf4;
+      --fg2: #8aa4bb;
+      --fg3: #4a6278;
+      --cyan: #00d9ff;
+      --cyan-g: rgba(0, 217, 255, 0.15);
+      --mag: #d400ff;
+      --mag-g: rgba(212, 0, 255, 0.15);
+      --grn: #39ff14;
+      --grn-g: rgba(57, 255, 20, 0.12);
+      --yel: #f9e2af;
+      --yel-g: rgba(249, 226, 175, 0.15);
+      --red: #ff3644;
+      --red-g: rgba(255, 54, 68, 0.15);
+      --border: rgba(0, 217, 255, 0.14);
+      --font: 'JetBrains Mono', monospace;
+      --hud: 'Orbitron', sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: var(--font);
+      background-color: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+      padding: 2.5rem;
+      background-image: radial-gradient(var(--border) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--grn);
+      box-shadow: 0 0 8px var(--grn);
+    }
+    .status-dot.disabled {
+      background-color: var(--red);
+      box-shadow: 0 0 8px var(--red);
+    }
+    h1 {
+      font-family: var(--hud);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      font-size: 1.6rem;
+      background: linear-gradient(90deg, var(--cyan), var(--mag));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.3));
+    }
+    .back-btn {
+      font-family: var(--hud);
+      text-decoration: none;
+      color: var(--cyan);
+      border: 1px solid var(--cyan);
+      padding: 0.6rem 1.2rem;
+      border-radius: 3px;
+      transition: all 0.3s ease;
+      font-size: 0.8rem;
+      background: transparent;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .back-btn:hover {
+      background: var(--cyan-g);
+      box-shadow: 0 0 12px var(--cyan);
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 2.5rem;
+    }
+    .grid3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2.5rem;
+    }
+    @media (max-width: 800px) {
+      .grid2, .grid3 {
+        grid-template-columns: 1fr;
+      }
+    }
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.8rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--border);
+    }
+    .card.enabled::before { background: var(--grn); }
+    .card.disabled::before { background: var(--red); }
+    .card.warning::before { background: var(--yel); }
+    .card.info::before { background: var(--cyan); }
+    .card.mag::before { background: var(--mag); }
+
+    .card-title {
+      font-family: var(--hud);
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 1.2rem;
+      color: var(--cyan);
+      border-bottom: 1px dashed var(--border);
+      padding-bottom: 0.6rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 2px;
+      font-size: 0.7rem;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-right: 0.5rem;
+      border: 1px solid transparent;
+    }
+    .badge-enabled {
+      background: var(--grn-g);
+      color: var(--grn);
+      border-color: rgba(57, 255, 20, 0.3);
+    }
+    .badge-disabled {
+      background: var(--red-g);
+      color: var(--red);
+      border-color: rgba(255, 54, 68, 0.3);
+    }
+    .badge-info {
+      background: var(--cyan-g);
+      color: var(--cyan);
+      border-color: rgba(0, 217, 255, 0.3);
+    }
+    .badge-warning {
+      background: var(--yel-g);
+      color: var(--yel);
+      border-color: rgba(249, 226, 175, 0.3);
+    }
+    .badge-mag {
+      background: var(--mag-g);
+      color: var(--mag);
+      border-color: rgba(212, 0, 255, 0.3);
+    }
+    .kv-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.85rem;
+      font-size: 0.88rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.5rem;
+    }
+    .kv-key {
+      color: var(--fg2);
+    }
+    .kv-val {
+      color: var(--fg);
+      text-align: right;
+      word-break: break-all;
+    }
+    .code-box {
+      background: #030509;
+      border: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      padding: 0.8rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      color: var(--yel);
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: 0.5rem;
+    }
+    .ref-list {
+      list-style-type: none;
+    }
+    .ref-list li {
+      margin-bottom: 0.6rem;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      color: var(--fg);
+    }
+    .ref-list li::before {
+      content: '↳ ';
+      color: var(--cyan);
+      margin-right: 0.5rem;
+    }
+    .ref-list li a {
+      color: var(--cyan);
+      text-decoration: none;
+      border-bottom: 1px dotted var(--cyan-g);
+      transition: all 0.2s ease;
+    }
+    .ref-list li a:hover {
+      color: var(--mag);
+      border-bottom-color: var(--mag);
+      text-shadow: 0 0 4px var(--mag);
+    }
+    .edu-text {
+      font-size: 0.92rem;
+      color: var(--fg);
+      line-height: 1.7;
+    }
+    .description {
+      font-size: 1rem;
+      color: var(--fg);
+      margin-bottom: 2.5rem;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 1.8rem;
+      border-radius: 4px;
+      position: relative;
+      line-height: 1.7;
+    }
+    .description::before {
+      content: 'MODULE FUNCTION';
+      position: absolute;
+      top: -10px;
+      left: 15px;
+      background: var(--bg);
+      padding: 0 10px;
+      font-family: var(--hud);
+      font-size: 0.65rem;
+      color: var(--fg3);
+      letter-spacing: 0.15em;
+    }
+    footer {
+      margin-top: 5rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--fg3);
+      border-top: 1px solid var(--border);
+      padding-top: 1.8rem;
+    }
+    /* Mermaid core custom overrides */
+    .mermaid svg {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      securityLevel: 'loose',
+      themeVariables: {
+        fontFamily: 'JetBrains Mono, monospace',
+        primaryColor: '#0d1220',
+        primaryTextColor: '#e2eaf4',
+        primaryBorderColor: 'rgba(0, 217, 255, 0.4)',
+        lineColor: '#00d9ff',
+        secondaryColor: '#080c12',
+        tertiaryColor: '#0d1220'
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-area">
+        <div class="status-dot enabled"></div>
+        <h1>Identity Kernel Service</h1>
+      </div>
+      <a href="/index.html" class="back-btn">← Command Center</a>
+    </header>
+
+    <div class="description">
+      Core identity preservation module hosting the narrative engine, value constitution profiles, and session checkpointers.
+    </div>
+
+    <!-- WORKFLOW & RESEARCH PARADIGMS GRID -->
+    <div class="grid2">
+      <!-- System Workflow Card -->
+      <div class="card info">
+        <div class="card-title">System Workflow & Logical Data Flow</div>
+        <div class="mermaid" style="background:#030509; padding: 1.5rem 1rem; border-radius: 4px; border: 1px solid var(--border); overflow-x: auto; display: flex; justify-content: center; min-height: 220px;">
+graph TD
+  A[Agent configurations] -->|Validates| B[Checkpoint service]
+  B -->|Serializes| C[Envelopes & Profiles]
+  B -->|Persists| D[Disk memory state]
+        </div>
+      </div>
+
+      <!-- Research Publications Card -->
+      <div class="card warning">
+        <div class="card-title">Research Publications & References</div>
+        <div style="font-size:0.85rem; color:var(--fg2); margin-bottom:0.75rem;">
+          Academic literature, standards, and research publications detailing this paradigm:
+        </div>
+        <ul class="ref-list" style="margin-top: 0.5rem;">
+          <li><a href="https://github.com/mem0ai/mem0" target="_blank">Mem0: Dynamic Personalization Memory Engine for LLMs</a></li>
+<li><a href="https://arxiv.org/abs/2310.08560" target="_blank">Identity-Preserving Semantic Envelopes & Actor Core Specs</a></li>
+<li><a href="https://arxiv.org/abs/2403.01255" target="_blank">Persisted Agent Profiling and Behavior Boundaries</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- PRIMARY EDUCATION GRID -->
+    <div class="grid2">
+      <!-- Under the Hood implementation details -->
+      <div class="card info">
+        <div class="card-title">Codebase Implementation</div>
+        <div class="edu-text">
+          Maintained in `ai-stack/identity-kernel/checkpoint_service.py` and configured in `nix/modules/services/identity-kernel.nix`. Exposes configuration ports at `/identity/self`.
+        </div>
+      </div>
+
+      <!-- Functional architecture & execution patterns -->
+      <div class="card mag">
+        <div class="card-title">Functional Architecture & Tasks</div>
+        <div class="edu-text">
+          Saves agent name templates, profiles, values logs, capability sets, and checkpoints, storing changes to disk to persist agent identity configurations.
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <!-- Grounding -->
+      <div class="card warning">
+        <div class="card-title">Theoretical Grounding / CS Paradigm</div>
+        <div class="edu-text">
+          Agent Identity Envelopes (Mem0 and Letta paradigms). Gives agents a consistent sense of identity, goals, and behavioral limits that persist across reboots.
+        </div>
+      </div>
+
+      <!-- General details -->
+      <div class="card enabled">
+        <div class="card-title">Metadata & Status Parameters</div>
+        <div class="kv-row">
+          <span class="kv-key">Module Key</span>
+          <span class="kv-val">identity-kernel-service</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Status State</span>
+          <span class="kv-val"><span class="badge badge-enabled">enabled</span></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Maturity Level</span>
+          <span class="kv-val"><span class="badge badge-info">integrated</span></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Module Owner</span>
+          <span class="kv-val">coprocessor-engineering</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Category</span>
+          <span class="kv-val">agent-runtime</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Kind</span>
+          <span class="kv-val">system-service</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid3">
+      <!-- Security & Risk Card -->
+      <div class="card enabled">
+        <div class="card-title">Security & Admission Gates</div>
+        <div class="kv-row">
+          <span class="kv-key">Risk Evaluation</span>
+          <span class="kv-val"><span class="badge badge-enabled">low</span></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Admission Type</span>
+          <span class="kv-val">local-governance</span>
+        </div>
+        <div style="margin-top:0.75rem; font-size:0.8rem; color:var(--fg2);">Required Intake Gate Audit:</div>
+<div class="code-box">python3 scripts/testing/test-agent-identity-envelope.py</div>
+      </div>
+
+      <!-- Wumbology Status Card -->
+      <div class="card info">
+        <div class="card-title">Wumbology Study (L1-Wumbo)</div>
+        <div class="kv-row">
+          <span class="kv-key">Wumbo Status</span>
+          <span class="kv-val"><span class="badge badge-grn" style="background:var(--grn-g); color:var(--grn); border:1px solid rgba(57,255,20,0.3)">WUMBO ACTIVE</span></span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key">Theory Level</span>
+          <span class="kv-val">First Grade</span>
+        </div>
+        <div style="font-size:0.72rem; color:var(--fg2); margin-top:0.6rem; border-top:1px solid rgba(0,217,255,0.08); padding-top:0.4rem; font-style:italic;">
+          "I wumbo, you wumbo, he she me wumbo... Wumbology, the study of wumbo! It's first grade!" — Patrick Star
+        </div>
+      </div>
+
+      <!-- Primary References Card -->
+      <div class="card info">
+        <div class="card-title">Codebases & Primary References</div>
+        <ul class="ref-list">
+          <li>ai-stack/identity-kernel/checkpoint_service.py</li>
+<li>nix/modules/services/identity-kernel.nix</li>
+<li>config/identity-values.yaml</li>
+        </ul>
+      </div>
+
+      <!-- Boundaries -->
+      <div class="card mag">
+        <div class="card-title">Agent Execution Boundaries</div>
+        <div style="font-size:0.85rem; color:var(--fg2); margin-bottom:0.75rem;">
+          The following AI profiles have invocation permissions on this module:
+        </div>
+        <div>
+          <span class="badge badge-mag">codex</span> <span class="badge badge-mag">claude</span> <span class="badge badge-mag">gemini</span> <span class="badge badge-mag">local-agent</span>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="grid2">
+      <!-- Parity Targets Card -->
+      <div class="card warning">
+        <div class="card-title">Parity Targets</div>
+        <div style="font-size:0.85rem; color:var(--fg2); margin-bottom:0.75rem;">
+          External system paradigms tracked for functional parity:
+        </div>
+        <ul class="ref-list">
+          <li>Letta agent identities</li>
+<li>Mem0 profile managers</li>
+        </ul>
+      </div>
+
+      <!-- Data Stores Card -->
+      <div class="card info">
+        <div class="card-title">Data Ingestion Stores</div>
+        <div style="font-size:0.85rem; color:var(--fg2); margin-bottom:0.75rem;">
+          Relational tables or key-value structures owned by this node:
+        </div>
+        <ul class="ref-list">
+          <li>identity_narrative</li>
+<li>checkpoints</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Validation & QA Section -->
+    <div class="card info" style="margin-top: 1.5rem;">
+      <div class="card-title">Validation Checks & Diagnostic Instructions</div>
+      <div style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+        To execute sanity tests and verify compliance with NixOS system governance boundaries, execute the following command in the workspace directory:
+      </div>
+      <div>
+        <div class="code-box">python3 scripts/testing/test-agent-identity-envelope.py</div>
+      </div>
+    </div>
+
+    <footer>
+      NixOS AI Operating System • Generated Declarative Module Observability
+    </footer>
+  </div>
+</body>
+</html>

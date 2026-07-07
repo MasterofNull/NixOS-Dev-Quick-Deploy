@@ -133,3 +133,56 @@ and the safeguard + monitoring/control point on each flow. Companion to
 **Summary:** role = caller/complexity-picked → mapped to model + injected as framing; the agent then
 picks its own expert team in-response. Tools = a fixed base + 3 auto-selection layers (task-type
 manifest at start, model-leased intent bundle per-request, harness keyword hot-swap per-iteration).
+
+## FULL system-capability auto-selection — the timeline (tools, skills, plugins, MCP, RAG, DAC, DBs, caches, security, modules)
+"Tools" = every capability. Auto-selection happens at FIVE distinct times. This is the complete
+where/when surface (with anchors); nothing engages by magic.
+
+### T1 — Build / activation time (`nixos-rebuild switch`)
+| Capability | Where | When/trigger |
+|-----------|-------|--------------|
+| Modules / features / nodes | `nix/modules/profiles/ai-dev.nix` + role flags (`roleEnabled`, `ai.vectorDb.enable`, …) | which services/features EXIST is decided at build; flag-gated |
+| DAC (POSIX perms) | `system.activationScripts` (0700 dirs, `o+x` traversal reasserted every activation) | re-applied on EVERY rebuild (RULE 13/14) |
+| AppArmor profiles | per-service profiles in `mcp-servers.nix` | attached at service load |
+| DB wiring | `ai-stack.nix` (postgres, redis, qdrant `:1324`; qdrant gated on `vectorDb.enable`) | services created at build |
+| systemd sandbox (`ReadWritePaths`/`ReadOnlyPaths`) | `mcp-servers.nix:341/1371` | namespace bind per service (DAC still checked vs service UID) |
+
+### T2 — Service-start time
+| Capability | Where | When |
+|-----------|-------|------|
+| MCP servers (which attach) | `mcp-servers.nix`; lean-ctx registered in `~/.claude.json` (`cpp-dev.nix:73`) | at service/session start |
+| DB connections (pg/qdrant/redis) | AIDB + coordinator services | on start; pooled |
+| Remote-key read (switchboard) | startup only (restart re-reads) | — but NO keys used (OAuth-only) |
+
+### T3 — Session / task-start
+| Capability | Where | When |
+|-----------|-------|------|
+| Skills | `aq-skill-suggest` reads `SKILL_INDEX.md` + SKILL.md Tags; `progressive-disclosure-domains.json` | task keywords → suggests skills (load max 2–3); before non-trivial tasks |
+| Tool MANIFEST | `aq-agent-loop build_registry()` (:112) | task-type → full(29)/self-improvement(10)/slim |
+| Grounding | `local-agent-grounding.md` prepended by every lane | at dispatch |
+| Plugins/capabilities | capability intake (`agent-capability-contract.json`, backlog) | adoption-time lifecycle (not per-request) |
+
+### T4 — Per-request (switchboard, every call)
+| Capability | Where | When/trigger |
+|-----------|-------|--------------|
+| RAG / hint injection | `injectHints` per profile (`switchboard-profiles.yaml`: true for local-tool-calling, FALSE for continue-local/embedded) | profile flag → auto-prepend harness hints/RAG context |
+| Model / role / lane | `model-coordinator.json` (complexity→tier→model) + `_MODEL_MAP` | role/complexity → concrete model |
+| Prompt cache | llama.cpp prefix cache (auto on prefix match — the passthrough keeps prefixes identical) | automatic; cache-hit vs cold prefill |
+| Tool intent bundle | `_TOOL_BUNDLES` + `_resolve_tool_lease` (model calls `lease_tools`) | model-driven mid-conversation |
+| Security safeguards | `a2a_guard` scan + action-policy + dispatch-budget (delegation boundary) | every outbound dispatch |
+| **zero_trust (Phase-0, planned)** | derive at ingest; strip tools + block remote | per-request when a secret is present |
+
+### T5 — Per-iteration (agent loop, after every tool result)
+| Capability | Where | When/trigger |
+|-----------|-------|--------------|
+| Tool hot-swap | `agent_executor._refresh_active_tools` (:148) + `_AEXEC_HOTSWAP_MAP` (:133) | result-text keywords → inject store_memory/delegate_to_remote/harness_health/… (monotonic) |
+| Context prune (cache) | pinned+sliding prune (:1056) + prune-checkpoint to working memory | when context > budget |
+| RAG on demand | `get_hint` / `query_aidb` MCP tools | model-called during ORIENT/RESEARCH |
+| Memory writes | `store_memory` (hot-swapped in on "remember/save" keywords) | result-driven |
+| lean-ctx cache | MCP `ctx_read`/`ctx_shell` (per-read cache) | tool-called |
+
+**The through-line:** capability selection is layered by time — modules/DAC/AppArmor/DBs at build,
+MCP/DBs at service start, skills/manifest/grounding at task start, RAG/model/cache/bundle/security
+per request, and tool/context/memory hot-swap per iteration. Every layer is inspectable
+(config/code anchors above) and observable (`aq-tui-dashboard`, `aq-a2a-audit`, PULSE) — full
+visibility + control, no black boxes.

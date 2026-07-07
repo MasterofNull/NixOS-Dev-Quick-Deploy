@@ -64,10 +64,10 @@ const bytes = (b) =>
   b == null
     ? "--"
     : b > 1e9
-    ? `${(b / 1e9).toFixed(1)}GB`
-    : b > 1e6
-    ? `${(b / 1e6).toFixed(0)}MB`
-    : `${(b / 1e3).toFixed(0)}KB`;
+      ? `${(b / 1e9).toFixed(1)}GB`
+      : b > 1e6
+        ? `${(b / 1e6).toFixed(0)}MB`
+        : `${(b / 1e3).toFixed(0)}KB`;
 const ms2s = (ms) => (ms != null ? `${(ms / 1000).toFixed(1)}s` : "--");
 const relTime = (iso) => {
   if (!iso) return "--";
@@ -108,9 +108,8 @@ const statusColor = (s) => {
 
 function fwRow(k, v, cls = "") {
   const c = cls || statusColor(v);
-  return `<div class="fw-row"><span class="fk">${k}</span><span class="fv ${c}">${
-    v ?? "--"
-  }</span></div>`;
+  return `<div class="fw-row"><span class="fk">${k}</span><span class="fv ${c}">${v ?? "--"
+    }</span></div>`;
 }
 const fmtImplStatus = (s) =>
   s === "implementation_exists" ? "ready" : s || "--";
@@ -183,9 +182,8 @@ async function loadSpider() {
   const countEl = document.getElementById("anomaly-count");
 
   if (countEl)
-    countEl.textContent = `${
-      res && res.anomalies ? res.anomalies.length : 0
-    } Detected`;
+    countEl.textContent = `${res && res.anomalies ? res.anomalies.length : 0
+      } Detected`;
   if (listEl) {
     if (!res || !res.anomalies) {
       listEl.innerHTML =
@@ -322,8 +320,8 @@ async function initFleetDAG(data) {
       d.role === "architect"
         ? "var(--mag)"
         : d.role === "coder"
-        ? "var(--cyan)"
-        : "var(--grn)"
+          ? "var(--cyan)"
+          : "var(--grn)"
     )
     .attr("stroke", "var(--bg)")
     .attr("stroke-width", 2);
@@ -506,8 +504,8 @@ async function loadRagQuality() {
     return v != null && v > 0
       ? `${(v * 100).toFixed(1)}%`
       : noData
-      ? "N/A"
-      : "0.0%";
+        ? "N/A"
+        : "0.0%";
   };
   setText("ragAnswerRelevance", p(r.answer_relevance_avg));
   setText("ragContextPrecision", p(r.context_precision_avg));
@@ -555,8 +553,8 @@ async function loadRagQuality() {
               m.answer_relevance_avg >= 0.7
                 ? "ok"
                 : m.answer_relevance_avg >= 0.5
-                ? "warn"
-                : "err";
+                  ? "warn"
+                  : "err";
             const tag = model.length > 24 ? model.slice(0, 22) + "…" : model;
             return fwRow(tag, `AR ${ar} · CP ${cp} · n=${n}`, col);
           })
@@ -631,10 +629,10 @@ async function loadSystem() {
         gpuMatches && gpuMatches.length > 1
           ? gpuMatches[gpuMatches.length - 1].slice(1, -1)
           : (gpu.name || "N/A")
-              .split("]")
-              .pop()
-              .replace(/\(rev[^)]+\)/, "")
-              .trim();
+            .split("]")
+            .pop()
+            .replace(/\(rev[^)]+\)/, "")
+            .trim();
       setText("gpuName", gpuDisplay);
       setText(
         "gpuVram",
@@ -801,9 +799,8 @@ function renderAlerts({ cpuPct, gpuPct, memPct, dskPct, tempRaw, cb = {} }) {
     .map(
       (a) =>
         `<div class="deck-alert ${a.cls}">
-      <span class="deck-alert-sev" style="color:${
-        a.cls === "err" ? "var(--red)" : "var(--yel)"
-      }">${a.sev}</span>
+      <span class="deck-alert-sev" style="color:${a.cls === "err" ? "var(--red)" : "var(--yel)"
+        }">${a.sev}</span>
       <span class="deck-alert-msg">${a.label}</span>
       <span class="deck-alert-meta">${a.val}</span>
     </div>`
@@ -852,13 +849,12 @@ async function loadServices() {
     setText("svcCount", `${up}/${services.length}`);
     const svcBadge = document.getElementById("svcCount");
     if (svcBadge)
-      svcBadge.className = `card-badge ${
-        up === services.length && up > 0
+      svcBadge.className = `card-badge ${up === services.length && up > 0
           ? "badge-ok"
           : degraded > 0
-          ? "badge-warn"
-          : "badge-err"
-      }`;
+            ? "badge-warn"
+            : "badge-err"
+        }`;
 
     // Build port map from ai/metrics.services (keyed by service name like 'aidb', 'hybrid_coordinator')
     const portMap = {};
@@ -891,8 +887,8 @@ async function loadServices() {
           const col = ok
             ? "var(--grn)"
             : s.status === "degraded"
-            ? "var(--yel)"
-            : "var(--red)";
+              ? "var(--yel)"
+              : "var(--red)";
           const port = portMap[s.id] || knownPorts[s.id] || "";
           return `<div class="svc">
         <div class="svc-dot" style="background:${col}; box-shadow:0 0 4px ${col}"></div>
@@ -1026,49 +1022,49 @@ async function loadDatabase() {
   el.innerHTML = `
     <div class="db-section">
       <div class="db-name">PostgreSQL <span class="db-pill ${statusColor(
-        pg.status
-      )}">${pg.status || "--"}</span></div>
+    pg.status
+  )}">${pg.status || "--"}</span></div>
       ${fwRow(
-        "Latency",
-        pg.latency_ms != null ? `${pg.latency_ms.toFixed(0)}ms` : "--",
-        latColor(pg.latency_ms)
-      )}
+    "Latency",
+    pg.latency_ms != null ? `${pg.latency_ms.toFixed(0)}ms` : "--",
+    latColor(pg.latency_ms)
+  )}
       ${fwRow(
-        "Conns",
-        pg.active_connections != null
-          ? `${pg.active_connections} active · ${pg.idle_connections ?? 0} idle`
-          : "--"
-      )}
+    "Conns",
+    pg.active_connections != null
+      ? `${pg.active_connections} active · ${pg.idle_connections ?? 0} idle`
+      : "--"
+  )}
       ${fwRow(
-        "DB Size",
-        pg.database_size_bytes ? bytes(pg.database_size_bytes) : "--"
-      )}
+    "DB Size",
+    pg.database_size_bytes ? bytes(pg.database_size_bytes) : "--"
+  )}
     </div>
     <div class="db-section">
       <div class="db-name">Redis <span class="db-pill ${statusColor(
-        rd.status
-      )}">${rd.status || "--"}</span></div>
+    rd.status
+  )}">${rd.status || "--"}</span></div>
       ${fwRow(
-        "Latency",
-        rd.latency_ms != null ? `${rd.latency_ms.toFixed(1)}ms` : "--",
-        latColor(rd.latency_ms)
-      )}
+    "Latency",
+    rd.latency_ms != null ? `${rd.latency_ms.toFixed(1)}ms` : "--",
+    latColor(rd.latency_ms)
+  )}
       ${fwRow("Keys", rd.keys != null ? rd.keys.toLocaleString() : "--")}
       ${fwRow(
-        "Memory",
-        rd.memory_human || (rd.memory_bytes ? bytes(rd.memory_bytes) : "--")
-      )}
+    "Memory",
+    rd.memory_human || (rd.memory_bytes ? bytes(rd.memory_bytes) : "--")
+  )}
       ${fwRow("Clients", rd.connected_clients ?? "--")}
     </div>
     <div class="db-section">
       <div class="db-name">Qdrant <span class="db-pill ${statusColor(
-        qd.status
-      )}">${qd.status || "--"}</span></div>
+    qd.status
+  )}">${qd.status || "--"}</span></div>
       ${fwRow("Collections", qd.collection_count ?? "--")}
       ${fwRow(
-        "Vectors",
-        qd.total_vectors != null ? qd.total_vectors.toLocaleString() : "--"
-      )}
+    "Vectors",
+    qd.total_vectors != null ? qd.total_vectors.toLocaleString() : "--"
+  )}
     </div>`;
 }
 
@@ -1091,8 +1087,7 @@ async function loadOSI() {
     if (scoreEl && scoreEl.textContent === "--") setText("healthScore", "0");
     setHtml(
       "checkList",
-      `<div style="color:var(--fg3);font-size:.62rem;padding:.75rem">${
-        data.message || "Run aq-qa to populate layer health."
+      `<div style="color:var(--fg3);font-size:.62rem;padding:.75rem">${data.message || "Run aq-qa to populate layer health."
       } <button class="mini-btn" onclick="forceLayerRefresh()">Run Now</button></div>`
     );
     return;
@@ -1120,8 +1115,8 @@ async function loadOSI() {
         lp === checks.length && checks.length > 0
           ? "var(--grn)"
           : lp === 0 && checks.length > 0
-          ? "var(--red)"
-          : "var(--yel)";
+            ? "var(--red)"
+            : "var(--yel)";
     }
     if (tile) {
       tile.classList.remove("ok", "err", "warn");
@@ -1137,26 +1132,26 @@ function drillLayer(id) {
   if (!el) return;
   el.innerHTML = checks.length
     ? checks
-        .map((c) => {
-          const cls =
-            c.status === "PASS"
-              ? "pass"
-              : c.status === "SKIP"
+      .map((c) => {
+        const cls =
+          c.status === "PASS"
+            ? "pass"
+            : c.status === "SKIP"
               ? "skip"
               : "fail";
-          const col =
-            cls === "pass"
-              ? "var(--grn)"
-              : cls === "skip"
+        const col =
+          cls === "pass"
+            ? "var(--grn)"
+            : cls === "skip"
               ? "var(--yel)"
               : "var(--red)";
-          return `<div class="check-item ${cls}">
+        return `<div class="check-item ${cls}">
           <span class="ci-status" style="color:${col}">${c.status}</span>
           <span class="ci-id">${c.id}</span>
           <span class="ci-desc">${c.description || ""}</span>
         </div>`;
-        })
-        .join("")
+      })
+      .join("")
     : '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">No checks for this layer.</div>';
 }
 
@@ -1169,8 +1164,8 @@ async function loadRemediations() {
   const items = Array.isArray(d)
     ? d
     : d && Array.isArray(d.issues)
-    ? d.issues
-    : [];
+      ? d.issues
+      : [];
   const statusMsg = d && d.status ? d.status.replace(/_/g, " ") : null;
   const badge = document.getElementById("remedBadge");
   if (badge) {
@@ -1186,12 +1181,10 @@ async function loadRemediations() {
       .slice(0, 12)
       .map(
         (i) =>
-          `<div class="check-item ${
-            i.severity === "critical" ? "fail" : "skip"
+          `<div class="check-item ${i.severity === "critical" ? "fail" : "skip"
           }">
-      <span class="ci-status" style="color:${
-        i.severity === "critical" ? "var(--red)" : "var(--yel)"
-      }">${(i.severity || "warn").toUpperCase()}</span>
+      <span class="ci-status" style="color:${i.severity === "critical" ? "var(--red)" : "var(--yel)"
+          }">${(i.severity || "warn").toUpperCase()}</span>
       <span class="ci-id">${i.id || "--"}</span>
       <span class="ci-desc">${i.description || i.message || ""}</span>
     </div>`
@@ -1216,12 +1209,10 @@ async function loadAuditLog() {
   const header = events.length
     ? `<div style="font-size:.56rem;color:var(--fg3);margin-bottom:.3rem;display:flex;gap:.6rem">
     <span>${events.length} events</span>${chainBadge}
-    ${
-      d.path
-        ? `<span style="overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${
-            d.path
-          }">${d.path.split("/").pop()}</span>`
-        : ""
+    ${d.path
+      ? `<span style="overflow:hidden;text-overflow:ellipsis;max-width:160px" title="${d.path
+      }">${d.path.split("/").pop()}</span>`
+      : ""
     }
   </div>`
     : "";
@@ -1235,18 +1226,16 @@ async function loadAuditLog() {
           cat === "mutation"
             ? "var(--yel)"
             : cat === "disabled"
-            ? "var(--fg3)"
-            : "var(--fg3)";
+              ? "var(--fg3)"
+              : "var(--fg3)";
         return `<div class="check-item pass">
       <span class="ci-status" style="color:${catColor};width:44px">${relTime(
           e.ts || e.timestamp || e.created_at
         )}</span>
-      <span class="ci-id">${e.method ? `${e.method} ` : ""}${
-          e.path || e.action || "--"
-        }</span>
-      <span class="ci-desc" style="color:${
-        e.status_code >= 400 ? "var(--red)" : "var(--fg3)"
-      }">${e.status_code || e.message || ""}</span>
+      <span class="ci-id">${e.method ? `${e.method} ` : ""}${e.path || e.action || "--"
+          }</span>
+      <span class="ci-desc" style="color:${e.status_code >= 400 ? "var(--red)" : "var(--fg3)"
+          }">${e.status_code || e.message || ""}</span>
     </div>`;
       })
       .join("") ||
@@ -1272,7 +1261,7 @@ async function loadCoordinator() {
   const cur = (analytics && analytics.current) || {};
   const w7d =
     ((analytics && analytics.windows && analytics.windows.windows) || {})[
-      "7d"
+    "7d"
     ] || {};
   const localPct = cur.local_pct ?? w7d.local_pct ?? eff.local_query_percentage;
   const totalOps = w7d.query_ok_n ?? cur.query_ok_n ?? 0;
@@ -1410,8 +1399,7 @@ async function loadRouting() {
     rows = Object.entries(clsTypes)
       .map(
         ([k, v]) =>
-          `<tr><td>${k}</td><td>${
-            typeof v === "object" ? v.backend || "--" : "--"
+          `<tr><td>${k}</td><td>${typeof v === "object" ? v.backend || "--" : "--"
           }</td><td>${typeof v === "object" ? v.count ?? v : v}</td></tr>`
       )
       .join("");
@@ -1420,8 +1408,7 @@ async function loadRouting() {
       .slice(0, 10)
       .map(
         (r) =>
-          `<tr><td>${r.task_type || "--"}</td><td>${
-            r.route || r.backend || "--"
+          `<tr><td>${r.task_type || "--"}</td><td>${r.route || r.backend || "--"
           }</td><td>${relTime(r.timestamp)}</td></tr>`
       )
       .join("");
@@ -1459,21 +1446,16 @@ async function loadModels() {
     freshBadge.textContent = `${models.length} · ${freshStatus}`;
   }
   const freshnessHtml = `<div id="mlFreshness" style="border-bottom:1px solid rgba(255,255,255,.08);padding:.35rem .45rem .5rem;margin-bottom:.25rem">
-      <div class="fw-row"><span class="fk">Freshness</span><span class="fv ${
-        freshness.action_required ? "warn" : "ok"
-      }">${freshStatus}</span></div>
-      <div class="fw-row"><span class="fk">Active / Probe</span><span class="fv">${freshness.active_model_id || "--"} / ${
-        freshness.probe_model_id || "--"
-      }</span></div>
-      <div class="fw-row"><span class="fk">Profile Age</span><span class="fv">${
-        freshness.profile_age_days ?? "--"
-      }d</span></div>
-      <div class="fw-row"><span class="fk">Catalog Age</span><span class="fv">${
-        freshness.catalog_age_days ?? "--"
-      }d</span></div>
-      <div class="fw-row"><span class="fk">Active Path</span><span class="fv ${
-        freshness.active_model_path_state === "readable" || freshness.active_model_path_state === "restricted" ? "ok" : "warn"
-      }">${freshness.active_model_path_state || "--"}</span></div>
+      <div class="fw-row"><span class="fk">Freshness</span><span class="fv ${freshness.action_required ? "warn" : "ok"
+    }">${freshStatus}</span></div>
+      <div class="fw-row"><span class="fk">Active / Probe</span><span class="fv">${freshness.active_model_id || "--"} / ${freshness.probe_model_id || "--"
+    }</span></div>
+      <div class="fw-row"><span class="fk">Profile Age</span><span class="fv">${freshness.profile_age_days ?? "--"
+    }d</span></div>
+      <div class="fw-row"><span class="fk">Catalog Age</span><span class="fv">${freshness.catalog_age_days ?? "--"
+    }d</span></div>
+      <div class="fw-row"><span class="fk">Active Path</span><span class="fv ${freshness.active_model_path_state === "readable" || freshness.active_model_path_state === "restricted" ? "ok" : "warn"
+    }">${freshness.active_model_path_state || "--"}</span></div>
     </div>`;
   const modelRows =
     models
@@ -1482,29 +1464,26 @@ async function loadModels() {
           m.state === "active"
             ? "ms-active"
             : m.state === "downloading"
-            ? "ms-dl"
-            : m.state === "verified"
-            ? "ms-ok"
-            : "ms-av";
+              ? "ms-dl"
+              : m.state === "verified"
+                ? "ms-ok"
+                : "ms-av";
         const fe = m.file_exists;
         const disk = fe === true ? " ✓" : fe === false ? " ✗" : "";
         return `<div class="model-row">
       <span class="model-state ${sc}">${m.state || "available"}</span>
       <span class="model-name">${m.name || m.id}</span>
-      <span class="model-size">${
-        m.size_gb ? m.size_gb + "GB" : ""
-      }${disk}</span>
+      <span class="model-size">${m.size_gb ? m.size_gb + "GB" : ""
+          }${disk}</span>
       <span class="model-actions">
-        ${
-          m.state !== "active" && m.state !== "downloading"
+        ${m.state !== "active" && m.state !== "downloading"
             ? `<button class="act-btn" onclick="mlPromote('${m.id}')">Promote</button>`
             : ""
-        }
-        ${
-          m.state === "downloading"
+          }
+        ${m.state === "downloading"
             ? `<button class="act-btn err" onclick="mlCancel('${m.id}')">Cancel</button>`
             : ""
-        }
+          }
       </span>
     </div>`;
       })
@@ -1543,11 +1522,9 @@ async function loadSwitchboard() {
         const p = profiles[name] || {};
         return `<div class="profile-card">
       <div class="profile-name">${name}</div>
-      <div class="profile-meta">${
-        p.maxInputTokens ? `in:${p.maxInputTokens}` : ""
-      } ${p.maxOutputTokens ? `out:${p.maxOutputTokens}` : ""} ${
-          p.intendedUse || ""
-        }</div>
+      <div class="profile-meta">${p.maxInputTokens ? `in:${p.maxInputTokens}` : ""
+          } ${p.maxOutputTokens ? `out:${p.maxOutputTokens}` : ""} ${p.intendedUse || ""
+          }</div>
     </div>`;
       })
       .join("") ||
@@ -1689,8 +1666,8 @@ async function loadLearning() {
       act.average_feedback_score > 0.5
         ? "ok"
         : act.average_feedback_score > 0.2
-        ? "warn"
-        : "err"
+          ? "warn"
+          : "err"
     ),
     fwRow(
       "Backpressure",
@@ -1716,8 +1693,7 @@ async function loadLearning() {
     al.innerHTML = `<div class="act-pills">${pills
       .map(
         (p) =>
-          `<div class="act-pill">${
-            p.k
+          `<div class="act-pill">${p.k
           }&nbsp;<span>${p.v.toLocaleString()}</span></div>`
       )
       .join("")}</div>`;
@@ -1758,9 +1734,8 @@ async function loadDrift() {
     fwRow(
       "Latency Degrad",
       d.latency_degradation != null
-        ? `${
-            d.latency_degradation > 0 ? "+" : ""
-          }${d.latency_degradation.toFixed(1)}ms`
+        ? `${d.latency_degradation > 0 ? "+" : ""
+        }${d.latency_degradation.toFixed(1)}ms`
         : "--",
       d.latency_degradation > 0 ? "warn" : "ok"
     ),
@@ -1827,8 +1802,8 @@ async function loadKnowledge() {
       t === "memory"
         ? "coll-type-mem"
         : t === "training"
-        ? "coll-type-train"
-        : "coll-type-know";
+          ? "coll-type-train"
+          : "coll-type-know";
     cl.innerHTML = `<table class="coll-table">
       <thead><tr><th>Collection</th><th>Type</th><th>Vectors</th><th></th></tr></thead>
       <tbody>${colls
@@ -1888,10 +1863,10 @@ async function loadAgentic() {
     fwRow("Verify Checks", vsChecks || "--"),
     memTypes.length
       ? fwRow(
-          "Types",
-          memTypes.slice(0, 4).join(", ") + (memTypes.length > 4 ? "…" : ""),
-          "info"
-        )
+        "Types",
+        memTypes.slice(0, 4).join(", ") + (memTypes.length > 4 ? "…" : ""),
+        "info"
+      )
       : "",
   ].join("");
 }
@@ -1917,24 +1892,24 @@ async function loadPerfHotspots() {
       critical > 0
         ? `${critical} critical`
         : watching > 0
-        ? `${watching} watch`
-        : "healthy";
+          ? `${watching} watch`
+          : "healthy";
     badge.className = `card-badge badge-${color}`;
   }
 
   // Render each hotspot as a row
   el.innerHTML = hotspots.length
     ? hotspots
-        .map((h) => {
-          const c =
-            h.status === "critical"
-              ? "err"
-              : h.status === "watch"
+      .map((h) => {
+        const c =
+          h.status === "critical"
+            ? "err"
+            : h.status === "watch"
               ? "warn"
               : "ok";
-          return fwRow(h.label || h.id, h.summary || h.status, c);
-        })
-        .join("")
+        return fwRow(h.label || h.id, h.summary || h.status, c);
+      })
+      .join("")
     : fwRow("Status", "no hotspots detected", "ok");
 }
 
@@ -2012,8 +1987,8 @@ async function loadAgentEvalTrends() {
           t.average_review_score >= 0.7
             ? "ok"
             : t.average_review_score >= 0.4
-            ? "warn"
-            : "err";
+              ? "warn"
+              : "err";
         return [fwRow(t.agent, `rev ${revScore} · rt ${rtScore}`, col)].join(
           ""
         );
@@ -2062,10 +2037,10 @@ async function loadOrchestrationSessions() {
     stalePings ? fwRow("Stale Pings", stalePings.toLocaleString(), "warn") : "",
     tokB
       ? fwRow(
-          "Token Burn",
-          `${tokU.toLocaleString()} / ${tokB.toLocaleString()}`,
-          "info"
-        )
+        "Token Burn",
+        `${tokU.toLocaleString()} / ${tokB.toLocaleString()}`,
+        "info"
+      )
       : "",
     toolU ? fwRow("Tool Calls", toolU.toLocaleString()) : "",
   ]
@@ -2084,8 +2059,8 @@ async function loadOrchestrationSessions() {
             s.status === "completed"
               ? "ok"
               : s.status === "failed"
-              ? "err"
-              : "info"
+                ? "err"
+                : "info"
           )
         )
         .join("") +
@@ -2109,13 +2084,12 @@ async function loadRAGHealth() {
   const winSz = (rag || {}).window_size;
   if (badge) {
     badge.textContent = st;
-    badge.className = `card-badge ${
-      st === "healthy"
+    badge.className = `card-badge ${st === "healthy"
         ? "badge-ok"
         : st === "degraded"
-        ? "badge-warn"
-        : "badge-err"
-    }`;
+          ? "badge-warn"
+          : "badge-err"
+      }`;
   }
   const augPct = tot && aug != null ? Math.round((aug / tot) * 100) : null;
   el.innerHTML = [
@@ -2135,17 +2109,17 @@ async function loadRAGHealth() {
     el.innerHTML += [
       rp.memory_recall_share_pct != null
         ? fwRow(
-            "Memory Recall %",
-            `${rp.memory_recall_share_pct.toFixed(0)}%`,
-            "info"
-          )
+          "Memory Recall %",
+          `${rp.memory_recall_share_pct.toFixed(0)}%`,
+          "info"
+        )
         : "",
       rp.memory_recall_miss_pct != null
         ? fwRow(
-            "Recall Miss %",
-            `${rp.memory_recall_miss_pct.toFixed(0)}%`,
-            rp.memory_recall_miss_pct > 5 ? "warn" : "ok"
-          )
+          "Recall Miss %",
+          `${rp.memory_recall_miss_pct.toFixed(0)}%`,
+          rp.memory_recall_miss_pct > 5 ? "warn" : "ok"
+        )
         : "",
     ]
       .filter(Boolean)
@@ -2217,13 +2191,13 @@ async function loadHomeostasis() {
     fwRow("Events Logged", evts.length, evts.length > 50 ? "warn" : "ok"),
     evts.length
       ? fwRow(
-          "Last Event",
-          relTime(
-            evts[evts.length - 1]?.timestamp
-              ? new Date(evts[evts.length - 1].timestamp * 1000).toISOString()
-              : null
-          )
+        "Last Event",
+        relTime(
+          evts[evts.length - 1]?.timestamp
+            ? new Date(evts[evts.length - 1].timestamp * 1000).toISOString()
+            : null
         )
+      )
       : "",
   ]
     .filter(Boolean)
@@ -2314,18 +2288,18 @@ async function loadWorkflowGraph() {
     gr === "input"
       ? "#ffffff"
       : gr === "router"
-      ? "#f4a261"
-      : gr === "local"
-      ? "#2ec4b6"
-      : gr === "remote"
-      ? "#e76f51"
-      : gr === "service"
-      ? "#a8dadc"
-      : gr === "vector-db"
-      ? "#f4d35e"
-      : gr === "rag"
-      ? "#ee6c4d"
-      : "var(--fg3)";
+        ? "#f4a261"
+        : gr === "local"
+          ? "#2ec4b6"
+          : gr === "remote"
+            ? "#e76f51"
+            : gr === "service"
+              ? "#a8dadc"
+              : gr === "vector-db"
+                ? "#f4d35e"
+                : gr === "rag"
+                  ? "#ee6c4d"
+                  : "var(--fg3)";
   const sim = d3
     .forceSimulation(data.nodes)
     .force(
@@ -2502,8 +2476,7 @@ async function loadVectorGraph() {
     .slice(0, 5)
     .map(
       (p, i) =>
-        `<span style="color:${palette[i]};margin-right:.5rem">■ ${
-          p.split("-").slice(-1)[0]
+        `<span style="color:${palette[i]};margin-right:.5rem">■ ${p.split("-").slice(-1)[0]
         }</span>`
     )
     .join("");
@@ -2578,9 +2551,8 @@ async function loadVectorizationPosture() {
     })
     .join("");
 
-  el.innerHTML = `${rows.join("")}<table class="coll-table" style="margin-top:.45rem"><thead><tr><th>Collection</th><th>Type</th><th>Points</th><th>Load</th></tr></thead><tbody>${
-    top || '<tr><td colspan="4" style="color:var(--fg3)">No vector collections found</td></tr>'
-  }</tbody></table>`;
+  el.innerHTML = `${rows.join("")}<table class="coll-table" style="margin-top:.45rem"><thead><tr><th>Collection</th><th>Type</th><th>Points</th><th>Load</th></tr></thead><tbody>${top || '<tr><td colspan="4" style="color:var(--fg3)">No vector collections found</td></tr>'
+    }</tbody></table>`;
 }
 
 // ─── INTELLIGENCE: TASK CLASSIFIER STATS ─────────────────────────────────────
@@ -2755,10 +2727,10 @@ async function loadOperatorIntelligence() {
   const trend = (d.prompt_specificity_trend || []).slice(-5);
   const trendBar = trend.length
     ? trend.map(v => {
-        const pct = Math.round((v || 0) * 100);
-        const col = pct >= 60 ? "ok" : pct >= 35 ? "warn" : "err";
-        return `<span class="fv ${col}" style="margin-right:.15rem">${pct}%</span>`;
-      }).join("")
+      const pct = Math.round((v || 0) * 100);
+      const col = pct >= 60 ? "ok" : pct >= 35 ? "warn" : "err";
+      return `<span class="fv ${col}" style="margin-right:.15rem">${pct}%</span>`;
+    }).join("")
     : '<span style="color:var(--fg3)">no data</span>';
 
   // Chilling effect
@@ -2915,32 +2887,25 @@ async function loadTraceGantt() {
       const intent = (t.intent || "?").slice(0, 10);
       const slow = totMs > 10000;
       return `
-      <text x="0" y="${
-        y + 10
-      }" font-size="7" fill="var(--fg3)" font-family="monospace">${label}</text>
-      <rect x="${W * 0.32}" y="${y}" width="${
-        totW * 0.68
-      }" height="${ROW_H}" rx="2" fill="${
-        slow ? "#e76f51" : "#2ec4b6"
-      }22" stroke="${slow ? "#e76f51" : "#2ec4b6"}" stroke-width="0.5"/>
-      ${
-        ragMs > 0
-          ? `<rect x="${W * 0.32}" y="${y}" width="${
-              ragW * 0.68
-            }" height="${ROW_H}" rx="2" fill="#84a98c88"/>`
+      <text x="0" y="${y + 10
+        }" font-size="7" fill="var(--fg3)" font-family="monospace">${label}</text>
+      <rect x="${W * 0.32}" y="${y}" width="${totW * 0.68
+        }" height="${ROW_H}" rx="2" fill="${slow ? "#e76f51" : "#2ec4b6"
+        }22" stroke="${slow ? "#e76f51" : "#2ec4b6"}" stroke-width="0.5"/>
+      ${ragMs > 0
+          ? `<rect x="${W * 0.32}" y="${y}" width="${ragW * 0.68
+          }" height="${ROW_H}" rx="2" fill="#84a98c88"/>`
           : ""
-      }
-      ${
-        llmMs > 0
+        }
+      ${llmMs > 0
           ? `<rect x="${W * 0.32 + ragW * 0.68}" y="${y}" width="${Math.min(
-              llmW * 0.68,
-              W * 0.68 - ragW * 0.68
-            )}" height="${ROW_H}" rx="2" fill="#4e9af188"/>`
+            llmW * 0.68,
+            W * 0.68 - ragW * 0.68
+          )}" height="${ROW_H}" rx="2" fill="#4e9af188"/>`
           : ""
-      }
-      <text x="${W * 0.32 + totW * 0.68 + 2}" y="${
-        y + 10
-      }" font-size="6" fill="var(--fg2)" font-family="monospace">${totMs}ms · ${intent}</text>`;
+        }
+      <text x="${W * 0.32 + totW * 0.68 + 2}" y="${y + 10
+        }" font-size="6" fill="var(--fg2)" font-family="monospace">${totMs}ms · ${intent}</text>`;
     })
     .join("");
 
@@ -2952,15 +2917,12 @@ async function loadTraceGantt() {
       (max ${maxMs}ms)
     </div>
     <svg width="100%" viewBox="0 0 ${W} ${svgH}" xmlns="http://www.w3.org/2000/svg">
-      <text x="${
-        W * 0.32
-      }" y="12" font-size="6" fill="var(--fg3)" font-family="monospace">0ms</text>
-      <text x="${
-        W * 0.98
-      }" y="12" font-size="6" fill="var(--fg3)" font-family="monospace" text-anchor="end">${maxMs}ms</text>
-      <line x1="${
-        W * 0.32
-      }" y1="14" x2="${W}" y2="14" stroke="var(--border)" stroke-width="0.3"/>
+      <text x="${W * 0.32
+    }" y="12" font-size="6" fill="var(--fg3)" font-family="monospace">0ms</text>
+      <text x="${W * 0.98
+    }" y="12" font-size="6" fill="var(--fg3)" font-family="monospace" text-anchor="end">${maxMs}ms</text>
+      <line x1="${W * 0.32
+    }" y1="14" x2="${W}" y2="14" stroke="var(--border)" stroke-width="0.3"/>
       ${bars}
     </svg>`;
 }
@@ -3000,9 +2962,8 @@ async function loadAgentOutcomes() {
   const ePct = Math.round((error / total) * 100);
   if (badge) {
     badge.textContent = `${sPct}% ok`;
-    badge.className = `card-badge ${
-      sPct >= 80 ? "badge-ok" : sPct >= 50 ? "badge-warn" : "badge-err"
-    }`;
+    badge.className = `card-badge ${sPct >= 80 ? "badge-ok" : sPct >= 50 ? "badge-warn" : "badge-err"
+      }`;
   }
   // SVG donut via stroke-dasharray segments
   const circ = 2 * Math.PI * 20; // r=20
@@ -3012,10 +2973,10 @@ async function loadAgentOutcomes() {
   const seg = (len, color, offset) =>
     len > 0.5
       ? `<circle cx="32" cy="32" r="20" fill="none" stroke="${color}" stroke-width="10" ` +
-        `stroke-dasharray="${len.toFixed(2)} ${circ.toFixed(
-          2
-        )}" stroke-dashoffset="${offset.toFixed(2)}" ` +
-        `transform="rotate(-90 32 32)" opacity="0.85"/>`
+      `stroke-dasharray="${len.toFixed(2)} ${circ.toFixed(
+        2
+      )}" stroke-dashoffset="${offset.toFixed(2)}" ` +
+      `transform="rotate(-90 32 32)" opacity="0.85"/>`
       : "";
   const donut = `<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
     <circle cx="32" cy="32" r="20" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="10"/>
@@ -3072,21 +3033,20 @@ async function loadADKStatus() {
       .join("") || fwRow("Components", "none", "info");
   const discRow = disc
     ? fwRow(
-        "Discoveries",
-        `${disc.total_features ?? 0} features · ${
-          disc.releases_analyzed ?? 0
-        } releases`,
-        disc.total_features > 0 ? "ok" : "info"
-      )
+      "Discoveries",
+      `${disc.total_features ?? 0} features · ${disc.releases_analyzed ?? 0
+      } releases`,
+      disc.total_features > 0 ? "ok" : "info"
+    )
     : "";
   const gapRows = gaps
     ? [
-        fwRow(
-          "Gap Analysis",
-          `${gaps.total_gaps ?? 0} gaps · ${gaps.high_priority ?? 0} high`,
-          gaps.high_priority > 0 ? "warn" : "ok"
-        ),
-      ].join("")
+      fwRow(
+        "Gap Analysis",
+        `${gaps.total_gaps ?? 0} gaps · ${gaps.high_priority ?? 0} high`,
+        gaps.high_priority > 0 ? "warn" : "ok"
+      ),
+    ].join("")
     : "";
   el.innerHTML =
     compRows +
@@ -3253,17 +3213,17 @@ async function loadCollaborationMetrics() {
     fwRow("Total Tasks", tasks, tasks > 0 ? "ok" : "info"),
     tasks > 0
       ? fwRow(
-          "Team Success",
-          `${(cmp.team_success_rate * 100).toFixed(0)}%`,
-          "ok"
-        )
+        "Team Success",
+        `${(cmp.team_success_rate * 100).toFixed(0)}%`,
+        "ok"
+      )
       : "",
     tasks > 0
       ? fwRow(
-          "Indiv Success",
-          `${(cmp.individual_success_rate * 100).toFixed(0)}%`,
-          "info"
-        )
+        "Indiv Success",
+        `${(cmp.individual_success_rate * 100).toFixed(0)}%`,
+        "info"
+      )
       : "",
     cmp.recommendation
       ? fwRow("Recommendation", cmp.recommendation.slice(0, 30), "info")
@@ -3372,9 +3332,8 @@ async function loadHardening() {
   const acc = card.acceptance || {};
   if (badge) {
     badge.textContent = d.status || "--";
-    badge.className = `card-badge ${
-      statusColor(d.status) === "ok" ? "badge-ok" : "badge-warn"
-    }`;
+    badge.className = `card-badge ${statusColor(d.status) === "ok" ? "badge-ok" : "badge-warn"
+      }`;
   }
   el.innerHTML = [
     fwRow("Status", d.status || "--", statusColor(d.status)),
@@ -3462,12 +3421,11 @@ async function loadSecDrift() {
         ? score > 0.7
           ? "ALERT"
           : score > 0.4
-          ? "WATCH"
-          : "OK"
+            ? "WATCH"
+            : "OK"
         : "--";
-    badge.className = `card-badge ${
-      score != null && score > 0.4 ? "badge-warn" : "badge-ok"
-    }`;
+    badge.className = `card-badge ${score != null && score > 0.4 ? "badge-warn" : "badge-ok"
+      }`;
   }
   el.innerHTML = [
     fwRow("Drift Score", score != null ? score.toFixed(3) : "--", scoreColor),
@@ -3484,8 +3442,8 @@ async function loadSecDrift() {
       d.latency_degradation != null && d.latency_degradation > 200
         ? "err"
         : d.latency_degradation > 50
-        ? "warn"
-        : "ok"
+          ? "warn"
+          : "ok"
     ),
     fwRow("Trace Count", d.trace_count ?? "--", "info"),
   ].join("");
@@ -3510,9 +3468,8 @@ async function loadAgentPool() {
   const avail = agents.filter((a) => a.status === "available").length;
   if (badge) {
     badge.textContent = `${avail}/${agents.length}`;
-    badge.className = `card-badge ${
-      avail === agents.length ? "badge-ok" : "badge-warn"
-    }`;
+    badge.className = `card-badge ${avail === agents.length ? "badge-ok" : "badge-warn"
+      }`;
   }
   el.innerHTML = agents
     .map((a) => {
@@ -3612,12 +3569,12 @@ async function loadAuditSummary() {
     fwRow("Last Event", relTime(d.last_event_at)),
     Object.keys(methods).length
       ? fwRow(
-          "Methods",
-          Object.entries(methods)
-            .map(([k, v]) => `${k}:${v}`)
-            .join(" "),
-          "info"
-        )
+        "Methods",
+        Object.entries(methods)
+          .map(([k, v]) => `${k}:${v}`)
+          .join(" "),
+        "info"
+      )
       : "",
   ]
     .filter(Boolean)
@@ -3743,28 +3700,26 @@ async function loadDeployments() {
   el.innerHTML = list.length
     ? `<table class="route-table"><thead><tr><th>ID</th><th>Command</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody>
         ${list
-          .slice(0, 8)
-          .map(
-            (i) =>
-              `<tr>
+      .slice(0, 8)
+      .map(
+        (i) =>
+          `<tr>
             <td style="font-size:.56rem">${(i.deployment_id || "--").slice(
-              -8
-            )}</td>
-            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
-              i.command || "--"
-            }</td>
-            <td style="color:${
-              i.status === "success"
-                ? "var(--grn)"
-                : i.status === "running"
-                ? "var(--cyan)"
-                : "var(--red)"
-            }">${i.status}</td>
+            -8
+          )}</td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.command || "--"
+          }</td>
+            <td style="color:${i.status === "success"
+            ? "var(--grn)"
+            : i.status === "running"
+              ? "var(--cyan)"
+              : "var(--red)"
+          }">${i.status}</td>
             <td>${i.progress != null ? i.progress + "%" : "--"}</td>
             <td>${relTime(i.started_at)}</td>
           </tr>`
-          )
-          .join("")}
+      )
+      .join("")}
       </tbody></table>`
     : '<div style="color:var(--fg3);font-size:.62rem">No deployments</div>';
 }
@@ -3782,12 +3737,11 @@ async function loadPRSI() {
         (a) =>
           `<div class="check-item">
       <span class="ci-id">${a.action || a.id || "--"}</span>
-      <span class="ci-desc">${
-        a.raw_action ? JSON.stringify(a.raw_action).slice(0, 60) : a.label || ""
-      }</span>
+      <span class="ci-desc">${a.raw_action ? JSON.stringify(a.raw_action).slice(0, 60) : a.label || ""
+          }</span>
       <span class="ci-status" style="color:var(--fg3);font-size:.56rem">${relTime(
-        a.created_at
-      )}</span>
+            a.created_at
+          )}</span>
     </div>`
       )
       .join("") ||
@@ -3853,9 +3807,8 @@ async function loadHarnessOv() {
   const disc = card.discovery || {};
   if (badge) {
     badge.textContent = d.status || "--";
-    badge.className = `card-badge ${
-      statusColor(d.status) === "ok" ? "badge-ok" : "badge-warn"
-    }`;
+    badge.className = `card-badge ${statusColor(d.status) === "ok" ? "badge-ok" : "badge-warn"
+      }`;
   }
   const fails = (card.failures || {}).recent_failed_cases || [];
   el.innerHTML = [
@@ -3867,17 +3820,17 @@ async function loadHarnessOv() {
     // Discovery metrics from scorecard
     disc.invoked != null
       ? fwRow(
-          "Discovery",
-          `${disc.invoked} invoked · ${disc.skipped ?? 0} skip`,
-          "info"
-        )
+        "Discovery",
+        `${disc.invoked} invoked · ${disc.skipped ?? 0} skip`,
+        "info"
+      )
       : "",
     disc.cache_hit_rate != null
       ? fwRow(
-          "Disc Cache",
-          `${(disc.cache_hit_rate * 100).toFixed(0)}%`,
-          disc.cache_hit_rate > 0 ? "ok" : "warn"
-        )
+        "Disc Cache",
+        `${(disc.cache_hit_rate * 100).toFixed(0)}%`,
+        disc.cache_hit_rate > 0 ? "ok" : "warn"
+      )
       : "",
     // Inference optimization config (professional AI dashboard standard — always show)
     `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.05);font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em">Inference Config</div>`,
@@ -3930,7 +3883,7 @@ async function loadModelOptimization() {
     const col = statusMap[st] || "info";
     const extra =
       typeof v === "object" &&
-      (v.captured_count != null || v.jobs != null || v.generated_files != null)
+        (v.captured_count != null || v.jobs != null || v.generated_files != null)
         ? ` (${v.captured_count ?? v.jobs ?? v.generated_files ?? 0})`
         : "";
     return fwRow(k.replace(/_/g, " "), st + extra, col);
@@ -3985,8 +3938,8 @@ async function loadLearnPipeline() {
       act.average_feedback_score > 0.5
         ? "ok"
         : act.average_feedback_score > 0.2
-        ? "warn"
-        : "err"
+          ? "warn"
+          : "err"
     ),
     fwRow(
       "Backpressure",
@@ -4096,9 +4049,8 @@ async function loadRalph() {
       : null;
   if (badge) {
     badge.textContent = d.active_tasks ? `${d.active_tasks} active` : "idle";
-    badge.className = `card-badge ${
-      d.active_tasks > 0 ? "badge-ok" : "badge-info"
-    }`;
+    badge.className = `card-badge ${d.active_tasks > 0 ? "badge-ok" : "badge-info"
+      }`;
   }
   el.innerHTML = [
     fwRow(
@@ -4341,16 +4293,16 @@ async function initTopo() {
     r === "inference"
       ? "var(--cyan)"
       : r === "coordinator"
-      ? "var(--mag)"
-      : r === "vector-db"
-      ? "#f4a261"
-      : r === "rag"
-      ? "#2ec4b6"
-      : r === "embeddings"
-      ? "#a8dadc"
-      : r === "dashboard"
-      ? "#e9c46a"
-      : "var(--fg3)";
+        ? "var(--mag)"
+        : r === "vector-db"
+          ? "#f4a261"
+          : r === "rag"
+            ? "#2ec4b6"
+            : r === "embeddings"
+              ? "#a8dadc"
+              : r === "dashboard"
+                ? "#e9c46a"
+                : "var(--fg3)";
   node
     .append("circle")
     .attr("r", (d) =>
@@ -4438,8 +4390,8 @@ async function loadLogs() {
   ]);
   const auditEvts =
     auditResp.status === "fulfilled" &&
-    auditResp.value &&
-    auditResp.value.events
+      auditResp.value &&
+      auditResp.value.events
       ? auditResp.value.events
       : [];
   const homeEvts =
@@ -4471,11 +4423,10 @@ async function loadLogs() {
         e.status_code >= 500 || e.level === "error"
           ? "err"
           : e.status_code >= 400
-          ? "warn"
-          : "";
-      return `<div class="log-line${
-        cls ? " log-" + cls : ""
-      }"><span class="log-ts">${ts}</span><span class="log-type">[${typ}]</span>${msg}${status}</div>`;
+            ? "warn"
+            : "";
+      return `<div class="log-line${cls ? " log-" + cls : ""
+        }"><span class="log-ts">${ts}</span><span class="log-type">[${typ}]</span>${msg}${status}</div>`;
     })
     .join("");
 }
@@ -4496,19 +4447,18 @@ async function loadHardwareState() {
     tier === "optimal"
       ? "ok"
       : tier === "warm"
-      ? "warn"
-      : tier === "critical" || tier === "shutdown"
-      ? "err"
-      : "info";
+        ? "warn"
+        : tier === "critical" || tier === "shutdown"
+          ? "err"
+          : "info";
   if (badge) {
     badge.textContent = tier;
-    badge.className = `card-badge ${
-      tierColor === "ok"
+    badge.className = `card-badge ${tierColor === "ok"
         ? "badge-ok"
         : tierColor === "warn"
-        ? "badge-warn"
-        : "badge-err"
-    }`;
+          ? "badge-warn"
+          : "badge-err"
+      }`;
   }
   // Also update the KPI thermal badge if present
   setText("kpiThermal", tier);
@@ -4569,13 +4519,12 @@ async function loadSchedulerStatus() {
     tier === "optimal" ? "ok" : tier === "warm" ? "warn" : "err";
   if (badge) {
     badge.textContent = tier;
-    badge.className = `card-badge ${
-      tierColor === "ok"
+    badge.className = `card-badge ${tierColor === "ok"
         ? "badge-ok"
         : tierColor === "warn"
-        ? "badge-warn"
-        : "badge-err"
-    }`;
+          ? "badge-warn"
+          : "badge-err"
+      }`;
   }
   el.innerHTML = [
     fwRow("Thermal Gate", tier, tierColor),
@@ -4600,10 +4549,10 @@ async function loadSchedulerStatus() {
     fwRow("Concur L2", `${limits.L2 ?? "--"} / ${cfgLim.L2 ?? "--"}`, "info"),
     budget.L0
       ? fwRow(
-          "Token Budget",
-          `${((budget.L0 + budget.L1 + budget.L2) / 1e6).toFixed(2)}M total`,
-          "info"
-        )
+        "Token Budget",
+        `${((budget.L0 + budget.L1 + budget.L2) / 1e6).toFixed(2)}M total`,
+        "info"
+      )
       : "",
   ]
     .filter(Boolean)
@@ -4674,16 +4623,14 @@ async function loadHintsRegistry() {
   }
   el.innerHTML = hints.length
     ? hints
-        .slice(0, 8)
-        .map(
-          (h) =>
-            `<div class="fw-row"><span class="fk" style="max-width:10rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
-              h.title || h.id
-            }</span><span class="fv info">${h.type || "hint"} · ${
-              h.score != null ? (h.score * 100).toFixed(0) + "%" : ""
-            }</span></div>`
-        )
-        .join("")
+      .slice(0, 8)
+      .map(
+        (h) =>
+          `<div class="fw-row"><span class="fk" style="max-width:10rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.title || h.id
+          }</span><span class="fv info">${h.type || "hint"} · ${h.score != null ? (h.score * 100).toFixed(0) + "%" : ""
+          }</span></div>`
+      )
+      .join("")
     : fwRow("Hints", "No active hints", "info");
 }
 
@@ -4756,9 +4703,8 @@ async function loadAffectiveState() {
     dominant === "neutral" ? "ok" : dominant === "positive" ? "ok" : "warn";
   if (badge) {
     badge.textContent = dominant;
-    badge.className = `card-badge ${
-      domColor === "ok" ? "badge-ok" : "badge-warn"
-    }`;
+    badge.className = `card-badge ${domColor === "ok" ? "badge-ok" : "badge-warn"
+      }`;
   }
   el.innerHTML = [
     fwRow("Dominant Signal", dominant, domColor),
@@ -4810,24 +4756,23 @@ async function loadParityScorecard() {
       totalScore != null
         ? `${(totalScore * 100).toFixed(0)}%`
         : `${pass}/${tracks.length}`;
-    badge.className = `card-badge badge-${
-      color === "ok" ? "ok" : color === "warn" ? "warn" : "err"
-    }`;
+    badge.className = `card-badge badge-${color === "ok" ? "ok" : color === "warn" ? "warn" : "err"
+      }`;
   }
   el.innerHTML = tracks.length
     ? tracks
-        .map((t) =>
-          fwRow(
-            t.id.replace(/_/g, " "),
-            t.status,
-            t.status === "complete"
-              ? "ok"
-              : t.status === "partial"
+      .map((t) =>
+        fwRow(
+          t.id.replace(/_/g, " "),
+          t.status,
+          t.status === "complete"
+            ? "ok"
+            : t.status === "partial"
               ? "warn"
               : "err"
-          )
         )
-        .join("")
+      )
+      .join("")
     : fwRow("Status", "No tracks", "info");
 }
 
@@ -4898,9 +4843,8 @@ async function loadReasoningProfiles() {
       const name = p.name || p.id || "--";
       const style = p.reasoning_style || p.style || "--";
       return `<div class="fw-row" style="align-items:flex-start">
-      <span class="fk" style="color:${
-        active ? "var(--grn)" : "var(--fg2)"
-      }">${name}</span>
+      <span class="fk" style="color:${active ? "var(--grn)" : "var(--fg2)"
+        }">${name}</span>
       <span class="fv info" style="text-align:right;max-width:55%">${style}</span>
     </div>`;
     })
@@ -5002,13 +4946,12 @@ async function loadAgentOpsStatus() {
   const color = alertOn ? "err" : drift > 0.4 ? "warn" : "ok";
   if (badge) {
     badge.textContent = alertOn ? "ALERT" : override ? "override" : "nominal";
-    badge.className = `card-badge ${
-      color === "ok"
+    badge.className = `card-badge ${color === "ok"
         ? "badge-ok"
         : color === "warn"
-        ? "badge-warn"
-        : "badge-err"
-    }`;
+          ? "badge-warn"
+          : "badge-err"
+      }`;
   }
   el.innerHTML = [
     fwRow("Alert Active", alertOn ? "YES" : "no", alertOn ? "err" : "ok"),
@@ -5146,19 +5089,19 @@ async function loadHealthAggregate() {
     fwRow(
       "Healthy",
       summary.healthy ??
-        Object.values(svcs).filter((s) => s.status === "healthy").length,
+      Object.values(svcs).filter((s) => s.status === "healthy").length,
       "ok"
     ),
     fwRow(
       "Degraded",
       summary.degraded ??
-        Object.values(svcs).filter((s) => s.status === "degraded").length,
+      Object.values(svcs).filter((s) => s.status === "degraded").length,
       "warn"
     ),
     fwRow(
       "Unhealthy",
       summary.unhealthy ??
-        Object.values(svcs).filter((s) => s.status === "unhealthy").length,
+      Object.values(svcs).filter((s) => s.status === "unhealthy").length,
       "err"
     ),
     ...Object.entries(svcs)
@@ -5334,11 +5277,10 @@ async function loadHealthAudit() {
       errs > 0
         ? `${errs} errors`
         : warns > 0
-        ? `${warns} warnings`
-        : `${d.length} ok`;
-    badge.className = `card-badge badge-${
-      errs > 0 ? "err" : warns > 0 ? "warn" : "ok"
-    }`;
+          ? `${warns} warnings`
+          : `${d.length} ok`;
+    badge.className = `card-badge badge-${errs > 0 ? "err" : warns > 0 ? "warn" : "ok"
+      }`;
   }
   el.innerHTML =
     d
@@ -5376,9 +5318,8 @@ async function loadQueryComplexity() {
       : "--";
   if (badge) {
     badge.textContent = lb.available ? `p95 ${p95}` : "--";
-    badge.className = `card-badge badge-${
-      (lb.backend_valid_p95_ms || 0) < 5000 ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${(lb.backend_valid_p95_ms || 0) < 5000 ? "ok" : "warn"
+      }`;
   }
   el.innerHTML = [
     fwRow("Window", d.window || "7d", "info"),
@@ -5407,10 +5348,10 @@ async function loadQueryComplexity() {
     ),
     ds.available
       ? fwRow(
-          "Continuation Downshift",
-          `${ds.downshifted_calls ?? 0}/${ds.candidate_calls ?? 0}`,
-          "info"
-        )
+        "Continuation Downshift",
+        `${ds.downshifted_calls ?? 0}/${ds.candidate_calls ?? 0}`,
+        "info"
+      )
       : "",
   ]
     .filter(Boolean)
@@ -5432,9 +5373,8 @@ async function loadCacheAnalytics() {
   const hitPct = c.hit_pct != null ? `${c.hit_pct.toFixed(1)}%` : "--";
   if (badge) {
     badge.textContent = c.available ? `${hitPct} hit` : "--";
-    badge.className = `card-badge badge-${
-      (c.hit_pct || 0) >= 50 ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${(c.hit_pct || 0) >= 50 ? "ok" : "warn"
+      }`;
   }
   el.innerHTML = [
     fwRow("Window", d.window || "7d", "info"),
@@ -5465,9 +5405,8 @@ async function loadToolsPerformance() {
     s.error_rate_pct != null ? s.error_rate_pct.toFixed(1) + "%" : "--";
   if (badge) {
     badge.textContent = `${s.total_tools ?? 0} tools · ${errPct} err`;
-    badge.className = `card-badge badge-${
-      (s.error_rate_pct || 0) < 5 ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${(s.error_rate_pct || 0) < 5 ? "ok" : "warn"
+      }`;
   }
   const tools = (d.top_tools || []).slice(0, 6);
   el.innerHTML = [
@@ -5539,9 +5478,8 @@ async function loadAIRecommendations() {
   }
   const actions = d.actions || [];
   if (badge) {
-    badge.textContent = `${actions.length} action${
-      actions.length !== 1 ? "s" : ""
-    }`;
+    badge.textContent = `${actions.length} action${actions.length !== 1 ? "s" : ""
+      }`;
     badge.className = `card-badge badge-${actions.length > 0 ? "ok" : "info"}`;
   }
   if (!actions.length) {
@@ -5562,9 +5500,9 @@ async function loadAIRecommendations() {
         ),
         a.reason
           ? `<div style="font-size:.55rem;color:var(--fg3);padding-left:.6rem;margin-bottom:.2rem">${a.reason.slice(
-              0,
-              60
-            )}</div>`
+            0,
+            60
+          )}</div>`
           : "",
       ].join("");
     })
@@ -5587,33 +5525,32 @@ async function loadHealthAlerts() {
   const warn = s.by_severity?.warning ?? 0;
   if (badge) {
     badge.textContent = s.total > 0 ? `${s.total} alerts` : "0 alerts";
-    badge.className = `card-badge badge-${
-      crit > 0 ? "err" : warn > 0 ? "warn" : "ok"
-    }`;
+    badge.className = `card-badge badge-${crit > 0 ? "err" : warn > 0 ? "warn" : "ok"
+      }`;
   }
   el.innerHTML =
     s.total === 0
       ? fwRow("Status", "No active alerts", "ok")
       : [
-          fwRow("Total", s.total ?? 0, s.total > 0 ? "warn" : "ok"),
-          fwRow("Critical", crit, crit > 0 ? "err" : "ok"),
-          fwRow("Warning", warn, warn > 0 ? "warn" : "ok"),
-          fwRow("Info", s.by_severity?.info ?? 0, "info"),
-          fwRow("Acknowledged", s.acknowledged ?? 0, "info"),
-          ...alerts.slice(0, 4).map((a) => {
-            const col =
-              a.severity === "critical"
-                ? "err"
-                : a.severity === "warning"
+        fwRow("Total", s.total ?? 0, s.total > 0 ? "warn" : "ok"),
+        fwRow("Critical", crit, crit > 0 ? "err" : "ok"),
+        fwRow("Warning", warn, warn > 0 ? "warn" : "ok"),
+        fwRow("Info", s.by_severity?.info ?? 0, "info"),
+        fwRow("Acknowledged", s.acknowledged ?? 0, "info"),
+        ...alerts.slice(0, 4).map((a) => {
+          const col =
+            a.severity === "critical"
+              ? "err"
+              : a.severity === "warning"
                 ? "warn"
                 : "info";
-            return fwRow(
-              `[${a.severity || "--"}] ${(a.message || "--").slice(0, 34)}`,
-              a.source || "--",
-              col
-            );
-          }),
-        ].join("");
+          return fwRow(
+            `[${a.severity || "--"}] ${(a.message || "--").slice(0, 34)}`,
+            a.source || "--",
+            col
+          );
+        }),
+      ].join("");
 }
 
 async function loadHintsEffectiveness() {
@@ -5629,9 +5566,8 @@ async function loadHintsEffectiveness() {
   if (badge) {
     badge.textContent =
       a.adoption_pct != null ? `${a.adoption_pct.toFixed(0)}% adopted` : "--";
-    badge.className = `card-badge badge-${
-      (a.adoption_pct || 0) >= 80 ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${(a.adoption_pct || 0) >= 80 ? "ok" : "warn"
+      }`;
   }
   el.innerHTML = [
     fwRow("Total Hints", a.total ?? "--", "info"),
@@ -5643,10 +5579,10 @@ async function loadHintsEffectiveness() {
     ),
     a.tooling_plan_total
       ? fwRow(
-          "Tooling Plans",
-          `${a.tooling_plan_success}/${a.tooling_plan_total} success`,
-          "info"
-        )
+        "Tooling Plans",
+        `${a.tooling_plan_success}/${a.tooling_plan_total} success`,
+        "info"
+      )
       : "",
   ]
     .filter(Boolean)
@@ -5665,9 +5601,8 @@ async function loadDiscoverySignals() {
   const s = d.summary || {};
   if (badge) {
     badge.textContent = `${s.signal_count ?? 0} signals`;
-    badge.className = `card-badge badge-${
-      (s.signal_count || 0) > 0 ? "ok" : "info"
-    }`;
+    badge.className = `card-badge badge-${(s.signal_count || 0) > 0 ? "ok" : "info"
+      }`;
   }
   el.innerHTML = [
     fwRow("Status", d.status || "--", d.status === "ok" ? "ok" : "warn"),
@@ -5689,9 +5624,8 @@ async function loadImprovementCandidates() {
   const pc = d.priority_counts || {};
   if (badge) {
     badge.textContent = `${d.total_candidates ?? 0} candidates`;
-    badge.className = `card-badge badge-${
-      (d.total_candidates || 0) > 0 ? "warn" : "ok"
-    }`;
+    badge.className = `card-badge badge-${(d.total_candidates || 0) > 0 ? "warn" : "ok"
+      }`;
   }
   el.innerHTML = [
     fwRow("Status", d.status || "--", d.available ? "ok" : "info"),
@@ -5724,8 +5658,8 @@ async function loadCollaborationPatterns() {
           name.charAt(0).toUpperCase() + name.slice(1),
           v.executions
             ? `${v.executions} runs · ${((v.success_rate || 0) * 100).toFixed(
-                0
-              )}% ok`
+              0
+            )}% ok`
             : "0 runs",
           v.executions ? ((v.success_rate || 0) >= 0.8 ? "ok" : "warn") : "info"
         )
@@ -5746,11 +5680,10 @@ async function loadAuditIntegrity() {
     badge.textContent = d.fully_sealed
       ? "SEALED"
       : d.valid
-      ? "VALID"
-      : "BROKEN";
-    badge.className = `card-badge badge-${
-      d.fully_sealed ? "ok" : d.valid ? "warn" : "err"
-    }`;
+        ? "VALID"
+        : "BROKEN";
+    badge.className = `card-badge badge-${d.fully_sealed ? "ok" : d.valid ? "warn" : "err"
+      }`;
   }
   el.innerHTML = [
     fwRow("Algorithm", d.seal_algorithm || "--", "info"),
@@ -5809,9 +5742,8 @@ async function loadContainers() {
   const running = arr.filter((c) => c.status === "running").length;
   if (badge) {
     badge.textContent = `${running}/${arr.length} running`;
-    badge.className = `card-badge badge-${
-      running === arr.length ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${running === arr.length ? "ok" : "warn"
+      }`;
   }
   el.innerHTML =
     arr
@@ -5825,9 +5757,8 @@ async function loadContainers() {
       )
       .join("") +
     (arr.length > 14
-      ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${
-          arr.length - 14
-        } more</div>`
+      ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${arr.length - 14
+      } more</div>`
       : "");
 }
 
@@ -5882,9 +5813,8 @@ async function loadHarnessStats() {
     : null;
   if (badge) {
     badge.textContent = passRate != null ? `${passRate}% pass` : "--";
-    badge.className = `card-badge badge-${
-      (passRate || 0) >= 90 ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${(passRate || 0) >= 90 ? "ok" : "warn"
+      }`;
   }
   el.innerHTML = [
     fwRow("Total Runs", d.total_runs ?? 0, "info"),
@@ -5947,9 +5877,8 @@ async function loadA2AReadiness() {
   const ok = d.status === "ready";
   if (badge) {
     badge.textContent = (d.status || "--").toUpperCase();
-    badge.className = `card-badge badge-${
-      ok ? "ok" : d.status === "partial" ? "warn" : "info"
-    }`;
+    badge.className = `card-badge badge-${ok ? "ok" : d.status === "partial" ? "warn" : "info"
+      }`;
   }
   el.innerHTML = [
     fwRow("Protocol", `v${d.protocol_version || "--"}`, "info"),
@@ -5967,12 +5896,12 @@ async function loadA2AReadiness() {
     ),
     d.capabilities
       ? fwRow(
-          "Capabilities",
-          Object.keys(d.capabilities || {})
-            .filter((k) => d.capabilities[k])
-            .join(", ") || "none",
-          "info"
-        )
+        "Capabilities",
+        Object.keys(d.capabilities || {})
+          .filter((k) => d.capabilities[k])
+          .join(", ") || "none",
+        "info"
+      )
       : "",
   ]
     .filter(Boolean)
@@ -6029,10 +5958,10 @@ async function loadReadinessRadar() {
     s === "active" || s === "ready"
       ? "ok"
       : s === "watch"
-      ? "warn"
-      : s === "pending"
-      ? "info"
-      : "info";
+        ? "warn"
+        : s === "pending"
+          ? "info"
+          : "info";
   let activeCount = 0;
   const rows = results.map((r, i) => {
     const [name] = areas[i];
@@ -6043,8 +5972,7 @@ async function loadReadinessRadar() {
     if (status === "active" || status === "ready") activeCount++;
     return fwRow(
       name,
-      `${status} · ${
-        d.feature_count != null ? d.feature_count + " features" : "--"
+      `${status} · ${d.feature_count != null ? d.feature_count + " features" : "--"
       }`,
       statusColor(status)
     );
@@ -6121,9 +6049,8 @@ async function loadFirewallAuditLog() {
       })
       .join("") +
     (entries.length > 6
-      ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${
-          entries.length - 6
-        } more · ${successes} succeeded</div>`
+      ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${entries.length - 6
+      } more · ${successes} succeeded</div>`
       : "");
 }
 
@@ -6154,9 +6081,8 @@ async function loadWorkflowBlueprints() {
       })
       .join("") +
     (bps.length > 8
-      ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${
-          bps.length - 8
-        } more</div>`
+      ? `<div style="color:var(--fg3);font-size:.55rem;padding:.15rem .4rem">+${bps.length - 8
+      } more</div>`
       : "");
 }
 
@@ -6226,13 +6152,11 @@ async function loadMissionControl() {
     `<div style="margin-top:.4rem;padding-top:.3rem;border-top:1px solid rgba(255,255,255,.06)">
       <div style="font-size:.55rem;color:var(--fg3);margin-bottom:.25rem;text-transform:uppercase;letter-spacing:.06em">Sessions</div>
       ${rows}
-      ${
-        sessions.length > 8
-          ? `<div style="font-size:.55rem;color:var(--fg3);padding:.15rem 0">+${
-              sessions.length - 8
-            } more</div>`
-          : ""
-      }
+      ${sessions.length > 8
+      ? `<div style="font-size:.55rem;color:var(--fg3);padding:.15rem 0">+${sessions.length - 8
+      } more</div>`
+      : ""
+    }
     </div>`,
   ].join("");
 }
@@ -6328,9 +6252,8 @@ async function loadMCPStatus() {
         fwRow(t.name || "?", (t.description || "--").slice(0, 40), "info")
       ),
     tools.length > 6
-      ? `<div style="font-size:.55rem;color:var(--fg3)">+${
-          tools.length - 6
-        } more</div>`
+      ? `<div style="font-size:.55rem;color:var(--fg3)">+${tools.length - 6
+      } more</div>`
       : "",
   ].join("");
 }
@@ -6348,10 +6271,10 @@ async function loadSystemHealthInsights() {
     s === "healthy"
       ? "ok"
       : s === "degraded"
-      ? "warn"
-      : s === "critical"
-      ? "err"
-      : "info";
+        ? "warn"
+        : s === "critical"
+          ? "err"
+          : "info";
   if (badge) {
     badge.textContent = (d.status || "--").toUpperCase();
     badge.className = `card-badge badge-${statusColor(d.status)}`;
@@ -6362,8 +6285,7 @@ async function loadSystemHealthInsights() {
   const slowRows = (rh.slow_tools || []).map((t) =>
     fwRow(
       `slow: ${t.tool || t.tool_name || "?"}`,
-      `p95 ${t.p95_ms != null ? (t.p95_ms / 1000).toFixed(1) + "s" : "--"} · ${
-        t.calls ?? 0
+      `p95 ${t.p95_ms != null ? (t.p95_ms / 1000).toFixed(1) + "s" : "--"} · ${t.calls ?? 0
       } calls`,
       "warn"
     )
@@ -6371,8 +6293,7 @@ async function loadSystemHealthInsights() {
   const flakyRows = (rh.flaky_tools || []).map((t) =>
     fwRow(
       `flaky: ${t.tool || t.tool_name || "?"}`,
-      `${t.success_pct != null ? t.success_pct.toFixed(0) + "%" : "--"} ok · ${
-        t.error_count ?? 0
+      `${t.success_pct != null ? t.success_pct.toFixed(0) + "%" : "--"} ok · ${t.error_count ?? 0
       } err${t.active_incident ? " ⚠" : ""}`,
       "err"
     )
@@ -6384,19 +6305,18 @@ async function loadSystemHealthInsights() {
       : "",
     rt.available
       ? fwRow(
-          "Local Routing",
-          `${rt.local_pct != null ? rt.local_pct.toFixed(0) + "%" : "--"} · ${
-            rt.local_n ?? 0
-          } calls`,
-          "ok"
-        )
+        "Local Routing",
+        `${rt.local_pct != null ? rt.local_pct.toFixed(0) + "%" : "--"} · ${rt.local_n ?? 0
+        } calls`,
+        "ok"
+      )
       : "",
     ch.available
       ? fwRow(
-          "Cache Hit Rate",
-          ch.hit_pct != null ? `${ch.hit_pct.toFixed(1)}%` : "--",
-          (ch.hit_pct || 0) >= 50 ? "ok" : "warn"
-        )
+        "Cache Hit Rate",
+        ch.hit_pct != null ? `${ch.hit_pct.toFixed(1)}%` : "--",
+        (ch.hit_pct || 0) >= 50 ? "ok" : "warn"
+      )
       : "",
     ...slowRows,
     ...flakyRows,
@@ -6419,9 +6339,8 @@ async function loadAIServicesDetail() {
   const healthy = entries.filter(([, v]) => v.status === "healthy").length;
   if (badge) {
     badge.textContent = `${healthy}/${entries.length} healthy`;
-    badge.className = `card-badge badge-${
-      healthy === entries.length ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${healthy === entries.length ? "ok" : "warn"
+      }`;
   }
   el.innerHTML = entries
     .map(([id, info]) => {
@@ -6555,9 +6474,8 @@ async function loadAIMetricsDetail() {
   }
   if (badge) {
     badge.textContent = (d.status || "--").toUpperCase();
-    badge.className = `card-badge badge-${
-      d.status === "active" ? "ok" : "info"
-    }`;
+    badge.className = `card-badge badge-${d.status === "active" ? "ok" : "info"
+      }`;
   }
   const po = d.delegated_prompt_optimization || {};
   const la = d.learning_and_adaptation || {};
@@ -6600,9 +6518,8 @@ async function loadPrometheusScrape() {
   const up = results.filter((r) => r.value && r.value[1] === "1").length;
   if (badge) {
     badge.textContent = `${up}/${results.length} up`;
-    badge.className = `card-badge badge-${
-      up === results.length ? "ok" : "warn"
-    }`;
+    badge.className = `card-badge badge-${up === results.length ? "ok" : "warn"
+      }`;
   }
   el.innerHTML =
     results
@@ -6642,17 +6559,17 @@ async function loadDashboardConfig() {
     ),
     s.memory_enabled != null
       ? fwRow(
-          "Memory Enabled",
-          s.memory_enabled ? "yes" : "no",
-          s.memory_enabled ? "ok" : "warn"
-        )
+        "Memory Enabled",
+        s.memory_enabled ? "yes" : "no",
+        s.memory_enabled ? "ok" : "warn"
+      )
       : "",
     s.tree_search_enabled != null
       ? fwRow(
-          "Tree Search",
-          s.tree_search_enabled ? "yes" : "no",
-          s.tree_search_enabled ? "ok" : "info"
-        )
+        "Tree Search",
+        s.tree_search_enabled ? "yes" : "no",
+        s.tree_search_enabled ? "ok" : "info"
+      )
       : "",
   ]
     .filter(Boolean)
@@ -6667,7 +6584,7 @@ async function forceSync() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ label: "run-aq-qa-0" }),
     });
-  } catch {}
+  } catch { }
   location.reload();
 }
 
@@ -6687,9 +6604,8 @@ async function loadInferenceSlots() {
   const active = slots.filter((s) => s.is_processing || s.id_task);
   if (badge) {
     badge.textContent = `${active.length} active`;
-    badge.className = `card-badge ${
-      active.length > 0 ? "badge-info" : "badge-ok"
-    }`;
+    badge.className = `card-badge ${active.length > 0 ? "badge-info" : "badge-ok"
+      }`;
   }
 
   if (active.length === 0) {
@@ -6749,7 +6665,7 @@ async function loadSystemNavigator() {
   if (ageEl && d.hub) {
     const fs = d.hub.freshness_s;
     ageEl.textContent = fs != null
-      ? (fs < 60 ? `${fs}s ago` : fs < 3600 ? `${Math.round(fs/60)}m ago` : `${Math.round(fs/3600)}h ago`)
+      ? (fs < 60 ? `${fs}s ago` : fs < 3600 ? `${Math.round(fs / 60)}m ago` : `${Math.round(fs / 3600)}h ago`)
       : "";
   }
   if (staleEl) staleEl.style.display = d.stale ? "inline" : "none";
@@ -6871,6 +6787,83 @@ async function loadActiveAgentTasks() {
   }
 }
 
+// ─── Phase 171-C — Resident Agent Cooperation Monitor ─────────────────────────
+async function loadAgentCollabState() {
+  const elObjective = document.getElementById("collabObjective");
+  const elPhase = document.getElementById("collabPhase");
+  const elTodo = document.getElementById("collabTodo");
+  const elPulse = document.getElementById("collabPulse");
+  const elBadge = document.getElementById("collabStateBadge");
+  if (!elObjective) return;
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const r = await fetch("/api/aistack/agent/collab-state", { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const resume = data.resume || {};
+    const pulse = data.pulse || [];
+
+    if (elObjective) {
+      elObjective.textContent = resume.current_objective || "No active objective";
+    }
+    if (elPhase) {
+      elPhase.textContent = resume.phase ? `phase: ${resume.phase}` : "phase --";
+    }
+    if (elBadge) {
+      elBadge.textContent = resume.current_objective ? "active" : "idle";
+      elBadge.className = `card-badge ${resume.current_objective ? "badge-info" : "badge-ok"}`;
+    }
+
+    if (elTodo) {
+      const todos = resume.todo_snapshot || [];
+      if (todos.length === 0) {
+        elTodo.innerHTML = '<div style="color:var(--fg3)">No pending targets</div>';
+      } else {
+        elTodo.innerHTML = todos.map(t => {
+          let clean = t.replace(/^[-*]\s*\[([ x/])\]\s*/, "");
+          let checked = t.includes("[x]");
+          let inProgress = t.includes("[/]");
+          let mark = checked ? "✓" : inProgress ? "▶" : "☐";
+          let color = checked ? "var(--grn)" : inProgress ? "var(--cyan)" : "var(--fg3)";
+          let strike = checked ? ' style="text-decoration:line-through;opacity:0.6"' : "";
+          return `<div style="display:flex;align-items:baseline;gap:.3rem;margin-bottom:.2rem">
+            <span style="color:${color};font-family:monospace;font-weight:bold">${mark}</span>
+            <span${strike}>${clean}</span>
+          </div>`;
+        }).join("");
+      }
+    }
+
+    if (elPulse) {
+      if (pulse.length === 0) {
+        elPulse.innerHTML = '<div style="color:var(--fg3)">No recent telemetry events</div>';
+      } else {
+        elPulse.innerHTML = pulse.map(logLine => {
+          const match = logLine.match(/^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]:\s+(.*)$/);
+          if (match) {
+            const [, ts, agentName, actionName, outcomeDetail] = match;
+            const shortTs = ts.split("T").pop().slice(0, 8);
+            return `<div style="margin-bottom:.25rem;border-bottom:1px solid rgba(255,255,255,0.02);padding-bottom:.15rem">
+              <span style="color:var(--fg3)">${shortTs}</span>
+              <span style="color:var(--mag)">[${agentName}]</span>
+              <span style="color:var(--cyan)">${actionName}</span>:
+              <span style="color:var(--fg2)">${outcomeDetail}</span>
+            </div>`;
+          }
+          return `<div style="margin-bottom:.2rem;color:var(--fg3);">${logLine}</div>`;
+        }).join("");
+      }
+    }
+  } catch (e) {
+    clearTimeout(tid);
+    if (e.name !== "AbortError") {
+      if (elObjective) elObjective.textContent = `Error: ${e.message}`;
+    }
+  }
+}
+
 async function refreshAll() {
   lazyLoaded.clear();
   lazyLoaded.add("overview");
@@ -6896,6 +6889,7 @@ async function refreshAll() {
   loadObservability();
   loadLens(activeLens);
   loadActiveAgentTasks();
+  loadAgentCollabState();
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -6922,6 +6916,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadInferenceSlots();
     loadAIDB();
     loadActiveAgentTasks();
+    loadAgentCollabState();
   });
   // Deferred: DB metrics + slow OSI health + audit + observability panels
   setTimeout(() => {
@@ -6941,6 +6936,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(loadDatabase, 60_000);
   setInterval(loadSystemNavigator, 120_000); // artifact refreshes every 15m; poll every 2m
   setInterval(loadActiveAgentTasks, 10_000); // agent tasks change fast
+  setInterval(loadAgentCollabState, 10_000); // cooperation state changes fast
   setInterval(() => {
     loadHardwareState().then(() => {
       loadInferenceSlots();
@@ -6979,18 +6975,17 @@ document.addEventListener("DOMContentLoaded", () => {
           ev.outcome === "error" || ev.outcome === "failed"
             ? "err"
             : ev.outcome === "superseded"
-            ? "warn"
-            : "ok";
+              ? "warn"
+              : "ok";
         const ts = ev.timestamp ? ev.timestamp.slice(11, 19) : "";
         return `<div style="display:flex;justify-content:space-between;font-size:.58rem;margin:.1rem 0">
-        <span style="color:var(--${
-          color === "ok" ? "ok" : color === "warn" ? "warn" : "err"
-        });flex:0 0 auto">${label}</span>
+        <span style="color:var(--${color === "ok" ? "ok" : color === "warn" ? "warn" : "err"
+          });flex:0 0 auto">${label}</span>
         <span style="color:var(--fg3);flex:1;margin:0 .4rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(
-          ev.summary ||
-          ev.agent ||
-          ""
-        ).slice(0, 50)}</span>
+            ev.summary ||
+            ev.agent ||
+            ""
+          ).slice(0, 50)}</span>
         <span style="color:var(--fg3);flex:0 0 auto">${ts}</span>
       </div>`;
       })
@@ -7037,7 +7032,7 @@ document.addEventListener("DOMContentLoaded", () => {
             badge.className = "card-badge badge-ok";
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     };
 
     _ws.onerror = () => {
@@ -7113,9 +7108,8 @@ async function loadFactChainTimeline() {
     .map((r, i) => {
       const y = pad + i * rowH + rowH * 0.7;
       return `<g>
-      <rect x="0" y="${pad + i * rowH}" width="8" height="${
-        rowH - 2
-      }" rx="2" fill="${r.color}"/>
+      <rect x="0" y="${pad + i * rowH}" width="8" height="${rowH - 2
+        }" rx="2" fill="${r.color}"/>
       <text x="12" y="${y}" font-size="7" fill="${r.color}">${r.subj}</text>
       <text x="100" y="${y}" font-size="6" fill="#888">${r.pred}</text>
       <text x="175" y="${y}" font-size="6.5" fill="#ccc">${r.obj}</text>
@@ -7179,8 +7173,8 @@ function _obsScoreDim(label, dim) {
             k.includes("ratio")
             ? (v * 100).toFixed(0) + "%"
             : v.toFixed
-            ? v.toFixed(2)
-            : v
+              ? v.toFixed(2)
+              : v
           : String(v);
       return `<span style="color:var(--fg3)">${k.replace(
         /_/g,
@@ -7192,11 +7186,10 @@ function _obsScoreDim(label, dim) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.2rem">
       <span style="font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.04em">${label}</span>
       <span style="font-size:.65rem;font-weight:700;color:${color}">${(
-    dim.status || "--"
-  ).toUpperCase()}</span>
+      dim.status || "--"
+    ).toUpperCase()}</span>
     </div>
-    <div style="font-size:.55rem;line-height:1.7">${
-      metrics || '<span style="color:var(--fg3)">no data</span>'
+    <div style="font-size:.55rem;line-height:1.7">${metrics || '<span style="color:var(--fg3)">no data</span>'
     }</div>
   </div>`;
 }
@@ -7233,8 +7226,8 @@ async function loadLocalAgentMonitor() {
         ? "badge-info"
         : "badge-ok"
       : status === "stale"
-      ? "badge-warn"
-      : "badge-err";
+        ? "badge-warn"
+        : "badge-err";
 
   if (badge) {
     badge.textContent =
@@ -7249,10 +7242,10 @@ async function loadLocalAgentMonitor() {
     artifacts.output && artifacts.output.exists
       ? artifacts.output
       : artifacts.progress && artifacts.progress.exists
-      ? artifacts.progress
-      : artifacts.steps && artifacts.steps.exists
-      ? artifacts.steps
-      : null;
+        ? artifacts.progress
+        : artifacts.steps && artifacts.steps.exists
+          ? artifacts.steps
+          : null;
   const latestId = latest.id ? String(latest.id).slice(-12) : "--";
   const latestAge =
     latestArtifact && latestArtifact.age_seconds != null
@@ -7299,10 +7292,10 @@ async function loadEffectivenessScorecard() {
       overall === "pass"
         ? "card-badge badge-ok"
         : overall === "warn"
-        ? "card-badge badge-warn"
-        : overall === "fail"
-        ? "card-badge badge-err"
-        : "card-badge badge-info";
+          ? "card-badge badge-warn"
+          : overall === "fail"
+            ? "card-badge badge-err"
+            : "card-badge badge-info";
   }
 
   const blocking = sc.blocking_reasons || [];
@@ -7310,10 +7303,10 @@ async function loadEffectivenessScorecard() {
     ? `<div style="margin-top:.5rem;padding:.35rem .5rem;background:rgba(207,97,97,.12);border:1px solid var(--red);border-radius:3px">
         <div style="font-size:.58rem;font-weight:700;color:var(--red);margin-bottom:.2rem">BLOCKING ISSUES</div>
         ${blocking
-          .map(
-            (r) => `<div style="font-size:.55rem;color:var(--red)">▸ ${r}</div>`
-          )
-          .join("")}
+      .map(
+        (r) => `<div style="font-size:.55rem;color:var(--red)">▸ ${r}</div>`
+      )
+      .join("")}
        </div>`
     : "";
 
@@ -7329,8 +7322,8 @@ async function loadEffectivenessScorecard() {
   const dimGrid = dims.map(([label, dim]) => _obsScoreDim(label, dim)).join("");
   const ts = d.report_generated_at
     ? `<span style="color:var(--fg3)">Report: ${d.report_generated_at
-        .slice(0, 16)
-        .replace("T", " ")}Z</span>`
+      .slice(0, 16)
+      .replace("T", " ")}Z</span>`
     : "";
 
   el.innerHTML = `
@@ -7355,8 +7348,8 @@ async function loadAgentReplay(runId) {
     filterEl && filterEl.value ? `&event_type=${filterEl.value}` : "";
   const path = rid
     ? `/aistack/agent-runs/${encodeURIComponent(
-        rid
-      )}?include_payload=true${eventType}`
+      rid
+    )}?include_payload=true${eventType}`
     : "/aistack/agent-runs?limit=50";
 
   el.innerHTML =
@@ -7400,9 +7393,8 @@ async function loadAgentReplay(runId) {
   const sum = d.summary || {};
   const total = d.event_count || 0;
   if (badge) {
-    badge.textContent = `${total} events · ${sum.agent_id || "?"} · ${
-      sum.spec_variant || "?"
-    }`;
+    badge.textContent = `${total} events · ${sum.agent_id || "?"} · ${sum.spec_variant || "?"
+      }`;
     badge.className =
       sum.status === "succeeded"
         ? "card-badge badge-ok"
@@ -7413,11 +7405,11 @@ async function loadAgentReplay(runId) {
   const heatHtml = heatmap.length
     ? `<div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem">
         ${heatmap
-          .map(
-            ([name, cnt]) =>
-              `<span style="font-size:.55rem;background:rgba(100,180,255,.1);border:1px solid rgba(100,180,255,.25);padding:.1rem .35rem;border-radius:2px;color:var(--cyan)">${name}&nbsp;<strong>${cnt}</strong></span>`
-          )
-          .join("")}
+      .map(
+        ([name, cnt]) =>
+          `<span style="font-size:.55rem;background:rgba(100,180,255,.1);border:1px solid rgba(100,180,255,.25);padding:.1rem .35rem;border-radius:2px;color:var(--cyan)">${name}&nbsp;<strong>${cnt}</strong></span>`
+      )
+      .join("")}
        </div>`
     : "";
 
@@ -7463,9 +7455,8 @@ async function loadAgentReplay(runId) {
     ganttHtml = `<div style="margin-bottom:.8rem; padding:.5rem; background:rgba(0,0,0,.15); border:1px solid var(--border); border-radius:3px;">
       <div style="font-size:.55rem; color:var(--fg3); margin-bottom:.3rem; text-transform:uppercase; letter-spacing:.08em;">Event Timeline Scrubber</div>
       <svg viewBox="0 0 ${W} ${svgH}" style="width:100%; height:auto; overflow:visible;">
-        <line x1="10" y1="20" x2="${
-          W - 10
-        }" y2="20" stroke="var(--fg3)" stroke-width="1" opacity="0.3"/>
+        <line x1="10" y1="20" x2="${W - 10
+      }" y2="20" stroke="var(--fg3)" stroke-width="1" opacity="0.3"/>
         ${nodes}
       </svg>
     </div>`;
@@ -7481,19 +7472,17 @@ async function loadAgentReplay(runId) {
         ? ` <span style="color:var(--cyan)">${ev.tool_name}</span>`
         : "";
       const status = ev.status
-        ? ` <span style="color:${
-            ev.status === "succeeded"
-              ? "var(--grn)"
-              : ev.status === "failed"
-              ? "var(--red)"
-              : "var(--yel)"
-          }">${ev.status}</span>`
+        ? ` <span style="color:${ev.status === "succeeded"
+          ? "var(--grn)"
+          : ev.status === "failed"
+            ? "var(--red)"
+            : "var(--yel)"
+        }">${ev.status}</span>`
         : "";
       const wasteTokens =
         ev.tokens && (ev.tokens.rework || ev.tokens.waste)
-          ? ` <span style="color:var(--red);font-weight:bold" title="Wasted/Rework Tokens">-${
-              ev.tokens.rework || ev.tokens.waste
-            }t waste</span>`
+          ? ` <span style="color:var(--red);font-weight:bold" title="Wasted/Rework Tokens">-${ev.tokens.rework || ev.tokens.waste
+          }t waste</span>`
           : "";
       const tokens =
         ev.tokens && ev.tokens.total
@@ -7518,10 +7507,10 @@ async function loadAgentReplay(runId) {
           const meta = ev.event_type === "agent_thinking"
             ? `local model pre-tool prose${toolRef}`
             : [
-                payload.char_count != null ? `${payload.char_count} chars suppressed` : "",
-                payload.content_hash ? `hash ${payload.content_hash}` : "",
-                payload.redaction_level || "raw_reasoning_suppressed",
-              ].filter(Boolean).join(" · ");
+              payload.char_count != null ? `${payload.char_count} chars suppressed` : "",
+              payload.content_hash ? `hash ${payload.content_hash}` : "",
+              payload.redaction_level || "raw_reasoning_suppressed",
+            ].filter(Boolean).join(" · ");
           payloadHtml = `
             <div style="margin-top:.3rem; background:rgba(190,150,60,0.08); border:1px dashed var(--yel); padding:.45rem .55rem; border-radius:3px; font-size:.6rem; color:var(--fg2);">
               <div style="color:var(--yel);font-weight:bold;margin-bottom:.2rem;">Reasoning observed</div>
@@ -7594,9 +7583,8 @@ async function loadAgentReplay(runId) {
       <div style="display:flex;align-items:baseline;gap:.3rem;">
         <span style="font-size:.55rem;color:var(--fg3);min-width:4rem;font-family:var(--hud)">${ts}</span>
         <span style="font-size:.65rem;color:${color}">${icon}</span>
-        <span style="font-size:.58rem;color:${color};font-weight:600">${
-        ev.event_type || "?"
-      }</span>
+        <span style="font-size:.58rem;color:${color};font-weight:600">${ev.event_type || "?"
+        }</span>
         ${tool}${status}${deadEndMarker}${tokens}
       </div>
       ${payloadHtml}
@@ -7613,25 +7601,25 @@ async function loadAgentReplay(runId) {
       ${fwRow("Agent", sum.agent_id || "--")}
       ${fwRow("Variant", sum.spec_variant || "--")}
       ${fwRow(
-        "Status",
-        sum.status || "--",
-        sum.status === "succeeded"
-          ? "ok"
-          : sum.status === "failed"
-          ? "err"
-          : "warn"
-      )}
+    "Status",
+    sum.status || "--",
+    sum.status === "succeeded"
+      ? "ok"
+      : sum.status === "failed"
+        ? "err"
+        : "warn"
+  )}
       ${fwRow(
-        "Accepted",
-        sum.accepted != null ? String(sum.accepted) : "--",
-        sum.accepted ? "ok" : "warn"
-      )}
+    "Accepted",
+    sum.accepted != null ? String(sum.accepted) : "--",
+    sum.accepted ? "ok" : "warn"
+  )}
       ${fwRow(
-        "Useful ratio",
-        sum.useful_ratio != null
-          ? (sum.useful_ratio * 100).toFixed(0) + "%"
-          : "--"
-      )}
+    "Useful ratio",
+    sum.useful_ratio != null
+      ? (sum.useful_ratio * 100).toFixed(0) + "%"
+      : "--"
+  )}
       ${fwRow("Tokens", sum.total_tokens || "--")}
       ${fwRow("Tool calls", sum.tool_calls || "--")}
       ${fwRow("Human controls", d.human_control_count || 0)}
@@ -7687,8 +7675,8 @@ async function loadSwimlane() {
           const color = r.accepted
             ? "var(--grn)"
             : r.status === "failed"
-            ? "var(--red)"
-            : "var(--yel)";
+              ? "var(--red)"
+              : "var(--yel)";
           const ratio =
             r.useful_ratio != null
               ? ` ${(r.useful_ratio * 100).toFixed(0)}% useful`
@@ -7696,18 +7684,15 @@ async function loadSwimlane() {
           const waste = r.rework_tokens
             ? ` <span style="color:var(--red);font-weight:bold;">-${r.rework_tokens}t waste</span>`
             : "";
-          return `<span onclick="document.getElementById('replayRunId').value='${
-            r.run_id
-          }'; loadAgentReplay();" style="display:inline-block;padding:.2rem .4rem;background:rgba(0,0,0,.3);border-left:3px solid ${color};font-size:.53rem;color:${color};margin-right:.3rem;border-radius:0 2px 2px 0;cursor:pointer" title="${
-            r.run_id
-          } - Click to replay">${r.status || "?"}${ratio}${waste}</span>`;
+          return `<span onclick="document.getElementById('replayRunId').value='${r.run_id
+            }'; loadAgentReplay();" style="display:inline-block;padding:.2rem .4rem;background:rgba(0,0,0,.3);border-left:3px solid ${color};font-size:.53rem;color:${color};margin-right:.3rem;border-radius:0 2px 2px 0;cursor:pointer" title="${r.run_id
+            } - Click to replay">${r.status || "?"}${ratio}${waste}</span>`;
         })
         .join("");
       return `<tr>
       <td style="font-size:.58rem;font-family:var(--hud);padding:.3rem .5rem;color:var(--cyan);white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.06)">${agentLabel}</td>
-      <td style="font-size:.55rem;color:var(--fg3);padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${
-        lane.total_events || 0
-      } events</td>
+      <td style="font-size:.55rem;color:var(--fg3);padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${lane.total_events || 0
+        } events</td>
       <td style="padding:.25rem .4rem;border-bottom:1px solid rgba(255,255,255,.06)">${runBars}</td>
     </tr>`;
     })
@@ -7762,8 +7747,8 @@ async function loadRaceComparison() {
       const color = isWinner
         ? "var(--grn)"
         : r.accepted
-        ? "var(--cyan)"
-        : "var(--fg3)";
+          ? "var(--cyan)"
+          : "var(--fg3)";
       const rowBg = isWinner ? "rgba(76,175,80,.08)" : "transparent";
       const winMark = isWinner
         ? '<span style="color:var(--grn);margin-right:.4rem;font-size:.8rem;">★</span>'
@@ -7772,35 +7757,29 @@ async function loadRaceComparison() {
         r.useful_ratio != null && r.useful_ratio >= 0.7
           ? "var(--grn)"
           : r.useful_ratio != null && r.useful_ratio < 0.4
-          ? "var(--red)"
-          : color;
+            ? "var(--red)"
+            : color;
       const ratio =
         r.useful_ratio != null
           ? `<span style="color:${ratioColor}">${(r.useful_ratio * 100).toFixed(
-              0
-            )}%</span>`
+            0
+          )}%</span>`
           : "--";
       return `<tr style="background:${rowBg}">
-      <td style="font-size:.58rem;color:${color};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${winMark}${
-        r.agent_id || "?"
-      }</td>
-      <td style="font-size:.55rem;color:var(--fg3);padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${
-        r.spec_variant || "?"
-      }</td>
-      <td style="font-size:.58rem;color:${
-        r.status === "succeeded"
+      <td style="font-size:.58rem;color:${color};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${winMark}${r.agent_id || "?"
+        }</td>
+      <td style="font-size:.55rem;color:var(--fg3);padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${r.spec_variant || "?"
+        }</td>
+      <td style="font-size:.58rem;color:${r.status === "succeeded"
           ? "var(--grn)"
           : r.status === "failed"
-          ? "var(--red)"
-          : "var(--yel)"
-      };padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${
-        r.status || "--"
-      }</td>
-      <td style="font-size:.55rem;color:${
-        r.accepted ? "var(--grn)" : "var(--fg3)"
-      };padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${
-        r.accepted != null ? String(r.accepted) : "--"
-      }</td>
+            ? "var(--red)"
+            : "var(--yel)"
+        };padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${r.status || "--"
+        }</td>
+      <td style="font-size:.55rem;color:${r.accepted ? "var(--grn)" : "var(--fg3)"
+        };padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${r.accepted != null ? String(r.accepted) : "--"
+        }</td>
       <td style="font-size:.58rem;font-weight:700;color:${color};padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.06)">${ratio}</td>
     </tr>`;
     })
@@ -7846,8 +7825,8 @@ async function loadTokenContention() {
     return `<div style="margin-bottom:.4rem">
       <div style="display:flex;justify-content:space-between;font-size:.57rem;margin-bottom:.15rem">
         <span style="color:var(--fg3)">${label}</span><span style="color:${color};font-weight:700">${(
-      val * 100
-    ).toFixed(0)}%</span>
+        val * 100
+      ).toFixed(0)}%</span>
       </div>
       <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:${color};border-radius:2px"></div>
@@ -7859,8 +7838,8 @@ async function loadTokenContention() {
     contentionStatus === "warn"
       ? "var(--yel)"
       : contentionStatus === "ok"
-      ? "var(--grn)"
-      : "var(--fg3)";
+        ? "var(--grn)"
+        : "var(--fg3)";
 
   if (badge) {
     badge.textContent =
@@ -7869,8 +7848,8 @@ async function loadTokenContention() {
       ratio != null && ratio >= 0.6
         ? "card-badge badge-ok"
         : ratio != null && ratio >= 0.4
-        ? "card-badge badge-warn"
-        : "card-badge badge-info";
+          ? "card-badge badge-warn"
+          : "card-badge badge-info";
   }
 
   el.innerHTML = `
@@ -7879,9 +7858,8 @@ async function loadTokenContention() {
     ${gaugeBar(localPct, 0.5, 0.2, "Local routing %")}
     <div style="margin-top:.4rem;padding:.3rem .5rem;background:var(--bg3);border-radius:3px;display:flex;justify-content:space-between;align-items:center">
       <span style="font-size:.57rem;color:var(--fg3)">Lock contention / hr</span>
-      <span style="font-size:.65rem;font-weight:700;color:${contentionColor}">${
-    contention != null ? contention.toFixed(1) : "--"
-  }</span>
+      <span style="font-size:.65rem;font-weight:700;color:${contentionColor}">${contention != null ? contention.toFixed(1) : "--"
+    }</span>
     </div>`;
 }
 
@@ -7918,9 +7896,9 @@ async function sendControl(action) {
       const color = r.ok ? "var(--grn)" : "var(--red)";
       const msg = r.ok
         ? `✓ ${action} → event ${(body.event_id || "").slice(
-            0,
-            20
-          )} persisted=${body.persisted}`
+          0,
+          20
+        )} persisted=${body.persisted}`
         : `✗ ${r.status}: ${JSON.stringify(body).slice(0, 80)}`;
       resultEl.innerHTML = `<span style="color:${color}">${msg}</span>`;
     }

@@ -342,6 +342,8 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
                     # is unusable, so fall through to the next profile (local Qwen local-coding)
                     # instead of hard-failing. This is the documented "missing remote key -> local
                     # fallback" behavior, which previously only fired for 429/402 and let a 400 die.
+                    with open(log_path, "a") as f:
+                        f.write(f"ERROR: remote profile unusable ({current_profile}) HTTP {exc.code}: {body}\n")
                     sys.stderr.write(f"[delegate-to-antigravity] HTTP {exc.code} on {current_profile} "
                                      "— remote unusable, trying next profile (local fallback)\n")
                     break
@@ -593,15 +595,15 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="delegate-to-antigravity",
         description=(
             "Headless Gemini delegation via switchboard antigravity-collective profile.\n"
-            "Routes: local switchboard → forceProvider=remote → OpenRouter → google/gemini-2.5-flash-lite."
+            "Routes: local switchboard -> forceProvider=remote -> Google Gemini direct."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Backend: switchboard remote-free profile (default)\n"
-            "  → forceProvider=remote → OpenRouter → meta-llama/llama-3.3-70b-instruct:free\n"
+            "  -> forceProvider=remote -> Google Gemini direct via REMOTE_LLM_URL\n"
             "  Auth managed by switchboard via /run/secrets/remote_llm_api_key\n"
-            "  Set ANTIGRAVITY_SWB_PROFILE=antigravity-collective to use google/gemini-2.5-flash-lite\n"
-            "  (requires OpenRouter credits).\n"
+            "  The secret must hold a Google AI Studio key, not an OpenRouter key.\n"
+            "  Set ANTIGRAVITY_SWB_PROFILE=antigravity-collective to use the Gemini tool-calling alias.\n"
         ),
     )
     p.add_argument("--prompt",      metavar="TEXT", help="Task prompt")

@@ -6,8 +6,15 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
+
+# Mock optional runtime dependencies to enable headless testing
+for module_name in ['uvicorn', 'fastapi', 'fastapi.responses', 'pydantic']:
+    sys.modules[module_name] = MagicMock()
+
 
 
 ROOT = Path(__file__).resolve().parents[2]

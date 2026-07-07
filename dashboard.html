@@ -1,1249 +1,2802 @@
 <!DOCTYPE html>
 <html lang="en" translate="no">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="google" content="notranslate">
   <title>AI Command Center</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap"
+    rel="stylesheet">
   <!-- D3 and Mermaid loaded at end of body as vendor scripts — see below -->
   <style>
     :root {
-      --bg:#080c12; --bg2:#0d1220; --bg3:rgba(13,18,32,.96);
-      --fg:#e2eaf4; --fg2:#8aa4bb; --fg3:#4a6278;
-      --cyan:#00d9ff; --cyan-g:rgba(0,217,255,.18);
-      --mag:#d400ff;  --mag-g:rgba(212,0,255,.18);
-      --grn:#39ff14;  --grn-g:rgba(57,255,20,.12);
-      --yel:#f9e2af;  --red:#ff3644; --red-g:rgba(255,54,68,.18);
-      --border:rgba(0,217,255,.14);
-      --font:'JetBrains Mono',monospace; --hud:'Orbitron',sans-serif;
-      --r:3px;
+      --bg: #080c12;
+      --bg2: #0d1220;
+      --bg3: rgba(13, 18, 32, .96);
+      --fg: #e2eaf4;
+      --fg2: #8aa4bb;
+      --fg3: #4a6278;
+      --cyan: #00d9ff;
+      --cyan-g: rgba(0, 217, 255, .18);
+      --mag: #d400ff;
+      --mag-g: rgba(212, 0, 255, .18);
+      --grn: #39ff14;
+      --grn-g: rgba(57, 255, 20, .12);
+      --yel: #f9e2af;
+      --red: #ff3644;
+      --red-g: rgba(255, 54, 68, .18);
+      --border: rgba(0, 217, 255, .14);
+      --font: 'JetBrains Mono', monospace;
+      --hud: 'Orbitron', sans-serif;
+      --r: 3px;
     }
-    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-    html,body{height:100%}
-    body{font-family:var(--font);background:var(--bg);color:var(--fg);overflow-x:hidden;
-      background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:28px 28px}
+
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      height: 100%
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--fg);
+      overflow-x: hidden;
+      background-image: radial-gradient(var(--border) 1px, transparent 1px);
+      background-size: 28px 28px
+    }
 
     /* ── HEADER ── */
-    .hdr{position:sticky;top:0;z-index:900;background:var(--bg2);border-bottom:1px solid var(--border);backdrop-filter:blur(14px);padding:0 1.5rem}
-    .hdr-top{display:flex;align-items:center;gap:.75rem;padding:.8rem 0;flex-wrap:wrap}
-    .hdr-dot{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 6px var(--grn);animation:pulse 2s ease infinite;flex-shrink:0}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-    .hdr-title{font-family:var(--hud);font-size:1.3rem;letter-spacing:.18em;text-transform:uppercase;
-      background:linear-gradient(90deg,var(--cyan),var(--mag));-webkit-background-clip:text;-webkit-text-fill-color:transparent;
-      filter:drop-shadow(0 0 8px var(--cyan-g));white-space:nowrap}
-    .hdr-meta{display:flex;align-items:center;gap:.6rem;font-size:.6rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em;flex-wrap:wrap}
-    .score-block{display:flex;align-items:baseline;gap:.25rem;margin-left:auto}
-    .score-num{font-family:var(--hud);font-size:2.2rem;font-weight:900;color:var(--cyan);text-shadow:0 0 14px var(--cyan-g);line-height:1}
-    .score-label{font-size:.55rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.12em}
-    .ctrl-btn{background:none;border:1px solid var(--border);color:var(--fg3);font-family:var(--font);font-size:.6rem;
-      padding:.2rem .55rem;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;border-radius:var(--r);transition:.15s}
-    .ctrl-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+    .hdr {
+      position: sticky;
+      top: 0;
+      z-index: 900;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      padding: 0 1.5rem
+    }
+
+    .hdr-top {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .8rem 0;
+      flex-wrap: wrap
+    }
+
+    .hdr-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--grn);
+      box-shadow: 0 0 6px var(--grn);
+      animation: pulse 2s ease infinite;
+      flex-shrink: 0
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .35
+      }
+    }
+
+    .hdr-title {
+      font-family: var(--hud);
+      font-size: 1.3rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--cyan), var(--mag));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 8px var(--cyan-g));
+      white-space: nowrap
+    }
+
+    .hdr-meta {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      font-size: .6rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      flex-wrap: wrap
+    }
+
+    .score-block {
+      display: flex;
+      align-items: baseline;
+      gap: .25rem;
+      margin-left: auto
+    }
+
+    .score-num {
+      font-family: var(--hud);
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 14px var(--cyan-g);
+      line-height: 1
+    }
+
+    .score-label {
+      font-size: .55rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      letter-spacing: .12em
+    }
+
+    .ctrl-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg3);
+      font-family: var(--font);
+      font-size: .6rem;
+      padding: .2rem .55rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      border-radius: var(--r);
+      transition: .15s
+    }
+
+    .ctrl-btn:hover {
+      border-color: var(--cyan);
+      color: var(--cyan)
+    }
+
     /* KPI ribbon */
-    .kpi-ribbon{display:flex;gap:1.2rem;overflow-x:auto;scrollbar-width:none;padding:.45rem 0;border-top:1px solid rgba(255,255,255,.04)}
-    .kpi{display:flex;align-items:baseline;gap:.35rem;white-space:nowrap;flex-shrink:0}
-    .kpi-l{font-size:.57rem;color:var(--fg3);text-transform:uppercase}
-    .kpi-v{font-size:.8rem;font-weight:700;color:var(--cyan)}
+    .kpi-ribbon {
+      display: flex;
+      gap: 1.2rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: .45rem 0;
+      border-top: 1px solid rgba(255, 255, 255, .04)
+    }
+
+    .kpi {
+      display: flex;
+      align-items: baseline;
+      gap: .35rem;
+      white-space: nowrap;
+      flex-shrink: 0
+    }
+
+    .kpi-l {
+      font-size: .57rem;
+      color: var(--fg3);
+      text-transform: uppercase
+    }
+
+    .kpi-v {
+      font-size: .8rem;
+      font-weight: 700;
+      color: var(--cyan)
+    }
+
     /* Lens tabs */
-    .lens-tabs{display:flex;gap:0;overflow-x:auto;scrollbar-width:none;border-top:1px solid rgba(255,255,255,.04)}
-    .tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--fg3);font-family:var(--font);
-      font-size:.62rem;padding:.4rem .75rem .55rem;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;transition:.12s;white-space:nowrap}
-    .tab.on{color:var(--cyan);border-bottom-color:var(--cyan)}
-    .tab:hover{color:var(--fg2)}
+    .lens-tabs {
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      border-top: 1px solid rgba(255, 255, 255, .04)
+    }
+
+    .tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--fg3);
+      font-family: var(--font);
+      font-size: .62rem;
+      padding: .4rem .75rem .55rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      transition: .12s;
+      white-space: nowrap
+    }
+
+    .tab.on {
+      color: var(--cyan);
+      border-bottom-color: var(--cyan)
+    }
+
+    .tab:hover {
+      color: var(--fg2)
+    }
 
     /* ── RAG STRIP ── */
-    #section-rag-quality{display:flex;gap:.75rem;padding:.45rem 1.5rem;
-      background:rgba(212,0,255,.04);border-bottom:1px solid rgba(212,0,255,.12);flex-wrap:wrap}
-    .rag-kpi{display:flex;align-items:baseline;gap:.35rem}
-    .rag-kpi .rl{font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em}
-    .rag-kpi .rv{font-size:.78rem;font-weight:700;color:var(--mag)}
+    #section-rag-quality {
+      display: flex;
+      gap: .75rem;
+      padding: .45rem 1.5rem;
+      background: rgba(212, 0, 255, .04);
+      border-bottom: 1px solid rgba(212, 0, 255, .12);
+      flex-wrap: wrap
+    }
+
+    .rag-kpi {
+      display: flex;
+      align-items: baseline;
+      gap: .35rem
+    }
+
+    .rag-kpi .rl {
+      font-size: .56rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      letter-spacing: .06em
+    }
+
+    .rag-kpi .rv {
+      font-size: .78rem;
+      font-weight: 700;
+      color: var(--mag)
+    }
 
     /* ── PANELS ── */
-    .panel{display:none;padding:1.25rem}
-    .panel.on{display:block}
-    .panel-grid{display:grid;gap:.9rem}
-    .g2{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
-    .g3{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
-    .g4{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
-    .full{grid-column:1/-1}
+    .panel {
+      display: none;
+      padding: 1.25rem
+    }
+
+    .panel.on {
+      display: block
+    }
+
+    .panel-grid {
+      display: grid;
+      gap: .9rem
+    }
+
+    .g2 {
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))
+    }
+
+    .g3 {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))
+    }
+
+    .g4 {
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr))
+    }
+
+    .full {
+      grid-column: 1/-1
+    }
 
     /* ── CARD ── */
-    .card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:.9rem;
-      position:relative;transition:border-color .2s;
-      clip-path:polygon(0 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%)}
-    .card:hover{border-color:rgba(0,217,255,.3)}
-    .card-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:.65rem;
-      padding-bottom:.4rem;border-bottom:1px solid rgba(255,255,255,.05)}
-    .card-title{font-family:var(--hud);font-size:.68rem;color:var(--mag);letter-spacing:.1em;text-transform:uppercase}
-    .card-badge{font-size:.56rem;padding:.1rem .35rem;border-radius:2px;text-transform:uppercase}
-    .badge-ok{color:var(--grn);border:1px solid var(--grn)}
-    .badge-err{color:var(--red);border:1px solid var(--red)}
-    .badge-warn{color:var(--yel);border:1px solid var(--yel)}
-    .badge-info{color:var(--cyan);border:1px solid var(--border)}
+    .card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: .9rem;
+      position: relative;
+      transition: border-color .2s;
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%)
+    }
+
+    .card:hover {
+      border-color: rgba(0, 217, 255, .3)
+    }
+
+    .card-hd {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: .65rem;
+      padding-bottom: .4rem;
+      border-bottom: 1px solid rgba(255, 255, 255, .05)
+    }
+
+    .card-title {
+      font-family: var(--hud);
+      font-size: .68rem;
+      color: var(--mag);
+      letter-spacing: .1em;
+      text-transform: uppercase
+    }
+
+    .card-badge {
+      font-size: .56rem;
+      padding: .1rem .35rem;
+      border-radius: 2px;
+      text-transform: uppercase
+    }
+
+    .badge-ok {
+      color: var(--grn);
+      border: 1px solid var(--grn)
+    }
+
+    .badge-err {
+      color: var(--red);
+      border: 1px solid var(--red)
+    }
+
+    .badge-warn {
+      color: var(--yel);
+      border: 1px solid var(--yel)
+    }
+
+    .badge-info {
+      color: var(--cyan);
+      border: 1px solid var(--border)
+    }
 
     /* STAT TILES */
-    .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.65rem}
-    .stat{background:linear-gradient(160deg,rgba(26,35,50,.9),rgba(8,12,18,.95));
-      border:1px solid var(--border);border-left:2px solid var(--cyan);padding:.7rem;border-radius:var(--r);
-      position:relative;overflow:hidden;transition:.2s}
-    .stat::after{content:'';position:absolute;top:0;left:0;width:100%;height:1px;
-      background:var(--cyan);opacity:0;animation:scan 5s linear infinite}
-    @keyframes scan{0%{top:0;opacity:0}5%{opacity:.2}95%{opacity:.2}100%{top:100%;opacity:0}}
-    .stat-l{font-size:.58rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem}
-    .stat-v{font-family:var(--hud);font-size:1.7rem;font-weight:900;color:var(--fg);line-height:1}
-    .stat-d{font-size:.57rem;color:var(--fg2);margin-top:.25rem;line-height:1.35}
-    .stat.cy .stat-v{color:var(--cyan)}.stat.ok .stat-v{color:var(--grn)}.stat.warn .stat-v{color:var(--yel)}.stat.err .stat-v{color:var(--red)}
-    .spark{width:100%;height:24px;margin-top:.35rem}
-    .spark path{fill:none;stroke:var(--cyan);stroke-width:1.2;opacity:.7}
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: .65rem
+    }
+
+    .stat {
+      background: linear-gradient(160deg, rgba(26, 35, 50, .9), rgba(8, 12, 18, .95));
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--cyan);
+      padding: .7rem;
+      border-radius: var(--r);
+      position: relative;
+      overflow: hidden;
+      transition: .2s
+    }
+
+    .stat::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: var(--cyan);
+      opacity: 0;
+      animation: scan 5s linear infinite
+    }
+
+    @keyframes scan {
+      0% {
+        top: 0;
+        opacity: 0
+      }
+
+      5% {
+        opacity: .2
+      }
+
+      95% {
+        opacity: .2
+      }
+
+      100% {
+        top: 100%;
+        opacity: 0
+      }
+    }
+
+    .stat-l {
+      font-size: .58rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: .25rem
+    }
+
+    .stat-v {
+      font-family: var(--hud);
+      font-size: 1.7rem;
+      font-weight: 900;
+      color: var(--fg);
+      line-height: 1
+    }
+
+    .stat-d {
+      font-size: .57rem;
+      color: var(--fg2);
+      margin-top: .25rem;
+      line-height: 1.35
+    }
+
+    .stat.cy .stat-v {
+      color: var(--cyan)
+    }
+
+    .stat.ok .stat-v {
+      color: var(--grn)
+    }
+
+    .stat.warn .stat-v {
+      color: var(--yel)
+    }
+
+    .stat.err .stat-v {
+      color: var(--red)
+    }
+
+    .spark {
+      width: 100%;
+      height: 24px;
+      margin-top: .35rem
+    }
+
+    .spark path {
+      fill: none;
+      stroke: var(--cyan);
+      stroke-width: 1.2;
+      opacity: .7
+    }
 
     /* SERVICES */
-    .svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.4rem}
-    .svc{display:flex;align-items:center;gap:.45rem;padding:.35rem .55rem;
-      background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r)}
-    .svc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-    .svc-name{font-size:.6rem;color:var(--fg2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .svc-port{font-size:.55rem;color:var(--fg3)}
+    .svc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: .4rem
+    }
+
+    .svc {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      padding: .35rem .55rem;
+      background: rgba(255, 255, 255, .02);
+      border: 1px solid var(--border);
+      border-radius: var(--r)
+    }
+
+    .svc-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0
+    }
+
+    .svc-name {
+      font-size: .6rem;
+      color: var(--fg2);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .svc-port {
+      font-size: .55rem;
+      color: var(--fg3)
+    }
 
     /* LAYER RAIL */
-    .layer-rail{display:grid;grid-template-columns:repeat(8,1fr);gap:.4rem}
-    .layer{border:1px solid var(--border);padding:.45rem;text-align:center;border-radius:var(--r);cursor:pointer;transition:.15s}
-    .layer:hover{border-color:var(--cyan)}.layer.ok{background:var(--grn-g);border-color:rgba(57,255,20,.25)}
-    .layer.err{background:var(--red-g);border-color:rgba(255,54,68,.25)}
-    .layer-id{font-family:var(--hud);font-size:.62rem;color:var(--cyan)}
-    .layer-name{font-size:.52rem;color:var(--fg3);text-transform:uppercase;margin-top:.1rem}
-    .layer-score{font-size:.65rem;font-weight:700;margin-top:.18rem}
+    .layer-rail {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: .4rem
+    }
+
+    .layer {
+      border: 1px solid var(--border);
+      padding: .45rem;
+      text-align: center;
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: .15s
+    }
+
+    .layer:hover {
+      border-color: var(--cyan)
+    }
+
+    .layer.ok {
+      background: var(--grn-g);
+      border-color: rgba(57, 255, 20, .25)
+    }
+
+    .layer.err {
+      background: var(--red-g);
+      border-color: rgba(255, 54, 68, .25)
+    }
+
+    .layer-id {
+      font-family: var(--hud);
+      font-size: .62rem;
+      color: var(--cyan)
+    }
+
+    .layer-name {
+      font-size: .52rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      margin-top: .1rem
+    }
+
+    .layer-score {
+      font-size: .65rem;
+      font-weight: 700;
+      margin-top: .18rem
+    }
 
     /* CHECK LIST */
-    .check-list{display:flex;flex-direction:column;gap:.25rem;max-height:240px;overflow-y:auto}
-    .check-item{display:flex;align-items:center;gap:.45rem;padding:.28rem .45rem;border-radius:var(--r);font-size:.6rem}
-    .check-item.pass{background:rgba(57,255,20,.04)}.check-item.fail{background:var(--red-g)}.check-item.skip{background:rgba(249,226,175,.04)}
-    .ci-status{font-size:.56rem;font-weight:700;width:30px;text-align:center;flex-shrink:0}
-    .ci-id{color:var(--fg3);min-width:55px;flex-shrink:0}.ci-desc{color:var(--fg2);flex:1}
+    .check-list {
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+      max-height: 240px;
+      overflow-y: auto
+    }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      padding: .28rem .45rem;
+      border-radius: var(--r);
+      font-size: .6rem
+    }
+
+    .check-item.pass {
+      background: rgba(57, 255, 20, .04)
+    }
+
+    .check-item.fail {
+      background: var(--red-g)
+    }
+
+    .check-item.skip {
+      background: rgba(249, 226, 175, .04)
+    }
+
+    .ci-status {
+      font-size: .56rem;
+      font-weight: 700;
+      width: 30px;
+      text-align: center;
+      flex-shrink: 0
+    }
+
+    .ci-id {
+      color: var(--fg3);
+      min-width: 55px;
+      flex-shrink: 0
+    }
+
+    .ci-desc {
+      color: var(--fg2);
+      flex: 1
+    }
 
     /* FW ROWS */
-    .fw-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:.6rem}
-    .fk{color:var(--fg3)}.fv{color:var(--fg)}
-    .fv.ok{color:var(--grn)}.fv.warn{color:var(--yel)}.fv.err{color:var(--red)}.fv.info{color:var(--cyan)}.fv.cy{color:var(--cyan)}
+    .fw-row {
+      display: flex;
+      justify-content: space-between;
+      padding: .3rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, .03);
+      font-size: .6rem
+    }
+
+    .fk {
+      color: var(--fg3)
+    }
+
+    .fv {
+      color: var(--fg)
+    }
+
+    .fv.ok {
+      color: var(--grn)
+    }
+
+    .fv.warn {
+      color: var(--yel)
+    }
+
+    .fv.err {
+      color: var(--red)
+    }
+
+    .fv.info {
+      color: var(--cyan)
+    }
+
+    .fv.cy {
+      color: var(--cyan)
+    }
 
     /* ROUTE TABLE */
-    .route-table{width:100%;border-collapse:collapse;font-size:.6rem}
-    .route-table th{color:var(--fg3);font-weight:400;text-align:left;padding:.28rem .45rem;border-bottom:1px solid var(--border);text-transform:uppercase}
-    .route-table td{padding:.28rem .45rem;color:var(--fg2);border-bottom:1px solid rgba(255,255,255,.025)}
+    .route-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .6rem
+    }
+
+    .route-table th {
+      color: var(--fg3);
+      font-weight: 400;
+      text-align: left;
+      padding: .28rem .45rem;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase
+    }
+
+    .route-table td {
+      padding: .28rem .45rem;
+      color: var(--fg2);
+      border-bottom: 1px solid rgba(255, 255, 255, .025)
+    }
 
     /* MODEL LIFECYCLE */
-    .model-row{display:flex;align-items:center;gap:.6rem;padding:.4rem;
-      border-bottom:1px solid rgba(255,255,255,.04);font-size:.6rem}
-    .model-row:last-child{border-bottom:none}
-    .model-state{font-size:.55rem;padding:.08rem .35rem;border-radius:2px;text-transform:uppercase;flex-shrink:0}
-    .ms-active{color:var(--grn);border:1px solid var(--grn)}.ms-ok{color:var(--cyan);border:1px solid var(--border)}
-    .ms-dl{color:var(--yel);border:1px solid var(--yel)}.ms-av{color:var(--fg3);border:1px solid var(--border)}
-    .model-name{flex:1;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .model-size{color:var(--fg3);flex-shrink:0}.model-actions{display:flex;gap:.3rem;flex-shrink:0}
-    .act-btn{background:none;border:1px solid var(--border);color:var(--fg3);font-family:var(--font);font-size:.55rem;
-      padding:.1rem .35rem;cursor:pointer;border-radius:2px;transition:.1s}
-    .act-btn:hover{border-color:var(--cyan);color:var(--cyan)}.act-btn.err:hover{border-color:var(--red);color:var(--red)}
+    .model-row {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .4rem;
+      border-bottom: 1px solid rgba(255, 255, 255, .04);
+      font-size: .6rem
+    }
+
+    .model-row:last-child {
+      border-bottom: none
+    }
+
+    .model-state {
+      font-size: .55rem;
+      padding: .08rem .35rem;
+      border-radius: 2px;
+      text-transform: uppercase;
+      flex-shrink: 0
+    }
+
+    .ms-active {
+      color: var(--grn);
+      border: 1px solid var(--grn)
+    }
+
+    .ms-ok {
+      color: var(--cyan);
+      border: 1px solid var(--border)
+    }
+
+    .ms-dl {
+      color: var(--yel);
+      border: 1px solid var(--yel)
+    }
+
+    .ms-av {
+      color: var(--fg3);
+      border: 1px solid var(--border)
+    }
+
+    .model-name {
+      flex: 1;
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .model-size {
+      color: var(--fg3);
+      flex-shrink: 0
+    }
+
+    .model-actions {
+      display: flex;
+      gap: .3rem;
+      flex-shrink: 0
+    }
+
+    .act-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg3);
+      font-family: var(--font);
+      font-size: .55rem;
+      padding: .1rem .35rem;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: .1s
+    }
+
+    .act-btn:hover {
+      border-color: var(--cyan);
+      color: var(--cyan)
+    }
+
+    .act-btn.err:hover {
+      border-color: var(--red);
+      color: var(--red)
+    }
 
     /* PROFILE CARDS */
-    .profile-card{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--r);padding:.5rem}
-    .profile-name{font-size:.65rem;color:var(--cyan);font-weight:600;margin-bottom:.2rem}
-    .profile-meta{font-size:.56rem;color:var(--fg3)}
+    .profile-card {
+      background: rgba(255, 255, 255, .02);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: .5rem
+    }
+
+    .profile-name {
+      font-size: .65rem;
+      color: var(--cyan);
+      font-weight: 600;
+      margin-bottom: .2rem
+    }
+
+    .profile-meta {
+      font-size: .56rem;
+      color: var(--fg3)
+    }
 
     /* D3 canvas */
-    .d3-panel{width:100%;height:calc(100vh - 220px);min-height:480px;background:var(--bg2);
-      border:1px solid var(--border);border-radius:var(--r);position:relative;overflow:hidden}
-    .d3-hud{position:absolute;top:.6rem;right:.6rem;font-size:.58rem;color:var(--cyan);
-      letter-spacing:.12em;background:rgba(0,0,0,.65);padding:.2rem .65rem;
-      border-right:2px solid var(--cyan);pointer-events:none;z-index:10}
-    .node-label{font-size:9px;fill:var(--fg);pointer-events:none}
-    .link-line{stroke:rgba(0,217,255,.35);stroke-width:1.5}
+    .d3-panel {
+      width: 100%;
+      height: calc(100vh - 220px);
+      min-height: 480px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      position: relative;
+      overflow: hidden
+    }
+
+    .d3-hud {
+      position: absolute;
+      top: .6rem;
+      right: .6rem;
+      font-size: .58rem;
+      color: var(--cyan);
+      letter-spacing: .12em;
+      background: rgba(0, 0, 0, .65);
+      padding: .2rem .65rem;
+      border-right: 2px solid var(--cyan);
+      pointer-events: none;
+      z-index: 10
+    }
+
+    .node-label {
+      font-size: 9px;
+      fill: var(--fg);
+      pointer-events: none
+    }
+
+    .link-line {
+      stroke: rgba(0, 217, 255, .35);
+      stroke-width: 1.5
+    }
 
     /* LOG PANEL */
-    .log-panel{height:calc(100vh - 220px);min-height:400px;overflow-y:auto;
-      font-size:.68rem;color:#39ff14;background:#000;padding:1rem;
-      border:1px solid #111;border-radius:var(--r)}
-    .log-line{margin-bottom:.28rem;border-left:2px solid #39ff14;padding-left:.55rem}
-    .log-line.log-err{border-left-color:var(--err);color:var(--err)}
-    .log-line.log-warn{border-left-color:var(--warn);color:var(--warn)}
-    .log-ts{color:#4a6278;margin-right:.45rem}.log-type{color:var(--cyan);margin-right:.4rem;font-weight:700}
+    .log-panel {
+      height: calc(100vh - 220px);
+      min-height: 400px;
+      overflow-y: auto;
+      font-size: .68rem;
+      color: #39ff14;
+      background: #000;
+      padding: 1rem;
+      border: 1px solid #111;
+      border-radius: var(--r)
+    }
+
+    .log-line {
+      margin-bottom: .28rem;
+      border-left: 2px solid #39ff14;
+      padding-left: .55rem
+    }
+
+    .log-line.log-err {
+      border-left-color: var(--err);
+      color: var(--err)
+    }
+
+    .log-line.log-warn {
+      border-left-color: var(--warn);
+      color: var(--warn)
+    }
+
+    .log-ts {
+      color: #4a6278;
+      margin-right: .45rem
+    }
+
+    .log-type {
+      color: var(--cyan);
+      margin-right: .4rem;
+      font-weight: 700
+    }
 
     /* CONTROL DRAWER */
-    .drawer{position:fixed;right:-440px;top:0;width:min(440px,100vw);height:100%;
-      background:#0b0f1a;border-left:2px solid var(--cyan);z-index:1000;padding:1.75rem;
-      transition:right .32s ease;box-shadow:-30px 0 60px #000;overflow-y:auto}
-    .drawer.open{right:0}
-    .drawer-title{font-family:var(--hud);color:var(--cyan);font-size:.95rem;letter-spacing:.12em;margin-bottom:1.25rem}
-    .drawer-close{background:none;border:none;color:var(--fg3);font-size:1.3rem;cursor:pointer;float:right;margin-top:-.2rem}
-    .drawer-btn{width:100%;padding:.65rem;margin-top:.6rem;background:transparent;
-      border:1px solid var(--mag);color:var(--mag);font-family:var(--hud);font-size:.65rem;
-      text-transform:uppercase;letter-spacing:.1em;cursor:pointer;border-radius:var(--r);transition:.15s}
-    .drawer-btn:hover{background:var(--mag-g)}
-    .drawer-section{margin-top:1.25rem}
-    .drawer-section-title{font-size:.62rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.12em;
-      margin-bottom:.6rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
-    .drawer-kv{display:flex;justify-content:space-between;font-size:.6rem;color:var(--fg3);margin-top:.3rem}
-    .drawer-kv span:last-child{color:var(--grn)}
+    .drawer {
+      position: fixed;
+      right: -440px;
+      top: 0;
+      width: min(440px, 100vw);
+      height: 100%;
+      background: #0b0f1a;
+      border-left: 2px solid var(--cyan);
+      z-index: 1000;
+      padding: 1.75rem;
+      transition: right .32s ease;
+      box-shadow: -30px 0 60px #000;
+      overflow-y: auto
+    }
+
+    .drawer.open {
+      right: 0
+    }
+
+    .drawer-title {
+      font-family: var(--hud);
+      color: var(--cyan);
+      font-size: .95rem;
+      letter-spacing: .12em;
+      margin-bottom: 1.25rem
+    }
+
+    .drawer-close {
+      background: none;
+      border: none;
+      color: var(--fg3);
+      font-size: 1.3rem;
+      cursor: pointer;
+      float: right;
+      margin-top: -.2rem
+    }
+
+    .drawer-btn {
+      width: 100%;
+      padding: .65rem;
+      margin-top: .6rem;
+      background: transparent;
+      border: 1px solid var(--mag);
+      color: var(--mag);
+      font-family: var(--hud);
+      font-size: .65rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      cursor: pointer;
+      border-radius: var(--r);
+      transition: .15s
+    }
+
+    .drawer-btn:hover {
+      background: var(--mag-g)
+    }
+
+    .drawer-section {
+      margin-top: 1.25rem
+    }
+
+    .drawer-section-title {
+      font-size: .62rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      margin-bottom: .6rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: .3rem
+    }
+
+    .drawer-kv {
+      display: flex;
+      justify-content: space-between;
+      font-size: .6rem;
+      color: var(--fg3);
+      margin-top: .3rem
+    }
+
+    .drawer-kv span:last-child {
+      color: var(--grn)
+    }
 
     /* MISC */
-    .mini-btn{background:none;border:1px solid var(--border);color:var(--cyan);font-family:var(--font);
-      font-size:.58rem;padding:.1rem .4rem;cursor:pointer;border-radius:2px}
-    #err-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9999;
-      background:var(--red);color:#fff;padding:.5rem 1.25rem;font-size:.72rem}
-    ::-webkit-scrollbar{width:4px;height:4px}
-    ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-    @media(max-width:600px){.layer-rail{grid-template-columns:repeat(4,1fr)}}
+    .mini-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      font-family: var(--font);
+      font-size: .58rem;
+      padding: .1rem .4rem;
+      cursor: pointer;
+      border-radius: 2px
+    }
+
+    #err-banner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      background: var(--red);
+      color: #fff;
+      padding: .5rem 1.25rem;
+      font-size: .72rem
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px
+    }
+
+    @media(max-width:600px) {
+      .layer-rail {
+        grid-template-columns: repeat(4, 1fr)
+      }
+    }
 
     /* ── COLLECTION TABLE ── */
-    .coll-table{width:100%;border-collapse:collapse;font-size:.58rem;margin-top:.3rem}
-    .coll-table th{color:var(--fg3);font-weight:400;padding:.2rem .35rem;border-bottom:1px solid var(--border);text-transform:uppercase;text-align:left}
-    .coll-table td{padding:.22rem .35rem;color:var(--fg2);border-bottom:1px solid rgba(255,255,255,.02)}
-    .coll-table tr:last-child td{border-bottom:none}
-    .coll-bar-wrap{width:70px;height:5px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
-    .coll-bar{height:5px;background:var(--cyan);border-radius:2px;transition:width .3s}
-    .coll-type-mem{color:var(--mag)}.coll-type-know{color:var(--cyan)}.coll-type-train{color:var(--grn)}
+    .coll-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .58rem;
+      margin-top: .3rem
+    }
+
+    .coll-table th {
+      color: var(--fg3);
+      font-weight: 400;
+      padding: .2rem .35rem;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      text-align: left
+    }
+
+    .coll-table td {
+      padding: .22rem .35rem;
+      color: var(--fg2);
+      border-bottom: 1px solid rgba(255, 255, 255, .02)
+    }
+
+    .coll-table tr:last-child td {
+      border-bottom: none
+    }
+
+    .coll-bar-wrap {
+      width: 70px;
+      height: 5px;
+      background: rgba(255, 255, 255, .06);
+      border-radius: 2px;
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: middle
+    }
+
+    .coll-bar {
+      height: 5px;
+      background: var(--cyan);
+      border-radius: 2px;
+      transition: width .3s
+    }
+
+    .coll-type-mem {
+      color: var(--mag)
+    }
+
+    .coll-type-know {
+      color: var(--cyan)
+    }
+
+    .coll-type-train {
+      color: var(--grn)
+    }
+
     /* ── DB METRIC PILLS ── */
-    .db-section{margin-bottom:.55rem;padding-bottom:.45rem;border-bottom:1px solid rgba(255,255,255,.04)}
-    .db-section:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
-    .db-name{font-size:.6rem;color:var(--mag);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem;display:flex;align-items:center;gap:.4rem}
-    .db-pill{font-size:.52rem;padding:.06rem .3rem;border-radius:2px;border:1px solid var(--border);color:var(--fg3)}
-    .db-pill.ok{color:var(--grn);border-color:rgba(57,255,20,.3)}.db-pill.err{color:var(--red);border-color:rgba(255,54,68,.3)}
+    .db-section {
+      margin-bottom: .55rem;
+      padding-bottom: .45rem;
+      border-bottom: 1px solid rgba(255, 255, 255, .04)
+    }
+
+    .db-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0
+    }
+
+    .db-name {
+      font-size: .6rem;
+      color: var(--mag);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: .25rem;
+      display: flex;
+      align-items: center;
+      gap: .4rem
+    }
+
+    .db-pill {
+      font-size: .52rem;
+      padding: .06rem .3rem;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      color: var(--fg3)
+    }
+
+    .db-pill.ok {
+      color: var(--grn);
+      border-color: rgba(57, 255, 20, .3)
+    }
+
+    .db-pill.err {
+      color: var(--red);
+      border-color: rgba(255, 54, 68, .3)
+    }
+
     /* ── LOAD TILE COLORING ── */
-    .stat.load-warn .stat-v{color:var(--yel)}.stat.load-err .stat-v{color:var(--red)}
+    .stat.load-warn .stat-v {
+      color: var(--yel)
+    }
+
+    .stat.load-err .stat-v {
+      color: var(--red)
+    }
+
     /* ── ACTIVITY PILLS ── */
-    .act-pills{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.3rem}
-    .act-pill{font-size:.56rem;padding:.1rem .4rem;border-radius:2px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--fg3)}
-    .act-pill span{color:var(--fg)}
+    .act-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .3rem;
+      margin-top: .3rem
+    }
+
+    .act-pill {
+      font-size: .56rem;
+      padding: .1rem .4rem;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, .04);
+      border: 1px solid var(--border);
+      color: var(--fg3)
+    }
+
+    .act-pill span {
+      color: var(--fg)
+    }
+
     /* ── DYNAMIC STATUS COLORING ── */
-    .stat.warn{border-left-color:var(--yel);background:linear-gradient(160deg,rgba(249,226,175,.06),rgba(8,12,18,.95))}
-    .stat.err{border-left-color:var(--red);background:linear-gradient(160deg,rgba(255,54,68,.08),rgba(8,12,18,.95))}
-    .stat.err::after{opacity:.4;animation-duration:1.5s}
-    .spark.warn path{stroke:var(--yel)}
-    .spark.err path{stroke:var(--red)}
-    .kpi-v.ok{color:var(--grn)}.kpi-v.warn{color:var(--yel)}.kpi-v.err{color:var(--red)}
+    .stat.warn {
+      border-left-color: var(--yel);
+      background: linear-gradient(160deg, rgba(249, 226, 175, .06), rgba(8, 12, 18, .95))
+    }
+
+    .stat.err {
+      border-left-color: var(--red);
+      background: linear-gradient(160deg, rgba(255, 54, 68, .08), rgba(8, 12, 18, .95))
+    }
+
+    .stat.err::after {
+      opacity: .4;
+      animation-duration: 1.5s
+    }
+
+    .spark.warn path {
+      stroke: var(--yel)
+    }
+
+    .spark.err path {
+      stroke: var(--red)
+    }
+
+    .kpi-v.ok {
+      color: var(--grn)
+    }
+
+    .kpi-v.warn {
+      color: var(--yel)
+    }
+
+    .kpi-v.err {
+      color: var(--red)
+    }
+
     /* Alert list */
-    .alert-bar{display:flex;flex-wrap:wrap;gap:.4rem;padding:.5rem 1.5rem;
-      border-bottom:1px solid var(--border);min-height:2rem;align-items:center}
-    .alert-bar-label{font-size:.56rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.1em;flex-shrink:0}
-    .deck-alert{display:flex;align-items:center;gap:.4rem;padding:.2rem .55rem;border-radius:2px;
-      font-size:.6rem;border-left:2px solid var(--yel);background:rgba(249,226,175,.06)}
-    .deck-alert.err{border-left-color:var(--red);background:var(--red-g)}
-    .deck-alert.ok{border-left-color:var(--grn);background:rgba(57,255,20,.04)}
-    .deck-alert-sev{font-weight:700;font-size:.56rem;width:36px;flex-shrink:0}
-    .deck-alert-msg{color:var(--fg2)}.deck-alert-meta{color:var(--fg3);font-size:.55rem;margin-left:auto}
+    .alert-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem;
+      padding: .5rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      min-height: 2rem;
+      align-items: center
+    }
+
+    .alert-bar-label {
+      font-size: .56rem;
+      color: var(--fg3);
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      flex-shrink: 0
+    }
+
+    .deck-alert {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .2rem .55rem;
+      border-radius: 2px;
+      font-size: .6rem;
+      border-left: 2px solid var(--yel);
+      background: rgba(249, 226, 175, .06)
+    }
+
+    .deck-alert.err {
+      border-left-color: var(--red);
+      background: var(--red-g)
+    }
+
+    .deck-alert.ok {
+      border-left-color: var(--grn);
+      background: rgba(57, 255, 20, .04)
+    }
+
+    .deck-alert-sev {
+      font-weight: 700;
+      font-size: .56rem;
+      width: 36px;
+      flex-shrink: 0
+    }
+
+    .deck-alert-msg {
+      color: var(--fg2)
+    }
+
+    .deck-alert-meta {
+      color: var(--fg3);
+      font-size: .55rem;
+      margin-left: auto
+    }
+
     /* Score coloring */
-    .score-num.warn{color:var(--yel);text-shadow:0 0 14px rgba(249,226,175,.4)}
-    .score-num.err{color:var(--red);text-shadow:0 0 14px rgba(255,54,68,.4)}
+    .score-num.warn {
+      color: var(--yel);
+      text-shadow: 0 0 14px rgba(249, 226, 175, .4)
+    }
+
+    .score-num.err {
+      color: var(--red);
+      text-shadow: 0 0 14px rgba(255, 54, 68, .4)
+    }
   </style>
 </head>
+
 <body>
-<div id="err-banner"></div>
+  <div id="err-banner"></div>
 
-<!-- ── HEADER ── -->
-<header class="hdr">
-  <div class="hdr-top">
-    <div class="hdr-dot"></div>
-    <div class="hdr-title">AI Command Center</div>
-    <div class="hdr-meta">
-      <span id="hostname">local-node</span>
-      <span id="lastUpdate">--:--:--</span>
-      <span id="runtimeMode">live stack</span>
+  <!-- ── HEADER ── -->
+  <header class="hdr">
+    <div class="hdr-top">
+      <div class="hdr-dot"></div>
+      <div class="hdr-title">AI Command Center</div>
+      <div class="hdr-meta">
+        <span id="hostname">local-node</span>
+        <span id="lastUpdate">--:--:--</span>
+        <span id="runtimeMode">live stack</span>
+      </div>
+      <div class="score-block">
+        <div class="score-num" id="healthScore">--</div>
+        <div class="score-label">/ 100<br>integrity</div>
+      </div>
+      <button class="ctrl-btn" onclick="toggleDrawer()">[CONTROLS]</button>
     </div>
-    <div class="score-block">
-      <div class="score-num" id="healthScore">--</div>
-      <div class="score-label">/ 100<br>integrity</div>
+    <div class="kpi-ribbon">
+      <div class="kpi"><span class="kpi-l">Local AI:</span><span class="kpi-v" id="kpiLocalPct">--%</span></div>
+      <div class="kpi"><span class="kpi-l">Cache Hit:</span><span class="kpi-v" id="kpiCacheHit">--%</span></div>
+      <div class="kpi"><span class="kpi-l">Eval:</span><span class="kpi-v" id="kpiEval">--%</span></div>
+      <div class="kpi"><span class="kpi-l">Hint Adopt:</span><span class="kpi-v" id="kpiHintPct">--%</span></div>
+      <div class="kpi"><span class="kpi-l">Redis:</span><span class="kpi-v" id="kpiRedis">--</span></div>
+      <div class="kpi"><span class="kpi-l">PG:</span><span class="kpi-v" id="kpiPg">--</span></div>
+      <div class="kpi"><span class="kpi-l">Qdrant:</span><span class="kpi-v" id="kpiQdrant">--</span></div>
+      <div class="kpi"><span class="kpi-l">Vectors:</span><span class="kpi-v" id="kpiVectors">--</span></div>
+      <div class="kpi"><span class="kpi-l">Coord:</span><span class="kpi-v" id="kpiCoord">--</span></div>
+      <div class="kpi"><span class="kpi-l">PG Lat:</span><span class="kpi-v" id="kpiPgLat">--</span></div>
+      <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">--</span></div>
+      <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
+      <div class="kpi"><span class="kpi-l">Ops/7d:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
+      <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span>
+      </div>
+      <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">--</span></div>
     </div>
-    <button class="ctrl-btn" onclick="toggleDrawer()">[CONTROLS]</button>
-  </div>
-  <div class="kpi-ribbon">
-    <div class="kpi"><span class="kpi-l">Local AI:</span><span class="kpi-v" id="kpiLocalPct">--%</span></div>
-    <div class="kpi"><span class="kpi-l">Cache Hit:</span><span class="kpi-v" id="kpiCacheHit">--%</span></div>
-    <div class="kpi"><span class="kpi-l">Eval:</span><span class="kpi-v" id="kpiEval">--%</span></div>
-    <div class="kpi"><span class="kpi-l">Hint Adopt:</span><span class="kpi-v" id="kpiHintPct">--%</span></div>
-    <div class="kpi"><span class="kpi-l">Redis:</span><span class="kpi-v" id="kpiRedis">--</span></div>
-    <div class="kpi"><span class="kpi-l">PG:</span><span class="kpi-v" id="kpiPg">--</span></div>
-    <div class="kpi"><span class="kpi-l">Qdrant:</span><span class="kpi-v" id="kpiQdrant">--</span></div>
-    <div class="kpi"><span class="kpi-l">Vectors:</span><span class="kpi-v" id="kpiVectors">--</span></div>
-    <div class="kpi"><span class="kpi-l">Coord:</span><span class="kpi-v" id="kpiCoord">--</span></div>
-    <div class="kpi"><span class="kpi-l">PG Lat:</span><span class="kpi-v" id="kpiPgLat">--</span></div>
-    <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">--</span></div>
-    <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
-    <div class="kpi"><span class="kpi-l">Ops/7d:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
-    <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span></div>
-    <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">--</span></div>
-  </div>
-  <div class="lens-tabs">
-    <button class="tab on" onclick="setLens('overview')"    id="tab-overview">Overview</button>
-    <button class="tab"    onclick="setLens('intelligence')" id="tab-intelligence">Intelligence</button>
-    <button class="tab"    onclick="setLens('security')"    id="tab-security">Security</button>
-    <button class="tab"    onclick="setLens('operations')"  id="tab-operations">Operations</button>
-    <button class="tab"    onclick="setLens('fleet')"       id="tab-fleet">Agent Fleet</button>
-    <button class="tab"    onclick="setLens('spider')"      id="tab-spider">Health Spider</button>
-    <button class="tab"    onclick="setLens('map')"         id="tab-map">Neural Map</button>
-    <button class="tab"    onclick="setLens('logic')"       id="tab-logic">Logic DAG</button>
-    <button class="tab"    onclick="setLens('observe')"     id="tab-observe">Agent Observability</button>
-    <button class="tab"    onclick="setLens('logs')"        id="tab-logs">Logs</button>
-  </div>
-</header>
+    <div class="lens-tabs">
+      <button class="tab on" onclick="setLens('overview')" id="tab-overview">Overview</button>
+      <button class="tab" onclick="setLens('intelligence')" id="tab-intelligence">Intelligence</button>
+      <button class="tab" onclick="setLens('security')" id="tab-security">Security</button>
+      <button class="tab" onclick="setLens('operations')" id="tab-operations">Operations</button>
+      <button class="tab" onclick="setLens('fleet')" id="tab-fleet">Agent Fleet</button>
+      <button class="tab" onclick="setLens('spider')" id="tab-spider">Health Spider</button>
+      <button class="tab" onclick="setLens('map')" id="tab-map">Neural Map</button>
+      <button class="tab" onclick="setLens('logic')" id="tab-logic">Logic DAG</button>
+      <button class="tab" onclick="setLens('observe')" id="tab-observe">Agent Observability</button>
+      <button class="tab" onclick="setLens('logs')" id="tab-logs">Logs</button>
+    </div>
+  </header>
 
-<!-- ── RAG QUALITY STRIP — aq-qa 60.7.3 contract ── -->
-<div id="section-rag-quality">
-  <div class="rag-kpi"><span class="rl">Ans Relevance:</span><span class="rv" id="ragAnswerRelevance">--</span></div>
-  <div class="rag-kpi"><span class="rl">Ctx Precision:</span><span class="rv" id="ragContextPrecision">--</span></div>
-  <div class="rag-kpi"><span class="rl">Faithfulness:</span><span class="rv" id="ragFaithfulness">--</span></div>
-  <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">--</span></div>
-</div>
-
-
-<!-- ── LIVE ALERT BAR ── -->
-<div class="alert-bar" id="alertBar">
-  <span class="alert-bar-label">Alerts:</span>
-  <span id="alertItems" style="display:flex;flex-wrap:wrap;gap:.4rem;flex:1">
-    <span style="color:var(--fg3);font-size:.6rem">Nominal</span>
-  </span>
-</div>
-<!-- ── OVERVIEW ── -->
-<div class="panel on" id="panel-overview">
-  <!-- System stat tiles -->
-  <div class="stat-grid" style="margin-bottom:.9rem">
-    <div class="stat cy" id="statCpu">
-      <div class="stat-l">CPU</div><div class="stat-v" id="vCpu">--</div>
-      <div class="stat-d" id="cpuModel">host processor</div>
-      <svg class="spark" id="spCpu" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
-    </div>
-    <div class="stat cy" id="statGpu">
-      <div class="stat-l">GPU Busy</div><div class="stat-v" id="vGpu">--</div>
-      <div class="stat-d" id="gpuVram">inference</div>
-      <svg class="spark" id="spGpu" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
-    </div>
-    <div class="stat cy" id="statMem">
-      <div class="stat-l">Memory</div><div class="stat-v" id="vMem">--</div>
-      <div class="stat-d"><span id="memUsed">--</span> / <span id="memTotal">--</span></div>
-      <svg class="spark" id="spMem" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
-    </div>
-    <div class="stat cy" id="statDisk">
-      <div class="stat-l">Disk</div><div class="stat-v" id="vDisk">--</div>
-      <div class="stat-d"><span id="dskFree">--</span> free of <span id="dskTotal">--</span></div>
-    </div>
-    <div class="stat cy" id="statNet">
-      <div class="stat-l">Network I/O</div><div class="stat-v" id="vNet">--</div>
-      <div class="stat-d"><span id="vConnections">--</span> connections</div>
-      <svg class="spark" id="spNet" viewBox="0 0 200 24" preserveAspectRatio="none"><path d="M0,12 L200,12"/></svg>
-    </div>
-    <div class="stat cy" id="statTemp">
-      <div class="stat-l">CPU Temp</div><div class="stat-v" id="cpuTemp" style="font-size:1.1rem">--</div>
-      <div class="stat-d"><span id="cpuCores">--</span> cores</div>
-    </div>
-    <div class="stat cy" id="statEval">
-      <div class="stat-l">Eval Score</div><div class="stat-v" id="vStack">--</div>
-      <div class="stat-d">harness gate</div>
-    </div>
-    <div class="stat cy" id="statLatP95">
-      <div class="stat-l">p95 Latency</div><div class="stat-v" id="vLatP95">--</div>
-      <div class="stat-d">backend calls · <span id="vCacheHit">--</span> cache</div>
-    </div>
-    <div class="stat cy" id="statOpsDay">
-      <div class="stat-l">Ops / Day</div><div class="stat-v" id="vOpsDay">--</div>
-      <div class="stat-d">7d avg · <span id="vBackendN">--</span> LLM</div>
-    </div>
-    <div class="stat cy" id="statLogicDiscipline">
-      <div class="stat-l">Logic Discip.</div><div class="stat-v" id="vLogicDiscipline">--%</div>
-      <div class="stat-d" id="vLogicDisciplineDetail">exact-output telemetry</div>
-    </div>
-    <div class="stat cy" id="statIntentUnknown">
-      <div class="stat-l">Unknown Intent</div><div class="stat-v" id="vIntentUnknown">--%</div>
-      <div class="stat-d" id="vIntentUnknownDetail">classifier coverage</div>
-    </div>
-    <div class="stat cy">
-      <div class="stat-l">GPU Name</div><div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">--</div>
-    </div>
-    <div class="stat cy" id="statUptime">
-      <div class="stat-l">Uptime</div><div class="stat-v" id="vUptime" style="font-size:.82rem;padding-top:.2rem">--</div>
-      <div class="stat-d">system up</div>
-    </div>
-    <div class="stat cy" id="statLoad">
-      <div class="stat-l">Load Avg (1m)</div><div class="stat-v" id="vLoad1" style="font-size:1.4rem">--</div>
-      <div class="stat-d"><span id="vLoad5">--</span> · <span id="vLoad15">--</span>&nbsp;&nbsp;5m / 15m</div>
-    </div>
+  <!-- ── RAG QUALITY STRIP — aq-qa 60.7.3 contract ── -->
+  <div id="section-rag-quality">
+    <div class="rag-kpi"><span class="rl">Ans Relevance:</span><span class="rv" id="ragAnswerRelevance">--</span></div>
+    <div class="rag-kpi"><span class="rl">Ctx Precision:</span><span class="rv" id="ragContextPrecision">--</span></div>
+    <div class="rag-kpi"><span class="rl">Faithfulness:</span><span class="rv" id="ragFaithfulness">--</span></div>
+    <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">--</span></div>
   </div>
 
-  <!-- ── System Navigator (Phase 115) ── -->
-  <div style="margin:.55rem 0 .35rem;display:flex;align-items:center;gap:.5rem">
-    <span style="font-family:var(--hud);font-size:.62rem;color:var(--mag);letter-spacing:.1em;text-transform:uppercase">System Navigator</span>
-    <span id="sysNavAge" style="font-size:.56rem;color:var(--fg3)">--</span>
-    <span id="sysNavStale" style="display:none;font-size:.56rem;padding:.08rem .3rem;background:rgba(255,165,0,.15);color:orange;border-radius:2px">STALE</span>
+
+  <!-- ── LIVE ALERT BAR ── -->
+  <div class="alert-bar" id="alertBar">
+    <span class="alert-bar-label">Alerts:</span>
+    <span id="alertItems" style="display:flex;flex-wrap:wrap;gap:.4rem;flex:1">
+      <span style="color:var(--fg3);font-size:.6rem">Nominal</span>
+    </span>
   </div>
-  <div class="panel-grid g4" style="margin-bottom:.9rem" id="sysNavGrid">
-    <!-- State Hub -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">State Hub</span>
-        <span class="card-badge badge-info" id="sysNavHubBadge">--</span>
+  <!-- ── OVERVIEW ── -->
+  <div class="panel on" id="panel-overview">
+    <!-- System stat tiles -->
+    <div class="stat-grid" style="margin-bottom:.9rem">
+      <div class="stat cy" id="statCpu">
+        <div class="stat-l">CPU</div>
+        <div class="stat-v" id="vCpu">--</div>
+        <div class="stat-d" id="cpuModel">host processor</div>
+        <svg class="spark" id="spCpu" viewBox="0 0 200 24" preserveAspectRatio="none">
+          <path d="M0,12 L200,12" />
+        </svg>
       </div>
-      <div id="sysNavHub" style="font-size:.6rem;color:var(--fg2)">
-        <div style="color:var(--fg3)">loading...</div>
+      <div class="stat cy" id="statGpu">
+        <div class="stat-l">GPU Busy</div>
+        <div class="stat-v" id="vGpu">--</div>
+        <div class="stat-d" id="gpuVram">inference</div>
+        <svg class="spark" id="spGpu" viewBox="0 0 200 24" preserveAspectRatio="none">
+          <path d="M0,12 L200,12" />
+        </svg>
+      </div>
+      <div class="stat cy" id="statMem">
+        <div class="stat-l">Memory</div>
+        <div class="stat-v" id="vMem">--</div>
+        <div class="stat-d"><span id="memUsed">--</span> / <span id="memTotal">--</span></div>
+        <svg class="spark" id="spMem" viewBox="0 0 200 24" preserveAspectRatio="none">
+          <path d="M0,12 L200,12" />
+        </svg>
+      </div>
+      <div class="stat cy" id="statDisk">
+        <div class="stat-l">Disk</div>
+        <div class="stat-v" id="vDisk">--</div>
+        <div class="stat-d"><span id="dskFree">--</span> free of <span id="dskTotal">--</span></div>
+      </div>
+      <div class="stat cy" id="statNet">
+        <div class="stat-l">Network I/O</div>
+        <div class="stat-v" id="vNet">--</div>
+        <div class="stat-d"><span id="vConnections">--</span> connections</div>
+        <svg class="spark" id="spNet" viewBox="0 0 200 24" preserveAspectRatio="none">
+          <path d="M0,12 L200,12" />
+        </svg>
+      </div>
+      <div class="stat cy" id="statTemp">
+        <div class="stat-l">CPU Temp</div>
+        <div class="stat-v" id="cpuTemp" style="font-size:1.1rem">--</div>
+        <div class="stat-d"><span id="cpuCores">--</span> cores</div>
+      </div>
+      <div class="stat cy" id="statEval">
+        <div class="stat-l">Eval Score</div>
+        <div class="stat-v" id="vStack">--</div>
+        <div class="stat-d">harness gate</div>
+      </div>
+      <div class="stat cy" id="statLatP95">
+        <div class="stat-l">p95 Latency</div>
+        <div class="stat-v" id="vLatP95">--</div>
+        <div class="stat-d">backend calls · <span id="vCacheHit">--</span> cache</div>
+      </div>
+      <div class="stat cy" id="statOpsDay">
+        <div class="stat-l">Ops / Day</div>
+        <div class="stat-v" id="vOpsDay">--</div>
+        <div class="stat-d">7d avg · <span id="vBackendN">--</span> LLM</div>
+      </div>
+      <div class="stat cy" id="statLogicDiscipline">
+        <div class="stat-l">Logic Discip.</div>
+        <div class="stat-v" id="vLogicDiscipline">--%</div>
+        <div class="stat-d" id="vLogicDisciplineDetail">exact-output telemetry</div>
+      </div>
+      <div class="stat cy" id="statIntentUnknown">
+        <div class="stat-l">Unknown Intent</div>
+        <div class="stat-v" id="vIntentUnknown">--%</div>
+        <div class="stat-d" id="vIntentUnknownDetail">classifier coverage</div>
+      </div>
+      <div class="stat cy">
+        <div class="stat-l">GPU Name</div>
+        <div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">--</div>
+      </div>
+      <div class="stat cy" id="statUptime">
+        <div class="stat-l">Uptime</div>
+        <div class="stat-v" id="vUptime" style="font-size:.82rem;padding-top:.2rem">--</div>
+        <div class="stat-d">system up</div>
+      </div>
+      <div class="stat cy" id="statLoad">
+        <div class="stat-l">Load Avg (1m)</div>
+        <div class="stat-v" id="vLoad1" style="font-size:1.4rem">--</div>
+        <div class="stat-d"><span id="vLoad5">--</span> · <span id="vLoad15">--</span>&nbsp;&nbsp;5m / 15m</div>
       </div>
     </div>
-    <!-- Service Health -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Service Health</span>
-        <span class="card-badge badge-info" id="sysNavSvcBadge">--/--</span>
+
+    <!-- ── System Navigator (Phase 115) ── -->
+    <div style="margin:.55rem 0 .35rem;display:flex;align-items:center;gap:.5rem">
+      <span
+        style="font-family:var(--hud);font-size:.62rem;color:var(--mag);letter-spacing:.1em;text-transform:uppercase">System
+        Navigator</span>
+      <span id="sysNavAge" style="font-size:.56rem;color:var(--fg3)">--</span>
+      <span id="sysNavStale"
+        style="display:none;font-size:.56rem;padding:.08rem .3rem;background:rgba(255,165,0,.15);color:orange;border-radius:2px">STALE</span>
+    </div>
+    <div class="panel-grid g4" style="margin-bottom:.9rem" id="sysNavGrid">
+      <!-- State Hub -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">State Hub</span>
+          <span class="card-badge badge-info" id="sysNavHubBadge">--</span>
+        </div>
+        <div id="sysNavHub" style="font-size:.6rem;color:var(--fg2)">
+          <div style="color:var(--fg3)">loading...</div>
+        </div>
       </div>
-      <div id="sysNavSvc" style="font-size:.6rem;color:var(--fg2)">
-        <div style="color:var(--fg3)">loading...</div>
+      <!-- Service Health -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Service Health</span>
+          <span class="card-badge badge-info" id="sysNavSvcBadge">--/--</span>
+        </div>
+        <div id="sysNavSvc" style="font-size:.6rem;color:var(--fg2)">
+          <div style="color:var(--fg3)">loading...</div>
+        </div>
+      </div>
+      <!-- Knowledge Collections -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Knowledge Collections</span>
+          <span class="card-badge badge-info" id="sysNavCollBadge">--</span>
+        </div>
+        <div id="sysNavColl" style="font-size:.6rem;color:var(--fg2);max-height:160px;overflow-y:auto">
+          <div style="color:var(--fg3)">loading...</div>
+        </div>
+      </div>
+      <!-- Diagnostics -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Diagnostics</span>
+          <span class="card-badge badge-ok" id="sysNavDiagBadge">clean</span>
+        </div>
+        <div id="sysNavDiag" style="font-size:.6rem;color:var(--fg2)">
+          <div style="color:var(--fg3)">loading...</div>
+        </div>
       </div>
     </div>
-    <!-- Knowledge Collections -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Knowledge Collections</span>
-        <span class="card-badge badge-info" id="sysNavCollBadge">--</span>
+
+    <div class="panel-grid g2">
+      <!-- Services -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">AI Stack Services</span>
+          <span class="card-badge badge-info" id="svcCount">0/0</span>
+        </div>
+        <div class="svc-grid" id="svcGrid">
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--fg3)"></div><span class="svc-name">loading...</span>
+          </div>
+        </div>
       </div>
-      <div id="sysNavColl" style="font-size:.6rem;color:var(--fg2);max-height:160px;overflow-y:auto">
-        <div style="color:var(--fg3)">loading...</div>
+
+      <!-- Functional Domains -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Capability Domains</span>
+          <span class="card-badge badge-info">registry</span>
+        </div>
+        <div class="svc-grid">
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Security Systems</span><span
+              class="svc-port">promoted</span>
+          </div>
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">GIS / Scientific</span><span
+              class="svc-port">promoted</span>
+          </div>
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Mobile /
+              Embedded</span><span class="svc-port">promoted</span>
+          </div>
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--cyan)"></div><span class="svc-name">Systems
+              Software</span><span class="svc-port">default</span>
+          </div>
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--yel)"></div><span class="svc-name">MLOps / Trading /
+              QA</span><span class="svc-port">scaffolded</span>
+          </div>
+          <div class="svc">
+            <div class="svc-dot" style="background:var(--yel)"></div><span class="svc-name">OSINT Systems</span><span
+              class="svc-port">proposed</span>
+          </div>
+        </div>
       </div>
-    </div>
-    <!-- Diagnostics -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Diagnostics</span>
-        <span class="card-badge badge-ok" id="sysNavDiagBadge">clean</span>
+      <!-- Educational & Grounding Resources -->
+      <div class="card" style="grid-column: span 2;">
+        <div class="card-hd">
+          <span class="card-title">Educational &amp; Grounding Resources</span>
+          <span class="card-badge badge-info">grounding</span>
+        </div>
+        <div class="svc-grid" style="gap: .4rem;">
+          <a href="/assets/education/nixos-contracts.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">NixOS Declarative
+              Contracts</span><span class="svc-port">nixos</span>
+          </a>
+          <a href="/assets/education/hardware-limits.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--mag)"></div><span class="svc-name">Hardware Budget &amp;
+              Limits</span><span class="svc-port">limits</span>
+          </a>
+          <a href="/assets/education/context-engineering.html" target="_blank" class="svc"
+            style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--cyan)"></div><span class="svc-name">Context Engineering
+              &amp; RAG</span><span class="svc-port">context</span>
+          </a>
+        </div>
       </div>
-      <div id="sysNavDiag" style="font-size:.6rem;color:var(--fg2)">
-        <div style="color:var(--fg3)">loading...</div>
+
+      <!-- Harness Capability Modules -->
+      <div class="card" style="grid-column: span 2;">
+        <div class="card-hd">
+          <span class="card-title">Harness Capability Modules</span>
+          <span class="card-badge badge-ok">18 active</span>
+        </div>
+        <div class="svc-grid" style="max-height: 190px; overflow-y: auto; padding-right: 4px; gap: .4rem;">
+          <a href="/assets/modules/aq-eval-harness.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">AQ Eval
+              Harness</span><span class="svc-port">eval</span>
+          </a>
+          <a href="/assets/modules/aq-inference-bench.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">AQ Inference
+              Bench</span><span class="svc-port">eval</span>
+          </a>
+          <a href="/assets/modules/capability-intake.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Capability
+              Intake</span><span class="svc-port">admin</span>
+          </a>
+          <a href="/assets/modules/t3mp3st-intake.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">T3mp3st
+              Intake</span><span class="svc-port">redteam</span>
+          </a>
+          <a href="/assets/modules/auto-skill-selection.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Auto Skill
+              Selection</span><span class="svc-port">skills</span>
+          </a>
+          <a href="/assets/modules/tooling-manifest.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Tooling
+              Manifest</span><span class="svc-port">tools</span>
+          </a>
+          <a href="/assets/modules/local-agent-delegation.html" target="_blank" class="svc"
+            style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Local Agent
+              Delegation</span><span class="svc-port">runtime</span>
+          </a>
+          <a href="/assets/modules/playwright-mcp.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Playwright
+              MCP</span><span class="svc-port">tools</span>
+          </a>
+          <a href="/assets/modules/semgrep-mcp.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Semgrep MCP</span><span
+              class="svc-port">tools</span>
+          </a>
+          <a href="/assets/modules/github-mcp-readonly.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Github MCP
+              (RO)</span><span class="svc-port">tools</span>
+          </a>
+          <a href="/assets/modules/understand-anything.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Understand
+              Anything</span><span class="svc-port">skills</span>
+          </a>
+          <a href="/assets/modules/osint-research-store.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">OSINT Research
+              Store</span><span class="svc-port">data</span>
+          </a>
+          <a href="/assets/modules/aidb-rag-stores.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">AIDB RAG
+              Stores</span><span class="svc-port">data</span>
+          </a>
+          <a href="/assets/modules/workflow-blueprints.html" target="_blank" class="svc" style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Workflow
+              Blueprints</span><span class="svc-port">runtime</span>
+          </a>
+          <a href="/assets/modules/nixos-static-analysis.html" target="_blank" class="svc"
+            style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">NixOS Static
+              Analysis</span><span class="svc-port">security</span>
+          </a>
+          <a href="/assets/modules/dashboard-observability.html" target="_blank" class="svc"
+            style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Dashboard
+              Observability</span><span class="svc-port">observability</span>
+          </a>
+          <a href="/assets/modules/identity-kernel-service.html" target="_blank" class="svc"
+            style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Identity
+              Kernel</span><span class="svc-port">runtime</span>
+          </a>
+          <a href="/assets/modules/affective-engine-module.html" target="_blank" class="svc"
+            style="text-decoration:none;">
+            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Affective
+              Engine</span><span class="svc-port">runtime</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Database Metrics -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Database Health</span>
+          <span class="card-badge badge-info" id="dbBadge">--</span>
+        </div>
+        <div id="dbDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- OSI Layer Health -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">OSI Layer Health</span>
+          <span class="card-badge badge-info" id="osiBadge">--</span>
+        </div>
+        <div style="font-size:.58rem;color:var(--fg3);margin-bottom:.5rem">passed / total · <span
+            id="osiScore">--</span> · click layer to drill</div>
+        <div class="layer-rail">
+          <div class="layer" onclick="drillLayer('0')">
+            <div class="layer-id">L0</div>
+            <div class="layer-name">HW/OS</div>
+            <div class="layer-score" id="ls0">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('1')">
+            <div class="layer-id">L1</div>
+            <div class="layer-name">Data</div>
+            <div class="layer-score" id="ls1">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('2')">
+            <div class="layer-id">L2</div>
+            <div class="layer-name">Model</div>
+            <div class="layer-score" id="ls2">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('3')">
+            <div class="layer-id">L3</div>
+            <div class="layer-name">Orch</div>
+            <div class="layer-score" id="ls3">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('4')">
+            <div class="layer-id">L4</div>
+            <div class="layer-name">Net</div>
+            <div class="layer-score" id="ls4">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('5')">
+            <div class="layer-id">L5</div>
+            <div class="layer-name">Logic</div>
+            <div class="layer-score" id="ls5">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('6')">
+            <div class="layer-id">L6</div>
+            <div class="layer-name">Sec</div>
+            <div class="layer-score" id="ls6">--</div>
+          </div>
+          <div class="layer" onclick="drillLayer('7')">
+            <div class="layer-id">L7</div>
+            <div class="layer-name">UX</div>
+            <div class="layer-score" id="ls7">--</div>
+          </div>
+        </div>
+        <div class="check-list" id="checkList" style="margin-top:.6rem"></div>
+      </div>
+
+      <!-- Issues & Remediations -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Issues &amp; Remediations</span>
+          <span class="card-badge badge-ok" id="remedBadge">0 issues</span>
+        </div>
+        <div class="check-list" id="remediationList">
+          <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Audit Log -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Operator Audit Log</span>
+          <span class="card-badge badge-info">live</span>
+        </div>
+        <div class="check-list" id="auditList">
+          <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Hardware State -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Hardware State</span>
+          <span class="card-badge badge-info" id="hwStateBadge">--</span>
+        </div>
+        <div id="hwStateDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Inference Slots -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Inference Slots</span>
+          <span class="card-badge badge-info" id="slotBadge">--</span>
+        </div>
+        <div style="max-height:240px;overflow-y:auto">
+          <table class="coll-table">
+            <thead>
+              <tr>
+                <th>Server</th>
+                <th>Slot</th>
+                <th>Task</th>
+                <th>Usage</th>
+              </tr>
+            </thead>
+            <tbody id="slotBody">
+              <tr>
+                <td colspan="4" style="color:var(--fg3)">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Active Agent Tasks — Phase 171-C -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Active Agent Tasks</span>
+          <span class="card-badge badge-info" id="agentTaskBadge">--</span>
+        </div>
+        <div style="max-height:240px;overflow-y:auto">
+          <table class="coll-table">
+            <thead>
+              <tr>
+                <th>Task ID</th>
+                <th>Step</th>
+                <th>Last Tool</th>
+                <th>Elapsed</th>
+                <th>Objective</th>
+              </tr>
+            </thead>
+            <tbody id="agentTaskBody">
+              <tr>
+                <td colspan="5" style="color:var(--fg3)">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Resident Agent Cooperations — Local Harness -->
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Resident Agent Cooperations</span>
+          <span class="card-badge badge-ok" id="collabStateBadge">active</span>
+        </div>
+        <div style="font-size:.6rem;margin-bottom:.5rem;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:.25rem;">
+            <span style="color:var(--cyan);font-weight:700;">OBJECTIVE</span>
+            <span id="collabPhase" style="color:var(--mag);">phase --</span>
+          </div>
+          <div id="collabObjective"
+            style="color:var(--fg2);background:rgba(0,0,0,0.2);padding:.4rem;border-left:2px solid var(--cyan);border-radius:2px;margin-bottom:.5rem;font-family:var(--font);white-space:pre-wrap;max-height:80px;overflow-y:auto;">
+            Loading...</div>
+
+          <div style="color:var(--cyan);font-weight:700;margin-bottom:.25rem;">TODO SNAPSHOT</div>
+          <div id="collabTodo" style="color:var(--fg3);max-height:100px;overflow-y:auto;padding-left:.2rem;">Loading...
+          </div>
+        </div>
+        <div class="card-hd" style="margin-top:.6rem;margin-bottom:.4rem;padding-bottom:.2rem;">
+          <span class="card-title" style="font-size:.56rem;color:var(--cyan);">Agent Pulse Log</span>
+        </div>
+        <div id="collabPulse"
+          style="font-size:.52rem;color:var(--fg3);font-family:var(--hud);max-height:110px;overflow-y:auto;line-height:1.2;">
+          Loading...
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="panel-grid g2">
-    <!-- Services -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">AI Stack Services</span>
-        <span class="card-badge badge-info" id="svcCount">0/0</span>
+  <!-- ── INTELLIGENCE ── -->
+  <div class="panel" id="panel-intelligence">
+    <div class="panel-grid g2">
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Hybrid Coordinator</span><span class="card-badge badge-ok"
+            id="coordStatus">--</span></div>
+        <div id="coordMetrics">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
-      <div class="svc-grid" id="svcGrid">
-        <div class="svc"><div class="svc-dot" style="background:var(--fg3)"></div><span class="svc-name">loading...</span></div>
-      </div>
-    </div>
-
-    <!-- Functional Domains -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Capability Domains</span>
-        <span class="card-badge badge-info">registry</span>
-      </div>
-      <div class="svc-grid">
-        <div class="svc"><div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Security Systems</span><span class="svc-port">promoted</span></div>
-        <div class="svc"><div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">GIS / Scientific</span><span class="svc-port">promoted</span></div>
-        <div class="svc"><div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Mobile / Embedded</span><span class="svc-port">promoted</span></div>
-        <div class="svc"><div class="svc-dot" style="background:var(--cyan)"></div><span class="svc-name">Systems Software</span><span class="svc-port">default</span></div>
-        <div class="svc"><div class="svc-dot" style="background:var(--yel)"></div><span class="svc-name">MLOps / Trading / QA</span><span class="svc-port">scaffolded</span></div>
-        <div class="svc"><div class="svc-dot" style="background:var(--yel)"></div><span class="svc-name">OSINT Systems</span><span class="svc-port">proposed</span></div>
-      </div>
-    </div>
-
-    <!-- Database Metrics -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Database Health</span>
-        <span class="card-badge badge-info" id="dbBadge">--</span>
-      </div>
-      <div id="dbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-
-    <!-- OSI Layer Health -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">OSI Layer Health</span>
-        <span class="card-badge badge-info" id="osiBadge">--</span>
-      </div>
-      <div style="font-size:.58rem;color:var(--fg3);margin-bottom:.5rem">passed / total  ·  <span id="osiScore">--</span>  ·  click layer to drill</div>
-      <div class="layer-rail">
-        <div class="layer" onclick="drillLayer('0')"><div class="layer-id">L0</div><div class="layer-name">HW/OS</div><div class="layer-score" id="ls0">--</div></div>
-        <div class="layer" onclick="drillLayer('1')"><div class="layer-id">L1</div><div class="layer-name">Data</div><div class="layer-score" id="ls1">--</div></div>
-        <div class="layer" onclick="drillLayer('2')"><div class="layer-id">L2</div><div class="layer-name">Model</div><div class="layer-score" id="ls2">--</div></div>
-        <div class="layer" onclick="drillLayer('3')"><div class="layer-id">L3</div><div class="layer-name">Orch</div><div class="layer-score" id="ls3">--</div></div>
-        <div class="layer" onclick="drillLayer('4')"><div class="layer-id">L4</div><div class="layer-name">Net</div><div class="layer-score" id="ls4">--</div></div>
-        <div class="layer" onclick="drillLayer('5')"><div class="layer-id">L5</div><div class="layer-name">Logic</div><div class="layer-score" id="ls5">--</div></div>
-        <div class="layer" onclick="drillLayer('6')"><div class="layer-id">L6</div><div class="layer-name">Sec</div><div class="layer-score" id="ls6">--</div></div>
-        <div class="layer" onclick="drillLayer('7')"><div class="layer-id">L7</div><div class="layer-name">UX</div><div class="layer-score" id="ls7">--</div></div>
-      </div>
-      <div class="check-list" id="checkList" style="margin-top:.6rem"></div>
-    </div>
-
-    <!-- Issues & Remediations -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Issues &amp; Remediations</span>
-        <span class="card-badge badge-ok" id="remedBadge">0 issues</span>
-      </div>
-      <div class="check-list" id="remediationList">
-        <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
-      </div>
-    </div>
-
-    <!-- Audit Log -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Operator Audit Log</span>
-        <span class="card-badge badge-info">live</span>
-      </div>
-      <div class="check-list" id="auditList">
-        <div style="color:var(--fg3);font-size:.6rem;padding:.4rem">Loading...</div>
-      </div>
-    </div>
-
-    <!-- Hardware State -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Hardware State</span>
-        <span class="card-badge badge-info" id="hwStateBadge">--</span>
-      </div>
-      <div id="hwStateDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-
-    <!-- Inference Slots -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Inference Slots</span>
-        <span class="card-badge badge-info" id="slotBadge">--</span>
-      </div>
-      <div style="max-height:240px;overflow-y:auto">
-        <table class="coll-table">
-          <thead><tr><th>Server</th><th>Slot</th><th>Task</th><th>Usage</th></tr></thead>
-          <tbody id="slotBody"><tr><td colspan="4" style="color:var(--fg3)">Loading...</td></tr></tbody>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Task Routing</span><span
+            class="card-badge badge-info">classifier</span></div>
+        <div style="font-size:.6rem;color:var(--fg3);margin-bottom:.4rem">Total: <span id="routeTotal">--</span>
+          &nbsp;·&nbsp; Local: <span id="routeLocalP">--</span></div>
+        <table class="route-table">
+          <thead>
+            <tr>
+              <th>Intent / Type</th>
+              <th>Backend</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody id="routeBody">
+            <tr>
+              <td colspan="3" style="color:var(--fg3)">Loading...</td>
+            </tr>
+          </tbody>
         </table>
       </div>
-    </div>
-
-    <!-- Active Agent Tasks — Phase 171-C -->
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Active Agent Tasks</span>
-        <span class="card-badge badge-info" id="agentTaskBadge">--</span>
+      <div class="card" id="section-task-classifier">
+        <div class="card-hd"><span class="card-title">Task Classifier Stats</span><span class="card-badge badge-info"
+            id="taskClassBadge">--</span></div>
+        <div id="taskClassDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
-      <div style="max-height:240px;overflow-y:auto">
-        <table class="coll-table">
-          <thead><tr><th>Task ID</th><th>Step</th><th>Last Tool</th><th>Elapsed</th><th>Objective</th></tr></thead>
-          <tbody id="agentTaskBody"><tr><td colspan="5" style="color:var(--fg3)">Loading...</td></tr></tbody>
-        </table>
+      <div class="card" id="section-model-lifecycle">
+        <div class="card-hd"><span class="card-title">Model Lifecycle</span><span class="card-badge badge-info"
+            id="mlBadge">--</span></div>
+        <div id="modelList">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Switchboard Profiles</span><span class="card-badge badge-ok"
+            id="swBadge">--</span></div>
+        <div id="profileList" style="display:flex;flex-direction:column;gap:.5rem">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">AIDB Health</span><span class="card-badge badge-info"
+            id="aidbBadge">--</span></div>
+        <div id="aidbDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Drop Zone</span><span class="card-badge badge-info"
+            id="dropZoneBadge">--</span></div>
+        <div id="dropZoneDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Attention Required</span><span class="card-badge badge-warn"
+            id="alertsBadge">--</span></div>
+        <div id="alertsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Learning &amp; Memory</span>
+          <span class="card-badge badge-ok" id="learningBadge">active</span>
+        </div>
+        <div id="learningDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+        <div id="learningActivity" style="margin-top:.5rem"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Drift Analysis</span><span class="card-badge badge-ok"
+            id="driftBadge">--</span></div>
+        <div id="driftDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Eval Trends (RAGAS)</span><span
+            class="card-badge badge-info">quality</span></div>
+        <div class="fw-row"><span class="fk">Answer Relevance</span><span class="fv ok" id="evalAR">--</span></div>
+        <div class="fw-row"><span class="fk">Context Precision</span><span class="fv ok" id="evalCP">--</span></div>
+        <div class="fw-row"><span class="fk">Faithfulness</span><span class="fv ok" id="evalFaith">--</span></div>
+        <div class="fw-row"><span class="fk">Sample Count</span><span class="fv" id="evalSamples">--</span></div>
+        <div class="fw-row"><span class="fk">Eval Runs</span><span class="fv" id="evalRunCount">--</span></div>
+        <div id="evalByModel"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Verifier Self-Consistency</span><span
+            class="card-badge badge-ok">auto</span></div>
+        <div id="verifierDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Knowledge Observatory</span>
+          <span class="card-badge badge-info" id="knowledgeBadge">--</span>
+        </div>
+        <div id="knowledgeDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+        <div id="collectionList" style="margin-top:.5rem"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Logic Pattern Map</span>
+          <span class="card-badge badge-info" id="logicPatternsBadge">--</span>
+        </div>
+        <div id="logicPatternsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok"
+            id="agenticBadge">--</span></div>
+        <div id="agenticDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Agent Eval Trends</span><span class="card-badge badge-info"
+            id="agentEvalBadge">--</span></div>
+        <div id="agentEvalDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Performance Hotspots</span><span class="card-badge badge-ok"
+            id="perfHotspotBadge">--</span></div>
+        <div id="perfHotspotDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Orchestration Sessions</span><span class="card-badge badge-info"
+            id="orchSessionBadge">--</span></div>
+        <div id="orchSessionDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">RAG Pipeline Health</span><span class="card-badge badge-ok"
+            id="ragHealthBadge">--</span></div>
+        <div id="ragHealthDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Routing Frontdoor</span><span class="card-badge badge-info"
+            id="routingConfigBadge">--</span></div>
+        <div id="routingConfigDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Homeostasis &amp; Remediation</span><span
+            class="card-badge badge-ok" id="homeostasisBadge">--</span></div>
+        <div id="homeostasisDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">MLFQ Scheduler</span><span class="card-badge badge-info"
+            id="schedulerBadge">--</span></div>
+        <div id="schedulerDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Context Lifecycle (CLM)</span><span class="card-badge badge-info"
+            id="clmBadge">--</span></div>
+        <div id="clmDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Memory Broker &amp; Crystallization</span><span
+            class="card-badge badge-info" id="memoryBrokerBadge">--</span></div>
+        <div id="memoryBrokerDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Affective State</span><span class="card-badge badge-info"
+            id="affectiveBadge">--</span></div>
+        <div id="affectiveDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Hints Registry</span><span class="card-badge badge-info"
+            id="hintsRegistryBadge">--</span></div>
+        <div id="hintsRegistryDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">AI Coordinator</span><span class="card-badge badge-info"
+            id="aiCoordBadge">--</span></div>
+        <div id="aiCoordDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Reasoning Profiles</span><span class="card-badge badge-info"
+            id="reasoningProfilesBadge">--</span></div>
+        <div id="reasoningProfilesDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Agent Ops Status</span><span class="card-badge badge-info"
+            id="agentOpsBadge">--</span></div>
+        <div id="agentOpsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Agent Lessons</span><span class="card-badge badge-info"
+            id="agentLessonsBadge">--</span></div>
+        <div id="agentLessonsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Memory Statistics</span><span class="card-badge badge-info"
+            id="memStatsBadge">--</span></div>
+        <div id="memStatsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-local-insights">
+        <div class="card-hd"><span class="card-title">Local Insights (aq-insights)</span><span
+            class="card-badge badge-info" id="localInsightsBadge">--</span></div>
+        <div id="localInsightsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <!-- Phase 164D — Operator Intelligence Bridge panel -->
+      <div class="card" id="section-oib">
+        <div class="card-hd"><span class="card-title">Operator Intelligence</span><span class="card-badge badge-info"
+            id="oibBadge">--</span></div>
+        <div id="oibDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+        <div id="oibCards" style="margin-top:.5rem"></div>
+      </div>
+      <div class="card" id="section-query-traces">
+        <div class="card-hd"><span class="card-title">Query Traces</span><span class="card-badge badge-info"
+            id="queryTracesBadge">--</span></div>
+        <div id="queryTracesDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-trace-gantt">
+        <div class="card-hd"><span class="card-title">Trace Timeline (Gantt)</span><span class="card-badge badge-info"
+            id="traceGanttBadge">--</span></div>
+        <div id="traceGanttDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-adk-status">
+        <div class="card-hd"><span class="card-title">ADK Status</span><span class="card-badge badge-info"
+            id="adkStatusBadge">--</span></div>
+        <div id="adkStatusDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-routing-decisions">
+        <div class="card-hd"><span class="card-title">Routing Decisions</span><span class="card-badge badge-info"
+            id="routingDecisionsBadge">--</span></div>
+        <div id="routingDecisionsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-hints-stats">
+        <div class="card-hd"><span class="card-title">Hints Statistics</span><span class="card-badge badge-info"
+            id="hintsStatsBadge">--</span></div>
+        <div id="hintsStatsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-memory-supersede">
+        <div class="card-hd"><span class="card-title">Memory Supersession History</span><span
+            class="card-badge badge-info" id="memorySupersedeBadge">--</span></div>
+        <div id="memorySupersedeDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-cache-analytics">
+        <div class="card-hd"><span class="card-title">Cache Analytics</span><span class="card-badge badge-info"
+            id="cacheAnalyticsBadge">--</span></div>
+        <div id="cacheAnalyticsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-tools-performance">
+        <div class="card-hd"><span class="card-title">Tool Call Performance</span><span class="card-badge badge-info"
+            id="toolsPerfBadge">--</span></div>
+        <div id="toolsPerfDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-tools-heatmap">
+        <div class="card-hd"><span class="card-title">Tool Execution Heatmap</span><span class="card-badge badge-info"
+            id="toolsHeatmapBadge">--</span></div>
+        <div id="toolsHeatmapDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-ai-recommendations">
+        <div class="card-hd"><span class="card-title">AI Recommendations</span><span class="card-badge badge-info"
+            id="aiRecsBadge">--</span></div>
+        <div id="aiRecsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-query-complexity">
+        <div class="card-hd"><span class="card-title">Query Complexity &amp; Latency</span><span
+            class="card-badge badge-info" id="queryComplexityBadge">--</span></div>
+        <div id="queryComplexityDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-hints-effectiveness">
+        <div class="card-hd"><span class="card-title">Hints Effectiveness</span><span class="card-badge badge-info"
+            id="hintsEffBadge">--</span></div>
+        <div id="hintsEffDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-discovery-signals">
+        <div class="card-hd"><span class="card-title">Discovery Signals</span><span class="card-badge badge-info"
+            id="discSigBadge">--</span></div>
+        <div id="discSigDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-improvement-candidates">
+        <div class="card-hd"><span class="card-title">Improvement Candidates</span><span class="card-badge badge-info"
+            id="improvCandBadge">--</span></div>
+        <div id="improvCandDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-collab-patterns">
+        <div class="card-hd"><span class="card-title">Collaboration Patterns</span><span class="card-badge badge-info"
+            id="collabPatBadge">--</span></div>
+        <div id="collabPatDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-a2a-readiness">
+        <div class="card-hd"><span class="card-title">A2A Protocol Readiness</span><span class="card-badge badge-info"
+            id="a2aReadyBadge">--</span></div>
+        <div id="a2aReadyDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-workflow-compliance">
+        <div class="card-hd"><span class="card-title">Workflow Compliance</span><span class="card-badge badge-info"
+            id="wfComplianceBadge">--</span></div>
+        <div id="wfComplianceDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-system-health-insights">
+        <div class="card-hd"><span class="card-title">System Health Assessment</span><span class="card-badge badge-info"
+            id="sysHealthInsightsBadge">--</span></div>
+        <div id="sysHealthInsightsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-ai-metrics-detail">
+        <div class="card-hd"><span class="card-title">AI-Specific Metrics</span><span class="card-badge badge-info"
+            id="aiMetricsDetailBadge">--</span></div>
+        <div id="aiMetricsDetailDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-agent-outcomes">
+        <div class="card-hd"><span class="card-title">Agent Outcomes Gauge</span><span class="card-badge badge-info"
+            id="agentOutcomesBadge">--</span></div>
+        <div id="agentOutcomesDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-mcp-status">
+        <div class="card-hd"><span class="card-title">MCP Protocol Status</span><span class="card-badge badge-info"
+            id="mcpStatusBadge">--</span></div>
+        <div id="mcpStatusDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <!-- Phase 69.2 — Live Event Feed -->
+      <div class="card" id="section-live-events">
+        <div class="card-hd"><span class="card-title">Live Event Feed</span><span class="card-badge badge-info"
+            id="liveEventsBadge">connecting</span></div>
+        <div id="liveEventsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Connecting to agent-state WebSocket...</div>
+        </div>
+      </div>
+      <!-- Phase 69.4 — Fact Chain Timeline -->
+      <div class="card" id="section-fact-chain">
+        <div class="card-hd"><span class="card-title">Fact Chain Timeline</span><span class="card-badge badge-info"
+            id="factChainBadge">--</span></div>
+        <div id="factChainDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- ── INTELLIGENCE ── -->
-<div class="panel" id="panel-intelligence">
-  <div class="panel-grid g2">
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Hybrid Coordinator</span><span class="card-badge badge-ok" id="coordStatus">--</span></div>
-      <div id="coordMetrics"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Task Routing</span><span class="card-badge badge-info">classifier</span></div>
-      <div style="font-size:.6rem;color:var(--fg3);margin-bottom:.4rem">Total: <span id="routeTotal">--</span> &nbsp;·&nbsp; Local: <span id="routeLocalP">--</span></div>
-      <table class="route-table"><thead><tr><th>Intent / Type</th><th>Backend</th><th>Count</th></tr></thead>
-        <tbody id="routeBody"><tr><td colspan="3" style="color:var(--fg3)">Loading...</td></tr></tbody>
-      </table>
-    </div>
-    <div class="card" id="section-task-classifier">
-      <div class="card-hd"><span class="card-title">Task Classifier Stats</span><span class="card-badge badge-info" id="taskClassBadge">--</span></div>
-      <div id="taskClassDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-model-lifecycle">
-      <div class="card-hd"><span class="card-title">Model Lifecycle</span><span class="card-badge badge-info" id="mlBadge">--</span></div>
-      <div id="modelList"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Switchboard Profiles</span><span class="card-badge badge-ok" id="swBadge">--</span></div>
-      <div id="profileList" style="display:flex;flex-direction:column;gap:.5rem"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">AIDB Health</span><span class="card-badge badge-info" id="aidbBadge">--</span></div>
-      <div id="aidbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Drop Zone</span><span class="card-badge badge-info" id="dropZoneBadge">--</span></div>
-      <div id="dropZoneDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Attention Required</span><span class="card-badge badge-warn" id="alertsBadge">--</span></div>
-      <div id="alertsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Learning &amp; Memory</span>
-        <span class="card-badge badge-ok" id="learningBadge">active</span>
+  <!-- ── SECURITY ── -->
+  <div class="panel" id="panel-security">
+    <div class="panel-grid g2">
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Firewall Status</span><span class="card-badge badge-ok"
+            id="fwBadge">--</span></div>
+        <div id="fwDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
-      <div id="learningDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-      <div id="learningActivity" style="margin-top:.5rem"></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Drift Analysis</span><span class="card-badge badge-ok" id="driftBadge">--</span></div>
-      <div id="driftDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Eval Trends (RAGAS)</span><span class="card-badge badge-info">quality</span></div>
-      <div class="fw-row"><span class="fk">Answer Relevance</span><span class="fv ok" id="evalAR">--</span></div>
-      <div class="fw-row"><span class="fk">Context Precision</span><span class="fv ok" id="evalCP">--</span></div>
-      <div class="fw-row"><span class="fk">Faithfulness</span><span class="fv ok" id="evalFaith">--</span></div>
-      <div class="fw-row"><span class="fk">Sample Count</span><span class="fv" id="evalSamples">--</span></div>
-      <div class="fw-row"><span class="fk">Eval Runs</span><span class="fv" id="evalRunCount">--</span></div>
-      <div id="evalByModel"></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Verifier Self-Consistency</span><span class="card-badge badge-ok">auto</span></div>
-      <div id="verifierDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Knowledge Observatory</span>
-        <span class="card-badge badge-info" id="knowledgeBadge">--</span>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Security Monitor</span><span
+            class="card-badge badge-ok">scanning</span></div>
+        <div id="secMonitor">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
-      <div id="knowledgeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-      <div id="collectionList" style="margin-top:.5rem"></div>
-    </div>
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Logic Pattern Map</span>
-        <span class="card-badge badge-info" id="logicPatternsBadge">--</span>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Circuit Breakers</span><span class="card-badge badge-ok"
+            id="cbBadge">--</span></div>
+        <div id="cbDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
-      <div id="logicPatternsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Agentic Readiness</span><span class="card-badge badge-ok" id="agenticBadge">--</span></div>
-      <div id="agenticDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Agent Eval Trends</span><span class="card-badge badge-info" id="agentEvalBadge">--</span></div>
-      <div id="agentEvalDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Performance Hotspots</span><span class="card-badge badge-ok" id="perfHotspotBadge">--</span></div>
-      <div id="perfHotspotDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Orchestration Sessions</span><span class="card-badge badge-info" id="orchSessionBadge">--</span></div>
-      <div id="orchSessionDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">RAG Pipeline Health</span><span class="card-badge badge-ok" id="ragHealthBadge">--</span></div>
-      <div id="ragHealthDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Routing Frontdoor</span><span class="card-badge badge-info" id="routingConfigBadge">--</span></div>
-      <div id="routingConfigDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Homeostasis &amp; Remediation</span><span class="card-badge badge-ok" id="homeostasisBadge">--</span></div>
-      <div id="homeostasisDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">MLFQ Scheduler</span><span class="card-badge badge-info" id="schedulerBadge">--</span></div>
-      <div id="schedulerDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Context Lifecycle (CLM)</span><span class="card-badge badge-info" id="clmBadge">--</span></div>
-      <div id="clmDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Memory Broker &amp; Crystallization</span><span class="card-badge badge-info" id="memoryBrokerBadge">--</span></div>
-      <div id="memoryBrokerDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Affective State</span><span class="card-badge badge-info" id="affectiveBadge">--</span></div>
-      <div id="affectiveDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Hints Registry</span><span class="card-badge badge-info" id="hintsRegistryBadge">--</span></div>
-      <div id="hintsRegistryDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">AI Coordinator</span><span class="card-badge badge-info" id="aiCoordBadge">--</span></div>
-      <div id="aiCoordDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Reasoning Profiles</span><span class="card-badge badge-info" id="reasoningProfilesBadge">--</span></div>
-      <div id="reasoningProfilesDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Agent Ops Status</span><span class="card-badge badge-info" id="agentOpsBadge">--</span></div>
-      <div id="agentOpsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Agent Lessons</span><span class="card-badge badge-info" id="agentLessonsBadge">--</span></div>
-      <div id="agentLessonsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Memory Statistics</span><span class="card-badge badge-info" id="memStatsBadge">--</span></div>
-      <div id="memStatsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-local-insights">
-      <div class="card-hd"><span class="card-title">Local Insights (aq-insights)</span><span class="card-badge badge-info" id="localInsightsBadge">--</span></div>
-      <div id="localInsightsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <!-- Phase 164D — Operator Intelligence Bridge panel -->
-    <div class="card" id="section-oib">
-      <div class="card-hd"><span class="card-title">Operator Intelligence</span><span class="card-badge badge-info" id="oibBadge">--</span></div>
-      <div id="oibDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-      <div id="oibCards" style="margin-top:.5rem"></div>
-    </div>
-    <div class="card" id="section-query-traces">
-      <div class="card-hd"><span class="card-title">Query Traces</span><span class="card-badge badge-info" id="queryTracesBadge">--</span></div>
-      <div id="queryTracesDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-trace-gantt">
-      <div class="card-hd"><span class="card-title">Trace Timeline (Gantt)</span><span class="card-badge badge-info" id="traceGanttBadge">--</span></div>
-      <div id="traceGanttDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-adk-status">
-      <div class="card-hd"><span class="card-title">ADK Status</span><span class="card-badge badge-info" id="adkStatusBadge">--</span></div>
-      <div id="adkStatusDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-routing-decisions">
-      <div class="card-hd"><span class="card-title">Routing Decisions</span><span class="card-badge badge-info" id="routingDecisionsBadge">--</span></div>
-      <div id="routingDecisionsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-hints-stats">
-      <div class="card-hd"><span class="card-title">Hints Statistics</span><span class="card-badge badge-info" id="hintsStatsBadge">--</span></div>
-      <div id="hintsStatsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-memory-supersede">
-      <div class="card-hd"><span class="card-title">Memory Supersession History</span><span class="card-badge badge-info" id="memorySupersedeBadge">--</span></div>
-      <div id="memorySupersedeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-cache-analytics">
-      <div class="card-hd"><span class="card-title">Cache Analytics</span><span class="card-badge badge-info" id="cacheAnalyticsBadge">--</span></div>
-      <div id="cacheAnalyticsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-tools-performance">
-      <div class="card-hd"><span class="card-title">Tool Call Performance</span><span class="card-badge badge-info" id="toolsPerfBadge">--</span></div>
-      <div id="toolsPerfDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-tools-heatmap">
-      <div class="card-hd"><span class="card-title">Tool Execution Heatmap</span><span class="card-badge badge-info" id="toolsHeatmapBadge">--</span></div>
-      <div id="toolsHeatmapDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-ai-recommendations">
-      <div class="card-hd"><span class="card-title">AI Recommendations</span><span class="card-badge badge-info" id="aiRecsBadge">--</span></div>
-      <div id="aiRecsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-query-complexity">
-      <div class="card-hd"><span class="card-title">Query Complexity &amp; Latency</span><span class="card-badge badge-info" id="queryComplexityBadge">--</span></div>
-      <div id="queryComplexityDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-hints-effectiveness">
-      <div class="card-hd"><span class="card-title">Hints Effectiveness</span><span class="card-badge badge-info" id="hintsEffBadge">--</span></div>
-      <div id="hintsEffDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-discovery-signals">
-      <div class="card-hd"><span class="card-title">Discovery Signals</span><span class="card-badge badge-info" id="discSigBadge">--</span></div>
-      <div id="discSigDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-improvement-candidates">
-      <div class="card-hd"><span class="card-title">Improvement Candidates</span><span class="card-badge badge-info" id="improvCandBadge">--</span></div>
-      <div id="improvCandDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-collab-patterns">
-      <div class="card-hd"><span class="card-title">Collaboration Patterns</span><span class="card-badge badge-info" id="collabPatBadge">--</span></div>
-      <div id="collabPatDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-a2a-readiness">
-      <div class="card-hd"><span class="card-title">A2A Protocol Readiness</span><span class="card-badge badge-info" id="a2aReadyBadge">--</span></div>
-      <div id="a2aReadyDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-workflow-compliance">
-      <div class="card-hd"><span class="card-title">Workflow Compliance</span><span class="card-badge badge-info" id="wfComplianceBadge">--</span></div>
-      <div id="wfComplianceDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-system-health-insights">
-      <div class="card-hd"><span class="card-title">System Health Assessment</span><span class="card-badge badge-info" id="sysHealthInsightsBadge">--</span></div>
-      <div id="sysHealthInsightsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-ai-metrics-detail">
-      <div class="card-hd"><span class="card-title">AI-Specific Metrics</span><span class="card-badge badge-info" id="aiMetricsDetailBadge">--</span></div>
-      <div id="aiMetricsDetailDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-agent-outcomes">
-      <div class="card-hd"><span class="card-title">Agent Outcomes Gauge</span><span class="card-badge badge-info" id="agentOutcomesBadge">--</span></div>
-      <div id="agentOutcomesDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-mcp-status">
-      <div class="card-hd"><span class="card-title">MCP Protocol Status</span><span class="card-badge badge-info" id="mcpStatusBadge">--</span></div>
-      <div id="mcpStatusDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <!-- Phase 69.2 — Live Event Feed -->
-    <div class="card" id="section-live-events">
-      <div class="card-hd"><span class="card-title">Live Event Feed</span><span class="card-badge badge-info" id="liveEventsBadge">connecting</span></div>
-      <div id="liveEventsDetails"><div style="color:var(--fg3);font-size:.6rem">Connecting to agent-state WebSocket...</div></div>
-    </div>
-    <!-- Phase 69.4 — Fact Chain Timeline -->
-    <div class="card" id="section-fact-chain">
-      <div class="card-hd"><span class="card-title">Fact Chain Timeline</span><span class="card-badge badge-info" id="factChainBadge">--</span></div>
-      <div id="factChainDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">AI Harness &amp; Hardening</span><span
+            class="card-badge badge-info" id="harnessBadge">--</span></div>
+        <div id="hardeningDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+        <div id="harnessScorecard"
+          style="margin-top:.6rem;padding-top:.5rem;border-top:1px solid rgba(255,255,255,.05)"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Behavioral Drift</span><span class="card-badge badge-info"
+            id="secDriftBadge">--</span></div>
+        <div id="secDriftDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Agent Pool</span><span class="card-badge badge-info"
+            id="agentPoolBadge">--</span></div>
+        <div id="agentPoolDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Security Compliance</span><span class="card-badge badge-info"
+            id="secComplianceBadge">--</span></div>
+        <div id="secComplianceDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Vulnerability Audit</span><span class="card-badge badge-ok"
+            id="vulnAuditBadge">--</span></div>
+        <div id="vulnAuditDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Audit Log Summary</span><span class="card-badge badge-info"
+            id="auditSummaryBadge">--</span></div>
+        <div id="auditSummaryDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-tool-deny-stats">
+        <div class="card-hd"><span class="card-title">Auth Profile Tool Denials</span><span class="card-badge badge-ok"
+            id="toolDenyBadge">--</span></div>
+        <div id="toolDenyDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-health-audit">
+        <div class="card-hd"><span class="card-title">Health Audit Trail</span><span class="card-badge badge-info"
+            id="healthAuditBadge">--</span></div>
+        <div id="healthAuditDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-health-alerts">
+        <div class="card-hd"><span class="card-title">Health Alerts</span><span class="card-badge badge-ok"
+            id="healthAlertsBadge">--</span></div>
+        <div id="healthAlertsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-audit-integrity">
+        <div class="card-hd"><span class="card-title">Audit Chain Integrity</span><span class="card-badge badge-ok"
+            id="auditIntegrityBadge">--</span></div>
+        <div id="auditIntegrityDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-crowdsec">
+        <div class="card-hd"><span class="card-title">CrowdSec IDS</span><span class="card-badge badge-info"
+            id="crowdsecBadge">--</span></div>
+        <div id="crowdsecDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-firewall-rules">
+        <div class="card-hd"><span class="card-title">nftables Firewall Rules</span><span class="card-badge badge-info"
+            id="fwRulesBadge">--</span></div>
+        <div id="fwRulesDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-firewall-audit">
+        <div class="card-hd"><span class="card-title">Firewall Audit Log</span><span class="card-badge badge-info"
+            id="fwAuditBadge">--</span></div>
+        <div id="fwAuditDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-prometheus-scrape">
+        <div class="card-hd"><span class="card-title">Prometheus Scrape Status</span><span class="card-badge badge-ok"
+            id="promScrapeBadge">--</span></div>
+        <div id="promScrapeDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ── SECURITY ── -->
-<div class="panel" id="panel-security">
-  <div class="panel-grid g2">
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Firewall Status</span><span class="card-badge badge-ok" id="fwBadge">--</span></div>
-      <div id="fwDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Security Monitor</span><span class="card-badge badge-ok">scanning</span></div>
-      <div id="secMonitor"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Circuit Breakers</span><span class="card-badge badge-ok" id="cbBadge">--</span></div>
-      <div id="cbDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">AI Harness &amp; Hardening</span><span class="card-badge badge-info" id="harnessBadge">--</span></div>
-      <div id="hardeningDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-      <div id="harnessScorecard" style="margin-top:.6rem;padding-top:.5rem;border-top:1px solid rgba(255,255,255,.05)"></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Behavioral Drift</span><span class="card-badge badge-info" id="secDriftBadge">--</span></div>
-      <div id="secDriftDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Agent Pool</span><span class="card-badge badge-info" id="agentPoolBadge">--</span></div>
-      <div id="agentPoolDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Security Compliance</span><span class="card-badge badge-info" id="secComplianceBadge">--</span></div>
-      <div id="secComplianceDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Vulnerability Audit</span><span class="card-badge badge-ok" id="vulnAuditBadge">--</span></div>
-      <div id="vulnAuditDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Audit Log Summary</span><span class="card-badge badge-info" id="auditSummaryBadge">--</span></div>
-      <div id="auditSummaryDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-tool-deny-stats">
-      <div class="card-hd"><span class="card-title">Auth Profile Tool Denials</span><span class="card-badge badge-ok" id="toolDenyBadge">--</span></div>
-      <div id="toolDenyDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-health-audit">
-      <div class="card-hd"><span class="card-title">Health Audit Trail</span><span class="card-badge badge-info" id="healthAuditBadge">--</span></div>
-      <div id="healthAuditDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-health-alerts">
-      <div class="card-hd"><span class="card-title">Health Alerts</span><span class="card-badge badge-ok" id="healthAlertsBadge">--</span></div>
-      <div id="healthAlertsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-audit-integrity">
-      <div class="card-hd"><span class="card-title">Audit Chain Integrity</span><span class="card-badge badge-ok" id="auditIntegrityBadge">--</span></div>
-      <div id="auditIntegrityDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-crowdsec">
-      <div class="card-hd"><span class="card-title">CrowdSec IDS</span><span class="card-badge badge-info" id="crowdsecBadge">--</span></div>
-      <div id="crowdsecDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-firewall-rules">
-      <div class="card-hd"><span class="card-title">nftables Firewall Rules</span><span class="card-badge badge-info" id="fwRulesBadge">--</span></div>
-      <div id="fwRulesDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-firewall-audit">
-      <div class="card-hd"><span class="card-title">Firewall Audit Log</span><span class="card-badge badge-info" id="fwAuditBadge">--</span></div>
-      <div id="fwAuditDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-prometheus-scrape">
-      <div class="card-hd"><span class="card-title">Prometheus Scrape Status</span><span class="card-badge badge-ok" id="promScrapeBadge">--</span></div>
-      <div id="promScrapeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- ── OPERATIONS ── -->
-<div class="panel" id="panel-operations">
-  <div class="panel-grid g2">
-    <div class="card">
-      <div class="card-hd"><span class="card-title">QA Phase 0 Status</span><span class="card-badge badge-info" id="qaBadge">--</span></div>
-      <div class="fw-row"><span class="fk">Passed</span><span class="fv ok" id="qaPassed">--</span></div>
-      <div class="fw-row"><span class="fk">Failed</span><span class="fv err" id="qaFailed">--</span></div>
-      <div class="fw-row"><span class="fk">Skipped</span><span class="fv warn" id="qaSkipped">--</span></div>
-      <div class="fw-row"><span class="fk">Duration</span><span class="fv" id="qaDuration">--</span></div>
-      <div class="fw-row"><span class="fk">Result</span><span class="fv" id="qaStatus">pending</span></div>
-      <div style="margin-top:.65rem"><button class="mini-btn" onclick="loadQA()">Refresh QA</button></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Runtime Summary</span><span class="card-badge badge-info">coord</span></div>
-      <div id="runtimeDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card full">
-      <div class="card-hd"><span class="card-title">Deployment Operations</span><span class="card-badge badge-info" id="deployBadge">--</span></div>
-      <div id="deployDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">PRSI Orchestrator Queue</span><span class="card-badge badge-info" id="prsiBadge">--</span></div>
-      <div class="check-list" id="prsiList"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">AI Harness Overview</span><span class="card-badge badge-ok" id="harnessOvBadge">--</span></div>
-      <div id="harnessDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Model Optimization</span><span class="card-badge badge-info" id="modelOptBadge">--</span></div>
-      <div id="modelOptDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Learning Pipeline</span><span class="card-badge badge-ok" id="learnPipelineBadge">active</span></div>
-      <div id="learnPipelineDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Integration Health</span><span class="card-badge badge-info" id="integrationHealthBadge">--</span></div>
-      <div id="integrationHealthDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">RALPH Task Tracker</span><span class="card-badge badge-info" id="ralphBadge">--</span></div>
-      <div id="ralphDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Training Data Capture</span><span class="card-badge badge-info" id="trainingDataBadge">--</span></div>
-      <div id="trainingDataDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Training Pipeline</span><span class="card-badge badge-info" id="trainingHealthBadge">--</span></div>
-      <div id="trainingHealthDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Runtime Parity Scorecard</span><span class="card-badge badge-info" id="parityBadge">--</span></div>
-      <div id="parityDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Fleet Runtimes</span><span class="card-badge badge-info" id="fleetBadge">--</span></div>
-      <div id="fleetDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Budget Guardrails</span><span class="card-badge badge-info" id="budgetBadge">--</span></div>
-      <div id="budgetDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Service Ports Registry</span><span class="card-badge badge-info" id="portsRegBadge">--</span></div>
-      <div id="portsRegDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">Health Aggregate</span><span class="card-badge badge-ok" id="healthAggBadge">--</span></div>
-      <div id="healthAggDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-testing-suites">
-      <div class="card-hd"><span class="card-title">Testing Suites</span><span class="card-badge badge-info" id="testingSuitesBadge">--</span></div>
-      <div id="testingSuitesDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-workflow-stats">
-      <div class="card-hd"><span class="card-title">Workflow Statistics</span><span class="card-badge badge-info" id="workflowStatsBadge">--</span></div>
-      <div id="workflowStatsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-collaboration">
-      <div class="card-hd"><span class="card-title">Collaboration Metrics</span><span class="card-badge badge-info" id="collaborationBadge">--</span></div>
-      <div id="collaborationDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-harness-scorecard">
-      <div class="card-hd"><span class="card-title">Harness Scorecard</span><span class="card-badge badge-info" id="harnessScoreBadge">--</span></div>
-      <div id="harnessScoreDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-containers">
-      <div class="card-hd"><span class="card-title">Services / Containers</span><span class="card-badge badge-info" id="containersBadge">--</span></div>
-      <div id="containersDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-active-deployments">
-      <div class="card-hd"><span class="card-title">Active Deployments</span><span class="card-badge badge-info" id="activeDeploysBadge">--</span></div>
-      <div id="activeDeploysDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-harness-stats">
-      <div class="card-hd"><span class="card-title">Harness Run Stats</span><span class="card-badge badge-info" id="harnessStatsBadge">--</span></div>
-      <div id="harnessStatsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-health-categories">
-      <div class="card-hd"><span class="card-title">Health by Category</span><span class="card-badge badge-ok" id="healthCatBadge">--</span></div>
-      <div id="healthCatDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-ai-services-detail">
-      <div class="card-hd"><span class="card-title">AI Services Health Detail</span><span class="card-badge badge-ok" id="aiSvcDetailBadge">--</span></div>
-      <div id="aiSvcDetailDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-dashboard-config">
-      <div class="card-hd"><span class="card-title">Dashboard Runtime Config</span><span class="card-badge badge-info" id="dashConfigBadge">--</span></div>
-      <div id="dashConfigDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-readiness-radar">
-      <div class="card-hd"><span class="card-title">System Readiness Radar</span><span class="card-badge badge-info" id="readinessRadarBadge">--</span></div>
-      <div id="readinessRadarDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-workflow-blueprints">
-      <div class="card-hd"><span class="card-title">Workflow Blueprints</span><span class="card-badge badge-info" id="wfBlueprintsBadge">--</span></div>
-      <div id="wfBlueprintsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-mission-control">
-      <div class="card-hd"><span class="card-title">Mission Control</span><span class="card-badge badge-info" id="missionControlBadge">--</span></div>
-      <div id="missionControlDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-workflow-replay">
-      <div class="card-hd"><span class="card-title">Workflow Replay</span><span class="card-badge badge-info" id="workflowReplayBadge">--</span></div>
-      <div id="workflowReplayDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card" id="section-system-actions">
-      <div class="card-hd"><span class="card-title">System Actions</span><span class="card-badge badge-info" id="sysActionsBadge">--</span></div>
-      <div id="sysActionsDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">System Controls</span><span class="card-badge badge-info">actions</span></div>
-      <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.3rem">
-        <button class="mini-btn" onclick="loadQA()" style="text-align:left">Run QA Phase 0</button>
-        <button class="mini-btn" onclick="ctrlAction('/actions/restart-all','POST',null,'Restart all AI stack services?')" style="text-align:left">Restart AI Stack</button>
-        <button class="mini-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)" style="text-align:left">Execute PRSI Queue</button>
-        <button class="mini-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)" style="text-align:left">Sync PRSI State</button>
-        <button class="mini-btn" onclick="ctrlAction('/aistack/harness/maintenance/run','POST',{action:'acceptance_checks'},null)" style="text-align:left">Run Acceptance Checks</button>
-        <button class="mini-btn" onclick="ctrlAction('/aistack/harness/maintenance/run','POST',{action:'improvement_pass'},'Run harness improvement pass? (7 min)')" style="text-align:left">Run Improvement Pass</button>
-        <button class="mini-btn" onclick="forceLayerRefresh()" style="text-align:left">Refresh OSI Health</button>
-        <button class="mini-btn" onclick="refreshAll()" style="text-align:left">Refresh All Panels</button>
+  <!-- ── OPERATIONS ── -->
+  <div class="panel" id="panel-operations">
+    <div class="panel-grid g2">
+      <div class="card">
+        <div class="card-hd"><span class="card-title">QA Phase 0 Status</span><span class="card-badge badge-info"
+            id="qaBadge">--</span></div>
+        <div class="fw-row"><span class="fk">Passed</span><span class="fv ok" id="qaPassed">--</span></div>
+        <div class="fw-row"><span class="fk">Failed</span><span class="fv err" id="qaFailed">--</span></div>
+        <div class="fw-row"><span class="fk">Skipped</span><span class="fv warn" id="qaSkipped">--</span></div>
+        <div class="fw-row"><span class="fk">Duration</span><span class="fv" id="qaDuration">--</span></div>
+        <div class="fw-row"><span class="fk">Result</span><span class="fv" id="qaStatus">pending</span></div>
+        <div style="margin-top:.65rem"><button class="mini-btn" onclick="loadQA()">Refresh QA</button></div>
       </div>
-      <div id="ctrlResult" style="margin-top:.4rem;font-size:.6rem;font-family:var(--hud)"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ── HEALTH SPIDER ── -->
-<div class="panel" id="panel-spider">
-  <div class="panel-grid g2">
-    <div class="card full">
-       <div class="card-hd">
-         <span class="card-title">Autonomous Anomaly History</span>
-         <span class="card-badge badge-info" id="anomaly-count">0 Detected</span>
-       </div>
-       <div id="anomaly-list" class="check-list" style="max-height:500px"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ── AGENT FLEET ── -->
-
-<div class="panel" id="panel-fleet">
-  <div class="panel-grid g2">
-    <div class="card full">
-      <div class="card-hd">
-        <span class="card-title">Active Agent Fleet & Session DAGs</span>
-        <span class="card-badge badge-info" id="fleet-count">0 Agents Active</span>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Runtime Summary</span><span
+            class="card-badge badge-info">coord</span></div>
+        <div id="runtimeDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
-      <div id="fleet-dag-container" style="width:100%; height:500px; background:var(--bg2); border:1px solid var(--border); position:relative;">
-         <div class="d3-hud">DAG VISUALIZATION (OZ CONTROL PLANE)</div>
-         <div id="dag-viz" style="width:100%; height:100%"></div>
+      <div class="card full">
+        <div class="card-hd"><span class="card-title">Deployment Operations</span><span class="card-badge badge-info"
+            id="deployBadge">--</span></div>
+        <div id="deployDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">PRSI Orchestrator Queue</span><span class="card-badge badge-info"
+            id="prsiBadge">--</span></div>
+        <div class="check-list" id="prsiList">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">AI Harness Overview</span><span class="card-badge badge-ok"
+            id="harnessOvBadge">--</span></div>
+        <div id="harnessDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Model Optimization</span><span class="card-badge badge-info"
+            id="modelOptBadge">--</span></div>
+        <div id="modelOptDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Learning Pipeline</span><span class="card-badge badge-ok"
+            id="learnPipelineBadge">active</span></div>
+        <div id="learnPipelineDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Integration Health</span><span class="card-badge badge-info"
+            id="integrationHealthBadge">--</span></div>
+        <div id="integrationHealthDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">RALPH Task Tracker</span><span class="card-badge badge-info"
+            id="ralphBadge">--</span></div>
+        <div id="ralphDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Training Data Capture</span><span class="card-badge badge-info"
+            id="trainingDataBadge">--</span></div>
+        <div id="trainingDataDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Training Pipeline</span><span class="card-badge badge-info"
+            id="trainingHealthBadge">--</span></div>
+        <div id="trainingHealthDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Runtime Parity Scorecard</span><span class="card-badge badge-info"
+            id="parityBadge">--</span></div>
+        <div id="parityDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Fleet Runtimes</span><span class="card-badge badge-info"
+            id="fleetBadge">--</span></div>
+        <div id="fleetDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Budget Guardrails</span><span class="card-badge badge-info"
+            id="budgetBadge">--</span></div>
+        <div id="budgetDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Service Ports Registry</span><span class="card-badge badge-info"
+            id="portsRegBadge">--</span></div>
+        <div id="portsRegDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Health Aggregate</span><span class="card-badge badge-ok"
+            id="healthAggBadge">--</span></div>
+        <div id="healthAggDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-testing-suites">
+        <div class="card-hd"><span class="card-title">Testing Suites</span><span class="card-badge badge-info"
+            id="testingSuitesBadge">--</span></div>
+        <div id="testingSuitesDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-workflow-stats">
+        <div class="card-hd"><span class="card-title">Workflow Statistics</span><span class="card-badge badge-info"
+            id="workflowStatsBadge">--</span></div>
+        <div id="workflowStatsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-collaboration">
+        <div class="card-hd"><span class="card-title">Collaboration Metrics</span><span class="card-badge badge-info"
+            id="collaborationBadge">--</span></div>
+        <div id="collaborationDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-harness-scorecard">
+        <div class="card-hd"><span class="card-title">Harness Scorecard</span><span class="card-badge badge-info"
+            id="harnessScoreBadge">--</span></div>
+        <div id="harnessScoreDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-containers">
+        <div class="card-hd"><span class="card-title">Services / Containers</span><span class="card-badge badge-info"
+            id="containersBadge">--</span></div>
+        <div id="containersDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-active-deployments">
+        <div class="card-hd"><span class="card-title">Active Deployments</span><span class="card-badge badge-info"
+            id="activeDeploysBadge">--</span></div>
+        <div id="activeDeploysDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-harness-stats">
+        <div class="card-hd"><span class="card-title">Harness Run Stats</span><span class="card-badge badge-info"
+            id="harnessStatsBadge">--</span></div>
+        <div id="harnessStatsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-health-categories">
+        <div class="card-hd"><span class="card-title">Health by Category</span><span class="card-badge badge-ok"
+            id="healthCatBadge">--</span></div>
+        <div id="healthCatDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-ai-services-detail">
+        <div class="card-hd"><span class="card-title">AI Services Health Detail</span><span class="card-badge badge-ok"
+            id="aiSvcDetailBadge">--</span></div>
+        <div id="aiSvcDetailDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-dashboard-config">
+        <div class="card-hd"><span class="card-title">Dashboard Runtime Config</span><span class="card-badge badge-info"
+            id="dashConfigBadge">--</span></div>
+        <div id="dashConfigDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-readiness-radar">
+        <div class="card-hd"><span class="card-title">System Readiness Radar</span><span class="card-badge badge-info"
+            id="readinessRadarBadge">--</span></div>
+        <div id="readinessRadarDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-workflow-blueprints">
+        <div class="card-hd"><span class="card-title">Workflow Blueprints</span><span class="card-badge badge-info"
+            id="wfBlueprintsBadge">--</span></div>
+        <div id="wfBlueprintsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-mission-control">
+        <div class="card-hd"><span class="card-title">Mission Control</span><span class="card-badge badge-info"
+            id="missionControlBadge">--</span></div>
+        <div id="missionControlDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-workflow-replay">
+        <div class="card-hd"><span class="card-title">Workflow Replay</span><span class="card-badge badge-info"
+            id="workflowReplayBadge">--</span></div>
+        <div id="workflowReplayDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card" id="section-system-actions">
+        <div class="card-hd"><span class="card-title">System Actions</span><span class="card-badge badge-info"
+            id="sysActionsBadge">--</span></div>
+        <div id="sysActionsDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">System Controls</span><span
+            class="card-badge badge-info">actions</span></div>
+        <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.3rem">
+          <button class="mini-btn" onclick="loadQA()" style="text-align:left">Run QA Phase 0</button>
+          <button class="mini-btn"
+            onclick="ctrlAction('/actions/restart-all','POST',null,'Restart all AI stack services?')"
+            style="text-align:left">Restart AI Stack</button>
+          <button class="mini-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)"
+            style="text-align:left">Execute PRSI Queue</button>
+          <button class="mini-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)" style="text-align:left">Sync
+            PRSI State</button>
+          <button class="mini-btn"
+            onclick="ctrlAction('/aistack/harness/maintenance/run','POST',{action:'acceptance_checks'},null)"
+            style="text-align:left">Run Acceptance Checks</button>
+          <button class="mini-btn"
+            onclick="ctrlAction('/aistack/harness/maintenance/run','POST',{action:'improvement_pass'},'Run harness improvement pass? (7 min)')"
+            style="text-align:left">Run Improvement Pass</button>
+          <button class="mini-btn" onclick="forceLayerRefresh()" style="text-align:left">Refresh OSI Health</button>
+          <button class="mini-btn" onclick="refreshAll()" style="text-align:left">Refresh All Panels</button>
+        </div>
+        <div id="ctrlResult" style="margin-top:.4rem;font-size:.6rem;font-family:var(--hud)"></div>
       </div>
     </div>
-    <div class="card">
-       <div class="card-hd"><span class="card-title">Active Intent Locks</span></div>
-       <div id="intent-locks-list" class="check-list"></div>
-    </div>
-    <div class="card">
-       <div class="card-hd"><span class="card-title">Recent Handoffs</span></div>
-       <div id="handoffs-list" class="check-list"></div>
+  </div>
+
+  <!-- ── HEALTH SPIDER ── -->
+  <div class="panel" id="panel-spider">
+    <div class="panel-grid g2">
+      <div class="card full">
+        <div class="card-hd">
+          <span class="card-title">Autonomous Anomaly History</span>
+          <span class="card-badge badge-info" id="anomaly-count">0 Detected</span>
+        </div>
+        <div id="anomaly-list" class="check-list" style="max-height:500px"></div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ── NEURAL MAP ── -->
+  <!-- ── AGENT FLEET ── -->
 
-<div class="panel" id="panel-map">
-  <div style="display:flex;flex-direction:column;gap:.5rem">
+  <div class="panel" id="panel-fleet">
+    <div class="panel-grid g2">
+      <div class="card full">
+        <div class="card-hd">
+          <span class="card-title">Active Agent Fleet & Session DAGs</span>
+          <span class="card-badge badge-info" id="fleet-count">0 Agents Active</span>
+        </div>
+        <div id="fleet-dag-container"
+          style="width:100%; height:500px; background:var(--bg2); border:1px solid var(--border); position:relative;">
+          <div class="d3-hud">DAG VISUALIZATION (OZ CONTROL PLANE)</div>
+          <div id="dag-viz" style="width:100%; height:100%"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Active Intent Locks</span></div>
+        <div id="intent-locks-list" class="check-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span class="card-title">Recent Handoffs</span></div>
+        <div id="handoffs-list" class="check-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── NEURAL MAP ── -->
+
+  <div class="panel" id="panel-map">
+    <div style="display:flex;flex-direction:column;gap:.5rem">
+      <div>
+        <div
+          style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">
+          Service Topology</div>
+        <div class="d3-panel" id="topoCanvas" style="height:calc(50vh - 110px);min-height:300px">
+          <div class="d3-hud" id="topoHud">OSI_MAPPING: READY</div>
+        </div>
+      </div>
+      <div>
+        <div
+          style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">
+          Routing Workflow</div>
+        <div class="d3-panel" id="workflowCanvas" style="height:calc(50vh - 110px);min-height:300px">
+          <div class="d3-hud" id="workflowHud">ROUTING_WORKFLOW: READY</div>
+        </div>
+      </div>
+      <div>
+        <div
+          style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">
+          Vector Knowledge Graph</div>
+        <div class="d3-panel" id="vectorCanvas" style="height:calc(50vh - 110px);min-height:300px">
+          <div class="d3-hud" id="vectorHud">KNOWLEDGE_GRAPH: READY</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Vectorization Posture</span>
+          <span class="card-badge badge-info" id="vectorPostureBadge">--</span>
+        </div>
+        <div id="vectorPostureDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LOGIC DAG ── -->
+  <div class="panel" id="panel-logic">
+    <div class="d3-panel" id="logicCanvas" style="overflow:auto">
+      <div class="d3-hud" id="logicHud">REQUEST_FLOW: READY</div>
+    </div>
+  </div>
+
+  <!-- ── LOGS ── -->
+  <div class="panel" id="panel-logs">
+    <div class="log-panel" id="logPanel">
+      <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-type">[INIT]</span>Awaiting log
+        stream...</div>
+    </div>
+  </div>
+
+  <!-- ── AGENT OBSERVABILITY ── -->
+  <div class="panel" id="panel-observe">
+    <div class="panel-grid g2">
+
+      <!-- Local Inference Queue -->
+      <div class="card" id="section-local-agent-monitor">
+        <div class="card-hd">
+          <span class="card-title">Local Inference Queue</span>
+          <span class="card-badge badge-info" id="localAgentMonitorBadge">--</span>
+        </div>
+        <div id="localAgentMonitorDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Effectiveness Scorecard — full width -->
+      <div class="card full" id="section-effectiveness-scorecard">
+        <div class="card-hd">
+          <span class="card-title">Effectiveness Scorecard</span>
+          <span class="card-badge badge-info" id="effScoreBadge">--</span>
+        </div>
+        <div id="effScoreDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Agent Run Replay — full width -->
+      <div class="card full" id="section-agent-replay">
+        <div class="card-hd">
+          <span class="card-title">Agent Run Replay</span>
+          <span class="card-badge badge-info" id="agentReplayBadge">--</span>
+        </div>
+        <div style="display:flex;gap:.45rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
+          <input type="text" id="replayRunId" placeholder="run_id (blank = latest)"
+            style="font-family:var(--hud);font-size:.62rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.25rem .5rem;flex:1;min-width:12rem;border-radius:2px">
+          <select id="replayEventFilter"
+            style="font-family:var(--hud);font-size:.62rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.25rem .4rem;border-radius:2px">
+            <option value="">All events</option>
+            <option value="tool_call">tool_call</option>
+            <option value="artifact">artifact</option>
+            <option value="token_usage">token_usage</option>
+            <option value="human_control">human_control</option>
+            <option value="thought">thought</option>
+            <option value="planning">planning</option>
+            <option value="run_start">run_start</option>
+            <option value="run_end">run_end</option>
+          </select>
+          <button class="mini-btn" onclick="loadAgentReplay()">Load Replay</button>
+        </div>
+        <div id="agentReplayDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Enter a run_id or click Load to fetch the latest agent run.
+          </div>
+        </div>
+      </div>
+
+      <!-- Multi-Agent Swimlane — full width -->
+      <div class="card full" id="section-swimlane">
+        <div class="card-hd">
+          <span class="card-title">Multi-Agent Swimlane</span>
+          <span class="card-badge badge-info" id="swimlaneBadge">--</span>
+        </div>
+        <div id="swimlaneDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Spec Variant Race -->
+      <div class="card" id="section-race-comparison">
+        <div class="card-hd">
+          <span class="card-title">Spec Variant Race</span>
+          <span class="card-badge badge-info" id="raceBadge">--</span>
+        </div>
+        <div id="raceDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Token Efficiency & Attention Contention -->
+      <div class="card" id="section-token-contention">
+        <div class="card-hd">
+          <span class="card-title">Token Efficiency &amp; Lock Contention</span>
+          <span class="card-badge badge-info" id="tokenContentionBadge">--</span>
+        </div>
+        <div id="tokenContentionDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Human Controls -->
+      <div class="card" id="section-human-controls">
+        <div class="card-hd">
+          <span class="card-title">Human Controls</span>
+          <span class="card-badge badge-info">operator gate</span>
+        </div>
+        <div style="font-size:.58rem;color:var(--fg3);margin-bottom:.45rem">
+          Active run: <span id="controlRunId" style="color:var(--cyan);font-family:var(--hud)">none selected</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem">
+          <button class="mini-btn" onclick="sendControl('approve')" title="Mark run output as approved">Approve</button>
+          <button class="mini-btn" onclick="sendControl('reject')" title="Reject run output">Reject</button>
+          <button class="mini-btn" onclick="sendControl('pause')" title="Signal agent to pause">Pause</button>
+          <button class="mini-btn" onclick="sendControl('resume')" title="Signal agent to resume">Resume</button>
+          <button class="mini-btn" onclick="sendControl('request_review')" title="Flag for human review">Request
+            Review</button>
+          <button class="mini-btn" onclick="sendControl('promote_artifact')"
+            title="Promote artifact to canonical">Promote Artifact</button>
+          <button class="mini-btn" onclick="sendControl('terminate')" title="Terminate the run">Terminate</button>
+          <button class="mini-btn" onclick="sendControl('redirect')"
+            title="Redirect agent with new prompt">Redirect</button>
+        </div>
+        <div id="controlResult" style="margin-top:.5rem;font-size:.58rem;font-family:var(--hud);color:var(--fg3)">
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── CONTROL DRAWER ── -->
+  <div class="drawer" id="drawer">
     <div>
-      <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Service Topology</div>
-      <div class="d3-panel" id="topoCanvas" style="height:calc(50vh - 110px);min-height:300px">
-        <div class="d3-hud" id="topoHud">OSI_MAPPING: READY</div>
-      </div>
+      <button class="drawer-close" onclick="toggleDrawer()">×</button>
+      <div class="drawer-title">CONTROLS</div>
     </div>
-    <div>
-      <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Routing Workflow</div>
-      <div class="d3-panel" id="workflowCanvas" style="height:calc(50vh - 110px);min-height:300px">
-        <div class="d3-hud" id="workflowHud">ROUTING_WORKFLOW: READY</div>
-      </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Dashboard</div>
+      <button class="drawer-btn" onclick="forceSync()">Force Sync (aq-qa 0)</button>
+      <button class="drawer-btn" onclick="refreshAll()">Refresh All Panels</button>
+      <button class="drawer-btn" onclick="forceLayerRefresh()">Re-run OSI Health</button>
+      <button class="drawer-btn" onclick="loadQA()">Re-run QA Check</button>
     </div>
-    <div>
-      <div style="font-size:.6rem;color:var(--fg3);padding:.25rem .5rem;text-transform:uppercase;letter-spacing:.08em">Vector Knowledge Graph</div>
-      <div class="d3-panel" id="vectorCanvas" style="height:calc(50vh - 110px);min-height:300px">
-        <div class="d3-hud" id="vectorHud">KNOWLEDGE_GRAPH: READY</div>
-      </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Cache &amp; Memory</div>
+      <button class="drawer-btn" onclick="ctrlAction('/cache/warm','POST',null,'Warm semantic cache?')">Warm
+        Cache</button>
+      <button class="drawer-btn" onclick="ctrlAction('/cache/clear','POST',null,'Clear semantic cache?')">Clear
+        Cache</button>
+      <button class="drawer-btn"
+        onclick="ctrlAction('/memory/recall','POST',{query:'recent agent activity',limit:5},null)">Recall
+        Memory</button>
     </div>
-    <div class="card">
-      <div class="card-hd">
-        <span class="card-title">Vectorization Posture</span>
-        <span class="card-badge badge-info" id="vectorPostureBadge">--</span>
-      </div>
-      <div id="vectorPostureDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Agent Ops</div>
+      <button class="drawer-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)">Sync PRSI State</button>
+      <button class="drawer-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)">Execute PRSI
+        Queue</button>
+      <button class="drawer-btn" onclick="ctrlAction('/adapt','POST',{signal:'manual_refresh'},null)">Trigger
+        Adaptation</button>
     </div>
-  </div>
-</div>
-
-<!-- ── LOGIC DAG ── -->
-<div class="panel" id="panel-logic">
-  <div class="d3-panel" id="logicCanvas" style="overflow:auto">
-    <div class="d3-hud" id="logicHud">REQUEST_FLOW: READY</div>
-  </div>
-</div>
-
-<!-- ── LOGS ── -->
-<div class="panel" id="panel-logs">
-  <div class="log-panel" id="logPanel">
-    <div class="log-line"><span class="log-ts">--:--:--</span><span class="log-type">[INIT]</span>Awaiting log stream...</div>
-  </div>
-</div>
-
-<!-- ── AGENT OBSERVABILITY ── -->
-    <div class="panel" id="panel-observe">
-  <div class="panel-grid g2">
-
-    <!-- Local Inference Queue -->
-    <div class="card" id="section-local-agent-monitor">
-      <div class="card-hd">
-        <span class="card-title">Local Inference Queue</span>
-        <span class="card-badge badge-info" id="localAgentMonitorBadge">--</span>
-      </div>
-      <div id="localAgentMonitorDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Endpoints</div>
+      <div class="drawer-kv"><span>Dashboard API</span><span>:8889</span></div>
+      <div class="drawer-kv"><span>Coordinator</span><span>:8003</span></div>
+      <div class="drawer-kv"><span>Switchboard</span><span>:8085</span></div>
+      <div class="drawer-kv"><span>AIDB</span><span>:8002</span></div>
+      <div class="drawer-kv"><span>llama.cpp</span><span>:8080</span></div>
+      <div class="drawer-kv"><span>Ralph</span><span>:8004</span></div>
+      <div class="drawer-kv"><span>CLI Bridge</span><span>:8089</span></div>
     </div>
-
-    <!-- Effectiveness Scorecard — full width -->
-    <div class="card full" id="section-effectiveness-scorecard">
-      <div class="card-hd">
-        <span class="card-title">Effectiveness Scorecard</span>
-        <span class="card-badge badge-info" id="effScoreBadge">--</span>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Legend</div>
+      <div style="font-size:.58rem;color:var(--fg3);line-height:1.9">
+        <div><span style="color:var(--grn)">■</span> Online / Pass / Active</div>
+        <div><span style="color:var(--yel)">■</span> Degraded / Warn / Pending</div>
+        <div><span style="color:var(--red)">■</span> Offline / Fail / Critical</div>
+        <div><span style="color:var(--cyan)">■</span> Info / Neutral</div>
       </div>
-      <div id="effScoreDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-
-    <!-- Agent Run Replay — full width -->
-    <div class="card full" id="section-agent-replay">
-      <div class="card-hd">
-        <span class="card-title">Agent Run Replay</span>
-        <span class="card-badge badge-info" id="agentReplayBadge">--</span>
-      </div>
-      <div style="display:flex;gap:.45rem;align-items:center;margin-bottom:.5rem;flex-wrap:wrap">
-        <input type="text" id="replayRunId" placeholder="run_id (blank = latest)" style="font-family:var(--hud);font-size:.62rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.25rem .5rem;flex:1;min-width:12rem;border-radius:2px">
-        <select id="replayEventFilter" style="font-family:var(--hud);font-size:.62rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.25rem .4rem;border-radius:2px">
-          <option value="">All events</option>
-          <option value="tool_call">tool_call</option>
-          <option value="artifact">artifact</option>
-          <option value="token_usage">token_usage</option>
-          <option value="human_control">human_control</option>
-          <option value="thought">thought</option>
-          <option value="planning">planning</option>
-          <option value="run_start">run_start</option>
-          <option value="run_end">run_end</option>
-        </select>
-        <button class="mini-btn" onclick="loadAgentReplay()">Load Replay</button>
-      </div>
-      <div id="agentReplayDetails"><div style="color:var(--fg3);font-size:.6rem">Enter a run_id or click Load to fetch the latest agent run.</div></div>
-    </div>
-
-    <!-- Multi-Agent Swimlane — full width -->
-    <div class="card full" id="section-swimlane">
-      <div class="card-hd">
-        <span class="card-title">Multi-Agent Swimlane</span>
-        <span class="card-badge badge-info" id="swimlaneBadge">--</span>
-      </div>
-      <div id="swimlaneDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-
-    <!-- Spec Variant Race -->
-    <div class="card" id="section-race-comparison">
-      <div class="card-hd">
-        <span class="card-title">Spec Variant Race</span>
-        <span class="card-badge badge-info" id="raceBadge">--</span>
-      </div>
-      <div id="raceDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-
-    <!-- Token Efficiency & Attention Contention -->
-    <div class="card" id="section-token-contention">
-      <div class="card-hd">
-        <span class="card-title">Token Efficiency &amp; Lock Contention</span>
-        <span class="card-badge badge-info" id="tokenContentionBadge">--</span>
-      </div>
-      <div id="tokenContentionDetails"><div style="color:var(--fg3);font-size:.6rem">Loading...</div></div>
-    </div>
-
-    <!-- Human Controls -->
-    <div class="card" id="section-human-controls">
-      <div class="card-hd">
-        <span class="card-title">Human Controls</span>
-        <span class="card-badge badge-info">operator gate</span>
-      </div>
-      <div style="font-size:.58rem;color:var(--fg3);margin-bottom:.45rem">
-        Active run: <span id="controlRunId" style="color:var(--cyan);font-family:var(--hud)">none selected</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem">
-        <button class="mini-btn" onclick="sendControl('approve')" title="Mark run output as approved">Approve</button>
-        <button class="mini-btn" onclick="sendControl('reject')" title="Reject run output">Reject</button>
-        <button class="mini-btn" onclick="sendControl('pause')" title="Signal agent to pause">Pause</button>
-        <button class="mini-btn" onclick="sendControl('resume')" title="Signal agent to resume">Resume</button>
-        <button class="mini-btn" onclick="sendControl('request_review')" title="Flag for human review">Request Review</button>
-        <button class="mini-btn" onclick="sendControl('promote_artifact')" title="Promote artifact to canonical">Promote Artifact</button>
-        <button class="mini-btn" onclick="sendControl('terminate')" title="Terminate the run">Terminate</button>
-        <button class="mini-btn" onclick="sendControl('redirect')" title="Redirect agent with new prompt">Redirect</button>
-      </div>
-      <div id="controlResult" style="margin-top:.5rem;font-size:.58rem;font-family:var(--hud);color:var(--fg3)"></div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ── CONTROL DRAWER ── -->
-<div class="drawer" id="drawer">
-  <div>
-    <button class="drawer-close" onclick="toggleDrawer()">×</button>
-    <div class="drawer-title">CONTROLS</div>
-  </div>
-  <div class="drawer-section">
-    <div class="drawer-section-title">Dashboard</div>
-    <button class="drawer-btn" onclick="forceSync()">Force Sync (aq-qa 0)</button>
-    <button class="drawer-btn" onclick="refreshAll()">Refresh All Panels</button>
-    <button class="drawer-btn" onclick="forceLayerRefresh()">Re-run OSI Health</button>
-    <button class="drawer-btn" onclick="loadQA()">Re-run QA Check</button>
-  </div>
-  <div class="drawer-section">
-    <div class="drawer-section-title">Cache &amp; Memory</div>
-    <button class="drawer-btn" onclick="ctrlAction('/cache/warm','POST',null,'Warm semantic cache?')">Warm Cache</button>
-    <button class="drawer-btn" onclick="ctrlAction('/cache/clear','POST',null,'Clear semantic cache?')">Clear Cache</button>
-    <button class="drawer-btn" onclick="ctrlAction('/memory/recall','POST',{query:'recent agent activity',limit:5},null)">Recall Memory</button>
-  </div>
-  <div class="drawer-section">
-    <div class="drawer-section-title">Agent Ops</div>
-    <button class="drawer-btn" onclick="ctrlAction('/prsi/sync','POST',null,null)">Sync PRSI State</button>
-    <button class="drawer-btn" onclick="ctrlAction('/prsi/execute','POST',{force:false},null)">Execute PRSI Queue</button>
-    <button class="drawer-btn" onclick="ctrlAction('/adapt','POST',{signal:'manual_refresh'},null)">Trigger Adaptation</button>
-  </div>
-  <div class="drawer-section">
-    <div class="drawer-section-title">Endpoints</div>
-    <div class="drawer-kv"><span>Dashboard API</span><span>:8889</span></div>
-    <div class="drawer-kv"><span>Coordinator</span><span>:8003</span></div>
-    <div class="drawer-kv"><span>Switchboard</span><span>:8085</span></div>
-    <div class="drawer-kv"><span>AIDB</span><span>:8002</span></div>
-    <div class="drawer-kv"><span>llama.cpp</span><span>:8080</span></div>
-    <div class="drawer-kv"><span>Ralph</span><span>:8004</span></div>
-    <div class="drawer-kv"><span>CLI Bridge</span><span>:8089</span></div>
-  </div>
-  <div class="drawer-section">
-    <div class="drawer-section-title">Legend</div>
-    <div style="font-size:.58rem;color:var(--fg3);line-height:1.9">
-      <div><span style="color:var(--grn)">■</span> Online / Pass / Active</div>
-      <div><span style="color:var(--yel)">■</span> Degraded / Warn / Pending</div>
-      <div><span style="color:var(--red)">■</span> Offline / Fail / Critical</div>
-      <div><span style="color:var(--cyan)">■</span> Info / Neutral</div>
     </div>
   </div>
-</div>
 
-<script src="/assets/vendor/d3.v7.min.js"></script>
-<script src="/assets/vendor/mermaid.min.js"></script>
-<script src="/assets/dashboard.js?v=4"></script>
-<script>
-// aq-qa 60.7.3: section-rag-quality ragAnswerRelevance ragContextPrecision ragFaithfulness loadRagQuality
-</script>
+  <script src="/assets/vendor/d3.v7.min.js"></script>
+  <script src="/assets/vendor/mermaid.min.js"></script>
+  <script src="/assets/dashboard.js?v=4"></script>
+  <script>
+    // aq-qa 60.7.3: section-rag-quality ragAnswerRelevance ragContextPrecision ragFaithfulness loadRagQuality
+  </script>
 </body>
+
 </html>

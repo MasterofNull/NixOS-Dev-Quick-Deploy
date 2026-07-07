@@ -789,7 +789,7 @@ async def _http_health_probe(url: str) -> tuple[bool, Optional[str]]:
         # Reuse the global session (avoids creating a new TCP connector per probe)
         # but override the per-request timeout to the lightweight probe budget.
         sess = await get_http_session()
-        
+
         # Determine appropriate auth headers based on the service being probed
         headers = {}
         if url.startswith(SERVICES['hybrid']):
@@ -1683,9 +1683,9 @@ async def proxy_aidb_health(probe: str) -> Dict[str, Any]:
     """
     if probe not in ("health", "live", "ready", "startup", "detailed"):
         raise HTTPException(status_code=404, detail="Unsupported probe")
-    
+
     headers = _ralph_auth_header()
-    
+
     if probe == "detailed":
         live, ready = await asyncio.gather(
             fetch_with_fallback(f"{SERVICES['aidb']}/health/live", None, headers=headers),
@@ -1938,6 +1938,37 @@ async def get_active_agent_tasks() -> Dict[str, Any]:
     except Exception:
         pass
     return {"tasks": tasks, "count": len(tasks), "timestamp": int(now)}
+
+
+@router.get("/agent/collab-state")
+async def get_agent_collab_state() -> Dict[str, Any]:
+    """Read local agent cooperation state from RESUME.json and recent PULSE.log entries (Phase 171-C)."""
+    repo = _repo_root()
+    resume_path = repo / ".agent" / "collaboration" / "RESUME.json"
+    pulse_path = repo / ".agent" / "collaboration" / "PULSE.log"
+
+    resume_data = {}
+    if resume_path.is_file():
+        try:
+            resume_data = json.loads(resume_path.read_text())
+        except Exception:
+            pass
+
+    pulse_lines = []
+    if pulse_path.is_file():
+        try:
+            lines = pulse_path.read_text().splitlines()
+            # return latest 10 non-empty lines
+            pulse_lines = [line.strip() for line in lines if line.strip()][-10:]
+            pulse_lines.reverse()  # show newest first
+        except Exception:
+            pass
+
+    return {
+        "resume": resume_data,
+        "pulse": pulse_lines,
+        "timestamp": time.time(),
+    }
 
 
 @router.get("/discovery/signals")
@@ -2420,7 +2451,7 @@ async def proxy_hybrid_metrics() -> Response:
                     metrics = await resp.text()
         except Exception as exc:
             logger.warning("Failed to fetch hybrid metrics with auth: %s", exc)
-            
+
     if metrics is None:
         raise HTTPException(status_code=503, detail="Hybrid metrics unavailable")
     return Response(content=metrics, media_type="text/plain")
@@ -2786,10 +2817,10 @@ async def run_system_action(action: str = Query(...)) -> Dict[str, Any]:
         "switch": ["./nixos-quick-deploy.sh"],
         "rollback": ["sudo", "nixos-rebuild", "rollback"]
     }
-    
+
     if action not in commands:
         raise HTTPException(status_code=400, detail=f"Invalid action: {action}")
-        
+
     try:
         # Start command in background to avoid timeout
         subprocess.Popen(commands[action], cwd=str(REPO_ROOT))
@@ -3710,11 +3741,11 @@ async def get_aistack_metrics() -> Dict[str, Any]:
     rt = report.get("routing", {})
     local_sel = rt.get("local_n") or rt.get("local_selections", 0)
     total_sel = (rt.get("local_n", 0) + rt.get("remote_n", 0)) if "local_n" in rt else rt.get("total_selections", 0)
-    
+
     # If Prometheus scalars are unavailable, fallback to aq-report routing data
     if local_sel_prom is None: local_sel = local_sel
     else: local_sel = local_sel_prom
-    
+
     if total_sel_prom is None: total_sel = total_sel
     else: total_sel = total_sel_prom
 
