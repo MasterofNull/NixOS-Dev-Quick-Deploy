@@ -415,6 +415,8 @@ def _install_self_watchdog(hard_deadline_secs: float) -> None:
 
     start = time.monotonic()
     orig_ppid = os.getppid()
+    _progress = os.environ.get("AGENT_PROGRESS_FILE")
+    _grace = float(os.environ.get("AQ_ORPHAN_GRACE_S", "90"))
 
     def _reap() -> None:
         while True:
@@ -424,9 +426,21 @@ def _install_self_watchdog(hard_deadline_secs: float) -> None:
             except Exception:
                 orphaned = False
             if orphaned:
+                # Only kill a WEDGED orphan (dispatcher gone AND no progress for `_grace`).
+                # A WORKING orphan — one still writing its progress/stream file — is a legit
+                # detached run and must survive; killing it was the root of the "task barely
+                # started then died" reports. Progress = AGENT_PROGRESS_FILE mtime.
+                wedged = True
+                try:
+                    if _progress and (time.time() - os.path.getmtime(_progress)) < _grace:
+                        wedged = False
+                except OSError:
+                    pass
+                if not wedged:
+                    continue  # orphaned but actively working — keep running
                 sys.stderr.write(
-                    "[aq-agent-loop] SELF-WATCHDOG: orphaned (dispatcher died) — "
-                    "exiting to free the llama slot\n"
+                    "[aq-agent-loop] SELF-WATCHDOG: orphaned + wedged (dispatcher died, no "
+                    f"progress >{_grace:.0f}s) — exiting to free the llama slot\n"
                 )
                 sys.stderr.flush()
                 os._exit(124)
