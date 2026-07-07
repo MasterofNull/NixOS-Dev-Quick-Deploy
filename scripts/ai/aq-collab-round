@@ -71,12 +71,25 @@ NEVER append to a shared file. The orchestrator aggregates into `AGGREGATE.md`.
 
 
 def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
-    target_line = f"Review artifact: {target} (read it).\n" if target else ""
-    prompt = (f"COLLABORATIVE ROUND '{name}'. {target_line}\n"
+    # INLINE the target artifact (do not make agents READ a file). local[Qwen] chunk-reads a
+    # --target file and burns its whole run on re-reading (observed: it never designs). Inlining
+    # (capped) makes every lane — especially local — see the artifact directly. Live finding from
+    # the f1 round.
+    target_block = ""
+    if target:
+        try:
+            tp = Path(target) if Path(target).is_absolute() else (REPO / target)
+            content = tp.read_text(encoding="utf-8")
+            target_block = (f"=== REVIEW ARTIFACT ({target}) — INLINED; do NOT read the file ===\n"
+                            f"{content[:12000]}\n=== END ARTIFACT ===\n\n")
+        except OSError:
+            target_block = f"Review artifact: {target} (read it).\n"
+    prompt = (f"COLLABORATIVE ROUND '{name}'.\n{target_block}"
               f"TASK:\n{task}\n\n"
               f"Write your contribution to YOUR OWN file ONLY: "
               f".agents/plans/{name}/<AGENT>.md (<AGENT> = codex | local | antigravity). "
-              f"Do NOT edit any shared file. Be decisive and concise.")
+              f"Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). "
+              f"Be decisive and concise.")
     pf = rd / ".round-prompt.txt"
     pf.write_text(prompt)
     return pf
