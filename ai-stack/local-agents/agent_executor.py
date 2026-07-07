@@ -25,6 +25,23 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Operator intervention channel (first cut) — lazily loaded, fails open so a missing/broken
+# control module never disrupts the agent loop.
+_CONTROL_MOD: Any = None
+
+
+def _control_channel():
+    global _CONTROL_MOD
+    if _CONTROL_MOD is None:
+        try:
+            from importlib.machinery import SourceFileLoader
+            _CONTROL_MOD = SourceFileLoader(
+                "control_channel", str(Path(__file__).with_name("control_channel.py"))
+            ).load_module()
+        except Exception:
+            _CONTROL_MOD = False
+    return _CONTROL_MOD or None
+
 import httpx
 
 # shared/ lives at ai-stack/mcp-servers/shared/ — add parent to path once.
@@ -1031,6 +1048,7 @@ class LocalAgentExecutor:
                 except Exception:
                     pass
 
+        _ctrl_cursor = 0  # operator control-channel read cursor (messages consumed)
         while True:
             # Phase E — agent_step_start: emitted at the top of every iteration before the LLM call.
             await self._emit_agent_event(
@@ -1038,6 +1056,29 @@ class LocalAgentExecutor:
                 {"tool_call_count": tool_call_count},
                 _watchdog_last_activity,
             )
+
+            # Operator intervention channel — poll the per-task control queue between turns
+            # and inject any operator messages into the conversation (or a soft-stop on
+            # cancel). Fails open: the loop is never disrupted by a control-channel error.
+            try:
+                _cc = _control_channel()
+                if _cc is not None:
+                    _new_ctrl, _ctrl_cursor = _cc.poll(task.id, _ctrl_cursor)
+                    for _cm in _new_ctrl:
+                        _txt = (_cm.get("text") or "").strip()
+                        if _cm.get("kind") == "cancel":
+                            messages.append({"role": "user", "content":
+                                "[OPERATOR INTERVENTION — STOP] Finalize now and stop. " + _txt})
+                        elif _txt:
+                            messages.append({"role": "user", "content":
+                                "[OPERATOR INTERVENTION] " + _txt})
+                    if _new_ctrl:
+                        await self._emit_agent_event(
+                            task.id, "operator_inject",
+                            {"count": len(_new_ctrl)}, _watchdog_last_activity,
+                        )
+            except Exception:
+                pass
 
             # Context guard — Pinned + Sliding strategy:
             # Qwen3-35B SWA forces full re-prefill on every call (no KV cache reuse

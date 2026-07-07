@@ -413,12 +413,14 @@ def render_matrix() -> Columns:
 def matrix_footer() -> Panel:
     """Intervention controls — how to act on what the matrix shows."""
     t = Text()
-    t.append("Intervene: ", style="bold")
-    t.append("delegate-to-<agent> --cancel <id>", style="yellow")
-    t.append("  |  reap wedged: ", style="dim")
+    t.append("Respond to a live agent: ", style="bold")
+    t.append('aq-agent-send <id> "message"', style="bold yellow")
+    t.append("  |  stop: ", style="dim")
+    t.append('aq-agent-send <id> "..." --cancel', style="yellow")
+    t.append("  |  reap: ", style="dim")
     t.append("aq-agent-reap --reconcile-registry", style="yellow")
-    t.append("  |  drill one: ", style="dim")
-    t.append("aq-tui-dashboard --focus <id>", style="yellow")
+    t.append("  |  drill: ", style="dim")
+    t.append("--focus <id>", style="yellow")
     return Panel(t, style="blue")
 
 
