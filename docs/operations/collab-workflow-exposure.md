@@ -98,3 +98,38 @@ and the safeguard + monitoring/control point on each flow. Companion to
 - Antigravity inbox lane: harness side (drop dir + protocol) to be built; the IDE must be configured
   to WATCH the inbox (IDE-side rule) — that config is the operator's, using the IDE's own OAuth.
 - `aq-collab-round`: `--aggregate` synthesis, local-verdict auto-extract, PASS-2 multi-pass — TODO.
+
+## Role & Tool auto-selection — WHERE and WHEN (with code anchors)
+
+### ROLE — picked then applied
+| When | Where | Logic |
+|------|-------|-------|
+| Task start (caller/orchestrator sets it) | delegate-to-*: `--role` (orchestrator\|architect\|implementer\|reviewer\|full-expert-team) | passed in; validated against `_VALID_ROLES` |
+| Task start (AUTO by complexity) | `config/model-coordinator.json` (SSOT: complexity→tier→model) + `advisor_detector.py:288` (simple/medium/complex/architecture signal) | complexity tier selects the model class |
+| Dispatch (role→concrete model) | `delegate-to-antigravity:67 _MODEL_MAP` + `:497` (architect→gemini-3.1-pro, reviewer→gemini-3.5-flash) | role/mode maps to a concrete model id (read from model-coordinator SSOT) |
+| Prompt build (role→behavior) | delegate scripts inject `[ROLE: X]`; grounding prepended | role framing enters the system prompt |
+| In-response (EXPERT TEAM) | prompt-driven (WORKFLOW-CANON:208 "equal expert teams") | each agent SELECTS ITS OWN expert roster in its answer — model-chosen, not code-picked |
+
+### TOOL — auto-selected at THREE layers over an always-present base
+1. **Dispatch-time MANIFEST** — `aq-agent-loop build_registry()` (scripts/ai/aq-agent-loop:112).
+   Task-type → tool universe: `full` (29 tools) vs `self-improvement` (10) vs slim. WHY: token
+   budget (2507→750 tokens ≈ 1.8 min/call saved on the APU). WHEN: task start.
+2. **Per-request INTENT BUNDLE (model-driven)** — `switchboard._TOOL_BUNDLES` (:880) +
+   `_resolve_tool_lease` (:1100). The model calls the virtual `lease_tools` tool
+   (`VIRTUAL_TOOL_LEASE_NAME` :878) with an intent → activates a bundle (git / search / sys_ops /
+   file_edit / harness_analysis / …). WHEN: mid-conversation, whenever the model decides the current
+   leased tools are the wrong fit. AGENT-initiated.
+3. **Per-iteration HOT-SWAP (harness-driven)** — `agent_executor._refresh_active_tools` (:148) keyed
+   by `_AEXEC_HOTSWAP_MAP` (:133). After EVERY tool result, scan the result TEXT for keyword sets
+   (memory / workflow / delegate / health / mesh / objective) → MONOTONICALLY inject the matching
+   tools (store_memory, delegate_to_remote, harness_health, mesh_discovery, discover_objectives…).
+   The system prompt (messages[0]) is rebuilt when the active set changes (:790). WHEN: after each
+   tool call, driven by result content. HARNESS-initiated, automatic, never removes active tools.
+4. **ALWAYS tools (base, never swapped out)** — `_AEXEC_ALWAYS_TOOLS` (:131): read_file, write_file,
+   edit_file, run_command, git_add, git_commit.
+5. **Zero-trust interaction (Slice-2, planned):** the Phase-0 keystone STRIPS privileged tools from
+   the catalog at all three layers when `zero_trust` (secret in the task) — see the Phase-0 plan.
+
+**Summary:** role = caller/complexity-picked → mapped to model + injected as framing; the agent then
+picks its own expert team in-response. Tools = a fixed base + 3 auto-selection layers (task-type
+manifest at start, model-leased intent bundle per-request, harness keyword hot-swap per-iteration).
