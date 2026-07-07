@@ -80,3 +80,6 @@ re-eval (#3), and path canonicalization (#9 red-team). Three independent passes,
 ### Decision
 **RATIFY APPROVE-WITH-CHANGES.** Fold changes 1–11 (+ refinements) into PRD v2 → Phase-0 keystone
 is buildable. Qwen may append; local is not a blocker.
+
+### local[Qwen] final (eo9h11)
+COMPLETED (2333s, no timeout — the 1800s first-token budget fixed the premature kill) but produced NO usable verdict: it spent its turns reading the PRD in chunks and never wrote local.md. Finding: with enough time Qwen *completes*, but is not a reviewer-tier lane for large-context multi-step review on this APU. Excused from review-class tasks; retained for bounded single-edit work.

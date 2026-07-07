@@ -1,8 +1,8 @@
 # PRD — Slice 2 (Zero-Trust Sub-Agent Sandboxing) + Slice 3 (GBNF Grammar Gate + Model Multiplexing)
 
-Status: Draft (PRD-consensus pending)
+Status: Ratified v2 — APPROVE-WITH-CHANGES (3-agent consensus: claude + codex + gemini; changes folded)
 Owner: AI Stack Maintainers
-Last Updated: 2026-07-06
+Last Updated: 2026-07-07
 
 Derived from the ratified multi-agent PASS-1 consensus in
 `.agents/plans/round-slice2-slice3-2026-07-06.md` (claude + codex/gpt-5.5 + gemini converged,
@@ -20,6 +20,16 @@ sandbox + a switchboard grammar/tool-lock, unified by one shared primitive.
 (already recorded at `agent_service.py:134`). It drives BOTH slices: under `zero_trust`, the
 switchboard mints a reduced immutable tool catalog (Slice 2) AND blocks/downgrades remote
 routing (Slice 3). Single source of truth, two consumers. Everything else builds on it.
+
+**Wire contract (ratified — claude C1 + gemini C3):** declare `zero_trust: bool = false` in the
+base switchboard request model. ONE field, read by both the tool-filter and the router. Default
+false = normal.
+**FAIL-CLOSED (ratified — codex, CRITICAL):** if the `a2a_guard` result is absent, stale,
+malformed, or unavailable, treat `zero_trust = true`. Degraded guard plumbing must NEVER silently
+restore privileged routing.
+**Re-evaluate per request (ratified — claude + codex + gemini, 3/3):** a secret entering
+mid-conversation (or written to the workspace by a sub-agent) flips the flag on the next turn;
+never latch it at task start.
 
 ## Goals
 1. A sub-agent that runs `edit`/`yolo` cannot escape its workspace, read secrets, reach
@@ -125,6 +135,45 @@ feeds Slice-4.
   (PASS-2 baseline: tokenomics/measurement.)
 - Re-engage local[Qwen] (via --mode agent or single-slice prompts) + gemini in PASS-2.
 
+## v2 — Ratified changes (folded from the 3-agent consensus; BINDING)
+Consensus verdict APPROVE-WITH-CHANGES (claude + codex + gemini; local[Qwen] excused — completes
+with time but not a reviewer-tier lane for large-context review). Aggregate:
+`.agents/plans/prd-consensus/AGGREGATE.md`. These amend the requirements above.
+
+**Keystone (Phase 0):** wire contract + fail-closed + per-request re-eval — see Keystone section.
+
+**Slice 2 (amends R2.x):**
+- **V1 (R2.2)** Tool-catalog lock is IMMUTABLE per request; when `zero_trust`, strip
+  reload-model/proposals/apply/shell/endpoint-mutation/remote-escalation.
+- **V2 (R2.1 red-team)** Canonicalize workspace bind paths (absolute resolution); explicitly
+  reject `..` / double-slash traversal before binding.
+- **V3 (R2.1)** Bind `/nix/store` ROOT (ro) — never pinned hashed subpaths (break on rebuild).
+- **V4 (R2.x, new)** Structured sandbox failure reason codes: `policy_denied | missing_bind |
+  resource_limit | tool_catalog_denied | process_error | timeout`; STREAM categorized failures to
+  `.agent/collaboration/a2a-audit.log` + dashboard. Raw stderr is insufficient.
+- **V5 (R2.1)** Network OFF by default; a net-needing task presents a coordinator-SIGNED,
+  time-bound token scoped by destination class + task id, revoked via the same capability state as
+  the tool-catalog lock. NO global "network-enabled" profile.
+
+**Slice 3 (amends R3.x):**
+- **V6 (R3.1, new)** Grammar-gen fallback: if `json_schema_to_grammar` fails (nested anyOf/oneOf,
+  recursion), degrade to unconstrained decode (log + proceed) — never block the tool-call chain.
+- **V7 (R3.2)** Grammar-cache key MUST include the final post-lease tool schema, tool names,
+  argument schemas, AND `zero_trust` filter state (stale grammar could re-enable stripped tools).
+- **V8 (R3.3, new — gemini)** VRAM pool manager: UNLOAD inactive models before initializing a new
+  session when the 4GB APU memory-headroom would be exceeded (8B+35B concurrent = thrash).
+- **V9 (R3.4)** Remote downgrade deterministic fallback: large-context AND `zero_trust` → local
+  chunking or an explicit refusal contract, not a bare "block" (which becomes an availability fail).
+
+**Acceptance thresholds (numeric — replaces the vague R3.5 bar):**
+- GBNF accepted only if it removes ≥90% of repair attempts on the golden suite.
+- Sandbox startup p95 ≤ 750 ms (edit/yolo), ≤ 1500 ms (eval); bwrap namespace itself <5 ms.
+- Grammar conversion p95 ≤ 100 ms (cache miss), ≤ 10 ms (cache hit); tool-call latency
+  regression ≤ 8% (local 8B/35B).
+- 35B session-load p95 > 45 s → 35B stays an explicit session mode only (resident 8B default);
+  clamp swaps if tasks are queued within a 20 s active window.
+
 ## Next
-PRD-consensus sign-off (all agents) → plan drafts (phased, per slice) → plan consensus →
-implementation starting with the Phase-0 keystone.
+Consensus RATIFIED. → plan drafts (phased, per slice) → plan consensus → implementation starting
+with the Phase-0 keystone (`zero_trust` flag). Phase-0 keystone plan:
+`.agents/plans/phase0-keystone-zero-trust-plan.md`.
