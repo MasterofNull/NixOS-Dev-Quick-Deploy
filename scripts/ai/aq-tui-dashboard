@@ -15,8 +15,16 @@ explicit "unreachable"/"—", never a crash and never a fake "ok".
 
 Usage:
   aq-tui-dashboard                 # live full-screen TUI (Ctrl-C to exit)
+  aq-tui-dashboard --matrix        # grid of ALL running agents — each pane = its live input+output
+  aq-tui-dashboard --focus <id>    # one agent's live input + output stream (drill-in)
   aq-tui-dashboard --once          # render a single snapshot and exit (non-TTY safe)
+  aq-tui-dashboard --json          # machine-readable state
   aq-tui-dashboard --interval 2    # refresh cadence in seconds (default 2)
+
+--matrix is the multi-agent monitoring view: one pane per running delegation showing the
+prompt it received (IN) + the live tail of its output (streams for codex/aq-agent-loop;
+local-direct writes at completion). The footer lists intervention commands. Interactive
+mid-run RESPONSE injection is not yet available (headless dispatches have no input channel).
 """
 
 import argparse
@@ -29,6 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rich.console import Console
+from rich.columns import Columns
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -363,6 +372,56 @@ def panel_focus(task_id: str) -> Panel:
                  border_style="red" if level != "ok" else "cyan")
 
 
+def _registry_input(fid: str) -> str:
+    """The prompt/task a delegation received (registry `description`) — the agent's INPUT."""
+    for rec in reversed(_tail_json(REGISTRY, 800)):
+        if (rec.get("id", "") or "") == fid:
+            return (rec.get("description", "") or "").strip()
+    return ""
+
+
+def panel_agent_cell(rec: dict, out_lines: int = 16) -> Panel:
+    """One agent pane: INPUT header (prompt) + live OUTPUT tail — the cmux per-agent view."""
+    fid = rec["fid"]
+    level = rec["attn"]
+    mark, mstyle = _ATTN_MARK.get(level, (" ", "dim"))
+    title = f"{mark} {rec['agent']}  {fid[-20:]}  [{rec['status']} {rec['age']}]"
+    inp = _registry_input(fid) or "(no recorded input)"
+    out = tail_output(fid, n=out_lines)
+    body = Text()
+    body.append("IN  ", style="bold cyan")
+    body.append(inp[:180] + ("…" if len(inp) > 180 else "") + "\n", style="cyan")
+    body.append("─" * 48 + "\n", style="dim")
+    if out:
+        body.append("\n".join(out[-out_lines:]), style="white")
+    else:
+        body.append("(no output yet — streaming or write-at-end)", style="dim yellow")
+    return Panel(body, title=title, border_style="red" if level != "ok" else "green",
+                 padding=(0, 1))
+
+
+def render_matrix() -> Columns:
+    """Grid of live per-agent panes (all running delegations at once)."""
+    running = [r for r in read_active_delegations(limit=8) if r["status"] == "running"]
+    if not running:
+        return Columns([Panel(Text("no running agents — dispatch work to populate the matrix",
+                                   style="dim"), title="Agent Matrix")])
+    cells = [panel_agent_cell(r) for r in running[:8]]
+    return Columns(cells, equal=True, expand=True, column_first=True)
+
+
+def matrix_footer() -> Panel:
+    """Intervention controls — how to act on what the matrix shows."""
+    t = Text()
+    t.append("Intervene: ", style="bold")
+    t.append("delegate-to-<agent> --cancel <id>", style="yellow")
+    t.append("  |  reap wedged: ", style="dim")
+    t.append("aq-agent-reap --reconcile-registry", style="yellow")
+    t.append("  |  drill one: ", style="dim")
+    t.append("aq-tui-dashboard --focus <id>", style="yellow")
+    return Panel(t, style="blue")
+
+
 def snapshot() -> dict:
     """Machine-readable state for programmable drill-in (cmux 'read screen' analog)."""
     dele = read_active_delegations(limit=25)
@@ -384,11 +443,31 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="render one snapshot and exit")
     ap.add_argument("--interval", type=float, default=2.0, help="refresh seconds (default 2)")
     ap.add_argument("--focus", metavar="TASK_ID", help="drill into one delegation's live output")
+    ap.add_argument("--matrix", action="store_true",
+                    help="grid of ALL running agents — each pane shows its live input + output")
     ap.add_argument("--json", action="store_true", help="print machine-readable state and exit")
     args = ap.parse_args()
 
     if args.json:
         print(json.dumps(snapshot(), indent=2))
+        return 0
+
+    # Matrix mode: every running agent as its own live input+output pane (cmux "no hidden agents").
+    if args.matrix:
+        def _matrix_group():
+            g = Layout()
+            g.split_column(Layout(panel_header(), size=3), Layout(name="grid"),
+                           Layout(matrix_footer(), size=3))
+            g["grid"].update(render_matrix())
+            return g
+        if args.once or not console.is_terminal:
+            console.print(_matrix_group()); return 0
+        with Live(_matrix_group(), refresh_per_second=1, screen=True) as live:
+            try:
+                while True:
+                    live.update(_matrix_group()); time.sleep(args.interval)
+            except KeyboardInterrupt:
+                pass
         return 0
 
     # Focus mode: a single-delegation live pane (cmux per-agent view).
