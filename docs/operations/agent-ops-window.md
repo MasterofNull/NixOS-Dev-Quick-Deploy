@@ -33,10 +33,20 @@ The header reads `N delegation(s) · M active proc · K daemon`:
 daemons explicitly. A file/git A2A contributor (e.g. gemini writing a file) is NOT a running
 process — it will not appear until it produces a registry delegation.
 
-## Output liveness
-- **codex / aq-agent-loop**: stream incrementally to their output log → live in the pane.
-- **local-direct**: writes at completion → pane shows `(no output yet)` until it finishes.
-  This is a known local-direct capture limitation, tracked separately.
+## Live streaming — inputs, outputs, reasoning (near-real-time)
+`--matrix` and `--focus` show each agent's live stream (`OUT (live-stream|output-log, near-real-time)`):
+- **local[Qwen]**: `agent_executor` writes the raw LLM output/reasoning to
+  `.agents/delegation/streams/<task_id>.txt` as tokens arrive (throttled ~0.7s) → the pane shows the
+  model's output + any inline reasoning (e.g. `Thought:` prose) live, like its native CLI.
+- **codex / aq-agent-loop**: stream incrementally to their output log (reasoning summaries + tool/mcp
+  calls included) → the pane tails it live.
+- **antigravity**: runs inside the Electron IDE; its stream is IDE-bound and not exposed to the
+  matrix (contributes via the file inbox). 
+- **Thinking tokens (local):** `enable_thinking` is OFF by harness policy (thinking tokens cause empty
+  responses on this model), so local "thoughts" appear only as inline content the model emits; true
+  thinking-block exposure would require re-enabling it carefully (tracked).
+- **OTel-native (F3):** this stream is the raw signal; the F3 CapabilityLease/OTel design wraps it as
+  spans (turn/tool-call) with capability attributes — the matrix then reads spans, Jaeger/Grafana-compatible.
 
 ## Intervention
 - **Respond to a live agent** (first cut): `aq-agent-send <task_id> "your message"`.
