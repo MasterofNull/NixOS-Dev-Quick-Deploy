@@ -571,38 +571,51 @@
   Resolved: iter 16 model commit 19176f6f (2026-06-12) — Qwen3-35B used edit_file to add "validate_before_commit" to _SLIM_TOOLS. First successful autonomous self-improvement iteration.
 
 ## PENDING-REBUILD
+[DONE 2026-07-06] SLICE-0 BRING-UP — coordinator /qa/check chain GREEN. The rebuild+switch
+activated the 5 staged fixes (mcp_handlers JSON-mode recovery, _aq-qa-bash drop_spec guard,
+tool_registry XDG_STATE_HOME, mcp-servers.nix store-path exec glob + ss/proc-net read rules).
+VERIFIED: POST /qa/check returns machine JSON (passed 124, failed 0), no more
+`parse_error: aq-qa produced empty stdout`. The 6 coordinator-qa-check/* + tool-registry
+PENDING-REBUILD items below are flipped to [DONE]. (observability-parity remains open — broader.)
+[DONE 2026-07-06] stale-registry-orphan-reconciliation — reaper<->registry gap closed:
+aq-agent-reap --reconcile-registry marks status=running rows with dead/absent pid (aged past
+AQ_REAP_REGISTRY_AGE_S) as orphaned; atomic rewrite + quiescence guard (refuses live rewrite
+while dispatch appends). agent-reap.timer active (every 30min, runs as primaryUser so os.replace
+preserves registry ownership). Surfaced by aq-tui-dashboard attention (8 orphans -> 0). Tests 10/10.
+Commit 7a8be059. Root cause: reaper only killed processes, never reconciled registry.jsonl.
+
 
 [DONE] continue-local-injecthints-regression — `aq-qa 0 --machine` failed 0.5.2, 0.5.4, and 0.5.5 after Phase 164G changed `continue-local.injectHints` to true — Root cause: the compact editor/tab lane must remain hint-free; injecting harness hints into `continue-local` breaks Continue config parity and context trimming expectations.
   Severity: high
   Fix: Restored `continue-local.injectHints=false` in the switchboard profile catalog and Python fallback while leaving `local-tool-calling.injectHints=true`; added a regression test; restarted switchboard and verified live `/health` reports `continue_local_injectHints=False`.
   File: config/switchboard-profiles.yaml; ai-stack/switchboard/switchboard.py; scripts/testing/test-switchboard-profile-policy.py
 
-[PENDING-REBUILD] coordinator-qa-check-wrapper-empty-capture — after rebuild, the deployed `aq-qa` wrapper and `_aq-qa-bash` both emitted JSON when run directly, but live `/qa/check` still reported `parse_error: aq-qa produced empty stdout` for the wrapper command — Root cause: unresolved live coordinator capture/scheduler mismatch on the wrapper path; no fresh AppArmor denial was observed, and the direct deployed wrapper produced JSON with failure evidence.
+[DONE 2026-07-06] coordinator-qa-check-wrapper-empty-capture — after rebuild, the deployed `aq-qa` wrapper and `_aq-qa-bash` both emitted JSON when run directly, but live `/qa/check` still reported `parse_error: aq-qa produced empty stdout` for the wrapper command — Root cause: unresolved live coordinator capture/scheduler mismatch on the wrapper path; no fresh AppArmor denial was observed, and the direct deployed wrapper produced JSON with failure evidence.
   Severity: high
   Action: Added a JSON-mode recovery path in `run_qa_check_as_dict`: when wrapper stdout is empty, rerun the deployed `_aq-qa-bash` fallback directly and preserve wrapper exit/stderr metadata. Requires NixOS rebuild/switch to activate in the live endpoint.
   File: ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py ~265
 
-[PENDING-REBUILD] coordinator-qa-check-drop-spec-abort — post-rebuild `/qa/check` still returned `parse_error: aq-qa produced empty stdout` after AppArmor denials were resolved — Root cause: `_aq-qa-bash` ran the Phase 85.2 `drop_spec.py` injection probe in an unguarded command substitution under `set -euo pipefail`; when the coordinator subprocess resolved plain `python3` to a thinner system Python without `yaml`, the script exited before `_render_results` emitted JSON. The same PATH drift also made Phase 0 governance tests miss `httpx` and `psutil` inside `/qa/check`.
+[DONE 2026-07-06] coordinator-qa-check-drop-spec-abort — post-rebuild `/qa/check` still returned `parse_error: aq-qa produced empty stdout` after AppArmor denials were resolved — Root cause: `_aq-qa-bash` ran the Phase 85.2 `drop_spec.py` injection probe in an unguarded command substitution under `set -euo pipefail`; when the coordinator subprocess resolved plain `python3` to a thinner system Python without `yaml`, the script exited before `_render_results` emitted JSON. The same PATH drift also made Phase 0 governance tests miss `httpx` and `psutil` inside `/qa/check`.
   Severity: high
   Action: Guarded the `drop_spec.py` probe so import/test failures become normal `CheckResult` rows and added `hybridPython` to the `ai-hybrid-coordinator` service path so child QA probes inherit the coordinator's packaged Python dependencies. Requires NixOS rebuild/switch before live `/qa/check` can use the new service path and patched store source.
   File: scripts/ai/_aq-qa-bash ~1190; nix/modules/services/mcp-servers.nix ~1034
 
-[PENDING-REBUILD] tool-registry-readonly-home-default — `test-local-agent-store-memory-contract.py` failed only inside the coordinator-like environment with `PermissionError: /var/lib/ai-stack/hybrid/.local/share/...` — Root cause: `ToolRegistry()` defaulted its SQLite audit DB under `Path.home()/.local/share`, but coordinator service hardening sets `HOME=/var/lib/ai-stack/hybrid` and does not make that nested home data path writable; existing writable state is exposed through `XDG_STATE_HOME`/`DATA_DIR`.
+[DONE 2026-07-06] tool-registry-readonly-home-default — `test-local-agent-store-memory-contract.py` failed only inside the coordinator-like environment with `PermissionError: /var/lib/ai-stack/hybrid/.local/share/...` — Root cause: `ToolRegistry()` defaulted its SQLite audit DB under `Path.home()/.local/share`, but coordinator service hardening sets `HOME=/var/lib/ai-stack/hybrid` and does not make that nested home data path writable; existing writable state is exposed through `XDG_STATE_HOME`/`DATA_DIR`.
   Severity: high
   Action: Changed the default audit DB path to prefer `XDG_STATE_HOME` then `DATA_DIR`, preserving the interactive `XDG_DATA_HOME`/home fallback. Requires NixOS rebuild/switch for deployed coordinator subprocesses.
   File: ai-stack/local-agents/tool_registry.py ~46
 
-[PENDING-REBUILD] coordinator-qa-check-store-script-exec-denial — post-switch `/qa/check` advanced past proc-net but still returned `parse_error: aq-qa produced empty stdout` — Root cause: coordinator phase 0 runs from the deployed Nix-store source path, so existing AppArmor exec rules for live-repo `scripts/ai/aqd` did not match `/nix/store/*-source/scripts/ai/aqd`; phase 0 also invokes `git` from Python checks.
+[DONE 2026-07-06] coordinator-qa-check-store-script-exec-denial — post-switch `/qa/check` advanced past proc-net but still returned `parse_error: aq-qa produced empty stdout` — Root cause: coordinator phase 0 runs from the deployed Nix-store source path, so existing AppArmor exec rules for live-repo `scripts/ai/aqd` did not match `/nix/store/*-source/scripts/ai/aqd`; phase 0 also invokes `git` from Python checks.
   Severity: high
   Action: Added inherited-profile exec rules for `/nix/store/*-source/scripts/ai/{aqd,aq-alerts}` and `/nix/store/**/bin/git`. Requires NixOS rebuild/switch to activate.
   File: nix/modules/services/mcp-servers.nix
 
-[PENDING-REBUILD] coordinator-qa-check-ss-procnet-denial — post-rebuild `/qa/check` still aborted before machine JSON while direct git sync was already clean — Root cause: the new AppArmor exec rule allowed `ss`, but inherited `ai-hybrid-coordinator` confinement denied `ss -tlnp` reads of `/proc/<pid>/net/tcp`, so repeated phase 0 listener probes still failed in the service sandbox. The handler correctly exposed `parse_error: aq-qa produced empty stdout`.
+[DONE 2026-07-06] coordinator-qa-check-ss-procnet-denial — post-rebuild `/qa/check` still aborted before machine JSON while direct git sync was already clean — Root cause: the new AppArmor exec rule allowed `ss`, but inherited `ai-hybrid-coordinator` confinement denied `ss -tlnp` reads of `/proc/<pid>/net/tcp`, so repeated phase 0 listener probes still failed in the service sandbox. The handler correctly exposed `parse_error: aq-qa produced empty stdout`.
   Severity: high
   Action: Added explicit read rules for per-process net tables used by `ss` (`tcp`, `tcp6`, `udp`, `udp6`, `unix`) and the THP status file also reported by health-spider. Follow-up after rebuild: first patch placed the rules in the dashboard profile block, not `ai-hybrid-coordinator`; moved them into the correct profile. Requires NixOS rebuild/switch to activate.
   File: nix/modules/services/mcp-servers.nix
 
-[PENDING-REBUILD] coordinator-qa-check-empty-json — `/qa/check` returned `qa_result: {}` with empty stdout/stderr while direct `aq-qa 0 --json` produced machine JSON — Root cause: the enforced `ai-hybrid-coordinator` AppArmor profile denied exec for phase 0 probe tools (`ss`, `psql`, `redis-cli`, `getent`) and repo-local `scripts/ai/aqd`; the denied `aqd --version` pipeline ran under `set -euo pipefail`, aborting `_aq-qa-bash` before JSON emission. The coordinator handler also parsed empty stdout as `{}`, hiding the root cause.
+[DONE 2026-07-06] coordinator-qa-check-empty-json — `/qa/check` returned `qa_result: {}` with empty stdout/stderr while direct `aq-qa 0 --json` produced machine JSON — Root cause: the enforced `ai-hybrid-coordinator` AppArmor profile denied exec for phase 0 probe tools (`ss`, `psql`, `redis-cli`, `getent`) and repo-local `scripts/ai/aqd`; the denied `aqd --version` pipeline ran under `set -euo pipefail`, aborting `_aq-qa-bash` before JSON emission. The coordinator handler also parsed empty stdout as `{}`, hiding the root cause.
   Severity: high
   Action: Added explicit AppArmor exec rules for the phase 0 probe tools, made the `aqd` version probe failure-tolerant, and changed `/qa/check` JSON parsing to report `parse_error: aq-qa produced empty stdout` when subprocess output is empty. Requires NixOS rebuild/switch to activate the profile changes.
   File: nix/modules/services/mcp-servers.nix; scripts/ai/_aq-qa-bash; ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py
