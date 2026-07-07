@@ -2,7 +2,7 @@
 
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-07-06
+Last Updated: 2026-07-07
 
 Live terminal matrix for monitoring all agents, delegations, and operations, and for
 deciding interventions. Reads real sources (no mock data): the delegation registry,
@@ -29,15 +29,22 @@ Delegations are flagged worst-first: `✗` failed · `↻` error-loop (a line re
   This is a known local-direct capture limitation, tracked separately.
 
 ## Intervention
-The `--matrix` footer lists the current controls:
-- **Cancel a task**: `delegate-to-<agent> --cancel <id>`
-- **Reap wedged / reconcile stale registry rows**: `aq-agent-reap --reconcile-registry`
-- **Drill into one**: `aq-tui-dashboard --focus <id>`
+- **Respond to a live agent** (first cut): `aq-agent-send <task_id> "your message"`.
+  The message is queued to `.agents/delegation/control/<task_id>.jsonl`; a running
+  `aq-agent-loop` polls the queue at the top of every turn and injects it into its
+  conversation as `[OPERATOR INTERVENTION] <message>` before the next LLM call. Watch the
+  effect with `aq-tui-dashboard --focus <id>`.
+- **Soft-stop**: `aq-agent-send <task_id> "reason" --cancel` → injects an
+  `[OPERATOR INTERVENTION — STOP]` directive so the agent finalizes and stops.
+- **Hard cancel / reap wedged**: `aq-agent-reap --reconcile-registry` (or the agent's
+  `--cancel`), for agents that are wedged and not polling.
+- **Drill into one**: `aq-tui-dashboard --focus <id>`.
 
-**Not yet available**: interactive mid-run *response injection* to a running agent.
-Delegations are headless fire-and-forget with no input channel — sending a message to a
-live agent needs a control channel (a per-task message queue at the coordinator/switchboard,
-or running agents under a PTY multiplexer). Tracked as an A2A-coordination follow-up.
+**Mechanism + limits**: this is a POLLING channel — the agent pulls between turns, so a
+message lands at the *next* turn boundary, not instantly, and only while the loop is
+actively iterating (a wedged/blocked agent won't poll — use reap). It works for
+`aq-agent-loop`-driven agents (local); external CLIs (codex/gemini) run their own loops and
+do not poll this queue. A true interrupt (mid-turn) would need a PTY multiplexer.
 
 ## Invocation
 Wrapped as a Nix command (`aq-tui-dashboard`, activates on rebuild; pins python-with-rich +

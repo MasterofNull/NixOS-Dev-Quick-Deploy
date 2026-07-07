@@ -267,6 +267,9 @@ let
         export PATH="${pkgs.procps}/bin:$PATH"
         exec ${pkgs.python3.withPackages (ps: [ps.rich])}/bin/python3 "${cfg.mcpServers.repoPath}/scripts/ai/aq-tui-dashboard" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-agent-send" ''
+        exec ${pkgs.python3}/bin/python3 "${cfg.mcpServers.repoPath}/scripts/ai/aq-agent-send" "$@"
+      '')
       (pkgs.writeShellScriptBin "agrep" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/agrep" "$@"
       '')
