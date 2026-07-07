@@ -1741,6 +1741,25 @@ class LocalAgentExecutor:
             except Exception:
                 pass
 
+        # Live stream tail — the raw LLM output/reasoning as it streams, for near-real-time
+        # monitoring in aq-tui-dashboard --matrix (reads .agents/delegation/streams/<id>.txt).
+        # Throttled ~0.7s; independent of AGENT_PROGRESS_FILE. This is what lets the operator
+        # watch a local agent's thoughts/output live, like its native CLI.
+        _stream_dir = Path(__file__).resolve().parents[2] / ".agents" / "delegation" / "streams"
+        _stream_file = _stream_dir / f"{task_id}.txt"
+        _last_stream_write = [0.0]
+
+        def _write_stream_tail(final: bool = False) -> None:
+            now = time.time()
+            if not final and now - _last_stream_write[0] < 0.7:
+                return
+            _last_stream_write[0] = now
+            try:
+                _stream_dir.mkdir(parents=True, exist_ok=True)
+                _stream_file.write_text("".join(collected)[-4000:])
+            except OSError:
+                pass
+
         try:
             _write_stream_progress("llm_waiting", force=True)
             _stream_start = time.monotonic()
@@ -1796,6 +1815,7 @@ class LocalAgentExecutor:
                         if token:
                             collected.append(token)
                             _write_stream_progress("llm_streaming")
+                            _write_stream_tail()
         except httpx.ReadTimeout:
             raise RuntimeError(
                 f"LLM no-progress timeout: server silent for >{read_timeout:.0f}s "
@@ -1807,6 +1827,7 @@ class LocalAgentExecutor:
         except httpx.NetworkError as _ne:
             raise RuntimeError(f"LLM network error: {_ne}") from _ne
 
+        _write_stream_tail(final=True)
         return "".join(collected), tokens_used
 
     async def _fallback_to_remote(self, task: Task) -> Task:

@@ -49,6 +49,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 REGISTRY = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
 OUTPUTS = REPO_ROOT / ".agents" / "delegation" / "outputs"
+STREAMS = REPO_ROOT / ".agents" / "delegation" / "streams"
 A2A_AUDIT = REPO_ROOT / ".agent" / "collaboration" / "a2a-audit.log"
 PULSE = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
 
@@ -125,6 +126,21 @@ def tail_output(task_id: str, n: int = 40, max_bytes: int = 8192) -> list:
     except OSError:
         return []
     return data.splitlines()[-n:]
+
+
+def read_live_stream(task_id: str, n: int = 40) -> tuple:
+    """Near-real-time agent output/reasoning. Local writes a live stream file (tokens as they
+    arrive); codex/others stream into their output log (which grows live). Returns (lines, src)."""
+    if task_id:
+        sf = STREAMS / f"{task_id}.txt"
+        if sf.exists():
+            try:
+                txt = sf.read_text(encoding="utf-8", errors="replace")
+                if txt.strip():
+                    return txt.splitlines()[-n:], "live-stream"
+            except OSError:
+                pass
+    return tail_output(task_id, n=n), "output-log"
 
 
 def assess_attention(rec: dict) -> tuple:
@@ -370,8 +386,8 @@ def panel_focus(task_id: str) -> Panel:
     mark, mstyle = _ATTN_MARK.get(level, (" ", "dim"))
     head.add_row(Text(f"{rec.get('agent','?')}  {rec.get('id','')}", style="bold cyan"),
                  Text(f"{mark} {level} {reason}".strip(), style=mstyle))
-    lines = tail_output(rec.get("id", ""), n=40)
-    out = "\n".join(lines) if lines else "(no output log yet)"
+    lines, src = read_live_stream(rec.get("id", ""), n=40)
+    out = "\n".join(lines) if lines else "(no output yet — awaiting first token)"
     inner = Table.grid(expand=True)
     inner.add_row(head)
     inner.add_row(Text("status: " + rec.get("status", "?") + "   created: " + rec.get("created", "?"),
@@ -397,15 +413,15 @@ def panel_agent_cell(rec: dict, out_lines: int = 16) -> Panel:
     mark, mstyle = _ATTN_MARK.get(level, (" ", "dim"))
     title = f"{mark} {rec['agent']}  {fid[-20:]}  [{rec['status']} {rec['age']}]"
     inp = _registry_input(fid) or "(no recorded input)"
-    out = tail_output(fid, n=out_lines)
+    out, src = read_live_stream(fid, n=out_lines)
     body = Text()
     body.append("IN  ", style="bold cyan")
     body.append(inp[:180] + ("…" if len(inp) > 180 else "") + "\n", style="cyan")
-    body.append("─" * 48 + "\n", style="dim")
+    body.append(f"── OUT ({src}, near-real-time) " + "─" * 20 + "\n", style="dim")
     if out:
         body.append("\n".join(out[-out_lines:]), style="white")
     else:
-        body.append("(no output yet — streaming or write-at-end)", style="dim yellow")
+        body.append("(no output yet — streaming or awaiting first token)", style="dim yellow")
     return Panel(body, title=title, border_style="red" if level != "ok" else "green",
                  padding=(0, 1))
 
