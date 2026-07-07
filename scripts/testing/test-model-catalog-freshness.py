@@ -8,6 +8,10 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
+
+# Mock psutil to allow dynamic imports of model_catalog on systems without psutil
+sys.modules['psutil'] = MagicMock()
 
 
 ROOT = Path(__file__).resolve().parents[2]

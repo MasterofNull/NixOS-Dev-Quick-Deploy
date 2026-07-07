@@ -1347,6 +1347,11 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   4. No watched-handoff inbox the IDE agent auto-monitors → gemini contributes MANUALLY only.
 - **Fixed now**: HTTP 400/401/403 → fall back to local-coding (delegate-to-antigravity functional
   again — produces local-Qwen output instead of hard-failing on an invalid remote key).
+- **2026-07-07 closeout**: live smoke confirmed switchboard is rebuilt to
+  `REMOTE_LLM_URL=https://generativelanguage.googleapis.com/v1beta/openai`, but the remote profile
+  still returns HTTP 400 `Please pass a valid API key`. Added delegate-to-antigravity logging so the
+  child output records the remote HTTP body before trying local fallback; this prevents the invalid
+  key from being hidden behind a later local timeout.
 - **Still OPEN (correct+full integration)**:
   (a) real-Gemini requires a valid remote key within user constraints (NOT OpenRouter/free/GCP-
       projects) — currently blocked; OR

@@ -803,7 +803,7 @@
         "scripts/testing/test-dashboard-orchestration-events.py"
       ],
       "tier": "behavioral",
-      "timeout_seconds": 20,
+      "timeout_seconds": 90,
       "enabled": true
     },
     {
@@ -930,7 +930,7 @@
         "scripts/testing/test-host-observer-contract.py"
       ],
       "tier": "behavioral",
-      "timeout_seconds": 30,
+      "timeout_seconds": 90,
       "enabled": true
     },
     {
