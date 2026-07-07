@@ -45,7 +45,10 @@ process — it will not appear until it produces a registry delegation.
 - **Thinking tokens (local):** `enable_thinking` is OFF by harness policy (thinking tokens cause empty
   responses on this model), so local "thoughts" appear only as inline content the model emits; true
   thinking-block exposure would require re-enabling it carefully (tracked).
-- **Selections line (per pane):** `⚙ role · model · profile · tools · bundle/zero_trust`. role/
+- **Selections line (per pane):** `⚙ role · model · profile · tools · bundle/zt · [BADGE]`.
+  The trailing badge is the live attention state: `[✓]` healthy · `[↻ ERROR-LOOP: <repeat>]` ·
+  `[◷ STALLED: <age>]` · `[✗ FAILED]` — error-loop = a line repeated `AQ_OPS_LOOP_REPEAT`+ times
+  in the stream/log; stalled = running past `AQ_OPS_STALL_S`. role/
   model/profile are derived per lane (registry role; lane→model/profile map); `tools` = tool-call
   count from the progress sidecar. The per-REQUEST switchboard selections (leased bundle,
   injectHints, zero_trust) are shown as `(F3 OTel)` until F3 emits task-correlated spans — not
