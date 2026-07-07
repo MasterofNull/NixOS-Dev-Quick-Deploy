@@ -1332,3 +1332,25 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   capture; (b) a "review" task template that inlines the artifact + constrains to a short verdict;
   (c) consider a smaller/faster local model (4B/8B) for bounded review while 35B handles synthesis
   (ties to Slice-3 model-stacking). Local is ALWAYS engaged; these make it succeed.
+
+## [PARTIAL-FIX] gemini-antigravity-integration-incomplete (2026-07-07)
+- **Scope**: scripts/ai/delegate-to-antigravity; switchboard remote-free profile; Antigravity IDE
+- **Severity**: high (the gemini/antigravity lane does not participate automatically)
+- **Diagnosis**:
+  1. Headless `delegate-to-antigravity` → switchboard `remote-free` (Google Gemini) returns HTTP
+     400 "Please pass a valid API key" — remote key missing/invalid (not fixed by rebuilds).
+  2. FALLBACK BUG (fixed): the local-coding fallback only fired on 429/402; HTTP 400/401/403 hit
+     the else → HARD FAIL, never fell back. So the lane died instead of using local Qwen.
+  3. Antigravity is the Google Antigravity Electron GUI IDE (v1.104.0, desktop app) — its agent is
+     IDE/OAuth-bound, NOT headless-API-accessible. Real-Gemini output only via the user driving the
+     IDE agent to read a file-A2A handoff and write the response (as done for PRD-consensus).
+  4. No watched-handoff inbox the IDE agent auto-monitors → gemini contributes MANUALLY only.
+- **Fixed now**: HTTP 400/401/403 → fall back to local-coding (delegate-to-antigravity functional
+  again — produces local-Qwen output instead of hard-failing on an invalid remote key).
+- **Still OPEN (correct+full integration)**:
+  (a) real-Gemini requires a valid remote key within user constraints (NOT OpenRouter/free/GCP-
+      projects) — currently blocked; OR
+  (b) a watched A2A handoff inbox the Antigravity IDE agent monitors (semi-automatic gemini) —
+      needs IDE-side config; the real integration work.
+  Note: local fallback gives functionality but NOT model diversity (gemini==local==Qwen), so
+  consensus rounds still need real-Gemini via the IDE for a distinct perspective.

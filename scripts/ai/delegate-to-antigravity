@@ -336,9 +336,14 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
                     sys.stderr.write(f"[delegate-to-antigravity] HTTP {exc.code} on {current_profile} (attempt {attempt}), waiting {retry_after}s\n")
                     time.sleep(retry_after)
                     continue
-                elif exc.code in (429, 402):
-                    # Exhausted retries on this profile — try next
-                    sys.stderr.write(f"[delegate-to-antigravity] HTTP {exc.code} on {current_profile} — trying next profile\n")
+                elif exc.code in (429, 402, 400, 401, 403):
+                    # 429/402 = rate-limited / no-credits; 400/401/403 = invalid or MISSING remote
+                    # API key ("Please pass a valid API key"). In all these cases the remote backend
+                    # is unusable, so fall through to the next profile (local Qwen local-coding)
+                    # instead of hard-failing. This is the documented "missing remote key -> local
+                    # fallback" behavior, which previously only fired for 429/402 and let a 400 die.
+                    sys.stderr.write(f"[delegate-to-antigravity] HTTP {exc.code} on {current_profile} "
+                                     "— remote unusable, trying next profile (local fallback)\n")
                     break
                 with open(log_path, "a") as f:
                     f.write(f"ERROR: switchboard HTTP {exc.code} ({current_profile}): {body}\n")
