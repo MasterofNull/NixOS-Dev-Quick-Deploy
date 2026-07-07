@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
 """aq-collab-round — agentic fan-out engine for flat-collaborative rounds.
 
-Codifies the multi-agent round that was previously orchestrated by hand: fan a task out to
-ALL agents (codex, local[Qwen], antigravity, + claude the orchestrator), each writing to its
-OWN per-agent file (no lost-write race), then poll/aggregate. First cut of the epic's
-"round driver" (epic-flat-collaborative-factory, stages 2-4).
+Codifies the multi-agent round that was previously orchestrated by hand: fan a task out to ALL
+agents, each writing to its OWN per-agent file (no lost-write race), then poll/collect. First cut
+of the epic's "round driver" (epic-flat-collaborative-factory, stages 2-4).
 
-Principles baked in:
-  - Per-agent files (.agents/plans/<round>/<agent>.md) — never a shared append.
-  - NEVER skip local[Qwen]: dispatched with the task INLINED (so it doesn't burn turns reading)
-    + a generous timeout; the round stays open for its late contribution.
-  - Antigravity is the remote lane (Gemini underneath); old delegate-to-gemini is DEAD.
-  - Respects the dispatch budget; claude (orchestrator) contributes + aggregates separately.
+Full logic + data-exposure map: docs/operations/collab-workflow-exposure.md.
+
+Auth model (NO API keys — governing, feedback-no-api-keys-oauth-only):
+  - codex  : headless CLI, codex's own login (remote OpenAI). Prompt scanned/audited outbound.
+  - local  : delegate-to-local → on-host APU. NOTHING leaves the host. Never skipped: dispatched
+             with the task INLINED (so it doesn't burn turns reading) + a generous timeout; the
+             round stays OPEN for its late contribution.
+  - antigravity : the Google Antigravity IDE (real Gemini) authenticated by its OWN OAuth, which we
+             NEVER touch. We do NOT call a headless key-based lane (that would fall back to local
+             Qwen). Instead we DROP a task file into a watched inbox; the IDE agent (configured to
+             watch it) responds by writing the per-agent file. No credentials cross the boundary.
+             The old delegate-to-gemini / gemini npm CLI is DEAD — never dispatched.
 
 Usage:
-  aq-collab-round open   --round <name> --task "<prompt>" [--target <path>] [--local-timeout 5400]
+  aq-collab-round open   --round <name> --task "<prompt>" [--target <path>] [--local-timeout 5400] [--dry-run]
   aq-collab-round status --round <name>
+  aq-collab-round collect --round <name>   # poll + auto-extract local's verdict from its output log
 """
 from __future__ import annotations
 
@@ -30,109 +36,161 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 PLANS = REPO / ".agents" / "plans"
 SCRIPTS = REPO / "scripts" / "ai"
-# Remote lane is antigravity (Gemini); old gemini CLI is dead — not dispatched.
-DISPATCH_AGENTS = ["codex", "local", "antigravity"]
+OUTPUTS = REPO / ".agents" / "delegation" / "outputs"
+# Watched inbox — the Antigravity IDE agent (its own OAuth) polls this dir and responds.
+ANTIGRAVITY_INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
+# Lanes that receive a live dispatch. antigravity is a file-drop (inbox), not a process dispatch.
+PROCESS_AGENTS = ["codex", "local"]
+ALL_AGENTS = ["claude", "codex", "local", "antigravity"]
 
 
 def _round_dir(name: str) -> Path:
     return PLANS / name
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _readme(name: str, task: str, target: str) -> str:
     return f"""# Collaborative Round — {name}
 
-Opened: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
-Target (review artifact, if any): {target or '(none — this is a fresh drafting round)'}
+Opened: {_now()}
+Target artifact (if a review round): {target or '(none — fresh drafting round)'}
 
 ## Task
 {task}
 
 ## Protocol
 Each agent writes its OWN file here — `codex.md`, `local.md`, `antigravity.md`, `claude.md`.
-NEVER append to a shared file (last-writer-wins loses contributions). The orchestrator
-aggregates into `AGGREGATE.md`.
-
-- **local[Qwen]** is dispatched with the task inlined + a generous timeout; the round stays
-  OPEN for its late contribution — never skipped.
-- **antigravity** (Google Antigravity IDE, real Gemini) writes `antigravity.md`. The headless
-  lane falls back to local Qwen on an invalid remote key, so a DISTINCT Gemini perspective
-  comes from the IDE agent (file/git A2A). Old `delegate-to-gemini` is DEAD.
-
-## Contributions
-(track with `aq-collab-round status --round {name}`)
+NEVER append to a shared file. The orchestrator aggregates into `AGGREGATE.md`.
+- local[Qwen] runs long — the round stays OPEN for it; never skipped.
+- antigravity (Antigravity IDE, real Gemini via its OWN OAuth) picks up the task from the inbox
+  `{ANTIGRAVITY_INBOX.relative_to(REPO)}/{name}.md` and writes `antigravity.md`. No API keys.
 """
 
 
-def _dispatch(agent: str, prompt_file: Path, round_name: str, local_timeout: int) -> str:
-    """Fire one agent's dispatch (background). Returns a short status string."""
+def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
+    target_line = f"Review artifact: {target} (read it).\n" if target else ""
+    prompt = (f"COLLABORATIVE ROUND '{name}'. {target_line}\n"
+              f"TASK:\n{task}\n\n"
+              f"Write your contribution to YOUR OWN file ONLY: "
+              f".agents/plans/{name}/<AGENT>.md (<AGENT> = codex | local | antigravity). "
+              f"Do NOT edit any shared file. Be decisive and concise.")
+    pf = rd / ".round-prompt.txt"
+    pf.write_text(prompt)
+    return pf
+
+
+def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
+    """Fire a live process dispatch (codex/local), background. Returns the task id (or error)."""
     try:
         if agent == "codex":
-            out = subprocess.run(["bash", str(SCRIPTS / "delegate-to-codex"), "--mode", "edit",
-                                  "--prompt-file", str(prompt_file)],
-                                 capture_output=True, text=True, timeout=30).stdout
-        elif agent == "local":
-            # never-skip-local: agent-mode, inlined prompt, generous timeout, async.
-            out = subprocess.run(["bash", str(SCRIPTS / "delegate-to-local"), "--mode", "agent",
-                                  "--role", "reviewer", "--timeout", str(local_timeout),
-                                  "--prompt-file", str(prompt_file)],
-                                 capture_output=True, text=True, timeout=30,
-                                 env={**os.environ, "AQ_AGENT_ROLE": "reviewer"}).stdout
-        elif agent == "antigravity":
-            out = subprocess.run([str(SCRIPTS / "delegate-to-antigravity"),
-                                  "--prompt", prompt_file.read_text(), "--role", "reviewer"],
-                                 capture_output=True, text=True, timeout=30).stdout
-        else:
-            return f"{agent}: unknown"
-        tid = (out.strip().splitlines() or ["?"])[-1]
-        return f"{agent}: dispatched {tid}"
+            cmd = ["bash", str(SCRIPTS / "delegate-to-codex"), "--mode", "edit",
+                   "--prompt-file", str(prompt_file)]
+            env = os.environ
+        else:  # local — never-skip: agent-mode, inlined, generous timeout, async
+            cmd = ["bash", str(SCRIPTS / "delegate-to-local"), "--mode", "agent", "--role",
+                   "reviewer", "--timeout", str(local_timeout), "--prompt-file", str(prompt_file)]
+            env = {**os.environ, "AQ_AGENT_ROLE": "reviewer"}
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env).stdout
+        return (out.strip().splitlines() or ["?"])[-1]
     except subprocess.TimeoutExpired:
-        return f"{agent}: dispatch returned (running async)"
-    except Exception as e:  # noqa: BLE001 — one agent failing must not abort the fan-out
-        return f"{agent}: dispatch error ({e})"
+        return "running-async"
+    except Exception as e:  # noqa: BLE001 — one lane failing must not abort the fan-out
+        return f"error:{e}"
+
+
+def _drop_antigravity(name: str, prompt_file: Path) -> str:
+    """No-key antigravity lane: drop a task file into the IDE-watched inbox."""
+    ANTIGRAVITY_INBOX.mkdir(parents=True, exist_ok=True)
+    inbox = ANTIGRAVITY_INBOX / f"{name}.md"
+    inbox.write_text(f"# A2A task for antigravity — round '{name}'\n\n"
+                     f"Dropped: {_now()}\n\n"
+                     f"Respond by writing `.agents/plans/{name}/antigravity.md`.\n\n"
+                     f"{prompt_file.read_text()}\n")
+    return f"inbox:{inbox.relative_to(REPO)}"
 
 
 def cmd_open(args) -> int:
     rd = _round_dir(args.round)
+    if args.dry_run:
+        print(f"[dry-run] would open '{args.round}' at {rd}")
+        print(f"[dry-run] dispatch: codex(edit), local(agent,{args.local_timeout}s,inlined,never-skip)")
+        print(f"[dry-run] antigravity: file-drop to {ANTIGRAVITY_INBOX.relative_to(REPO)}/{args.round}.md (no keys)")
+        print(f"[dry-run] claude: orchestrator writes {args.round}/claude.md + aggregates")
+        return 0
     rd.mkdir(parents=True, exist_ok=True)
     (rd / "README.md").write_text(_readme(args.round, args.task, args.target or ""))
+    pf = _write_prompt(rd, args.round, args.task, args.target or "")
 
-    # Per-agent-file prompt: inline the task + tell each agent to write ITS OWN file.
-    target_line = (f"Review artifact: {args.target} (read it).\n" if args.target else "")
-    prompt = (f"COLLABORATIVE ROUND '{args.round}'. {target_line}\n"
-              f"TASK:\n{args.task}\n\n"
-              f"Write your contribution to YOUR OWN file ONLY: "
-              f".agents/plans/{args.round}/<AGENT>.md where <AGENT> is your name "
-              f"(codex | local | antigravity). Do NOT edit any shared file. Be decisive and concise.")
-    pf = rd / ".round-prompt.txt"
-    pf.write_text(prompt)
-
-    print(f"[aq-collab-round] opened '{args.round}' at {rd}")
-    for agent in DISPATCH_AGENTS:
-        print("  " + _dispatch(agent, pf, args.round, args.local_timeout))
+    dispatch = {}
+    print(f"[aq-collab-round] opened '{args.round}' at {rd.relative_to(REPO)}")
+    for agent in PROCESS_AGENTS:
+        tid = _dispatch_process(agent, pf, args.local_timeout)
+        dispatch[agent] = tid
+        print(f"  {agent}: dispatched {tid}")
+    dispatch["antigravity"] = _drop_antigravity(args.round, pf)
+    print(f"  antigravity: {dispatch['antigravity']} (IDE agent picks up via its OAuth — no keys)")
     print(f"  claude: orchestrator writes {args.round}/claude.md + aggregates")
-    print(f"\n  poll: aq-collab-round status --round {args.round}")
-    print("  local[Qwen] runs long — the round stays OPEN for it (never skipped).")
+    (rd / ".round-dispatch.json").write_text(json.dumps(
+        {"opened": _now(), "dispatch": dispatch}, indent=2))
+    print(f"\n  poll:    aq-collab-round status  --round {args.round}")
+    print(f"  collect: aq-collab-round collect --round {args.round}   (auto-extracts local verdict)")
     return 0
 
 
-def cmd_status(args) -> int:
+def _extract_local_verdict(rd: Path) -> str:
+    """If local wrote no local.md but its dispatch log has a completed result, record it. Local
+    often emits the verdict as TEXT (0 tool calls) — capture it so its contribution is never lost."""
+    lf = rd / "local.md"
+    if lf.exists():
+        return "present"
+    try:
+        disp = json.loads((rd / ".round-dispatch.json").read_text()).get("dispatch", {})
+    except Exception:
+        return "no-dispatch-record"
+    tid = disp.get("local", "")
+    if not tid or tid.startswith(("error", "running")):
+        return "local-not-dispatched-or-running"
+    log = OUTPUTS / f"{tid}.log"
+    if not log.exists():
+        return "local-log-missing"
+    try:
+        d = json.loads(log.read_text())
+    except Exception:
+        return "local-running-or-unparsed"
+    if d.get("status") != "completed":
+        return f"local-{d.get('status','running')}"
+    result = d.get("result")
+    text = result if isinstance(result, str) else json.dumps(result)
+    if not text:
+        return "local-completed-empty"
+    lf.write_text(f"# local[Qwen] — round contribution (auto-extracted)\n\n"
+                  f"_From dispatch `{tid}` (produced text, {len(d.get('tool_calls') or [])} tool "
+                  f"calls; orchestrator recorded)._\n\n{text.strip()}\n")
+    return "extracted"
+
+
+def cmd_status(args, do_extract: bool = False) -> int:
     rd = _round_dir(args.round)
     if not rd.exists():
         print(f"no round '{args.round}' at {rd}", file=sys.stderr)
         return 1
+    if do_extract:
+        r = _extract_local_verdict(rd)
+        print(f"[collect] local verdict: {r}")
     print(f"[aq-collab-round] {args.round}")
-    for agent in ["claude", "codex", "local", "antigravity"]:
+    for agent in ALL_AGENTS:
         f = rd / f"{agent}.md"
-        mark = f"✅ {f.stat().st_size}B" if f.exists() else "⏳ pending"
-        print(f"  {agent:12} {mark}")
+        print(f"  {agent:12} " + (f"✅ {f.stat().st_size}B" if f.exists() else "⏳ pending"))
     try:
         out = subprocess.run(["pgrep", "-af", "delegate-to|aq-agent-loop|codex exec"],
                              capture_output=True, text=True, timeout=5).stdout
-        n = sum(1 for l in out.splitlines() if "aq-collab-round" not in l and "pgrep" not in l)
-        print(f"  active dispatch procs: {n}")
+        print(f"  active dispatch procs: {sum(1 for l in out.splitlines() if 'aq-collab-round' not in l and 'pgrep' not in l)}")
     except Exception:
         pass
-    have = [a for a in ("claude", "codex", "local", "antigravity") if (rd / f"{a}.md").exists()]
+    have = [a for a in ALL_AGENTS if (rd / f"{a}.md").exists()]
     print(f"  landed: {len(have)}/4 — {', '.join(have) or 'none'}")
     return 0
 
@@ -141,14 +199,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="aq-collab-round", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     o = sub.add_parser("open", help="fan a task out to all agents")
-    o.add_argument("--round", required=True)
-    o.add_argument("--task", required=True)
-    o.add_argument("--target", help="artifact to review (optional)")
-    o.add_argument("--local-timeout", type=int, default=5400)
-    o.set_defaults(fn=cmd_open)
-    s = sub.add_parser("status", help="poll a round's contributions")
-    s.add_argument("--round", required=True)
-    s.set_defaults(fn=cmd_status)
+    o.add_argument("--round", required=True); o.add_argument("--task", required=True)
+    o.add_argument("--target"); o.add_argument("--local-timeout", type=int, default=5400)
+    o.add_argument("--dry-run", action="store_true"); o.set_defaults(fn=cmd_open)
+    s = sub.add_parser("status", help="poll contributions"); s.add_argument("--round", required=True)
+    s.set_defaults(fn=lambda a: cmd_status(a, do_extract=False))
+    c = sub.add_parser("collect", help="poll + auto-extract local's verdict from its log")
+    c.add_argument("--round", required=True); c.set_defaults(fn=lambda a: cmd_status(a, do_extract=True))
     args = ap.parse_args()
     return args.fn(args)
 

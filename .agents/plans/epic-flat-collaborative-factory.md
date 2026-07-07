@@ -33,14 +33,14 @@ this end-to-end lifecycle:
 Antigravity (the Google Antigravity Electron IDE, real Gemini underneath) must be a peer A2A node —
 integrated into A2A, the switchboard, and all local-hosted systems/features — not a manual outlier.
 Current state: it only participates when the human drives the IDE to read a file handoff and write a
-response. Two integration paths (pick per the credential model — OPEN QUESTION to operator):
-- **A. Key-wiring (headless):** if paid Antigravity exposes an API key/endpoint, wire it into the
-  switchboard remote profile → `delegate-to-antigravity` reaches real Gemini headlessly, full A2A
-  participation like codex. (Blocked today: remote key invalid → falls back to local Qwen.)
-- **B. Watched A2A inbox (IDE-bound):** if Gemini access is IDE-only, build a handoff inbox
-  directory the Antigravity IDE agent monitors (a workspace/agent rule that polls a folder); rounds
-  drop task files, the IDE agent auto-responds with `antigravity.md`. Real Gemini, semi-automatic,
-  no key. Needs IDE-side config support.
+response. Integration path (DECIDED 2026-07-07 — operator: NO API keys, too risky; use the IDE's own OAuth):
+- **CHOSEN — Watched A2A inbox (IDE OAuth, no keys):** the harness drops a task file into
+  `.agent/collaboration/antigravity-inbox/<round>.md` (wired in `aq-collab-round`); the Antigravity
+  IDE agent — authenticated by its OWN OAuth session, which we never touch — watches the inbox and
+  responds by writing `antigravity.md`. Real Gemini, no API key crosses the boundary.
+  OPERATOR TODO: configure the Antigravity IDE with a rule/agent that watches the inbox dir.
+- **REJECTED — API-key wiring:** no keys anywhere (too risky). The headless key-based lane falls
+  back to local Qwen and is not used for a distinct Gemini perspective.
 Either way: antigravity's dispatches, A2A messages, safeguards (secret scan, action policy, budget),
 and audit must flow through the same switchboard/coordinator path as every other node, and appear in
 `aq-tui-dashboard`.
@@ -57,7 +57,8 @@ and audit must flow through the same switchboard/coordinator path as every other
 - ❌ Antigravity full A2A integration (paths A/B above).
 
 ## Candidate slices (carve from this epic)
-1. **Antigravity A2A integration** (path A or B per operator answer) — make it a headless/semi-auto node.
+1. **Antigravity A2A integration** — harness inbox drop SHIPPED in aq-collab-round (no keys, IDE
+   OAuth); remaining: operator configures the IDE to watch the inbox + write antigravity.md.
 2. **Round driver** — automate stages 1–4 (intake→fan-out→per-agent expert teams→consensus) as one
    command over the A2A lanes, producing the per-agent files + aggregate automatically.
    **[FIRST CUT SHIPPED 2026-07-07]** `scripts/ai/aq-collab-round`: `open --round <n> --task "..."`
