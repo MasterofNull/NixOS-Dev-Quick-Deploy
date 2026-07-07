@@ -52,3 +52,31 @@ Ratify **APPROVE-WITH-CHANGES**: fold changes 1–10 into PRD v2, then Phase-0 k
 buildable. Hold final ratification for gemini's `gemini.md` (fold any additions); local is
 excused (capability limit). PASS-2 angles (ops/failure-recovery, tokenomics) are captured in
 the per-agent files and changes 4–8.
+
+---
+## UPDATE — 3-agent consensus reached (gemini landed)
+- **gemini**: APPROVE-WITH-CHANGES ✅ (own file, no race — per-agent protocol validated again).
+- **Contributors now**: claude (APPROVE-WITH-CHANGES), codex (APPROVE), gemini (APPROVE-WITH-CHANGES).
+  local[Qwen] re-dispatched with a 1800s first-token budget (eo9h11, running — was killed at 420s);
+  will be folded if it lands.
+
+### CONSENSUS: APPROVE-WITH-CHANGES (3/3 landed)
+Gemini reinforced the keystone wire contract (concrete: `zero_trust: bool = false` in the base
+switchboard request model), grammar-gen fallback (#10), network capability lease (#6), mid-conv
+re-eval (#3), and path canonicalization (#9 red-team). Three independent passes, highly convergent.
+
+### Additional changes from gemini (fold into PRD v2)
+11. **VRAM pool manager (Slice 3, NEW)**: running 8B + 35B concurrently thrashes the 4GB APU.
+    A strict pool manager must UNLOAD inactive models before initializing a new session if the
+    memory-headroom is exceeded. (Sharpens R3.3 — resident-small is not free; enforce headroom.)
+### Refinements (fold into existing changes)
+- #6 network lease → a **coordinator-SIGNED time-bound token** scoped by destination class + task id
+  (gemini strengthens "lease" to a cryptographic token; no global network profile).
+- #5 sandbox failure reason codes → **stream categorized failures to `a2a-audit.log`** for dashboard
+  inclusion (gemini ties diagnostics to the existing A2A audit trail).
+- Concrete PASS-2 numbers: bwrap startup <5ms (gemini) / p95 ≤750ms budget (codex); GBNF saves
+  ~1.5s per invalid 35B call (gemini); clamp swaps if tasks queued within a 20s window (gemini).
+
+### Decision
+**RATIFY APPROVE-WITH-CHANGES.** Fold changes 1–11 (+ refinements) into PRD v2 → Phase-0 keystone
+is buildable. Qwen may append; local is not a blocker.
