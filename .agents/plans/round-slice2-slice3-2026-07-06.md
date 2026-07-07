@@ -209,3 +209,50 @@ AND the Slice-3 remote-routing block.** This is the shared substrate — impleme
   swap-latency budget; when remote is worth it.
 Re-engage local (via --mode agent or single-slice prompts) + gemini (file-A2A) in PASS 2. Then
 PRD + phased plan per slice, starting with the shared `zero_trust` flag.
+
+## gemini PASS-2 brief
+
+### SLICE 2 (security-architect · NixOS-systems-engineer · red-teamer)
+1. **APU Sandbox Startup & Performance Overhead**: Bubblewrap namespaces compile in the kernel within sub-millisecond ranges, but file resolution paths within the `--bind` directives can introduce filesystem walk overhead under high load. We recommend building static mount tables linking to a read-only `/nix/store` instead of dynamic mount calculations on every run, caching resolved paths inside the transient worker environment.
+2. **Deterministic Cleanup & Session Revocation**: Confinement processes must execute inside transient systemd scope boundaries (`systemd-run --scope -u sub-agent-task-<ID>`). This allows immediate, clean kernel process tree cancellation via systemctl kill on task timeout or cancel events, preventing orphaned shell scripts or runaway Python loops from locking the APU slots.
+3. **Debuggability Log Gating**: Pipe the sandbox's standard error selectively to `a2a-audit.log` or a dedicated task run log rather than global journald log sinks. This keeps sub-agent errors scoped to their task-id contexts for rapid debugging.
+4. **Network Capability Escape-Hatch**: Confinement is net-off by default. A subset of tasks (such as Nix search or OSINT retrieval) that declaratively request network capability must be allowed network exposure *only* if the parent switchboard request carries a validated capability token signed by the coordinator. This capability mounts the host DNS/network namespaces.
+
+### SLICE 3 (inference-systems-engineer · LLM-runtime-specialist · performance-engineer)
+1. **Grammar GBNF Overhead & Loop Savings**: Constraints enforced by local GBNF grammars add minor sampling cost (predictable token penalty) but eliminate the 15% prefill-heavy repair loop. If a local model fails JSON and fires a repair, it prefills another 500-1000 tokens plus does generation. GBNF constraints save ~1.5 to 2.5 seconds per invalid tool-call on local Qwen3-35B at 4GB VRAM.
+2. **Swap-Latency Budget Safeguards**: Systemd model swaps (35B to small resident models) in llama.cpp take up to 15 seconds due to paging and GPU slot reload overhead. To safeguard runtime concurrency: do not swap the model if a task exists in the execution queue with a timestamp less than 30 seconds old. Keep a small model (e.g., 8B) resident for formatting, simple validation, and syntax repair, reserving 35B swaps strictly for multi-file planning sessions.
+3. **Adaptive Remote Routing criteria**: Remote lanes should only be triggered as a fallback if (a) the task requires high context complexity beyond local limits, (b) the Slice-2 secret lock is inactive (no credentials/secrets present in the workspace/task variables), and (c) the remote endpoint status is healthy.
+
+
+---
+## gemini PASS-1 brief (RECOVERED from /nix/store snapshot — see A2A finding below)
+### SLICE 2 (security-architect · NixOS-systems-engineer · red-teamer)
+1. **Dynamic Sandbox Isolation**: Layer Bubblewrap (`bwrap`) as the primary execution sandbox with AppArmor protecting the outer boundary. Enforce `--unshare-all --die-with-parent` with read-only `/nix/store` and `/etc` mounts, an isolated `/tmp`, and no network access. Bind ONLY the task-specific git repository workspace, never the user's home directory.
+2. **Immutable Tool Catalog Lock**: When `a2a_guard` flags secret findings, the Switchboard must tag the task with `zero_trust = true`. Under this lock, the Switchboard must enforce a strict, reduced tool list—removing mutating or high-risk tools like `reload-model`, `proposals/apply`, shell execution, and remote model delegation.
+3. **Declarative State & DAC Enforcement**: Add a new declarative module `nix/modules/services/sub-agent-sandbox.nix` that configures state roots and triggers a systemd service wrapper. Ensure `system.activationScripts` (with `deps = ["users"]`) maintains strict ownership boundaries (`0700` directories) to prevent POSIX DAC bypasses.
+
+### SLICE 3 (inference-systems-engineer · LLM-runtime-specialist · performance-engineer)
+1. **Per-Request GBNF Grammars**: Dynamically generate GBNF grammar at the Switchboard from the schema list of the active tool catalog. Since the active catalog matches dynamic permission scopes, pre-compiled global grammars are too coarse. GBNF constrained decoding must coerce valid `{name, arguments}` JSON tool calls, bypassing the expensive 15% local model repair loop.
+2. **Grammar Cache**: Cache generated GBNF grammar strings using tool-set schema hashes. Caching compiled grammars removes redundant conversion overhead on the llama.cpp host.
+3. **Resident Multiplexing & Adaptive Routing**: Swapping 35B models on a 4GB shared VRAM APU slot blocks the system. Run a resident small model (e.g., 8B) for trivial classification, grammar-based tool argument formatting, and JSON repair, reserving the 35B model and remote routing strictly for high-context planning.
+
+
+---
+## CONSENSUS UPDATE — 3-agent (claude + codex + gemini)
+All THREE independent PASS-1 passes CONVERGED with zero conflict. The **keystone `zero_trust`
+flag** (a2a_guard secret_findings → switchboard strips reload-model/proposals/apply/shell/remote,
+driving BOTH the Slice-2 tool-catalog lock and the Slice-3 remote block) is now agreed 3/3 —
+highest-confidence design decision. Gemini + codex independently named the same module
+`nix/modules/services/sub-agent-sandbox.nix`. Gemini added: **GBNF grammar cache keyed by
+tool-set schema hash** (removes per-request conversion overhead). local[Qwen] did not contribute
+(0-byte output, twice — direct-mode capture failure; investigate separately).
+
+PASS-1 direction is ratified. Proceed to PRD + phased plan starting with the shared zero_trust flag.
+
+## A2A FINDING — file/git A2A drop is not concurrency-safe (lost write)
+Gemini appended its brief to this shared file at 02:21:17Z, but the append was OVERWRITTEN in the
+main checkout (recovered only because a rebuild snapshotted it into /nix/store). Same class as the
+registry whole-file-rewrite race: two agents editing ONE shared file → last-writer-wins loss.
+**Fix**: each agent writes to its OWN contribution file (`round-<slug>.<agent>.md`); the orchestrator
+aggregates. Never have multiple agents append to one shared markdown concurrently. [QUEUED as an
+A2A-coordination sub-item.]
