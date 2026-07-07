@@ -1317,3 +1317,18 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
 - **Lesson**: any bash helper whose LAST line is a `[[ ]] && cmd` (or any conditional) returns that
   test's status. Under `set -e` at a standalone call site that silently aborts. End such helpers with
   an explicit `return 0` unless the conditional's failure is genuinely meant to propagate.
+## [OPEN] local-model-review-lane-reliability — harness-improvement target (2026-07-07)
+- **Scope**: delegate-to-local + aq-agent-loop/agent_executor (local Qwen review-class tasks)
+- **Severity**: medium (local lane underperforms on review/consensus; must be IMPROVED not skipped)
+- **Observed failure modes** (3 dispatches):
+  1. `--mode direct` → 0-byte output (silent; capture path or empty completion — investigate).
+  2. `--mode agent` large-doc review → burns turns chunk-reading the file, then first-token timeout
+     at 420s (raised watchdog floor was still too low for the cold prefill of that context).
+  3. `--mode agent` w/ 1800s budget → COMPLETED (2333s, no timeout) but no usable verdict (still
+     chunk-reading; never wrote the output file).
+- **Mitigations in flight**: inline content into the prompt (avoid file-reading turns); generous
+  --timeout (5400 → first_token 1800s); ask for the file-write as the FIRST action, bounded output.
+- **Root improvement targets** (per never-skip-local principle): (a) fix/verify direct-mode output
+  capture; (b) a "review" task template that inlines the artifact + constrains to a short verdict;
+  (c) consider a smaller/faster local model (4B/8B) for bounded review while 35B handles synthesis
+  (ties to Slice-3 model-stacking). Local is ALWAYS engaged; these make it succeed.

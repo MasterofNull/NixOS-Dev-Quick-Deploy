@@ -7,8 +7,10 @@ Sign-off round for `.agents/plans/phase0-keystone-zero-trust-plan.md` (PRD:
 **Do NOT append to a shared file** (validated twice in the PRD-consensus round: no lost-write).
 Orchestrator aggregates into a consensus verdict.
 
-**Reviewers:** codex + gemini + claude. **local[Qwen] excused** — established finding: completes
-given time but is not a reviewer-tier lane for large-context multi-step review on this APU.
+**Reviewers:** codex + gemini + claude + **local[Qwen]** — ALL agents, always. The local model is
+never skipped even when slow or late; the harness exists to train/refine/tune it. Qwen is
+dispatched with a generous timeout and the plan INLINED (so it doesn't burn turns reading); its
+contribution is folded whenever it lands, however late — this round stays open for it.
 
 **gemini (file/git A2A):** read the plan, then write your sign-off to `gemini.md` here.
 
