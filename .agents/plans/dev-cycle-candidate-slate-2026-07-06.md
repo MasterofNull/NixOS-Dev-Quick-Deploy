@@ -54,6 +54,13 @@ backlog) are the highest-signal slices. Mapped below.
   tool/file retries), stalled, or failed delegations; (c) programmable select/drill CLI + JSON;
   (d) later: trace-chain graph, cost/compression counters (lean-ctx).
 - **Expert lenses**: mobile-web/TUI, mlops (telemetry), Claude (A2A schema).
+- **STATUS [DONE 2026-07-06]**: ops-window shipped (`aq-tui-dashboard` — live tiles, `--matrix`
+  per-agent input+output panes, `--focus`, `--json`, attention signals; Nix-wrapped). Registry
+  orphan reconciliation done. **Slice 1b (interactive intervention channel) CLOSED** — polling
+  control channel first cut: `aq-agent-send <id> "message"` injects operator responses into a
+  live `aq-agent-loop` between turns (`control_channel.py` + `agent_executor` poll), commit
+  418f4090; docs at `docs/operations/agent-ops-window.md`. Remaining (future): trace-chain graph,
+  cost/compression counters, extend control channel to external-CLI lanes + PTY hard-interrupt.
 
 ## SLICE 2 (HIGH) — Zero-Trust Sub-Agent Execution Sandboxing
 - **Convergence**: Gemini #3/#6 + IndyDevDan #7 + Claude A2A safeguards (boundary gates).
