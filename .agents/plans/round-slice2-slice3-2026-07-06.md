@@ -148,3 +148,64 @@ same decision point — build the per-task `zero_trust` flag once, consumed by b
 2. **Grammar Cache**: Cache generated GBNF grammar strings using tool-set schema hashes. Caching compiled grammars removes redundant conversion overhead on the llama.cpp host.
 3. **Resident Multiplexing & Adaptive Routing**: Swapping 35B models on a 4GB shared VRAM APU slot blocks the system. Run a resident small model (e.g., 8B) for trivial classification, grammar-based tool argument formatting, and JSON repair, reserving the 35B model and remote routing strictly for high-context planning.
 
+
+---
+## PASS-1 CONSOLIDATION + CONSENSUS (2026-07-06)
+Contributions: **claude** ✅, **codex/gpt-5.5** ✅ (grounded, 82k tok), **local[Qwen]** ✗ (0-byte
+output — silent direct-mode failure; retried), **gemini** ⏳ (file-A2A pending).
+
+### Strong agreement (2/2 independent passes — high confidence)
+**Slice 2:**
+- **Layered, bwrap-primary + AppArmor/systemd envelope.** Both reached this independently. Codex
+  anchored it: the harness ALREADY uses bwrap for the aider subprocess
+  (`ai-stack/mcp-servers/aider-wrapper/server.py:476`) — reuse that shape (ro `/nix/store`, rw
+  workspace, isolated `/tmp`, `--die-with-parent`). AppArmor stays the outer service MAC; do NOT
+  try to express per-task workspaces in AppArmor (higher friction, less revocable).
+- **Tool-catalog lock at the switchboard, bound to `secret_findings`; coordinator = signal,
+  runtime = defense-in-depth.** Anchors: coordinator records findings at `agent_service.py:134`;
+  switchboard owns tool schemas + virtual leases + allowed-tool filtering at `switchboard.py:1008`
+  & `:1641`. On secret findings → mint a reduced IMMUTABLE tool set (drop reload-model,
+  proposals/apply, shell-like, endpoint-mutation, remote-escalation); runtime rejects out-of-catalog.
+- **DAC-correct (RULE 13/14):** per-agent state roots under `/var/lib`, owned by the executing
+  user; `install -d -o <user> -m 0750` + activation reset; task-scoped repo bind, NOT whole home;
+  do not lean on `ReadWritePaths` for permissions.
+- **Red-team controls:** symlink/path-escape → canonical validation + reject cross-boundary
+  symlinks; secret exfil → never bind `/run/secrets`/home/ssh + net-off by default; resource →
+  systemd MemoryMax/TasksMax + `--die-with-parent` + dispatch budget.
+- **Eval sandbox = strictest profile of the same runtime** (ro inputs, writable result dir only,
+  no secrets/net/privileged tools). Build once.
+
+**Slice 3:**
+- **GBNF per-request at the switchboard, from the FINAL (post-filter/lease/secret-lock) tool
+  schema set — not per-profile/global.** Both agreed. Coerces valid `{name, arguments}` at decode,
+  killing the ~15% argument-JSON repair loop at the source.
+- **Resident small model (4B/8B) + controlled 35B swaps, NOT constant swapping.** Swapping the
+  35B on the single APU slot is only worth it for BATCHES of heavy planning. Reuse the existing
+  active-model-symlink pattern (`ai-stack.nix:863`; catalog `:539`).
+- **Model-stacking routing:** 4B = JSON repair/classification/schema-validate; 8B = bounded repo
+  Q&A/routine tool steps; 35B(-MTP) = architecture/multi-file/high-risk; remote = large-context —
+  but **secret-lock blocks/downgrades remote**.
+- **Golden tool-call measurement suite gates rollout:** invalid-arg rate, repair count,
+  time-to-valid-call, tok/s, slot occupancy, per-tier budgets; INCLUDE secret-bearing negative
+  cases proving reload-model/proposals/apply are absent from the generated grammar.
+
+### Complementary (codex added, claude missed)
+- The existing aider bwrap + model-symlink patterns (concrete reuse targets).
+- **GBNF fixes tool-argument JSON but NOT malformed SSE chunks** silently dropped at
+  `agent_executor.py:1741` — that is a SEPARATE reliability fix, tracked distinctly.
+
+### Conflicts
+- None. The two independent passes are fully consistent → strong signal the direction is sound.
+
+### CONSENSUS SIGN-OFF (PASS 1)
+Direction ACCEPTED. **Keystone decision (cross-slice): build ONE per-task `zero_trust` flag,
+derived from `secret_findings` at the switchboard, consumed by BOTH the Slice-2 tool-catalog lock
+AND the Slice-3 remote-routing block.** This is the shared substrate — implement first.
+
+### PASS-2 baseline (angle diversity)
+- Slice 2: **operational / failure-recovery + performance** — sandbox startup cost on the APU,
+  revocation, debuggability, escape-hatch for legit network tasks.
+- Slice 3: **tokenomics / measurement** — quantify the repair-loop cost saved vs grammar overhead;
+  swap-latency budget; when remote is worth it.
+Re-engage local (via --mode agent or single-slice prompts) + gemini (file-A2A) in PASS 2. Then
+PRD + phased plan per slice, starting with the shared `zero_trust` flag.
