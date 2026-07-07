@@ -1,117 +1,422 @@
 #!/usr/bin/env python3
 """
-aq-tui-dashboard — High-fidelity terminal observability for Agentic Engineering.
-                   Uses Rich for differential rendering of health, tasks, and fleet.
+aq-tui-dashboard — live multi-tile terminal window for delegations + current operations.
+
+Rewired from the earlier mock scaffold to real sources (no simulated data):
+  • Active Delegations  — .agents/delegation/registry.jsonl (running + recent)
+  • Running Processes    — live agent/delegation processes (pgrep)
+  • Service Health       — live probes of switchboard/coordinator/llama/aidb (fail-soft)
+  • A2A Safeguards       — .agent/collaboration/a2a-audit.log (recent ALLOW/WARN/BLOCK/FLAGGED)
+  • Ops Activity (footer)— .agent/collaboration/PULSE.log (recent agent writes)
+
+Ports are read from env (SWITCHBOARD_PORT etc.) with the documented defaults as fallback
+— never hardcoded policy. Every reader fails soft: a missing source/service shows an
+explicit "unreachable"/"—", never a crash and never a fake "ok".
+
+Usage:
+  aq-tui-dashboard                 # live full-screen TUI (Ctrl-C to exit)
+  aq-tui-dashboard --once          # render a single snapshot and exit (non-TTY safe)
+  aq-tui-dashboard --interval 2    # refresh cadence in seconds (default 2)
 """
 
-import time
-import os
+import argparse
 import json
-import sys
-from datetime import datetime
+import os
+import subprocess
+import time
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from rich.console import Console
-from rich.table import Table
+from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
-from rich.layout import Layout
+from rich.table import Table
 from rich.text import Text
-from rich.progress import Progress, BarColumn, TextColumn
 
 console = Console()
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-def get_health_data():
-    # Simulated health data - in real use, call aq-qa 0 --json
-    return {
-        "status": "nominal",
-        "score": 92,
-        "services": [
-            {"name": "hybrid-coordinator", "status": "ok", "port": 8003},
-            {"name": "switchboard", "status": "ok", "port": 8085},
-            {"name": "aidb-qdrant", "status": "ok", "port": 6333},
-            {"name": "llama-cpp", "status": "ok", "port": 8080},
-        ]
-    }
+REGISTRY = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
+OUTPUTS = REPO_ROOT / ".agents" / "delegation" / "outputs"
+A2A_AUDIT = REPO_ROOT / ".agent" / "collaboration" / "a2a-audit.log"
+PULSE = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
 
-def get_fleet_data():
-    # Simulated fleet data
-    return {
-        "agents": [
-            {"id": "Architect-01", "role": "Architect", "task": "Planning P.A.E.A Phase 4", "status": "active"},
-            {"id": "Coder-05", "role": "Coder", "task": "Idle", "status": "idle"},
-            {"id": "Auditor-02", "role": "Auditor", "task": "Reviewing PR #77", "status": "busy"},
-        ]
-    }
+# A delegation still "running" older than this with no completion is flagged STALLED.
+STALL_S = int(os.getenv("AQ_OPS_STALL_S", "1200"))
+# A line repeated at least this many times in an output-log tail = error-loop signal.
+LOOP_REPEAT = int(os.getenv("AQ_OPS_LOOP_REPEAT", "3"))
+
+SERVICES = [
+    ("switchboard", int(os.getenv("SWITCHBOARD_PORT", "8085")), "/health"),
+    ("coordinator", int(os.getenv("HYBRID_COORDINATOR_PORT", "8003")), "/health"),
+    ("llama.cpp", int(os.getenv("LLAMA_CPP_PORT", "8080")), "/health"),
+    ("aidb-qdrant", int(os.getenv("QDRANT_PORT", "6333")), "/"),
+]
+PROC_PATTERN = r"codex|delegate-to-|aq-agent-loop|aq-loop|training_ingest|agent_executor"
+
+# short-TTL caches so per-tick file reads stay snappy and probes don't block the render
+_cache: dict = {"health": (0.0, []), "procs": (0.0, [])}
+
+
+def _now() -> float:
+    return time.time()
+
+
+def _parse_ts(s: str):
+    try:
+        return datetime.fromisoformat((s or "").strip().replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _age(ts) -> str:
+    if ts is None:
+        return "—"
+    d = max(0, int(_now() - ts))
+    if d < 60:
+        return f"{d}s"
+    if d < 3600:
+        return f"{d // 60}m"
+    return f"{d // 3600}h"
+
+
+def _tail_json(path: Path, n: int) -> list:
+    if not path.exists():
+        return []
+    out = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    except OSError:
+        return []
+    return out[-n:]
+
+
+def tail_output(task_id: str, n: int = 40, max_bytes: int = 8192) -> list:
+    """Last n lines of a delegation's output log (bounded read for speed)."""
+    if not task_id:
+        return []
+    p = OUTPUTS / f"{task_id}.log"
+    if not p.exists():
+        return []
+    try:
+        size = p.stat().st_size
+        with open(p, "rb") as fh:
+            if size > max_bytes:
+                fh.seek(size - max_bytes)
+            data = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    return data.splitlines()[-n:]
+
+
+def assess_attention(rec: dict) -> tuple:
+    """Return (level, reason). level in ok|failed|stalled|loop — worst-first for triage."""
+    status = rec.get("status", "?")
+    ts = _parse_ts(rec.get("created", ""))
+    if status in ("failed", "error"):
+        return ("failed", f"exited {status}")
+    # error-loop: same non-empty line repeated LOOP_REPEAT+ times in the output tail
+    tail = tail_output(rec.get("id", ""), n=30)
+    if tail:
+        counts: dict = {}
+        for ln in tail:
+            s = ln.strip()
+            if len(s) > 8:
+                counts[s] = counts.get(s, 0) + 1
+        worst = max(counts.items(), key=lambda x: x[1], default=("", 0))
+        if worst[1] >= LOOP_REPEAT:
+            return ("loop", f"x{worst[1]} repeat: {worst[0][:32]}")
+    if status == "running" and ts is not None and (_now() - ts) > STALL_S:
+        return ("stalled", f"running >{STALL_S // 60}m, no completion")
+    return ("ok", "")
+
+
+def read_active_delegations(window_s: int = 900, limit: int = 10) -> list:
+    """registry entries that are running or created within window_s, newest first."""
+    rows = []
+    now = _now()
+    for rec in _tail_json(REGISTRY, 400):
+        ts = _parse_ts(rec.get("created", ""))
+        status = rec.get("status", "?")
+        recent = ts is not None and (now - ts) < window_s
+        if status == "running" or recent:
+            level, reason = assess_attention(rec)
+            rows.append({
+                "agent": rec.get("agent", "?"),
+                "fid": rec.get("id", "") or "",
+                "id": (rec.get("id", "") or "")[-16:],
+                "status": status,
+                "age": _age(ts),
+                "ts": ts or 0,
+                "attn": level,
+                "attn_reason": reason,
+                "desc": (rec.get("description", "") or "")[:40],
+            })
+    # worst attention first, then running, then newest
+    _rank = {"failed": 0, "loop": 1, "stalled": 2, "ok": 3}
+    rows.sort(key=lambda r: (_rank.get(r["attn"], 3), r["status"] != "running", -r["ts"]))
+    return rows[:limit]
+
+
+def read_running_procs() -> list:
+    ts, val = _cache["procs"]
+    if _now() - ts < 3:
+        return val
+    procs = []
+    try:
+        out = subprocess.run(["pgrep", "-af", PROC_PATTERN], capture_output=True,
+                             text=True, timeout=1.5).stdout
+        self_pid = str(os.getpid())
+        for line in out.splitlines():
+            pid, _, cmd = line.partition(" ")
+            if pid == self_pid or "aq-tui-dashboard" in cmd or "pgrep" in cmd:
+                continue
+            # label by which agent lane
+            low = cmd.lower()
+            label = next((a for a in ("codex", "gemini", "antigravity", "aq-agent-loop",
+                                       "aq-loop", "training_ingest", "delegate-to")
+                          if a in low), "agent")
+            procs.append({"pid": pid, "label": label, "cmd": cmd[:52]})
+    except Exception:
+        pass
+    _cache["procs"] = (_now(), procs)
+    return procs
+
+
+def probe_services() -> list:
+    ts, val = _cache["health"]
+    if _now() - ts < 5:
+        return val
+    out = []
+    for name, port, path in SERVICES:
+        state = "unreachable"
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=0.4) as r:
+                state = "ok" if r.status == 200 else f"http {r.status}"
+        except Exception:
+            state = "unreachable"
+        out.append({"name": name, "port": port, "state": state})
+    _cache["health"] = (_now(), out)
+    return out
+
+
+def read_a2a(n: int = 8) -> list:
+    rows = []
+    for rec in _tail_json(A2A_AUDIT, n):
+        direction = rec.get("direction", "")
+        summ = rec.get("summary", "")
+        if direction == "outbound":
+            dec = "FLAGGED" if rec.get("secret_findings") else "CLEAN"
+        else:
+            dec = next((d for d in ("BLOCK", "WARN", "ALLOW") if d in summ), "·")
+        rows.append({"ts": (rec.get("ts", "") or "")[11:19], "dir": direction,
+                     "to": rec.get("to", ""), "dec": dec, "summary": summ[:44]})
+    return rows
+
+
+def read_pulse(n: int = 5) -> list:
+    if not PULSE.exists():
+        return []
+    try:
+        return [l for l in PULSE.read_text(encoding="utf-8").splitlines() if l.strip()][-n:]
+    except OSError:
+        return []
+
+
+# ── rendering ────────────────────────────────────────────────────────────────
+_DEC_STYLE = {"BLOCK": "bold red", "WARN": "yellow", "FLAGGED": "bold magenta",
+              "ALLOW": "green", "CLEAN": "dim", "·": "dim"}
+_STATUS_STYLE = {"running": "bold green", "completed": "cyan", "error": "bold red",
+                 "failed": "bold red", "partial": "yellow"}
+
 
 def make_layout() -> Layout:
     layout = Layout()
-    layout.split_column(
-        Layout(name="header", size=3),
-        Layout(name="main"),
-        Layout(name="footer", size=3)
-    )
-    layout["main"].split_row(
-        Layout(name="fleet"),
-        Layout(name="health")
-    )
+    layout.split_column(Layout(name="header", size=3), Layout(name="main"),
+                        Layout(name="footer", size=7))
+    layout["main"].split_row(Layout(name="left"), Layout(name="right"))
+    layout["left"].split_column(Layout(name="delegations"), Layout(name="procs"))
+    layout["right"].split_column(Layout(name="health"), Layout(name="a2a"))
     return layout
 
-def generate_header() -> Panel:
+
+def panel_header() -> Panel:
     grid = Table.grid(expand=True)
     grid.add_column(justify="left", ratio=1)
     grid.add_column(justify="right")
-    grid.add_row(
-        Text("SOVEREIGN SOFTWARE FACTORY", style="bold cyan"),
-        Text(datetime.now().strftime("%H:%M:%S"), style="white")
-    )
+    nprocs = len(read_running_procs())
+    n_attn = sum(1 for r in read_active_delegations() if r["attn"] != "ok")
+    attn_txt = (Text(f"  ⚠ {n_attn} need attention", style="bold red")
+                if n_attn else Text("  ✓ all nominal", style="green"))
+    right = Text(f"{nprocs} live proc(s)  {datetime.now().strftime('%H:%M:%S')}", style="white")
+    right.append_text(attn_txt)
+    grid.add_row(Text("AGENTIC OPS — delegations & current operations", style="bold cyan"), right)
     return Panel(grid, style="blue")
 
-def generate_fleet_table() -> Panel:
-    table = Table(title="Agent Fleet Status", expand=True)
-    table.add_column("Agent ID")
-    table.add_column("Role")
-    table.add_column("Current Task")
-    table.add_column("Status")
-    
-    data = get_fleet_data()
-    for agent in data["agents"]:
-        status_style = "green" if agent["status"] == "active" else "yellow" if agent["status"] == "busy" else "white"
-        table.add_row(agent["id"], agent["role"], agent["task"], Text(agent["status"], style=status_style))
-        
-    return Panel(table, border_style="magenta")
 
-def generate_health_table() -> Panel:
-    table = Table(title="System Health", expand=True)
-    table.add_column("Service")
-    table.add_column("Status")
-    table.add_column("Port")
-    
-    data = get_health_data()
-    for svc in data["services"]:
-        status_style = "bold green" if svc["status"] == "ok" else "bold red"
-        table.add_row(svc["name"], Text(svc["status"], style=status_style), str(svc["port"]))
-        
-    return Panel(table, border_style="cyan")
+_ATTN_MARK = {"failed": ("✗", "bold red"), "loop": ("↻", "bold red"),
+              "stalled": ("◷", "yellow"), "ok": (" ", "dim")}
 
-def generate_footer() -> Panel:
-    return Panel(Text("Press Ctrl+C to exit | P.A.E.A v3.1 | Level 5 Dark Factory", justify="center"), style="blue")
 
-def main():
+def panel_delegations() -> Panel:
+    t = Table(expand=True, pad_edge=False)
+    t.add_column("!", width=1); t.add_column("agent", style="bold"); t.add_column("task")
+    t.add_column("status"); t.add_column("age", justify="right")
+    rows = read_active_delegations()
+    if not rows:
+        t.add_row("", "—", "no active/recent delegations", "", "")
+    for r in rows:
+        mark, mstyle = _ATTN_MARK.get(r["attn"], (" ", "dim"))
+        sstyle = mstyle if r["attn"] != "ok" else _STATUS_STYLE.get(r["status"], "white")
+        label = r["attn_reason"] or r["id"] if r["attn"] != "ok" else r["id"]
+        t.add_row(Text(mark, style=mstyle), r["agent"], label,
+                  Text(r["status"], style=sstyle), r["age"])
+    return Panel(t, title="Active Delegations (running + <15m; ✗/↻/◷ = attention)",
+                 border_style="magenta")
+
+
+def panel_procs() -> Panel:
+    t = Table(expand=True, pad_edge=False)
+    t.add_column("pid", justify="right"); t.add_column("lane", style="bold"); t.add_column("cmd")
+    procs = read_running_procs()
+    if not procs:
+        t.add_row("—", "idle", "no agent processes running")
+    for p in procs[:8]:
+        t.add_row(p["pid"], p["label"], p["cmd"])
+    return Panel(t, title="Running Processes", border_style="green")
+
+
+def panel_health() -> Panel:
+    t = Table(expand=True, pad_edge=False)
+    t.add_column("service"); t.add_column("state"); t.add_column("port", justify="right")
+    for s in probe_services():
+        style = "bold green" if s["state"] == "ok" else "bold red"
+        t.add_row(s["name"], Text(s["state"], style=style), str(s["port"]))
+    return Panel(t, title="Service Health (live probe)", border_style="cyan")
+
+
+def panel_a2a() -> Panel:
+    t = Table(expand=True, pad_edge=False)
+    t.add_column("time"); t.add_column("→"); t.add_column("dec"); t.add_column("summary")
+    rows = read_a2a()
+    if not rows:
+        t.add_row("—", "", "", "no A2A safeguard events")
+    for r in rows:
+        t.add_row(r["ts"], r["to"], Text(r["dec"], style=_DEC_STYLE.get(r["dec"], "white")), r["summary"])
+    return Panel(t, title="A2A Safeguards (audit tail)", border_style="yellow")
+
+
+def panel_footer() -> Panel:
+    lines = read_pulse(5)
+    body = Text("\n".join(lines) if lines else "no recent PULSE activity", style="dim")
+    return Panel(body, title="Ops Activity — PULSE.log", style="blue")
+
+
+def render(layout: Layout) -> None:
+    layout["header"].update(panel_header())
+    layout["delegations"].update(panel_delegations())
+    layout["procs"].update(panel_procs())
+    layout["health"].update(panel_health())
+    layout["a2a"].update(panel_a2a())
+    layout["footer"].update(panel_footer())
+
+
+def _resolve_task(token: str) -> dict:
+    """Match a delegation by full id or a trailing-substring (last-16 shown in the table)."""
+    for rec in reversed(_tail_json(REGISTRY, 800)):
+        rid = rec.get("id", "") or ""
+        if rid == token or rid.endswith(token):
+            return rec
+    return {}
+
+
+def panel_focus(task_id: str) -> Panel:
+    """cmux-style single-agent pane: one delegation's metadata + live output tail."""
+    rec = _resolve_task(task_id)
+    if not rec:
+        return Panel(Text(f"no delegation matching '{task_id}'", style="red"),
+                     title="Focus", border_style="red")
+    level, reason = assess_attention(rec)
+    head = Table.grid(expand=True)
+    head.add_column(); head.add_column(justify="right")
+    mark, mstyle = _ATTN_MARK.get(level, (" ", "dim"))
+    head.add_row(Text(f"{rec.get('agent','?')}  {rec.get('id','')}", style="bold cyan"),
+                 Text(f"{mark} {level} {reason}".strip(), style=mstyle))
+    lines = tail_output(rec.get("id", ""), n=40)
+    out = "\n".join(lines) if lines else "(no output log yet)"
+    inner = Table.grid(expand=True)
+    inner.add_row(head)
+    inner.add_row(Text("status: " + rec.get("status", "?") + "   created: " + rec.get("created", "?"),
+                       style="dim"))
+    inner.add_row(Text("─" * 60, style="dim"))
+    inner.add_row(Text(out, style="white"))
+    return Panel(inner, title=f"Focus — {rec.get('id','')}",
+                 border_style="red" if level != "ok" else "cyan")
+
+
+def snapshot() -> dict:
+    """Machine-readable state for programmable drill-in (cmux 'read screen' analog)."""
+    dele = read_active_delegations(limit=25)
+    return {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "delegations": dele,
+        "attention": [
+            {"agent": d["agent"], "id": d["fid"], "level": d["attn"], "reason": d["attn_reason"]}
+            for d in dele if d["attn"] != "ok"
+        ],
+        "processes": read_running_procs(),
+        "health": probe_services(),
+        "a2a_recent": read_a2a(10),
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="aq-tui-dashboard", description="Live delegations + operations TUI")
+    ap.add_argument("--once", action="store_true", help="render one snapshot and exit")
+    ap.add_argument("--interval", type=float, default=2.0, help="refresh seconds (default 2)")
+    ap.add_argument("--focus", metavar="TASK_ID", help="drill into one delegation's live output")
+    ap.add_argument("--json", action="store_true", help="print machine-readable state and exit")
+    args = ap.parse_args()
+
+    if args.json:
+        print(json.dumps(snapshot(), indent=2))
+        return 0
+
+    # Focus mode: a single-delegation live pane (cmux per-agent view).
+    if args.focus:
+        if args.once or not console.is_terminal:
+            console.print(panel_focus(args.focus)); return 0
+        with Live(panel_focus(args.focus), refresh_per_second=1, screen=True) as live:
+            try:
+                while True:
+                    live.update(panel_focus(args.focus)); time.sleep(args.interval)
+            except KeyboardInterrupt:
+                pass
+        return 0
+
     layout = make_layout()
-    
+    if args.once or not console.is_terminal:
+        render(layout)
+        console.print(layout)
+        return 0
     with Live(layout, refresh_per_second=1, screen=True):
         try:
             while True:
-                layout["header"].update(generate_header())
-                layout["fleet"].update(generate_fleet_table())
-                layout["health"].update(generate_health_table())
-                layout["footer"].update(generate_footer())
-                time.sleep(1)
+                render(layout)
+                time.sleep(args.interval)
         except KeyboardInterrupt:
             pass
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

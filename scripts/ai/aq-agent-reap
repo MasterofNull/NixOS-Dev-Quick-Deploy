@@ -12,20 +12,134 @@ An aq-agent-loop process is reaped when:
 Kills the whole process group (dispatch spawns with start_new_session=True) so any
 children go too. Dry-run by default is off; pass --dry-run to preview.
 
+It also (opt-in) reconciles the delegation registry: a background dispatch whose process
+dies — or an antigravity dispatch that never records a pid — leaves its registry row stuck
+at status=running forever (the reaper historically only killed processes, never fixed the
+registry). --reconcile-registry marks such rows (dead/absent pid, aged past --registry-age)
+as status=orphaned so ops views show true live state.
+
 Usage:
-  aq-agent-reap [--max-age SECONDS] [--dry-run]
+  aq-agent-reap [--max-age SECONDS] [--dry-run]           # process reaping (default)
+  aq-agent-reap --reconcile-registry [--registry-age S]   # + registry reconciliation
+  aq-agent-reap --registry-only --dry-run                 # preview registry pass only
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Dict
 
 
 AGENT_MATCH = "scripts/ai/aq-agent-loop"
+REGISTRY = Path(__file__).resolve().parents[2] / ".agents" / "delegation" / "registry.jsonl"
+
+
+def _parse_ts(s: str):
+    try:
+        return datetime.fromisoformat((s or "").strip().replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _pid_alive(pid) -> bool:
+    """True if pid names a live process. Absent/invalid pid -> False; foreign pid -> True."""
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except PermissionError:
+        return True            # exists, owned by another uid — never orphan it
+    except (ProcessLookupError, ValueError, TypeError, OSError):
+        return False
+
+
+def should_orphan_row(rec: Dict, now: float, age_s: int) -> tuple[bool, str]:
+    """Pure decision: mark a registry row orphaned? Reconcile only rows that are
+    status=running, whose pid is dead/absent, AND older than age_s (the age bound
+    protects a just-dispatched task that hasn't recorded its pid yet)."""
+    if rec.get("status") != "running":
+        return False, ""
+    if _pid_alive(rec.get("pid")):
+        return False, ""       # live work — never touch
+    ts = _parse_ts(rec.get("created", ""))
+    if ts is None:
+        return False, "no timestamp — skip"
+    age = now - ts
+    if age < age_s:
+        return False, ""
+    return True, f"pid={rec.get('pid')} dead, age {int(age)}s > {age_s}s"
+
+
+def _dispatch_active() -> int:
+    """Count live delegate/agent processes that may be APPENDING to the registry.
+    The reconcile rewrites the whole file (read → replace); a concurrent append during
+    that window would be lost, so a live write is refused while dispatch is active."""
+    try:
+        out = subprocess.run(["pgrep", "-af", r"delegate-to-|aq-agent-loop|aq-loop"],
+                             capture_output=True, text=True, timeout=1.5).stdout
+    except Exception:
+        return 0
+    self_pid = str(os.getpid())
+    return sum(1 for ln in out.splitlines()
+               if ln and ln.split(" ", 1)[0] != self_pid
+               and "aq-agent-reap" not in ln and "pgrep" not in ln)
+
+
+def reconcile_registry(path: Path, age_s: int, dry_run: bool, force: bool = False) -> int:
+    """Rewrite status=running rows with dead pid + age>age_s to status=orphaned.
+    Atomic (temp + os.replace); preserves row order and every other row verbatim.
+    Refuses to WRITE while dispatch is active (would race concurrent appends) unless
+    --force; still prints what it would do (safe preview)."""
+    if not path.exists():
+        print(f"[aq-agent-reap] no registry at {path}")
+        return 0
+    active = _dispatch_active()
+    if active and not dry_run and not force:
+        print(f"[aq-agent-reap] {active} active dispatch proc(s) — refusing live registry "
+              "rewrite (would race concurrent appends). Showing preview; use --force to "
+              "write anyway, or run when quiescent.")
+        dry_run = True
+    now = datetime.now(timezone.utc).timestamp()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    out: List[str] = []
+    changed = 0
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            rec = json.loads(s)
+        except json.JSONDecodeError:
+            out.append(line)               # preserve anything unparseable verbatim
+            continue
+        orphan, reason = should_orphan_row(rec, now, age_s)
+        if orphan:
+            action = "WOULD ORPHAN" if dry_run else "ORPHANING"
+            print(f"[aq-agent-reap] {action} registry row {rec.get('agent','?')} "
+                  f"{rec.get('id','')} — {reason}")
+            if not dry_run:
+                rec["status"] = "orphaned"
+                rec["orphaned_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                rec["orphaned_by"] = "aq-agent-reap"
+            changed += 1
+        out.append(json.dumps(rec))
+    if changed and not dry_run:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent),
+                                         delete=False, suffix=".tmp") as fh:
+            fh.write("\n".join(out) + "\n")
+            tmp = fh.name
+        os.replace(tmp, path)
+    if changed == 0:
+        print("[aq-agent-reap] registry clean — no stale running rows to reconcile")
+    return changed
 
 
 def should_reap(ppid: int, etimes: int, max_age: int) -> tuple[bool, str]:
@@ -77,8 +191,22 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--max-age", type=int,
                     default=int(os.environ.get("AGENT_REAP_MAX_AGE", "3600")))
+    ap.add_argument("--reconcile-registry", action="store_true",
+                    help="also mark stale status=running rows (dead pid, aged) as orphaned")
+    ap.add_argument("--registry-age", type=int,
+                    default=int(os.environ.get("AQ_REAP_REGISTRY_AGE_S", "1800")),
+                    help="min age (s) before a dead-pid running row is orphaned (default 1800)")
+    ap.add_argument("--registry-only", action="store_true",
+                    help="skip process reaping; run only the registry reconciliation pass")
+    ap.add_argument("--force", action="store_true",
+                    help="write the registry even while dispatch is active (races appends)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+
+    if args.reconcile_registry or args.registry_only:
+        reconcile_registry(REGISTRY, args.registry_age, args.dry_run, force=args.force)
+    if args.registry_only:
+        return 0
 
     reaped = 0
     for p in _list_agent_procs():

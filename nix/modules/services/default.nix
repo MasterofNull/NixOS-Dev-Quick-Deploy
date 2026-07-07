@@ -18,5 +18,6 @@
     ./lore-sync.nix
     ./nvd-sync.nix
     ./data-retention.nix
+    ./agent-reap.nix
   ];
 }

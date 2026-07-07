@@ -2436,6 +2436,21 @@ in {
       };
     })
 
+    # Agent reaper — sweeps orphaned aq-agent-loop processes + reconciles stale
+    # delegation-registry rows (status=running with dead pid) to orphaned every 30 min.
+    # Runs as primaryUser (registry owner) so the os.replace rewrite preserves ownership.
+    (lib.mkIf roleEnabled {
+      services.agent-reap = {
+        enable = true;
+        user = cfg.primaryUser;
+        repoRoot = cfg.mcpServers.repoPath;
+        registryAge = 1800;
+        maxAge = 3600;
+        interval = "*:0/30";
+        onBoot = true;
+      };
+    })
+
     (lib.mkIf (roleEnabled && ai.vectorDb.enable && hasQdrant) {
       services.qdrant.enable = true;
       services.qdrant.settings.service = {
