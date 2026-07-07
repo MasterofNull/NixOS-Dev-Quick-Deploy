@@ -434,13 +434,28 @@ def _selections_line(rec: dict) -> Text:
             tools = str(json.loads(prog.read_text()).get("tool_call_count", "…"))
     except Exception:
         pass
+    # Attention badge — reuse the row's computed attention, or derive it for a raw registry rec
+    # (focus pane). Surfaces error-loop (↻) / stalled (◷) / failed (✗) right on the selections line.
+    level = rec.get("attn")
+    reason = rec.get("attn_reason", "")
+    if level is None:
+        level, reason = assess_attention(rec)
     t = Text()
     t.append("⚙ ", style="dim")
     t.append(f"role={role}", style="cyan")
     t.append(f"  model={model}", style="magenta")
     t.append(f"  profile={profile}", style="green")
     t.append(f"  tools={tools}", style="yellow")
-    t.append("  bundle/zero_trust=(F3 OTel)", style="dim")
+    t.append("  bundle/zt=(F3)", style="dim")
+    mark, mstyle = _ATTN_MARK.get(level, (" ", "dim"))
+    if level and level != "ok":
+        badge = {"loop": "ERROR-LOOP", "stalled": "STALLED", "failed": "FAILED"}.get(level, level.upper())
+        t.append(f"  [{mark} {badge}", style="bold " + mstyle.replace("bold ", ""))
+        if reason:
+            t.append(f": {reason[:36]}", style=mstyle)
+        t.append("]", style="bold " + mstyle.replace("bold ", ""))
+    else:
+        t.append("  [✓]", style="green")
     return t
 
 
