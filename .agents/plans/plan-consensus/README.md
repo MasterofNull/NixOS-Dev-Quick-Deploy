@@ -7,12 +7,18 @@ Sign-off round for `.agents/plans/phase0-keystone-zero-trust-plan.md` (PRD:
 **Do NOT append to a shared file** (validated twice in the PRD-consensus round: no lost-write).
 Orchestrator aggregates into a consensus verdict.
 
-**Reviewers:** codex + gemini + claude + **local[Qwen]** — ALL agents, always. The local model is
-never skipped even when slow or late; the harness exists to train/refine/tune it. Qwen is
-dispatched with a generous timeout and the plan INLINED (so it doesn't burn turns reading); its
-contribution is folded whenever it lands, however late — this round stays open for it.
+**Reviewers:** codex + **antigravity** + claude + **local[Qwen]** — ALL agents, always. The local
+model is never skipped even when slow or late; the harness exists to train/refine/tune it.
 
-**gemini (file/git A2A):** read the plan, then write your sign-off to `gemini.md` here.
+**Naming (clarified 2026-07-07):** the remote lane is **antigravity** (the Google Antigravity IDE,
+which uses Gemini models underneath). The old `delegate-to-gemini` / gemini npm CLI is **DEAD** —
+never dispatch it. Earlier "gemini.md" files ARE the antigravity contribution; going forward the
+file is `antigravity.md`.
+
+**antigravity (real-Gemini via the IDE):** the Antigravity Electron IDE agent (real Gemini,
+user-driven) reads the plan and writes its sign-off to `antigravity.md` here. NOTE: the headless
+`delegate-to-antigravity` lane currently falls back to LOCAL Qwen (remote key invalid), so for a
+DISTINCT Gemini perspective the review must come from the IDE agent, not the headless fallback.
 
 ## Each file contains
 1. VERDICT: APPROVE | APPROVE-WITH-CHANGES | REJECT + one-line rationale.
