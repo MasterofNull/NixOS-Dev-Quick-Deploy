@@ -60,6 +60,11 @@ and audit must flow through the same switchboard/coordinator path as every other
 1. **Antigravity A2A integration** (path A or B per operator answer) — make it a headless/semi-auto node.
 2. **Round driver** — automate stages 1–4 (intake→fan-out→per-agent expert teams→consensus) as one
    command over the A2A lanes, producing the per-agent files + aggregate automatically.
+   **[FIRST CUT SHIPPED 2026-07-07]** `scripts/ai/aq-collab-round`: `open --round <n> --task "..."`
+   fans a task out to codex + local[Qwen, inlined + generous timeout, never skipped] + antigravity,
+   each to its OWN per-agent file (no race); `status --round <n>` polls contributions. Codifies the
+   hand-run PASS-1 / PRD-consensus / plan-consensus rounds. TODO: `--aggregate` (orchestrator-assisted
+   synthesis), auto-extract local verdict from its log, PASS-2 multi-pass, antigravity IDE lane.
 3. **Task/role assigner** (stage 5) — from ratified plans, assign slices/phases/roles to agents.
 4. **A2A implementation coordination** (stage 6) — interface-contract negotiation + seam validation
    between implementation agents (automate Phase 6.5).
