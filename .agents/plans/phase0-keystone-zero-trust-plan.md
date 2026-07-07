@@ -1,6 +1,6 @@
 # Phase-0 Keystone Plan — the per-task `zero_trust` flag
 
-Status: Draft (plan-consensus pending)
+Status: Ratified v2 — plan-consensus 3/3 APPROVE-WITH-CHANGES (claude + codex + local[Qwen]; antigravity to append)
 Owner: AI Stack Maintainers
 Last Updated: 2026-07-07
 
@@ -82,6 +82,38 @@ py_compile + `test-switchboard-zero-trust.py`; tier0 + focused-CI; live: POST a 
 request to the switchboard, confirm audit shows `zero_trust` + tools stripped. Switchboard change
 runs from the store snapshot → needs a rebuild to activate in the service (repo run for tests).
 
+## v2 — Ratified consensus changes (BINDING; fold into P0.1–P0.5 before/while coding)
+Plan-consensus 3/3 APPROVE-WITH-CHANGES. Aggregate: `.agents/plans/plan-consensus/AGGREGATE.md`.
+
+**Derivation (P0.1):**
+- Canonical context `zero_trust: bool` + `zero_trust_kinds: list`.
+- **Task-scoped MONOTONIC (raise-only)**: `zt = task_sticky OR scan(current_messages); task_sticky |= zt`.
+  Re-derived per request from CURRENT messages; never a cross-session latch; resolves prune-downgrade.
+- **Fail-closed via ONE unit-tested helper** collapsing ALL failure cases (exception / malformed /
+  missing import / stale-unparseable) → `true`. Ignore caller `false`; honor caller `true` (raise only).
+- **Boot-safety (qwen):** a STARTUP `a2a_guard` health-check — log a loud warning but do NOT block
+  service boot (a broken guard must degrade + alert, not fail boot).
+- **Scan scope:** ALL message content incl. TOOL RESULTS; bound the scanned text (no unbounded traversal).
+
+**Consumer A — tool-catalog (P0.2):** strip the privileged set at THREE sites — base catalog BEFORE
+`_normalize_local_tools`, explicit requested `tools`, AND `_resolve_tool_lease`; `lease_tools` must
+not reacquire stripped tools. **Enumerate the privileged tool NAMES explicitly (qwen)** in config so
+the filter is unambiguous + testable.
+
+**Consumer B — routing (P0.3):** check `zero_trust` before EVERY remote-return in `_route_target`:
+`forceProvider=remote`, `ROUTING_MODE=remote_only`, `x-ai-route: remote`, provider hints, remote
+model prefixes, intent routing, `DEFAULT_PROVIDER=remote`. Deterministic fallback (PRD V9), not silent drop.
+
+**Flag + audit (P0.4):** `SWB_ZERO_TRUST_ENFORCE` off = derive+audit only, on = enforce; **document
+it in the switchboard env schema (qwen)**. Audit redacted payload + failure-reason labeling; LOUD
+alert on guard-load failure (fleet-wide capability impact).
+
+**Tests (P0.5) — 14:** keystone(secret→stripped+blocked) · fail-closed · mid-conversation ·
+tool-result-secret · sticky-after-prune · observe-vs-enforce · caller-false-no-downgrade ·
+caller-true-honored · lease-cant-reacquire · forced-remote(profile/header/model/default-provider)-
+downgraded · streaming-follows-block · scanner-exception→audit · clean-large-latency-budget ·
+**concurrency-isolation (qwen: clean + secret dispatched in parallel → per-request, no latch under load)**.
+
 ## Next
-Plan-consensus sign-off (per-agent files, as in PRD-consensus) → implement P0.1–P0.5 → then
-Slice-2/Slice-3 phases branch off the flag in parallel.
+RATIFIED (3/3; antigravity appends via the IDE lane when integrated). → implement P0.1–P0.5 with the
+v2 changes → then Slice-2/Slice-3 phases branch off the flag in parallel.
