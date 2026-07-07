@@ -5,10 +5,10 @@ Last Updated: 2026-07-07
 ## Contributors
 - **claude**: APPROVE-WITH-CHANGES ✅
 - **codex/gpt-5.5**: APPROVE-WITH-CHANGES ✅ (own file, no race)
-- **local[Qwen]**: ⏳ running (`xafygf`, inlined plan + 5400s budget) — ROUND STAYS OPEN, fold when it lands.
+- **local[Qwen]**: APPROVE-WITH-CHANGES ✅ (`xafygf`, completed 671s/~11min — inlining worked; unique contributions below).
 - **gemini**: ⏳ file/git A2A pending.
 
-## Interim consensus (2/2 landed): APPROVE-WITH-CHANGES
+## Consensus (3/3 landed): APPROVE-WITH-CHANGES  [gemini still pending]
 Both approve the keystone-first design; both require precedence/edge hardening before coding.
 Strongly convergent — codex extends claude's PC1/PC3 with concrete bypass vectors.
 
@@ -54,3 +54,23 @@ latency budget**.
 ## Status
 Interim: APPROVE-WITH-CHANGES. DO NOT finalize — round OPEN for Qwen (never skip local) + gemini.
 Fold both, then ratify → Phase-0 plan v2 → implement P0.1.
+
+---
+## UPDATE — local[Qwen] folded (never skip local; it paid off)
+Qwen APPROVE-WITH-CHANGES, with contributions the remote models MISSED — validating the
+never-skip-local principle. Add to the Phase-0 plan v2:
+7. **Boot-safety on fail-closed (P0.1, NEW — qwen):** a STARTUP health-check for `a2a_guard`
+   load — log a loud warning but do NOT block service boot. (Sharpens change #6: fail-closed
+   must not turn a broken guard into a boot failure; degrade + alert, stay up.)
+8. **Explicit privileged-tool NAME list (P0.2, qwen):** enumerate the stripped tool names in the
+   plan/config (not a vague "privileged set") so the filter is unambiguous + testable.
+9. **Env-schema doc for `SWB_ZERO_TRUST_ENFORCE` (qwen):** document the flag (default=off) in the
+   switchboard env schema so operators/consumers know it exists.
+### Added test (qwen)
+- **Concurrency isolation:** dispatch a clean and a secret-bearing request CONCURRENTLY; assert
+  `zero_trust` is resolved per-request (the clean one keeps full catalog + routing; the secret one
+  is stripped/blocked) — proves no cross-request latch under load. (Directly stress-tests the
+  task-scoped-monotonic design.)
+
+## Status
+3/3 landed APPROVE-WITH-CHANGES (claude + codex + qwen). Round OPEN for gemini only.
