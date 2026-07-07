@@ -1359,3 +1359,26 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
       needs IDE-side config; the real integration work.
   Note: local fallback gives functionality but NOT model diversity (gemini==local==Qwen), so
   consensus rounds still need real-Gemini via the IDE for a distinct perspective.
+
+## [FIXED 2026-07-07] background-local-dispatch-orphaned-and-self-terminated
+- **Scope**: scripts/ai/delegate-to-local:212; scripts/ai/aq-agent-loop _install_self_watchdog;
+  scripts/ai/aq-agent-reap should_reap/main
+- **Severity**: high — backgrounded local dispatches died seconds after start (54B output, ~4h
+  stale, no proc, slot idle); consensus rounds silently lost local contributions.
+- **Root cause (chain)**: delegate-to-local backgrounded dispatch.py with `nohup … & disown` but
+  NO `setsid`, so dispatch.py stayed in the CALLER's process group. When that group was reaped
+  (e.g. a round-driver/Bash call returning → harness SIGKILLs the group), dispatch.py died; its
+  aq-agent-loop child then reparented to init (ppid=1); the self-watchdog treats ppid=1 as
+  "orphaned → kill" and `os._exit(124)`d it — even though it had barely started. The external
+  aq-agent-reap did the same (ppid==1 → reap, unconditional). Two killers both conflated
+  "intentionally-detached-but-working" with "orphaned-and-abandoned".
+- **Fix (3 layers)**:
+  A. delegate-to-local: `setsid` the background dispatch.py → own session, survives the caller's
+     pgroup termination (THE primary fix; dispatch.py stays parent → child never orphans).
+  B. self-watchdog: only kill a WEDGED orphan — ppid=1 AND no AGENT_PROGRESS_FILE write for
+     AQ_ORPHAN_GRACE_S (90s). A working orphan (still streaming) survives.
+  C. aq-agent-reap: progress_recent() — never reap a ppid=1 proc whose progress file was written
+     within grace; only wedged orphans / runaways.
+- **Verified**: setsid present; watchdog + reaper compile; 10/10 reap tests; progress_recent
+  protects fresh (working) and reaps stale (wedged). The re-dispatched local tasks (this session)
+  ran in a kept-alive background job to prove the tasks themselves complete once not orphaned.

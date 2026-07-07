@@ -208,8 +208,13 @@ case "${SUBCMD:-}" in
                 exit 1
             fi
         else
-            # Background: nohup dispatch.py directly — it owns registry + PENDING.json.
-            nohup "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
+            # Background: setsid dispatch.py into its OWN session so it survives the caller's
+            # process-group being reaped (e.g. a round-driver/Bash call returning). Without
+            # setsid, dispatch.py stayed in the caller's pgroup, was SIGKILLed when that group
+            # died, and its aq-agent-loop child then orphaned (ppid=1) → the self-watchdog
+            # killed a task that had barely started. setsid detaches it (own session leader,
+            # no controlling terminal) — the ROOT fix for the orphaned/self-terminated dispatches.
+            setsid "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
             BG_PID=$!
             disown "$BG_PID"
             info "Task $ID started in background (pid $BG_PID)"
