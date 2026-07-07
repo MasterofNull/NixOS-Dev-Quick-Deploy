@@ -194,7 +194,13 @@ def read_running_procs() -> list:
             label = next((a for a in ("codex", "gemini", "antigravity", "aq-agent-loop",
                                        "aq-loop", "training_ingest", "delegate-to")
                           if a in low), "agent")
-            procs.append({"pid": pid, "label": label, "cmd": cmd[:52]})
+            # Persistent backends (codex/gemini IDE + MCP app-servers) are DAEMONS, not active
+            # delegation work — a codex `exec`, aq-agent-loop, delegate-to-*, or agent_executor
+            # is active. Distinguishing them stops idle daemons from reading as "agents working".
+            daemon = ("app-server" in low or "mcp-server" in low
+                      or (label in ("codex", "gemini") and "exec" not in low
+                          and "delegate" not in low))
+            procs.append({"pid": pid, "label": label, "cmd": cmd[:52], "daemon": daemon})
     except Exception:
         pass
     _cache["procs"] = (_now(), procs)
@@ -262,11 +268,15 @@ def panel_header() -> Panel:
     grid = Table.grid(expand=True)
     grid.add_column(justify="left", ratio=1)
     grid.add_column(justify="right")
-    nprocs = len(read_running_procs())
+    procs = read_running_procs()
+    n_active = sum(1 for p in procs if not p.get("daemon"))
+    n_daemon = sum(1 for p in procs if p.get("daemon"))
+    n_deleg = sum(1 for r in read_active_delegations() if r["status"] == "running")
     n_attn = sum(1 for r in read_active_delegations() if r["attn"] != "ok")
     attn_txt = (Text(f"  ⚠ {n_attn} need attention", style="bold red")
                 if n_attn else Text("  ✓ all nominal", style="green"))
-    right = Text(f"{nprocs} live proc(s)  {datetime.now().strftime('%H:%M:%S')}", style="white")
+    right = Text(f"{n_deleg} delegation(s) · {n_active} active proc · {n_daemon} daemon  "
+                 f"{datetime.now().strftime('%H:%M:%S')}", style="white")
     right.append_text(attn_txt)
     grid.add_row(Text("AGENTIC OPS — delegations & current operations", style="bold cyan"), right)
     return Panel(grid, style="blue")
@@ -401,12 +411,29 @@ def panel_agent_cell(rec: dict, out_lines: int = 16) -> Panel:
 
 
 def render_matrix() -> Columns:
-    """Grid of live per-agent panes (all running delegations at once)."""
+    """Grid of live per-agent panes: running delegations + active (non-daemon) agent
+    processes. Idle daemons (codex/gemini app-servers) are summarized, not shown as work."""
     running = [r for r in read_active_delegations(limit=8) if r["status"] == "running"]
-    if not running:
-        return Columns([Panel(Text("no running agents — dispatch work to populate the matrix",
-                                   style="dim"), title="Agent Matrix")])
     cells = [panel_agent_cell(r) for r in running[:8]]
+
+    # Active agent processes with no registry row (e.g. a concurrent codex/gemini working
+    # outside our delegate-to-* path) — surface them so live work is never hidden.
+    procs = read_running_procs()
+    active = [p for p in procs if not p.get("daemon")]
+    daemons = [p for p in procs if p.get("daemon")]
+    for p in active[:4]:
+        cells.append(Panel(Text(f"pid {p['pid']}\n{p['cmd']}", style="white"),
+                           title=f"⚙ {p['label']} (process, no task log)", border_style="green"))
+
+    if not cells:
+        msg = Text("no active delegations", style="dim")
+        if daemons:
+            msg.append(f"\n{len(daemons)} agent daemon(s) present but idle: ", style="dim")
+            msg.append(", ".join(sorted({p["label"] for p in daemons})), style="dim cyan")
+            msg.append("\n(daemons are persistent IDE/MCP backends — not active work)", style="dim")
+        else:
+            msg.append(" — dispatch work to populate the matrix", style="dim")
+        return Columns([Panel(msg, title="Agent Matrix")])
     return Columns(cells, equal=True, expand=True, column_first=True)
 
 
