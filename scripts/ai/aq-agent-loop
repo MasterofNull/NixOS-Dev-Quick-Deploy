@@ -416,7 +416,7 @@ def _install_self_watchdog(hard_deadline_secs: float) -> None:
     start = time.monotonic()
     orig_ppid = os.getppid()
     _progress = os.environ.get("AGENT_PROGRESS_FILE")
-    _grace = float(os.environ.get("AQ_ORPHAN_GRACE_S", "90"))
+    _grace = float(os.environ.get("AQ_ORPHAN_GRACE_S", "300"))
 
     def _reap() -> None:
         while True:
