@@ -74,3 +74,7 @@ never-skip-local principle. Add to the Phase-0 plan v2:
 
 ## Status
 3/3 landed APPROVE-WITH-CHANGES (claude + codex + qwen). Round OPEN for gemini only.
+
+---
+## FINALIZED 2026-07-07 — RATIFIED on 3/3
+Operator: finalize now on 3/3 (claude + codex + local[Qwen], all APPROVE-WITH-CHANGES). Antigravity appends via the IDE lane once integrated (epic-flat-collaborative-factory). All 9 changes + 14 tests folded into Phase-0 plan v2 (phase0-keystone-zero-trust-plan.md, Status: Ratified v2). Phase-0 is now buildable — implement P0.1.
