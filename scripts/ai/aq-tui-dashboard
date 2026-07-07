@@ -177,6 +177,7 @@ def read_active_delegations(window_s: int = 900, limit: int = 10) -> list:
             level, reason = assess_attention(rec)
             rows.append({
                 "agent": rec.get("agent", "?"),
+                "role": rec.get("role", "") or "",
                 "fid": rec.get("id", "") or "",
                 "id": (rec.get("id", "") or "")[-16:],
                 "status": status,
@@ -392,6 +393,7 @@ def panel_focus(task_id: str) -> Panel:
     inner.add_row(head)
     inner.add_row(Text("status: " + rec.get("status", "?") + "   created: " + rec.get("created", "?"),
                        style="dim"))
+    inner.add_row(_selections_line(rec))
     inner.add_row(Text("─" * 60, style="dim"))
     inner.add_row(Text(out, style="white"))
     return Panel(inner, title=f"Focus — {rec.get('id','')}",
@@ -406,6 +408,42 @@ def _registry_input(fid: str) -> str:
     return ""
 
 
+# lane → (model shown, switchboard/CLI profile). Derived from the known lane config; the
+# per-REQUEST switchboard selections (leased bundle, injectHints, zero_trust) are correlated
+# to a task only once F3 emits OTel spans — shown as "…" until then, not fabricated.
+_LANE_SELECT = {
+    "local-agent":  ("Qwen3-35B (active.gguf)", "local-agent"),
+    "local-direct": ("Qwen3-35B (active.gguf)", "local-direct"),
+    "local":        ("Qwen3-35B (active.gguf)", "local-agent"),
+    "codex":        ("gpt-5.5", "codex-cli"),
+    "antigravity":  ("gemini-3.x (IDE OAuth)", "IDE-inbox"),
+    "gemini":       ("gemini-3.x", "IDE-inbox"),
+}
+
+
+def _selections_line(rec: dict) -> Text:
+    """Compact capability-selection readout per agent (role · model · profile · tools)."""
+    agent = rec.get("agent", "")
+    model, profile = _LANE_SELECT.get(agent, ("?", "?"))
+    role = rec.get("role") or "—"
+    # tool-call count from the agent progress sidecar if present (local lane).
+    tools = "…"
+    prog = OUTPUTS / f"{rec.get('fid') or rec.get('id','')}.progress.json"
+    try:
+        if prog.exists():
+            tools = str(json.loads(prog.read_text()).get("tool_call_count", "…"))
+    except Exception:
+        pass
+    t = Text()
+    t.append("⚙ ", style="dim")
+    t.append(f"role={role}", style="cyan")
+    t.append(f"  model={model}", style="magenta")
+    t.append(f"  profile={profile}", style="green")
+    t.append(f"  tools={tools}", style="yellow")
+    t.append("  bundle/zero_trust=(F3 OTel)", style="dim")
+    return t
+
+
 def panel_agent_cell(rec: dict, out_lines: int = 16) -> Panel:
     """One agent pane: INPUT header (prompt) + live OUTPUT tail — the cmux per-agent view."""
     fid = rec["fid"]
@@ -417,6 +455,7 @@ def panel_agent_cell(rec: dict, out_lines: int = 16) -> Panel:
     body = Text()
     body.append("IN  ", style="bold cyan")
     body.append(inp[:180] + ("…" if len(inp) > 180 else "") + "\n", style="cyan")
+    body.append_text(_selections_line(rec)); body.append("\n")
     body.append(f"── OUT ({src}, near-real-time) " + "─" * 20 + "\n", style="dim")
     if out:
         body.append("\n".join(out[-out_lines:]), style="white")
