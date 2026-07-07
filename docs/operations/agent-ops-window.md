@@ -23,6 +23,16 @@ Delegations are flagged worst-first: `✗` failed · `↻` error-loop (a line re
 `AQ_OPS_LOOP_REPEAT`+ times in the output tail) · `◷` stalled (`running` past
 `AQ_OPS_STALL_S`, default 1200s). The header shows the count.
 
+## Header semantics (delegations vs processes vs daemons)
+The header reads `N delegation(s) · M active proc · K daemon`:
+- **delegation** — a registry row with `status=running` (an in-flight `delegate-to-*` task).
+- **active proc** — a live agent process doing work (codex `exec`, `aq-agent-loop`, `agent_executor`).
+- **daemon** — a persistent IDE/MCP backend (codex/gemini `app-server`) that is *present but idle*,
+  NOT active work. Daemons are counted separately so they never read as "agents working".
+`--matrix` shows delegations + active procs as panes; when none are active it names the idle
+daemons explicitly. A file/git A2A contributor (e.g. gemini writing a file) is NOT a running
+process — it will not appear until it produces a registry delegation.
+
 ## Output liveness
 - **codex / aq-agent-loop**: stream incrementally to their output log → live in the pane.
 - **local-direct**: writes at completion → pane shows `(no output yet)` until it finishes.
