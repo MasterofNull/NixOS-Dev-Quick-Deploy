@@ -1,27 +1,12 @@
+COLLABORATIVE ROUND 'f2-plan-consensus'.
+=== REVIEW ARTIFACT (.agents/plans/f2-impl-plan.md) — INLINED; do NOT read the file ===
 # F2 Implementation Plan — Local Model-Stacking + Measured Slot Scheduler
 
-Status: CONSENSUS-RATIFIED (f2-plan-consensus 3/4 decisive; antigravity late-admissible)
+Status: DRAFT (awaiting plan-consensus)
 Owner: claude (orchestrator)
 Last Updated: 2026-07-07
 Design SSOT: `.agents/plans/f2-local-scheduler/AGGREGATE.md` (4/4 ratified)
-Plan-consensus corrections: `.agents/plans/f2-plan-consensus/AGGREGATE.md` (folded below)
 Builds on: F1 (round.json state machine) — F2 schedules typed work against F1 rounds.
-
-## Plan-consensus corrections (RATIFIED — supersede conflicting detail below)
-1. **Phase-A guardrails (HARD).** F2.1–F2.4 MUST NOT modify `dispatch.py`, Nix modules, ports, services, or
-   live llama.cpp request paths. Pure `scripts/ai/lib/` modules + unit tests ONLY. Any live routing = F2.5.
-2. **F2.1 starvation bound.** Concrete configurable max-wait bound (not only "promote after N s"); tests
-   assert the bound holds under load.
-3. **F2.3 quorum contract test.** An F1-integration test proving consensus CANNOT proceed while a local lane
-   is `local-delayed` (never-skip-local, mechanized). `local-delayed` is a typed ADMISSIBLE lane state, not
-   a failure/abstain/timeout.
-4. **F2.2 canonical versioned cache key.** `sha256("gbnf:v1\0" + canonical_schema_json + "\0zt:" +
-   canonical_zero_trust_namespace_digest)` — canonical JSON both inputs, explicit separators + version prefix;
-   `zero_trust_state` = namespaced canonical policy digest (shared with F3), not a mutable blob.
-5. **F2.5 REQUIRES 35B session-mode.** A resident :8082 small model CANNOT coexist with an always-resident
-   35B in 27 GB (35B ≈ 26.5 GB). F2.5 must convert the 35B to session-mode (load/unload) and specify:
-   load/unload latency, swap-trigger authority, in-flight-request handling on P1 preemption, and the 30s
-   swap-cooling gate as REAL back-pressure. This is the crux of Phase B.
 
 ## Objective
 End the single-slot serialization that had 4 local dispatches queue for hours behind the one 35B gen slot.
@@ -107,3 +92,10 @@ revert the slice. Phase B is gated behind review + a rebuild; the fast-lane is o
 ## Sequencing
 F2.1 → F2.2 → F2.3 → F2.4 (autonomous, rebuild-free) → **STOP + report** → F2.5 → F2.6 (user-reviewed,
 rebuild-gated). Then F3 (CapabilityLease + OTel) instruments both F1 and F2.
+
+=== END ARTIFACT ===
+
+TASK:
+PLAN-CONSENSUS review of the F2 implementation plan (inlined). The F2 DESIGN is 4/4 ratified — do NOT re-design; assess whether this IMPLEMENTATION PLAN faithfully realizes it and is safely phased. Decide: (1) Is the Phase-A (rebuild-free: F2.1 MLFQ+aging scheduler, F2.2 GBNF cache, F2.3 local-delayed back-pressure, F2.4 model-tier routing) / Phase-B (rebuild-gated: F2.5 fast-lane :8082 + VRAM pool + Nix, F2.6 35B-on-CPU A/B bench) split correct — is anything in Phase A actually rebuild-dependent, or vice versa? (2) Does F2.1's MLFQ+aging+preemption correctly realize the ratified 3-band scheduler without starvation? (3) Is the GBNF cache key sha256(schema+zero_trust_state) right + does it correctly share F3's zero_trust namespace? (4) Does local-delayed back-pressure integrate with F1 quorum so never-skip-local holds (a delayed lane stays admissible)? (5) Is routing pure/testable without real inference? (6) Biggest RISK in the fast-lane :8082 + VRAM-pool infra (F2.5) on the 4GB APU — and is the 35B-on-CPU flip correctly gated as measure-before-adopt not assumed? Rank your top 3 plan changes. Write your OWN file .agents/plans/f2-plan-consensus/<AGENT>.md only.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/f2-plan-consensus/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.
