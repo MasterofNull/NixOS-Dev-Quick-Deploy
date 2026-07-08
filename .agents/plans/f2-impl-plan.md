@@ -107,3 +107,12 @@ revert the slice. Phase B is gated behind review + a rebuild; the fast-lane is o
 ## Sequencing
 F2.1 → F2.2 → F2.3 → F2.4 (autonomous, rebuild-free) → **STOP + report** → F2.5 → F2.6 (user-reviewed,
 rebuild-gated). Then F3 (CapabilityLease + OTel) instruments both F1 and F2.
+
+## Progress log
+- **F2.1 — DONE (2026-07-07).** `scripts/ai/lib/scheduler.py` + `scripts/testing/test-scheduler.py`.
+  codex-authored (task ezee1p), orchestrator-integrated. PURE MLFQ+aging scheduler (clockless — `now` passed
+  into every decision): Band enum (P1_INTERACTIVE/P2_CONSENSUS_VALIDATION/P3_BACKGROUND_BATCH), Job +
+  SchedulerState/Config (DEFAULT_MAX_WAIT_S, DEFAULT_STARVATION_CEILING_S); enqueue / next_job (band→FIFO→id
+  deterministic) / age (concrete configurable starvation bound — promotes before the ceiling) / preempt (P1
+  evicts P3, stashes context; P1 never evicted by lower bands) / no_starvation_invariant. 7/7 pytest green;
+  purity verified (no internal clock). Phase-A guardrail held (only the 2 files). NEXT: F2.2 (grammar_cache.py).
