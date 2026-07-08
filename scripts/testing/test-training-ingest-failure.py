@@ -49,6 +49,23 @@ def test_uncorrected_failure_is_pending_not_written(tmp_path, monkeypatch):
     assert not dataset.exists() or dataset.read_text().strip() == ""
 
 
+def test_success_sample_becomes_positive_pair(tmp_path, monkeypatch):
+    samples = tmp_path / "s.jsonl"
+    dataset = tmp_path / "d.jsonl"
+    training_capture.capture_success(
+        prompt="summarize the file", good_output="COMPLETED: summarized config.nix in 3 bullets.",
+        source="agent_executor.final", path=samples,
+    )
+    monkeypatch.setattr(training_ingest, "TRAINING_SAMPLES", samples)
+    monkeypatch.setattr(training_ingest, "TRAINING_SAMPLES_SPOOL", tmp_path / "nope.jsonl")
+    ing = training_ingest.TrainingIngestor(dataset_path=dataset, dry_run=False)
+    added, pending = ing._ingest_failure_samples(_since())
+    assert added == 1 and pending == 0
+    row = json.loads(dataset.read_text().strip())
+    assert row["source"].startswith("success-capture")
+    assert row["messages"][1]["content"].startswith("COMPLETED:")
+
+
 def test_dedupe_on_second_ingest(tmp_path, monkeypatch):
     samples = tmp_path / "s.jsonl"
     dataset = tmp_path / "d.jsonl"

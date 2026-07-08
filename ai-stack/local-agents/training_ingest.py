@@ -388,28 +388,37 @@ class TrainingIngestor:
         samples_to_write: List[Dict] = []
         pending = 0
         for rec in records:
-            if rec.get("kind") != "failure_sample":
-                continue
+            kind = rec.get("kind")
             prompt = _scrub_text(rec.get("prompt", ""))
-            corrected = rec.get("corrected_output")
-            if not corrected:
-                pending += 1  # needs a correction before it can be an SFT pair
-                continue
-            corrected = _scrub_text(corrected)
             if not prompt:
                 continue
-            content_hash = hashlib.sha256(f"{prompt}||{corrected}".encode()).hexdigest()[:16]
+            if kind == "success_sample":
+                # Positive pair captured at the completion point (reliable source vs mining hybrid-events).
+                target_out = _scrub_text(rec.get("good_output", ""))
+                source = f"success-capture:{rec.get('source', 'local')}"
+            elif kind == "failure_sample":
+                corrected = rec.get("corrected_output")
+                if not corrected:
+                    pending += 1  # needs a correction before it can be an SFT pair
+                    continue
+                target_out = _scrub_text(corrected)
+                source = f"failure-repair:{rec.get('failure_class', 'unknown')}"
+            else:
+                continue
+            if not target_out:
+                continue
+            content_hash = hashlib.sha256(f"{prompt}||{target_out}".encode()).hexdigest()[:16]
             if content_hash in existing_hashes:
                 continue
             existing_hashes.add(content_hash)
             samples_to_write.append({
                 "messages": [
                     {"role": "user", "content": prompt},
-                    {"role": "assistant", "content": corrected},
+                    {"role": "assistant", "content": target_out},
                 ],
-                "source": f"failure-repair:{rec.get('failure_class', 'unknown')}",
+                "source": source,
                 "source_hash": content_hash,
-                "quality_score": 1.0,  # a known-correct repair target
+                "quality_score": 1.0,
                 "timestamp": rec.get("timestamp"),
             })
 

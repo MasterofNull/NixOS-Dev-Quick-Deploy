@@ -1290,6 +1290,21 @@ class LocalAgentExecutor:
             task.tool_calls_made.append(result)
             tool_call_count += 1
 
+            # P1.4: a valid tool call that executed cleanly is a POSITIVE sample — capture it directly
+            # here (the reliable source) rather than mining hybrid-events (only ~0.03% of which are
+            # inference completions — the root cause of the ingest's samples_added:0). Best-effort;
+            # ingest dedupes by content hash. Guarded so it never affects the turn.
+            if training_capture is not None and not getattr(result, "error", None):
+                _last_user = next((m.get("content", "") for m in reversed(messages)
+                                   if m.get("role") == "user"), "")
+                if _last_user and response:
+                    training_capture.capture_success(
+                        prompt=_last_user,
+                        good_output=response,
+                        source="agent_executor.tool_success",
+                        model_provenance={"lane": "local", "tool": getattr(result, "tool_name", "")},
+                    )
+
             # Phase E — agent_tool_result: emitted after dispatch returns.
             await self._emit_agent_event(
                 task.id, "agent_tool_result",
