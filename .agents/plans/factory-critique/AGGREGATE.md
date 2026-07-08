@@ -1,10 +1,12 @@
-# Factory Critique — Aggregate / Roadmap (3/4 landed; ROUND OPEN for local[Qwen])
+# Factory Critique — Aggregate / Roadmap (4/4 landed — RATIFIED)
 
 Last Updated: 2026-07-07
 
 ## Contributors
 - **claude** ✅ · **codex/gpt-5.5** ✅ · **antigravity[Gemini]** ✅ (via the IDE OAuth inbox — the
-  no-key lane WORKED end-to-end) · **local[Qwen]** ⏳ running (`vqoxfh`, never skipped — round OPEN).
+  no-key lane WORKED end-to-end) · **local[Qwen]** ✅ (re-dispatch `s1r0ds`, 3722s, 12 tool calls —
+  never skipped; hit its known design-task boundary and produced only scaffolding, salvaged into
+  local.md. Its substantive alignment is captured in F1/F2/F3, which local co-authored in those rounds).
 
 ## Unanimous verdict (3/3 landed)
 **"Promising direction, not yet a foundation."** (codex's phrasing; claude + antigravity agree.) The
@@ -66,5 +68,7 @@ Zanzibar**. Observability: **OpenTelemetry semantic conventions**. Scheduling: *
   task envelope + heartbeat for the antigravity node; automatic-rollback (worktree snapshot).
 
 ## Status
-3/3 landed unanimous. Round OPEN for local[Qwen] (fold when it lands). These 3 slices become the
-foundation-hardening epic; the Slice-2/3 zero-trust work folds into F2/F3 (zero_trust = a CapabilityLease).
+**4/4 landed — RATIFIED.** claude + codex + antigravity unanimous ("too ad-hoc → promote to explicit
+primitives"), identical top-3 (F1/F2/F3). local[Qwen] folded (thin — design-boundary; its real design
+input lands in the F1/F2/F3 rounds it co-authored). These 3 slices become the foundation-hardening
+epic; the Slice-2/3 zero-trust work folds into F2/F3 (zero_trust = a CapabilityLease).
