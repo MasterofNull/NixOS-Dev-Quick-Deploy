@@ -128,11 +128,36 @@ def tail_output(task_id: str, n: int = 40, max_bytes: int = 8192) -> list:
     return data.splitlines()[-n:]
 
 
+def _read_progress(task_id: str) -> dict:
+    """Read the agent progress sidecar. dispatch writes it at '<output>.progress.json' where
+    <output> is '<id>.log' — i.e. '<id>.log.progress.json'. Returns {} if absent/unparseable.
+    Carries the agent_executor's INTERNAL task_id (used to key the live stream file) plus
+    status/tool_call_count/llm_stream_chars."""
+    if not task_id:
+        return {}
+    p = OUTPUTS / f"{task_id}.log.progress.json"
+    try:
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return {}
+    return {}
+
+
 def read_live_stream(task_id: str, n: int = 40) -> tuple:
-    """Near-real-time agent output/reasoning. Local writes a live stream file (tokens as they
-    arrive); codex/others stream into their output log (which grows live). Returns (lines, src)."""
+    """Near-real-time agent output/reasoning. The local agent_executor writes a live stream file
+    (tokens/tool-calls as they arrive) keyed by its INTERNAL task id, NOT the dispatch id the
+    operator/matrix knows. Resolve the internal id via the progress sidecar so the two correlate.
+    codex/others stream into their output log (which grows live). Returns (lines, src)."""
+    prog = _read_progress(task_id)
+    candidates = []
     if task_id:
-        sf = STREAMS / f"{task_id}.txt"
+        candidates.append(task_id)               # lanes that key the stream by dispatch id
+    inner = prog.get("task_id")
+    if inner and inner != task_id:
+        candidates.append(inner)                 # local: internal aq-<ts> id from the sidecar
+    for sid in candidates:
+        sf = STREAMS / f"{sid}.txt"
         if sf.exists():
             try:
                 txt = sf.read_text(encoding="utf-8", errors="replace")
@@ -140,6 +165,16 @@ def read_live_stream(task_id: str, n: int = 40) -> tuple:
                     return txt.splitlines()[-n:], "live-stream"
             except OSError:
                 pass
+    # No streamed tokens yet (e.g. a long cold prefill). Surface the progress STATE so the pane
+    # shows what the agent is doing (prefilling, N tool calls) instead of a blank/"waiting" line.
+    status = prog.get("status")
+    if status:
+        tc = prog.get("tool_call_count", 0)
+        chars = prog.get("llm_stream_chars", 0)
+        note = f"[{status}]  tool_calls={tc}  streamed_chars={chars}"
+        if status == "llm_waiting" and not chars:
+            note += "  — model prefilling/generating (no tokens emitted yet this turn)"
+        return [note], "progress-state"
     return tail_output(task_id, n=n), "output-log"
 
 
@@ -426,14 +461,12 @@ def _selections_line(rec: dict) -> Text:
     agent = rec.get("agent", "")
     model, profile = _LANE_SELECT.get(agent, ("?", "?"))
     role = rec.get("role") or "—"
-    # tool-call count from the agent progress sidecar if present (local lane).
+    # tool-call count from the agent progress sidecar if present (local lane). The sidecar lives at
+    # '<id>.log.progress.json' (the --output path + '.progress.json'), not '<id>.progress.json'.
     tools = "…"
-    prog = OUTPUTS / f"{rec.get('fid') or rec.get('id','')}.progress.json"
-    try:
-        if prog.exists():
-            tools = str(json.loads(prog.read_text()).get("tool_call_count", "…"))
-    except Exception:
-        pass
+    prog = _read_progress(rec.get("fid") or rec.get("id", ""))
+    if prog.get("tool_call_count") is not None:
+        tools = str(prog.get("tool_call_count"))
     # Attention badge — reuse the row's computed attention, or derive it for a raw registry rec
     # (focus pane). Surfaces error-loop (↻) / stalled (◷) / failed (✗) right on the selections line.
     level = rec.get("attn")
