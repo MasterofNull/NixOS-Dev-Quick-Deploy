@@ -64,6 +64,14 @@ except ImportError:
 TRAINING_SAMPLES       = TELEMETRY_DIR / "training-samples.jsonl"
 TRAINING_SAMPLES_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "training-samples.jsonl"
 
+# HITL poison guard: a teacher-corrected repair pair must be APPROVED (aq-review-repairs) before it can
+# enter the training dataset — a bad correction would otherwise train the model on wrong behaviour.
+#   review_status == "approved" -> ingests · "rejected" -> never · missing/"pending" -> waits for review
+# Set AQ_REPAIR_REQUIRE_APPROVAL=0 for fully-autonomous ingest (gate off, e.g. a trusted-teacher run).
+_REQUIRE_REPAIR_APPROVAL = os.getenv("AQ_REPAIR_REQUIRE_APPROVAL", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+
 # PII guard: strip actual secrets (API keys, tokens) from training content before
 # quality scoring or writing. Uses redact_secrets (not scrub_telemetry_payload —
 # that hashes the entire field, destroying training signal).
@@ -253,9 +261,10 @@ class TrainingIngestor:
 
         report["positive_samples_added"] = self._ingest_hybrid_events(since)
         # P1: turn captured local failures into repair training pairs (closed loop).
-        repair_added, repair_pending = self._ingest_failure_samples(since)
+        repair_added, repair_pending, repair_pending_review = self._ingest_failure_samples(since)
         report["failure_repair_samples_added"] = repair_added
         report["failure_repair_pending"] = repair_pending
+        report["failure_repair_pending_review"] = repair_pending_review
         report["samples_added"] = report["positive_samples_added"] + repair_added
         gaps, failures = self._analyze_delegation_feedback(since)
         report["gap_patterns"] = gaps
@@ -362,14 +371,16 @@ class TrainingIngestor:
 
         return added
 
-    def _ingest_failure_samples(self, since: datetime) -> Tuple[int, int]:
+    def _ingest_failure_samples(self, since: datetime) -> Tuple[int, int, int]:
         """P1: turn captured local failures (training_capture spool) into training data.
 
         A failure record WITH a corrected_output becomes an SFT repair pair (prompt → correct output),
         so the model learns the right response for the case it got wrong — this is the closed-loop's
         producer-fix-as-training-signal. A record WITHOUT a correction is counted as repair_pending
-        (it needs a correction pass — a remote agent's fix — before it can train). Returns
-        (repair_samples_added, repair_pending). Dedupes against the dataset by content hash."""
+        (it needs a correction pass — a remote agent's fix — before it can train). A CORRECTED record
+        that has not been approved by the HITL gate (aq-review-repairs) is counted as pending_review
+        and NOT ingested (poison guard). Returns (repair_samples_added, repair_pending, pending_review).
+        Dedupes against the dataset by content hash."""
         import hashlib
 
         records = _read_jsonl(TRAINING_SAMPLES, since=since)
@@ -387,6 +398,7 @@ class TrainingIngestor:
 
         samples_to_write: List[Dict] = []
         pending = 0
+        pending_review = 0
         for rec in records:
             kind = rec.get("kind")
             prompt = _scrub_text(rec.get("prompt", ""))
@@ -401,6 +413,15 @@ class TrainingIngestor:
                 if not corrected:
                     pending += 1  # needs a correction before it can be an SFT pair
                     continue
+                # HITL poison guard: only an APPROVED repair pair may train. rejected -> drop;
+                # missing/pending -> hold for aq-review-repairs. Gate off => treat as approved.
+                if _REQUIRE_REPAIR_APPROVAL:
+                    review = str(rec.get("review_status", "") or "").strip().lower()
+                    if review == "rejected":
+                        continue
+                    if review != "approved":
+                        pending_review += 1
+                        continue
                 target_out = _scrub_text(corrected)
                 source = f"failure-repair:{rec.get('failure_class', 'unknown')}"
             else:
@@ -430,7 +451,7 @@ class TrainingIngestor:
             added = len(samples_to_write)
         elif samples_to_write:
             added = len(samples_to_write)
-        return added, pending
+        return added, pending, pending_review
 
     def _analyze_delegation_feedback(
         self, since: datetime

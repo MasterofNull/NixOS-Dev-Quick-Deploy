@@ -2168,7 +2168,7 @@ async def get_loop_status() -> Dict[str, Any]:
 
     # Capture spool: failures / successes / pending corrections / repair pairs.
     spool = _first("training-samples.jsonl")
-    failures = successes = repair_pairs = 0
+    failures = successes = repair_pairs = pending_review = 0
     corrected_sigs: set = set()
     pending_sigs: set = set()
     if spool is not None:
@@ -2188,6 +2188,9 @@ async def get_loop_status() -> Dict[str, Any]:
                     if r.get("corrected_output"):
                         corrected_sigs.add(sig)
                         repair_pairs += 1
+                        # HITL gate: a corrected pair awaiting operator approval (aq-review-repairs).
+                        if str(r.get("review_status", "") or "").lower() not in ("approved", "rejected"):
+                            pending_review += 1
                     else:
                         pending_sigs.add(sig)
                 elif kind == "success_sample":
@@ -2237,6 +2240,7 @@ async def get_loop_status() -> Dict[str, Any]:
             "successes": successes,
             "repair_pairs": repair_pairs,
             "pending_corrections": pending_corrections,
+            "pending_review": pending_review,
         },
         "dataset_total": dataset_total,
     }

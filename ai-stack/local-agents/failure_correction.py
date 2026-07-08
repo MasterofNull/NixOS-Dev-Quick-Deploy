@@ -72,4 +72,7 @@ def corrected_record(record: dict, corrected_output: str) -> Optional[dict]:
     out["kind"] = "failure_sample"
     out["corrected_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     out["correction_source"] = "remote-teacher"
+    # HITL poison guard: a fresh teacher correction is UNREVIEWED — it must be approved
+    # (aq-review-repairs) before training_ingest will fold it into the dataset.
+    out["review_status"] = "pending"
     return out

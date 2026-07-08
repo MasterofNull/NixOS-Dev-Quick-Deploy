@@ -54,7 +54,7 @@ not surfaced. This is the same "built-but-not-activated" failure one level up (m
 | Signal | Produced? | Dashboard tile | health-spider probe | Threshold/alert | Intervention |
 |---|---|---|---|---|---|
 | Loop run status/phase (progress.json) | ✅ written | ❌ | ✅ `loop_never_ran`/`loop_stalled` | ✅ staleness (HS_LOOP_STALE_HOURS) → advisory | ❌ pause/trigger |
-| Corrections written / repair pairs | ✅ (spool) | ❌ | ✅ `loop_correction_backlog` | ✅ backlog>N → advisory | ❌ approve/reject pair |
+| Corrections written / repair pairs | ✅ (spool) | ⚠️ (count in /api/loop/status) | ✅ `loop_correction_backlog` | ✅ backlog>N → advisory | ✅ **HITL gate: aq-review-repairs approve/reject** (poison guard) |
 | Dataset growth (dataset_total) | ✅ | ❌ | ⚠️ (via loop results) | ⚠️ partial | n/a |
 | Teacher-lane health (codex reachable) | ✅ | ❌ | ✅ `loop_teacher_down` (severity high) | ✅ → advisory | ❌ |
 | Capture rate (failures/successes/hr) | ✅ (spool) | ❌ | ⚠️ (backlog proxy) | ⚠️ | ❌ |
@@ -63,8 +63,14 @@ not surfaced. This is the same "built-but-not-activated" failure one level up (m
 **Landed (this session):** health-spider `_closed_loop_check()` — harness-level probe run every cycle;
 emits `loop_teacher_down` / `loop_never_ran` / `loop_stalled` / `loop_correction_backlog` to the event
 spool + HITL queue with a remediation action. Validated: real `--once` cycle emitted `loop_never_ran`
-(the empty results file = never completed a clean run). **Still open:** dashboard tile, LoRA-regression
-alert, and the HITL approve/reject-a-repair-pair gate (poison guard).
+(the empty results file = never completed a clean run).
+
+**Landed (HITL poison guard):** `aq-review-repairs` — teacher corrections now enter the spool as
+`review_status: pending` and `training_ingest` refuses to ingest them until approved (env
+`AQ_REPAIR_REQUIRE_APPROVAL`, default ON). CLI: `--list` / `--approve <sig>` / `--reject <sig> --reason`
+/ `--approve-all`. Validated: pending correction held (pending_review=1) → approved → cleared; 7/7 unit
+tests incl. rejected-dropped. Report exposes `failure_repair_pending_review`; dashboard surfaces
+`captures.pending_review`. **Still open:** frontend loop card, LoRA-regression alert, pause/trigger control.
 
 **Plan to close (measurement layer):**
 1. **health-spider probe** — add a closed-loop liveness check: teacher lane reachable, last loop run age,

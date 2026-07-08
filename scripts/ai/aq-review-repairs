@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""aq-review-repairs — HITL gate for teacher-corrected repair pairs (dataset poison guard).
+
+The closed loop turns local failures into SFT repair pairs via a remote teacher (aq-correct-failures).
+A bad correction would train the model on WRONG behaviour, so a corrected record enters the spool as
+`review_status: pending` and training_ingest refuses to ingest it until an operator approves it here.
+This is the operator's intervention surface on the loop's learning step.
+
+Usage:
+  aq-review-repairs                       # list pending repair pairs (prompt / bad / proposed correction)
+  aq-review-repairs --list [--all]        # list pending (or every reviewed) repair pair
+  aq-review-repairs --approve <sig>       # approve one -> becomes ingestable
+  aq-review-repairs --reject <sig> --reason "..."   # reject one -> never ingested
+  aq-review-repairs --approve-all         # approve every pending repair pair (trusted-teacher batch)
+  aq-review-repairs --show <sig>          # full prompt + bad_output + corrected_output for one
+
+Identity: <sig> = first 16 hex of sha256(prompt||bad_output) — the same key aq-correct-failures prints.
+Records live in the training-samples spool; approve/reject rewrites the matching record in place.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+
+# Spools to scan (repo + service). Writes go to the spool the record was found in.
+_SPOOLS = [
+    Path(os.getenv("AQ_TRAINING_SAMPLES", str(REPO / ".agents" / "telemetry" / "training-samples.jsonl"))),
+    Path("/var/lib/ai-stack/hybrid/telemetry/training-samples.jsonl"),
+]
+
+
+def _sig(rec: dict) -> str:
+    return hashlib.sha256(f"{rec.get('prompt','')}||{rec.get('bad_output','')}".encode()).hexdigest()[:16]
+
+
+def _is_corrected_failure(rec: dict) -> bool:
+    return rec.get("kind") == "failure_sample" and bool(rec.get("corrected_output"))
+
+
+def _load(spool: Path) -> list[dict]:
+    out: list[dict] = []
+    if not spool.exists():
+        return out
+    for line in spool.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def _rewrite(spool: Path, updater) -> int:
+    """Rewrite spool applying updater(rec)->rec to each record. Returns count changed."""
+    recs = _load(spool)
+    changed = 0
+    new_lines = []
+    for r in recs:
+        nr = updater(r)
+        if nr is not r and nr != r:
+            changed += 1
+        new_lines.append(json.dumps(nr))
+    if changed:
+        tmp = spool.with_suffix(spool.suffix + ".tmp")
+        tmp.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        tmp.replace(spool)
+    return changed
+
+
+def _set_status(target_sig: str, status: str, reason: str | None = None) -> int:
+    total = 0
+    for spool in _SPOOLS:
+        if not spool.exists():
+            continue
+        def _upd(r):
+            if _is_corrected_failure(r) and _sig(r) == target_sig:
+                r = dict(r)
+                r["review_status"] = status
+                r["reviewed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if reason:
+                    r["review_reason"] = reason
+            return r
+        try:
+            total += _rewrite(spool, _upd)
+        except OSError as e:
+            print(f"  cannot write {spool}: {e}", file=sys.stderr)
+    return total
+
+
+def _approve_all() -> int:
+    total = 0
+    for spool in _SPOOLS:
+        if not spool.exists():
+            continue
+        def _upd(r):
+            if _is_corrected_failure(r) and str(r.get("review_status", "")).lower() not in ("approved", "rejected"):
+                r = dict(r)
+                r["review_status"] = "approved"
+                r["reviewed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return r
+        try:
+            total += _rewrite(spool, _upd)
+        except OSError as e:
+            print(f"  cannot write {spool}: {e}", file=sys.stderr)
+    return total
+
+
+def _all_corrected() -> list[tuple[dict, Path]]:
+    seen: set = set()
+    out: list[tuple[dict, Path]] = []
+    for spool in _SPOOLS:
+        for r in _load(spool):
+            if not _is_corrected_failure(r):
+                continue
+            s = _sig(r)
+            if s in seen:
+                continue
+            seen.add(s)
+            out.append((r, spool))
+    return out
+
+
+def _fmt(s: str, n: int) -> str:
+    s = (s or "").replace("\n", " ")
+    return s[:n] + ("…" if len(s) > n else "")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--list", action="store_true", help="list repair pairs (default action)")
+    ap.add_argument("--all", action="store_true", help="with --list: include already-reviewed pairs")
+    ap.add_argument("--approve", metavar="SIG", help="approve one repair pair by signature")
+    ap.add_argument("--reject", metavar="SIG", help="reject one repair pair by signature")
+    ap.add_argument("--approve-all", action="store_true", help="approve all pending repair pairs")
+    ap.add_argument("--show", metavar="SIG", help="show the full record for one signature")
+    ap.add_argument("--reason", default="", help="rejection reason (with --reject)")
+    args = ap.parse_args()
+
+    if args.approve:
+        n = _set_status(args.approve, "approved")
+        print(f"approved {n} repair pair(s) [{args.approve}]" if n else f"no pending repair pair matched sig={args.approve}")
+        return 0 if n else 1
+    if args.reject:
+        if not args.reason:
+            print("--reject requires --reason", file=sys.stderr)
+            return 2
+        n = _set_status(args.reject, "rejected", args.reason)
+        print(f"rejected {n} repair pair(s) [{args.reject}]: {args.reason}" if n else f"no pending repair pair matched sig={args.reject}")
+        return 0 if n else 1
+    if args.approve_all:
+        n = _approve_all()
+        print(f"approved {n} pending repair pair(s)")
+        return 0
+    if args.show:
+        for r, _ in _all_corrected():
+            if _sig(r) == args.show:
+                print(json.dumps(r, indent=2))
+                return 0
+        print(f"no repair pair matched sig={args.show}", file=sys.stderr)
+        return 1
+
+    # Default: list.
+    rows = _all_corrected()
+    if not args.all:
+        rows = [(r, sp) for (r, sp) in rows if str(r.get("review_status", "")).lower() not in ("approved", "rejected")]
+    if not rows:
+        print("no pending repair pairs" if not args.all else "no repair pairs")
+        return 0
+    print(f"{'SIG':<18}{'STATUS':<10}{'CLASS':<26}PROMPT → CORRECTION")
+    print("-" * 100)
+    for r, _ in rows:
+        status = str(r.get("review_status", "pending") or "pending")
+        print(f"{_sig(r):<18}{status:<10}{_fmt(r.get('failure_class','?'),24):<26}"
+              f"{_fmt(r.get('prompt',''),30)} → {_fmt(r.get('corrected_output',''),34)}")
+    print(f"\n{len(rows)} pair(s). Approve: aq-review-repairs --approve <sig> | Reject: --reject <sig> --reason \"…\"")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
