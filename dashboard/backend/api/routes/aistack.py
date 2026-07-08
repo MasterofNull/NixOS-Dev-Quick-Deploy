@@ -2106,6 +2106,142 @@ async def get_harness_scorecard() -> Dict[str, Any]:
     }
 
 
+def _loop_telemetry_dirs() -> List[Path]:
+    return [
+        Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")),
+        _repo_root() / ".agents" / "telemetry",
+    ]
+
+
+def _read_last_jsonl(path: Path) -> Optional[Dict[str, Any]]:
+    """Last valid JSON object in a .jsonl file, or None."""
+    try:
+        last = None
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                last = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+        return last
+    except OSError:
+        return None
+
+
+@router.get("/loop/status")
+async def get_loop_status() -> Dict[str, Any]:
+    """Closed local-improvement loop status — the measurement tile for capture->correct->ingest->train.
+    Pure read of loop telemetry (results/progress/spool/dataset); no service dependency, so it stays
+    available even when the loop is idle. Kills the dashboard blank for the loop."""
+    dirs = _loop_telemetry_dirs()
+
+    def _first(rel: str) -> Optional[Path]:
+        for d in dirs:
+            p = d / rel
+            try:
+                if p.exists():
+                    return p
+            except OSError:
+                continue
+        return None
+
+    # Last completed run + current phase.
+    results = _first("training-loop-results.jsonl")
+    last_run = _read_last_jsonl(results) if results else None
+    last_run_age_h = None
+    if results is not None:
+        try:
+            sz = results.stat().st_size
+            if sz > 0:
+                last_run_age_h = round((time.time() - results.stat().st_mtime) / 3600.0, 1)
+        except OSError:
+            pass
+    progress_p = _first("training-loop-progress.json")
+    progress = None
+    if progress_p is not None:
+        try:
+            progress = json.loads(progress_p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            progress = None
+
+    # Capture spool: failures / successes / pending corrections / repair pairs.
+    spool = _first("training-samples.jsonl")
+    failures = successes = repair_pairs = 0
+    corrected_sigs: set = set()
+    pending_sigs: set = set()
+    if spool is not None:
+        try:
+            for line in spool.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                kind = r.get("kind")
+                if kind == "failure_sample":
+                    failures += 1
+                    sig = f"{r.get('prompt','')}||{r.get('bad_output','')}"
+                    if r.get("corrected_output"):
+                        corrected_sigs.add(sig)
+                        repair_pairs += 1
+                    else:
+                        pending_sigs.add(sig)
+                elif kind == "success_sample":
+                    successes += 1
+        except OSError:
+            pass
+    pending_corrections = len(pending_sigs - corrected_sigs)
+
+    # Dataset size.
+    dataset_total = None
+    ds = Path(os.environ.get("TRAINING_DATASET", "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"))
+    try:
+        if ds.exists():
+            dataset_total = sum(1 for ln in ds.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip())
+    except OSError:
+        dataset_total = None
+
+    # Teacher lane presence (codex own-login).
+    codex_bin = Path(os.environ.get("CODEX_BIN", str(Path.home() / ".npm-global" / "bin" / "codex")))
+    teacher_ok = codex_bin.exists()
+
+    has_clean_run = last_run is not None
+    if not teacher_ok:
+        status = "degraded"
+    elif not has_clean_run:
+        status = "never_ran"
+    elif pending_corrections > int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25")):
+        status = "backlog"
+    else:
+        status = "healthy"
+
+    return {
+        "available": True,
+        "status": status,
+        "teacher": {"lane": "codex", "reachable": teacher_ok, "bin": str(codex_bin)},
+        "last_run": {
+            "run_id": (last_run or {}).get("run_id"),
+            "age_hours": last_run_age_h,
+            "samples_added": (last_run or {}).get("samples_added"),
+            "dataset_total": (last_run or {}).get("dataset_total", dataset_total),
+            "pass_count": (last_run or {}).get("pass_count"),
+            "fail_count": (last_run or {}).get("fail_count"),
+        } if has_clean_run else None,
+        "current_phase": (progress or {}).get("phase"),
+        "captures": {
+            "failures": failures,
+            "successes": successes,
+            "repair_pairs": repair_pairs,
+            "pending_corrections": pending_corrections,
+        },
+        "dataset_total": dataset_total,
+    }
+
+
 def _runtime_auth_profile_summary() -> Dict[str, Any]:
     """Return runtime auth/profile policy summary for operator visibility."""
     return {
