@@ -116,3 +116,9 @@ rebuild-gated). Then F3 (CapabilityLease + OTel) instruments both F1 and F2.
   deterministic) / age (concrete configurable starvation bound — promotes before the ceiling) / preempt (P1
   evicts P3, stashes context; P1 never evicted by lower bands) / no_starvation_invariant. 7/7 pytest green;
   purity verified (no internal clock). Phase-A guardrail held (only the 2 files). NEXT: F2.2 (grammar_cache.py).
+- **F2.2 — DONE (2026-07-07).** `scripts/ai/lib/grammar_cache.py` + `scripts/testing/test-grammar-cache.py`.
+  codex-authored (task s7d5y2), orchestrator-integrated. GBNF LRU cache with the RATIFIED canonical versioned
+  key `sha256("gbnf:v1\0"+canonical(schema)+"\0zt:"+canonical_zt_digest)` — VERIFIED: reorder/whitespace →
+  same key, different zero_trust_state → different key (shares F3 namespace), version prefix present. Bounded
+  LRU (get_or_build hit/miss, eviction counted, stats), pluggable builder (test injects counting stub). Pure.
+  8/8 pytest green. Phase-A guardrail held. NEXT: F2.3 (backpressure.py + F1 quorum contract test).
