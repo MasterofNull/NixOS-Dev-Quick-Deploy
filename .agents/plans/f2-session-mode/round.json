@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "round_id": "f2-session-mode",
+  "state": "CONSENSUS_LOCKED",
+  "task": {
+    "prompt": "DESIGN ROUND — 35B session-mode load/unload mechanics (the brief is inlined above). This is the under-specified hard part of F2 Phase B; design it before any Nix. Answer the 7 questions concretely: (1) who triggers 35B load/unload + exact conditions; (2) in-flight request handling on P1 preemption given :8080 (35B) and :8082 (fast-lane small) are SEPARATE processes — when must the 35B actually be evicted vs when can both run under the 27GB ceiling; (3) 30s swap-cooling as REAL back-pressure via backpressure.py LOCAL_DELAYED (never-skip-local: delayed, never dropped); (4) unload-when-idle policy + timeout; (5) a gen-slot STATE MACHINE (UNLOADED/LOADING/RESIDENT_35B/RESIDENT_SMALL/SWAPPING) with legal transitions + who drives them, mirroring F1 round_state.py rigor; (6) failure/recovery on a mid-swap crash (tie to orphan/watchdog lessons); (7) reuse aq-model-switch (extend with unload) vs a new swap-controller — prefer reuse, minimal Nix. Build on the DONE primitives (aq-model-switch, scripts/ai/lib/scheduler.py, backpressure.py, model_tier.py) — do not reinvent. Rank your top 3 decisions. Write your OWN file .agents/plans/f2-session-mode/<AGENT>.md only.",
+    "target": ".agents/plans/f2-session-mode/BRIEF.md",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-08T06:06:52Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "0b63bdc3fc13d2695d736d298b0f17a109ae3db1571f702527e418f22359d17b",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "a675050628076f9173977d9ab8ee0b55577b4191a57f2ab977950e89451875cb",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "049b32b03336058d3fea1617753f8d8693f54d7e5cf195488a5701f4cb090182",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "3a07d03e1c890b63211cd1967765a9c54156dcd4992f520a385bc6e019ec8508",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": "a2df013af5ac00e9268e0f2c6f1561f000463238ef86d57d77e92a14cfe2933d",
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": "2026-07-08T06:28:03Z",
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-08T06:06:52Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-08T06:28:03Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-08T06:28:03Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->CONSENSUS_LOCKED",
+      "timestamp": "2026-07-08T06:28:03Z",
+      "actor": "round_aggregate"
+    }
+  ]
+}

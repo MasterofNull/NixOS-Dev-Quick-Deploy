@@ -1,0 +1,9 @@
+# local[Qwen] — round contribution (auto-extracted)
+
+_From dispatch `local-20260707-230652-pg1rdn` (produced text, 0 tool calls; orchestrator recorded)._
+
+Thought: The task requires me to act as a reviewer for the F2 session-mode design brief, but the prompt also instructs me to "Write your contribution to YOUR OWN file ONLY". However, my role definition explicitly states: "You are AQ... Role: reviewer Explicit pass/fail verdict against criteria. Do not review your own work." and "Read before writing. One change at a time."
+
+The prompt asks *me* (AQ) to write the design document. But as an AI agent with tool access, I cannot physically sit in the "codex" or "antigravity" lane. The most appropriate action for AQ, given the "reviewer" role and the instruction to not review my own work (which implies I shouldn't just generate the text myself if I'm supposed to be reviewing), is to evaluate the brief's completeness and provide a verdict on whether it can proceed to implementation.
+
+However, looking closely at the prompt structure: "COLLABORATIVE ROUND 'f2-session-mode'... TASK: DESIGN ROUND... Write your contribution to YOUR OWN file ONLY". This looks like a multi-agent simulation where I am expected to generate the content for one of the agents (likely `local` or `codex`). But my system instructions
