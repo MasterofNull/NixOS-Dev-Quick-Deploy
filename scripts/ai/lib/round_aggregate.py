@@ -42,7 +42,11 @@ class MergedChange:
 def register_lane(manifest: RoundManifest, agent: str, role: str, task_prompt: str) -> Lane:
     """Register one lane unless the agent or idempotency key is already active."""
 
-    lane_hash = idempotency_hash(manifest.round_id, role, task_prompt)
+    # A lane is one-per-agent. The idempotency key MUST include the agent identity, not just the role:
+    # in the flat collaborative model every agent shares role "reviewer", so hashing on role alone
+    # collides distinct agents into a single lane (only the first would ever register). Fold the agent in
+    # so re-dispatching the SAME agent's lane stays idempotent while different agents get distinct lanes.
+    lane_hash = idempotency_hash(manifest.round_id, f"{agent}:{role}", task_prompt)
     for lane in sorted(manifest.lanes, key=lambda item: item.agent):
         if lane.agent == agent and lane.status in ACTIVE_IDEMPOTENT_STATUSES:
             return lane
