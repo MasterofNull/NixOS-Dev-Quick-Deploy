@@ -68,6 +68,16 @@ from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, A
 from tool_registry import ToolCall, ToolRegistry, get_registry
 from context_risk import compact_context_if_needed
 
+# P2 (closed-local-improvement-loop): GBNF-constrained tool-call decoding. Behind AQ_LOCAL_GBNF and
+# DEFAULT OFF — enabling it live must be bench-validated first (a tool-call-only grammar on every turn
+# would break final-answer turns; the correct enablement is a repair-retry, P2.3). This flag lands the
+# plumbing so the bench can measure it without touching default behavior.
+try:
+    import tool_grammar  # noqa: E402  (same dir: ai-stack/local-agents/)
+except Exception:  # noqa: BLE001 — never let an optional import break the executor
+    tool_grammar = None  # type: ignore
+_LOCAL_GBNF_ENABLED = os.environ.get("AQ_LOCAL_GBNF", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Phase 164B — MIC-G context sanitizer: scrub prompt-injection patterns from tool results
 # before they are injected into the LLM context window.  Import is best-effort; if the
 # security module is unavailable (e.g. minimal install) the agent continues without it.
@@ -1642,6 +1652,24 @@ class LocalAgentExecutor:
                 )
                 _validation_passes_without_commit = 0
 
+    def _tool_call_grammar(self) -> Optional[str]:
+        """P2: GBNF constraining output to the tool-call envelope over the ENABLED tools. Returns None
+        unless AQ_LOCAL_GBNF is set (default OFF) — so live behavior is unchanged until bench-validated.
+        Cached on the instance keyed by the enabled-tool set (the lease can hot-swap mid-run)."""
+        if not _LOCAL_GBNF_ENABLED or tool_grammar is None:
+            return None
+        try:
+            names = sorted(t.name for t in self.tool_registry.tools.values() if getattr(t, "enabled", True))
+            cache_key = tuple(names)
+            cached = getattr(self, "_gbnf_cache", None)
+            if cached and cached[0] == cache_key:
+                return cached[1]
+            grammar, _hit = tool_grammar.tool_call_grammar(names)
+            self._gbnf_cache = (cache_key, grammar)
+            return grammar
+        except Exception:  # noqa: BLE001 — grammar is an optimization; never break the call on it
+            return None
+
     async def _call_llama(
         self,
         messages: List[Dict],
@@ -1688,6 +1716,9 @@ class LocalAgentExecutor:
                 _payload_kwargs["temperature"] = _temperature
             if task_type:
                 _payload_kwargs["task_type"] = task_type
+            _gbnf = self._tool_call_grammar()  # P2: None unless AQ_LOCAL_GBNF (default off)
+            if _gbnf:
+                _payload_kwargs["grammar"] = _gbnf
             payload = build_llama_payload(messages, **_payload_kwargs)
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -1711,6 +1742,9 @@ class LocalAgentExecutor:
             _stream_kwargs["temperature"] = _temperature
         if task_type:
             _stream_kwargs["task_type"] = task_type
+        _gbnf = self._tool_call_grammar()  # P2: None unless AQ_LOCAL_GBNF (default off)
+        if _gbnf:
+            _stream_kwargs["grammar"] = _gbnf
         payload = build_llama_payload(messages, **_stream_kwargs)
         read_timeout = min(chunk_timeout, first_token_timeout)
         timeout = httpx.Timeout(connect=10.0, read=read_timeout, write=10.0, pool=5.0)
