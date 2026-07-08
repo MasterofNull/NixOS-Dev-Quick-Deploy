@@ -69,6 +69,7 @@ _CODEX_BIN = os.environ.get("CODEX_BIN", str(Path.home() / ".npm-global" / "bin"
 # Thresholds (env-tunable): loop-run staleness, pending-correction backlog.
 _LOOP_STALE_H = float(os.environ.get("HS_LOOP_STALE_HOURS", "48"))
 _CORRECTION_BACKLOG_MAX = int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25"))
+_LOOP_REGRESSION_DROP = float(os.environ.get("HS_LOOP_REGRESSION_DROP", "0.10"))
 COORDINATOR_URL = os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003")
 EMBED_URL       = os.environ.get("LLAMA_EMBED_URL",        "http://127.0.0.1:8081")
 QDRANT_URL      = os.environ.get("QDRANT_URL",             "http://127.0.0.1:6333")
@@ -494,6 +495,55 @@ def _count_pending_corrections() -> int:
     return len(pending - corrected)
 
 
+def _read_training_results(path: Optional[Path], limit: int = 20) -> List[Dict[str, Any]]:
+    if path is None:
+        return []
+    rows: List[Dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict) and row.get("pass_rate") is not None:
+                rows.append(row)
+    except OSError:
+        return []
+    return rows
+
+
+def _loop_eval_regression(results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if len(results) < 2:
+        return None
+    previous = results[-2]
+    latest = results[-1]
+    try:
+        previous_rate = float(previous.get("pass_rate"))
+        latest_rate = float(latest.get("pass_rate"))
+    except (TypeError, ValueError):
+        return None
+    drop = previous_rate - latest_rate
+    if drop < _LOOP_REGRESSION_DROP:
+        return None
+    return {
+        "type": "loop_eval_regression",
+        "zone": "closed-loop",
+        "detail": (
+            f"training-loop pass_rate dropped from {previous_rate:.3f} to {latest_rate:.3f} "
+            f"(drop {drop:.3f}, threshold {_LOOP_REGRESSION_DROP:.3f})"
+        ),
+        "previous_run": previous.get("run_id"),
+        "latest_run": latest.get("run_id"),
+        "previous_pass_rate": round(previous_rate, 3),
+        "latest_pass_rate": round(latest_rate, 3),
+        "drop": round(drop, 3),
+        "timestamp": time.time(),
+    }
+
+
 def _closed_loop_check() -> List[Dict[str, Any]]:
     """Harness-level probe for the closed local-improvement loop — the measurement layer for the
     capture->correct->ingest->train pipeline. Advisory (detect + warn): a stale loop or a stalled
@@ -534,6 +584,9 @@ def _closed_loop_check() -> List[Dict[str, Any]]:
                     "detail": f"last training-loop result is {age_h:.1f}h old (>{_LOOP_STALE_H}h)",
                     "age_hours": round(age_h, 1), "timestamp": now,
                 })
+            regression = _loop_eval_regression(_read_training_results(results))
+            if regression:
+                anomalies.append(regression)
     except OSError:
         pass
 
@@ -780,16 +833,17 @@ class HealthSpider:
                 )
             return True
         elif atype in ("loop_teacher_down", "loop_never_ran", "loop_stalled",
-                       "loop_correction_backlog"):
+                       "loop_correction_backlog", "loop_eval_regression"):
             # Closed local-improvement loop advisories — detect + warn (the measurement layer the
             # operator flagged as missing). teacher_down is the most serious (loop can't learn at all).
             detail = anomaly.get("detail", atype)
-            severity = "high" if atype == "loop_teacher_down" else "medium"
+            severity = "high" if atype in ("loop_teacher_down", "loop_eval_regression") else "medium"
             action = {
                 "loop_teacher_down": "Verify codex login/binary (delegate-to-codex --status); the loop's correction step needs it.",
                 "loop_never_ran": "Trigger a run: systemctl start ai-local-training-loop.service (or scripts/ai/aq-local-training-loop --resume).",
                 "loop_stalled": "Check ai-local-training-loop.timer is active and the last run didn't error (training-loop-results.jsonl).",
                 "loop_correction_backlog": "Run scripts/ai/aq-correct-failures --max 25 (codex teacher) to drain the backlog.",
+                "loop_eval_regression": "Inspect the latest training-loop scores and hold LoRA promotion until the regression is explained.",
             }.get(atype, "Inspect the closed local-improvement loop telemetry.")
             try:
                 push(

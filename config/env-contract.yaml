@@ -1107,6 +1107,27 @@ variables:
     consumers: [auto-remediate.sh]
     description: "Path to the health-spider executable used by autonomous remediation"
 
+  - canonical: HS_LOOP_STALE_HOURS
+    aliases: []
+    default: "48"
+    layer: shell
+    consumers: [aq-health-spider]
+    description: "Closed-loop health-spider advisory threshold in hours before the local training loop is considered stalled"
+
+  - canonical: HS_CORRECTION_BACKLOG_MAX
+    aliases: []
+    default: "25"
+    layer: shell
+    consumers: [aq-health-spider]
+    description: "Maximum pending local failure corrections before health-spider emits a closed-loop backlog advisory"
+
+  - canonical: HS_LOOP_REGRESSION_DROP
+    aliases: []
+    default: "0.10"
+    layer: shell
+    consumers: [aq-health-spider]
+    description: "Minimum pass-rate drop between consecutive training-loop results before health-spider emits a LoRA eval-regression advisory"
+
   - canonical: AIDB_HOST
     aliases: []
     default: "127.0.0.1"
