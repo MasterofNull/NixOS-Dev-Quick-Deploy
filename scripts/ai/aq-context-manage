@@ -17,6 +17,8 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 # Add context_memory to path
@@ -26,6 +28,7 @@ from context_manager import ContextMemoryManager
 
 
 AQ_MEMORY_SCRIPT = Path(__file__).with_name("aq-memory")
+DEFAULT_DASHBOARD_URL = "http://127.0.0.1:8889"
 
 SUMMARY_TYPE_LABELS = {
     "decision": "decisions",
@@ -43,6 +46,47 @@ def format_bytes(bytes_count: int) -> str:
             return f"{bytes_count:.1f}{unit}"
         bytes_count /= 1024.0
     return f"{bytes_count:.1f}TB"
+
+
+def _fetch_clm_status() -> dict | None:
+    """Best-effort live CLM status from the dashboard proxy."""
+    if os.getenv("AQ_CONTEXT_MANAGE_SKIP_CLM", "").lower() in {"1", "true", "yes"}:
+        return None
+
+    status_file = os.getenv("AQ_CONTEXT_MANAGE_CLM_STATUS_FILE")
+    if status_file:
+        try:
+            return json.loads(Path(status_file).read_text(encoding="utf-8"))
+        except Exception as exc:
+            return {"available": False, "error": str(exc)}
+
+    base_url = os.getenv("DASHBOARD_URL", DEFAULT_DASHBOARD_URL).rstrip("/")
+    if base_url.endswith("/api"):
+        url = f"{base_url}/context/lifecycle/status"
+    else:
+        url = f"{base_url}/api/context/lifecycle/status"
+    try:
+        with urllib.request.urlopen(url, timeout=2.0) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        return {"available": False, "error": str(exc)}
+
+
+def _clm_trigger_reason(status: dict | None) -> str | None:
+    if not status or status.get("available") is False:
+        return None
+    pressure = float(status.get("pressure_pct") or 0)
+    thresholds = status.get("thresholds") or {}
+    high_threshold = float(thresholds.get("hot_pressure_pct") or 85.0)
+    suspended = bool(status.get("compaction_suspended"))
+    thermal = str(status.get("thermal_tier") or "unknown")
+    if pressure >= high_threshold and suspended:
+        return f"CLM hot pressure {pressure:.1f}% >= {high_threshold:.1f}% and compaction suspended by thermal tier {thermal}"
+    if pressure >= high_threshold:
+        return f"CLM hot pressure {pressure:.1f}% >= {high_threshold:.1f}%"
+    if suspended:
+        return f"CLM compaction suspended by thermal tier {thermal}"
+    return None
 
 
 def cmd_stats(manager: ContextMemoryManager, json_output: bool = False):
@@ -74,12 +118,18 @@ def cmd_stats(manager: ContextMemoryManager, json_output: bool = False):
 def cmd_check(manager: ContextMemoryManager, json_output: bool = False):
     """Check if compaction should be triggered."""
     should_trigger, reason = manager.should_trigger_compaction()
+    clm_status = _fetch_clm_status()
+    clm_reason = _clm_trigger_reason(clm_status)
+    if clm_reason:
+        should_trigger = True
+        reason = clm_reason
 
     if json_output:
         print(json.dumps({
             "should_trigger": should_trigger,
             "reason": reason,
-            "stats": manager.get_stats()
+            "stats": manager.get_stats(),
+            "clm_status": clm_status,
         }, indent=2))
         return
 
@@ -87,6 +137,15 @@ def cmd_check(manager: ContextMemoryManager, json_output: bool = False):
     print("=" * 60)
     print(f"Should Trigger: {should_trigger}")
     print(f"Reason: {reason}")
+    if clm_status:
+        print()
+        print("Live CLM:")
+        if clm_status.get("available") is False:
+            print(f"  unavailable: {clm_status.get('error') or 'unknown'}")
+        else:
+            print(f"  pressure: {float(clm_status.get('pressure_pct') or 0):.1f}%")
+            print(f"  thermal:  {clm_status.get('thermal_tier') or 'unknown'}")
+            print(f"  suspended: {bool(clm_status.get('compaction_suspended'))}")
     print()
 
     if should_trigger:
