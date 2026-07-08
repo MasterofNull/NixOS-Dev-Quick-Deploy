@@ -1,10 +1,27 @@
 # F2 Implementation Plan — Local Model-Stacking + Measured Slot Scheduler
 
-Status: DRAFT (awaiting plan-consensus)
+Status: CONSENSUS-RATIFIED (f2-plan-consensus 3/4 decisive; antigravity late-admissible)
 Owner: claude (orchestrator)
 Last Updated: 2026-07-07
 Design SSOT: `.agents/plans/f2-local-scheduler/AGGREGATE.md` (4/4 ratified)
+Plan-consensus corrections: `.agents/plans/f2-plan-consensus/AGGREGATE.md` (folded below)
 Builds on: F1 (round.json state machine) — F2 schedules typed work against F1 rounds.
+
+## Plan-consensus corrections (RATIFIED — supersede conflicting detail below)
+1. **Phase-A guardrails (HARD).** F2.1–F2.4 MUST NOT modify `dispatch.py`, Nix modules, ports, services, or
+   live llama.cpp request paths. Pure `scripts/ai/lib/` modules + unit tests ONLY. Any live routing = F2.5.
+2. **F2.1 starvation bound.** Concrete configurable max-wait bound (not only "promote after N s"); tests
+   assert the bound holds under load.
+3. **F2.3 quorum contract test.** An F1-integration test proving consensus CANNOT proceed while a local lane
+   is `local-delayed` (never-skip-local, mechanized). `local-delayed` is a typed ADMISSIBLE lane state, not
+   a failure/abstain/timeout.
+4. **F2.2 canonical versioned cache key.** `sha256("gbnf:v1\0" + canonical_schema_json + "\0zt:" +
+   canonical_zero_trust_namespace_digest)` — canonical JSON both inputs, explicit separators + version prefix;
+   `zero_trust_state` = namespaced canonical policy digest (shared with F3), not a mutable blob.
+5. **F2.5 REQUIRES 35B session-mode.** A resident :8082 small model CANNOT coexist with an always-resident
+   35B in 27 GB (35B ≈ 26.5 GB). F2.5 must convert the 35B to session-mode (load/unload) and specify:
+   load/unload latency, swap-trigger authority, in-flight-request handling on P1 preemption, and the 30s
+   swap-cooling gate as REAL back-pressure. This is the crux of Phase B.
 
 ## Objective
 End the single-slot serialization that had 4 local dispatches queue for hours behind the one 35B gen slot.

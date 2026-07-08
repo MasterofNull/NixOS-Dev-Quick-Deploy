@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "round_id": "f2-plan-consensus",
+  "state": "CONSENSUS_LOCKED",
+  "task": {
+    "prompt": "PLAN-CONSENSUS review of the F2 implementation plan (inlined). The F2 DESIGN is 4/4 ratified — do NOT re-design; assess whether this IMPLEMENTATION PLAN faithfully realizes it and is safely phased. Decide: (1) Is the Phase-A (rebuild-free: F2.1 MLFQ+aging scheduler, F2.2 GBNF cache, F2.3 local-delayed back-pressure, F2.4 model-tier routing) / Phase-B (rebuild-gated: F2.5 fast-lane :8082 + VRAM pool + Nix, F2.6 35B-on-CPU A/B bench) split correct — is anything in Phase A actually rebuild-dependent, or vice versa? (2) Does F2.1's MLFQ+aging+preemption correctly realize the ratified 3-band scheduler without starvation? (3) Is the GBNF cache key sha256(schema+zero_trust_state) right + does it correctly share F3's zero_trust namespace? (4) Does local-delayed back-pressure integrate with F1 quorum so never-skip-local holds (a delayed lane stays admissible)? (5) Is routing pure/testable without real inference? (6) Biggest RISK in the fast-lane :8082 + VRAM-pool infra (F2.5) on the 4GB APU — and is the 35B-on-CPU flip correctly gated as measure-before-adopt not assumed? Rank your top 3 plan changes. Write your OWN file .agents/plans/f2-plan-consensus/<AGENT>.md only.",
+    "target": ".agents/plans/f2-impl-plan.md",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-08T03:48:40Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "d211e7cd1e9d426142072b73a1ab182277aba10359d9afb56cae36b7e6ea8974",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "9e0bfb18e70f3a2ba5da2428f7d9641f1c3da8fc6535cb327ea92c65fa5295e1",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "8b0095992516d852ce1a2dd47e6c4876b6155fefb3baed064aa2ffad54cc34d3",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "7f37160ee9e28c9a01644bac93ea4b9c1ce3cd23fab7aaf1ad51c91e84b51825",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": "a2df013af5ac00e9268e0f2c6f1561f000463238ef86d57d77e92a14cfe2933d",
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": "2026-07-08T04:10:14Z",
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-08T03:48:40Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-08T04:10:14Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-08T04:10:14Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->CONSENSUS_LOCKED",
+      "timestamp": "2026-07-08T04:10:14Z",
+      "actor": "round_aggregate"
+    }
+  ]
+}
