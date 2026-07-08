@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SWITCHBOARD_NIX = REPO_ROOT / "nix/modules/services/switchboard.nix"
+SWITCHBOARD_PY = REPO_ROOT / "ai-stack/switchboard/switchboard.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -14,7 +14,7 @@ def assert_true(condition: bool, message: str) -> None:
 
 
 def main() -> None:
-    text = SWITCHBOARD_NIX.read_text(encoding="utf-8")
+    text = SWITCHBOARD_PY.read_text(encoding="utf-8")
 
     assert_true(
         "def _looks_like_strict_reply_only(messages: list) -> bool:" in text,
@@ -25,11 +25,11 @@ def main() -> None:
         "expected switchboard trimming to special-case strict reply-only local prompts",
     )
     assert_true(
-        "max_tokens = min(max_tokens, 256)" in text,
+        "max_tokens = min(max_tokens, 1024)" in text,
         "expected strict reply-only local prompts to use a tighter token budget",
     )
     assert_true(
-        "max_messages = min(max_messages, 2)" in text,
+        "max_messages = min(max_messages, 8)" in text,
         "expected strict reply-only local prompts to keep only the minimal turn window",
     )
     assert_true(
@@ -65,8 +65,8 @@ def main() -> None:
         "expected compact local guidance requests to clamp max_tokens",
     )
     assert_true(
-        "target = 48" in text,
-        "expected compact local guidance requests to clamp output budgets to 48 tokens",
+        "target = 128" in text,
+        "expected compact local guidance requests to clamp output budgets to 128 tokens",
     )
     assert_true(
         "payload = _apply_compact_local_response_budget(payload, profile)" in text,
@@ -85,11 +85,11 @@ def main() -> None:
         "expected switchboard request shaping to inject the compact guidance contract before trimming",
     )
     assert_true(
-        "max_tokens = min(max_tokens, 128)" in text,
+        "max_tokens = min(max_tokens, 512)" in text,
         "expected compact local guidance prompts to use a tighter input token budget",
     )
     assert_true(
-        text.count("max_messages = min(max_messages, 2)") >= 2,
+        "max_messages = min(max_messages, 4)" in text,
         "expected compact local guidance prompts to keep only the minimal turn window",
     )
     assert_true(

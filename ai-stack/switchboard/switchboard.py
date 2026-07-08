@@ -2853,6 +2853,10 @@ async def proxy(path: str, request: Request):
         except Exception:
             payload = None
 
+    original_is_stream = False
+    if isinstance(payload, dict):
+        original_is_stream = bool(payload.get("stream") is True)
+
     profile = _effective_profile(request)
     target_type = _route_target(request, payload, profile)
     target = REMOTE_URL if target_type == "remote" and REMOTE_URL else LLAMA_URL
@@ -3036,7 +3040,27 @@ async def proxy(path: str, request: Request):
     headers["Accept-Encoding"] = "identity"
     headers["Connection"] = "close"
     if target_type == "remote" and REMOTE_API_KEY:
-        headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
+        if REMOTE_API_KEY.startswith("sk-or-") and REMOTE_URL and "generativelanguage.googleapis.com" in REMOTE_URL:
+            # Auto-correct OpenRouter key with Google Gemini endpoint mismatch
+            target = "https://openrouter.ai/api"
+            headers.pop("x-goog-api-key", None)
+            headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
+            if isinstance(payload, dict):
+                cur_model = str(payload.get("model", "")).strip().lower()
+                if "gemini-3.1-pro" in cur_model or "gemini-2.5-pro" in cur_model or "gemini-pro" in cur_model:
+                    payload["model"] = "google/gemini-2.5-pro"
+                elif "gemini-3.5-flash" in cur_model or "gemini-2.5-flash" in cur_model or "gemini-flash" in cur_model:
+                    payload["model"] = "google/gemini-2.5-flash"
+                elif "gemini-3.1-flash-lite" in cur_model or "gemini-2.5-flash-lite" in cur_model or "gemini-light" in cur_model:
+                    payload["model"] = "meta-llama/llama-3.3-70b-instruct:free"
+                else:
+                    if cur_model.startswith("gemini-"):
+                        payload["model"] = f"google/{cur_model}"
+                body = json.dumps(payload).encode("utf-8")
+        else:
+            headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
+            if REMOTE_URL and "generativelanguage.googleapis.com" in REMOTE_URL:
+                headers["x-goog-api-key"] = REMOTE_API_KEY
         headers.setdefault("HTTP-Referer", "https://github.com/MasterofNull/NixOS-Dev-Quick-Deploy")
         headers.setdefault("X-Title", "NixOS-Dev-Quick-Deploy AI Harness")
 
@@ -3124,83 +3148,166 @@ async def proxy(path: str, request: Request):
                                 service_name=service_name,
                             )
 
-                            full_content = ""
-                            token_usage_emitted = False
-                            last_activity = time.time()
-
-                            async def _iter():
-                                nonlocal full_content, token_usage_emitted, last_activity
+                            if not original_is_stream:
+                                full_content = ""
+                                token_usage_emitted = False
+                                first_chunk_obj = {}
+                                final_usage = {}
                                 try:
                                     async for chunk in upstream.aiter_bytes():
-                                        last_activity = time.time()
-                                        # Phase 1: Track content for token estimation fallback
-                                        try:
-                                            chunk_str = chunk.decode("utf-8", errors="ignore")
-                                            for line in chunk_str.splitlines():
-                                                if line.startswith("data: "):
-                                                    data_str = line[6:]
-                                                    if data_str == "[DONE]": break
+                                        chunk_str = chunk.decode("utf-8", errors="ignore")
+                                        for line in chunk_str.splitlines():
+                                            line = line.strip()
+                                            if line.startswith("data: "):
+                                                data_str = line[6:]
+                                                if data_str == "[DONE]":
+                                                    break
+                                                try:
                                                     data = json.loads(data_str)
-                                                    delta = data.get("choices", [{}])[0].get("delta", {})
-                                                    if "content" in delta:
-                                                        full_content += delta["content"]
-                                                    
-                                                    # Check if llama.cpp provided usage in this chunk
-                                                    usage = data.get("usage")
-                                                    if usage and not token_usage_emitted and run_id != "unknown-run":
-                                                        usage["useful_ratio"] = 1.0
-                                                        ev = _are.make_event(
-                                                            "token_usage",
-                                                            source="switchboard",
-                                                            run_id=run_id,
-                                                            payload={
-                                                                "model": payload.get("model", "qwen3.6"),
-                                                                "route_profile": profile,
-                                                                "tokens": usage
-                                                            }
-                                                        )
-                                                        await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
-                                                        token_usage_emitted = True
-                                        except Exception:
-                                            pass
-                                        yield chunk
-                                    
-                                    # Fallback: Emit estimated usage if stream finished without a usage block
-                                    if not token_usage_emitted and run_id != "unknown-run" and full_content:
+                                                    if not first_chunk_obj:
+                                                        first_chunk_obj = data
+                                                    choices = data.get("choices", [])
+                                                    if choices:
+                                                        delta = choices[0].get("delta", {})
+                                                        if "content" in delta:
+                                                            full_content += delta["content"]
+                                                        elif "message" in delta and "content" in delta["message"]:
+                                                            full_content += delta["message"]["content"]
+                                                    if data.get("usage"):
+                                                        final_usage = data["usage"]
+                                                except Exception:
+                                                    pass
+
+                                    if not final_usage:
                                         est_output_tokens = len(full_content) // 4
                                         est_input_tokens = _estimate_payload_tokens(payload)
+                                        final_usage = {
+                                            "prompt_tokens": est_input_tokens,
+                                            "completion_tokens": est_output_tokens,
+                                            "total_tokens": est_input_tokens + est_output_tokens,
+                                            "is_estimated": True
+                                        }
+
+                                    choices_list = [{
+                                        "index": 0,
+                                        "message": {
+                                            "role": "assistant",
+                                            "content": full_content
+                                        },
+                                        "finish_reason": "stop"
+                                    }]
+
+                                    final_response_payload = {
+                                        "id": first_chunk_obj.get("id") or f"chatcmpl-{req_id}",
+                                        "object": first_chunk_obj.get("object") or "chat.completion",
+                                        "created": first_chunk_obj.get("created") or int(time.time()),
+                                        "model": first_chunk_obj.get("model") or (payload.get("model") if isinstance(payload, dict) else None) or "qwen3.6",
+                                        "choices": choices_list,
+                                        "usage": final_usage
+                                    }
+
+                                    if run_id != "unknown-run":
+                                        final_usage["useful_ratio"] = 1.0
                                         ev = _are.make_event(
                                             "token_usage",
                                             source="switchboard",
                                             run_id=run_id,
                                             payload={
-                                                "model": payload.get("model", "qwen3.6"),
+                                                "model": final_response_payload["model"],
                                                 "route_profile": profile,
-                                                "tokens": {
-                                                    "prompt_tokens": est_input_tokens,
-                                                    "completion_tokens": est_output_tokens,
-                                                    "total_tokens": est_input_tokens + est_output_tokens,
-                                                    "is_estimated": True,
-                                                    "useful_ratio": 1.0
-                                                }
+                                                "tokens": final_usage
                                             }
                                         )
                                         await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
-                                        token_usage_emitted = True
-                                except httpx.RemoteProtocolError as _rpe:
-                                    print(f"[switchboard] stream cut short (RemoteProtocolError): {_rpe} target={target_type} req_id={req_id}", file=sys.stderr)
+
+                                    if target_type == "local" and path == "chat/completions":
+                                        _record_local_completion(path, profile, upstream.status_code, json.dumps(final_response_payload).encode("utf-8"))
+
+                                    response = JSONResponse(
+                                        status_code=upstream.status_code,
+                                        content=final_response_payload,
+                                        headers=_response_headers(dict(upstream.headers))
+                                    )
                                 finally:
                                     await upstream.aclose()
                                     await client.aclose()
                                     if local_active_request_id:
                                         _clear_local_active_request(local_active_request_id)
+                            else:
+                                full_content = ""
+                                token_usage_emitted = False
+                                last_activity = time.time()
 
-                            retain_local_request_until_stream_close = target_type == "local" and bool(local_active_request_id)
-                            response = StreamingResponse(
-                                _iter(),
-                                status_code=upstream.status_code,
-                                headers=_response_headers(dict(upstream.headers)),
-                            )
+                                async def _iter():
+                                    nonlocal full_content, token_usage_emitted, last_activity
+                                    try:
+                                        async for chunk in upstream.aiter_bytes():
+                                            last_activity = time.time()
+                                            try:
+                                                chunk_str = chunk.decode("utf-8", errors="ignore")
+                                                for line in chunk_str.splitlines():
+                                                    if line.startswith("data: "):
+                                                        data_str = line[6:]
+                                                        if data_str == "[DONE]": break
+                                                        data = json.loads(data_str)
+                                                        delta = data.get("choices", [{}])[0].get("delta", {})
+                                                        if "content" in delta:
+                                                            full_content += delta["content"]
+                                                        
+                                                        usage = data.get("usage")
+                                                        if usage and not token_usage_emitted and run_id != "unknown-run":
+                                                            usage["useful_ratio"] = 1.0
+                                                            ev = _are.make_event(
+                                                                "token_usage",
+                                                                source="switchboard",
+                                                                run_id=run_id,
+                                                                payload={
+                                                                    "model": payload.get("model", "qwen3.6"),
+                                                                    "route_profile": profile,
+                                                                    "tokens": usage
+                                                                }
+                                                            )
+                                                            await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+                                                            token_usage_emitted = True
+                                            except Exception:
+                                                pass
+                                            yield chunk
+                                        
+                                        if not token_usage_emitted and run_id != "unknown-run" and full_content:
+                                            est_output_tokens = len(full_content) // 4
+                                            est_input_tokens = _estimate_payload_tokens(payload)
+                                            ev = _are.make_event(
+                                                "token_usage",
+                                                source="switchboard",
+                                                run_id=run_id,
+                                                payload={
+                                                    "model": payload.get("model", "qwen3.6"),
+                                                    "route_profile": profile,
+                                                    "tokens": {
+                                                        "prompt_tokens": est_input_tokens,
+                                                        "completion_tokens": est_output_tokens,
+                                                        "total_tokens": est_input_tokens + est_output_tokens,
+                                                        "is_estimated": True,
+                                                        "useful_ratio": 1.0
+                                                    }
+                                                }
+                                            )
+                                            await asyncio.to_thread(_are.append_jsonl, _AGENT_RUN_EVENTS_PATH, ev)
+                                            token_usage_emitted = True
+                                    except httpx.RemoteProtocolError as _rpe:
+                                        print(f"[switchboard] stream cut short (RemoteProtocolError): {_rpe} target={target_type} req_id={req_id}", file=sys.stderr)
+                                    finally:
+                                        await upstream.aclose()
+                                        await client.aclose()
+                                        if local_active_request_id:
+                                            _clear_local_active_request(local_active_request_id)
+
+                                retain_local_request_until_stream_close = target_type == "local" and bool(local_active_request_id)
+                                response = StreamingResponse(
+                                    _iter(),
+                                    status_code=upstream.status_code,
+                                    headers=_response_headers(dict(upstream.headers)),
+                                )
                         else:
                             async with client:
                                 upstream = await _call_upstream_with_resilience(
