@@ -54,9 +54,16 @@ The FAST producer-fix — highest leverage, no retrain.
   "arguments": {...}}` via F2.2's grammar_cache (constrains the function name to the AVAILABLE tools — kills
   prose-as-tool-call + calls to non-existent tools). Verified: produces real GBNF (`root ::= ...`), cache
   hits on repeat, stable across tool-order, keyed with the zero_trust namespace.
-- **P2.2 — NEXT (flag-gated + bench-validated):** wire `tool_grammar` into agent_executor's build_llama_payload
-  call sites (1691/1714) — pass `grammar=` on tool-call turns behind `AQ_LOCAL_GBNF` (default OFF). Then a bench
-  run (freed slot) MUST confirm it reduces invalid tool-JSON WITHOUT breaking tool-calling before default-on.
+- **P2.2 — DONE (2026-07-08, flag-gated, default OFF):** wired `tool_grammar` into agent_executor's
+  `_call_llama` (both non-streaming + streaming build_llama_payload sites) via a cached `_tool_call_grammar()`
+  helper (keyed by the enabled-tool set, hot-swap-aware). `AQ_LOCAL_GBNF` unset → grammar None → **zero
+  behavior change** (verified); set → passes `grammar=` (GBNF over the tool-call envelope) to llama.cpp.
+  Compiles clean; 5/5 grammar tests green.
+- **P2.3 — NEXT (bench, then repair-retry enablement):** a tool-call-ONLY grammar on EVERY turn would break
+  final-answer turns, so DO NOT flip AQ_LOCAL_GBNF on globally. First bench on the freed slot to measure
+  tool-JSON validity with/without the grammar; then enable it as a **repair-retry** (unconstrained first; on a
+  failed `parse_tool_call_from_llama`, retry that turn WITH the grammar) so normal turns are untouched. That
+  surgical enablement is the actual producer-fix; P2.2 is the safe mechanism it builds on.
 - Wire F2.2 `grammar_cache.GrammarCache` into `ai-stack/local-agents/dispatch.py` (and the aq-agent-loop tool
   path): dispatch-time schema selection → build/lookup GBNF → attach `grammar` to the llama.cpp request payload
   for tool-call / contribution / strict-JSON lanes. Reject prose-only parser output (→ capture a negative sample).
