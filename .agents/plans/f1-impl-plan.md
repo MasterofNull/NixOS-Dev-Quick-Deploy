@@ -167,3 +167,11 @@ F1.1 → F1.2 → F1.3 → F1.4 → F1.5 (each committed + validated before the 
   `extracted-fallback`, prose-only → ABSTAIN `extracted-prose`). **Never-skip-local acceptance PASSES**: the
   real truncated text-only log `local-20260707-165501-e1k8vc.log` recovers a Contribution (not None). 6/6
   pytest green. NEXT: F1.3 (idempotent open/collect/aggregate + AMEND concurrence/conflict).
+- **F1.3 — DONE (2026-07-07).** `scripts/ai/lib/round_aggregate.py` + `scripts/testing/test-round-aggregate.py`.
+  codex-authored (task w2qpyd), orchestrator-integrated. Pure functions over round_state + round_contribution:
+  `register_lane` (idempotent — same call or same idempotency_hash returns the existing Lane, no duplicate
+  dispatch); `aggregate` (deterministic verdict tally + required_changes merge by (file,line) with provenance
+  → STABLE consensus_hash; 0 conflicts+quorum → CONSENSUS_LOCKED, else typed Conflict[] → CONFLICTS_IDENTIFIED,
+  via round_state.transition); `amend` (durable AMEND: late-local concur → relock + lane=amended, dissent →
+  CONFLICTS_IDENTIFIED — the never-skip-local-after-lock path); `quorum_met`. 8/8 pytest green (exact cases:
+  idempotent lane, stable hash, competing-conflict, amend concur/dissent, quorum). NEXT: F1.4 (golden ROUNDs).
