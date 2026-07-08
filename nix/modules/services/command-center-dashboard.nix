@@ -111,6 +111,19 @@ in {
             command = "${pkgs.systemd}/bin/systemctl is-active llama-cpp";
             options = ["NOPASSWD"];
           }
+          # Local improvement loop operator controls
+          {
+            command = "${pkgs.systemd}/bin/systemctl start ai-local-training-loop.service";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl stop ai-local-training-loop.service";
+            options = ["NOPASSWD"];
+          }
+          {
+            command = "${pkgs.systemd}/bin/systemctl restart ai-local-training-loop.service";
+            options = ["NOPASSWD"];
+          }
           # llama-cpp model symlink update (swap active model without rebuild)
           {
             command = "${pkgs.coreutils}/bin/ln -sf /var/lib/llama-cpp/models/* /var/lib/llama-cpp/models/active.gguf";
