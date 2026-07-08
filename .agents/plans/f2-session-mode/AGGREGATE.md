@@ -1,12 +1,23 @@
-# F2 Session-Mode — Aggregate (3/4 decisive — RATIFIED; antigravity IDE pending, admissible)
+# F2 Session-Mode — Aggregate (4/4 — RATIFIED + antigravity AMENDMENT folded)
 
-Last Updated: 2026-07-07
+Last Updated: 2026-07-08
 
 ## Contributors
 - **claude** ✅ (orchestrator — the A-vs-B RAM tension + state machine) · **codex** ✅ (the most complete
   design — controller/authority split, eviction rules, failure recovery) · **local[Qwen]** ⚠️ (0 tool calls,
   emitted role-confusion meta-text instead of a design — folded thin per never-skip-local; no usable content
-  this run) · **antigravity** ⏳ IDE inbox pending.
+  this run) · **antigravity** ✅ (landed via IDE 2026-07-08 — APPROVE_WITH_CHANGES; a MATERIAL correction, folded below).
+
+## AMENDMENT (antigravity, folded 2026-07-08) — coexistence is ALWAYS OOM → mandatory mutual exclusion
+antigravity did the explicit RAM math and CORRECTS the "coexist when memory below threshold" nuance codex/
+claude adopted: **22.5 GB (35B) + 1.0 GB (KV) + 2.5 GB (small) + 3.0 GB (OS) = 29.0 GB > 27 GB → kernel OOM.**
+Therefore `:8080` (35B) and `:8082` (fast-lane small) can **NEVER** run concurrently at these sizes — eviction
+is **MANDATORY, not conditional**. The ratified swap sequence is corrected to: **stop `:8082` → swap symlink →
+start `:8080`** (and the reverse), never a coexistence check. This SIMPLIFIES + de-risks F2.5 (drops the
+memory-pressure conditional; it's hard mutual exclusion). True co-residency stays possible ONLY via the F2.6
+CPU-35B-on-CPU / small-on-GPU flip, which is measure-before-adopt. Everything else antigravity said converges
+with codex/claude (aq-swap-controller daemon, reuse aq-model-switch+unload, JSON state persistence, 30s cooling
+→ LOCAL_DELAYED, watchdog recovery; idle timeout it puts at 90s vs codex 180s — a tunable, start 90s).
 
 ## Verdict: RATIFIED (codex + claude converge; this is the F2.5 spec)
 codex's design is adopted as the baseline — it subsumes claude's A-vs-B framing with a more robust
