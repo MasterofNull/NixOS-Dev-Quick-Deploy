@@ -1069,6 +1069,11 @@ in {
                 "AI_LOCAL_MODEL_ID=${llama.activeModel}"
                 "AI_AGENT_NAME=local-${cfg.hardwareTier}-agent"
                 "AI_SEMANTIC_TOOLING_AUTORUN=true"
+                # P2.3 TURNED ON: GBNF repair-retry for local tool-calls. Bench-validated non-harmful
+                # (identical tool_use 11/12 vs baseline) and surgical (only constrains a malformed
+                # tool-call retry, never normal/final-answer turns). Fixes prose-as-tool-call + invalid
+                # JSON at the producer. 'repair' mode; set AQ_LOCAL_GBNF= to disable.
+                "AQ_LOCAL_GBNF=repair"
                 "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
                 "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
                 "SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"
