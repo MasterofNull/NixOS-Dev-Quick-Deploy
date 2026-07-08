@@ -75,6 +75,24 @@ def test_closed_loop_check_includes_eval_regression(tmp_path, monkeypatch):
     assert "loop_never_ran" not in {a["type"] for a in anomalies}
 
 
+def test_activation_fallback_drift_detects_missing_qa_harness(tmp_path, monkeypatch):
+    monkeypatch.setattr(health_spider, "_QA_HARNESS_PATH", tmp_path / "missing-harness.py")
+
+    anomalies = health_spider._activation_fallback_drift_check()
+
+    assert anomalies
+    assert anomalies[0]["type"] == "qa_fallback_default"
+    assert "silently fall back" in anomalies[0]["detail"]
+
+
+def test_activation_fallback_drift_ignores_present_qa_harness(tmp_path, monkeypatch):
+    harness = tmp_path / "harness_runner.py"
+    harness.write_text("# present\n", encoding="utf-8")
+    monkeypatch.setattr(health_spider, "_QA_HARNESS_PATH", harness)
+
+    assert health_spider._activation_fallback_drift_check() == []
+
+
 if __name__ == "__main__":
     import pytest
 

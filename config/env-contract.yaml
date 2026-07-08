@@ -1142,6 +1142,13 @@ variables:
     consumers: [aq-health-spider]
     description: "Minimum pass-rate drop between consecutive training-loop results before health-spider emits a LoRA eval-regression advisory"
 
+  - canonical: HS_AQ_QA_HARNESS_PATH
+    aliases: []
+    default: "${REPO_ROOT}/scripts/ai/lib/harness_runner.py"
+    layer: shell
+    consumers: [aq-health-spider]
+    description: "Expected Python aq-qa harness bridge path; health-spider warns when missing because aq-qa would silently fall back to the bash runner"
+
   - canonical: AIDB_HOST
     aliases: []
     default: "127.0.0.1"
