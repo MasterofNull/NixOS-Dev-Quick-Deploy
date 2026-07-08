@@ -1629,7 +1629,10 @@ async function loadAIDB() {
 
 // ─── INTELLIGENCE: LEARNING ───────────────────────────────────────────────────
 async function loadLearning() {
-  const d = await apiFetch("/stats/learning");
+  const [d, loop] = await Promise.all([
+    apiFetch("/stats/learning"),
+    apiFetch("/loop/status"),
+  ]);
   const el = document.getElementById("learningDetails");
   const al = document.getElementById("learningActivity");
   const badge = document.getElementById("learningBadge");
@@ -1641,12 +1644,44 @@ async function loadLearning() {
   const bp = d.backpressure || {};
   const act = d.activity || {};
   const paused = bp.paused || d.learning_paused;
+  const loopStatus = loop && loop.available ? (loop.status || "unknown") : "unavailable";
+  const loopPhase = loop?.current_phase || loop?.last_run?.phase || "--";
+  const loopBadgeCls =
+    loopStatus === "running" || loopStatus === "complete"
+      ? "badge-ok"
+      : loopStatus === "never_ran" || loopStatus === "stalled"
+        ? "badge-warn"
+        : "badge-info";
   if (badge) {
-    badge.textContent = paused ? "paused" : "active";
-    badge.className = `card-badge ${paused ? "badge-warn" : "badge-ok"}`;
+    badge.textContent = paused ? "paused" : `loop ${loopStatus}`;
+    badge.className = `card-badge ${paused ? "badge-warn" : loopBadgeCls}`;
   }
 
+  const captures = loop?.captures || {};
+  const teacher = loop?.teacher || {};
   el.innerHTML = [
+    fwRow("Loop Status", loopStatus, statusColor(loopStatus)),
+    fwRow("Loop Phase", loopPhase, statusColor(loopPhase)),
+    fwRow(
+      "Teacher",
+      teacher.lane
+        ? `${teacher.lane}${teacher.reachable === false ? " down" : ""}`
+        : "--",
+      teacher.reachable === false ? "err" : "ok"
+    ),
+    fwRow("Dataset Rows", loop?.dataset_total != null ? loop.dataset_total.toLocaleString() : "--"),
+    fwRow(
+      "Failure Captures",
+      captures.failures != null ? captures.failures.toLocaleString() : "--",
+      captures.failures > 0 ? "warn" : ""
+    ),
+    fwRow("Repair Pairs", captures.repair_pairs ?? "--", captures.repair_pairs > 0 ? "ok" : "info"),
+    fwRow(
+      "Pending Review",
+      captures.pending_review ?? captures.pending_corrections ?? "--",
+      (captures.pending_review ?? captures.pending_corrections ?? 0) > 0 ? "warn" : "ok"
+    ),
+    fwRow("Last Loop Run", loop?.last_run?.finished_at ? relTime(loop.last_run.finished_at) : "--"),
     fwRow("Patterns Learned", d.total_patterns_learned ?? 0),
     fwRow(
       "Events Tracked",
@@ -1681,20 +1716,23 @@ async function loadLearning() {
   ].join("");
 
   // Activity pills: event counts per pipeline
-  if (al && act.total_events) {
+  if (al && (act.total_events || loop?.available)) {
     const pills = [
+      loop?.available ? { k: "Loop", v: loopStatus } : null,
+      loop?.current_phase ? { k: "Phase", v: loop.current_phase } : null,
+      captures.pending_review != null ? { k: "Review", v: captures.pending_review } : null,
       { k: "AIDB", v: act.aidb_events },
       { k: "Hybrid", v: act.hybrid_events },
       { k: "RALPH", v: act.ralph_events },
       { k: "Feedback", v: act.hint_feedback_events },
       { k: "Gaps", v: act.query_gap_events },
       { k: "High-val", v: act.high_value_events },
-    ].filter((p) => p.v != null);
+    ].filter((p) => p && p.v != null);
     al.innerHTML = `<div class="act-pills">${pills
       .map(
         (p) =>
-          `<div class="act-pill">${p.k
-          }&nbsp;<span>${p.v.toLocaleString()}</span></div>`
+          `<div class="act-pill">${p.k}&nbsp;<span>${typeof p.v === "number" ? p.v.toLocaleString() : p.v
+          }</span></div>`
       )
       .join("")}</div>`;
     if (act.latest_feedback_at) {
