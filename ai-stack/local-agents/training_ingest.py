@@ -59,6 +59,11 @@ except ImportError:
     HYBRID_EVENTS          = TELEMETRY_DIR / "hybrid-events.jsonl"
     USER_EVENTS_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
 
+# P1: labeled failure samples written by training_capture.capture_failure. Defined
+# UNCONDITIONALLY (both try/except branches above set TELEMETRY_DIR + _REPO_ROOT).
+TRAINING_SAMPLES       = TELEMETRY_DIR / "training-samples.jsonl"
+TRAINING_SAMPLES_SPOOL = _REPO_ROOT / ".agents" / "telemetry" / "training-samples.jsonl"
+
 # PII guard: strip actual secrets (API keys, tokens) from training content before
 # quality scoring or writing. Uses redact_secrets (not scrub_telemetry_payload —
 # that hashes the entire field, destroying training signal).
@@ -247,6 +252,11 @@ class TrainingIngestor:
         }
 
         report["positive_samples_added"] = self._ingest_hybrid_events(since)
+        # P1: turn captured local failures into repair training pairs (closed loop).
+        repair_added, repair_pending = self._ingest_failure_samples(since)
+        report["failure_repair_samples_added"] = repair_added
+        report["failure_repair_pending"] = repair_pending
+        report["samples_added"] = report["positive_samples_added"] + repair_added
         gaps, failures = self._analyze_delegation_feedback(since)
         report["gap_patterns"] = gaps
         report["failure_summary"] = failures
@@ -351,6 +361,67 @@ class TrainingIngestor:
             added = len(samples_to_write)  # dry-run: count but don't write
 
         return added
+
+    def _ingest_failure_samples(self, since: datetime) -> Tuple[int, int]:
+        """P1: turn captured local failures (training_capture spool) into training data.
+
+        A failure record WITH a corrected_output becomes an SFT repair pair (prompt → correct output),
+        so the model learns the right response for the case it got wrong — this is the closed-loop's
+        producer-fix-as-training-signal. A record WITHOUT a correction is counted as repair_pending
+        (it needs a correction pass — a remote agent's fix — before it can train). Returns
+        (repair_samples_added, repair_pending). Dedupes against the dataset by content hash."""
+        import hashlib
+
+        records = _read_jsonl(TRAINING_SAMPLES, since=since)
+        if TRAINING_SAMPLES_SPOOL.exists():
+            records = records + _read_jsonl(TRAINING_SAMPLES_SPOOL, since=since)
+
+        self.dataset_path.parent.mkdir(parents=True, exist_ok=True)
+        existing_hashes: set = set()
+        if self.dataset_path.exists():
+            for raw in open(self.dataset_path, encoding="utf-8", errors="replace"):
+                try:
+                    existing_hashes.add(json.loads(raw).get("source_hash", ""))
+                except json.JSONDecodeError:
+                    pass
+
+        samples_to_write: List[Dict] = []
+        pending = 0
+        for rec in records:
+            if rec.get("kind") != "failure_sample":
+                continue
+            prompt = _scrub_text(rec.get("prompt", ""))
+            corrected = rec.get("corrected_output")
+            if not corrected:
+                pending += 1  # needs a correction before it can be an SFT pair
+                continue
+            corrected = _scrub_text(corrected)
+            if not prompt:
+                continue
+            content_hash = hashlib.sha256(f"{prompt}||{corrected}".encode()).hexdigest()[:16]
+            if content_hash in existing_hashes:
+                continue
+            existing_hashes.add(content_hash)
+            samples_to_write.append({
+                "messages": [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": corrected},
+                ],
+                "source": f"failure-repair:{rec.get('failure_class', 'unknown')}",
+                "source_hash": content_hash,
+                "quality_score": 1.0,  # a known-correct repair target
+                "timestamp": rec.get("timestamp"),
+            })
+
+        added = 0
+        if samples_to_write and not self.dry_run:
+            with open(self.dataset_path, "a", encoding="utf-8") as fh:
+                for s in samples_to_write:
+                    fh.write(json.dumps(s) + "\n")
+            added = len(samples_to_write)
+        elif samples_to_write:
+            added = len(samples_to_write)
+        return added, pending
 
     def _analyze_delegation_feedback(
         self, since: datetime
