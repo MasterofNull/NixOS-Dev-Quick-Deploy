@@ -52,10 +52,26 @@ _PORTS = {
     9090: "prometheus",
 }
 
-# Feature-flagged / optional service ports: if unbound, SKIP (not FAIL) — the service may be
-# intentionally disabled. open-webui is gated by mySystem.aiStack.ui.enable (disabled on hosts where
-# its npm-deps build is broken, e.g. the 26.05 upgrade). A bound port still passes normally.
-_OPTIONAL_PORTS = {3001}
+# Feature-flagged service ports: map port -> systemd unit. These are NOT skipped — instead the check
+# validates the config<->runtime CONTRACT against the service's declared intent (is the unit enabled?):
+#   enabled + bound      -> PASS (running as configured)
+#   enabled + not bound  -> FAIL (real regression — should be up, isn't)
+#   disabled + not bound -> PASS (correctly off, e.g. open-webui gated by mySystem.aiStack.ui.enable)
+#   disabled + bound     -> FAIL (stale/unexpected — should be off, but a process holds the port)
+# This keeps the test meaningful in every state rather than ignoring it.
+_FEATURE_FLAGGED_PORTS = {3001: "open-webui.service"}
+
+
+def _unit_enabled(unit: str) -> bool:
+    """True if the systemd unit is enabled (declared to run). Absent/disabled/masked -> False."""
+    try:
+        out = subprocess.run(
+            ["systemctl", "is-enabled", unit],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        return out in ("enabled", "enabled-runtime", "static", "indirect")
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _check_services(ctx: RunContext) -> list[CheckResult]:
@@ -138,15 +154,26 @@ def _check_ports(ctx: RunContext) -> list[CheckResult]:
     retries = ctx.port_retry_attempts
     delay = ctx.port_retry_delay_s
     for port, name in _PORTS.items():
-        # Optional ports check once (no retry wait) — they may be intentionally off.
-        _r, _d = (0, 0.0) if port in _OPTIONAL_PORTS else (retries, delay)
-        if port_bound(port, retries=_r, delay=_d):
-            results.append(passed(3, f"0.2.1:{name}", f"port {port} ({name}) bound"))
-        elif port in _OPTIONAL_PORTS:
-            results.append(skipped(3, f"0.2.1:{name}", f"port {port} ({name}) bound",
-                                   f"port {port} not bound — optional/feature-flagged service (disabled)"))
+        cid = f"0.2.1:{name}"
+        if port in _FEATURE_FLAGGED_PORTS:
+            # Validate the config<->runtime contract, never skip.
+            enabled = _unit_enabled(_FEATURE_FLAGGED_PORTS[port])
+            bound = port_bound(port, retries=0, delay=0.0)
+            if enabled and bound:
+                results.append(passed(3, cid, f"port {port} ({name}) bound (unit enabled)"))
+            elif enabled and not bound:
+                results.append(failed(3, cid, f"port {port} ({name}) bound",
+                                      f"unit enabled but port {port} not bound — service down"))
+            elif not enabled and not bound:
+                results.append(passed(3, cid, f"{name} disabled + port {port} correctly not bound"))
+            else:  # disabled but something is bound
+                results.append(failed(3, cid, f"{name} off => port {port} unbound",
+                                      f"unit disabled but port {port} is bound — stale/unexpected process"))
+            continue
+        if port_bound(port, retries=retries, delay=delay):
+            results.append(passed(3, cid, f"port {port} ({name}) bound"))
         else:
-            results.append(failed(3, f"0.2.1:{name}", f"port {port} ({name}) bound", f"port {port} not bound"))
+            results.append(failed(3, cid, f"port {port} ({name}) bound", f"port {port} not bound"))
     return results
 
 
