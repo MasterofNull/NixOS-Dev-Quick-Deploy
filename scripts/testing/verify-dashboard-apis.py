@@ -86,6 +86,7 @@ paths = [
     "/insights/workflows/a2a-readiness",
     "/insights/workflows/compliance",
     "/knowledge/graph/fact-chain?limit=30",
+    "/loop/status",
     "/memory/broker/status",
     "/memory/crystalline/status",
     "/memory/stats",
