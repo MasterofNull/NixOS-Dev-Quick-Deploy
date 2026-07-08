@@ -8,10 +8,15 @@ into SFT repair pairs — closing the learning loop: local improves FROM its fai
 
 Pure correction logic lives in ai-stack/local-agents/failure_correction.py (unit-tested); this is the I/O.
 
+Teacher lane (P1.3 activation, 2026-07-08): defaults to `codex` — codex CLI via its OWN OAuth login
+(no API key, no credits; honors the harness NO-API-KEYS constraint). The old switchboard remote lanes
+need OpenRouter credits (remote-coding -> HTTP 402, remote-free -> empty), so they were non-functional;
+keep `--teacher switchboard` as an option for when credits/a free remote exist.
+
 Usage:
   aq-correct-failures --dry-run            # show pending + the teacher prompts, delegate to nothing
-  aq-correct-failures --max 10             # correct up to 10 pending failures
-  aq-correct-failures --profile remote-coding --max 5
+  aq-correct-failures --max 10             # correct up to 10 pending failures via codex teacher
+  aq-correct-failures --teacher switchboard --profile remote-coding --max 5
 """
 from __future__ import annotations
 
@@ -19,7 +24,9 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -33,6 +40,7 @@ SPOOLS = [
 ]
 OUT_SPOOL = Path(os.getenv("AQ_TRAINING_SAMPLES", str(REPO / ".agents" / "telemetry" / "training-samples.jsonl")))
 SWITCHBOARD = os.getenv("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+CODEX_BIN = os.getenv("CODEX_BIN", str(Path.home() / ".npm-global" / "bin" / "codex"))
 
 
 def _sig(rec: dict) -> str:
@@ -69,8 +77,41 @@ def _select_pending(records: list[dict]) -> list[dict]:
     return pending
 
 
-def _ask_teacher(prompt: str, profile: str, timeout: float) -> str:
-    """POST a chat completion to the switchboard remote lane. Returns the teacher's content ('' on error)."""
+def _ask_codex(prompt: str, timeout: float) -> str:
+    """Ask codex (own OAuth login — no API key, no credits) for the correction. Uses `codex exec
+    --output-last-message` so we get ONLY the final answer (no reasoning/log framing) — clean enough
+    to validate directly. read-only sandbox: correction is pure text generation, never touches the repo."""
+    if not Path(CODEX_BIN).exists():
+        print(f"  teacher error: codex not found at {CODEX_BIN}", file=sys.stderr)
+        return ""
+    with tempfile.NamedTemporaryFile("r", suffix=".txt", delete=False) as tf:
+        last_path = tf.name
+    try:
+        proc = subprocess.run(
+            [CODEX_BIN, "exec", "--sandbox", "read-only", "--skip-git-repo-check",
+             "-o", last_path, prompt],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout,
+        )
+        out = Path(last_path).read_text(encoding="utf-8", errors="replace").strip()
+        if not out and proc.returncode != 0:
+            print(f"  teacher error: codex exit={proc.returncode}: {proc.stderr[-200:]}", file=sys.stderr)
+        return out
+    except subprocess.TimeoutExpired:
+        print(f"  teacher error: codex timed out after {timeout}s", file=sys.stderr)
+        return ""
+    except Exception as e:  # noqa: BLE001
+        print(f"  teacher error: {e}", file=sys.stderr)
+        return ""
+    finally:
+        try:
+            os.unlink(last_path)
+        except OSError:
+            pass
+
+
+def _ask_switchboard(prompt: str, profile: str, timeout: float) -> str:
+    """POST a chat completion to the switchboard remote lane. Returns the teacher's content ('' on error).
+    NOTE: remote profiles require OpenRouter credits (remote-coding -> HTTP 402; remote-free -> empty)."""
     body = json.dumps({
         "model": "remote", "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 512, "temperature": 0.0,
@@ -88,18 +129,75 @@ def _ask_teacher(prompt: str, profile: str, timeout: float) -> str:
         return ""
 
 
+def _extract_correction(raw: str, record: dict) -> str:
+    """Robustly pull the correction from a teacher's raw output. For tool-call failure classes, extract
+    the last balanced JSON object (tolerates a teacher that wraps the envelope in prose/fences); for
+    answer classes, strip markdown fences. Empty -> '' (rejected downstream by corrected_record)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    # Strip a leading/trailing ```...``` fence if present.
+    if raw.startswith("```"):
+        body = raw.split("```", 2)
+        raw = (body[1] if len(body) >= 2 else raw)
+        if raw.lstrip().startswith(("json", "JSON")):
+            raw = raw.lstrip()[4:]
+        raw = raw.strip().rstrip("`").strip()
+    fclass = record.get("failure_class", "")
+    if fclass in ("text_as_tool_call", "invalid_tool_json", "truncated", "parse_failed"):
+        try:  # fast path: already pure JSON
+            json.loads(raw)
+            return raw
+        except Exception:  # noqa: BLE001
+            pass
+        # Scan for the last balanced {...} that parses as a tool-call envelope.
+        best = ""
+        for start in (i for i, c in enumerate(raw) if c == "{"):
+            depth = 0
+            for end in range(start, len(raw)):
+                if raw[end] == "{":
+                    depth += 1
+                elif raw[end] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        cand = raw[start:end + 1]
+                        try:
+                            obj = json.loads(cand)
+                            if isinstance(obj, dict) and "function" in obj and "arguments" in obj:
+                                best = cand
+                        except Exception:  # noqa: BLE001
+                            pass
+                        break
+        return best or raw
+    return raw
+
+
+def _ask_teacher(prompt: str, teacher: str, profile: str, timeout: float, record: dict) -> str:
+    """Dispatch to the chosen teacher lane, then extract a clean correction candidate."""
+    if teacher == "codex":
+        raw = _ask_codex(prompt, timeout)
+    else:
+        raw = _ask_switchboard(prompt, profile, timeout)
+    return _extract_correction(raw, record)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--max", type=int, default=20, help="max pending failures to correct")
-    ap.add_argument("--profile", default=os.getenv("AQ_TEACHER_PROFILE", "remote-coding"))
+    ap.add_argument("--teacher", choices=("codex", "switchboard"),
+                    default=os.getenv("AQ_TEACHER", "codex"),
+                    help="teacher lane: codex (own login, free, default) | switchboard (needs credits)")
+    ap.add_argument("--profile", default=os.getenv("AQ_TEACHER_PROFILE", "remote-coding"),
+                    help="switchboard X-AI-Profile (only used with --teacher switchboard)")
     ap.add_argument("--timeout", type=float, default=120.0)
     ap.add_argument("--dry-run", action="store_true", help="show pending + prompts, delegate to nothing")
     args = ap.parse_args()
 
     records = _read_all()
     pending = _select_pending(records)
+    _lane = args.teacher if args.teacher != "switchboard" else f"switchboard:{args.profile}"
     print(f"[aq-correct-failures] {len(pending)} pending failure(s); correcting up to {args.max} "
-          f"via profile={args.profile}{' (DRY RUN)' if args.dry_run else ''}")
+          f"via teacher={_lane}{' (DRY RUN)' if args.dry_run else ''}")
     if not pending:
         return 0
 
@@ -110,7 +208,7 @@ def main() -> int:
             print(f"\n--- pending [{rec.get('failure_class')}] sig={_sig(rec)} ---")
             print(prompt[:400] + ("…" if len(prompt) > 400 else ""))
             continue
-        teacher_out = _ask_teacher(prompt, args.profile, args.timeout)
+        teacher_out = _ask_teacher(prompt, args.teacher, args.profile, args.timeout, rec)
         new_rec = fc.corrected_record(rec, teacher_out)
         if new_rec is None:
             print(f"  [{rec.get('failure_class')}] sig={_sig(rec)}: teacher output rejected (invalid)")
