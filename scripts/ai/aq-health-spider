@@ -55,6 +55,20 @@ logger = logging.getLogger("health-spider")
 REPO_ROOT = Path(os.environ["REPO_ROOT"]) if "REPO_ROOT" in os.environ else Path(__file__).resolve().parent.parent.parent
 TELEMETRY_SPOOL = REPO_ROOT / ".agents" / "telemetry" / "hybrid-events.jsonl"
 HANDOFF_MD      = REPO_ROOT / ".agent" / "collaboration" / "HANDOFF.md"
+# Closed local-improvement loop telemetry (P1.x). Service writes to /var/lib; repo path is the
+# fallback for a user-run loop. Spider checks both so it works in either deployment.
+_LOOP_TELEMETRY_DIRS = [
+    Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")),
+    REPO_ROOT / ".agents" / "telemetry",
+]
+_TRAINING_SPOOL_PATHS = [d / "training-samples.jsonl" for d in _LOOP_TELEMETRY_DIRS]
+_TRAINING_RESULTS_PATHS = [d / "training-loop-results.jsonl" for d in _LOOP_TELEMETRY_DIRS]
+_DATASET_PATH = Path(os.environ.get("TRAINING_DATASET",
+                                    "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"))
+_CODEX_BIN = os.environ.get("CODEX_BIN", str(Path.home() / ".npm-global" / "bin" / "codex"))
+# Thresholds (env-tunable): loop-run staleness, pending-correction backlog.
+_LOOP_STALE_H = float(os.environ.get("HS_LOOP_STALE_HOURS", "48"))
+_CORRECTION_BACKLOG_MAX = int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25"))
 COORDINATOR_URL = os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003")
 EMBED_URL       = os.environ.get("LLAMA_EMBED_URL",        "http://127.0.0.1:8081")
 QDRANT_URL      = os.environ.get("QDRANT_URL",             "http://127.0.0.1:6333")
@@ -442,6 +456,99 @@ def _push_memory_fact(anomaly_type: str, zone: str, detail: str, resolution: str
         logger.debug(f"memory fact push failed: {e}")
 
 
+def _first_existing(paths: List[Path]) -> Optional[Path]:
+    for p in paths:
+        try:
+            if p.exists():
+                return p
+        except OSError:
+            continue
+    return None
+
+
+def _count_pending_corrections() -> int:
+    """failure_samples in the spool that still lack a correction (deduped by prompt||bad_output)."""
+    sp = _first_existing(_TRAINING_SPOOL_PATHS)
+    if sp is None:
+        return 0
+    corrected: set = set()
+    pending: set = set()
+    try:
+        for line in sp.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("kind") != "failure_sample":
+                continue
+            sig = f"{r.get('prompt', '')}||{r.get('bad_output', '')}"
+            if r.get("corrected_output"):
+                corrected.add(sig)
+            else:
+                pending.add(sig)
+    except OSError:
+        return 0
+    return len(pending - corrected)
+
+
+def _closed_loop_check() -> List[Dict[str, Any]]:
+    """Harness-level probe for the closed local-improvement loop — the measurement layer for the
+    capture->correct->ingest->train pipeline. Advisory (detect + warn): a stale loop or a stalled
+    teacher lane silently starves local-model improvement, so surface it even though nothing is 'down'.
+    Best-effort: any read error yields no anomaly (never breaks a spider cycle)."""
+    anomalies: List[Dict[str, Any]] = []
+    now = time.time()
+
+    # 1. Teacher lane reachable — no codex binary => corrections cannot be produced (loop can't learn).
+    try:
+        if not Path(_CODEX_BIN).exists():
+            anomalies.append({
+                "type": "loop_teacher_down", "zone": "closed-loop",
+                "detail": f"codex teacher binary not found at {_CODEX_BIN}", "timestamp": now,
+            })
+    except OSError:
+        pass
+
+    # 2. Loop-run staleness — last training-loop result older than threshold (and never = advisory).
+    results = _first_existing(_TRAINING_RESULTS_PATHS)
+    try:
+        # A 0-byte / record-less results file means the loop was wired but never COMPLETED a clean
+        # run — treat that as "never ran", not as a fresh run (an empty file's mtime would otherwise
+        # mask a loop that has produced nothing).
+        has_result = results is not None and results.stat().st_size > 0
+        if not has_result:
+            anomalies.append({
+                "type": "loop_never_ran", "zone": "closed-loop",
+                "detail": "no completed training-loop result yet (results file missing or empty) — "
+                          "the loop has not produced a clean run",
+                "timestamp": now,
+            })
+        else:
+            age_h = (now - results.stat().st_mtime) / 3600.0
+            if age_h > _LOOP_STALE_H:
+                anomalies.append({
+                    "type": "loop_stalled", "zone": "closed-loop",
+                    "detail": f"last training-loop result is {age_h:.1f}h old (>{_LOOP_STALE_H}h)",
+                    "age_hours": round(age_h, 1), "timestamp": now,
+                })
+    except OSError:
+        pass
+
+    # 3. Correction backlog — pending failures piling up means the teacher step isn't keeping pace.
+    backlog = _count_pending_corrections()
+    if backlog > _CORRECTION_BACKLOG_MAX:
+        anomalies.append({
+            "type": "loop_correction_backlog", "zone": "closed-loop",
+            "detail": f"{backlog} uncorrected failure sample(s) pending (>{_CORRECTION_BACKLOG_MAX})",
+            "backlog": backlog, "timestamp": now,
+        })
+
+    return anomalies
+
+
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
@@ -672,6 +779,38 @@ class HealthSpider:
                     resolution,
                 )
             return True
+        elif atype in ("loop_teacher_down", "loop_never_ran", "loop_stalled",
+                       "loop_correction_backlog"):
+            # Closed local-improvement loop advisories — detect + warn (the measurement layer the
+            # operator flagged as missing). teacher_down is the most serious (loop can't learn at all).
+            detail = anomaly.get("detail", atype)
+            severity = "high" if atype == "loop_teacher_down" else "medium"
+            action = {
+                "loop_teacher_down": "Verify codex login/binary (delegate-to-codex --status); the loop's correction step needs it.",
+                "loop_never_ran": "Trigger a run: systemctl start ai-local-training-loop.service (or scripts/ai/aq-local-training-loop --resume).",
+                "loop_stalled": "Check ai-local-training-loop.timer is active and the last run didn't error (training-loop-results.jsonl).",
+                "loop_correction_backlog": "Run scripts/ai/aq-correct-failures --max 25 (codex teacher) to drain the backlog.",
+            }.get(atype, "Inspect the closed local-improvement loop telemetry.")
+            try:
+                push(
+                    source="health-spider",
+                    severity=severity,
+                    autonomy_boundary="notify",
+                    title=f"Closed-loop advisory: {atype}",
+                    detail=detail,
+                    proposed_action=action,
+                    payload=anomaly,
+                )
+            except Exception:
+                pass
+            key = f"{atype}:{detail}"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                await asyncio.to_thread(
+                    _push_memory_fact,
+                    atype, "closed-loop", detail, action,
+                )
+            return True
         return True
 
     async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> str:
@@ -774,6 +913,13 @@ class HealthSpider:
                         total += 1
             except Exception as e:
                 logger.error(f"[{zone}] error: {e}")
+        # Harness-level: closed local-improvement loop (measurement layer, not a service zone).
+        try:
+            for a in await asyncio.to_thread(_closed_loop_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[closed-loop] error: {e}")
         return total
 
     async def run(self):
