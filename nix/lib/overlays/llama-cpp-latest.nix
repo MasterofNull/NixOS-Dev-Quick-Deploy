@@ -60,6 +60,16 @@ in {
   llama-cpp = baseLlamaCpp.overrideAttrs (oldAttrs: {
     version = selected.version;
 
+    # The bumped src (b9222+) has different server-webui npm dependencies than nixpkgs' pinned
+    # llama-cpp, so nixpkgs' npmDeps FOD hash no longer matches (build fails with a hash mismatch,
+    # even though LLAMA_BUILD_UI=OFF disables USING the UI — the deps are still fetched as an input).
+    # Pin the correct npm-deps hash for the selected version (nix/pins/llama-cpp.json). Only override
+    # when a pin is present so the fallback version keeps nixpkgs' own hash.
+  } // prev.lib.optionalAttrs (selected ? npmDepsHash) {
+    npmDeps = oldAttrs.npmDeps.overrideAttrs (_: {
+      outputHash = selected.npmDepsHash;
+    });
+  } // {
     src = prev.fetchFromGitHub {
       owner = "ggml-org";
       repo = "llama.cpp";
