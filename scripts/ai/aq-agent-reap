@@ -151,20 +151,38 @@ def should_reap(ppid: int, etimes: int, max_age: int) -> tuple[bool, str]:
     return False, ""
 
 
-def progress_recent(cmd: str, grace: float = 300.0) -> bool:
-    """True if the proc is still making progress (its AGENT_PROGRESS_FILE was written within
-    `grace`). A working ORPHAN (ppid=1 but streaming) must NOT be reaped — only a wedged one.
-    Progress file = the run's --output path + '.progress.json'."""
+# Grace window (seconds) of SILENCE before a process is considered wedged. Must exceed the
+# worst-case single-turn prefill silence on this hardware: the local 35B re-prefills a large
+# context at ~8 tok/s, so one cold turn can be silent ~10-15 min between progress writes.
+# A young system on slow hardware is EXPECTED to run long and inefficiently — that runtime is
+# the training signal, not a failure. Killing a PROGRESSING run starves the improvement loop,
+# so the grace is generous (default 30 min) and env-tunable. The dispatch layer's own
+# no-progress governor (up to 12 h of silence) is the primary control; this reaper is a
+# conservative backstop that only cleans up genuinely wedged/dead processes.
+_PROGRESS_GRACE_S = float(os.environ.get("AQ_REAP_PROGRESS_GRACE_S", "1800"))
+
+
+def progress_recent(cmd: str, grace: float = _PROGRESS_GRACE_S) -> bool:
+    """True if the proc is still making progress. A PROGRESSING process — orphaned OR long-running
+    — must NEVER be reaped; only a genuinely WEDGED one (silent past `grace`). We check the newest
+    mtime across the run's progress sidecar AND its output log (either advancing = alive), derived
+    from the --output path. During a long cold prefill neither may update for minutes, hence the
+    generous grace; only after sustained silence is a process treated as wedged."""
     import re
     import time as _t
     m = re.search(r"--output\s+(\S+)", cmd)
     if not m:
         return False
-    prog = m.group(1) + ".progress.json"
-    try:
-        return (_t.time() - os.path.getmtime(prog)) < grace
-    except OSError:
+    out = m.group(1)
+    newest = 0.0
+    for path in (out + ".progress.json", out):
+        try:
+            newest = max(newest, os.path.getmtime(path))
+        except OSError:
+            continue
+    if newest == 0.0:
         return False
+    return (_t.time() - newest) < grace
 
 
 def _list_agent_procs() -> List[Dict]:
@@ -229,9 +247,12 @@ def main() -> int:
         reap, reason = should_reap(p["ppid"], p["etimes"], args.max_age)
         if not reap:
             continue
-        # A WORKING orphan (ppid=1 but still streaming its progress file) is a legit detached
-        # run — never reap it. Only wedged orphans (no recent progress) or runaways get killed.
-        if reason.startswith("orphaned") and progress_recent(p["cmd"]):
+        # NEVER reap a PROGRESSING process — whether flagged orphaned OR runaway. A young system on
+        # slow hardware is expected to run long; a run still advancing its progress/output is doing
+        # real work and killing it starves the improvement loop (never-skip-local). The progress
+        # guard now covers BOTH reap reasons (previously only orphaned), so a long-but-live run is
+        # protected. Only genuinely WEDGED processes (silent past _PROGRESS_GRACE_S) get reaped.
+        if progress_recent(p["cmd"]):
             continue
         action = "WOULD REAP" if args.dry_run else "REAPING"
         print(f"[aq-agent-reap] {action} pid={p['pid']} ppid={p['ppid']} "
