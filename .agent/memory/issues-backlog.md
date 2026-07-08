@@ -1407,3 +1407,9 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Root cause: `aq-context-manage check` only inspected `ContextMemoryManager.should_trigger_compaction()` and ignored the already-wired live `/api/context/lifecycle/status` pressure signal.
   Action: `aq-context-manage check` now overlays best-effort live CLM status from the dashboard proxy and triggers with an explicit reason when hot pressure exceeds threshold or compaction is suspended; focused regression covers high-pressure suspended CLM using `AQ_CONTEXT_MANAGE_CLM_STATUS_FILE`.
   File: scripts/ai/aq-context-manage; scripts/testing/test-context-manage-summary.py; docs/operations/agent-context-bootstrap.md
+
+[DONE] health-spider-missing-fallback-drift-probe — aq-qa previously lost its Python harness bridge and silently fell back to `_aq-qa-bash`, reducing check coverage without a health-spider alert. This is the same class of activation drift as "feature exists but default path is degraded."
+  Severity: high
+  Root cause: health-spider monitored service health and closed-loop telemetry but did not inspect primary-vs-fallback execution paths for harness CLIs.
+  Action: added `qa_fallback_default` advisory when the expected `scripts/ai/lib/harness_runner.py` bridge is missing or unreadable; focused tests cover missing and present harness paths.
+  File: scripts/ai/aq-health-spider; scripts/testing/test-health-spider-loop-regression.py; config/env-contract.yaml

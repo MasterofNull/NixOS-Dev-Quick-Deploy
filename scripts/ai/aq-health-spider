@@ -66,6 +66,10 @@ _TRAINING_RESULTS_PATHS = [d / "training-loop-results.jsonl" for d in _LOOP_TELE
 _DATASET_PATH = Path(os.environ.get("TRAINING_DATASET",
                                     "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"))
 _CODEX_BIN = os.environ.get("CODEX_BIN", str(Path.home() / ".npm-global" / "bin" / "codex"))
+_QA_HARNESS_PATH = Path(os.environ.get(
+    "HS_AQ_QA_HARNESS_PATH",
+    str(REPO_ROOT / "scripts" / "ai" / "lib" / "harness_runner.py"),
+))
 # Thresholds (env-tunable): loop-run staleness, pending-correction backlog.
 _LOOP_STALE_H = float(os.environ.get("HS_LOOP_STALE_HOURS", "48"))
 _CORRECTION_BACKLOG_MAX = int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25"))
@@ -544,6 +548,32 @@ def _loop_eval_regression(results: List[Dict[str, Any]]) -> Optional[Dict[str, A
     }
 
 
+def _activation_fallback_drift_check() -> List[Dict[str, Any]]:
+    """Detect dormant primary paths silently falling back to degraded defaults."""
+    anomalies: List[Dict[str, Any]] = []
+    try:
+        if not _QA_HARNESS_PATH.exists():
+            anomalies.append({
+                "type": "qa_fallback_default",
+                "zone": "activation-drift",
+                "detail": (
+                    f"aq-qa Python harness bridge missing at {_QA_HARNESS_PATH}; "
+                    "aq-qa will silently fall back to _aq-qa-bash"
+                ),
+                "harness_path": str(_QA_HARNESS_PATH),
+                "timestamp": time.time(),
+            })
+    except OSError as exc:
+        anomalies.append({
+            "type": "qa_fallback_default",
+            "zone": "activation-drift",
+            "detail": f"aq-qa Python harness bridge could not be inspected: {exc}",
+            "harness_path": str(_QA_HARNESS_PATH),
+            "timestamp": time.time(),
+        })
+    return anomalies
+
+
 def _closed_loop_check() -> List[Dict[str, Any]]:
     """Harness-level probe for the closed local-improvement loop — the measurement layer for the
     capture->correct->ingest->train pipeline. Advisory (detect + warn): a stale loop or a stalled
@@ -598,6 +628,8 @@ def _closed_loop_check() -> List[Dict[str, Any]]:
             "detail": f"{backlog} uncorrected failure sample(s) pending (>{_CORRECTION_BACKLOG_MAX})",
             "backlog": backlog, "timestamp": now,
         })
+
+    anomalies.extend(_activation_fallback_drift_check())
 
     return anomalies
 
