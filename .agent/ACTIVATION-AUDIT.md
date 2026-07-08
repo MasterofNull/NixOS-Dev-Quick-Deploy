@@ -28,8 +28,8 @@ Sweep four dormant surfaces, and for each: turn on → run a REAL functional tes
 | Capture hooks (P1.1) | ✅ | ✅ | ✅ 5 real failure_samples captured | firing in live agent runs |
 | Ingest repair/positive (P1.2/1.4) | ✅ | ✅ | ⚠️ dataset 805 rows but from OLD hybrid-events path — NEW capture path not yet ingested (0 failure-repair/success-capture rows) | needs corrections + a loop run |
 | **GBNF repair-retry (P2.3)** | ✅ | ✅ **just turned ON** (coordinator systemd env + delegate-to-local export) | ✅ bench: non-harmful (tool_use 11/12 == baseline), surgical | coordinator lane needs next rebuild; dispatch lane immediate |
-| Training-loop timer (P1.5) | ✅ | ✅ timer enabled+active | ❌ last result null — **never fired a clean run** | trigger a real run to validate |
-| **aq-correct-failures (P1.3)** | ✅ | ❌ | ❌ **NON-FUNCTIONAL** — remote-coding=402(paid), remote-free=empty; no working teacher lane; not scheduled | **BROKEN activation** — needs a free/codex/local teacher + a timer |
+| Training-loop timer (P1.5) | ✅ | ✅ timer enabled+active; now runs **Phase 0 correction** before ingest | ⚠️ dry-run pass validated (phases wire, no crash); real clean run still pending | loop is now truly closed: correct → ingest → eval |
+| **aq-correct-failures (P1.3)** | ✅ | ✅ **FIXED + ON** — codex teacher (own login, no key) | ✅ real run: 1 pending → valid correction → ingest picked it up as repair pair (`failure_repair_samples_added:1`) | was BROKEN (remote lanes 402/empty); now `--teacher codex` default + wired into the loop's Phase 0 |
 | capture_success | ✅ | ✅ wired | ⚠️ 0 success_samples captured yet | wire fires on successful tool call — validate with a real success |
 | open-webui | ✅ (upstream) | ❌ intentionally OFF | n/a | blocked: npm-deps build broken in 26.05; re-enable when fixed |
 

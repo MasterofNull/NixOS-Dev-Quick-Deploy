@@ -521,6 +521,34 @@ class TrainingLoop:
             print(f"[training-loop] Reaped {reaped} orphaned task(s) from prior runs")
         _write_progress(run_id, "ingest", reaped_orphans=reaped)
 
+        # ── 0. CORRECT ─────────────────────────────────────────────────────────
+        # Close the loop's LEARNING step: turn PENDING local failures into repair pairs via the codex
+        # teacher (own login, no API key) BEFORE ingest, so this run's ingest folds them into the
+        # dataset. Skipped in dry-run and if AQ_LOOP_CORRECT=0. Best-effort — a teacher/quota hiccup
+        # must never abort a training run (ingest still processes any already-corrected samples).
+        corrected_count = 0
+        if not self.dry_run and os.getenv("AQ_LOOP_CORRECT", "1") != "0":
+            print("[training-loop] Phase 0: correcting pending failures (codex teacher)")
+            correct_bin = _SCRIPT_DIR / "aq-correct-failures"
+            try:
+                cproc = subprocess.run(
+                    [sys.executable, str(correct_bin), "--max",
+                     os.getenv("AQ_LOOP_CORRECT_MAX", "10")],
+                    capture_output=True, text=True,
+                    timeout=int(os.getenv("AQ_LOOP_CORRECT_TIMEOUT", "600")),
+                )
+                for ln in (cproc.stdout or "").splitlines():
+                    if "corrected -> repair pair" in ln:
+                        corrected_count += 1
+                print(f"[training-loop]   corrected {corrected_count} pending failure(s)")
+            except subprocess.TimeoutExpired:
+                print("[training-loop] WARNING: correction phase timed out — continuing to ingest",
+                      file=sys.stderr)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[training-loop] WARNING: correction phase failed: {exc} — continuing",
+                      file=sys.stderr)
+        _write_progress(run_id, "ingest", reaped_orphans=reaped, corrected=corrected_count)
+
         # ── 1. INGEST ──────────────────────────────────────────────────────────
         print("[training-loop] Phase 1: telemetry ingest")
         try:
