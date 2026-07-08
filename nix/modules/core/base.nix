@@ -213,6 +213,15 @@ in {
       allowed-users = ["@wheel" cfg.primaryUser];
       # Build from source when binary cache is unreachable (DNS outage, network change).
       fallback = lib.mkDefault true;
+      # Disable HTTP/2 for downloads. cache.nixos.org NAR fetches AND npm fixed-output
+      # fetches intermittently die with "Stream error in the HTTP/2 framing layer" on some
+      # networks (observed during the 26.05 upgrade); HTTP/1.1 is stable. Pair with more
+      # download attempts + a sane connect timeout for resilience over a flaky link.
+      # NOTE: takes effect only AFTER a successful switch — for the FAILING switch pass, add
+      # `--option http2 false` on the nixos-rebuild command line.
+      http2 = lib.mkDefault false;
+      download-attempts = lib.mkDefault 5;
+      connect-timeout = lib.mkDefault 30;
       substituters = lib.mkDefault cfg.deployment.nixBinaryCaches;
       # Phase 11.2.1 — audited cache keys (verified in-repo on 2026-02-26)
       # cache.nixos.org: official NixOS binary cache
