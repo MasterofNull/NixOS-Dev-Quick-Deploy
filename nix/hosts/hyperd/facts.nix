@@ -35,6 +35,14 @@
     };
     secureboot.enable = false;
     aiStack = {
+      # TEMPORARY (2026-07-08 — 26.05 upgrade unblock): open-webui-frontend-0.9.6-npm-deps fails to
+      # build in nixpkgs 26.05 — its in-sandbox npm fetcher dies on "HTTP/2 framing" fetching a
+      # macOS-only package (@napi-rs/canvas-darwin-x64) it does not need on Linux, and nix's http2=false
+      # does not reach that separate fetcher. Disable Open WebUI to unblock the switch onto supported
+      # 26.05; re-enable once the npm-deps builds (upstream fix / clean network pass / pinned build).
+      # The harness CLIs + dashboard do not depend on Open WebUI. Plain assignment (no lib in this
+      # module's scope) — overrides the ai-stack module's lib.mkDefault for ui.enable.
+      ui.enable = false;
                               # Q5_K_S MTP model (manually placed from ~/Downloads after browser download).
                               # MTP draft heads enable speculative decoding (~1.5–2× throughput gain).
                               llamaCpp.activeModel = "qwen3.6-35b-mtp-q5";
