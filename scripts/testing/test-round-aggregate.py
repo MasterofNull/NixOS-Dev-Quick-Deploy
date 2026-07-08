@@ -105,7 +105,10 @@ def test_register_lane_is_idempotent_for_same_call() -> None:
     assert manifest.lanes[0].status == round_state.LaneStatus.pending
 
 
-def test_register_lane_same_idempotency_hash_returns_existing_lane() -> None:
+def test_register_lane_distinct_agents_get_distinct_lanes() -> None:
+    # In the flat collaborative model all agents share role "reviewer". Registering different agents
+    # with the same role + prompt MUST create distinct lanes (one lane per agent) — not collide into a
+    # single lane. The idempotency key folds in the agent identity to guarantee this.
     manifest = sample_manifest(
         round_state.RoundState.DISPATCHED,
         lane_statuses={},
@@ -113,12 +116,17 @@ def test_register_lane_same_idempotency_hash_returns_existing_lane() -> None:
         min_lanes=1,
     )
 
-    first = round_aggregate.register_lane(manifest, "codex", "reviewer", manifest.task.prompt)
-    second = round_aggregate.register_lane(manifest, "local", "reviewer", manifest.task.prompt)
+    codex_lane = round_aggregate.register_lane(manifest, "codex", "reviewer", manifest.task.prompt)
+    local_lane = round_aggregate.register_lane(manifest, "local", "reviewer", manifest.task.prompt)
 
-    assert second == first
-    assert len(manifest.lanes) == 1
-    assert manifest.lanes[0].agent == "codex"
+    assert codex_lane != local_lane
+    assert codex_lane.idempotency_hash != local_lane.idempotency_hash
+    assert len(manifest.lanes) == 2
+    assert {lane.agent for lane in manifest.lanes} == {"codex", "local"}
+    # re-registering the SAME agent stays idempotent (no duplicate lane)
+    again = round_aggregate.register_lane(manifest, "codex", "reviewer", manifest.task.prompt)
+    assert again == codex_lane
+    assert len(manifest.lanes) == 2
 
 
 def test_register_lane_existing_running_agent_returns_existing_lane() -> None:
