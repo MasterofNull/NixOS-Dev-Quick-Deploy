@@ -1,7 +1,7 @@
 _meta:
-  version: "1.0"
-  owner: claude-sonnet-4-6
-  last_updated: "2026-05-20"
+  version: "1.1"
+  owner: claude-opus-4-8
+  last_updated: "2026-07-07"
 
 # Model Catalog — runtime-editable, no nixos-rebuild needed to add models.
 #
@@ -87,6 +87,34 @@ chat_models:
     chat_template: jinja
     recommended_gpu_layers: 20
     notes: "Balanced quality/speed. Good for interactive use."
+
+  # ── BENCH CANDIDATE (not a tier default) — first model through the eligibility gates
+  #    (config/local-model-requirements.md). MID-tier challenger to qwen3-8b for F2 model_tier.py.
+  granite-4.1-8b:
+    name: "IBM Granite 4.1 8B (Instruct) — MID-tier bench candidate"
+    file: "granite-4.1-8b-Q4_K_M.gguf"
+    type: chat
+    params: "8B (dense transformer)"
+    context: 131072
+    ram_q4: "~5 GB"
+    model_family: other
+    think_mode: false
+    no_think_prefix: ""
+    tool_calling: true
+    stop_sequences: []
+    chat_template: jinja
+    recommended_gpu_layers: 20
+    notes: >-
+      BENCH CANDIDATE — do NOT set as a tier default until it clears eligibility
+      (config/local-model-requirements.md) AND wins the scored bench vs qwen3-8b.
+      Quant: unsloth/granite-4.1-8b-GGUF (fixed template) or bartowski/ibm-granite_granite-4.1-8b-GGUF.
+      Run with llama.cpp --jinja. Eligibility pre-assessment (2026-07-07):
+      Tier0.1 arch=GREEN (dense transformer, NOT Granite-4.0 hybrid-Mamba → llama.cpp supported);
+      Tier2.1 license=GREEN (Apache-2.0); Tier2.3 quant=GREEN (unsloth fixed template).
+      PENDING runtime verify: Tier0.2 tool-template parse (role:tool), Tier0.3 thinking-toggle,
+      Tier0.4 structured-output under freq_penalty=0 + GBNF, Tier1.2 code_gen bench (HumanEval lead),
+      Tier2.2 LoRA/QLoRA smoke, Tier3.1 dual-use probe. Reported strength: highest HumanEval among sub-10B.
+      context/ram_q4 approximate — confirm on download; add sha256 to config/llama-cpp-models.sha256.
 
   qwen3-4b:
     name: "Qwen3 4B Instruct 2507"
