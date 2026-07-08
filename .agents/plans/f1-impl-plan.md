@@ -151,3 +151,11 @@ scripts/ai/aq-collab-round collect --round factory-critique          # F1.5 non-
 ## Sequencing
 F1.1 → F1.2 → F1.3 → F1.4 → F1.5 (each committed + validated before the next). Then this unblocks F2
 (scheduler has a typed round to schedule) and F3 (OTel instruments the state transitions).
+
+## Progress log
+- **F1.1 — DONE (2026-07-07).** `scripts/ai/lib/round_state.py` + `scripts/testing/test-round-state-machine.py`.
+  codex-authored (task 78q8ss), orchestrator-integrated. pydantic v2 SSOT; RoundState/LaneStatus enums;
+  RoundManifest with the full frozen schema (contributions registry, typed conflicts, aggregate_path/hash,
+  locked_at, consensus_hash, history); ALLOWED_TRANSITIONS with durable AMEND and NO
+  CONFLICTS_IDENTIFIED→COLLECTED back-edge; atomic save/load; stable idempotency_hash; export_json_schema()
+  (Draft 2020-12 valid). 9/9 pytest green. NEXT: F1.2 (round_contribution.py).

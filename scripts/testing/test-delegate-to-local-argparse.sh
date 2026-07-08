@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Purpose: Regression test for delegate-to-local argparse subcommand task-ID parsing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
