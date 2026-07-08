@@ -876,6 +876,31 @@ _port() {
   _fail "$layer" "$id" "$desc" "port $port not bound"
 }
 
+# Feature-flagged port: validate the config<->runtime CONTRACT against the unit's declared intent
+# instead of a naive bound check (which fails whenever the feature is legitimately off). Used for
+# ports gated by a profile flag, e.g. open-webui gated by mySystem.aiStack.ui.enable.
+#   enabled + bound     -> PASS (running as configured)
+#   enabled + not bound -> FAIL (real regression — should be up, isn't)
+#   disabled + not bound-> PASS (correctly off)
+#   disabled + bound    -> FAIL (stale/unexpected process holding the port)
+_feature_port_contract() {
+  local layer="$1" id="$2" name="$3" port="$4" unit="$5"
+  local enabled=0 bound=0 ufs ss_listeners
+  ufs="$(systemctl is-enabled "$unit" 2>/dev/null || true)"
+  case "$ufs" in enabled|enabled-runtime|static|indirect) enabled=1 ;; esac
+  ss_listeners="$(ss -tlnH 2>/dev/null || true)"
+  grep -qE "[:.]${port}[[:space:]]" <<<"${ss_listeners}" && bound=1
+  if [[ $enabled -eq 1 && $bound -eq 1 ]]; then
+    _pass "$layer" "$id" "port $port ($name) bound (unit enabled)"
+  elif [[ $enabled -eq 1 && $bound -eq 0 ]]; then
+    _fail "$layer" "$id" "port $port ($name) bound" "unit enabled but port $port not bound — service down"
+  elif [[ $enabled -eq 0 && $bound -eq 0 ]]; then
+    _pass "$layer" "$id" "$name disabled + port $port correctly not bound"
+  else
+    _fail "$layer" "$id" "$name off => port $port unbound" "unit disabled but port $port is bound — stale/unexpected process"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Phase 0 — Pre-flight smoke tests
 # ---------------------------------------------------------------------------
@@ -947,6 +972,12 @@ run_phase_0() {
                        [8085]="switchboard" [3001]="open-webui" [9090]="prometheus")
   for port in "${!port_names[@]}"; do
     if ! _should_run 3; then continue; fi
+    if [[ "$port" == "3001" ]]; then
+      # open-webui is feature-flagged (mySystem.aiStack.ui.enable) — validate the contract, don't
+      # naively fail when it's legitimately off.
+      _feature_port_contract 3 "0.2.1:${port_names[$port]}" "${port_names[$port]}" "$port" "open-webui.service"
+      continue
+    fi
     _port 3 "0.2.1:${port_names[$port]}" "port ${port} (${port_names[$port]}) bound" "$port"
   done
 
