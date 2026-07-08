@@ -182,3 +182,22 @@ F1.1 → F1.2 → F1.3 → F1.4 → F1.5 (each committed + validated before the 
   resumability, mirrors the orphan/setsid fix), legacy_round_read_only (legacy <agent>.md byte-identical
   after collect — the F1.5 migration safety net). Full round-* suite: 33/33 pytest green. NEXT: F1.5
   (migrate aq-collab-round onto round.json, non-breaking).
+- **F1.3-bugfix (2026-07-07).** F1.5 integration surfaced a register_lane bug — it keyed idempotency_hash on
+  role only, so all four same-role ("reviewer") agents collided into ONE lane (broke quorum; would break every
+  real round). Fixed to key per-agent `sha256(round_id + "{agent}:{role}" + prompt)`; corrected the test that
+  encoded the collision. Commit becec789.
+- **F1.5 — DONE (2026-07-07). F1 COMPLETE.** `scripts/ai/aq-collab-round` migrated onto round.json, orchestrator-
+  led (delicate — touches the live script the 4 ratified rounds depend on). NON-BREAKING via graceful
+  degradation: a lib-import guard (`_LIB_OK`) + every typed step wrapped so any failure falls back to legacy
+  markdown-only behavior. `open` now also writes round.json (state=DISPATCHED, 4 distinct lanes) beside the
+  per-agent files; `collect`/new `aggregate` subcommand run read-only typed aggregation and print the typed
+  consensus; `status` unchanged (backward-compat). HARD ACCEPTANCE PASSED: all four live ratified rounds collect
+  to state=CONSENSUS_LOCKED (4 lanes, quorum met, 0 conflicts, stable hash) with <agent>.md BYTE-IDENTICAL after
+  collect (no mutation), and no round.json written into legacy dirs. Full round-* suite 33/33 green.
+
+## F1 COMPLETE — summary
+All five slices landed + committed: F1.1 round_state.py (state machine) · F1.2 round_contribution.py (typed
+envelope + never-skip-local extractor) · F1.3 round_aggregate.py (idempotent ops + deterministic aggregation +
+durable AMEND) · F1.4 test-round-golden.py (10 orchestration golden ROUNDs) · F1.5 aq-collab-round migration.
+The ad-hoc directory+markdown+operator-memory primitive is now an explicit, typed, resumable, tested state
+machine. NEXT roadmap item: **F2** (local model-stacking + slot scheduler + resident fast-lane :8082).
