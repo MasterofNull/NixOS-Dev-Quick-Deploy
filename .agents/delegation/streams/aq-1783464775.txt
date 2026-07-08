@@ -1,0 +1,1 @@
+COMPLETED: Created directory structure for factory critique output.
