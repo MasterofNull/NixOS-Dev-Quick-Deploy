@@ -3,6 +3,7 @@
     "version": "9222",
     "rev": "b9222",
     "hash": "sha256-Ws0a2qkgTFoeUuzg6tKbY6PfDP+0/9D9DTx21fLoFak=",
+    "npmDepsHash": "sha256-Po5SWJv3vmcBR7y62G9/CfvI3Lk/MYdjFMTTy2dsgoY=",
     "date": "2026-05-18"
   },
   "fallback": {
