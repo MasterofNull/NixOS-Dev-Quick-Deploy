@@ -1,12 +1,21 @@
-# Re-entry Intent — Consolidated Aggregate (3/4 decisive — RATIFIED; local pending-fold)
+# Re-entry Intent — Consolidated Aggregate (4/4 — RATIFIED; local folded as salvaged amendment)
 
 Last Updated: 2026-07-08
 
 ## Contributors
 - **claude** ✅ (fast/slow two-speed loop; close-fast-loop-first) · **codex** ✅ (the 3-PRD structure +
   training_ingest.py discovery + LoRA/DPO/Toolformer grounding) · **antigravity** ✅ (provenance/signing + OTel
-  spans + resource-bounded LoRA systemd slice) · **local[Qwen]** ⏳ pending — running 49 min (re-prefill
-  pathology on the oversized inlined prompt); slot kept OPEN, folds as a late amendment (never-skip-local).
+  spans + resource-bounded LoRA systemd slice) · **local[Qwen]** ✅ SALVAGED (engaged ~52 min / 7 tool calls
+  researching the closed-loop design — get_hint "closed learning loop design"; run DIED before synthesis,
+  killed by the pre-fix reaper; salvaged per never-skip. Direction CONVERGED with consensus, no dissent).
+
+## AMENDMENT (local, folded 2026-07-08) — convergent engagement + a live PRD exhibit
+Local did not overturn anything: its research direction (grounding the closed learning loop) converged with
+claude/codex/antigravity. Its run is the strongest live exhibit for the PRD itself — a real research run on
+a large-context task killed before yielding data (the exact "kill it before we get data → never progress"
+failure). Two fixes already shipped from it: progress-aware reap (483a1873) + matrix thought-stream (3bb7f7fd).
+Adds one PRD note: local dispatches should get a COMPRESSED prompt, not a 6.8k-token inlined artifact, so it
+can synthesize within a sane prefill budget (the oversized-prompt finding, now with direct evidence).
 
 ## Unanimous verdict: CLOSE THE LOOP FIRST (before F2.5/F3 scaffolding)
 All three landed teams independently reached the same conclusion, argued against the north star (improve local

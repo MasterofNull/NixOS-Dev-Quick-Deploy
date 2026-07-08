@@ -88,6 +88,11 @@ never-skip-local = the data source · NO API keys (GBNF + LoRA local) · NixOS-d
 units) · hardware envelope respected · eligibility gates govern model changes · anti-gaming: fix-the-producer +
 measured promotion with preserved evidence.
 
-## Open (fold when local lands)
-local[Qwen]'s own contribution about its failure loop — pending; folds as an amendment. Antigravity's late
-f1/f2-plan-consensus views fold into those rounds' aggregates (now 4/4).
+## Folded — local (4/4) + a PRD-shaping finding
+local[Qwen] FOLDED (salvaged): it engaged ~52 min researching the closed-loop design (get_hint "closed
+learning loop design") but its run DIED before synthesis, killed by the pre-fix progress-unaware reaper.
+Convergent, no dissent. Two fixes already shipped from this run — progress-aware reap (483a1873, never kills
+a progressing run) + matrix thought-stream visibility (3bb7f7fd). It adds one concrete requirement to this
+PRD: **local dispatches must receive a COMPRESSED prompt, not a large inlined artifact** (csza5f re-prefilled
+a 6.8k-token context ~14 min/turn × 7 turns and never finished) — so P1/P2 should include prompt-size
+discipline for the local lane (summarize/point, don't inline) as part of closing the loop efficiently.
