@@ -175,3 +175,10 @@ F1.1 → F1.2 → F1.3 → F1.4 → F1.5 (each committed + validated before the 
   via round_state.transition); `amend` (durable AMEND: late-local concur → relock + lane=amended, dissent →
   CONFLICTS_IDENTIFIED — the never-skip-local-after-lock path); `quorum_met`. 8/8 pytest green (exact cases:
   idempotent lane, stable hash, competing-conflict, amend concur/dissent, quorum). NEXT: F1.4 (golden ROUNDs).
+- **F1.4 — DONE (2026-07-07).** `scripts/testing/test-round-golden.py`. codex-authored (task bcjn7k),
+  orchestrator-integrated. 10 orchestration-level golden ROUNDs (test the lifecycle itself, not just units):
+  clean_lock, idempotent_retry, late_local_concurrence, late_local_conflict, quorum_timeout, invalid_schema,
+  missing_lane, dispatch_failure, recovery_after_process_death (save→discard→load→continue = durability/
+  resumability, mirrors the orphan/setsid fix), legacy_round_read_only (legacy <agent>.md byte-identical
+  after collect — the F1.5 migration safety net). Full round-* suite: 33/33 pytest green. NEXT: F1.5
+  (migrate aq-collab-round onto round.json, non-breaking).
