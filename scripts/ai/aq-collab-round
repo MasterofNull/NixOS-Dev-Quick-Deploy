@@ -43,6 +43,99 @@ ANTIGRAVITY_INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
 PROCESS_AGENTS = ["codex", "local"]
 ALL_AGENTS = ["claude", "codex", "local", "antigravity"]
 
+# ── F1.5: round.json state-machine integration (NON-BREAKING) ─────────────────
+# The typed round primitive (F1.1-F1.4: scripts/ai/lib/round_{state,contribution,aggregate}.py).
+# aq-collab-round writes/reads round.json ALONGSIDE the legacy per-agent markdown. If the lib is
+# unavailable or any typed step fails, we degrade to the legacy markdown-only behavior — the CLI is
+# never worse than before. The typed path is strictly additive and READ-ONLY on <agent>.md.
+_LIB = SCRIPTS / "lib"
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+try:
+    import round_state as _rstate
+    import round_contribution as _rcontrib
+    import round_aggregate as _raggr
+    _LIB_OK = True
+except Exception:  # noqa: BLE001 — a missing/broken lib must not break the legacy CLI
+    _LIB_OK = False
+
+
+def _write_manifest(rd: Path, name: str, task: str, target: str) -> None:
+    """F1.5: write round.json (state DISPATCHED) beside the per-agent files. Best-effort; never raises."""
+    if not _LIB_OK:
+        return
+    try:
+        m = _rstate.RoundManifest(
+            round_id=name, state=_rstate.RoundState.CREATED,
+            task=_rstate.RoundTask(prompt=task, target=target or "", scope_files=[]),
+            opened_at=_rstate.utc_iso(),
+            quorum_policy=_rstate.QuorumPolicy(min_lanes=2, required_agents=[],
+                                               timeout_seconds=None, deadline=None),
+            lanes=[], consensus_hash=None, aggregate_path=None, aggregate_hash=None, locked_at=None)
+        for agent in ALL_AGENTS:
+            _raggr.register_lane(m, agent, "reviewer", task)
+        m = _rstate.transition(m, _rstate.RoundState.DISPATCHED, "aq-collab-round")
+        _rstate.save(m, rd / "round.json")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _typed_consensus(rd: Path, name: str) -> str | None:
+    """F1.5: read-only typed aggregation over whatever contributions are present. Returns a one-line
+    printable summary, or None if the lib is unavailable or anything fails. NEVER mutates <agent>.md
+    (uses the read-only extract_contribution); persists round.json only when it already exists (round-
+    owned, derived)."""
+    if not _LIB_OK:
+        return None
+    try:
+        rjson = rd / "round.json"
+        if rjson.exists():
+            m = _rstate.load(rjson)
+        else:  # legacy round — synthesize an in-memory manifest, never written for legacy dirs
+            m = _rstate.RoundManifest(
+                round_id=name, state=_rstate.RoundState.CREATED,
+                task=_rstate.RoundTask(prompt="(legacy)", target="", scope_files=[]),
+                opened_at=_rstate.utc_iso(),
+                quorum_policy=_rstate.QuorumPolicy(min_lanes=2, required_agents=[],
+                                                   timeout_seconds=None, deadline=None),
+                lanes=[], consensus_hash=None, aggregate_path=None, aggregate_hash=None, locked_at=None)
+            for agent in ALL_AGENTS:
+                _raggr.register_lane(m, agent, "reviewer", "(legacy)")
+            m = _rstate.transition(m, _rstate.RoundState.DISPATCHED, "aq-collab-round")
+        try:
+            disp = json.loads((rd / ".round-dispatch.json").read_text()).get("dispatch", {})
+        except Exception:  # noqa: BLE001
+            disp = {}
+        contribs = {}
+        for agent in ALL_AGENTS:
+            if not (rd / f"{agent}.md").exists() and agent not in disp:
+                continue
+            tid = str(disp.get(agent, ""))
+            log = OUTPUTS / f"{tid}.log" if tid and not tid.startswith(("inbox", "error", "running")) else None
+            c, _note = _rcontrib.extract_contribution(agent, rd, log if (log and log.exists()) else None)
+            if c is not None:
+                contribs[agent] = c
+        if not contribs:
+            return None
+        if m.state == _rstate.RoundState.DISPATCHED:
+            m = _rstate.transition(m, _rstate.RoundState.CONTRIBUTING, "aq-collab-round")
+        if m.state == _rstate.RoundState.CONTRIBUTING:
+            m = _rstate.transition(m, _rstate.RoundState.COLLECTED, "aq-collab-round")
+        for lane in m.lanes:  # F1.5: reflect landed contributions so quorum_met is accurate
+            if lane.agent in contribs:
+                lane.status = _rstate.LaneStatus.submitted
+        if m.state == _rstate.RoundState.COLLECTED:
+            m = _raggr.aggregate(m, contribs)
+        if rjson.exists():
+            _rstate.save(m, rjson)  # round-owned derived file; legacy dirs are never written
+        tally: dict[str, int] = {}
+        for c in contribs.values():
+            tally[c.verdict.value] = tally.get(c.verdict.value, 0) + 1
+        return (f"typed consensus: state={m.state.value} verdicts={tally} "
+                f"conflicts={len(m.conflicts)} hash={(m.consensus_hash or '—')[:12]}")
+    except Exception:  # noqa: BLE001 — typed path is additive; never break collect
+        return None
+
 
 def _round_dir(name: str) -> Path:
     return PLANS / name
@@ -148,6 +241,9 @@ def cmd_open(args) -> int:
     print(f"  claude: orchestrator writes {args.round}/claude.md + aggregates")
     (rd / ".round-dispatch.json").write_text(json.dumps(
         {"opened": _now(), "dispatch": dispatch}, indent=2))
+    _write_manifest(rd, args.round, args.task, args.target or "")  # F1.5: round.json (best-effort)
+    if (rd / "round.json").exists():
+        print(f"  round.json: written (state=DISPATCHED)")
     print(f"\n  poll:    aq-collab-round status  --round {args.round}")
     print(f"  collect: aq-collab-round collect --round {args.round}   (auto-extracts local verdict)")
     return 0
@@ -205,6 +301,10 @@ def cmd_status(args, do_extract: bool = False) -> int:
         pass
     have = [a for a in ALL_AGENTS if (rd / f"{a}.md").exists()]
     print(f"  landed: {len(have)}/4 — {', '.join(have) or 'none'}")
+    if do_extract:  # F1.5: collect/aggregate print the typed consensus (additive; None-safe)
+        tc = _typed_consensus(rd, args.round)
+        if tc:
+            print(f"  {tc}")
     return 0
 
 
@@ -219,6 +319,8 @@ def main() -> int:
     s.set_defaults(fn=lambda a: cmd_status(a, do_extract=False))
     c = sub.add_parser("collect", help="poll + auto-extract local's verdict from its log")
     c.add_argument("--round", required=True); c.set_defaults(fn=lambda a: cmd_status(a, do_extract=True))
+    g = sub.add_parser("aggregate", help="F1.5: typed aggregation over round.json (read-only on <agent>.md)")
+    g.add_argument("--round", required=True); g.set_defaults(fn=lambda a: cmd_status(a, do_extract=True))
     args = ap.parse_args()
     return args.fn(args)
 
