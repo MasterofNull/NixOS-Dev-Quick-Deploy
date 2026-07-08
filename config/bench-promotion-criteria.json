@@ -1,6 +1,28 @@
 {
   "_comment": "Promotion/demotion thresholds for Qwen3-35B as primary dev agent.",
-  "_schema_version": "1",
+  "_schema_version": "2",
+  "eligibility_gates": {
+    "_comment": "Pass/fail PRECONDITIONS a candidate must clear BEFORE the scored bench below. SSOT + rationale: config/local-model-requirements.md. Eligibility is structural (Tier 0 protocol/runtime, Tier 2 lifecycle); the scored 'promotion' block is performance. A model can ace benchmarks and still be ineligible.",
+    "tier0_protocol_runtime": {
+      "loads_on_pinned_llama_cpp": true,
+      "native_tool_calling_parseable_template": true,
+      "toggleable_thinking_no_empty_response": true,
+      "structured_output_no_truncation_freqpenalty0": true,
+      "gbnf_constrained_decode_holds": true,
+      "offline_and_deterministic": true
+    },
+    "tier2_lifecycle": {
+      "license_class_allowed": ["Apache-2.0", "MIT", "permissive-OSI"],
+      "trainable_lora_qlora_smoke": true,
+      "trusted_gguf_quant_with_fixed_template": true,
+      "pinned_version_and_sha256_recorded": true
+    },
+    "tier3_governance": {
+      "dual_use_security_refusal_probe_pass": true,
+      "reproducible_across_consecutive_runs": true
+    },
+    "_enforcement": "All tier0 + tier2 gates must be true (tier3 too) for a candidate to enter the scored bench. tier1 capability is measured BY the scored dimensions below, mapped to model_tier.py tiers (SMALL/MID/LARGE)."
+  },
   "promotion": {
     "reasoning_pct_min": 0.67,
     "tool_use_pct_min": 0.75,
