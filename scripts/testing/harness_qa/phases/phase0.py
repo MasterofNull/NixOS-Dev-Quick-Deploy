@@ -52,6 +52,11 @@ _PORTS = {
     9090: "prometheus",
 }
 
+# Feature-flagged / optional service ports: if unbound, SKIP (not FAIL) — the service may be
+# intentionally disabled. open-webui is gated by mySystem.aiStack.ui.enable (disabled on hosts where
+# its npm-deps build is broken, e.g. the 26.05 upgrade). A bound port still passes normally.
+_OPTIONAL_PORTS = {3001}
+
 
 def _check_services(ctx: RunContext) -> list[CheckResult]:
     results = []
@@ -133,8 +138,13 @@ def _check_ports(ctx: RunContext) -> list[CheckResult]:
     retries = ctx.port_retry_attempts
     delay = ctx.port_retry_delay_s
     for port, name in _PORTS.items():
-        if port_bound(port, retries=retries, delay=delay):
+        # Optional ports check once (no retry wait) — they may be intentionally off.
+        _r, _d = (0, 0.0) if port in _OPTIONAL_PORTS else (retries, delay)
+        if port_bound(port, retries=_r, delay=_d):
             results.append(passed(3, f"0.2.1:{name}", f"port {port} ({name}) bound"))
+        elif port in _OPTIONAL_PORTS:
+            results.append(skipped(3, f"0.2.1:{name}", f"port {port} ({name}) bound",
+                                   f"port {port} not bound — optional/feature-flagged service (disabled)"))
         else:
             results.append(failed(3, f"0.2.1:{name}", f"port {port} ({name}) bound", f"port {port} not bound"))
     return results
