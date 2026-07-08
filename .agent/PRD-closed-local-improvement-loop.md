@@ -49,6 +49,14 @@ Fix the data pipe and reactivate the loop.
 
 ## Phase 2 (PRD2) — Live Structured-Output Enforcement  [lead: claude]
 The FAST producer-fix — highest leverage, no retrain.
+- **P2.1 — DONE (2026-07-08):** `ai-stack/local-agents/tool_grammar.py` + `scripts/testing/test-tool-grammar.py`
+  (5/5). Pure GBNF construction for the local tool-call envelope `{"function": <enum of leased tools>,
+  "arguments": {...}}` via F2.2's grammar_cache (constrains the function name to the AVAILABLE tools — kills
+  prose-as-tool-call + calls to non-existent tools). Verified: produces real GBNF (`root ::= ...`), cache
+  hits on repeat, stable across tool-order, keyed with the zero_trust namespace.
+- **P2.2 — NEXT (flag-gated + bench-validated):** wire `tool_grammar` into agent_executor's build_llama_payload
+  call sites (1691/1714) — pass `grammar=` on tool-call turns behind `AQ_LOCAL_GBNF` (default OFF). Then a bench
+  run (freed slot) MUST confirm it reduces invalid tool-JSON WITHOUT breaking tool-calling before default-on.
 - Wire F2.2 `grammar_cache.GrammarCache` into `ai-stack/local-agents/dispatch.py` (and the aq-agent-loop tool
   path): dispatch-time schema selection → build/lookup GBNF → attach `grammar` to the llama.cpp request payload
   for tool-call / contribution / strict-JSON lanes. Reject prose-only parser output (→ capture a negative sample).
