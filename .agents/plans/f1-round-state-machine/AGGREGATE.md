@@ -1,10 +1,10 @@
-# F1 (Round State Machine) — Aggregate (interim; ROUND OPEN for antigravity)
+# F1 (Round State Machine) — Aggregate (4/4 landed — RATIFIED)
 
 Last Updated: 2026-07-07
 
 ## Contributors
-- **claude** ✅ (full design) · **codex** ✅ (282L, most detailed) · **local[Qwen]** ⚠️ attempted —
-  no usable design (chunk-read struggle) · **antigravity** ⏳ inbox pending.
+- **claude** ✅ (full design) · **codex** ✅ (282L, most detailed) · **local[Qwen]** ✅ (re-dispatched
+  inlined, 4005B — never skipped) · **antigravity[Gemini]** ✅ (148L, via IDE OAuth inbox).
 
 ## Interim reading (claude + codex — strong convergence)
 Both designed the SAME core: `round.json` as the durable single-source-of-truth state model
@@ -24,6 +24,27 @@ chunk-reads — and F1's typed sidecar + collect-time extraction ensures even a 
 yields structured data. This is live evidence for F1 (typed extraction) + F2 (fast-lane/GBNF) + a
 round-driver improvement.
 
+## antigravity[Gemini] — folded (adds 3 concrete mechanisms the others under-specified)
+1. **State-locked idempotency HASHING** — `idempotency_hash = sha256(round_id + agent_role + task_prompt)`
+   keys each lane (not a random GUID), so resume-after-crash safely re-attaches without re-triggering
+   inference. Sharpens the "idempotent commands" requirement into a concrete key.
+2. **Deterministic late-local `AMEND` state** — explicit transition for the never-skip-local case:
+   `CONSENSUS_LOCKED → AMEND`; if late-local verdict concurs (or its required_changes ⊆ locked set) →
+   auto-append + back to `CONSENSUS_LOCKED`; if it dissents/adds changes → roll back to
+   `CONFLICTS_IDENTIFIED`. This is the missing formal answer to "late local admissible but consensus
+   already moved" — codex/claude asserted the policy; antigravity gives the state edge.
+3. **Out-of-band `<agent>.json` sidecar + in-band regex fallback** — typed contribution envelope
+   (verdict/required_changes/anchors/metrics/provenance/signature) with a regex front-matter extractor
+   when a simple-text model crashes without the sidecar. Directly answers the local-degradation problem
+   this very round hit (local emits text, 0 tool calls) — the harness still gets structured data.
+
+Its `round.json` manifest + Contribution Envelope schemas and 6 golden-ROUND tests
+(`test_late_local_concurrence`, `test_late_local_conflict`, `test_idempotent_retry`, …) are the most
+implementation-ready and become the F1 schema baseline.
+
 ## Status
-2 strong designs converge; round OPEN for antigravity. Full synthesis + top-3 merge when antigravity
-lands. ACTION: aq-collab-round should inline `--target` for local (prevents the chunk-read failure).
+**4/4 landed — RATIFIED.** All four converge on `round.json` durable state model + typed contribution
+contract + idempotent commands + quorum/timeout (late-local admissible) + conflict objects + golden-ROUND
+tests. Antigravity's manifest/envelope schemas + AMEND state + idempotency hash + sidecar-with-fallback
+are adopted as the F1 implementation baseline. ACTION (already landed in aq-collab-round): inline
+`--target` for local to prevent the chunk-read failure this round diagnosed.
