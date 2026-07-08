@@ -130,3 +130,16 @@ rebuild-gated). Then F3 (CapabilityLease + OTel) instruments both F1 and F2.
   now MECHANIZED** — a manifest with claude+codex submitted but a REQUIRED local lane pending (min_lanes=3,
   required_agents includes local) → quorum_met False → aggregate does NOT reach CONSENSUS_LOCKED (locked_at
   None). Consensus cannot silently proceed while local is delayed. 7/7 pytest green. NEXT: F2.4 (model_tier.py).
+- **F2.4 — DONE (2026-07-07). PHASE A COMPLETE.** `scripts/ai/lib/model_tier.py` + `scripts/testing/test-model-tier.py`.
+  codex-authored (task rfck3p), orchestrator-integrated. Pure classifier: Tier enum (SMALL_RESIDENT/
+  MID_RESIDENT/LARGE_SESSION); `route(task_class) -> TierRoute{tier, concurrency_limit, residency}` over the
+  ratified matrix (VERIFIED: classification/json_repair/short_critique → SMALL conc=3 resident; bounded_edit/
+  single_file_plan → MID conc=1 resident; architecture/consensus_vote → LARGE conc=1 session; UNKNOWN → MID
+  conservative default, never the scarce 35B). 5/5 pytest green. Headers clean.
+
+## PHASE A COMPLETE (2026-07-07)
+F2.1 scheduler.py (MLFQ+aging+preempt, 7) · F2.2 grammar_cache.py (canonical GBNF key, 8) · F2.3
+backpressure.py (SLO + never-skip-local mechanized via F1 quorum contract, 7) · F2.4 model_tier.py (3-tier
+routing, 5). All PURE rebuild-free scripts/ai/lib modules, 27/27 tests green, Phase-A guardrails held (no
+dispatch.py/Nix/service touch). NEXT: PHASE B (F2.5 fast-lane :8082 + VRAM pool + Nix + 35B-session-mode,
+F2.6 A/B bench) — REBUILD-GATED, held for user review + explicit go-ahead per automation-first.
