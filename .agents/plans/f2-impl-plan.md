@@ -122,3 +122,11 @@ rebuild-gated). Then F3 (CapabilityLease + OTel) instruments both F1 and F2.
   same key, different zero_trust_state → different key (shares F3 namespace), version prefix present. Bounded
   LRU (get_or_build hit/miss, eviction counted, stats), pluggable builder (test injects counting stub). Pure.
   8/8 pytest green. Phase-A guardrail held. NEXT: F2.3 (backpressure.py + F1 quorum contract test).
+- **F2.3 — DONE (2026-07-07).** `scripts/ai/lib/backpressure.py` + `scripts/testing/test-backpressure.py`.
+  codex-authored (task cyri2o), orchestrator-integrated. Signal enum (OK/LOCAL_DELAYED/REJECT); pure
+  `assess(queue_wait_s, expected_infer_s, remaining_deadline_s)` per the SLO rule (expected>remaining →
+  LOCAL_DELAYED; wait>15s → LOCAL_DELAYED; deadline≤0 → REJECT; else OK — all verified); `is_admissible`
+  (LOCAL_DELAYED admissible, REJECT not). **The ratified F1 quorum CONTRACT TEST passes: never-skip-local is
+  now MECHANIZED** — a manifest with claude+codex submitted but a REQUIRED local lane pending (min_lanes=3,
+  required_agents includes local) → quorum_met False → aggregate does NOT reach CONSENSUS_LOCKED (locked_at
+  None). Consensus cannot silently proceed while local is delayed. 7/7 pytest green. NEXT: F2.4 (model_tier.py).
