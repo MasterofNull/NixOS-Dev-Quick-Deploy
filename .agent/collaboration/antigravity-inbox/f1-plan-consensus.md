@@ -1,0 +1,148 @@
+# A2A task for antigravity — round 'f1-plan-consensus'
+
+Dropped: 2026-07-08T00:27:59Z
+
+Respond by writing `.agents/plans/f1-plan-consensus/antigravity.md`.
+
+COLLABORATIVE ROUND 'f1-plan-consensus'.
+=== REVIEW ARTIFACT (.agents/plans/f1-impl-plan.md) — INLINED; do NOT read the file ===
+# F1 Implementation Plan — Durable Typed Round State Machine + Contribution Contract
+
+Status: DRAFT (awaiting all-agent plan consensus)
+Owner: claude (orchestrator)
+Last Updated: 2026-07-07
+Source of truth for DESIGN: `.agents/plans/f1-round-state-machine/AGGREGATE.md` (4/4 ratified)
+Design brief: `.agents/plans/f1-brief.md`
+
+## Objective
+Replace `aq-collab-round`'s ad-hoc primitives (a directory + `<agent>.md` files + operator memory) with
+an explicit, typed, resumable, testable round primitive backed by `round.json`. The collaborative-round
+machinery is now the core all future factory operations run through; the ratified foundation critique
+ranked "durable typed round state machine" the #1 change, unanimously. This is that slice.
+
+## Problem
+`aq-collab-round` (scripts/ai/aq-collab-round) works but is ad-hoc:
+- **No durable state** — round progress is inferred from which `<agent>.md` files exist; there is no
+  lifecycle, no invariants, no resumability after process death.
+- **Freeform contributions** — verdicts live in prose; aggregation is orchestrator-manual (I hand-wrote
+  every AGGREGATE.md this epic).
+- **Non-idempotent** — rerunning `open` re-dispatches; `collect` re-extracts; nothing keys a lane to
+  prevent double dispatch.
+- **No quorum/timeout policy** — "consensus" is currently "whatever landed"; late-local is folded by hand.
+- **No conflict object** — competing recommendations are resolved in my head, not as typed data.
+- **Untested orchestration** — we test tasks, never the round lifecycle itself (missing/late/malformed
+  lanes, recovery-after-death). This epic hit ALL of these live (local text-only emission, IDE 6h idle,
+  orphaned dispatch) and each was handled by manual salvage.
+
+## Solution (from the 4/4-ratified design; antigravity schemas = baseline)
+A `round.json` manifest as the single source of truth, a typed `<agent>.json` contribution envelope
+(markdown stays as the human body), idempotent commands keyed by `idempotency_hash`, a quorum/timeout
+policy with an explicit `AMEND` state for late-local, deterministic aggregation, and golden-ROUND tests.
+`aq-collab-round` migrates onto it without breaking in-flight rounds.
+
+### State machine (adopt antigravity's, which extends the brief)
+`CREATED → DISPATCHED → CONTRIBUTING → COLLECTED → {CONFLICTS_IDENTIFIED | CONSENSUS_LOCKED} →
+ASSIGNED → IMPLEMENTING → VALIDATING → CLOSED` (+ terminal `ABORTED`), plus the late-local edge
+`CONSENSUS_LOCKED → AMEND → {CONSENSUS_LOCKED | CONFLICTS_IDENTIFIED}`. Every transition records
+`{transition, timestamp, actor}` in `round.json.history`. Invariants per state come from the aggregate
+(e.g. contributions immutable once registered; no file mods after CONSENSUS_LOCKED except via AMEND).
+
+## Context — read FIRST (do not re-read in later slices)
+- `.agents/plans/f1-round-state-machine/AGGREGATE.md` — the ratified merge (schemas + AMEND + tests).
+- `.agents/plans/f1-round-state-machine/antigravity.md` — round.json + Contribution Envelope JSON Schema.
+- `.agents/plans/f1-round-state-machine/codex.md` — most detailed lifecycle + idempotency rules.
+- `.agents/plans/f1-brief.md` — the 8 design targets.
+- `scripts/ai/aq-collab-round` — the migration surface (open/status/collect, PROCESS_AGENTS, _write_prompt
+  inlining, _extract_local_verdict — the text-only salvage that F1.2 formalizes).
+- `.agent/WORKFLOW-CANON.md` — the round protocol this codifies.
+
+## Steps (5 slices — each an independent, validated, committed unit)
+
+### F1.1 — round.json schema + state machine core  [lead: codex/architect]
+- New module `ai-stack/local-agents/round_state.py` (or `scripts/ai/lib/round_state.py` — decide in
+  consensus; must be importable by both aq-collab-round and future coordinator).
+- Define `round.json` schema (JSON Schema draft 2020-12 + a pydantic/dataclass mirror): schema_version,
+  round_id, state, task{prompt,target,scope_files}, quorum_policy{min_lanes,required_agents,
+  late_local_admissible}, deadline, lanes[]{agent,dispatch_id,idempotency_hash,status,landed_at},
+  consensus_hash, history[].
+- `transition(round, to_state, actor)` — validate the edge against the allowed-transition table; reject
+  illegal transitions; append history; atomic write (temp + os.replace, same pattern as aq-agent-reap).
+- Unit tests for every legal + a sample of illegal transitions.
+- **Validate:** `python3 -m pytest` the new tests; `python3 -c "import round_state"`; tier0 gate.
+
+### F1.2 — typed contribution envelope + text-only fallback extractor  [lead: claude/impl + local as test]
+- `<agent>.json` sidecar schema: schema_version, agent_id, model_provenance{name,version,params},
+  verdict(APPROVE|APPROVE_WITH_CHANGES|REJECT|ABSTAIN), required_changes[]{file,line_range,desc,severity},
+  risks[], tests[], anchors[], top_changes[], metrics{latency_ms,tokens_in,tokens_out}, signature(opt).
+- `extract_contribution(agent, round_dir)` — prefer the `<agent>.json` sidecar; **fallback: regex-parse a
+  front-matter / fenced-JSON block from `<agent>.md` or the raw dispatch output log** when a text-only
+  model (local, 0 tool calls) never wrote the sidecar. This formalizes `_extract_local_verdict`.
+- **never-skip-local acceptance:** feed a real local text-only output (e.g. this epic's
+  `local-20260707-165501-e1k8vc.log`, which emitted a JSON blob as text) and assert a valid typed
+  contribution is recovered.
+- **Validate:** pytest with a fixture set of malformed/text-only/clean inputs; tier0.
+
+### F1.3 — idempotent open/collect/aggregate + AMEND  [lead: codex/architect]
+- `idempotency_hash = sha256(round_id + agent_role + task_prompt)` per lane; `open` refuses to
+  re-dispatch a lane whose hash is already registered `running|submitted`.
+- `collect` is a pure read+extract (rerun-safe; never double-counts).
+- `aggregate(round)` — deterministic: verdict tally, merge required_changes by (file,line) with
+  provenance, emit typed CONFLICT objects for genuine overlaps → `CONSENSUS_LOCKED` (0 conflicts) or
+  `CONFLICTS_IDENTIFIED`. Late-local after lock → `AMEND`: concur (verdict matches ∧ changes ⊆ locked) →
+  append + relock; else → `CONFLICTS_IDENTIFIED`.
+- **Validate:** rerun `open`/`collect`/`aggregate` twice, assert no duplicate dispatch / no double count;
+  AMEND concur + conflict paths tested; tier0.
+
+### F1.4 — golden-ROUND tests (test the orchestration itself)  [lead: claude/reviewer]
+- `scripts/testing/test-round-state-machine.py`: test_clean_lock, test_idempotent_retry,
+  test_late_local_concurrence, test_late_local_conflict, test_quorum_timeout, test_invalid_schema,
+  test_missing_lane, test_dispatch_failure, test_recovery_after_process_death.
+- Wire into the focused-CI / tier0 test discovery so regressions fail the gate.
+- **Validate:** all golden rounds green; tier0.
+
+### F1.5 — migrate aq-collab-round onto round.json (non-breaking)  [lead: claude/orchestrator]
+- `open` writes `round.json` (state=DISPATCHED) alongside existing per-agent files; `status`/`collect`
+  read state from `round.json` but STILL honor existing `<agent>.md` presence so the 4 in-flight ratified
+  rounds keep working.
+- `collect` calls `extract_contribution` (F1.2) and `aggregate` (F1.3); prints the typed consensus.
+- Keep the CLI surface (`open/status/collect`) backward-compatible; add `aggregate` + `assign` subcommands.
+- **Validate:** run `collect` against an existing ratified round (e.g. factory-critique) — must not corrupt
+  it and must reproduce the 4/4 verdict; tier0.
+
+## Agent role assignments (flat collaborative — all engaged)
+- **codex** (architect): F1.1 schema/state core, F1.3 idempotency/AMEND (its ratified design is deepest).
+- **claude** (orchestrator/impl/reviewer): F1.2 extractor, F1.4 tests, F1.5 migration, integration + commits.
+- **local[Qwen]** (test subject + reviewer): the text-only-emission acceptance case for F1.2; reviews slices.
+- **antigravity[Gemini]** (schema-fidelity reviewer): confirms the implemented schemas match its ratified
+  baseline; via IDE inbox, no keys.
+
+## Validation commands (every slice)
+```bash
+python3 -m pytest scripts/testing/test-round-state-machine.py -q     # F1.4 onward
+python3 -c "import json,jsonschema; jsonschema.Draft202012Validator.check_schema(json.load(open('<schema>')))"
+scripts/governance/tier0-validation-gate.sh --pre-commit
+scripts/ai/aq-collab-round collect --round factory-critique          # F1.5 non-regression on a live round
+```
+
+## Evidence requirements (per commit)
+- Test output pasted (pytest summary), tier0 PASS line, and — for F1.5 — proof the existing ratified
+  rounds still collect to 4/4. Commit body: root cause, mechanism, alternatives rejected, which ratified
+  design anchor it implements.
+
+## Rollback notes
+- Each slice is additive: `round.json` is written ALONGSIDE the existing files; `aq-collab-round`'s
+  markdown path is never removed until F1.5 proves parity. Revert = `git revert <slice-commit>`; no data
+  migration to undo (round.json is derived, regenerable from the per-agent files).
+- The 4 in-flight ratified rounds (factory-critique, f1/f2/f3) MUST continue to `collect` throughout —
+  this is the non-breaking guard and the F1.5 acceptance test.
+
+## Sequencing
+F1.1 → F1.2 → F1.3 → F1.4 → F1.5 (each committed + validated before the next). Then this unblocks F2
+(scheduler has a typed round to schedule) and F3 (OTel instruments the state transitions).
+
+=== END ARTIFACT ===
+
+TASK:
+PLAN-CONSENSUS review of the F1 implementation plan (inlined above). The F1 DESIGN is already 4/4 ratified — do NOT re-design; assess whether this IMPLEMENTATION PLAN faithfully and completely implements it. Answer decisively: (1) Does the F1.1-F1.5 slice breakdown correctly realize the ratified round.json manifest + typed Contribution Envelope + AMEND-late-local + idempotency_hash + golden-ROUND tests? (2) Any GAP between plan and ratified design (missing schema field, missing state edge, missing test case)? (3) Sequencing/risk problems — is the non-breaking aq-collab-round migration (F1.5) actually safe for the 4 in-flight ratified rounds? (4) Is the module placement (round_state.py location) right for reuse by both aq-collab-round and the future coordinator? (5) Concrete corrections. Rank your top 3 plan changes. Write your OWN file .agents/plans/f1-plan-consensus/<AGENT>.md only.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/f1-plan-consensus/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.
