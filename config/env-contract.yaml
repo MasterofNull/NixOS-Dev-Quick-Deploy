@@ -68,6 +68,13 @@ variables:
     consumers: [local-agents]
     description: "Enable SSE streaming for local agent llama.cpp calls so long generations remain observable"
 
+  - canonical: AQ_LOCAL_GBNF
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [local-agents]
+    description: "GBNF tool-call constraint mode for local agents: unset/off disables it, repair constrains only malformed tool-call retries, true/1/on constrains all local tool-call generations for benchmarking"
+
   - canonical: LLAMA_CTX_SIZE
     aliases: []
     default: "8192"

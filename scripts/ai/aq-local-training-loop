@@ -53,6 +53,7 @@ sys.path.insert(0, str(_LOCAL_AGENTS))
 
 TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
 RESULTS_LOG   = TELEMETRY_DIR / "training-loop-results.jsonl"
+PROGRESS_FILE = Path(os.getenv("TRAINING_LOOP_PROGRESS_FILE", str(TELEMETRY_DIR / "training-loop-progress.json")))
 DELEGATION_DIR = _REPO_ROOT / ".agents" / "delegation"
 REGISTRY       = DELEGATION_DIR / "registry.jsonl"
 OUTPUTS_DIR    = DELEGATION_DIR / "outputs"
@@ -66,6 +67,7 @@ DEFAULT_TASK_TIMEOUT_S = 1200  # 20 min max per task (Qwen3-35B long-reasoning s
 # Eval tasks use a short token cap so bounded test cases complete quickly.
 # Production/improvement tasks default to DIRECT_MAX_TOKENS (4096) via env.
 EVAL_MAX_TOKENS = 512
+ACTIVE_RUN_ID: Optional[str] = None
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -172,6 +174,23 @@ def _checkpoint_clear(run_id: str) -> None:
         data.pop(run_id, None)
         CHECKPOINT_FILE.write_text(json.dumps(data, indent=2))
     except (json.JSONDecodeError, OSError):
+        pass
+
+
+def _write_progress(run_id: str, phase: str, **fields: Any) -> None:
+    """Best-effort progress sidecar for long systemd/timer runs."""
+    payload = {
+        "run_id": run_id,
+        "phase": phase,
+        "updated_at": _now(),
+        **fields,
+    }
+    try:
+        PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = PROGRESS_FILE.with_suffix(PROGRESS_FILE.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(PROGRESS_FILE)
+    except OSError:
         pass
 
 
@@ -480,6 +499,7 @@ class TrainingLoop:
         resume=True: load checkpoint and skip cases already completed in this run_id.
         Enables safe restart after nixos-rebuild, hibernation, or SIGTERM.
         """
+        global ACTIVE_RUN_ID
         run_id = f"loop-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
         if resume:
             # On resume, reuse the most recent incomplete run_id from checkpoint
@@ -491,12 +511,15 @@ class TrainingLoop:
                         print(f"[training-loop] Resuming run {run_id}")
             except (json.JSONDecodeError, OSError):
                 pass
+        ACTIVE_RUN_ID = run_id
         print(f"[training-loop] Starting run {run_id}")
+        _write_progress(run_id, "starting", dry_run=self.dry_run, eval_pack=str(self.eval_pack))
 
         # Layer 2: reap dead background processes before submitting new tasks
         reaped = _reap_orphans()
         if reaped:
             print(f"[training-loop] Reaped {reaped} orphaned task(s) from prior runs")
+        _write_progress(run_id, "ingest", reaped_orphans=reaped)
 
         # ── 1. INGEST ──────────────────────────────────────────────────────────
         print("[training-loop] Phase 1: telemetry ingest")
@@ -511,12 +534,19 @@ class TrainingLoop:
         except Exception as exc:
             print(f"[training-loop] WARNING: ingest failed: {exc}", file=sys.stderr)
             ingest_report = {}
+        _write_progress(
+            run_id,
+            "eval",
+            samples_added=ingest_report.get("positive_samples_added", 0),
+            dataset_total=ingest_report.get("dataset_total", 0),
+        )
 
         # ── 2. EVAL ────────────────────────────────────────────────────────────
         print("[training-loop] Phase 2: delegating eval tasks")
         cases = _load_eval_pack(self.eval_pack)
         if not cases:
             print("[training-loop] ERROR: no eval cases found", file=sys.stderr)
+            _write_progress(run_id, "error", error="no eval cases")
             return {"run_id": run_id, "error": "no eval cases"}
 
         # ── 3. EVAL + WAIT + SCORE ─────────────────────────────────────────────
@@ -543,6 +573,7 @@ class TrainingLoop:
             mode = case.get("mode", "hybrid")
 
             async def _submit_and_wait() -> Optional[str]:
+                _write_progress(run_id, "eval_submit", case_id=case.get("id"), mode=mode)
                 # Use 600s HTTP timeout for direct mode to tolerate 1 extra queued
                 # request in llama.cpp without timing out (serial backend, 5 min/req)
                 http_to = 600 if mode == "direct" else 0
@@ -551,6 +582,7 @@ class TrainingLoop:
                     return None
                 if self.verbose:
                     print(f"[training-loop]   submitted {case['id']} → {tid}")
+                _write_progress(run_id, "eval_wait", case_id=case.get("id"), mode=mode, task_id=tid)
                 return await _wait_for_task(tid, timeout_s=self.task_timeout)
 
             if mode == "direct":
@@ -568,6 +600,14 @@ class TrainingLoop:
             if self.verbose:
                 status = "PASS" if result.get("pass") else "FAIL"
                 print(f"[training-loop]   {status} {case['id']} score={result.get('score')}")
+            _write_progress(
+                run_id,
+                "eval_case_done",
+                case_id=case.get("id"),
+                mode=mode,
+                passed=bool(result.get("pass")),
+                score=result.get("score"),
+            )
 
             # Checkpoint after each task so partial progress survives interruption
             _checkpoint_save(run_id, {case["id"]: result})
@@ -580,6 +620,7 @@ class TrainingLoop:
         failing  = [s for s in scores if not s.get("pass")]
         pass_rate = len(passing) / max(len(scores), 1)
         print(f"[training-loop]   pass {len(passing)}/{len(scores)} ({pass_rate:.0%})")
+        _write_progress(run_id, "improve", pass_count=len(passing), fail_count=len(failing), cases_total=len(scores))
 
         # ── 4. IMPROVE ─────────────────────────────────────────────────────────
         improvements: List[Dict] = []
@@ -668,6 +709,16 @@ class TrainingLoop:
 
         # Clear checkpoint — run completed successfully, no resume needed
         _checkpoint_clear(run_id)
+        _write_progress(
+            run_id,
+            "complete",
+            pass_count=len(passing),
+            fail_count=len(failing),
+            cases_total=len(cases),
+            samples_added=ingest_report.get("positive_samples_added", 0),
+            proposals=len(validated_improvements),
+        )
+        ACTIVE_RUN_ID = None
 
         return result
 
@@ -711,15 +762,31 @@ def _status(n: int = 10) -> None:
                 pass
     if not runs:
         print("No results yet.")
+    else:
+        for run in sorted(runs.values(), key=lambda r: r.get("timestamp", ""))[-n:]:
+            dr = " [dry]" if run.get("dry_run") else ""
+            print(
+                f"{run['timestamp'][:19]}  {run['run_id']}"
+                f"  pass={run['pass_count']}/{run['cases_total']}"
+                f"  +{run['ingest']['samples_added']} samples"
+                f"  {run['improvements_proposed']} proposals{dr}"
+            )
+
+    if not PROGRESS_FILE.exists():
         return
-    for run in sorted(runs.values(), key=lambda r: r.get("timestamp", ""))[-n:]:
-        dr = " [dry]" if run.get("dry_run") else ""
-        print(
-            f"{run['timestamp'][:19]}  {run['run_id']}"
-            f"  pass={run['pass_count']}/{run['cases_total']}"
-            f"  +{run['ingest']['samples_added']} samples"
-            f"  {run['improvements_proposed']} proposals{dr}"
-        )
+    try:
+        progress = json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+    print(
+        "progress "
+        f"{progress.get('updated_at', '?')[:19]} "
+        f"{progress.get('run_id', '?')} "
+        f"phase={progress.get('phase', '?')}"
+    )
+    for key in ("case_id", "mode", "task_id", "pass_count", "fail_count", "cases_total", "samples_added", "dataset_total"):
+        if key in progress:
+            print(f"  {key}: {progress[key]}")
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -751,14 +818,17 @@ def _cli() -> None:
         _status()
         return
 
-    # SIGTERM handler: on rebuild/shutdown, let current task finish and checkpoint
-    # before exiting cleanly so --resume can pick up where we left off.
+    # SIGTERM handler: rebuild/shutdown must not hang systemd for a long eval
+    # wait. Per-case checkpoints are already written after each completed case;
+    # incomplete delegated tasks are reconciled on the next run.
     _shutdown = {"requested": False}
 
     def _on_sigterm(signum: int, frame: object) -> None:
-        print("[training-loop] SIGTERM received — checkpointing and exiting after current task",
+        print("[training-loop] signal received — writing progress and exiting",
               file=sys.stderr)
+        _write_progress(ACTIVE_RUN_ID or "unknown", "stopping", signal=signum)
         _shutdown["requested"] = True
+        raise SystemExit(0)
 
     signal.signal(signal.SIGTERM, _on_sigterm)
     signal.signal(signal.SIGHUP, _on_sigterm)

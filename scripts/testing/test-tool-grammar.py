@@ -10,6 +10,7 @@ sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
 
 import tool_grammar  # noqa: E402
 import grammar_cache  # noqa: E402
+import agent_executor  # noqa: E402
 
 
 def test_schema_constrains_function_to_available_tools():
@@ -50,6 +51,44 @@ def test_tool_order_and_zero_trust_are_stable_keys():
     # different zero_trust_state -> different key -> miss
     _g3, hit3 = tool_grammar.tool_call_grammar(["a", "b"], zero_trust_state="zt1", cache=cache)
     assert hit3 is False
+
+
+def test_agent_executor_repair_mode_forces_grammar_only_for_repair(monkeypatch):
+    executor = agent_executor.LocalAgentExecutor(tool_registry=_FakeRegistry(), enable_fallback=False)
+    monkeypatch.setattr(agent_executor, "tool_grammar", _FakeGrammar)
+    monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_ALWAYS_ENABLED", False)
+    monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_REPAIR_ENABLED", True)
+
+    assert executor._tool_call_grammar() is None
+    assert executor._tool_call_grammar(force_repair=True) == "root ::= object"
+
+
+def test_agent_executor_gbnf_disabled_returns_no_repair_grammar(monkeypatch):
+    executor = agent_executor.LocalAgentExecutor(tool_registry=_FakeRegistry(), enable_fallback=False)
+    monkeypatch.setattr(agent_executor, "tool_grammar", _FakeGrammar)
+    monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_ALWAYS_ENABLED", False)
+    monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_REPAIR_ENABLED", False)
+
+    assert executor._tool_call_grammar() is None
+    assert executor._tool_call_grammar(force_repair=True) is None
+
+
+class _FakeTool:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.enabled = True
+
+
+class _FakeRegistry:
+    def __init__(self) -> None:
+        self.tools = {"read_file": _FakeTool("read_file")}
+
+
+class _FakeGrammar:
+    @staticmethod
+    def tool_call_grammar(names):
+        assert names == ["read_file"]
+        return "root ::= object", False
 
 
 if __name__ == "__main__":

@@ -3095,7 +3095,22 @@ def _check_phase87_training_ingest(ctx: RunContext) -> list[CheckResult]:
         else:
             results.append(failed(4, "87.3.2", "ai-training-ingest timer", "not found in mcp-servers.nix"))
 
-    # 87.3.3 — fine-tuning dataset exists and has ≥1 row (xfail on first run)
+        loop_needles = [
+            "systemd.services.ai-local-training-loop",
+            "systemd.timers.ai-local-training-loop",
+            "aq-local-training-loop",
+            "training-loop-results.jsonl",
+            "training-loop-progress.json",
+            "PYTHONUNBUFFERED=1",
+            "TRAINING_LOOP_PROGRESS_FILE=",
+        ]
+        missing_loop = [needle for needle in loop_needles if needle not in nix_text]
+        if missing_loop:
+            results.append(failed(4, "87.3.3", "ai-local-training-loop service+timer", f"missing: {', '.join(missing_loop)}"))
+        else:
+            results.append(passed(4, "87.3.3", "ai-local-training-loop service+timer wired in mcp-servers.nix"))
+
+    # 87.3.4 — fine-tuning dataset exists and has ≥1 row (xfail on first run)
     dataset = ctx.repo_root / "ai-stack" / "hybrid" / "fine-tuning" / "dataset.jsonl"
     # Also check the runtime path that training_ingest uses by default
     runtime_dataset = "/var/lib/ai-stack/hybrid/fine-tuning/dataset.jsonl"
@@ -3104,16 +3119,16 @@ def _check_phase87_training_ingest(ctx: RunContext) -> list[CheckResult]:
     if dataset.exists():
         line_count = sum(1 for _ in dataset.open())
         if line_count >= 1:
-            results.append(passed(4, "87.3.3", f"fine-tuning/dataset.jsonl: {line_count} rows"))
+            results.append(passed(4, "87.3.4", f"fine-tuning/dataset.jsonl: {line_count} rows"))
         else:
-            results.append(failed(4, "87.3.3", "fine-tuning/dataset.jsonl", "file exists but is empty — timer has not run yet"))
+            results.append(failed(4, "87.3.4", "fine-tuning/dataset.jsonl", "file exists but is empty — timer has not run yet"))
     elif runtime_path.exists():
         line_count = sum(1 for _ in runtime_path.open())
         if line_count >= 1:
-            results.append(passed(4, "87.3.3", f"fine-tuning/dataset.jsonl (runtime): {line_count} rows"))
+            results.append(passed(4, "87.3.4", f"fine-tuning/dataset.jsonl (runtime): {line_count} rows"))
         else:
-            results.append(skipped(4, "87.3.3", "fine-tuning/dataset.jsonl", "empty — timer has not run yet (xfail first run)"))
+            results.append(skipped(4, "87.3.4", "fine-tuning/dataset.jsonl", "empty — timer has not run yet (xfail first run)"))
     else:
-        results.append(skipped(4, "87.3.3", "fine-tuning/dataset.jsonl", "not yet created — run ai-training-ingest.service or wait for daily timer"))
+        results.append(skipped(4, "87.3.4", "fine-tuning/dataset.jsonl", "not yet created — run ai-training-ingest.service or wait for daily timer"))
 
     return results
