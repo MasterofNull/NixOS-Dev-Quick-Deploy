@@ -6,11 +6,22 @@ from __future__ import annotations
 import ast
 import json
 import re
+import sys
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+LOCAL_AGENTS_DIR = REPO_ROOT / "ai-stack" / "local-agents"
+if LOCAL_AGENTS_DIR.exists() and str(LOCAL_AGENTS_DIR) not in sys.path:
+    sys.path.insert(0, str(LOCAL_AGENTS_DIR))
+
+try:
+    import training_capture
+except Exception:  # pragma: no cover - capture is best-effort instrumentation.
+    training_capture = None  # type: ignore[assignment]
 
 
 class Verdict(StrEnum):
@@ -98,14 +109,37 @@ def extract_contribution(
         if recovered and "verdict" in recovered:
             contribution = _build_fallback_contribution(agent, recovered, text)
             if contribution is not None:
+                _capture_fallback_failure(
+                    agent=agent,
+                    round_dir=round_dir,
+                    output_log=output_log,
+                    bad_output=text,
+                    failure_class="round_contribution_structured_fallback",
+                )
                 return contribution, "extracted-fallback"
 
         if path == markdown:
-            return _minimal_prose_contribution(agent, text), "extracted-prose"
+            contribution = _minimal_prose_contribution(agent, text)
+            _capture_fallback_failure(
+                agent=agent,
+                round_dir=round_dir,
+                output_log=output_log,
+                bad_output=text,
+                failure_class="round_contribution_prose_fallback",
+            )
+            return contribution, "extracted-prose"
 
         prose = _extract_prose_from_log(text)
         if prose.strip():
-            return _minimal_prose_contribution(agent, prose), "extracted-prose"
+            contribution = _minimal_prose_contribution(agent, prose)
+            _capture_fallback_failure(
+                agent=agent,
+                round_dir=round_dir,
+                output_log=output_log,
+                bad_output=prose,
+                failure_class="round_contribution_log_prose_fallback",
+            )
+            return contribution, "extracted-prose"
 
     return None, "absent"
 
@@ -114,6 +148,39 @@ def export_json_schema() -> dict[str, Any]:
     """Export the contribution JSON Schema from the Pydantic SSOT."""
 
     return Contribution.model_json_schema()
+
+
+def _capture_fallback_failure(
+    *,
+    agent: str,
+    round_dir: Path,
+    output_log: Path | None,
+    bad_output: str,
+    failure_class: str,
+) -> None:
+    """Capture fallback-only contributions as teacher-correctable training samples."""
+
+    if training_capture is None:
+        return
+    prompt = (
+        "Emit a valid collaboration Contribution JSON sidecar for the agent output. "
+        "The JSON must satisfy scripts/ai/lib/round_contribution.py::Contribution."
+    )
+    try:
+        training_capture.capture_failure(
+            prompt=prompt,
+            bad_output=bad_output,
+            failure_class=failure_class,
+            tools_available=["contribution_json_sidecar"],
+            model_provenance={
+                "agent_id": agent,
+                "round_dir": str(round_dir),
+                "output_log": str(output_log) if output_log is not None else None,
+            },
+            source="round_contribution.extract_contribution",
+        )
+    except Exception:
+        return
 
 
 def _candidate_paths(markdown: Path, output_log: Path | None) -> list[Path]:

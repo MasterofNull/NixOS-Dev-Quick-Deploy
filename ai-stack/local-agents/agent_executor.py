@@ -68,15 +68,16 @@ from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, A
 from tool_registry import ToolCall, ToolRegistry, get_registry
 from context_risk import compact_context_if_needed
 
-# P2 (closed-local-improvement-loop): GBNF-constrained tool-call decoding. Behind AQ_LOCAL_GBNF and
-# DEFAULT OFF — enabling it live must be bench-validated first (a tool-call-only grammar on every turn
-# would break final-answer turns; the correct enablement is a repair-retry, P2.3). This flag lands the
-# plumbing so the bench can measure it without touching default behavior.
+# P2 (closed-local-improvement-loop): GBNF-constrained tool-call decoding. AQ_LOCAL_GBNF remains
+# DEFAULT OFF. Values true/1/on keep the original all-turn grammar plumbing for benchmarking; value
+# "repair" constrains only a malformed tool-call retry so final-answer turns are unaffected.
 try:
     import tool_grammar  # noqa: E402  (same dir: ai-stack/local-agents/)
 except Exception:  # noqa: BLE001 — never let an optional import break the executor
     tool_grammar = None  # type: ignore
-_LOCAL_GBNF_ENABLED = os.environ.get("AQ_LOCAL_GBNF", "").strip().lower() in ("1", "true", "yes", "on")
+_LOCAL_GBNF_MODE = os.environ.get("AQ_LOCAL_GBNF", "").strip().lower()
+_LOCAL_GBNF_ALWAYS_ENABLED = _LOCAL_GBNF_MODE in ("1", "true", "yes", "on")
+_LOCAL_GBNF_REPAIR_ENABLED = _LOCAL_GBNF_ALWAYS_ENABLED or _LOCAL_GBNF_MODE in ("repair", "retry")
 
 # P1 (closed-local-improvement-loop): capture local failures as labeled training samples.
 try:
@@ -1219,54 +1220,93 @@ class LocalAgentExecutor:
                 # a JSON tool call as its very first response if the parse failed (e.g. embedded
                 # bare newlines in old_string/new_string values).
                 if response.lstrip().startswith('{"function"'):
-                    logger.warning(
-                        "final-response-is-tool-call: response looks like truncated tool call at "
-                        "call %d — requesting prose synthesis (max_tokens=256)",
-                        tool_call_count,
-                    )
-                    # P1: this is an unambiguous local failure — the model emitted a tool-call JSON
-                    # the parser rejected (truncated/malformed). Capture it as a labeled training
-                    # sample so the loop can learn from it. Best-effort; never breaks the turn.
-                    if training_capture is not None:
-                        last_user = next((m.get("content", "") for m in reversed(messages)
-                                          if m.get("role") == "user"), "")
-                        training_capture.capture_failure(
-                            prompt=last_user,
-                            bad_output=response,
-                            failure_class="invalid_tool_json",
-                            tools_available=[t.name for t in self.tool_registry.tools.values()
-                                             if getattr(t, "enabled", True)],
-                            source="agent_executor.parse_failed",
-                            model_provenance={"lane": "local", "call_number": tool_call_count},
+                    if _LOCAL_GBNF_REPAIR_ENABLED:
+                        repair_messages = messages + [
+                            {"role": "assistant", "content": response},
+                            {
+                                "role": "user",
+                                "content": (
+                                    "The previous output was malformed tool-call JSON. "
+                                    "Return exactly one valid JSON tool call matching the available tool schema. "
+                                    "No prose."
+                                ),
+                            },
+                        ]
+                        try:
+                            repaired_response, repair_tokens = await self._call_llama(
+                                repair_messages,
+                                role=role,
+                                max_tokens=AGENT_TOOL_CALL_MAX_TOKENS,
+                                task_type=task.task_type,
+                                task_id=task.id,
+                                call_number=tool_call_count + 1,
+                                force_tool_grammar=True,
+                            )
+                            total_tokens += repair_tokens
+                            repaired_tool_call = self.tool_registry.parse_tool_call_from_llama(repaired_response)
+                            if repaired_tool_call:
+                                logger.info(
+                                    "gbnf-repair: recovered malformed tool call at call %d",
+                                    tool_call_count + 1,
+                                )
+                                response = repaired_response
+                                tool_call = repaired_tool_call
+                        except Exception as _repair_err:
+                            logger.warning(
+                                "gbnf-repair: constrained retry failed at call %d: %s",
+                                tool_call_count + 1,
+                                str(_repair_err)[:120],
+                            )
+                    if not tool_call:
+                        logger.warning(
+                            "final-response-is-tool-call: response looks like truncated tool call at "
+                            "call %d — requesting prose synthesis (max_tokens=256)",
+                            tool_call_count,
                         )
-                    messages.append({"role": "assistant", "content": response})
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            "The previous output was incomplete. "
-                            "Write ONE prose sentence starting with 'COMPLETED:' summarising what was done. "
-                            "No JSON. No tool calls."
-                        ),
-                    })
-                    prose, syn_tokens = await self._call_llama(
-                        messages,
-                        role=role,
-                        max_tokens=256,
-                        task_id=task.id,
-                        call_number=tool_call_count + 1,
-                    )
-                    total_tokens += syn_tokens
+                        # P1: this is an unambiguous local failure — the model emitted a tool-call JSON
+                        # the parser rejected (truncated/malformed). Capture it as a labeled training
+                        # sample so the loop can learn from it. Best-effort; never breaks the turn.
+                        if training_capture is not None:
+                            last_user = next((m.get("content", "") for m in reversed(messages)
+                                              if m.get("role") == "user"), "")
+                            training_capture.capture_failure(
+                                prompt=last_user,
+                                bad_output=response,
+                                failure_class="invalid_tool_json",
+                                tools_available=[t.name for t in self.tool_registry.tools.values()
+                                                 if getattr(t, "enabled", True)],
+                                source="agent_executor.parse_failed",
+                                model_provenance={"lane": "local", "call_number": tool_call_count},
+                            )
+                        messages.append({"role": "assistant", "content": response})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "The previous output was incomplete. "
+                                "Write ONE prose sentence starting with 'COMPLETED:' summarising what was done. "
+                                "No JSON. No tool calls."
+                            ),
+                        })
+                        prose, syn_tokens = await self._call_llama(
+                            messages,
+                            role=role,
+                            max_tokens=256,
+                            task_id=task.id,
+                            call_number=tool_call_count + 1,
+                        )
+                        total_tokens += syn_tokens
+                        _cancel_watchdog()
+                        return prose.strip() if prose.strip() else response, total_tokens
+                if not tool_call:
+                    # Phase E — agent_synthesis_start: no tool call in response after ≥1 tool calls.
+                    if tool_call_count > 0:
+                        await self._emit_agent_event(
+                            task.id, "agent_synthesis_start",
+                            {"tool_call_count": tool_call_count},
+                            _watchdog_last_activity,
+                        )
                     _cancel_watchdog()
-                    return prose.strip() if prose.strip() else response, total_tokens
-                # Phase E — agent_synthesis_start: no tool call in response after ≥1 tool calls.
-                if tool_call_count > 0:
-                    await self._emit_agent_event(
-                        task.id, "agent_synthesis_start",
-                        {"tool_call_count": tool_call_count},
-                        _watchdog_last_activity,
-                    )
-                _cancel_watchdog()
-                return response, total_tokens
+                    return response, total_tokens
 
             # Phase E — agent_tool_intent: emitted after parsing, before dispatch.
             await self._emit_agent_event(
@@ -1688,11 +1728,16 @@ class LocalAgentExecutor:
                 )
                 _validation_passes_without_commit = 0
 
-    def _tool_call_grammar(self) -> Optional[str]:
+    def _tool_call_grammar(self, *, force_repair: bool = False) -> Optional[str]:
         """P2: GBNF constraining output to the tool-call envelope over the ENABLED tools. Returns None
-        unless AQ_LOCAL_GBNF is set (default OFF) — so live behavior is unchanged until bench-validated.
+        unless AQ_LOCAL_GBNF is set (default OFF) or a repair-only retry explicitly requests it.
         Cached on the instance keyed by the enabled-tool set (the lease can hot-swap mid-run)."""
-        if not _LOCAL_GBNF_ENABLED or tool_grammar is None:
+        if tool_grammar is None:
+            return None
+        if force_repair:
+            if not _LOCAL_GBNF_REPAIR_ENABLED:
+                return None
+        elif not _LOCAL_GBNF_ALWAYS_ENABLED:
             return None
         try:
             names = sorted(t.name for t in self.tool_registry.tools.values() if getattr(t, "enabled", True))
@@ -1714,6 +1759,7 @@ class LocalAgentExecutor:
         task_type: Optional[str] = None,
         task_id: Optional[str] = None,
         call_number: int = 0,
+        force_tool_grammar: bool = False,
     ) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
@@ -1752,7 +1798,7 @@ class LocalAgentExecutor:
                 _payload_kwargs["temperature"] = _temperature
             if task_type:
                 _payload_kwargs["task_type"] = task_type
-            _gbnf = self._tool_call_grammar()  # P2: None unless AQ_LOCAL_GBNF (default off)
+            _gbnf = self._tool_call_grammar(force_repair=force_tool_grammar)
             if _gbnf:
                 _payload_kwargs["grammar"] = _gbnf
             payload = build_llama_payload(messages, **_payload_kwargs)
@@ -1778,7 +1824,7 @@ class LocalAgentExecutor:
             _stream_kwargs["temperature"] = _temperature
         if task_type:
             _stream_kwargs["task_type"] = task_type
-        _gbnf = self._tool_call_grammar()  # P2: None unless AQ_LOCAL_GBNF (default off)
+        _gbnf = self._tool_call_grammar(force_repair=force_tool_grammar)
         if _gbnf:
             _stream_kwargs["grammar"] = _gbnf
         payload = build_llama_payload(messages, **_stream_kwargs)

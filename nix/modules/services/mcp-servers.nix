@@ -1745,11 +1745,15 @@ in {
         "z ${dataDir}/hybrid/telemetry/latest-aq-report.json 0664 ${svcUser} ${aiGroup} -"
         # Phase 115.2 — system-state artifact: written by ai-hybrid (hybridUser owns telemetry dir);
         # readable by ai-stack group (0640) so dashboard + coordinator MCP tool can read it.
-        "f ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
-        "z ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
-        # Phase 117.2/117.3 — mirror files for ai-system-state fallback reads.
-        # attention-snapshot: written by attention_queue.py (various callers); 0664 so both
-        #   ai-hybrid and hyperd can write; ai-stack group can read.
+          "f ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
+          "z ${dataDir}/hybrid/telemetry/latest-system-state.json 0640 ${hybridUser} ${aiGroup} -"
+          "f ${dataDir}/hybrid/telemetry/training-loop-results.jsonl 0660 ${hybridUser} ${aiGroup} -"
+          "z ${dataDir}/hybrid/telemetry/training-loop-results.jsonl 0660 ${hybridUser} ${aiGroup} -"
+          "f ${dataDir}/hybrid/telemetry/training-loop-progress.json 0660 ${hybridUser} ${aiGroup} -"
+          "z ${dataDir}/hybrid/telemetry/training-loop-progress.json 0660 ${hybridUser} ${aiGroup} -"
+          # Phase 117.2/117.3 — mirror files for ai-system-state fallback reads.
+          # attention-snapshot: written by attention_queue.py (various callers); 0664 so both
+          #   ai-hybrid and hyperd can write; ai-stack group can read.
         # agent-resume: written by aq-session-start (runs as hyperd); 0640 so ai-hybrid
         #   (in ai-stack group) can read it.
         "f ${dataDir}/hybrid/telemetry/attention-snapshot.json 0664 ${hybridUser} ${aiGroup} -"
@@ -1890,6 +1894,62 @@ in {
           OnCalendar = "*-*-* 03:00:00";
           Persistent = true;
           RandomizedDelaySec = "10min";
+        };
+      };
+
+      # P1.5 — Local model training loop: eval + ingest + proposal generation.
+      # The script must run from the live checkout, not repoSource, because it
+      # derives .agents/delegation paths from __file__ and needs writable state.
+      systemd.services.ai-local-training-loop = {
+        description = "AI local training loop — eval, ingest, and improvement proposals";
+        restartIfChanged = false;
+        path = with pkgs; [bash coreutils curl git python3];
+        serviceConfig =
+          commonServiceConfig
+          // {
+            Type = "oneshot";
+            User = svcUser;
+            Restart = "no";
+            WorkingDirectory = mcp.repoPath;
+            ExecStart = lib.escapeShellArgs [
+              "${pkgs.python3}/bin/python3"
+              "${mcp.repoPath}/scripts/ai/aq-local-training-loop"
+              "--mode"
+              "once"
+              "--task-timeout"
+              "900"
+              "--verbose"
+            ];
+            TimeoutStartSec = "4h";
+            Environment = [
+              "PYTHONUNBUFFERED=1"
+              "REPO_ROOT=${mcp.repoPath}"
+              "TELEMETRY_DIR=${dataDir}/hybrid/telemetry"
+              "TRAINING_LOOP_PROGRESS_FILE=${dataDir}/hybrid/telemetry/training-loop-progress.json"
+              "FINE_TUNING_DATASET=${dataDir}/hybrid/fine-tuning/dataset.jsonl"
+              "HYBRID_URL=http://127.0.0.1:${toString ports.mcpHybrid}"
+              "SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"
+              "LLAMA_URL=http://127.0.0.1:${toString ports.llamaCpp}"
+              "ATTENTION_QUEUE_DIR=${mcp.repoPath}/.agents/attention"
+            ];
+            ReadWritePaths = serviceWritablePaths ++ [
+              "${mcp.repoPath}/.agent/collaboration"
+              "${mcp.repoPath}/.agents/attention"
+              "${mcp.repoPath}/.agents/delegation"
+              "${mcp.repoPath}/config"
+            ];
+          };
+      };
+
+      systemd.timers.ai-local-training-loop = {
+        description = "Daily AI local training loop timer";
+        wantedBy = ["timers.target"];
+        partOf = ["ai-stack.target"];
+        timerConfig = {
+          OnCalendar = "*-*-* 04:15:00";
+          Persistent = true;
+          RandomizedDelaySec = "15min";
+          Unit = "ai-local-training-loop.service";
         };
       };
 
