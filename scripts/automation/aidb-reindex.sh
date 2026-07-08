@@ -74,7 +74,11 @@ log "embed server ready (latency=${_EMBED_LATENCY_MS}ms, ingest_delay=${INGEST_D
 # ---------------------------------------------------------------------------
 log "--- Job 1: logic-patterns indexing ---"
 LOGIC_STATUS=0
-python3 "${REPO_ROOT}/scripts/ai/aq-index-logic-patterns" 2>&1 || LOGIC_STATUS=$?
+# Bound each sub-job (embed-server calls can hang if the server goes unresponsive mid-reindex —
+# e.g. restarted during a nixos-rebuild switch — which previously hung the whole service until its
+# 3h kill). timeout -> exit 124 -> handled as a partial below. Generous default for slow-APU embed;
+# tune REINDEX_SUBJOB_TIMEOUT if legitimate corpus embedding exceeds it.
+timeout "${REINDEX_SUBJOB_TIMEOUT:-5400}" python3 "${REPO_ROOT}/scripts/ai/aq-index-logic-patterns" 2>&1 || LOGIC_STATUS=$?
 if [[ "$LOGIC_STATUS" -eq 0 ]]; then
   log "logic-patterns: OK"
 else
@@ -86,7 +90,7 @@ fi
 # ---------------------------------------------------------------------------
 log "--- Job 2: project knowledge corpus ---"
 KNOWLEDGE_STATUS=0
-python3 "${REPO_ROOT}/scripts/data/ingest-project-knowledge.py" \
+timeout "${REINDEX_SUBJOB_TIMEOUT:-5400}" python3 "${REPO_ROOT}/scripts/data/ingest-project-knowledge.py" \
   --paths ai-stack/ dashboard/ scripts/ config/ nix/ docs/ \
   --project nixos-dev-quick-deploy \
   --delay "${INGEST_DELAY}" \
@@ -102,7 +106,7 @@ fi
 # ---------------------------------------------------------------------------
 log "--- Job 3: capability-domain namespace seeds ---"
 DOMAIN_STATUS=0
-python3 "${REPO_ROOT}/scripts/data/seed-domain-knowledge.py" \
+timeout "${REINDEX_SUBJOB_TIMEOUT:-5400}" python3 "${REPO_ROOT}/scripts/data/seed-domain-knowledge.py" \
   --delay "${INGEST_DELAY}" \
   2>&1 || DOMAIN_STATUS=$?
 if [[ "$DOMAIN_STATUS" -eq 0 ]]; then
