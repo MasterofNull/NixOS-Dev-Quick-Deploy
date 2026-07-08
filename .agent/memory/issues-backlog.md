@@ -1220,9 +1220,9 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Action: Updated active agent instructions and skills to point to `ai-stack/agent-memory/MEMORY.md`, kept warm topics under `.agent/memory/*.md`, and added a registry test to block future stale hot-memory references.
   File: AGENTS.md; README.md; .agent/SKILL_INDEX.md; .agent/WORKFLOW-CANON.md; .agent/GEMINI.md; .agent/skills/context-efficiency/SKILL.md; scripts/testing/test-agent-memory-surface-registry.py
 
-[OPEN] delegate-to-local-task-subcommand-parser-drift — Task-specific `--status`, `--check`, and `--cancel` invocations reject documented positional task IDs, blocking routine monitor/cancel workflows; discovered while attempting the multi-agent reviewer pass for the coordinator endpoint QA slice.
+[DONE] delegate-to-local-task-subcommand-parser-drift — Task-specific `--status`, `--check`, and `--cancel` invocations rejected documented positional task IDs, blocking routine monitor/cancel workflows; fixed by consuming the trailing task ID after the flag shift and adding `scripts/testing/test-delegate-to-local-argparse.sh`.
   Severity: medium
-  Action: Fix `scripts/ai/delegate-to-local` argument parsing so documented `--status ID`, `--check ID`, and `--cancel ID` work consistently, or update CLI help and wrappers to match implemented behavior; add a regression test.
+  Action: Done — fixed `scripts/ai/delegate-to-local` argument parsing so documented `--status ID`, `--check ID`, `--repair-status ID`, and `--cancel ID` work consistently; added a regression test.
   File: scripts/ai/delegate-to-local
 
 [PENDING-REBUILD] agentic-runtime-workspace-dac-denial — Runtime isolation profiles declare agent workspace roots under `/var/lib/nixos-ai-stack/mutable/program/`, and MCP services include them in `ReadWritePaths`, but the roots were provisioned `0750` so ai-stack service users could traverse but not create files unless they owned the directory.
