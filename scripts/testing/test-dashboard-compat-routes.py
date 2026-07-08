@@ -32,6 +32,7 @@ EXPECTED = {
     "/api/memory/facts",
     "/api/memory/crystalline/status",
     "/api/memory/supersede/history",
+    "/api/loop/control",
     "/favicon.ico",
 }
 
@@ -41,7 +42,15 @@ if missing:
     raise SystemExit("missing dashboard compatibility routes: " + ", ".join(missing))
 
 source = (ROOT / "dashboard/backend/api/routes/aistack.py").read_text()
-for needle in ("def _append_query", "def _hybrid_dual_auth_headers", "get_harness_legacy_alias"):
+for needle in (
+    "def _append_query",
+    "def _hybrid_dual_auth_headers",
+    "get_harness_legacy_alias",
+    "post_loop_control",
+    'os.environ.get("SUDO_BIN"',
+    'os.environ.get("SYSTEMCTL_BIN"',
+    "ai-local-training-loop.service",
+):
     if needle not in source:
         raise SystemExit(f"missing compatibility helper/function: {needle}")
 
@@ -62,6 +71,8 @@ for needle in (
     "loadHealthAggregate",
     "loadLogicPatterns",
     "loadWorkflowGraph",
+    "controlLoop",
+    "/loop/control",
 ):
     if needle not in FRONTEND:
         raise SystemExit(f"missing dashboard visibility surface: {needle}")

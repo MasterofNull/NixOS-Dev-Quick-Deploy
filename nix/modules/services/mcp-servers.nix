@@ -2785,6 +2785,7 @@ in {
             # Wildcard glob covers both the symlink and any hash after rebuild.
             /run/wrappers/bin/sudo ix,
             /run/wrappers/wrappers.*/sudo ix,
+            /nix/store/**/bin/sudo ix,
             /nix/var/nix/profiles/ r,
             /nix/var/nix/profiles/** r,
             # CLI tools invoked by health probes and aq-qa

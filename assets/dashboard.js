@@ -1713,6 +1713,11 @@ async function loadLearning() {
       "Unprocessed",
       bp.unprocessed_mb != null ? `${bp.unprocessed_mb.toFixed(1)} MB` : "0 MB"
     ),
+    `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.45rem">
+      <button class="mini-btn" onclick="controlLoop('start')">${loopStatus === "never_ran" || loopStatus === "healthy" ? "Trigger" : "Start"}</button>
+      <button class="mini-btn" onclick="controlLoop('stop')">Pause</button>
+      <button class="mini-btn" onclick="controlLoop('restart')">Restart</button>
+    </div>`,
   ].join("");
 
   // Activity pills: event counts per pipeline
@@ -1743,6 +1748,20 @@ async function loadLearning() {
   } else if (al) {
     al.innerHTML = "";
   }
+}
+
+async function controlLoop(action) {
+  if (action === "stop" && !confirm("Pause the local improvement loop now?")) return;
+  if (action === "restart" && !confirm("Restart the local improvement loop now?")) return;
+  const res = await apiFetch("/loop/control", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  }, T_SLOW);
+  if (!res || res.ok === false) {
+    alert(`Loop ${action} failed${res?.stderr ? `: ${res.stderr}` : ""}`);
+  }
+  await loadLearning();
 }
 
 // ─── INTELLIGENCE: DRIFT ─────────────────────────────────────────────────────

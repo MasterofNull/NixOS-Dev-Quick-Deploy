@@ -2246,6 +2246,67 @@ async def get_loop_status() -> Dict[str, Any]:
     }
 
 
+class LoopControlRequest(BaseModel):
+    action: str = Field(..., description="start | stop | restart")
+
+
+@router.post("/loop/control")
+async def post_loop_control(body: LoopControlRequest) -> Dict[str, Any]:
+    """Operator control for the local-improvement loop systemd unit."""
+    action = body.action.strip().lower()
+    sudo_bin = os.environ.get("SUDO_BIN", "/run/wrappers/bin/sudo")
+    systemctl_bin = os.environ.get("SYSTEMCTL_BIN", "systemctl")
+    commands = {
+        "start": [sudo_bin, "-n", systemctl_bin, "start", "ai-local-training-loop.service"],
+        "trigger": [sudo_bin, "-n", systemctl_bin, "start", "ai-local-training-loop.service"],
+        "stop": [sudo_bin, "-n", systemctl_bin, "stop", "ai-local-training-loop.service"],
+        "pause": [sudo_bin, "-n", systemctl_bin, "stop", "ai-local-training-loop.service"],
+        "restart": [sudo_bin, "-n", systemctl_bin, "restart", "ai-local-training-loop.service"],
+    }
+    cmd = commands.get(action)
+    if cmd is None:
+        raise HTTPException(status_code=400, detail="action must be start, stop, pause, trigger, or restart")
+
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        status = await get_loop_status()
+        return {
+            "ok": proc.returncode == 0,
+            "action": action,
+            "returncode": proc.returncode,
+            "stdout": (proc.stdout or "").strip()[-500:],
+            "stderr": (proc.stderr or "").strip()[-500:],
+            "status": status,
+        }
+    except subprocess.TimeoutExpired as exc:
+        status = await get_loop_status()
+        return {
+            "ok": False,
+            "action": action,
+            "returncode": None,
+            "stdout": str(exc.stdout or "").strip()[-500:],
+            "stderr": "systemctl command timed out",
+            "status": status,
+        }
+    except OSError as exc:
+        status = await get_loop_status()
+        return {
+            "ok": False,
+            "action": action,
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "status": status,
+        }
+
+
 def _runtime_auth_profile_summary() -> Dict[str, Any]:
     """Return runtime auth/profile policy summary for operator visibility."""
     return {
