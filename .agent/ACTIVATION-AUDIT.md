@@ -35,6 +35,7 @@ Sweep four dormant surfaces, and for each: turn on → run a REAL functional tes
 | **aq-correct-failures (P1.3)** | ✅ | ✅ **FIXED + ON** — codex teacher (own login, no key) | ✅ real run: 1 pending → valid correction → ingest picked it up as repair pair (`failure_repair_samples_added:1`) | was BROKEN (remote lanes 402/empty); now `--teacher codex` default + wired into the loop's Phase 0 |
 | capture_success | ✅ | ✅ wired | ⚠️ 0 success_samples captured yet | wire fires on successful tool call — validate with a real success |
 | open-webui | ✅ (upstream) | ❌ intentionally OFF | n/a | blocked: npm-deps build broken in 26.05; re-enable when fixed |
+| **Python QA harness (harness_qa/)** | ✅ (full package: 163 checks, structured reporters) | ✅ **FIXED — now primary** | ✅ aq-qa 0 → 163 passed/0 failed/13s (vs bash 124/19s) | the bridge `scripts/ai/lib/harness_runner.py` was **never created**, so aq-qa silently fell back to `_aq-qa-bash` (124 checks) as its DEFAULT — a fallback running as the main workflow. Created the bridge; bash now genuine fallback |
 
 ## Immediate actions from this audit
 1. **GBNF repair — TURNED ON** (this commit). Coordinator env activates next rebuild; dispatch lane live now.
