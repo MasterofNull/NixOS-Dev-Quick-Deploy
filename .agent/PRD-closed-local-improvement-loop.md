@@ -59,9 +59,17 @@ Fix the data pipe and reactivate the loop.
   remote lane, writes back corrected failure_samples that P1.2 ingests as repair pairs; `--dry-run`, `--max`,
   `--profile`). 5/5 pure tests + dry-run validated. **The full loop now LEARNS:** local fails → capture
   (pending) → aq-correct-failures (remote teacher) → corrected → training-ingest → dataset repair pair → LoRA.
-- **P1.4 — NEXT:** a 2nd capture point (extract_contribution fallback = text_as_tool_call); diagnose the
-  POSITIVE `samples_added:0` (hybrid-events populated? filter/`since` too strict?); reactivate
-  `aq-local-training-loop` with a real before/after bench gate; schedule aq-correct-failures + ingest (Nix timer).
+- **P1.4 — DONE (2026-07-08):** DIAGNOSED the positive `samples_added:0` — NOT a filter bug: hybrid-events.jsonl
+  has 58,750 events but they're dominated by RAG/search (hybrid_search 34.8k, agent_memory_recall 14.3k,
+  route_search 8.8k); only ~19 (local_inference 10 + agent_step_complete 9) are inference completions. The
+  positive path is STARVED of source data. FIX (mirrors the failure architecture): `capture_success` in
+  training_capture — captures good completions AT the point they happen (reliable), wired live in
+  agent_executor at successful tool-call execution (context → the valid tool-call the model emitted).
+  training_ingest now ingests `success_sample` records as positive pairs (source `success-capture:*`) alongside
+  the `failure-repair:*` pairs. 19/19 closed-loop tests green.
+- **P1.5 — NEXT (partly rebuild-gated):** reactivate `aq-local-training-loop` with a real before/after bench
+  gate + wire it to run aq-correct-failures + ingest; a Nix systemd timer to schedule correct+ingest
+  (rebuild-gated — batch for review); optionally a 2nd failure capture point (extract_contribution fallback).
 - **Failure-capture hook** at `round_contribution.extract_contribution` regex-fallback (the exact moment we
   detect local emitted text-not-a-tool-call) + `validate_before_commit` failures + tool-JSON-repair events →
   append labeled `{prompt, tools_available, bad_output, corrected_output, failure_class, model_provenance}` to

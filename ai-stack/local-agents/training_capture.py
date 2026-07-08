@@ -80,3 +80,36 @@ def capture_failure(
         return target
     except Exception:  # noqa: BLE001 — capture is best-effort; a failed capture must not break the caller
         return None
+
+
+def capture_success(
+    *,
+    prompt: Any,
+    good_output: Any,
+    source: str = "unknown",
+    model_provenance: Optional[dict] = None,
+    path: Optional[Path] = None,
+) -> Optional[Path]:
+    """Append a labeled SUCCESS sample (a good local completion) as a positive training pair.
+
+    This is the reliable positive-sample source: capturing good completions AT the completion point,
+    rather than mining hybrid-events.jsonl (which is dominated by RAG/search events — only ~0.03% are
+    inference completions, the root cause of the ingest's samples_added:0). Best-effort; never raises.
+    """
+    try:
+        target = Path(path) if path is not None else TRAINING_SAMPLES_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "schema_version": "1.0",
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "kind": "success_sample",
+            "source": source,
+            "prompt": _scrub(prompt),
+            "good_output": _scrub(good_output),
+            "model_provenance": model_provenance or {},
+        }
+        with open(target, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        return target
+    except Exception:  # noqa: BLE001
+        return None
