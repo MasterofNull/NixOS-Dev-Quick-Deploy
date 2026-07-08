@@ -159,3 +159,11 @@ F1.1 → F1.2 → F1.3 → F1.4 → F1.5 (each committed + validated before the 
   locked_at, consensus_hash, history); ALLOWED_TRANSITIONS with durable AMEND and NO
   CONFLICTS_IDENTIFIED→COLLECTED back-edge; atomic save/load; stable idempotency_hash; export_json_schema()
   (Draft 2020-12 valid). 9/9 pytest green. NEXT: F1.2 (round_contribution.py).
+- **F1.2 — DONE (2026-07-07).** `scripts/ai/lib/round_contribution.py` + `scripts/testing/test-round-contribution.py`.
+  codex-authored (task vpbufc), orchestrator-integrated. Verdict/Severity enums; RequiredChange/
+  ModelProvenance/Contribution pydantic models; `extract_contribution(agent, round_dir, output_log)` with the
+  ratified resolution order VERIFIED live: valid sidecar → use; **present-but-invalid sidecar → typed
+  `failed:invalid-sidecar` (NOT silent markdown fallback)**; absent sidecar → regex fallback (fenced-JSON →
+  `extracted-fallback`, prose-only → ABSTAIN `extracted-prose`). **Never-skip-local acceptance PASSES**: the
+  real truncated text-only log `local-20260707-165501-e1k8vc.log` recovers a Contribution (not None). 6/6
+  pytest green. NEXT: F1.3 (idempotent open/collect/aggregate + AMEND concurrence/conflict).
