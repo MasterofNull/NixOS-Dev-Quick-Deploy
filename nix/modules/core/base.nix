@@ -83,7 +83,7 @@
   prismLauncherDevPackages = with pkgs; [
     binutils
     ccache
-    extra-cmake-modules
+    kdePackages.extra-cmake-modules # 26.05: libsForQt5/top-level alias removed (KDE5 EOL)
     ninja
     pkg-config
     # python3 intentionally omitted here: the system cliPython (python3 +

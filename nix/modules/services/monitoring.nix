@@ -703,6 +703,10 @@ in {
           reporting_enabled = false;
           check_for_updates = false;
         };
+        # 26.05: services.grafana.settings.security.secret_key lost its default.
+        # No secret in the repo (HARD no-keys rule) — read a host-generated key via
+        # Grafana's file-provider. The key is created by the activationScript below.
+        security.secret_key = "$__file{/var/lib/grafana/secret_key}";
       };
       provision = {
         enable = true;
@@ -763,6 +767,22 @@ in {
     };
 
     environment.etc."grafana-dashboards/ai-stack-overview.json".text = grafanaDashboard;
+
+    # 26.05: Grafana's secret_key has no default. Generate a random key ON THE HOST
+    # (never a secret in the repo — HARD no-keys rule) that the file-provider above reads.
+    # Idempotent: only generated once; deps=["users"] so the grafana user exists first.
+    system.activationScripts.grafanaSecretKey = {
+      deps = ["users"];
+      text = ''
+        keyfile=/var/lib/grafana/secret_key
+        if [ ! -s "$keyfile" ]; then
+          ${pkgs.coreutils}/bin/install -d -m 0700 /var/lib/grafana
+          ${pkgs.coreutils}/bin/head -c 24 /dev/urandom | ${pkgs.coreutils}/bin/base64 > "$keyfile"
+          ${pkgs.coreutils}/bin/chmod 0400 "$keyfile"
+        fi
+        ${pkgs.coreutils}/bin/chown grafana:grafana /var/lib/grafana "$keyfile" 2>/dev/null || true
+      '';
+    };
 
     systemd.tmpfiles.rules =
       [
