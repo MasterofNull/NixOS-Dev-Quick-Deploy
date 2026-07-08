@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""aq-correct-failures — P1.3 driver: convert PENDING local failures into repair pairs via a remote teacher.
+
+Reads captured local failures (training_capture spool) that have no correction yet, asks a strong remote
+model (the "teacher", via the switchboard HTTP API) for the CORRECT output the local model should have
+produced, validates it, and appends a corrected failure_sample. training_ingest (P1.2) then turns those
+into SFT repair pairs — closing the learning loop: local improves FROM its failures via remote intelligence.
+
+Pure correction logic lives in ai-stack/local-agents/failure_correction.py (unit-tested); this is the I/O.
+
+Usage:
+  aq-correct-failures --dry-run            # show pending + the teacher prompts, delegate to nothing
+  aq-correct-failures --max 10             # correct up to 10 pending failures
+  aq-correct-failures --profile remote-coding --max 5
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+import urllib.request
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "ai-stack" / "local-agents"))
+import failure_correction as fc  # noqa: E402
+
+SPOOLS = [
+    Path(os.getenv("AQ_TRAINING_SAMPLES", str(REPO / ".agents" / "telemetry" / "training-samples.jsonl"))),
+    Path("/var/lib/ai-stack/hybrid/telemetry/training-samples.jsonl"),
+]
+OUT_SPOOL = Path(os.getenv("AQ_TRAINING_SAMPLES", str(REPO / ".agents" / "telemetry" / "training-samples.jsonl")))
+SWITCHBOARD = os.getenv("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+
+
+def _sig(rec: dict) -> str:
+    return hashlib.sha256(f"{rec.get('prompt','')}||{rec.get('bad_output','')}".encode()).hexdigest()[:16]
+
+
+def _read_all() -> list[dict]:
+    out: list[dict] = []
+    for sp in SPOOLS:
+        if sp.exists():
+            for line in sp.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        out.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+    return out
+
+
+def _select_pending(records: list[dict]) -> list[dict]:
+    """Pending = failure_sample without correction, whose signature has no corrected record yet."""
+    corrected_sigs = {_sig(r) for r in records if r.get("corrected_output")}
+    seen: set = set()
+    pending: list[dict] = []
+    for r in records:
+        if not fc.is_pending(r):
+            continue
+        s = _sig(r)
+        if s in corrected_sigs or s in seen:
+            continue
+        seen.add(s)
+        pending.append(r)
+    return pending
+
+
+def _ask_teacher(prompt: str, profile: str, timeout: float) -> str:
+    """POST a chat completion to the switchboard remote lane. Returns the teacher's content ('' on error)."""
+    body = json.dumps({
+        "model": "remote", "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 512, "temperature": 0.0,
+    }).encode()
+    req = urllib.request.Request(
+        f"{SWITCHBOARD}/v1/chat/completions", data=body,
+        headers={"Content-Type": "application/json", "X-AI-Profile": profile}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+    except Exception as e:  # noqa: BLE001
+        print(f"  teacher error: {e}", file=sys.stderr)
+        return ""
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--max", type=int, default=20, help="max pending failures to correct")
+    ap.add_argument("--profile", default=os.getenv("AQ_TEACHER_PROFILE", "remote-coding"))
+    ap.add_argument("--timeout", type=float, default=120.0)
+    ap.add_argument("--dry-run", action="store_true", help="show pending + prompts, delegate to nothing")
+    args = ap.parse_args()
+
+    records = _read_all()
+    pending = _select_pending(records)
+    print(f"[aq-correct-failures] {len(pending)} pending failure(s); correcting up to {args.max} "
+          f"via profile={args.profile}{' (DRY RUN)' if args.dry_run else ''}")
+    if not pending:
+        return 0
+
+    corrected = 0
+    for rec in pending[: args.max]:
+        prompt = fc.build_correction_prompt(rec)
+        if args.dry_run:
+            print(f"\n--- pending [{rec.get('failure_class')}] sig={_sig(rec)} ---")
+            print(prompt[:400] + ("…" if len(prompt) > 400 else ""))
+            continue
+        teacher_out = _ask_teacher(prompt, args.profile, args.timeout)
+        new_rec = fc.corrected_record(rec, teacher_out)
+        if new_rec is None:
+            print(f"  [{rec.get('failure_class')}] sig={_sig(rec)}: teacher output rejected (invalid)")
+            continue
+        OUT_SPOOL.parent.mkdir(parents=True, exist_ok=True)
+        with open(OUT_SPOOL, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(new_rec) + "\n")
+        corrected += 1
+        print(f"  [{rec.get('failure_class')}] sig={_sig(rec)}: corrected -> repair pair")
+
+    if not args.dry_run:
+        print(f"[aq-correct-failures] wrote {corrected} correction(s); run training-ingest to fold into dataset")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

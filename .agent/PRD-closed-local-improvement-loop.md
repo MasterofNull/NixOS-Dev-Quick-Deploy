@@ -52,11 +52,16 @@ Fix the data pipe and reactivate the loop.
   dataset repair pair; uncorrected → pending; rerun dedupes. **The capture→ingest loop is CLOSED** for the
   repair case. Fixed a scope bug (TRAINING_SAMPLES constants now unconditional across the harness_paths
   try/except).
-- **P1.3 — NEXT:** the CORRECTION step to convert `pending` → training data — when local fails, have a remote
-  agent (codex/claude) produce the correct tool-call/output → `capture_failure(corrected_output=...)` →
-  preference/repair pair. Plus: a 2nd capture point (extract_contribution fallback = text_as_tool_call),
-  diagnose the POSITIVE `samples_added:0` (hybrid-events populated? filter/since too strict?), and reactivate
-  `aq-local-training-loop` with a real before/after bench gate.
+- **P1.3 — DONE (2026-07-08):** the CORRECTION step — `ai-stack/local-agents/failure_correction.py` (pure:
+  `is_pending`, `build_correction_prompt` [asks a remote TEACHER for the correct output], `corrected_record`
+  [validates the teacher output — for tool-call classes requires parseable JSON naming an available tool])
+  + driver `scripts/ai/aq-correct-failures` (reads pending, POSTs the teacher prompt to the switchboard
+  remote lane, writes back corrected failure_samples that P1.2 ingests as repair pairs; `--dry-run`, `--max`,
+  `--profile`). 5/5 pure tests + dry-run validated. **The full loop now LEARNS:** local fails → capture
+  (pending) → aq-correct-failures (remote teacher) → corrected → training-ingest → dataset repair pair → LoRA.
+- **P1.4 — NEXT:** a 2nd capture point (extract_contribution fallback = text_as_tool_call); diagnose the
+  POSITIVE `samples_added:0` (hybrid-events populated? filter/`since` too strict?); reactivate
+  `aq-local-training-loop` with a real before/after bench gate; schedule aq-correct-failures + ingest (Nix timer).
 - **Failure-capture hook** at `round_contribution.extract_contribution` regex-fallback (the exact moment we
   detect local emitted text-not-a-tool-call) + `validate_before_commit` failures + tool-JSON-repair events →
   append labeled `{prompt, tools_available, bad_output, corrected_output, failure_class, model_provenance}` to
