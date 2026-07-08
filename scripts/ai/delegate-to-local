@@ -55,6 +55,10 @@ RALPH_PORT="${RALPH_PORT:-8004}"
 # DIRECT_MAX_TOKENS is read by task_config._resolve_tokens() from the environment;
 # export here so nohup subprocesses inherit it.
 export DIRECT_MAX_TOKENS="${DIRECT_MAX_TOKENS:-4096}"
+# P2.3 TURNED ON: GBNF repair-retry for the dispatched aq-agent-loop lane (the coordinator lane is
+# turned on via its systemd Environment). 'repair' only constrains a malformed tool-call retry —
+# bench-validated non-harmful. Override with AQ_LOCAL_GBNF= to disable, or =1/on to always-constrain.
+export AQ_LOCAL_GBNF="${AQ_LOCAL_GBNF:-repair}"
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-local] $*"; }
