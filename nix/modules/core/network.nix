@@ -17,25 +17,20 @@
   # systemd-resolved: stub DNS resolver with fallback servers.
   services.resolved = {
     enable = lib.mkDefault true;
-    dnssec = lib.mkDefault "allow-downgrade";
-    # Many consumer/campus resolvers advertise partial DoT support that causes
-    # repeated downgrade churn; prefer stable plaintext DNS on local links.
-    dnsovertls = lib.mkDefault "false";
-    # Fallback DNS used when DHCP provides none or a broken nameserver.
-    fallbackDns = lib.mkDefault [
-      "1.1.1.1" # Cloudflare
-      "1.0.0.1"
-      "8.8.8.8" # Google
-      "8.8.4.4"
-      "9.9.9.9" # Quad9 (privacy-preserving)
-      "149.112.112.112"
-    ];
-    extraConfig = lib.mkDefault ''
-      MulticastDNS=no
-      LLMNR=no
-      Cache=yes
-      DNSStubListener=yes
-    '';
+    # 26.05: dnssec/dnsovertls/fallbackDns/extraConfig were removed/renamed — all
+    # [Resolve] section keys now live under structured settings.Resolve.
+    settings.Resolve = {
+      DNSSEC = lib.mkDefault "allow-downgrade";
+      # Many consumer/campus resolvers advertise partial DoT support that causes
+      # repeated downgrade churn; prefer stable plaintext DNS on local links.
+      DNSOverTLS = lib.mkDefault "false";
+      # Fallback DNS used when DHCP provides none or a broken nameserver.
+      FallbackDNS = lib.mkDefault "1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 9.9.9.9 149.112.112.112";
+      MulticastDNS = lib.mkDefault "no";
+      LLMNR = lib.mkDefault "no";
+      Cache = lib.mkDefault "yes";
+      DNSStubListener = lib.mkDefault "yes";
+    };
   };
 
   # Route NetworkManager DNS through systemd-resolved.

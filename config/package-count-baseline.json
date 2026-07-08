@@ -1,50 +1,50 @@
 {
   "nixosTargets": {
-    "hyperd-ai-dev": 366,
-    "hyperd-gaming": 267,
-    "hyperd-minimal": 168,
+    "hyperd-ai-dev": 367,
+    "hyperd-gaming": 270,
+    "hyperd-minimal": 170,
     "nixos-ai-dev": 374,
-    "nixos-gaming": 263,
-    "nixos-minimal": 173,
+    "nixos-gaming": 265,
+    "nixos-minimal": 174,
     "sbc-minimal-ai-dev": 362,
-    "sbc-minimal-gaming": 261,
-    "sbc-minimal-minimal": 161
+    "sbc-minimal-gaming": 263,
+    "sbc-minimal-minimal": 162
   },
   "homeTargets": {
-    "hyperd": 66,
-    "hyperd-hyperd": 66,
-    "nixos": 80,
-    "nixos-nixos": 80,
-    "nixos-sbc-minimal": 65
+    "hyperd": 67,
+    "hyperd-hyperd": 67,
+    "nixos": 81,
+    "nixos-nixos": 81,
+    "nixos-sbc-minimal": 66
   },
   "combinedTargets": {
-    "hyperd-ai-dev": 432,
-    "hyperd-gaming": 333,
-    "hyperd-minimal": 234,
-    "nixos-ai-dev": 454,
-    "nixos-gaming": 343,
-    "nixos-minimal": 253,
-    "sbc-minimal-ai-dev": 442,
-    "sbc-minimal-gaming": 326,
-    "sbc-minimal-minimal": 226
+    "hyperd-ai-dev": 434,
+    "hyperd-gaming": 337,
+    "hyperd-minimal": 237,
+    "nixos-ai-dev": 455,
+    "nixos-gaming": 346,
+    "nixos-minimal": 255,
+    "sbc-minimal-ai-dev": 443,
+    "sbc-minimal-gaming": 329,
+    "sbc-minimal-minimal": 228
   },
   "summary": {
     "nixosTargetCount": 9,
     "homeTargetCount": 5,
     "systemPackages": {
-      "min": 161,
+      "min": 162,
       "max": 374,
-      "avg": 266.11
+      "avg": 267.44
     },
     "homePackages": {
-      "min": 65,
-      "max": 80,
-      "avg": 71.40
+      "min": 66,
+      "max": 81,
+      "avg": 72.40
     },
     "combinedPackages": {
-      "min": 226,
-      "max": 454,
-      "avg": 338.11
+      "min": 228,
+      "max": 455,
+      "avg": 340.44
     }
   }
 }
