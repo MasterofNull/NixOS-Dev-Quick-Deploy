@@ -78,6 +78,12 @@ except Exception:  # noqa: BLE001 — never let an optional import break the exe
     tool_grammar = None  # type: ignore
 _LOCAL_GBNF_ENABLED = os.environ.get("AQ_LOCAL_GBNF", "").strip().lower() in ("1", "true", "yes", "on")
 
+# P1 (closed-local-improvement-loop): capture local failures as labeled training samples.
+try:
+    import training_capture  # noqa: E402
+except Exception:  # noqa: BLE001
+    training_capture = None  # type: ignore
+
 # Phase 164B — MIC-G context sanitizer: scrub prompt-injection patterns from tool results
 # before they are injected into the LLM context window.  Import is best-effort; if the
 # security module is unavailable (e.g. minimal install) the agent continues without it.
@@ -1218,6 +1224,21 @@ class LocalAgentExecutor:
                         "call %d — requesting prose synthesis (max_tokens=256)",
                         tool_call_count,
                     )
+                    # P1: this is an unambiguous local failure — the model emitted a tool-call JSON
+                    # the parser rejected (truncated/malformed). Capture it as a labeled training
+                    # sample so the loop can learn from it. Best-effort; never breaks the turn.
+                    if training_capture is not None:
+                        last_user = next((m.get("content", "") for m in reversed(messages)
+                                          if m.get("role") == "user"), "")
+                        training_capture.capture_failure(
+                            prompt=last_user,
+                            bad_output=response,
+                            failure_class="invalid_tool_json",
+                            tools_available=[t.name for t in self.tool_registry.tools.values()
+                                             if getattr(t, "enabled", True)],
+                            source="agent_executor.parse_failed",
+                            model_provenance={"lane": "local", "call_number": tool_call_count},
+                        )
                     messages.append({"role": "assistant", "content": response})
                     messages.append({
                         "role": "user",

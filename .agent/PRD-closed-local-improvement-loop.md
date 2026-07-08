@@ -35,6 +35,18 @@ GPU-layer increases; unbounded RL.
 
 ## Phase 1 (PRD1) — Closed Learning Loop  [lead: claude/codex]
 Fix the data pipe and reactivate the loop.
+- **P1.1 — DONE (2026-07-08):** `ai-stack/local-agents/training_capture.py` + `scripts/testing/test-training-capture.py`
+  (5/5). The missing DATA PIPE: `capture_failure(prompt, bad_output, failure_class, tools_available,
+  corrected_output, ...)` appends a labeled training sample to a spool (`.agents/telemetry/training-samples.jsonl`,
+  env AQ_TRAINING_SAMPLES). Best-effort + append-only + secret-scrubbed; a failed capture NEVER breaks the
+  caller. FIRST wire live: `agent_executor` captures the unambiguous truncated/malformed tool-JSON failure
+  (`{"function"...` that the parser rejects) as `failure_class=invalid_tool_json` before its repair. Diagnosis
+  recorded: today `training_ingest` writes ONLY positive samples from hybrid-events and merely SUMMARIZES
+  failures — it never turns them into training data (a root cause of `samples_added:0`).
+- **P1.2 — NEXT:** more capture points (extract_contribution regex-fallback = text_as_tool_call; validate
+  failures) + EXTEND `training_ingest` to ingest `training-samples.jsonl` as negative/repair samples AND
+  diagnose/fix the positive `samples_added:0` (is hybrid-events populated / filter too strict / `since` window).
+  Then reactivate `aq-local-training-loop` with a real before/after bench gate.
 - **Failure-capture hook** at `round_contribution.extract_contribution` regex-fallback (the exact moment we
   detect local emitted text-not-a-tool-call) + `validate_before_commit` failures + tool-JSON-repair events →
   append labeled `{prompt, tools_available, bad_output, corrected_output, failure_class, model_provenance}` to
