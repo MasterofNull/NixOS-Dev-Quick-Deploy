@@ -80,6 +80,11 @@ aq-hints "resume <task>" --format=json --agent=codex
 harness-rpc.js run-start --query "<task>" --blueprint long-running-context-offload --intent-depth standard
 ```
 
+`aq-context-manage check` combines the local context-memory lifecycle DB with
+live CLM pressure from `/api/context/lifecycle/status`. Treat a nonzero exit as
+an operator action signal even when local `total_contexts` is zero; the live CLM
+can still be over hot-tier pressure or thermally suspended.
+
 When `context_assist_profiles` includes `embedded-assist`, prefer that compact
 lane as the search/context helper before spending larger local or remote context.
 

@@ -841,6 +841,20 @@ variables:
     consumers: [service-endpoints.sh]
     description: "Port for dashboard API"
 
+  - canonical: AQ_CONTEXT_MANAGE_SKIP_CLM
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-context-manage]
+    description: "Set to 1/true/yes to skip live CLM dashboard pressure overlay in aq-context-manage check"
+
+  - canonical: AQ_CONTEXT_MANAGE_CLM_STATUS_FILE
+    aliases: []
+    default: ""
+    layer: shell
+    consumers: [aq-context-manage, tests]
+    description: "Optional JSON status-file override for aq-context-manage CLM pressure checks; intended for deterministic tests"
+
   # ── Ralph Wiggum ────────────────────────────────────────────────────────
   - canonical: RALPH_URL
     aliases: []
