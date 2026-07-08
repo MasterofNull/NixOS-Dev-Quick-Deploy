@@ -43,10 +43,20 @@ Fix the data pipe and reactivate the loop.
   (`{"function"...` that the parser rejects) as `failure_class=invalid_tool_json` before its repair. Diagnosis
   recorded: today `training_ingest` writes ONLY positive samples from hybrid-events and merely SUMMARIZES
   failures — it never turns them into training data (a root cause of `samples_added:0`).
-- **P1.2 — NEXT:** more capture points (extract_contribution regex-fallback = text_as_tool_call; validate
-  failures) + EXTEND `training_ingest` to ingest `training-samples.jsonl` as negative/repair samples AND
-  diagnose/fix the positive `samples_added:0` (is hybrid-events populated / filter too strict / `since` window).
-  Then reactivate `aq-local-training-loop` with a real before/after bench gate.
+- **P1.2 — DONE (2026-07-08):** EXTENDED `training_ingest` with `_ingest_failure_samples` — reads the
+  `training-samples.jsonl` spools and turns each captured failure that has a `corrected_output` into an SFT
+  **repair pair** (user:prompt → assistant:correct-output, source `failure-repair:<class>`), deduped against
+  the dataset; failures without a correction are counted `failure_repair_pending`. Wired into `run()`:
+  the report now has `failure_repair_samples_added` + `failure_repair_pending` + a combined `samples_added`.
+  Verified END-TO-END (`scripts/testing/test-training-ingest-failure.py`, 3/3): capture_failure → ingest →
+  dataset repair pair; uncorrected → pending; rerun dedupes. **The capture→ingest loop is CLOSED** for the
+  repair case. Fixed a scope bug (TRAINING_SAMPLES constants now unconditional across the harness_paths
+  try/except).
+- **P1.3 — NEXT:** the CORRECTION step to convert `pending` → training data — when local fails, have a remote
+  agent (codex/claude) produce the correct tool-call/output → `capture_failure(corrected_output=...)` →
+  preference/repair pair. Plus: a 2nd capture point (extract_contribution fallback = text_as_tool_call),
+  diagnose the POSITIVE `samples_added:0` (hybrid-events populated? filter/since too strict?), and reactivate
+  `aq-local-training-loop` with a real before/after bench gate.
 - **Failure-capture hook** at `round_contribution.extract_contribution` regex-fallback (the exact moment we
   detect local emitted text-not-a-tool-call) + `validate_before_commit` failures + tool-JSON-repair events →
   append labeled `{prompt, tools_available, bad_output, corrected_output, failure_class, model_provenance}` to
