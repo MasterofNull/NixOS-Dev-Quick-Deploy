@@ -296,13 +296,13 @@ def test_agent_runner_reaps_no_progress_child():
 
 
 def test_agent_runner_defaults_allow_long_horizon_work():
-    """Default agent watchdog policy should allow overnight/day-long local tasks."""
+    """Default agent watchdog policy should avoid wall-clock hard caps."""
     dispatch_mod = _load_dispatch()
     wall_clock = dispatch_mod._compute_agent_wall_clock(timeout_secs=300, max_calls=50)
     no_progress = dispatch_mod._compute_agent_no_progress_timeout(timeout_secs=300)
-    assert_true(wall_clock >= 86400, f"agent wall clock should allow day-long work, got {wall_clock}s")
+    assert_true(wall_clock == 0, f"agent wall clock should be disabled by default, got {wall_clock}s")
     assert_true(no_progress >= 14400, f"no-progress watchdog should allow slow generations, got {no_progress}s")
-    print("PASS  agent runner defaults allow long-horizon work")
+    print("PASS  agent runner defaults avoid wall-clock hard caps")
 
 
 def test_registry_status_reconciles_dead_agent_failure():

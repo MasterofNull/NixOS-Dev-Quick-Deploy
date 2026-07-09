@@ -3139,7 +3139,12 @@ def _check_phase87_training_ingest(ctx: RunContext) -> list[CheckResult]:
             "training-loop-results.jsonl",
             "training-loop-progress.json",
             "PYTHONUNBUFFERED=1",
+            "AQ_LOOP_DIRECT_TIMEOUT=86400",
+            "AQ_LOOP_SUBMIT_TIMEOUT=90",
+            "AQ_LOOP_RUNAWAY_HARD_CAP=0",
             "TRAINING_LOOP_PROGRESS_FILE=",
+            "TimeoutStartSec = \"infinity\"",
+            "\"2400\"",
         ]
         missing_loop = [needle for needle in loop_needles if needle not in nix_text]
         if missing_loop:

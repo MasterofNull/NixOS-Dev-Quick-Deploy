@@ -10,6 +10,8 @@ LOCAL_RUNTIME = ROOT / "ai-stack" / "agents" / "runtimes" / "local_agent_runtime
 AQ_AGENT_LOOP = ROOT / "scripts" / "ai" / "aq-agent-loop"
 AQ_CHAT = ROOT / "scripts" / "ai" / "aq-chat"
 COORDINATOR = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "extensions" / "ai_coordinator_handlers.py"
+DISPATCH = ROOT / "scripts" / "ai" / "lib" / "dispatch.py"
+AGENT_SPAWNER = ROOT / "ai-stack" / "local-agents" / "agent_spawner.py"
 
 
 def require(condition: bool, message: str) -> None:
@@ -23,6 +25,8 @@ def main() -> int:
     aq_agent_loop = AQ_AGENT_LOOP.read_text(encoding="utf-8")
     aq_chat = AQ_CHAT.read_text(encoding="utf-8")
     coordinator = COORDINATOR.read_text(encoding="utf-8")
+    dispatch = DISPATCH.read_text(encoding="utf-8")
+    spawner = AGENT_SPAWNER.read_text(encoding="utf-8")
 
     require("while tool_call_count < max_tool_calls" not in executor, "agent_executor must not hard-cap tool calls")
     require("reached max tool calls" not in executor, "agent_executor must not return max-tool-call incomplete results")
@@ -41,6 +45,12 @@ def main() -> int:
     require('"max_tool_calls":' not in aq_chat, "aq-chat must not send max_tool_calls in delegate payload")
     require("local_tool_budget_exhausted" not in aq_chat, "aq-chat must not depend on budget-exhausted response state")
     require("AGENT_MAX_TOOL_ROUNDS" not in coordinator, "coordinator must not inject AGENT_MAX_TOOL_ROUNDS")
+
+    require("default=50" not in dispatch, "delegate dispatch must not default max-calls to 50")
+    require("per_call * max_calls" not in dispatch, "delegate dispatch must not convert max-calls into wall-clock cap")
+    require("AGENT_WALL_CLOCK_SECS opt-in cap" in dispatch, "delegate dispatch wall-clock cap must be opt-in only")
+    require('"max_tool_calls": 0' in spawner, "agent spawner role defaults must use 0/unlimited tool calls")
+    require('AGENT_MAX_TOOL_CALLS", "0"' in spawner, "agent spawner env fallback must use 0/unlimited tool calls")
 
     require("Deprecated compatibility flag; ignored" in aq_agent_loop, "aq-agent-loop --max-calls must be deprecated")
     require("del max_calls" in aq_agent_loop, "aq-agent-loop must ignore legacy max_calls")

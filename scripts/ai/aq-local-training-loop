@@ -67,6 +67,10 @@ DEFAULT_TASK_TIMEOUT_S = 1200  # 20 min max per task (Qwen3-35B long-reasoning s
 # Eval tasks use a short token cap so bounded test cases complete quickly.
 # Production/improvement tasks default to DIRECT_MAX_TOKENS (4096) via env.
 EVAL_MAX_TOKENS = 512
+EVAL_DIRECT_TIMEOUT_S = int(os.getenv("AQ_LOOP_DIRECT_TIMEOUT", "1800"))
+SUBMIT_TIMEOUT_S = int(os.getenv("AQ_LOOP_SUBMIT_TIMEOUT", "90"))
+WAIT_LOG_INTERVAL_S = int(os.getenv("AQ_LOOP_WAIT_LOG_INTERVAL", "300"))
+RUNAWAY_HARD_CAP_S = int(os.getenv("AQ_LOOP_RUNAWAY_HARD_CAP", "0"))
 ACTIVE_RUN_ID: Optional[str] = None
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -255,8 +259,10 @@ def _reap_orphans() -> int:
                 except (PermissionError, ValueError):
                     pass
 
-    # Phase B: cancel live-PID tasks that have exceeded the timeout window.
-    # These are ghosts from killed training runs that still hold llama.cpp slots.
+    # Phase B: report old live tasks without cancelling them. Local inference is
+    # slow and serial on this hardware; age alone is not a failure signal. The
+    # wait loop cancels only when liveness/progress says a task is stale, or when
+    # AQ_LOOP_RUNAWAY_HARD_CAP is explicitly set.
     now_entries = _read_registry()
     for entry in now_entries:
         if entry.get("status") != "running":
@@ -265,11 +271,9 @@ def _reap_orphans() -> int:
         if age is None or age <= DEFAULT_TASK_TIMEOUT_S:
             continue
         print(
-            f"[reap] ghost: {entry['id']} age={age:.0f}s > {DEFAULT_TASK_TIMEOUT_S}s, cancelling",
+            f"[reap] live-aged: {entry['id']} age={age:.0f}s > {DEFAULT_TASK_TIMEOUT_S}s, keeping live",
             file=sys.stderr,
         )
-        _cancel_task(entry["id"])
-        reaped += 1
 
     return reaped
 
@@ -279,6 +283,25 @@ def _read_output(output_file: str) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _artifact_newest_mtime(output_file: Optional[Path]) -> float:
+    """Newest mtime for output/progress/heartbeat/steps artifacts."""
+    if output_file is None:
+        return 0.0
+    paths = [
+        output_file,
+        Path(str(output_file) + ".progress.json"),
+        Path(str(output_file) + ".heartbeat.json"),
+        Path(str(output_file) + ".steps.jsonl"),
+    ]
+    newest = 0.0
+    for path in paths:
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
 
 
 # ── delegation ─────────────────────────────────────────────────────────────────
@@ -311,7 +334,7 @@ def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -
     try:
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=SUBMIT_TIMEOUT_S,
             env=env,
         )
         # Parse task ID from output lines like "[delegate-to-local] task_id=local-20260527-..."
@@ -326,7 +349,10 @@ def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -
                 return line.split("task_id=", 1)[1].strip()
         return None
     except subprocess.TimeoutExpired:
-        print("[eval] ERROR: delegate-to-local submission timed out", file=sys.stderr)
+        print(
+            f"[eval] ERROR: delegate-to-local submission timed out after {SUBMIT_TIMEOUT_S}s",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -366,10 +392,14 @@ async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) 
 
     Falls back to a registry-only check if the output_file path is unavailable.
     """
-    deadline = time.monotonic() + timeout_s
+    start = time.monotonic()
+    last_log = start
+    last_activity = start
+    last_seen_mtime = 0.0
     output_file: Optional[Path] = None
 
-    while time.monotonic() < deadline:
+    while True:
+        now = time.monotonic()
         # Resolve output file path from registry (once)
         if output_file is None:
             for entry in _read_registry():
@@ -380,6 +410,11 @@ async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) 
                             Path(of) if os.path.isabs(of) else _REPO_ROOT / of
                         )
                     break
+
+        newest_mtime = _artifact_newest_mtime(output_file)
+        if newest_mtime > last_seen_mtime:
+            last_seen_mtime = newest_mtime
+            last_activity = now
 
         # Fast path: output file appeared — check registry for terminal status
         if output_file and output_file.exists() and output_file.stat().st_size > 0:
@@ -397,17 +432,21 @@ async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) 
         # Layer 1: PID liveness — if the background process is dead but registry
         # still shows "running", mark it "stale" and bail immediately rather than
         # burning the full timeout_s waiting for a task that will never complete.
+        entry_seen = False
+        pid_seen = False
         for entry in _read_registry():
             if entry.get("id") != task_id:
                 continue
+            entry_seen = True
             status = entry.get("status", "running")
             # Accept stale/orphaned as terminal (set by reconciler or prior reap)
-            if status in ("stale", "orphaned"):
+            if status in ("stale", "orphaned", "cancelled"):
                 print(f"[eval] task {task_id} already {status}, skipping wait", file=sys.stderr)
                 return None
             if status == "running":
                 pid = entry.get("pid")
                 if pid:
+                    pid_seen = True
                     try:
                         os.kill(int(pid), 0)  # 0 = liveness probe, no signal sent
                     except ProcessLookupError:
@@ -419,12 +458,30 @@ async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) 
                         pass  # process exists but belongs to another user; keep waiting
             break
 
-        await asyncio.sleep(POLL_INTERVAL_S)
+        elapsed = now - start
+        idle_s = now - last_activity
+        if idle_s >= timeout_s and (not entry_seen or not pid_seen):
+            reason = "missing registry entry" if not entry_seen else "missing pid"
+            print(f"[eval] STALE: task {task_id} {reason} after idle={idle_s:.0f}s", file=sys.stderr)
+            if entry_seen:
+                _mark_registry_status(task_id, "stale")
+            return None
+        if RUNAWAY_HARD_CAP_S > 0 and elapsed >= RUNAWAY_HARD_CAP_S:
+            print(
+                f"[eval] HARD_CAP: task {task_id} exceeded {RUNAWAY_HARD_CAP_S}s, cancelling",
+                file=sys.stderr,
+            )
+            _cancel_task(task_id)
+            return None
+        if idle_s >= timeout_s and now - last_log >= WAIT_LOG_INTERVAL_S:
+            last_log = now
+            print(
+                f"[eval] WAIT: task {task_id} alive; idle={idle_s:.0f}s "
+                f"elapsed={elapsed:.0f}s timeout_window={timeout_s}s",
+                file=sys.stderr,
+            )
 
-    print(f"[eval] TIMEOUT: task {task_id} did not complete within {timeout_s}s", file=sys.stderr)
-    # Cancel the background process so it doesn't hold the llama.cpp slot
-    _cancel_task(task_id)
-    return None
+        await asyncio.sleep(POLL_INTERVAL_S)
 
 
 # ── improvement proposal ───────────────────────────────────────────────────────
@@ -600,11 +657,16 @@ class TrainingLoop:
 
             mode = case.get("mode", "hybrid")
 
-            async def _submit_and_wait() -> Optional[str]:
+            tid: Optional[str] = None
+            response: Optional[str] = None
+
+            async def _submit_wait_track() -> Optional[str]:
+                nonlocal tid
+                # Direct eval uses llama.cpp on a serial local backend. 512-token
+                # bounded cases can still need a long prefill/generation window on
+                # this hardware, especially behind one queued request.
                 _write_progress(run_id, "eval_submit", case_id=case.get("id"), mode=mode)
-                # Use 600s HTTP timeout for direct mode to tolerate 1 extra queued
-                # request in llama.cpp without timing out (serial backend, 5 min/req)
-                http_to = 600 if mode == "direct" else 0
+                http_to = EVAL_DIRECT_TIMEOUT_S if mode == "direct" else 0
                 tid = _submit_task(case["query"], mode=mode, http_timeout_secs=http_to)
                 if not tid:
                     return None
@@ -616,12 +678,13 @@ class TrainingLoop:
             if mode == "direct":
                 # Serialized: only one direct request in-flight at a time
                 async with direct_sem:
-                    response = await _submit_and_wait()
+                    response = await _submit_wait_track()
             else:
-                response = await _submit_and_wait()
+                response = await _submit_wait_track()
 
             if response is None:
-                result = {**_score_response("", case), "task_id": None, "error": "timeout_or_failed"}
+                error = "timeout_or_failed" if tid else "submit_failed"
+                result = {**_score_response("", case), "task_id": tid, "error": error}
             else:
                 result = _score_response(response, case)
 
