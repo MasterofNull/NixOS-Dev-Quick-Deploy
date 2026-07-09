@@ -44,6 +44,10 @@ DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
 LIB_DIR="$SCRIPT_DIR/lib"
 DISPATCH="$LIB_DIR/dispatch.py"
 
+# RSI-Readiness R5.1: seed a trace id for direct delegations (preserved if
+# already set by a parent entrypoint, so the whole chain shares one trace).
+source "$LIB_DIR/trace-seed.sh" 2>/dev/null || true
+
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
 source "${LIB_DIR}/audit-write.sh" 2>/dev/null || true

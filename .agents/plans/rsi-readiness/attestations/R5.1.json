@@ -1,0 +1,31 @@
+{
+  "slice": "R5.1",
+  "title": "AQ_TRACE_ID auto-seeding at every entrypoint",
+  "workstream": "R5 (end-to-end trace seeding)",
+  "owner": "claude-fable-5",
+  "date": "2026-07-09",
+  "status": "landed",
+  "files_touched": [
+    "scripts/ai/lib/trace-seed.sh (new — sourceable seed helper)",
+    "scripts/ai/aq (router seeds before dispatch)",
+    "scripts/ai/delegate-to-local (direct delegations seed)",
+    "scripts/ai/aq-loop (loop run = one trace via _seed_trace_id)",
+    "scripts/ai/lib/dispatch.py (opens delegate.<mode> root span; model.generate nests)",
+    "scripts/testing/test-trace-seed.py (new — 5 tests)"
+  ],
+  "live_path_wired": "aq/delegate-to-local/aq-loop seed AQ_TRACE_ID -> exported to child dispatch.py -> root span delegate.<mode> + child model.generate emit to the A2A event bus -> queryable at /api/trace/{id} on the live dashboard.",
+  "test_evidence": {
+    "unit": "test-trace-seed.py 5/5 (seeds-when-unset, preserves-parent, kill-switch, all-3-entrypoints-seed, dispatch-opens-root-span)",
+    "live": "seeded a real delegation (trace ce14076c...); delegate.direct root span emitted to the event log and rendered in the live /api/trace endpoint (found=true), correctly showing in-flight/incomplete while queued behind the busy slot",
+    "regression": "test-trace.py + test-event-bus-a2a.py unaffected"
+  },
+  "activation_gate": {
+    "integrated": true,
+    "on": true,
+    "validated": true,
+    "observable": "trace events on the A2A bus; /api/trace/{id}; aq-event tail shows trace=",
+    "intervenable": "AQ_TRACE_DISABLE=1 (opt-out); AQ_TRACE_ID inherited to share one trace per chain"
+  },
+  "rollback": "Set AQ_TRACE_DISABLE=1 to stop seeding (spans become no-ops). Full revert: remove the 3 `source trace-seed.sh` lines + the dispatch root-span block; the trace lib and event bus are unaffected.",
+  "deferred": "R5.2 (span switchboard + remote/tool layers; wire OTLP export to the running ai-tempo/ai-otel-collector) — remote-lane tracing is the follow-up; R5.1 covers local/loop entrypoints."
+}
