@@ -23,7 +23,10 @@ from attention_queue import push  # noqa: E402
 
 _HARNESS_RUNNER = _SCRIPT_DIR / "ai" / "lib" / "harness_runner.py"
 _TMPDIR = _REPO_ROOT / ".agents" / "tmp"
+_PYTHONPYCACHEPREFIX = _TMPDIR / "pycache"
+_CARGO_TARGET_DIR = _TMPDIR / "cargo-target"
 _STATUS_PATH = _REPO_ROOT / ".agents" / "health-monitor" / "latest.json"
+_PYTHON_BIN = str(Path(sys.executable).resolve().parent)
 _SYSTEM_BIN = "/run/current-system/sw/bin"
 _PHASES = ["0"]  # phase 0 = pre-flight smoke; fast enough for a 15-min timer
 _SOURCE = "ai-stack-health-monitor"
@@ -34,9 +37,14 @@ def run_aq_qa(phase: str) -> dict:
     """Run aq-qa <phase> --json and return parsed output."""
     try:
         _TMPDIR.mkdir(parents=True, exist_ok=True)
+        _PYTHONPYCACHEPREFIX.mkdir(parents=True, exist_ok=True)
+        _CARGO_TARGET_DIR.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env.update({"TMPDIR": str(_TMPDIR), "TEMP": str(_TMPDIR), "TMP": str(_TMPDIR)})
-        env["PATH"] = f"{_SYSTEM_BIN}:{env.get('PATH', '')}"
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env["PYTHONPYCACHEPREFIX"] = str(_PYTHONPYCACHEPREFIX)
+        env["CARGO_TARGET_DIR"] = str(_CARGO_TARGET_DIR)
+        env["PATH"] = f"{_PYTHON_BIN}:{_SYSTEM_BIN}:{env.get('PATH', '')}"
         result = subprocess.run(
             [sys.executable, str(_HARNESS_RUNNER), phase, "--json"],
             env=env,
