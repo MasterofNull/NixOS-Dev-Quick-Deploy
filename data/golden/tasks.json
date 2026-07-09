@@ -1,0 +1,27 @@
+[
+  {
+    "id": "json-repair-1",
+    "capability": "json_repair",
+    "prompt": "Output a JSON object with keys name and port for the switchboard service.",
+    "scoring": "json_parse",
+    "reference_good": "```json\n{\"name\": \"switchboard\", \"port\": 8085}\n```",
+    "reference_bad": "The switchboard runs on port 8085 (not valid JSON, prose only)."
+  },
+  {
+    "id": "py-compile-1",
+    "capability": "bounded_edit",
+    "prompt": "Write a Python function add(a, b) that returns their sum.",
+    "scoring": "py_compile",
+    "reference_good": "```python\ndef add(a, b):\n    return a + b\n```",
+    "reference_bad": "```python\ndef add(a, b)\n    return a + b  # missing colon, syntax error\n```"
+  },
+  {
+    "id": "nixos-keyword-1",
+    "capability": "path_grep_summary",
+    "prompt": "What command applies a NixOS configuration change?",
+    "scoring": "keyword",
+    "expected_keywords": ["nixos-rebuild", "switch"],
+    "reference_good": "You run nixos-rebuild switch to build and activate the new NixOS generation.",
+    "reference_bad": "You just save the file and reboot the machine."
+  }
+]

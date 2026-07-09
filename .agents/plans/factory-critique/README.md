@@ -11,4 +11,4 @@ Each agent writes its OWN file here — `codex.md`, `local.md`, `antigravity.md`
 NEVER append to a shared file. The orchestrator aggregates into `AGGREGATE.md`.
 - local[Qwen] runs long — the round stays OPEN for it; never skipped.
 - antigravity (Antigravity IDE, real Gemini via its OWN OAuth) picks up the task from the inbox
-  `.agent/collaboration/antigravity-inbox/factory-critique.md` and writes `antigravity.md`. No API keys.
+  `.agent/archive/antigravity-inbox-20260709/factory-critique.md` and writes `antigravity.md`. No API keys.

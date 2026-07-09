@@ -35,7 +35,7 @@ scripts/ai/aq-collab-round aggregate --round rsi-readiness
 
 ## Operator-gated (surface early)
 - **R3.1** SMALL_RESIDENT needs a nixos-rebuild + model download (operator). model_budget verdict + draft-tune bench are prepped (`.agents/plans/aqos-v1/ws-edge/`).
-- Antigravity lane responds only if the IDE is wired to watch `.agent/collaboration/antigravity-inbox/` and DELETE consumed files (the consumption-based liveness signal).
+- Antigravity lane responds only if the IDE is wired to watch `.agent/archive/antigravity-inbox-20260709/` and DELETE consumed files (the consumption-based liveness signal).
 
 ## Standing rules for every dispatched slice
 PRD gate (PULSE plan line) → implement → live-test → tier0 gate → activation attestation → verbose commit → PULSE/RESUME. No autonomy granted (shadow before live). Local failures = R2 training data (never-skip-local). Archive-never-delete. Nix declaration same-cycle as runtime change.

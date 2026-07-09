@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "round_id": "rsi-readiness",
+  "state": "CONSENSUS_LOCKED",
+  "task": {
+    "prompt": "# Round: rsi-readiness — Expert-Team Collaborative Lifecycle\n\nYou are one expert lane in a flat multi-agent collaboration (claude, codex, antigravity, local/Qwen). This round turns a strategic assessment into concrete landed system changes: ratify the PRD, plan the slices, wire them, validate, and commit — the full software-factory lifecycle.\n\n## The mandate (grounded — read these first)\n1. `.agent/PROJECT-RSI-READINESS-PRD.md` — the initiative: build TRUST INFRASTRUCTURE so local agentic self-improvement can be granted autonomy *on evidence, not hope*. 7 workstreams (R1 eval harness, R2 local write-reliability, R3 SMALL_RESIDENT+cascade, R4 shadow-loop efficacy, R5 trace seeding, R6 flagship self-improvement app, R7 multi-agent coordination safety — git/index serialization + event-bus migration completion).\n2. `.agent/FABLE-PARITY-CONTRACT.md` — the behavior you operate under.\n3. Evidence base (verify, don't trust): the local model claimed file writes it never made (see the unbacked-write guard in `scripts/ai/aq-agent-loop`); the eval loop scored a false 0/12 under contention (see the contention guard in `scripts/ai/aq-local-training-loop`); the cascade + confidence scorer exist (`scripts/ai/lib/cascade.py`); tracing is live (`scripts/ai/lib/trace.py`, `/api/trace/{id}`); model_budget says deploy_small_resident_now (`scripts/ai/lib/model_budget.py`).\n\n## The hard truth this round must honor\nThe machinery is built; the blockers are (a) local execution reliability and (b) reward-signal integrity. **R1 (trustworthy eval harness) gates everything** — no downstream automation is safe on a corruptible signal. **No autonomy is granted this cycle** — the exit is a SHADOW loop measured against a trustworthy harness. Do not propose granting the loop autonomy.\n\n## Your task — write ONE file: `.agents/plans/rsi-readiness/<your-lane>.md`\n\n### 1. Scores + ratification\n`R1..R7: <1-10> — <one-sentence reason>`, then a verdict:\n`RATIFY / RATIFY-WITH-AMENDMENTS / REJECT` + one sentence.\n\n### 2. Top amendments (max 3)\nHighest-impact changes to the PRD, each with what/why/which workstream. Especially: is R1's \"trustworthy signal\" acceptance criterion strong enough? Is the no-autonomy boundary right?\n\n### 3. Risks the PRD underweights (max 3)\nWhere could this build trust theater instead of real trust? Where might a workstream produce a green checkmark that doesn't mean what it claims?\n\n### 4. Slice claims + wiring plan (this is where it lands concretely)\nClaim the R-slices your lane will implement, honoring the delegation defaults and your measured envelope. For each claimed slice give: the concrete files to touch, the wiring (how it integrates into the live path), the validation (test + live check), and the activation-gate attestation you'll produce. One line per slice: `<slice>: claim|pass — <files/wiring/validation in ~15 words>`.\n- codex: structural/typed implementation (R1 harness, R3 Nix+wiring, R5 OTel, R7 git-lock/worktree serialization).\n- claude: orchestration/integration/acceptance (R1 sign-off, R2 draft-only contract, R6 flagship).\n- antigravity: research/design (R1 golden-set design, R4 efficacy-measurement methodology) — IF your inbox lane is live; else this is a design doc.\n- local/Qwen: bounded audits + R2 training-data curation; your failures here ARE R2 data. Sections 1 and 5 mandatory; 2-4 best-effort.\n\n### 5. Verdict + first commit target\nState the ONE slice you would land first and its commit message type(scope): line.\n\n## Rules\n- Ground every claim in the PRD/plan/repo — no invented features; cite files.\n- Lead with the outcome; self-contained (Fable-parity).\n- No implementation in THIS round — this round produces the ratified plan + slice ownership. Implementation happens in the dispatched slices after aggregation.\n- Do NOT commit in this round. The orchestrator aggregates → amends PRD → dispatches slices.",
+    "target": ".agents/plans/rsi-readiness",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-09T19:42:14Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "e14b33b2b26418f742dc1233960790d278caecc4ded6c4f75377bcffc86dc605",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "bffd359e9107d32486b6ae152dac7bd9ab5e506074f6d6b3d67454689b4b51b4",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "35596fa2f619a2013e65b2410aa3a6147a508d811e51e703cc968567f70f3ad2",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "ad91c3ea09746cffcd181ae9575345bf788496ed0113f5b3bccc68ec48b155b8",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": "a2df013af5ac00e9268e0f2c6f1561f000463238ef86d57d77e92a14cfe2933d",
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": "2026-07-09T20:09:11Z",
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-09T19:42:14Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-09T20:09:11Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-09T20:09:11Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->CONSENSUS_LOCKED",
+      "timestamp": "2026-07-09T20:09:11Z",
+      "actor": "round_aggregate"
+    }
+  ]
+}

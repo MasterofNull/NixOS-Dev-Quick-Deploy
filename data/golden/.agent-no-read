@@ -1,0 +1,10 @@
+GOLDEN EVAL SET — OFF LIMITS TO AGENTS UNDER EVALUATION (RSI-Readiness R1).
+
+A model that can read these reference answers games the eval and its scores
+become meaningless (antigravity's finding, round rsi-readiness 2026-07-09).
+
+Agent file/search tools (delegate-to-local, aq-agent-loop, cascade) MUST exclude
+data/golden/ from any read/search path during an eval run. eval_integrity's
+isolation_check refuses to certify a scorer while this marker's directory is
+readable by the agent under eval. Enforcement wiring: R2 draft-only/sandbox +
+the agent path filter. Do not delete this marker.
