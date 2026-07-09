@@ -27,6 +27,9 @@ def main() -> int:
     assert refused["status"] == "refused"
     assert "not loopback/private" in refused["reason"]
     assert module._extract_title("<html><title> Demo Site </title></html>") == "Demo Site"
+    roles = (ROOT / "nix/modules/roles/ai-stack.nix").read_text(encoding="utf-8")
+    assert 'writeShellScriptBin "aq-local-surface-scan"' in roles
+    assert 'writeShellScriptBin "aq-antigravity-inbox"' in roles
     print("PASS: local surface scanner is bounded to local/private HTTP targets")
     return 0
 

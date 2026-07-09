@@ -404,6 +404,12 @@ let
       (pkgs.writeShellScriptBin "aq-tempest" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-tempest" "$@"
       '')
+      (pkgs.writeShellScriptBin "aq-local-surface-scan" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-local-surface-scan" "$@"
+      '')
+      (pkgs.writeShellScriptBin "aq-antigravity-inbox" ''
+        exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-antigravity-inbox" "$@"
+      '')
       # --- Knowledge & indexing ---
       (pkgs.writeShellScriptBin "aq-index" ''
         exec "${cfg.mcpServers.repoPath}/scripts/ai/aq-index" "$@"

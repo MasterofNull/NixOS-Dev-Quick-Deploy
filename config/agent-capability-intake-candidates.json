@@ -398,11 +398,12 @@
       "priority": "high",
       "state": "ready-scope-gated",
       "review_status": "accepted-with-mitigations",
-      "pinned_version": "runtime-pending-scope-gated-2026-07-09",
+      "pinned_version": "ae32cf505174a422c55d7ca970f5f23816218f38",
+      "source_hash": "0s0xgd32q2hm0dmklrqx76mfm555gjlvx1w7k428p9kni5r32wi0",
       "mitigations": [
         "active commands require local scope receipts before execution",
         "public targets are rejected by the scope validator; default scope is loopback and private infrastructure only",
-        "clone, install, server, MCP, exploit, and War Room runtime attachment remain disabled until pinned packaging and SBOM review land",
+        "clone, install, server, MCP, exploit, and War Room runtime attachment remain disabled until Nix packaging and SBOM review land for the pinned source hash",
         "MCP/tool admission stays deny-by-default with metadata and scope-validation tools only",
         "aq-tempest exposes readiness, gates, audit, and scope status for dashboard or aq-report visibility"
       ],

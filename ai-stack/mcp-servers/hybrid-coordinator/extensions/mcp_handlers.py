@@ -43,6 +43,7 @@ import json
 import logging
 import pwd
 import shutil
+import subprocess
 import time as _time
 from typing import Any, Callable, Dict, List, Optional
 import asyncio
@@ -1125,6 +1126,25 @@ TOOL_DEFINITIONS: List[Tool] = [
         },
     ),
     Tool(
+        name="local_surface_scan",
+        description=(
+            "Run the bounded local/private HTTP surface scanner for authorized harness webpages "
+            "and service health endpoints. Public hosts are refused."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional loopback/private HTTP(S) URLs; defaults to core harness surfaces.",
+                },
+                "timeout": {"type": "number", "description": "Per-request timeout seconds"},
+                "max_bytes": {"type": "integer", "description": "Maximum bytes sampled per URL"},
+            },
+        },
+    ),
+    Tool(
         name="trading_market_data",
         description="Fetch market data and run Bull/Bear sentiment debates.",
         inputSchema={
@@ -1520,6 +1540,40 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
                 "evidence": evidence[:limit],
             }
             _write_audit(name, 'success', None, (_time.perf_counter() - _start) * 1000, arguments)
+            return [TextContent(type="text", text=json.dumps(payload, sort_keys=True))]
+
+        if name == "local_surface_scan":
+            urls = arguments.get("urls")
+            cmd = [
+                sys.executable,
+                str(_REPO_ROOT / "scripts/ai/aq-local-surface-scan"),
+                "--json",
+            ]
+            if isinstance(arguments.get("timeout"), (int, float)):
+                cmd.extend(["--timeout", str(arguments["timeout"])])
+            if isinstance(arguments.get("max_bytes"), int):
+                cmd.extend(["--max-bytes", str(arguments["max_bytes"])])
+            if isinstance(urls, list):
+                cmd.extend(str(url) for url in urls)
+            proc = subprocess.run(
+                cmd,
+                cwd=_REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+                check=False,
+            )
+            try:
+                payload = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                payload = {
+                    "policy": "authorized-local-private-http-only",
+                    "status": "failed",
+                    "error": proc.stderr.strip()[:500],
+                }
+            payload["exit_code"] = proc.returncode
+            _write_audit(name, 'success' if proc.returncode == 0 else 'denied', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(payload, sort_keys=True))]
 
         elif name == "trading_market_data":
