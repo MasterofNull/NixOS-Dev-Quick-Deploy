@@ -76,6 +76,7 @@ _CORRECTION_BACKLOG_MAX = int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25"))
 _LOOP_REGRESSION_DROP = float(os.environ.get("HS_LOOP_REGRESSION_DROP", "0.10"))
 COORDINATOR_URL = os.environ.get("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003")
 EMBED_URL       = os.environ.get("LLAMA_EMBED_URL",        "http://127.0.0.1:8081")
+LLAMA_URL       = os.environ.get("LLAMA_CPP_BASE_URL",     f"http://127.0.0.1:{os.environ.get('LLAMA_PORT','8080')}")
 QDRANT_URL      = os.environ.get("QDRANT_URL",             "http://127.0.0.1:6333")
 
 # Zone definitions: url, systemd service, AppArmor profile (None = no profile)
@@ -634,6 +635,52 @@ def _closed_loop_check() -> List[Dict[str, Any]]:
     return anomalies
 
 
+def _llama_slot_wedged_check() -> List[Dict[str, Any]]:
+    """Detect an ORPHANED/wedged llama.cpp slot — the root cause behind cascading local-agent failures.
+    On the single-slot APU, an abandoned generation (client timed out, but llama.cpp keeps prefilling)
+    holds the only slot and starves ALL subsequent local dispatches (they fail with 'server silent',
+    0 tool calls — victims, not culprits). CONSERVATIVE to avoid false-positives during a legitimate
+    long generation: flags ONLY when the slot is_processing=True AND there is NO live local-agent
+    process driving it AND a bounded completion probe is unresponsive."""
+    base = LLAMA_URL.rstrip("/")
+    # 1. Is the slot busy at all?
+    try:
+        with urllib.request.urlopen(f"{base}/slots", timeout=5) as r:
+            slots = json.loads(r.read().decode())
+        s0 = (slots if isinstance(slots, list) else [slots])[0] if slots else {}
+        if not s0.get("is_processing"):
+            return []
+    except Exception:  # noqa: BLE001 — /slots may be disabled; can't assess
+        return []
+    # 2. Is a live local-agent process legitimately driving it? Then busy is EXPECTED, not wedged.
+    try:
+        out = subprocess.run(["pgrep", "-f", "agent_executor|aq-agent-loop"],
+                             capture_output=True, text=True, timeout=5)
+        if out.stdout.strip():
+            return []
+    except Exception:  # noqa: BLE001
+        pass
+    # 3. Busy with no live consumer → probe responsiveness. A healthy free slot answers in seconds;
+    #    a wedged slot cannot admit the probe within the budget.
+    try:
+        body = json.dumps({
+            "messages": [{"role": "user", "content": "ok"}],
+            "max_tokens": 1, "chat_template_kwargs": {"enable_thinking": False},
+        }).encode()
+        req = urllib.request.Request(f"{base}/v1/chat/completions", data=body,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=int(os.environ.get("HS_SLOT_PROBE_TIMEOUT", "40"))) as r:
+            r.read()
+        return []  # responded → not wedged
+    except Exception:  # noqa: BLE001
+        return [{
+            "type": "llama_slot_wedged", "zone": "llama-cpp",
+            "detail": "llama.cpp slot is_processing=True with NO live local-agent consumer and an "
+                      "unresponsive completion probe — orphaned/wedged slot starving all local work",
+            "timestamp": time.time(),
+        }]
+
+
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
@@ -864,6 +911,40 @@ class HealthSpider:
                     resolution,
                 )
             return True
+        elif atype == "llama_slot_wedged":
+            # Orphaned/wedged single slot — starves ALL local dispatch. High severity; the remediation
+            # (restart llama-cpp) needs privilege, so route to the human gate with the concrete action.
+            detail = anomaly.get("detail", atype)
+            try:
+                push(
+                    source="health-spider",
+                    severity="high",
+                    autonomy_boundary="human_gate",
+                    title="llama.cpp slot wedged (orphaned generation starving local work)",
+                    detail=detail,
+                    proposed_action="Free the slot: sudo systemctl restart llama-cpp . Root cause: an "
+                                    "oversized prefill / abandoned generation holds the single APU slot. "
+                                    "Prevention: LLAMA_MAX_PROMPT_CHARS guard in agent_executor + F2 slot scheduler.",
+                    payload=anomaly,
+                )
+            except Exception:
+                pass
+            key = "llama_slot_wedged"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                await asyncio.to_thread(
+                    _seed_rag, "llama_slot_wedged",
+                    "llama.cpp single slot wedged by orphaned generation",
+                    "Health spider slot-responsiveness probe (is_processing + no consumer + probe timeout)",
+                    "Restart llama-cpp to free the slot. Prevent via prompt-size fail-fast guard "
+                    "(LLAMA_MAX_PROMPT_CHARS) and the F2 slot scheduler/backpressure.",
+                    ["llama-cpp", "wedged-slot", "local-inference", "health-spider"],
+                )
+                await asyncio.to_thread(
+                    _push_memory_fact, "llama_slot_wedged", "llama-cpp", detail,
+                    "sudo systemctl restart llama-cpp; add prompt-size guard.",
+                )
+            return True
         elif atype in ("loop_teacher_down", "loop_never_ran", "loop_stalled",
                        "loop_correction_backlog", "loop_eval_regression"):
             # Closed local-improvement loop advisories — detect + warn (the measurement layer the
@@ -1006,6 +1087,13 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[closed-loop] error: {e}")
+        # Harness-level: wedged llama.cpp slot (orphaned generation starving all local work).
+        try:
+            for a in await asyncio.to_thread(_llama_slot_wedged_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[llama-slot] error: {e}")
         return total
 
     async def run(self):
