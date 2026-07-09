@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-09] rsi-readiness-ratification-resume-cleanup — RSI readiness artifacts were partially completed but not fully folded into the PRD state.
+  Root cause / fix notes: the round aggregate already said all four lanes landed, but the table still showed local pending and the PRD footer still said to ratify. A duplicate `prd-consensus/local.md` was also written in the wrong plan directory; it was byte-for-byte identical to `prd-consensus/gemini.md`.
+  Severity: low
+  Action: Marked the PRD ratified, folded the 2026-07-09 full-system analysis baseline into the PRD/aggregate, updated the local lane status and score consensus, and archived the misplaced duplicate artifact.
+  File: .agent/PROJECT-RSI-READINESS-PRD.md; .agents/plans/rsi-readiness/AGGREGATE.md; .agents/archive/misplaced-artifacts-20260709/prd-consensus-local.md
+
 [DONE 2026-07-09] malformed-pulse-log-artifacts — Two malformed untracked pulse files, `PULSE.lognecho` and `PULSE.lognprintf`, were left beside the canonical collaboration pulse log.
   Root cause / fix notes: another agent's shell quoting wrote duplicate pulse content to filenames derived from `echo`/`printf` command text instead of appending to `.agent/collaboration/PULSE.log`.
   Severity: low
