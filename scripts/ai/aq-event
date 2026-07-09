@@ -27,6 +27,7 @@ sys.path.insert(0, str(_LIB))
 
 import event_log  # noqa: E402
 import resume_projector as rp  # noqa: E402
+import trace as tracing  # noqa: E402
 
 
 def _cmd_pulse(a) -> int:
@@ -75,7 +76,13 @@ def _cmd_project(a) -> int:
 
 def _cmd_tail(a) -> int:
     for ev in event_log.read_all()[-a.n:]:
-        print(f"{ev.ts:.0f} {ev.agent} {ev.type} {ev.subject or ''}")
+        tr = f" trace={ev.trace_id[:8]}" if ev.trace_id else ""
+        print(f"{ev.ts:.0f} {ev.agent} {ev.type} {ev.subject or ''}{tr}")
+    return 0
+
+
+def _cmd_trace(a) -> int:
+    print(tracing.render_tree(a.trace_id))
     return 0
 
 
@@ -108,6 +115,9 @@ def main() -> int:
 
     t = sub.add_parser("tail"); t.add_argument("-n", type=int, default=10); t.set_defaults(fn=_cmd_tail)
     v = sub.add_parser("verify"); v.set_defaults(fn=_cmd_verify)
+
+    tr = sub.add_parser("trace", help="Render the span waterfall for a trace_id")
+    tr.add_argument("trace_id"); tr.set_defaults(fn=_cmd_trace)
 
     args = ap.parse_args()
     return args.fn(args)
