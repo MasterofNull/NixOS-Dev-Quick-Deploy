@@ -98,6 +98,47 @@ def _load_eval_pack(path: Path) -> List[Dict]:
     return cases if isinstance(cases, list) else []
 
 
+def _training_sample_spools() -> List[Path]:
+    paths = [
+        Path(os.getenv("AQ_TRAINING_SAMPLES", str(_REPO_ROOT / ".agents" / "telemetry" / "training-samples.jsonl"))),
+        Path("/var/lib/ai-stack/hybrid/telemetry/training-samples.jsonl"),
+    ]
+    seen: set[str] = set()
+    deduped: List[Path] = []
+    for path in paths:
+        key = str(path)
+        if key not in seen:
+            deduped.append(path)
+            seen.add(key)
+    return deduped
+
+
+def _pending_eval_low_score_correction_exists(prompt: str) -> bool:
+    try:
+        for spool in _training_sample_spools():
+            if not spool.is_file():
+                continue
+            try:
+                with open(spool, encoding="utf-8") as fh:
+                    for line in fh:
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if (
+                            record.get("kind") == "failure_sample"
+                            and record.get("failure_class") == "eval_low_score"
+                            and not record.get("corrected_output")
+                            and record.get("prompt") == prompt
+                        ):
+                            return True
+            except OSError:
+                return False
+    except Exception:
+        return False
+    return False
+
+
 def _score_response(response: str, case: Dict) -> Dict[str, Any]:
     """Grade a response using the R1-CERTIFIED exec scorer.
 
@@ -893,14 +934,19 @@ class TrainingLoop:
             # submit-failures (response is None): those are not model knowledge misses. Best-effort.
             if response is not None and not result.get("pass"):
                 try:
-                    from training_capture import capture_failure
-                    capture_failure(
-                        prompt=case["query"],
-                        bad_output=response or "",
-                        failure_class="eval_low_score",
-                        source="training-loop-eval",
-                        tools_available=None,
-                    )
+                    # An uncertified scorer's failures are noise; do not capture them for correction.
+                    if getattr(self, "_scorer_certified", False):
+                        if _pending_eval_low_score_correction_exists(case["query"]):
+                            print(f"[training-loop]   capture skipped (pending correction exists) {case['id']}")
+                        else:
+                            from training_capture import capture_failure
+                            capture_failure(
+                                prompt=case["query"],
+                                bad_output=response or "",
+                                failure_class="eval_low_score",
+                                source="training-loop-eval",
+                                tools_available=None,
+                            )
                 except Exception as exc:  # noqa: BLE001
                     print(f"[training-loop] WARNING: failure capture failed: {exc}",
                           file=sys.stderr)
@@ -991,6 +1037,9 @@ class TrainingLoop:
         # Full implementation deferred — needs switchboard profile hot-reload.)
         validated_improvements: List[Dict] = []
         if improvements and not self.dry_run:
+            scorer_certified = bool(getattr(self, "_scorer_certified", False))
+            if not scorer_certified:
+                print("[training-loop] IMPROVE: proposals recorded but NOT applied — scorer uncertified")
             # For now, log improvements as pending proposals for human review.
             proposals_path = TELEMETRY_DIR / "optimization_proposals.jsonl"
             for imp in improvements:
@@ -1010,8 +1059,9 @@ class TrainingLoop:
                     "source": "aq-local-training-loop",
                 }
                 validated_improvements.append(proposal)
-                with open(proposals_path, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(proposal) + "\n")
+                if scorer_certified:
+                    with open(proposals_path, "a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(proposal) + "\n")
 
         # ── 6. WRITE RESULTS ───────────────────────────────────────────────────
         result = {
@@ -1028,12 +1078,14 @@ class TrainingLoop:
             # not certified). Surfaced to the dashboard + downstream automation.
             "scorer_certified": getattr(self, "_scorer_certified", None),
             "scorer_cert_reason": getattr(self, "_scorer_cert_reason", None),
+            "pass_rate_trusted": bool(getattr(self, "_scorer_certified", False)),
             "ingest": {
                 "samples_added": ingest_report.get("positive_samples_added", 0),
                 "dataset_total": ingest_report.get("dataset_total", 0),
                 "top_failures": list(ingest_report.get("failure_summary", {}).items())[:5],
             },
             "scores": scores,
+            "improvement_proposals": validated_improvements,
             "improvements_proposed": len(validated_improvements),
             "dry_run": self.dry_run,
         }

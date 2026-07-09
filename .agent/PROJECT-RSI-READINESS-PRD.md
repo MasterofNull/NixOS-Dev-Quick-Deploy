@@ -2,7 +2,7 @@
 title: RSI Readiness — Trust Infrastructure for Local Agentic Self-Improvement
 doc_type: prd
 id: rsi-readiness
-status: draft
+status: active
 owner: claude-fable-5
 last_updated: 2026-07-09
 ---
@@ -45,10 +45,14 @@ Nothing downstream is safe until the reward signal is one we'd stake a decision 
 - R1.3 Eval integrity gates: shadow/canary datasets to detect scorer gaming;
   regression only on REAL evals (already partially shipped); scorecards persisted
   and diffable.
+- R1.4 Golden-set isolation: golden/canary task definitions and answers must be
+  excluded from agent read/search paths during eval runs by a system-level path
+  filter. A model must not be able to inspect the answers it is being scored on.
 - Accept: two independent runs on the same model produce scores within a defined
   tolerance; a deliberately-broken model scores measurably worse; infra failures
-  never register as capability regressions. Reviewer signs off that the signal is
-  trustworthy.
+  never register as capability regressions; held-out adversarial cases rank
+  known-good above known-bad; golden/canary files are unreadable from the eval
+  executor. Reviewer signs off that the signal is trustworthy.
 
 ### R2 — Local write-execution reliability (the #1 capability blocker)
 - R2.1 Draft-only default: local is constrained to DRAFT; execution (file writes,
@@ -82,6 +86,10 @@ Nothing downstream is safe until the reward signal is one we'd stake a decision 
   sandbox) actually raises the R1 eval score. Accumulate weeks of data.
 - R4.3 Answer the real question with evidence: "do the loop's proposals improve
   anything?" Publish the efficacy rate per capability.
+- R4.4 Shadow proposal evaluation runs in ephemeral git worktrees, never the
+  primary workspace. Shadow mode must be a runtime/tool boundary that cannot
+  write, commit, deploy, or enqueue verified-apply actions without an external
+  human gate.
 - Accept: N weeks of shadow proposals with measured sandbox eval deltas; a
   go/no-go recommendation on partial autonomy backed by data, not hope.
 
@@ -153,6 +161,8 @@ workloads; sustained rate limits are the norm, not the exception.
 ## Cross-cutting requirements (all workstreams)
 - Every deliverable: PRD gate → wire → live-test → tier0 → activation attestation
   (integrated+ON+validated+observable+intervenable) → verbose commit → PULSE/RESUME.
+- Every R-slice emits a machine-readable attestation with files touched, live path
+  wired, test/live evidence, rollback/deactivation knob, and remaining blockers.
 - No autonomy granted; human gates everywhere; shadow before live.
 - Issues found → issues-backlog (Rule 11). Archive-never-delete (Rule 12). Nix
   declaration same-cycle as any runtime change (Rule 13).
@@ -160,12 +170,33 @@ workloads; sustained rate limits are the norm, not the exception.
   themselves R2 training data.
 
 ## Sequencing
-R1 first (unblocks all). R2 + R3 in parallel (independent; R3 gives R2 a verifier).
-R5 + R7 + R8 anytime (additive substrate — R7 and R8 should land early since they
-protect/sustain all concurrent + long-running slice work). R4 after R1 (needs the
-trustworthy signal) AND after R7/R8 (needs safe concurrency + rate-limit
-durability, since shadow-loop and remote-heavy work will hit limits). R6 last
-(exercises everything). R4's efficacy data gates any future autonomy PRD.
+R1 first (unblocks all). R7 + R8 land early because they protect/sustain all
+concurrent + long-running slice work. R2 + R3 in parallel after the R1 baseline
+(independent; R3 gives R2 a verifier). R5 anytime. R4 after R1 and after R7/R8
+(needs the trustworthy signal, safe concurrency, and rate-limit durability).
+R6 last (exercises everything). R4's efficacy data gates any future autonomy PRD.
+
+## Ratification Result
+Round `rsi-readiness` ratified this PRD on 2026-07-09 with all four lanes landed:
+claude and codex returned `RATIFY-WITH-AMENDMENTS`; antigravity and local returned
+`RATIFY`. Adopted amendments are folded above: scorer trust acceptance, executable
+no-autonomy/shadow boundaries, per-slice activation attestations, golden-set
+isolation, ephemeral worktrees for shadow evaluation, early R7/R8 sequencing, and
+contention/rate-limit observability.
+
+## Current Evidence Baseline
+The 2026-07-09 full-system analysis (`.agent/analysis/2026-07-09-full-system-analysis.md`)
+is incorporated as the measured baseline for this PRD:
+- OS/services are green: NixOS 26.05, zero failed units, core ports serving.
+- QA is green: `aq-qa 0` measured 164/0 in the analysis window.
+- Local model baseline is strong but not autonomous-ready: first warm baseline 11/12
+  (91.7%) with wedged-slot and readiness guards live.
+- Closed learning loop is wired but backlogged: capture -> correct -> HITL -> ingest
+  -> train is live with 173 failures and 58 pending corrections at analysis time.
+- R1 scorer certification is live and trustworthy, but the analysis found enforcement
+  gaps. Slice R1-E addresses those gaps by making uncertified scores untrusted,
+  suppressing eval-low-score capture from uncertified scorers, and deduplicating
+  pending correction captures.
 
 ## Success metric (cycle exit)
 A trustworthy eval harness (R1 signed off), local write-reliability measurably
@@ -176,4 +207,4 @@ evidence-based answer to "is the local stack ready for autonomous self-improveme
 — not a claim.
 
 ---
-*Ratify via round `rsi-readiness` (see .agents/plans/rsi-readiness/ROUND-PROMPT.md).*
+*Ratified by round `rsi-readiness`; implementation begins with R1-E scorer enforcement.*

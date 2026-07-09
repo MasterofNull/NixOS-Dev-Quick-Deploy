@@ -70,6 +70,7 @@ async def main() -> int:
 
         mod._wait_for_task = fake_wait
         mod._generate_improvement_prompt = lambda _failing, _ingest: "improve"
+        mod._certify_scorer = lambda: (False, "test uncertified scorer")
         loop = mod.TrainingLoop(eval_pack=Path("unused.json"), task_timeout=1, dry_run=True, verbose=False)
         result = await loop.run_once()
 
@@ -81,6 +82,8 @@ async def main() -> int:
     assert submit_failed["case_id"] == "case-submit-failed", result
     assert submit_failed["task_id"] is None, result
     assert submit_failed["error"] == "submit_failed", result
+    assert result["scorer_certified"] is False, result
+    assert result["pass_rate_trusted"] is False, result
     print("PASS: training-loop failures preserve actionable delegation status")
     return 0
 
