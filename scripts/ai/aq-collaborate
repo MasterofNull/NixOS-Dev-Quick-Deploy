@@ -205,10 +205,16 @@ cmd_contribute() {
     local agent_id=""
     local content=""
     local confidence="0.7"
+    local phase=""
+    local description=""
+    local approach=""
     while [[ $# -gt 0 ]]; do
         case $1 in
             --agent)      agent_id="$2"; shift 2 ;;
             --content)    content="$2"; shift 2 ;;
+            --phase)      phase="$2"; shift 2 ;;
+            --description) description="$2"; shift 2 ;;
+            --approach)   approach="$2"; shift 2 ;;
             --confidence) confidence="$2"; shift 2 ;;
             *) echo "Unknown option: $1"; usage; exit 1 ;;
         esac
@@ -218,6 +224,11 @@ cmd_contribute() {
         echo -e "${RED}Error: --agent required${NC}"
         exit 1
     fi
+    if [ -z "$content" ]; then
+        if [ -n "$phase" ] || [ -n "$description" ] || [ -n "$approach" ]; then
+            content="phase=${phase:-unspecified}; description=${description:-unspecified}; approach=${approach:-unspecified}"
+        fi
+    fi
 
     echo -e "${BLUE}Adding contribution to plan: $plan_id${NC}"
 
@@ -225,6 +236,9 @@ cmd_contribute() {
     cd "$COLLAB_DIR"
     AQC_PLAN="$plan_id" AQC_AGENT="$agent_id" AQC_CONTENT="$content" AQC_CONF="$confidence" python3 -c "
 import os
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from collaborative_planning import CollaborativePlanning
 
 plan_id = os.environ['AQC_PLAN']; agent = os.environ['AQC_AGENT']
@@ -239,6 +253,17 @@ try:
     plan = planner.get_plan(plan_id)
     print(f'✓ Contribution added: {cid}')
     print(f'  Agent: {agent} | plan contributions: {len(plan.contributions) if plan else \"?\"}')
+    audit = Path(os.environ.get('AQC_REPO_ROOT', '$REPO_ROOT')) / '.agent' / 'collaboration' / 'aq-collaborate-contributions.jsonl'
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    with audit.open('a', encoding='utf-8') as fh:
+        fh.write(json.dumps({
+            'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'plan_id': plan_id,
+            'contribution_id': cid,
+            'agent': agent,
+            'confidence': float(os.environ['AQC_CONF']),
+            'content': os.environ.get('AQC_CONTENT', ''),
+        }, sort_keys=True) + '\\n')
 except ValueError as e:
     print(f'Error: {e} (create the plan first: aq-collaborate plan <collab-id> <objective>)')
 "

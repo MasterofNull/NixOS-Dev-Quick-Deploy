@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "round_id": "usability-parity-v2",
+  "state": "CONSENSUS_LOCKED",
+  "task": {
+    "prompt": "# AI Harness Usability Parity Expert-Team Prompt\n\nCollaboration board: `collab_1`\nCreated: 2026-07-09\nOrchestrator: Codex\nMode: PRD/debate/planning only. Do not implement code in this pass.\n\n## Objective\n\nUse the Gitlawb/zero parity-gap analysis and recent harness lessons to design the next\nAI harness human-usability upgrade across:\n\n- Command Center dashboard UI\n- `aq-*` CLI/operator interface\n- agent collaboration/delegation workflows\n- local inference/session progress visibility\n- permission/sandbox/provider diagnosis\n- task/eval/replay ergonomics\n\nThe outcome must help an operator manage the AI harness without memorizing scattered\ncommands, paths, logs, timers, profiles, or service internals. The north star is:\n\n> If the harness can do something, the operator should be able to discover it, run it,\n> understand progress, intervene safely, and inspect results from one coherent UI/CLI\n> mental model.\n\n## Source Materials To Read First\n\nRead these files before writing your proposal:\n\n- `.agents/plans/parity-gitlawb-zero-2026-07-08.md`\n- `.agents/plans/gitlawb-zero-gap-analysis.md`\n- `.agents/prompts/TOKENOMICS_PARITY_TEAM_HANDOFF.md`\n- `.agents/prompts/CLOUDFLARE_SOFTWARE_FACTORY_PARITY.md`\n- `.agent/AQ-CHAT-ROUTING-PRD-CONSOLIDATED.md`\n- `.agent/AQ-CHAT-ROUTING-PLAN-CONSOLIDATED.md`\n- `.agent/ACTIVATION-AUDIT.md`\n- `docs/operations/DASHBOARD-ARCHITECTURE-REFERENCE.md`\n- `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`\n- `docs/architecture/role-matrix.md`\n\nAlso inspect current surfaces as needed:\n\n- `dashboard.html`\n- `assets/dashboard.js`\n- `dashboard/backend/api/routes/aistack.py`\n- `scripts/ai/aq-chat`\n- `scripts/ai/aq-report`\n- `scripts/ai/aq-qa`\n- `scripts/ai/delegate-to-local`\n- `scripts/ai/delegate-to-antigravity`\n- `scripts/ai/lib/task_registry.py`\n\n## Key Lessons From Zero To Translate Natively\n\nDo not propose installing or enabling Zero. Treat it as a design reference only.\nTranslate useful patterns into native NixOS harness slices:\n\n1. `aq-agent-stream.v1`: one canonical JSONL protocol for lane/task events.\n2. Permission events as first-class operator UX objects.\n3. `aq-sandbox policy/grants`: effective sandbox and writable-root explainer.\n4. Project-local specialists with scoped tools and no recursive delegation by default.\n5. Durable `background_task.v1` metadata with heartbeat, output, stale-pid policy, and stream path.\n6. `aq-run --spec --worktree`: spec-first isolated task execution.\n7. Offline agent eval fixtures that score expected/forbidden changed files and trace events.\n8. `aq-doctor providers`: provider/secret/model/profile diagnosis after rebuilds.\n9. `aq-repo-map`: deterministic current-task repo map packet.\n10. `aq-schedule`: declarative scheduled agent jobs with capability and output contracts.\n\n## Required Expert Team Baseline\n\nEvery participating model must respond as the full same expert-team baseline, not as\none isolated role. Include sections for all roles:\n\n1. Product/Operator UX Lead\n2. Dashboard Information Architect\n3. CLI/Terminal UX Designer\n4. Agent-Orchestration Architect\n5. Systems/NixOS Implementer\n6. Security/Sandbox Reviewer\n7. Observability/SRE Owner\n8. QA/Eval Engineer\n9. Performance/Tokenomics Engineer\n\nCall out disagreements between roles explicitly.\n\n## Required Analysis Questions\n\nAnswer these with concrete evidence from the repo:\n\n1. What are the biggest human-usability gaps in the current harness UI and CLI?\n2. Which gaps come directly from the Zero parity analysis?\n3. Which gaps come from recent harness lessons: hidden activation state, stale alerts,\n   hard-coded timeout/cap assumptions, scattered dashboard fields, unclear provider state,\n   unclear sandbox grants, and opaque delegation progress?\n4. What should be discoverable from the dashboard first viewport?\n5. What should be discoverable from one CLI command without opening docs?\n6. What operator interventions should exist and where should they live?\n7. Which dashboard fields, CLI outputs, and event streams are the SSOT for each workflow?\n8. What must be measurable before any implementation slice is considered complete?\n9. What should be rejected as overreach, unsafe automation, or UI clutter?\n\n## Deliverables\n\nProduce a proposal that can be merged into a consolidated PRD/plan. Required sections:\n\n1. Executive usability diagnosis\n2. Top 10 parity gaps ranked by operator value and implementation risk\n3. Proposed UX model:\n   - dashboard navigation and cards\n   - CLI command family\n   - event stream/progress model\n   - intervention model\n   - replay/history model\n4. Slice plan:\n   - 3 to 7 implementation slices\n   - files likely touched\n   - acceptance criteria\n   - validation commands\n   - dashboard/aq-report/aq-qa coverage\n   - rollback strategy\n5. Parity scorecard:\n   - Zero pattern\n   - current local equivalent\n   - current status\n   - proposed native harness improvement\n   - validation gate\n6. Risk register:\n   - security/sandbox\n   - operator confusion\n   - performance/token cost\n   - local model latency\n   - false confidence from stale telemetry\n   - over-automation\n7. Concrete first slice recommendation:\n   - choose one slice to implement first\n   - explain why it precedes the others\n   - define exact done criteria\n\n## Non-Negotiable Constraints\n\n- Do not implement code in this pass.\n- Do not install or run Zero.\n- Do not propose runtime-only system changes; NixOS declarative changes only.\n- Do not add a new service without aq-qa and dashboard/report visibility.\n- Do not hardcode ports, secrets, provider URLs, or local paths outside existing contracts.\n- Do not cap local agents by arbitrary tool-call/read/timeout counts; use progress/liveness/stale-state signals.\n- Do not make autonomous commit/fix behavior the default. Keep PRSI/reviewer/human boundaries intact.\n- Do not change the canonical 8-step workflow into a new workflow. Add overlays or PRDs, not contract drift.\n- Do not accept Gemini/Antigravity claims without review evidence.\n\n## Output Contract\n\nWrite your response as Markdown with these exact top-level headings:\n\n1. `# Verdict`\n2. `# Evidence Read`\n3. `# Expert-Team Findings`\n4. `# Ranked Parity Gaps`\n5. `# Proposed UX Architecture`\n6. `# Slice Plan`\n7. `# Validation Matrix`\n8. `# Risk Register`\n9. `# First Slice Recommendation`\n10. `# Open Questions`\n\nEnd with:\n\n`VERDICT: PASS|REQUEST_REVISION|BLOCKED — one sentence`\n\n## Agent Output Paths\n\nIf you have file-write access, write your proposal to the matching path:\n\n- Local/Qwen: `.agents/plans/usability-parity/local.md`\n- Antigravity/Gemini: `.agents/plans/usability-parity/antigravity.md`\n- Codex: `.agents/plans/usability-parity/codex.md`\n- Opencode/other: `.agents/plans/usability-parity/opencode.md`\n\nIf you do not have file-write access, return the proposal in your task output and cite\nthe collaboration board `collab_1`.\n\n## Collaboration Submission\n\nAfter producing the proposal, submit or make it ready for:\n\n`scripts/ai/aq-collaborate contribute collab_1 --agent <agent-id> --phase usability-parity --description \"<short title>\" --approach \"<path or summary>\"`\n\nIf your lane cannot call `aq-collaborate`, include the exact contribution command the\norchestrator should run for you.",
+    "target": ".agents/plans/usability-parity-v2",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-09T05:46:55Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "6475769ba135632a695ca957637aba72d3418b7206273593b7e1d83b8e105d5f",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "b2398db664872d6501d815c258c8f9c2a7609bc1162818da3d24d54aec1973ee",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "a9ccb8fa51013cec4212ce5184580271a0ba16f737b32043f0ff4abd098e9aad",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "62c2fd7516ecc7ca2d18d1cc9989b69125b5ed48fda7f0cfbe9d5d78fa7ec648",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": "9ea982005bb3d3c20756a6e0b7bbcbe7429d936c1498ca569b912260ab3ca365",
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": "2026-07-09T06:14:30Z",
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-09T05:46:55Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-09T06:14:30Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-09T06:14:30Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->CONSENSUS_LOCKED",
+      "timestamp": "2026-07-09T06:14:30Z",
+      "actor": "round_aggregate"
+    }
+  ]
+}

@@ -195,7 +195,7 @@ class TaskRegistry:
             return False
         try:
             hb = json.loads(heartbeat_path.read_text())
-            hb_at = hb.get("heartbeat_at") or hb.get("last_heartbeat")
+            hb_at = hb.get("heartbeat_at") or hb.get("last_heartbeat") or hb.get("ts")
             if not hb_at:
                 return False
             from datetime import datetime, timezone
@@ -280,6 +280,7 @@ class TaskRegistry:
         paths = {
             "output": output_path,
             "progress": Path(str(output_path) + ".progress.json") if output_path else None,
+            "heartbeat": Path(str(output_path) + ".heartbeat.json") if output_path else None,
             "steps": Path(str(output_path) + ".steps.jsonl") if output_path else None,
         }
         snapshot: dict[str, dict] = {}

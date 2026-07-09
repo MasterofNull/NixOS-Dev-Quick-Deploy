@@ -59,10 +59,10 @@ def _write(path: Path, comments: list[str], entries: list[dict]) -> None:
 
 
 def reconcile(path: Path, dry_run: bool) -> int:
-    if path == DEFAULT_REGISTRY and not dry_run:
+    if path == DEFAULT_REGISTRY:
         registry = TaskRegistry(path.parent, repo_root=ROOT)
-        changed = registry.reconcile_running()
-        print(json.dumps({"registry": str(path), "terminal_marked": changed, "dry_run": dry_run}, indent=2))
+        result = registry.repair_stale(apply=not dry_run)
+        print(json.dumps({"registry": str(path), **result, "dry_run": dry_run}, indent=2))
         return 0
     comments, entries = _load(path)
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -84,6 +84,14 @@ def reconcile(path: Path, dry_run: bool) -> int:
 
 
 def list_entries(path: Path, status: str | None) -> int:
+    if path == DEFAULT_REGISTRY:
+        registry = TaskRegistry(path.parent, repo_root=ROOT)
+        entries = [registry._with_inferred_status(e) for e in registry.list_all()]
+        for entry in entries:
+            if status and entry.get("status") != status:
+                continue
+            print(f"{entry.get('id','?'):<32} {entry.get('status','?'):<8} {entry.get('agent','?'):<12} {entry.get('role','?'):<10} {str(entry.get('pid')):<8} {entry.get('description','')[:72]}")
+        return 0
     _, entries = _load(path)
     for entry in entries:
         if status and entry.get("status") != status:
