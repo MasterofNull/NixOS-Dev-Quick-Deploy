@@ -338,7 +338,7 @@ integration:
 
   # LLM integration for synthesis
   llm_provider: "anthropic"  # anthropic | openai | local
-  llm_model: "claude-sonnet-4"
+  llm_model: "claude-fable-5"
   llm_timeout_seconds: 30
   llm_max_retries: 2
 

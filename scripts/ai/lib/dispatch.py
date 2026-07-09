@@ -93,6 +93,26 @@ except ImportError:
                     msgs[sys_idx] = {"role": "system", "content": prefix + "\n\n" + msgs[sys_idx]["content"]}
                 else:
                     msgs.insert(0, {"role": "system", "content": prefix})
+        # Fable-parity MICRO block — mirrors shared/llm_config.py injection.
+        # SSOT: .agent/FABLE-PARITY-CONTRACT.md §3.
+        _fable_parity = (
+            "Behavior: lead with the outcome; final answer self-contained. "
+            "Act, don't ask, for reversible in-scope work. "
+            "Never end on a plan — do it or name the blocker. "
+            "Verify evidence before any state change. "
+            "Report failures honestly with output; state verified work plainly."
+        )
+        if (
+            os.environ.get("FABLE_PARITY", "1") != "0"
+            and _max > 100
+            and task_type != "structured"
+        ):
+            _sys_idx = next((i for i, m in enumerate(msgs) if m.get("role") == "system"), None)
+            if _sys_idx is not None:
+                if _fable_parity not in msgs[_sys_idx]["content"]:
+                    msgs[_sys_idx] = {"role": "system", "content": msgs[_sys_idx]["content"] + "\n\n" + _fable_parity}
+            else:
+                msgs.insert(0, {"role": "system", "content": _fable_parity})
         payload = {
             "messages": msgs,
             "temperature": _temperature,

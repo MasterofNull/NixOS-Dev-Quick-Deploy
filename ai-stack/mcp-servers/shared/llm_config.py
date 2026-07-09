@@ -55,6 +55,44 @@ ROLE_SYSTEM_PROMPTS: dict[str, str] = {
     "reviewer":     "[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work.",
 }
 
+# Fable-parity behavioral block (~55 tok) — MICRO variant.
+# SSOT: .agent/FABLE-PARITY-CONTRACT.md §3. Edit there first, then mirror here verbatim.
+# Injected into the system message for chat/agent task types so local inference
+# mirrors Claude Fable 5 operating behavior. Modal: skipped for probe-sized budgets
+# and strict-JSON ("structured") lanes; kill switch FABLE_PARITY=0.
+FABLE_PARITY_SYSTEM_PROMPT = (
+    "Behavior: lead with the outcome; final answer self-contained. "
+    "Act, don't ask, for reversible in-scope work. "
+    "Never end on a plan — do it or name the blocker. "
+    "Verify evidence before any state change. "
+    "Report failures honestly with output; state verified work plainly."
+)
+
+# Budgets at or below this cannot afford the parity block (health/speed probes).
+_FABLE_PARITY_MIN_BUDGET = 100
+# Strict-format lanes where behavioral prose risks contaminating output.
+_FABLE_PARITY_SKIP_TASK_TYPES = frozenset({"structured"})
+
+
+def _inject_fable_parity(messages: list) -> list:
+    """Append the Fable-parity block to the first system message (or add one).
+
+    Appended (not prepended) so role-authority blocks stay first and the
+    cache_prompt prefix remains stable across calls.
+    """
+    msgs = list(messages)
+    sys_idx = next((i for i, m in enumerate(msgs) if m.get("role") == "system"), None)
+    if sys_idx is not None:
+        if FABLE_PARITY_SYSTEM_PROMPT in msgs[sys_idx]["content"]:
+            return msgs  # already present (e.g. caller pre-injected)
+        msgs[sys_idx] = {
+            "role": "system",
+            "content": msgs[sys_idx]["content"] + "\n\n" + FABLE_PARITY_SYSTEM_PROMPT,
+        }
+    else:
+        msgs.insert(0, {"role": "system", "content": FABLE_PARITY_SYSTEM_PROMPT})
+    return msgs
+
 
 def _inject_role(messages: list, role: str) -> list:
     """Prepend compact role block to the first system message, or insert one if absent."""
@@ -295,6 +333,14 @@ def build_llama_payload(
         _ctk["thinking_budget"] = _thinking_budget
 
     _messages = _inject_role(messages, role) if role else messages
+    # Fable-parity behavioral injection (modal). Skipped for probe-sized budgets,
+    # strict-JSON lanes, or FABLE_PARITY=0. SSOT: .agent/FABLE-PARITY-CONTRACT.md.
+    if (
+        os.environ.get("FABLE_PARITY", "1") != "0"
+        and _max_tokens > _FABLE_PARITY_MIN_BUDGET
+        and task_type not in _FABLE_PARITY_SKIP_TASK_TYPES
+    ):
+        _messages = _inject_fable_parity(_messages)
     payload: dict[str, Any] = {
         "messages": _messages,
         "temperature": _temperature,

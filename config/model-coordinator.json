@@ -10,7 +10,9 @@
   "tiers": {
     "_comment": "Version SSOT. Route phase/slice complexity -> tier -> concrete current model id. When a new model version ships, bump the id HERE only; downstream pools (remote_agents.py, delegate-to-antigravity _MODEL_MAP) should read these ids rather than hardcoding their own. Prevents the drift where pools stay pinned to superseded versions.",
     "anthropic": {
-      "flagship": "claude-opus-4-8",
+      "_comment": "claude-fable-5 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 4.8 = deep fallback when Fable is unavailable; Sonnet 4-6 = balanced; Haiku = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
+      "flagship": "claude-fable-5",
+      "flagship_fallback": "claude-opus-4-8",
       "balanced": "claude-sonnet-4-6",
       "fast": "claude-haiku-4-5-20251001",
       "creative": "claude-fable-5"
