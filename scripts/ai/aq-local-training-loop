@@ -769,6 +769,24 @@ class TrainingLoop:
             else:
                 result = _score_response(response, case)
 
+            # Close the loop on FAILURES: a real model response that scored sub-threshold is an ideal
+            # correction target (we know the expected keywords). Capture it so aq-correct-failures →
+            # HITL → dataset can learn from it — the loop previously learned only from wins. Skip infra
+            # submit-failures (response is None): those are not model knowledge misses. Best-effort.
+            if response is not None and not result.get("pass"):
+                try:
+                    from training_capture import capture_failure
+                    capture_failure(
+                        prompt=case["query"],
+                        bad_output=response or "",
+                        failure_class="eval_low_score",
+                        source="training-loop-eval",
+                        tools_available=None,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[training-loop] WARNING: failure capture failed: {exc}",
+                          file=sys.stderr)
+
             if self.verbose:
                 status = "PASS" if result.get("pass") else "FAIL"
                 print(f"[training-loop]   {status} {case['id']} score={result.get('score')}")
