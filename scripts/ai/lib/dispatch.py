@@ -133,6 +133,14 @@ from task_config import TaskConfig  # type: ignore  # noqa: E402
 from task_registry import TaskRegistry  # type: ignore  # noqa: E402
 from slot_scheduler import SlotWaitTimeout, wait_for_slot  # type: ignore  # noqa: E402
 
+# F2.5 wiring: banded cross-process slot queue (scheduler + backpressure +
+# model_tier). Optional import — absence or SLOT_QUEUE=0 falls back to the
+# legacy bare wait_for_slot race-poll.
+try:
+    import slot_queue as _slot_queue  # type: ignore  # noqa: E402
+except ImportError:
+    _slot_queue = None  # type: ignore[assignment]
+
 
 # ── Phase 163: local inference budget + visibility ───────────────────────────
 # Calibration constant for timeout scaling in direct-mode tasks.
@@ -479,8 +487,31 @@ class DirectRunner:
         """
         progress_file = Path(str(output_file) + ".progress.json")
         _start = time.monotonic()
+        _queued_run_id = None
         try:
-            wait_for_slot(config.llama_url, config.timeout_secs)
+            if _slot_queue is not None and _slot_queue.enabled():
+                # F2.5 path: banded queue (P1/P2/P3 + aging) with typed
+                # backpressure. LOCAL_DELAYED keeps the lane queued
+                # (never-skip-local); only deadline exhaustion rejects.
+                _queued_run_id = output_file.stem
+
+                def _on_wait(signal, waited_s, depth):
+                    _write_progress(
+                        progress_file, 0, config.max_tokens, waited_s, 0.0, None,
+                        f"queued_{signal.value.replace('-', '_')}_depth{depth}",
+                        role=config.role,
+                    )
+
+                _slot_queue.acquire(
+                    _REPO_ROOT,
+                    _queued_run_id,
+                    config.llama_url,
+                    config.timeout_secs,
+                    expected_infer_s=config.max_tokens / _LOCAL_TOK_PER_SEC,
+                    on_wait=_on_wait,
+                )
+            else:
+                wait_for_slot(config.llama_url, config.timeout_secs)
         except SlotWaitTimeout as exc:
             elapsed = time.monotonic() - _start
             output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -496,6 +527,14 @@ class DirectRunner:
                 role=config.role,
             )
             return False
+
+        def _release_queue_slot():
+            # Idempotent: only clears this process's own running marker.
+            if _queued_run_id is not None and _slot_queue is not None:
+                try:
+                    _slot_queue.release(_REPO_ROOT, _queued_run_id)
+                except Exception:
+                    pass
 
         messages = _prepend_grounding([], config)
         messages.append({"role": "user", "content": prompt})
@@ -552,6 +591,7 @@ class DirectRunner:
                         except (json.JSONDecodeError, KeyError):
                             pass
 
+            _release_queue_slot()
             final_toks = tokens_out or _stream_toks
             elapsed = time.monotonic() - _start
             tps = final_toks / elapsed if elapsed > 0 and final_toks > 0 else 0.0
@@ -567,11 +607,13 @@ class DirectRunner:
             return True
 
         except urllib.error.HTTPError as e:
+            _release_queue_slot()
             elapsed = time.monotonic() - _start
             _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
             output_file.write_text(f"HTTP {e.code}: {e.read().decode()}")
             return False
         except Exception as e:
+            _release_queue_slot()
             elapsed = time.monotonic() - _start
             _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
             # Preserve any partial output that streamed before the failure
