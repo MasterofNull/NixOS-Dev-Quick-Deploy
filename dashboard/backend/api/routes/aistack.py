@@ -2148,8 +2148,25 @@ async def get_loop_status() -> Dict[str, Any]:
                 continue
         return None
 
-    # Last completed run + current phase.
-    results = _first("training-loop-results.jsonl")
+    def _most_recent(rel: str) -> Optional[Path]:
+        """The candidate with the newest mtime across telemetry dirs — so the dashboard reflects the
+        LATEST run wherever it wrote (service /var/lib or a repo-dir run), not var/lib-first (which
+        would show a stale older result)."""
+        best: Optional[Path] = None
+        best_mtime = -1.0
+        for d in dirs:
+            p = d / rel
+            try:
+                if p.exists() and p.is_file() and p.stat().st_size > 0:
+                    m = p.stat().st_mtime
+                    if m > best_mtime:
+                        best_mtime, best = m, p
+            except OSError:
+                continue
+        return best
+
+    # Last completed run + current phase. Use most-recent (not var/lib-first) so a fresh run shows.
+    results = _most_recent("training-loop-results.jsonl")
     last_run = _read_last_jsonl(results) if results else None
     last_run_age_h = None
     if results is not None:
