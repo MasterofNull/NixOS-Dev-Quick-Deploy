@@ -57,8 +57,13 @@ def main() -> int:
     assert_true(captured["cmd"] == [sys.executable, str(monitor._HARNESS_RUNNER), "0", "--json"], "run_aq_qa should bypass shell launcher")
     for name in ("TMPDIR", "TEMP", "TMP"):
         assert_true(captured["env"].get(name) == str(monitor._TMPDIR), f"{name} should use repo-local writable tmp")
-    assert_true(captured["env"].get("PATH", "").startswith(monitor._SYSTEM_BIN), "run_aq_qa should expose system bash/python tools")
+    assert_true(captured["env"].get("PATH", "").startswith(f"{monitor._PYTHON_BIN}:{monitor._SYSTEM_BIN}"), "run_aq_qa should prefer service Python before system tools")
+    assert_true(captured["env"].get("PYTHONDONTWRITEBYTECODE") == "1", "run_aq_qa should not write pyc files into the read-only repo")
+    assert_true(captured["env"].get("PYTHONPYCACHEPREFIX") == str(monitor._PYTHONPYCACHEPREFIX), "run_aq_qa should redirect pycache writes")
+    assert_true(captured["env"].get("CARGO_TARGET_DIR") == str(monitor._CARGO_TARGET_DIR), "run_aq_qa should redirect cargo target writes")
     assert_true(monitor._TMPDIR.exists(), "run_aq_qa should create repo-local tmpdir")
+    assert_true(monitor._PYTHONPYCACHEPREFIX.exists(), "run_aq_qa should create pycache dir")
+    assert_true(monitor._CARGO_TARGET_DIR.exists(), "run_aq_qa should create cargo target dir")
 
     original_status_path = monitor._STATUS_PATH
     try:

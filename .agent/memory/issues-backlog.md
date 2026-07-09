@@ -1,10 +1,16 @@
 ## OPEN ISSUES
 
-[PENDING-REBUILD 2026-07-09] ai-stack-health-monitor-service-python-env — The real `ai-stack-health-monitor.service` still reported `aq-qa` failures after the script fix because its Nix Python env was too small for phase-0 imports.
-  Root cause / fix notes: the service used a one-off `python3.withPackages [ pyyaml ]`; phase `83.3` imports `ai-stack/agent-memory/dag_manager.py`, which requires `pydantic`. The hardened unit PATH also omitted `/run/current-system/sw/bin`, so subprocesses that need `bash` failed until the monitor supplied a child PATH.
+[DONE 2026-07-09] ai-stack-health-monitor-service-python-env — The real `ai-stack-health-monitor.service` still reported `aq-qa` failures after the script fix because its Nix Python env was too small for phase-0 imports.
+  Root cause / fix notes: the service used a one-off `python3.withPackages [ pyyaml ]`; phase `83.3` imports `ai-stack/agent-memory/dag_manager.py`, which requires `pydantic`. The hardened unit PATH also omitted `/run/current-system/sw/bin`, so subprocesses that need `bash` failed until the monitor supplied a child PATH. After rebuild, phase-0 still found sandbox false positives until Python bytecode and Cargo target writes were redirected into `.agents/tmp`.
   Severity: high
-  Action: `ai-stack-health-monitor.py` now runs the Python QA harness directly, supplies repo-local temp and system PATH to children, writes stderr/stdout snippets and failing check summaries to latest-run status, and the Nix unit now uses `monitorPython` with `pydantic`/`pyyaml`. Requires `nixos-rebuild switch` to update the service Python closure.
+  Action: `ai-stack-health-monitor.py` now runs the Python QA harness directly, supplies repo-local temp/cache/Cargo target env and service-Python-first PATH to children, writes stderr/stdout snippets and failing check summaries to latest-run status, and the Nix unit now uses `monitorPython` with `pydantic`/`pyyaml`. Rebuilt and live service run passed phase 0.
   File: scripts/health/ai-stack-health-monitor.py; scripts/testing/test-ai-stack-health-monitor.py; nix/modules/roles/ai-stack.nix
+
+[DONE 2026-07-09] dbus-broker-reload-timeout-after-switch — `nixos-rebuild switch` returned exit 4 because both system and user `dbus-broker.service` reload operations timed out.
+  Root cause / fix notes: rebuilt units declared `services.dbus.implementation = broker` and `Type=notify-reload`, but the active processes were still old `dbus-daemon` instances because NixOS does not restart DBus during switch. Reload waited for broker-style notification from the old daemon and timed out. Explicitly restarting system and user DBus after the crash brought up `dbus-broker-launch`; subsequent reload smoke tests for both scopes succeeded.
+  Severity: high
+  Action: Verified no failed units, confirmed both buses now run `dbus-broker-launch`, and verified `systemctl reload dbus-broker.service` plus `systemctl --user reload dbus-broker.service` succeed.
+  File: /etc/systemd/system/dbus-broker.service; /etc/systemd/user/dbus-broker.service
 
 [DONE 2026-07-09] switchboard-local-tool-calling-hints-drift — `local-tool-calling` was documented and deployed as hint-free in the Nix catalog, but the YAML catalog and Python fallback still had `injectHints=true`.
   Root cause / fix notes: Phase 178-B partially aligned the Nix profile but left the repo YAML SSOT and fallback default stale, and the policy regression test encoded the stale value. This added avoidable coordinator hint latency and could perturb short tool-call prompts.
