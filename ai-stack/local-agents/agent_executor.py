@@ -1791,6 +1791,22 @@ class LocalAgentExecutor:
         # When task_type is set the profile drives temperature; otherwise use 0.2.
         _temperature: Optional[float] = None if task_type else 0.2
 
+        # Prefill-wedge guard (root-cause fix for orphaned-slot cascades): a single oversized prompt
+        # — e.g. an un-compacted large-file read that slipped past the >8-message context pruning —
+        # causes a prefill longer than first_token_timeout on the single-slot APU. The client gives up
+        # but llama.cpp keeps prefilling, ORPHANING the only slot and wedging ALL subsequent local
+        # dispatches (a wedged slot then starves unrelated tasks — this is how a victim task fails with
+        # 0 tool calls). Fail FAST here with a clean, capturable error instead of sending a request that
+        # will wedge the slot. Ceiling ~6000 tok leaves headroom under the 8192 ctx for generation.
+        _prompt_chars = sum(len(m.get("content") or "") for m in messages)
+        _max_prompt_chars = int(os.getenv("LLAMA_MAX_PROMPT_CHARS", "24000"))
+        if _prompt_chars > _max_prompt_chars:
+            raise RuntimeError(
+                f"prompt too large for single-slot prefill: {_prompt_chars} chars > {_max_prompt_chars} "
+                "(LLAMA_MAX_PROMPT_CHARS) — refusing to send; an oversized prefill would orphan/wedge the "
+                "llama.cpp slot. Trim context: ranged reads, tool-result compaction, or fewer files."
+            )
+
         if not use_streaming:
             # Legacy non-streaming path — 300s wall-clock limit.
             _payload_kwargs: Dict[str, Any] = {"max_tokens": max_tokens, "role": role}
