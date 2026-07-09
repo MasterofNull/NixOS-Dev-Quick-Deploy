@@ -141,6 +141,13 @@ try:
 except ImportError:
     _slot_queue = None  # type: ignore[assignment]
 
+# Agentic auto-assignment: role/band/task_class/skill hints inferred from the
+# task itself so callers need no manual flags. AUTO_ASSIGN=0 disables.
+try:
+    import auto_assign as _auto_assign  # type: ignore  # noqa: E402
+except ImportError:
+    _auto_assign = None  # type: ignore[assignment]
+
 
 # ── Phase 163: local inference budget + visibility ───────────────────────────
 # Calibration constant for timeout scaling in direct-mode tasks.
@@ -507,6 +514,8 @@ class DirectRunner:
                     _queued_run_id,
                     config.llama_url,
                     config.timeout_secs,
+                    task_class=(_auto_assign.infer_task_class(prompt)
+                                if _auto_assign is not None else None),
                     expected_infer_s=config.max_tokens / _LOCAL_TOK_PER_SEC,
                     on_wait=_on_wait,
                 )
@@ -1217,7 +1226,8 @@ def _build_parser() -> argparse.ArgumentParser:
                        "planning", "prd", "deep_reasoning",
                    ],
                    help="Modal payload profile; None/'auto' runs classify_task_type() (default)")
-    d.add_argument("--role",          required=True)
+    d.add_argument("--role",          default="auto",
+                   help="Authority role; 'auto' (default) infers from the task via auto_assign")
     d.add_argument("--prompt",        required=True)
     d.add_argument("--timeout",       type=int, default=300)
     d.add_argument("--max-tokens",    type=int, default=None)
@@ -1405,9 +1415,24 @@ def main() -> int:
         except Exception:
             pass
 
+    # Agentic auto-assignment: infer role, priority band, and skill hints from
+    # the task itself when the caller didn't specify them. Explicit values and
+    # a pre-set DISPATCH_BAND env always win. AUTO_ASSIGN=0 disables.
+    _resolved_role = args.role
+    if _auto_assign is not None and _auto_assign.enabled():
+        _resolved_role = _auto_assign.resolve_role(args.role, args.prompt)
+        _hint = _auto_assign.skill_hint_block(args.prompt, _REPO_ROOT)
+        if _hint and _hint not in args.prompt:
+            args.prompt = f"{args.prompt}\n\n{_hint}"
+        if "DISPATCH_BAND" not in os.environ:
+            os.environ["DISPATCH_BAND"] = _auto_assign.infer_band(
+                os.environ.get("DISPATCH_SOURCE"), args.prompt)
+    elif args.role == "auto":
+        _resolved_role = "implementer"
+
     config = TaskConfig.from_args(
         mode=resolved_mode,
-        role=args.role,
+        role=_resolved_role,
         timeout_secs=args.timeout,
         max_tokens=resolved_tokens,
         llama_url=args.llama_url,

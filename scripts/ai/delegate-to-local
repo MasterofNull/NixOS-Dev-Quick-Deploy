@@ -79,7 +79,10 @@ PROMPT=""
 PROMPT_FILE=""
 MODE="auto"   # Phase 74E: auto runs classify_mode() heuristic in dispatch.py
 TIMEOUT=300
-ROLE="implement"
+# "auto": dispatch.py auto_assign infers the role from the task itself
+# (the old "implement" default was not a canonical role name and silently
+# skipped role injection entirely).
+ROLE="auto"
 WAIT=false
 TOOL_MANIFEST="full"
 TASK_TYPE=""  # Phase 173: "research"|"analysis"|"prd" raises stagnation read limits to 15/25
@@ -118,11 +121,13 @@ case "$MODE" in
 esac
 
 case "$ROLE" in
+    # auto: dispatch.py auto_assign infers the canonical role from the task
+    auto) ;;
     # Canonical role-matrix values
     orchestrator|architect|implementer|reviewer) ;;
     # Legacy aliases (mapped to canonical in task_config.py)
     plan|implement|review|research) ;;
-    *) die "Invalid --role '$ROLE'. Valid: orchestrator | architect | implementer | reviewer" ;;
+    *) die "Invalid --role '$ROLE'. Valid: auto | orchestrator | architect | implementer | reviewer" ;;
 esac
 
 # ── subcommands ───────────────────────────────────────────────────────────────
