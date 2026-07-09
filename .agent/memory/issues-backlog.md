@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-09] capability-readiness-stale-blockers — The completed Understand-Anything graph, T3MP3ST red-team readiness facade, OSINT local surface research, and Antigravity inbox lane were not all exposed as actionable agent capabilities.
+  Root cause / fix notes: registry/catalog state lagged behind completed graph output; T3MP3ST had only a blocked metadata facade instead of scope receipt readiness; Antigravity had a drop directory but no operator-side consume CLI; local webpage/system research lacked a bounded loopback/private surface scanner.
+  Severity: medium
+  Action: Promoted `code-intelligence-graph-layer` after `validate-batches`, added T3MP3ST scope receipts and ready-scope-gated state, added `aq-antigravity-inbox`, added `aq-local-surface-scan`, and refreshed capability catalog docs/tests.
+  File: config/agent-capability-intake-candidates.json; config/system-capability-catalog.json; scripts/ai/aq-tempest; scripts/ai/aq-antigravity-inbox; scripts/ai/aq-local-surface-scan
+
 [DONE 2026-07-09] ai-stack-health-monitor-service-python-env — The real `ai-stack-health-monitor.service` still reported `aq-qa` failures after the script fix because its Nix Python env was too small for phase-0 imports.
   Root cause / fix notes: the service used a one-off `python3.withPackages [ pyyaml ]`; phase `83.3` imports `ai-stack/agent-memory/dag_manager.py`, which requires `pydantic`. The hardened unit PATH also omitted `/run/current-system/sw/bin`, so subprocesses that need `bash` failed until the monitor supplied a child PATH. After rebuild, phase-0 still found sandbox false positives until Python bytecode and Cargo target writes were redirected into `.agents/tmp`.
   Severity: high

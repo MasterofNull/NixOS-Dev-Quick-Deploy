@@ -148,10 +148,10 @@
       "name": "T3MP3ST Intake Facade",
       "category": "security-governance",
       "kind": "repo-cli",
-      "state": "blocked-security-intake",
-      "maturity": "intake",
+      "state": "enabled",
+      "maturity": "scope-gated",
       "owner": "security-systems",
-      "summary": "Metadata-only facade for evaluating the T3MP3ST dual-use offensive-security candidate while blocking clone, install, server, MCP, scan, and exploit actions.",
+      "summary": "Scope-gated facade for preparing authorized self red-team work with T3MP3ST while keeping runtime attachment and active operations behind receipts, packaging review, and deny-by-default MCP admission.",
       "agent_access": [
         "codex",
         "claude",
@@ -165,7 +165,7 @@
         ".agent/PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md"
       ],
       "security": {
-        "admission": "blocked-external-dual-use",
+        "admission": "metadata-only-blocked-external-dual-use",
         "intake_candidate_id": "t3mp3st",
         "risk": "high",
         "required_gate": "scripts/ai/aq-tempest gates --json && scripts/ai/aq-tempest audit --json"
@@ -408,15 +408,18 @@
       ],
       "primary_refs": [
         ".agent/skills/understand-anything/SKILL.md",
-        "scripts/ai/aq-understand-anything"
+        "scripts/ai/aq-understand-anything",
+        ".understand-anything/knowledge-graph.json"
       ],
       "security": {
-        "admission": "local-governance",
+        "admission": "accepted-with-mitigations",
+        "intake_candidate_id": "code-intelligence-graph-layer",
         "risk": "medium",
-        "required_gate": "scripts/ai/aq-understand-anything ensure"
+        "required_gate": "scripts/ai/aq-understand-anything validate-batches"
       },
       "validation": [
-        "scripts/ai/aq-understand-anything ensure"
+        "scripts/ai/aq-understand-anything status",
+        "scripts/ai/aq-understand-anything validate-batches"
       ],
       "parity_targets": [
         "repo graph agents",
@@ -458,6 +461,44 @@
         "public-source research pipelines",
         "STIX-like evidence stores",
         "browser-assisted research agents"
+      ],
+      "data_stores": [
+        "osint-intelligence"
+      ]
+    },
+    {
+      "id": "local-surface-research",
+      "name": "Local Surface Research Scanner",
+      "category": "osint",
+      "kind": "repo-cli",
+      "state": "enabled",
+      "maturity": "integrated",
+      "owner": "osint-systems",
+      "summary": "Bounded local/private HTTP surface scanner for authorized harness webpages and service health surfaces.",
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/aq-local-surface-scan",
+        "scripts/testing/test-local-surface-scan.py",
+        ".agent/skills/osint-systems/SKILL.md"
+      ],
+      "security": {
+        "admission": "local-governance",
+        "risk": "medium",
+        "required_gate": "python3 scripts/testing/test-local-surface-scan.py"
+      },
+      "validation": [
+        "python3 scripts/testing/test-local-surface-scan.py",
+        "python3 scripts/testing/test-osint-active-recon-gate.py"
+      ],
+      "parity_targets": [
+        "local web surface inventory",
+        "dashboard security header checks",
+        "authorized self red-team reconnaissance"
       ],
       "data_stores": [
         "osint-intelligence"

@@ -364,10 +364,15 @@
       "source_url": "local",
       "maturity": "local-build",
       "priority": "medium-high",
-      "state": "blocked-graph-incomplete",
-      "review_status": "blocked",
-      "blocked_reason": "Understand-Anything integration is installed, but the repo knowledge graph is still missing.",
-      "unblock_condition": "Complete Understand-Anything batch analysis and generate .understand-anything/knowledge-graph.json before enabling graph-backed impact tools.",
+      "state": "enabled",
+      "review_status": "accepted-with-mitigations",
+      "pinned_version": "understand-anything-54754a6+graph-2026-07-09",
+      "mitigations": [
+        "graph completion is validated with scripts/ai/aq-understand-anything validate-batches",
+        "graph answers are advisory and must be verified against source before deploy or security decisions",
+        "no network, secrets, or active code execution are granted to graph-backed tools",
+        "graph writes are limited to .understand-anything knowledge-graph output"
+      ],
       "install": {
         "type": "local-skill",
         "command": "scripts/ai/aq-understand-anything",
@@ -382,7 +387,7 @@
       },
       "value": "Combine Understand-Anything, lean-ctx, and language-aware indexes for deterministic impact answers.",
       "risks": ["llm-generated-graph-inaccuracy"],
-      "activation_notes": "Use graph as advisory; verify deploy/security conclusions against source and live checks."
+      "activation_notes": "Enabled after Understand-Anything generated a complete 296-batch graph with .understand-anything/knowledge-graph.json present. Use graph as advisory; verify deploy/security conclusions against source and live checks."
     },
     {
       "id": "t3mp3st",
@@ -391,10 +396,18 @@
       "source_url": "https://github.com/elder-plinius/T3MP3ST",
       "maturity": "third-party-dual-use",
       "priority": "high",
-      "state": "blocked-security-intake",
-      "review_status": "blocked",
-      "blocked_reason": "Dual-use offensive-security framework with real network, exploit, MCP, and War Room surfaces. Must complete security, license, sandbox, scope, and tool-admission review before cloning, installing, enabling, or exposing tools to agents.",
-      "unblock_condition": "Pin an upstream commit, complete multi-agent security and Nix packaging review, enforce scope receipts and human approval gates, add dashboard or aq-report visibility, and pass focused intake plus tier0 validation.",
+      "state": "ready-scope-gated",
+      "review_status": "accepted-with-mitigations",
+      "pinned_version": "runtime-pending-scope-gated-2026-07-09",
+      "mitigations": [
+        "active commands require local scope receipts before execution",
+        "public targets are rejected by the scope validator; default scope is loopback and private infrastructure only",
+        "clone, install, server, MCP, exploit, and War Room runtime attachment remain disabled until pinned packaging and SBOM review land",
+        "MCP/tool admission stays deny-by-default with metadata and scope-validation tools only",
+        "aq-tempest exposes readiness, gates, audit, and scope status for dashboard or aq-report visibility"
+      ],
+      "blocked_reason": "Active T3MP3ST runtime is not installed yet; the harness-facing facade is promoted to scope-gated readiness for authorized self red-team preparation.",
+      "unblock_condition": "Attach a pinned Nix-packaged runtime after SBOM/license review, then keep active network and exploit operations behind signed local scope receipts and human approval.",
       "install": {
         "type": "disabled-external-repo",
         "command": "disabled-until-intake",
@@ -406,9 +419,9 @@
         "tempest_mcp_metadata_audit"
       ],
       "permissions": {
-        "network": "blocked-until-scope-gated",
+        "network": "scope-gated-local-only",
         "filesystem": "quarantine-read",
-        "writes": "blocked-until-sandboxed",
+        "writes": "scope-receipts-and-reports",
         "secrets": false
       },
       "value": "Potentially useful offensive-security orchestration patterns, benchmark verification discipline, scope containment concepts, and MCP/API integration patterns for authorized local harness security testing.",
@@ -420,7 +433,7 @@
         "agpl-license-obligations",
         "npm-package-execution"
       ],
-      "activation_notes": "Do not install or run in this slice. First safe milestone is a review-only quarantine import with no active scanning, no target execution, no secrets, loopback-only services, and all offensive tools denied by default."
+      "activation_notes": "Scope-gated readiness is enabled for authorized self red-team preparation. Active runtime attachment still requires pinned packaging, SBOM/license review, loopback/private target scope receipts, and deny-by-default MCP admission."
     }
   ]
 }

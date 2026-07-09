@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 
@@ -44,6 +45,23 @@ def assert_enabled_candidate(entry: dict, pinned_version: str) -> None:
     assert entry["pinned_version"] == pinned_version
     assert entry["review_status"] == "accepted-with-mitigations"
     assert entry.get("mitigations"), f"{entry['id']} must document mitigations"
+
+
+def assert_understand_graph_complete() -> None:
+    graph = ROOT / ".understand-anything" / "knowledge-graph.json"
+    assert graph.exists(), "Understand-Anything graph must exist before graph-layer promotion"
+    payload = json.loads(graph.read_text(encoding="utf-8"))
+    assert len(payload.get("nodes") or []) > 0, "Understand-Anything graph must contain nodes"
+    assert len(payload.get("edges") or []) > 0, "Understand-Anything graph must contain edges"
+    proc = subprocess.run(
+        [str(ROOT / "scripts" / "ai" / "aq-understand-anything"), "validate-batches"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    assert json.loads(proc.stdout)["ok"] is True
 
 
 def main() -> int:
@@ -87,7 +105,11 @@ def main() -> int:
     assert_enabled_candidate(candidates["syft-grype"], "syft-1.38.0+grype-0.104.1")
     assert candidates["syft-grype"]["install"]["command"] == "syft"
     assert candidates["syft-grype"]["permissions"]["secrets"] is False
-    assert candidates["code-intelligence-graph-layer"]["state"] == "blocked-graph-incomplete"
+    assert_enabled_candidate(
+        candidates["code-intelligence-graph-layer"],
+        "understand-anything-54754a6+graph-2026-07-09",
+    )
+    assert_understand_graph_complete()
 
     print("PASS: enabled external MCP candidates are pinned and bounded")
     return 0

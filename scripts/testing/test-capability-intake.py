@@ -45,8 +45,8 @@ def main() -> int:
     assert reports["github-mcp-readonly"]["admission"] == "accepted-with-mitigations"
     assert reports["github-mcp-readonly"]["state"] == "enabled"
     assert reports["github-mcp-readonly"]["unsafe_tool_count"] == 0
-    assert reports["t3mp3st"]["state"] == "blocked-security-intake"
-    assert reports["t3mp3st"]["admission"] in {"needs-review", "review-recommended", "blocked"}
+    assert reports["t3mp3st"]["state"] == "ready-scope-gated"
+    assert reports["t3mp3st"]["admission"] == "accepted-with-mitigations"
     assert "dual-use-offensive-security" in reports["t3mp3st"]["risk_flags"]
     assert "network-active-scanning" in reports["t3mp3st"]["risk_flags"]
     assert reports["t3mp3st"]["unsafe_tool_count"] == 0

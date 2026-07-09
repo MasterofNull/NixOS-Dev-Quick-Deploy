@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,7 @@ REGISTRY_PATH = REPO_ROOT / "config" / "agent-capability-intake-candidates.json"
 PRD_PATH = REPO_ROOT / ".agent" / "PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md"
 INTAKE_CMD = REPO_ROOT / "scripts" / "ai" / "aq-capability-intake"
 CANDIDATE_ID = "t3mp3st"
+SCOPE_DIR = REPO_ROOT / ".agent" / "security-scope-receipts"
 
 ACTIVE_COMMANDS = {"install", "run", "server", "mcp", "scan", "exploit", "mission", "war-room"}
 PROMOTION_GATES = [
@@ -55,6 +58,61 @@ def audit_report() -> dict[str, Any]:
     return reports[0]
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _scope_path(name: str) -> Path:
+    safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in name.strip())
+    if not safe:
+        raise ValueError("scope name is required")
+    return SCOPE_DIR / f"{safe}.json"
+
+
+def _target_allowed(target: str) -> bool:
+    host = target.strip().split("/", 1)[0].split(":", 1)[0].strip("[]")
+    if host in {"localhost", "localhost.localdomain"}:
+        return True
+    try:
+        net = ipaddress.ip_network(target.strip(), strict=False)
+    except ValueError:
+        try:
+            addr = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        return addr.is_loopback or addr.is_private or addr.is_link_local
+    return net.is_loopback or net.is_private or net.is_link_local
+
+
+def _load_scope(name: str) -> dict[str, Any]:
+    path = _scope_path(name)
+    if not path.exists():
+        raise FileNotFoundError(f"scope receipt not found: {path.relative_to(REPO_ROOT)}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _scope_status(receipt: dict[str, Any]) -> dict[str, Any]:
+    targets = [str(item) for item in receipt.get("targets", [])]
+    invalid_targets = [target for target in targets if not _target_allowed(target)]
+    expires_at = receipt.get("expires_at")
+    expired = False
+    if expires_at:
+        try:
+            expired = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")) <= _utcnow()
+        except ValueError:
+            expired = True
+    ok = bool(receipt.get("approved_by")) and bool(targets) and not invalid_targets and not expired
+    return {
+        "ok": ok,
+        "name": receipt.get("name"),
+        "approved_by": receipt.get("approved_by"),
+        "targets": targets,
+        "invalid_targets": invalid_targets,
+        "expires_at": expires_at,
+        "expired": expired,
+    }
+
+
 def status_payload() -> dict[str, Any]:
     candidate = load_candidate()
     report = audit_report()
@@ -70,7 +128,8 @@ def status_payload() -> dict[str, Any]:
         "tool_allowlist": candidate.get("tool_allowlist", []),
         "permissions": candidate.get("permissions", {}),
         "prd": str(PRD_PATH.relative_to(REPO_ROOT)),
-        "active_execution": "blocked",
+        "scope_receipts": str(SCOPE_DIR.relative_to(REPO_ROOT)),
+        "active_execution": "scope-gated-runtime-pending",
     }
 
 
@@ -108,11 +167,71 @@ def cmd_gates(args: argparse.Namespace) -> int:
 
 def cmd_blocked(args: argparse.Namespace) -> int:
     command = args.cmd or "active"
+    if args.scope:
+        try:
+            scope = _scope_status(_load_scope(args.scope))
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+            print(f"blocked: invalid scope receipt for '{command}': {exc}", file=sys.stderr)
+            return 2
+        if not scope["ok"]:
+            print(f"blocked: scope receipt '{args.scope}' is not valid: {json.dumps(scope, sort_keys=True)}", file=sys.stderr)
+            return 2
+        print(
+            f"ready: scope '{args.scope}' authorizes '{command}' for {scope['targets']}, "
+            "but the T3MP3ST runtime is not attached yet. Complete pinned Nix packaging, SBOM/license review, "
+            "and deny-by-default MCP admission before execution.",
+            file=sys.stderr,
+        )
+        return 3
     print(
-        f"blocked: T3MP3ST is {load_candidate().get('state')}; '{command}' active execution is disabled until security intake gates pass. See {PRD_PATH.relative_to(REPO_ROOT)}.",
+        f"blocked: T3MP3ST is {load_candidate().get('state')}; '{command}' requires a valid local scope receipt. "
+        f"Create one with `aq-tempest scope-create --name <name> --targets <cidr-or-host> --approved-by <operator> --purpose <reason>`. See {PRD_PATH.relative_to(REPO_ROOT)}.",
         file=sys.stderr,
     )
     return 2
+
+
+def cmd_scope_create(args: argparse.Namespace) -> int:
+    targets = [target.strip() for target in args.targets.split(",") if target.strip()]
+    invalid = [target for target in targets if not _target_allowed(target)]
+    if invalid:
+        print(f"refusing public or invalid targets: {', '.join(invalid)}", file=sys.stderr)
+        return 2
+    receipt = {
+        "name": args.name,
+        "created_at": _utcnow().isoformat().replace("+00:00", "Z"),
+        "expires_at": args.expires_at,
+        "approved_by": args.approved_by,
+        "purpose": args.purpose,
+        "targets": targets,
+        "allowed_operations": args.operations.split(","),
+        "policy": "authorized-self-redteam-only",
+    }
+    SCOPE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _scope_path(args.name)
+    path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return emit({"ok": True, "path": str(path.relative_to(REPO_ROOT)), "receipt": receipt}, args.json)
+
+
+def cmd_scope_list(args: argparse.Namespace) -> int:
+    receipts = []
+    if SCOPE_DIR.exists():
+        for path in sorted(SCOPE_DIR.glob("*.json")):
+            try:
+                receipt = json.loads(path.read_text(encoding="utf-8"))
+                receipts.append({"path": str(path.relative_to(REPO_ROOT)), **_scope_status(receipt)})
+            except json.JSONDecodeError:
+                receipts.append({"path": str(path.relative_to(REPO_ROOT)), "ok": False, "error": "invalid-json"})
+    return emit({"scope_receipts": receipts}, args.json)
+
+
+def cmd_scope_check(args: argparse.Namespace) -> int:
+    try:
+        receipt = _load_scope(args.name)
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+        return emit({"ok": False, "error": str(exc)}, args.json)
+    status = _scope_status(receipt)
+    return emit(status, args.json) if status["ok"] else (emit(status, args.json) or 1)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -131,8 +250,28 @@ def build_parser() -> argparse.ArgumentParser:
     gates.add_argument("--json", action="store_true", help="Emit JSON")
     gates.set_defaults(func=cmd_gates)
 
+    scope_create = sub.add_parser("scope-create", help="Create a local self red-team scope receipt")
+    scope_create.add_argument("--name", required=True)
+    scope_create.add_argument("--targets", required=True, help="Comma-separated loopback/private targets or CIDRs")
+    scope_create.add_argument("--approved-by", required=True)
+    scope_create.add_argument("--purpose", required=True)
+    scope_create.add_argument("--expires-at", required=True, help="UTC ISO timestamp, e.g. 2026-07-10T00:00:00Z")
+    scope_create.add_argument("--operations", default="scan,exploit,mission,war-room")
+    scope_create.add_argument("--json", action="store_true", help="Emit JSON")
+    scope_create.set_defaults(func=cmd_scope_create)
+
+    scope_list = sub.add_parser("scope-list", help="List local T3MP3ST scope receipts")
+    scope_list.add_argument("--json", action="store_true", help="Emit JSON")
+    scope_list.set_defaults(func=cmd_scope_list)
+
+    scope_check = sub.add_parser("scope-check", help="Validate one local T3MP3ST scope receipt")
+    scope_check.add_argument("name")
+    scope_check.add_argument("--json", action="store_true", help="Emit JSON")
+    scope_check.set_defaults(func=cmd_scope_check)
+
     for command in sorted(ACTIVE_COMMANDS):
         blocked = sub.add_parser(command, help="Blocked active execution command")
+        blocked.add_argument("--scope", help="Validated local scope receipt name")
         blocked.set_defaults(func=cmd_blocked)
 
     return parser

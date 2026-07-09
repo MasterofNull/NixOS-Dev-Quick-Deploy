@@ -28,15 +28,16 @@ External ingestion gate: `capability-intake`
 | auto-skill-selection | agent-skills | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-skill-auto.py` |
 | tooling-manifest | agent-tools | python-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-tooling-manifest.py` |
 | playwright-mcp | browser-automation | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
-| understand-anything | code-intelligence | repo-skill | enabled | local-governance / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything ensure` |
+| understand-anything | code-intelligence | repo-skill | enabled | accepted-with-mitigations / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything status`<br>`scripts/ai/aq-understand-anything validate-batches` |
 | aidb-rag-stores | data-store | service-dataset | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | aq-eval-harness | evaluation-redteam | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-eval.py` |
 | aq-inference-bench | local-inference | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-inference-bench.py` |
 | dashboard-observability | observability | feature-surface | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
+| local-surface-research | osint | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-local-surface-scan.py`<br>`python3 scripts/testing/test-osint-active-recon-gate.py` |
 | osint-research-store | osint | dataset-workflow | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-osint-research-ingest.py` |
 | github-mcp-readonly | repository-intelligence | external-mcp | enabled | accepted-with-mitigations / high | codex, claude | `python3 scripts/testing/test-capability-intake.py` |
 | capability-intake | security-governance | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-capability-intake.py` |
-| t3mp3st-intake | security-governance | repo-cli | blocked-security-intake | blocked-external-dual-use / high | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-tempest.py`<br>`python3 scripts/testing/test-capability-intake.py` |
+| t3mp3st-intake | security-governance | repo-cli | enabled | metadata-only-blocked-external-dual-use / high | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-tempest.py`<br>`python3 scripts/testing/test-capability-intake.py` |
 | semgrep-mcp | security-scanning | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | nixos-static-analysis | system-tools | repo-cli | enabled | accepted-with-mitigations / medium | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | workflow-blueprints | workflow | config-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-workflow-blueprints.py` |
@@ -129,10 +130,10 @@ Codebase graph generation, dashboard visualization, diff impact, and graph-backe
 - Owner: agent-runtime
 - Maturity: integrated
 - State: enabled
-- Primary refs: `.agent/skills/understand-anything/SKILL.md`, `scripts/ai/aq-understand-anything`
+- Primary refs: `.agent/skills/understand-anything/SKILL.md`, `scripts/ai/aq-understand-anything`, `.understand-anything/knowledge-graph.json`
 - Data stores: `codebase-context`
 - Parity targets: repo graph agents, impact analysis tools, codebase visualization systems
-- Security gate: `scripts/ai/aq-understand-anything ensure`
+- Security gate: `scripts/ai/aq-understand-anything validate-batches`
 
 ### aidb-rag-stores
 
@@ -186,6 +187,19 @@ Operator-facing telemetry, dashboard cards, aq-report machine output, and health
 - Parity targets: agent observability dashboards, OpenTelemetry GenAI surfaces, AI runtime scorecards
 - Security gate: `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine`
 
+### local-surface-research
+
+Bounded local/private HTTP surface scanner for authorized harness webpages and service health surfaces.
+
+- Name: Local Surface Research Scanner
+- Owner: osint-systems
+- Maturity: integrated
+- State: enabled
+- Primary refs: `scripts/ai/aq-local-surface-scan`, `scripts/testing/test-local-surface-scan.py`, `.agent/skills/osint-systems/SKILL.md`
+- Data stores: `osint-intelligence`
+- Parity targets: local web surface inventory, dashboard security header checks, authorized self red-team reconnaissance
+- Security gate: `python3 scripts/testing/test-local-surface-scan.py`
+
 ### osint-research-store
 
 Passive public-source ingest and query path for source-grounded OSINT research records.
@@ -227,12 +241,12 @@ Deny-by-default admission workflow for external tools, plugins, skills, and MCP 
 
 ### t3mp3st-intake
 
-Metadata-only facade for evaluating the T3MP3ST dual-use offensive-security candidate while blocking clone, install, server, MCP, scan, and exploit actions.
+Scope-gated facade for preparing authorized self red-team work with T3MP3ST while keeping runtime attachment and active operations behind receipts, packaging review, and deny-by-default MCP admission.
 
 - Name: T3MP3ST Intake Facade
 - Owner: security-systems
-- Maturity: intake
-- State: blocked-security-intake
+- Maturity: scope-gated
+- State: enabled
 - Primary refs: `scripts/ai/aq-tempest`, `scripts/testing/test-aq-tempest.py`, `.agent/skills/t3mp3st-intake/SKILL.md`, `.agent/PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md`
 - Data stores: none
 - Parity targets: capability intake registries, MCP admission controllers, scope-gated red-team tooling

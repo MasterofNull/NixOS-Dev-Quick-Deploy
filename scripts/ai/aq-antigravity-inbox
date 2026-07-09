@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Operator-side helper for the Antigravity IDE inbox lane."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+REPO = Path(__file__).resolve().parents[2]
+INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
+STATE = INBOX / ".lane-state.json"
+
+
+def _pending() -> list[Path]:
+    if not INBOX.exists():
+        return []
+    return sorted(INBOX.glob("*.md"), key=lambda p: (p.stat().st_mtime, p.name))
+
+
+def _archive_dir() -> Path:
+    return REPO / ".agent" / "archive" / f"antigravity-inbox-{datetime.now(timezone.utc):%Y%m%d}"
+
+
+def _rel(path: Path) -> str:
+    return str(path.relative_to(REPO))
+
+
+def _state_payload() -> dict[str, Any]:
+    pending = _pending()
+    last_drop = None
+    if STATE.exists():
+        try:
+            last_drop = json.loads(STATE.read_text(encoding="utf-8")).get("last_drop")
+        except json.JSONDecodeError:
+            last_drop = {"error": "invalid-state-json"}
+    last_consumed = None
+    if isinstance(last_drop, dict) and last_drop.get("name"):
+        last_consumed = not (INBOX / str(last_drop["name"])).exists()
+    return {
+        "inbox": _rel(INBOX),
+        "exists": INBOX.exists(),
+        "pending_count": len(pending),
+        "pending": [_rel(path) for path in pending],
+        "next": _rel(pending[0]) if pending else None,
+        "state_file": _rel(STATE),
+        "last_drop": last_drop,
+        "last_drop_consumed": last_consumed,
+        "consume_contract": "Antigravity IDE reads next, writes requested output, then archives the inbox file with aq-antigravity-inbox complete.",
+    }
+
+
+def _emit(payload: dict[str, Any], as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    for key, value in payload.items():
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value, sort_keys=True)
+        print(f"{key}: {value}")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    return _emit(_state_payload(), args.json)
+
+
+def cmd_next(args: argparse.Namespace) -> int:
+    pending = _pending()
+    if not pending:
+        payload = {"ok": False, "reason": "empty-inbox", "inbox": _rel(INBOX)}
+        return _emit(payload, args.json) if args.json else 1
+    path = pending[0]
+    if args.json:
+        return _emit({"ok": True, "path": _rel(path), "content": path.read_text(encoding="utf-8")}, True)
+    print(_rel(path))
+    if args.print_content:
+        print(path.read_text(encoding="utf-8"))
+    return 0
+
+
+def cmd_complete(args: argparse.Namespace) -> int:
+    name = args.name
+    path = Path(name)
+    if not path.is_absolute():
+        candidate = REPO / path
+        path = candidate if candidate.exists() else INBOX / name
+    if not path.exists() or path.parent.resolve() != INBOX.resolve():
+        print(f"no pending Antigravity inbox file: {name}", file=sys.stderr)
+        return 1
+    dest_dir = _archive_dir()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / path.name
+    shutil.move(str(path), str(dest))
+    return _emit({"ok": True, "archived": _rel(dest)}, args.json)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    status = sub.add_parser("status", help="Show inbox liveness and pending tasks")
+    status.add_argument("--json", action="store_true")
+    status.set_defaults(func=cmd_status)
+
+    next_cmd = sub.add_parser("next", help="Show the next Antigravity inbox task")
+    next_cmd.add_argument("--json", action="store_true")
+    next_cmd.add_argument("--print-content", action="store_true")
+    next_cmd.set_defaults(func=cmd_next)
+
+    complete = sub.add_parser("complete", help="Archive a consumed inbox task")
+    complete.add_argument("name", help="Inbox file name or repo-relative path")
+    complete.add_argument("--json", action="store_true")
+    complete.set_defaults(func=cmd_complete)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
