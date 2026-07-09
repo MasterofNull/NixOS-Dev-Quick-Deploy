@@ -1527,3 +1527,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: MED (caught in dev; real anchor reconstructed by hand)
 - **Action taken**: _resume_path()/_pulse_path() resolve RESUME_JSON_PATH/PULSE_LOG_PATH at call time; test suite sets both; added test_projector_honors_output_override guard asserting the real anchor is never written
 - **Lesson**: any tool that writes a canonical file must make that path overridable for tests, symmetric with its inputs
+
+## [OPEN] aq-collab-round typed aggregator doesn't recognize RATIFY-WITH-AMENDMENTS
+- **Status**: OPEN (found 2026-07-09 aggregating round aqos-v1)
+- **Scope**: aq-collab-round aggregate — verdict parser scored ABSTAIN×3 when both substantive lanes said "RATIFY-WITH-AMENDMENTS"; parser only matches bare RATIFY/REJECT/ABSTAIN tokens
+- **Root cause**: compound verdict token not in the parser's recognized set; likely a regex/exact-match on single words
+- **Severity**: MED (typed consensus state is misleading; human AGGREGATE.md governs, but the machine signal is wrong)
+- **Action**: add RATIFY-WITH-AMENDMENTS (map to RATIFY + amendments flag) to the verdict grammar; add REJECT-WITH-REASON etc.; unit-test the parser against the ROUND-PROMPT verdict vocabulary
+- **File pointers**: scripts/ai/aq-collab-round (aggregate subcommand / round_aggregate.py verdict extraction)
