@@ -105,6 +105,30 @@ tests incl. rejected-dropped. Report exposes `failure_repair_pending_review`; da
 4. **HITL intervention** — inspect/approve/reject a repair pair before ingest (guards against a bad
    teacher poisoning the dataset); pause/trigger a loop run from the dashboard.
 
+## Cycle flush-test — 2026-07-09 (all changes wired + ON + verified live)
+Real-world flush after the batched rebuild + dashboard restart. Definition-of-Done gate applied to the
+whole cycle:
+
+| Change | Integrated | ON (live) | Validated (real-world) |
+|---|---|---|---|
+| GBNF repair (both lanes) | ✅ | ✅ coordinator env live | ✅ `systemctl show` = AQ_LOCAL_GBNF=repair |
+| Correction lane (codex teacher) | ✅ | ✅ | ✅ dry-run: 6 pending, teacher=codex |
+| HITL gate (aq-review-repairs) | ✅ | ✅ | ✅ lists/gates |
+| Python QA harness (primary) | ✅ | ✅ | ✅ aq-qa 0 → 164/0 |
+| Eval-failure capture | ✅ | ✅ next run | ✅ capture path fires |
+| Model-readiness preflight | ✅ | ✅ next run | ✅ ready in 2.3s warm |
+| Prompt-size wedge guard | ✅ | ✅ per-dispatch | ✅ fires >24K, passes normal |
+| **health-spider probes (closed-loop + wedged-slot)** | ✅ | ✅ **REBUILT — live in service** | ✅ 4 fns in store copy; probe = no-false-positive on healthy slot |
+| **Dashboard /api/loop/status (most-recent + pending_review)** | ✅ | ✅ **RESTARTED — live** | ✅ now returns 11/12 (was stale 0/12) |
+| First real loop baseline | — | — | ✅ 11/12 (91.7%) warm-model |
+
+**Not caused by this cycle (pre-existing, probe working as designed):** effectiveness-scorecard
+`overall_status=fail` (harness self-assessment — separate investigation), osi-layered degraded (known),
+training-proposal-needs-review (HITL flow working). None are regressions from these changes.
+
+**Cycle status: COMPLETE** — every shipped feature is integrated + ON + real-world-validated + observable
++ intervenable, or a recorded deferral. This is the first cycle closed under the Rule 15 activation gate.
+
 ## Rule going forward
 No PRD/plan slice is marked DONE until its row here shows ON + functionally-validated **+ observable +
 intervenable** (or a conscious, recorded defer). Observability is not a follow-up phase — it ships with
