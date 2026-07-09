@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Bounded local/private HTTP surface scanner for authorized harness research."""
+
+from __future__ import annotations
+
+import argparse
+import ipaddress
+import json
+import re
+import urllib.error
+import urllib.request
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+
+REPO = Path(__file__).resolve().parents[2]
+DEFAULT_URLS = [
+    "http://127.0.0.1:8889/",
+    "http://127.0.0.1:8003/health",
+    "http://127.0.0.1:8085/health",
+    "http://127.0.0.1:8002/health",
+]
+
+
+class _TitleParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._in_title = False
+        self.title = ""
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "title":
+            self._in_title = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "title":
+            self._in_title = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_title:
+            self.title += data.strip()
+
+
+def _host_allowed(host: str) -> bool:
+    if host in {"localhost", "localhost.localdomain"}:
+        return True
+    try:
+        addr = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
+
+
+def _validate_url(url: str) -> tuple[bool, str]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return False, "scheme must be http or https"
+    if not parsed.hostname:
+        return False, "missing hostname"
+    if not _host_allowed(parsed.hostname):
+        return False, "host is not loopback/private/link-local"
+    return True, "ok"
+
+
+def _extract_title(body: str) -> str:
+    parser = _TitleParser()
+    parser.feed(body[:100_000])
+    return re.sub(r"\s+", " ", parser.title).strip()[:200]
+
+
+def scan_url(url: str, timeout: float, max_bytes: int) -> dict[str, Any]:
+    ok, reason = _validate_url(url)
+    if not ok:
+        return {"url": url, "status": "refused", "reason": reason}
+    req = urllib.request.Request(url, headers={"User-Agent": "aq-local-surface-scan/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read(max_bytes).decode("utf-8", errors="replace")
+            headers = {key.lower(): value for key, value in resp.headers.items()}
+            return {
+                "url": url,
+                "status": "ok",
+                "http_status": resp.status,
+                "content_type": headers.get("content-type", ""),
+                "title": _extract_title(body),
+                "security_headers": {
+                    "content-security-policy": bool(headers.get("content-security-policy")),
+                    "x-frame-options": bool(headers.get("x-frame-options")),
+                    "x-content-type-options": bool(headers.get("x-content-type-options")),
+                    "referrer-policy": bool(headers.get("referrer-policy")),
+                },
+                "bytes_sampled": len(body),
+            }
+    except urllib.error.HTTPError as exc:
+        return {"url": url, "status": "http-error", "http_status": exc.code, "reason": str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        return {"url": url, "status": "error", "reason": str(exc)[:300]}
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("urls", nargs="*", help="Loopback/private HTTP(S) URLs to inspect")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--timeout", type=float, default=3.0)
+    parser.add_argument("--max-bytes", type=int, default=65536)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    urls = args.urls or DEFAULT_URLS
+    results = [scan_url(url, args.timeout, args.max_bytes) for url in urls]
+    payload = {
+        "policy": "authorized-local-private-http-only",
+        "count": len(results),
+        "ok_count": sum(1 for item in results if item["status"] == "ok"),
+        "results": results,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        for item in results:
+            print(f"{item['url']}: {item['status']} {item.get('http_status', '')} {item.get('title', '')}".rstrip())
+    return 0 if all(item["status"] in {"ok", "http-error", "error"} for item in results) else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

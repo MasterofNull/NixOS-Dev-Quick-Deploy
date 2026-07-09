@@ -37,6 +37,9 @@ def main() -> int:
         "playwright-mcp",
         "semgrep-mcp",
         "github-mcp-readonly",
+        "t3mp3st-intake",
+        "understand-anything",
+        "local-surface-research",
         "osint-research-store",
         "aidb-rag-stores",
     ):
@@ -48,6 +51,12 @@ def main() -> int:
         assert security["risk"] == "high", f"{external_id} should stay high-risk gated"
 
     assert "local-agent" in entries["local-agent-delegation"]["agent_access"]
+    assert entries["t3mp3st-intake"]["state"] == "enabled"
+    assert entries["t3mp3st-intake"]["security"]["admission"] == "metadata-only-blocked-external-dual-use"
+    assert entries["understand-anything"]["security"]["intake_candidate_id"] == "code-intelligence-graph-layer"
+    assert "validate-batches" in entries["understand-anything"]["security"]["required_gate"]
+    assert entries["local-surface-research"]["state"] == "enabled"
+    assert "aq-local-surface-scan" in " ".join(entries["local-surface-research"]["primary_refs"])
     assert "osint-intelligence" in entries["osint-research-store"]["data_stores"]
 
     validate_out = run("validate")

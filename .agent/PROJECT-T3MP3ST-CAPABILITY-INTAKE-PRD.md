@@ -2,9 +2,9 @@
 title: T3MP3ST Capability Intake
 doc_type: prd
 id: t3mp3st-capability-intake
-status: active
+status: in-progress
 owner: codex
-last_updated: 2026-07-06
+last_updated: 2026-07-09
 ---
 
 # T3MP3ST Capability Intake PRD
@@ -18,12 +18,12 @@ T3MP3ST is a third-party offensive-security harness with CLI, War Room, API, MCP
 - Admit T3MP3ST through the existing deny-by-default capability-intake path.
 - Fan out review across security, Nix packaging, MCP admission, harness integration, and QA/dashboard lanes.
 - Preserve useful architecture and benchmark-verification patterns without granting offensive tool authority by default.
-- Define a safe first integration milestone: review-only, pinned, quarantined, no active scanning, no secrets, no external target execution.
+- Define a safe first integration milestone: scope-gated readiness for authorized self red-team work, no secrets, no public target execution, and runtime attachment only after pinned packaging review.
 
 ## Non-Goals
 
-- Do not clone, install, run, or expose T3MP3ST tools in this PRD slice.
-- Do not add network scanning, exploit, password, hash, or payload tools to agent allowlists.
+- Do not expose ungated T3MP3ST tools in this PRD slice.
+- Do not add public-target scanning, exploit, password, hash, or payload tools to default agent allowlists.
 - Do not start a War Room service, MCP server, or background daemon.
 - Do not accept AGPL obligations implicitly without license review.
 
@@ -38,9 +38,9 @@ T3MP3ST is a third-party offensive-security harness with CLI, War Room, API, MCP
 
 ## Acceptance
 
-- `config/agent-capability-intake-candidates.json` contains a blocked T3MP3ST candidate.
+- `config/agent-capability-intake-candidates.json` contains a `ready-scope-gated` T3MP3ST candidate.
 - Multi-agent review drops exist for the review-only lanes and explicitly prohibit install or active scanning.
-- `scripts/ai/aq-capability-intake audit t3mp3st --json` returns a review-required or blocked admission with visible risk flags.
+- `scripts/ai/aq-capability-intake audit t3mp3st --json` returns accepted-with-mitigations with visible risk flags and scope-gated permissions.
 - `python3 scripts/testing/test-capability-intake.py` passes.
 - Tier0 pre-commit gate passes before any commit.
 

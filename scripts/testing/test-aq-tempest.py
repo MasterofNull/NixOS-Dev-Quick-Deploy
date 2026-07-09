@@ -30,13 +30,14 @@ def run_json(*args: str) -> dict:
 def main() -> int:
     status = run_json("status")
     assert status["id"] == "t3mp3st"
-    assert status["state"] == "blocked-security-intake"
-    assert status["active_execution"] == "blocked"
+    assert status["state"] == "ready-scope-gated"
+    assert status["active_execution"] == "scope-gated-runtime-pending"
     assert status["prd"] == ".agent/PROJECT-T3MP3ST-CAPABILITY-INTAKE-PRD.md"
     assert "dual-use-offensive-security" in status["risk_flags"]
     assert "network-active-scanning" in status["risk_flags"]
-    assert status["permissions"]["network"] == "blocked-until-scope-gated"
+    assert status["permissions"]["network"] == "scope-gated-local-only"
     assert status["unsafe_tool_count"] == 0
+    assert status["scope_receipts"] == ".agent/security-scope-receipts"
 
     gates = run_json("gates")
     joined_gates = "\n".join(gates["required_gates"]).lower()
@@ -47,13 +48,51 @@ def main() -> int:
 
     audit = run_json("audit")
     assert audit["report"]["id"] == "t3mp3st"
-    assert audit["report"]["admission"] in {"needs-review", "review-recommended", "blocked"}
+    assert audit["report"]["admission"] == "accepted-with-mitigations"
+
+    scope = run_json(
+        "scope-create",
+        "--name",
+        "test-localhost",
+        "--targets",
+        "127.0.0.1,10.0.0.0/24",
+        "--approved-by",
+        "test-operator",
+        "--purpose",
+        "regression test",
+        "--expires-at",
+        "2099-01-01T00:00:00Z",
+    )
+    assert scope["ok"] is True
+    checked = run_json("scope-check", "test-localhost")
+    assert checked["ok"] is True
+    refused = run(
+        "scope-create",
+        "--name",
+        "public",
+        "--targets",
+        "8.8.8.8",
+        "--approved-by",
+        "test-operator",
+        "--purpose",
+        "regression test",
+        "--expires-at",
+        "2099-01-01T00:00:00Z",
+        check=False,
+    )
+    assert refused.returncode == 2
+    assert "refusing public" in refused.stderr
 
     for command in ("install", "run", "server", "mcp", "scan", "exploit", "mission", "war-room"):
         proc = run(command, check=False)
         assert proc.returncode == 2, command
-        assert "blocked-security-intake" in proc.stderr
-        assert "active execution is disabled" in proc.stderr
+        assert "requires a valid local scope receipt" in proc.stderr
+    scoped = run("scan", "--scope", "test-localhost", check=False)
+    assert scoped.returncode == 3
+    assert "runtime is not attached yet" in scoped.stderr
+    receipt = ROOT / ".agent" / "security-scope-receipts" / "test-localhost.json"
+    if receipt.exists():
+        receipt.unlink()
 
     print("PASS: aq-tempest safe intake facade checks")
     return 0
