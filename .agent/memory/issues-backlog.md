@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-09] ai-stack-health-monitor-sandbox-schema-visibility — Scheduled `ai-stack-health-monitor` could raise recurring `aq-qa phase 0 could not run` alerts or miss real failures from current aq-qa output.
+  Root cause / fix notes: the systemd service runs with `PrivateTmp=true` and `ProtectSystem=strict`, but only `.agents` is writable; Python `tempfile` users inside aq-qa could not find a usable temp directory. The monitor also parsed only legacy `checks` output while current aq-qa JSON reports checks under `tests`. Added repo-local `.agents/tmp` env wiring, `tests`/`checks` failure parsing, and `.agents/health-monitor/latest.json` latest-run telemetry.
+  Severity: high
+  Action: Monitor runs phase 0 with sandbox-safe temp env, emits correct attention alerts for current aq-qa schema, and writes latest status for dashboard/API consumers.
+  File: scripts/health/ai-stack-health-monitor.py; scripts/testing/test-ai-stack-health-monitor.py
+
 [DONE 2026-07-06] aq-agent-loop-orphan-reaper — Delegated local-agent tasks can become stale with no live PID or output artifact, leaving review fan-out unreliable and risking a wedged `aq-agent-loop` holding the single local llama slot.
   Root cause / fix notes: dispatcher processes can die while child `aq-agent-loop` processes continue in their own session, and older stale registry entries are not automatically reaped. Added a self-watchdog to new `aq-agent-loop` runs and `aq-agent-reap` for dry-run or active cleanup of orphaned or over-age loops.
   Severity: medium
