@@ -263,3 +263,18 @@ Fixes the real 0/12 incident: evals ran under slot contention, timed out, scored
 | Intervenable | ✅ AQ_LOOP_SLOT_QUEUE_MAX tunes queue-depth threshold; contention preflight is skipped in dry-run |
 
 Three-part fix: (1) defer before running when contended; (2) if timeouts dominate mid-run, record degraded_infra not eval_failed (no false regression); (3) training capture already skips infra failures (response=None) — verified, not re-broken. Known gap (documented): agent-mode local tasks don't flow through the F2.5 DirectRunner queue so they're only caught by the live /slots probe during active generation, not scheduler-state.json — evals use direct mode (the incident path), which IS covered. Follow-up: registry-wide running-task check to close the agent-mode gap without over-deferring on stale rows.
+
+---
+
+# Slice: hardware-driven model budget policy (WS-EDGE, god-tier prompt 6) (2026-07-09, claude-fable-5)
+
+Prompt 6 reframed by evidence + operator steer. Two premises corrected: (1) speculative decoding is ALREADY LIVE (--spec-type draft-mtp --spec-draft-n-max 2 on the running server; MTP is self-speculative — no draft model, no extra RAM; 2.96-3.45 tok/s already includes it); (2) the rebudget should be hardware-DRIVEN, not a one-time manual quant choice (operator direction).
+
+| Feature | Integrated | ON | Validated |
+|---------|-----------|----|-----------|
+| model_budget.py (derives main-quant + SMALL_RESIDENT fit from hw_probe) | ✅ pure policy over E1 probe | ✅ CLI ON now (`model_budget.py --summary`) | ✅ test-model-budget.py 6/6: desktop-fits-now, heavy-quant->quant-down/single, embedded->single, server->easy, deterministic, degrades-on-missing |
+| Speculative decoding (MTP) | ✅ **already live** (facts.nix:85) | ✅ ON in running server | ✅ verified via ps + /metrics |
+| specDraftNMax 2->3 bench | ✅ methodology + nix one-liner prepped | ⏸ operator runs on clean slot | ✅ decision rule documented (draft-tune-bench.md) |
+| SMALL_RESIDENT deploy | ⏸ routing exists (model_tier.py); endpoint wiring gated OFF pending model file | ⏸ **DEFERRED: operator rebudget approval + model download + rebuild** | policy verdict this host: deploy_small_resident_now (1.7B Q6_K fits 4.9GB slack at class-baseline Q4_K_M) |
+
+Deliverable is the hardware-driven POLICY (answers "should rebudget be deployment-hardware-driven": yes, and now it is) + prepped bench + corrected premises. Actual small-model deploy stays a gated follow-up needing the operator's rebuild. No running-stack change this slice.
