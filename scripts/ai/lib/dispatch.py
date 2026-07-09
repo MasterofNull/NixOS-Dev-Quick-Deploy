@@ -1508,16 +1508,33 @@ def main() -> int:
     except Exception:
         pass
 
-    success = dispatch_task(
-        config=config,
-        prompt=args.prompt,
-        task_id=args.task_id,
-        output_file=output_file,
-        registry=registry,
-        script_dir=script_dir,
-        pre_registered=True,
-        max_calls=getattr(args, "max_calls", 50),
-    )
+    # RSI-Readiness R5.1: open a root span for the whole delegation so any
+    # inner spans (model.generate) nest under one trace. No-op if no trace is
+    # ambient (AQ_TRACE_ID unset) or the trace lib is unavailable.
+    _root_cm = None
+    if _tracing is not None and _tracing.current_trace_id():
+        _root_cm = _tracing.span(f"delegate.{resolved_mode}", agent="local",
+                                 attrs={"task_id": args.task_id, "role": config.role or "",
+                                        "task_type": resolved_task_type or ""})
+    try:
+        if _root_cm is not None:
+            _root_cm.__enter__()
+        success = dispatch_task(
+            config=config,
+            prompt=args.prompt,
+            task_id=args.task_id,
+            output_file=output_file,
+            registry=registry,
+            script_dir=script_dir,
+            pre_registered=True,
+            max_calls=getattr(args, "max_calls", 50),
+        )
+        if _root_cm is not None and not success:
+            _root_cm.__exit__(RuntimeError, RuntimeError("dispatch failed"), None)
+            _root_cm = None
+    finally:
+        if _root_cm is not None:
+            _root_cm.__exit__(None, None, None)
     return 0 if success else 1
 
 

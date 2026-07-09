@@ -26,6 +26,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# RSI-Readiness R5.1: seed one trace id for this invocation so every run is
+# traced (flows to child delegate/dispatch processes via env). Idempotent.
+source "$SCRIPT_DIR/lib/trace-seed.sh" 2>/dev/null || true
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'

@@ -628,7 +628,21 @@ def run_loop(
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+def _seed_trace_id() -> None:
+    """RSI-Readiness R5.1: seed ONE trace id for this loop run so all its
+    delegations share a single trace (children inherit AQ_TRACE_ID from env).
+    Idempotent; honors AQ_TRACE_DISABLE=1. Fail-open."""
+    if os.environ.get("AQ_TRACE_DISABLE") == "1" or os.environ.get("AQ_TRACE_ID"):
+        return
+    try:
+        import uuid
+        os.environ["AQ_TRACE_ID"] = uuid.uuid4().hex
+    except Exception:
+        pass
+
+
 def main() -> int:
+    _seed_trace_id()
     parser = argparse.ArgumentParser(
         description="Outer orchestration loop for autonomous local-agent task execution",
         formatter_class=argparse.RawDescriptionHelpFormatter,
