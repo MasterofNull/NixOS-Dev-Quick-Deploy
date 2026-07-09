@@ -124,6 +124,32 @@ loop that corrupts the shared index or another agent's commit is a hard failure.
   the migrated path; a documented + enforced coordination contract. This is the
   substrate that makes R4 (more concurrent shadow agents) and R6 safe.
 
+### R8 — Durable delegation queue: rate-limit / session-window park-and-resume
+Today's resilience is partial: `retry_with_backoff` handles SHORT 429s (respects
+Retry-After, 3-attempt budget); circuit breakers fail-fast on trip and auto-test
+recovery but the FAILED delegation is lost; 429/402 falls back to local. What's
+missing — and what breaks multi-agent collabs under sustained limits — is a
+DURABLE queue that parks a delegation hitting a long session/quota window and
+auto-resumes it on the INTENDED lane when the window clears, instead of dropping
+it or silently degrading. Self-improvement runs long, concurrent, remote-heavy
+workloads; sustained rate limits are the norm, not the exception.
+- R8.1 Classify the failure: transient (retry now) vs session/quota window (park)
+  vs hard error (fail). Parse Retry-After / quota-reset signals; a circuit-OPEN on
+  a remote lane parks rather than drops.
+- R8.2 Durable delegation queue (on the event bus / PENDING.json): a parked
+  delegation persists with its intended lane, payload, and earliest-resume time;
+  survives session restarts (state already persists — add the resume trigger).
+- R8.3 Resume scheduler: on session re-enable / window-clear, re-dispatch parked
+  delegations to their intended lane (not a silent local downgrade) with idempotency
+  keys so a resumed delegation never double-executes (reuse the event_id primitive).
+- R8.4 Collab-round integration: a round with a parked lane stays OPEN and folds
+  the lane's late contribution on resume (extends never-skip-local to
+  never-drop-rate-limited); operator sees parked/resuming state (observable).
+- Accept: a delegation rate-limited for a long window is parked, survives a
+  session restart, and auto-resumes on its intended lane when the window clears —
+  reproduced under a simulated 429-with-long-Retry-After; a collab round with a
+  parked lane completes and folds the resumed contribution; zero double-execution.
+
 ## Cross-cutting requirements (all workstreams)
 - Every deliverable: PRD gate → wire → live-test → tier0 → activation attestation
   (integrated+ON+validated+observable+intervenable) → verbose commit → PULSE/RESUME.
@@ -135,10 +161,11 @@ loop that corrupts the shared index or another agent's commit is a hard failure.
 
 ## Sequencing
 R1 first (unblocks all). R2 + R3 in parallel (independent; R3 gives R2 a verifier).
-R5 + R7 anytime (additive substrate — R7 should land early since it protects all
-concurrent slice work). R4 after R1 (needs the trustworthy signal) AND after R7
-(needs safe concurrency). R6 last (exercises everything). R4's efficacy data gates
-any future autonomy PRD.
+R5 + R7 + R8 anytime (additive substrate — R7 and R8 should land early since they
+protect/sustain all concurrent + long-running slice work). R4 after R1 (needs the
+trustworthy signal) AND after R7/R8 (needs safe concurrency + rate-limit
+durability, since shadow-loop and remote-heavy work will hit limits). R6 last
+(exercises everything). R4's efficacy data gates any future autonomy PRD.
 
 ## Success metric (cycle exit)
 A trustworthy eval harness (R1 signed off), local write-reliability measurably
