@@ -228,18 +228,44 @@ def _drop_antigravity(name: str, prompt_file: Path) -> str:
     return f"inbox:{inbox.relative_to(REPO)}"
 
 
+# The consumption signal is deletion: the IDE (or a bridge) removes a task file
+# once it acts on it. We track the LAST drop so liveness keys off whether THAT
+# specific file was consumed — not on the presence of unrelated old backlog
+# (which created a self-reinforcing UNAVAILABLE loop: stale files -> unavailable
+# -> drop another -> more stale files. Diagnosis credited to the antigravity
+# lane itself, relayed 2026-07-09).
+_ANTIGRAVITY_STATE = ANTIGRAVITY_INBOX / ".lane-state.json"
+_ANTIGRAVITY_CONSUME_WINDOW_S = 900  # 15 min to consume a drop before "not watching"
+
+
+def _archive_stale_inbox(keep: "set[str]") -> int:
+    """Move consumed-window-exceeded task files (except `keep`) to the archive.
+
+    Stops the monotonic backlog growth that poisoned the liveness signal.
+    Rule 12: archive, never delete.
+    """
+    if not ANTIGRAVITY_INBOX.exists():
+        return 0
+    now = time.time()
+    archive_dir = REPO / ".agent" / "archive" / f"antigravity-inbox-{datetime.now(timezone.utc):%Y%m%d}"
+    moved = 0
+    for p in ANTIGRAVITY_INBOX.glob("*.md"):
+        if p.name in keep:
+            continue
+        if now - p.stat().st_mtime > _ANTIGRAVITY_CONSUME_WINDOW_S:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), str(archive_dir / p.name))
+            moved += 1
+    return moved
+
+
 def _antigravity_inbox_live() -> "tuple[bool, str]":
-    """Detect whether the Antigravity IDE is actually consuming the inbox.
+    """Liveness by per-drop CONSUMPTION, not backlog presence.
 
-    Under the no-keys policy, the ONLY sanctioned Gemini transport is the IDE
-    watching this folder (switchboard refuses OpenRouter-key->Gemini fallback by
-    design). If the IDE is not wired to the folder, dropped files pile up
-    unconsumed — so a backlog of stale drops is the liveness signal. We report
-    the lane honestly instead of letting it hang 'pending' forever.
-
-    Convention: the IDE (or a bridge) should delete/rename a task file once it
-    starts it. Files older than the freshness window that still exist = not
-    being consumed.
+    Live iff the last dropped task file was consumed (deleted) within the
+    window. Unrelated old files no longer poison the signal (they are archived
+    on open). If we have no prior drop to judge, we report 'unproven' as a
+    soft state (attempt the lane) rather than a hard dead.
     """
     try:
         proc_live = False
@@ -251,25 +277,44 @@ def _antigravity_inbox_live() -> "tuple[bool, str]":
             proc_live = False
         if not ANTIGRAVITY_INBOX.exists():
             return False, "inbox dir missing"
-        now = time.time()
-        stale = [p for p in ANTIGRAVITY_INBOX.glob("*.md")
-                 if now - p.stat().st_mtime > 900]  # >15min unconsumed
-        if stale:
-            return False, (f"IDE not consuming inbox — {len(stale)} stale task file(s) "
-                           f"(oldest {int((now - min(p.stat().st_mtime for p in stale))/3600)}h). "
-                           f"{'IDE process running but no inbox-watch workflow configured' if proc_live else 'Antigravity IDE not running'}.")
-        return (proc_live, "IDE process running" if proc_live else "Antigravity IDE not running")
+
+        last_drop = None
+        try:
+            last_drop = json.loads(_ANTIGRAVITY_STATE.read_text()).get("last_drop")
+        except Exception:
+            last_drop = None
+
+        if not last_drop:
+            return proc_live, ("no prior drop to judge — attempting lane"
+                               + ("" if proc_live else "; Antigravity IDE not running"))
+
+        prev = ANTIGRAVITY_INBOX / last_drop["name"]
+        age = time.time() - last_drop["ts"]
+        if not prev.exists():
+            return True, "IDE consumed the previous task file (lane live)"
+        if age > _ANTIGRAVITY_CONSUME_WINDOW_S:
+            return False, (f"previous drop '{last_drop['name']}' unconsumed after "
+                           f"{int(age/60)}min — "
+                           f"{'IDE running but no inbox-watch workflow' if proc_live else 'IDE not running'}")
+        return proc_live, f"previous drop pending consumption ({int(age)}s)"
     except Exception as e:  # noqa: BLE001
         return False, f"liveness check error: {e}"
 
 
 def _dispatch_antigravity(name: str, prompt_file: Path) -> str:
-    """Antigravity lane (no-key IDE/OAuth inbox) with honest liveness reporting."""
+    """Antigravity lane (no-key IDE/OAuth inbox), self-cleaning + consumption-based."""
+    archived = _archive_stale_inbox(keep={f"{name}.md"})
+    live, why = _antigravity_inbox_live()          # judge BEFORE this drop
     marker = _drop_antigravity(name, prompt_file)
-    live, why = _antigravity_inbox_live()
+    try:
+        _ANTIGRAVITY_STATE.write_text(json.dumps(
+            {"last_drop": {"name": f"{name}.md", "ts": time.time()}}))
+    except Exception:
+        pass
+    arch = f" (archived {archived} stale)" if archived else ""
     if live:
-        return f"{marker} (IDE watching — {why})"
-    return f"{marker} UNAVAILABLE: {why}"
+        return f"{marker} (IDE consuming — {why}){arch}"
+    return f"{marker} UNAVAILABLE: {why}{arch}"
 
 
 def cmd_open(args) -> int:
