@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-09] malformed-pulse-log-artifacts — Two malformed untracked pulse files, `PULSE.lognecho` and `PULSE.lognprintf`, were left beside the canonical collaboration pulse log.
+  Root cause / fix notes: another agent's shell quoting wrote duplicate pulse content to filenames derived from `echo`/`printf` command text instead of appending to `.agent/collaboration/PULSE.log`.
+  Severity: low
+  Action: Preserved the useful `da971bd5` quickstart pulse entry in the canonical log, verified no inbound references with `pre-archive-scan.sh`, and archived the malformed files under `.agent/archive/pulse-artifacts-20260709/`.
+  File: .agent/collaboration/PULSE.log; .agent/archive/pulse-artifacts-20260709/
+
 [OPEN] t3mp3st-runtime-attachment — T3MP3ST is scope-gated and source-pinned for authorized self red-team prep, but the active runtime is not yet packaged, SBOM-reviewed, or MCP-admitted.
   Root cause / fix notes: registry now pins upstream `ae32cf505174a422c55d7ca970f5f23816218f38` with Nix source hash `0s0xgd32q2hm0dmklrqx76mfm555gjlvx1w7k428p9kni5r32wi0`; `aq-tempest scan --scope local-bringup` proves scope receipts work and returns runtime-pending instead of executing.
   Severity: high
