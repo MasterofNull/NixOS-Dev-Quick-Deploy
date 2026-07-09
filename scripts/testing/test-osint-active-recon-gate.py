@@ -74,6 +74,7 @@ async def main() -> int:
     names = {tool.name for tool in mcp_handlers.TOOL_DEFINITIONS}
     assert "osint_recon_status" in names, "coordinator must expose osint_recon_status"
     assert "osint_recon" in names, "coordinator must keep gated osint_recon surface"
+    assert "local_surface_scan" in names, "coordinator must expose bounded local surface scanner"
 
     status_response = await mcp_handlers.dispatch_tool("osint_recon_status", {"target": "exampleuser", "tool": "sherlock"})
     status_payload = json.loads(status_response[0].text)
@@ -94,6 +95,15 @@ async def main() -> int:
     no_scope_payload = json.loads(no_scope_response[0].text)
     assert no_scope_payload["status"] == "blocked"
     assert "scope_ack=true" in no_scope_payload["reason"]
+
+    surface_response = await mcp_handlers.dispatch_tool(
+        "local_surface_scan",
+        {"urls": ["https://example.com/"], "timeout": 0.1},
+    )
+    surface_payload = json.loads(surface_response[0].text)
+    assert surface_payload["policy"] == "authorized-local-private-http-only"
+    assert surface_payload["exit_code"] == 2
+    assert surface_payload["results"][0]["status"] == "refused"
 
     local_status = await osint_recon_status_handler(target="example.org", tool="bbot")
     assert local_status["success"] is True

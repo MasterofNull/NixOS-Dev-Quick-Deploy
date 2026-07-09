@@ -49,6 +49,7 @@ def main() -> int:
     audit = run_json("audit")
     assert audit["report"]["id"] == "t3mp3st"
     assert audit["report"]["admission"] == "accepted-with-mitigations"
+    assert audit["report"]["pinned_version"] == "ae32cf505174a422c55d7ca970f5f23816218f38"
 
     scope = run_json(
         "scope-create",

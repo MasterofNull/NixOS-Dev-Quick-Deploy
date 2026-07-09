@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[OPEN] t3mp3st-runtime-attachment — T3MP3ST is scope-gated and source-pinned for authorized self red-team prep, but the active runtime is not yet packaged, SBOM-reviewed, or MCP-admitted.
+  Root cause / fix notes: registry now pins upstream `ae32cf505174a422c55d7ca970f5f23816218f38` with Nix source hash `0s0xgd32q2hm0dmklrqx76mfm555gjlvx1w7k428p9kni5r32wi0`; `aq-tempest scan --scope local-bringup` proves scope receipts work and returns runtime-pending instead of executing.
+  Severity: high
+  Action: Add a quarantined Nix package/source fetch, generate SBOM/license review, enumerate upstream tools, and attach only denied-by-default MCP/runtime commands behind valid scope receipts.
+  File: config/agent-capability-intake-candidates.json; scripts/ai/aq-tempest
+
 [DONE 2026-07-09] capability-readiness-stale-blockers — The completed Understand-Anything graph, T3MP3ST red-team readiness facade, OSINT local surface research, and Antigravity inbox lane were not all exposed as actionable agent capabilities.
   Root cause / fix notes: registry/catalog state lagged behind completed graph output; T3MP3ST had only a blocked metadata facade instead of scope receipt readiness; Antigravity had a drop directory but no operator-side consume CLI; local webpage/system research lacked a bounded loopback/private surface scanner.
   Severity: medium

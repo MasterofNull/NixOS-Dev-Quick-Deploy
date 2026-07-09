@@ -121,6 +121,8 @@ def status_payload() -> dict[str, Any]:
         "name": candidate.get("name"),
         "state": candidate.get("state"),
         "review_status": candidate.get("review_status"),
+        "pinned_version": candidate.get("pinned_version"),
+        "source_hash": candidate.get("source_hash"),
         "blocked_reason": candidate.get("blocked_reason"),
         "admission": report.get("admission"),
         "risk_flags": report.get("risk_flags", []),

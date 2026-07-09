@@ -143,6 +143,8 @@ def audit_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         "priority": candidate.get("priority"),
         "state": candidate.get("state"),
         "source_url": candidate.get("source_url"),
+        "pinned_version": candidate.get("pinned_version"),
+        "source_hash": candidate.get("source_hash"),
         "risk_flags": flags,
         "admission": _admission(candidate, flags, tool_results),
         "tool_count": len(tool_results),
