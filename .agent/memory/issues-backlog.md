@@ -1511,3 +1511,19 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: HIGH when persisted (queue silently vanishes — found during F2.5 wiring live test 2026-07-09)
 - **Action taken**: slot_queue.py persists with exclude={"config"} and rebuilds default config on load (scripts/ai/lib/slot_queue.py:_dump_state)
 - **Follow-up**: WS1 contracts tree must make every persisted model round-trip-tested in CI
+
+## [OPEN] Eval loop 0/12 under slot contention + no dashboard alert on pass-rate collapse
+- **Status**: OPEN (found 2026-07-09 via manual /api/loop/status curl during dashboard assessment)
+- **Scope**: closed-loop eval run loop-20260709-112737 scored 0/12 (baseline 11/12 yesterday) while the single local slot was held by round aqos-v1 lanes + queued banded jobs; status=eval_failed
+- **Root cause (hypothesis)**: eval direct-mode calls queue behind long round inference and hit deadline REJECT — model-readiness preflight defers on COLD model but not on BUSY/contended slot; also NO alert fired on a 91.7%→0% pass-rate collapse (observability gap in the flagship Learning card)
+- **Severity**: HIGH (silent regression signal corruption: 0/12 runs pollute failure_samples with timeout noise, and operator learns nothing without polling)
+- **Action**: (1) eval scheduler must check scheduler-state.json queue depth + slot holder before starting and DEFER (typed state) under contention; (2) health-spider/dashboard alert on pass-rate delta > threshold; (3) exclude contention-failed runs from training capture
+- **File pointers**: /api/loop/status (dashboard), scripts/ai/lib/slot_queue.py (queue state to consult), eval loop runner
+
+## [DONE] Projector output path must be overridable (test clobbered real RESUME.json)
+- **Status**: DONE (fixed same slice, 2026-07-09)
+- **Scope**: scripts/ai/lib/resume_projector.py — write_resume() wrote a hardcoded real path while the event log was env-overridable; an E2E test isolated the input log but not the output, so the projector overwrote the live RESUME.json (the exact clobber the slice exists to prevent)
+- **Root cause**: asymmetric configurability — input (A2A_EVENT_LOG) overridable, output (RESUME_JSON) not; call-time vs import-time path resolution
+- **Severity**: MED (caught in dev; real anchor reconstructed by hand)
+- **Action taken**: _resume_path()/_pulse_path() resolve RESUME_JSON_PATH/PULSE_LOG_PATH at call time; test suite sets both; added test_projector_honors_output_override guard asserting the real anchor is never written
+- **Lesson**: any tool that writes a canonical file must make that path overridable for tests, symmetric with its inputs
