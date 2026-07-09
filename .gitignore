@@ -263,3 +263,6 @@ ai-stack/local-agents/.agents/
 
 # Volatile per-run metadata for harness-prompt-extensions (see training_ingest.py)
 config/.harness-prompt-ext.meta.json
+
+# Generated per-machine quickstart (aq-quickstart --write)
+docs/QUICKSTART.generated.md

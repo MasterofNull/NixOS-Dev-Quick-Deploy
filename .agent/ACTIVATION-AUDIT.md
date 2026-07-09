@@ -325,3 +325,17 @@ Foundation for the dashboard rebuild — not the full 9-view SPA (strangler; vie
 | WS6 roadmap (9 views + CLI-twin parity + strangler order) | ✅ .agents/plans/aqos-v1/ws6-command-center-roadmap.md | n/a (plan) | — |
 
 Post-restart validation this session: /api/scheduler/queue, /api/approvals/pending, /api/loop/status pass_rate_alert all confirmed LIVE returning real JSON (the earlier-deferred dashboard slices are now ON). Only the trace endpoint fix awaits the next dashboard restart. Deliverable is the OpenAPI-first foundation (generated client = the keystone every future view uses) + the enabling trace fix + a delegatable 9-view roadmap with CLI parity — the full SPA rebuild is explicitly NOT attempted in one slice.
+
+---
+
+# Slice: generated per-hardware quickstart + first-delegation doctor (WS10, god-tier prompt 10) (2026-07-09, claude-fable-5)
+
+The productization exit test: clean machine -> first local delegation, documented by a quickstart the installer generates for its own hardware. Composes the whole god-tier sequence.
+
+| Feature | Integrated | ON | Validated |
+|---------|-----------|----|-----------|
+| aq-quickstart generator (hw_probe -> model_budget -> tailored quickstart) | ✅ routes via `aq quickstart` | ✅ ON now | ✅ test-quickstart.py 4/4: adapts across embedded/laptop/desktop/server, reflects small-resident decision; wrote docs/QUICKSTART.generated.md for this host |
+| Doctor (first-delegation readiness gates) | ✅ repo/nix/llama-health/model-generate | ✅ ON now | ✅ **LIVE: all 4 gates PASS on this machine (ready=True)** |
+| First-delegation EXIT TEST | — | — | ✅ **PASSED LIVE**: ran the quickstart's exact delegate-to-local command; got a correct substantive one-sentence answer |
+
+The exit test the prompt defines is proven end-to-end on this machine: doctor green -> first delegation returns a real answer. The quickstart is GENERATED per hardware class (not static), reflecting the model+quant+small-resident decision from model_budget (P6), routed through the unified aq CLI (P8), over the event/trace substrate (P3/P4). Clean-machine <1h timing is asserted per-class in the generated doc; a true clean-machine run is the operator's productization validation (no clean machine available here).
