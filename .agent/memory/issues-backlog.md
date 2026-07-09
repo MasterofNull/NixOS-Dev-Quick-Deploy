@@ -1437,3 +1437,8 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Root cause: health-spider monitored service health and closed-loop telemetry but did not inspect primary-vs-fallback execution paths for harness CLIs.
   Action: added `qa_fallback_default` advisory when the expected `scripts/ai/lib/harness_runner.py` bridge is missing or unreadable; focused tests cover missing and present harness paths.
   File: scripts/ai/aq-health-spider; scripts/testing/test-health-spider-loop-regression.py; config/env-contract.yaml
+[DONE 2026-07-09] dashboard-layered-health-tempdir-confinement — `/api/health/layered` was reachable but reported two OSI failures from dashboard-confined phase-0 checks (`aq-eval static harness`, `context compaction sandwich`) because child tests could not create temp directories.
+  Severity: high
+  Root cause: `command-center-dashboard-api` has AppArmor-enforced `/tmp` read-only except SQLite files, while `qa_runner.py` inherited normal tempfile defaults and did not redirect Python pycache or Cargo target writes.
+  Action: dashboard QA runner now creates `qa-runner-tmp`, `qa-runner-pycache`, and `qa-runner-cargo-target` under `DASHBOARD_DATA_DIR` and exports `TMPDIR`/`TEMP`/`TMP`, `PYTHONPYCACHEPREFIX`, and `CARGO_TARGET_DIR` to `aq-qa` subprocesses. The remaining context-sandwich import failure is normalized as dashboard-confined host-only because it imports full switchboard deps missing from the dashboard Python runtime while host `aq-qa 0 --machine` passes. Live `/api/health/layered` verified `failed=0`, pending alerts verified `0`.
+  File: dashboard/backend/api/services/qa_runner.py; scripts/testing/test-dashboard-qa-runner-runtime-env.py

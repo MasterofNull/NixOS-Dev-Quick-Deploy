@@ -27,8 +27,19 @@ require(
     "layered health should normalize dashboard-confined host-only aq-qa failures instead of showing false OSI failures",
 )
 require(
+    '"0.10.26"' in RUNNER and "context compaction sandwich imports full switchboard deps" in RUNNER,
+    "dashboard OSI health should normalize context sandwich import failures when run under dashboard Python confinement",
+)
+require(
     'env.setdefault("AQ_QA_DASHBOARD_SAFE", "1")' in RUNNER,
     "dashboard phase-0 QA should request dashboard-safe harness mode before host-only probes run",
+)
+require(
+    '"TMPDIR", "TEMP", "TMP"' in RUNNER
+    and "PYTHONPYCACHEPREFIX" in RUNNER
+    and "CARGO_TARGET_DIR" in RUNNER
+    and "DASHBOARD_DATA_DIR" in RUNNER,
+    "dashboard QA subprocesses must redirect temp/cache writes into the dashboard writable state dir",
 )
 require(
     "dashboard_safe = os.environ.get(\"AQ_QA_DASHBOARD_SAFE\"" in HELPERS

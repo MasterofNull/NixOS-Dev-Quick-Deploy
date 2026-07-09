@@ -220,6 +220,13 @@ def main() -> int:
         "dashboard qa_runner should preserve stdout/stderr snippets for unexpected aq-qa exits",
     )
     assert_true(
+        "DASHBOARD_DATA_DIR" in qa_runner_text
+        and '"TMPDIR", "TEMP", "TMP"' in qa_runner_text
+        and "PYTHONPYCACHEPREFIX" in qa_runner_text
+        and "CARGO_TARGET_DIR" in qa_runner_text,
+        "dashboard qa_runner should redirect subprocess temp/cache writes to dashboard writable state",
+    )
+    assert_true(
         "aq-qa emitted no stdout" in qa_runner_text
         and "aq-qa emitted non-JSON output" in qa_runner_text,
         "dashboard qa_runner should explain empty/non-JSON aq-qa output instead of logging raw JSONDecodeError",

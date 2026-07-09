@@ -13,6 +13,11 @@ from typing import Any, Dict, Optional
 _RUNNING_TASKS: Dict[str, "asyncio.Task[Dict[str, Any]]"] = {}
 _TASKS_LOCK = asyncio.Lock()
 
+_SYSTEM_BIN = "/run/current-system/sw/bin"
+_DASHBOARD_QA_TMPDIR = "qa-runner-tmp"
+_DASHBOARD_QA_PYCACHE = "qa-runner-pycache"
+_DASHBOARD_QA_CARGO_TARGET = "qa-runner-cargo-target"
+
 _DASHBOARD_CONFINEMENT_MARKERS = (
     "Permission denied",
     "Read-only file system",
@@ -38,6 +43,7 @@ _DASHBOARD_HOST_ONLY_PHASE0_IDS = {
     "0.10.9",  # delegation artifact persistence needs writable temp/runtime deps
     "0.10.13",  # inference budget sidecar tests need writable temp
     "0.10.14",  # local-agent store_memory imports full local-agent env
+    "0.10.26",  # context compaction sandwich imports full switchboard deps
     "0.150.1",  # candidate lifecycle manager needs writable temp
     "83.1",  # py_compile writes pyc unless PYTHONDONTWRITEBYTECODE is honored
     "83.2",
@@ -51,6 +57,14 @@ _DASHBOARD_HOST_ONLY_PHASE0_IDS = {
 
 def _repo_root() -> Path:
     return Path(os.environ.get("REPO_ROOT") or Path(__file__).resolve().parents[4])
+
+
+def _dashboard_data_dir() -> Path:
+    return Path(os.environ.get("DASHBOARD_DATA_DIR") or _repo_root() / ".agents" / "dashboard")
+
+
+def _runtime_path(name: str) -> Path:
+    return _dashboard_data_dir() / name
 
 
 def _aq_qa_bin() -> str:
@@ -156,9 +170,20 @@ def _bash_bin() -> str:
 
 
 async def _execute_phase(phase: str, *, timeout_s: float, cwd: Optional[Path]) -> Dict[str, Any]:
+    tmpdir = _runtime_path(_DASHBOARD_QA_TMPDIR)
+    pycache_dir = _runtime_path(_DASHBOARD_QA_PYCACHE)
+    cargo_target_dir = _runtime_path(_DASHBOARD_QA_CARGO_TARGET)
+    for path in (tmpdir, pycache_dir, cargo_target_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
     env = dict(os.environ)
-    env["PATH"] = "/run/current-system/sw/bin:" + env.get("PATH", "")
+    env["PATH"] = f"{Path(sys.executable).resolve().parent}:{_SYSTEM_BIN}:" + env.get("PATH", "")
     env.setdefault("PYTHONUNBUFFERED", "1")
+    env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    env["PYTHONPYCACHEPREFIX"] = str(pycache_dir)
+    env["CARGO_TARGET_DIR"] = str(cargo_target_dir)
+    for name in ("TMPDIR", "TEMP", "TMP"):
+        env[name] = str(tmpdir)
     if phase == "0":
         env.setdefault("AQ_QA_DASHBOARD_SAFE", "1")
     proc = await asyncio.create_subprocess_exec(
