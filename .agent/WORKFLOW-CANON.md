@@ -442,6 +442,42 @@ EOF
 
 ---
 
+### Step 8.5: ACTIVATE + VET (Definition of Done — the gate before "complete")
+
+**Purpose**: Stop shipping dormant features. "Committed" ≠ "done." A slice with green unit tests that
+was never wired in, turned on, real-world-validated, made observable, or given a control is NOT
+complete — it is *paused pending activation*. This step is the canonical Definition of Done.
+**SSOT: `.agent/DEFINITION-OF-DONE.md` · Behavioral Rule 15.**
+
+For every feature the slice ships, attest all five dimensions with **evidence** (a command + result,
+or a file:line — not a claim), then record the attestation in the commit body AND as a row in
+`.agent/ACTIVATION-AUDIT.md`:
+
+| # | Dimension | Evidence required |
+|---|-----------|-------------------|
+| 1 | **Integrated** | live call site (file:line), not a test |
+| 2 | **Turned ON** | enabled in the running system — `systemctl show` / `curl` / default-on |
+| 3 | **Functionally validated (real-world)** | end-to-end run in the running system + observed result (unit tests are necessary, never sufficient) |
+| 4 | **Observable** | dashboard surface + health-spider probe + alert threshold |
+| 5 | **Intervenable** | operator control (pause/approve/reject/trigger) where bad state is possible |
+
+- Dimensions 4–5 apply **when meaningful** (autonomous/state-generating/acting features need all 5; a
+  pure refactor needs 1–3). Skipping 4 or 5 requires a one-line **written, dated deferral** — never silent.
+- **Closing a cycle**: before a PRD/plan/phase is marked COMPLETE, confirm every feature it shipped has
+  a green (or consciously-deferred) row in `ACTIVATION-AUDIT.md`. Rebuild-gated activations (Nix env/
+  service) count as done only once the rebuild is applied and verified live — not at commit.
+
+```
+Definition-of-Done attestation — <feature>
+  1 Integrated:   <call site file:line | N/A + why>
+  2 Turned ON:    <enable location + live-verify command>
+  3 Validated:    <real-world command + observed result>
+  4 Observable:   <dashboard/probe/alert | deferred: <reason, date>>
+  5 Intervenable: <control | N/A: no bad-state surface | deferred: <reason, date>>
+```
+
+---
+
 ## Context Engineering Rules
 
 > Replace "context stuffing" with "context retrieval" — agents recall exactly the snippets

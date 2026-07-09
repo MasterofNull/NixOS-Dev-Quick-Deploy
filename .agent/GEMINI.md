@@ -14,47 +14,49 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 
 ---
 
-## Auth Architecture (2026-07-01 — SWITCHBOARD PATH)
+## Auth Architecture (2026-07-09 — NO API KEYS / IDE OAUTH)
 
 **`delegate-to-gemini` (npm CLI) is RETIRED.**
 **`@google/gemini-cli` npm package is DEAD** — returns `IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals`. Do NOT call the `gemini` binary from any delegation script.
 
-**`delegate-to-antigravity` routes through local switchboard (http://127.0.0.1:8085):**
-POSTs to `/v1/chat/completions` with `X-AI-Profile` header. No CLI subprocess, no oauth, no gemini binary.
+**Governing rule: NO API keys for Antigravity/Gemini fan-out.**
+Remote agents use their own OAuth/IDE session. The harness must never extract,
+store, commit, log, or wire API keys for Antigravity. See:
+`docs/operations/collab-workflow-exposure.md`.
 
-**Profile fallback chain (automatic — no manual config needed):**
-1. `remote-free` (default) → OpenRouter → `meta-llama/llama-3.3-70b-instruct:free` (no credits)
-2. `local-coding` (auto-fallback on HTTP 429/402) → local Qwen3-35B via llama.cpp:8080
-3. Override profile: `ANTIGRAVITY_SWB_PROFILE=antigravity-collective` → `google/gemini-2.5-flash-lite` (requires OpenRouter credits)
+**Current Antigravity lane for multi-agent rounds:**
+- `aq-collab-round open ...` writes a task file to `.agent/collaboration/antigravity-inbox/<round>.md`.
+- The Antigravity IDE agent watches that inbox using the IDE's own OAuth session.
+- The IDE agent writes its contribution to `.agents/plans/<round>/antigravity.md`.
+- This is not a manual copy/paste lane when the IDE watcher is configured; it is file/git A2A using IDE OAuth.
 
-**Auth:** handled by switchboard via `/run/secrets/remote_llm_api_key` (SOPS-managed). No user action required.
+**Do not use `remote_llm_api_key` for Antigravity identity.**
+If `REMOTE_LLM_URL` is Google Gemini direct but `/run/secrets/remote_llm_api_key`
+contains an OpenRouter-style key, switchboard must fail explicitly with
+`remote_key_endpoint_mismatch`. It must not silently reroute to OpenRouter.
 
-**Delegation chain (current):**
-- Background: `scripts/ai/delegate-to-antigravity --prompt "..." [--mode fast|flash|pro|architect]`
-- Blocking:   `scripts/ai/delegate-to-antigravity --prompt "..." --wait`
-- Check:      `scripts/ai/delegate-to-antigravity --check <task-id>`
-- List:       `scripts/ai/delegate-to-antigravity --list`
-- Health:     `curl -sf http://127.0.0.1:8085/health | jq .`
-- Legacy:     `delegate-to-gemini` — DO NOT USE (RETIRED)
+**Switchboard remote profiles are not the Antigravity IDE OAuth lane.**
+They are generic OpenAI-compatible remote routing profiles and must not be used to
+claim Antigravity participation in consensus rounds unless a distinct no-key OAuth
+bridge is implemented and documented.
 
-**Model map (hint only — switchboard profile may override):**
-| Alias | Hint passed | Actual model (remote-free profile) |
-|-------|-------------|-----------------------------------|
-| `fast` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
-| `flash` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
-| `pro` | gemini-2.5-flash | llama-3.3-70b-instruct:free |
-| `architect` | gemini-2.5-flash | llama-3.3-70b-instruct:free |
-| `implementer` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
-| `reviewer` | gemini-2.0-flash | llama-3.3-70b-instruct:free |
+**Useful commands:**
+- Open round: `scripts/ai/aq-collab-round open --round <name> --task "<prompt>"`
+- Check round: `scripts/ai/aq-collab-round status --round <name>`
+- Collect round: `scripts/ai/aq-collab-round collect --round <name>`
+- Antigravity inbox: `.agent/collaboration/antigravity-inbox/<round>.md`
 
 **Antigravity IDE (`antigravity` binary on PATH):**
-- VS Code fork IDE — NOT a headless CLI. Do NOT invoke from delegation scripts.
+- VS Code fork IDE. Auth remains inside the IDE's own OAuth/session storage.
+- Do not invoke it from shell scripts unless a documented no-key CLI bridge exists.
 
 ---
 
 ## Multi-Agent Fan-out Role (aq-loop integration)
 
-`aq-loop` auto-dispatches to `delegate-to-antigravity` at two phases:
+`aq-loop` historical references to `delegate-to-antigravity` are stale for
+Antigravity/Gemini identity work. Consensus rounds must use `aq-collab-round`
+and the watched Antigravity inbox unless a no-key OAuth bridge replaces it.
 
 **GROUND phase — Architecture probe (--mode architect):**
 Receive a concise task description. Return architectural guidance:
@@ -81,18 +83,11 @@ CONCERNS verdict is treated as APPROVED (warnings noted in PULSE.log, not blocki
 
 ---
 
-## Switchboard Profiles (2026-07-01)
+## Switchboard Profiles
 
-`delegate-to-antigravity` uses switchboard profiles via `X-AI-Profile` header.
-Current profiles relevant to delegation:
-
-| Profile | Backend | Model | Notes |
-|---------|---------|-------|-------|
-| `remote-free` | OpenRouter | llama-3.3-70b-instruct:free | Default — no credits needed |
-| `antigravity-collective` | OpenRouter | google/gemini-2.5-flash-lite | Requires OpenRouter credits |
-| `local-coding` | local llama.cpp | Qwen3-35B | Auto-fallback on 429/402 |
-
-Override: `ANTIGRAVITY_SWB_PROFILE=antigravity-collective delegate-to-antigravity --prompt "..."`
+Switchboard profiles are valid for local routing and generic remote routing, but
+they are not the governing Antigravity lane. Do not describe OpenRouter or
+API-key-backed switchboard calls as Antigravity/Gemini participation.
 
 Full profile catalog: `docs/agent-guides/46-SWITCHBOARD-PROFILES.md`
 
@@ -216,6 +211,8 @@ All agents share these canonical references — read before any non-trivial task
 | 14 | **TOOL DEDUPLICATION** | Never call the same tool with identical arguments more than once in the same session. Before each tool call: check whether an identical call was already made this session. If yes — the result will not change. Write findings to working memory (`store_memory`) and act on them instead of re-querying. Repeated read/search calls without intervening action are a stagnation signal — stop querying and act on what you have. |
 | 15 | **NIXOS DECLARATIVE-ONLY** | Runtime `chmod`/`chown`/config writes are wiped by the next `nixos-rebuild switch`. ALWAYS commit the Nix declaration (`system.activationScripts`, `systemd.tmpfiles.rules`, `users.users.<n>.extraGroups`) in the same cycle as any runtime fix. A runtime workaround with no Nix counterpart is an incomplete fix. |
 | 16 | **READWRITEPATHS ≠ DAC BYPASS** | `ReadWritePaths` + `ProtectHome=read-only` set up a namespace bind-mount but the kernel checks inode `uid/gid/mode` — POSIX DAC is NOT bypassed. A service blocked by a `0700` dir gets `EACCES` regardless. Fix: `system.activationScripts` with `deps = ["users"]` to chmod after NixOS user-management resets the mode on every activation. |
+| 17 | **ACTIVATION GATE (Definition of Done)** | "Committed" ≠ "done." No slice/PRD/plan/phase/cycle is COMPLETE until every feature it ships is attested across 5 dimensions — **integrated** (called from live path), **turned ON** (enabled in the running system), **functionally validated real-world** (end-to-end, not just unit tests), **observable** (dashboard + health-spider + alert), **intervenable** (operator control where bad state is possible) — OR carries a written, dated deferral. Paste the attestation into the commit body + `.agent/ACTIVATION-AUDIT.md`. A cycle with a dormant feature is *paused pending activation*, not done. SSOT: `.agent/DEFINITION-OF-DONE.md`. |
+| 18 | **AGENT PARITY (canonical changes = all agents)** | Any canonical change — behavioral rule, workflow/payload contract, dispatch/tool behavior, instruction-file update — MUST land in ALL general agent files in the same cycle: `CLAUDE.md`, `.agent/CODEX.md`, `.agent/LOCAL-AGENT.md`, `.agent/GEMINI.md`, and the shared `.agent/WORKFLOW-CANON.md`. Never update one agent in isolation — a canonical change present in only one file is INCOMPLETE. **Exceptions**: embedded-hardware and other specialized single-purpose agents. Parity map: `docs/AGENT-PARITY-MATRIX.md`. |
 
 ---
 
