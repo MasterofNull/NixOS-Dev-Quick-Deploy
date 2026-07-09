@@ -326,6 +326,47 @@ def _persist_result(result: Dict[str, Any]) -> None:
             fh.write(json.dumps(result) + "\n")
 
 
+# Slot-contention preflight (WS8/prompt 5). Evals share the single APU llama.cpp
+# slot with the F2.5 banded queue; running them behind other work makes every
+# direct dispatch queue and time out, scoring a false 0/N that alarmed as a model
+# regression (the real 2026-07-09 0/12 incident). Defer instead. 0 disables.
+SLOT_CONTENTION_QUEUE_MAX = int(os.getenv("AQ_LOOP_SLOT_QUEUE_MAX", "0"))  # >this queued = contended
+_SCHEDULER_STATE = _REPO_ROOT / ".agents" / "delegation" / "scheduler-state.json"
+
+
+def _slot_contended() -> "tuple[bool, str]":
+    """True if the local slot is busy or the banded queue is backed up.
+
+    Consults the F2.5 slot_queue observability surface (scheduler-state.json)
+    and llama.cpp /slots. Fail-open (not contended) on any read error so a
+    missing surface never blocks eval — model-readiness still guards cold starts.
+    """
+    import urllib.request
+
+    # 1. Banded queue depth from the slot_queue state file.
+    try:
+        st = json.loads(_SCHEDULER_STATE.read_text())
+        running = st.get("running")
+        depth = len(st.get("queue") or [])
+        if running is not None:
+            who = (running.get("id", "?") if isinstance(running, dict) else "?")
+            return True, f"local slot held by queued job {who} (queue depth {depth})"
+        if depth > SLOT_CONTENTION_QUEUE_MAX:
+            return True, f"banded queue depth {depth} > {SLOT_CONTENTION_QUEUE_MAX}"
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass  # no state file yet — fall through to the live slot probe
+
+    # 2. Live llama.cpp slot state.
+    try:
+        with urllib.request.urlopen(f"{LLAMA_BASE_URL.rstrip('/')}/slots", timeout=5) as r:
+            slots = json.loads(r.read())
+            if slots and slots[0].get("is_processing", False):
+                return True, "llama.cpp slot is_processing (busy with non-eval work)"
+    except Exception:  # noqa: BLE001 — fail-open
+        pass
+    return False, "slot free"
+
+
 def _wait_for_model_ready(timeout_s: int = MODEL_READY_TIMEOUT_S) -> bool:
     """True once llama.cpp is serving (not mid-reload). Probes /health then confirms it can generate
     with a 1-token completion — a healthy /health can still precede a model that isn't loaded. Bounded
@@ -694,6 +735,25 @@ class TrainingLoop:
         # dispatch times out, producing a false 0/N eval_failed (exactly what wasted the first real run).
         # Wait for it to actually serve; if still cold, DEFER — record an honest "deferred" run, not a
         # bogus regression the health-spider would alert on.
+        # ── 1a. SLOT-CONTENTION PREFLIGHT ───────────────────────────────────────
+        # Do not eval while the single APU slot is busy with other work: every
+        # direct dispatch would queue and time out, scoring a false 0/N that
+        # alarms as a model regression (the real 0/12 incident). Defer honestly.
+        if not self.dry_run:
+            contended, why = _slot_contended()
+            if contended:
+                print(f"[training-loop] slot contended ({why}) — DEFERRING eval this run",
+                      file=sys.stderr)
+                _write_progress(run_id, "deferred", reason="slot_contended")
+                report = {
+                    "run_id": run_id, "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "status": "deferred", "reason": "slot_contended", "detail": why,
+                    "cases_total": 0, "pass_count": 0, "fail_count": 0, "pass_rate": None,
+                    "corrected": corrected_count,
+                }
+                _persist_result(report)
+                return report
+
         if not self.dry_run and not _wait_for_model_ready():
             print("[training-loop] model not ready after preflight budget — DEFERRING eval this run",
                   file=sys.stderr)
@@ -808,9 +868,39 @@ class TrainingLoop:
 
         passing  = [s for s in scores if s.get("pass")]
         failing  = [s for s in scores if not s.get("pass")]
+        # Infra failures (dispatch timeout / submit failure) are NOT model misses —
+        # they poison pass_rate and the training capture. Classify them out.
+        infra_fail = [s for s in scores if s.get("error") in ("timeout_or_failed", "submit_failed")]
         pass_rate = len(passing) / max(len(scores), 1)
-        print(f"[training-loop]   pass {len(passing)}/{len(scores)} ({pass_rate:.0%})")
+        print(f"[training-loop]   pass {len(passing)}/{len(scores)} ({pass_rate:.0%})"
+              + (f" [{len(infra_fail)} infra-failures]" if infra_fail else ""))
         _write_progress(run_id, "improve", pass_count=len(passing), fail_count=len(failing), cases_total=len(scores))
+
+        # If infra failures dominate (contention/timeouts mid-run), this run is
+        # DEGRADED INFRA, not a model regression: record pass_rate=None so the
+        # health-spider / dashboard alarm does not fire a false collapse, and
+        # skip the improve/capture phases (nothing real to learn from noise).
+        _infra_degraded = (
+            not self.dry_run
+            and scores
+            and len(infra_fail) >= max(1, len(scores) // 2)
+            and len(passing) == 0
+        )
+        if _infra_degraded:
+            print(f"[training-loop] {len(infra_fail)}/{len(scores)} infra-failures with 0 passes — "
+                  f"recording DEGRADED_INFRA, not a regression", file=sys.stderr)
+            _write_progress(run_id, "degraded_infra", infra_failures=len(infra_fail), cases_total=len(scores))
+            report = {
+                "run_id": run_id, "timestamp": _now(), "eval_pack": str(self.eval_pack.name),
+                "status": "degraded_infra", "reason": "slot_contention_mid_run",
+                "cases_total": len(scores), "pass_count": 0,
+                "fail_count": 0, "infra_failures": len(infra_fail), "pass_rate": None,
+                "ingest": {"samples_added": ingest_report.get("positive_samples_added", 0),
+                           "dataset_total": ingest_report.get("dataset_total", 0)},
+                "improvements_proposed": 0, "dry_run": self.dry_run,
+            }
+            _persist_result(report)
+            return report
 
         # ── 4. IMPROVE ─────────────────────────────────────────────────────────
         improvements: List[Dict] = []

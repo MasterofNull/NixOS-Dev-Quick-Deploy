@@ -247,3 +247,19 @@ One trace per intent, CLI→dispatch→model→tools, diagnosable from the trace
 | Intervenable | ✅ tracing is opt-in (no AQ_TRACE_ID = no-op); optional OTLP export hook (OTEL_EXPORTER_OTLP_ENDPOINT) |
 
 Design: a trace is the set of events sharing trace_id; the event bus (WS2) is the substrate, so no collector infra is needed on APU-class hardware. OTLP export is a stub hook for when a collector exists. Follow-up: auto-seed AQ_TRACE_ID at every CLI entrypoint, span the switchboard + tool layers, and render the waterfall in the WS6 console.
+
+---
+
+# Slice: eval-aware scheduling — RSI loop can't poison itself (WS8, god-tier prompt 5) (2026-07-09, claude-fable-5)
+
+Fixes the real 0/12 incident: evals ran under slot contention, timed out, scored a false regression, and nothing alarmed.
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ aq-local-training-loop: _slot_contended() (reads F2.5 scheduler-state.json + llama /slots) + contention preflight DEFER (mirrors the cold-model preflight); mid-run infra-failure classification -> status=degraded_infra, pass_rate=None; aq-health-spider._loop_eval_regression compares last two REAL evals (excludes deferred/degraded_infra) |
+| ON | ✅ ON now (defensive checks run every real loop). Dashboard pass-rate alarm (shipped earlier) composes: degraded_infra/deferred carry pass_rate=None so it can't fire a false collapse. |
+| Validated | ✅ test-eval-contention-guard.py 5/5 (contended-when-job-holds, fail-open when surfaces absent, queue-depth contention, regression excludes trailing deferred, degraded_infra doesn't fake regression). Live: _slot_contended reads real state; dry-run loop unbroken. Capture already excludes response=None (verified). |
+| Observable | ✅ deferred/degraded_infra runs written to training-loop-results with reason; progress sidecar phases deferred/degraded_infra |
+| Intervenable | ✅ AQ_LOOP_SLOT_QUEUE_MAX tunes queue-depth threshold; contention preflight is skipped in dry-run |
+
+Three-part fix: (1) defer before running when contended; (2) if timeouts dominate mid-run, record degraded_infra not eval_failed (no false regression); (3) training capture already skips infra failures (response=None) — verified, not re-broken. Known gap (documented): agent-mode local tasks don't flow through the F2.5 DirectRunner queue so they're only caught by the live /slots probe during active generation, not scheduler-state.json — evals use direct mode (the incident path), which IS covered. Follow-up: registry-wide running-task check to close the agent-mode gap without over-deferring on stale rows.

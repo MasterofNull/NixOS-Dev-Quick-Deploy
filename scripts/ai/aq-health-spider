@@ -521,10 +521,17 @@ def _read_training_results(path: Optional[Path], limit: int = 20) -> List[Dict[s
 
 
 def _loop_eval_regression(results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if len(results) < 2:
+    # Compare the last two REAL eval runs. Deferred / degraded_infra runs carry
+    # pass_rate=None (model not evaluated — cold or slot-contended) and must be
+    # excluded, or a contention run would either mask a real regression or, if
+    # mis-scored, fake one. Prompt-5 fix: never let infra noise into the signal.
+    real = [r for r in results
+            if isinstance(r.get("pass_rate"), (int, float))
+            and str(r.get("status") or "").lower() not in {"deferred", "degraded_infra"}]
+    if len(real) < 2:
         return None
-    previous = results[-2]
-    latest = results[-1]
+    previous = real[-2]
+    latest = real[-1]
     try:
         previous_rate = float(previous.get("pass_rate"))
         latest_rate = float(latest.get("pass_rate"))
