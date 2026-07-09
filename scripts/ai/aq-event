@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""aq-event — emit and project A2A events (WS2 event-bus front door).
+
+The canonical way for any agent to update session state. Replaces direct writes
+to RESUME.json (clobber-prone) and PULSE.log with append-only, idempotent,
+per-field-merged events.
+
+Usage:
+  aq-event pulse  --agent NAME --action write --scope PATH --outcome "..."
+  aq-event resume --agent NAME --objective "..." --phase "..." \
+                  --hint "..." [--todo item ...] [--uncommitted path ...]
+  aq-event emit   --agent NAME --type foo.bar --subject S --payload '{"k":"v"}'
+  aq-event project [resume|pulse|all]     # rebuild projections now
+  aq-event tail -n 20
+  aq-event verify
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_LIB = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(_LIB))
+
+import event_log  # noqa: E402
+import resume_projector as rp  # noqa: E402
+
+
+def _cmd_pulse(a) -> int:
+    payload = {"action": a.action}
+    if a.outcome:
+        payload["outcome"] = a.outcome
+    event_log.emit(a.agent, "pulse.append", payload=payload, subject=a.scope)
+    rp.write_pulse()
+    return 0
+
+
+def _cmd_resume(a) -> int:
+    fields = {}
+    if a.objective is not None:
+        fields["current_objective"] = a.objective
+    if a.phase is not None:
+        fields["phase"] = a.phase
+    if a.hint is not None:
+        fields["resume_hint"] = a.hint
+    if a.todo:
+        fields["todo_snapshot"] = a.todo
+    if a.uncommitted:
+        fields["uncommitted_changes"] = a.uncommitted
+    rp.emit_resume_update(a.agent, **fields)
+    proj = rp.write_resume()
+    print(f"resume projected: {len(proj.get('_provenance', {}))} fields, "
+          f"{len(proj.get('agent_snapshots', {}))} agent(s)")
+    return 0
+
+
+def _cmd_emit(a) -> int:
+    env = event_log.emit(a.agent, a.type, payload=json.loads(a.payload), subject=a.subject)
+    print(env.event_id)
+    return 0
+
+
+def _cmd_project(a) -> int:
+    what = a.what or "all"
+    if what in ("resume", "all"):
+        rp.write_resume()
+    if what in ("pulse", "all"):
+        rp.write_pulse()
+    print(f"projected: {what}")
+    return 0
+
+
+def _cmd_tail(a) -> int:
+    for ev in event_log.read_all()[-a.n:]:
+        print(f"{ev.ts:.0f} {ev.agent} {ev.type} {ev.subject or ''}")
+    return 0
+
+
+def _cmd_verify(a) -> int:
+    evs = event_log.read_all(verify=False)
+    bad = [e.event_id for e in evs if not e.verify()]
+    print(f"events={len(evs)} bad_sig={len(bad)}")
+    return 1 if bad else 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="aq-event")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("pulse"); p.add_argument("--agent", required=True)
+    p.add_argument("--action", required=True); p.add_argument("--scope", default=None)
+    p.add_argument("--outcome", default=None); p.set_defaults(fn=_cmd_pulse)
+
+    r = sub.add_parser("resume"); r.add_argument("--agent", required=True)
+    r.add_argument("--objective", default=None); r.add_argument("--phase", default=None)
+    r.add_argument("--hint", default=None); r.add_argument("--todo", action="append")
+    r.add_argument("--uncommitted", action="append"); r.set_defaults(fn=_cmd_resume)
+
+    e = sub.add_parser("emit"); e.add_argument("--agent", required=True)
+    e.add_argument("--type", required=True); e.add_argument("--subject", default=None)
+    e.add_argument("--payload", default="{}"); e.set_defaults(fn=_cmd_emit)
+
+    pr = sub.add_parser("project"); pr.add_argument("what", nargs="?", choices=["resume", "pulse", "all"])
+    pr.set_defaults(fn=_cmd_project)
+
+    t = sub.add_parser("tail"); t.add_argument("-n", type=int, default=10); t.set_defaults(fn=_cmd_tail)
+    v = sub.add_parser("verify"); v.set_defaults(fn=_cmd_verify)
+
+    args = ap.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

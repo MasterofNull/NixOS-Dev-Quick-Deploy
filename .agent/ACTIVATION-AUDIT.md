@@ -215,3 +215,19 @@ Typed config validation + hot-reload; ends restart-to-apply for switchboard prof
 | Intervenable | ✅ CONFIG_HOT_RELOAD=0 disables the watcher; invalid edits auto-rejected (fail-safe); startup falls back to loaded catalog on any wiring error |
 
 Scope note: v1 registers ONE config (switchboard-profiles.yaml — the one that needed restart-to-apply). The tree + loader + registry + gate generalize; remaining ~106 configs adopt incrementally (one @register + schema each), which is the WS1 follow-up. Round-trip gate also guards the F2 inf→null bug class going forward.
+
+---
+
+# Slice: event-bus A2A v1 — clobber-proof log + RESUME projector (WS2, god-tier prompt 3) (2026-07-09, claude-fable-5)
+
+Kills the RESUME.json clobber class: append-only event log + per-field-merged projection.
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ contracts/events (signed idempotent Envelope) + scripts/ai/lib/event_log.py (atomic append, dedup, optional Redis mirror) + resume_projector.py (per-field LWW + agent_snapshots + provenance) + aq-event CLI |
+| ON | ⏸ **AVAILABLE not yet CANONICAL**: the log + projector + CLI are usable now; agents still write RESUME/PULSE directly during migration. Making the projector the SOLE writer (agents emit only) is the prompt-3 FOLLOW-UP migration, not v1. Dated deferral. |
+| Validated | ✅ test-event-bus-a2a.py 8/8: envelope signing+tamper, idempotent dedup, corrupt-line skip (self-healing leading-newline append), per-field merge (different fields both survive), same-field LWW (loser preserved), **12-agent/60-event concurrent clobber test = zero loss**, projector output-override guard, backward-compat RESUME shape. Sandboxed E2E via aq-event CLI. |
+| Observable | ✅ aq-event tail / verify; _provenance + agent_snapshots in the projection show who set each field |
+| Intervenable | ✅ A2A_EVENT_LOG / RESUME_JSON_PATH / PULSE_LOG_PATH overrides; unsigned-v1 mode + optional HMAC signing (A2A_EVENT_SIGNING_KEY) |
+
+Real-world stress this cycle: an early E2E test clobbered the live RESUME.json (asymmetric path config — input overridable, output not). Fixed (call-time overridable output + guard test), logged (issues-backlog), and the irony noted — the slice that kills clobber was tested by surviving one. Deferred: signing enforcement (accept unsigned in v1), Redis as required transport (file is truth; Redis optional mirror), full agent migration to emit-only.
