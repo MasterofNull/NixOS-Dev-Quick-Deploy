@@ -1257,10 +1257,37 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
 [FIXED-PARTIAL 2026-07-02] antigravity-delegation-dual-lane-failure — delegate-to-antigravity failed on BOTH lanes: (1) remote-free (OpenRouter meta-llama/llama-3.3-70b-instruct:free) HTTP 429 rate-limited on free tier; (2) local-coding fallback then failed with "Expecting value: line 1 column 1 (char 0)" — a JSON parse error.
   Root cause (lane 2, FIXED): switchboard FORCES stream=True for local profiles (journal: "forced stream=True for local chat/completions profile=local-coding") regardless of the client's stream=False. delegate-to-antigravity did json.loads(resp.read()) on the SSE body (data: {...}) → parse failure → fallback wrongly reported failed. Added _parse_completion_response() handling both SSE and plain JSON. Unit-tested (SSE/JSON/empty/final-message-chunk all pass).
   Root cause (lane 1, DECIDED 2026-07-02 → Google Gemini direct): user chose to route the remote lane at Google Gemini, not OpenRouter. Finding: nix/hosts/hyperd/deploy-options.nix ALREADY declared remoteUrl=https://generativelanguage.googleapis.com/v1beta/openai — but the running switchboard still had REMOTE_LLM_URL=https://openrouter.ai/api (CONFIG DRIFT: edited, never rebuilt). Also the declaration was INCOHERENT: remoteUrl→Google but coding/reasoning/toolCalling/opencode aliases pointed at anthropic/openai/qwen models that 404 on Google's endpoint. Fixed: all aliases now bare gemini-* (coding/reasoning=gemini-2.5-pro, toolCalling/gemini/opencode=gemini-2.5-flash, free=gemini-2.5-flash-lite).
-  PENDING-USER-REBUILD: (1) swap SOPS value — `sops <sopsfile>` set remote_llm_api_key to a Google AI Studio API key (currently holds an OpenRouter key); secret NAME unchanged so no manifest change. (2) close VSCodium, then `sudo nixos-rebuild switch --flake .#hyperd-ai-dev`. (3) rebuild restarts switchboard which re-reads remoteUrl+key at startup. Verify: `systemctl show ai-switchboard -p Environment | grep REMOTE_LLM_URL` shows generativelanguage.
+  SUPERSEDED 2026-07-09: do NOT swap in a Google AI Studio API key. The governing workflow is no API keys for Antigravity/Gemini fan-out; Antigravity uses its IDE's own OAuth via watched inbox/file A2A. Switchboard remote profiles are generic remote routing only, not the Antigravity identity lane.
   Also found: zombie `gemini` npm CLI process (PID from old ping test) still running despite gemini CLI being retired (IneligibleTierError) — needs reaping.
+  2026-07-09 update: fixed a separate background-child stability bug where forked non-blocking children redirected only stdin and could inherit fragile stdout/stderr pipes from the caller; child diagnostics now go to the task log, preventing `Broken pipe` from masking the real provider/fallback outcome. Also fixed the empty-response log path that referenced undefined `result`.
+  Verification: `python3 -m py_compile scripts/ai/delegate-to-antigravity scripts/testing/test-delegate-antigravity-background-stdio.py` and `python3 scripts/testing/test-delegate-antigravity-background-stdio.py` pass. Live smoke `antigravity-20260708-223624-3ivgdv` no longer logs `FATAL: Broken pipe`; it records remote HTTP 429 and local fallback diagnostics instead. Remote lane remains rate-limited/provider-config dependent.
   Severity: high (remote fan-out lane unreliable until rebuild; local fallback works now)
-  File: nix/hosts/hyperd/deploy-options.nix (remoteUrl + aliases); scripts/ai/delegate-to-antigravity (_parse_completion_response + comments); SOPS remote_llm_api_key
+  File: nix/hosts/hyperd/deploy-options.nix (remoteUrl + aliases); scripts/ai/delegate-to-antigravity (_parse_completion_response + comments + background stdio redirect); scripts/testing/test-delegate-antigravity-background-stdio.py; SOPS remote_llm_api_key
+
+[OPEN] codex-delegation-stale-running-zero-output — `delegate-to-codex --status` reported `codex-20260708-230805-yq4n07xxxxxx` as running, but `ps -p 789355` found no process and the output log stayed at 0 bytes. The collaboration collector therefore treated a dead lane as pending instead of unavailable or failed.
+  Severity: medium
+  Action: Add stale-pid/log-progress detection to Codex delegation status and `aq-collab-round collect`, matching the local lane's heartbeat/progress model. Retried the usability-parity-v2 Codex lane as `codex-20260708-231458-tgnak0xxxxxx`, which repeated the no-live-pid/zero-output failure; active Codex session landed `.agents/plans/usability-parity-v2/codex.md` directly. 2026-07-09 update: `aq-delegation-registry reconcile` repaired three stale Codex registry rows (`codex-20260708-224654-s4kn7lxxxxxx`, `codex-20260708-230805-yq4n07xxxxxx`, `codex-20260708-231458-tgnak0xxxxxx`) after PID checks confirmed no live processes. Remaining root fix is automatic terminal-state transition in `delegate-to-codex`/collector/dashboard views, not manual reconcile.
+  File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; .agents/delegation/outputs/codex-20260708-230805-yq4n07xxxxxx.log
+
+[OPEN] antigravity-inbox-watcher-visibility-gap — Antigravity IDE and Gemini Code Assist A2A processes are running, and `aq-collab-round` dropped `.agent/collaboration/antigravity-inbox/usability-parity-v2.md`, but no `.agents/plans/usability-parity-v2/antigravity.md` landed and there is no first-class watcher status explaining whether the IDE saw, ignored, failed, or is still processing the inbox task.
+  Severity: medium
+  Action: PARTIAL 2026-07-09 — fixed the prompt path contradiction and added known-legacy Antigravity output recovery plus proposal warnings in `aq-collab-round collect`; remaining work is richer dashboard/TUI watcher state with inbox file mtime, expected output path, IDE process presence, last response mtime, and explicit `inbox_pending|inbox_unavailable|inbox_landed` states.
+  File: scripts/ai/aq-collab-round; scripts/ai/aq-tui-dashboard; .agent/collaboration/antigravity-inbox/usability-parity-v2.md
+
+[DONE] usability-parity-prompt-output-path-contradiction — The shared expert-team prompt still instructed agents to write `.agents/plans/usability-parity/<agent>.md`, while `aq-collab-round` correctly appended `.agents/plans/usability-parity-v2/<agent>.md`; Antigravity followed the stale instruction and landed in the superseded round.
+  Severity: medium
+  Action: Removed the stale per-agent output path list from `.agents/prompts/AI_HARNESS_USABILITY_PARITY_EXPERT_TEAM_PROMPT.md`, replaced it with active-round guidance, added safe legacy recovery in `aq-collab-round collect`, and added proposal warnings for no-key policy drift.
+  File: .agents/prompts/AI_HARNESS_USABILITY_PARITY_EXPERT_TEAM_PROMPT.md; scripts/ai/aq-collab-round
+
+[DONE] aq-collaborate-contribution-claim-unverifiable — Antigravity reported contribution ID `10290073-123e-47f4-8dcf-78de8c41c173`, but no repo-local audit artifact contained that ID and `aq-collaborate messages collab_1` had no database table to verify it.
+  Severity: medium
+  Action: Updated `aq-collaborate contribute` to accept the documented `--phase/--description/--approach` flags by converting them into content when `--content` is absent, and append successful contribution IDs to `.agent/collaboration/aq-collaborate-contributions.jsonl`. Current verified Antigravity contribution is `ccdb27cd-0111-449f-91f1-06be72424e50`.
+  File: scripts/ai/aq-collaborate; .agent/collaboration/aq-collaborate-contributions.jsonl
+
+[DONE] concurrent-resume-state-overwrite — `.agent/collaboration/RESUME.json` was updated for Claude's concurrent `aq-local-training-loop` eval-capture task while Codex was tracking the active usability-parity-v2 round, hiding the collaboration state from Codex resumes.
+  Severity: high
+  Action: Corrected attribution after operator clarification: this was legitimate concurrent Claude work, not an Antigravity mistake. Restored Codex's active usability-parity-v2 resume state for this session; follow-up guard should support per-agent/per-slice resume snapshots or merge semantics so concurrent agents do not overwrite each other's active objective.
+  File: .agent/collaboration/RESUME.json
 
 [DONE 2026-07-02] agent-model-versions-stale-no-tier-routing — Agent pools were pinned to superseded model ids (Opus 4.5, Sonnet 4.5, Haiku 3.5, gpt-4o, qwen2.5-coder, gemini-2.0) with no single place to route by version; newest models (Fable 5, Opus 4.8, Sonnet 4.6, Haiku 4.5, gpt-5.5) were absent. Version selection was scattered across 3 files (remote_agents.py, delegate-to-antigravity _MODEL_MAP, switchboard aliases) and drifted independently.
   Fix: added `tiers` + `tier_routing` version SSOT to config/model-coordinator.json (v1.1) — per-provider flagship/balanced/fast/creative → concrete current ids; complexity→tier map. Bumped remote_agents.py to current-gen + added CLAUDE_FABLE (creative tier); GPT_4O/_MINI renamed GPT_5/_MINI with back-compat enum aliases. Bumped delegate-to-antigravity _MODEL_MAP gemini 2.0→2.5. Going forward: bump ids in tiers block only.
@@ -1442,3 +1469,37 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Root cause: `command-center-dashboard-api` has AppArmor-enforced `/tmp` read-only except SQLite files, while `qa_runner.py` inherited normal tempfile defaults and did not redirect Python pycache or Cargo target writes.
   Action: dashboard QA runner now creates `qa-runner-tmp`, `qa-runner-pycache`, and `qa-runner-cargo-target` under `DASHBOARD_DATA_DIR` and exports `TMPDIR`/`TEMP`/`TMP`, `PYTHONPYCACHEPREFIX`, and `CARGO_TARGET_DIR` to `aq-qa` subprocesses. The remaining context-sandwich import failure is normalized as dashboard-confined host-only because it imports full switchboard deps missing from the dashboard Python runtime while host `aq-qa 0 --machine` passes. Live `/api/health/layered` verified `failed=0`, pending alerts verified `0`.
   File: dashboard/backend/api/services/qa_runner.py; scripts/testing/test-dashboard-qa-runner-runtime-env.py
+
+[DONE] local-delegation-heartbeat-schema-false-stale — `delegate-to-local --status` can infer a live agent-loop task as stale when the registry PID is missing, even though the heartbeat sidecar is current.
+  Severity: medium
+  Root cause: the agent-loop heartbeat sidecar writes `ts`, while the task registry heartbeat liveness helper expects `heartbeat_at` or `last_heartbeat`; this schema drift can make operator status views under-report live inference progress.
+  Action: Done — `TaskRegistry._heartbeat_alive()` now accepts `ts`, monitor snapshots include heartbeat artifacts, `aq-delegation-registry` dry-run/list use the shared TaskRegistry inference path, and `scripts/testing/test-task-registry-heartbeat-ts.py` covers the fresh-`ts` sidecar case. Live status for `local-20260708-231639-o7qnkl` remains `running` with `pid_alive=true`; dry-run stale repair now lists the dead Codex rows, not the live local task.
+  File: scripts/ai/lib/task_registry.py; scripts/ai/aq-delegation-registry; scripts/testing/test-task-registry-heartbeat-ts.py
+
+[OPEN] drop-zone-agent-mode-disabled-by-default-visible-only-in-journal — `aq-drop --mode agent` submissions are rejected by `ai-drop-daemon` unless `DROP_ALLOW_AGENT=true`, but the operator only sees the acceptance message from `aq-drop` unless they inspect journald.
+  Severity: medium
+  Root cause: drop creation and daemon execution policy are split; the CLI can create a drop that the daemon later rejects for policy, without surfacing that rejected state in the immediate operator workflow.
+  Action: add `aq-drop` policy preflight or a rejected-drop status surface, then wire rejected drops into the dashboard/attention queue so failed fan-out routes are visible without journal spelunking.
+  File: scripts/ai/aq-drop; scripts/ai/aq-drop-daemon; assets/dashboard.js
+
+[OPEN] drop-daemon-cannot-write-delegation-registry — `ai-drop-daemon` accepted and consumed direct-mode drop `2cb63960-c7d1-430f-a53a-1fc2ddb034e5`, then failed dispatch with `OSError: [Errno 30] Read-only file system` while appending `.agents/delegation/registry.jsonl`.
+  Severity: high
+  Root cause: the deployed daemon runs from the Nix store/source context or confinement profile without writable access to the repo-local delegation registry; the CLI reports the drop as queued, but the daemon cannot actually fan it out.
+  Action: fix the Nix service working directory/state path/AppArmor write rules so `ai-drop-daemon` writes to the intended mutable repo state, then add a health-spider/aq-qa check that queues a harmless drop and verifies registry append plus visible rejected/failed state.
+  File: nix/modules/roles/ai-stack.nix; scripts/ai/aq-drop-daemon; scripts/ai/lib/task_registry.py
+
+[OPEN] antigravity-oauth-lane-vs-switchboard-keyed-remote-confusion — `antigravity-collective` was silently routed to OpenRouter even though systemd declares `REMOTE_LLM_URL=https://generativelanguage.googleapis.com/v1beta/openai`; more importantly, switchboard API-key routing was incorrectly treated as the Antigravity/Gemini identity lane.
+  Severity: high
+  Root cause: `ai-stack/switchboard/switchboard.py` had an auto-correction branch that detected an OpenRouter-style `sk-or-` key with a Google Gemini endpoint and rewrote the target to `https://openrouter.ai/api`, including OpenRouter model aliases. That masked the auth/config mismatch and regressed Antigravity fan-out back to OpenRouter.
+  Action: DONE in repo source: removed the silent OpenRouter reroute and return `remote_key_endpoint_mismatch` instead; added focused regression `scripts/testing/test-switchboard-no-silent-openrouter-fallback.py`; restarted `ai-switchboard.service`; corrected `.agent/GEMINI.md` stale API-key/OpenRouter guidance. REMAINING: use the no-key Antigravity IDE/OAuth watched-inbox lane (`aq-collab-round`) for consensus rounds, or implement a distinct no-key OAuth bridge. Do not add or request API keys.
+  File: ai-stack/switchboard/switchboard.py; scripts/testing/test-switchboard-no-silent-openrouter-fallback.py; .agent/GEMINI.md; scripts/ai/aq-collab-round; docs/operations/collab-workflow-exposure.md
+
+[OPEN] local-agent-textual-tool-call-false-success — Local/Qwen agent-mode retry `local-20260709-001430-f3llz1` completed with `success=true` and `incomplete_result=false`, but the result was only `Thought:` plus textual `Tool: read_file(...)`; it did not execute the tool or produce the requested proposal.
+  Severity: high
+  Action: Extend local-agent result-quality classification to mark textual tool-call-only outputs as incomplete/failed unless a real tool event or requested artifact exists; feed this task into training capture as a false-success fixture.
+  File: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py; .agents/delegation/outputs/local-20260709-001430-f3llz1.log
+
+[OPEN] direct-delegation-prompt-token-heuristic-false-tiny — Local/Qwen direct retry `local-20260709-002206-ei5of8` produced useful Markdown, but output stopped at 150 tokens because the prompt included a tiny-output trigger phrase while requesting a full proposal.
+  Severity: medium
+  Action: Make `classify_tokens()` prefer explicit large-report/full-plan signals over incidental tiny phrases, or add a CLI/output-token override for direct delegation so orchestrators can safely request full reports without prompt wording hazards.
+  File: scripts/ai/lib/dispatch.py; .agents/delegation/outputs/local-20260709-002206-ei5of8.log

@@ -1,0 +1,32 @@
+/no_think
+You are the Local/Qwen lane for collaboration round `usability-parity-v2`.
+
+Do not use tools. Do not claim to have read files live. Produce Markdown only.
+
+Context:
+- The harness is improving human usability for the AI harness dashboard, CLI, delegation workflows, local inference progress, provider/sandbox diagnosis, and replay/eval ergonomics.
+- The round compares local harness UX against useful patterns from Gitlawb/Zero without installing Zero.
+- Current consensus from Claude/Codex/Antigravity: the first implementation slice should be `background_task.v1` task-status truth because operators cannot reliably distinguish queued, running, stalled, stale, failed, wedged, interrupted, inbox-pending, or provider-blocked work.
+- Recent live evidence: local llama wedged and had to be restarted; an earlier Qwen lane completed with only `COMPLETED: The previous output was incomplete`; a new Qwen agent-mode retry returned only a textual `Thought:`/`Tool:` string while the runner marked success; three Codex rows looked hanging in switchboard but were stale registry rows with missing PIDs; Antigravity must remain no-key IDE/OAuth watched-inbox, not API-key routing.
+- Relevant repo surfaces: `.agents/plans/usability-parity-v2/AGGREGATE.md`, `scripts/ai/lib/task_registry.py`, `scripts/ai/aq-delegation-registry`, `scripts/ai/delegate-to-local`, `scripts/ai/delegate-to-codex`, `scripts/ai/delegate-to-antigravity`, `scripts/ai/aq-collab-round`, `dashboard/backend/api/routes/aistack.py`, `assets/dashboard.js`, `scripts/ai/aq-qa`, `scripts/ai/aq-report`.
+
+Task:
+Write the missing Local/Qwen proposal. Keep it concise but substantive. Include the exact headings below:
+
+# Verdict
+# Evidence Read
+# Expert-Team Findings
+# Ranked Parity Gaps
+# Proposed UX Architecture
+# Slice Plan
+# Validation Matrix
+# Risk Register
+# First Slice Recommendation
+# Open Questions
+
+Requirements:
+- Agree or disagree with `background_task.v1` as first slice and explain why.
+- Include a Qwen-specific note about local inference progress/liveness, no arbitrary hard caps, and false-success detection.
+- Include validation gates for CLI, dashboard/API, and aq-qa.
+- Do not propose API keys for Antigravity.
+- End with `VERDICT: PASS|REQUEST_REVISION|BLOCKED — one sentence`.

@@ -1,0 +1,19 @@
+You are the Local/Qwen lane for the existing collaboration round `usability-parity-v2`.
+
+Goal: produce the missing substantive Local/Qwen expert-team usability parity proposal.
+
+Read and follow `.agents/plans/usability-parity-v2/.round-prompt.txt`, but override any stale v1 output path inside it. Write only this file:
+
+`.agents/plans/usability-parity-v2/local.md`
+
+Do not edit shared files. Do not implement code. Do not commit. Keep the output concise but substantive, with the exact top-level headings required by the round prompt.
+
+Important context from the orchestrator:
+- The previous local attempt completed with only `COMPLETED: The previous output was incomplete.`
+- This retry exists to replace that non-substantive local contribution with a real proposal.
+- Preserve the no arbitrary hard-cap policy: reason from progress/liveness/stale-state, not fixed age limits.
+- Treat background task status truth as the current leading consensus, but independently assess whether Local/Qwen agrees or sees a better first slice.
+
+End with:
+
+`VERDICT: PASS|REQUEST_REVISION|BLOCKED — one sentence`

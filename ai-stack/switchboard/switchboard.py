@@ -3041,22 +3041,16 @@ async def proxy(path: str, request: Request):
     headers["Connection"] = "close"
     if target_type == "remote" and REMOTE_API_KEY:
         if REMOTE_API_KEY.startswith("sk-or-") and REMOTE_URL and "generativelanguage.googleapis.com" in REMOTE_URL:
-            # Auto-correct OpenRouter key with Google Gemini endpoint mismatch
-            target = "https://openrouter.ai/api"
-            headers.pop("x-goog-api-key", None)
-            headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
-            if isinstance(payload, dict):
-                cur_model = str(payload.get("model", "")).strip().lower()
-                if "gemini-3.1-pro" in cur_model or "gemini-2.5-pro" in cur_model or "gemini-pro" in cur_model:
-                    payload["model"] = "google/gemini-2.5-pro"
-                elif "gemini-3.5-flash" in cur_model or "gemini-2.5-flash" in cur_model or "gemini-flash" in cur_model:
-                    payload["model"] = "google/gemini-2.5-flash"
-                elif "gemini-3.1-flash-lite" in cur_model or "gemini-2.5-flash-lite" in cur_model or "gemini-light" in cur_model:
-                    payload["model"] = "meta-llama/llama-3.3-70b-instruct:free"
-                else:
-                    if cur_model.startswith("gemini-"):
-                        payload["model"] = f"google/{cur_model}"
-                body = json.dumps(payload).encode("utf-8")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "message": "remote_llm_api_key is an OpenRouter key but REMOTE_LLM_URL is configured for Google Gemini direct; refusing silent OpenRouter fallback",
+                        "type": "remote_key_endpoint_mismatch",
+                        "action": "use the no-key Antigravity IDE/OAuth lane for Gemini collaboration, or intentionally configure a non-Antigravity remote provider; do not add API keys for Antigravity fan-out",
+                    }
+                },
+            )
         else:
             headers["Authorization"] = f"Bearer {REMOTE_API_KEY}"
             if REMOTE_URL and "generativelanguage.googleapis.com" in REMOTE_URL:
