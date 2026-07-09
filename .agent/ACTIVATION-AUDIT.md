@@ -37,6 +37,29 @@ Sweep four dormant surfaces, and for each: turn on → run a REAL functional tes
 | open-webui | ✅ (upstream) | ❌ intentionally OFF | n/a | blocked: npm-deps build broken in 26.05; re-enable when fixed |
 | **Python QA harness (harness_qa/)** | ✅ (full package: 163 checks, structured reporters) | ✅ **FIXED — now primary** | ✅ aq-qa 0 → 163 passed/0 failed/13s (vs bash 124/19s) | the bridge `scripts/ai/lib/harness_runner.py` was **never created**, so aq-qa silently fell back to `_aq-qa-bash` (124 checks) as its DEFAULT — a fallback running as the main workflow. Created the bridge; bash now genuine fallback |
 
+## Multi-agent / fan-out / delegation domain (2026-07-09 audit)
+Applied the same lens to the flat-collaborative-factory (F1/F2/F3) work. Findings:
+
+| Capability | Built + tested | Wired / turned ON | Notes |
+|---|---|---|---|
+| F1 round.json state machine (`round_state`, `round_aggregate`, `round_contribution`) | ✅ | ✅ `aq-collab-round` | on |
+| F2.2 `grammar_cache` (canonical GBNF key) | ✅ | ✅ `tool_grammar.py` | on |
+| **F2.1 `scheduler.py` (MLFQ+aging+preempt)** | ✅ 7/7 | ❌ **DORMANT** | not imported by dispatch.py |
+| **F2.3 `backpressure.py` (typed LOCAL_DELAYED admission)** | ✅ 7/7 | ❌ **DORMANT** | **mechanizes the HARD never-skip-local rule** but nothing calls it |
+| **F2.4 `model_tier.py` (tier routing matrix)** | ✅ | ❌ **DORMANT** | not wired |
+| **F2.5 — wire F2.1–F2.4 into dispatch.py + `local-model-scheduler.nix`** | plan ratified | ❌ **NEVER DONE** | the actual ACTIVATION; explicitly deferred out of Phase-A |
+| F1 fan-out stages 1–4 (intake→fanout→teams→consensus) | design ratified | ⚠️ run MANUALLY by orchestrator | `aq-collab-round --aggregate` is a TODO |
+| Antigravity IDE inbox watcher | inbox lane built | ⚠️ OPERATOR TODO | IDE must be configured to watch the inbox dir |
+| `model_tiering.py` (older "token arbitrage" est.) | ✅ | ❌ dead/duplicate | superseded-ish by `model_tier.py`; `estimate_task_complexity()` may feed F2.5 router — **reconcile during F2.5, don't archive blind** |
+
+**The headline:** F2's entire value — ending the single-slot serialization where local dispatches queue
+for hours behind the one 35B gen slot — is **built, validated, and OFF** because F2.5 (the dispatch wiring
++ Nix scheduler service + VRAM pool "never 35B+8B concurrent") was never done. This is *directly* why the
+current training-loop eval is slow (12 direct cases serialized behind one slot). F2.5 is the highest-value
+remaining activation, but it is a **dedicated slice**: touches dispatch.py, adds a Nix service, needs a
+rebuild + full validation — NOT a mid-run change. Backpressure wiring (never-skip-local mechanized) should
+land with it.
+
 ## Immediate actions from this audit
 1. **GBNF repair — TURNED ON** (this commit). Coordinator env activates next rebuild; dispatch lane live now.
 2. **aq-correct-failures — FIX the teacher lane** (both switchboard remote lanes fail without credits).
