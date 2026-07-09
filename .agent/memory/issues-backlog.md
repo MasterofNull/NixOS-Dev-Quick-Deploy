@@ -1597,3 +1597,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Root cause**: activation happened without the follow-up registry promotion, and the wrapper trusted caller args for read-only behavior.
 - **Severity**: HIGH (agents could not discover available GitHub MCP through the catalog; if invoked through generic config, read-only was not guaranteed by the wrapper)
 - **Action taken**: wrapper now always passes `--read-only --toolsets context,repos,issues,pull_requests,actions,code_security`; GitHub MCP candidate and system catalog are enabled with accepted mitigations; intake admission now treats token-required candidates as acceptable only when pinned, mitigated, and tool-audited safe.
+
+## [OPEN-DESIGN] Eval harness gameable via golden-test prompt leak (RSI-Readiness R1)
+- **Status**: OPEN (design constraint for R1, surfaced by antigravity in round rsi-readiness 2026-07-09)
+- **Scope**: R1 trustworthy eval harness — a local model under eval can read the golden test-definition files in the workspace and overfit to them, defeating the "trustworthy signal" the whole RSI loop gates on
+- **Root cause**: golden test files live in the workspace the agent can read/search; no isolation
+- **Severity**: CRITICAL for R1 (a gamed eval is worse than no eval — it grants false confidence to autonomy decisions)
+- **Action**: golden suite excluded from agent read/search paths via a SYSTEM-LEVEL path filter (not just .gitignore); R1 acceptance must test that an agent cannot read the golden answers; pair with strict train/eval split
+- **Also from same round**: KV-cache eviction under parallel shadow agents (cache compiled prefix KV); quota starvation on remote cascade (token-budget rate limiter at switchboard level, feeds R8)
