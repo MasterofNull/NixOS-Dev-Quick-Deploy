@@ -367,12 +367,47 @@ variables:
     consumers: [switchboard]
     description: "HTTP read timeout in seconds for streamed responses"
 
+  - canonical: SWB_INACTIVITY_TIMEOUT
+    aliases: []
+    default: "300.0"
+    layer: nix
+    consumers: [switchboard]
+    description: "Local stream inactivity timeout in seconds before considering a response stalled"
+
+  - canonical: SWB_MAX_TOTAL_TIMEOUT
+    aliases: []
+    default: "3600.0"
+    layer: nix
+    consumers: [switchboard]
+    description: "Absolute maximum local request timeout in seconds"
+
   - canonical: SWB_LOCAL_CONCURRENCY
     aliases: []
     default: "1"
     layer: nix
     consumers: [switchboard]
     description: "Maximum concurrent in-flight requests to local model (Qwen RAM guard)"
+
+  - canonical: SWB_ADAPTIVE_LOCAL_BUDGET
+    aliases: []
+    default: "0"
+    layer: nix
+    consumers: [switchboard]
+    description: "Enable adaptive local max_tokens clamping based on local lane occupancy"
+
+  - canonical: SWB_ADAPTIVE_LOCAL_IDLE_MAX_TOKENS
+    aliases: []
+    default: "1200"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum local response tokens when adaptive local budgeting is enabled and the lane is idle"
+
+  - canonical: SWB_ADAPTIVE_LOCAL_BUSY_MAX_TOKENS
+    aliases: []
+    default: "400"
+    layer: nix
+    consumers: [switchboard]
+    description: "Maximum local response tokens when adaptive local budgeting is enabled and another local request is active"
 
   - canonical: SWB_REMOTE_CONCURRENCY
     aliases: []

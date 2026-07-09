@@ -50,7 +50,8 @@ def main() -> int:
     assert yaml_profiles["continue-local"]["injectHints"] is False
     assert fallback_hint_flags["continue-local"] is False
     assert yaml_profiles["local-agent"]["injectHints"] is True
-    assert yaml_profiles["local-tool-calling"]["injectHints"] is True
+    assert yaml_profiles["local-tool-calling"]["injectHints"] is False
+    assert fallback_hint_flags["local-tool-calling"] is False
 
     print("PASS: switchboard profile policy invariants")
     return 0

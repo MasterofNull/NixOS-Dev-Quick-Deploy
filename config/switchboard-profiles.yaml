@@ -2,7 +2,7 @@ _meta:
   version: "2.0"
   description: "Switchboard profile catalog — SSOT for token budgets, routing, and profile cards"
   owner: claude-sonnet-4-6
-  last_updated: "2026-06-11"
+  last_updated: "2026-07-09"
   note: |
     null values inherit the Python default (including env-var-resolved values like modelAlias).
     advertisedContextWindow: null resolves to LLAMA_CTX_SIZE at runtime.
@@ -216,7 +216,7 @@ profiles:
 
   local-tool-calling:
     forceProvider: "local"
-    injectHints: true
+    injectHints: false
     modelAlias: null
     advertisedContextWindow: null  # LLAMA_CTX_SIZE
     maxInputTokens: 5200  # Phase 178-B: 5200+1500=6700 <= LLAMA_CTX_SIZE-600 on default n_ctx=8192.
