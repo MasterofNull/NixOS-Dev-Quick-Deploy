@@ -2168,6 +2168,16 @@ async def get_loop_status() -> Dict[str, Any]:
     # Last completed run + current phase. Use most-recent (not var/lib-first) so a fresh run shows.
     results = _most_recent("training-loop-results.jsonl")
     last_run = _read_last_jsonl(results) if results else None
+    # Previous run too — needed for the pass-rate collapse alarm (a 91.7%->0%
+    # regression sat unalerted on 2026-07-09 until a manual curl found it).
+    prev_run = None
+    if results is not None:
+        try:
+            _lines = [ln for ln in results.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+            if len(_lines) >= 2:
+                prev_run = json.loads(_lines[-2])
+        except (OSError, json.JSONDecodeError):
+            prev_run = None
     last_run_age_h = None
     if results is not None:
         try:
@@ -2263,9 +2273,29 @@ async def get_loop_status() -> Dict[str, Any]:
     else:
         status = "healthy"
 
+    # Pass-rate collapse alarm — critical on collapse-to-zero, warning on a
+    # >=30-point drop vs the previous run. Rendered by the Learning card.
+    pass_rate_alert = None
+    _cur_rate = (last_run or {}).get("pass_rate")
+    _prev_rate = (prev_run or {}).get("pass_rate")
+    if isinstance(_cur_rate, (int, float)):
+        if _cur_rate == 0 and int((last_run or {}).get("fail_count") or 0) > 0:
+            pass_rate_alert = {
+                "level": "critical",
+                "reason": "pass rate collapsed to 0",
+                "previous_pass_rate": _prev_rate,
+            }
+        elif isinstance(_prev_rate, (int, float)) and _prev_rate - _cur_rate >= 0.30:
+            pass_rate_alert = {
+                "level": "warning",
+                "reason": f"pass rate dropped {round((_prev_rate - _cur_rate) * 100)} points vs previous run",
+                "previous_pass_rate": _prev_rate,
+            }
+
     return {
         "available": True,
         "status": status,
+        "pass_rate_alert": pass_rate_alert,
         "teacher": {"lane": "codex", "reachable": teacher_ok, "bin": str(codex_bin)},
         "last_run": {
             "run_id": (last_run or {}).get("run_id"),
@@ -2291,6 +2321,67 @@ async def get_loop_status() -> Dict[str, Any]:
             "pending_review": pending_review,
         },
         "dataset_total": dataset_total,
+    }
+
+
+@router.get("/scheduler/queue")
+async def get_scheduler_queue() -> Dict[str, Any]:
+    """Banded local-slot queue (F2.5 slot_queue) — bands, waits, depth.
+
+    Pure read of .agents/delegation/scheduler-state.json (the queue's
+    observability surface); available even when the queue is empty.
+    """
+    state_p = _repo_root() / ".agents" / "delegation" / "scheduler-state.json"
+    now = time.time()
+    try:
+        raw = json.loads(state_p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"available": True, "depth": 0, "running": None, "queue": [],
+                "note": "no queue state yet (no banded dispatch since boot)"}
+
+    def _job(j: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not isinstance(j, dict):
+            return None
+        return {
+            "id": j.get("id"),
+            "band": j.get("band"),
+            "task_class": j.get("task_class"),
+            "wait_s": round(now - float(j.get("enqueued_at") or now), 1),
+        }
+
+    queue = [x for x in (_job(j) for j in raw.get("queue") or []) if x]
+    return {
+        "available": True,
+        "depth": len(queue),
+        "running": _job(raw.get("running")),
+        "queue": queue,
+        "max_wait_s": max((q["wait_s"] for q in queue), default=0),
+    }
+
+
+@router.get("/approvals/pending")
+async def get_pending_approvals() -> Dict[str, Any]:
+    """Aggregated HITL count for the header badge — one number the operator always sees."""
+    repairs = 0
+    try:
+        loop = await get_loop_status()
+        repairs = int((loop.get("captures") or {}).get("pending_review") or 0)
+    except Exception:
+        pass
+    deploys = 0
+    try:
+        from .deployments import pending_deployment_approvals
+        deploys = sum(
+            1 for d in pending_deployment_approvals.values()
+            if str(d.get("status", "pending")).lower() == "pending"
+        )
+    except Exception:
+        pass
+    return {
+        "available": True,
+        "total": repairs + deploys,
+        "repairs_pending_review": repairs,
+        "deployment_approvals": deploys,
     }
 
 

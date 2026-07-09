@@ -171,3 +171,31 @@ Wires dormant F2 scheduler/backpressure/model_tier into the live local dispatch 
 | Intervenable | ✅ SLOT_QUEUE=0 env reverts to legacy race-poll; DISPATCH_BAND selects band per caller |
 
 Recorded deferrals: eviction-style preemption of RUNNING jobs (llama.cpp cannot checkpoint generation — bands+aging give ordering; revisit if a preemptible runtime lands). Found+fixed-in-adapter: F2 SchedulerState inf→null JSON bug (issues-backlog).
+
+**Deferral CLOSED (2026-07-09, same day)**: live completion observed — both banded jobs completed with correct outputs (INTERACTIVE-LANE-OK / BACKGROUND-LANE-OK) through full acquire→infer→release cycles. Under multi-hour waits both aged past the 90s starvation ceiling to P1, so FIFO-by-enqueue applied (anti-starvation working as designed); pure band ordering remains proven by the unit suite. Slice 3.1 is fully ON with no open deferrals.
+
+---
+
+# Slice: dashboard 3 cheap wins (2026-07-09, claude-fable-5)
+
+| Feature | Integrated | ON | Validated |
+|---------|-----------|----|-----------|
+| /api/scheduler/queue + Local Slot Queue card + Queue KPI | ✅ aistack.py + dashboard.html + dashboard.js | ⏸ **DEFERRED: dashboard service restart** (backend routes load at startup; batch with pending switchboard restart) | ✅ live on scratch port 8890: returned the real queued job (band, 1366s wait) |
+| pass_rate_alert (collapse/delta) + Learning card alarm + EVAL COLLAPSE badge | ✅ get_loop_status + loadLearning | ⏸ same restart | ✅ live on 8890: fired critical on the real 0/12 collapse that motivated it |
+| /api/approvals/pending + HITL header KPI | ✅ | ⏸ same restart | ✅ live on 8890: correct zero-state (repairs 0 + deployments 0) |
+
+Frontend degrades gracefully pre-restart (missing endpoints render "--"/Unavailable; verified pattern used by existing loaders). Intervenable: cards are read-only surfaces; alert thresholds env-tunable later (v1 fixed: 0-collapse critical, ≥30-pt warning).
+
+---
+
+# Slice: canon compiler v1 (WS1.4 first beat) (2026-07-09, claude-fable-5)
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ canon/canon.yaml + canon/blocks/fable-parity.md + scripts/governance/canon-compile.py; fable-parity block adopted (marker-wrapped) in all 5 agent files |
+| ON | ✅ tier0.d/check-canon-drift.sh live in the pre-commit gate (tier0 now 22 checks) |
+| Validated | ✅ adopt clean on 5/5; deliberate drift → check exit 1 → --write repaired → check green (full negative test) |
+| Observable | ✅ gate output in every pre-commit run |
+| Intervenable | ✅ edit canon/blocks then --write; removing a block from canon.yaml de-manages it |
+
+Rule 16 for shared blocks is now a build step. Next blocks to migrate: behavioral-rules table, service-ports, context-engineering rules.

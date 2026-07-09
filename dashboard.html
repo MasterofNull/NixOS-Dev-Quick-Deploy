@@ -1221,6 +1221,10 @@
       <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span>
       </div>
       <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">--</span></div>
+      <div class="kpi" title="Pending human-in-the-loop approvals (repairs + deployments)"><span
+          class="kpi-l">HITL:</span><span class="kpi-v" id="kpiApprovals">--</span></div>
+      <div class="kpi" title="Banded local-slot queue depth (F2.5)"><span class="kpi-l">Queue:</span><span
+          class="kpi-v" id="kpiQueueDepth">--</span></div>
     </div>
     <div class="lens-tabs">
       <button class="tab on" onclick="setLens('overview')" id="tab-overview">Overview</button>
@@ -1807,6 +1811,15 @@
           <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
         </div>
         <div id="learningActivity" style="margin-top:.5rem"></div>
+      </div>
+      <div class="card">
+        <div class="card-hd">
+          <span class="card-title">Local Slot Queue</span>
+          <span class="card-badge badge-ok" id="queueBadge">--</span>
+        </div>
+        <div id="queueDetails">
+          <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
+        </div>
       </div>
       <div class="card">
         <div class="card-hd"><span class="card-title">Drift Analysis</span><span class="card-badge badge-ok"
