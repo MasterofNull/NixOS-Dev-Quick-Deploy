@@ -101,7 +101,7 @@ def _load_agent_roles_from_yaml() -> Dict[str, Dict[str, Any]]:
                 "description": cfg.get("description", ""),
                 "system_prompt": (cfg.get("system_prompt") or "").rstrip("\n"),
                 "tools": list(cfg.get("tools") or []),
-                "max_tool_calls": int(cfg.get("max_tool_calls", 10)),
+                "max_tool_calls": int(cfg.get("max_tool_calls", 0)),
             }
         return result
     except Exception:
@@ -126,7 +126,7 @@ _AGENT_ROLES_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "- Capture evidence of what you delegated and why"
         ),
         "tools": ["shell", "file_read", "delegate"],
-        "max_tool_calls": 20,
+        "max_tool_calls": 0,
     },
     "coder": {
         "description": "Implements code changes, writes tests, fixes bugs",
@@ -141,7 +141,7 @@ _AGENT_ROLES_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "- If you need to run commands, explain what they do first"
         ),
         "tools": ["shell", "file_read", "file_write", "code_execution"],
-        "max_tool_calls": 15,
+        "max_tool_calls": 0,
     },
     "reviewer": {
         "description": "Reviews code for correctness, security, performance, quality",
@@ -156,7 +156,7 @@ _AGENT_ROLES_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "Report findings as: PASS, WARN, or FAIL with explanation."
         ),
         "tools": ["shell", "file_read", "code_execution"],
-        "max_tool_calls": 10,
+        "max_tool_calls": 0,
     },
     "researcher": {
         "description": "Gathers context, searches knowledge base, finds documentation",
@@ -170,7 +170,7 @@ _AGENT_ROLES_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "Always cite your sources. Prefer local files first."
         ),
         "tools": ["shell", "file_read", "file_search"],
-        "max_tool_calls": 12,
+        "max_tool_calls": 0,
     },
     "planner": {
         "description": "Breaks complex tasks into phases, identifies dependencies and risks",
@@ -185,7 +185,7 @@ _AGENT_ROLES_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "Identify dependencies and parallelization opportunities."
         ),
         "tools": ["shell", "file_read", "file_search"],
-        "max_tool_calls": 8,
+        "max_tool_calls": 0,
     },
 }
 
@@ -352,7 +352,7 @@ AGENT_TASK = os.environ["AGENT_TASK"]
 SYSTEM_PROMPT = os.environ["AGENT_SYSTEM_PROMPT"]
 LLAMA_URL = os.environ.get("LLAMA_CPP_URL", "http://127.0.0.1:8080")
 STATE_FILE = os.environ.get("AGENT_STATE_FILE", "")
-MAX_TOOL_CALLS = int(os.environ.get("AGENT_MAX_TOOL_CALLS", "10"))
+MAX_TOOL_CALLS = int(os.environ.get("AGENT_MAX_TOOL_CALLS", "0"))
 
 async def run():
     state = {

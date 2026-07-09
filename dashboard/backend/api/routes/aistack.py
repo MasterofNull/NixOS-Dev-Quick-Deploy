@@ -2110,6 +2110,7 @@ def _loop_telemetry_dirs() -> List[Path]:
     return [
         Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")),
         _repo_root() / ".agents" / "telemetry",
+        _repo_root() / ".agents" / "delegation",
     ]
 
 
@@ -2141,7 +2142,7 @@ async def get_loop_status() -> Dict[str, Any]:
         for d in dirs:
             p = d / rel
             try:
-                if p.exists():
+                if p.exists() and (not p.is_file() or p.stat().st_size > 0):
                     return p
             except OSError:
                 continue
@@ -2165,6 +2166,19 @@ async def get_loop_status() -> Dict[str, Any]:
             progress = json.loads(progress_p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             progress = None
+    checkpoint_p = _first("training-loop-checkpoint.json")
+    checkpoint = None
+    if checkpoint_p is not None:
+        try:
+            checkpoint = json.loads(checkpoint_p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            checkpoint = None
+    active_run_id = (progress or {}).get("run_id")
+    checkpoint_cases = {}
+    if active_run_id and isinstance(checkpoint, dict):
+        candidate_cases = checkpoint.get(active_run_id)
+        if isinstance(candidate_cases, dict):
+            checkpoint_cases = candidate_cases
 
     # Capture spool: failures / successes / pending corrections / repair pairs.
     spool = _first("training-samples.jsonl")
@@ -2213,10 +2227,20 @@ async def get_loop_status() -> Dict[str, Any]:
     teacher_ok = codex_bin.exists()
 
     has_clean_run = last_run is not None
+    active_checkpoint_newer = False
+    if checkpoint_p is not None:
+        try:
+            active_checkpoint_newer = results is None or checkpoint_p.stat().st_mtime > results.stat().st_mtime
+        except OSError:
+            active_checkpoint_newer = bool(checkpoint_cases)
     if not teacher_ok:
         status = "degraded"
+    elif checkpoint_cases and active_checkpoint_newer and (progress or {}).get("phase") in {"stopping", "error"}:
+        status = "interrupted"
     elif not has_clean_run:
         status = "never_ran"
+    elif int((last_run or {}).get("fail_count") or 0) > 0:
+        status = "eval_failed"
     elif pending_corrections > int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25")):
         status = "backlog"
     else:
@@ -2229,12 +2253,19 @@ async def get_loop_status() -> Dict[str, Any]:
         "last_run": {
             "run_id": (last_run or {}).get("run_id"),
             "age_hours": last_run_age_h,
-            "samples_added": (last_run or {}).get("samples_added"),
-            "dataset_total": (last_run or {}).get("dataset_total", dataset_total),
+            "samples_added": ((last_run or {}).get("ingest") or {}).get("samples_added"),
+            "dataset_total": ((last_run or {}).get("ingest") or {}).get("dataset_total", dataset_total),
             "pass_count": (last_run or {}).get("pass_count"),
             "fail_count": (last_run or {}).get("fail_count"),
+            "pass_rate": (last_run or {}).get("pass_rate"),
+            "improvements_proposed": (last_run or {}).get("improvements_proposed"),
         } if has_clean_run else None,
         "current_phase": (progress or {}).get("phase"),
+        "checkpoint": {
+            "run_id": active_run_id,
+            "case_count": len(checkpoint_cases),
+            "failed_cases": sum(1 for item in checkpoint_cases.values() if not item.get("pass")),
+        } if checkpoint_cases else None,
         "captures": {
             "failures": failures,
             "successes": successes,
@@ -4515,7 +4546,10 @@ def _load_agent_run_events(
     source_label = "no_data"
 
     event_paths: list[tuple[Path, str]] = [(_AGENT_RUN_EVENTS_PATH, "agent-run-events")]
-    if _REPO_AGENT_RUN_EVENTS_PATH != _AGENT_RUN_EVENTS_PATH:
+    # Explicit AQ_AGENT_RUN_EVENTS_PATH is an isolation contract for tests and
+    # callers. Only merge repo-local telemetry when using the default runtime
+    # path, otherwise temp/no-file tests leak live repo events.
+    if "AQ_AGENT_RUN_EVENTS_PATH" not in os.environ and _REPO_AGENT_RUN_EVENTS_PATH != _AGENT_RUN_EVENTS_PATH:
         event_paths.append((_REPO_AGENT_RUN_EVENTS_PATH, "repo-agent-run-events"))
 
     for event_path, event_label in event_paths:

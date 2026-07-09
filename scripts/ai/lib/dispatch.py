@@ -634,37 +634,22 @@ class RalphRunner:
             return False
 
 
-# _AGENT_WALL_CLOCK_SECS: hard-cap override. When set, this overrides the
-# dynamic computation. Used for ops/debug. Default: 0 (= use dynamic formula).
+# _AGENT_WALL_CLOCK_SECS: opt-in hard-cap override. Default 0 means no wall-clock
+# cap; local agent sessions are governed by liveness/progress guards.
 _AGENT_WALL_CLOCK_OVERRIDE = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "0"))
 
-# RUNAWAY_HARD_CAP: absolute maximum wall-clock for any agent task.
-# Default supports overnight/day-long local work while still bounding abandoned
-# agents. Override for multi-day jobs with AGENT_RUNAWAY_HARD_CAP_SECS.
-_RUNAWAY_HARD_CAP_SECS = int(os.environ.get("AGENT_RUNAWAY_HARD_CAP_SECS", "172800"))
 _AGENT_NO_PROGRESS_OVERRIDE = int(os.environ.get("AGENT_NO_PROGRESS_SECS", "0"))
 
 
 def _compute_agent_wall_clock(timeout_secs: int, max_calls: int) -> int:
-    """Compute dynamic wall-clock timeout for an agent task.
+    """Return optional wall-clock cap for agent tasks.
 
-    Scales with max_calls and chunk_timeout so each call has time to complete
-    one full prefill + generation cycle without being killed prematurely.
-
-    Formula:
-      chunk_timeout = max(900, timeout_secs × 2)   (silence before per-call timeout)
-      gen_budget    = 1200s                          (AGENT_TASK_MAX_TOKENS / 1 tok/s floor)
-      per_call      = chunk_timeout + gen_budget
-      wall_clock    = min(per_call × max_calls + 120, RUNAWAY_HARD_CAP_SECS)
-
-    The env var AGENT_WALL_CLOCK_SECS overrides this calculation when non-zero.
+    max_calls is deprecated compatibility data. The local agent loop ignores it,
+    and this wrapper must not turn it back into a hard cap. Operators can still
+    set AGENT_WALL_CLOCK_SECS for a one-off bounded diagnostic run.
     """
-    if _AGENT_WALL_CLOCK_OVERRIDE > 0:
-        return _AGENT_WALL_CLOCK_OVERRIDE
-    chunk_timeout = max(900.0, timeout_secs * 2)
-    per_call = chunk_timeout + 1200  # worst-case prefill silence + generation
-    computed = int(per_call * max_calls) + 120
-    return min(computed, _RUNAWAY_HARD_CAP_SECS)
+    del timeout_secs, max_calls
+    return _AGENT_WALL_CLOCK_OVERRIDE if _AGENT_WALL_CLOCK_OVERRIDE > 0 else 0
 
 
 def _compute_agent_no_progress_timeout(timeout_secs: int) -> int:
@@ -723,7 +708,7 @@ class AgentRunner:
         self.agent_loop = script_dir / "aq-agent-loop"
 
     def run(self, config: TaskConfig, prompt: str, output_file: Path,
-            max_calls: int = 50) -> bool:
+            max_calls: int = 0) -> bool:
         if not self.agent_loop.exists():
             output_file.write_text(f"Error: aq-agent-loop not found at {self.agent_loop}")
             return False
@@ -799,10 +784,10 @@ class AgentRunner:
                         _tmp.rename(heartbeat_path)
                     except Exception:
                         pass
-                if now - start >= wall_clock:
+                if wall_clock > 0 and now - start >= wall_clock:
                     timeout_reason = (
                         f"Agent wall-clock timeout after {wall_clock}s "
-                        f"(dynamic: {max_calls} calls × {config.timeout_secs}s timeout)."
+                        "(AGENT_WALL_CLOCK_SECS opt-in cap)."
                     )
                     break
                 if now - last_progress_at >= no_progress_timeout:
@@ -1055,7 +1040,7 @@ def dispatch_task(
     registry: TaskRegistry,
     script_dir: Path,
     pre_registered: bool = False,
-    max_calls: int = 50,
+    max_calls: int = 0,
 ) -> bool:
     """Run a task: registry append → service check → runner → registry update.
 
@@ -1174,8 +1159,8 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("--prompt",        required=True)
     d.add_argument("--timeout",       type=int, default=300)
     d.add_argument("--max-tokens",    type=int, default=None)
-    d.add_argument("--max-calls",     type=int, default=50,
-                   help="Max tool calls for agent mode [default: 50]")
+    d.add_argument("--max-calls",     type=int, default=0,
+                   help="Deprecated compatibility flag; 0/unset means unlimited")
     d.add_argument("--tool-manifest", default="full",
                    choices=["full", "self-improvement"],
                    help="Tool set for agent mode: 'full' (29 tools) or 'self-improvement' (6 tools) [default: full]")

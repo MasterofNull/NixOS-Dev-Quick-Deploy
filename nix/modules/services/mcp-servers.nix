@@ -1922,12 +1922,15 @@ in {
               "--mode"
               "once"
               "--task-timeout"
-              "900"
+              "2400"
               "--verbose"
             ];
-            TimeoutStartSec = "4h";
+            TimeoutStartSec = "infinity";
             Environment = [
               "PYTHONUNBUFFERED=1"
+              "AQ_LOOP_DIRECT_TIMEOUT=86400"
+              "AQ_LOOP_SUBMIT_TIMEOUT=90"
+              "AQ_LOOP_RUNAWAY_HARD_CAP=0"
               "REPO_ROOT=${mcp.repoPath}"
               "TELEMETRY_DIR=${dataDir}/hybrid/telemetry"
               "TRAINING_LOOP_PROGRESS_FILE=${dataDir}/hybrid/telemetry/training-loop-progress.json"
