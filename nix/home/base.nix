@@ -1820,20 +1820,24 @@ if changed:
           cat > "$mcp_config" << 'MCP_EOF'
     {
       "mcpServers": {
-        "hybrid-coordinator": {
-          "command": "python3",
-          "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],
-          "env": {
-            "HYBRID_URL": "http://127.0.0.1:8003",
-            "AIDB_URL": "http://127.0.0.1:8002",
-            "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
-            "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
-          }
-        },
-        "osint-tools": {
-          "command": "python3",
-          "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"]
-        }
+         "hybrid-coordinator": {
+           "command": "python3",
+           "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],
+           "env": {
+             "HYBRID_URL": "http://127.0.0.1:${toString aiHybridPort}",
+             "AIDB_URL": "http://127.0.0.1:${toString aiAidbPort}",
+             "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
+             "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
+           }
+         },
+         "osint-tools": {
+           "command": "python3",
+           "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"]
+         },
+         "github": {
+           "command": "${repoPath}/scripts/ai/mcp-github-server",
+           "args": []
+         }
       }
     }
     MCP_EOF
@@ -1842,8 +1846,10 @@ if changed:
         needs_mcp_repair=0
         if [ ! -f "$mcp_config" ]; then
           needs_mcp_repair=1
-        elif ! ${pkgs.jq}/bin/jq -e '.mcpServers["hybrid-coordinator"]' "$mcp_config" >/dev/null 2>&1; then
-          needs_mcp_repair=1
+         elif ! ${pkgs.jq}/bin/jq -e '.mcpServers["hybrid-coordinator"]' "$mcp_config" >/dev/null 2>&1; then
+           needs_mcp_repair=1
+         elif ! ${pkgs.jq}/bin/jq -e '.mcpServers["osint-tools"] and .mcpServers.github' "$mcp_config" >/dev/null 2>&1; then
+           needs_mcp_repair=1
         elif ${pkgs.jq}/bin/jq -e '
           .mcpServers
           | to_entries
@@ -1867,17 +1873,91 @@ if changed:
         if [ ! -f "$HOME/.mcp/registry.json" ]; then
           cat > "$HOME/.mcp/registry.json" << 'MCP_REGISTRY_EOF'
     {
-      "servers": [
-        { "id": "hybrid-coordinator", "category": "harness", "description": "Local harness MCP bridge for coordinator, AIDB, memory, workflow, and QA tools" },
-        { "id": "osint-tools", "category": "domain", "description": "Local OSINT MCP wrapper" }
-      ]
+       "servers": [
+         { "id": "hybrid-coordinator", "category": "harness", "description": "Local harness MCP bridge for coordinator, AIDB, memory, workflow, and QA tools" },
+         { "id": "osint-tools", "category": "domain", "description": "Local OSINT MCP wrapper" },
+         { "id": "github", "category": "research", "description": "Read-only GitHub MCP wrapper" }
+       ]
     }
     MCP_REGISTRY_EOF
         fi
 
         mkdir -p "$HOME/.config/claude"
         ln -sfn "$HOME/.mcp/config.json" "$HOME/.config/claude/mcp.json"
-        unset mcp_config
+         unset mcp_config
+   '';
+
+  # Project the admitted MCP set into each client's real user configuration.
+  # The generic ~/.mcp catalog remains for clients that support it, while
+  # Claude and Codex use their native configuration stores.
+  home.activation.reconcileAgentMcpClients = lib.hm.dag.entryAfter ["createMcpConfig"] ''
+    claude_cfg="$HOME/.claude.json"
+    mkdir -p "$HOME/.codex"
+    if [ ! -f "$claude_cfg" ]; then
+      printf '{}\n' > "$claude_cfg"
+    fi
+    claude_tmp="$(mktemp)"
+    ${pkgs.jq}/bin/jq \
+      --arg repo "${repoPath}" \
+      --arg hybrid_url "http://127.0.0.1:${toString aiHybridPort}" \
+      --arg aidb_url "http://127.0.0.1:${toString aiAidbPort}" '
+        .mcpServers = (.mcpServers // {})
+        | .mcpServers["hybrid-coordinator"] = {
+            type: "stdio",
+            command: "python3",
+            args: [($repo + "/scripts/ai/mcp-bridge-hybrid.py")],
+            env: {
+              HYBRID_URL: $hybrid_url,
+              AIDB_URL: $aidb_url,
+              HYBRID_API_KEY_FILE: "/run/secrets/hybrid_coordinator_api_key",
+              AIDB_API_KEY_FILE: "/run/secrets/aidb_api_key"
+            }
+          }
+        | .mcpServers["osint-tools"] = {
+            type: "stdio",
+            command: "python3",
+            args: [($repo + "/ai-stack/mcp-servers/osint-tools/server.py")],
+            env: {}
+          }
+        | .mcpServers.github = {
+            type: "stdio",
+            command: ($repo + "/scripts/ai/mcp-github-server"),
+            args: [],
+            env: {}
+          }
+      ' "$claude_cfg" > "$claude_tmp"
+    chmod 600 "$claude_tmp"
+    mv "$claude_tmp" "$claude_cfg"
+
+    codex_cfg="$HOME/.codex/config.toml"
+    touch "$codex_cfg"
+    codex_tmp="$(mktemp)"
+    ${pkgs.yq-go}/bin/yq -p toml -o toml '
+      del(.features.codex_hooks)
+      | .mcp_servers."hybrid-coordinator" = {
+          "command": "python3",
+          "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],
+          "default_tools_approval_mode": "writes",
+          "env": {
+            "HYBRID_URL": "http://127.0.0.1:${toString aiHybridPort}",
+            "AIDB_URL": "http://127.0.0.1:${toString aiAidbPort}",
+            "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
+            "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
+          }
+        }
+      | .mcp_servers."osint-tools" = {
+          "command": "python3",
+          "args": ["${repoPath}/ai-stack/mcp-servers/osint-tools/server.py"],
+          "default_tools_approval_mode": "prompt"
+        }
+      | .mcp_servers.openaiDeveloperDocs = {
+          "url": "https://developers.openai.com/mcp",
+          "default_tools_approval_mode": "auto"
+        }
+    ' "$codex_cfg" > "$codex_tmp"
+    chmod 600 "$codex_tmp"
+    mv "$codex_tmp" "$codex_cfg"
+    unset claude_cfg claude_tmp codex_cfg codex_tmp
   '';
 
   # Make skills catalog agent-agnostic: Claude and Codex both read the same

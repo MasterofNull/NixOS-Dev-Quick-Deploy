@@ -842,6 +842,22 @@
       "timeout_seconds": 15
     },
     {
+      "id": "agent-mcp-client-projection",
+      "description": "admitted MCP servers are projected into native Claude and Codex user configuration stores",
+      "trigger_paths": [
+        "nix/home/base.nix",
+        "scripts/testing/test-agent-mcp-client-projection.py",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-agent-mcp-client-projection.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 15,
+      "enabled": true
+    },
+    {
       "id": "osint-research-ingest",
       "description": "Passive OSINT research ingest emits bounded osint-intelligence ledger records",
       "trigger_paths": [
