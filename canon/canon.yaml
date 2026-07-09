@@ -1,0 +1,20 @@
+# Canon manifest — SSOT for shared canonical blocks compiled into agent files.
+# WS1.4 (AQ-OS PRD): Rule 16 agent parity becomes a build step, not a discipline.
+#
+# Each block lives in canon/blocks/<name>.md and is injected verbatim between
+#   <!-- canon:begin <name> -->  /  <!-- canon:end <name> -->
+# markers in every target file.
+#
+# Commands:
+#   python3 scripts/governance/canon-compile.py --write   # inject/refresh all blocks
+#   python3 scripts/governance/canon-compile.py --check   # CI drift gate (exit 1 on drift)
+
+blocks:
+  fable-parity:
+    source: blocks/fable-parity.md
+    targets:
+      - CLAUDE.md
+      - .agent/CODEX.md
+      - .agent/GEMINI.md
+      - .agent/LOCAL-AGENT.md
+      - .agent/WORKFLOW-CANON.md
