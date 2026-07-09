@@ -310,3 +310,18 @@ One entrypoint over 133 aq-* scripts; retirement becomes DATA-DRIVEN, not opinio
 | Intervenable | ✅ AQ_USAGE_TELEMETRY=0; curated COMMAND_MAP still governs reasoning-profile tiering |
 
 Strangler v1: aq is a thin router+telemetry layer over the existing scripts (no rewrite). The prompt's "convert 30 highest-traffic + retire on telemetry" is now UNBLOCKED — telemetry must accrue first (chicken-and-egg: can't rank traffic without data). Follow-up once the ledger has a window: shim the top-N by usage, retire the zero-usage tail, and add noun/verb grouping to help.
+
+---
+
+# Slice: Command Center OpenAPI foundation + trace fix (WS6, god-tier prompt 9 v1) (2026-07-09, claude-fable-5)
+
+Foundation for the dashboard rebuild — not the full 9-view SPA (strangler; views are delegatable slices).
+
+| Feature | Integrated | ON | Validated |
+|---------|-----------|----|-----------|
+| Dashboard trace endpoint fix (/api/trace/{id}) | ✅ _load_trace_module (stdlib-collision-safe, repo-root path, dataclass registration) | ⏸ needs the dashboard restart to serve the fix (endpoint was returning ModuleNotFoundError) | ✅ validated against the EXACT dashboard import context (stdlib trace pre-cached): reconstructs tree, graceful on missing |
+| OpenAPI-first (spec + Swagger) | ✅ FastAPI native | ✅ **live-verified** /openapi.json + /docs respond | ✅ 200 application/json, 318 /api routes |
+| Generated typed client | ✅ gen-api-client.py -> lib/aq_dashboard_client.py (318 methods) | ✅ ON now | ✅ test-api-client-gen.py 4/4 + **LIVE round-trip**: generated get_scheduler_queue/get_approvals_pending/get_loop_status against the running dashboard |
+| WS6 roadmap (9 views + CLI-twin parity + strangler order) | ✅ .agents/plans/aqos-v1/ws6-command-center-roadmap.md | n/a (plan) | — |
+
+Post-restart validation this session: /api/scheduler/queue, /api/approvals/pending, /api/loop/status pass_rate_alert all confirmed LIVE returning real JSON (the earlier-deferred dashboard slices are now ON). Only the trace endpoint fix awaits the next dashboard restart. Deliverable is the OpenAPI-first foundation (generated client = the keystone every future view uses) + the enabling trace fix + a delegatable 9-view roadmap with CLI parity — the full SPA rebuild is explicitly NOT attempted in one slice.
