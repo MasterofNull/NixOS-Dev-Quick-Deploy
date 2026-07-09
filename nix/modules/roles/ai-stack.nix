@@ -61,6 +61,8 @@ let
     with ps; [
       asyncpg
       httpx
+      pydantic
+      pyyaml
     ]);
   gapAutoRemediatePath = lib.makeBinPath [
     pkgs.bash
@@ -1978,9 +1980,8 @@ in {
             "REPO_ROOT=${cfg.mcpServers.repoPath}"
           ];
           ExecStart = let
-            py = pkgs.python3.withPackages (ps: with ps; [ pyyaml ]);
             script = "${cfg.mcpServers.repoPath}/scripts/health/ai-stack-health-monitor.py";
-          in "${py}/bin/python3 ${script}";
+          in "${monitorPython}/bin/python3 ${script}";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;

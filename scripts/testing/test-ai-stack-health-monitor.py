@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -51,9 +52,12 @@ def main() -> int:
     finally:
         monitor.subprocess.run = original_run
 
-    assert_true(payload == {"tests": []}, "run_aq_qa should parse JSON output")
+    assert_true(payload["tests"] == [], "run_aq_qa should parse JSON output")
+    assert_true(payload["_monitor_returncode"] == 0, "run_aq_qa should preserve subprocess return code")
+    assert_true(captured["cmd"] == [sys.executable, str(monitor._HARNESS_RUNNER), "0", "--json"], "run_aq_qa should bypass shell launcher")
     for name in ("TMPDIR", "TEMP", "TMP"):
         assert_true(captured["env"].get(name) == str(monitor._TMPDIR), f"{name} should use repo-local writable tmp")
+    assert_true(captured["env"].get("PATH", "").startswith(monitor._SYSTEM_BIN), "run_aq_qa should expose system bash/python tools")
     assert_true(monitor._TMPDIR.exists(), "run_aq_qa should create repo-local tmpdir")
 
     original_status_path = monitor._STATUS_PATH

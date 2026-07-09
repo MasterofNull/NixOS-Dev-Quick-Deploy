@@ -21,9 +21,10 @@ sys.path.insert(0, str(_SCRIPT_DIR / "ai" / "lib"))
 
 from attention_queue import push  # noqa: E402
 
-_AQ_QA = _SCRIPT_DIR / "ai" / "aq-qa"
+_HARNESS_RUNNER = _SCRIPT_DIR / "ai" / "lib" / "harness_runner.py"
 _TMPDIR = _REPO_ROOT / ".agents" / "tmp"
 _STATUS_PATH = _REPO_ROOT / ".agents" / "health-monitor" / "latest.json"
+_SYSTEM_BIN = "/run/current-system/sw/bin"
 _PHASES = ["0"]  # phase 0 = pre-flight smoke; fast enough for a 15-min timer
 _SOURCE = "ai-stack-health-monitor"
 _COOLDOWN_S = 600  # don't re-alert the same failure within 10 minutes
@@ -35,13 +36,28 @@ def run_aq_qa(phase: str) -> dict:
         _TMPDIR.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env.update({"TMPDIR": str(_TMPDIR), "TEMP": str(_TMPDIR), "TMP": str(_TMPDIR)})
+        env["PATH"] = f"{_SYSTEM_BIN}:{env.get('PATH', '')}"
         result = subprocess.run(
-            [str(_AQ_QA), phase, "--json"],
+            [sys.executable, str(_HARNESS_RUNNER), phase, "--json"],
             env=env,
             capture_output=True, text=True, timeout=120,
         )
-        return json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as e:
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            return {
+                "error": f"{e}; rc={result.returncode}",
+                "phase": phase,
+                "stdout": result.stdout[-500:],
+                "stderr": result.stderr[-1000:],
+                "checks": [],
+                "summary": {"failed": 1},
+            }
+        data.setdefault("_monitor_returncode", result.returncode)
+        if result.stderr:
+            data.setdefault("_monitor_stderr", result.stderr[-1000:])
+        return data
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         return {"error": str(e), "phase": phase, "checks": [], "summary": {"failed": 1}}
 
 
@@ -74,6 +90,8 @@ def main() -> int:
                 "phase": phase,
                 "status": "error",
                 "error": data["error"],
+                "stderr": data.get("stderr", ""),
+                "stdout": data.get("stdout", ""),
                 "failed": 1,
             })
             push(
@@ -84,6 +102,7 @@ def main() -> int:
                 detail=(
                     f"The scheduled health monitor failed to execute aq-qa phase {phase}.\n"
                     f"Error: {data['error']}\n"
+                    f"stderr: {data.get('stderr', '')}\n"
                     f"Check: systemctl status ai-stack-health-monitor.service"
                 ),
                 proposed_action="Investigate aq-qa and health monitor logs.",
@@ -93,12 +112,23 @@ def main() -> int:
             continue
 
         failures = failed_checks(data)
+        failure_summaries = [
+            {
+                "id": c.get("id", "?"),
+                "label": c.get("name") or c.get("description") or "?",
+                "message": c.get("message") or c.get("detail") or "",
+            }
+            for c in failures
+        ]
         phase_results.append({
             "phase": phase,
             "status": "failed" if failures else "passed",
             "failed": len(failures),
+            "failures": failure_summaries,
             "total": len(data.get("tests") or data.get("checks") or []),
             "summary": data.get("summary", {}),
+            "returncode": data.get("_monitor_returncode"),
+            "stderr": data.get("_monitor_stderr", ""),
         })
         if not failures:
             continue
