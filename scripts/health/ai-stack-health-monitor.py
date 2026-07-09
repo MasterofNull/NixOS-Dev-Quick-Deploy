@@ -22,6 +22,8 @@ sys.path.insert(0, str(_SCRIPT_DIR / "ai" / "lib"))
 from attention_queue import push  # noqa: E402
 
 _AQ_QA = _SCRIPT_DIR / "ai" / "aq-qa"
+_TMPDIR = _REPO_ROOT / ".agents" / "tmp"
+_STATUS_PATH = _REPO_ROOT / ".agents" / "health-monitor" / "latest.json"
 _PHASES = ["0"]  # phase 0 = pre-flight smoke; fast enough for a 15-min timer
 _SOURCE = "ai-stack-health-monitor"
 _COOLDOWN_S = 600  # don't re-alert the same failure within 10 minutes
@@ -30,8 +32,12 @@ _COOLDOWN_S = 600  # don't re-alert the same failure within 10 minutes
 def run_aq_qa(phase: str) -> dict:
     """Run aq-qa <phase> --json and return parsed output."""
     try:
+        _TMPDIR.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env.update({"TMPDIR": str(_TMPDIR), "TEMP": str(_TMPDIR), "TMP": str(_TMPDIR)})
         result = subprocess.run(
             [str(_AQ_QA), phase, "--json"],
+            env=env,
             capture_output=True, text=True, timeout=120,
         )
         return json.loads(result.stdout)
@@ -39,11 +45,37 @@ def run_aq_qa(phase: str) -> dict:
         return {"error": str(e), "phase": phase, "checks": [], "summary": {"failed": 1}}
 
 
+def failed_checks(data: dict) -> list[dict]:
+    """Return failed checks from both legacy `checks` and current `tests` aq-qa JSON."""
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        checks = data.get("tests", [])
+    return [
+        c for c in checks
+        if str(c.get("status", "")).lower() in {"fail", "failed", "error"}
+    ]
+
+
+def write_status(status: dict) -> None:
+    """Write the latest monitor run for dashboard/API consumers."""
+    _STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = _STATUS_PATH.with_suffix(".tmp")
+    tmp_path.write_text(json.dumps(status, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(_STATUS_PATH)
+
+
 def main() -> int:
     total_failures = 0
+    phase_results = []
     for phase in _PHASES:
         data = run_aq_qa(phase)
         if "error" in data:
+            phase_results.append({
+                "phase": phase,
+                "status": "error",
+                "error": data["error"],
+                "failed": 1,
+            })
             push(
                 source=_SOURCE,
                 severity="high",
@@ -60,30 +92,46 @@ def main() -> int:
             total_failures += 1
             continue
 
-        checks = data.get("checks", [])
-        failed_checks = [c for c in checks if c.get("status") in ("fail", "error")]
-        if not failed_checks:
+        failures = failed_checks(data)
+        phase_results.append({
+            "phase": phase,
+            "status": "failed" if failures else "passed",
+            "failed": len(failures),
+            "total": len(data.get("tests") or data.get("checks") or []),
+            "summary": data.get("summary", {}),
+        })
+        if not failures:
             continue
 
         # Group failures into one alert per phase for readability.
         lines = []
-        for c in failed_checks:
-            lines.append(f"  [{c.get('id', '?')}] {c.get('name', '?')}: {c.get('message', '')}")
+        for c in failures:
+            label = c.get("name") or c.get("description") or "?"
+            message = c.get("message") or c.get("detail") or ""
+            lines.append(f"  [{c.get('id', '?')}] {label}: {message}")
 
         push(
             source=_SOURCE,
-            severity="critical" if len(failed_checks) >= 3 else "high",
+            severity="critical" if len(failures) >= 3 else "high",
             autonomy_boundary="human_gate",
-            title=f"aq-qa phase {phase}: {len(failed_checks)} check(s) failing",
+            title=f"aq-qa phase {phase}: {len(failures)} check(s) failing",
             detail=(
-                f"Scheduled health monitor found {len(failed_checks)} failing check(s):\n"
+                f"Scheduled health monitor found {len(failures)} failing check(s):\n"
                 + "\n".join(lines)
                 + "\n\nRun: aq-qa 0  for full detail."
             ),
             proposed_action="Run: aq-qa 0  to see full failure detail.",
             ttl_s=_COOLDOWN_S,
         )
-        total_failures += len(failed_checks)
+        total_failures += len(failures)
+
+    write_status({
+        "source": _SOURCE,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "tmpdir": str(_TMPDIR),
+        "total_failures": total_failures,
+        "phase_results": phase_results,
+    })
 
     if total_failures == 0:
         print(f"[{_SOURCE}] All checks passed at {time.strftime('%Y-%m-%dT%H:%M:%S')}")
