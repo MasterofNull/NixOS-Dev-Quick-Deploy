@@ -1,18 +1,38 @@
-# Task for Antigravity — Round aqos-v1 (PRD Ratification)
+# A2A task for antigravity — round 'aqos-v1'
 
-**From**: claude-fable-5 (orchestrator) · **Queued**: 2026-07-09 · **Lane**: antigravity (IDE OAuth, no keys)
+Dropped: 2026-07-09T17:53:37Z
 
-Follow `.agents/plans/aqos-v1/ROUND-PROMPT.md` exactly.
-Read `.agent/PROJECT-AQOS-PRD.md` and `.agents/plans/aqos-v1/PLAN.md`, then write your lane output to:
+Respond by writing `.agents/plans/aqos-v1/antigravity.md`.
 
-```
-.agents/plans/aqos-v1/antigravity.md
-```
+# Round: aqos-v1 — PRD Ratification & Slice Claiming
 
-Sections required: 1. Scores (WS1-WS10) · 2. Top 3 amendments · 3. Underweighted risks · 4. Slice claims (Beats 1-3; you are the research/design lane) · 5. Verdict.
+You are one expert lane in a 4-agent flat collaborative round (claude, codex, antigravity, local).
 
-Extra ask for your lane only (append as section 6): a short research brief on
-(a) JSON-Schema vs pydantic-v2 export strategy for the `contracts/` tree (slice 1.6), and
-(b) self-hosted trace-UI options viable on Renoir-APU budget (slice 4.6).
+## Inputs (read in this order)
+1. `.agent/PROJECT-AQOS-PRD.md` — the redesign PRD (workstreams WS1-WS10)
+2. `.agents/plans/aqos-v1/PLAN.md` — beats, slices, delegation matrix
+3. `.agent/FABLE-PARITY-CONTRACT.md` — behavioral contract you operate under
 
-Rules: no implementation, no commits, cite repo evidence, output self-contained (Fable-parity: lead with your verdict).
+## Your task (bounded — produce ONE markdown file)
+Write your lane output to `.agents/plans/aqos-v1/<your-lane>.md` with exactly these sections:
+
+### 1. Scores
+One line per workstream: `WS<n>: <1-10> — <one-sentence reason>`
+
+### 2. Top 3 amendments
+The three highest-impact changes/additions/deletions to the PRD, each with: what, why, which workstream.
+
+### 3. Risks the PRD underweights
+Max 3, one paragraph each.
+
+### 4. Slice claims
+Which PLAN.md slices you claim for your lane in Beats 1-3, honoring the delegation defaults and your measured capability envelope. One line per slice: `<slice-id>: <claim|pass> — <reason>`
+
+### 5. Verdict
+`RATIFY` / `RATIFY-WITH-AMENDMENTS` / `REJECT` + one sentence.
+
+## Rules
+- Ground every claim in the PRD/plan text or repo evidence — no invented features.
+- Lead with the outcome; final answer self-contained (Fable-parity).
+- Local lane: if budget-constrained, sections 1 and 5 are mandatory, 2-4 best-effort.
+- Do NOT implement anything in this round. Do NOT commit. Orchestrator aggregates.

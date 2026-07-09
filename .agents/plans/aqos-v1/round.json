@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "round_id": "aqos-v1",
+  "state": "CONSENSUS_LOCKED",
+  "task": {
+    "prompt": "# Round: aqos-v1 — PRD Ratification & Slice Claiming\n\nYou are one expert lane in a 4-agent flat collaborative round (claude, codex, antigravity, local).\n\n## Inputs (read in this order)\n1. `.agent/PROJECT-AQOS-PRD.md` — the redesign PRD (workstreams WS1-WS10)\n2. `.agents/plans/aqos-v1/PLAN.md` — beats, slices, delegation matrix\n3. `.agent/FABLE-PARITY-CONTRACT.md` — behavioral contract you operate under\n\n## Your task (bounded — produce ONE markdown file)\nWrite your lane output to `.agents/plans/aqos-v1/<your-lane>.md` with exactly these sections:\n\n### 1. Scores\nOne line per workstream: `WS<n>: <1-10> — <one-sentence reason>`\n\n### 2. Top 3 amendments\nThe three highest-impact changes/additions/deletions to the PRD, each with: what, why, which workstream.\n\n### 3. Risks the PRD underweights\nMax 3, one paragraph each.\n\n### 4. Slice claims\nWhich PLAN.md slices you claim for your lane in Beats 1-3, honoring the delegation defaults and your measured capability envelope. One line per slice: `<slice-id>: <claim|pass> — <reason>`\n\n### 5. Verdict\n`RATIFY` / `RATIFY-WITH-AMENDMENTS` / `REJECT` + one sentence.\n\n## Rules\n- Ground every claim in the PRD/plan text or repo evidence — no invented features.\n- Lead with the outcome; final answer self-contained (Fable-parity).\n- Local lane: if budget-constrained, sections 1 and 5 are mandatory, 2-4 best-effort.\n- Do NOT implement anything in this round. Do NOT commit. Orchestrator aggregates.",
+    "target": ".agents/plans/aqos-v1",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-09T11:42:40Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "f6d35744af13a86fdcad2dfbcaca87d4761cf547412a3781a3d8ed1df1c77eeb",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "4087b3e96c980cca47a2ef174eac6e4b07f31e763433bf5ab5866d804f485394",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "407ec19013bf6f76d899e321e4fc39248cc7420412390fce4a9290a6e9ea8086",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "7f155fd0ffc1f89e1766bfdf1d7e8366c175552114b19772ad4a6edc286b00c2",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": "a2df013af5ac00e9268e0f2c6f1561f000463238ef86d57d77e92a14cfe2933d",
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": "2026-07-09T17:40:08Z",
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-09T11:42:40Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-09T17:40:08Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-09T17:40:08Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->CONSENSUS_LOCKED",
+      "timestamp": "2026-07-09T17:40:08Z",
+      "actor": "round_aggregate"
+    }
+  ]
+}

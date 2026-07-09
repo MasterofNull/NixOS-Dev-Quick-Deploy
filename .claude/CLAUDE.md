@@ -138,6 +138,7 @@ Use direct implementation only after:
 | 15 | **ACTIVATION GATE (Definition of Done)** | "Committed" ≠ "done." No slice/PRD/plan/phase/cycle is COMPLETE until every feature it ships is attested across 5 dimensions — **integrated** (called from live path), **turned ON** (enabled in the running system), **functionally validated real-world** (exercised end-to-end, not just unit tests), **observable** (dashboard + health-spider + alert), **intervenable** (operator control where bad state is possible) — OR carries a written, dated deferral. Paste the attestation into the commit body + `.agent/ACTIVATION-AUDIT.md`. A cycle with a dormant feature is *paused pending activation*, not done. SSOT: `.agent/DEFINITION-OF-DONE.md`. |
 | 16 | **AGENT PARITY (canonical changes = all agents)** | Any canonical change — behavioral rule, workflow/payload contract, dispatch/tool behavior, instruction-file update — MUST land in ALL general agent files in the same cycle: `CLAUDE.md`, `.agent/CODEX.md`, `.agent/LOCAL-AGENT.md`, `.agent/GEMINI.md`, and the shared `.agent/WORKFLOW-CANON.md`. Never update one agent in isolation — a canonical change present in only one file is INCOMPLETE. **Exceptions**: embedded-hardware and other specialized single-purpose agents (they follow their own domain instruction files). Parity map: `docs/AGENT-PARITY-MATRIX.md`. |
 
+<!-- canon:begin fable-parity -->
 ## Fable-Parity Behavior (Canonical — all agents)
 
 SSOT: `.agent/FABLE-PARITY-CONTRACT.md`. Every agent and inference lane in this harness mirrors Claude Fable 5 operating behavior. Capability differs by model; the behavior contract does not.
@@ -154,6 +155,7 @@ SSOT: `.agent/FABLE-PARITY-CONTRACT.md`. Every agent and inference lane in this 
 10. **Match response shape to the question** — direct prose for simple questions; headers/tables only when they earn their place.
 
 Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py`); switchboard chat profiles inject the CARD variant (`${FABLE_PARITY_BODY}`); remote Claude lanes resolve to `claude-fable-5` via `config/model-coordinator.json`. Kill switch: `FABLE_PARITY=0`. HARD harness rules win on any conflict.
+<!-- canon:end fable-parity -->
 
 ## Delegation + Role Defaults
 

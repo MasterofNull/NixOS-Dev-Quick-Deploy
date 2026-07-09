@@ -4,11 +4,13 @@
 
 ## One-command dispatch (Beat 0 ratification round)
 ```bash
-scripts/ai/aq-collab-round dispatch --round aqos-v1 \
-  --prompt .agents/plans/aqos-v1/ROUND-PROMPT.md
-# lanes: claude, codex (headless, stdin </dev/null), antigravity (inbox), local (async, generous timeout)
+scripts/ai/aq-collab-round open --round aqos-v1 \
+  --task "$(cat .agents/plans/aqos-v1/ROUND-PROMPT.md)" \
+  --target .agents/plans/aqos-v1
+# lanes: codex (headless, own login), antigravity (watched inbox, IDE OAuth), local (inlined task, generous timeout)
 # aggregation stays OPEN — fold late local contributions (never-skip-local HARD rule)
-scripts/ai/aq-collab-round collect --round aqos-v1   # after lanes land
+scripts/ai/aq-collab-round collect --round aqos-v1     # poll + extract
+scripts/ai/aq-collab-round aggregate --round aqos-v1   # typed aggregation (F1.5)
 ```
 Antigravity inbox copy: `.agent/collaboration/antigravity-inbox/aqos-v1.md` (IDE OAuth lane, no keys).
 

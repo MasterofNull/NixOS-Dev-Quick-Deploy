@@ -1,0 +1,1 @@
+{"function": "read_file", "arguments": {"file_path": ".agents/plans/gitlawb-zero-gap-analysis.md"}}
