@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# test-aq-completions.sh — verifies aq-completions.sh registers completions and
+# loads cleanly under bash and zsh (codex + aq router completion).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

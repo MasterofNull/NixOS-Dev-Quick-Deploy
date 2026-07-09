@@ -2331,13 +2331,8 @@ async def get_trace(trace_id: str) -> Dict[str, Any]:
     Pure read of the A2A event log; the future console renders this as a
     waterfall. Any failed run is diagnosable from the returned tree alone.
     """
-    lib = _repo_root() / "scripts" / "ai" / "lib"
-    if str(lib) not in sys.path:
-        sys.path.insert(0, str(lib))
-    if str(_repo_root()) not in sys.path:
-        sys.path.insert(0, str(_repo_root()))
     try:
-        import trace as tracing  # type: ignore
+        tracing = _load_trace_module()
 
         def _node(n) -> Dict[str, Any]:
             return {
@@ -2351,6 +2346,30 @@ async def get_trace(trace_id: str) -> Dict[str, Any]:
                 "spans": [_node(r) for r in roots], "found": bool(roots)}
     except Exception as exc:
         return {"available": False, "trace_id": trace_id, "error": f"{type(exc).__name__}: {exc}"}
+
+
+@lru_cache(maxsize=1)
+def _load_trace_module():
+    """Load scripts/ai/lib/trace.py by explicit file path.
+
+    Avoids the stdlib `trace` name collision (a plain `import trace` may return
+    Python's coverage-tracer) AND ensures repo-root is on sys.path so the
+    transitive `from contracts.events import Envelope` resolves inside the
+    dashboard process.
+    """
+    import importlib.util
+    repo = _repo_root()
+    lib = repo / "scripts" / "ai" / "lib"
+    for p in (str(repo), str(lib)):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    spec = importlib.util.spec_from_file_location("_aq_trace", str(lib / "trace.py"))
+    mod = importlib.util.module_from_spec(spec)
+    # Register BEFORE exec so @dataclass in trace.py can resolve cls.__module__
+    # (dataclasses looks the module up in sys.modules during class processing).
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 @router.get("/scheduler/queue")
