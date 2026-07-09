@@ -48,8 +48,14 @@ from typing import Any, Dict, List, Optional
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent
 _LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
+_LIB = _SCRIPT_DIR / "lib"
 
 sys.path.insert(0, str(_LOCAL_AGENTS))
+sys.path.insert(0, str(_LIB))
+
+# RSI-Readiness R1: the golden set + the trustworthiness gate that certifies the
+# loop's scorer before its scores are trusted for ingest/train.
+GOLDEN_DIR = _REPO_ROOT / "data" / "golden"
 
 TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
 RESULTS_LOG   = TELEMETRY_DIR / "training-loop-results.jsonl"
@@ -93,26 +99,66 @@ def _load_eval_pack(path: Path) -> List[Dict]:
 
 
 def _score_response(response: str, case: Dict) -> Dict[str, Any]:
-    """Grade a response against expected_keywords and optional rubric."""
+    """Grade a response using the R1-CERTIFIED exec scorer.
+
+    RSI-Readiness R1.2: delegates to eval_integrity.exec_scorer — exec-based
+    where the case declares scoring (json_parse/py_compile), keyword coverage
+    otherwise — and ABSTAINS on infra-noise (empty/timeout) instead of scoring a
+    false 0. This is the scorer that PASSES the trustworthiness gate; the old
+    keyword+length heuristic did not (couldn't discriminate, graded noise). An
+    abstained case is excluded from pass/fail so contention can't fake a regression.
+    """
     keywords = case.get("expected_keywords", [])
-    resp_lower = response.lower()
-    matched = [k for k in keywords if k.lower() in resp_lower]
-    coverage = len(matched) / max(len(keywords), 1)
-
-    # Length heuristic: reject empty / stub responses.
     words = len(response.split())
-    length_ok = words >= 15
+    try:
+        from eval_integrity import exec_scorer  # certified scorer (R1.3)
+        r = exec_scorer(response, case)
+    except Exception:
+        # Fail-safe: if the certified scorer is unavailable, fall back to a
+        # conservative keyword+abstain so a bad import never crashes the loop.
+        low = response.strip().lower()
+        if not low or any(m in low for m in ("queued behind busy", "error: model", "[error:")):
+            r = {"score": 0.0, "abstain": True}
+        else:
+            hit = sum(1 for k in keywords if k.lower() in low)
+            r = {"score": round(hit / max(len(keywords), 1), 3), "abstain": False}
 
-    score = coverage if length_ok else 0.0
+    if r.get("abstain"):
+        return {"case_id": case.get("id"), "score": None, "abstain": True,
+                "word_count": words, "pass": False, "infra_noise": True}
+    score = r.get("score", 0.0)
+    matched = [k for k in keywords if k.lower() in response.lower()]
     return {
         "case_id": case.get("id"),
         "score": round(score, 3),
-        "coverage": round(coverage, 3),
+        "abstain": False,
+        "coverage": round(score, 3),
         "matched_keywords": matched,
-        "missing_keywords": [k for k in keywords if k.lower() not in resp_lower],
+        "missing_keywords": [k for k in keywords if k.lower() not in response.lower()],
         "word_count": words,
-        "pass": score >= 0.6 and length_ok,
+        "pass": score >= 0.6,
     }
+
+
+def _certify_scorer() -> "tuple[bool, str]":
+    """Run the R1.3 trustworthiness gate on the loop's scorer against the golden
+    set. Returns (certified, reason). Fail-safe: any error -> uncertified (never
+    silently 'trust'). Missing golden set -> uncertified with guidance."""
+    try:
+        import eval_integrity as EI
+        tasks_p = GOLDEN_DIR / "tasks.json"
+        if not tasks_p.exists():
+            return False, f"golden set missing at {tasks_p}"
+        golden = json.loads(tasks_p.read_text())
+
+        def _adapter(resp: str, task: Dict) -> Dict[str, Any]:
+            r = _score_response(resp, task)
+            return {"score": r.get("score") or 0.0, "abstain": bool(r.get("abstain"))}
+
+        res = EI.trustworthiness_gate(_adapter, golden, str(GOLDEN_DIR))
+        return res.trustworthy, res.reason
+    except Exception as exc:  # noqa: BLE001 — uncertified on any failure
+        return False, f"certification error: {type(exc).__name__}: {exc}"
 
 
 def _read_registry() -> List[Dict]:
@@ -767,6 +813,18 @@ class TrainingLoop:
             _persist_result(report)
             return report
 
+        # ── 1c. SCORER CERTIFICATION (R1.2) ─────────────────────────────────────
+        # Certify the loop's scorer against the golden set BEFORE trusting any
+        # score. An uncertified scorer (can't discriminate / grades noise) must
+        # not gate ingest/train — the reward signal would be corrupt. Recorded on
+        # the run so downstream automation and the dashboard see the trust state.
+        self._scorer_certified, self._scorer_cert_reason = _certify_scorer()
+        _write_progress(run_id, "scorer_certification",
+                        certified=self._scorer_certified, reason=self._scorer_cert_reason)
+        print(f"[training-loop] scorer certification: "
+              f"{'CERTIFIED' if self._scorer_certified else 'NOT CERTIFIED — scores untrusted'} "
+              f"({self._scorer_cert_reason})")
+
         # ── 2. EVAL ────────────────────────────────────────────────────────────
         print("[training-loop] Phase 2: delegating eval tasks")
         cases = _load_eval_pack(self.eval_pack)
@@ -866,14 +924,20 @@ class TrainingLoop:
         scores: List[Dict] = []
         scores = await asyncio.gather(*[_eval_one(c) for c in cases])
 
-        passing  = [s for s in scores if s.get("pass")]
-        failing  = [s for s in scores if not s.get("pass")]
-        # Infra failures (dispatch timeout / submit failure) are NOT model misses —
-        # they poison pass_rate and the training capture. Classify them out.
-        infra_fail = [s for s in scores if s.get("error") in ("timeout_or_failed", "submit_failed")]
-        pass_rate = len(passing) / max(len(scores), 1)
-        print(f"[training-loop]   pass {len(passing)}/{len(scores)} ({pass_rate:.0%})"
-              + (f" [{len(infra_fail)} infra-failures]" if infra_fail else ""))
+        # R1.2: abstentions (infra-noise, from the certified scorer) are NOT
+        # capability results — exclude them from the pass/fail denominator so
+        # contention/timeouts can't fake a regression (complements the prompt-5
+        # degraded_infra path).
+        abstained = [s for s in scores if s.get("abstain")]
+        scored   = [s for s in scores if not s.get("abstain")]
+        passing  = [s for s in scored if s.get("pass")]
+        failing  = [s for s in scored if not s.get("pass")]
+        # Infra failures (dispatch timeout / submit failure) are NOT model misses.
+        infra_fail = [s for s in scores if s.get("error") in ("timeout_or_failed", "submit_failed")] + abstained
+        pass_rate = len(passing) / max(len(scored), 1)
+        print(f"[training-loop]   pass {len(passing)}/{len(scored)} ({pass_rate:.0%})"
+              + (f" [{len(abstained)} abstained/infra]" if abstained else "")
+              + (f" [scorer {'CERTIFIED' if getattr(self, '_scorer_certified', None) else 'UNCERTIFIED'}]"))
         _write_progress(run_id, "improve", pass_count=len(passing), fail_count=len(failing), cases_total=len(scores))
 
         # If infra failures dominate (contention/timeouts mid-run), this run is
@@ -957,7 +1021,13 @@ class TrainingLoop:
             "cases_total": len(cases),
             "pass_count": len(passing),
             "fail_count": len(failing),
+            "abstained": len(abstained),
             "pass_rate": round(pass_rate, 3),
+            # R1.2: whether the scorer is trustworthy this run. When False, these
+            # scores must NOT be trusted to gate ingest/train (reward signal is
+            # not certified). Surfaced to the dashboard + downstream automation.
+            "scorer_certified": getattr(self, "_scorer_certified", None),
+            "scorer_cert_reason": getattr(self, "_scorer_cert_reason", None),
             "ingest": {
                 "samples_added": ingest_report.get("positive_samples_added", 0),
                 "dataset_total": ingest_report.get("dataset_total", 0),

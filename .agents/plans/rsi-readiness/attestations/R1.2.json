@@ -1,0 +1,30 @@
+{
+  "slice": "R1.2",
+  "title": "Adopt the certified exec-scorer into the training loop + startup certification",
+  "workstream": "R1 (trustworthy eval harness — the global gate)",
+  "owner": "claude-fable-5",
+  "date": "2026-07-09",
+  "status": "landed",
+  "closes": "the R1.3 finding — current training-loop scorer was untrustworthy (issues-backlog HIGH, now DONE)",
+  "files_touched": [
+    "scripts/ai/aq-local-training-loop (_score_response -> certified exec_scorer + abstention; _certify_scorer() startup gate; abstained excluded from pass_rate; scorer_certified on run result)",
+    "scripts/testing/test-loop-scorer-certified.py (new — 4 tests)",
+    ".agent/memory/issues-backlog.md (finding marked DONE)"
+  ],
+  "live_path_wired": "run_once now certifies the loop's scorer against data/golden/ via eval_integrity.trustworthiness_gate BEFORE eval (phase 1c); records scorer_certified + reason on the run result and progress sidecar; _score_response delegates to the certified exec_scorer (exec-based + infra-abstention); abstained cases are excluded from the pass/fail denominator so contention can't fake a regression.",
+  "test_evidence": {
+    "unit": "test-loop-scorer-certified.py 4/4 — loop scorer now CERTIFIED trustworthy, abstains on infra-noise (score=None not false-0), ranks good>bad across scoring types, backward-compatible with legacy keyword eval cases",
+    "closure": "before R1.2 the loop scorer FAILED the gate (discrimination + noise-grading); after R1.2 it PASSES — _certify_scorer() returns trustworthy=True live",
+    "regression": "test-eval-integrity.py (R1.3) still 4/4-family green"
+  },
+  "activation_gate": {
+    "integrated": true,
+    "on": "runs every loop cycle; scorer certification recorded on each run",
+    "validated": true,
+    "observable": "scorer_certified + scorer_cert_reason on training-loop-results + progress sidecar (dashboard-visible); print at loop start",
+    "intervenable": "golden set + thresholds under data/golden + eval_integrity; fail-safe uncertified on any error (never silently trusts)"
+  },
+  "rollback": "revert _score_response to the keyword+length heuristic and remove the _certify_scorer call; eval_integrity + golden set remain (harmless).",
+  "no_autonomy_note": "scorer_certified=False is recorded but does not yet HARD-BLOCK ingest/train — the enforcement (refuse to ingest/train on uncertified scores) is the immediate R1 follow-up so the signal gate becomes a hard gate, not just a flag.",
+  "deferred": "hard-block ingest/train when scorer_certified=False; shadow/canary datasets; expand golden CORPUS (R1.1, antigravity/codex)."
+}
