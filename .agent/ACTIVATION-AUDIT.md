@@ -199,3 +199,19 @@ Frontend degrades gracefully pre-restart (missing endpoints render "--"/Unavaila
 | Intervenable | ✅ edit canon/blocks then --write; removing a block from canon.yaml de-manages it |
 
 Rule 16 for shared blocks is now a build step. Next blocks to migrate: behavioral-rules table, service-ports, context-engineering rules.
+
+---
+
+# Slice: config contracts + validating hot-reload loader (WS1, god-tier prompt 2) (2026-07-09, claude-fable-5)
+
+Typed config validation + hot-reload; ends restart-to-apply for switchboard profiles.
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ contracts/ tree (pydantic schema for switchboard-profiles.yaml + registry); scripts/ai/lib/config_loader.py (validate/round-trip/ConfigWatcher); switchboard _install_profile_hot_reload wired into startup |
+| ON | ⏸ **DEFERRED: dashboard+switchboard service restart** (the hot-reload wiring itself ships in this restart; AFTER it, profile edits apply in <5s with NO further restart — this is the LAST restart profile edits will need). CI gate is ON now. |
+| Validated | ✅ test-config-loader.py 7/7 (schema registered, real config valid+round-trips, bad provider/negative budget/missing-default rejected, watcher applies valid + rejects invalid keeping last-good); ✅ FULL INTEGRATION smoke: imported switchboard, applied a live profile edit (PROFILE_CATALOG picked up marker), rejected an invalid edit keeping last-good |
+| Observable | ✅ config_loader logs every applied/rejected reload to stderr (journalctl); tier0.d/check-config-contracts gate (tier0 now 23) |
+| Intervenable | ✅ CONFIG_HOT_RELOAD=0 disables the watcher; invalid edits auto-rejected (fail-safe); startup falls back to loaded catalog on any wiring error |
+
+Scope note: v1 registers ONE config (switchboard-profiles.yaml — the one that needed restart-to-apply). The tree + loader + registry + gate generalize; remaining ~106 configs adopt incrementally (one @register + schema each), which is the WS1 follow-up. Round-trip gate also guards the F2 inf→null bug class going forward.
