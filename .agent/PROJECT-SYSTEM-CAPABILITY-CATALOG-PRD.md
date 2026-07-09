@@ -4,7 +4,7 @@ id: system-capability-catalog
 title: System Capability Catalog
 status: active
 owner: codex
-last_updated: 2026-06-29
+last_updated: 2026-07-09
 ---
 
 # System Capability Catalog PRD
@@ -44,3 +44,19 @@ This makes gap discovery and external feature ingestion harder to automate safel
 - `python3 scripts/ai/aq-capability-catalog check-doc` passes.
 - A focused regression test covers the catalog validator and generated reference sheet.
 - Tier0 passes before commit.
+
+## Native Client Projection
+
+Capability state is not considered enabled merely because a server appears in the generic
+`~/.mcp/config.json` catalog. Home Manager must also project admitted servers into each
+client's supported configuration store and focused CI must verify that projection.
+
+The 2026-07-09 bring-up established these active projections:
+
+- Claude Code user config: local hybrid coordinator, OSINT tools, and read-only GitHub wrapper.
+- Codex user config: local hybrid coordinator, OSINT tools, and official OpenAI developer docs.
+- Continue: hybrid coordinator and OSINT tools through its generated `mcpServers` list.
+
+OAuth-backed connectors remain unavailable until their owning user completes interactive
+authorization; catalog state must report that distinction rather than treating configuration
+presence as a successful connection.

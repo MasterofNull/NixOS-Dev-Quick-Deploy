@@ -19,7 +19,14 @@ def fail(message: str) -> None:
 def main() -> None:
     requests = "\n".join(
         [
-            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": "2025-06-18"},
+                }
+            ),
             json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}),
             "",
         ]
@@ -40,6 +47,8 @@ def main() -> None:
         fail(f"expected initialize and tools/list responses, got {len(lines)}")
     if lines[0]["result"]["serverInfo"]["name"] != "osint-tools":
         fail("initialize response must identify osint-tools")
+    if lines[0]["result"].get("protocolVersion") != "2025-06-18":
+        fail("initialize response must negotiate the client protocol version")
 
     tools = {tool["name"] for tool in lines[1]["result"]["tools"]}
     expected = {"maigret", "bbot", "mosaic"}

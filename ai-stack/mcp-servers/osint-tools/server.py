@@ -114,7 +114,9 @@ async def handle_request(line: str):
     try:
         req = json.loads(line)
         if req.get("method") == "initialize":
+            protocol_version = req.get("params", {}).get("protocolVersion", "2024-11-05")
             print(build_response(req.get("id"), {
+                "protocolVersion": protocol_version,
                 "serverInfo": {"name": "osint-tools", "version": "1.0.0"},
                 "capabilities": {"tools": {}}
             }), flush=True)
