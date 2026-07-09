@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""aq-cascade — draft-and-polish routing (god-tier prompt 7).
+
+Local drafts, a verifier scores confidence, remote polishes only below the
+task-class threshold. Records savings vs fan-out to a ledger.
+
+Usage:
+  aq-cascade run  --task "..." [--task-class architecture] [--threshold 0.7]
+  aq-cascade run  --task-file PATH ...
+  aq-cascade summary                 # per-task-class savings vs fan-out
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+_LIB = _HERE / "lib"
+sys.path.insert(0, str(_LIB))
+
+import cascade as C  # noqa: E402
+
+try:
+    import auto_assign as _auto  # noqa: E402
+except Exception:  # noqa: BLE001
+    _auto = None
+
+
+def _count_tokens(text: str) -> int:
+    # Cheap proxy: ~1.3 tokens/word. Real usage comes from .usage.json when present.
+    return int(len(text.split()) * 1.3)
+
+
+def _strip_delegate_log(stdout: str) -> str:
+    """Keep only the model's answer, dropping '[delegate-*]' status log lines."""
+    lines = [ln for ln in stdout.splitlines()
+             if not ln.lstrip().startswith(("[delegate-", "[aq-"))]
+    return "\n".join(lines).strip()
+
+
+def _local_draft(task: str) -> "tuple[str, int]":
+    """Draft on the local model (direct mode, bounded). Returns (clean_text, tokens)."""
+    out = subprocess.run(
+        ["bash", str(_HERE / "delegate-to-local"), "--mode", "direct",
+         "--role", "auto", "--prompt", task, "--wait"],
+        capture_output=True, text=True, timeout=5400,
+    ).stdout
+    answer = _strip_delegate_log(out)
+    return answer, _count_tokens(answer)
+
+
+def _remote_polish(task: str, draft: str) -> "tuple[str, int]":
+    """Escalate to a remote lane to POLISH the local draft (not redo from scratch).
+
+    Uses codex (its own login, works headlessly) as the default remote lane —
+    antigravity/Gemini requires the IDE inbox (no-keys policy) and can't be
+    driven headlessly. Override the lane with CASCADE_REMOTE_LANE=antigravity.
+    """
+    import os
+    prompt = (
+        f"A local model drafted the answer below. Improve/correct it — keep what is "
+        f"right, fix what is wrong, do not restart from scratch.\n\n"
+        f"TASK:\n{task}\n\nLOCAL DRAFT:\n{draft}\n\nIMPROVED ANSWER:"
+    )
+    lane = os.environ.get("CASCADE_REMOTE_LANE", "codex")
+    if lane == "antigravity":
+        cmd = ["python3", str(_HERE / "delegate-to-antigravity"),
+               "--prompt", prompt, "--role", "reviewer", "--wait", "--timeout", "900"]
+    else:
+        cmd = ["bash", str(_HERE / "delegate-to-codex"),
+               "--prompt", prompt, "--wait"]
+    out = _strip_delegate_log(subprocess.run(cmd, capture_output=True, text=True, timeout=1000).stdout)
+    return out, _count_tokens(out)
+
+
+def _cmd_run(a) -> int:
+    task = a.task if a.task else Path(a.task_file).read_text()
+    task_class = a.task_class
+    if task_class is None and _auto is not None:
+        task_class = _auto.infer_task_class(task)
+    res = C.run_cascade(
+        task, task_class=task_class,
+        local_fn=_local_draft, remote_fn=_remote_polish,
+        threshold=a.threshold,
+    )
+    print(f"[cascade] source={res.source} escalated={res.escalated} "
+          f"confidence={res.confidence} threshold={res.threshold} "
+          f"class={res.task_class} saved_remote_tokens={res.savings_vs_fanout()}")
+    print("--- answer ---")
+    print(res.response)
+    return 0
+
+
+def _cmd_summary(a) -> int:
+    import json
+    print(json.dumps(C.ledger_summary(), indent=2))
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="aq-cascade")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run")
+    g = r.add_mutually_exclusive_group(required=True)
+    g.add_argument("--task")
+    g.add_argument("--task-file")
+    r.add_argument("--task-class", default=None)
+    r.add_argument("--threshold", type=float, default=None)
+    r.set_defaults(fn=_cmd_run)
+    s = sub.add_parser("summary"); s.set_defaults(fn=_cmd_summary)
+    args = ap.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

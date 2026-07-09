@@ -278,3 +278,19 @@ Prompt 6 reframed by evidence + operator steer. Two premises corrected: (1) spec
 | SMALL_RESIDENT deploy | ⏸ routing exists (model_tier.py); endpoint wiring gated OFF pending model file | ⏸ **DEFERRED: operator rebudget approval + model download + rebuild** | policy verdict this host: deploy_small_resident_now (1.7B Q6_K fits 4.9GB slack at class-baseline Q4_K_M) |
 
 Deliverable is the hardware-driven POLICY (answers "should rebudget be deployment-hardware-driven": yes, and now it is) + prepped bench + corrected premises. Actual small-model deploy stays a gated follow-up needing the operator's rebuild. No running-stack change this slice.
+
+---
+
+# Slice: draft-and-polish cascade (WS8, god-tier prompt 7) (2026-07-09, claude-fable-5)
+
+Local drafts, verifier scores confidence, remote polishes only below threshold. Replaces redundant parallel fan-out for economy.
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ scripts/ai/lib/cascade.py (task-agnostic confidence scorer, per-class thresholds, run_cascade orchestrator on the event bus, savings ledger); scripts/ai/aq-cascade CLI (local=delegate-to-local direct, remote=delegate-to-codex default / antigravity override) |
+| ON | ✅ CLI ON now; CASCADE_ENABLED=0 kill switch. Cascade decisions emit trace-linked events + ledger rows. |
+| Validated | ✅ test-cascade.py 6/6 (confidence scoring, high-conf keeps local + saves tokens, low-conf escalates with draft handed to remote, no-remote graceful, per-class ledger summary, kill switch). **LIVE**: real cascade run — local drafted a correct NixOS answer, scored 1.0, kept local, 72 remote tokens saved, no escalation. Found+fixed live: draft captured delegate log noise (_strip_delegate_log). |
+| Observable | ✅ aq-cascade summary (per-class savings + escalation-rate + recommend cascade/review); events on the bus; CASCADE_LEDGER jsonl |
+| Intervenable | ✅ CASCADE_ENABLED=0, per-task --threshold, CASCADE_REMOTE_LANE codex|antigravity |
+
+Measurement: the ledger accrues per-task-class savings vs fan-out so "keep whichever wins per class" is data-driven over time (the two-week comparison the prompt asks for). Confidence scoring is heuristic (no verifier model) — when SMALL_RESIDENT lands (prompt 6) it can back score_confidence() behind the same interface. Follow-up: route the cascade into aq-collab-round as a `--mode cascade` alternative to fan-out.
