@@ -610,6 +610,38 @@ def _classify_routing_intent(payload: dict | None) -> str | None:
 
 PROFILE_CATALOG = _load_profile_catalog()
 ROUTING_RULES = _load_routing_rules()
+
+
+def _install_profile_hot_reload() -> None:
+    """Watch the profile YAML and swap PROFILE_CATALOG on validated change (WS1).
+
+    Kills restart-to-apply for profile edits (fable-parity cards and every
+    future edit apply in <5s). Fully guarded: any failure here leaves the
+    startup-loaded catalog live and switchboard running. Fail-safe reload —
+    an edit that fails the schema keeps the last-good catalog (see
+    config_loader.ConfigWatcher). Disable with CONFIG_HOT_RELOAD=0.
+    """
+    yaml_file = os.environ.get("SWB_PROFILE_CATALOG_YAML_FILE", "").strip()
+    if not yaml_file:
+        return
+    try:
+        _lib = os.path.join(
+            os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"),
+            "scripts", "ai", "lib",
+        )
+        if _lib not in sys.path:
+            sys.path.insert(0, _lib)
+        from config_loader import ConfigWatcher  # type: ignore
+
+        def _on_reload(_raw) -> None:
+            # Rebuild through the canonical loader so defaults + ${body}
+            # substitution + budget warnings apply exactly as at startup.
+            global PROFILE_CATALOG
+            PROFILE_CATALOG = _load_profile_catalog()
+
+        ConfigWatcher(yaml_file, _on_reload).start()
+    except Exception as exc:  # never let hot-reload wiring break startup
+        print(f"warning: profile hot-reload not installed: {exc}", file=sys.stderr)
 REPO_PATH = os.environ.get("REPO_PATH", "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
 LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/local-agents").strip()
 LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "40"))
@@ -2721,6 +2753,7 @@ async def _startup():
     )
     asyncio.create_task(_warm_local_profile_prefix("continue-local"))
     await asyncio.to_thread(_routing_log_init)
+    _install_profile_hot_reload()
 
 @app.on_event("shutdown")
 async def _shutdown():
