@@ -1543,3 +1543,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: MED (rounds silently stuck at N-1/N; aggregation proceeds without the lane)
 - **Action taken (harness)**: _antigravity_inbox_live() detects stale/unconsumed inbox + IDE process state; round now reports "UNAVAILABLE: <reason>" with actionable guidance instead of hanging
 - **Action remaining (OPERATOR)**: configure the Antigravity IDE with a workflow/rule that watches .agent/collaboration/antigravity-inbox/*.md, executes the task, writes .agents/plans/<round>/antigravity.md, and deletes/renames the consumed inbox file (deletion is the liveness signal the harness reads). Until then the antigravity lane is unavailable by design, not by bug.
+
+## [DONE] Antigravity liveness self-reinforcing UNAVAILABLE loop (diagnosed by antigravity lane)
+- **Status**: DONE (2026-07-09) — redesigned + backlog archived
+- **Scope**: aq-collab-round._antigravity_inbox_live() — v1 keyed liveness off the PRESENCE of any stale inbox file. But the round keeps dropping new files without consumption, so backlog grew monotonically → permanent UNAVAILABLE, and even a watching IDE would be falsely marked dead by ancient unrelated files.
+- **Root cause**: liveness conflated "old files exist" with "IDE not watching"; combined with the round still dropping into a growing backlog = self-reinforcing loop. (Diagnosed by the antigravity lane itself, relayed via operator.)
+- **Severity**: MED (antigravity lane permanently unavailable regardless of IDE state)
+- **Action taken**: liveness now keys off per-drop CONSUMPTION (was the LAST tracked drop deleted within window?) via .lane-state.json, not backlog presence; _archive_stale_inbox() moves consumed-window-exceeded files to .agent/archive on each open (Rule 12) so the backlog can't grow; unrelated old files no longer poison the signal; real 12-file backlog archived. Tests: test-antigravity-liveness.py 4/4.
+- **Remaining (operator)**: still need the IDE-side inbox-watch workflow that deletes consumed files — that deletion is now the exact liveness signal the harness reads.
