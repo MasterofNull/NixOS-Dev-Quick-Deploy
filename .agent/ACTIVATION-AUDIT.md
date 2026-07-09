@@ -133,3 +133,25 @@ training-proposal-needs-review (HITL flow working). None are regressions from th
 No PRD/plan slice is marked DONE until its row here shows ON + functionally-validated **+ observable +
 intervenable** (or a conscious, recorded defer). Observability is not a follow-up phase — it ships with
 the feature.
+
+---
+
+# Cycle: fable-parity (2026-07-09, claude-fable-5)
+
+Mirror Claude Fable 5 operating behavior across every agent/model/inference lane.
+SSOT: `.agent/FABLE-PARITY-CONTRACT.md` (FULL/CARD/MICRO variants).
+
+| Feature | Integrated | ON | Validated |
+|---------|-----------|----|-----------|
+| FABLE-PARITY-CONTRACT.md (SSOT, 3 variants) | ✅ referenced by all consumers | ✅ | ✅ parity check: byte-identical across 5 files |
+| llm_config.py MICRO injection (local payloads) | ✅ build_llama_payload SSOT | ✅ next process start | ✅ 7-scenario test: inject/probe-skip/structured-skip/insert/kill-switch/ordering/idempotence ALL PASS |
+| dispatch.py fallback mirror | ✅ | ✅ next dispatch | ✅ py_compile |
+| switchboard CARD (${FABLE_PARITY_BODY}, 12 profiles) | ✅ _shared_bodies + 12 refs | ⏸ **DEFERRED: needs switchboard restart** (profiles read at startup; sudo unavailable in this shell — operator: `sudo systemctl restart ai-switchboard`) | ✅ yaml parses; loader ${} substitution confirmed at switchboard.py:508-516 |
+| delegate-to-antigravity CARD in _HARNESS_SYSTEM_BASE | ✅ | ✅ next delegation | ✅ py_compile |
+| model-coordinator.json flagship=claude-fable-5 (+opus fallback) | ✅ tier SSOT | ✅ next tier resolution | ✅ json parses |
+| workflow-automation.yaml + multi-agent-collaboration.yaml llm_model=claude-fable-5 | ✅ | ✅ next load | ✅ yaml parses |
+| Fable-Parity section in 5 instruction files (Rule 16) | ✅ | ✅ next session load | ✅ byte-identical parity asserted |
+
+Intervenable: env kill switch `FABLE_PARITY=0` (payload layer); YAML edit + restart (switchboard layer).
+Observable: injection visible in system_prompt field of agent_run_events telemetry.
+Cycle status: **paused pending activation** of the switchboard row (single dated deferral above); all other rows ON.

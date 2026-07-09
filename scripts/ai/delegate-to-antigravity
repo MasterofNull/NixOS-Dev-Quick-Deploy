@@ -93,6 +93,14 @@ _HARNESS_SYSTEM_BASE = (
     "ATOMIC PULSE: Append one line to PULSE.log after every file write.\n"
     "ATOMIC RESUME: Update .agent/collaboration/RESUME.json at every phase start.\n"
     "DO NOT COMMIT — the orchestrator (Claude) reviews and commits.\n"
+    # Fable-parity CARD variant — SSOT: .agent/FABLE-PARITY-CONTRACT.md §2.
+    "=== FABLE-PARITY BEHAVIOR ===\n"
+    "Lead with the outcome; detail after. Final answer must be self-contained.\n"
+    "Act when informed: no re-deriving known facts, no permission-asking for reversible in-scope work.\n"
+    "Finish the turn: never end on a plan or 'I will...' — do it, or state the exact blocker.\n"
+    "Evidence before state change: verify the diagnosis supports THAT action before restart/delete/write.\n"
+    "Report faithfully: failures stated with output; verified work stated plainly; nothing faked.\n"
+    "Comments only for constraints code can't show. Match surrounding idiom.\n"
 )
 
 def _load_harness_grounding() -> str:
@@ -267,6 +275,24 @@ def _parse_completion_response(raw: bytes) -> "tuple[str, int, int]":
     return "".join(parts), tokens_in, tokens_out
 
 
+def _redirect_background_stdio(log_path: Path) -> None:
+    """Detach forked children from caller pipes; send child diagnostics to task log."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    stdin_fd = os.open("/dev/null", os.O_RDONLY)
+    log_fd = os.open(str(log_path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.dup2(stdin_fd, sys.stdin.fileno())
+        os.dup2(log_fd, sys.stdout.fileno())
+        os.dup2(log_fd, sys.stderr.fileno())
+    finally:
+        os.close(stdin_fd)
+        os.close(log_fd)
+
+    # Reopen sys.stdout/sys.stderr in Python to wrap the new OS file descriptors
+    sys.stdout = open(str(log_path), "a", buffering=1)
+    sys.stderr = open(str(log_path), "a", buffering=1)
+
+
 def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
                      timeout: int, log_path: Path,
                      print_to_stdout: bool = False) -> "tuple[str, int, int]":
@@ -315,7 +341,10 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
                         return status, tokens_in, tokens_out
 
                     with open(log_path, "a") as f:
-                        f.write(f"ERROR: switchboard returned empty content ({current_profile}).\nResponse: {json.dumps(result)[:400]}\n")
+                        f.write(
+                            f"ERROR: switchboard returned empty content ({current_profile}).\n"
+                            "Response contained no usable message content.\n"
+                        )
                     break  # empty content — try next profile
 
             except urllib.error.HTTPError as exc:
@@ -528,9 +557,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
                 print(f"aq-loop-{int(time.time())}")
                 return
             os.setsid()
-            devnull = os.open("/dev/null", os.O_RDWR)
-            os.dup2(devnull, sys.stdin.fileno())
-            os.close(devnull)
+            _redirect_background_stdio(log_path)
             subprocess.run(agent_cmd)
             os._exit(0)
         else:
@@ -565,9 +592,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         return
 
     os.setsid()
-    devnull = os.open("/dev/null", os.O_RDWR)
-    os.dup2(devnull, sys.stdin.fileno())
-    os.close(devnull)
+    _redirect_background_stdio(log_path)
 
     try:
         status, ti, to = _run_switchboard(
@@ -599,11 +624,10 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Backend: switchboard remote-free profile (default)\n"
-            "  -> forceProvider=remote -> Google Gemini direct via REMOTE_LLM_URL\n"
-            "  Auth managed by switchboard via /run/secrets/remote_llm_api_key\n"
-            "  The secret must hold a Google AI Studio key, not an OpenRouter key.\n"
-            "  Set ANTIGRAVITY_SWB_PROFILE=antigravity-collective to use the Gemini tool-calling alias.\n"
+            "Backend: legacy switchboard remote profile (diagnostic only)\n"
+            "  Antigravity expert-team collaboration uses aq-collab-round watched inbox + IDE OAuth.\n"
+            "  Do not add API keys for Antigravity/Gemini fan-out.\n"
+            "  Set ANTIGRAVITY_SWB_PROFILE=antigravity-collective only for intentional remote diagnostics.\n"
         ),
     )
     p.add_argument("--prompt",      metavar="TEXT", help="Task prompt")

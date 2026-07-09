@@ -9,7 +9,7 @@ _meta:
 # Workflow Generator Settings
 generator:
   # LLM model for goal parsing (if using external LLM)
-  llm_model: "claude-sonnet-4-5"
+  llm_model: "claude-fable-5"
   llm_endpoint: null  # Set if using external endpoint
 
   # Task decomposition constraints
