@@ -4,13 +4,13 @@
 
 Follow `.agents/plans/rsi-readiness/ROUND-PROMPT.md` exactly.
 Read `.agent/PROJECT-RSI-READINESS-PRD.md` (trust infrastructure for local agentic
-self-improvement — 6 workstreams), then write your lane output to:
+self-improvement — 7 workstreams), then write your lane output to:
 
 ```
 .agents/plans/rsi-readiness/antigravity.md
 ```
 
-Sections: 1. Scores R1-R6 + verdict · 2. Top 3 amendments · 3. Underweighted risks
+Sections: 1. Scores R1-R7 + verdict · 2. Top 3 amendments · 3. Underweighted risks
 · 4. Slice claims + wiring plan (your lane = research/design: R1.1 golden-set
 design, R4 efficacy-measurement methodology) · 5. Verdict + first commit target.
 

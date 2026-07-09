@@ -101,6 +101,29 @@ Nothing downstream is safe until the reward signal is one we'd stake a decision 
 - Accept: one real issues-backlog item taken from triage → drafted fix → eval →
   human-gated proposal, entirely through the harness, with the trace as evidence.
 
+### R7 — Multi-agent coordination safety (R-slice work formalization)
+Concurrent agents collide on shared repo state. Observed this session: a second
+agent's git operations UNSTAGED files mid-commit; malformed PULSE filenames from
+racing appends; the RESUME clobber class (partly addressed by the event bus, but
+agents still write files directly during migration). Self-improvement means MORE
+concurrent agents, so this must be formalized before autonomy — an autonomous
+loop that corrupts the shared index or another agent's commit is a hard failure.
+- R7.1 Serialize privileged repo mutations: a git/index lock (or per-agent git
+  worktrees, isolation: worktree) so no two agents stage/commit into the same
+  index simultaneously; a commit queue with per-agent attribution.
+- R7.2 Complete the event-bus migration (WS2 follow-up): agents EMIT events;
+  PULSE.log/RESUME.json become projector-only writes (no direct agent writes),
+  with the drift/compatibility gate from the aqos-v1 codex amendment enforced.
+- R7.3 Atomic, race-safe append primitives for any remaining shared logs
+  (O_APPEND leading-newline pattern from the event log; never `printf >>` with
+  unescaped payloads — the malformed-filename bug).
+- R7.4 A coordination contract in WORKFLOW-CANON: which mutations require the
+  lock, how agents claim/release, how conflicts surface (not silently clobber).
+- Accept: two agents committing concurrently never corrupt each other's index or
+  staging (reproduced under test); zero direct agent writes to PULSE/RESUME on
+  the migrated path; a documented + enforced coordination contract. This is the
+  substrate that makes R4 (more concurrent shadow agents) and R6 safe.
+
 ## Cross-cutting requirements (all workstreams)
 - Every deliverable: PRD gate → wire → live-test → tier0 → activation attestation
   (integrated+ON+validated+observable+intervenable) → verbose commit → PULSE/RESUME.
@@ -112,8 +135,10 @@ Nothing downstream is safe until the reward signal is one we'd stake a decision 
 
 ## Sequencing
 R1 first (unblocks all). R2 + R3 in parallel (independent; R3 gives R2 a verifier).
-R5 anytime (additive). R4 after R1 (needs the trustworthy signal). R6 last
-(exercises everything). R4's efficacy data gates any future autonomy PRD.
+R5 + R7 anytime (additive substrate — R7 should land early since it protects all
+concurrent slice work). R4 after R1 (needs the trustworthy signal) AND after R7
+(needs safe concurrency). R6 last (exercises everything). R4's efficacy data gates
+any future autonomy PRD.
 
 ## Success metric (cycle exit)
 A trustworthy eval harness (R1 signed off), local write-reliability measurably
