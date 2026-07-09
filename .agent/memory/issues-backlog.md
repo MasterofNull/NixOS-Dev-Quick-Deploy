@@ -1605,3 +1605,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: CRITICAL for R1 (a gamed eval is worse than no eval — it grants false confidence to autonomy decisions)
 - **Action**: golden suite excluded from agent read/search paths via a SYSTEM-LEVEL path filter (not just .gitignore); R1 acceptance must test that an agent cannot read the golden answers; pair with strict train/eval split
 - **Also from same round**: KV-cache eviction under parallel shadow agents (cache compiled prefix KV); quota starvation on remote cascade (token-budget rate limiter at switchboard level, feeds R8)
+
+## [OPEN-HIGH] Current training-loop scorer FAILS the R1.3 trustworthiness gate
+- **Status**: OPEN (surfaced by R1.3 eval_integrity gate 2026-07-09) — the evidence base for R1
+- **Scope**: aq-local-training-loop._score_response (keyword-coverage + length) does NOT pass eval_integrity.trustworthiness_gate: fails discrimination (can't rank known-good > known-bad on the golden tasks) AND scores infra-noise (empty/timeout) as a capability miss instead of abstaining
+- **Root cause**: keyword coverage is not exec-based and has no abstention path; a gamed/noisy signal has been gating the closed loop
+- **Severity**: HIGH — this is the corruptible reward signal that makes RSI unsafe; R2 fine-tune and R4 shadow-loop must NOT trust these scores until fixed
+- **Action (R1.2)**: adopt eval_integrity.exec_scorer (or extend _score_response with exec-based scoring + infra abstention) so the loop's scorer PASSES the trustworthiness gate; run the gate at loop startup and record the sign-off in the run result; block/flag automation when uncertified
+- **File**: scripts/ai/lib/eval_integrity.py (the gate), scripts/ai/aq-local-training-loop (the scorer to replace)

@@ -1,0 +1,32 @@
+{
+  "slice": "R1.3",
+  "title": "Eval integrity gate — trustworthy-signal sign-off",
+  "workstream": "R1 (trustworthy eval harness — the global gate)",
+  "owner": "claude-fable-5",
+  "date": "2026-07-09",
+  "status": "landed",
+  "files_touched": [
+    "scripts/ai/lib/eval_integrity.py (new — the gate ON the scorer + reference exec_scorer)",
+    "data/golden/tasks.json (new — seed golden set with good/bad references)",
+    "data/golden/.agent-no-read (new — anti-gaming isolation marker)",
+    "scripts/testing/test-eval-integrity.py (new — 7 tests)"
+  ],
+  "live_path_wired": "trustworthiness_gate(scorer, golden, dir) runs four checks — discrimination (good>bad), determinism (variance bound), infra-abstention, and golden-set isolation — and returns a signed-off verdict. CLI: `python3 scripts/ai/lib/eval_integrity.py` exits 0 iff trustworthy. This is the orchestrator sign-off mechanized; NO downstream automation (R2 fine-tune, R4 shadow loop) may trust scores until a scorer passes.",
+  "test_evidence": {
+    "unit": "test-eval-integrity.py 7/7 — certifies the reference scorer; REJECTS non-discriminating (always-1.0), non-deterministic (random), and infra-noise-grading scorers; refuses to certify an agent-readable golden set (anti-gaming); exec_scorer abstains on noise + discriminates across json_parse/py_compile/keyword",
+    "live_finding": "the CURRENT training-loop scorer (aq-local-training-loop._score_response) FAILS the gate: discrimination failed (can't rank good>bad on 3 golden tasks) + scores infra-noise as capability (5 cases). Mechanizes the 'false 0/12' finding — the reward signal in use is NOT trustworthy (issues-backlog HIGH; R1.2 must adopt exec_scorer)."
+  },
+  "activation_gate": {
+    "integrated": true,
+    "on": "gate + reference scorer RUNNABLE now (CLI + library); wiring it into the loop's own scorer certification is R1.2",
+    "validated": true,
+    "observable": "gate returns machine-readable JSON (discrimination/determinism/abstention/isolation); CLI exit code",
+    "intervenable": "thresholds DETERMINISM_STDEV_MAX / DISCRIMINATION_MIN_MARGIN tunable; golden set + isolation marker under data/golden/"
+  },
+  "rollback": "eval_integrity.py + data/golden/ are purely additive (new files); nothing in the running system depends on them yet. Remove to revert.",
+  "adopted_amendments_satisfied": [
+    "amendment 1 (discrimination + determinism + infra-abstain + adversarial good/bad refs)",
+    "amendment 7 / antigravity (golden-test isolation — gate refuses to certify a readable golden set)"
+  ],
+  "deferred": "R1.2 (replace the loop's _score_response with exec_scorer so the loop's own signal passes the gate; run the gate at loop startup; block automation when uncertified). R1.1 golden CORPUS expansion (antigravity/codex design — this ships seed fixtures only). Shadow/canary datasets (R1.3 follow-up)."
+}
