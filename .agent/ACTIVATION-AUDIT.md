@@ -231,3 +231,19 @@ Kills the RESUME.json clobber class: append-only event log + per-field-merged pr
 | Intervenable | ✅ A2A_EVENT_LOG / RESUME_JSON_PATH / PULSE_LOG_PATH overrides; unsigned-v1 mode + optional HMAC signing (A2A_EVENT_SIGNING_KEY) |
 
 Real-world stress this cycle: an early E2E test clobbered the live RESUME.json (asymmetric path config — input overridable, output not). Fixed (call-time overridable output + guard test), logged (issues-backlog), and the irony noted — the slice that kills clobber was tested by surviving one. Deferred: signing enforcement (accept unsigned in v1), Redis as required transport (file is truth; Redis optional mirror), full agent migration to emit-only.
+
+---
+
+# Slice: distributed trace primitive on the event bus (WS5, god-tier prompt 4) (2026-07-09, claude-fable-5)
+
+One trace per intent, CLI→dispatch→model→tools, diagnosable from the trace alone. Local-first (no OTel collector required).
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ Envelope trace_id/span_id/parent_span_id (signed); scripts/ai/lib/trace.py (span ctx-mgr, AQ_TRACE_ID/AQ_SPAN_ID env propagation, reconstruct + render_tree); dispatch.py DirectRunner model.generate span; aq-event trace CLI; dashboard GET /api/trace/{id} |
+| ON | ✅ trace lib + CLI ON now (built on the shipped event bus). dispatch spans activate on next local dispatch when a trace is ambient. Dashboard endpoint ⏸ on the batched dashboard restart. Callers opt in by setting AQ_TRACE_ID (aq-loop/aq-event can seed it) — full auto-seeding across all entrypoints is the follow-up. |
+| Validated | ✅ test-trace.py 5/5: nested tree, **failure diagnosable from trace alone** (deep error pinpointed by span+message), cross-process env propagation, incomplete/crashed span surfaced, untraced events excluded. Live waterfall rendered with an injected error. |
+| Observable | ✅ aq-event trace <id> waterfall; /api/trace/{id} JSON; spans ARE events (aq-event tail shows trace=) |
+| Intervenable | ✅ tracing is opt-in (no AQ_TRACE_ID = no-op); optional OTLP export hook (OTEL_EXPORTER_OTLP_ENDPOINT) |
+
+Design: a trace is the set of events sharing trace_id; the event bus (WS2) is the substrate, so no collector infra is needed on APU-class hardware. OTLP export is a stub hook for when a collector exists. Follow-up: auto-seed AQ_TRACE_ID at every CLI entrypoint, span the switchboard + tool layers, and render the waterfall in the WS6 console.

@@ -2324,6 +2324,35 @@ async def get_loop_status() -> Dict[str, Any]:
     }
 
 
+@router.get("/trace/{trace_id}")
+async def get_trace(trace_id: str) -> Dict[str, Any]:
+    """Reconstructed span tree for a trace_id (WS5) — one intent, end to end.
+
+    Pure read of the A2A event log; the future console renders this as a
+    waterfall. Any failed run is diagnosable from the returned tree alone.
+    """
+    lib = _repo_root() / "scripts" / "ai" / "lib"
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+    if str(_repo_root()) not in sys.path:
+        sys.path.insert(0, str(_repo_root()))
+    try:
+        import trace as tracing  # type: ignore
+
+        def _node(n) -> Dict[str, Any]:
+            return {
+                "span_id": n.span_id, "name": n.name, "agent": n.agent,
+                "status": n.status, "duration_s": n.duration_s, "error": n.error,
+                "children": [_node(c) for c in n.children],
+            }
+
+        roots = tracing.reconstruct(trace_id)
+        return {"available": True, "trace_id": trace_id,
+                "spans": [_node(r) for r in roots], "found": bool(roots)}
+    except Exception as exc:
+        return {"available": False, "trace_id": trace_id, "error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/scheduler/queue")
 async def get_scheduler_queue() -> Dict[str, Any]:
     """Banded local-slot queue (F2.5 slot_queue) — bands, waits, depth.

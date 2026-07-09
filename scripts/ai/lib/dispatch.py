@@ -26,6 +26,7 @@ Usage (called by the delegate-to-local bash shim):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -147,6 +148,23 @@ try:
     import auto_assign as _auto_assign  # type: ignore  # noqa: E402
 except ImportError:
     _auto_assign = None  # type: ignore[assignment]
+
+# Distributed tracing (WS5): span around local model generation, inheriting the
+# ambient trace (AQ_TRACE_ID/AQ_SPAN_ID from the calling CLI). Optional import.
+try:
+    import trace as _tracing  # type: ignore  # noqa: E402
+except ImportError:
+    _tracing = None  # type: ignore[assignment]
+
+
+@contextlib.contextmanager
+def _maybe_span(name, **attrs):
+    """Open a trace span if tracing is available and a trace is active; else no-op."""
+    if _tracing is not None and _tracing.current_trace_id():
+        with _tracing.span(name, agent="local", attrs=attrs) as s:
+            yield s
+    else:
+        yield None
 
 
 # ── Phase 163: local inference budget + visibility ───────────────────────────
@@ -561,8 +579,11 @@ class DirectRunner:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+        _gen_span = _maybe_span(
+            "model.generate", task_type=config.task_type or "agent",
+            max_tokens=config.max_tokens, role=config.role or "")
         try:
-            with urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
+            with _gen_span as _span, urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
                 tokens_in = tokens_out = 0
                 _stream_toks = 0  # content-chunk count; proxy for tokens_out mid-stream
                 resp.fp.raw._sock.settimeout(config.timeout_secs)

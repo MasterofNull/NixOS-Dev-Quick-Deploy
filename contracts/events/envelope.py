@@ -45,6 +45,12 @@ class Envelope(BaseModel):
     subject: Optional[str] = None          # what the event is about (file/scope/round)
     payload: dict[str, Any] = Field(default_factory=dict)
     sig: Optional[str] = None              # HMAC-SHA256 hex over canonical body
+    # Distributed tracing (WS5): one trace_id per operator intent flows CLI ->
+    # bus -> dispatch -> model -> tools -> commit. span_id/parent_span_id form
+    # the tree. All optional so non-traced events are unaffected.
+    trace_id: Optional[str] = None
+    span_id: Optional[str] = None
+    parent_span_id: Optional[str] = None
 
     # ── signing ──────────────────────────────────────────────────────────────
     def _canonical_body(self) -> bytes:
@@ -57,6 +63,9 @@ class Envelope(BaseModel):
             "type": self.type,
             "subject": self.subject,
             "payload": self.payload,
+            "trace_id": self.trace_id,
+            "span_id": self.span_id,
+            "parent_span_id": self.parent_span_id,
         }
         return json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
 
