@@ -294,3 +294,19 @@ Local drafts, verifier scores confidence, remote polishes only below threshold. 
 | Intervenable | ✅ CASCADE_ENABLED=0, per-task --threshold, CASCADE_REMOTE_LANE codex|antigravity |
 
 Measurement: the ledger accrues per-task-class savings vs fan-out so "keep whichever wins per class" is data-driven over time (the two-week comparison the prompt asks for). Confidence scoring is heuristic (no verifier model) — when SMALL_RESIDENT lands (prompt 6) it can back score_confidence() behind the same interface. Follow-up: route the cascade into aq-collab-round as a `--mode cascade` alternative to fan-out.
+
+---
+
+# Slice: unified aq router + usage telemetry (WS4, god-tier prompt 8) (2026-07-09, claude-fable-5)
+
+One entrypoint over 133 aq-* scripts; retirement becomes DATA-DRIVEN, not opinion.
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ evolved existing scripts/ai/aq: auto-discovery fallback (any aq-<name> reachable as `aq <name>` — all 139 routable incl new aq-event/aq-cascade, previously unmapped); usage telemetry on every invocation; `aq usage` retirement view; `aq --commands` (generated completion source); lib/aq-shim.sh deprecation shim; aq-completions.sh _aq_router_complete |
+| ON | ✅ ON now. Kill switch AQ_USAGE_TELEMETRY=0. Shim applied to aq-qa as proof; rollout to more scripts is a one-line source each. |
+| Validated | ✅ test-aq-router.sh 7/7 (discovery routes+logs, unknown logged, aq usage aggregates, kill switch, shim direct-logs, shim suppresses under router, --commands includes discovered). Live: `aq event`/`aq cascade` route; `aq usage` shows counts. |
+| Observable | ✅ .agents/telemetry/aq-usage.jsonl; `aq usage` per-command counts + source (map/discovered/direct/unknown) |
+| Intervenable | ✅ AQ_USAGE_TELEMETRY=0; curated COMMAND_MAP still governs reasoning-profile tiering |
+
+Strangler v1: aq is a thin router+telemetry layer over the existing scripts (no rewrite). The prompt's "convert 30 highest-traffic + retire on telemetry" is now UNBLOCKED — telemetry must accrue first (chicken-and-egg: can't rank traffic without data). Follow-up once the ledger has a window: shim the top-N by usage, retire the zero-usage tail, and add noun/verb grouping to help.

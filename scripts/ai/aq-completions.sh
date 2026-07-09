@@ -99,9 +99,25 @@ _aq_chat_complete() {
 }
 
 # ---------------------------------------------------------------------------
+# aq router subcommand completion (god-tier prompt 8)
+# Generated from discovery: `aq --commands` emits every routable subcommand
+# (curated map + all discovered aq-<name>), so new scripts are instantly
+# tab-completable with no wordlist to maintain.
+# ---------------------------------------------------------------------------
+_aq_router_complete() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        local _aq_bin="${AQ_BIN:-$(command -v aq 2>/dev/null)}"
+        [[ -z "$_aq_bin" ]] && return
+        COMPREPLY=( $(compgen -W "$("$_aq_bin" --commands 2>/dev/null)" -- "$cur") )
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Register completions
 # ---------------------------------------------------------------------------
 if command -v complete >/dev/null 2>&1; then
+    complete -F _aq_router_complete      aq
     complete -F _aq_hints_complete       aq-hints
     complete -F _aq_report_complete      aq-report
     complete -F _aq_prompt_eval_complete aq-prompt-eval
