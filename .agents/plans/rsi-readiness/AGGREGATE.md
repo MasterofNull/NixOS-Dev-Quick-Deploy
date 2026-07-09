@@ -1,7 +1,7 @@
 # Round rsi-readiness — Orchestrator Aggregate (OPEN — folds local on land)
 
-**Aggregated**: 2026-07-09 by claude-fable-5 · **Lanes landed**: 3/4 substantive (claude, codex, antigravity); local running (fold on land).
-**Status**: RATIFIED (3/4 substantive lanes concur — quorum met) — round stays OPEN; local's contribution amended in when it lands (never-skip-local).
+**Aggregated**: 2026-07-09 by claude-fable-5 · **Lanes landed**: 4/4 (claude, codex, antigravity, local — all substantive).
+**Status**: RATIFIED — FINAL. All four lanes concur (RATIFY ×2 + RATIFY-WITH-AMENDMENTS ×2). Local (Qwen) landed a genuine, well-formed ratification this round (2149B — not a stub), a positive capability signal on the bounded-scoring task; its scores (R1 9, R4 9, R7 9) match consensus and it reinforced antigravity's KV-thrash + operator-fatigue risks and added strict tool-level shadow confinement (folds into R4). Score means now over 4 lanes: R1 9.25 · R4 9.0 · R7 8.75 · R8 9.0 (claude+antigravity).
 
 ## Verdict: RATIFIED — all three substantive lanes ratify-family
 
