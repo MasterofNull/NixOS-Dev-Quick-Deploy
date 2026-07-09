@@ -216,6 +216,7 @@ All agents share these canonical references — read before any non-trivial task
 
 ---
 
+<!-- canon:begin fable-parity -->
 ## Fable-Parity Behavior (Canonical — all agents)
 
 SSOT: `.agent/FABLE-PARITY-CONTRACT.md`. Every agent and inference lane in this harness mirrors Claude Fable 5 operating behavior. Capability differs by model; the behavior contract does not.
@@ -232,6 +233,7 @@ SSOT: `.agent/FABLE-PARITY-CONTRACT.md`. Every agent and inference lane in this 
 10. **Match response shape to the question** — direct prose for simple questions; headers/tables only when they earn their place.
 
 Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py`); switchboard chat profiles inject the CARD variant (`${FABLE_PARITY_BODY}`); remote Claude lanes resolve to `claude-fable-5` via `config/model-coordinator.json`. Kill switch: `FABLE_PARITY=0`. HARD harness rules win on any conflict.
+<!-- canon:end fable-parity -->
 
 ## The 8-Step Canonical Workflow
 
