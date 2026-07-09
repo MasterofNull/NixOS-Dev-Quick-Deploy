@@ -2328,48 +2328,61 @@ async def get_loop_status() -> Dict[str, Any]:
 async def get_trace(trace_id: str) -> Dict[str, Any]:
     """Reconstructed span tree for a trace_id (WS5) — one intent, end to end.
 
-    Pure read of the A2A event log; the future console renders this as a
-    waterfall. Any failed run is diagnosable from the returned tree alone.
+    Reads the A2A event-log JSONL DIRECTLY and reconstructs the tree inline —
+    NO import of the CLI's trace/event_log/contracts modules. A separate
+    long-lived service must not couple to another package's sys.path/sys.modules
+    state (that coupling caused intermittent 'No module named contracts'). The
+    log format is a stable contract: one JSON envelope per line.
     """
     try:
-        tracing = _load_trace_module()
-
-        def _node(n) -> Dict[str, Any]:
-            return {
-                "span_id": n.span_id, "name": n.name, "agent": n.agent,
-                "status": n.status, "duration_s": n.duration_s, "error": n.error,
-                "children": [_node(c) for c in n.children],
-            }
-
-        roots = tracing.reconstruct(trace_id)
-        return {"available": True, "trace_id": trace_id,
-                "spans": [_node(r) for r in roots], "found": bool(roots)}
+        log_path = Path(os.environ.get("A2A_EVENT_LOG")
+                        or (_repo_root() / ".agents" / "events" / "a2a-events.jsonl"))
+        ends: Dict[str, Dict[str, Any]] = {}
+        starts: Dict[str, float] = {}
+        try:
+            raw = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            raw = ""
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if ev.get("trace_id") != trace_id or not ev.get("span_id"):
+                continue
+            payload = ev.get("payload") or {}
+            sid = ev["span_id"]
+            if ev.get("type") == "trace.span.start":
+                starts[sid] = payload.get("start_ts", ev.get("ts", 0.0))
+            elif ev.get("type") == "trace.span.end":
+                ends[sid] = {
+                    "span_id": sid, "parent_span_id": ev.get("parent_span_id"),
+                    "name": ev.get("subject") or "?", "agent": ev.get("agent") or "?",
+                    "status": payload.get("status", "unset"),
+                    "duration_s": (payload.get("attrs") or {}).get("duration_s"),
+                    "error": payload.get("error"),
+                    "start_ts": payload.get("start_ts", ev.get("ts", 0.0)),
+                    "children": [],
+                }
+        # Start-only spans (crashed before end) surface as incomplete.
+        for sid, st in starts.items():
+            ends.setdefault(sid, {"span_id": sid, "parent_span_id": None,
+                                  "name": "?(incomplete)", "agent": "?",
+                                  "status": "incomplete", "duration_s": None,
+                                  "error": None, "start_ts": st, "children": []})
+        roots = []
+        for node in ends.values():
+            parent = ends.get(node["parent_span_id"]) if node["parent_span_id"] else None
+            (parent["children"] if parent else roots).append(node)
+        for node in ends.values():
+            node["children"].sort(key=lambda n: n["start_ts"])
+        roots.sort(key=lambda n: n["start_ts"])
+        return {"available": True, "trace_id": trace_id, "spans": roots, "found": bool(roots)}
     except Exception as exc:
         return {"available": False, "trace_id": trace_id, "error": f"{type(exc).__name__}: {exc}"}
-
-
-@lru_cache(maxsize=1)
-def _load_trace_module():
-    """Load scripts/ai/lib/trace.py by explicit file path.
-
-    Avoids the stdlib `trace` name collision (a plain `import trace` may return
-    Python's coverage-tracer) AND ensures repo-root is on sys.path so the
-    transitive `from contracts.events import Envelope` resolves inside the
-    dashboard process.
-    """
-    import importlib.util
-    repo = _repo_root()
-    lib = repo / "scripts" / "ai" / "lib"
-    for p in (str(repo), str(lib)):
-        if p not in sys.path:
-            sys.path.insert(0, p)
-    spec = importlib.util.spec_from_file_location("_aq_trace", str(lib / "trace.py"))
-    mod = importlib.util.module_from_spec(spec)
-    # Register BEFORE exec so @dataclass in trace.py can resolve cls.__module__
-    # (dataclasses looks the module up in sys.modules during class processing).
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 @router.get("/scheduler/queue")
