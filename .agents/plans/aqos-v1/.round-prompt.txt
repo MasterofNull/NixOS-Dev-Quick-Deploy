@@ -1,9 +1,6 @@
-# A2A task for antigravity — round 'aqos-v1'
-
-Dropped: 2026-07-09T17:53:37Z
-
-Respond by writing `.agents/plans/aqos-v1/antigravity.md`.
-
+COLLABORATIVE ROUND 'aqos-v1'.
+Review artifact: .agents/plans/aqos-v1 (read it).
+TASK:
 # Round: aqos-v1 — PRD Ratification & Slice Claiming
 
 You are one expert lane in a 4-agent flat collaborative round (claude, codex, antigravity, local).
@@ -36,3 +33,5 @@ Which PLAN.md slices you claim for your lane in Beats 1-3, honoring the delegati
 - Lead with the outcome; final answer self-contained (Fable-parity).
 - Local lane: if budget-constrained, sections 1 and 5 are mandatory, 2-4 best-effort.
 - Do NOT implement anything in this round. Do NOT commit. Orchestrator aggregates.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/aqos-v1/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.

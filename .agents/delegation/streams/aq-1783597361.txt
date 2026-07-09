@@ -1,0 +1,1 @@
+COMPLETED: Wrote local lane ratification output to .agents/plans/aqos-v1/local.md with scores, amendments, risks, slice claims, and verdict.

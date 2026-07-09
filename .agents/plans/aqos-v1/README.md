@@ -1,9 +1,9 @@
-# A2A task for antigravity — round 'aqos-v1'
+# Collaborative Round — aqos-v1
 
-Dropped: 2026-07-09T17:53:37Z
+Opened: 2026-07-09T11:42:40Z
+Target artifact (if a review round): .agents/plans/aqos-v1
 
-Respond by writing `.agents/plans/aqos-v1/antigravity.md`.
-
+## Task
 # Round: aqos-v1 — PRD Ratification & Slice Claiming
 
 You are one expert lane in a 4-agent flat collaborative round (claude, codex, antigravity, local).
@@ -36,3 +36,10 @@ Which PLAN.md slices you claim for your lane in Beats 1-3, honoring the delegati
 - Lead with the outcome; final answer self-contained (Fable-parity).
 - Local lane: if budget-constrained, sections 1 and 5 are mandatory, 2-4 best-effort.
 - Do NOT implement anything in this round. Do NOT commit. Orchestrator aggregates.
+
+## Protocol
+Each agent writes its OWN file here — `codex.md`, `local.md`, `antigravity.md`, `claude.md`.
+NEVER append to a shared file. The orchestrator aggregates into `AGGREGATE.md`.
+- local[Qwen] runs long — the round stays OPEN for it; never skipped.
+- antigravity (Antigravity IDE, real Gemini via its OWN OAuth) picks up the task from the inbox
+  `.agent/collaboration/antigravity-inbox/aqos-v1.md` and writes `antigravity.md`. No API keys.
