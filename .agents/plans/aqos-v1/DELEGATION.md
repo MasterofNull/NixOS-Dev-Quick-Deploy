@@ -12,7 +12,7 @@ scripts/ai/aq-collab-round open --round aqos-v1 \
 scripts/ai/aq-collab-round collect --round aqos-v1     # poll + extract
 scripts/ai/aq-collab-round aggregate --round aqos-v1   # typed aggregation (F1.5)
 ```
-Antigravity inbox copy: `.agent/collaboration/antigravity-inbox/aqos-v1.md` (IDE OAuth lane, no keys).
+Antigravity inbox copy: `.agent/archive/antigravity-inbox-20260709/aqos-v1.md` (IDE OAuth lane, no keys).
 
 ## Expected lane outputs
 `.agents/plans/aqos-v1/{claude,codex,antigravity,local}.md` per ROUND-PROMPT contract →

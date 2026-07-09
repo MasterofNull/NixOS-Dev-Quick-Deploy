@@ -1287,10 +1287,10 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Action: Add stale-pid/log-progress detection to Codex delegation status and `aq-collab-round collect`, matching the local lane's heartbeat/progress model. Retried the usability-parity-v2 Codex lane as `codex-20260708-231458-tgnak0xxxxxx`, which repeated the no-live-pid/zero-output failure; active Codex session landed `.agents/plans/usability-parity-v2/codex.md` directly. 2026-07-09 update: `aq-delegation-registry reconcile` repaired three stale Codex registry rows (`codex-20260708-224654-s4kn7lxxxxxx`, `codex-20260708-230805-yq4n07xxxxxx`, `codex-20260708-231458-tgnak0xxxxxx`) after PID checks confirmed no live processes. Remaining root fix is automatic terminal-state transition in `delegate-to-codex`/collector/dashboard views, not manual reconcile.
   File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; .agents/delegation/outputs/codex-20260708-230805-yq4n07xxxxxx.log
 
-[OPEN] antigravity-inbox-watcher-visibility-gap — Antigravity IDE and Gemini Code Assist A2A processes are running, and `aq-collab-round` dropped `.agent/collaboration/antigravity-inbox/usability-parity-v2.md`, but no `.agents/plans/usability-parity-v2/antigravity.md` landed and there is no first-class watcher status explaining whether the IDE saw, ignored, failed, or is still processing the inbox task.
+[OPEN] antigravity-inbox-watcher-visibility-gap — Antigravity IDE and Gemini Code Assist A2A processes are running, and `aq-collab-round` dropped `.agent/archive/antigravity-inbox-20260709/usability-parity-v2.md`, but no `.agents/plans/usability-parity-v2/antigravity.md` landed and there is no first-class watcher status explaining whether the IDE saw, ignored, failed, or is still processing the inbox task.
   Severity: medium
   Action: PARTIAL 2026-07-09 — fixed the prompt path contradiction and added known-legacy Antigravity output recovery plus proposal warnings in `aq-collab-round collect`; remaining work is richer dashboard/TUI watcher state with inbox file mtime, expected output path, IDE process presence, last response mtime, and explicit `inbox_pending|inbox_unavailable|inbox_landed` states.
-  File: scripts/ai/aq-collab-round; scripts/ai/aq-tui-dashboard; .agent/collaboration/antigravity-inbox/usability-parity-v2.md
+  File: scripts/ai/aq-collab-round; scripts/ai/aq-tui-dashboard; .agent/archive/antigravity-inbox-20260709/usability-parity-v2.md
 
 [DONE] usability-parity-prompt-output-path-contradiction — The shared expert-team prompt still instructed agents to write `.agents/plans/usability-parity/<agent>.md`, while `aq-collab-round` correctly appended `.agents/plans/usability-parity-v2/<agent>.md`; Antigravity followed the stale instruction and landed in the superseded round.
   Severity: medium
@@ -1556,11 +1556,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 
 ## [OPEN-OPERATOR] Antigravity lane never worked — IDE not wired to watch inbox
 - **Status**: OPEN (harness-side fixed 2026-07-09: liveness detection added; remaining fix is operator IDE setup)
-- **Scope**: aq-collab-round antigravity lane — drops task files into .agent/collaboration/antigravity-inbox/ expecting the Antigravity IDE to consume them, but the IDE has NO workflow watching that folder. 13 stale unconsumed files accumulated (oldest 47h). Lane hung 'pending' forever with no signal.
+- **Scope**: aq-collab-round antigravity lane — drops task files into .agent/archive/antigravity-inbox-20260709/ expecting the Antigravity IDE to consume them, but the IDE has NO workflow watching that folder. 13 stale unconsumed files accumulated (oldest 47h). Lane hung 'pending' forever with no signal.
 - **Root cause**: the "watched inbox" was aspirational — no IDE-side workflow/rule polls the folder. Switchboard->Gemini headless is intentionally refused (no-keys policy: OpenRouter key != Gemini endpoint), so the IDE inbox is the ONLY sanctioned Gemini transport, and it was never actually wired.
 - **Severity**: MED (rounds silently stuck at N-1/N; aggregation proceeds without the lane)
 - **Action taken (harness)**: _antigravity_inbox_live() detects stale/unconsumed inbox + IDE process state; round now reports "UNAVAILABLE: <reason>" with actionable guidance instead of hanging
-- **Action remaining (OPERATOR)**: configure the Antigravity IDE with a workflow/rule that watches .agent/collaboration/antigravity-inbox/*.md, executes the task, writes .agents/plans/<round>/antigravity.md, and deletes/renames the consumed inbox file (deletion is the liveness signal the harness reads). Until then the antigravity lane is unavailable by design, not by bug.
+- **Action remaining (OPERATOR)**: configure the Antigravity IDE with a workflow/rule that watches .agent/archive/antigravity-inbox-20260709/*.md, executes the task, writes .agents/plans/<round>/antigravity.md, and deletes/renames the consumed inbox file (deletion is the liveness signal the harness reads). Until then the antigravity lane is unavailable by design, not by bug.
 
 ## [DONE] Antigravity liveness self-reinforcing UNAVAILABLE loop (diagnosed by antigravity lane)
 - **Status**: DONE (2026-07-09) — redesigned + backlog archived

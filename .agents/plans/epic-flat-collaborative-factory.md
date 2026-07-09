@@ -35,7 +35,7 @@ integrated into A2A, the switchboard, and all local-hosted systems/features — 
 Current state: it only participates when the human drives the IDE to read a file handoff and write a
 response. Integration path (DECIDED 2026-07-07 — operator: NO API keys, too risky; use the IDE's own OAuth):
 - **CHOSEN — Watched A2A inbox (IDE OAuth, no keys):** the harness drops a task file into
-  `.agent/collaboration/antigravity-inbox/<round>.md` (wired in `aq-collab-round`); the Antigravity
+  `.agent/archive/antigravity-inbox-20260709/<round>.md` (wired in `aq-collab-round`); the Antigravity
   IDE agent — authenticated by its OWN OAuth session, which we never touch — watches the inbox and
   responds by writing `antigravity.md`. Real Gemini, no API key crosses the boundary.
   OPERATOR TODO: configure the Antigravity IDE with a rule/agent that watches the inbox dir.
