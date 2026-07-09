@@ -122,10 +122,16 @@
       "source_url": "https://github.com/github/github-mcp-server",
       "maturity": "official",
       "priority": "high",
-      "state": "blocked-auth-runtime",
-      "review_status": "blocked",
-      "blocked_reason": "gh auth token is invalid and no Docker, Podman, or github-mcp-server runtime is available on PATH.",
-      "unblock_condition": "Provide a scoped GitHub OAuth/PAT path and a pinned local/remote MCP runtime before enabling.",
+      "state": "enabled",
+      "pinned_version": "0.20.2",
+      "review_status": "accepted-with-mitigations",
+      "mitigations": [
+        "github-mcp-server is available on PATH",
+        "token resolution is centralized in scripts/ai/mcp-github-server",
+        "wrapper enforces --read-only",
+        "wrapper limits toolsets to context,repos,issues,pull_requests,actions,code_security",
+        "write-capable GitHub tools remain blocked pending a separate promotion review"
+      ],
       "install": {
         "type": "mcp",
         "command": "github-mcp-server",
@@ -147,7 +153,7 @@
       },
       "value": "PR, issue, Actions, and code-security context without write access.",
       "risks": ["external-api-token", "repository-metadata-exposure"],
-      "activation_notes": "Do not enable write tools until a separate promotion review."
+      "activation_notes": "Enabled as read-only via scripts/ai/mcp-github-server. The wrapper resolves SOPS/gh auth tokens, enforces --read-only, and limits toolsets to context,repos,issues,pull_requests,actions,code_security."
     },
     {
       "id": "osv-scanner",
@@ -156,7 +162,7 @@
       "source_url": "https://github.com/google/osv-scanner",
       "maturity": "official",
       "priority": "very-high",
-      "state": "pending-rebuild",
+      "state": "enabled",
       "pinned_version": "2.2.4",
       "review_status": "accepted-with-mitigations",
       "mitigations": [
@@ -164,9 +170,8 @@
         "read-only source scanning only",
         "no secrets configured",
         "external OSV API use is explicit and visible in candidate permissions",
-        "candidate remains pending-rebuild until the binary is on PATH"
+        "live PATH verification passed with osv-scanner under /run/current-system/sw/bin"
       ],
-      "unblock_condition": "Run the NixOS rebuild, verify osv-scanner is on PATH, then promote state to enabled.",
       "install": {
         "type": "cli",
         "command": "osv-scanner",
@@ -181,7 +186,7 @@
       },
       "value": "Dependency vulnerability scanning for imported plugins and repo lockfiles.",
       "risks": ["external-vulnerability-api"],
-      "activation_notes": "Declared through Nix system packages at version 2.2.4; pending rebuild before live use."
+      "activation_notes": "Enabled with Nix/system-provided OSV-Scanner 2.2.4 after live PATH verification. Use read-only source/SBOM scans and keep external OSV API use explicit."
     },
     {
       "id": "trivy",
@@ -225,7 +230,7 @@
       "secondary_source_url": "https://github.com/anchore/grype",
       "maturity": "mature",
       "priority": "high",
-      "state": "pending-rebuild",
+      "state": "enabled",
       "pinned_version": "syft-1.38.0+grype-0.104.1",
       "review_status": "accepted-with-mitigations",
       "mitigations": [
@@ -233,9 +238,8 @@
         "SBOM writes are report-output-only",
         "raw local SBOMs are not committed by default",
         "no secrets configured",
-        "candidate remains pending-rebuild until both binaries are on PATH"
+        "live PATH verification passed with syft and grype under /run/current-system/sw/bin"
       ],
-      "unblock_condition": "Run the NixOS rebuild, verify syft and grype are on PATH, then promote state to enabled.",
       "install": {
         "type": "cli",
         "command": "syft",
@@ -250,7 +254,7 @@
       },
       "value": "Generate SBOMs and scan them before imported capabilities are promoted.",
       "risks": ["report-artifact-management", "external-db-update"],
-      "activation_notes": "Declared through Nix system packages at syft 1.38.0 and grype 0.104.1; pending rebuild before live use. Write reports under .reports/security/ and never commit raw local-only SBOMs by default."
+      "activation_notes": "Enabled with Nix/system-provided Syft 1.38.0 and Grype 0.104.1 after live PATH verification. Write reports under .reports/security/ and never commit raw local-only SBOMs by default."
     },
     {
       "id": "mcp-admission-controller",

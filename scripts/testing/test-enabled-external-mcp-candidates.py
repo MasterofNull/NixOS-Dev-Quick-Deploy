@@ -64,7 +64,9 @@ def main() -> int:
     candidates = {item["id"]: item for item in registry["candidates"]}
     assert_enabled_candidate(candidates["playwright-mcp"], "0.0.76")
     assert "@playwright/mcp@0.0.76" in candidates["playwright-mcp"]["install"]["args"]
-    assert candidates["github-mcp-readonly"]["state"] == "blocked-auth-runtime", "GitHub MCP requires valid auth and runtime before enablement"
+    assert_enabled_candidate(candidates["github-mcp-readonly"], "0.20.2")
+    assert candidates["github-mcp-readonly"]["install"]["args"][0] == "--read-only"
+    assert candidates["github-mcp-readonly"]["permissions"]["writes"] is False
     assert_enabled_candidate(candidates["semgrep-mcp"], "0.9.0")
     assert "semgrep-mcp==0.9.0" in candidates["semgrep-mcp"]["install"]["args"]
     assert candidates["semgrep-mcp"]["permissions"]["secrets"] is False
@@ -79,12 +81,12 @@ def main() -> int:
     assert candidates["observability-query-skill"]["permissions"]["network"] == "localhost"
     assert_enabled_candidate(candidates["nixos-specialist-tool-pack"], "statix-0.5.8+deadnix-1.3.1")
     assert candidates["nixos-specialist-tool-pack"]["install"]["command"] == "scripts/governance/nix-static-analysis.sh"
-    assert candidates["osv-scanner"]["state"] == "pending-rebuild"
-    assert candidates["osv-scanner"]["pinned_version"] == "2.2.4"
-    assert candidates["osv-scanner"]["review_status"] == "accepted-with-mitigations"
-    assert candidates["syft-grype"]["state"] == "pending-rebuild"
-    assert candidates["syft-grype"]["pinned_version"] == "syft-1.38.0+grype-0.104.1"
-    assert candidates["syft-grype"]["review_status"] == "accepted-with-mitigations"
+    assert_enabled_candidate(candidates["osv-scanner"], "2.2.4")
+    assert candidates["osv-scanner"]["install"]["command"] == "osv-scanner"
+    assert candidates["osv-scanner"]["permissions"]["secrets"] is False
+    assert_enabled_candidate(candidates["syft-grype"], "syft-1.38.0+grype-0.104.1")
+    assert candidates["syft-grype"]["install"]["command"] == "syft"
+    assert candidates["syft-grype"]["permissions"]["secrets"] is False
     assert candidates["code-intelligence-graph-layer"]["state"] == "blocked-graph-incomplete"
 
     print("PASS: enabled external MCP candidates are pinned and bounded")

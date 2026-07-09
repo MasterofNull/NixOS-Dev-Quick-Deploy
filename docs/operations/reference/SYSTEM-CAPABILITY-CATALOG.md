@@ -34,7 +34,7 @@ External ingestion gate: `capability-intake`
 | aq-inference-bench | local-inference | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-inference-bench.py` |
 | dashboard-observability | observability | feature-surface | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | osint-research-store | osint | dataset-workflow | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-osint-research-ingest.py` |
-| github-mcp-readonly | repository-intelligence | external-mcp | blocked-auth-runtime | needs-review / high | codex, claude | `python3 scripts/testing/test-capability-intake.py` |
+| github-mcp-readonly | repository-intelligence | external-mcp | enabled | accepted-with-mitigations / high | codex, claude | `python3 scripts/testing/test-capability-intake.py` |
 | capability-intake | security-governance | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-capability-intake.py` |
 | t3mp3st-intake | security-governance | repo-cli | blocked-security-intake | blocked-external-dual-use / high | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-tempest.py`<br>`python3 scripts/testing/test-capability-intake.py` |
 | semgrep-mcp | security-scanning | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
@@ -201,12 +201,12 @@ Passive public-source ingest and query path for source-grounded OSINT research r
 
 ### github-mcp-readonly
 
-Read-only GitHub repository and PR intelligence; blocked until token scope and runtime are reviewed.
+Read-only GitHub repository, PR, Actions, and code-security intelligence through the local token-resolving MCP wrapper.
 
 - Name: GitHub MCP Read-only
 - Owner: agent-runtime
 - Maturity: official
-- State: blocked-auth-runtime
+- State: enabled
 - Primary refs: `config/agent-capability-intake-candidates.json`
 - Data stores: none
 - Parity targets: GitHub MCP releases, code review agents, CI diagnosis agents

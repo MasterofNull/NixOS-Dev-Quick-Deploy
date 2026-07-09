@@ -42,7 +42,8 @@ def main() -> int:
     assert "unpinned-version" not in reports["semgrep-mcp"]["risk_flags"]
     assert reports["mcp-admission-controller"]["admission"] == "accepted-with-mitigations"
     assert reports["mcp-admission-controller"]["state"] == "enabled"
-    assert reports["github-mcp-readonly"]["admission"] in {"needs-review", "review-recommended"}
+    assert reports["github-mcp-readonly"]["admission"] == "accepted-with-mitigations"
+    assert reports["github-mcp-readonly"]["state"] == "enabled"
     assert reports["github-mcp-readonly"]["unsafe_tool_count"] == 0
     assert reports["t3mp3st"]["state"] == "blocked-security-intake"
     assert reports["t3mp3st"]["admission"] in {"needs-review", "review-recommended", "blocked"}
