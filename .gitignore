@@ -182,8 +182,12 @@ nix/hosts/*/.sops.yaml
 .agents/attention/ATTENTION.json
 .agents/attention/ATTENTION_ARCHIVE.jsonl
 .agents/delegation/registry.jsonl
+.agents/delegation/scheduler-state.json
+.agents/delegation/scheduler-state.lock
+.agents/delegation/streams/
 .agents/delegation/training-loop-checkpoint.json
 .agents/delegation/training-loop-results.jsonl
+.agents/events/*.jsonl
 .agents/telemetry/*.jsonl
 .agents/observability/
 .agents/health-monitor/
