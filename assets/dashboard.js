@@ -1657,9 +1657,25 @@ async function loadLearning() {
     badge.className = `card-badge ${paused ? "badge-warn" : loopBadgeCls}`;
   }
 
+  // Pass-rate collapse alarm (backend pass_rate_alert): a 0/12 regression must
+  // never again sit visible-only-to-curl. Critical overrides the badge.
+  const alert = loop?.pass_rate_alert;
+  if (alert && badge) {
+    badge.textContent = alert.level === "critical" ? "EVAL COLLAPSE" : "eval regression";
+    badge.className = `card-badge ${alert.level === "critical" ? "badge-err" : "badge-warn"}`;
+  }
+  const alertRow = alert
+    ? [fwRow(
+        "⚠ Pass-Rate Alert",
+        `${alert.reason}${alert.previous_pass_rate != null ? ` (prev ${Math.round(alert.previous_pass_rate * 100)}%)` : ""}`,
+        alert.level === "critical" ? "err" : "warn"
+      )]
+    : [];
+
   const captures = loop?.captures || {};
   const teacher = loop?.teacher || {};
   el.innerHTML = [
+    ...alertRow,
     fwRow("Loop Status", loopStatus, statusColor(loopStatus)),
     fwRow("Loop Phase", loopPhase, statusColor(loopPhase)),
     fwRow(
@@ -2647,6 +2663,52 @@ async function loadTaskClassifier() {
     .join("");
 }
 
+async function loadSlotQueue() {
+  // F2.5 banded local-slot queue — bands/waits/depth from scheduler-state.json.
+  const d = await apiFetch("/scheduler/queue");
+  const el = document.getElementById("queueDetails");
+  const badge = document.getElementById("queueBadge");
+  const kpi = document.getElementById("kpiQueueDepth");
+  if (kpi) {
+    kpi.textContent = d ? String(d.depth ?? "--") : "--";
+    kpi.className = `kpi-v${(d?.depth ?? 0) > 2 ? " warn" : ""}`;
+  }
+  if (!el) return;
+  if (!d || !d.available) {
+    el.innerHTML = fwRow("Status", "Unavailable", "warn");
+    return;
+  }
+  if (badge) {
+    badge.textContent = d.depth > 0 ? `${d.depth} queued` : d.running ? "busy" : "idle";
+    badge.className = `card-badge ${d.depth > 2 ? "badge-warn" : "badge-ok"}`;
+  }
+  const bandShort = (b) => (b || "").replace("P1_INTERACTIVE", "P1").replace("P2_CONSENSUS_VALIDATION", "P2").replace("P3_BACKGROUND_BATCH", "P3");
+  const rows = [
+    fwRow("Running", d.running ? `${bandShort(d.running.band)} ${String(d.running.id).split(":").pop()}` : "slot free", d.running ? "info" : "ok"),
+    fwRow("Depth", d.depth, d.depth > 2 ? "warn" : "ok"),
+    fwRow("Max Wait", d.max_wait_s != null ? `${Math.round(d.max_wait_s)}s` : "--", d.max_wait_s > 120 ? "warn" : ""),
+    ...(d.queue || []).slice(0, 5).map((j) =>
+      fwRow(bandShort(j.band), `${String(j.id).split(":").pop()} · ${Math.round(j.wait_s)}s${j.task_class ? ` · ${j.task_class}` : ""}`,
+        j.band === "P1_INTERACTIVE" ? "info" : "")),
+  ];
+  if (d.note) rows.push(fwRow("Note", d.note, "info"));
+  el.innerHTML = rows.join("");
+}
+
+async function loadApprovals() {
+  // Header HITL badge — pending approvals anywhere, one number, always visible.
+  const d = await apiFetch("/approvals/pending");
+  const kpi = document.getElementById("kpiApprovals");
+  if (!kpi) return;
+  if (!d || !d.available) {
+    kpi.textContent = "--";
+    return;
+  }
+  kpi.textContent = String(d.total);
+  kpi.className = `kpi-v${d.total > 0 ? " warn" : ""}`;
+  kpi.title = `repairs: ${d.repairs_pending_review} · deployments: ${d.deployment_approvals}`;
+}
+
 async function loadIntelligence() {
   // Wave 1 — above-fold panels + coordinator core (≤20 calls, avoid overwhelming coordinator)
   await Promise.allSettled([
@@ -2656,6 +2718,8 @@ async function loadIntelligence() {
     loadSwitchboard(),
     loadAIDB(),
     loadLearning(),
+    loadSlotQueue(),
+    loadApprovals(),
     loadDrift(),
     loadVerifier(),
     loadKnowledge(),
