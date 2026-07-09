@@ -1606,8 +1606,8 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Action**: golden suite excluded from agent read/search paths via a SYSTEM-LEVEL path filter (not just .gitignore); R1 acceptance must test that an agent cannot read the golden answers; pair with strict train/eval split
 - **Also from same round**: KV-cache eviction under parallel shadow agents (cache compiled prefix KV); quota starvation on remote cascade (token-budget rate limiter at switchboard level, feeds R8)
 
-## [OPEN-HIGH] Current training-loop scorer FAILS the R1.3 trustworthiness gate
-- **Status**: OPEN (surfaced by R1.3 eval_integrity gate 2026-07-09) — the evidence base for R1
+## [DONE] Current training-loop scorer FAILS the R1.3 trustworthiness gate (RESOLVED by R1.2)
+- **Status**: DONE (R1.2 2026-07-09) — _score_response now delegates to the certified exec_scorer + abstains on infra-noise; _certify_scorer() runs the gate at loop startup and records scorer_certified on the run; the loop scorer now PASSES the trustworthiness gate. Verified: test-loop-scorer-certified.py 4/4.
 - **Scope**: aq-local-training-loop._score_response (keyword-coverage + length) does NOT pass eval_integrity.trustworthiness_gate: fails discrimination (can't rank known-good > known-bad on the golden tasks) AND scores infra-noise (empty/timeout) as a capability miss instead of abstaining
 - **Root cause**: keyword coverage is not exec-based and has no abstention path; a gamed/noisy signal has been gating the closed loop
 - **Severity**: HIGH — this is the corruptible reward signal that makes RSI unsafe; R2 fine-tune and R4 shadow-loop must NOT trust these scores until fixed
