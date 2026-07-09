@@ -1535,3 +1535,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: MED (typed consensus state is misleading; human AGGREGATE.md governs, but the machine signal is wrong)
 - **Action**: add RATIFY-WITH-AMENDMENTS (map to RATIFY + amendments flag) to the verdict grammar; add REJECT-WITH-REASON etc.; unit-test the parser against the ROUND-PROMPT verdict vocabulary
 - **File pointers**: scripts/ai/aq-collab-round (aggregate subcommand / round_aggregate.py verdict extraction)
+
+## [OPEN-OPERATOR] Antigravity lane never worked — IDE not wired to watch inbox
+- **Status**: OPEN (harness-side fixed 2026-07-09: liveness detection added; remaining fix is operator IDE setup)
+- **Scope**: aq-collab-round antigravity lane — drops task files into .agent/collaboration/antigravity-inbox/ expecting the Antigravity IDE to consume them, but the IDE has NO workflow watching that folder. 13 stale unconsumed files accumulated (oldest 47h). Lane hung 'pending' forever with no signal.
+- **Root cause**: the "watched inbox" was aspirational — no IDE-side workflow/rule polls the folder. Switchboard->Gemini headless is intentionally refused (no-keys policy: OpenRouter key != Gemini endpoint), so the IDE inbox is the ONLY sanctioned Gemini transport, and it was never actually wired.
+- **Severity**: MED (rounds silently stuck at N-1/N; aggregation proceeds without the lane)
+- **Action taken (harness)**: _antigravity_inbox_live() detects stale/unconsumed inbox + IDE process state; round now reports "UNAVAILABLE: <reason>" with actionable guidance instead of hanging
+- **Action remaining (OPERATOR)**: configure the Antigravity IDE with a workflow/rule that watches .agent/collaboration/antigravity-inbox/*.md, executes the task, writes .agents/plans/<round>/antigravity.md, and deletes/renames the consumed inbox file (deletion is the liveness signal the harness reads). Until then the antigravity lane is unavailable by design, not by bug.
