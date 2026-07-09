@@ -9,6 +9,9 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Usage telemetry (god-tier prompt 8): records direct invocations so `aq usage`
+# sees both `aq qa` and direct `aq-qa` calls. Never fails the host script.
+source "$SCRIPT_DIR/lib/aq-shim.sh" 2>/dev/null || true
 # Phase 177: honor REPO_ROOT env var when set (coordinator calls Nix-store copy;
 # without this, SCRIPT_DIR resolves to the Nix store and git ops fail silently).
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"

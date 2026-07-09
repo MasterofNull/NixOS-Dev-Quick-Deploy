@@ -37,6 +37,30 @@ NC='\033[0m' # No Color
 # Profiles: simple, standard, deep
 AQ_REASONING_PROFILE="${AQ_REASONING_PROFILE:-standard}"
 
+# ── Usage telemetry (god-tier prompt 8) ────────────────────────────────────
+# Every invocation is logged so retirement of the 133 aq-* scripts is
+# DATA-DRIVEN, not opinion: `aq usage` shows what is actually used. Lightweight
+# append on the hot path (no subprocess). Kill switch: AQ_USAGE_TELEMETRY=0.
+AQ_USAGE_LEDGER="${AQ_USAGE_LEDGER:-$REPO_ROOT/.agents/telemetry/aq-usage.jsonl}"
+
+log_usage() {
+  # $1=command $2=resolved script $3=source(map|discovered|builtin|unknown)
+  [[ "${AQ_USAGE_TELEMETRY:-1}" == "0" ]] && return 0
+  local dir; dir="$(dirname "$AQ_USAGE_LEDGER")"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  printf '{"ts":%s,"command":"%s","script":"%s","source":"%s"}\n' \
+    "$(date +%s)" "${1//\"/}" "${2//\"/}" "${3}" >> "$AQ_USAGE_LEDGER" 2>/dev/null || true
+}
+
+# Resolve a bare command name to an aq-<name>[.py|.sh] script if one exists.
+discover_script() {
+  local name="$1" cand
+  for cand in "aq-$name" "aq-$name.py" "aq-$name.sh"; do
+    if [[ -x "$SCRIPT_DIR/$cand" ]]; then echo "$cand"; return 0; fi
+  done
+  return 1
+}
+
 # Map commands to their implementation
 # Format: command:script_path:reasoning_profile
 declare -A COMMAND_MAP=(
@@ -224,35 +248,83 @@ case "$COMMAND" in
     list_commands
     exit 0
     ;;
+  --commands)
+    # Machine-readable: curated map keys + every discovered aq-<name>, deduped.
+    # Completions consume this so they are GENERATED from discovery, never a
+    # stale static wordlist (a new aq-* script is instantly tab-completable).
+    {
+      for k in "${!COMMAND_MAP[@]}"; do echo "$k"; done
+      for f in "$SCRIPT_DIR"/aq-*; do
+        b="$(basename "$f")"; b="${b#aq-}"; b="${b%.py}"; b="${b%.sh}"
+        [[ -x "$f" ]] && echo "$b"
+      done
+      echo "usage"; echo "help"; echo "list"; echo "version"
+    } | sort -u
+    exit 0
+    ;;
   --version|-v|version)
     show_version
     exit 0
     ;;
+  usage|--usage)
+    # Data-driven retirement view: invocation counts per command from the ledger.
+    if [[ ! -s "$AQ_USAGE_LEDGER" ]]; then
+      echo "No usage recorded yet at $AQ_USAGE_LEDGER"
+      exit 0
+    fi
+    echo "aq usage (from $AQ_USAGE_LEDGER):"
+    python3 - "$AQ_USAGE_LEDGER" <<'PY'
+import json, sys
+from collections import Counter
+counts, sources = Counter(), {}
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        r = json.loads(line)
+    except Exception:
+        continue
+    counts[r.get("command", "?")] += 1
+    sources[r.get("command", "?")] = r.get("source", "?")
+for cmd, n in counts.most_common():
+    print(f"  {n:5d}  {cmd:30s} [{sources.get(cmd,'?')}]")
+print(f"\n  {len(counts)} distinct commands, {sum(counts.values())} invocations.")
+print("  Retirement candidates: distinct aq-* with 0 invocations after a telemetry window.")
+PY
+    exit 0
+    ;;
 esac
 
-# Look up command in map
+# Look up command in the curated map (keeps reasoning-profile tiering + help).
 if [[ -v "COMMAND_MAP[$COMMAND]" ]]; then
   IFS=':' read -r script profile <<< "${COMMAND_MAP[$COMMAND]}"
-  
+
   # Set reasoning profile for this command (can be overridden by environment)
   if [[ -z "${AQ_REASONING_PROFILE_OVERRIDE:-}" ]]; then
     export AQ_REASONING_PROFILE="$profile"
   fi
-  
-  # Execute the target script
+
   TARGET="$SCRIPT_DIR/$script"
-  
   if [[ ! -x "$TARGET" ]]; then
     echo -e "${RED}Error: Command script not found or not executable: $TARGET${NC}" >&2
     echo -e "Run ${YELLOW}aq --list${NC} to see available commands" >&2
     exit 1
   fi
-  
-  # Direct exec to avoid subprocess overhead
+  log_usage "$COMMAND" "$script" "map"
+  export AQ_VIA_ROUTER=1  # tell aq-shim.sh not to double-log this invocation
   exec "$TARGET" "$@"
 else
+  # Auto-discovery fallback (god-tier prompt 8): any aq-<name> is reachable as
+  # `aq <name>` with no manual map entry — so all 133 scripts work, and new
+  # ones are automatically routable. Usage is logged for data-driven retirement.
+  if DISCOVERED="$(discover_script "$COMMAND")"; then
+    log_usage "$COMMAND" "$DISCOVERED" "discovered"
+    export AQ_VIA_ROUTER=1  # tell aq-shim.sh not to double-log this invocation
+    exec "$SCRIPT_DIR/$DISCOVERED" "$@"
+  fi
+  log_usage "$COMMAND" "" "unknown"
   echo -e "${RED}Error: Unknown command: $COMMAND${NC}" >&2
-  echo -e "Run ${YELLOW}aq --list${NC} to see available commands" >&2
-  echo -e "Run ${YELLOW}aq --help${NC} for usage information" >&2
+  echo -e "Run ${YELLOW}aq --list${NC} to see available commands, ${YELLOW}aq usage${NC} for telemetry" >&2
   exit 1
 fi
