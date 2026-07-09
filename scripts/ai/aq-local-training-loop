@@ -71,6 +71,12 @@ EVAL_DIRECT_TIMEOUT_S = int(os.getenv("AQ_LOOP_DIRECT_TIMEOUT", "1800"))
 SUBMIT_TIMEOUT_S = int(os.getenv("AQ_LOOP_SUBMIT_TIMEOUT", "90"))
 WAIT_LOG_INTERVAL_S = int(os.getenv("AQ_LOOP_WAIT_LOG_INTERVAL", "300"))
 RUNAWAY_HARD_CAP_S = int(os.getenv("AQ_LOOP_RUNAWAY_HARD_CAP", "0"))
+# Model-readiness preflight: llama.cpp reloads the ~22.5GB model on every rebuild/restart and takes
+# minutes to serve. Running eval against a cold model scores a false 0/N (every direct dispatch times
+# out). Probe /health before eval and wait up to this budget; if still cold, DEFER the run rather than
+# record a bogus eval_failed. 0 disables the preflight.
+LLAMA_BASE_URL = os.getenv("LLAMA_CPP_BASE_URL", f"http://127.0.0.1:{os.getenv('LLAMA_PORT', '8080')}")
+MODEL_READY_TIMEOUT_S = int(os.getenv("AQ_LOOP_MODEL_READY_TIMEOUT", "300"))
 ACTIVE_RUN_ID: Optional[str] = None
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -305,6 +311,63 @@ def _artifact_newest_mtime(output_file: Optional[Path]) -> float:
 
 
 # ── delegation ─────────────────────────────────────────────────────────────────
+
+def _persist_result(result: Dict[str, Any]) -> None:
+    """Append one loop result to RESULTS_LOG (for dashboard/health-spider pickup). TELEMETRY_DIR may be
+    owned by ai-hybrid (mode 750); fall back to a user-writable path so the loop never crashes on write."""
+    TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(RESULTS_LOG, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(result) + "\n")
+    except (PermissionError, OSError):
+        fallback = DELEGATION_DIR / "training-loop-results.jsonl"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        with open(fallback, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(result) + "\n")
+
+
+def _wait_for_model_ready(timeout_s: int = MODEL_READY_TIMEOUT_S) -> bool:
+    """True once llama.cpp is serving (not mid-reload). Probes /health then confirms it can generate
+    with a 1-token completion — a healthy /health can still precede a model that isn't loaded. Bounded
+    wait with backoff; returns False if still cold at the deadline so the caller can DEFER (not score
+    a false 0/N). Uses urllib (stdlib) so it never depends on httpx being present after a rebuild."""
+    import urllib.request
+
+    if timeout_s <= 0:
+        return True
+    deadline = time.time() + timeout_s
+    health_url = f"{LLAMA_BASE_URL.rstrip('/')}/health"
+    gen_url = f"{LLAMA_BASE_URL.rstrip('/')}/v1/chat/completions"
+    body = json.dumps({
+        "messages": [{"role": "user", "content": "ready?"}],
+        "max_tokens": 1, "chat_template_kwargs": {"enable_thinking": False},
+    }).encode()
+    attempt = 0
+    while time.time() < deadline:
+        attempt += 1
+        try:
+            with urllib.request.urlopen(health_url, timeout=5) as r:
+                healthy = r.status == 200
+        except Exception:  # noqa: BLE001
+            healthy = False
+        if healthy:
+            try:
+                req = urllib.request.Request(gen_url, data=body,
+                                             headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    if r.status == 200:
+                        print(f"[training-loop]   model ready (health+generate OK, attempt {attempt})")
+                        return True
+            except Exception:  # noqa: BLE001
+                pass
+        remaining = int(deadline - time.time())
+        if remaining <= 0:
+            break
+        print(f"[training-loop]   model not ready yet (attempt {attempt}); {remaining}s budget left",
+              file=sys.stderr)
+        time.sleep(min(15, max(1, remaining)))
+    return False
+
 
 def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -> Optional[str]:
     """
@@ -626,6 +689,24 @@ class TrainingLoop:
             dataset_total=ingest_report.get("dataset_total", 0),
         )
 
+        # ── 1b. MODEL READINESS PREFLIGHT ───────────────────────────────────────
+        # Do not eval a cold model: after a rebuild/restart llama.cpp reloads ~22.5GB and every direct
+        # dispatch times out, producing a false 0/N eval_failed (exactly what wasted the first real run).
+        # Wait for it to actually serve; if still cold, DEFER — record an honest "deferred" run, not a
+        # bogus regression the health-spider would alert on.
+        if not self.dry_run and not _wait_for_model_ready():
+            print("[training-loop] model not ready after preflight budget — DEFERRING eval this run",
+                  file=sys.stderr)
+            _write_progress(run_id, "deferred", reason="model_not_ready")
+            report = {
+                "run_id": run_id, "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "deferred", "reason": "model_not_ready",
+                "cases_total": 0, "pass_count": 0, "fail_count": 0, "pass_rate": None,
+                "corrected": corrected_count,
+            }
+            _persist_result(report)
+            return report
+
         # ── 2. EVAL ────────────────────────────────────────────────────────────
         print("[training-loop] Phase 2: delegating eval tasks")
         cases = _load_eval_pack(self.eval_pack)
@@ -779,18 +860,8 @@ class TrainingLoop:
             "dry_run": self.dry_run,
         }
 
-        TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
         if not self.dry_run:
-            # Telemetry dir may be owned by ai-hybrid (mode 750); fall back to
-            # a user-writable path so the loop doesn't crash after a successful eval.
-            results_path = RESULTS_LOG
-            try:
-                with open(results_path, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(result) + "\n")
-            except PermissionError:
-                results_path = DELEGATION_DIR / "training-loop-results.jsonl"
-                with open(results_path, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(result) + "\n")
+            _persist_result(result)
 
         # PULSE log entry.
         _pulse(f"aq-local-training-loop run {run_id}: "
