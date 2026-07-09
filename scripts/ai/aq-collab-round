@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -212,7 +213,12 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
 
 
 def _drop_antigravity(name: str, prompt_file: Path) -> str:
-    """No-key antigravity lane: drop a task file into the IDE-watched inbox."""
+    """No-key antigravity lane: drop a task file into the IDE-watched inbox.
+
+    Secondary/notification only. The inbox has historically piled up unconsumed
+    (the IDE was never wired to poll it), so the RELIABLE lane is the headless
+    switchboard dispatch below. This drop remains for a human working in the IDE.
+    """
     ANTIGRAVITY_INBOX.mkdir(parents=True, exist_ok=True)
     inbox = ANTIGRAVITY_INBOX / f"{name}.md"
     inbox.write_text(f"# A2A task for antigravity — round '{name}'\n\n"
@@ -220,6 +226,50 @@ def _drop_antigravity(name: str, prompt_file: Path) -> str:
                      f"Respond by writing `.agents/plans/{name}/antigravity.md`.\n\n"
                      f"{prompt_file.read_text()}\n")
     return f"inbox:{inbox.relative_to(REPO)}"
+
+
+def _antigravity_inbox_live() -> "tuple[bool, str]":
+    """Detect whether the Antigravity IDE is actually consuming the inbox.
+
+    Under the no-keys policy, the ONLY sanctioned Gemini transport is the IDE
+    watching this folder (switchboard refuses OpenRouter-key->Gemini fallback by
+    design). If the IDE is not wired to the folder, dropped files pile up
+    unconsumed — so a backlog of stale drops is the liveness signal. We report
+    the lane honestly instead of letting it hang 'pending' forever.
+
+    Convention: the IDE (or a bridge) should delete/rename a task file once it
+    starts it. Files older than the freshness window that still exist = not
+    being consumed.
+    """
+    try:
+        proc_live = False
+        try:
+            proc_live = subprocess.run(
+                ["pgrep", "-fa", "antigravity"], capture_output=True, text=True, timeout=5
+            ).returncode == 0
+        except Exception:
+            proc_live = False
+        if not ANTIGRAVITY_INBOX.exists():
+            return False, "inbox dir missing"
+        now = time.time()
+        stale = [p for p in ANTIGRAVITY_INBOX.glob("*.md")
+                 if now - p.stat().st_mtime > 900]  # >15min unconsumed
+        if stale:
+            return False, (f"IDE not consuming inbox — {len(stale)} stale task file(s) "
+                           f"(oldest {int((now - min(p.stat().st_mtime for p in stale))/3600)}h). "
+                           f"{'IDE process running but no inbox-watch workflow configured' if proc_live else 'Antigravity IDE not running'}.")
+        return (proc_live, "IDE process running" if proc_live else "Antigravity IDE not running")
+    except Exception as e:  # noqa: BLE001
+        return False, f"liveness check error: {e}"
+
+
+def _dispatch_antigravity(name: str, prompt_file: Path) -> str:
+    """Antigravity lane (no-key IDE/OAuth inbox) with honest liveness reporting."""
+    marker = _drop_antigravity(name, prompt_file)
+    live, why = _antigravity_inbox_live()
+    if live:
+        return f"{marker} (IDE watching — {why})"
+    return f"{marker} UNAVAILABLE: {why}"
 
 
 def cmd_open(args) -> int:
@@ -240,8 +290,15 @@ def cmd_open(args) -> int:
         tid = _dispatch_process(agent, pf, args.local_timeout)
         dispatch[agent] = tid
         print(f"  {agent}: dispatched {tid}")
-    dispatch["antigravity"] = _drop_antigravity(args.round, pf)
-    print(f"  antigravity: {dispatch['antigravity']} (IDE agent picks up via its OAuth — no keys)")
+    # Antigravity: no-key IDE/OAuth inbox lane with honest liveness reporting.
+    # (Headless switchboard->Gemini is intentionally refused by the no-keys
+    #  policy guard, so the IDE inbox is the only sanctioned transport.)
+    dispatch["antigravity"] = _dispatch_antigravity(args.round, pf)
+    _ag_state = dispatch["antigravity"]
+    print(f"  antigravity: {_ag_state}")
+    if "UNAVAILABLE" in _ag_state:
+        print(f"  ⚠ antigravity lane will not respond until the Antigravity IDE is wired to watch "
+              f"{ANTIGRAVITY_INBOX.relative_to(REPO)}/ — round will aggregate without it.")
     print(f"  claude: orchestrator writes {args.round}/claude.md + aggregates")
     (rd / ".round-dispatch.json").write_text(json.dumps(
         {"opened": _now(), "dispatch": dispatch}, indent=2))

@@ -189,6 +189,35 @@ def _is_incomplete_result(result: str | None) -> bool:
     return False
 
 
+# Write tools whose invocation backs a "wrote/created a file" claim.
+_WRITE_TOOL_NAMES = frozenset({"write_file", "edit_file", "create_file"})
+# A claim that the run produced a file: a write verb near a filename-looking token.
+_WRITE_CLAIM_RE = re.compile(
+    r"\b(wrote|written|created|saved|updated|added|generated)\b[^.\n]{0,80}?"
+    r"[\w./-]+\.\w{1,6}\b",
+    re.IGNORECASE,
+)
+
+
+def _claims_unbacked_write(result: str | None, tool_calls) -> bool:
+    """True when the result CLAIMS a file write but no write tool actually ran.
+
+    This is the exact false-success signature that let a local lane report
+    "COMPLETED: Wrote local.md" after 8 reads and zero writes. Anti-gaming
+    (fix the producer, never accept a faked passing state): such a run is
+    non-substantive, not a success. Conservative — fires only when a write
+    claim is present AND no write/edit tool was invoked.
+    """
+    text = str(result or "")
+    if not _WRITE_CLAIM_RE.search(text):
+        return False
+    for tc in tool_calls or []:
+        name = getattr(tc, "tool_name", None) or (tc.get("tool_name") if isinstance(tc, dict) else None)
+        if name in _WRITE_TOOL_NAMES:
+            return False  # claim is backed by a real write
+    return True
+
+
 async def run_task(
     task_text: str,
     output_file: str | None,
@@ -287,9 +316,16 @@ async def run_task(
     elapsed = time.time() - start
 
     incomplete_result = _is_incomplete_result(result_task.result)
+    unbacked_write = _claims_unbacked_write(result_task.result, result_task.tool_calls_made)
+    if unbacked_write:
+        incomplete_result = True
     success = result_task.status in (TaskStatus.COMPLETED, TaskStatus.FALLBACK) and not incomplete_result
     status_label = "failed" if incomplete_result else result_task.status.value
-    error_text = result_task.error or ("incomplete result returned by local agent loop" if incomplete_result else None)
+    error_text = result_task.error or (
+        "local agent claimed a file write that no write tool performed (unbacked completion)"
+        if unbacked_write else
+        ("incomplete result returned by local agent loop" if incomplete_result else None)
+    )
 
     print(f"\n[aq-agent-loop] Status:     {status_label}")
     print(f"[aq-agent-loop] Elapsed:    {elapsed:.1f}s")
