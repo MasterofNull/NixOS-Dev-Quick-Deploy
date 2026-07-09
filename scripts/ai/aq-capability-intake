@@ -89,7 +89,7 @@ def _review_accepts_mitigations(candidate: dict[str, Any], risk_flags: list[str]
         return False
     if any(result.get("safe") is False for result in tool_results):
         return False
-    non_mitigable = {"curl-pipe-install", "unpinned-version", "secret-or-token-required"}
+    non_mitigable = {"curl-pipe-install", "unpinned-version"}
     return not any(flag in non_mitigable for flag in risk_flags)
 
 

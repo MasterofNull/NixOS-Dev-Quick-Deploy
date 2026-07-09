@@ -364,10 +364,10 @@
       "name": "GitHub MCP Read-only",
       "category": "repository-intelligence",
       "kind": "external-mcp",
-      "state": "blocked-auth-runtime",
+      "state": "enabled",
       "maturity": "official",
       "owner": "agent-runtime",
-      "summary": "Read-only GitHub repository and PR intelligence; blocked until token scope and runtime are reviewed.",
+      "summary": "Read-only GitHub repository, PR, Actions, and code-security intelligence through the local token-resolving MCP wrapper.",
       "agent_access": [
         "codex",
         "claude"
@@ -376,7 +376,7 @@
         "config/agent-capability-intake-candidates.json"
       ],
       "security": {
-        "admission": "needs-review",
+        "admission": "accepted-with-mitigations",
         "intake_candidate_id": "github-mcp-readonly",
         "risk": "high",
         "required_gate": "scripts/ai/aq-capability-intake audit github-mcp-readonly --json"

@@ -1558,3 +1558,24 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Root cause**: completion initialization order was wrong for zsh. The script attempted bash-style registration before `bashcompinit`, and Codex completion was not loaded at all.
 - **Severity**: MED (interactive tooling/autocomplete broken; slows CLI workflows)
 - **Action taken**: initialize `compinit -i` and `bashcompinit` before registration, register `aq` through the shared block, and load `codex completion zsh`/`bash` when Codex is installed. Added `scripts/testing/test-aq-completions.sh`.
+
+## [DONE] Supply-chain scanner capability states stale after rebuild
+- **Status**: DONE (fixed 2026-07-09)
+- **Scope**: config/agent-capability-intake-candidates.json — `osv-scanner` and `syft-grype` still reported `pending-rebuild` even though live PATH verification showed `osv-scanner`, `syft`, and `grype` installed under `/run/current-system/sw/bin`.
+- **Root cause**: registry promotion step was not run after the NixOS rebuild activated the declared scanner binaries.
+- **Severity**: MED (agents would incorrectly treat available supply-chain scanners as unavailable)
+- **Action taken**: promoted both candidates to `enabled`, updated activation notes and regression expectations, and verified `aq-capability-intake` output.
+
+## [DONE] Agent artifact policy test was not directly executable
+- **Status**: DONE (fixed 2026-07-09)
+- **Scope**: scripts/testing/test-agent-artifact-policy.py — file had a shebang but mode `0644`, so direct smoke chains failed with `permission denied`.
+- **Root cause**: executable bit missing on a direct-invoked policy test.
+- **Severity**: LOW (test still passed via `python3`, but direct agent/tool smoke commands failed)
+- **Action taken**: set mode `0755` and re-ran the direct test.
+
+## [DONE] GitHub MCP read-only capability remained blocked and wrapper did not enforce read-only
+- **Status**: DONE (fixed 2026-07-09)
+- **Scope**: config/agent-capability-intake-candidates.json, config/system-capability-catalog.json, scripts/ai/mcp-github-server — live host had `github-mcp-server`, valid `gh` auth, and `/run/secrets/github_mcp_token`, but the capability registry still reported `blocked-auth-runtime`; shared MCP config called the wrapper with no args, and the wrapper did not force `--read-only`.
+- **Root cause**: activation happened without the follow-up registry promotion, and the wrapper trusted caller args for read-only behavior.
+- **Severity**: HIGH (agents could not discover available GitHub MCP through the catalog; if invoked through generic config, read-only was not guaranteed by the wrapper)
+- **Action taken**: wrapper now always passes `--read-only --toolsets context,repos,issues,pull_requests,actions,code_security`; GitHub MCP candidate and system catalog are enabled with accepted mitigations; intake admission now treats token-required candidates as acceptable only when pinned, mitigated, and tool-audited safe.
