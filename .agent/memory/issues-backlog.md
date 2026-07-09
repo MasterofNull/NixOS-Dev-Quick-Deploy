@@ -1551,3 +1551,10 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: MED (antigravity lane permanently unavailable regardless of IDE state)
 - **Action taken**: liveness now keys off per-drop CONSUMPTION (was the LAST tracked drop deleted within window?) via .lane-state.json, not backlog presence; _archive_stale_inbox() moves consumed-window-exceeded files to .agent/archive on each open (Rule 12) so the backlog can't grow; unrelated old files no longer poison the signal; real 12-file backlog archived. Tests: test-antigravity-liveness.py 4/4.
 - **Remaining (operator)**: still need the IDE-side inbox-watch workflow that deletes consumed files — that deletion is now the exact liveness signal the harness reads.
+
+## [DONE] Codex shell completion missing under zsh profile.d path
+- **Status**: DONE (fixed 2026-07-09)
+- **Scope**: scripts/ai/aq-completions.sh — zsh sessions could source the profile completion script before `compdef`/`complete` existed, so Codex generated completions failed with `command not found: compdef`; the zsh fallback also omitted the `aq` router registration.
+- **Root cause**: completion initialization order was wrong for zsh. The script attempted bash-style registration before `bashcompinit`, and Codex completion was not loaded at all.
+- **Severity**: MED (interactive tooling/autocomplete broken; slows CLI workflows)
+- **Action taken**: initialize `compinit -i` and `bashcompinit` before registration, register `aq` through the shared block, and load `codex completion zsh`/`bash` when Codex is installed. Added `scripts/testing/test-aq-completions.sh`.

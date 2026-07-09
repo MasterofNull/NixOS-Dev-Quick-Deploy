@@ -9,6 +9,14 @@
 # Locate the aq-hints binary (works whether sourced from profile.d or manually)
 _AQ_HINTS_BIN="${AQ_HINTS_BIN:-$(command -v aq-hints 2>/dev/null)}"
 
+# Zsh sources /etc/profile.d scripts before user shell setup in some sessions.
+# Initialize completion here so registrations below can use either `complete`
+# through bashcompinit or native zsh `compdef` without throwing errors.
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+    autoload -Uz compinit 2>/dev/null && compinit -i 2>/dev/null || true
+    autoload -Uz bashcompinit 2>/dev/null && bashcompinit 2>/dev/null || true
+fi
+
 # ---------------------------------------------------------------------------
 # aq-hints completion
 # ---------------------------------------------------------------------------
@@ -126,12 +134,13 @@ if command -v complete >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Zsh compatibility: if running under zsh, enable bashcompinit
+# Codex CLI completion
 # ---------------------------------------------------------------------------
-if [[ -n "${ZSH_VERSION:-}" ]]; then
-    autoload -Uz bashcompinit 2>/dev/null && bashcompinit 2>/dev/null || true
-    complete -F _aq_hints_complete       aq-hints
-    complete -F _aq_report_complete      aq-report
-    complete -F _aq_prompt_eval_complete aq-prompt-eval
-    complete -F _aq_chat_complete        aq-chat
+if [[ -z "${_AQ_CODEX_COMPLETION_LOADED:-}" ]] && command -v codex >/dev/null 2>&1; then
+    _AQ_CODEX_COMPLETION_LOADED=1
+    if [[ -n "${ZSH_VERSION:-}" ]] && command -v compdef >/dev/null 2>&1; then
+        eval "$(codex completion zsh 2>/dev/null)" || true
+    elif command -v complete >/dev/null 2>&1; then
+        eval "$(codex completion bash 2>/dev/null)" || true
+    fi
 fi
