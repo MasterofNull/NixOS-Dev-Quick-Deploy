@@ -1503,3 +1503,11 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Severity: medium
   Action: Make `classify_tokens()` prefer explicit large-report/full-plan signals over incidental tiny phrases, or add a CLI/output-token override for direct delegation so orchestrators can safely request full reports without prompt wording hazards.
   File: scripts/ai/lib/dispatch.py; .agents/delegation/outputs/local-20260709-002206-ei5of8.log
+
+## [DONE-WORKAROUND] F2 SchedulerState not JSON-round-trippable (inf serializes to null)
+- **Status**: workaround shipped in adapter; upstream fix deferred to WS1 contracts
+- **Scope**: scripts/ai/lib/scheduler.py SchedulerConfig.max_wait_s uses math.inf for P1; pydantic model_dump_json emits null; model_validate_json then rejects it, so any persisted SchedulerState silently loads as empty state
+- **Root cause**: JSON has no Infinity; F2 Phase A tested the scheduler in-memory only, never round-tripped through persistence (scripts/ai/lib/scheduler.py:33 DEFAULT_MAX_WAIT_S)
+- **Severity**: HIGH when persisted (queue silently vanishes — found during F2.5 wiring live test 2026-07-09)
+- **Action taken**: slot_queue.py persists with exclude={"config"} and rebuilds default config on load (scripts/ai/lib/slot_queue.py:_dump_state)
+- **Follow-up**: WS1 contracts tree must make every persisted model round-trip-tested in CI

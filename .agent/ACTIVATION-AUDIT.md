@@ -155,3 +155,19 @@ SSOT: `.agent/FABLE-PARITY-CONTRACT.md` (FULL/CARD/MICRO variants).
 Intervenable: env kill switch `FABLE_PARITY=0` (payload layer); YAML edit + restart (switchboard layer).
 Observable: injection visible in system_prompt field of agent_run_events telemetry.
 Cycle status: **paused pending activation** of the switchboard row (single dated deferral above); all other rows ON.
+
+---
+
+# Slice 3.1: F2.5 banded slot queue (2026-07-09, claude-fable-5)
+
+Wires dormant F2 scheduler/backpressure/model_tier into the live local dispatch path (closes issues-backlog HIGH).
+
+| Dimension | Status |
+|-----------|--------|
+| Integrated | ✅ dispatch.py DirectRunner uses slot_queue.acquire/release; legacy wait_for_slot only as fallback |
+| ON | ✅ default-on (SLOT_QUEUE=1 implicit); every delegate-to-local direct dispatch flows through it |
+| Validated | ✅ unit 6/6 (test-slot-queue-wiring.py: band ordering P1>queued-P3, dead-pid GC, LOCAL_DELAYED admissible, timeout reject, release idempotence, kill switch); ✅ live: 2 banded jobs (P1/P3) queued behind a real running inference, typed sidecar progression queued_ok_depth2 → queued_local_delayed observed in production sidecars. ⏸ DEFERRAL (dated 2026-07-09): live P1-before-P3 completion-order observation pending — both jobs queued behind round aqos-v1's long local lane; watcher records order automatically on slot release. Ordering already proven in unit suite. |
+| Observable | ✅ .agents/delegation/scheduler-state.json (bands, waits, queue depth — dashboard-readable); typed progress sidecar states queued_{ok,local_delayed,reject}_depthN |
+| Intervenable | ✅ SLOT_QUEUE=0 env reverts to legacy race-poll; DISPATCH_BAND selects band per caller |
+
+Recorded deferrals: eviction-style preemption of RUNNING jobs (llama.cpp cannot checkpoint generation — bands+aging give ordering; revisit if a preemptible runtime lands). Found+fixed-in-adapter: F2 SchedulerState inf→null JSON bug (issues-backlog).
