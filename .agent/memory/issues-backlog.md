@@ -1,5 +1,11 @@
 ## OPEN ISSUES
 
+[DONE 2026-07-09] switchboard-local-tool-calling-hints-drift — `local-tool-calling` was documented and deployed as hint-free in the Nix catalog, but the YAML catalog and Python fallback still had `injectHints=true`.
+  Root cause / fix notes: Phase 178-B partially aligned the Nix profile but left the repo YAML SSOT and fallback default stale, and the policy regression test encoded the stale value. This added avoidable coordinator hint latency and could perturb short tool-call prompts.
+  Severity: medium
+  Action: Set `local-tool-calling.injectHints=false` in Python and YAML, updated the profile policy test, refreshed the switchboard profile guide with current local budgets, and documented existing switchboard timeout/adaptive-budget env vars.
+  File: ai-stack/switchboard/switchboard.py; config/switchboard-profiles.yaml; config/env-contract.yaml; scripts/testing/test-switchboard-profile-policy.py; docs/agent-guides/46-SWITCHBOARD-PROFILES.md
+
 [DONE 2026-07-09] ai-stack-health-monitor-sandbox-schema-visibility — Scheduled `ai-stack-health-monitor` could raise recurring `aq-qa phase 0 could not run` alerts or miss real failures from current aq-qa output.
   Root cause / fix notes: the systemd service runs with `PrivateTmp=true` and `ProtectSystem=strict`, but only `.agents` is writable; Python `tempfile` users inside aq-qa could not find a usable temp directory. The monitor also parsed only legacy `checks` output while current aq-qa JSON reports checks under `tests`. Added repo-local `.agents/tmp` env wiring, `tests`/`checks` failure parsing, and `.agents/health-monitor/latest.json` latest-run telemetry.
   Severity: high

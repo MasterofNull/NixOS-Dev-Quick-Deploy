@@ -9,12 +9,12 @@ or by targeting the right endpoint in your client config.
 | Profile | Provider | Max Input | Default Max Output | Max Msgs | Hints | Use When |
 |---------|----------|-----------|------------|----------|-------|----------|
 | `default` | auto | unlimited | 768 tok | unlimited | yes | General-purpose; hints injected |
-| `continue-local` | local | 1200 tok | 768 tok | 8 | no | Continue.dev inline chat; quick edits |
-| `local-agent` | local | 3500 tok | 1024 tok | 16 | **yes** | Agent tasks: PRSI, harness ops, fixes |
+| `continue-local` | local | 4000 tok | 768 tok | 12 | no | Continue.dev inline chat; quick edits |
+| `local-agent` | local | 5500 tok | 1500 tok | 16 | **yes** | Agent tasks: PRSI, harness ops, fixes |
 | `embedded-assist` | local | 1800 tok | 512 tok | 10 | no | Embedded agent assist; low-token queries |
-| `local-tool-calling` | local | 2400 tok | 768 tok | 12 | no | Built-in tool execution on local host |
+| `local-tool-calling` | local | 5200 tok | 1500 tok | 20 | no | Built-in tool execution on local host |
 | `embedding-local` | local (embed) | 512 tok | 256 tok | 8 | no | Embeddings only — `/v1/embeddings` |
-| `remote-default` | remote | 3500 tok | 1024 tok | 16 | no | General remote tasks; remote fallback |
+| `remote-default` | remote | 3500 tok | 2048 tok | 16 | no | General remote tasks; remote fallback |
 | `remote-free` | remote | 3500 tok | 1200 tok | 16 | no | Low-cost probing; discovery queries |
 | `remote-coding` | remote (coder) | 5000 tok | 1800 tok | 20 | no | Implementation, refactoring, code review |
 | `remote-reasoning` | remote (large) | 6000 tok | 1800 tok | 20 | no | Architecture, policy, tradeoff analysis |
@@ -104,7 +104,7 @@ harness diagnostics, system fixes, or multi-step operations — rather than quic
 
 **What it provides that `continue-local` does not:**
 - `injectHints = true` — ranked workflow hints from hybrid-coordinator are prepended to every turn
-- 3× higher token budget (3500 input, 16 messages) — room for context + multi-turn reasoning
+- 5500-token input budget with 16 messages — room for context + multi-turn reasoning while staying under local context headroom
 - Rich profile card with PRSI queue path, orchestrator commands, all service ports, harness CLIs
 
 **Select in Continue.dev:** switch to the **"Local Agent (Harness-Aware)"** model in the IDE model
@@ -123,9 +123,9 @@ Health: aq-qa 0 | aq-report | journalctl -u ai-*.service -n 30
 Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8889
 ```
 
-> Note: until the next `nixos-rebuild switch`, `local-agent` falls back to the `default`
-> profile (which also has `injectHints = true` and the PRSI queue path). Functional
-> from the first Continue.dev reload — no rebuild required for basic operation.
+> Note: the deployed Nix catalog, YAML catalog, and Python fallback should stay aligned.
+> Run `python3 scripts/testing/test-switchboard-profile-policy.py` and
+> `python3 scripts/testing/test-switchboard-profile-catalog-contract.py` after profile edits.
 
 ## Budget & Fallback
 

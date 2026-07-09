@@ -409,7 +409,7 @@ DEFAULT_PROFILE_CATALOG = {
     },
     "local-tool-calling": {
         "forceProvider": "local",
-        "injectHints": True,
+        "injectHints": False,
         "modelAlias": None,
         "advertisedContextWindow": LLAMA_CTX_SIZE,
         # 5200 input + 1500 output = 6700 <= LLAMA_CTX_SIZE-600 on the default 8192 ctx.
