@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "agent_id": "local",
+  "model_provenance": {
+    "model_name": "qwen2.5-coder-7b-instruct",
+    "model_version": null,
+    "params": {}
+  },
+  "verdict": "APPROVE",
+  "required_changes": [],
+  "risks": [
+    "Model KV-Cache Thrashing under parallel execution",
+    "Human operator review gate fatigue"
+  ],
+  "tests": [],
+  "anchors": [],
+  "top_changes": [],
+  "metrics": {},
+  "signature": null,
+  "body_markdown": "# local[Qwen] \u2014 rsi-readiness ratification\n\n## 1. Scores + Ratification\n* **R1: 9/10** \u2014 Crucial. The evaluation harness must be trustworthy and immune to model gaming or infrastructure noise.\n* **R2: 8/10** \u2014 Necessary. Restoring write-reliability prevents local models from fabricating file writes.\n* **R3: 7/10** \u2014 Useful. Phi-4-mini (SMALL_RESIDENT) can offload routine checks and conserve resources.\n* **R4: 9/10** \u2014 Important. Sandbox-confined shadow execution is the correct methodology to test proposal safety.\n* **R5: 7/10** \u2014 Good. Trace IDs will unify asynchronous delegation and loop observability.\n* **R6: 8/10** \u2014 Good. Targeting the harness's own backlog is a sound integration proof.\n* **R7: 9/10** \u2014 Stricter git and worktree serialization is required to prevent parallel runs from clobbering states.\n\n**Verdict:** **RATIFY** \u2014 The PRD's focus on trust infrastructure, sandbox testing, and shadow-only loops matches local execution requirements.\n\n## 2. Top Amendments\n* **A1 \u2014 Dynamic Timeout Adaptability (R1)**: Timeout limits in the capability evaluation harness should dynamically adapt based on CPU/RAM contention.\n* **A2 \u2014 Strict Tool-Level Confinement (R4)**: Implement direct tool-level guards in the executor when running shadow loop tasks to guarantee no destructive mutations can occur.\n\n## 3. Risks the PRD Underweights\n* **Model KV-Cache Thrashing**: Parallel agent executions on the local APU will lead to heavy swapping/prefill delays unless a cache pool manager is deployed.\n* **Human Operator Fatigue**: High volume of shadow-loop proposals can saturate the human review queue, making the gate a rubber stamp.\n\n## 4. Slice Claims + Wiring Plan\n* **R2 training-data curation: claim** \u2014 Compile local failure traces as teacher-correctable samples to improve future model updates.\n* **R6 flagship validation: pass** \u2014 Claude/Antigravity will orchestrate flagship validation.\n\n## 5. Verdict + First Commit Target\n**VERDICT:** **RATIFY**\n\n**First Commit Target:**\n`feat(local): initialize local training data collection for write reliability`\nCo-Authored-By: local-qwen <noreply@harness.local>\n"
+}
