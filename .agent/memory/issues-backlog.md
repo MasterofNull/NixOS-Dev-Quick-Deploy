@@ -1619,3 +1619,55 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: HIGH — this is the corruptible reward signal that makes RSI unsafe; R2 fine-tune and R4 shadow-loop must NOT trust these scores until fixed
 - **Action (R1.2)**: adopt eval_integrity.exec_scorer (or extend _score_response with exec-based scoring + infra abstention) so the loop's scorer PASSES the trustworthiness gate; run the gate at loop startup and record the sign-off in the run result; block/flag automation when uncertified
 - **File**: scripts/ai/lib/eval_integrity.py (the gate), scripts/ai/aq-local-training-loop (the scorer to replace)
+## [OPEN] Round consensus manifest can lock without persisting consensus evidence
+- **Scope**: `aq-collab-round` typed state and `aqos-v1/round.json`
+- **Description**: `aqos-v1/round.json` is `CONSENSUS_LOCKED` while `contributions` is `{}`, `aggregate_path`/`aggregate_hash` are null, the PRD is still DRAFT, and the human aggregate describes only provisional ratification. `round_aggregate.aggregate()` locks when lane statuses meet quorum and conflicts are empty; it does not require an accepting verdict, persist the extracted contributions, or bind the human aggregate artifact into the manifest.
+- **Severity**: high
+- **Action**: Make lock eligibility depend on a typed verdict policy, required substantive lanes, and non-empty persisted contribution evidence; persist contribution hashes plus aggregate path/hash atomically; reject `CONSENSUS_LOCKED` manifests whose evidence invariants fail; add replay tests for all-REJECT, empty-extraction, provisional quorum, and late-lane amendment.
+- **File**: `scripts/ai/lib/round_aggregate.py`; `scripts/ai/aq-collab-round`; `.agents/plans/aqos-v1/round.json`
+
+## [OPEN] A2A event-log v1 is not a durable or authenticated system-of-record
+- **Scope**: WS2 event spine
+- **Description**: The implemented primary store is a workspace JSONL file, not the PRD's Redis Streams transport or a transactional durable store. It accepts unsigned events, gives every signer the same HMAC authority, uses caller-controlled timestamps for last-writer-wins projections, performs O(n) full-file reads, deduplicates first-seen IDs only at read time, and does not fsync appended records. Redis is a silent best-effort mirror. This is useful clobber mitigation but unsafe as workflow/audit truth.
+- **Severity**: high
+- **Action**: Use Postgres as the authoritative event/workflow store with transactional append, producer identity, monotonic per-subject sequence/revision, unique idempotency constraints, retention, and replay checkpoints; use Redis Streams only as an ephemeral delivery/wakeup projection. Adopt a versioned CloudEvents-compatible envelope and enforce signed workload identity at trust boundaries.
+- **File**: `scripts/ai/lib/event_log.py`; `contracts/events/envelope.py`; `scripts/ai/lib/resume_projector.py`
+
+## [OPEN] Effectiveness scorecard reports trust with missing or invalid evidence
+- **Scope**: `aq-report --machine` effectiveness and telemetry contracts
+- **Description**: The live report has `overall_status=fail` but an empty `blocking_reasons`; `operator_trust=status:pass` while `trace_completeness=no_data`; `useful_tokens` is unavailable because agent-run events miss required schema fields; hint adoption is 100% without outcome linkage; and Phase 0 remains 164/0 despite active-window delegation success of 66.7%. Presence/wiring checks are masking outcome-health gaps.
+- **Severity**: high
+- **Action**: Make missing required evidence fail or explicitly degrade each dependent score; populate blocking reasons deterministically; separate availability, conformance, effectiveness, and SLO gates; require outcome-linked denominators for adoption/correctness metrics; add contract tests using the live no-data shapes.
+- **File**: `scripts/ai/aq-report`; report collectors for `useful_tokens`, `effectiveness_scorecard`, hint adoption, and delegation reliability
+
+## [OPEN] Session/bootstrap CLI contract drift recurred in machine-mode workflows
+- **Scope**: canonical workflow command surface
+- **Description**: `.agent/WORKFLOW-CANON.md` prescribes shell fallback `aq-memory recall`, but the installed CLI has no `recall` command. Also, `aq-qa 0 --machine` exited 0 with no stdout in two fresh runs, despite the earlier machine-mode-stall issue being marked DONE; `--json` produced the expected 164-pass report.
+- **Severity**: medium
+- **Action**: Replace the stale memory command in canon with a supported bounded `aq-memory search/list` invocation or restore a compatible `recall` alias; make `aq-qa --machine` emit a required summary line on success and add a regression test that asserts non-empty stdout and valid exit status.
+- **File**: `.agent/WORKFLOW-CANON.md`; `scripts/ai/aq-memory`; `scripts/ai/aq-qa`
+
+[DONE] agent-mcp-native-projection — The shared `~/.mcp/config.json` catalog was not consumed by Claude Code or Codex, so enabled coordinator, OSINT, and GitHub capabilities were absent from live agent tool lists. Native client projection was added; the OSINT server also now returns the required MCP `protocolVersion`. Live Claude health now connects all three local servers.
+  Severity: high
+  Action: Keep the Home Manager native-client projection and focused registry check green.
+  File: nix/home/base.nix; ai-stack/mcp-servers/osint-tools/server.py; scripts/testing/test-agent-mcp-client-projection.py
+
+[OPEN] claude-google-connectors-oauth — Google Drive, Gmail, and Google Calendar are configured as claude.ai connectors but each currently reports `Needs authentication`; completion requires interactive account consent.
+  Severity: medium
+  Action: Run the Claude `/mcp` authentication flow for each Google connector in an interactive session and verify with `claude mcp list`.
+  File: user-scoped claude.ai connector state
+
+[OPEN] continue-inline-completion-latency — The live `continue-local` `/v1/completions` route returns valid suggestions, but a 32-token completion took about 20 seconds at roughly 2 tokens/second. Editor requests are likely cancelled before display even though routing and configuration are correct.
+  Severity: high
+  Action: Provision and benchmark a smaller FIM/code-completion model or a dedicated low-latency completion lane before changing Continue routing; retain local privacy by default.
+  File: nix/home/base.nix; nix/modules/services/switchboard.nix
+
+[OPEN] stale-continue-regression-tests — Two standalone Continue/coordinator regression scripts fail against refactored paths and check text even though the live phase-0 gate passes.
+  Severity: medium
+  Action: Rebind the tests to the current coordinator ingress modules and Python QA phase contract, then register them in focused CI.
+  File: scripts/testing/test-continue-coordinator-ingress.py; scripts/testing/test-aq-qa-continue-config.py
+
+[OPEN] mcp-server-skill-validator-contract — `aq-skill-auto --test` rejects the local `mcp-server` skill because executable Python is embedded directly in `SKILL.md`, leaving required documentation sections undetected and triggering the subprocess safety heuristic.
+  Severity: medium
+  Action: Move the wrapper implementation into a bounded script and rewrite `SKILL.md` as documentation with Description, When to Use, Usage, and security notes.
+  File: .agent/skills/mcp-server/SKILL.md

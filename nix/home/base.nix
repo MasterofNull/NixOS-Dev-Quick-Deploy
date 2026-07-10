@@ -154,9 +154,9 @@ let
     src = pkgs.fetchurl {
       url = "https://open-vsx.org/api/openai/chatgpt/${vscodeLinuxTarget}/0.5.80/file/openai.chatgpt-0.5.80@${vscodeLinuxTarget}.vsix";
       sha256 = openaiCodexHashByTarget.${vscodeLinuxTarget};
-      # Rename .vsix → .zip so the stdenv unzip hook fires (same trick used
-      # by pkgs/applications/editors/vscode/extensions/mktplcExtRefToFetchArgs.nix).
-      name = "openai-chatgpt.zip";
+      # Name must end in .vsix: nixpkgs' unpack-vsix-setup-hook (post-2026-07 bump)
+      # only unpacks *.vsix. (The pre-bump stdenv hook needed the opposite .zip rename.)
+      name = "openai-chatgpt.vsix";
     };
   };
 
@@ -170,7 +170,9 @@ let
   };
 
   cyberpunkThemeArchive =
-    pkgs.runCommand "max-ss.cyberpunk-1.2.14.zip" {
+    # Name must end in .vsix: nixpkgs' unpack-vsix-setup-hook (post-2026-07 bump)
+    # only unpacks *.vsix; a .zip name fails unpackPhase with "do not know how to unpack".
+    pkgs.runCommand "max-ss.cyberpunk-1.2.14.vsix" {
       nativeBuildInputs = [pkgs.zip];
     } ''
       mkdir -p extension
