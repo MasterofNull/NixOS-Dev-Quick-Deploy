@@ -1,11 +1,11 @@
 {
   "schema_version": "aq.planning_package/1.0",
-  "package_id": "aqos_refoundation_cycle0_v2",
+  "package_id": "aqos_refoundation_cycle0_v4",
   "status": "REQUEST_REVISION",
   "direction_ratified": false,
   "plan_ratified": false,
   "implementation_authorized": false,
-  "repository_commit_at_freeze": "6a0f50a3de20ddf08f38712438de7d525fbe8cbf",
+  "repository_commit_at_freeze": "2f0e72e7ac214081138c203310320acdc4ebd844",
   "worktree_dirty": true,
   "hash_algorithm": "sha-256",
   "artifact_hash_semantics": "exact_raw_bytes",
@@ -13,15 +13,15 @@
   "subjects": [
     {
       "path": ".agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md",
-      "sha256": "852bae9a91c6e74aa11aec56c0d26a6b053bad51ae33a62e8f0d765eb2dbdce4"
+      "sha256": "c73d09eb3ae20ea529b9acc22bdca147545bcfd1c2a7c470a622a12f654cf36a"
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/CONSOLIDATED-PLAN.md",
-      "sha256": "e7e498e86b45e874047f7555ee93b57d8629d0d282ec64543a5725c1c78ec634"
+      "sha256": "b2a6486b396fd99f6af304ba99c15073a092d7e73a710c58fd955edee9d73eb8"
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/STATE-CONTRACT.md",
-      "sha256": "d38ef59abc6eb037684969d77ae3e1c2f515facf5b3f92a7e9be1c4737f62052"
+      "sha256": "f3500892f1528f411b60af1d5c5fddf91095b548af27d330d2697e74c4f7af22"
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/EVIDENCE-ALGEBRA.md",
@@ -33,7 +33,7 @@
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/C0.2-SURFACE-INVENTORY.md",
-      "sha256": "f195233fe80ebad07f3480fef27f61bb5ac9cb2b358b83818bf3169f378062ae"
+      "sha256": "27c2e4a6e451143063a786aedb1fc881d77d082bb3429088287c17840b060580"
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/THREAT-REGISTER.md",
@@ -41,7 +41,7 @@
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/DECISION-LOG.md",
-      "sha256": "d2e48f54514254403c48788dd66f5bf10c5a89aec02749f511f718706304cb87"
+      "sha256": "bb9cb35605ee6df54fcefbd423ea9f377c9a13662393a834875a6538d3c143ca"
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/REFERENCE-AND-MIGRATION-COMPARISON.md",
@@ -49,11 +49,11 @@
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/EVIDENCE-MANIFEST.json",
-      "sha256": "ca1b0935838ae8037c099fc642b3a6d13fbb193bad15fa6c6c383092eaae3248"
+      "sha256": "c378af2e5ee2df0fce68b5eb97f5dd7b446d1ab264c325ba8e384189fae9d51c"
     },
     {
       "path": ".agents/plans/aqos-refoundation-cycle0/EVIDENCE-MANIFEST.md",
-      "sha256": "7485d54710074eed343aaf9bd6c06d26458d6642a5f6768f51e62b5d0c4dd8e0"
+      "sha256": "6907ba9140e55d42939fe73117a2fa0ccad4b90cde2054386cdd81008637abcf"
     }
   ],
   "review_policy": {
@@ -66,8 +66,8 @@
   "blocking_reasons": [
     "OWNER_POLICY_UNRATIFIED",
     "LOCAL_LANE_FAILED",
-    "ANTIGRAVITY_RESPONSE_UNVERIFIED",
-    "INDEPENDENT_REVIEWS_MISSING",
+    "FRESH_APPROVE_REVIEWS_MISSING",
+    "CONDITIONAL_REVIEWS_REQUIRE_NEW_ROOT",
     "INTER_SLICE_CONTRACTS_UNSIGNED",
     "SHARED_WORKTREE_OWNERSHIP_UNVERIFIED"
   ]

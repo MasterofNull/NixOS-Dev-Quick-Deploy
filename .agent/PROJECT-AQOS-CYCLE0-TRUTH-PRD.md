@@ -52,8 +52,8 @@ operating system**:
 - `verified_live`: `aq-collab-round collect` set this round to `CONSENSUS_LOCKED` with `ABSTAIN: 3`,
   empty contributions, no aggregate path/hash, a still-running local lane, and no Antigravity output.
 - `verified_live`: concurrent QA runs produced different totals and overwrote one shared `latest`
-  artifact. The currently visible 162/0/10 snapshot proves broad availability, not a trustworthy
-  immutable certification of the invoking run.
+  artifact. Point-in-time totals belong in dated evidence records, not this durable PRD; a surviving
+  mutable snapshot proves broad availability, not immutable certification of its invoking run.
 - `verified_source`: current Phase-0 checks frequently validate presence, registration, or endpoint
   wiring. Those are useful conformance checks but do not establish effectiveness, durability, safety,
   or operator outcomes.

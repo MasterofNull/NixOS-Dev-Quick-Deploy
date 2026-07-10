@@ -15,6 +15,9 @@ Cycle 0 uses `aq-canonical-json-v1`, a dependency-free restricted JSON profile:
 - Python reference operation: schema normalization, then
   `json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)` and
   UTF-8 encoding. Cross-language golden vectors are required before implementation.
+- Ratios, probabilities and scores use integer `{numerator, denominator}` pairs with a nonzero positive
+  denominator. Physical measures use decimal strings plus explicit integer scale and unit, for example
+  `{"value":"142","scale":-1,"unit":"seconds"}` for 14.2 seconds. JSON floats remain forbidden.
 - Hash records as `sha-256:<lowercase hex>`. Artifact hashes remain SHA-256 of exact raw bytes.
 
 This deliberately avoids an unverified dependency: live Nix evaluation on 2026-07-10 found no
@@ -26,6 +29,11 @@ Immutable contribution, review and aggregate artifacts are written to temporary 
 the commit point and references only verified immutable artifacts. Its update requires an exclusive
 writer lock plus expected prior revision/hash, temp write, file `fsync`, atomic rename and directory
 `fsync`. Crash fixtures cover every boundary. Cross-file rename is never described as atomic.
+
+Package freezing is one bounded operation: hash declared subjects, write and `fsync` the descriptor,
+atomically replace it, write the digest sidecar, then verify every subject. Every review begins with
+verification. Manual root maintenance is prohibited after the Cycle 0 freeze tool exists; the current
+hand-built package remains `REQUEST_REVISION` evidence of why that tool is required.
 
 ## Proposed owner policy defaults
 
@@ -45,6 +53,12 @@ These are defaults for owner acceptance, not current authority:
   model's lineage and contributes no additional diversity.
 - `APPROVE_WITH_CHANGES` never approves its subject. Each change becomes `ACCEPTED`, `REJECTED`, or
   `SUPERSEDED`; any accepted change creates a new subject revision requiring fresh `APPROVE` reviews.
+
+Proposed bounded degraded mode for owner decision: after a declared provider/lane repair SLA expires,
+one independent model family plus an authenticated owner co-review may ratify low/medium-risk work with
+`assurance_mode=DEGRADED`, a maximum seven-day non-renewable expiry and zero approval weight for the
+missing lane. Security, identity, promotion and destructive work remain strict-quorum blocked. Until
+the owner accepts this rule, the two-family/two-principal minimum remains in force.
 
 ## Direction transitions
 
@@ -137,6 +151,10 @@ producer, bad hash, unavailable required lane and late critical rejection. The p
 6. Direct assignment against both current invalid `CONSENSUS_LOCKED` manifests is denied.
 7. Corrupt detection → quarantine → dry-run reconstruction → owner acceptance → fresh review → new
    authorization recovers service while preserving the corrupt original.
+8. Compatibility rollback disables the v2 writer, reads preserved v1 and v2 evidence as
+   `legacy_untrusted`, modifies no immutable record, and proves every legacy assignment path remains
+   blocked. Re-enabling v2 reconstructs the same decision hash. C0.1 has no database migration, so a
+   production-database rollback fixture is explicitly out of scope rather than falsely claimed.
 
 `VERDICT: REQUEST_REVISION — the state machine and safe defaults are now explicit, but owner acceptance
 of authorization/quorum policy and independent review of the final package root remain mandatory.`

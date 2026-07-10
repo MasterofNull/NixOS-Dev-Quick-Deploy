@@ -25,6 +25,9 @@
 | D-019 | Accept | QA artifact digest is external pointer/sidecar metadata over immutable canonical payload bytes; `latest` ordering uses a lock-protected start sequence allocated by the QA evidence producer, not completion time. |
 | D-020 | Accept | Read-only C0.3 research confirms all ten broad lifecycle domains are currently `SPLIT_BRAIN`; target singleton selection remains an adjudicated implementation output, not a discovery precondition. |
 | D-021 | Accept | The owner-requested actual authority and exact consolidation candidate deliverables are satisfied for planning by `CURRENT-AUTHORITY-INVENTORY.md`; registry enforcement, owners and deadlines remain C0.3 acceptance work. |
+| D-022 | Accept | Canonical measurements use numerator/denominator pairs for ratios and decimal strings with explicit scale/unit for physical values; JSON floats remain forbidden. |
+| D-023 | Accept | QA lock, pointer and artifacts resolve to one canonical telemetry root; dual-root resolution fails closed. |
+| D-024 | Proposed owner default | A seven-day non-renewable owner-co-signed degraded quorum may unblock only low/medium-risk work after a lane repair SLA expires; high-risk/security/promotion/destructive work remains strict-quorum blocked. |
 
 ## Minority objections and resolutions
 

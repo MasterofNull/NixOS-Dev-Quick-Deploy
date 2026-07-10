@@ -5,8 +5,9 @@
 **Owner brief:** `.agents/prompts/AQOS_OWNER_NEXT_CYCLE_META_PROMPT.md`
 
 **Current planning package:** `PACKAGE-ROOT.json`
-**External SHA-256:** `2b905b244f97d0bbd1560d779e0e4cbdc7d7a923920e2821397c22d71c608a83`
-This package is ready for independent review, not ratified or authorized.
+**External SHA-256:** `0a2b0cce9876edf9b58d627c8c2d59608996f9e8c98d5b7e8fba8f7d065bdb3f`
+This superseding package incorporates independent Anthropic/Gemini amendments and is ready for fresh
+exact-root review; it is not ratified or authorized.
 
 ## Evidence status
 
@@ -15,11 +16,13 @@ This package is ready for independent review, not ratified or authorized.
 | Claude slot | `claude.md`, explicitly Codex-orchestrator proxy | yes | no |
 | Codex | `codex.md`, recovered from independent internal team after headless stdin failure | yes | one Codex-family lane |
 | Local/Qwen | failed after 2,233.4 s and four tool calls; empty output after transient switchboard refusal | no | no; failure evidence only |
-| Antigravity/Gemini | inbox issued; no artifact yet | pending/unavailable | no |
+| Anthropic/Fable 5 | `REVIEW-FABLE5.md`, `APPROVE_WITH_CHANGES` on predecessor/review-pin bytes | yes | independent findings; zero approval for current root |
+| Antigravity/Gemini | `antigravity-findings-review.md`, `APPROVE_WITH_CHANGES` on root `2b905b24…` | yes | independent findings; conditional verdict approves nothing |
 | Independent internal teams | three read-only proposals; two adversarial cross-reviews | yes | review evidence, not distinct model quorum |
 
-The headless Codex failure, local failure/retry, and Antigravity absence remain part of the evidence;
-none is converted into an approval by status inference.
+The headless Codex and local failures remain evidence only. Anthropic and Gemini reviews are genuinely
+independent, but both are conditional and their accepted amendments create a new subject root; neither
+is converted into current approval.
 
 ## Machine-state invalidity reproduced live
 
