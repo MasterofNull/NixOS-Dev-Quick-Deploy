@@ -78,6 +78,9 @@ Postgres, Qdrant, coordinator service, new route, new broker or new service.
   decision stage and transition history commit under the lock/fsync/compare-and-swap protocol in
   `STATE-CONTRACT.md` before ratification.
 - Assignment checks a separate explicit implementation-authorization record.
+- Fixed-cardinality collaboration telemetry exposes round duration, lane queue/response time, response
+  bytes, eligible/noneligible counts and stable failure reason through the existing collaboration
+  endpoint/card. IDs, prompts and free-form errors are trace attributes, never metric labels.
 
 ### Operator controls
 
@@ -109,7 +112,7 @@ Postgres, Qdrant, coordinator service, new route, new broker or new service.
 | Incremental peak RSS | ≤128 MiB |
 | Lanes / changes / anchors / amendments | 16 / 128 / 256 / 8 |
 | Contribution sidecar / manifest | ≤256 KiB / ≤1 MiB |
-| Implementation prompt / local review | ≤1,500 input tokens / ≤180 output tokens, one retry |
+| Implementation prompt / local review | ≤6,000 input tokens / ≤1,500 output tokens; ≤900 s wall clock; one retry only after readiness check |
 | Metric labels | fixed state/reason vocabulary; never IDs, paths, prompts or errors |
 
 ### Rollback, retirement and stop
@@ -156,6 +159,9 @@ never silent expansion. No new dashboard view, service, database, broker or fram
   the highest lock-protected sequence allocated by the QA evidence producer at invocation start; a slow
   older run cannot displace a newer invocation and no coordinator dependency is introduced.
   Pointer write uses temp file, `fsync`, atomic replace and parent-directory `fsync`.
+- Lock, pointer and artifacts resolve through one canonical QA telemetry-root resolver. Repository and
+  deployed invocations that resolve different roots fail `TELEMETRY_ROOT_DIVERGENCE` before writing;
+  an isolated dual-env fixture proves they converge or fail closed.
 - Consumers verify pointer and artifact hash. No secrets, prompts or unbounded logs enter artifacts.
 - Proposed retention owner is the QA evidence producer. Privacy defaults to `internal`; producer-side
   allowlist/redaction/secret scan precedes persistence; files are owner-read/write only; symlinks and
@@ -240,7 +246,9 @@ evidence-backed, owned and expiring.
 
 - Schema validation requires truthful observed claims. `SPLIT_BRAIN`, `UNKNOWN` and `UNOWNED` are valid
   discovery values but block C0.3 ratification until an adjudicated target disposition and deadline exist.
-- Bounded scan of ≤5,000 files with explicit truncation and JSON `{meta, findings}` output.
+- Bounded scan of ≤8,000 tracked production-candidate files with explicit exclusions, measured baseline
+  4,793, explicit truncation and JSON `{meta, findings}` output. Truncation is `DEGRADED` for discovery
+  but blocks C0.3 ratification until a complete rerun or owner-approved bound change.
 - Undeclared-writer fixture fails; test/example/generated paths do not create production debt.
 - Every projection has rebuild source; every shim has use/divergence telemetry and deadline.
 - Generate one evidence graph each for the invalid round and a failed QA/report run. Write the Cycle 1

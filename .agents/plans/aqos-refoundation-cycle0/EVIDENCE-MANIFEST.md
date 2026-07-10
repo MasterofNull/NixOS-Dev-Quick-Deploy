@@ -10,16 +10,16 @@
 
 | Subject | SHA-256 | Status |
 |---|---|---|
-| `.agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md` | `852bae9a91c6e74aa11aec56c0d26a6b053bad51ae33a62e8f0d765eb2dbdce4` | draft / request revision |
-| `CONSOLIDATED-PLAN.md` | `e7e498e86b45e874047f7555ee93b57d8629d0d282ec64543a5725c1c78ec634` | draft / request revision |
-| `STATE-CONTRACT.md` | `d38ef59abc6eb037684969d77ae3e1c2f515facf5b3f92a7e9be1c4737f62052` | proposed owner policy / request revision |
+| `.agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md` | `c73d09eb3ae20ea529b9acc22bdca147545bcfd1c2a7c470a622a12f654cf36a` | draft / request revision |
+| `CONSOLIDATED-PLAN.md` | `b2a6486b396fd99f6af304ba99c15073a092d7e73a710c58fd955edee9d73eb8` | draft / request revision |
+| `STATE-CONTRACT.md` | `f3500892f1528f411b60af1d5c5fddf91095b548af27d330d2697e74c4f7af22` | proposed owner policy / request revision |
 | `EVIDENCE-ALGEBRA.md` | `389311e1e6d949560751c03061af9c0e411047f714a7004b1b3cd0e86cd1b266` | proposed thresholds / request revision |
 | `CURRENT-AUTHORITY-INVENTORY.md` | `97d4b5a5ee5bab16cf2fbdbc0f04ec754ba24546dbb0a33c8ad1ab2fa15d4a4c` | source-verified current-state inventory |
-| `C0.2-SURFACE-INVENTORY.md` | `f195233fe80ebad07f3480fef27f61bb5ac9cb2b358b83818bf3169f378062ae` | frozen discovery snapshot |
+| `C0.2-SURFACE-INVENTORY.md` | `27c2e4a6e451143063a786aedb1fc881d77d082bb3429088287c17840b060580` | frozen discovery snapshot |
 | `THREAT-REGISTER.md` | `4c0a340f38f00cbe6fb2e20d834ce6b0a5442f2483d0c43639611c3ef80867c4` | draft / request revision |
-| `DECISION-LOG.md` | `d2e48f54514254403c48788dd66f5bf10c5a89aec02749f511f718706304cb87` | draft / request revision |
+| `DECISION-LOG.md` | `bb9cb35605ee6df54fcefbd423ea9f377c9a13662393a834875a6538d3c143ca` | draft / request revision |
 | `REFERENCE-AND-MIGRATION-COMPARISON.md` | `d28d027c821a900845e9866a610a7f3d63fcd538f7bf7185950a97b0a90f54b5` | source-backed hypothesis |
-| `EVIDENCE-MANIFEST.json` | `ca1b0935838ae8037c099fc642b3a6d13fbb193bad15fa6c6c383092eaae3248` | machine-readable provisional evidence |
+| `EVIDENCE-MANIFEST.json` | `c378af2e5ee2df0fce68b5eb97f5dd7b446d1ab264c325ba8e384189fae9d51c` | machine-readable provisional evidence |
 
 Any later edit invalidates the corresponding hash and requires fresh review. `PACKAGE-ROOT.json` binds
 these subjects plus this human manifest; reviews must target that descriptor's external SHA-256.
@@ -38,6 +38,8 @@ these subjects plus this human manifest; reviews must target that descriptor's e
 | E-008 | `research_required` | Antigravity inbox request | request file hash only | `acbc4584bb927da5af7d53ad80b4ddd06405dbb1347a9d5a2a64ab30b4080270` | Request was issued; no durable returned output was discovered | The request hash cannot prove provider receipt or absence; contributes zero approval weight |
 | E-009 | `verified_source` | provisional aggregate before new package | 2026-07-10 | `e704c22b1c4fcb032d44177d45d0e9d6ffdd6eba874bd655a96d54e54860a71a` | Human artifact says request revision while machine says locked | Aggregate will need a new hash after reconciliation |
 | E-010 | `verified_live` | local lane terminal progress sidecar | 2026-07-10T04:41:09.490591Z | `506387153f1833302427d92ba55cabc6249295ff7bd5e44b11190b7fb78e92da` | Local lane failed after 2,233.4 seconds and four tool calls with empty result because switchboard connection was refused | Subsequent switchboard health succeeded, so failure is transient-path evidence, not current service-down evidence |
+| E-011 | `verified_source` | `REVIEW-FABLE5.md` | 2026-07-10 | `dda610d6dbeea3ac96ed2cf8eb236df8ea03a826f5c28595dbef4b0663e8b89b` | Independent Anthropic review returned `APPROVE_WITH_CHANGES` on predecessor/review-pin bytes | Findings are valuable; review does not target the new root and carries zero current approval weight |
+| E-012 | `verified_source` | `antigravity-findings-review.md` | 2026-07-10 | `eca6e691f644a17d9e7c2a4c1e43c7aa650090d5b465d2773a601c0244e6e962` | Independent Gemini review returned `APPROVE_WITH_CHANGES` on root `2b905b24…` | Under `STATE-CONTRACT.md`, conditional review never approves; amendments require fresh `APPROVE` of the new root |
 
 ## Evidence condition assessment
 

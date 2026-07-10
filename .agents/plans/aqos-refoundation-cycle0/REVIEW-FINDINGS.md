@@ -1,9 +1,10 @@
 # AQ-OS Refoundation Cycle 0 — Adversarial Review Findings
 
 **Package root under review now:**
-`2b905b244f97d0bbd1560d779e0e4cbdc7d7a923920e2821397c22d71c608a83`
-**Review status:** no independent review yet targets this root. Reviews below targeted its predecessor and
-are amendment evidence, not approval.
+`0a2b0cce9876edf9b58d627c8c2d59608996f9e8c98d5b7e8fba8f7d065bdb3f`
+**Review status:** Gemini reviewed predecessor root `2b905b24…` and Anthropic reviewed earlier
+review-pin bytes; both returned `APPROVE_WITH_CHANGES`. This root incorporates their amendments, so
+fresh `APPROVE` reviews are required and neither prior conditional verdict authorizes work.
 
 ## Review provenance
 
@@ -13,7 +14,8 @@ are amendment evidence, not approval.
 | Trust/evidence/security expert workstream | `REQUEST_REVISION` | same Codex family; zero independent weight |
 | Execution/QA expert workstream | `REQUEST_REVISION` | same Codex family; zero independent weight |
 | Original local/Qwen lane | failed after 2,233.4 s; empty output; transient switchboard refusal | zero approval weight; training/reliability evidence |
-| Antigravity/Gemini | request file exists; receipt/response unverified | zero approval weight |
+| Anthropic/Fable 5 | `APPROVE_WITH_CHANGES` on predecessor/review-pin bytes | independent findings; zero current approval weight |
+| Antigravity/Gemini | `APPROVE_WITH_CHANGES` on root `2b905b24…` | independent findings; old conditional verdict never counts |
 | Claude slot | Codex-orchestrator proxy | same lineage; zero diversity |
 
 ## Amendments applied from adversarial review
@@ -41,8 +43,9 @@ are amendment evidence, not approval.
 ## Remaining blocking findings
 
 1. Owner has not ratified the proposed authorization, quorum, waiver, proxy or critical-human policy.
-2. No independent model-diverse reviewers have reviewed the current package-root hash.
-3. Local lane failure and Antigravity non-response must be formally closed/waived without becoming votes.
+2. Independent Anthropic/Gemini reviews supplied amendments, but the superseding package root needs
+   fresh explicit `APPROVE` reviews; conditional verdicts carry zero approval weight.
+3. Local lane failure must be formally closed/waived without becoming a vote.
 4. Inter-slice contracts are specified but not acknowledged against exact hashes by implementer and
    independent reviewer.
 5. File ownership/exclusive-work preflight for future C0 production surfaces is not established in the

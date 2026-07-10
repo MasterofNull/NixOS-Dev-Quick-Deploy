@@ -127,6 +127,36 @@
       },
       "finding": "DELEGATION_FAILED",
       "claim": "local_review_failed_after_long_slot_occupancy_on_transient_switchboard_refusal"
+    },
+    {
+      "evidence_id": "E_011",
+      "class": "verified_source",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T16:40:00Z",
+      "artifact": {
+        "path": ".agents/plans/aqos-refoundation-cycle0/REVIEW-FABLE5.md",
+        "media_type": "text/markdown",
+        "sha256": "dda610d6dbeea3ac96ed2cf8eb236df8ea03a826f5c28595dbef4b0663e8b89b",
+        "privacy_class": "internal",
+        "retention_class": "audit"
+      },
+      "finding": "ANTHROPIC_APPROVE_WITH_CHANGES_ON_PREDECESSOR_BYTES",
+      "claim": "independent_anthropic_review_supplies_findings_but_zero_current_approval_weight"
+    },
+    {
+      "evidence_id": "E_012",
+      "class": "verified_source",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T16:40:00Z",
+      "artifact": {
+        "path": ".agents/plans/aqos-refoundation-cycle0/antigravity-findings-review.md",
+        "media_type": "text/markdown",
+        "sha256": "eca6e691f644a17d9e7c2a4c1e43c7aa650090d5b465d2773a601c0244e6e962",
+        "privacy_class": "internal",
+        "retention_class": "audit"
+      },
+      "finding": "GEMINI_APPROVE_WITH_CHANGES_ON_ROOT_2B905B24",
+      "claim": "independent_gemini_review_supplies_findings_but_conditional_verdict_approves_nothing"
     }
   ],
   "assessment": {
