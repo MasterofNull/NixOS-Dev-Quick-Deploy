@@ -1707,3 +1707,10 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: high
 - **Action**: Persist terminal failure promptly into the delegation/round registry; bound tool-call and wall-clock budgets; retry only the final generation against a verified-ready switchboard with an idempotency key; retain partial tool evidence; expose queue/slot time and failure reason in report/dashboard; add a transient-gateway-loss fixture that proves no false submission or duplicated effects.
 - **File**: `ai-stack/local-agents/agent_executor.py`; local delegation wrapper/registry; `scripts/ai/aq-collab-round`
+
+## [OPEN] Cross-system lifecycle authority is split-brain across all ten AQ-OS control domains
+- **Scope**: planning, delegation, resume, workflow, QA/effectiveness, routing, learning/eval, memory, configuration, and dashboard/operator state
+- **Description**: A bounded source scan recorded multiple writers, incompatible projections, bypasses, or unowned recovery boundaries in every broad lifecycle domain. High-risk examples include two incompatible PENDING roles/schemas; coordinator, standalone executor, and sync writers to workflow session JSON while the Postgres checkpointer appears unwired; Python and Bash clobber writers for QA latest plus a dashboard fallback score calculator; switchboard bypasses to direct llama; multiple eval/spool authorities; direct Qdrant writers; and SQLite approvals gated by volatile dictionaries that disappear on restart.
+- **Severity**: high
+- **Action**: Use `.agents/plans/aqos-refoundation-cycle0/CURRENT-AUTHORITY-INVENTORY.md` as discovery evidence; C0.3 must register observed claims/writers honestly, adjudicate target owner/recovery/deadline per object, and block Cycle 1 until contested rows are resolved. Separately fix the dashboard approval restart split and the action-catalog empty-env `Path('.')` fallback defect through reviewed slices.
+- **File**: `.agents/plans/aqos-refoundation-cycle0/CURRENT-AUTHORITY-INVENTORY.md`; affected source paths enumerated there
