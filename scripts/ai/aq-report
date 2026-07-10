@@ -886,9 +886,15 @@ def editor_state_budget_health() -> Dict[str, Any]:
     }
     if CODEX_STATE_DB.exists():
         try:
-            # Try URI read-only mode; fall back to plain connect (handles active WAL).
+            # immutable=1 first: read the raw DB file with NO locking or -wal/-shm
+            # access, so a live codex writer holding the DB cannot produce a false
+            # "unable to open database file". Fall back to ro then plain connect.
             _codex_conn: Optional[sqlite3.Connection] = None
-            for _codex_arg in (f"file:{CODEX_STATE_DB}?mode=ro", str(CODEX_STATE_DB)):
+            for _codex_arg in (
+                f"file:{CODEX_STATE_DB}?immutable=1",
+                f"file:{CODEX_STATE_DB}?mode=ro",
+                str(CODEX_STATE_DB),
+            ):
                 _is_uri = _codex_arg.startswith("file:")
                 try:
                     _codex_conn = sqlite3.connect(_codex_arg, uri=_is_uri, check_same_thread=False)

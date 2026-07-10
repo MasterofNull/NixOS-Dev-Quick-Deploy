@@ -696,6 +696,11 @@ Commit 7a8be059. Root cause: reaper only killed processes, never reconciled regi
 
 ## RESOLVED / DONE
 
+[RESOLVED 2026-07-10] codex-state-db-false-fail — aq-qa 0.5.7 intermittently FAILs "unable to open state DB: unable to open database file" while codex runs.
+  Root cause / fix notes: aq-report's codex_state_db check opened ~/.codex/state_5.sqlite with mode=ro then plain connect and ran PRAGMA integrity_check. Under an active codex writer (WAL mode), both open modes touch -wal/-shm and can hit a transient lock -> SQLite "unable to open database file" -> FAIL propagates to aq-qa 0.5.7 (and pushes attn alerts, e.g. attn-4f4080ef). The DB was present and fine (verified all open modes succeed when codex idle; integrity=ok). Fix: try immutable=1 FIRST — SQLite reads the raw DB file with no locking or -wal/-shm access, so a live writer cannot block the monitoring read. Falls back to ro then plain. Validated: patched aq-report returns codex_state_db=PASS integrity_check=ok while codex actively running (pid live); aq-qa 0 = 164/0.
+  Severity: low-medium (recurring false FAIL + false alerts; masked codex health as degraded)
+  File: scripts/ai/aq-report
+
 [RESOLVED 2026-07-10] training-proposal-realert-loop — a rejected training proposal resurfaced as a new HITL alert on every ingest run.
   Root cause / fix notes: training_ingest._push_review_alerts re-pushed an alert for EVERY proposal with status=="pending" on every run, and rejecting the ALERT (attention_queue) never wrote back to the proposal record — so bogus cold-run proposal loop-loop-20260708-224857-0 re-alerted indefinitely (attn-312cd2aa -> attn-5be20760, identical payload). This is alert fatigue that erodes the HITL gate (the G2 rubber-stamp/poison risk). Fix: _push_review_alerts now returns alerted proposal_ids; the CLI marks each status="review_pending" via _mark_proposal so a proposal is surfaced exactly once and drops out of the pending set; the single queued alert persists until the operator acts. Also marked the bogus proposal status="rejected" directly. Validated: run1 needs_review=1 -> mark -> run2 needs_review=0.
   Severity: medium
