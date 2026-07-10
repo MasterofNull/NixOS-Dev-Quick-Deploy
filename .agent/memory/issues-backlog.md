@@ -1684,3 +1684,10 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: medium
 - **Action**: Capture the failing path and errno in the check evidence; distinguish permission/unreadable state from corpus-budget failure; use a read-only observer-safe path or explicitly skip with degraded confidence when the caller cannot access the database; add a fixture for unreadable state DBs.
 - **File**: `scripts/testing/harness_qa/phases/phase0.py` check 0.5.7 and its editor corpus helper
+
+## [OPEN] Local collaboration lane can consume the slot for 37 minutes then lose all output on a transient switchboard refusal
+- **Scope**: local-agent delegation reliability, backpressure, retry/finalization, and collaborative-round evidence
+- **Description**: `local-20260709-210355-kkhuz3` remained PID-alive with fresh heartbeats while four tool calls took 2,145 seconds, then failed after 2,233 seconds with an empty result and `LLM connection refused at http://127.0.0.1:8085`. A subsequent switchboard `/health` request succeeded, so the observed failure was transient; the round received no substantive local review after occupying the single delegated lane for roughly 37 minutes.
+- **Severity**: high
+- **Action**: Persist terminal failure promptly into the delegation/round registry; bound tool-call and wall-clock budgets; retry only the final generation against a verified-ready switchboard with an idempotency key; retain partial tool evidence; expose queue/slot time and failure reason in report/dashboard; add a transient-gateway-loss fixture that proves no false submission or duplicated effects.
+- **File**: `ai-stack/local-agents/agent_executor.py`; local delegation wrapper/registry; `scripts/ai/aq-collab-round`

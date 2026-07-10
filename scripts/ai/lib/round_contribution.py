@@ -23,6 +23,12 @@ try:
 except Exception:  # pragma: no cover - capture is best-effort instrumentation.
     training_capture = None  # type: ignore[assignment]
 
+# A round is re-aggregated on every poll and the fallback text grows between
+# polls, so the same (agent, round) fallback would otherwise be captured dozens
+# of times and flood the teacher/HITL correction queue. Dedup on the logical
+# identity of the fallback, not on its byte content.
+_CAPTURED_FALLBACKS: set[tuple[str, str, str]] = set()
+
 
 class Verdict(StrEnum):
     """Review verdict for one round contribution."""
@@ -162,6 +168,36 @@ def _capture_fallback_failure(
 
     if training_capture is None:
         return
+
+    key = (failure_class, agent, str(round_dir))
+    if key in _CAPTURED_FALLBACKS:
+        return
+    # Guard across processes/restarts: an identical fallback already spooled by a
+    # prior run must not be re-captured. Fail-open — on any scan error, capture.
+    try:
+        spool = getattr(training_capture, "TRAINING_SAMPLES_PATH", None)
+        if spool is not None and Path(spool).exists():
+            with open(spool, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    prov = record.get("model_provenance") or {}
+                    if (
+                        record.get("failure_class") == failure_class
+                        and prov.get("agent_id") == agent
+                        and prov.get("round_dir") == str(round_dir)
+                    ):
+                        _CAPTURED_FALLBACKS.add(key)
+                        return
+    except Exception:
+        pass
+
+    _CAPTURED_FALLBACKS.add(key)
     prompt = (
         "Emit a valid collaboration Contribution JSON sidecar for the agent output. "
         "The JSON must satisfy scripts/ai/lib/round_contribution.py::Contribution."
