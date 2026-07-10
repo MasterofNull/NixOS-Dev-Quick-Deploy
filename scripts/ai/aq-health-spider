@@ -162,8 +162,13 @@ def _semantic_probe_reason(check: str, data: Dict[str, Any]) -> str:
         return ""
 
     if check == "osi_layered_ready":
-        if data.get("pending") is True and not data.get("running"):
-            return "osi_layered_pending"
+        # In-progress (queued OR actively running) returns pending:true with zero
+        # results so far. Any non-empty reason is treated as degraded and alerts
+        # downstream, so an in-flight check must read as healthy-for-now (""):
+        # no alert this cycle, stale alerts resolved, real pass/fail next cycle.
+        # (A permanently-stuck pending check is a separate staleness concern.)
+        if data.get("pending") is True:
+            return ""
         layers = data.get("layers") if isinstance(data.get("layers"), dict) else {}
         passed = int(data.get("passed") or 0)
         failed = int(data.get("failed") or 0)
