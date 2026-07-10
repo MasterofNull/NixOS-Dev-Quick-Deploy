@@ -2306,6 +2306,9 @@ async def get_loop_status() -> Dict[str, Any]:
             "fail_count": (last_run or {}).get("fail_count"),
             "pass_rate": (last_run or {}).get("pass_rate"),
             "improvements_proposed": (last_run or {}).get("improvements_proposed"),
+            "scorer_certified": (last_run or {}).get("scorer_certified"),
+            "scorer_cert_reason": (last_run or {}).get("scorer_cert_reason"),
+            "pass_rate_trusted": (last_run or {}).get("pass_rate_trusted"),
         } if has_clean_run else None,
         "current_phase": (progress or {}).get("phase"),
         "checkpoint": {

@@ -63,3 +63,30 @@ UNCERTIFIED; golden dir has an anti-gaming marker; gate = discrimination+determi
 - **SLICE R1-G (codex, follow-up): golden set 3→15+** tasks across score-classes (tool-JSON,
   py_compile, keyword, noise/abstain) with reference outputs; keep under data/golden with marker.
 - **R2 (tracked, deferred): golden path-filter enforcement** in agent tool read/search paths.
+
+## 5. Analysis-surface map — what else warrants a Fable-tier audit (2026-07-10)
+
+Ranked by (risk × leverage), each with the question the analysis must answer. These are ANALYSIS
+candidates; each produces a gap table + delegation specs like §2–§4, not direct implementation.
+
+| # | Surface | Core question | Why now |
+|---|---------|---------------|---------|
+| A1 | **Dispatch chain SSOT** (`run_direct` vs `build_llama_payload`, role-injection gap, aq-loop→agent_executor→llama path) | How many places re-implement payload construction, and which drift silently? | Known: run_direct heredoc bypasses SSOT; every payload bug this cycle traces to a fork of this chain |
+| A2 | **F2.5 activation readiness** (scheduler/backpressure/model_tier → dispatch.py wiring) | What is the exact wiring diff, rollback plan, and starvation test? | R1-O starved behind the aqos round TODAY — recurring, measured cost |
+| A3 | **Spool/telemetry lifecycle** (training-samples, results.jsonl, PULSE, delegation outputs, a2a-events) | What grows unboundedly, what purges it, what's the retention contract? | User flagged the purge/compaction system as built-but-unused; 173-failure flood was one symptom |
+| A4 | **Queue/backlog economics** (capture→correction→HITL→ingest rates) | Are producer/consumer rates matched at every hop, with caps + visible depth? | G2 generalizes: any unmatched hop recreates the flood |
+| A5 | **Switchboard profiles + lane config** (profiles, fallback matrices, key-vs-OAuth lanes) | Which profile behaviors are declared vs actually exercised; where do fallbacks mask failures? | Antigravity mismatch found by accident, not by audit |
+| A6 | **AIDB/RAG data quality** (14 collections: staleness, dedup, embedding drift, reindex cadence) | What fraction of retrievals return stale/wrong-collection content? | ragas faithfulness 0.6 on sample=3 — unmeasured beyond that |
+| A7 | **Nix module structure** (options.nix sprawl, profile flags, activationScripts inventory, secrets wiring) | Which options are dead, duplicated, or runtime-divergent from declaration? | Today's vsix break shows upgrade fragility; flake bumps land undertested |
+| A8 | **Security posture drift** (AppArmor profiles vs current service set, systemd hardening parity, nsjail coverage) | Do confinement profiles still match what services actually do? | Services evolved for months; profiles audited piecemeal only |
+| A9 | **Dashboard card parity** (every backend signal → card/alert/intervention mapping) | Which measured signals have no surface ("blank -- is a bug")? | Trust fields just added; systematic sweep never done |
+| A10 | **Skill/prompt registry hygiene** (60+ skills, HARNESS-CONTEXT injection size, aq-skill-suggest routing accuracy) | Which skills are dead weight; what does grounding-supplement cost per delegation vs its hit rate? | Injected context is the largest fixed token cost per delegation |
+| A11 | **Eval/golden data quality** (golden n=3→15+, eval-pack case coverage vs real workload distribution) | Does the eval distribution match what agents actually do? | 11/12 baseline is near ceiling — insensitive to regressions |
+| A12 | **Dev-cycle governance instrumentation** (DoD attestation rate, PULSE/RESUME compliance, parity-matrix drift detection) | Are the governance rules observable, or honor-system? | Rule 15/16 are new; enforcement is currently manual review |
+| A13 | **Wiki/knowledge-graph freshness** (.understand-anything drift vs code churn) | What invalidates a wiki section, and is anything watching? | High churn cycle just ended; wiki updated less often than code |
+| A14 | **Model lifecycle** (Qwen3-35B promotion criteria, re-bench triggers, LoRA promotion gate P3, quant/KV settings vs RAM budget) | What triggers demotion/re-bench, and is the trust gate wired into promotion? | pass_rate_trusted exists now; promotion gate must consume it |
+
+Recommended order: A2 (unblocks throughput) → A3+A4 (stops unbounded growth, activates the unused
+purge/compaction layer) → A1 (payload SSOT, prevents next class of silent drift) → A9+A12
+(observability of everything above) → then A5–A8, A10–A14 as scheduled audit rounds — one
+analysis round each, multi-agent (aq-collab-round) with Fable framing + codex/local proposals.
