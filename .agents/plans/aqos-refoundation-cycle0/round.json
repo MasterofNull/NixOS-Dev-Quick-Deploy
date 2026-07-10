@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "round_id": "aqos-refoundation-cycle0",
+  "state": "CONSENSUS_LOCKED",
+  "task": {
+    "prompt": "Read .agents/prompts/AQOS_OWNER_NEXT_CYCLE_META_PROMPT.md and act as the complete required expert team. Produce an independent evidence-led proposal only: product definition, current-state authority map, clean-sheet architecture critique, ranked parity gaps, threat controls, Cycle 0 PRD slices, validation matrix, retirement plan, and verdict. Do not read other lane proposals. Do not implement code. Load reference skills multi-agent-collab, context-efficiency, system-dev.",
+    "target": ".agents/plans/aqos-refoundation-cycle0",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-10T04:03:55Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "f0cabb25349d776ac67d4fef49221c97816316b308ba292cd9ea1c6c76a4e4f5",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "31f9a20c3293b232c853f13bc1f22bc9679f7a91d1ec52a8b11fa080c80685b7",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "c0ae73fb2ec6a518d841b1fc891ac4491c44d0ec6d9264275ada0fe2ef5a784f",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "b70f181b4326b4a9a2d68ed92e0c8058c3c7ceca10b759c5eb257a9a894f92f0",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": "a2df013af5ac00e9268e0f2c6f1561f000463238ef86d57d77e92a14cfe2933d",
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": "2026-07-10T04:22:51Z",
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-10T04:03:55Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-10T04:22:51Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-10T04:22:51Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->CONSENSUS_LOCKED",
+      "timestamp": "2026-07-10T04:22:51Z",
+      "actor": "round_aggregate"
+    }
+  ]
+}

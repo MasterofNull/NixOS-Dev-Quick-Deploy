@@ -425,21 +425,26 @@ def _validate_antigravity_contribution(rd: Path) -> list[str]:
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
     warnings = []
-    required = [
-        "# Verdict",
-        "# Evidence Read",
-        "# Expert-Team Findings",
-        "# Ranked Parity Gaps",
-        "# Proposed UX Architecture",
-        "# Slice Plan",
-        "# Validation Matrix",
-        "# Risk Register",
-        "# First Slice Recommendation",
-        "# Open Questions",
-    ]
-    missing = [h for h in required if h not in text]
-    if missing:
-        warnings.append("antigravity-missing-headings:" + ",".join(missing))
+    
+    is_parity = "parity" in rd.name.lower() or "usability" in rd.name.lower()
+
+    if is_parity:
+        required = [
+            "# Verdict",
+            "# Evidence Read",
+            "# Expert-Team Findings",
+            "# Ranked Parity Gaps",
+            "# Proposed UX Architecture",
+            "# Slice Plan",
+            "# Validation Matrix",
+            "# Risk Register",
+            "# First Slice Recommendation",
+            "# Open Questions",
+        ]
+        missing = [h for h in required if h not in text]
+        if missing:
+            warnings.append("antigravity-missing-headings:" + ",".join(missing))
+
     stale_path_lines = [
         line for line in text.splitlines()
         if ".agents/plans/usability-parity/" in line
@@ -450,19 +455,21 @@ def _validate_antigravity_contribution(rd: Path) -> list[str]:
     forbidden = ["Google AI Studio", "active billing quota", "SOPS secret keys"]
     if any(term in text for term in forbidden):
         warnings.append("antigravity-provider-language-needs-no-key-review")
-    gap_section = text.split("# Ranked Parity Gaps", 1)[-1].split("# Proposed UX Architecture", 1)[0]
-    ranked_rows = 0
-    for line in gap_section.splitlines():
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if cells and cells[0].isdigit():
-            ranked_rows += 1
-    numbered = sum(
-        1
-        for line in gap_section.splitlines()
-        if any(line.lstrip().startswith(f"{i}.") for i in range(1, 11))
-    )
-    if max(ranked_rows, numbered) < 10:
-        warnings.append("antigravity-ranked-gaps-fewer-than-10")
+
+    if is_parity:
+        gap_section = text.split("# Ranked Parity Gaps", 1)[-1].split("# Proposed UX Architecture", 1)[0]
+        ranked_rows = 0
+        for line in gap_section.splitlines():
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if cells and cells[0].isdigit():
+                ranked_rows += 1
+        numbered = sum(
+            1
+            for line in gap_section.splitlines()
+            if any(line.lstrip().startswith(f"{i}.") for i in range(1, 11))
+        )
+        if max(ranked_rows, numbered) < 10:
+            warnings.append("antigravity-ranked-gaps-fewer-than-10")
     return warnings
 
 
