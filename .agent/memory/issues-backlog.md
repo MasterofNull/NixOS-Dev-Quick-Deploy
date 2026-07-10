@@ -1621,10 +1621,10 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **File**: scripts/ai/lib/eval_integrity.py (the gate), scripts/ai/aq-local-training-loop (the scorer to replace)
 ## [OPEN] Round consensus manifest can lock without persisting consensus evidence
 - **Scope**: `aq-collab-round` typed state and `aqos-v1/round.json`
-- **Description**: `aqos-v1/round.json` is `CONSENSUS_LOCKED` while `contributions` is `{}`, `aggregate_path`/`aggregate_hash` are null, the PRD is still DRAFT, and the human aggregate describes only provisional ratification. `round_aggregate.aggregate()` locks when lane statuses meet quorum and conflicts are empty; it does not require an accepting verdict, persist the extracted contributions, or bind the human aggregate artifact into the manifest.
+- **Description**: `aqos-v1/round.json` is `CONSENSUS_LOCKED` while `contributions` is `{}`, `aggregate_path`/`aggregate_hash` are null, the PRD is still DRAFT, and the human aggregate describes only provisional ratification. The defect reproduced again on 2026-07-10 in `aqos-refoundation-cycle0`: `collect` locked with `ABSTAIN: 3`, empty contributions, null aggregate path/hash, a still-running/unparsed local lane, and no Antigravity output. `round_aggregate.aggregate()` locks when lane statuses meet quorum and conflicts are empty; it does not require an accepting verdict, persist the extracted contributions, or bind the human aggregate artifact into the manifest.
 - **Severity**: high
 - **Action**: Make lock eligibility depend on a typed verdict policy, required substantive lanes, and non-empty persisted contribution evidence; persist contribution hashes plus aggregate path/hash atomically; reject `CONSENSUS_LOCKED` manifests whose evidence invariants fail; add replay tests for all-REJECT, empty-extraction, provisional quorum, and late-lane amendment.
-- **File**: `scripts/ai/lib/round_aggregate.py`; `scripts/ai/aq-collab-round`; `.agents/plans/aqos-v1/round.json`
+- **File**: `scripts/ai/lib/round_aggregate.py`; `scripts/ai/aq-collab-round`; `.agents/plans/aqos-v1/round.json`; `.agents/plans/aqos-refoundation-cycle0/round.json`
 
 ## [OPEN] A2A event-log v1 is not a durable or authenticated system-of-record
 - **Scope**: WS2 event spine
@@ -1671,3 +1671,16 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Severity: medium
   Action: Move the wrapper implementation into a bounded script and rewrite `SKILL.md` as documentation with Description, When to Use, Usage, and security notes.
   File: .agent/skills/mcp-server/SKILL.md
+## [OPEN] Concurrent QA runs clobber the shared latest-results artifact
+- **Scope**: Phase-0 evidence persistence and scorecard provenance
+- **Description**: During the AQ-OS refoundation round, one fresh run returned 163 pass / 1 fail / 8 skip, then a concurrent run overwrote `data/hybrid/telemetry/latest-qa-results.json` with 162/0/10. The shared `latest` file cannot identify or preserve an individual run and can make later report evidence disagree with the invoking QA process.
+- **Severity**: high
+- **Action**: Persist immutable run-ID/timestamp-keyed QA result artifacts; update `latest` only as an atomic pointer containing the referenced run ID/hash; make report/dashboard consumers expose provenance and reject mismatched or partially written snapshots; add concurrent-writer regression coverage.
+- **File**: `scripts/ai/aq-qa`; `data/hybrid/telemetry/latest-qa-results.json`; `scripts/ai/aq-report`
+
+## [OPEN] Phase-0 editor corpus check can fail on unreadable Codex state database
+- **Scope**: `aq-qa` check 0.5.7 and editor-local corpus inspection
+- **Description**: A fresh refoundation audit observed check 0.5.7 fail because a Codex state database was unreadable. A later concurrent run did not preserve the same failure, so the exact path/permission cause remains unproven and the failure is masked by the shared-latest clobber issue.
+- **Severity**: medium
+- **Action**: Capture the failing path and errno in the check evidence; distinguish permission/unreadable state from corpus-budget failure; use a read-only observer-safe path or explicitly skip with degraded confidence when the caller cannot access the database; add a fixture for unreadable state DBs.
+- **File**: `scripts/testing/harness_qa/phases/phase0.py` check 0.5.7 and its editor corpus helper
