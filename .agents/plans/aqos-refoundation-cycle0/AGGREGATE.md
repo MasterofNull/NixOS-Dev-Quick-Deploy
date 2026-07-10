@@ -1,8 +1,12 @@
 # AQ-OS Refoundation Cycle 0 — Provisional Aggregate
 
 **Status:** `REQUEST_REVISION` — implementation is not authorized.  
-**Updated:** 2026-07-10T04:25:00Z  
+**Updated:** 2026-07-10T04:55:00Z
 **Owner brief:** `.agents/prompts/AQOS_OWNER_NEXT_CYCLE_META_PROMPT.md`
+
+**Current planning package:** `PACKAGE-ROOT.json`
+**External SHA-256:** `2b905b244f97d0bbd1560d779e0e4cbdc7d7a923920e2821397c22d71c608a83`
+This package is ready for independent review, not ratified or authorized.
 
 ## Evidence status
 
@@ -10,11 +14,11 @@
 |---|---|---:|---:|
 | Claude slot | `claude.md`, explicitly Codex-orchestrator proxy | yes | no |
 | Codex | `codex.md`, recovered from independent internal team after headless stdin failure | yes | one Codex-family lane |
-| Local/Qwen | original agent lane alive with fresh heartbeat; no artifact yet | pending | pending |
+| Local/Qwen | failed after 2,233.4 s and four tool calls; empty output after transient switchboard refusal | no | no; failure evidence only |
 | Antigravity/Gemini | inbox issued; no artifact yet | pending/unavailable | no |
 | Independent internal teams | three read-only proposals; two adversarial cross-reviews | yes | review evidence, not distinct model quorum |
 
-The headless Codex failure, local retry, and Antigravity absence remain part of the evidence;
+The headless Codex failure, local failure/retry, and Antigravity absence remain part of the evidence;
 none is converted into an approval by status inference.
 
 ## Machine-state invalidity reproduced live
@@ -52,39 +56,45 @@ All substantive proposals and three independent internal teams converge on:
 6. JSONL, PULSE/RESUME, registry/sidecars, Markdown consensus, and dashboard caches become
    named projections after migration; they are not peer authorities.
 
-## Required revisions before PRD ratification
+## Revision package completed
 
-1. Await or formally close local and Antigravity lanes. A status-only or failed output is an
-   abstention/training signal, never agreement.
-2. Treat Claude proxy and recovered Codex proposal as one model family for quorum.
-3. Add the complete 12-hypothesis parity matrix, canonical object model, current authority/
-   dependency map, weighted scores, and decision log to the consolidated PRD.
-4. Cover all 12 owner threats with prevention, detection, intervention, and recovery tests.
-5. Add an evidence manifest: commit, timestamp, command/source, artifact hash, freshness,
-   evidence class, and environment limitations.
-6. Separate `direction_ratified`, `plan_ratified`, and `implementation_authorized` states.
-7. Define `substantive contribution`, accepted verdict policy, trusted producer attribution,
-   canonical bytes/hash algorithm, amendment resolution, and operator recovery actions.
-8. Bound every slice by exact files or discovery outputs, validators, exit/status contracts,
-   APU/token/runtime/disk/cardinality budgets, rollback, and same-cycle retirement.
-9. Keep destructive/crash/replay tests isolated from live PULSE/RESUME, latest QA artifacts,
-   registries, and production Postgres.
-10. Treat Postgres+outbox as a strong Cycle 1 hypothesis pending C0.3 cost, failure, restore,
-    and migration evidence—not as Cycle 0 implementation authority.
+The revised package now contains:
+
+1. full product critique, clean-sheet intent, 12-row parity matrix and ranked gaps;
+2. canonical object lifecycle hypotheses and exact planning decision transitions/cascades;
+3. safe proposed owner/quorum defaults, exact canonical bytes and commit protocol;
+4. evidence algebra, required-claim matrix and immutable QA/pointer semantics;
+5. complete threat register with delivery cycles, owners and restoration assertions;
+6. machine/human evidence manifests and an externally hashed package root;
+7. frozen C0.2 consumers, exact integration check IDs and existing operator surfaces;
+8. honest split-brain authority discovery states and a Cycle 1 ADR output path;
+9. external reference/build-adopt comparison, six-cycle migration and consolidation candidates;
+10. three slices bounded by validation, resource, rollback, retirement and stop contracts.
+
+## Remaining ratification blockers
+
+1. Owner acceptance of authorization, quorum, waiver, proxy and critical-human policies.
+2. Formal closure/waiver of failed local and unverified Antigravity lanes without approval weight.
+3. Two genuinely independent model-family/principal reviews of the current package root.
+4. Measured C0.2 thresholds, telemetry roots, retention owner and privacy/GC acceptance.
+5. Hashed implementer/reviewer agreement on inter-slice contracts.
+6. Explicit per-file ownership and no-overlap preflight before any implementation authorization.
+7. The read-only C0.3 scan now proves broad split-brain and exact candidate paths; target adjudication,
+   owners and deadlines remain Cycle 0 work.
 
 ## Provisional Cycle 0 dependency contract
 
 | Slice | Produces | Consumed by | Gate |
 |---|---|---|---|
-| C0.1 | typed evidence/reason codes and valid direction/plan states | C0.2, C0.3 | invalid AQ-OS v1 and this round replay truthfully |
-| C0.2 | evidence/status algebra and current broken-producer inventory | C0.3 | live no-data/failed-validation cannot false-pass |
-| C0.3 | ratified authority/retirement map and Cycle 1 ADR inputs | Cycle 1 plan | all writers/readers/bypasses/rollback owners enumerated |
+| C0.1 | typed decisions, exact evidence/reason codes, cascades and assignment invariant | C0.2, C0.3 | invalid rounds block; positive authorization works exactly once; recovery preserves corrupt bytes |
+| C0.2 | evidence algebra, required claims and immutable QA provenance | C0.3 | missing/invalid/conflicting evidence cannot pass; concurrent artifacts survive |
+| C0.3 | observed claims/writers, contested-state adjudication and Cycle 1 ADR | Cycle 1 plan | every writer/reader/bypass/owner/deadline enumerated; no invented singleton authority |
 
-No slice is delegated until this table is expanded into mutually reviewed integration
-contracts and the consolidated plan is ratified.
+No slice is delegated until the integration contracts are acknowledged against exact hashes, the
+package is independently reviewed, the plan is ratified and owner authorization is explicit.
 
 ## Provisional verdict
 
-`VERDICT: REQUEST_REVISION — direction converges, but the live ABSTAIN-only false lock,
-non-independent proxy lanes, pending local/Antigravity evidence, incomplete owner deliverables,
-and missing operator/resource contracts block PRD ratification and all implementation.`
+`VERDICT: REQUEST_REVISION — the revised package is coherent and review-ready, but the live false lock,
+failed local lane, unverified Antigravity lane, missing model diversity, unratified owner policy,
+unmeasured thresholds and unsigned ownership/contracts block ratification and all implementation.`
