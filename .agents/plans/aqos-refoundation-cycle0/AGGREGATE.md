@@ -16,6 +16,7 @@ exact-root review; it is not ratified or authorized.
 | Claude slot | `claude.md`, explicitly Codex-orchestrator proxy | yes | no |
 | Codex | `codex.md`, recovered from independent internal team after headless stdin failure | yes | one Codex-family lane |
 | Local/Qwen | failed after 2,233.4 s and four tool calls; empty output after transient switchboard refusal | no | no; failure evidence only |
+| Local/Qwen findings retry | `local-findings-review.md`, orchestrator-seeded direct response | yes | explicitly zero approval weight; dissent evidence only |
 | Anthropic/Fable 5 | `REVIEW-FABLE5.md`, `APPROVE_WITH_CHANGES` on predecessor/review-pin bytes | yes | independent findings; zero approval for current root |
 | Antigravity/Gemini | `antigravity-findings-review.md`, `APPROVE_WITH_CHANGES` on root `2b905b24…` | yes | independent findings; conditional verdict approves nothing |
 | Independent internal teams | three read-only proposals; two adversarial cross-reviews | yes | review evidence, not distinct model quorum |
@@ -76,13 +77,16 @@ The revised package now contains:
 
 ## Remaining ratification blockers
 
-1. Owner acceptance of authorization, quorum, waiver, proxy and critical-human policies.
-2. Formal closure/waiver of failed local and unverified Antigravity lanes without approval weight.
-3. Two genuinely independent model-family/principal reviews of the current package root.
-4. Measured C0.2 thresholds, telemetry roots, retention owner and privacy/GC acceptance.
-5. Hashed implementer/reviewer agreement on inter-slice contracts.
-6. Explicit per-file ownership and no-overlap preflight before any implementation authorization.
-7. The read-only C0.3 scan now proves broad split-brain and exact candidate paths; target adjudication,
+1. Governance policy is ratified in `OWNER-POLICY-RATIFICATION.md`/`d247f7f0`, but it explicitly does
+   not ratify the plan or authorize implementation.
+2. `scripts/governance/aq-package-freeze` must be separately authorized/built and verify the final root;
+   hand-maintained roots cannot solicit final approval under the ratified policy.
+3. Fresh unconditional Anthropic and Gemini `APPROVE` reviews of the tool-frozen current root.
+4. Formal closure/waiver of failed local lane with zero approval weight.
+5. Measured per-slice baselines and thresholds under the ratified protocol.
+6. Hashed implementer/reviewer agreement on inter-slice contracts.
+7. Explicit per-file ownership and no-overlap preflight before any implementation authorization.
+8. The read-only C0.3 scan proves broad split-brain and exact candidate paths; target adjudication,
    owners and deadlines remain Cycle 0 work.
 
 ## Provisional Cycle 0 dependency contract

@@ -14,6 +14,7 @@ fresh `APPROVE` reviews are required and neither prior conditional verdict autho
 | Trust/evidence/security expert workstream | `REQUEST_REVISION` | same Codex family; zero independent weight |
 | Execution/QA expert workstream | `REQUEST_REVISION` | same Codex family; zero independent weight |
 | Original local/Qwen lane | failed after 2,233.4 s; empty output; transient switchboard refusal | zero approval weight; training/reliability evidence |
+| Local/Qwen seeded retry | substantive F1–F7 review with preserved dissent | explicitly zero approval weight; lane-readiness evidence |
 | Anthropic/Fable 5 | `APPROVE_WITH_CHANGES` on predecessor/review-pin bytes | independent findings; zero current approval weight |
 | Antigravity/Gemini | `APPROVE_WITH_CHANGES` on root `2b905b24…` | independent findings; old conditional verdict never counts |
 | Claude slot | Codex-orchestrator proxy | same lineage; zero diversity |
@@ -42,7 +43,8 @@ fresh `APPROVE` reviews are required and neither prior conditional verdict autho
 
 ## Remaining blocking findings
 
-1. Owner has not ratified the proposed authorization, quorum, waiver, proxy or critical-human policy.
+1. Owner governance policy is ratified by `OWNER-POLICY-RATIFICATION.md`/`d247f7f0`; that record
+   explicitly leaves plan ratification and implementation authorization open.
 2. Independent Anthropic/Gemini reviews supplied amendments, but the superseding package root needs
    fresh explicit `APPROVE` reviews; conditional verdicts carry zero approval weight.
 3. Local lane failure must be formally closed/waived without becoming a vote.
