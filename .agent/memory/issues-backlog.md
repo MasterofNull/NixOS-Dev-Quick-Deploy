@@ -696,6 +696,17 @@ Commit 7a8be059. Root cause: reaper only killed processes, never reconciled regi
 
 ## RESOLVED / DONE
 
+[RESOLVED 2026-07-10] training-proposal-realert-loop — a rejected training proposal resurfaced as a new HITL alert on every ingest run.
+  Root cause / fix notes: training_ingest._push_review_alerts re-pushed an alert for EVERY proposal with status=="pending" on every run, and rejecting the ALERT (attention_queue) never wrote back to the proposal record — so bogus cold-run proposal loop-loop-20260708-224857-0 re-alerted indefinitely (attn-312cd2aa -> attn-5be20760, identical payload). This is alert fatigue that erodes the HITL gate (the G2 rubber-stamp/poison risk). Fix: _push_review_alerts now returns alerted proposal_ids; the CLI marks each status="review_pending" via _mark_proposal so a proposal is surfaced exactly once and drops out of the pending set; the single queued alert persists until the operator acts. Also marked the bogus proposal status="rejected" directly. Validated: run1 needs_review=1 -> mark -> run2 needs_review=0.
+  Severity: medium
+  Deferred follow-up: wire aq-reject/aq-approve of a training-proposal alert to write review_status back to the proposal record (attention_queue is generic today, no proposal link); a review_pending proposal whose alert expires unacted won't re-alert (discoverable via report/dashboard).
+  File: ai-stack/local-agents/training_ingest.py
+
+[RESOLVED 2026-07-10] throughput-calibration-inf-false-fail — aq-qa 0 check 0.10.22 (LOCAL_TOK_PER_SEC calibration) hard-failed on a degenerate metric.
+  Root cause / fix notes: test-local-inference-throughput.py reads llamacpp:predicted_tokens_seconds from /metrics; llama.cpp reports `inf` when the last generation's predicted_time rounds to 0ms (short/cached completion). The check guarded None and 0.0 but not inf/nan, so drift=|inf-3.45|/3.45=inf -> false FAIL that blocked the tier0 gate. Fix: treat non-finite measured values (math.isfinite) as SKIP, same as 0.0 — an unmeasurable reading is not a calibration regression. Validated across inf/nan/0 -> SKIP, in-range -> PASS, real >50% drift -> still FAIL.
+  Severity: low-medium (false-blocked commits; masked as a throughput regression)
+  File: scripts/testing/test-local-inference-throughput.py
+
 [DONE] local-agent/store-memory-contract — Local agent capability test retried `store_memory` because the tool schema advertised `context_type` as note/decision/observation while the coordinator requires canonical memory tiers; `milestone` failed with `memory_store_invalid` before retrying as episodic.
   Severity: medium
   Action: Updated local `store_memory` schema to expose canonical memory tiers, added alias normalization for legacy context labels including milestone->episodic, and added aq-qa/focused-CI coverage as 0.10.14.

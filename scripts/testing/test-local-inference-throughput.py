@@ -11,6 +11,7 @@ Exits 1 on FAIL (drift > 50% — budget math is materially wrong).
 """
 import sys
 import os
+import math
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -50,6 +51,13 @@ def main() -> int:
 
     if measured == 0.0:
         print("SKIP: llamacpp:predicted_tokens_seconds = 0 (no inference has run yet) — skipping throughput calibration")
+        return 0
+
+    if not math.isfinite(measured):
+        # llama.cpp reports inf/nan when the last generation's predicted_time
+        # rounded to 0ms (very short or cached completion). That is a degenerate
+        # gauge reading, not a real throughput — cannot calibrate from it.
+        print(f"SKIP: llamacpp:predicted_tokens_seconds = {measured} (degenerate metric, predicted_time≈0) — skipping throughput calibration")
         return 0
 
     drift = abs(measured - LOCAL_TOK_PER_SEC) / LOCAL_TOK_PER_SEC

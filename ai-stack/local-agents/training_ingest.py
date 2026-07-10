@@ -712,15 +712,23 @@ def generate_prompt_extensions(
 
 # ── HITL alert push ───────────────────────────────────────────────────────────
 
-def _push_review_alerts(proposals: List[Dict]) -> None:
-    """Push each proposal needing human review onto the HITL attention queue."""
+def _push_review_alerts(proposals: List[Dict]) -> List[str]:
+    """Push each proposal needing human review onto the HITL attention queue.
+
+    Returns the proposal_ids successfully alerted so the caller can mark them
+    so they are surfaced exactly once. Without that mark, every ingest run
+    re-pushes an alert for the same still-pending proposal, and an operator who
+    rejects the *alert* (which never writes back to the proposal record) sees it
+    resurrect on the next run — alert fatigue that erodes the HITL gate.
+    """
     try:
         import sys as _sys
         _sys.path.insert(0, str(_REPO_ROOT / "scripts" / "ai" / "lib"))
         from attention_queue import push as _push
     except ImportError:
-        return  # attention_queue not available — skip silently
+        return []  # attention_queue not available — skip silently
 
+    alerted: List[str] = []
     for p in proposals:
         proposal_id = p.get("proposal_id", "unknown")
         ptype = p.get("type", "unknown")
@@ -739,6 +747,9 @@ def _push_review_alerts(proposals: List[Dict]) -> None:
             ),
             payload=p,
         )
+        if proposal_id and proposal_id != "unknown":
+            alerted.append(proposal_id)
+    return alerted
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -781,7 +792,12 @@ def _cli() -> None:
     if report["proposals_needing_review"]:
         print(f"  Needs human review     : {len(report['proposals_needing_review'])}")
         if not args.dry_run:
-            _push_review_alerts(report["proposals_needing_review"])
+            alerted_ids = _push_review_alerts(report["proposals_needing_review"])
+            # Surface each proposal exactly once: move it out of the "pending"
+            # set so the next ingest run does not re-alert. The single queued
+            # alert persists until the operator acts on it.
+            for _pid in alerted_ids:
+                ingestor._mark_proposal(_pid, "review_pending")
     print(f"  Prompt extensions      : +{ext_summary['rules_added']} rules → {ext_summary['file']}")
 
 
