@@ -1,0 +1,149 @@
+{
+  "schema_version": "aq.evidence_manifest/1.0",
+  "manifest_id": "aqos_refoundation_cycle0_evidence_v2",
+  "subject": {
+    "type": "planning_round",
+    "id": "aqos_refoundation_cycle0",
+    "revision": 2,
+    "sha256": "90061e1256e862a347912c203911bd4459fb28d1dee45f59631b975a591a89c1"
+  },
+  "producer": {
+    "principal": "codex_orchestrator",
+    "transport": "workspace_process",
+    "attribution_assurance": "ORCHESTRATOR_ATTESTED"
+  },
+  "collection": {
+    "argv": [
+      "manual_evidence_compilation"
+    ],
+    "cwd": ".",
+    "started_at": "2026-07-10T04:22:51Z",
+    "ended_at": "2026-07-10T04:41:09.490591Z",
+    "exit_code": 0,
+    "timed_out": false
+  },
+  "environment": {
+    "git_commit_at_initial_observation": "717f5d7ed0e09a0324f055613da05956763c66e8",
+    "worktree_dirty": true,
+    "concurrent_writers_observed": true,
+    "host_class": "local_nixos_apu",
+    "limitations": [
+      "command_stdout_not_persisted_as_immutable_artifacts",
+      "qa_latest_artifact_has_no_invocation_provenance",
+      "repository_head_changed_during_collection"
+    ]
+  },
+  "records": [
+    {
+      "evidence_id": "E_001",
+      "class": "verified_live",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T04:22:51Z",
+      "artifact": {
+        "path": ".agents/plans/aqos-refoundation-cycle0/round.json",
+        "media_type": "application/json",
+        "sha256": "90061e1256e862a347912c203911bd4459fb28d1dee45f59631b975a591a89c1",
+        "privacy_class": "internal",
+        "retention_class": "audit"
+      },
+      "finding": "CORRUPT_ROUND_STATE",
+      "claim": "machine_round_state_locked_without_persisted_contribution_or_aggregate_evidence"
+    },
+    {
+      "evidence_id": "E_002",
+      "class": "verified_source",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T04:28:00Z",
+      "artifact": {
+        "path": "scripts/ai/lib/round_aggregate.py",
+        "media_type": "text/x-python",
+        "sha256": "87dfe7da3d037113219f4136d35e7771b2fbf8dd46326b7f6f3c87e4f9972da5",
+        "privacy_class": "internal",
+        "retention_class": "cycle"
+      },
+      "claim": "lock_depends_on_lane_status_quorum_and_no_conflicts"
+    },
+    {
+      "evidence_id": "E_005",
+      "class": "research_required",
+      "condition": "MISSING",
+      "observed_at": "2026-07-10T04:27:48.706Z",
+      "artifact": null,
+      "historical_sha256_without_preserved_bytes": "de73034131a29ebbdd441a5a673ddb958c55c32f6a50005ffec39b23479656d0",
+      "measurement": {
+        "passed": 162,
+        "failed": 0,
+        "skipped": 10
+      },
+      "finding": "HISTORICAL_DIGEST_ONLY",
+      "claim": "historical_phase0_total_cannot_be_independently_reproduced"
+    },
+    {
+      "evidence_id": "E_007",
+      "class": "verified_live",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T04:03:55Z",
+      "artifact": {
+        "path": ".agents/delegation/outputs/codex-20260709-210354-nfl3qgxxxxxx.log",
+        "media_type": "text/plain",
+        "sha256": "1aa26269eb1cc57f86b235a03cda53c004edb5b1e9fc99d4da4f00843293d721",
+        "privacy_class": "internal",
+        "retention_class": "cycle"
+      },
+      "finding": "NON_SUBSTANTIVE_OUTPUT",
+      "claim": "headless_codex_lane_produced_no_substantive_proposal"
+    },
+    {
+      "evidence_id": "E_008",
+      "class": "research_required",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T04:03:55Z",
+      "artifact": {
+        "path": ".agent/collaboration/antigravity-inbox/aqos-refoundation-cycle0.md",
+        "media_type": "text/markdown",
+        "sha256": "acbc4584bb927da5af7d53ad80b4ddd06405dbb1347a9d5a2a64ab30b4080270",
+        "privacy_class": "internal",
+        "retention_class": "cycle"
+      },
+      "finding": "RESPONSE_UNVERIFIED",
+      "claim": "request_exists_but_provider_receipt_and_response_are_unverified"
+    },
+    {
+      "evidence_id": "E_010",
+      "class": "verified_live",
+      "condition": "VALID",
+      "observed_at": "2026-07-10T04:41:09.490591Z",
+      "artifact": {
+        "path": ".agents/delegation/outputs/local-20260709-210355-kkhuz3.log.progress.json",
+        "media_type": "application/json",
+        "sha256": "506387153f1833302427d92ba55cabc6249295ff7bd5e44b11190b7fb78e92da",
+        "privacy_class": "internal",
+        "retention_class": "cycle"
+      },
+      "measurement": {
+        "elapsed_milliseconds": 2233400,
+        "tool_call_count": 4,
+        "result_present": false
+      },
+      "finding": "DELEGATION_FAILED",
+      "claim": "local_review_failed_after_long_slot_occupancy_on_transient_switchboard_refusal"
+    }
+  ],
+  "assessment": {
+    "direction_review_ready": "DEGRADED",
+    "plan_ratified": "BLOCKED",
+    "implementation_authorized": "BLOCKED",
+    "blocking_reasons": [
+      "MODEL_DIVERSITY_MISSING",
+      "OWNER_POLICY_UNRATIFIED",
+      "PACKAGE_NOT_INDEPENDENTLY_REVIEWED",
+      "MACHINE_ROUND_STATE_INVALID"
+    ]
+  },
+  "integrity": {
+    "canonicalization": "raw_json_planning_artifact",
+    "hash_algorithm": "sha-256",
+    "manifest_sha256": null,
+    "digest_location": "PACKAGE-ROOT.json"
+  }
+}

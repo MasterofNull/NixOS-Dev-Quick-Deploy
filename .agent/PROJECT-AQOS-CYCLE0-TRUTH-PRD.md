@@ -4,7 +4,9 @@
 **Owner:** hyperd, represented by the AQ-OS owner meta-prompt  
 **Prepared:** 2026-07-10  
 **Companion artifacts:** `.agents/plans/aqos-refoundation-cycle0/CONSOLIDATED-PLAN.md`,
-`THREAT-REGISTER.md`, `DECISION-LOG.md`, and `EVIDENCE-MANIFEST.md`  
+`STATE-CONTRACT.md`, `EVIDENCE-ALGEBRA.md`, `CURRENT-AUTHORITY-INVENTORY.md`,
+`C0.2-SURFACE-INVENTORY.md`, `THREAT-REGISTER.md`, `DECISION-LOG.md`,
+`REFERENCE-AND-MIGRATION-COMPARISON.md`, and `EVIDENCE-MANIFEST.md`
 **Provenance:** Codex orchestration plus three same-family expert workstreams; these inputs do not
 constitute independent model-diverse quorum.
 
@@ -98,8 +100,10 @@ Switchboard execution gateway ──► llama.cpp / remote provider lanes
 | Configuration | Nix, env contract, JSON/YAML, code defaults | Duplicate defaults and startup/runtime divergence | Nix substrate plus versioned application contracts |
 | Operator truth | CLI output, API, report and dashboard synthesis | Different consumers derive different answers | One public API and serialized scorecard semantics |
 
-C0.3 must enumerate every writer, reader, bypass, owner, rollback, retention rule, and retirement gate;
-the table above is a bounded hypothesis, not that completed inventory.
+`CURRENT-AUTHORITY-INVENTORY.md` provides the source-anchored current writer/reader/bypass/recovery
+inventory for the ten broad domains and confirms all ten are presently `SPLIT_BRAIN`; the deployed Nix
+configuration chain is the one mostly-`SINGLE` subpath. C0.3 converts that research snapshot into a
+schema-validated registry, adjudicates target ownership and attaches rollback/retirement deadlines.
 
 ## 4. Clean-sheet intent architecture
 
@@ -148,6 +152,27 @@ schema ownership, failure modes, and APU/RAM/disk impact must be measured in C0.
 | Evidence manifest | Claim, producer assurance, collection command, environment, immutable artifacts, freshness, assessment and lineage |
 | Projection checkpoint | Projection/version, last authoritative revision, rebuild status and hash; never grants authority |
 
+### Lifecycle and relationship requirements
+
+| Object | Owner / legal lifecycle | Revision and relationship rules |
+|---|---|---|
+| Intent | owner: operator; `DRAFT → DIRECTION_RATIFIED | REJECTED | CANCELLED`; ratified may become `SUPERSEDED` | One intent has many plan revisions and runs; supersession atomically supersedes plan ratifications and suspends authorizations |
+| Run | owner: control plane; `QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED | BLOCKED`; terminal outcomes are immutable | Belongs to one intent/authorization; has many tasks/events/artifacts; retries create attempts, not rewritten outcomes |
+| Task | owner: workflow module; `PENDING → READY → RUNNING → SUCCEEDED | FAILED | CANCELLED | BLOCKED` | One run has many tasks; dependency revisions and idempotency key are immutable per attempt |
+| Review | owner: review module; `REQUESTED → SUBMITTED → ACCEPTED | REJECTED | SUPERSEDED | EXPIRED` | Targets exactly one subject revision/hash; producer-lineage independence is evaluated before eligibility |
+| Artifact | owner: producing task; `STAGED → VERIFIED → ACTIVE | QUARANTINED → RETIRED`, with `PURGED` as audited terminal metadata | Bytes are immutable; names are pointers; one artifact may support many evidence records but has one privacy/retention domain |
+| Capability | owner: admission authority; `CANDIDATE → ADMITTED → ENABLED ↔ DEGRADED → DISABLED → RETIRING → RETIRED` | Version changes create a new capability revision; enabled instances require current policy and probes |
+| Lease | owner: policy authority; `ISSUED → ACTIVE → EXPIRED | REVOKED | CONSUMED`; terminal records never reactivate | Belongs to one principal and capability revision; reauthorization creates a new lease |
+| Eval | owner: eval authority; `COLLECTING → VALIDATING → PASSED | FAILED | UNKNOWN | INVALID | UNTRUSTED` | Binds exact dataset/scorer/model/prompt/profile/environment revisions; promotion is a separate policy decision |
+| Policy decision | owner: policy engine/operator; `PENDING → ALLOW | DENY | REQUIRE_REVIEW | DEGRADE → EXPIRED | SUPERSEDED` | Binds exact input/policy revisions; changed inputs require a new decision |
+| Event | owner: aggregate writer; append-only, no mutable lifecycle | Each aggregate revision is monotonic; source+ID is unique; causal/correlation links do not grant authority |
+| Evidence manifest | owner: collector; `STAGED → VERIFIED | INVALID → SUPERSEDED | EXPIRED` | Binds claims to immutable artifacts; changing any input creates a new manifest revision |
+| Projection checkpoint | owner: projection worker; `BUILDING → CURRENT | STALE | FAILED → REBUILDING` | References one authoritative revision; deletion/rebuild cannot affect authoritative state |
+
+State names are contract hypotheses for Cycle 0 review. Exact commands, actors, transitions and cascades
+for planning decisions are specified in `STATE-CONTRACT.md`; runtime-object lifecycles remain
+`research_required` until C0.3 verifies current writers and Cycle 1 ratifies their authority.
+
 ### Planning and authorization state contract
 
 `direction_ratified`, `plan_ratified`, and `implementation_authorized` are distinct decisions bound to
@@ -155,7 +180,7 @@ immutable subject hashes:
 
 | Decision | States | Critical invariant |
 |---|---|---|
-| Direction | `PENDING`, `RATIFIED`, `REJECTED`, `SUPERSEDED`, `CORRUPT` | Requires eligible proposal quorum and no unresolved critical change |
+| Direction | `PENDING`, `RATIFIED`, `REJECTED`, `SUPERSEDED`, `CORRUPT`, `CANCELLED` | Requires eligible proposal quorum and no unresolved critical change |
 | Plan | `BLOCKED_ON_DIRECTION`, `PENDING_REVIEW`, `RATIFIED`, `REJECTED`, `SUPERSEDED`, `CORRUPT` | Reviews target the exact plan hash and current ratified direction |
 | Authorization | `BLOCKED`, `AUTHORIZED`, `SUSPENDED`, `REVOKED`, `EXPIRED`, `CONSUMED` | Requires both ratifications, signed dependencies, current evidence, and explicit operator/policy action |
 
@@ -167,18 +192,18 @@ consensus.
 
 | # | Requirement | Current equivalent/evidence | Gap | Decision | Success metric |
 |---:|---|---|---|---|---|
-| 1 | Modular control plane | Coordinator plus many extensions/scripts | Unenforced boundaries and god-service growth | Refactor | Forbidden-import tests pass; lifecycle survives restart |
-| 2 | Durable state plus transactional outbox | Files, registries, JSONL, Redis and Markdown | No atomic lifecycle/evidence replay | Replace authority | Crash/replay is identical; restore drill passes |
-| 3 | Redis is ephemeral | Existing cache/coordination and proposed stream spine | Risk of promoting delivery state to truth | Refactor | Redis loss cannot lose committed workflow state |
-| 4 | Qdrant is a semantic projection | Existing AIDB/Qdrant/RAG | Weak lineage, freshness and quality semantics | Keep/refactor | Every vector links to source/version/freshness; rebuild reconciles |
-| 5 | Content-addressed artifact storage | Mutable spools, logs, datasets and result files | Incomplete lineage, retention, atomicity and GC | Replace authority | Accepted evidence is hash-addressed; pointer/GC/recovery tests pass |
-| 6 | One versioned contract package | Env contract plus scattered schemas/dicts | Drift and manual projections | Refactor | Critical objects share one schema; generated projections drift-fail CI |
-| 7 | At-least-once plus idempotent effects | PID/heartbeat and unsigned JSONL | Stale rows, weak producer identity, duplicate risk | Replace | Duplicate/reordered delivery causes one effect and monotonic revision |
-| 8 | One generation gateway | Switchboard plus coordinator/direct payloads | Routing/payload/fallback split-brain | Refactor | Every call has gateway request ID; alternate callers blocked/retired |
-| 9 | Admitted capability modules | Skills, intake, extensions and partial leases | Admission, budgets, controls and retirement are inconsistent | Refactor | Every enabled capability has owner, lease, budget, probe and kill switch |
-| 10 | One API; CLI and console as clients | Many `aq-*` entrypoints and dashboard routes | Behavioral and semantic duplication | Consolidate | Generated client contracts pass; shim use reaches retirement threshold |
-| 11 | NixOS is the substrate | NixOS, SOPS, identities, AppArmor and rollback | Strong asset; declaration/runtime drift remains | Keep | Clean activation/rollback; no undeclared port/service/secret |
-| 12 | Stable observability semantics | QA, report, spider, dashboard and telemetry | Availability conflated with effectiveness; absence can pass | Replace semantics | Full trace coverage; typed absence blocks; immutable run evidence |
+| 1 | Modular control plane | Coordinator plus many extensions/scripts `[verified_source: PROJECT-AQOS-PRD §2]` | Unenforced boundaries and god-service growth | Refactor | Forbidden-import tests pass; lifecycle survives restart |
+| 2 | Durable state plus transactional outbox | Files, registries, JSONL, Redis and Markdown `[verified_source: E-002/E-003]` | No atomic lifecycle/evidence replay | Replace authority | Crash/replay is identical; restore drill passes |
+| 3 | Redis is ephemeral | Existing cache/coordination and proposed stream spine `[verified_source: PROJECT-AQOS-PRD §3-4]` | Risk of promoting delivery state to truth | Refactor | Redis loss cannot lose committed workflow state |
+| 4 | Qdrant is a semantic projection | Existing AIDB/Qdrant/RAG `[verified_source: canonical-kernel declaration; ai-stack role wiring; quality remains research_required]` | Weak lineage, freshness and quality semantics | Keep/refactor | Every vector links to source/version/freshness; rebuild reconciles |
+| 5 | Content-addressed artifact storage | Mutable spools, logs, datasets and result files `[verified_source: full-system analysis E-004]` | Incomplete lineage, retention, atomicity and GC | Replace authority | Accepted evidence is hash-addressed; pointer/GC/recovery tests pass |
+| 6 | One versioned contract package | Env contract plus scattered schemas/dicts `[verified_source: PROJECT-AQOS-PRD D4-D6]` | Drift and manual projections | Refactor | Critical objects share one schema; generated projections drift-fail CI |
+| 7 | At-least-once plus idempotent effects | PID/heartbeat registry and unsigned JSONL `[verified_source: scripts/ai/lib/event_log.py; delegation monitor; issues backlog]` | Stale rows, weak producer identity, duplicate risk | Replace | Duplicate/reordered delivery causes one effect and monotonic revision |
+| 8 | One generation gateway | Switchboard plus coordinator/direct payloads `[verified_source: full-system analysis A1]` | Routing/payload/fallback split-brain | Refactor | Every call has gateway request ID; alternate callers blocked/retired |
+| 9 | Admitted capability modules | Skills, intake, extensions and partial leases `[verified_source: canonical-kernel declaration]` | Admission, budgets, controls and retirement are inconsistent | Refactor | Every enabled capability has owner, lease, budget, probe and kill switch |
+| 10 | One API; CLI and console as clients | Many `aq-*` entrypoints and dashboard routes `[verified_source: PROJECT-AQOS-PRD §2]` | Behavioral and semantic duplication | Consolidate | Generated client contracts pass; shim use reaches retirement threshold |
+| 11 | NixOS is the substrate | NixOS, SOPS, identities, AppArmor and rollback `[verified_source: canonical-kernel declaration]` | Strong asset; declaration/runtime drift remains | Keep | Clean activation/rollback; no undeclared port/service/secret |
+| 12 | Stable observability semantics | QA, report, spider, dashboard and telemetry `[verified_source: scripts/ai/aq-report; dashboard/backend/api/routes/aistack.py; full-system analysis E-004]` | Availability conflated with effectiveness; absence can pass | Replace semantics | Full trace coverage; typed absence blocks; immutable run evidence |
 
 “Replace” means replace the authority or semantic contract, not indiscriminately discard working code.
 
@@ -213,9 +238,10 @@ Only the first three gaps belong in Cycle 0.
   has zero approval weight.
 - Contributions bind round, decision type, subject revision/hash, dispatch principal, model lineage,
   explicit verdict, evidence and recovery tests.
-- Use `APPROVE`, `APPROVE_WITH_CHANGES`, `REJECT`, `ABSTAIN`; changes count only after a new subject
-  revision is reviewed. An eligible reject requires adjudication or a new revision.
-- Structured records use RFC 8785 canonical JSON then SHA-256; files use exact raw bytes and SHA-256.
+- Use `APPROVE`, `APPROVE_WITH_CHANGES`, `REJECT`, `ABSTAIN`. The old conditional verdict never
+  approves or counts; only fresh `APPROVE` reviews of the amended subject hash can ratify it. An
+  eligible reject requires adjudication or a new revision.
+- Structured records use `aq-canonical-json-v1` from `STATE-CONTRACT.md` then SHA-256; files use exact raw bytes and SHA-256.
   Hashes establish integrity, not authorship. Attribution assurance is separately recorded as
   `UNVERIFIED`, `ORCHESTRATOR_ATTESTED`, or `CRYPTOGRAPHIC`.
 - Amendments are append-only. A late rejection, new critical risk, or subject change suspends any
@@ -228,7 +254,7 @@ Only the first three gaps belong in Cycle 0.
 Represent three orthogonal values:
 
 ```text
-EvidenceCondition = VALID | MISSING | STALE | INVALID | CONFLICTING | UNAUTHORIZED
+EvidenceCondition = VALID | MISSING | STALE | INVALID | CONFLICTING | UNAUTHORIZED | INSUFFICIENT_SAMPLE
 ClaimAssessment   = PASS | WARN | FAIL | UNKNOWN | NOT_APPLICABLE
 GateOutcome       = PASS | DEGRADED | FAIL | BLOCKED
 ```
@@ -267,7 +293,8 @@ Cycle 0 exits only when all are true:
 6. Destructive, replay and concurrency tests use isolated temporary stores and cannot touch live
    PULSE/RESUME, registries, QA `latest`, Qdrant, Redis or production Postgres.
 7. Resource budgets and rollback tests in the companion plan pass.
-8. Independent model-diverse reviewers ratify this exact PRD hash and the exact plan hash.
+8. Independent model-diverse reviewers ratify the exact `PACKAGE-ROOT.json` external hash that binds
+   the PRD, plan and every required companion contract.
 9. A separate attributed owner action records `implementation_authorized=AUTHORIZED`.
 
 ## 10. Success measures
@@ -277,7 +304,9 @@ Cycle 0 exits only when all are true:
 - 0 required claims pass with non-valid evidence or zero denominators.
 - 100% of scorecard non-pass states expose deterministic reason and remediation codes.
 - 100% of QA consumers expose run ID, artifact hash, observed time and freshness.
-- 100% of authority-ledger rows have one authority, owner, backup/recovery, telemetry and retirement action.
+- 100% of authority-ledger rows truthfully record observed claims/writers and current condition; every
+  `SPLIT_BRAIN`, `UNKNOWN`, or `UNOWNED` row has a reviewed target, adjudicator, resolution deadline,
+  backup/recovery, telemetry and retirement action before C0.3 ratification.
 - No increase in local inference calls, steady-state services, or required background memory during Cycle 0.
 
 ## 11. Deliberately deferred
@@ -285,6 +314,11 @@ Cycle 0 exits only when all are true:
 Postgres migration, transactional outbox runtime, capability identity/leases, F2.5 scheduling activation,
 eval industrialization, payload consolidation, one-API migration, console rebuild, portability and release
 engineering begin only after Cycle 0 evidence ratifies their exact plans.
+
+The full source-pattern comparison, build/adopt hypotheses, six-cycle strangler map and consolidation/
+deletion candidate classes are in `REFERENCE-AND-MIGRATION-COMPARISON.md`; source-supported exact
+retirement candidate paths are in `CURRENT-AUTHORITY-INVENTORY.md`. C0.3 must still adjudicate targets,
+owners and deadlines before Cycle 1 ratification; it may never invent a convenient current singleton.
 
 `VERDICT: REQUEST_REVISION — the product direction and three Cycle 0 slices are evidence-backed, but
 model-diverse quorum, exact resource/retention thresholds, and owner authorization remain outstanding.`
