@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Freeze and verify a planning-package root descriptor (AQ-OS Cycle 0, F1 disposition).
+
+Package freezing is one bounded operation per STATE-CONTRACT.md: hash the declared
+subjects, write and fsync the descriptor, atomically replace it, write the digest
+sidecar, then verify every subject. Every review begins with `verify`. Manual root
+maintenance is prohibited once this tool exists (OWNER-POLICY-RATIFICATION.md).
+
+Exit codes: 0 = frozen/verified OK, 2 = verification mismatch, 3 = missing subject
+or malformed descriptor, 4 = usage error.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _repo_root_for(descriptor: Path) -> Path:
+    """Subject paths are repo-relative: resolve against the enclosing git repository."""
+    for parent in [descriptor.parent, *descriptor.parent.parents]:
+        if (parent / ".git").exists():
+            return parent
+    # Fixture packages in temp dirs have no .git; subjects resolve beside the descriptor.
+    return descriptor.parent
+
+
+def _atomic_write(target: Path, data: bytes) -> None:
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, target)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    dir_fd = os.open(target.parent, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
+def _load_descriptor(descriptor: Path) -> dict:
+    try:
+        data = json.loads(descriptor.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"ERROR: cannot read descriptor: {exc}", file=sys.stderr)
+        sys.exit(3)
+    if not isinstance(data.get("subjects"), list) or not data["subjects"]:
+        print("ERROR: descriptor has no subjects[] list", file=sys.stderr)
+        sys.exit(3)
+    return data
+
+
+def _sidecar_for(descriptor: Path) -> Path:
+    return descriptor.with_name(descriptor.stem + ".sha256")
+
+
+def cmd_freeze(descriptor: Path) -> int:
+    data = _load_descriptor(descriptor)
+    root = _repo_root_for(descriptor)
+
+    missing = [s.get("path", "<no path>") for s in data["subjects"]
+               if not s.get("path") or not (root / s["path"]).is_file()]
+    if missing:
+        print("ERROR: refusing to freeze — missing subject file(s):", file=sys.stderr)
+        for path in missing:
+            print(f"  {path}", file=sys.stderr)
+        return 3
+
+    for subject in data["subjects"]:
+        subject["sha256"] = _sha256_file(root / subject["path"])
+
+    payload = (json.dumps(data, indent=1, ensure_ascii=False) + "\n").encode("utf-8")
+    _atomic_write(descriptor, payload)
+
+    root_hash = hashlib.sha256(payload).hexdigest()
+    _atomic_write(_sidecar_for(descriptor), f"{root_hash}  {descriptor.name}\n".encode("utf-8"))
+
+    rc = cmd_verify(descriptor, quiet=True)
+    if rc != 0:
+        print("ERROR: post-freeze verification failed", file=sys.stderr)
+        return rc
+    print(root_hash)
+    return 0
+
+
+def cmd_verify(descriptor: Path, quiet: bool = False) -> int:
+    data = _load_descriptor(descriptor)
+    root = _repo_root_for(descriptor)
+    failures: list[str] = []
+
+    sidecar = _sidecar_for(descriptor)
+    actual_root = _sha256_file(descriptor)
+    try:
+        recorded_root = sidecar.read_text(encoding="utf-8").split()[0]
+    except (OSError, IndexError):
+        recorded_root = "<missing sidecar>"
+    if recorded_root != actual_root:
+        failures.append(f"root: recorded {recorded_root[:16]}… != actual {actual_root[:16]}…")
+
+    for subject in data["subjects"]:
+        path = subject.get("path", "<no path>")
+        subject_file = root / path
+        if not subject_file.is_file():
+            failures.append(f"missing: {path}")
+            continue
+        actual = _sha256_file(subject_file)
+        if actual != subject.get("sha256"):
+            failures.append(f"drift: {path} recorded {str(subject.get('sha256'))[:16]}… != actual {actual[:16]}…")
+
+    if failures:
+        for line in failures:
+            print(line, file=sys.stderr)
+        return 2
+    if not quiet:
+        print(f"OK {actual_root}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3 or argv[1] not in {"freeze", "verify"}:
+        print(__doc__, file=sys.stderr)
+        print("usage: aq-package-freeze {freeze|verify} <PACKAGE-ROOT.json>", file=sys.stderr)
+        return 4
+    descriptor = Path(argv[2]).resolve()
+    if argv[1] == "freeze":
+        return cmd_freeze(descriptor)
+    return cmd_verify(descriptor)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
