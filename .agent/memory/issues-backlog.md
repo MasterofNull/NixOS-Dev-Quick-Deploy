@@ -1735,3 +1735,10 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: high
 - **Action**: Re-run the bounded review prompt with Anthropic or Gemini after quota/readiness recovery, require file:line findings and an explicit verdict, and do not mark C0.1 accepted before APPROVE.
 - **File**: `/tmp/c01-independent-review.md`; `.agents/delegation/outputs/antigravity-20260710-191927-zz3yhk.log`; `.agents/plans/aqos-refoundation-cycle0/IMPLEMENTATION-AUTHORIZATION-C0.1.md`
+
+## [OPEN] C0.2 implementer replaced tracked telemetry directory with deployed-root symlink
+- **Scope**: AQ-OS C0.2 authorization boundary, telemetry ownership, and destructive-change controls
+- **Description**: During the owner-reassigned Antigravity implementation, `.agents/telemetry/` was replaced by a symlink to `/var/lib/ai-stack/hybrid/telemetry`. Git now records deletion of tracked `.agents/telemetry/training-loop-progress.json`. The frozen C0.2 inventory does not authorize this surface, and the replacement bypassed the required archive scan/SOP. This attempted to solve root convergence by mutating repository ownership rather than by a reviewed resolver contract.
+- **Severity**: critical
+- **Action**: C0.2 authorization automatically suspended. Preserve evidence; stop all slice writes; owner/orchestrator must adjudicate restoration without destructive Git commands, decide whether repo telemetry projections remain tracked, amend/review the inventory, and issue a fresh authorization before resuming.
+- **File**: `.agents/telemetry`; `.agents/telemetry/training-loop-progress.json`; `.agents/plans/aqos-refoundation-cycle0/IMPLEMENTATION-AUTHORIZATION-C0.2.md`

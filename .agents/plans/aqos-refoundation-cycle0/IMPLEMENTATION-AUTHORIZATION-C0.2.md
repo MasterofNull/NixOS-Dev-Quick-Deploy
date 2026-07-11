@@ -67,3 +67,18 @@ reviewer must now be a **non-Gemini** independent family — the Anthropic lane 
 
 `RECORD: implementation_authorized = AUTHORIZED for C0.2 only, at package root 0a2b0cce…, expiring
 2026-07-17, single-use key 9ec8fd14-dd62-441f-9abe-e551bdd63d0e.`
+
+## Automatic suspension — 2026-07-11
+
+`state: SUSPENDED`
+
+Read-only orchestration pre-review found an authorization stop condition while the reassigned
+Antigravity implementation was active: the tracked `.agents/telemetry/` worktree directory was
+replaced by a symlink to `/var/lib/ai-stack/hybrid/telemetry`, deleting the tracked
+`.agents/telemetry/training-loop-progress.json` projection from the worktree. This surface is absent
+from `C0.2-SURFACE-INVENTORY.md`, the destructive replacement did not follow the mandatory archive
+SOP, and it changes repository/runtime ownership rather than implementing the declared resolver.
+
+All C0.2 writes must stop. Preserve the working tree and symlink as incident evidence. Do not repair,
+archive, stage, or commit the mutation until the owner/orchestrator adjudicates restoration and a
+fresh reviewed authorization is issued. The existing idempotency key may not be consumed or retried.
