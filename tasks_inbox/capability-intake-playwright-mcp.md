@@ -2,13 +2,16 @@
 
 Reference skills: `capability-intake`, `security-scanner`, `webapp-testing`
 
-Objective: Review `playwright-mcp` from `config/agent-capability-intake-candidates.json` for safe integration into this harness.
+## Audit Verdict: REQUEST_REVISION
 
-Required steps:
-1. Run `scripts/ai/aq-capability-intake audit playwright-mcp --json`.
-2. Inspect upstream source and install path for `https://github.com/microsoft/playwright-mcp`.
-3. Recommend pinned version/digest and deny-by-default config.
-4. Specify allowed hosts/origins/file-access settings suitable for local dashboard tests.
-5. Define one `aq-qa` or smoke check that proves dashboard automation works without broad network/file access.
+### Evidence:
+1. Exposes high-risk operations (browser control, screenshot capture, DOM navigation).
+2. Uses `npx` dynamic installer which fetches mutable remote packages during initialization.
+3. Declares broad network egress, presenting high risk of unauthorized outbound data leakage.
 
-Do not install or enable the MCP server. Produce PASS/FAIL/REQUEST_REVISION with evidence and exact follow-up patch scope.
+### Proposed Test Cases:
+1. Mock browser navigation to a local dashboard target that redirects to an unauthorized external server, verifying that connection is refused.
+
+### Follow-up Patch Scope:
+1. Enforce private sandbox execution (e.g., using `systemd-run` or AppArmor profiles) to confine browser egress to loopback interface and local dashboard ports (e.g. port `8889` only).
+2. Implement dynamic version check on the downloaded Playwright npm package.
