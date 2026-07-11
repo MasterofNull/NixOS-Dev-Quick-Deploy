@@ -1,0 +1,18 @@
+{
+  "evidence_type": "inert_symlink_metadata",
+  "captured_at": "2026-07-11T16:45:00Z",
+  "original_path": ".agents/telemetry",
+  "archived_link_path": ".agents/archive/c02-recovery-20260711/telemetry-symlink",
+  "target": "/var/lib/ai-stack/hybrid/telemetry",
+  "stat": {
+    "mode_hex": "a1ff",
+    "type": "symbolic link",
+    "uid": 1000,
+    "gid": 100,
+    "inode": 44696970,
+    "size_bytes": 34,
+    "mtime": "2026-07-11 09:25:03.860640434 -0700"
+  },
+  "live_link_removed": true,
+  "deployed_target_modified": false
+}

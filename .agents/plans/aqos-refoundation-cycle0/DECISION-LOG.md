@@ -28,6 +28,7 @@
 | D-022 | Accept | Canonical measurements use numerator/denominator pairs for ratios and decimal strings with explicit scale/unit for physical values; JSON floats remain forbidden. |
 | D-023 | Accept | QA lock, pointer and artifacts resolve to one canonical telemetry root; dual-root resolution fails closed. |
 | D-024 | Proposed owner default | A seven-day non-renewable owner-co-signed degraded quorum may unblock only low/medium-risk work after a lane repair SLA expires; high-risk/security/promotion/destructive work remains strict-quorum blocked. |
+| D-025 | Accept | After the C0.2 symlink incident, production QA telemetry authority is the deployed root; repo `.agents/telemetry` remains a real, non-authoritative projection and is never replaced or redirected. One shared strict evidence module owns all reads/writes; environment contract and boundary regression are declared surfaces. |
 
 ## Minority objections and resolutions
 

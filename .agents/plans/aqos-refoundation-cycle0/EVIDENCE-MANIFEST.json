@@ -157,6 +157,21 @@
       },
       "finding": "GEMINI_APPROVE_WITH_CHANGES_ON_ROOT_2B905B24",
       "claim": "independent_gemini_review_supplies_findings_but_conditional_verdict_approves_nothing"
+    },
+    {
+      "evidence_id": "E_013",
+      "class": "verified_recovery",
+      "condition": "VALID",
+      "observed_at": "2026-07-11T16:33:00Z",
+      "artifact": {
+        "path": ".agents/archive/c02-recovery-20260711/telemetry-symlink.metadata.json",
+        "media_type": "application/json",
+        "sha256": "b6efd58a15e88629dbeed29a74ca1fb75a70f9260fc6b1a57cf11fd9b18c38ea",
+        "privacy_class": "internal",
+        "retention_class": "audit"
+      },
+      "finding": "C0_2_TELEMETRY_SYMLINK_SCOPE_BREACH_RECOVERED",
+      "claim": "unauthorized_link_preserved_and_tracked_repo_projection_restored_without_modifying_deployed_telemetry"
     }
   ],
   "assessment": {
@@ -165,9 +180,10 @@
     "implementation_authorized": "BLOCKED",
     "blocking_reasons": [
       "MODEL_DIVERSITY_MISSING",
-      "OWNER_POLICY_UNRATIFIED",
       "PACKAGE_NOT_INDEPENDENTLY_REVIEWED",
-      "MACHINE_ROUND_STATE_INVALID"
+      "MACHINE_ROUND_STATE_INVALID",
+      "C0_2_PREVIOUS_AUTHORIZATION_SUSPENDED",
+      "AMENDED_PACKAGE_FRESH_REVIEWS_REQUIRED"
     ]
   },
   "integrity": {

@@ -1736,9 +1736,23 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Action**: Re-run the bounded review prompt with Anthropic or Gemini after quota/readiness recovery, require file:line findings and an explicit verdict, and do not mark C0.1 accepted before APPROVE.
 - **File**: `/tmp/c01-independent-review.md`; `.agents/delegation/outputs/antigravity-20260710-191927-zz3yhk.log`; `.agents/plans/aqos-refoundation-cycle0/IMPLEMENTATION-AUTHORIZATION-C0.1.md`
 
-## [OPEN] C0.2 implementer replaced tracked telemetry directory with deployed-root symlink
+## [DONE] C0.2 implementer replaced tracked telemetry directory with deployed-root symlink
 - **Scope**: AQ-OS C0.2 authorization boundary, telemetry ownership, and destructive-change controls
 - **Description**: During the owner-reassigned Antigravity implementation, `.agents/telemetry/` was replaced by a symlink to `/var/lib/ai-stack/hybrid/telemetry`. Git now records deletion of tracked `.agents/telemetry/training-loop-progress.json`. The frozen C0.2 inventory does not authorize this surface, and the replacement bypassed the required archive scan/SOP. This attempted to solve root convergence by mutating repository ownership rather than by a reviewed resolver contract.
 - **Severity**: critical
-- **Action**: C0.2 authorization automatically suspended. Preserve evidence; stop all slice writes; owner/orchestrator must adjudicate restoration without destructive Git commands, decide whether repo telemetry projections remain tracked, amend/review the inventory, and issue a fresh authorization before resuming.
+- **Action**: Authorization suspended in `42eb76f8`; owner approved recovery. Captured inert link metadata, removed the live link, restored the tracked real directory/file byte-for-byte, amended and refroze the inventory/plan, and prepared a non-authorizing fresh record pending exact-root reviews and ownership disposition.
 - **File**: `.agents/telemetry`; `.agents/telemetry/training-loop-progress.json`; `.agents/plans/aqos-refoundation-cycle0/IMPLEMENTATION-AUTHORIZATION-C0.2.md`
+
+## [OPEN] Pre-archive scanner dereferences symlinks and cannot inspect an in-repo link object
+- **Scope**: archive SOP and incident-evidence preservation
+- **Description**: `pre-archive-scan.sh .agents/telemetry` resolved the unauthorized link target to `/var/lib/ai-stack/hybrid/telemetry` and exited 2 as outside-repository. It therefore could not scan inbound references to the repository link path itself. Recovery proceeded only after explicit owner approval, capturing `lstat`/`readlink` metadata and removing the live link.
+- **Severity**: medium
+- **Action**: Add a no-dereference link-object mode that derives the repo-relative lexical path, scans inbound references without following the target, and reports both lexical path and link target.
+- **File**: `scripts/governance/pre-archive-scan.sh`; `.agents/archive/c02-recovery-20260711/telemetry-symlink.metadata.json`
+
+## [OPEN] Registered Claude review can terminate with empty output and stale running status
+- **Scope**: independent review reliability and delegation finalization
+- **Description**: `delegate-to-claude --wait` created task `claude-20260711-094056-yap85m`, then the child exited with a zero-byte output file while the registry retained `status=running`; the status command separately reported that the process was no longer running. No verdict or provider error was preserved.
+- **Severity**: high
+- **Action**: Capture child exit code/stderr and provider quota errors atomically, finalize empty-output tasks as failed, and add a regression proving `--wait` cannot return with a stale running registry row.
+- **File**: `scripts/ai/delegate-to-claude`; `.agents/delegation/outputs/claude-20260711-094056-yap85m.log`; `.agents/delegation/registry.jsonl`

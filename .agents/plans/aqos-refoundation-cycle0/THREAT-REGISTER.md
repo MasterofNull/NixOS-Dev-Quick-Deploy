@@ -38,6 +38,7 @@ against the live host during this cycle.
 |---|---|---|---|
 | Reward corruption | eval/learning owner | Cycle 3 | Within one promotion window, restore last admitted model/scorer, quarantine poisoned lineage and rerun a clean certified eval |
 | False consensus | collaboration decision owner | **C0.1** | Within 15 minutes, preserve corrupt bytes, reconstruct new revision, obtain fresh reviews/authorization and prove assignment works once |
+| Telemetry-root takeover by symlink/bind/redirect | QA evidence owner | **C0.2** | Suspend immediately; preserve link metadata; restore tracked projection; reject redirected roots in shared boundary tests; require amended root and fresh authorization |
 | Split-brain authority | architecture/state owner | **C0.3 discovery; Cycle 1 recovery** | C0 reports every claim honestly; Cycle 1 rebuilds projections from selected authority with equal hashes |
 | Capability escalation | security/policy owner | Cycle 2 | Revoke identity/lease within 60 seconds, terminate task, restore clean sandbox and prove bypass remains denied |
 | Prompt/data exfiltration | privacy/security owner | Cycle 2 | Quarantine trace, rotate exposed secret, sanitize evidence and prove canary no longer crosses boundary |
