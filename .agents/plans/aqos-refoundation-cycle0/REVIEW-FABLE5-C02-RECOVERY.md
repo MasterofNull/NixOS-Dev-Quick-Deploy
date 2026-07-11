@@ -57,3 +57,16 @@ structurally sound re-authorization path. This supplies the Anthropic-family fre
 recovery root. Activation still requires: a Gemini-family fresh review of this exact root, and the
 owner's separate activation record (including the implementer decision, noting the prior implementer
 produced the incident).`
+
+## Re-pin to final root (2026-07-11, same reviewer)
+
+After this review was written, the orchestration (codex) bound the three rejected-implementation
+evidence files — which this reviewer created during the disposition step — as hashed package
+subjects, and cleared two satisfied blocking reasons (`C0_2_PREVIOUS_AUTHORIZATION_SUSPENDED`:
+recorded and adjudicated; `C0_2_PRESERVED_IMPLEMENTATION_DIFF_REQUIRES_OWNERSHIP_ADJUDICATION`:
+dispositioned above). Both changes verified byte-exact by this reviewer; no other subject changed.
+
+**Verdict restated for the exact final root:**
+`APPROVE — root 377052c2dcf237f4b6f20335d5abdd90f891c01adf03e61a052c89d057109664, verify exit 0.`
+With Gemini's V2 APPROVE of this same root, the two-family fresh-review precondition of the
+prepared recovery authorization is SATISFIED. Remaining blocker: the owner activation record.
