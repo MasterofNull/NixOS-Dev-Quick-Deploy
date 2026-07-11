@@ -1,0 +1,229 @@
+"""Evidence Algebra implementation for AQ-OS Cycle 0.2.
+
+Provides deterministic enums, claim evaluation, and composite gate outcome aggregation
+adhering to the 12 strict rules defined in EVIDENCE-ALGEBRA.md.
+"""
+
+from typing import Any, Dict, List, Optional, Tuple
+
+class EvidenceCondition:
+    VALID = "VALID"
+    MISSING = "MISSING"
+    STALE = "STALE"
+    INVALID = "INVALID"
+    CONFLICTING = "CONFLICTING"
+    UNAUTHORIZED = "UNAUTHORIZED"
+    INSUFFICIENT_SAMPLE = "INSUFFICIENT_SAMPLE"
+
+class ClaimAssessment:
+    PASS = "PASS"
+    WARN = "WARN"
+    FAIL = "FAIL"
+    UNKNOWN = "UNKNOWN"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+class GateOutcome:
+    PASS = "PASS"
+    DEGRADED = "DEGRADED"
+    FAIL = "FAIL"
+    BLOCKED = "BLOCKED"
+
+class BlockingReason:
+    def __init__(
+        self,
+        claim_id: str,
+        evidence_condition: str,
+        assessment: str,
+        reason_code: str,
+        source_id: str,
+        remediation: str,
+        message: str = ""
+    ):
+        self.claim_id = claim_id
+        self.evidence_condition = evidence_condition
+        self.assessment = assessment
+        self.reason_code = reason_code
+        self.source_id = source_id
+        self.remediation = remediation
+        self.message = message
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "claim_id": self.claim_id,
+            "evidence_condition": self.evidence_condition,
+            "assessment": self.assessment,
+            "reason_code": self.reason_code,
+            "source_id": self.source_id,
+            "remediation": self.remediation,
+            "message": self.message
+        }
+
+    def sorting_key(self) -> Tuple[str, str, str, str, str]:
+        return (
+            self.claim_id or "",
+            self.evidence_condition or "",
+            self.assessment or "",
+            self.reason_code or "",
+            self.source_id or ""
+        )
+
+def evaluate_claim(
+    claim_id: str,
+    required: bool,
+    raw_condition: str,
+    raw_assessment: str,
+    sample_size: Optional[int] = None,
+    sample_minimum: Optional[int] = None,
+    producer_assurance: Optional[float] = None,
+    claim_policy_threshold: Optional[float] = None,
+    is_proxy: bool = False,
+    proxy_for: Optional[str] = None,
+    proxy_authorized: bool = False,
+    is_conflicting: bool = False,
+    is_unauthorized_producer: bool = False,
+    applicability_predicate: Optional[str] = None,
+    reason_code: Optional[str] = None,
+    source_id: Optional[str] = None,
+    remediation: Optional[str] = None,
+    message: str = ""
+) -> Dict[str, Any]:
+    """Evaluate a single claim applying the evidence algebra rules."""
+    # Determine the final evidence condition
+    condition = raw_condition
+
+    if is_conflicting:
+        condition = EvidenceCondition.CONFLICTING
+    elif is_unauthorized_producer:
+        condition = EvidenceCondition.UNAUTHORIZED
+    elif sample_size is not None and sample_minimum is not None and sample_size < sample_minimum:
+        condition = EvidenceCondition.INSUFFICIENT_SAMPLE
+    elif producer_assurance is not None and claim_policy_threshold is not None and producer_assurance < claim_policy_threshold:
+        condition = EvidenceCondition.UNAUTHORIZED
+    elif is_proxy and not proxy_authorized:
+        condition = EvidenceCondition.UNAUTHORIZED
+
+    # Determine final assessment
+    assessment = raw_assessment
+
+    # Non-VALID required/optional evidence yields UNKNOWN (Rule 1, Rule 6)
+    if condition != EvidenceCondition.VALID:
+        assessment = ClaimAssessment.UNKNOWN
+
+    # Rule 2: NOT_APPLICABLE requires a versioned applicability predicate and reason.
+    # Missing data, zero denominator, provider failure or low sample can never become N/A.
+    if raw_assessment == ClaimAssessment.NOT_APPLICABLE:
+        is_invalid_na = (
+            not applicability_predicate
+            or not reason_code
+            or condition in (EvidenceCondition.MISSING, EvidenceCondition.INSUFFICIENT_SAMPLE, EvidenceCondition.INVALID)
+        )
+        if is_invalid_na:
+            assessment = ClaimAssessment.UNKNOWN
+
+    return {
+        "claim_id": claim_id,
+        "required": required,
+        "evidence_condition": condition,
+        "assessment": assessment,
+        "reason_code": reason_code or "NO_REASON",
+        "source_id": source_id or "UNKNOWN_SOURCE",
+        "remediation": remediation or "No remediation declared.",
+        "message": message,
+        "is_proxy": is_proxy,
+        "proxy_for": proxy_for,
+        "proxy_authorized": proxy_authorized
+    }
+
+def evaluate_gate(
+    gate_name: str,
+    claims: List[Dict[str, Any]],
+    policy_current: bool = True,
+    has_revocation: bool = False
+) -> Dict[str, Any]:
+    """Aggregate evaluated claims into a composite gate outcome using deterministic rules."""
+    required_claims = [c for c in claims if c["required"]]
+    optional_claims = [c for c in claims if not c["required"]]
+
+    # Rule 3: Zero declared required claims is a schema/config error and gate BLOCKED/NO_REQUIRED_CLAIMS
+    if not required_claims:
+        return {
+            "gate": gate_name,
+            "outcome": GateOutcome.BLOCKED,
+            "evidence_condition": EvidenceCondition.INVALID,
+            "blocking_reasons": [
+                BlockingReason(
+                    claim_id=gate_name,
+                    evidence_condition=EvidenceCondition.INVALID,
+                    assessment=ClaimAssessment.UNKNOWN,
+                    reason_code="BLOCKED/NO_REQUIRED_CLAIMS",
+                    source_id="system",
+                    remediation="Declare at least one required claim for this gate."
+                ).to_dict()
+            ],
+            "automation_allowed": False
+        }
+
+    # Rule 4: Optional-only composites cannot be authoritative; they are BLOCKED/NO_REQUIRED_CLAIMS.
+    # (Handled by the check above, but if somehow a composite contains only optional claims, it falls here)
+    
+    # Evaluate required claims that are applicable
+    applicable_required = [c for c in required_claims if c["assessment"] != ClaimAssessment.NOT_APPLICABLE]
+
+    blocking_reasons_obj: List[BlockingReason] = []
+    
+    # Collect blocking reasons for non-passing required claims
+    for claim in required_claims:
+        if claim["assessment"] in (ClaimAssessment.FAIL, ClaimAssessment.UNKNOWN, ClaimAssessment.WARN):
+            blocking_reasons_obj.append(
+                BlockingReason(
+                    claim_id=claim["claim_id"],
+                    evidence_condition=claim["evidence_condition"],
+                    assessment=claim["assessment"],
+                    reason_code=claim["reason_code"],
+                    source_id=claim["source_id"],
+                    remediation=claim["remediation"],
+                    message=claim.get("message", "")
+                )
+            )
+
+    # Sort blocking reasons by (claim_id, evidence_condition, assessment, reason_code, source_id)
+    blocking_reasons_obj.sort(key=lambda x: x.sorting_key())
+    blocking_reasons = [br.to_dict() for br in blocking_reasons_obj]
+
+    # Rule 5: Aggregate to determine outcome
+    # Required FAIL yields gate FAIL
+    if any(c["assessment"] == ClaimAssessment.FAIL for c in applicable_required):
+        outcome = GateOutcome.FAIL
+    # otherwise required UNKNOWN yields BLOCKED
+    elif any(c["assessment"] == ClaimAssessment.UNKNOWN for c in applicable_required):
+        outcome = GateOutcome.BLOCKED
+    # otherwise required WARN yields DEGRADED
+    elif any(c["assessment"] == ClaimAssessment.WARN for c in applicable_required):
+        outcome = GateOutcome.DEGRADED
+    # only all applicable required claims PASS yields PASS
+    else:
+        outcome = GateOutcome.PASS
+
+    # Determine overall gate evidence condition
+    # If any required claim has a non-VALID condition, gate condition is not VALID
+    gate_condition = EvidenceCondition.VALID
+    for c in required_claims:
+        if c["evidence_condition"] != EvidenceCondition.VALID:
+            gate_condition = c["evidence_condition"]
+            break
+
+    # Rule 11: automation_allowed=true only when gate is PASS, condition is VALID, policy current, no revocation
+    automation_allowed = (
+        outcome == GateOutcome.PASS
+        and gate_condition == EvidenceCondition.VALID
+        and policy_current
+        and not has_revocation
+    )
+
+    return {
+        "gate": gate_name,
+        "outcome": outcome,
+        "evidence_condition": gate_condition,
+        "blocking_reasons": blocking_reasons,
+        "automation_allowed": automation_allowed
+    }
