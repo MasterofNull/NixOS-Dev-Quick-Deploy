@@ -1,0 +1,278 @@
+"""Authoritative boundary for QA results persistence, telemetry root resolution, path validation, and artifact retention."""
+
+import os
+import sys
+import json
+import hashlib
+import fcntl
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, Optional
+
+class PathDivergenceError(ValueError):
+    """Raised when telemetry paths diverge between production and repository-local dev fallbacks."""
+    pass
+
+def now_iso() -> str:
+    """Return an RFC3339 UTC timestamp with Z suffix."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+def repo_root(current_file: Path | None = None) -> Path:
+    """Resolve the repository root."""
+    env_root = os.getenv("REPO_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    ref = current_file or Path(__file__)
+    return ref.resolve().parents[3]
+
+def resolve_telemetry_root(repo_root_path: Path | None = None) -> Path:
+    """Resolve the authoritative telemetry root based on environment and strict mode flags."""
+    env_root = os.getenv("AQ_TELEMETRY_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+
+    strict_env = os.getenv("AI_STRICT_ENV", "false").lower() in ("true", "1", "on")
+    prod_path = Path("/var/lib/ai-stack/hybrid/telemetry")
+
+    if strict_env:
+        if prod_path.exists():
+            return prod_path.resolve()
+        raise ValueError("Telemetry directory /var/lib/ai-stack/hybrid/telemetry does not exist in strict mode.")
+
+    # In dev mode, fall back to repo-local
+    r_root = repo_root_path or repo_root()
+    return (r_root / ".agents" / "telemetry").resolve()
+
+def check_telemetry_root_divergence(repo_root_path: Path | None = None) -> None:
+    """Check for telemetry root path divergence to prevent split-brain state."""
+    if os.getenv("AQ_TELEMETRY_ROOT"):
+        return
+
+    prod_path = Path("/var/lib/ai-stack/hybrid/telemetry")
+    r_root = repo_root_path or repo_root()
+    dev_path = (r_root / ".agents" / "telemetry").resolve()
+
+    if prod_path.exists() and dev_path.exists():
+        # Compare physical paths
+        try:
+            prod_real = prod_path.resolve()
+            dev_real = dev_path.resolve()
+            if prod_real != dev_real:
+                raise PathDivergenceError("TELEMETRY_ROOT_DIVERGENCE")
+        except Exception as e:
+            if not isinstance(e, PathDivergenceError):
+                raise PathDivergenceError(f"TELEMETRY_ROOT_DIVERGENCE: {e}")
+            raise
+
+def save_qa_results(rs: Dict[str, Any], repo_root_path: Path) -> None:
+    """Persist QA results atomically to an immutable artifact and update the latest pointer."""
+    check_telemetry_root_divergence(repo_root_path)
+    telemetry_root = resolve_telemetry_root(repo_root_path)
+    telemetry_root.mkdir(parents=True, exist_ok=True)
+
+    lock_path = telemetry_root / "qa_results.lock"
+    # Ensure lock file exists
+    lock_path.touch(exist_ok=True)
+
+    with open(lock_path, "a") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            payload = json.dumps(rs, sort_keys=True, indent=2)
+            payload_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            artifact_name = f"qa-results-{timestamp}-{payload_hash[:16]}.json"
+            artifact_path = telemetry_root / artifact_name
+
+            # Atomic write of the artifact
+            tmp_artifact = artifact_path.with_suffix(".tmp")
+            tmp_artifact.write_text(payload, encoding="utf-8")
+            with open(tmp_artifact, "r") as f:
+                os.fsync(f.fileno())
+            tmp_artifact.replace(artifact_path)
+            
+            # Sync parent directory
+            parent_fd = os.open(str(telemetry_root), os.O_RDONLY)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+
+            # Write the pointer
+            pointer_path = telemetry_root / "latest-qa-results.json"
+            pointer_data = {
+                "version": 1,
+                "latest_results_path": str(artifact_path.resolve()),
+                "timestamp": now_iso(),
+                "hash": f"sha256-{payload_hash}",
+                "sequence": rs.get("sequence", 0),
+                "target_path": str(artifact_path.relative_to(repo_root_path))
+            }
+            pointer_payload = json.dumps(pointer_data, sort_keys=True, indent=2)
+            tmp_pointer = pointer_path.with_suffix(".tmp")
+            tmp_pointer.write_text(pointer_payload, encoding="utf-8")
+            with open(tmp_pointer, "r") as f:
+                os.fsync(f.fileno())
+            tmp_pointer.replace(pointer_path)
+
+            parent_fd = os.open(str(telemetry_root), os.O_RDONLY)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+
+            # Run retention policy
+            enforce_retention_policy(telemetry_root, pointer_path, repo_root_path)
+
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+def enforce_retention_policy(telemetry_root: Path, pointer_path: Path, repo_root_path: Path) -> None:
+    """Prune files exceeding 64 items and older than 7 days, or when folder size exceeds 64MiB."""
+    # Find active pointer target to protect it
+    active_target = None
+    if pointer_path.exists():
+        try:
+            pointer_data = json.loads(pointer_path.read_text(encoding="utf-8"))
+            active_target = Path(pointer_data["latest_results_path"]).resolve()
+        except Exception:
+            pass
+
+    # Gather all qa-results-*.json files
+    files = []
+    for p in telemetry_root.glob("qa-results-*.json"):
+        try:
+            stat = p.stat()
+            files.append({
+                "path": p,
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+                "name": p.name
+            })
+        except Exception:
+            pass
+
+    if not files:
+        return
+
+    # Sort by mtime (oldest first)
+    files.sort(key=lambda x: x["mtime"])
+
+    # Identify files to delete
+    now = datetime.now(timezone.utc)
+    max_age = timedelta(days=7)
+    deleted_evidence = []
+
+    # Retention rule 1: older than 7 days AND size > 64 count
+    # Let's clean up files if count > 64 or if folder size > 64MiB
+    # Total folder size calculation
+    total_size = sum(f["size"] for f in files)
+    max_size = 64 * 1024 * 1024 # 64 MiB
+    max_count = 64
+
+    # We will iterate and identify files for pruning.
+    # We prune the oldest files first, but never the active target.
+    to_delete = set()
+
+    # If count > 64, prune oldest until count <= 64
+    current_count = len(files)
+    for f in files:
+        if current_count <= max_count:
+            break
+        if active_target and f["path"].resolve() == active_target:
+            continue
+        to_delete.add(f["path"])
+        current_count -= 1
+
+    # Update total size excluding files already marked for deletion
+    remaining_files = [f for f in files if f["path"] not in to_delete]
+    current_size = sum(f["size"] for f in remaining_files)
+
+    # If size > 64MB, prune oldest until size <= 64MB
+    for f in remaining_files:
+        if current_size <= max_size:
+            break
+        if active_target and f["path"].resolve() == active_target:
+            continue
+        to_delete.add(f["path"])
+        current_size -= f["size"]
+
+    # Also prune anything older than 7 days that is not active target
+    for f in files:
+        file_age = now - datetime.fromtimestamp(f["mtime"], tz=timezone.utc)
+        if file_age > max_age:
+            if active_target and f["path"].resolve() == active_target:
+                continue
+            to_delete.add(f["path"])
+
+    # Perform deletion and record evidence
+    for path_to_del in to_delete:
+        try:
+            # Read first to get details for log
+            file_size = path_to_del.stat().st_size
+            content = path_to_del.read_text(encoding="utf-8")
+            file_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            
+            path_to_del.unlink()
+
+            deleted_evidence.append({
+                "timestamp": now_iso(),
+                "filename": path_to_del.name,
+                "size": file_size,
+                "hash": f"sha256-{file_hash}",
+                "reason": "retention_policy_limit_exceeded"
+            })
+        except Exception:
+            pass
+
+    if deleted_evidence:
+        evidence_log = telemetry_root / "deletion-evidence.jsonl"
+        try:
+            with open(evidence_log, "a", encoding="utf-8") as f:
+                for entry in deleted_evidence:
+                    f.write(json.dumps(entry, sort_keys=True) + "\n")
+        except Exception:
+            pass
+
+def read_latest_qa_results(repo_root_path: Path, max_age_s: int = 86400) -> Optional[Dict[str, Any]]:
+    """Read the latest QA results pointer and securely fetch and verify the artifact."""
+    telemetry_root = resolve_telemetry_root(repo_root_path)
+    pointer_path = telemetry_root / "latest-qa-results.json"
+    if not pointer_path.exists():
+        return None
+
+    # Verify pointer age
+    stat = pointer_path.stat()
+    age = datetime.now(timezone.utc).timestamp() - stat.st_mtime
+    if age > max_age_s:
+        return None
+
+    try:
+        pointer_data = json.loads(pointer_path.read_text(encoding="utf-8"))
+        target_path_str = pointer_data.get("target_path")
+        expected_hash = pointer_data.get("hash")
+        if not target_path_str or not expected_hash:
+            return None
+
+        # Validate target_path: must be relative
+        target_path = Path(target_path_str)
+        if target_path.is_absolute():
+            return None
+
+        # Path traversal check: must resolve inside repo_root_path
+        resolved_repo = repo_root_path.resolve()
+        resolved_target = (resolved_repo / target_path).resolve()
+        if not str(resolved_target).startswith(str(resolved_repo)):
+            return None
+
+        if not resolved_target.exists():
+            return None
+
+        # Read and check hash
+        payload = resolved_target.read_text(encoding="utf-8")
+        computed_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        if f"sha256-{computed_hash}" != expected_hash:
+            raise ValueError("SHA256 checksum mismatch on QA results artifact.")
+
+        return json.loads(payload)
+    except Exception:
+        raise
