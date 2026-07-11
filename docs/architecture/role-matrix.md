@@ -88,8 +88,27 @@ These are current typical assignments. Any model may fill any role when the orch
 |---|---|---|
 | Claude (Sonnet/Opus) | orchestrator, architect, reviewer | Primary orchestrator for Phase 58A |
 | Codex | orchestrator (own sequences), implementer, reviewer | Final acceptance on most 58A slices per team plan |
-| Gemini | implementer (research/proposal), reviewer (cross-check) | Review gate required; no unreviewed commit authority |
+| Gemini (Antigravity IDE) | **proposal, findings review, cross-check reviewer** | See lane-state rule below — NOT default implementer for stateful slices |
 | Qwen local | implementer (bounded tasks only) | Constrained by task class eligibility (see 58A.5) |
+
+### Lane state-observability rule (2026-07-11, from the C0.2 incident)
+
+Delegation lanes differ in whether they can observe live round/authorization state:
+
+- **State-observing lanes** (codex, local — dispatched through `scripts/ai/lib/dispatch.py`) read
+  round.json / authorization records and receive the injected `config/local-agent-grounding.md`
+  guardrail. They can honor a mid-flight suspension. **Prefer these as implementers for stateful,
+  stop-condition-bearing slices** (anything with an authorization record, permitted-surface list, or
+  budget gate).
+- **State-blind lanes** (Antigravity/Gemini — pull/IDE inbox, no dispatch.py, no grounding injection)
+  cannot see a suspension raised after their session starts. **Do not assign them as the implementer
+  of a stateful slice.** They are excellent at one-shot, stateless work: proposals, findings reviews,
+  and cross-check reviews. The inbox-drop preamble (`aq-collab-round INBOX_SCOPE_STOP_PREAMBLE`) is
+  the only guardrail channel that reaches them.
+
+Evidence: the C0.2 implementation assigned to Antigravity breached scope (symlinked a tracked
+telemetry dir) and then kept recreating suspended files it could not see were stopped. A
+state-observing lane (codex) detected and contained it. Match the lane to the task's state needs.
 
 ---
 
