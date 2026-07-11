@@ -263,11 +263,16 @@ def validate_event(event: dict[str, Any]) -> None:
             raise ValueError("producer_evidence identifiers must not be empty")
 
 
-def reconstruct_timeline(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+def reconstruct_timeline(events: Iterable[dict[str, Any]], *, strict: bool = True) -> list[dict[str, Any]]:
     """Validate and sort events into replay order."""
-    timeline = list(events)
-    for event in timeline:
-        validate_event(event)
+    timeline = []
+    for event in events:
+        try:
+            validate_event(event)
+            timeline.append(event)
+        except ValueError:
+            if strict:
+                raise
     return sorted(timeline, key=lambda item: (item["timestamp"], item["event_id"]))
 
 
@@ -354,7 +359,7 @@ def emit_event(
     return event
 
 
-def load_jsonl(path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+def load_jsonl(path: Path, *, limit: int | None = None, strict: bool = False) -> list[dict[str, Any]]:
     """Load and validate agent-run events from JSONL."""
     if not path.exists():
         return []
@@ -363,7 +368,11 @@ def load_jsonl(path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
         for line in handle:
             if not line.strip():
                 continue
-            records.append(json.loads(line))
+            try:
+                records.append(json.loads(line))
+            except (json.JSONDecodeError, TypeError):
+                if strict:
+                    raise
     if limit is not None:
         records = records[-limit:]
-    return reconstruct_timeline(records)
+    return reconstruct_timeline(records, strict=strict)
