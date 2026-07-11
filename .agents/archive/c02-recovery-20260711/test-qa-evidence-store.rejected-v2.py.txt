@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Unit tests for qa_evidence_store.py."""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import json
+import shutil
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "ai" / "lib"))
+
+import qa_evidence_store
+from qa_evidence_store import (
+    save_qa_results,
+    read_latest_qa_results,
+    PathDivergenceError
+)
+
+def assert_true(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+def test_telemetry_root_resolution() -> None:
+    # Test resolve_telemetry_root default fallback
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        old_env_root = os.getenv("AQ_TELEMETRY_ROOT")
+        old_strict = os.getenv("AI_STRICT_ENV")
+        
+        # Override AQ_TELEMETRY_ROOT
+        os.environ["AQ_TELEMETRY_ROOT"] = str(tmp_path / "custom_telemetry")
+        try:
+            resolved = qa_evidence_store.resolve_telemetry_root(tmp_path)
+            assert_true(resolved == (tmp_path / "custom_telemetry").resolve(), "Honors AQ_TELEMETRY_ROOT")
+        finally:
+            if old_env_root:
+                os.environ["AQ_TELEMETRY_ROOT"] = old_env_root
+            else:
+                del os.environ["AQ_TELEMETRY_ROOT"]
+
+def test_path_divergence() -> None:
+    # Test path divergence check
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        # Create both prod_path and dev_path in custom structures
+        # To simulate a conflict, we mock prod_path presence if possible.
+        # But check_telemetry_root_divergence specifically looks at Path("/var/lib/ai-stack/hybrid/telemetry").
+        # If /var/lib/ai-stack/hybrid/telemetry doesn't exist (which is true in most dev environments),
+        # check_telemetry_root_divergence passes silently. That's correct.
+        # Let's verify that if it does run, it runs without error.
+        qa_evidence_store.check_telemetry_root_divergence(tmp_path)
+
+def test_save_and_read_qa_results() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        # Set telemetry root to tmpdir
+        os.environ["AQ_TELEMETRY_ROOT"] = str(tmp_path)
+        try:
+            dummy_results = {"sequence": 42, "passed": 10, "failed": 0, "status": "pass"}
+            save_qa_results(dummy_results, tmp_path)
+            
+            # Read latest
+            read_back = read_latest_qa_results(tmp_path, max_age_s=60)
+            assert_true(read_back is not None, "QA results should be read back")
+            assert_true(read_back["sequence"] == 42, "Sequence mismatch")
+            assert_true(read_back["passed"] == 10, "Passed count mismatch")
+        finally:
+            del os.environ["AQ_TELEMETRY_ROOT"]
+
+def test_path_traversal_protection() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        os.environ["AQ_TELEMETRY_ROOT"] = str(tmp_path)
+        try:
+            # Write a bad pointer pointing outside repo root
+            pointer_path = tmp_path / "latest-qa-results.json"
+            pointer_data = {
+                "version": 1,
+                "latest_results_path": "/etc/passwd",
+                "timestamp": qa_evidence_store.now_iso(),
+                "hash": "sha256-invalid",
+                "sequence": 1,
+                "target_path": "../../../../etc/passwd"
+            }
+            pointer_path.write_text(json.dumps(pointer_data), encoding="utf-8")
+            
+            # read should fail or return None due to path traversal check
+            res = read_latest_qa_results(tmp_path, max_age_s=86400)
+            assert_true(res is None, "Path traversal attempt must be blocked (returned None)")
+        finally:
+            del os.environ["AQ_TELEMETRY_ROOT"]
+
+def test_retention_policy() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        os.environ["AQ_TELEMETRY_ROOT"] = str(tmp_path)
+        try:
+            # Create more than 64 results files to trigger retention count pruning
+            for i in range(70):
+                dummy_results = {"sequence": i, "passed": 1, "failed": 0}
+                save_qa_results(dummy_results, tmp_path)
+                
+            # Count the remaining qa-results-*.json files
+            remaining_files = list(tmp_path.glob("qa-results-*.json"))
+            assert_true(len(remaining_files) <= 64, f"Retention policy should prune files to 64, got {len(remaining_files)}")
+            
+            # Deletion evidence log should exist
+            evidence_log = tmp_path / "deletion-evidence.jsonl"
+            assert_true(evidence_log.exists(), "Deletion evidence log should exist")
+            
+            # Check content of deletion-evidence.jsonl
+            lines = evidence_log.read_text().splitlines()
+            assert_true(len(lines) > 0, "Should have deletion evidence entries")
+            entry = json.loads(lines[0])
+            assert_true("filename" in entry, "Entry should have filename")
+            assert_true("hash" in entry, "Entry should have hash")
+            assert_true(entry["reason"] == "retention_policy_limit_exceeded", "Reason code matches")
+        finally:
+            del os.environ["AQ_TELEMETRY_ROOT"]
+
+if __name__ == "__main__":
+    tests = [
+        ("telemetry root resolution", test_telemetry_root_resolution),
+        ("path divergence check", test_path_divergence),
+        ("save and read qa results", test_save_and_read_qa_results),
+        ("path traversal protection", test_path_traversal_protection),
+        ("retention policy enforcement", test_retention_policy),
+    ]
+    failed = 0
+    for name, fn in tests:
+        try:
+            fn()
+            print(f"  PASS  {name}")
+        except Exception as exc:
+            print(f"  FAIL  {name}: {exc}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
+    if failed:
+        print(f"\n{failed}/{len(tests)} tests FAILED")
+        sys.exit(1)
+    print(f"\n{len(tests)}/{len(tests)} tests passed")

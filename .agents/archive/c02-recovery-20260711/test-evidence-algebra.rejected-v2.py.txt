@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Unit tests for evidence_algebra.py."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "ai" / "lib"))
+
+from evidence_algebra import (
+    evaluate_claim,
+    evaluate_gate,
+    EvidenceCondition,
+    ClaimAssessment,
+    GateOutcome
+)
+
+def assert_true(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+def test_claim_evaluation_valid_pass() -> None:
+    claim = evaluate_claim(
+        claim_id="test_claim",
+        required=True,
+        raw_condition=EvidenceCondition.VALID,
+        raw_assessment=ClaimAssessment.PASS
+    )
+    assert_true(claim["assessment"] == ClaimAssessment.PASS, "Valid pass stays pass")
+    assert_true(claim["evidence_condition"] == EvidenceCondition.VALID, "Condition stays valid")
+
+def test_rule1_non_valid_required_yields_unknown() -> None:
+    # Rule 1: Non-VALID required evidence yields UNKNOWN
+    claim = evaluate_claim(
+        claim_id="test_claim",
+        required=True,
+        raw_condition=EvidenceCondition.MISSING,
+        raw_assessment=ClaimAssessment.PASS
+    )
+    assert_true(claim["assessment"] == ClaimAssessment.UNKNOWN, "Missing condition yields UNKNOWN assessment")
+
+def test_rule2_not_applicable_constraints() -> None:
+    # Rule 2: N/A requires versioned applicability predicate and reason code.
+    claim_good_na = evaluate_claim(
+        claim_id="test_claim",
+        required=True,
+        raw_condition=EvidenceCondition.VALID,
+        raw_assessment=ClaimAssessment.NOT_APPLICABLE,
+        applicability_predicate="v1",
+        reason_code="OPTIONAL_FEATURE"
+    )
+    assert_true(claim_good_na["assessment"] == ClaimAssessment.NOT_APPLICABLE, "Valid N/A preserved")
+
+    claim_bad_na = evaluate_claim(
+        claim_id="test_claim",
+        required=True,
+        raw_condition=EvidenceCondition.VALID,
+        raw_assessment=ClaimAssessment.NOT_APPLICABLE,
+        applicability_predicate=None,
+        reason_code=None
+    )
+    assert_true(claim_bad_na["assessment"] == ClaimAssessment.UNKNOWN, "N/A without predicate/reason becomes UNKNOWN")
+
+    claim_missing_na = evaluate_claim(
+        claim_id="test_claim",
+        required=True,
+        raw_condition=EvidenceCondition.MISSING,
+        raw_assessment=ClaimAssessment.NOT_APPLICABLE,
+        applicability_predicate="v1",
+        reason_code="OPTIONAL_FEATURE"
+    )
+    assert_true(claim_missing_na["assessment"] == ClaimAssessment.UNKNOWN, "MISSING condition forces N/A to UNKNOWN")
+
+def test_rule3_rule4_zero_required_claims_blocked() -> None:
+    # Rule 3 & 4: Zero required claims / optional-only is BLOCKED
+    claim_opt = evaluate_claim(
+        claim_id="test_opt_claim",
+        required=False,
+        raw_condition=EvidenceCondition.VALID,
+        raw_assessment=ClaimAssessment.PASS
+    )
+    gate = evaluate_gate("test_gate", [claim_opt])
+    assert_true(gate["outcome"] == GateOutcome.BLOCKED, "Optional-only gate is BLOCKED")
+    assert_true(any(r["reason_code"] == "BLOCKED/NO_REQUIRED_CLAIMS" for r in gate["blocking_reasons"]), "Correct reason code set")
+
+def test_rule5_gate_outcomes() -> None:
+    # Required FAIL yields gate FAIL
+    c_fail = evaluate_claim("c1", True, EvidenceCondition.VALID, ClaimAssessment.FAIL)
+    c_pass = evaluate_claim("c2", True, EvidenceCondition.VALID, ClaimAssessment.PASS)
+    gate = evaluate_gate("gate", [c_fail, c_pass])
+    assert_true(gate["outcome"] == GateOutcome.FAIL, "Fail expected")
+
+    # Required UNKNOWN yields gate BLOCKED
+    c_unk = evaluate_claim("c1", True, EvidenceCondition.VALID, ClaimAssessment.UNKNOWN)
+    gate2 = evaluate_gate("gate", [c_unk, c_pass])
+    assert_true(gate2["outcome"] == GateOutcome.BLOCKED, "Blocked expected")
+
+    # Required WARN yields gate DEGRADED
+    c_warn = evaluate_claim("c1", True, EvidenceCondition.VALID, ClaimAssessment.WARN)
+    gate3 = evaluate_gate("gate", [c_warn, c_pass])
+    assert_true(gate3["outcome"] == GateOutcome.DEGRADED, "Degraded expected")
+
+    # All PASS yields PASS
+    gate4 = evaluate_gate("gate", [c_pass])
+    assert_true(gate4["outcome"] == GateOutcome.PASS, "Pass expected")
+
+def test_rule11_automation_allowed() -> None:
+    c_pass = evaluate_claim("c1", True, EvidenceCondition.VALID, ClaimAssessment.PASS)
+    gate_ok = evaluate_gate("gate", [c_pass], policy_current=True, has_revocation=False)
+    assert_true(gate_ok["automation_allowed"] is True, "Automation allowed")
+
+    gate_stale_policy = evaluate_gate("gate", [c_pass], policy_current=False, has_revocation=False)
+    assert_true(gate_stale_policy["automation_allowed"] is False, "Stale policy blocks automation")
+
+    gate_revoked = evaluate_gate("gate", [c_pass], policy_current=True, has_revocation=True)
+    assert_true(gate_revoked["automation_allowed"] is False, "Revocation blocks automation")
+
+if __name__ == "__main__":
+    tests = [
+        ("claim evaluation valid pass", test_claim_evaluation_valid_pass),
+        ("rule1 non-valid required yields unknown", test_rule1_non_valid_required_yields_unknown),
+        ("rule2 not applicable constraints", test_rule2_not_applicable_constraints),
+        ("rule3 and rule4 zero required claims blocked", test_rule3_rule4_zero_required_claims_blocked),
+        ("rule5 gate outcomes", test_rule5_gate_outcomes),
+        ("rule11 automation allowed constraints", test_rule11_automation_allowed),
+    ]
+    failed = 0
+    for name, fn in tests:
+        try:
+            fn()
+            print(f"  PASS  {name}")
+        except Exception as exc:
+            print(f"  FAIL  {name}: {exc}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
+    if failed:
+        print(f"\n{failed}/{len(tests)} tests FAILED")
+        sys.exit(1)
+    print(f"\n{len(tests)}/{len(tests)} tests passed")
