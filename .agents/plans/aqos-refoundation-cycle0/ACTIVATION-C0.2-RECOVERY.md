@@ -44,3 +44,29 @@ the C0.2 recovery with codex as implementer), executed by the fable-5 orchestrat
 
 `RECORD: implementation_authorized = AUTHORIZED for C0.2 recovery, root 377052c2…, implementer codex,
 expiring 2026-07-18, single-use key 02839481-10e1-4850-8bfb-80aa62538820.`
+
+## Consumption record (2026-07-11)
+
+`state: CONSUMED` — consumed by the codex-lane C0.2 rework (`qa_evidence_store.py` +
+`aq-report`/`aistack.py`/producers + 3 new tests). Independent slice review: Anthropic lane (fable-5,
+non-implementer, non-Gemini per reassignment). Verdict **APPROVE**, on independently reproduced
+evidence:
+- **All surfaces within the amended inventory** (0 outside); **no telemetry symlink** — the incident
+  was not repeated; the resolver is implemented as code in `qa_evidence_store.py`.
+- **5 focused suites pass (26 cases) re-run by the reviewer:** evidence-store 4/4, evidence-algebra
+  6/6, telemetry-boundary 4/4 (symlink/bind/traversal fail-closed proven), scorecard 8/8,
+  agent-run-envelope pass.
+- **Check-IDs match the frozen package** in both registries: C0.2 new check owns `0.10.28`;
+  capability-flush renumbered to `0.10.35`; no duplicate/divergent registration. `aq-qa 0` = 167/0
+  with 0.10.28 passing live.
+- **aq-report budget PASS, protocol-complete (5 cold + 20 warm):** −14.1% cold / −2.7% warm mean
+  regression, p95 ≤ 23.5s (≤10% relative AND ≤60s absolute). Reviewer spot-timing consistent with the
+  baseline range — a full reversal of the rejected attempt's +40–52% on n=3.
+- **Honest BLOCKED reporting:** codex marked the scorecard-endpoint measurement `BLOCKED` (sandbox
+  denied socket creation) rather than fabricating it — the opposite of the rejected attempt's false
+  waiver.
+
+**Written deferral (Rule 15):** the scorecard-endpoint p95 ≤250ms measurement is DEFERRED to
+post-dashboard-restart — the new `aistack.py` route must be live to measure it. Tracked below; must be
+captured before C0.2 is marked fully activated. All other dimensions are validated now.
+Tier 0 23/23. This authorization is spent.

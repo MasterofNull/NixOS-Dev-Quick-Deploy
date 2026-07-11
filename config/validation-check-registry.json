@@ -989,6 +989,10 @@
       "trigger_paths": [
         "scripts/ai/aq-report",
         "scripts/testing/test-aq-report-effectiveness-scorecard.py",
+        "scripts/testing/test-qa-evidence-store.py",
+        "scripts/testing/test-evidence-algebra.py",
+        "scripts/testing/test-telemetry-root-boundary.py",
+        "scripts/ai/lib/qa_evidence_store.py",
         "config/validation-check-registry.json"
       ],
       "command": [

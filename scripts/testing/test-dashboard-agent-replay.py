@@ -196,9 +196,15 @@ def main() -> int:
                 report = {
                     "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
                     "effectiveness_scorecard": {
+                        "schema_version": "aq.effectiveness-scorecard.v1",
                         "overall_status": "pass",
+                        "gate_outcome": "PASS",
+                        "evidence_condition": "VALID",
+                        "automation_allowed": True,
                         "outcome_correctness": {"status": "pass", "eval_pass_rate": 0.92},
                         "blocking_reasons": [],
+                        "provenance": {"run_id": "qa-fixture", "start_sequence": 7, "sha256": "a" * 64, "age_seconds": 1.0, "hash_verified": True},
+                        "operator_action": "rerun evidence",
                     },
                 }
                 aq_report_file.write_text(json.dumps(report))
@@ -210,6 +216,8 @@ def main() -> int:
                 assert_true(body.get("stale") is False, "report should not be stale")
                 sc = body.get("effectiveness_scorecard") or {}
                 assert_true(sc.get("overall_status") == "pass", "scorecard overall_status preserved")
+                assert_true(body.get("provenance") == sc.get("provenance"), "API projects canonical provenance unchanged")
+                assert_true(body.get("blocking_reasons") == sc.get("blocking_reasons"), "API projects canonical reasons unchanged")
                 print(f"  PASS  {name}")
                 passed += 1
             except Exception as exc:

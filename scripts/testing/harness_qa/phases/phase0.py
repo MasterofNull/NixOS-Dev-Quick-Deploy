@@ -1751,6 +1751,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_aq_eval_harness(ctx))
     results.extend(_check_context_compaction_sandwich(ctx))
     results.extend(_check_round_decision_authorization(ctx))
+    results.extend(_check_immutable_qa_effectiveness(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -1963,6 +1964,20 @@ def _check_round_decision_authorization(ctx: RunContext) -> list[CheckResult]:
         return [passed(5, "0.10.27", "positive, negative, and cascade assignment invariants")]
     detail = (proc.stderr or proc.stdout or "focused invariant test failed").strip()[-240:]
     return [failed(5, "0.10.27", "evidence-bound collaboration assignment invariants", detail)]
+
+
+def _check_immutable_qa_effectiveness(ctx: RunContext) -> list[CheckResult]:
+    """C0.2: immutable QA CAS, evidence algebra, and telemetry boundary."""
+    tests = ["test-qa-evidence-store.py", "test-evidence-algebra.py", "test-telemetry-root-boundary.py"]
+    for filename in tests:
+        path = ctx.repo_root / "scripts" / "testing" / filename
+        if not path.exists():
+            return [failed(5, "0.10.28", "immutable QA evidence and effectiveness", f"{filename} missing")]
+        proc = subprocess.run(["python3", str(path)], cwd=ctx.repo_root, capture_output=True, text=True, timeout=90)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or f"{filename} exit {proc.returncode}").strip()[-300:]
+            return [failed(5, "0.10.28", "immutable QA evidence and effectiveness", detail)]
+    return [passed(5, "0.10.28", "concurrent immutable QA CAS, required-unknown blocking, and telemetry boundary")]
 
 
 def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:

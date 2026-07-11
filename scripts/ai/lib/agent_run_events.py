@@ -119,6 +119,7 @@ def make_event(
     tokens: dict[str, Any] | None = None,
     cost: dict[str, Any] | None = None,
     artifact: dict[str, Any] | None = None,
+    producer_evidence: dict[str, Any] | None = None,
     no_data_reason: str | None = None,
     event_id: str | None = None,
 ) -> dict[str, Any]:
@@ -150,6 +151,7 @@ def make_event(
         "tokens": _normalize_tokens(tokens),
         "cost": _normalize_cost(cost),
         "artifact": _normalize_artifact(artifact),
+        "producer_evidence": dict(producer_evidence or {}),
         "redaction": {
             "payload_redacted": bool(secret_fields),
             "secret_fields": secret_fields,
@@ -248,6 +250,17 @@ def validate_event(event: dict[str, Any]) -> None:
         raise ValueError("redaction.payload_redacted must be a boolean")
     if not isinstance(redaction.get("secret_fields"), list):
         raise ValueError("redaction.secret_fields must be a list")
+    producer = event.get("producer_evidence") or {}
+    if producer:
+        required_producer = {"producer_id", "producer_assurance", "artifact_run_id", "artifact_sha256"}
+        if set(producer) != required_producer:
+            raise ValueError("producer_evidence must contain only the complete versioned producer envelope")
+        if producer["producer_assurance"] not in {"harness_local", "reviewed_remote", "owner_attested"}:
+            raise ValueError("producer_evidence.producer_assurance is unauthorized")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(producer["artifact_sha256"])):
+            raise ValueError("producer_evidence.artifact_sha256 must be a lowercase SHA-256")
+        if not all(str(producer[key]).strip() for key in ("producer_id", "artifact_run_id")):
+            raise ValueError("producer_evidence identifiers must not be empty")
 
 
 def reconstruct_timeline(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
