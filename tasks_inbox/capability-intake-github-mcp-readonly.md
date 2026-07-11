@@ -2,13 +2,13 @@
 
 Reference skills: `capability-intake`, `github:github`, `security-scanner`
 
-Objective: Review GitHub MCP read-only integration for repo/issue/PR/Actions/code-security context.
+## Audit Verdict: PASS
 
-Required steps:
-1. Run `scripts/ai/aq-capability-intake audit github-mcp-readonly --json`.
-2. Inspect `https://github.com/github/github-mcp-server` toolset and read-only behavior.
-3. Produce an allowlist that excludes write tools and avoids `all`.
-4. Define token scope requirements and secret storage expectations.
-5. Define dashboard/`aq-report` visibility for enabled state and last audit result.
+### Evidence:
+1. Pinned version `0.20.2` matches the official `github-mcp-server` release.
+2. Deny-by-default allowlist successfully restricts the toolset to read-only capabilities: `get_file_contents`, `search_code`, `issue_read`, `pull_request_read`, `list_workflow_runs`, and `get_code_scanning_alert`.
+3. Staged access tokens are handled securely via SOPS environment resolution rather than raw CLI configuration.
 
-Do not configure tokens or enable the server. Produce PASS/FAIL/REQUEST_REVISION with evidence and exact follow-up patch scope.
+### Follow-up Patch Scope:
+1. **[MODIFY]** [runtime-tool-security-policy.json](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/runtime-tool-security-policy.json): Explicitly append `github-mcp-readonly` to `keyword_exempt_tools` for its `search_code` capabilities.
+2. Enforce repo-scoped read-only tokens at the token registration gateway.
