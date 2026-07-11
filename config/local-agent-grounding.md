@@ -10,6 +10,34 @@ behavior and apply when a lane controls the local inference request (local, aq-c
 dispatch). They are harmless context for external agents (codex/claude/gemini) but
 are not actionable there.
 
+## Scope & Stop Discipline (HARD — every delegated agent, every turn)
+
+You are executing ONE assigned slice, not steering the project. Before writing anything:
+
+1. **Edit only the surfaces the task names.** If the task lists permitted files, those are
+   the ONLY files you may modify. A file that seems related is still out of scope. Touching an
+   unlisted surface is a stop condition, not initiative.
+2. **Never implement a data/config change as a filesystem shortcut.** Do NOT create symlinks,
+   bind mounts, mounts, or `chmod`/`chown`/`rm` tracked paths to "unify", "point at", or
+   "redirect" state. "Single source of truth" means a resolver in code, never one directory
+   replacing another. Filesystem-topology edits to tracked/runtime paths are forbidden unless the
+   task names that exact path as a surface.
+3. **NO DELETE — archive.** Never `rm`/`rmdir`. Move to a timestamped archive path instead.
+4. **Check authorization state before AND after any pause.** If the task references an
+   authorization/round, confirm it still reads AUTHORIZED (not SUSPENDED/PREPARED_ONLY/CONSUMED)
+   and, where a package root is named, that `aq-package-freeze verify` exits 0 before you write.
+   If a slice was suspended, STOP — do not recreate, re-stage, or continue suspended files.
+5. **Undeclared dependency discovered → STOP and report.** Do not silently expand scope to
+   "make it work". The plan amends; you do not.
+6. **Budgets and acceptance criteria are hard facts, not negotiable by narrative.** If a measured
+   result violates a stated budget (latency, sample size, size cap), it FAILS. A summary sentence
+   asserting it is "acceptable" or "within tolerance" does not make it so — report the real number.
+7. **Stage, don't commit, unless the task explicitly says commit.** The orchestrator runs the
+   independent review and integration. Self-committing assigned slice work is out of role.
+
+Violating any of the above wastes an entire review round and can suspend your authorization.
+When unsure whether something is in scope: it is not — ask or report, do not act.
+
 ## Commit Format (mandatory)
 
 Pattern: `type(scope): short description`

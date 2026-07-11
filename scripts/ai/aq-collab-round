@@ -41,6 +41,27 @@ SCRIPTS = REPO / "scripts" / "ai"
 OUTPUTS = REPO / ".agents" / "delegation" / "outputs"
 # Watched inbox — the Antigravity IDE agent (its own OAuth) polls this dir and responds.
 ANTIGRAVITY_INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
+
+# Scope & stop guardrail, prepended to every inbox drop. The Antigravity/IDE lane
+# does NOT flow through dispatch.py, so it never receives config/local-agent-grounding.md;
+# this preamble is the ONLY place the same discipline reaches it. Mirror of the grounding
+# supplement's "Scope & Stop Discipline" section (keep the two in sync).
+INBOX_SCOPE_STOP_PREAMBLE = (
+    "## SCOPE & STOP (HARD — read before writing)\n"
+    "- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.\n"
+    "- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,\n"
+    "  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,\n"
+    "  never one directory replacing/redirecting another.\n"
+    "- NO DELETE — archive to a timestamped path; never rm/rmdir.\n"
+    "- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a\n"
+    "  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,\n"
+    "  STOP — do not recreate or continue suspended files.\n"
+    "- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.\n"
+    "- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it\n"
+    "  'acceptable' does not change the number. Report the real value.\n"
+    "- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.\n"
+    "- When unsure whether something is in scope: it is not. Report, do not act.\n\n"
+)
 # Lanes that receive a live dispatch. antigravity is a file-drop (inbox), not a process dispatch.
 PROCESS_AGENTS = ["codex", "local"]
 ALL_AGENTS = ["claude", "codex", "local", "antigravity"]
@@ -231,6 +252,7 @@ def _drop_antigravity(name: str, prompt_file: Path) -> str:
     inbox.write_text(f"# A2A task for antigravity — round '{name}'\n\n"
                      f"Dropped: {_now()}\n\n"
                      f"Respond by writing `.agents/plans/{name}/antigravity.md`.\n\n"
+                     f"{INBOX_SCOPE_STOP_PREAMBLE}"
                      f"{prompt_file.read_text()}\n")
     return f"inbox:{inbox.relative_to(REPO)}"
 
