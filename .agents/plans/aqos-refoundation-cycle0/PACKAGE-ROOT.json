@@ -1,10 +1,10 @@
 {
  "schema_version": "aq.planning_package/1.0",
  "package_id": "aqos_refoundation_cycle0_v5_recovery",
- "status": "ACTIVE",
+ "status": "IN_PROGRESS_C0_3_PENDING",
  "direction_ratified": true,
  "plan_ratified": true,
- "implementation_authorized": true,
+ "implementation_authorized": false,
  "repository_commit_at_freeze": "42eb76f882f79ee77cee1d02bc2548b140cc1dca",
  "worktree_dirty": true,
  "hash_algorithm": "sha-256",
@@ -117,7 +117,7 @@
   },
   {
    "path": ".agents/plans/aqos-refoundation-cycle0/ACTIVATION-C0.2-RECOVERY.md",
-   "sha256": "b906cd108fa10970ccc9f432d7ac71e6a7f5a6c567185859986e1d92b9c3c561"
+   "sha256": "fbe41bf2dbc8cd42054afda16e6ab56ce7ef166369a6e2a2c51c89446b5ea207"
   },
   {
    "path": ".agents/plans/aqos-refoundation-cycle0/REVIEW-FABLE5-C02-RECOVERY.md",
@@ -143,5 +143,7 @@
   "owner_policy_ratified": true,
   "reviews_present_for_this_root": 0
  },
- "blocking_reasons": []
+ "blocking_reasons": [
+  "C0_3_AUTHORITY_LEDGER_NOT_YET_AUTHORIZED_OR_IMPLEMENTED"
+ ]
 }
