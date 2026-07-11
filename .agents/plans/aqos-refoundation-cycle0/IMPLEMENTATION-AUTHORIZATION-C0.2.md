@@ -59,5 +59,11 @@ non-codex family (Anthropic or Gemini). Deployment order per plan: producer-firs
 compatible readers → dashboard restart + live endpoint test → frontend projection → retire old
 synthesis.
 
+**Reassignment (2026-07-10, owner directive):** codex dispatch failed twice on provider usage
+limits before any work began (k28hgf; tree verified clean, key unconsumed). The owner reassigned
+the implementation to the **Antigravity/Gemini lane** ("reassign the slice to antigravity now").
+Grant, key, expiry, surfaces, and stop conditions unchanged. Consequence for review: the slice
+reviewer must now be a **non-Gemini** independent family — the Anthropic lane (fable-5).
+
 `RECORD: implementation_authorized = AUTHORIZED for C0.2 only, at package root 0a2b0cce…, expiring
 2026-07-17, single-use key 9ec8fd14-dd62-441f-9abe-e551bdd63d0e.`
