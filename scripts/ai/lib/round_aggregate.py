@@ -9,7 +9,10 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from round_contribution import Contribution, RequiredChange, Verdict
+from round_contribution import approval_eligibility, substantive_evidence_eligibility
 from round_state import (
+    AssignmentRecord,
+    AuthorizationState,
     Conflict,
     Lane,
     LaneStatus,
@@ -74,7 +77,41 @@ def aggregate(
     merged_changes, conflicts = _merge_changes(landed)
     consensus_hash = _consensus_hash(_verdict_tally(landed), merged_changes)
 
-    if not conflicts and quorum_met(manifest):
+    substantive = {
+        agent: item for agent, item in landed.items()
+        if item.subject_hash and substantive_evidence_eligibility(item, item.subject_hash)
+    }
+    subject_hashes = {item.subject_hash for item in substantive.values() if item.subject_hash}
+    evidence_quorum = False
+    if len(subject_hashes) == 1:
+        evidence_quorum, _eligible, _evidence_reasons = evaluate_approval_quorum(
+            landed, next(iter(subject_hashes))
+        )
+        for agent, item in sorted(substantive.items()):
+            if item.verdict in {Verdict.REJECT, Verdict.APPROVE_WITH_CHANGES}:
+                conflicts.append(
+                    Conflict(
+                        file_path="",
+                        line_range=None,
+                        description=f"{agent}:ELIGIBLE_{item.verdict.value}_BLOCKS",
+                        competing=[agent],
+                    )
+                )
+        if not evidence_quorum and not conflicts:
+            conflicts.append(Conflict(
+                file_path="", line_range=None, description="EVIDENCE_QUORUM_NOT_MET", competing=[]
+            ))
+    else:
+        conflicts.append(
+            Conflict(
+                file_path="",
+                line_range=None,
+                description="MISSING_OR_CONFLICTING_SUBJECT_HASH",
+                competing=sorted(landed),
+            )
+        )
+
+    if not conflicts and evidence_quorum:
         updated = transition(manifest, RoundState.CONSENSUS_LOCKED, "round_aggregate")
         return updated.model_copy(
             update={
@@ -100,7 +137,9 @@ def amend(
         raise ValueError("AMEND requires CONSENSUS_LOCKED manifest")
 
     amended = transition(manifest, RoundState.AMEND, "round_aggregate")
-    if late.verdict == consensus_verdict and all(
+    subject_hash = late.subject_hash or ""
+    eligible, _reason = approval_eligibility(late, subject_hash)
+    if eligible and consensus_verdict == Verdict.APPROVE and all(
         _change_is_subset(change, locked_changes) for change in late.required_changes
     ):
         relocked = _mark_lane(amended, late.agent_id, LaneStatus.amended)
@@ -120,6 +159,99 @@ def quorum_met(manifest: RoundManifest) -> bool:
         len(landed_agents) >= manifest.quorum_policy.min_lanes
         and set(manifest.quorum_policy.required_agents).issubset(landed_agents)
     )
+
+
+def evaluate_approval_quorum(
+    contributions: dict[str, Contribution], subject_hash: str
+) -> tuple[bool, list[str], list[str]]:
+    """Evaluate substantive evidence, never lane status, for two-family/two-principal approval."""
+
+    eligible: list[str] = []
+    reasons: list[str] = []
+    families: set[str] = set()
+    principals: set[str] = set()
+    for agent, contribution in sorted(contributions.items()):
+        ok, reason = approval_eligibility(contribution, subject_hash)
+        if ok:
+            eligible.append(agent)
+            families.add(contribution.model_provenance.model_family or "")
+            principals.add(contribution.model_provenance.execution_principal or "")
+        else:
+            reasons.append(f"{agent}:{reason}")
+        if contribution.verdict == Verdict.REJECT and substantive_evidence_eligibility(
+            contribution, subject_hash
+        ):
+            reasons.append(f"{agent}:ELIGIBLE_REJECT_BLOCKS")
+    quorum = len(eligible) >= 2 and len(families) >= 2 and len(principals) >= 2
+    if len(families) < 2:
+        reasons.append("MODEL_FAMILY_DIVERSITY_NOT_MET")
+    if len(principals) < 2:
+        reasons.append("PRINCIPAL_DIVERSITY_NOT_MET")
+    if any(reason.endswith("ELIGIBLE_REJECT_BLOCKS") for reason in reasons):
+        quorum = False
+    return quorum, eligible, sorted(set(reasons))
+
+
+def consume_authorization(
+    authorization,
+    *,
+    idempotency_key: str,
+    principal: str,
+    assignment_id: str,
+    current_hashes: dict[str, str],
+    now: str,
+) -> tuple[object, AssignmentRecord]:
+    """Atomically-composable pure authorization consumption validator."""
+
+    if authorization.state != AuthorizationState.AUTHORIZED:
+        raise ValueError("LEGACY_STATE_NOT_AUTHORIZATION")
+    if authorization.idempotency_key != idempotency_key:
+        raise ValueError("IDEMPOTENCY_KEY_MISMATCH")
+    if now >= authorization.expires_at:
+        raise ValueError("AUTHORIZATION_EXPIRED")
+    for name in ("direction_hash", "plan_hash", "package_hash", "ownership_hash"):
+        if current_hashes.get(name) != getattr(authorization, name):
+            raise ValueError(f"{name.upper()}_MISMATCH")
+    consumed = authorization.model_copy(
+        update={"state": AuthorizationState.CONSUMED, "consumed_by": assignment_id}
+    )
+    assignment = AssignmentRecord(
+        assignment_id=assignment_id,
+        authorization_id=authorization.authorization_id,
+        principal=principal,
+        subject_hash=authorization.plan_hash,
+        created_at=now,
+    )
+    return consumed, assignment
+
+
+def validate_assignment_source(source: object) -> None:
+    """Reject every legacy CONSENSUS_LOCKED-only assignment path."""
+
+    if not hasattr(source, "state") or getattr(source, "state") != AuthorizationState.AUTHORIZED:
+        raise ValueError("LEGACY_STATE_NOT_AUTHORIZATION")
+
+
+def suspend_assignment(assignment: AssignmentRecord, reason: str) -> AssignmentRecord:
+    """Revoke effects immediately when late evidence invalidates active execution."""
+
+    return assignment.model_copy(update={
+        "state": "SUSPENDED",
+        "effects_allowed": False,
+        "cancellation_pending": True,
+        "audit": [*assignment.audit, f"SUSPEND:{reason}"],
+    })
+
+
+def abort_assignment(assignment: AssignmentRecord, actor: str, reason: str) -> AssignmentRecord:
+    if assignment.state != "SUSPENDED":
+        raise ValueError("ABORT_REQUIRES_SUSPENDED")
+    return assignment.model_copy(update={
+        "state": "CANCELLED",
+        "effects_allowed": False,
+        "cancellation_pending": False,
+        "audit": [*assignment.audit, f"ABORT:{actor}:{reason}"],
+    })
 
 
 def _landed_contributions(

@@ -4,14 +4,19 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
+import unicodedata
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+CANONICAL_PROFILE = "aq-canonical-json-v1"
+MAX_RECORD_BYTES = 1_048_576
 
 
 class RoundState(StrEnum):
@@ -51,6 +56,82 @@ class StrictModel(BaseModel):
     """Base model that rejects undeclared manifest fields."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class DecisionKind(StrEnum):
+    direction = "direction"
+    plan = "plan"
+    implementation_authorization = "implementation_authorization"
+
+
+class DecisionState(StrEnum):
+    PENDING = "PENDING"
+    RATIFIED = "RATIFIED"
+    REJECTED = "REJECTED"
+    SUPERSEDED = "SUPERSEDED"
+    CORRUPT = "CORRUPT"
+    CANCELLED = "CANCELLED"
+
+
+class AuthorizationState(StrEnum):
+    BLOCKED = "BLOCKED"
+    AUTHORIZED = "AUTHORIZED"
+    CONSUMED = "CONSUMED"
+    SUSPENDED = "SUSPENDED"
+    REVOKED = "REVOKED"
+    EXPIRED = "EXPIRED"
+
+
+class DecisionRecord(StrictModel):
+    schema_version: str = "2.0"
+    decision_id: str
+    kind: DecisionKind
+    subject_hash: str
+    state: DecisionState
+    direction_hash: str | None = None
+    package_hash: str | None = None
+    reasons: list[str] = Field(default_factory=list, max_length=128)
+    review_hashes: list[str] = Field(default_factory=list, max_length=64)
+
+
+class ImplementationAuthorization(StrictModel):
+    schema_version: str = "2.0"
+    authorization_id: str
+    state: AuthorizationState
+    direction_hash: str
+    plan_hash: str
+    package_hash: str
+    ownership_hash: str
+    idempotency_key: str
+    expires_at: str
+    owner_principal: str
+    consumed_by: str | None = None
+    reasons: list[str] = Field(default_factory=list, max_length=64)
+
+
+class AssignmentRecord(StrictModel):
+    schema_version: str = "2.0"
+    assignment_id: str
+    authorization_id: str
+    principal: str
+    state: str = "ASSIGNED"
+    subject_hash: str
+    created_at: str
+    effects_allowed: bool = True
+    cancellation_pending: bool = False
+    audit: list[str] = Field(default_factory=list, max_length=128)
+
+
+class RecoveryRecord(StrictModel):
+    schema_version: str = "2.0"
+    corrupt_hash: str
+    quarantine_hash: str
+    reconstruction_hash: str
+    dry_run_diff_hash: str
+    actor: str
+    decision: str
+    reason: str
+    new_revision: str
 
 
 class Lane(StrictModel):
@@ -116,6 +197,7 @@ class RoundManifest(StrictModel):
     aggregate_hash: str | None
     locked_at: str | None
     history: list[HistoryEntry] = Field(default_factory=list)
+    predecessor_round_id: str | None = None
 
 
 ALLOWED_TRANSITIONS: dict[RoundState, set[RoundState]] = {
@@ -125,16 +207,18 @@ ALLOWED_TRANSITIONS: dict[RoundState, set[RoundState]] = {
     RoundState.COLLECTED: {
         RoundState.CONFLICTS_IDENTIFIED,
         RoundState.CONSENSUS_LOCKED,
+        RoundState.ABORTED,
     },
-    RoundState.CONFLICTS_IDENTIFIED: {RoundState.CONSENSUS_LOCKED},
-    RoundState.CONSENSUS_LOCKED: {RoundState.ASSIGNED, RoundState.AMEND},
+    RoundState.CONFLICTS_IDENTIFIED: {RoundState.CONSENSUS_LOCKED, RoundState.ABORTED},
+    RoundState.CONSENSUS_LOCKED: {RoundState.ASSIGNED, RoundState.AMEND, RoundState.ABORTED},
     RoundState.AMEND: {
         RoundState.CONSENSUS_LOCKED,
         RoundState.CONFLICTS_IDENTIFIED,
+        RoundState.ABORTED,
     },
-    RoundState.ASSIGNED: {RoundState.IMPLEMENTING},
-    RoundState.IMPLEMENTING: {RoundState.VALIDATING},
-    RoundState.VALIDATING: {RoundState.CLOSED, RoundState.IMPLEMENTING},
+    RoundState.ASSIGNED: {RoundState.IMPLEMENTING, RoundState.ABORTED},
+    RoundState.IMPLEMENTING: {RoundState.VALIDATING, RoundState.ABORTED},
+    RoundState.VALIDATING: {RoundState.CLOSED, RoundState.IMPLEMENTING, RoundState.ABORTED},
     RoundState.CLOSED: set(),
     RoundState.ABORTED: set(),
 }
@@ -186,9 +270,95 @@ def save(manifest: RoundManifest, path: str | os.PathLike[str]) -> None:
             tmp.flush()
             os.fsync(tmp.fileno())
         os.replace(tmp_name, destination)
+        _fsync_directory(destination.parent)
     finally:
         if tmp_name and os.path.exists(tmp_name):
             os.unlink(tmp_name)
+
+
+def canonical_bytes(value: Any) -> bytes:
+    """Encode a bounded value using aq-canonical-json-v1."""
+
+    normalized = _canonical_normalize(value)
+    encoded = json.dumps(
+        normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+    if len(encoded) > MAX_RECORD_BYTES:
+        raise ValueError("RECORD_TOO_LARGE")
+    return encoded
+
+
+def canonical_hash(value: Any) -> str:
+    return "sha-256:" + hashlib.sha256(canonical_bytes(value)).hexdigest()
+
+
+def raw_artifact_hash(data: bytes) -> str:
+    return "sha-256:" + hashlib.sha256(data).hexdigest()
+
+
+def commit_manifest_cas(value: Any, path: str | os.PathLike[str], expected_hash: str | None) -> str:
+    """Commit canonical JSON under an exclusive lock and expected-prior-hash CAS."""
+
+    import fcntl
+
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = destination.with_name(destination.name + ".lock")
+    with lock_path.open("a+b") as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError("LOCK_CONFLICT") from exc
+        prior = raw_artifact_hash(destination.read_bytes()) if destination.exists() else None
+        if prior != expected_hash:
+            raise RuntimeError("CAS_MISMATCH")
+        data = canonical_bytes(value) + b"\n"
+        tmp_name: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile("wb", dir=destination.parent, delete=False) as tmp:
+                tmp_name = tmp.name
+                tmp.write(data)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_name, destination)
+            _fsync_directory(destination.parent)
+        finally:
+            if tmp_name and os.path.exists(tmp_name):
+                os.unlink(tmp_name)
+        return raw_artifact_hash(data)
+
+
+def _canonical_normalize(value: Any) -> Any:
+    if isinstance(value, BaseModel):
+        return _canonical_normalize(value.model_dump(mode="json"))
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        raise ValueError("FLOAT_FORBIDDEN")
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, list):
+        return [_canonical_normalize(item) for item in value]
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key in sorted(value):
+            if not isinstance(key, str) or not key or not key.isascii() or not key[0].islower() or not all(
+                char.islower() or char.isdigit() or char == "_" for char in key
+            ):
+                raise ValueError("INVALID_CANONICAL_KEY")
+            result[key] = _canonical_normalize(value[key])
+        return result
+    raise ValueError("UNSUPPORTED_CANONICAL_TYPE")
+
+
+def _fsync_directory(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def idempotency_hash(round_id: str, agent_role: str, task_prompt: str) -> str:

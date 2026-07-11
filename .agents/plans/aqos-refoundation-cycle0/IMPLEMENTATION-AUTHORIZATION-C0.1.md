@@ -66,3 +66,16 @@ protocol and the isolated-test preflight.
 
 `RECORD: implementation_authorized = AUTHORIZED for C0.1 only, at package root 0a2b0cce…, expiring
 2026-07-17, single-use key 91344a2b-2ea4-4cd0-92af-613debcec3ed.`
+
+## Consumption record (2026-07-10)
+
+`state: CONSUMED` — consumed by the codex-lane C0.1 implementation (14 staged files, all within the
+permitted surfaces). Independent slice review: Anthropic lane (fable-5, non-implementer), verdict
+**APPROVE** — evidence: five focused suites exit 0 (including the new
+test-round-decision-authorization.py positive/negative/cascade matrix); primary acceptance fixture
+passes (both live false-locked manifests aqos-v1 and aqos-refoundation-cycle0 return
+`assignment_authorized: false / LEGACY_STATE_NOT_AUTHORIZATION` from the read-only audit); quorum
+evaluator enforces two-family + two-principal with eligible-REJECT/AWC blocking and
+proxy/self-review/stale/hash-mismatch zero weight, matching the ratified policy exactly; Phase-0
+check 0.10.27 registered and passing (aq-qa 166/0); Tier 0 23/23; zero model calls in validation.
+This authorization is spent; further C0.1 work requires a new record.

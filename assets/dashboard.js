@@ -3323,12 +3323,20 @@ async function loadCollaborationMetrics() {
   }
   const teams = d.teams_tracked ?? 0;
   const tasks = d.total_tasks ?? 0;
+  const gov = d.decision_governance || {};
+  const decisionStage = gov.decision_stage || "UNKNOWN";
+  const evidenceCondition = gov.evidence_condition || "UNKNOWN";
+  const blockReason = gov.block_reason || "NO_DECISION_EVIDENCE";
+  const assignmentBlocked = blockReason !== "NONE";
   if (badge) {
-    badge.textContent = teams > 0 ? `${teams} teams` : "no data";
-    badge.className = "card-badge badge-info";
+    badge.textContent = assignmentBlocked ? "assignment blocked" : decisionStage.toLowerCase();
+    badge.className = `card-badge ${assignmentBlocked ? "badge-warn" : "badge-ok"}`;
   }
   const cmp = d.comparison || {};
   el.innerHTML = [
+    fwRow("Decision Stage", decisionStage, assignmentBlocked ? "warn" : "ok"),
+    fwRow("Evidence", evidenceCondition, evidenceCondition === "VALID" ? "ok" : "warn"),
+    fwRow("Assignment Block", blockReason, assignmentBlocked ? "err" : "ok"),
     fwRow("Teams Tracked", teams, teams > 0 ? "ok" : "info"),
     fwRow("Individual Agents", d.individual_agents ?? 0, "info"),
     fwRow("Total Tasks", tasks, tasks > 0 ? "ok" : "info"),

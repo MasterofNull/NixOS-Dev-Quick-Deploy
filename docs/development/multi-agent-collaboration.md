@@ -521,6 +521,16 @@ Get team vs individual comparison.
 
 #### GET /api/collaboration/metrics/summary
 
+The summary includes a fixed-cardinality `decision_governance` projection with
+`decision_stage`, `evidence_condition`, and `block_reason`. This is operator visibility,
+not an authorization source: missing, malformed, or legacy `CONSENSUS_LOCKED` evidence
+reports assignment blocked. Operators must audit the immutable evidence, then reopen or
+abort the round; the dashboard never upgrades consensus into implementation authority.
+
+Cycle 0 reserves Phase-0 check `0.10.27` for the positive, negative, and cascade
+assignment invariants. The pre-existing local-agent monitor visibility check was preserved
+under compatibility ID `0.10.34` after the duplicate registration was detected.
+
 Get overall metrics summary.
 
 ## Configuration

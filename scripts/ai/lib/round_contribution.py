@@ -67,6 +67,9 @@ class ModelProvenance(StrictModel):
     model_name: str
     model_version: str | None
     params: dict[str, Any] = Field(default_factory=dict)
+    model_family: str | None = None
+    execution_principal: str | None = None
+    assurance: str = "UNVERIFIED"
 
 
 class Contribution(StrictModel):
@@ -84,6 +87,52 @@ class Contribution(StrictModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     signature: str | None = None
     body_markdown: str | None = None
+    subject_hash: str | None = None
+    fresh: bool = False
+    producer_verified: bool = False
+    proxy: bool = False
+    self_review: bool = False
+    evidence_condition: str = "UNKNOWN"
+
+
+def approval_eligibility(contribution: Contribution, subject_hash: str) -> tuple[bool, str]:
+    """Return approval eligibility; only fresh, exact, independently attributed APPROVE counts."""
+
+    if contribution.verdict != Verdict.APPROVE:
+        return False, f"VERDICT_{contribution.verdict.value}"
+    if contribution.subject_hash != subject_hash:
+        return False, "SUBJECT_HASH_MISMATCH"
+    if not contribution.fresh:
+        return False, "STALE_REVIEW"
+    if not contribution.producer_verified or contribution.evidence_condition != "VALID":
+        return False, "UNVERIFIED_PRODUCER"
+    if contribution.proxy:
+        return False, "PROXY_ZERO_WEIGHT"
+    if contribution.self_review:
+        return False, "SELF_REVIEW_ZERO_WEIGHT"
+    provenance = contribution.model_provenance
+    if not provenance.model_family or not provenance.execution_principal:
+        return False, "MISSING_DIVERSITY_PROVENANCE"
+    if provenance.assurance not in {"ORCHESTRATOR_ATTESTED", "CRYPTOGRAPHIC"}:
+        return False, "INSUFFICIENT_ASSURANCE"
+    return True, "ELIGIBLE_APPROVE"
+
+
+def substantive_evidence_eligibility(contribution: Contribution, subject_hash: str) -> bool:
+    """Whether a non-approval verdict is attributable, fresh evidence for this subject."""
+
+    provenance = contribution.model_provenance
+    return bool(
+        contribution.subject_hash == subject_hash
+        and contribution.fresh
+        and contribution.producer_verified
+        and contribution.evidence_condition == "VALID"
+        and not contribution.proxy
+        and not contribution.self_review
+        and provenance.model_family
+        and provenance.execution_principal
+        and provenance.assurance in {"ORCHESTRATOR_ATTESTED", "CRYPTOGRAPHIC"}
+    )
 
 
 FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
