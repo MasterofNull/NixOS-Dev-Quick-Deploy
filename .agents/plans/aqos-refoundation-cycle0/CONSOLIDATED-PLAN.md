@@ -144,6 +144,12 @@ Permitted production edits are exactly the files in `C0.2-SURFACE-INVENTORY.md`;
 are frozen in the Intent Lock before editing. A new consumer triggers plan amendment and re-review,
 never silent expansion. No new dashboard view, service, database, broker or framework.
 
+Recovery amendment (2026-07-11): `scripts/ai/lib/qa_evidence_store.py`, `config/env-contract.yaml`
+and `scripts/testing/test-telemetry-root-boundary.py` are declared surfaces. `.agents/telemetry/**`,
+deployed telemetry contents, mounts, bind mounts and symlink replacement are explicitly forbidden.
+The repository telemetry directory is a non-authoritative projection; production QA authority remains
+`/var/lib/ai-stack/hybrid/telemetry/`.
+
 ### Contract
 
 - Use the PRD's orthogonal `EvidenceCondition`, `ClaimAssessment`, and `GateOutcome` algebra.
@@ -159,9 +165,18 @@ never silent expansion. No new dashboard view, service, database, broker or fram
   the highest lock-protected sequence allocated by the QA evidence producer at invocation start; a slow
   older run cannot displace a newer invocation and no coordinator dependency is introduced.
   Pointer write uses temp file, `fsync`, atomic replace and parent-directory `fsync`.
-- Lock, pointer and artifacts resolve through one canonical QA telemetry-root resolver. Repository and
-  deployed invocations that resolve different roots fail `TELEMETRY_ROOT_DIVERGENCE` before writing;
-  an isolated dual-env fixture proves they converge or fail closed.
+- Lock, pointer and artifacts resolve through the shared strict QA evidence module. Production always
+  resolves `/var/lib/ai-stack/hybrid/telemetry/`; repository telemetry is never a fallback authority.
+  An explicit root may be dependency-injected only into isolated tests. Environment overrides are
+  contract-declared and must fail closed outside the isolated fixture contract. Symlink, bind, absolute
+  target, `..` traversal and resolved-target escape all fail before reading or writing.
+- Boundary inspection uses `lstat` plus a bounded `/proc/self/mountinfo` parser. The repository
+  projection must be a real directory and not a mount point, bind target or symlink. Production root
+  may reside on its normal containing filesystem but cannot be redirected at or below the configured
+  root. Tests inject mountinfo text fixtures; they never create mounts.
+- Consumers call the same strict reader and verify pointer schema/version, run ID, start sequence,
+  byte length, completion time, raw hash, artifact schema, producer authorization and root containment.
+  Automation never implements a weaker compatibility reader.
 - Consumers verify pointer and artifact hash. No secrets, prompts or unbounded logs enter artifacts.
 - Proposed retention owner is the QA evidence producer. Privacy defaults to `internal`; producer-side
   allowlist/redaction/secret scan precedes persistence; files are owner-read/write only; symlinks and
@@ -184,6 +199,8 @@ never silent expansion. No new dashboard view, service, database, broker or fram
   failed lock acquisition leaves live validation incomplete rather than inferring exclusivity.
 - Corrupt pointer/artifact, interrupted write, retention and GC fixtures.
 - CLI and dashboard/API consume identical injected fixture results.
+- Recovery regression proves `.agents/telemetry` is a real repository directory, never the production
+  authority, and that substituting a symlink or redirected root fails without modifying either side.
 - Live validation reads real report/dashboard, then performs one bounded Phase-0 run only after proving
   no other writer is active. It never runs destructive concurrency against production telemetry.
 
@@ -207,6 +224,8 @@ direct writes. Retire mutable shared result content, dashboard-local score calcu
 silent exclusion and empty blockers on non-pass required claims. Stop if required unknown can pass,
 CLI/dashboard disagree, concurrent evidence is lost/unverifiable, GC can delete the pointer target,
 or live state is clobbered.
+The previously occupied Bash check `0.10.28` is compatibility-renumbered to `0.10.35`; C0.2 owns
+`0.10.28` in both registries. Stop on duplicate or semantically divergent registrations.
 
 ## C0.3 — Authority, projection, bypass and retirement ledger
 
