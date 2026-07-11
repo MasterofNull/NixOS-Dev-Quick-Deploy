@@ -13,6 +13,8 @@ import round_aggregate  # noqa: E402
 import round_contribution  # noqa: E402
 import round_state  # noqa: E402
 
+SUBJECT = "sha-256:" + "a" * 64
+
 
 def sample_manifest(
     state: round_state.RoundState = round_state.RoundState.COLLECTED,
@@ -71,12 +73,20 @@ def contribution(
     """Build a typed contribution with optional required changes."""
 
     return round_contribution.Contribution(
+        schema_version="2.0",
         agent_id=agent,
         model_provenance=round_contribution.ModelProvenance(
             model_name=f"{agent}-model",
             model_version=None,
+            model_family=f"family-{agent}",
+            execution_principal=f"principal-{agent}",
+            assurance="ORCHESTRATOR_ATTESTED",
         ),
         verdict=verdict,
+        subject_hash=SUBJECT,
+        fresh=True,
+        producer_verified=True,
+        evidence_condition="VALID",
         required_changes=[
             round_contribution.RequiredChange(
                 file_path=file_path,
@@ -256,3 +266,49 @@ def test_quorum_met_true_and_false_cases() -> None:
     assert not round_aggregate.quorum_met(
         sample_manifest(required_agents=["claude", "codex", "local"])
     )
+
+
+def test_lane_quorum_cannot_lock_reject_abstain_or_conditional_change() -> None:
+    for verdict in (
+        round_contribution.Verdict.REJECT,
+        round_contribution.Verdict.ABSTAIN,
+        round_contribution.Verdict.APPROVE_WITH_CHANGES,
+    ):
+        updated = round_aggregate.aggregate(
+            sample_manifest(),
+            {"claude": contribution("claude", verdict), "codex": contribution("codex", verdict)},
+        )
+        assert updated.state == round_state.RoundState.CONFLICTS_IDENTIFIED
+        assert updated.state != round_state.RoundState.CONSENSUS_LOCKED
+
+
+def test_abstain_has_zero_weight_but_does_not_veto_two_valid_approvals() -> None:
+    manifest = sample_manifest(
+        lane_statuses={
+            "claude": round_state.LaneStatus.submitted,
+            "codex": round_state.LaneStatus.submitted,
+            "local": round_state.LaneStatus.submitted,
+        },
+        required_agents=[],
+    )
+    updated = round_aggregate.aggregate(manifest, {
+        "claude": contribution("claude"),
+        "codex": contribution("codex"),
+        "local": contribution("local", round_contribution.Verdict.ABSTAIN),
+    })
+    assert updated.state == round_state.RoundState.CONSENSUS_LOCKED
+
+
+def test_amend_nonapprove_and_stale_approve_never_relock() -> None:
+    locked = round_aggregate.aggregate(
+        sample_manifest(), {"claude": contribution("claude"), "codex": contribution("codex")}
+    )
+    for late in (
+        contribution("local", round_contribution.Verdict.ABSTAIN),
+        contribution("local", round_contribution.Verdict.APPROVE_WITH_CHANGES),
+        contribution("local").model_copy(update={"fresh": False}),
+    ):
+        updated = round_aggregate.amend(
+            locked, late, round_contribution.Verdict.APPROVE, locked_changes=[]
+        )
+        assert updated.state == round_state.RoundState.CONFLICTS_IDENTIFIED

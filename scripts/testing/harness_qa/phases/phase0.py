@@ -1750,6 +1750,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_eval_sandbox(ctx))
     results.extend(_check_aq_eval_harness(ctx))
     results.extend(_check_context_compaction_sandwich(ctx))
+    results.extend(_check_round_decision_authorization(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -1943,6 +1944,25 @@ def _check_context_compaction_sandwich(ctx: RunContext) -> list[CheckResult]:
         return [failed(1, "0.10.26", "context compaction sandwich", detail)]
     except Exception as exc:
         return [failed(1, "0.10.26", "context compaction sandwich", str(exc))]
+
+
+def _check_round_decision_authorization(ctx: RunContext) -> list[CheckResult]:
+    """C0.1: assignment requires current evidence and explicit authorization."""
+    test_path = ctx.repo_root / "scripts" / "testing" / "test-round-decision-authorization.py"
+    if not test_path.exists():
+        return [failed(5, "0.10.27", "evidence-bound collaboration assignment invariants",
+                       "test-round-decision-authorization.py missing; assignment gate fails closed")]
+    try:
+        proc = subprocess.run(
+            ["python3", str(test_path)], cwd=str(ctx.repo_root), capture_output=True,
+            text=True, timeout=60,
+        )
+    except Exception as exc:
+        return [failed(5, "0.10.27", "evidence-bound collaboration assignment invariants", str(exc)[:160])]
+    if proc.returncode == 0:
+        return [passed(5, "0.10.27", "positive, negative, and cascade assignment invariants")]
+    detail = (proc.stderr or proc.stdout or "focused invariant test failed").strip()[-240:]
+    return [failed(5, "0.10.27", "evidence-bound collaboration assignment invariants", detail)]
 
 
 def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:

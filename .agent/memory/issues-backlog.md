@@ -1714,3 +1714,24 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Severity**: high
 - **Action**: Use `.agents/plans/aqos-refoundation-cycle0/CURRENT-AUTHORITY-INVENTORY.md` as discovery evidence; C0.3 must register observed claims/writers honestly, adjudicate target owner/recovery/deadline per object, and block Cycle 1 until contested rows are resolved. Separately fix the dashboard approval restart split and the action-catalog empty-env `Path('.')` fallback defect through reviewed slices.
 - **File**: `.agents/plans/aqos-refoundation-cycle0/CURRENT-AUTHORITY-INVENTORY.md`; affected source paths enumerated there
+
+## [OPEN] Canonical collaboration state and Git metadata are read-only in Codex workspace sessions
+- **Scope**: atomic RESUME/PULSE checkpointing, delegation, validation, and commit during orchestrated implementation
+- **Description**: In the default sandbox, `scripts/ai/aq-event resume` failed with `EROFS` while opening `.agents/events/a2a-events.jsonl`; `delegate-to-claude` failed before launch while touching `.agents/delegation/registry.jsonl`; and exact-path `git add` failed creating `.git/index.lock`. Escalated exact-path staging and Antigravity registration later succeeded, proving a permission-projection mismatch rather than repository corruption, but canonical checkpointing and normal registered delegation still fail without escalation. Directly editing projection/registry files would bypass their declared authority.
+- **Severity**: high
+- **Action**: Align the default workspace permission projection with supported event/delegation/Git mutation paths or expose approved mutation APIs; add a session preflight before authorization consumption and avoid requiring per-command escalation for normal workflow writes.
+- **File**: `scripts/ai/lib/event_log.py`; `scripts/ai/delegate-to-claude`; `.agents/events/a2a-events.jsonl`; `.agents/delegation/registry.jsonl`; `.git/index`; workspace permission projection
+
+## [DONE] Bash Phase-0 check ID 0.10.27 collided with the frozen C0.1 contract
+- **Scope**: AQ-OS C0.1 QA registration
+- **Description**: The frozen Cycle 0 plan assigns `0.10.27` to evidence-bound assignment invariants, but the Bash Phase-0 registry already used that ID for local-agent monitor visibility; IDs through `0.10.33` were allocated. Python had no matching `0.10.27` registration. The authorization ownership preflight did not detect the Bash semantic ID occupation.
+- **Severity**: medium
+- **Action**: Preserved the existing Bash monitor check under `0.10.34`, installed the frozen C0.1 invariant check at `0.10.27` in both registries, and validated registration uniqueness. Existing Python monitor checks remain at `0.12.5` through `0.12.8`.
+- **File**: `scripts/testing/harness_qa/phases/phase0.py`; `scripts/ai/_aq-qa-bash`
+
+## [OPEN] Required independent C0.1 review lanes unavailable at integration gate
+- **Scope**: AQ-OS C0.1 non-self acceptance
+- **Description**: The registered Anthropic wrapper could not launch in the default sandbox because `.agents/delegation/registry.jsonl` was read-only. A direct read-only Claude CLI fallback launched but terminated at the account session limit. The Antigravity wrapper then registered successfully under escalation but failed with switchboard HTTP 503 `remote_key_endpoint_mismatch`: an OpenRouter key is configured against Google direct and the router correctly refuses silent fallback. The Gemini CLI lane remains ineligible, so no independent non-Codex acceptance verdict is currently available.
+- **Severity**: high
+- **Action**: Re-run the bounded review prompt with Anthropic or Gemini after quota/readiness recovery, require file:line findings and an explicit verdict, and do not mark C0.1 accepted before APPROVE.
+- **File**: `/tmp/c01-independent-review.md`; `.agents/delegation/outputs/antigravity-20260710-191927-zz3yhk.log`; `.agents/plans/aqos-refoundation-cycle0/IMPLEMENTATION-AUTHORIZATION-C0.1.md`

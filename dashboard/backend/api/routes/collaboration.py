@@ -6,6 +6,7 @@ team formation, communication, planning, consensus, patterns, and metrics.
 """
 
 import asyncio
+import json
 import logging
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, Query
@@ -50,6 +51,67 @@ planning = CollaborativePlanning()
 consensus = QualityConsensus()
 patterns = CollaborationPatterns()
 metrics = TeamPerformanceMetrics()
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_ROUND_ROOT = _REPO_ROOT / ".agents" / "plans"
+_DECISION_STAGES = {
+    "PENDING", "RATIFIED", "REJECTED", "SUPERSEDED", "CORRUPT", "CANCELLED",
+    "AUTHORIZED", "CONSUMED", "SUSPENDED", "REVOKED", "EXPIRED", "ASSIGNED",
+}
+_ROUND_STAGES = {
+    "CREATED", "DISPATCHED", "CONTRIBUTING", "COLLECTED", "CONFLICTS_IDENTIFIED",
+    "CONSENSUS_LOCKED", "AMEND", "IMPLEMENTING", "VALIDATING", "CLOSED", "ABORTED",
+}
+
+
+def _decision_governance_summary() -> Dict[str, str]:
+    """Project bounded, fixed-cardinality decision health from existing round artifacts."""
+    result = {
+        "decision_stage": "UNKNOWN",
+        "evidence_condition": "UNKNOWN",
+        "block_reason": "NO_DECISION_EVIDENCE",
+    }
+    if not _ROUND_ROOT.is_dir():
+        return result
+
+    candidates: list[Path] = []
+    for pattern in ("*/authorization*.json", "*/decision*.json", "*/assignment*.json", "*/round.json"):
+        candidates.extend(_ROUND_ROOT.glob(pattern))
+    try:
+        candidates = sorted(candidates, key=lambda path: path.stat().st_mtime_ns, reverse=True)[:128]
+    except OSError:
+        return {"decision_stage": "CORRUPT", "evidence_condition": "INVALID", "block_reason": "EVIDENCE_IO_ERROR"}
+
+    for path in candidates:
+        try:
+            if path.stat().st_size > 1_048_576:
+                return {"decision_stage": "CORRUPT", "evidence_condition": "INVALID", "block_reason": "EVIDENCE_TOO_LARGE"}
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return {"decision_stage": "CORRUPT", "evidence_condition": "INVALID", "block_reason": "CORRUPT_EVIDENCE"}
+        if not isinstance(payload, dict):
+            continue
+        state = str(payload.get("state", "")).upper()
+        if state in _DECISION_STAGES:
+            evidence = "VALID" if str(payload.get("schema_version", "")).startswith("2.") else "LEGACY_UNTRUSTED"
+            if evidence != "VALID":
+                return {"decision_stage": state, "evidence_condition": evidence, "block_reason": "LEGACY_EVIDENCE"}
+            if state in {"AUTHORIZED", "CONSUMED", "ASSIGNED", "IMPLEMENTING", "VALIDATING", "CLOSED"}:
+                return {"decision_stage": state, "evidence_condition": evidence, "block_reason": "NONE"}
+            reason = {
+                "EXPIRED": "AUTHORIZATION_EXPIRED",
+                "REVOKED": "AUTHORIZATION_REVOKED",
+                "SUSPENDED": "AUTHORIZATION_SUSPENDED",
+                "CORRUPT": "CORRUPT_EVIDENCE",
+            }.get(state, "OWNER_AUTHORIZATION_REQUIRED")
+            return {"decision_stage": state, "evidence_condition": evidence, "block_reason": reason}
+        if state in _ROUND_STAGES:
+            return {
+                "decision_stage": state,
+                "evidence_condition": "LEGACY_UNTRUSTED",
+                "block_reason": "ROUND_ABORTED" if state == "ABORTED" else "OWNER_AUTHORIZATION_REQUIRED",
+            }
+    return result
 
 
 # Pydantic models for API
@@ -722,6 +784,7 @@ async def get_metrics_summary():
         summary["planning"] = planning.get_planning_metrics()
         summary["consensus"] = consensus.get_consensus_metrics()
         summary["patterns"] = patterns.get_pattern_metrics()
+        summary["decision_governance"] = await asyncio.to_thread(_decision_governance_summary)
 
         return summary
 

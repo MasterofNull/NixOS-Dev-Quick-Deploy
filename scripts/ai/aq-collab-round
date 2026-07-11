@@ -129,14 +129,21 @@ def _typed_consensus(rd: Path, name: str) -> str | None:
         for lane in m.lanes:  # F1.5: reflect landed contributions so quorum_met is accurate
             if lane.agent in contribs:
                 lane.status = _rstate.LaneStatus.submitted
-        if m.state == _rstate.RoundState.COLLECTED:
+        # v1/fallback contributions remain readable, but are explicitly untrusted and
+        # cannot create v2 decision/authorization evidence. This compatibility path is
+        # presentation-only; assignment requires an ImplementationAuthorization.
+        legacy_untrusted = any(
+            c.schema_version != "2.0" or not c.producer_verified for c in contribs.values()
+        )
+        if m.state == _rstate.RoundState.COLLECTED and not legacy_untrusted:
             m = _raggr.aggregate(m, contribs)
         if rjson.exists():
             _rstate.save(m, rjson)  # round-owned derived file; legacy dirs are never written
         tally: dict[str, int] = {}
         for c in contribs.values():
             tally[c.verdict.value] = tally.get(c.verdict.value, 0) + 1
-        return (f"typed consensus: state={m.state.value} verdicts={tally} "
+        trust = "legacy_untrusted" if legacy_untrusted else "evidence_bound"
+        return (f"typed consensus: state={m.state.value} trust={trust} verdicts={tally} "
                 f"conflicts={len(m.conflicts)} hash={(m.consensus_hash or '—')[:12]}")
     except Exception:  # noqa: BLE001 — typed path is additive; never break collect
         return None
@@ -505,6 +512,72 @@ def cmd_status(args, do_extract: bool = False) -> int:
     return 0
 
 
+def cmd_audit(args) -> int:
+    """Print bounded, read-only round evidence; never treats legacy consensus as authorization."""
+    path = _round_dir(args.round) / "round.json"
+    if not _LIB_OK or not path.exists():
+        print("audit unavailable: typed round manifest missing", file=sys.stderr)
+        return 2
+    manifest = _rstate.load(path)
+    print(json.dumps({
+        "round_id": manifest.round_id,
+        "schema_version": manifest.schema_version,
+        "state": manifest.state.value,
+        "manifest_hash": _rstate.raw_artifact_hash(path.read_bytes()),
+        "assignment_authorized": False,
+        "authorization_reason": "LEGACY_STATE_NOT_AUTHORIZATION",
+        "history": [entry.model_dump(mode="json") for entry in manifest.history[-128:]],
+    }, sort_keys=True))
+    return 0
+
+
+def cmd_abort(args) -> int:
+    path = _round_dir(args.round) / "round.json"
+    if not _LIB_OK or not path.exists():
+        print("abort unavailable: typed round manifest missing", file=sys.stderr)
+        return 2
+    manifest = _rstate.load(path)
+    if manifest.state in {_rstate.RoundState.CLOSED, _rstate.RoundState.ABORTED}:
+        print(f"abort refused: terminal state {manifest.state.value}", file=sys.stderr)
+        return 2
+    aborted = _rstate.transition(
+        manifest, _rstate.RoundState.ABORTED, f"{args.actor}:abort:{args.reason}"
+    )
+    prior = _rstate.raw_artifact_hash(path.read_bytes())
+    _rstate.commit_manifest_cas(aborted, path, prior)
+    print(f"aborted {args.round}; reason={args.reason}")
+    return 0
+
+
+def cmd_reopen(args) -> int:
+    """Create a new linked revision; immutable aborted evidence is never reopened in place."""
+    old_path = _round_dir(args.round) / "round.json"
+    new_dir = _round_dir(args.new_round)
+    new_path = new_dir / "round.json"
+    if not _LIB_OK or not old_path.exists():
+        print("reopen unavailable: typed predecessor missing", file=sys.stderr)
+        return 2
+    predecessor = _rstate.load(old_path)
+    if predecessor.state != _rstate.RoundState.ABORTED:
+        print("reopen refused: predecessor must be ABORTED", file=sys.stderr)
+        return 2
+    if new_path.exists():
+        print("reopen refused: new round already exists", file=sys.stderr)
+        return 2
+    new_dir.mkdir(parents=True, exist_ok=False)
+    reopened = predecessor.model_copy(update={
+        "round_id": args.new_round,
+        "state": _rstate.RoundState.CREATED,
+        "opened_at": _rstate.utc_iso(),
+        "lanes": [], "contributions": {}, "conflicts": [],
+        "consensus_hash": None, "aggregate_path": None, "aggregate_hash": None,
+        "locked_at": None, "history": [], "predecessor_round_id": predecessor.round_id,
+    })
+    _rstate.commit_manifest_cas(reopened, new_path, None)
+    print(f"reopened {args.round} as new revision {args.new_round}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="aq-collab-round", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -518,6 +591,14 @@ def main() -> int:
     c.add_argument("--round", required=True); c.set_defaults(fn=lambda a: cmd_status(a, do_extract=True))
     g = sub.add_parser("aggregate", help="F1.5: typed aggregation over round.json (read-only on <agent>.md)")
     g.add_argument("--round", required=True); g.set_defaults(fn=lambda a: cmd_status(a, do_extract=True))
+    au = sub.add_parser("audit", help="read-only typed evidence audit; never authorizes assignment")
+    au.add_argument("--round", required=True); au.set_defaults(fn=cmd_audit)
+    ab = sub.add_parser("abort", help="atomically abort a nonterminal typed round")
+    ab.add_argument("--round", required=True); ab.add_argument("--actor", required=True)
+    ab.add_argument("--reason", required=True); ab.set_defaults(fn=cmd_abort)
+    reop = sub.add_parser("reopen", help="create a new revision linked to an aborted round")
+    reop.add_argument("--round", required=True); reop.add_argument("--new-round", required=True)
+    reop.set_defaults(fn=cmd_reopen)
     args = ap.parse_args()
     return args.fn(args)
 

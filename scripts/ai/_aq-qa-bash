@@ -1659,8 +1659,10 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-aq-eval.py"
     _check 1 "0.10.26" "context-risk outputs route through artifact compaction + aq-context-manage guidance" \
       python3 "${REPO_ROOT}/scripts/testing/test-context-compaction-sandwich.py"
-    _check 1 "0.10.27" "local-agent monitor dashboard and QA visibility" \
+    _check 1 "0.10.34" "local-agent monitor dashboard and QA visibility (compatibility-renumbered)" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-agent-monitor-visibility.py"
+    _check 5 "0.10.27" "evidence-bound collaboration positive, negative, and cascade assignment invariants" \
+      python3 "${REPO_ROOT}/scripts/testing/test-round-decision-authorization.py"
     _check 1 "0.10.28" "capability flush harness exercises skills, intake, OSINT/RAG, and local monitor" \
       python3 "${REPO_ROOT}/scripts/testing/test-capability-flush.py"
     _check 1 "0.10.29" "agent loop marks repeated planning-only thought output incomplete" \

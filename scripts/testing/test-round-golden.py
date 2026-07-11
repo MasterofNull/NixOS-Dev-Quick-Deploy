@@ -13,6 +13,8 @@ import round_aggregate  # noqa: E402
 import round_contribution  # noqa: E402
 import round_state  # noqa: E402
 
+SUBJECT = "sha-256:" + "a" * 64
+
 
 def manifest(
     *,
@@ -55,12 +57,20 @@ def contribution(
     changes: list[tuple[str, str | None, str]] | None = None,
 ) -> round_contribution.Contribution:
     return round_contribution.Contribution(
+        schema_version="2.0",
         agent_id=agent,
         model_provenance=round_contribution.ModelProvenance(
             model_name=f"{agent}-model",
             model_version=None,
+            model_family=f"family-{agent}",
+            execution_principal=f"principal-{agent}",
+            assurance="ORCHESTRATOR_ATTESTED",
         ),
         verdict=verdict,
+        subject_hash=SUBJECT,
+        fresh=True,
+        producer_verified=True,
+        evidence_condition="VALID",
         required_changes=[
             round_contribution.RequiredChange(
                 file_path=file_path,
@@ -220,7 +230,8 @@ def test_quorum_timeout() -> None:
 
     assert not round_aggregate.quorum_met(collected)
     assert any(lane.agent == "local" and lane.status == round_state.LaneStatus.timed_out for lane in updated.lanes)
-    assert updated.state != round_state.RoundState.CONSENSUS_LOCKED
+    # Timed-out lane has zero weight; two independent substantive approvals still satisfy policy.
+    assert updated.state == round_state.RoundState.CONSENSUS_LOCKED
 
 
 def test_invalid_schema(tmp_path: Path) -> None:
