@@ -80,6 +80,18 @@
    "sha256": "b6efd58a15e88629dbeed29a74ca1fb75a70f9260fc6b1a57cf11fd9b18c38ea"
   },
   {
+   "path": ".agents/archive/c02-recovery-20260711/rejected-implementation.patch",
+   "sha256": "4cd135fcefdc324c4d422a3506d4afc551fb1cc19e42bce2d9f3e647fba80475"
+  },
+  {
+   "path": ".agents/archive/c02-recovery-20260711/test-evidence-algebra.py",
+   "sha256": "196a058a3402a219aaa64af8af50f9734db96735ef6030d98711958b4560ac1e"
+  },
+  {
+   "path": ".agents/archive/c02-recovery-20260711/test-qa-evidence-store.py",
+   "sha256": "c9207fec0f78c522f0394d8a8639b6d6824cd0feee534415739d71917ca36972"
+  },
+  {
    "path": ".agents/plans/aqos-refoundation-cycle0/EVIDENCE-MANIFEST.json",
    "sha256": "21fe91846e6205b967e201f1948d47aac5ac1fcf00f440d8a66dd917297d958d"
   },
@@ -96,9 +108,7 @@
   "reviews_present_for_this_root": 0
  },
  "blocking_reasons": [
-  "C0_2_PREVIOUS_AUTHORIZATION_SUSPENDED",
   "RECOVERY_AMENDMENT_REQUIRES_FRESH_APPROVE_REVIEWS",
-  "C0_2_PRESERVED_IMPLEMENTATION_DIFF_REQUIRES_OWNERSHIP_ADJUDICATION",
   "FRESH_IMPLEMENTATION_AUTHORIZATION_MISSING"
  ]
 }
