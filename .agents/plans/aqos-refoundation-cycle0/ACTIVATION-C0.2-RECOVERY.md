@@ -66,7 +66,9 @@ evidence:
   denied socket creation) rather than fabricating it — the opposite of the rejected attempt's false
   waiver.
 
-**Written deferral (Rule 15):** the scorecard-endpoint p95 ≤250ms measurement is DEFERRED to
-post-dashboard-restart — the new `aistack.py` route must be live to measure it. Tracked below; must be
-captured before C0.2 is marked fully activated. All other dimensions are validated now.
-Tier 0 23/23. This authorization is spent.
+**Deferral closed (host lane, 2026-07-11):** after restarting `command-center-dashboard-api`, the
+exact `/api/aistack/effectiveness/scorecard` protocol completed 5 cold + 20 warm requests. Cold
+mean/p95 = 3.461/3.585 ms; warm mean/p95 = 3.472/3.854 ms; response size = 2,805 bytes. This passes
+the ≤250 ms target. Live missing required provenance returns `BLOCKED` with
+`automation_allowed=false`. All acceptance dimensions are now protocol-complete. Tier 0 23/23.
+This authorization is spent.
