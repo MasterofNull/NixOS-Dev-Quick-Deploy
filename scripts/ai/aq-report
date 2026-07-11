@@ -59,6 +59,11 @@ try:
     from task_registry import TaskRegistry
 except Exception:
     TaskRegistry = None
+try:
+    from qa_evidence_store import EvidenceStoreError, production_store
+except Exception:
+    EvidenceStoreError = RuntimeError
+    production_store = None
 
 # ---------------------------------------------------------------------------
 # Configuration (env-var driven — never hardcoded per project policy)
@@ -7683,6 +7688,90 @@ def attention_contention_summary(since_dt: Optional[datetime] = None) -> Dict[st
 # Phase 93.12 — Effectiveness scorecard prototype
 # ---------------------------------------------------------------------------
 
+EVIDENCE_CONDITIONS = {"VALID", "MISSING", "STALE", "INVALID", "CONFLICTING", "UNAUTHORIZED", "INSUFFICIENT_SAMPLE"}
+CLAIM_ASSESSMENTS = {"PASS", "WARN", "FAIL", "UNKNOWN", "NOT_APPLICABLE"}
+
+
+def evaluate_evidence_claim(
+    claim_id: str,
+    *,
+    required: bool,
+    evidence_condition: str,
+    assessment: str,
+    reason_code: str,
+    source_id: str,
+    remediation: str,
+    sample_size: Optional[int] = None,
+    sample_minimum: Optional[int] = None,
+    producer_authorized: bool = True,
+    proxy_for: Optional[str] = None,
+    proxy_authorized: bool = False,
+    applicability_predicate: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Evaluate one claim according to the frozen C0.2 evidence algebra."""
+    condition = evidence_condition if evidence_condition in EVIDENCE_CONDITIONS else "INVALID"
+    value = assessment if assessment in CLAIM_ASSESSMENTS else "UNKNOWN"
+    if not producer_authorized or (proxy_for and not proxy_authorized):
+        condition = "UNAUTHORIZED"
+    if sample_minimum is not None and (sample_size is None or sample_size < sample_minimum):
+        condition = "INSUFFICIENT_SAMPLE"
+    if value == "NOT_APPLICABLE" and (not applicability_predicate or not reason_code or condition != "VALID"):
+        value = "UNKNOWN"
+    elif condition != "VALID":
+        value = "UNKNOWN"
+    return {
+        "claim_id": claim_id,
+        "required": required,
+        "evidence_condition": condition,
+        "assessment": value,
+        "reason_code": reason_code,
+        "source_id": source_id,
+        "remediation": remediation,
+        "proxy_for": proxy_for,
+    }
+
+
+def evaluate_evidence_gate(
+    gate_id: str,
+    claims: List[Dict[str, Any]],
+    *,
+    policy_current: bool = True,
+    revoked: bool = False,
+) -> Dict[str, Any]:
+    """Aggregate required claims deterministically; optional claims cannot create a pass."""
+    required = [claim for claim in claims if claim.get("required")]
+    if not required:
+        reasons = [{
+            "claim_id": gate_id, "evidence_condition": "INVALID", "assessment": "UNKNOWN",
+            "reason_code": "NO_REQUIRED_CLAIMS", "source_id": "policy",
+            "remediation": "Declare at least one required claim.",
+        }]
+        return {"gate_id": gate_id, "outcome": "BLOCKED", "evidence_condition": "INVALID", "blocking_reasons": reasons, "automation_allowed": False}
+    applicable = [claim for claim in required if claim.get("assessment") != "NOT_APPLICABLE"]
+    assessments = {claim.get("assessment") for claim in applicable}
+    if "FAIL" in assessments:
+        outcome = "FAIL"
+    elif "UNKNOWN" in assessments:
+        outcome = "BLOCKED"
+    elif "WARN" in assessments:
+        outcome = "DEGRADED"
+    else:
+        outcome = "PASS"
+    reasons = [
+        {key: claim.get(key) for key in ("claim_id", "evidence_condition", "assessment", "reason_code", "source_id", "remediation")}
+        for claim in required if claim.get("assessment") in {"FAIL", "UNKNOWN", "WARN"}
+    ]
+    reasons.sort(key=lambda item: tuple(str(item.get(key) or "") for key in ("claim_id", "evidence_condition", "assessment", "reason_code", "source_id")))
+    nonvalid = sorted({claim.get("evidence_condition") for claim in required if claim.get("evidence_condition") != "VALID"})
+    condition = nonvalid[0] if nonvalid else "VALID"
+    return {
+        "gate_id": gate_id,
+        "outcome": outcome,
+        "evidence_condition": condition,
+        "blocking_reasons": reasons,
+        "automation_allowed": outcome == "PASS" and condition == "VALID" and policy_current and not revoked,
+    }
+
 _SCORECARD_OUTCOME_PASS_THRESHOLD = float(os.getenv("AQ_SCORECARD_OUTCOME_PASS", "0.8"))
 _SCORECARD_OUTCOME_WARN_THRESHOLD = float(os.getenv("AQ_SCORECARD_OUTCOME_WARN", "0.6"))
 _SCORECARD_TRUST_PASS_THRESHOLD = float(os.getenv("AQ_SCORECARD_TRUST_PASS", "0.8"))
@@ -7701,32 +7790,23 @@ def _scorecard_status(value: Optional[float], pass_t: float, warn_t: float) -> s
     return "fail"
 
 
-_LATEST_QA_RESULTS_PATH = Path(os.getenv(
-    "AQ_LATEST_QA_RESULTS_PATH",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                 "data", "hybrid", "telemetry", "latest-qa-results.json")
-))
-
-
 def _read_latest_qa_results(max_age_s: int = 86400) -> Optional[Dict[str, Any]]:
-    """Read latest-qa-results.json written by aq-qa after each run.
-
-    Returns None when file is absent, unreadable, or older than max_age_s.
-    Primary path: data/hybrid/telemetry/latest-qa-results.json (repo-relative,
-    written by _aq-qa-bash Phase 96.1).  Override via AQ_LATEST_QA_RESULTS_PATH.
-    """
-    p = _LATEST_QA_RESULTS_PATH
+    """Read only a verified immutable QA artifact selected by the CAS pointer."""
+    if production_store is None:
+        return None
     try:
-        if not p.exists():
-            return None
-        age_s = (datetime.now(tz=timezone.utc) - datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)).total_seconds()
-        if age_s > max_age_s:
-            return None
-        data = json.loads(p.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return None
-        return data
-    except Exception:
+        verified = production_store().read_latest(max_age_seconds=max_age_s)
+        result = dict(verified.payload["results"])
+        result["_provenance"] = {
+            "run_id": verified.pointer["run_id"],
+            "start_sequence": verified.pointer["start_sequence"],
+            "artifact": verified.pointer["target"],
+            "sha256": verified.pointer["sha256"],
+            "age_seconds": round(verified.age_seconds, 3),
+            "hash_verified": verified.hash_verified,
+        }
+        return result
+    except EvidenceStoreError:
         return None
 
 
@@ -7857,6 +7937,7 @@ def effectiveness_scorecard(
         "qa_pass_rate": qa_pass_rate,
         "qa_source": _qa_source,
         "validation_health_status": vh.get("status"),
+        "qa_provenance": (_qa or {}).get("_provenance"),
     }
 
     # ── context_quality ────────────────────────────────────────────────────
@@ -7903,15 +7984,44 @@ def effectiveness_scorecard(
     else:
         overall = "no_data"
 
+    def _measured_claim(claim_id: str, available: bool, source_id: str, *, adverse: bool = False) -> Dict[str, Any]:
+        return evaluate_evidence_claim(
+            claim_id,
+            required=True,
+            evidence_condition="VALID" if available else "MISSING",
+            assessment="FAIL" if adverse else "PASS",
+            reason_code="MEASUREMENT_ADVERSE" if adverse else ("MEASUREMENT_VALID" if available else "MEASUREMENT_MISSING"),
+            source_id=source_id,
+            remediation="Rerun the producing workflow and inspect its verified immutable artifact.",
+        )
+
+    effectiveness_gate = evaluate_evidence_gate("effectiveness", [
+        _measured_claim("artifact_usefulness_measured", useful_ratio is not None, "agent_run_events"),
+        _measured_claim("measurement_window_valid", bool(recent_health), "aq-report"),
+        _measured_claim("review_outcome_measured", del_success_rate is not None, "delegate_audit"),
+        _measured_claim("task_outcome_denominator_valid", oc_rate is not None, "eval_or_delegate", adverse=oc_status == "fail"),
+        _measured_claim("trace_complete", trace_available, "agent_run_events"),
+    ])
+    canonical_overall = {
+        "PASS": "pass", "DEGRADED": "warn", "FAIL": "fail", "BLOCKED": "blocked",
+    }[effectiveness_gate["outcome"]]
+
     return {
-        "overall_status": overall,
+        "schema_version": "aq.effectiveness-scorecard.v1",
+        "overall_status": canonical_overall,
+        "legacy_overall_status": overall,
+        "gate_outcome": effectiveness_gate["outcome"],
+        "evidence_condition": effectiveness_gate["evidence_condition"],
+        "automation_allowed": effectiveness_gate["automation_allowed"],
         "outcome_correctness": outcome_correctness,
         "completion_reliability": completion_reliability,
         "operator_trust": operator_trust,
         "regression_containment": regression_containment,
         "context_quality": context_quality,
         "efficiency_inputs": efficiency_inputs,
-        "blocking_reasons": blocking,
+        "blocking_reasons": effectiveness_gate["blocking_reasons"],
+        "provenance": (_qa or {}).get("_provenance"),
+        "operator_action": "Rerun aq-qa, inspect the immutable QA artifact, or select a prior verified artifact; automation remains disabled while provenance is invalid.",
     }
 
 

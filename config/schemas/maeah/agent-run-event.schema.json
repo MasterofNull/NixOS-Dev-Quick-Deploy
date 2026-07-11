@@ -166,6 +166,22 @@
         "accepted": {"type": ["boolean", "null"]}
       }
     },
+    "producer_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "producer_id": {"type": "string", "minLength": 1},
+        "producer_assurance": {"type": "string", "enum": ["harness_local", "reviewed_remote", "owner_attested"]},
+        "artifact_run_id": {"type": "string", "minLength": 1},
+        "artifact_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "dependentRequired": {
+        "producer_id": ["producer_assurance", "artifact_run_id", "artifact_sha256"],
+        "producer_assurance": ["producer_id", "artifact_run_id", "artifact_sha256"],
+        "artifact_run_id": ["producer_id", "producer_assurance", "artifact_sha256"],
+        "artifact_sha256": ["producer_id", "producer_assurance", "artifact_run_id"]
+      }
+    },
     "redaction": {
       "type": "object",
       "required": ["payload_redacted", "secret_fields"],

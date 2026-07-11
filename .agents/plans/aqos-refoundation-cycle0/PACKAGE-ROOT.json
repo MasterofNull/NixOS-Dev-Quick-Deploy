@@ -1,10 +1,10 @@
 {
  "schema_version": "aq.planning_package/1.0",
  "package_id": "aqos_refoundation_cycle0_v5_recovery",
- "status": "REQUEST_REVISION",
+ "status": "ACTIVE",
  "direction_ratified": true,
- "plan_ratified": false,
- "implementation_authorized": false,
+ "plan_ratified": true,
+ "implementation_authorized": true,
  "repository_commit_at_freeze": "42eb76f882f79ee77cee1d02bc2548b140cc1dca",
  "worktree_dirty": true,
  "hash_algorithm": "sha-256",
@@ -98,6 +98,42 @@
   {
    "path": ".agents/plans/aqos-refoundation-cycle0/EVIDENCE-MANIFEST.md",
    "sha256": "f9517f657bb9b6bf2c9a611835a4a297a3d291ad0e17da3f5d5ef8d88f7cf394"
+  },
+  {
+   "path": "scripts/ai/lib/qa_evidence_store.py",
+   "sha256": "38bae5b8febce290c787ec31379d1054cbf6f3acb6ac0c36a66747ac4683915c"
+  },
+  {
+   "path": "scripts/testing/test-qa-evidence-store.py",
+   "sha256": "33cb3536542bf9b7f0fb78a785e05f0f9ff2c540afb4af1b84a567ad3c248157"
+  },
+  {
+   "path": "scripts/testing/test-evidence-algebra.py",
+   "sha256": "0f2d5dd65274f77c90fb2578d81c8b129c0bc88ac9536df23c6e140fc07a6ae9"
+  },
+  {
+   "path": "scripts/testing/test-telemetry-root-boundary.py",
+   "sha256": "c77b54af325c60d35e666f7654209665e74f563ef91d481d4c90ca1bf29c8cb1"
+  },
+  {
+   "path": ".agents/plans/aqos-refoundation-cycle0/ACTIVATION-C0.2-RECOVERY.md",
+   "sha256": "b906cd108fa10970ccc9f432d7ac71e6a7f5a6c567185859986e1d92b9c3c561"
+  },
+  {
+   "path": ".agents/plans/aqos-refoundation-cycle0/REVIEW-FABLE5-C02-RECOVERY.md",
+   "sha256": "46d9b844d9eb499e3cfdceaaa4f69e3eee43c6032b3dcbcd146b94169475cb0a"
+  },
+  {
+   "path": ".agents/plans/aqos-refoundation-cycle0/REVIEW-GEMINI-C0.2-RECOVERY-V2.md",
+   "sha256": "6e52fb74724ac287e34fe90f42f3c92c0f058b0881ba8b016cb5590aa698e292"
+  },
+  {
+   "path": ".agents/plans/aqos-refoundation-cycle0/C0.2-REWORK-REPORT.md",
+   "sha256": "a6698fc018a6f56e00b01c64d794c17a46134790e1a81e0f93dcb990e5648223"
+  },
+  {
+   "path": ".agents/plans/aqos-refoundation-cycle0/C0.2-REWORK-POST-CHANGE.json",
+   "sha256": "8b81b375f65526d96b476103ecde34e2d051c396238ac3c5ef56ac602b9c474c"
   }
  ],
  "review_policy": {
@@ -107,8 +143,5 @@
   "owner_policy_ratified": true,
   "reviews_present_for_this_root": 0
  },
- "blocking_reasons": [
-  "RECOVERY_AMENDMENT_REQUIRES_FRESH_APPROVE_REVIEWS",
-  "FRESH_IMPLEMENTATION_AUTHORIZATION_MISSING"
- ]
+ "blocking_reasons": []
 }

@@ -50,6 +50,8 @@ except ImportError:
     except Exception:
         LocalModelClient = None
 
+from qa_evidence_store import EvidenceStoreError, production_store
+
 # Load service-endpoints.sh into environment if not already set
 def _source_endpoints() -> None:
     endpoints = _REPO_ROOT / "config" / "service-endpoints.sh"
@@ -284,6 +286,13 @@ def main(argv: list[str] | None = None) -> int:
         dashboard_safe=dashboard_safe,
     )
 
+    try:
+        evidence_store = production_store()
+        evidence_invocation = evidence_store.reserve_invocation()
+    except EvidenceStoreError as exc:
+        print(f"[aq-qa] immutable evidence unavailable: {exc}", file=sys.stderr)
+        return 2
+
     start = time.monotonic()
 
     if phase == "all":
@@ -310,13 +319,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         ConsoleReporter().render(rs, machine_mode=ns.machine)
 
-    # Persist latest results for auto-remediation
+    # Persist immutable invocation evidence and atomically advance the verified pointer.
     try:
-        latest_json = _REPO_ROOT / "data" / "hybrid" / "telemetry" / "latest-qa-results.json"
-        latest_json.parent.mkdir(parents=True, exist_ok=True)
-        import json as _json
-        # Extract logic from JsonReporter to get the dict
-        layers: dict[str, list] = {}
         tests = []
         for r in rs.results:
             item = {
@@ -324,15 +328,19 @@ def main(argv: list[str] | None = None) -> int:
                 "description": f"{r.description} ({r.reason})" if r.reason else r.description,
             }
             tests.append(item)
-            layers.setdefault(str(r.layer), []).append(item)
         output = {
             "phase": rs.phase, "passed": rs.passed, "failed": rs.failed,
             "skipped": rs.skipped, "duration_s": rs.duration_s,
             "tests": tests,
         }
-        latest_json.write_text(_json.dumps(output, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+        evidence_store.publish(
+            evidence_invocation,
+            output,
+            environment={"dashboard_safe": dashboard_safe, "layer_filter": ns.layer or "all"},
+        )
+    except EvidenceStoreError as exc:
+        print(f"[aq-qa] immutable evidence publication failed: {exc}", file=sys.stderr)
+        return 2
 
     if rs.failed > 0 and ns.remediate:
         auto_remediate(rs)

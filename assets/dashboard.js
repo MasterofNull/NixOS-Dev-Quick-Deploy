@@ -7433,7 +7433,7 @@ async function loadEffectivenessScorecard() {
         <div style="font-size:.58rem;font-weight:700;color:var(--red);margin-bottom:.2rem">BLOCKING ISSUES</div>
         ${blocking
       .map(
-        (r) => `<div style="font-size:.55rem;color:var(--red)">▸ ${r}</div>`
+        (r) => `<div style="font-size:.55rem;color:var(--red)">▸ ${r.claim_id || "evidence"}: ${r.reason_code || r.assessment || "blocked"}<br><span style="color:var(--fg3)">${r.remediation || sc.operator_action || "Rerun evidence."}</span></div>`
       )
       .join("")}
        </div>`
@@ -7454,12 +7454,17 @@ async function loadEffectivenessScorecard() {
       .slice(0, 16)
       .replace("T", " ")}Z</span>`
     : "";
+  const provenance = sc.provenance || d.provenance || {};
+  const provenanceHtml = provenance.run_id
+    ? `<div style="font-size:.55rem;color:var(--fg3);margin-bottom:.45rem">Run ${provenance.run_id} · seq ${provenance.start_sequence} · age ${Math.round((provenance.age_seconds || 0) / 60)}m · hash ${provenance.hash_verified ? "verified" : "invalid"}<br><span title="${provenance.sha256 || ""}">${(provenance.sha256 || "").slice(0, 16)}</span></div>`
+    : `<div style="font-size:.55rem;color:var(--red);margin-bottom:.45rem">QA provenance unavailable · automation disabled</div>`;
 
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem">
       <span style="font-size:.85rem;font-weight:700;color:${color}">${overall.toUpperCase()}</span>
       ${ts}
     </div>
+    ${provenanceHtml}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-bottom:.4rem">
       ${dimGrid}
     </div>

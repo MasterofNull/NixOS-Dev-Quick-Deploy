@@ -1663,7 +1663,9 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-agent-monitor-visibility.py"
     _check 5 "0.10.27" "evidence-bound collaboration positive, negative, and cascade assignment invariants" \
       python3 "${REPO_ROOT}/scripts/testing/test-round-decision-authorization.py"
-    _check 1 "0.10.28" "capability flush harness exercises skills, intake, OSINT/RAG, and local monitor" \
+    _check 1 "0.10.28" "immutable QA evidence CAS, algebra, and telemetry boundary" \
+      bash -c 'python3 "$1/scripts/testing/test-qa-evidence-store.py" && python3 "$1/scripts/testing/test-evidence-algebra.py" && python3 "$1/scripts/testing/test-telemetry-root-boundary.py"' _ "${REPO_ROOT}"
+    _check 1 "0.10.35" "capability flush harness exercises skills, intake, OSINT/RAG, and local monitor" \
       python3 "${REPO_ROOT}/scripts/testing/test-capability-flush.py"
     _check 1 "0.10.29" "agent loop marks repeated planning-only thought output incomplete" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-loop-result-quality.py"
@@ -2810,23 +2812,14 @@ PYEOF
   printf '\n%b%d passed%b · %b%d failed%b · %d skipped · %ds\n\n' \
     "${GREEN}" "${PASS}" "${NC}" "${RED}" "${FAIL}" "${NC}" "${SKIP}" "${duration}"
 
-  # Persist summary for aq-report regression_containment proxy (Phase 96.1).
-  local _qa_json="${REPO_ROOT}/data/hybrid/telemetry/latest-qa-results.json"
-  mkdir -p "$(dirname "${_qa_json}")" 2>/dev/null || true
-  python3 - "$PHASE" "$PASS" "$FAIL" "$SKIP" "$duration" "${RESULTS[@]}" > "${_qa_json}" 2>/dev/null <<'PYEOF' || true
-import sys, json
-from datetime import datetime, timezone
-phase, passed, failed, skipped, duration = sys.argv[1:6]
-items = []
-for entry in sys.argv[6:]:
-    status, layer, id_, desc = entry.split('|', 3)
-    items.append({"layer": int(layer), "id": id_, "status": status, "description": desc})
-print(json.dumps({
-    "phase": phase, "passed": int(passed), "failed": int(failed),
-    "skipped": int(skipped), "duration_s": int(duration),
-    "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-    "tests": items,
-}, indent=2))
+  # Mutable full-result persistence is retired. The Python harness owns immutable
+  # invocation evidence; this legacy runner only verifies an existing canonical pointer.
+  PYTHONPATH="${REPO_ROOT}/scripts/ai/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 - <<'PYEOF' 2>/dev/null || true
+from qa_evidence_store import EvidenceStoreError, production_store
+try:
+    production_store().read_latest()
+except EvidenceStoreError:
+    pass
 PYEOF
 }
 

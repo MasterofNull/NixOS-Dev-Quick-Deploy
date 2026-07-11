@@ -5308,7 +5308,7 @@ async def get_effectiveness_scorecard() -> Dict[str, Any]:
         }
 
     try:
-        raw = aq_report_latest.read_text(encoding="utf-8")
+        raw = await asyncio.to_thread(aq_report_latest.read_text, encoding="utf-8")
         report = json.loads(raw)
     except Exception as exc:
         return {
@@ -5329,15 +5329,23 @@ async def get_effectiveness_scorecard() -> Dict[str, Any]:
         stale = True
 
     scorecard = report.get("effectiveness_scorecard")
-    if not scorecard:
-        # Synthesize minimal scorecard from available report fields
-        scorecard = _synthesize_scorecard_from_report(report)
+    if not isinstance(scorecard, dict) or scorecard.get("schema_version") != "aq.effectiveness-scorecard.v1":
+        return {
+            "available": False,
+            "status": "blocked",
+            "reason": "canonical effectiveness scorecard missing or invalid; dashboard synthesis is retired",
+            "remediation": "Run aq-report --machine and inspect the canonical scorecard artifact.",
+            "effectiveness_scorecard": None,
+        }
 
     return {
         "available": True,
         "status": scorecard.get("overall_status", "no_data") if scorecard else "no_data",
         "stale": stale,
         "report_generated_at": generated_at,
+        "provenance": scorecard.get("provenance"),
+        "blocking_reasons": scorecard.get("blocking_reasons", []),
+        "remediation": scorecard.get("operator_action"),
         "effectiveness_scorecard": scorecard,
     }
 

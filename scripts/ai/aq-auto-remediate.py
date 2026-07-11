@@ -39,6 +39,7 @@ except ImportError:
         LocalModelClient = model_client.LocalModelClient
     except Exception:
         LocalModelClient = None
+from qa_evidence_store import EvidenceStoreError, production_store
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent.resolve()
@@ -479,14 +480,11 @@ def remediate_qa_failures(settings: Settings) -> Dict[str, Any]:
         "errors": [],
     }
     
-    qa_path = REPO_ROOT / "data" / "hybrid" / "telemetry" / "latest-qa-results.json"
-    if not qa_path.exists():
-        return result
-        
     try:
-        qa_data = json.loads(qa_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        result["errors"].append(f"load_qa_failed: {e}")
+        verified = production_store().read_latest()
+        qa_data = verified.payload["results"]
+    except EvidenceStoreError as exc:
+        result["errors"].append(f"immutable_qa_blocked: {exc.reason_code}")
         return result
         
     failures = [t for t in qa_data.get("tests", []) if t.get("status") == "FAIL"]

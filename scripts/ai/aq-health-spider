@@ -106,7 +106,7 @@ ZONES: Dict[str, Dict[str, Any]] = {
                 "url": "http://127.0.0.1:8889/api/health/aggregate",
                 "semantic_checks": ["aggregate_services"],
             },
-            {"name": "effectiveness-scorecard", "url": "http://127.0.0.1:8889/api/aistack/effectiveness/scorecard"},
+            {"name": "effectiveness-scorecard", "url": "http://127.0.0.1:8889/api/aistack/effectiveness/scorecard", "semantic_checks": ["effectiveness_provenance"]},
             {"name": "agent-runs", "url": "http://127.0.0.1:8889/api/aistack/agent-runs?limit=1"},
             {"name": "traces-summary", "url": "http://127.0.0.1:8889/api/traces/summary"},
             {
@@ -208,6 +208,19 @@ def _semantic_probe_reason(check: str, data: Dict[str, Any]) -> str:
             return f"audit_integrity_sealed={sealed}/{checked}"
         if data.get("fully_sealed") is not True:
             return "audit_integrity_fully_sealed=false"
+        return ""
+
+    if check == "effectiveness_provenance":
+        scorecard = data.get("effectiveness_scorecard") if isinstance(data.get("effectiveness_scorecard"), dict) else {}
+        provenance = scorecard.get("provenance") if isinstance(scorecard.get("provenance"), dict) else {}
+        if scorecard.get("schema_version") != "aq.effectiveness-scorecard.v1":
+            return "effectiveness_schema_invalid"
+        if not provenance or provenance.get("hash_verified") is not True:
+            return "effectiveness_provenance_invalid"
+        if scorecard.get("overall_status") != "pass" or scorecard.get("automation_allowed") is not True:
+            reasons = scorecard.get("blocking_reasons") or []
+            code = reasons[0].get("reason_code") if reasons and isinstance(reasons[0], dict) else "gate_not_pass"
+            return f"effectiveness_blocked={code}"
         return ""
 
     return ""

@@ -1,0 +1,45 @@
+{
+  "captured_at": "2026-07-11T21:56:20Z",
+  "aq-report": {
+    "protocol": "5 cold + 20 warm; scripts/ai/aq-report --machine",
+    "cold": {
+      "n": 5,
+      "mean_s": 21.78098367639468,
+      "p50_s": 21.500816560001113,
+      "p95_s": 23.48135762801394,
+      "mean_regression_pct": -14.120732187466078,
+      "max_rss_kib": 633308
+    },
+    "warm": {
+      "n": 20,
+      "mean_s": 21.625985821450012,
+      "p50_s": 21.492273501498858,
+      "p95_s": 22.54905297298683,
+      "mean_regression_pct": -2.734275846522079,
+      "max_rss_kib": 636124
+    },
+    "budget_result": "PASS"
+  },
+  "scorecard": {
+    "protocol": "5 cold + 20 warm; curl /api/aistack/effectiveness/scorecard",
+    "protocol_complete": true,
+    "cold": {
+      "n": 5,
+      "mean_s": 0.0034614,
+      "p50_s": 0.003481,
+      "p95_s": 0.003585,
+      "baseline_mean_s": 0.057,
+      "response_bytes": 2805
+    },
+    "warm": {
+      "n": 20,
+      "mean_s": 0.0034721,
+      "p50_s": 0.0033455,
+      "p95_s": 0.003854,
+      "baseline_mean_s": 0.025,
+      "response_bytes": 2805
+    },
+    "result": "PASS",
+    "live_semantics": "BLOCKED with automation_allowed=false while required provenance is missing"
+  }
+}

@@ -28,19 +28,14 @@ def _load_aq_report():
 
 def test_no_data_when_all_empty() -> None:
     mod = _load_aq_report()
-    # Suppress real QA results file so regression_containment stays no_data.
-    _orig = mod._LATEST_QA_RESULTS_PATH
-    mod._LATEST_QA_RESULTS_PATH = Path("/nonexistent/qa-results.json")
-    try:
-        result = mod.effectiveness_scorecard(
-            {}, {}, {}, {}, [], None, None, None, None, None, None, None
-        )
-    finally:
-        mod._LATEST_QA_RESULTS_PATH = _orig
+    mod.production_store = None
+    result = mod.effectiveness_scorecard(
+        {}, {}, {}, {}, [], None, None, None, None, None, None, None
+    )
     assert_true("overall_status" in result, "overall_status key present")
-    assert_true(result["overall_status"] == "no_data", f"all-empty → no_data, got {result['overall_status']}")
+    assert_true(result["overall_status"] == "blocked", f"required unknown → blocked, got {result['overall_status']}")
     assert_true("blocking_reasons" in result, "blocking_reasons key present")
-    assert_true(len(result["blocking_reasons"]) == 0, "no blocking reasons for all-empty inputs")
+    assert_true(len(result["blocking_reasons"]) > 0, "required unknown must include blocking reasons")
 
 
 def test_pass_when_eval_rate_high() -> None:
@@ -50,7 +45,7 @@ def test_pass_when_eval_rate_high() -> None:
     )
     oc = result["outcome_correctness"]
     assert_true(oc["status"] == "pass", f"outcome_correctness should be pass, got {oc['status']}")
-    assert_true(result["overall_status"] in ("pass", "warn", "no_data"), "overall_status is a valid value")
+    assert_true(result["overall_status"] == "blocked", "missing required trace/review evidence must block")
 
 
 def test_fail_when_eval_rate_low() -> None:
