@@ -1667,7 +1667,9 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       bash -c 'python3 "$1/scripts/testing/test-qa-evidence-store.py" && python3 "$1/scripts/testing/test-evidence-algebra.py" && python3 "$1/scripts/testing/test-telemetry-root-boundary.py"' _ "${REPO_ROOT}"
     _check 1 "0.10.35" "capability flush harness exercises skills, intake, OSINT/RAG, and local monitor" \
       python3 "${REPO_ROOT}/scripts/testing/test-capability-flush.py"
-    _check 1 "0.10.29" "agent loop marks repeated planning-only thought output incomplete" \
+    _check 5 "0.10.29" "C0.3 state authority ledger, bounded read-only checker, and audit-card governance projection" \
+      bash -c 'python3 "$1/scripts/testing/test-state-authorities.py" && python3 "$1/scripts/testing/test-dashboard-governance-projection.py"' _ "${REPO_ROOT}"
+    _check 1 "0.10.36" "agent loop marks repeated planning-only thought output incomplete (compatibility-renumbered)" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-loop-result-quality.py"
     _check 1 "0.10.30" "analysis-only local-agent observation loops force final synthesis" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-executor-analysis-finalization.py"

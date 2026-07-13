@@ -5824,9 +5824,41 @@ async function loadAuditIntegrity() {
     ),
     d.legacy_events ? fwRow("Legacy Events", d.legacy_events, "warn") : "",
     fwRow("Chain Valid", d.valid ? "YES" : "NO", d.valid ? "ok" : "err"),
+    ...stateAuthorityRows(d.state_authorities),
   ]
     .filter(Boolean)
     .join("");
+}
+
+// C0.3: read-only projection of the bounded state-authority checker onto the existing
+// audit-integrity card — last check, age, and contested/unowned blocker count. No new
+// panel or runtime authority; absence of a snapshot renders "never run".
+function stateAuthorityRows(sa) {
+  if (!sa) return [];
+  if (!sa.available) {
+    return [fwRow("State Authorities", "checker not run / degraded", "warn")];
+  }
+  const ageMin =
+    typeof sa.age_seconds === "number" && sa.age_seconds >= 0
+      ? `${Math.round(sa.age_seconds / 60)}m ago`
+      : "--";
+  const bc = sa.blocker_count;
+  const known = Number.isInteger(bc) && bc >= 0;
+  const total =
+    Number.isInteger(sa.authorities_total) && sa.authorities_total >= 0
+      ? sa.authorities_total
+      : "?";
+  // Never coerce a missing/unknown blocker count to 0/OK — unknown is a degraded (warn) state,
+  // not a clean pass. Only a genuine integer 0 renders OK.
+  const blockerText = known
+    ? `${bc} (${total} objects)`
+    : `unknown (${total} objects)`;
+  const blockerTone = !known ? "warn" : bc > 0 ? "warn" : "ok";
+  return [
+    fwRow("State Auth Last Check", sa.last_check || "--", "info"),
+    fwRow("State Auth Age", ageMin, "info"),
+    fwRow("State Auth Blockers", blockerText, blockerTone),
+  ];
 }
 
 async function loadFirewallCrowdsec() {

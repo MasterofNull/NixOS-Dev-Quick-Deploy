@@ -1,0 +1,369 @@
+# AQ-OS System State Authority & Retirement Ledger — Slice C0.3 (DISCOVERY, read-only)
+#
+# One current owner and one target disposition for every critical cross-system state
+# BEFORE Cycle 1 moves durable truth. This artifact is discovery evidence only; it
+# confers NO runtime implementation authority and does NOT authorize any Cycle 1
+# storage move (meta.cycle1_authority = NOT_AUTHORIZED).
+#
+# current_condition is a truthful observation. SINGLE|SPLIT_BRAIN|UNKNOWN|UNOWNED are
+# all valid discovery values; SPLIT_BRAIN/UNKNOWN/UNOWNED block C0.3 *ratification*
+# (not discovery) until an adjudicated target disposition + deadline exist. A convenient
+# singleton is never invented: selected_target_authority is null wherever a single owner
+# has not actually been adjudicated.
+#
+# Source: .agents/plans/aqos-refoundation-cycle0/CURRENT-AUTHORITY-INVENTORY.md
+#         (source-verified read-only snapshot, 2026-07-10). file:line refs are the
+#         inventory's cited observation points, not an exhaustive writer census.
+# Schema: config/schemas/system-state-authorities.schema.json
+
+meta:
+  version: "1.0.0"
+  slice: "C0.3"
+  generated: "2026-07-11"
+  source: "CURRENT-AUTHORITY-INVENTORY.md @ HEAD 5d9aab85 (issuance); ratified plan CONSOLIDATED-PLAN.md §C0.3"
+  cycle1_authority: "NOT_AUTHORIZED"
+  scan:
+    file_cap: 8000
+    measured_baseline: 4793
+    exclusions:
+      - "scripts/testing/"          # focused/isolated tests must not create production debt
+      - "tests/"
+      - "test-"                     # test-*.py fixtures
+      - "_test."
+      - ".test."
+      - "example"                   # examples/ and *example* fixtures
+      - "docs/"                     # documentation projections, not writers
+      - ".agent/"                   # plans, evidence, collaboration, skills
+      - ".agents/"                  # runtime/delegation/plan state (evidence, not authority)
+      - "archive/"                  # archived / retired material
+      - "node_modules/"
+      - "vendor/"
+      - "third_party/"
+      - ".git/"
+      - ".min.js"                   # generated/minified assets
+      - ".lock"
+      - "config/system-state-authorities.yaml"          # the registry itself
+      - "config/schemas/system-state-authorities.schema.json"
+      - "scripts/governance/check-state-authorities.py"  # the checker itself
+
+authorities:
+  - id: planning-round
+    domain: "Planning round (collab round decision/aggregate/contribution/authorization)"
+    observed_authority_claims:
+      - "existing round.json manifest wins on read"
+      - "aq-collab-round dispatch/prompt writer"
+      - "round_state.save temp/fsync/replace writer"
+      - "per-agent Markdown/JSON contribution sidecars treated as landed"
+      - "round_aggregate lane-status quorum authorization"
+    observed_writers:
+      - {path: "scripts/ai/aq-collab-round", line: 68, note: "writes prompts and dispatch"}
+      - {path: "scripts/ai/aq-collab-round", line: 320, note: "agents write independent Markdown/JSON (320-348)"}
+      - {path: "scripts/ai/lib/round_state.py", line: 169, note: "save temp/fsync/replaces round.json"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "round.json manifest", reader_path: "scripts/ai/aq-collab-round", rebuild_source: "replay of dispatch log + validated contribution sidecars"}
+      - {name: "status view (Markdown-presence=landed)", reader_path: "scripts/ai/lib/round_contribution.py", rebuild_source: "re-derive from valid JSON sidecar precedence"}
+    ordering_revision: "contribution precedence: valid JSON sidecar > Markdown > dispatch log; status path diverges by treating Markdown presence as landed (aq-collab-round:96,476; round_contribution.py:101-108)"
+    provenance_freshness: "per-contribution mtime; no single monotonic revision across writers"
+    bypasses:
+      - {path: "scripts/ai/aq-collab-round", line: 51, description: "typed-failure fallback to legacy Markdown (_LIB_OK fail-open at :141)"}
+      - {path: "scripts/ai/lib/round_aggregate.py", line: 77, description: "lane-status quorum authorizes without evidence (77,115)"}
+    adjudicator: "collab-round owner (planning lane)"
+    recovery_owner: "amendment/abort path (assignment/close recovery incomplete)"
+    target_hypothesis: "round.json as sole manifest authority; demote dispatch/agent/aggregate Markdown to evidence projections; retire lane-status authorization and Markdown-existence landing"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "planning lane owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of rounds where Markdown-landing status disagrees with JSON-sidecar precedence"
+    exception: null
+    shims: []
+    writer_signatures:
+      - {store_token: "round.json", write_tokens: ["write_text", "os.replace", "json.dump", ">>", "open("]}
+    notes: "C0.1 producer contract: round decision/review/aggregate/contribution/authorization each get distinct authority rows."
+
+  - id: delegation-lifecycle
+    domain: "Delegation lifecycle (task registry, PENDING/HANDOFF, provider scripts)"
+    observed_authority_claims:
+      - "TaskRegistry append-only registry.jsonl"
+      - "provider scripts directly append/rewrite registry"
+      - "dispatch.py direct registry writes"
+      - "aq-agent-reap second reconciler"
+    observed_writers:
+      - {path: "scripts/ai/lib/task_registry.py", line: 35, note: "appends registry.jsonl (35,88,100,364)"}
+      - {path: "scripts/ai/delegate-to-codex", line: null, note: "direct registry append/rewrite (also -claude,-gemini,-antigravity)"}
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/dispatch.py", line: 1224, note: "direct registry writes (1224,1474)"}
+      - {path: "scripts/ai/aq-agent-reap", line: 137, note: "second reconciler rewrites registry.jsonl (json.dumps + fh.write + os.replace, 133-139)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "monitor inference overlay (PID>heartbeat>terminal>markers>stale)", reader_path: "scripts/ai/lib/task_registry.py", rebuild_source: "recompute from registry.jsonl + process table"}
+      - {name: "dashboard/report delegation view", reader_path: "scripts/ai/aq-report", rebuild_source: "re-read registry.jsonl overlay (aq-report:8120)"}
+    ordering_revision: "append-order in registry.jsonl; provider direct writes bypass the common lock (no global revision)"
+    provenance_freshness: "heartbeat/terminal markers; staleness inferred, not stamped"
+    bypasses:
+      - {path: "scripts/ai/lib/task_registry.py", line: 364, description: "provider writes bypass common lock"}
+      - {path: "scripts/ai/aq-agent-reap", line: null, description: "second reconciler; --force bypasses active guard"}
+    adjudicator: "delegation lane owner"
+    recovery_owner: "split between TaskRegistry.repair and aq-agent-reap"
+    target_hypothesis: "single TaskRegistry writer under one lock; retire aq-agent-reap as second reconciler after durable repair; consolidate direct provider writers"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "delegation lane owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of registry.jsonl records written outside TaskRegistry lock per cycle"
+    exception: null
+    shims: []
+    writer_signatures:
+      - {store_token: "registry.jsonl", write_tokens: ["write_text", "append", "json.dump", ">>", "open("]}
+    notes: "delegate-to-* direct writers are the retirement candidates."
+
+  - id: intent-resume
+    domain: "Intent/resume (PENDING Intent Lock, RESUME/PULSE event projections)"
+    observed_authority_claims:
+      - "PENDING is both manual Intent Lock and delegation in_flight[]"
+      - "TaskRegistry writes PENDING"
+      - "pending-update writes PENDING unlocked"
+      - "RESUME/PULSE declared event projections yet agent loops write directly"
+    observed_writers:
+      - {path: "scripts/ai/lib/task_registry.py", line: 324, note: "writes PENDING"}
+      - {path: "scripts/ai/lib/pending-update", line: 67, note: "unlocked PENDING write (67-80)"}
+      - {path: "scripts/ai/lib/loop_state.py", line: 103, note: "direct RESUME/PULSE write (103-116)"}
+      - {path: "scripts/ai/aq-loop-queue", line: 47, note: "direct write"}
+      - {path: "scripts/ai/aq-local-training-loop", line: 1130, note: "direct write"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "RESUME.json (resume_projector per-field latest producer)", reader_path: "scripts/ai/lib/resume_projector.py", rebuild_source: "aq-event project resume over a2a-events.jsonl (first-ID-wins)"}
+      - {name: "PULSE.log", reader_path: "scripts/ai/aq-resume", rebuild_source: "aq-event project pulse"}
+    ordering_revision: "resume projector uses per-field latest producer time (resume_projector.py:70,111); replay can erase direct-only state"
+    provenance_freshness: "event ts per field; direct writes lack event provenance"
+    bypasses:
+      - {path: "scripts/ai/lib/loop_state.py", line: 103, description: "direct RESUME/PULSE writes lack event provenance"}
+      - {path: "scripts/ai/lib/pending-update", line: 67, description: "unlocked PENDING writer"}
+    adjudicator: "session-continuity owner"
+    recovery_owner: "UNOWNED for PENDING recovery (aq-event project over first-ID-wins log is partial)"
+    target_hypothesis: "separate Intent Lock from delegation in_flight; make RESUME/PULSE pure aq-event projections; remove direct writers"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "session-continuity owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of RESUME/PULSE mutations landing outside aq-event per cycle"
+    exception: null
+    shims: []
+    notes: "PENDING recovery boundary is UNOWNED; readers expect incompatible keys."
+
+  - id: workflow-run-task
+    domain: "Workflow/run/task sessions"
+    observed_authority_claims:
+      - "coordinator handlers atomically write workflow-sessions.json under process lock"
+      - "standalone executor directly writes same file"
+      - "sync-workflow-sessions.py third writer"
+      - "graph runs use separate JSON"
+      - "Postgres workflow_checkpoints recovery only constructor is example -> UNKNOWN/unwired"
+    observed_writers:
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/workflow_session_handlers.py", line: 161, note: "atomic write under process lock (161,235-272)"}
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/workflow_executor.py", line: 86, note: "direct same-file writes (86,199-214,535-540)"}
+      - {path: "scripts/ai/sync-workflow-sessions.py", line: 26, note: "third writer (26-43)"}
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/orchestration_graph_runner.py", line: 32, note: "separate graph-run JSON (32-62)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "API/report session view", reader_path: "ai-stack/mcp-servers/hybrid-coordinator/workflow_session_handlers.py", rebuild_source: "re-read workflow-sessions.json"}
+    ordering_revision: "locks are process-local; no cross-process revision across the three writers"
+    provenance_freshness: "file mtime; Redis DLQ drops when Redis absent (workflow_checkpointer.py:426-445)"
+    bypasses:
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/workflow_executor.py", line: 199, description: "standalone executor writes same file outside coordinator lock"}
+    adjudicator: "coordinator/workflow owner"
+    recovery_owner: "Postgres workflow_checkpoints is UNKNOWN/unwired (only example constructor found)"
+    target_hypothesis: "single coordinator writer; retire sync-workflow-sessions.py; either wire workflow_checkpointer.py or retire dormant recovery claim; distinctly type graph-run JSON"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "coordinator/workflow owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of workflow-sessions.json writes outside coordinator lock per cycle"
+    exception: null
+    shims: []
+    writer_signatures:
+      - {store_token: "workflow-sessions.json", write_tokens: ["write_text", "json.dump", "os.replace", "open("]}
+    notes: "workflow_checkpointer recovery authority is UNKNOWN; do not claim SINGLE."
+
+  - id: qa-effectiveness
+    domain: "QA / effectiveness scorecard"
+    observed_authority_claims:
+      - "Python harness overwrites latest QA file"
+      - "Bash harness overwrites same latest QA file (no inter-process lock)"
+      - "aq-report writes separate latest report and computes scorecard"
+      - "dashboard has fallback scorecard calculator (second score semantics)"
+    observed_writers:
+      - {path: "scripts/testing/harness_qa/main.py", line: 315, note: "overwrites latest QA (315-335)"}
+      - {path: "scripts/ai/_aq-qa-bash", line: 2812, note: "overwrites same latest QA (2812-2834)"}
+      - {path: "scripts/ai/aq-report", line: 7707, note: "writes separate latest report + scorecard (7707-7910)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "dashboard scorecard card", reader_path: "dashboard/backend/api/routes/aistack.py", rebuild_source: "recompute from immutable QA invocation artifact (C0.2 evidence store)"}
+      - {name: "remediation reader", reader_path: "scripts/ai/aq-report", rebuild_source: "re-read verified QA evidence"}
+    ordering_revision: "two clobber writers to one latest path; last-writer-wins, no revision"
+    provenance_freshness: "file mtime; report may substitute delegation for missing QA"
+    bypasses:
+      - {path: "dashboard/backend/api/routes/aistack.py", line: 5281, description: "_synthesize_scorecard_from_report() second score semantics (5281-5334)"}
+    adjudicator: "QA/effectiveness owner"
+    recovery_owner: "rerun/manual replacement; no immutable invocation recovery pre-C0.2"
+    target_hypothesis: "one QA artifact is invocation evidence (C0.2), pointer/dashboard are projections, declared report scorecard producer; retire _synthesize_scorecard_from_report and the second clobber writer"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "QA/effectiveness owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of runs where dashboard fallback scorecard diverges from C0.2 evidence-store scorecard"
+    exception: null
+    shims: []
+    notes: "C0.2 producer contract: one QA artifact = invocation evidence; scorecard producer declared."
+
+  - id: routing-model-execution
+    domain: "Routing / model execution (switchboard vs direct llama)"
+    observed_authority_claims:
+      - "switchboard intended gateway (profiles merge built-ins+YAML, else JSON/inline)"
+      - "Nix sets YAML+JSON but YAML wins"
+      - "coordinator retains direct llama branches"
+      - "eval calls llama directly"
+    observed_writers:
+      - {path: "ai-stack/mcp-servers/switchboard/switchboard.py", line: 289, note: "profile merge/config (289,461-510,611-640)"}
+      - {path: "nix/modules/roles/switchboard.nix", line: 409, note: "sets YAML+JSON, YAML wins (409,510-511)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "provider decision", reader_path: "ai-stack/mcp-servers/switchboard/switchboard.py", rebuild_source: "re-derive from profile/headers/mode/model-prefix/intent/default (switchboard.py:2389-2465)"}
+    ordering_revision: "profile precedence: built-ins < YAML < JSON/inline; Nix YAML wins over JSON"
+    provenance_freshness: "config load time; hot-reload not uniformly applied"
+    bypasses:
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/route_handler.py", line: 1624, description: "direct llama branches (1624-1754)"}
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/local_agent_runtime.py", line: 1295, description: "streaming direct-llama fallback (920-955,1295-1316)"}
+    adjudicator: "routing/switchboard owner"
+    recovery_owner: "differs by caller (fail-closed non-streaming vs direct-fallback streaming)"
+    target_hypothesis: "switchboard as sole gateway; retire streaming direct-llama fallback and coordinator direct branches; route eval/context/model helpers through switchboard after parity"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "routing/switchboard owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of model calls bypassing switchboard per cycle (direct llama branch hits)"
+    exception: null
+    shims: []
+    notes: "RAGAS judge also bypasses switchboard (see learning-eval)."
+
+  - id: learning-eval
+    domain: "Learning / eval (Postgres trends, loop JSONL, spools, optimizer corpora)"
+    observed_authority_claims:
+      - "Postgres eval_trend/eval_results"
+      - "local loop service/fallback result JSONL + progress + checkpoint + dual sample spools"
+      - "model optimizer separate captured corpora"
+    observed_writers:
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/eval_runner.py", line: 65, note: "Postgres eval writes (65-128)"}
+      - {path: "scripts/ai/aq-local-training-loop", line: 56, note: "result JSONL/progress/checkpoint/spools (56-69,99-112,403-413)"}
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/model_optimization.py", line: 211, note: "separate captured corpora (211-305)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "dashboard newest-by-mtime eval result", reader_path: "dashboard/backend/api/routes/aistack.py", rebuild_source: "re-read declared eval authority (Postgres relationship must be defined first)"}
+    ordering_revision: "dashboard adjudicates newest-by-mtime across result/progress/checkpoint/spool (aistack.py:2136-2325)"
+    provenance_freshness: "mtime adjudication; Postgres RAGAS and local scorer/golden path differ"
+    bypasses:
+      - {path: "dashboard/backend/api/routes/aistack.py", line: 2136, description: "mtime adjudication substitutes for authority"}
+    adjudicator: "learning/eval owner"
+    recovery_owner: "loop --resume or rerun; no single eval/promotion authority"
+    target_hypothesis: "single eval/promotion authority; consolidate loop JSONL + dual spools; stop dashboard mtime adjudication; define Postgres eval relationship before authority claim; ingest or retire model_optimization corpora"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "learning/eval owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of eval results where mtime-winner != declared-authority winner"
+    exception: null
+    shims: []
+    notes: "No single eval/promotion authority exists today."
+
+  - id: memory-rag
+    domain: "Memory / RAG (broker vs direct Qdrant writers)"
+    observed_authority_claims:
+      - "intended path /api/memory/facts -> MemoryBroker -> memory_manager -> typed Qdrant"
+      - "seed script, AIDB server, collective memory, qdrant-populator write Qdrant directly"
+      - "Markdown memory separate then seeded"
+    observed_writers:
+      - {path: "ai-stack/mcp-servers/aidb/memory_service.py", line: 34, note: "broker path (34-86,185-190)"}
+      - {path: "ai-stack/mcp-servers/aidb/memory_broker.py", line: 57, note: "queued embed/dedup/upsert/retry (57-83,131-175,218-335)"}
+      - {path: "scripts/data/seed-rag-knowledge.py", line: null, note: "direct Qdrant write (bypasses broker)"}
+      - {path: "ai-stack/mcp-servers/aidb/collective_memory.py", line: null, note: "direct Qdrant write"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "typed Qdrant collection", reader_path: "ai-stack/mcp-servers/aidb/memory_manager.py", rebuild_source: "re-embed from broker queue + declared backup/rebuild"}
+    ordering_revision: "broker applies expiry/supersession (memory_broker.py:131-175); direct writers unordered vs broker"
+    provenance_freshness: "queue acceptance precedes durable upsert (accept != durable)"
+    bypasses:
+      - {path: "scripts/data/seed-rag-knowledge.py", line: null, description: "direct Qdrant writer bypassing broker/collection ownership"}
+    adjudicator: "memory/RAG owner"
+    recovery_owner: "retry plus declared backup/rebuild"
+    target_hypothesis: "gate all direct Qdrant writers behind broker/collection ownership; retire ad-hoc Markdown seeding after lineage ingestion"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "memory/RAG owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of Qdrant upserts landing outside MemoryBroker per cycle"
+    exception: null
+    shims: []
+    notes: "queue acceptance is not durability; recovery relies on retry + backup."
+
+  - id: configuration
+    domain: "Configuration (Nix options -> systemd env -> Python config; repo-wide overlays)"
+    observed_authority_claims:
+      - "deployed chain mostly SINGLE: Nix options -> systemd env -> Python config"
+      - "reasoning profiles: env path -> user override -> shared repo -> legacy repo -> built-ins"
+      - "route aliases hot-reload JSON then duplicate Python defaults"
+      - "dashboard /api/config mutates process-local _CONFIG"
+    observed_writers:
+      - {path: "nix/modules/core/options.nix", line: 1901, note: "option SSOT (1901-1975)"}
+      - {path: "ai-stack/mcp-servers/hybrid-coordinator/core/config.py", line: 31, note: "runtime precedence env>YAML>defaults (31-75,196-294)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "deployed config (mostly SINGLE)", reader_path: "ai-stack/mcp-servers/hybrid-coordinator/core/config.py", rebuild_source: "re-eval Nix options -> systemd env"}
+      - {name: "dashboard /api/config process-local overlay", reader_path: "dashboard/backend/api/routes/aistack.py", rebuild_source: "N/A (mutates _CONFIG, not Nix/runtime authority) — retire/rename"}
+    ordering_revision: "runtime precedence env > HybridSettings YAML > defaults; endpoint defaults duplicated"
+    provenance_freshness: "eval/deploy time for Nix chain; process-local for dashboard overlay"
+    bypasses:
+      - {path: "dashboard/backend/api/routes/aistack.py", line: null, description: "/api/config mutates process-local _CONFIG, not Nix/runtime authority"}
+    adjudicator: "config/Nix owner"
+    recovery_owner: "nixos-rebuild re-eval (deployed chain); dashboard overlay non-durable"
+    target_hypothesis: "Nix deployed chain is the durable-config authority; retire/rename dashboard process-local /api/config; remove legacy profile paths, compatibility aliases, duplicated endpoints and fallback maps only after usage telemetry"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "config/Nix owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of endpoint-default duplications diverging from Nix option value"
+    exception: null
+    shims:
+      - {name: "reasoning-profile legacy repo path", owner: "config/Nix owner", telemetry: "hit-count of legacy vs shared profile path resolution per cycle", deadline: "2026-10-09"}
+      - {name: "route-alias duplicated Python defaults", owner: "config/Nix owner", telemetry: "count of alias resolutions served from Python default vs hot-reloaded JSON", deadline: "2026-10-09"}
+    notes: "deployed chain is mostly SINGLE but the repo-wide condition is SPLIT_BRAIN; env contract governs names not values."
+
+  - id: dashboard-operator
+    domain: "Dashboard / operator (SQLite ContextStore, volatile approvals, audit hash-chain)"
+    observed_authority_claims:
+      - "SQLite ContextStore persists deployments/events/service/config"
+      - "approval state also lives in volatile dictionaries"
+      - "audit actions use separate hash-chain JSONL"
+      - "action catalog is another authority (empty-env Path('.') fallback likely unreachable)"
+    observed_writers:
+      - {path: "dashboard/backend/api/services/context_store.py", line: 66, note: "SQLite persistence (66-421)"}
+      - {path: "dashboard/backend/api/routes/deployments.py", line: 27, note: "deployment/event writes (27-36,474-601)"}
+      - {path: "dashboard/backend/api/services/runtime_controls.py", line: 90, note: "approval dict + audit hash-chain (90-325)"}
+    current_condition: SPLIT_BRAIN
+    selected_target_authority: null
+    projections:
+      - {name: "operator audit integrity (hash-chain)", reader_path: "dashboard/backend/api/routes/audit.py", rebuild_source: "replay operator-audit JSONL hash chain"}
+      - {name: "approval history", reader_path: "dashboard/backend/api/services/runtime_controls.py", rebuild_source: "re-read SQLite ContextStore"}
+    ordering_revision: "audit is hash-chained; approval state split between volatile dict and SQLite (no single revision)"
+    provenance_freshness: "SQLite durable; approval dict volatile (lost on restart)"
+    bypasses:
+      - {path: "dashboard/backend/api/services/runtime_controls.py", line: 90, description: "approval state in volatile dict; restart can leave durable-pending approval no longer actionable"}
+    adjudicator: "dashboard/operator owner"
+    recovery_owner: "UNOWNED for approval recovery (restart orphans durable pending approval)"
+    target_hypothesis: "persist complete approvals in SQLite and retire approval dictionaries; rebuild task caches from durable state; consolidate/remove generic shell action catalog; retain UI/badges/WebSocket/audit log as projections"
+    migration_owner: "Cycle 1 state-spine owner (unassigned)"
+    rollback_owner: "dashboard/operator owner"
+    resolution_deadline: "2026-10-09"
+    usage_divergence_metric: "count of approvals present in volatile dict but absent/for-divergent in SQLite per restart"
+    exception: null
+    shims: []
+    notes: "This authority owns the audit projection surface used by C0.3 integration visibility."
