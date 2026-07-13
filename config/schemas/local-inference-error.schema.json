@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-error/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "code", "message", "retryable", "reason_code", "evidence_ref"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "code": {"enum": ["invalid_request", "ineligible", "unauthorized", "unavailable_profile", "queue_timeout", "inference_timeout", "cancelled", "transport_error", "malformed_result", "degraded_fallback"]},
+    "message": {"type": "string", "minLength": 1, "maxLength": 512},
+    "retryable": {"type": "boolean"},
+    "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$"},
+    "evidence_ref": {"type": ["string", "null"], "maxLength": 1024}
+  },
+  "allOf": [
+    {"if": {"properties": {"code": {"const": "cancelled"}}, "required": ["code"]}, "then": {"properties": {"retryable": {"const": false}}}},
+    {"if": {"properties": {"code": {"enum": ["invalid_request", "ineligible", "unauthorized", "malformed_result"]}}, "required": ["code"]}, "then": {"properties": {"retryable": {"const": false}}}}
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-request/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "request_id", "trace_id", "session_id", "parent_run_id", "idempotency_key", "requester", "task", "execution", "context", "artifact", "budget", "fallback", "validation"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "trace_id": {"type": "string", "format": "uuid"},
+    "session_id": {"type": ["string", "null"], "format": "uuid"},
+    "parent_run_id": {"type": ["string", "null"], "format": "uuid"},
+    "idempotency_key": {"type": "string", "format": "uuid"},
+    "requester": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "agent_id", "model_class", "requested_role", "trust_boundary"],
+      "properties": {
+        "source": {"enum": ["aq-chat", "delegate-to-local", "remote-agent", "workflow"]},
+        "agent_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "model_class": {"enum": ["flagship", "standard", "budget", "deterministic"]},
+        "requested_role": {"enum": ["orchestrator", "architect", "implementer", "reviewer", "unassigned"]},
+        "trust_boundary": {"enum": ["interactive", "background", "automation"]}
+      }
+    },
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["objective", "task_class", "domain", "repo_paths", "edit_sites", "anti_goals"],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "task_class": {"enum": ["lookup", "extract", "classify", "summarize", "review", "validate", "single_command", "single_edit", "decomposed_edit"]},
+        "domain": {"type": "string", "minLength": 1, "maxLength": 128},
+        "repo_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+        "edit_sites": {"type": "integer", "minimum": 0},
+        "anti_goals": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}}
+      }
+    },
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "response_mode", "preferred_lane", "requested_profile", "side_effects", "allowed_tools", "max_tool_calls", "approval_ref", "tool_lease"],
+      "properties": {
+        "mode": {"enum": ["direct", "hybrid", "agent", "ralph"]},
+        "response_mode": {"enum": ["stream", "final"]},
+        "preferred_lane": {"enum": ["embedded", "coding_logic", "tool_agent"]},
+        "requested_profile": {"enum": ["embedded-assist", "continue-local", "local-coding", "local-tool-calling", "local-agent", "ralph"]},
+        "side_effects": {"enum": ["none", "read", "write"]},
+        "allowed_tools": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"}},
+        "max_tool_calls": {"type": "integer", "minimum": 0},
+        "approval_ref": {"type": ["string", "null"], "minLength": 1, "maxLength": 256},
+        "tool_lease": {
+          "type": "object", "additionalProperties": false,
+          "required": ["lease_id", "expires_at", "repo_root", "cwd", "path_globs", "command_prefixes"],
+          "properties": {
+            "lease_id": {"type": ["string", "null"], "format": "uuid"},
+            "expires_at": {"type": ["string", "null"], "format": "date-time"},
+            "repo_root": {"type": "string", "minLength": 1, "maxLength": 1024},
+            "cwd": {"type": "string", "maxLength": 1024},
+            "path_globs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+            "command_prefixes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}}
+          }
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"side_effects": {"const": "none"}}, "required": ["side_effects"]}, "then": {"properties": {"allowed_tools": {"maxItems": 0}, "max_tool_calls": {"const": 0}, "approval_ref": {"type": "null"}, "tool_lease": {"properties": {"lease_id": {"type": "null"}, "expires_at": {"type": "null"}}}}}},
+        {"if": {"properties": {"side_effects": {"enum": ["read", "write"]}}, "required": ["side_effects"]}, "then": {"properties": {"allowed_tools": {"minItems": 1}, "max_tool_calls": {"minimum": 1}}}},
+        {"if": {"properties": {"side_effects": {"const": "write"}}, "required": ["side_effects"]}, "then": {"properties": {"approval_ref": {"type": "string"}, "tool_lease": {"properties": {"lease_id": {"type": "string"}, "expires_at": {"type": "string"}}}}}}
+      ]
+    },
+    "context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["messages", "artifact_refs", "memory_keys", "summary", "inline_max_chars", "template_version", "context_adapter_version", "compaction_policy_version"],
+      "properties": {
+        "messages": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["role", "content", "call_id"], "properties": {"role": {"enum": ["system", "user", "assistant", "tool"]}, "content": {"type": "string", "maxLength": 12000}, "call_id": {"type": ["string", "null"], "maxLength": 128}}}},
+        "artifact_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+        "memory_keys": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "summary": {"type": "string", "maxLength": 12000},
+        "inline_max_chars": {"type": "integer", "minimum": 1, "maximum": 12000},
+        "template_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "context_adapter_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "compaction_policy_version": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "schema_id", "max_chars", "acceptance_criteria", "evidence_requirements"],
+      "properties": {
+        "format": {"enum": ["text", "json", "patch", "evidence_fragment"]},
+        "schema_id": {"type": ["string", "null"], "maxLength": 256},
+        "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "acceptance_criteria": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 1024}},
+        "evidence_requirements": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 1024}}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "deadline_ms", "queue_wait_ms", "priority"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 1}, "output_tokens": {"type": "integer", "minimum": 1},
+        "deadline_ms": {"type": "integer", "minimum": 1}, "queue_wait_ms": {"type": "integer", "minimum": 1},
+        "priority": {"enum": ["interactive", "normal", "background"]}
+      }
+    },
+    "fallback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "allowed_profiles", "equivalence_registry_version", "max_attempts"],
+      "properties": {
+        "mode": {"enum": ["deny", "queue", "same_capability", "best_effort"]},
+        "allowed_profiles": {"type": "array", "uniqueItems": true, "items": {"enum": ["embedded-assist", "continue-local", "local-coding", "local-tool-calling", "local-agent", "ralph"]}},
+        "equivalence_registry_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 8}
+      }
+    },
+    "validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["checks", "require_live", "reviewer_separation"],
+      "properties": {
+        "checks": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "require_live": {"type": "boolean"}, "reviewer_separation": {"type": "boolean"}
+      }
+    }
+  }
+}

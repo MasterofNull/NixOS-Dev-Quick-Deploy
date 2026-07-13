@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-event/1.0",
+  "$defs": {
+    "error": {"type": "object", "additionalProperties": false, "required": ["contract_version", "code", "message", "retryable", "reason_code", "evidence_ref"], "properties": {"contract_version": {"const": "1.0"}, "code": {"enum": ["invalid_request", "ineligible", "unauthorized", "unavailable_profile", "queue_timeout", "inference_timeout", "cancelled", "transport_error", "malformed_result", "degraded_fallback"]}, "message": {"type": "string", "minLength": 1, "maxLength": 512}, "retryable": {"type": "boolean"}, "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$"}, "evidence_ref": {"type": ["string", "null"], "maxLength": 1024}}, "allOf": [{"if": {"properties": {"code": {"const": "cancelled"}}, "required": ["code"]}, "then": {"properties": {"retryable": {"const": false}}}}, {"if": {"properties": {"code": {"enum": ["invalid_request", "ineligible", "unauthorized", "malformed_result"]}}, "required": ["code"]}, "then": {"properties": {"retryable": {"const": false}}}}]},
+    "payload": {"type": "object", "additionalProperties": false, "required": ["content_delta", "usage_delta", "tool", "validation_check"], "properties": {"content_delta": {"type": ["string", "null"]}, "usage_delta": {"type": "object", "additionalProperties": false, "required": ["input_tokens", "output_tokens"], "properties": {"input_tokens": {"type": "integer", "minimum": 0}, "output_tokens": {"type": "integer", "minimum": 0}}}, "tool": {"type": ["string", "null"]}, "validation_check": {"type": ["string", "null"]}}}
+  },
+  "type": "object", "additionalProperties": false,
+  "required": ["contract_version", "request_id", "run_id", "trace_id", "sequence", "event_type", "terminal", "payload", "error"],
+  "properties": {
+    "contract_version": {"const": "1.0"}, "request_id": {"type": "string", "format": "uuid"}, "run_id": {"type": "string", "format": "uuid"}, "trace_id": {"type": "string", "format": "uuid"},
+    "sequence": {"type": "integer", "minimum": 1}, "event_type": {"enum": ["accepted", "queued", "started", "tool_call", "validation", "completed", "blocked", "failed", "cancelled"]},
+    "terminal": {"type": "boolean"}, "payload": {"$ref": "#/$defs/payload"}, "error": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]}
+  },
+  "allOf": [
+    {"if": {"properties": {"event_type": {"enum": ["accepted", "queued", "started", "tool_call", "validation"]}}, "required": ["event_type"]}, "then": {"properties": {"terminal": {"const": false}, "error": {"type": "null"}}}},
+    {"if": {"properties": {"event_type": {"const": "completed"}}, "required": ["event_type"]}, "then": {"properties": {"terminal": {"const": true}, "error": {"type": "null"}}}},
+    {"if": {"properties": {"event_type": {"enum": ["blocked", "failed", "cancelled"]}}, "required": ["event_type"]}, "then": {"properties": {"terminal": {"const": true}, "error": {"$ref": "#/$defs/error"}}}},
+    {"if": {"properties": {"event_type": {"const": "cancelled"}}, "required": ["event_type"]}, "then": {"properties": {"error": {"allOf": [{"$ref": "#/$defs/error"}, {"properties": {"code": {"const": "cancelled"}, "retryable": {"const": false}}}]}}}},
+    {"if": {"properties": {"error": {"allOf": [{"$ref": "#/$defs/error"}, {"properties": {"code": {"const": "cancelled"}}, "required": ["code"]}]}}, "required": ["error"]}, "then": {"properties": {"event_type": {"const": "cancelled"}}}}
+  ]
+}

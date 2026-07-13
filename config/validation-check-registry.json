@@ -1523,6 +1523,34 @@
       "enabled": true
     },
     {
+      "id": "local-inference-contract-l1a",
+      "phase": "L1A",
+      "description": "Strict local-inference schemas, pure resolver, golden delegate/aq-chat parity, dual QA registration, and dashboard contract health",
+      "command": [
+        "python3",
+        "scripts/testing/test-local-inference-contract.py"
+      ],
+      "trigger_paths": [
+        ".agent/PROJECT-LOCAL-INFERENCE-L1A-PLAN.md",
+        ".agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md",
+        "config/schemas/local-inference-request.schema.json",
+        "config/schemas/local-inference-result.schema.json",
+        "config/schemas/local-inference-event.schema.json",
+        "config/schemas/local-inference-error.schema.json",
+        "scripts/ai/lib/local_inference_contract.py",
+        "scripts/testing/fixtures/local-inference-contract-v1-golden.json",
+        "scripts/testing/test-local-inference-contract.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash",
+        "config/validation-check-registry.json",
+        "dashboard/backend/api/routes/aistack.py",
+        "assets/dashboard.js"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 45,
+      "enabled": true
+    },
+    {
       "id": "aq-eval-harness",
       "description": "AQ eval harness validates local static eval/red-team suites and allowlisted command execution",
       "trigger_paths": [

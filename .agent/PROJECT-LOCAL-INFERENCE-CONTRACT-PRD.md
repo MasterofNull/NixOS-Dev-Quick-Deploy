@@ -2,7 +2,7 @@
 
 Status: DRAFT REVISION — C0.3 integrated at `c9fe3974`; independent contract review required before implementation
 Owner: Codex orchestrator
-Target batch/operator ingress: `delegate-to-local` adapter (subject to the named kernel-front-door decision)
+Kernel front door: `local-orchestrator` retained; `delegate-to-local` remains a batch adapter
 Interactive client: `aq-chat`
 
 ## 0. Current evidence and transition posture
@@ -42,7 +42,8 @@ operation and receive materially different routing, authority, context and evide
 
 Create one versioned, model-agnostic local inference contract. The hybrid coordinator remains the
 canonical control-plane and run-lifecycle authority; the switchboard remains the model-execution
-gateway. The delegation pipeline is the canonical operator/CLI ingress, not a lifecycle writer.
+gateway. `local-orchestrator` remains the kernel-declared CLI front door and the delegation pipeline
+remains a batch adapter, not a lifecycle writer.
 `aq-chat` becomes a thin interactive adapter that submits the same request envelope and consumes the
 same result/event envelopes while retaining terminal UX, conversation history and slash commands.
 
@@ -522,8 +523,11 @@ Freeze an exact inventory in the implementation authorization from these candida
 Both legacy adapters receive pure request builders used by tests, but no live call path is cut over in
 L1A. Golden vectors must prove byte-identical resolved mode/profile/model/task/effective-role/tools/
 budgets/fallback/version for chat and delegation inputs. Negative fixtures cover unknown fields,
-forged interactive/human/orchestrator clearance, invalid leases, path/symlink escape, contradictory
-tool authority, redaction, deterministic compaction, and explicit unavailable profiles.
+forged interactive/human/orchestrator clearance, forged approval/lease/priority, injected canonical
+path escape, contradictory tool authority, and explicit unavailable profiles. Chat and delegation
+fixtures retain their distinct current source shapes and use independently implemented normalizers;
+expected canonical bytes are pinned so the parity assertion cannot be tautological. Filesystem
+symlink resolution, TOCTOU revalidation, redaction, and deterministic compaction are deferred to L2.
 
 ### Later slices (separately authorized)
 
@@ -535,5 +539,6 @@ governed policy flag registered in `config/env-contract.yaml`, never an ad hoc e
 C0.3 discovery/evidence is integrated, but C0.3 ratification remains blocked pending owner
 adjudication of every split-brain row's target, transition owner, deadline, and rollback. No L1A
 implementation begins until its exact file inventory and
-golden fixtures receive independent review and the kernel-front-door conflict is recorded as a named
-decision rather than silently redefining the tracked kernel.
+golden fixtures receive independent review. The owner retained the tracked per-authority direction
+without ratifying the proposed ADR and retained `local-orchestrator` as the kernel-declared CLI front
+door; L1A does not revise either declaration.
