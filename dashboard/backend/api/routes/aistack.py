@@ -53,6 +53,7 @@ _REDIS_PROBE_CACHE_TTL_S: float = 30.0
 _PG_POOL: Optional[Any] = None  # asyncpg.Pool, typed as Any to avoid import-time errors
 _MODEL_INVENTORY_WARNINGS: set[tuple[str, str]] = set()
 _LOCAL_INFERENCE_CONTRACT_MODULE: Optional[Any] = None
+_LOCAL_INFERENCE_POLICY_MODULE: Optional[Any] = None
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -2187,6 +2188,108 @@ def _local_inference_contract_health() -> Dict[str, Any]:
     }
 
 
+def _local_inference_l2a_health() -> Dict[str, Any]:
+    """Bounded L2A shadow-fixture projection; rejects invented health and raw content."""
+    default = {
+        "status": "unavailable",
+        "mode": "shadow_fixture_only",
+        "policy_version": None,
+        "schema_status": "unavailable",
+        "caller_tier_parity": "unavailable",
+        "vector_count": None,
+        "context_adapter_version": None,
+        "compaction_policy_version": None,
+        "redaction_vector_count": None,
+        "compaction_vector_count": None,
+        "profile_decisions": {},
+        "digest": None,
+        "freshness": "commit_fixture",
+        "reason_code": "policy_module_unavailable",
+    }
+    module_path = _repo_root() / "scripts" / "ai" / "lib" / "local_inference_policy.py"
+    try:
+        global _LOCAL_INFERENCE_POLICY_MODULE
+        if _LOCAL_INFERENCE_POLICY_MODULE is None:
+            spec = importlib.util.spec_from_file_location("aq_local_inference_policy", module_path)
+            if spec is None or spec.loader is None:
+                return default
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            _LOCAL_INFERENCE_POLICY_MODULE = module
+        raw = _LOCAL_INFERENCE_POLICY_MODULE.policy_health(_repo_root())
+    except Exception:  # fail closed without exposing exception or fixture content
+        return default
+    if not isinstance(raw, dict):
+        return {**default, "status": "degraded", "reason_code": "invalid_policy_health_projection"}
+    status = raw.get("status")
+    schema_status = raw.get("schema_status")
+    parity = raw.get("caller_tier_parity")
+    policy_version = raw.get("policy_version")
+    context_version = raw.get("context_adapter_version")
+    compaction_version = raw.get("compaction_policy_version")
+    vector_count = raw.get("vector_count")
+    redaction_count = raw.get("redaction_vector_count")
+    compaction_count = raw.get("compaction_vector_count")
+    digest = raw.get("digest")
+    reason_code = raw.get("reason_code")
+    decisions = raw.get("profile_decisions")
+    expected_profiles = {
+        "default", "embedded-assist", "continue-local", "local-coding",
+        "local-tool-calling", "local-agent", "ralph",
+    }
+    decision_states = {
+        "registered", "conflicted_unavailable", "mode_only", "legacy_excluded",
+        "registered_read_only_target",
+    }
+    reason_codes = {
+        "policy_assets_missing", "policy_schema_invalid", "policy_fixture_missing",
+        "policy_fixture_invalid", "policy_fixture_parity_pass",
+    }
+    version_pattern = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+    counts = (vector_count, redaction_count, compaction_count)
+    if status not in {"healthy", "degraded", "unavailable"}:
+        return {**default, "status": "degraded", "reason_code": "invalid_policy_health_status"}
+    if (
+        schema_status not in {"valid", "invalid", "unavailable"}
+        or parity not in {"pass", "fail", "unavailable"}
+        or not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in counts)
+        or not isinstance(decisions, dict)
+        or set(decisions) != expected_profiles
+        or any(value not in decision_states for value in decisions.values())
+        or not all(isinstance(value, str) and version_pattern.fullmatch(value) for value in (policy_version, context_version, compaction_version))
+        or (digest is not None and (not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None))
+        or reason_code not in reason_codes
+    ):
+        return {**default, "status": "degraded", "reason_code": "invalid_policy_health_projection"}
+    if status == "healthy" and not (
+        schema_status == "valid"
+        and parity == "pass"
+        and vector_count >= 4
+        and redaction_count > 0
+        and compaction_count > 0
+        and isinstance(digest, str)
+        and reason_code == "policy_fixture_parity_pass"
+    ):
+        return {**default, "status": "degraded", "reason_code": "invalid_policy_health_projection"}
+    return {
+        "status": status,
+        "mode": "shadow_fixture_only",
+        "policy_version": policy_version,
+        "schema_status": schema_status,
+        "caller_tier_parity": parity,
+        "vector_count": vector_count,
+        "context_adapter_version": context_version,
+        "compaction_policy_version": compaction_version,
+        "redaction_vector_count": redaction_count,
+        "compaction_vector_count": compaction_count,
+        "profile_decisions": {name: decisions[name] for name in sorted(expected_profiles)},
+        "digest": digest,
+        "freshness": "commit_fixture",
+        "reason_code": reason_code,
+    }
+
+
 def _loop_telemetry_dirs() -> List[Path]:
     return [
         Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")),
@@ -2725,6 +2828,7 @@ async def get_harness_overview() -> Dict[str, Any]:
             "stats": harness_stats,
             "scorecard": harness_scorecard,
             "local_inference_contract": _local_inference_contract_health(),
+            "local_inference_l2a": _local_inference_l2a_health(),
             "capability_discovery": (
                 hybrid_health.get("capability_discovery")
                 or harness_scorecard.get("discovery")

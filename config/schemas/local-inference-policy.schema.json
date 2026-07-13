@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-policy/1.0",
+  "$defs": {
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "deadline_ms", "queue_wait_ms", "max_tool_calls"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 1},
+        "output_tokens": {"type": "integer", "minimum": 1},
+        "deadline_ms": {"type": "integer", "minimum": 1},
+        "queue_wait_ms": {"type": "integer", "minimum": 1},
+        "max_tool_calls": {"type": "integer", "minimum": 0}
+      }
+    },
+    "caller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["budgets", "inline_max_chars"],
+      "properties": {
+        "budgets": {"$ref": "#/$defs/budgets"},
+        "inline_max_chars": {"type": "integer", "minimum": 256, "maximum": 12000}
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible", "max_side_effects", "allowed_modes", "allowed_lanes", "allowed_tools", "budgets"],
+      "properties": {
+        "eligible": {"type": "boolean"},
+        "max_side_effects": {"enum": ["none", "read", "write"]},
+        "allowed_modes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["direct", "hybrid", "agent", "ralph"]}},
+        "allowed_lanes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["embedded", "coding_logic", "tool_agent"]}},
+        "allowed_tools": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"}},
+        "budgets": {"$ref": "#/$defs/budgets"}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "policy_version", "profile_catalog", "profile_decisions", "caller_tiers", "task_classes", "blocked_domains", "context", "strict_json"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "policy_version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+    "profile_catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "realization"],
+      "properties": {
+        "source": {"const": "config/switchboard-profiles.yaml"},
+        "realization": {"const": "immutable_injected_snapshot"}
+      }
+    },
+    "profile_decisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "embedded-assist", "continue-local", "local-coding", "local-tool-calling", "local-agent", "ralph"],
+      "properties": {
+        "default": {"const": "legacy_excluded"},
+        "embedded-assist": {"const": "registered"},
+        "continue-local": {"const": "registered"},
+        "local-coding": {"const": "conflicted_unavailable"},
+        "local-tool-calling": {"const": "registered_read_only_target"},
+        "local-agent": {"const": "registered"},
+        "ralph": {"const": "mode_only"}
+      }
+    },
+    "caller_tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flagship", "standard", "budget", "deterministic"],
+      "properties": {
+        "flagship": {"$ref": "#/$defs/caller"},
+        "standard": {"$ref": "#/$defs/caller"},
+        "budget": {"$ref": "#/$defs/caller"},
+        "deterministic": {"$ref": "#/$defs/caller"}
+      }
+    },
+    "task_classes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lookup", "extract", "classify", "summarize", "review", "validate", "single_command", "single_edit", "decomposed_edit"],
+      "properties": {
+        "lookup": {"$ref": "#/$defs/task"}, "extract": {"$ref": "#/$defs/task"},
+        "classify": {"$ref": "#/$defs/task"}, "summarize": {"$ref": "#/$defs/task"},
+        "review": {"$ref": "#/$defs/task"}, "validate": {"$ref": "#/$defs/task"},
+        "single_command": {"$ref": "#/$defs/task"}, "single_edit": {"$ref": "#/$defs/task"},
+        "decomposed_edit": {"$ref": "#/$defs/task"}
+      }
+    },
+    "blocked_domains": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["architecture", "policy", "destructive", "security-acceptance", "multi-agent-coordination", "external-write"]}},
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter_version", "compaction_policy_version", "budget_unit", "summary_position", "redaction_rule_ids", "required_system_redaction"],
+      "properties": {
+        "adapter_version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+        "compaction_policy_version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+        "budget_unit": {"const": "nfc_unicode_code_points"},
+        "summary_position": {"const": "after_system_or_first"},
+        "redaction_rule_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["credential_assignment", "bearer_token", "private_key", "email_address"]}},
+        "required_system_redaction": {"const": "block"}
+      }
+    },
+    "strict_json": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "response_format_intent", "wire_visibility"],
+      "properties": {
+        "contract": {"const": "exact_json_only"},
+        "response_format_intent": {"const": "json_object_when_supported"},
+        "wire_visibility": {"const": "shadow_internal_until_l2b"}
+      }
+    }
+  }
+}
