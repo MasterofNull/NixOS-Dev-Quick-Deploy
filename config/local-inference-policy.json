@@ -1,0 +1,41 @@
+{
+  "contract_version": "1.0",
+  "policy_version": "local-inference-l2a-v1",
+  "profile_catalog": {"source": "config/switchboard-profiles.yaml", "realization": "immutable_injected_snapshot"},
+  "profile_decisions": {
+    "default": "legacy_excluded",
+    "embedded-assist": "registered",
+    "continue-local": "registered",
+    "local-coding": "conflicted_unavailable",
+    "local-tool-calling": "registered_read_only_target",
+    "local-agent": "registered",
+    "ralph": "mode_only"
+  },
+  "caller_tiers": {
+    "flagship": {"budgets": {"input_tokens": 4000, "output_tokens": 1200, "deadline_ms": 180000, "queue_wait_ms": 30000, "max_tool_calls": 8}, "inline_max_chars": 8000},
+    "standard": {"budgets": {"input_tokens": 2400, "output_tokens": 800, "deadline_ms": 150000, "queue_wait_ms": 30000, "max_tool_calls": 6}, "inline_max_chars": 6000},
+    "budget": {"budgets": {"input_tokens": 1400, "output_tokens": 400, "deadline_ms": 120000, "queue_wait_ms": 20000, "max_tool_calls": 3}, "inline_max_chars": 4000},
+    "deterministic": {"budgets": {"input_tokens": 1200, "output_tokens": 300, "deadline_ms": 90000, "queue_wait_ms": 12000, "max_tool_calls": 2}, "inline_max_chars": 3000}
+  },
+  "task_classes": {
+    "lookup": {"eligible": true, "max_side_effects": "read", "allowed_modes": ["direct", "hybrid"], "allowed_lanes": ["embedded"], "allowed_tools": ["read_file", "rg"], "budgets": {"input_tokens": 800, "output_tokens": 220, "deadline_ms": 60000, "queue_wait_ms": 8000, "max_tool_calls": 2}},
+    "extract": {"eligible": true, "max_side_effects": "none", "allowed_modes": ["direct", "hybrid"], "allowed_lanes": ["embedded"], "allowed_tools": [], "budgets": {"input_tokens": 900, "output_tokens": 180, "deadline_ms": 60000, "queue_wait_ms": 8000, "max_tool_calls": 0}},
+    "classify": {"eligible": true, "max_side_effects": "none", "allowed_modes": ["direct"], "allowed_lanes": ["embedded"], "allowed_tools": [], "budgets": {"input_tokens": 700, "output_tokens": 120, "deadline_ms": 45000, "queue_wait_ms": 6000, "max_tool_calls": 0}},
+    "summarize": {"eligible": true, "max_side_effects": "none", "allowed_modes": ["direct", "hybrid"], "allowed_lanes": ["embedded"], "allowed_tools": [], "budgets": {"input_tokens": 1000, "output_tokens": 250, "deadline_ms": 60000, "queue_wait_ms": 8000, "max_tool_calls": 0}},
+    "review": {"eligible": true, "max_side_effects": "read", "allowed_modes": ["direct", "hybrid"], "allowed_lanes": ["coding_logic"], "allowed_tools": ["read_file", "rg"], "budgets": {"input_tokens": 1000, "output_tokens": 250, "deadline_ms": 60000, "queue_wait_ms": 8000, "max_tool_calls": 2}},
+    "validate": {"eligible": true, "max_side_effects": "read", "allowed_modes": ["hybrid", "agent"], "allowed_lanes": ["tool_agent"], "allowed_tools": ["read_file", "rg"], "budgets": {"input_tokens": 900, "output_tokens": 220, "deadline_ms": 90000, "queue_wait_ms": 10000, "max_tool_calls": 2}},
+    "single_command": {"eligible": true, "max_side_effects": "write", "allowed_modes": ["agent"], "allowed_lanes": ["tool_agent"], "allowed_tools": ["run_command"], "budgets": {"input_tokens": 1000, "output_tokens": 300, "deadline_ms": 120000, "queue_wait_ms": 15000, "max_tool_calls": 1}},
+    "single_edit": {"eligible": true, "max_side_effects": "write", "allowed_modes": ["agent"], "allowed_lanes": ["tool_agent"], "allowed_tools": ["read_file", "write_file"], "budgets": {"input_tokens": 1200, "output_tokens": 300, "deadline_ms": 120000, "queue_wait_ms": 15000, "max_tool_calls": 2}},
+    "decomposed_edit": {"eligible": false, "max_side_effects": "write", "allowed_modes": ["ralph"], "allowed_lanes": ["tool_agent"], "allowed_tools": [], "budgets": {"input_tokens": 1200, "output_tokens": 300, "deadline_ms": 180000, "queue_wait_ms": 20000, "max_tool_calls": 0}}
+  },
+  "blocked_domains": ["architecture", "policy", "destructive", "security-acceptance", "multi-agent-coordination", "external-write"],
+  "context": {
+    "adapter_version": "context-l2a-v1",
+    "compaction_policy_version": "compact-l2a-v1",
+    "budget_unit": "nfc_unicode_code_points",
+    "summary_position": "after_system_or_first",
+    "redaction_rule_ids": ["credential_assignment", "bearer_token", "private_key", "email_address"],
+    "required_system_redaction": "block"
+  },
+  "strict_json": {"contract": "exact_json_only", "response_format_intent": "json_object_when_supported", "wire_visibility": "shadow_internal_until_l2b"}
+}

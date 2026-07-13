@@ -1342,6 +1342,25 @@ def _check_local_inference_contract(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.37", "local inference contract L1A", detail[-500:])]
 
 
+def _check_local_inference_l2a(ctx: RunContext) -> list[CheckResult]:
+    """L2A: shadow caller/task policy, deterministic context, parity, and dashboard health."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-local-inference-l2a.py"
+    if not check.exists():
+        return [failed(1, "0.10.38", "local inference contract L2A", "test-local-inference-l2a.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.38", "local inference L2A: shadow policy, context, tier parity, dashboard health")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.38", "local inference contract L2A", detail[-500:])]
+
+
 def _check_phase171_throughput_calibration(ctx: RunContext) -> list[CheckResult]:
     """Phase 171: verify LOCAL_TOK_PER_SEC constant is within 50% of measured throughput."""
     check = ctx.repo_root / "scripts" / "testing" / "test-local-inference-throughput.py"
@@ -1758,6 +1777,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_token_usage_coverage(ctx))
     results.extend(_check_modal_task_profiles(ctx))
     results.extend(_check_local_inference_contract(ctx))
+    results.extend(_check_local_inference_l2a(ctx))
     if not ctx.dashboard_safe:
         results.extend(_check_local_inference_budget(ctx))
         results.extend(_check_local_agent_store_memory_contract(ctx))

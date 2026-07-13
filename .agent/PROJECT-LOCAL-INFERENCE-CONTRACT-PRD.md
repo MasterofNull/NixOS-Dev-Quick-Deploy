@@ -1,6 +1,6 @@
 # PRD — Canonical Local Inference Contract and `aq-chat` Parity
 
-Status: DRAFT REVISION — C0.3 integrated at `c9fe3974`; independent contract review required before implementation
+Status: L1A COMPLETE (`0c171504`) — L2A SHADOW SLICE AUTHORIZED; live adoption not authorized
 Owner: Codex orchestrator
 Kernel front door: `local-orchestrator` retained; `delegate-to-local` remains a batch adapter
 Interactive client: `aq-chat`
@@ -409,13 +409,14 @@ check ships with the contract.
 - No runtime routing change.
 - Acceptance: unknown fields, invalid paths, authority escalation and invalid budgets fail closed.
 
-### L2 — Canonical request builder and policy
+### L2A — Canonical request, context, and policy shadow kernel
 
 - Add shared prompt/context adapter and task eligibility/budget policy.
-- Reconcile profile metadata and isolate write-capable behavior.
+- Record explicit profile transition decisions and isolate write-capable behavior without changing
+  live profile routing, callers, or tool execution.
 - Acceptance: flagship, standard, budget and deterministic callers create equivalent valid requests.
 
-### L2b — Transport and payload adapters
+### L2B — Transport and payload adapters
 
 - Give direct llama, switchboard, coordinator and Ralph adapters one event/result interface.
 - Route every llama-bound request through `build_llama_payload()`.
@@ -531,14 +532,20 @@ symlink resolution, TOCTOU revalidation, redaction, and deterministic compaction
 
 ### Later slices (separately authorized)
 
-L2 extracts the shared transport and removes all raw llama payload construction; L3 moves delegation
-lifecycle to the coordinator; L4 migrates `aq-chat`; L5 proves replay/recovery and retires legacy
+L2A builds the request/context/policy shadow kernel. L2B extracts the shared transport and removes all
+raw llama payload construction; L3 moves delegation lifecycle to the coordinator; L4 migrates
+`aq-chat`; L5 proves replay/recovery and retires legacy
 writers. Cancellation remains lifecycle-owned—clients never map request IDs to PIDs. Rollback uses one
 governed policy flag registered in `config/env-contract.yaml`, never an ad hoc environment escape.
 
+L2A is explicitly no-writer and no-cutover, so unresolved C0.3 lifecycle ratification does not block
+it. C0.3 adjudication is mandatory before L3 lifecycle migration. Descriptor-bound path enforcement,
+no-follow behavior, atomic create/replace, and adversarial symlink/rename revalidation are mandatory
+before any live write-capable adoption; pure `resolve()` evidence is not an execution-time TOCTOU guard.
+
 C0.3 discovery/evidence is integrated, but C0.3 ratification remains blocked pending owner
-adjudication of every split-brain row's target, transition owner, deadline, and rollback. No L1A
-implementation begins until its exact file inventory and
-golden fixtures receive independent review. The owner retained the tracked per-authority direction
-without ratifying the proposed ADR and retained `local-orchestrator` as the kernel-declared CLI front
-door; L1A does not revise either declaration.
+adjudication of every split-brain row's target, transition owner, deadline, and rollback. L1A completed
+at `0c171504` after exact-inventory and golden-fixture review. No L2A implementation begins until
+`.agent/PROJECT-LOCAL-INFERENCE-L2A-PLAN.md` receives independent approval. The owner retained the
+tracked per-authority direction without ratifying the proposed ADR and retained `local-orchestrator`
+as the kernel-declared CLI front door; L2A does not revise either declaration.

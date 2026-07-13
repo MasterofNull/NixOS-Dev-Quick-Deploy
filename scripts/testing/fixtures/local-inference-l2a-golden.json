@@ -1,0 +1,28 @@
+{
+  "contract_version": "1.0",
+  "policy_version": "local-inference-l2a-v1",
+  "vectors": [
+    {
+      "id": "review-tier-parity",
+      "l1_vector_id": "read-review-standard",
+      "profile": "continue-local",
+      "caller_tiers": ["flagship", "standard", "budget", "deterministic"],
+      "trusted_ingress": {
+        "flagship": {"authenticated_model_class": "flagship", "profile_snapshot_revision": "profile-snapshot-test-v1", "response_format_supported": true},
+        "standard": {"authenticated_model_class": "standard", "profile_snapshot_revision": "profile-snapshot-test-v1", "response_format_supported": false},
+        "budget": {"authenticated_model_class": "budget", "profile_snapshot_revision": "profile-snapshot-test-v1", "response_format_supported": false},
+        "deterministic": {"authenticated_model_class": "deterministic", "profile_snapshot_revision": "profile-snapshot-test-v1", "response_format_supported": false}
+      },
+      "profile_facts": {
+        "continue-local": {
+          "status": "available",
+          "model": "qwen-local-current",
+          "budgets": {"input_tokens": 1100, "output_tokens": 350, "deadline_ms": 90000, "queue_wait_ms": 12000, "max_tool_calls": 3}
+        }
+      },
+      "expected_canonical_utf8": "{\"budgets\":{\"deadline_ms\":60000,\"input_tokens\":1000,\"max_tool_calls\":2,\"output_tokens\":250,\"queue_wait_ms\":8000},\"capability_delta\":[],\"config_version\":\"local-inference-l2a-v1\",\"contract_version\":\"1.0\",\"effective_role\":\"implementer\",\"fallback\":{\"allowed_profiles\":[],\"equivalence_registry_version\":\"equivalence-v1\",\"max_attempts\":1,\"mode\":\"deny\"},\"mode\":\"hybrid\",\"model\":\"qwen-local-current\",\"profile\":\"continue-local\",\"queue_band\":\"normal\",\"reasons\":[\"explicit_profile_available\",\"unassigned_role_implementer_constraints\",\"componentwise_budget_minimum\",\"trusted_tool_intersection\"],\"requested_profile\":\"continue-local\",\"side_effects\":\"read\",\"task_class\":\"review\",\"tools\":[\"read_file\",\"rg\"]}"
+    }
+  ],
+  "redaction_vector_count": 4,
+  "compaction_vector_count": 3
+}

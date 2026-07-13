@@ -3933,6 +3933,7 @@ async function loadHarnessOv() {
   const s = (d.harness || {}).stats || {};
   const card = (d.harness || {}).scorecard || {};
   const lic = (d.harness || {}).local_inference_contract || {};
+  const l2a = (d.harness || {}).local_inference_l2a || {};
   const inf = card.inference_optimizations || {};
   const disc = card.discovery || {};
   if (badge) {
@@ -3998,6 +3999,25 @@ async function loadHarnessOv() {
       Number.isInteger(lic.vector_count) && lic.vector_count > 0 ? "info" : "warn"
     ),
     fwRow("· mode", lic.mode || "--", lic.mode === "fixture_only" ? "info" : "warn"),
+    fwRow(
+      "Policy Shadow",
+      l2a.status || "unavailable",
+      l2a.status === "healthy" ? "ok" : "warn"
+    ),
+    fwRow("· policy", l2a.policy_version || "--", l2a.policy_version ? "info" : "warn"),
+    fwRow(
+      "· tier parity",
+      l2a.caller_tier_parity || "unavailable",
+      l2a.caller_tier_parity === "pass" ? "ok" : "warn"
+    ),
+    fwRow(
+      "· ctx vectors",
+      Number.isInteger(l2a.redaction_vector_count) && Number.isInteger(l2a.compaction_vector_count)
+        ? `${l2a.redaction_vector_count} redact · ${l2a.compaction_vector_count} compact`
+        : "--",
+      (l2a.redaction_vector_count || 0) > 0 && (l2a.compaction_vector_count || 0) > 0 ? "info" : "warn"
+    ),
+    fwRow("· mode", l2a.mode || "--", l2a.mode === "shadow_fixture_only" ? "info" : "warn"),
   ]
     .filter(Boolean)
     .join("");
