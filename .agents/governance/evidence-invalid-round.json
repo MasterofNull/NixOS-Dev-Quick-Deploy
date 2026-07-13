@@ -1,0 +1,78 @@
+{
+  "id": "planning-round",
+  "domain": "Planning round (collab round decision/aggregate/contribution/authorization)",
+  "observed_authority_claims": [
+    "existing round.json manifest wins on read",
+    "aq-collab-round dispatch/prompt writer",
+    "round_state.save temp/fsync/replace writer",
+    "per-agent Markdown/JSON contribution sidecars treated as landed",
+    "round_aggregate lane-status quorum authorization"
+  ],
+  "observed_writers": [
+    {
+      "path": "scripts/ai/aq-collab-round",
+      "line": 68,
+      "note": "writes prompts and dispatch"
+    },
+    {
+      "path": "scripts/ai/aq-collab-round",
+      "line": 320,
+      "note": "agents write independent Markdown/JSON (320-348)"
+    },
+    {
+      "path": "scripts/ai/lib/round_state.py",
+      "line": 169,
+      "note": "save temp/fsync/replaces round.json"
+    }
+  ],
+  "current_condition": "SPLIT_BRAIN",
+  "selected_target_authority": null,
+  "projections": [
+    {
+      "name": "round.json manifest",
+      "reader_path": "scripts/ai/aq-collab-round",
+      "rebuild_source": "replay of dispatch log + validated contribution sidecars"
+    },
+    {
+      "name": "status view (Markdown-presence=landed)",
+      "reader_path": "scripts/ai/lib/round_contribution.py",
+      "rebuild_source": "re-derive from valid JSON sidecar precedence"
+    }
+  ],
+  "ordering_revision": "contribution precedence: valid JSON sidecar > Markdown > dispatch log; status path diverges by treating Markdown presence as landed (aq-collab-round:96,476; round_contribution.py:101-108)",
+  "provenance_freshness": "per-contribution mtime; no single monotonic revision across writers",
+  "bypasses": [
+    {
+      "path": "scripts/ai/aq-collab-round",
+      "line": 51,
+      "description": "typed-failure fallback to legacy Markdown (_LIB_OK fail-open at :141)"
+    },
+    {
+      "path": "scripts/ai/lib/round_aggregate.py",
+      "line": 77,
+      "description": "lane-status quorum authorizes without evidence (77,115)"
+    }
+  ],
+  "adjudicator": "collab-round owner (planning lane)",
+  "recovery_owner": "amendment/abort path (assignment/close recovery incomplete)",
+  "target_hypothesis": "round.json as sole manifest authority; demote dispatch/agent/aggregate Markdown to evidence projections; retire lane-status authorization and Markdown-existence landing",
+  "migration_owner": "Cycle 1 state-spine owner (unassigned)",
+  "rollback_owner": "planning lane owner",
+  "resolution_deadline": "2026-10-09",
+  "usage_divergence_metric": "count of rounds where Markdown-landing status disagrees with JSON-sidecar precedence",
+  "exception": null,
+  "shims": [],
+  "writer_signatures": [
+    {
+      "store_token": "round.json",
+      "write_tokens": [
+        "write_text",
+        "os.replace",
+        "json.dump",
+        ">>",
+        "open("
+      ]
+    }
+  ],
+  "notes": "C0.1 producer contract: round decision/review/aggregate/contribution/authorization each get distinct authority rows."
+}

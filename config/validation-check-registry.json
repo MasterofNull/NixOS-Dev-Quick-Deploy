@@ -1004,6 +1004,35 @@
       "enabled": true
     },
     {
+      "id": "state-authorities",
+      "description": "C0.3 state-authority ledger, bounded read-only checker, and audit-card governance projection",
+      "trigger_paths": [
+        "config/system-state-authorities.yaml",
+        "config/schemas/system-state-authorities.schema.json",
+        "scripts/governance/check-state-authorities.py",
+        "scripts/testing/test-state-authorities.py",
+        "scripts/testing/test-dashboard-governance-projection.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash",
+        "dashboard/backend/api/routes/audit.py",
+        "assets/dashboard.js",
+        "docs/architecture/aqos-cycle1-state-spine-adr.md",
+        "docs/architecture/canonical-kernel-declaration.md",
+        ".agents/governance/evidence-invalid-round.json",
+        ".agents/governance/evidence-failed-qa-report.json",
+        ".agents/plans/aqos-refoundation-cycle0/C0.3-IMPLEMENTATION-REPORT.md",
+        "config/validation-check-registry.json"
+      ],
+      "command": [
+        "bash",
+        "-c",
+        "python3 scripts/testing/test-state-authorities.py && python3 scripts/testing/test-dashboard-governance-projection.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
       "id": "attention-contention",
       "description": "Phase 93.14 attention queue lock contention telemetry aggregation and threshold logic",
       "trigger_paths": [

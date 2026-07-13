@@ -1,0 +1,60 @@
+{
+  "id": "qa-effectiveness",
+  "domain": "QA / effectiveness scorecard",
+  "observed_authority_claims": [
+    "Python harness overwrites latest QA file",
+    "Bash harness overwrites same latest QA file (no inter-process lock)",
+    "aq-report writes separate latest report and computes scorecard",
+    "dashboard has fallback scorecard calculator (second score semantics)"
+  ],
+  "observed_writers": [
+    {
+      "path": "scripts/testing/harness_qa/main.py",
+      "line": 315,
+      "note": "overwrites latest QA (315-335)"
+    },
+    {
+      "path": "scripts/ai/_aq-qa-bash",
+      "line": 2812,
+      "note": "overwrites same latest QA (2812-2834)"
+    },
+    {
+      "path": "scripts/ai/aq-report",
+      "line": 7707,
+      "note": "writes separate latest report + scorecard (7707-7910)"
+    }
+  ],
+  "current_condition": "SPLIT_BRAIN",
+  "selected_target_authority": null,
+  "projections": [
+    {
+      "name": "dashboard scorecard card",
+      "reader_path": "dashboard/backend/api/routes/aistack.py",
+      "rebuild_source": "recompute from immutable QA invocation artifact (C0.2 evidence store)"
+    },
+    {
+      "name": "remediation reader",
+      "reader_path": "scripts/ai/aq-report",
+      "rebuild_source": "re-read verified QA evidence"
+    }
+  ],
+  "ordering_revision": "two clobber writers to one latest path; last-writer-wins, no revision",
+  "provenance_freshness": "file mtime; report may substitute delegation for missing QA",
+  "bypasses": [
+    {
+      "path": "dashboard/backend/api/routes/aistack.py",
+      "line": 5281,
+      "description": "_synthesize_scorecard_from_report() second score semantics (5281-5334)"
+    }
+  ],
+  "adjudicator": "QA/effectiveness owner",
+  "recovery_owner": "rerun/manual replacement; no immutable invocation recovery pre-C0.2",
+  "target_hypothesis": "one QA artifact is invocation evidence (C0.2), pointer/dashboard are projections, declared report scorecard producer; retire _synthesize_scorecard_from_report and the second clobber writer",
+  "migration_owner": "Cycle 1 state-spine owner (unassigned)",
+  "rollback_owner": "QA/effectiveness owner",
+  "resolution_deadline": "2026-10-09",
+  "usage_divergence_metric": "count of runs where dashboard fallback scorecard diverges from C0.2 evidence-store scorecard",
+  "exception": null,
+  "shims": [],
+  "notes": "C0.2 producer contract: one QA artifact = invocation evidence; scorecard producer declared."
+}

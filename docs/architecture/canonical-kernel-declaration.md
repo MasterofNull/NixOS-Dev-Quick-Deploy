@@ -156,6 +156,37 @@ Instruction surfaces should become generated views of kernel policy where practi
 
 5. Baseline health: resolved in §7 above — 2 aq-qa failures; enforcement deferred until green.
 
+## State authority & retirement ledger (C0.3 discovery projection)
+
+Cycle 0 slice C0.3 inventoried who currently owns each critical cross-system state and what
+its target disposition should be **before** Cycle 1 moves durable truth. This section is a
+**narrow read-only projection** of the reviewed registry; the SSOT is
+`config/system-state-authorities.yaml` (schema `config/schemas/system-state-authorities.schema.json`),
+surfaced by the bounded read-only checker `scripts/governance/check-state-authorities.py` and the
+existing operator audit-integrity card.
+
+This projection confers **no runtime implementation authority** and **does not authorize any Cycle 1
+storage move** (`meta.cycle1_authority = NOT_AUTHORIZED`). Every non-`SINGLE` condition below is an
+honest observation that **blocks C0.3 ratification** until an adjudicated target disposition and
+deadline exist; no singleton owner is invented to make validation pass. Target hypotheses are
+proposals for Cycle 1, not decisions.
+
+| Authority | Domain | Current condition | Target hypothesis (proposal, not authorized) |
+|---|---|---|---|
+| `planning-round` | Planning round | SPLIT_BRAIN | round.json as sole manifest authority |
+| `delegation-lifecycle` | Delegation lifecycle | SPLIT_BRAIN | single TaskRegistry writer under one lock |
+| `intent-resume` | Intent/resume | SPLIT_BRAIN | separate Intent Lock from delegation in_flight |
+| `workflow-run-task` | Workflow/run/task sessions | SPLIT_BRAIN | single coordinator writer |
+| `qa-effectiveness` | QA / effectiveness scorecard | SPLIT_BRAIN | one QA artifact is invocation evidence (C0.2); pointer/dashboard are projections |
+| `routing-model-execution` | Routing / model execution | SPLIT_BRAIN | switchboard as sole gateway |
+| `learning-eval` | Learning / eval | SPLIT_BRAIN | single eval/promotion authority |
+| `memory-rag` | Memory / RAG | SPLIT_BRAIN | gate direct Qdrant writers behind broker/collection ownership |
+| `configuration` | Configuration | SPLIT_BRAIN | Nix deployed chain is the durable-config authority |
+| `dashboard-operator` | Dashboard / operator | SPLIT_BRAIN | persist complete approvals in SQLite; retire approval dictionaries |
+
+The Cycle 1 storage decision these rows feed is drafted — not authorized — in
+`docs/architecture/aqos-cycle1-state-spine-adr.md`.
+
 ## Summary
 
 The harness should evolve as a **local-first agent operating platform with a small explicit kernel**, not as an ever-growing collection of adjacent clever features. The immediate task is therefore architectural convergence: make intent, routing, workflow, delegation, and memory agree before adding more domains on top.

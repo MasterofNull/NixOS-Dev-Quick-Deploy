@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nixos-dev-quick-deploy/config/schemas/system-state-authorities.schema.json",
+  "title": "AQ-OS System State Authority & Retirement Ledger (C0.3 discovery)",
+  "description": "Read-only discovery registry. One current owner and one target disposition for every critical cross-system state. Discovery values SINGLE|SPLIT_BRAIN|UNKNOWN|UNOWNED are truthful observations; SPLIT_BRAIN/UNKNOWN/UNOWNED are valid for discovery but block C0.3 ratification until an adjudicated target disposition and deadline exist. Never invent a singleton authority to make validation pass. This registry confers NO runtime implementation authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "authorities"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "slice", "generated", "source", "scan", "cycle1_authority"],
+      "properties": {
+        "version": {"type": "string"},
+        "slice": {"type": "string", "const": "C0.3"},
+        "generated": {"type": "string", "description": "ISO-8601 date the snapshot was recorded"},
+        "source": {"type": "string", "description": "Provenance of the observed rows (source-verified inventory reference)"},
+        "cycle1_authority": {
+          "type": "string",
+          "const": "NOT_AUTHORIZED",
+          "description": "Explicit assertion that Cycle 1 durable-storage moves are not authorized by this discovery artifact."
+        },
+        "scan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file_cap", "measured_baseline", "exclusions"],
+          "properties": {
+            "file_cap": {"type": "integer", "maximum": 8000, "minimum": 1},
+            "measured_baseline": {"type": "integer", "minimum": 0},
+            "exclusions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "string"},
+              "description": "Substring/prefix/suffix exclusion tokens for test/example/generated/doc/archive paths so isolated fixtures never create production debt."
+            }
+          }
+        }
+      }
+    },
+    "authorities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {"$ref": "#/definitions/authority"}
+    }
+  },
+  "definitions": {
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "domain",
+        "observed_authority_claims",
+        "observed_writers",
+        "current_condition",
+        "selected_target_authority",
+        "projections",
+        "ordering_revision",
+        "provenance_freshness",
+        "bypasses",
+        "adjudicator",
+        "recovery_owner",
+        "target_hypothesis",
+        "migration_owner",
+        "rollback_owner",
+        "resolution_deadline",
+        "usage_divergence_metric",
+        "shims"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "domain": {"type": "string"},
+        "observed_authority_claims": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Every distinct thing that claims to be authoritative for this state. May be more than one (that is what SPLIT_BRAIN means)."
+        },
+        "observed_writers": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/writer"},
+          "description": "Declared writers with file:line provenance. Any tracked production file that writes a declared store but is absent here is an undeclared-writer finding."
+        },
+        "current_condition": {
+          "type": "string",
+          "enum": ["SINGLE", "SPLIT_BRAIN", "UNKNOWN", "UNOWNED"]
+        },
+        "selected_target_authority": {
+          "type": ["string", "null"],
+          "description": "Adjudicated single owner. MUST be null for SPLIT_BRAIN/UNKNOWN/UNOWNED discovery rows (no invented singleton); a non-null value asserts an adjudicated decision and requires a resolution_deadline."
+        },
+        "projections": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {"$ref": "#/definitions/projection"},
+          "description": "Readers/caches/sidecars derived from the authority. Each MUST name a rebuild source."
+        },
+        "ordering_revision": {"type": "string"},
+        "provenance_freshness": {"type": "string"},
+        "bypasses": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/bypass"}
+        },
+        "adjudicator": {"type": "string"},
+        "recovery_owner": {"type": "string"},
+        "target_hypothesis": {"type": "string"},
+        "migration_owner": {"type": "string"},
+        "rollback_owner": {"type": "string"},
+        "resolution_deadline": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Deletion/resolution deadline. Compatibility expires after two clean cycles or 90 days, whichever is first."
+        },
+        "usage_divergence_metric": {
+          "type": "string",
+          "description": "How use/divergence of legacy writers or shims is measured before retirement."
+        },
+        "exception": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["owner", "expiry", "reason"],
+              "properties": {
+                "owner": {"type": "string"},
+                "expiry": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+                "reason": {"type": "string"}
+              }
+            }
+          ]
+        },
+        "shims": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/shim"},
+          "description": "Compatibility shims. Every shim requires owner, usage/divergence telemetry, and a deadline."
+        },
+        "writer_signatures": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/writer_signature"},
+          "description": "Optional store tokens the bounded checker scans for to surface undeclared writers. Absence disables the scan for this authority."
+        },
+        "notes": {"type": "string"}
+      }
+    },
+    "writer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "note"],
+      "properties": {
+        "path": {"type": "string"},
+        "line": {"type": ["integer", "null"]},
+        "note": {"type": "string"}
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "rebuild_source"],
+      "properties": {
+        "name": {"type": "string"},
+        "reader_path": {"type": ["string", "null"]},
+        "rebuild_source": {"type": "string", "minLength": 1}
+      }
+    },
+    "bypass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "description"],
+      "properties": {
+        "path": {"type": "string"},
+        "line": {"type": ["integer", "null"]},
+        "description": {"type": "string"}
+      }
+    },
+    "shim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "owner", "telemetry", "deadline"],
+      "properties": {
+        "name": {"type": "string"},
+        "owner": {"type": "string", "minLength": 1},
+        "telemetry": {"type": "string", "minLength": 1, "description": "Usage/divergence signal that proves the shim is safe to retire."},
+        "deadline": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
+      }
+    },
+    "writer_signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store_token", "write_tokens"],
+      "properties": {
+        "store_token": {"type": "string", "minLength": 2, "description": "Canonical store name/path fragment (e.g. round.json, registry.jsonl)."},
+        "write_tokens": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "description": "Write-intent fragments (e.g. write_text, json.dump, open-w, >>) that must co-occur with store_token on a line to count as a write."
+        }
+      }
+    }
+  }
+}

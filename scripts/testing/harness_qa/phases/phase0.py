@@ -1752,6 +1752,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_context_compaction_sandwich(ctx))
     results.extend(_check_round_decision_authorization(ctx))
     results.extend(_check_immutable_qa_effectiveness(ctx))
+    results.extend(_check_state_authorities(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -1978,6 +1979,149 @@ def _check_immutable_qa_effectiveness(ctx: RunContext) -> list[CheckResult]:
             detail = (proc.stderr or proc.stdout or f"{filename} exit {proc.returncode}").strip()[-300:]
             return [failed(5, "0.10.28", "immutable QA evidence and effectiveness", detail)]
     return [passed(5, "0.10.28", "concurrent immutable QA CAS, required-unknown blocking, and telemetry boundary")]
+
+
+_SA_ALLOWED_CONDITIONS = {"SINGLE", "SPLIT_BRAIN", "UNKNOWN", "UNOWNED"}
+
+
+def _sa_nonneg_int(value: object) -> bool:
+    """True only for a genuine nonnegative int (bool is rejected — True/False are not counts)."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _validate_state_authority_doc(doc: object) -> str | None:
+    """Fail-closed validation of the checker's {meta, findings} document.
+
+    Returns an error string on the first invariant violation, else None. The
+    integration refuses to publish anything that does not satisfy every shape/type/
+    identity invariant, so a malformed or stale checker run can never be projected as
+    healthy state onto the audit card.
+    """
+    if not isinstance(doc, dict) or set(doc.keys()) != {"meta", "findings"}:
+        return "document is not exactly {meta, findings}"
+    if not isinstance(doc["findings"], list):
+        return "findings is not a list"
+    meta = doc["meta"]
+    if not isinstance(meta, dict):
+        return "meta is not an object"
+    if meta.get("slice") != "C0.3" or meta.get("artifact") != "system-state-authorities":
+        return "meta slice/artifact identity mismatch"
+    if meta.get("registry_valid") is not True:
+        return "registry_valid is not True"
+    if meta.get("cycle1_authority") != "NOT_AUTHORIZED":
+        return "cycle1_authority is not exactly NOT_AUTHORIZED"
+    run_at = meta.get("run_at")
+    if not isinstance(run_at, str):
+        return "run_at missing or non-string"
+    try:
+        time.strptime(run_at, "%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, TypeError):
+        return f"run_at is not a valid UTC timestamp: {run_at!r}"
+    if not _sa_nonneg_int(meta.get("blocker_count")):
+        return "blocker_count is not a nonnegative integer"
+    if not _sa_nonneg_int(meta.get("authorities_total")):
+        return "authorities_total is not a nonnegative integer"
+    cond_counts = meta.get("condition_counts")
+    if not isinstance(cond_counts, dict):
+        return "condition_counts is not an object"
+    if set(cond_counts) != _SA_ALLOWED_CONDITIONS:
+        return "condition_counts does not contain the exact required condition keys"
+    for key, val in cond_counts.items():
+        if not _sa_nonneg_int(val):
+            return f"condition_counts[{key!r}] is not a nonnegative integer"
+    if sum(cond_counts.values()) != meta["authorities_total"]:
+        return "condition_counts total does not equal authorities_total"
+    minimum_blockers = cond_counts["SPLIT_BRAIN"] + cond_counts["UNKNOWN"] + cond_counts["UNOWNED"]
+    if meta["blocker_count"] < minimum_blockers:
+        return "blocker_count is lower than the non-singleton authority count"
+    return None
+
+
+def _publish_state_authority_snapshot(repo_root: Path, encoded: str) -> str | None:
+    """Atomically publish the validated checker document to the FIXED audit-card path.
+
+    The read-only checker never writes; this authorized integration is the sole publisher
+    and it writes ONLY to the fixed repo path (no caller-supplied path). It refuses a
+    symlinked / non-directory governance dir and a symlinked / non-regular target so it can
+    never write through to an attacker-controlled location. Returns an error string on
+    refusal/failure, else None.
+    """
+    gov_dir = repo_root / ".agents" / "governance"
+    target = gov_dir / "state-authorities-latest.json"
+    if gov_dir.is_symlink() or (gov_dir.exists() and not gov_dir.is_dir()):
+        return f"refusing publish: {gov_dir} is a symlink or non-directory"
+    gov_dir.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        return f"refusing publish: {target} is a symlink or non-regular file"
+    tmp = target.with_name(f"{target.name}.tmp.{os.getpid()}")
+    payload = encoded if encoded.endswith("\n") else encoded + "\n"
+    fd: int | None = None
+    created_tmp = False
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o600)
+        created_tmp = True
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fd = None
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, target)
+    except OSError as exc:
+        try:
+            if fd is not None:
+                os.close(fd)
+            if created_tmp:
+                os.unlink(tmp)
+        except OSError:
+            pass
+        return f"snapshot publish failed: {exc}"
+    return None
+
+
+def _check_state_authorities(ctx: RunContext) -> list[CheckResult]:
+    """C0.3: bounded read-only state-authority ledger, checker, and audit-card projection."""
+    tests = ["test-state-authorities.py", "test-dashboard-governance-projection.py"]
+    for filename in tests:
+        path = ctx.repo_root / "scripts" / "testing" / filename
+        if not path.exists():
+            return [failed(5, "0.10.29", "state authority ledger and governance projection", f"{filename} missing")]
+        proc = subprocess.run(["python3", str(path)], cwd=ctx.repo_root, capture_output=True, text=True, timeout=90)
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or f"{filename} exit {proc.returncode}").strip()[-300:]
+            return [failed(5, "0.10.29", "state authority ledger and governance projection", detail)]
+    # The checker is strictly read-only (no --snapshot). Run it, validate the {meta,findings}
+    # contract fail-closed, then let THIS authorized integration atomically publish the audit-card
+    # snapshot to the fixed repo path. No --strict: SPLIT_BRAIN/UNKNOWN/UNOWNED are valid discovery
+    # values that must not fail the check.
+    checker = ctx.repo_root / "scripts" / "governance" / "check-state-authorities.py"
+    try:
+        run = subprocess.run(["python3", str(checker), "--machine"],
+                             cwd=ctx.repo_root, capture_output=True, text=True, timeout=30)
+    except Exception as exc:
+        return [failed(5, "0.10.29", "bounded state authority checker", str(exc)[:200])]
+    if run.returncode not in (0, 1):
+        return [failed(5, "0.10.29", "bounded state authority checker",
+                       (run.stderr or "checker structural/budget error").strip()[-200:])]
+    try:
+        doc = json.loads(run.stdout)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return [failed(5, "0.10.29", "bounded state authority checker", f"unparseable checker stdout: {exc}")]
+    contract_err = _validate_state_authority_doc(doc)
+    if contract_err is not None:
+        return [failed(5, "0.10.29", "state authority projection contract", contract_err)]
+    pub_err = _publish_state_authority_snapshot(ctx.repo_root, run.stdout)
+    if pub_err is not None:
+        return [failed(5, "0.10.29", "state authority snapshot publication", pub_err)]
+    meta = doc["meta"]
+    blockers = meta["blocker_count"]
+    conds = meta["condition_counts"]
+    dur = meta.get("budget", {}).get("duration_seconds", "?")
+    return [passed(5, "0.10.29",
+                   f"bounded authority checker + validated projection: {blockers} ratification-blockers, "
+                   f"conditions {conds}, {dur}s")]
 
 
 def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:
