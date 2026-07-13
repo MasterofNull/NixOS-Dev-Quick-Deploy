@@ -3932,6 +3932,7 @@ async function loadHarnessOv() {
   }
   const s = (d.harness || {}).stats || {};
   const card = (d.harness || {}).scorecard || {};
+  const lic = (d.harness || {}).local_inference_contract || {};
   const inf = card.inference_optimizations || {};
   const disc = card.discovery || {};
   if (badge) {
@@ -3980,6 +3981,23 @@ async function loadHarnessOv() {
       inf.context_compression_enabled ? "enabled" : "disabled",
       inf.context_compression_enabled ? "ok" : "warn"
     ),
+    fwRow(
+      "Contract",
+      lic.status || "unavailable",
+      lic.status === "healthy" ? "ok" : "warn"
+    ),
+    fwRow("· version", lic.contract_version || "--", lic.contract_version ? "info" : "warn"),
+    fwRow(
+      "· parity",
+      lic.parity_status || "unavailable",
+      lic.parity_status === "pass" ? "ok" : "warn"
+    ),
+    fwRow(
+      "· vectors",
+      Number.isInteger(lic.vector_count) ? lic.vector_count : "--",
+      Number.isInteger(lic.vector_count) && lic.vector_count > 0 ? "info" : "warn"
+    ),
+    fwRow("· mode", lic.mode || "--", lic.mode === "fixture_only" ? "info" : "warn"),
   ]
     .filter(Boolean)
     .join("");

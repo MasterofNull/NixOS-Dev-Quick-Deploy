@@ -1,0 +1,48 @@
+{
+  "contract_version": "1.0",
+  "vectors": [
+    {
+      "id": "read-review-standard",
+      "chat": {
+        "ids": {"request": "11111111-1111-4111-8111-111111111111", "trace": "22222222-2222-4222-8222-222222222222", "session": "33333333-3333-4333-8333-333333333333", "parent_run": null, "idempotency": "44444444-4444-4444-8444-444444444444"},
+        "actor": {"id": "operator", "class": "standard", "role_intent": "orchestrator", "boundary": "interactive"},
+        "turn": {"text": "Review the bounded module", "kind": "review", "domain": "systems-software", "paths": ["src/app.py"], "edit_count": 0, "avoid": ["do not edit"]},
+        "route": {"mode": "hybrid", "response": "final", "lane": "coding_logic", "profile": "local-coding", "effects": "read", "tools": ["rg", "read_file"], "tool_limit": 4, "approval": null, "lease": null},
+        "conversation": {"messages": [{"role": "user", "content": "Review the bounded module", "call_id": null}], "artifacts": [], "memory": [], "summary": "", "char_limit": 6000, "template": "local-v1", "adapter": "context-v1", "compaction": "compact-v1"},
+        "output": {"kind": "evidence_fragment", "schema": null, "char_limit": 4000, "accept": ["bounded findings"], "evidence": ["file references"]},
+        "limits": {"input": 1400, "output": 500, "deadline": 120000, "queue": 20000, "priority": "normal"},
+        "degradation": {"policy": "deny", "profiles": [], "registry": "equivalence-v1", "attempts": 1},
+        "verification": {"checks": ["schema"], "live": false, "separate_reviewer": true}
+      },
+      "delegate": {
+        "metadata": {"request_id": "11111111-1111-4111-8111-111111111111", "trace_id": "22222222-2222-4222-8222-222222222222", "session_id": "33333333-3333-4333-8333-333333333333", "parent_run_id": null, "idempotency_key": "44444444-4444-4444-8444-444444444444", "agent_id": "operator", "model_tier": "standard", "requested_role": "orchestrator", "boundary": "interactive"},
+        "task": {"objective": "Review the bounded module", "class": "review", "domain": "systems-software", "repository_paths": ["src/app.py"], "edit_sites": 0, "anti_goals": ["do not edit"]},
+        "dispatch": {"execution_mode": "hybrid", "result_mode": "final", "lane": "coding_logic", "profile": "local-coding", "side_effect_scope": "read", "tool_names": ["rg", "read_file"], "tool_budget": 4, "approval_reference": null, "authority_lease": null},
+        "prompt_context": {"ordered_messages": [{"role": "user", "content": "Review the bounded module", "call_id": null}], "artifact_references": [], "memory_references": [], "compact_summary": "", "inline_character_cap": 6000, "prompt_template_version": "local-v1", "adapter_version": "context-v1", "compaction_version": "compact-v1"},
+        "deliverable": {"format": "evidence_fragment", "schema_id": null, "maximum_characters": 4000, "acceptance": ["bounded findings"], "evidence": ["file references"]},
+        "budget": {"max_input_tokens": 1400, "max_output_tokens": 500, "deadline_ms": 120000, "queue_timeout_ms": 20000, "requested_priority": "normal"},
+        "failure_policy": {"fallback_mode": "deny", "equivalent_profiles": [], "registry_version": "equivalence-v1", "attempt_limit": 1},
+        "gates": {"validation_checks": ["schema"], "live_required": false, "independent_review": true}
+      },
+      "trusted": {
+        "assigned_role": null,
+        "priority_ceiling": "normal",
+        "verified_approvals": [],
+        "approval_tools": {},
+        "authority_leases": [],
+        "available_profiles": {"local-coding": "qwen-coder-local"},
+        "eligible_task_classes": ["review"],
+        "eligible_tools": {"review": ["read_file", "rg"]},
+        "role_tools": {"implementer": ["read_file", "rg"], "orchestrator": ["read_file", "rg"], "architect": ["read_file"], "reviewer": ["read_file", "rg"]},
+        "runtime_tools": ["read_file", "rg"],
+        "policy_budgets": {"input_tokens": 1200, "output_tokens": 400, "deadline_ms": 100000, "queue_wait_ms": 15000, "max_tool_calls": 3},
+        "runtime_budgets": {"input_tokens": 1600, "output_tokens": 450, "deadline_ms": 110000, "queue_wait_ms": 18000, "max_tool_calls": 2},
+        "repository_root": "/repo",
+        "resolved_paths": {"src/app.py": "/repo/src/app.py"},
+        "now": "2026-07-13T00:00:00Z",
+        "config_version": "local-policy-v1"
+      },
+      "expected_canonical_utf8": "{\"budgets\":{\"deadline_ms\":100000,\"input_tokens\":1200,\"max_tool_calls\":2,\"output_tokens\":400,\"queue_wait_ms\":15000},\"capability_delta\":[],\"config_version\":\"local-policy-v1\",\"contract_version\":\"1.0\",\"effective_role\":\"implementer\",\"fallback\":{\"allowed_profiles\":[],\"equivalence_registry_version\":\"equivalence-v1\",\"max_attempts\":1,\"mode\":\"deny\"},\"mode\":\"hybrid\",\"model\":\"qwen-coder-local\",\"profile\":\"local-coding\",\"queue_band\":\"normal\",\"reasons\":[\"explicit_profile_available\",\"unassigned_role_implementer_constraints\",\"componentwise_budget_minimum\",\"trusted_tool_intersection\"],\"requested_profile\":\"local-coding\",\"side_effects\":\"read\",\"task_class\":\"review\",\"tools\":[\"read_file\",\"rg\"]}"
+    }
+  ]
+}

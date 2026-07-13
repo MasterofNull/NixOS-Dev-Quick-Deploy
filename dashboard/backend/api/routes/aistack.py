@@ -3,12 +3,14 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, Depends
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import hashlib
+import importlib.util
 import logging
 import ast
 import asyncio
 import aiohttp
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,6 +52,7 @@ _REDIS_PROBE_CACHE_TTL_S: float = 30.0
 # of paying the full asyncpg.connect() handshake (~300-500 ms) every 25 s.
 _PG_POOL: Optional[Any] = None  # asyncpg.Pool, typed as Any to avoid import-time errors
 _MODEL_INVENTORY_WARNINGS: set[tuple[str, str]] = set()
+_LOCAL_INFERENCE_CONTRACT_MODULE: Optional[Any] = None
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -2106,6 +2109,84 @@ async def get_harness_scorecard() -> Dict[str, Any]:
     }
 
 
+def _local_inference_contract_health() -> Dict[str, Any]:
+    """Read-only L1A fixture/schema health; never exposes fixture content or exceptions."""
+    default = {
+        "status": "unavailable",
+        "mode": "fixture_only",
+        "contract_version": None,
+        "schemas": {},
+        "parity_status": "unavailable",
+        "vector_count": None,
+        "digest": None,
+        "freshness": "commit_fixture",
+        "reason_code": "contract_module_unavailable",
+    }
+    module_path = _repo_root() / "scripts" / "ai" / "lib" / "local_inference_contract.py"
+    try:
+        global _LOCAL_INFERENCE_CONTRACT_MODULE
+        if _LOCAL_INFERENCE_CONTRACT_MODULE is None:
+            spec = importlib.util.spec_from_file_location("aq_local_inference_contract", module_path)
+            if spec is None or spec.loader is None:
+                return default
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            _LOCAL_INFERENCE_CONTRACT_MODULE = module
+        raw = _LOCAL_INFERENCE_CONTRACT_MODULE.contract_health(_repo_root())
+    except Exception:  # fail closed without publishing attacker-controlled exception text
+        return default
+    if not isinstance(raw, dict):
+        return {**default, "status": "degraded", "reason_code": "invalid_health_projection"}
+    status = raw.get("status")
+    parity = raw.get("parity_status")
+    schemas = raw.get("schemas")
+    contract_version = raw.get("contract_version")
+    vector_count = raw.get("vector_count")
+    digest = raw.get("digest")
+    reason_code = raw.get("reason_code")
+    expected_schemas = {"request", "result", "event", "error"}
+    schema_states = {"structural_valid", "invalid", "unavailable"}
+    reason_codes = {
+        "contract_assets_missing", "contract_schema_invalid", "contract_fixture_parity_pass",
+        "contract_fixture_missing", "contract_fixture_invalid",
+    }
+    if status not in {"healthy", "degraded", "unavailable"}:
+        return {**default, "status": "degraded", "reason_code": "invalid_health_status"}
+    if (
+        parity not in {"pass", "fail", "unavailable"}
+        or not isinstance(schemas, dict)
+        or set(schemas) != expected_schemas
+        or any(value not in schema_states for value in schemas.values())
+        or contract_version != "1.0"
+        or not isinstance(vector_count, int)
+        or isinstance(vector_count, bool)
+        or vector_count < 0
+        or (digest is not None and (not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None))
+        or reason_code not in reason_codes
+    ):
+        return {**default, "status": "degraded", "reason_code": "invalid_health_projection"}
+    if status == "healthy" and not (
+        parity == "pass"
+        and vector_count > 0
+        and isinstance(digest, str)
+        and all(value == "structural_valid" for value in schemas.values())
+        and reason_code == "contract_fixture_parity_pass"
+    ):
+        return {**default, "status": "degraded", "reason_code": "invalid_health_projection"}
+    return {
+        "status": status,
+        "mode": "fixture_only",
+        "contract_version": contract_version,
+        "schemas": {name: schemas[name] for name in sorted(expected_schemas)},
+        "parity_status": parity,
+        "vector_count": vector_count,
+        "digest": digest,
+        "freshness": "commit_fixture",
+        "reason_code": reason_code,
+    }
+
+
 def _loop_telemetry_dirs() -> List[Path]:
     return [
         Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")),
@@ -2643,6 +2724,7 @@ async def get_harness_overview() -> Dict[str, Any]:
         "harness": {
             "stats": harness_stats,
             "scorecard": harness_scorecard,
+            "local_inference_contract": _local_inference_contract_health(),
             "capability_discovery": (
                 hybrid_health.get("capability_discovery")
                 or harness_scorecard.get("discovery")
