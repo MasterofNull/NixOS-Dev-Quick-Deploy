@@ -12,6 +12,8 @@
 #   --prompt TEXT      Task prompt to send to Claude
 #   --prompt-file FILE Read prompt from file
 #   --role ROLE        Role: plan|implement|review|research  [default: implement]
+#   --model-tier TIER  Resolve Anthropic tier via config/model-coordinator.json
+#                      flagship|flagship_fallback|balanced|fast|creative
 #   --wait             Block until task completes (default: background)
 #   --check ID         Print output of a completed task
 #   --status ID        Show status of a task
@@ -33,6 +35,7 @@ DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+MODEL_COORDINATOR="$REPO_ROOT/config/model-coordinator.json"
 
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
@@ -62,14 +65,40 @@ task_id() {
     echo "claude-$(date +%Y%m%d-%H%M%S)-${rand}"
 }
 
+resolve_model_tier() {
+    local tier="$1"
+    python3 - "$MODEL_COORDINATOR" "$tier" <<'PYEOF'
+import json
+import re
+import sys
+from pathlib import Path
+
+path, tier = Path(sys.argv[1]), sys.argv[2]
+allowed = {"flagship", "flagship_fallback", "balanced", "fast", "creative"}
+if tier not in allowed:
+    raise SystemExit(f"unknown Claude model tier: {tier}")
+try:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    model = document["tiers"]["anthropic"][tier]
+except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"Claude model coordinator invalid: {type(exc).__name__}") from None
+if not isinstance(model, str) or re.fullmatch(r"claude-[a-z0-9][a-z0-9.-]{1,63}", model) is None:
+    raise SystemExit("Claude model coordinator returned an invalid model id")
+print(model)
+PYEOF
+}
+
 registry_append() {
     local id="$1" description="$2" output_file="$3" pid="${4:-}" role="${5:-implement}"
+    local requested_model_tier="${6:-}" resolved_model="${7:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"id":"%s","agent":"claude","role":"%s","description":%s,"output_file":"%s","pid":%s,"status":"running","tokens_in":null,"tokens_out":null,"created":"%s"}\n' \
+    printf '{"id":"%s","agent":"claude","role":"%s","description":%s,"output_file":"%s","pid":%s,"status":"running","tokens_in":null,"tokens_out":null,"requested_model_tier":%s,"resolved_model":%s,"created":"%s"}\n' \
         "$id" "$role" \
         "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
         "$output_file" \
         "${pid:-null}" \
+        "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1] or None))' "$requested_model_tier")" \
+        "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1] or None))' "$resolved_model")" \
         "$ts" >> "$REGISTRY"
 }
 
@@ -200,7 +229,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" wait_mode="${2:-false}" role="${3:-implement}"
+    local prompt="$1" wait_mode="${2:-false}" role="${3:-implement}" model_tier="${4:-}"
 
     require_claude
     ensure_dirs
@@ -213,6 +242,10 @@ cmd_delegate() {
     # so a headless Claude delegation gets the same facts even outside the repo's
     # CLAUDE.md scope, then the role tag.
     local grounding; grounding="$(harness_grounding claude 2>/dev/null || true)"
+    local resolved_model=""
+    if [[ -n "$model_tier" ]]; then
+        resolved_model="$(resolve_model_tier "$model_tier")" || die "Unable to resolve Claude model tier '$model_tier'"
+    fi
 
     # Phase 33.5: prepend role tag so Claude knows its specialization
     local full_prompt="${grounding:+$grounding
@@ -223,12 +256,20 @@ ${prompt}"
 
     info "Delegating task: $id"
     info "Role:            $role"
+    if [[ -n "$resolved_model" ]]; then
+        info "Model tier:      $model_tier -> $resolved_model"
+    else
+        info "Model tier:      CLI default (unresolved)"
+    fi
     info "Output file:     $output_file"
 
     local cmd=("$CLAUDE_BIN" "-p" "$full_prompt" "--output-format" "text")
+    if [[ -n "$resolved_model" ]]; then
+        cmd+=("--model" "$resolved_model")
+    fi
 
     # Register before launching so the task is findable even if we die
-    registry_append "$id" "$prompt" "$rel_output" "" "$role"
+    registry_append "$id" "$prompt" "$rel_output" "" "$role" "$model_tier" "$resolved_model"
     audit_event_start "claude" "$id" "${prompt:0:200}"
 
     if [[ "$wait_mode" == "true" ]]; then
@@ -334,6 +375,7 @@ PYEOF
 PROMPT=""
 PROMPT_FILE=""
 ROLE="implement"
+MODEL_TIER=""
 WAIT=false
 SUBCMD=""
 SUBCMD_ARG=""
@@ -343,6 +385,7 @@ while [[ $# -gt 0 ]]; do
         --prompt)      PROMPT="$2";      shift 2 ;;
         --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
         --role)        ROLE="$2";        shift 2 ;;
+        --model-tier)  MODEL_TIER="$2";  shift 2 ;;
         --wait)        WAIT=true;        shift   ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
@@ -357,6 +400,11 @@ case "$ROLE" in
     *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
 esac
 
+case "$MODEL_TIER" in
+    ""|flagship|flagship_fallback|balanced|fast|creative) ;;
+    *) die "Invalid --model-tier '$MODEL_TIER'. Valid: flagship | flagship_fallback | balanced | fast | creative" ;;
+esac
+
 case "${SUBCMD:-}" in
     list)   ensure_dirs; cmd_list ;;
     status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
@@ -367,6 +415,6 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$WAIT" "$ROLE"
+        cmd_delegate "$PROMPT" "$WAIT" "$ROLE" "$MODEL_TIER"
         ;;
 esac
