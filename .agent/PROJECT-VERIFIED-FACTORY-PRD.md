@@ -121,6 +121,16 @@ VF-3 remains report-only until a separately ratified authority contract names th
 spine, `vf.acceptance-record.v1` closed schema, subject/attempt/verifier identity, legal transitions,
 CAS/idempotency key, replay behavior, recovery owner, retention, and rollback. Only then may the
 verifier be the sole writer for that record type.
+
+Non-binding field sketch for that future authority contract to accept, amend, or reject — listed
+for precision only; it grants no schema authority and does not shorten the report-only gate above:
+`schema_version`, `subject_id` (task/slice hash), `attempt_id`, `verifier_identity` (principal +
+lease reference once Foundation C lands), `oracle_argv_hash`, `exit_status`, `truncation_state`,
+`output_artifact_hashes[]`, `transition` (`report_recorded` only until the authority contract adds
+further states), `cas_key` (reserved, null until Foundation B2 selects a spine), `recovery_owner`
+(reserved, null until Q8), `created_at`. Until the authority contract exists, every emitted record
+carries only `report_recorded` and lives in the same warn-only projection as everything else in
+this PRD — it is not addressable, replayable, or authoritative.
 **Accept**: incident fixture green in Phase-0; report-only verdicts carry canonical oracle argv,
 exit/timeout/truncation state, output/artifact hashes, subject lineage, and verifier identity. Writer
 promotion additionally requires the authority contract and transition/replay fixtures above.
