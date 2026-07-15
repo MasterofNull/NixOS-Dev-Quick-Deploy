@@ -1,10 +1,10 @@
 # Prepared Implementation Authorization — Agent Ops Traceability M2A
 
-**Decision:** `implementation_authorized = PREPARED_ONLY`
+**Decision:** `implementation_authorized = ACTIVE`
 **Authorization ID:** `auth-agent-ops-m2a-20260715`
 **Idempotency key:** `m2a-2b4a2aad-20260715-single-use`
 **Prepared:** 2026-07-15 by Codex orchestrator
-**Activation:** owner must explicitly activate this exact authorization ID
+**Activated:** 2026-07-15 by explicit owner command `Activate auth-agent-ops-m2a-20260715`
 **Design binding:** `M2-DESIGN-PACKET.md` SHA-256
 `2b4a2aad1960927554ec1f72af4e6bd458cbb0529fa7bea645a677c62fb52428`
 **Review evidence:** `claude-fable-m2-rev3-review.md` (`PASS`) and
@@ -16,7 +16,8 @@
 - L2B-A and L2B-A.1 are accepted and committed.
 - M2 Revision 3 has independent Fable and Antigravity flagship PASS verdicts.
 - The Fable routing bootstrap is committed as `dde2601f`.
-- This grant remains inert until explicit owner activation; preparation is not implementation authority.
+- Owner activation is recorded above; the grant is single-use and becomes consumed when one bounded
+  M2A implementation candidate is produced for independent acceptance.
 
 ## Exact nine-file inventory and preparation hashes
 
@@ -79,4 +80,4 @@ gates, role matrix, web dashboard, inference path, service configuration, lifecy
 process-killing route. M2B, M3, local reliability R1–R4, inference R1–R4, and Q8 authority decisions
 remain unauthorized.
 
-`RECORD: implementation_authorized = PREPARED_ONLY for auth-agent-ops-m2a-20260715; no implementation may begin until explicit owner activation.`
+`RECORD: implementation_authorized = ACTIVE for auth-agent-ops-m2a-20260715; one bounded M2A candidate may be produced. M2B/M3/R1-R4 remain UNAUTHORIZED.`
