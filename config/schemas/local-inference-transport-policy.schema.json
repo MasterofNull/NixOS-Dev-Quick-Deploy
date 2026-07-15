@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-transport-policy/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "policy_version", "adapter_version", "digest_version", "canonical_builder", "builder_defaults", "targets", "limits"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "policy_version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
+    "adapter_version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
+    "digest_version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"},
+    "canonical_builder": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "revision", "sha256"],
+      "properties": {
+        "path": {"const": "ai-stack/mcp-servers/shared/llm_config.py"},
+        "revision": {"type": "string", "minLength": 1, "maxLength": 64},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "builder_defaults": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repeat_penalty", "repeat_last_n", "cache_prompt"],
+      "properties": {
+        "repeat_penalty": {"type": "number", "exclusiveMinimum": 0},
+        "repeat_last_n": {"type": "integer", "minimum": 0},
+        "cache_prompt": {"type": "boolean"}
+      }
+    },
+    "targets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["direct_llama", "switchboard", "coordinator", "local_runtime", "ralph"],
+      "properties": {
+        "direct_llama": {"$ref": "#/$defs/target"},
+        "switchboard": {"$ref": "#/$defs/target"},
+        "coordinator": {"$ref": "#/$defs/target"},
+        "local_runtime": {"$ref": "#/$defs/target"},
+        "ralph": {"$ref": "#/$defs/target"}
+      }
+    },
+    "limits": {"$ref": "#/$defs/limits"}
+  },
+  "$defs": {
+    "stringSet": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "decoder_modes", "header_allowlist", "body_allowlist"],
+      "properties": {
+        "status": {"enum": ["registered", "unavailable_route_contract"]},
+        "decoder_modes": {"type": "array", "uniqueItems": true, "items": {"enum": ["buffered_json", "openai_sse"]}},
+        "header_allowlist": {"$ref": "#/$defs/stringSet"},
+        "body_allowlist": {"$ref": "#/$defs/stringSet"}
+      }
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_line_bytes", "max_event_bytes", "max_events", "max_total_bytes"],
+      "properties": {
+        "max_line_bytes": {"type": "integer", "minimum": 1},
+        "max_event_bytes": {"type": "integer", "minimum": 1},
+        "max_events": {"type": "integer", "minimum": 1},
+        "max_total_bytes": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

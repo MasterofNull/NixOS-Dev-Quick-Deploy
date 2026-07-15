@@ -416,13 +416,22 @@ check ships with the contract.
   live profile routing, callers, or tool execution.
 - Acceptance: flagship, standard, budget and deterministic callers create equivalent valid requests.
 
-### L2B — Transport and payload adapters
+### L2B-A — Shadow transport kernel
 
-- Give direct llama, switchboard, coordinator and Ralph adapters one event/result interface.
-- Route every llama-bound request through `build_llama_payload()`.
-- Remove `dispatch.py`'s production inline fallback clone of the payload builder; import failure is a
-  typed configuration error, with injection used only by isolated tests.
-- Preserve streaming content/usage equivalence and cancellation propagation.
+- Add a pure injected payload-builder adapter, strict transport policy/schema, and explicit buffered
+  JSON/OpenAI SSE observation decoder without importing them from live inference paths.
+- Freeze direct llama, switchboard, coordinator, local-runtime, chat, and unavailable Ralph behavior
+  as golden fixtures. Treat decoder observations as non-authoritative transport evidence.
+- Create a v1 terminal candidate only when all mandatory lifecycle metadata is injected; never
+  fabricate usage, timing, completion, or lifecycle state.
+
+### L2B-B — Live transport and payload adoption
+
+- Harden outbound header allowlists and explicit profile failure before adopting shared adapters.
+- Route every llama-bound request through `build_llama_payload()` and remove `dispatch.py`'s production
+  inline fallback clone; import failure becomes typed and test injection remains isolated.
+- Preserve streaming content/usage equivalence, async resource ownership, cancellation propagation,
+  and rollback. This requires fresh authorization and does not absorb L3 or L4.
 
 ### L3 — Delegation pipeline adoption
 

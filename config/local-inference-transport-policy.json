@@ -1,0 +1,40 @@
+{
+  "contract_version": "1.0",
+  "policy_version": "local-inference-l2b-a-v1",
+  "adapter_version": "transport-adapter-l2b-a-v1",
+  "digest_version": "transport-digest-l2b-a-v1",
+  "canonical_builder": {
+    "path": "ai-stack/mcp-servers/shared/llm_config.py",
+    "revision": "llm-config-20260713",
+    "sha256": "be5a098687c92c4345c80307175144887c262174afbf6da9fc2ca8012d961905"
+  },
+  "builder_defaults": {
+    "repeat_penalty": 1.08,
+    "repeat_last_n": 64,
+    "cache_prompt": true
+  },
+  "targets": {
+    "direct_llama": {
+      "status": "registered", "decoder_modes": ["buffered_json", "openai_sse"],
+      "header_allowlist": ["accept", "content-type"],
+      "body_allowlist": ["cache_prompt", "chat_template_kwargs", "frequency_penalty", "max_tokens", "messages", "model", "repeat_last_n", "repeat_penalty", "response_format", "stop", "stream", "stream_options", "temperature", "tool_choice", "tools"]
+    },
+    "switchboard": {
+      "status": "registered", "decoder_modes": ["buffered_json", "openai_sse"],
+      "header_allowlist": ["accept", "content-type", "x-ai-profile", "x-agent-role", "x-profile-snapshot-revision"],
+      "body_allowlist": ["cache_prompt", "chat_template_kwargs", "frequency_penalty", "max_tokens", "messages", "model", "repeat_last_n", "repeat_penalty", "response_format", "stop", "stream", "stream_options", "temperature", "tool_choice", "tools"]
+    },
+    "coordinator": {
+      "status": "registered", "decoder_modes": ["buffered_json", "openai_sse"],
+      "header_allowlist": ["accept", "content-type", "x-agent-role", "x-profile-snapshot-revision"],
+      "body_allowlist": ["cache_prompt", "chat_template_kwargs", "frequency_penalty", "max_tokens", "messages", "model", "repeat_last_n", "repeat_penalty", "response_format", "stop", "stream", "stream_options", "temperature", "tool_choice", "tools"]
+    },
+    "local_runtime": {
+      "status": "registered", "decoder_modes": ["buffered_json", "openai_sse"],
+      "header_allowlist": ["accept", "content-type", "x-agent-role", "x-profile-snapshot-revision"],
+      "body_allowlist": ["cache_prompt", "chat_template_kwargs", "frequency_penalty", "max_tokens", "messages", "model", "repeat_last_n", "repeat_penalty", "response_format", "stop", "stream", "stream_options", "temperature", "tool_choice", "tools"]
+    },
+    "ralph": {"status": "unavailable_route_contract", "decoder_modes": [], "header_allowlist": [], "body_allowlist": []}
+  },
+  "limits": {"max_line_bytes": 65536, "max_event_bytes": 262144, "max_events": 4096, "max_total_bytes": 8388608}
+}
