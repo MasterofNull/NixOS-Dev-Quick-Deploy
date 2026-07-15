@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aq.local/schemas/local-delegation-runtime-policy.schema.json",
+  "title": "Local Delegation Runtime Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "identity", "budgets", "liveness", "admission", "progress", "context", "metrics", "compatibility_aliases"],
+  "properties": {
+    "schema_version": {"const": "aq.local-delegation-policy.v1"},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "prefix", "entropy_bytes"],
+      "properties": {
+        "version": {"const": "aq.run-id.v2"},
+        "prefix": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,15}$"},
+        "entropy_bytes": {"type": "integer", "minimum": 12, "maximum": 32}
+      }
+    },
+    "budgets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "structured", "research", "tool_call", "repair", "synthesis"],
+      "properties": {
+        "code": {"$ref": "#/$defs/budget"}, "structured": {"$ref": "#/$defs/budget"},
+        "research": {"$ref": "#/$defs/budget"}, "tool_call": {"$ref": "#/$defs/budget"},
+        "repair": {"$ref": "#/$defs/budget"}, "synthesis": {"$ref": "#/$defs/budget"}
+      }
+    },
+    "liveness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["queue_s", "prefill_s", "generation_silence_s", "tool_s", "orphan_s", "cancel_grace_s", "operator_wall_clock_s"],
+      "properties": {
+        "queue_s": {"type": "integer", "minimum": 1}, "prefill_s": {"type": "integer", "minimum": 1},
+        "generation_silence_s": {"type": "integer", "minimum": 1}, "tool_s": {"type": "integer", "minimum": 1},
+        "orphan_s": {"type": "integer", "minimum": 1}, "cancel_grace_s": {"type": "integer", "minimum": 1},
+        "operator_wall_clock_s": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "admission": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authority", "arbitration", "priority_aging_s", "max_residency_s", "queue_age_slo_s", "epoch", "writer_lease"],
+      "properties": {
+        "authority": {"const": "switchboard"}, "arbitration": {"enum": ["fifo", "weighted_fifo"]},
+        "priority_aging_s": {"type": "integer", "minimum": 1}, "max_residency_s": {"type": "integer", "minimum": 1},
+        "queue_age_slo_s": {"type": "integer", "minimum": 1},
+        "epoch": {
+          "type": "object", "additionalProperties": false,
+          "required": ["max_model_calls", "max_generated_tokens", "max_resource_s", "exhaustion_action"],
+          "properties": {
+            "max_model_calls": {"type": "integer", "minimum": 1}, "max_generated_tokens": {"type": "integer", "minimum": 1},
+            "max_resource_s": {"type": "integer", "minimum": 1}, "exhaustion_action": {"const": "checkpoint_yield_requeue"}
+          }
+        },
+        "writer_lease": {
+          "type": "object", "additionalProperties": false,
+          "required": ["scope", "lock_primitive", "fencing", "release_condition"],
+          "properties": {
+            "scope": {"const": "canonical_worktree"}, "lock_primitive": {"const": "stable_descriptor_lock"},
+            "fencing": {"const": "monotonic_generation_cas"}, "release_condition": {"const": "confirmed_process_death"}
+          }
+        }
+      }
+    },
+    "progress": {
+      "type": "object", "additionalProperties": false,
+      "required": ["allowed_producers", "renewable_phases", "duplicate_nudge", "duplicate_stop"],
+      "properties": {
+        "allowed_producers": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["switchboard", "dispatcher", "trusted_observer"]}},
+        "renewable_phases": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["queued", "prefill", "generating", "tool", "checkpoint"]}},
+        "duplicate_nudge": {"type": "integer", "minimum": 1}, "duplicate_stop": {"type": "integer", "minimum": 2}
+      }
+    },
+    "context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_tokens", "reserved_output_tokens", "max_checkpoint_bytes", "max_rss_bytes"],
+      "properties": {
+        "max_tokens": {"type": "integer", "minimum": 1024}, "reserved_output_tokens": {"type": "integer", "minimum": 1},
+        "max_checkpoint_bytes": {"type": "integer", "minimum": 1024}, "max_rss_bytes": {"type": "integer", "minimum": 1048576}
+      }
+    },
+    "metrics": {
+      "type": "array", "minItems": 19, "uniqueItems": true,
+      "items": {"enum": [
+        "phase_duration_seconds", "phase_silence_seconds", "progress_renewals_total",
+        "progress_rejections_total", "budget_provenance_total", "queue_age_seconds",
+        "slot_contention_latency_ms", "lease_contention_latency_ms", "identity_collisions_total",
+        "epoch_yields_total", "epoch_requeues_total", "cancellation_term_total",
+        "cancellation_kill_total", "cancellation_failures_total", "oom_cleanup_total",
+        "telemetry_integrity_rejections_total", "terminal_reasons_total",
+        "compaction_bytes_saved", "compaction_cycles_total"
+      ]}
+    },
+    "compatibility_aliases": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "canonical", "sunset"],
+        "properties": {"name": {"type": "string"}, "canonical": {"type": "string"}, "sunset": {"type": "string", "format": "date"}}
+      }
+    }
+  },
+  "$defs": {
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_tokens", "min_tokens"],
+      "properties": {"max_tokens": {"type": "integer", "minimum": 1}, "min_tokens": {"type": "integer", "minimum": 1}}
+    }
+  }
+}
