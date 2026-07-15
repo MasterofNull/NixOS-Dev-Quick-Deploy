@@ -887,14 +887,92 @@ def test_health_dashboard_qa_and_inventory() -> None:
     aistack._LOCAL_INFERENCE_TRANSPORT_CACHE = {"digest": None, "payload": None}
     projected = aistack._local_inference_l2b_health_sync()
     check(
-        projected["status"] == "healthy" and projected["mode"] == "shadow_fixture_only",
+        projected["status"] == "healthy"
+        and projected["mode"] == "shadow_fixture_only"
+        and projected["source_shape_parity"] == "pass"
+        and projected["actual_ssot_parity"] == "pass",
         "dashboard health projection failed",
     )
+
+    class HealthStub:
+        def __init__(self, raw=None, error: Exception | None = None):
+            self.raw = raw
+            self.error = error
+
+        @staticmethod
+        def transport_asset_digest(_root: Path) -> str:
+            return "f" * 64
+
+        def transport_health(self, _root: Path):
+            if self.error is not None:
+                raise self.error
+            return copy.deepcopy(self.raw)
+
+    baseline = T.transport_health(ROOT)
+    original_module = aistack._LOCAL_INFERENCE_TRANSPORT_MODULE
+    try:
+        adversarial = []
+        for field in ("source_shape_parity", "actual_ssot_parity"):
+            missing = copy.deepcopy(baseline)
+            missing.pop(field)
+            adversarial.append((f"missing {field}", missing))
+            malformed = copy.deepcopy(baseline)
+            malformed[field] = "internal/path/secret"
+            adversarial.append((f"malformed {field}", malformed))
+            failed = copy.deepcopy(baseline)
+            failed[field] = "fail"
+            adversarial.append((f"failed {field}", failed))
+        for label, raw in adversarial:
+            aistack._LOCAL_INFERENCE_TRANSPORT_MODULE = HealthStub(raw=raw)
+            aistack._LOCAL_INFERENCE_TRANSPORT_CACHE = {"digest": None, "payload": None}
+            result = aistack._local_inference_l2b_health_sync()
+            check(result["status"] == "degraded", f"{label} did not degrade")
+            check(
+                result["source_shape_parity"] in {"fail", "unavailable"}
+                and result["actual_ssot_parity"] in {"fail", "unavailable"},
+                f"{label} escaped the closed parity enum",
+            )
+            check(
+                "internal/path/secret" not in json.dumps(result),
+                f"{label} exposed untrusted health content",
+            )
+        aistack._LOCAL_INFERENCE_TRANSPORT_MODULE = HealthStub(
+            error=RuntimeError("/nix/store/private prompt=secret")
+        )
+        aistack._LOCAL_INFERENCE_TRANSPORT_CACHE = {"digest": None, "payload": None}
+        failed_closed = aistack._local_inference_l2b_health_sync()
+        check(
+            failed_closed["status"] == "unavailable"
+            and failed_closed["source_shape_parity"] == "unavailable"
+            and failed_closed["actual_ssot_parity"] == "unavailable"
+            and "secret" not in json.dumps(failed_closed),
+            "transport exception did not fail closed",
+        )
+    finally:
+        aistack._LOCAL_INFERENCE_TRANSPORT_MODULE = original_module
+        aistack._LOCAL_INFERENCE_TRANSPORT_CACHE = {"digest": None, "payload": None}
+
     dashboard_source = (ROOT / "dashboard/backend/api/routes/aistack.py").read_text()
     check(
         "await asyncio.to_thread(_local_inference_l2b_health_sync)" in dashboard_source,
         "dashboard health is not offloaded from the async event loop",
     )
+    dashboard_js = (ROOT / "assets/dashboard.js").read_text()
+    check(
+        'value === "pass" || value === "fail" || value === "unavailable"'
+        in dashboard_js
+        and "closedParityState(l2b.source_shape_parity)" in dashboard_js
+        and "closedParityState(l2b.actual_ssot_parity)" in dashboard_js,
+        "dashboard client does not fail closed on malformed parity values",
+    )
+    for field, label in (
+        ("source_shape_parity", "· source shape"),
+        ("actual_ssot_parity", "· actual SSOT"),
+    ):
+        check(
+            field in dashboard_js and label in dashboard_js,
+            f"dashboard card does not visibly render {field}",
+        )
     phase = (ROOT / "scripts/testing/harness_qa/phases/phase0.py").read_text()
     bash = (ROOT / "scripts/ai/_aq-qa-bash").read_text()
     check('"0.10.39"' in phase and '"0.10.39"' in bash, "dual QA ID missing")
