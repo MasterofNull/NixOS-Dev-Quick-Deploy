@@ -3921,6 +3921,12 @@ async function loadRuntimeDetails() {
   el.innerHTML = rows.join("");
 }
 
+function closedParityState(value) {
+  return value === "pass" || value === "fail" || value === "unavailable"
+    ? value
+    : "unavailable";
+}
+
 async function loadHarnessOv() {
   const d = await apiFetch("/harness/overview");
   const el = document.getElementById("harnessDetails");
@@ -3935,6 +3941,10 @@ async function loadHarnessOv() {
   const lic = (d.harness || {}).local_inference_contract || {};
   const l2a = (d.harness || {}).local_inference_l2a || {};
   const l2b = (d.harness || {}).local_inference_l2b || {};
+  const l2bPayloadParity = closedParityState(l2b.payload_parity);
+  const l2bStreamParity = closedParityState(l2b.stream_parity);
+  const l2bSourceShapeParity = closedParityState(l2b.source_shape_parity);
+  const l2bActualSsotParity = closedParityState(l2b.actual_ssot_parity);
   const inf = card.inference_optimizations || {};
   const disc = card.discovery || {};
   if (badge) {
@@ -4025,10 +4035,17 @@ async function loadHarnessOv() {
       l2b.status === "healthy" ? "ok" : "warn"
     ),
     fwRow("· policy", l2b.policy_version || "--", l2b.policy_version ? "info" : "warn"),
+    fwRow("· payload", l2bPayloadParity, l2bPayloadParity === "pass" ? "ok" : "warn"),
+    fwRow("· stream", l2bStreamParity, l2bStreamParity === "pass" ? "ok" : "warn"),
     fwRow(
-      "· parity",
-      `${l2b.payload_parity || "unavailable"} payload · ${l2b.stream_parity || "unavailable"} stream`,
-      l2b.payload_parity === "pass" && l2b.stream_parity === "pass" ? "ok" : "warn"
+      "· source shape",
+      l2bSourceShapeParity,
+      l2bSourceShapeParity === "pass" ? "ok" : "warn"
+    ),
+    fwRow(
+      "· actual SSOT",
+      l2bActualSsotParity,
+      l2bActualSsotParity === "pass" ? "ok" : "warn"
     ),
     fwRow(
       "· vectors",
