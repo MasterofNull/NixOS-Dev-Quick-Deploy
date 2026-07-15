@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+from importlib.machinery import SourceFileLoader
 import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -20,6 +23,13 @@ assert spec and spec.loader
 ops = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = ops
 spec.loader.exec_module(ops)
+
+tui_loader = SourceFileLoader("agent_ops_tui_m1", str(REPO / "scripts/ai/aq-tui-dashboard"))
+tui_spec = importlib.util.spec_from_loader(tui_loader.name, tui_loader)
+assert tui_spec and tui_spec.loader
+tui = importlib.util.module_from_spec(tui_spec)
+sys.modules[tui_spec.name] = tui
+tui_spec.loader.exec_module(tui)
 
 
 class AgentOpsProjectionM0(unittest.TestCase):
@@ -118,6 +128,132 @@ class AgentOpsProjectionM0(unittest.TestCase):
         bad["argv"] = ["x"] * (ops.MAX_ARGV + 1)
         with self.assertRaisesRegex(ops.ProjectionError, "process_argv_invalid"):
             ops.ProcessFact.from_mapping(bad)
+
+    def _m1_sources(self, root: Path) -> tuple[Path, Path, Path, Path, Path]:
+        proc = root / "proc"; registry = root / "registry.jsonl"
+        outputs = root / "outputs"; inbox = root / "inbox"; archive = root / "archive"
+        for directory in (proc, outputs, inbox, archive):
+            directory.mkdir(parents=True, exist_ok=True)
+        process = proc / "10"; process.mkdir()
+        fields = ["S", "1", "10", "10"] + ["0"] * 15 + ["1234"]
+        (process / "stat").write_text("10 (claude worker) " + " ".join(fields), encoding="utf-8")
+        (process / "cmdline").write_bytes(b"/repo/delegate-to-claude\0--wait\0")
+        (process / "cgroup").write_text("0::/agent/m1.scope\n", encoding="utf-8")
+        os.symlink("/repo/delegate-to-claude", process / "exe")
+        registry.write_text(json.dumps({
+            "id": "claude-m1", "agent": "claude", "role": "implementer",
+            "status": "running", "pid": 10, "pid_start_time": 1234,
+            "description": "PROMPT_CANARY secret-token",
+        }) + "\n", encoding="utf-8")
+        (outputs / "claude-m1.log.progress.json").write_text(json.dumps({
+            "trusted": True, "producer": "dispatcher", "phase": "generation",
+            "observed_at": self.fixture["now"] - 2,
+        }), encoding="utf-8")
+        (inbox / "review.md").write_text(
+            "Write `.agents/plans/example/antigravity.md` after review.", encoding="utf-8"
+        )
+        return proc, registry, outputs, inbox, archive
+
+    def test_15_m1_bounded_readers_feed_pure_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            roots = self._m1_sources(Path(tmp))
+            projection = tui.read_agent_ops_projection(
+                proc_root=roots[0], registry_path=roots[1], outputs_dir=roots[2],
+                inbox_dir=roots[3], archive_root=roots[4], use_cache=False,
+            )
+            item = next(v for v in projection["work"] if v["work_id"] == "claude-m1")
+            self.assertEqual((item["state"], item["visibility"], item["phase"]),
+                             ("running", "tracked", "generation"))
+            rendered = json.dumps(projection)
+            self.assertNotIn("PROMPT_CANARY", rendered)
+            self.assertNotIn("secret-token", rendered)
+            Draft202012Validator(self.schema).validate(projection)
+
+    def test_16_m1_symlink_and_malformed_sources_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); proc, registry, outputs, inbox, archive = self._m1_sources(root)
+            real = root / "real-registry"; real.write_bytes(registry.read_bytes())
+            registry.unlink(); registry.symlink_to(real)
+            projection = tui.read_agent_ops_projection(
+                proc_root=proc, registry_path=registry, outputs_dir=outputs,
+                inbox_dir=inbox, archive_root=archive, use_cache=False,
+            )
+            self.assertEqual(projection["health"]["verdict"], "blocked")
+            self.assertIn("registry_source_not_regular", projection["health"]["reason_codes"])
+
+            registry.unlink(); registry.write_text("{not-json}\n", encoding="utf-8")
+            projection = tui.read_agent_ops_projection(
+                proc_root=proc, registry_path=registry, outputs_dir=outputs,
+                inbox_dir=inbox, archive_root=archive, use_cache=False,
+            )
+            self.assertIn("registry_record_malformed", projection["health"]["reason_codes"])
+
+            registry.write_text(json.dumps({
+                "id": "../../escape", "agent": "claude", "status": "running",
+            }) + "\n", encoding="utf-8")
+            (inbox / "linked.md").symlink_to(inbox / "review.md")
+            projection = tui.read_agent_ops_projection(
+                proc_root=proc, registry_path=registry, outputs_dir=outputs,
+                inbox_dir=inbox, archive_root=archive, use_cache=False,
+            )
+            self.assertIn("registry_task_id_invalid", projection["health"]["reason_codes"])
+            self.assertIn("inbox_source_not_regular", projection["health"]["reason_codes"])
+            self.assertEqual(tui.tail_output("../../escape"), [])
+            self.assertEqual(tui._read_progress("../../escape"), {})
+
+    def test_17_m1_source_byte_and_count_bounds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "oversized"
+            path.write_bytes(b"x" * 9)
+            with self.assertRaisesRegex(tui.SourceReadError, "source_too_large"):
+                tui._bounded_regular_bytes(path, 8)
+            proc = Path(tmp) / "proc"; proc.mkdir()
+            for pid in range(1, ops.MAX_PROCESSES + 2):
+                (proc / str(pid)).mkdir()
+            facts, errors = tui.read_proc_facts(proc)
+            self.assertEqual(facts, [])
+            self.assertEqual(errors, ["process_snapshot_too_large"])
+
+    def test_18_m1_pid_reuse_and_untrusted_progress_stay_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            roots = self._m1_sources(Path(tmp))
+            row = json.loads(roots[1].read_text(encoding="utf-8"))
+            row["pid_start_time"] = 9999
+            roots[1].write_text(json.dumps(row) + "\n", encoding="utf-8")
+            progress_path = roots[2] / "claude-m1.log.progress.json"
+            progress_path.write_text(json.dumps({
+                "trusted": True, "producer": "model", "phase": "generation",
+                "observed_at": self.fixture["now"],
+            }), encoding="utf-8")
+            projection = tui.read_agent_ops_projection(
+                proc_root=roots[0], registry_path=roots[1], outputs_dir=roots[2],
+                inbox_dir=roots[3], archive_root=roots[4], use_cache=False,
+            )
+            item = next(v for v in projection["work"] if v["work_id"] == "claude-m1")
+            self.assertEqual((item["state"], item["visibility"], item["phase"]),
+                             ("stale", "blocked", None))
+
+    def test_19_m1_cache_expires_and_converges_after_process_exit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            roots = self._m1_sources(Path(tmp))
+            tui._cache["projection"] = (0.0, {})
+            first = tui.read_agent_ops_projection(
+                proc_root=roots[0], registry_path=roots[1], outputs_dir=roots[2],
+                inbox_dir=roots[3], archive_root=roots[4], use_cache=True,
+            )
+            self.assertEqual(next(v for v in first["work"] if v["work_id"] == "claude-m1")["state"],
+                             "running")
+            for child in (roots[0] / "10").iterdir():
+                child.unlink()
+            (roots[0] / "10").rmdir()
+            tui._cache["projection"] = (tui._now() - 3, first)
+            second = tui.read_agent_ops_projection(
+                proc_root=roots[0], registry_path=roots[1], outputs_dir=roots[2],
+                inbox_dir=roots[3], archive_root=roots[4], use_cache=True,
+            )
+            item = next(v for v in second["work"] if v["work_id"] == "claude-m1")
+            self.assertEqual((item["state"], item["reason_code"]),
+                             ("stale", "registry_process_missing"))
 
 
 if __name__ == "__main__":

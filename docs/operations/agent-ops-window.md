@@ -2,11 +2,12 @@
 
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-07-07
+Last Updated: 2026-07-15
 
-Live terminal matrix for monitoring all agents, delegations, and operations, and for
-deciding interventions. Reads real sources (no mock data): the delegation registry,
-running processes, service health probes, the A2A audit trail, and PULSE.
+Live terminal matrix for monitoring agents, delegations, and operations. The Agentic Ops authority
+is the closed `aq.agent-ops-projection.v1` projection produced by bounded read-only adapters over
+the delegation registry, trusted progress, `/proc`, and the Antigravity inbox. Service probes, A2A,
+and PULSE remain adjacent operational signals; they do not override the projection.
 
 ## Modes
 | Command | What you see |
@@ -15,7 +16,7 @@ running processes, service health probes, the A2A audit trail, and PULSE.
 | `aq-tui-dashboard --matrix` | **Multi-agent monitoring grid** — one pane per running agent, each showing its **input** (the prompt it received) + **live output** tail. The view for watching + intervening. |
 | `aq-tui-dashboard --focus <task_id>` | Drill into ONE agent: its input + live output stream. |
 | `aq-tui-dashboard --once` | Single snapshot, non-TTY safe (pipeable). |
-| `aq-tui-dashboard --json` | Machine-readable state (delegations, attention, processes, health, a2a). |
+| `aq-tui-dashboard --json` | Machine-readable state, including the closed `agent_ops` projection and sanitized contract health. |
 | `aq-tui-dashboard --interval N` | Refresh cadence in seconds. |
 
 ## Attention markers
@@ -23,10 +24,22 @@ Delegations are flagged worst-first: `✗` failed · `↻` error-loop (a line re
 `AQ_OPS_LOOP_REPEAT`+ times in the output tail) · `◷` stalled (`running` past
 `AQ_OPS_STALL_S`, default 1200s). The header shows the count.
 
+## Projection and uncertainty semantics
+
+The projection correlates processes only by `(pid, start_time)`. PID-only matches, incidental argv
+text, untrusted progress, missing/generic cgroups, unreadable `/proc`, malformed or oversized source
+files, symlinks, and terminal/live conflicts fail closed as `degraded` or `blocked`. Wrapper chains
+deduplicate only through bounded ancestry or a specific cgroup. Default cards and JSON never expose
+prompts, outputs, raw argv, environment values, secrets, or sensitive paths.
+
+The managed Codex sandbox has a private PID namespace. A sandbox `--json` invocation is diagnostic,
+not proof about host processes. Final acceptance and stale-process adjudication require a
+host-visible operator/reviewer invocation.
+
 ## Header semantics (delegations vs processes vs daemons)
 The header reads `N delegation(s) · M active proc · K daemon`:
-- **delegation** — a registry row with `status=running` (an in-flight `delegate-to-*` task).
-- **active proc** — a live agent process doing work (codex `exec`, `aq-agent-loop`, `agent_executor`).
+- **delegation** — a registry-authority work item whose process identity and state are projected.
+- **active proc** — a sanitized process-observer item not classified as an idle daemon.
 - **daemon** — a persistent IDE/MCP backend (codex/gemini `app-server`) that is *present but idle*,
   NOT active work. Daemons are counted separately so they never read as "agents working".
 `--matrix` shows delegations + active procs as panes; when none are active it names the idle
@@ -34,7 +47,9 @@ daemons explicitly. A file/git A2A contributor (e.g. gemini writing a file) is N
 process — it will not appear until it produces a registry delegation.
 
 ## Live streaming — inputs, outputs, reasoning (near-real-time)
-`--matrix` and `--focus` show each agent's live stream (`OUT (live-stream|output-log, near-real-time)`):
+`--matrix` and `--focus` are explicit operator drill-ins and may show the selected task's recorded
+input/output. The default dashboard and `--json` projection remain redacted. Drill-ins show each
+agent's live stream (`OUT (live-stream|output-log, near-real-time)`):
 - **local[Qwen]**: `agent_executor` writes the raw LLM output/reasoning to
   `.agents/delegation/streams/<task_id>.txt` as tokens arrive (throttled ~0.7s) → the pane shows the
   model's output + any inline reasoning (e.g. `Thought:` prose) live, like its native CLI.

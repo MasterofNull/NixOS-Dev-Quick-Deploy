@@ -1,8 +1,12 @@
 # Agent Ops Traceability R0M PRD
 
-Status: **DESIGN APPROVED — M0 ONLY AUTHORIZED; M1–M3 BLOCKED**
+Status: **M0 ACCEPTED — M1 CANDIDATE AWAITING INDEPENDENT ACCEPTANCE; M2–M3 BLOCKED**
 Parent: `.agent/PROJECT-LOCAL-DELEGATION-RELIABILITY-PRD.md`
 Trigger: R0 acceptance directive that monitored work must precede live R1
+
+Transition evidence: L2B-A accepted independently and committed as `fbeffbab`; Antigravity M0 and
+L2B-A acceptance and the independent M1 design review permit the active single-use M1 grant. This
+does not authorize M2–M3 or R1–R4.
 
 ## 1. Outcome
 
