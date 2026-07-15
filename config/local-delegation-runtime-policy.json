@@ -1,0 +1,38 @@
+{
+  "schema_version": "aq.local-delegation-policy.v1",
+  "identity": {"version": "aq.run-id.v2", "prefix": "aq", "entropy_bytes": 16},
+  "budgets": {
+    "code": {"max_tokens": 4096, "min_tokens": 1200},
+    "structured": {"max_tokens": 2048, "min_tokens": 512},
+    "research": {"max_tokens": 4096, "min_tokens": 1200},
+    "tool_call": {"max_tokens": 768, "min_tokens": 384},
+    "repair": {"max_tokens": 1024, "min_tokens": 512},
+    "synthesis": {"max_tokens": 2048, "min_tokens": 800}
+  },
+  "liveness": {
+    "queue_s": 1800, "prefill_s": 900, "generation_silence_s": 180,
+    "tool_s": 600, "orphan_s": 180, "cancel_grace_s": 15, "operator_wall_clock_s": null
+  },
+  "admission": {
+    "authority": "switchboard", "arbitration": "weighted_fifo", "priority_aging_s": 120,
+    "max_residency_s": 900, "queue_age_slo_s": 1800,
+    "epoch": {"max_model_calls": 16, "max_generated_tokens": 16384, "max_resource_s": 1800, "exhaustion_action": "checkpoint_yield_requeue"},
+    "writer_lease": {"scope": "canonical_worktree", "lock_primitive": "stable_descriptor_lock", "fencing": "monotonic_generation_cas", "release_condition": "confirmed_process_death"}
+  },
+  "progress": {
+    "allowed_producers": ["switchboard", "dispatcher", "trusted_observer"],
+    "renewable_phases": ["queued", "prefill", "generating", "tool", "checkpoint"],
+    "duplicate_nudge": 3, "duplicate_stop": 5
+  },
+  "context": {"max_tokens": 32768, "reserved_output_tokens": 4096, "max_checkpoint_bytes": 1048576, "max_rss_bytes": 34359738368},
+  "metrics": [
+    "phase_duration_seconds", "phase_silence_seconds", "progress_renewals_total",
+    "progress_rejections_total", "budget_provenance_total", "queue_age_seconds",
+    "slot_contention_latency_ms", "lease_contention_latency_ms", "identity_collisions_total",
+    "epoch_yields_total", "epoch_requeues_total", "cancellation_term_total",
+    "cancellation_kill_total", "cancellation_failures_total", "oom_cleanup_total",
+    "telemetry_integrity_rejections_total", "terminal_reasons_total",
+    "compaction_bytes_saved", "compaction_cycles_total"
+  ],
+  "compatibility_aliases": []
+}
