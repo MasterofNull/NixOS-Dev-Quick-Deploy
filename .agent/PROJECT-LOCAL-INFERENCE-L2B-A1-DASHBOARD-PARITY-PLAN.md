@@ -1,6 +1,6 @@
 # Local Inference L2B-A.1 Dashboard Parity Follow-up
 
-Status: **IMPLEMENTED — FLAGSHIP ACCEPTANCE PENDING**
+Status: **ACCEPTED — COMMITTED `66391367`**
 Parent: `.agent/PROJECT-LOCAL-INFERENCE-L2B-A-PLAN.md`
 Trigger: accepted L2B-A module reports `source_shape_parity` and `actual_ssot_parity`, but the web
 dashboard sanitizer/card drops both fields.

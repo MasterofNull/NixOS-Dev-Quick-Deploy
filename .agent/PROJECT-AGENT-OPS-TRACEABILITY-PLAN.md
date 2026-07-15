@@ -1,6 +1,6 @@
 # Agent Ops Traceability R0M Plan
 
-Status: **M0 ACCEPTED — M1 CANDIDATE READY FOR FLAGSHIP ACCEPTANCE; M2–M3 BLOCKED; R1–R4 UNAUTHORIZED**
+Status: **M0–M1 ACCEPTED — M1 COMMITTED `748c5a9c`; M2–M3 AND R1–R4 UNAUTHORIZED**
 Parent: `.agent/PROJECT-AGENT-OPS-TRACEABILITY-PRD.md`
 
 ## 1. Proposed exact inventory
@@ -103,9 +103,9 @@ requires a file outside the exact inventory.
 
 ## 6. Authorization request
 
-Flagship review passed in `antigravity-m1-design-review.md`; the owner/orchestrator activated the
-single-use M1 authorization. M2–M3 and R1–R4 remain unauthorized regardless of M1 implementation
-status.
+Flagship design and acceptance reviews passed; the owner/orchestrator activated and consumed the
+single-use M1 authorization, and the exact candidate was committed as `748c5a9c`. M2–M3 and R1–R4
+remain unauthorized regardless of M1 status.
 
 Implementation evidence: focused M1 tests pass 19/19, R0 passes 16/16, L2B-A passes 8/8, and L2A
 passes 7/7. Host-backed Phase 0 wrote immutable evidence for 169 passed, 0 failed, and 9 skipped;
