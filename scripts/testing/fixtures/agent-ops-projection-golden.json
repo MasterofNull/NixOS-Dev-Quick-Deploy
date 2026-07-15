@@ -1,0 +1,39 @@
+{
+  "fixture_version": "aq.agent-ops-projection.m0.v1",
+  "now": 1784127600,
+  "registry": [
+    {"id": "local-task-1", "agent": "local", "role": "implementer", "profile": "code", "status": "running", "pid": 101, "pid_start_time": 1001, "artifact_present": false, "progress": {"trusted": true, "producer": "switchboard", "phase": "prefill", "observed_at": 1784127590}},
+    {"id": "codex-terminal-live", "agent": "codex", "role": "reviewer", "status": "done", "pid": 201, "pid_start_time": 2001, "artifact_present": true},
+    {"id": "claude-stale", "agent": "claude", "role": "implementer", "status": "running", "pid": 999, "pid_start_time": 9999, "artifact_present": false},
+    {"id": "local-forged-progress", "agent": "local", "role": "reviewer", "status": "running", "pid": 401, "pid_start_time": 4001, "progress": {"trusted": false, "producer": "model", "phase": "generating", "observed_at": 1784127595}}
+  ],
+  "processes": [
+    {"pid": 100, "start_time": 1000, "ppid": 1, "pgid": 100, "session": 100, "cgroup": "/agent/task-1.scope", "executable": "/usr/bin/bwrap", "argv": ["bwrap", "--", "codex"]},
+    {"pid": 101, "start_time": 1001, "ppid": 100, "pgid": 101, "session": 101, "cgroup": "/agent/task-1.scope", "executable": "/repo/scripts/ai/aq-agent-loop", "argv": ["aq-agent-loop", "--task", "x"]},
+    {"pid": 201, "start_time": 2001, "ppid": 1, "pgid": 201, "session": 201, "cgroup": "/agent/codex-terminal.scope", "executable": "/bin/codex", "argv": ["spoofed-name", "exec", "--json"]},
+    {"pid": 301, "start_time": 3001, "ppid": 1, "pgid": 301, "session": 301, "cgroup": "/agent/codex-daemon.scope", "executable": "/bin/codex", "argv": ["codex", "app-server"]},
+    {"pid": 401, "start_time": 4001, "ppid": 1, "pgid": 401, "session": 401, "cgroup": "/agent/forged.scope", "executable": "/repo/scripts/ai/aq-agent-loop", "argv": ["aq-agent-loop"]},
+    {"pid": 501, "start_time": 5001, "ppid": 1, "pgid": 501, "session": 501, "cgroup": "/agent/incidental.scope", "executable": "/bin/zsh", "argv": ["codex", "-c", "echo exec codex"]},
+    {"pid": 601, "error": "permission_denied"},
+    {"pid": 701, "start_time": 7001, "ppid": 1, "pgid": 701, "session": 701, "cgroup": "/agent/escaped.scope", "executable": "/usr/bin/bwrap", "argv": ["bwrap"]},
+    {"pid": 702, "start_time": 7002, "ppid": 99999, "pgid": 900, "session": 900, "cgroup": "/agent/escaped.scope", "executable": "/bin/codex", "argv": ["codex", "exec"]},
+    {"pid": 801, "start_time": 8001, "ppid": 4242, "pgid": 801, "session": 801, "cgroup": null, "executable": "/repo/scripts/ai/delegate-to-codex", "argv": ["delegate-to-codex"]}
+  ],
+  "inbox": [
+    {"name": "pending-review.md", "pending": true, "dropped_at": 1784127500, "output_present": false},
+    {"name": "output-not-archived.md", "pending": true, "dropped_at": 1784127400, "output_present": true},
+    {"name": "completed-review.md", "pending": false, "dropped_at": 1784127000, "archived_at": 1784127300, "output_present": true},
+    {"name": "missing-output.md", "pending": false, "dropped_at": 1784127000, "archived_at": 1784127350, "output_present": false},
+    {"name": "state-conflict.md", "pending": false, "dropped_at": 1784127000, "output_present": true}
+  ],
+  "expected": {
+    "health": "blocked",
+    "work_count": 14,
+    "inbox_pending_count": 2,
+    "inbox_processing_duration_seconds": 350,
+    "cgroup_correlation_failures_total": 1,
+    "tracked_local_phase": "prefill",
+    "dedup_group_member_count": 2,
+    "required_reasons": ["terminal_process_alive", "registry_process_missing", "progress_untrusted", "process_without_authority", "proc_permission_denied", "inbox_output_not_archived", "inbox_state_conflict"]
+  }
+}

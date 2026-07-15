@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.agent-ops-projection.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "health", "metrics", "work"],
+  "properties": {
+    "schema_version": {"const": "aq.agent-ops-projection.v1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "health": {
+      "type": "object", "additionalProperties": false,
+      "required": ["verdict", "reason_codes", "source_freshness"],
+      "properties": {
+        "verdict": {"enum": ["tracked", "degraded", "blocked"]},
+        "reason_codes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9_]+$"}},
+        "source_freshness": {"enum": ["fresh", "stale", "unavailable"]}
+      }
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inbox_pending_count", "inbox_processing_duration_seconds", "cgroup_correlation_failures_total"],
+      "properties": {
+        "inbox_pending_count": {"type": "integer", "minimum": 0},
+        "inbox_processing_duration_seconds": {"type": ["integer", "null"], "minimum": 0},
+        "cgroup_correlation_failures_total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "work": {"type": "array", "items": {"$ref": "#/$defs/work"}}
+  },
+  "$defs": {
+    "pid_identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pid", "start_time", "ppid", "pgid", "session", "cgroup"],
+      "properties": {
+        "pid": {"type": "integer", "minimum": 1},
+        "start_time": {"type": "integer", "minimum": 0},
+        "ppid": {"type": "integer", "minimum": 0},
+        "pgid": {"type": "integer", "minimum": 0},
+        "session": {"type": "integer", "minimum": 0},
+        "cgroup": {"type": ["string", "null"]}
+      }
+    },
+    "work": {
+      "type": "object", "additionalProperties": false,
+      "required": ["work_id", "lane", "role", "model_profile", "authority", "state", "phase", "progress_age_s", "pid_identity", "dedup_group", "access", "terminal_reason", "artifact", "visibility", "reason_code", "freshness"],
+      "properties": {
+        "work_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+        "lane": {"enum": ["local", "claude", "codex", "antigravity", "system", "unknown"]},
+        "role": {"type": ["string", "null"]},
+        "model_profile": {"type": ["string", "null"]},
+        "authority": {"enum": ["delegation_registry", "antigravity_inbox", "process_observer", "collaboration_event"]},
+        "state": {"enum": ["queued", "running", "waiting", "cancelling", "terminal", "idle", "untracked", "conflict", "stale"]},
+        "phase": {"type": ["string", "null"]},
+        "progress_age_s": {"type": ["integer", "null"], "minimum": 0},
+        "pid_identity": {"anyOf": [{"$ref": "#/$defs/pid_identity"}, {"type": "null"}]},
+        "dedup_group": {"type": ["string", "null"]},
+        "access": {"enum": ["writer", "read_only", "none"]},
+        "terminal_reason": {"type": ["string", "null"]},
+        "artifact": {"enum": ["expected", "present", "missing", "not_applicable"]},
+        "visibility": {"enum": ["tracked", "degraded", "blocked"]},
+        "reason_code": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+        "freshness": {"enum": ["fresh", "stale", "unavailable"]}
+      }
+    }
+  }
+}
