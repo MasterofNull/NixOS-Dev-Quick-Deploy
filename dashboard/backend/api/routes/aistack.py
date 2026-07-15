@@ -54,6 +54,8 @@ _PG_POOL: Optional[Any] = None  # asyncpg.Pool, typed as Any to avoid import-tim
 _MODEL_INVENTORY_WARNINGS: set[tuple[str, str]] = set()
 _LOCAL_INFERENCE_CONTRACT_MODULE: Optional[Any] = None
 _LOCAL_INFERENCE_POLICY_MODULE: Optional[Any] = None
+_LOCAL_INFERENCE_TRANSPORT_MODULE: Optional[Any] = None
+_LOCAL_INFERENCE_TRANSPORT_CACHE: Dict[str, Any] = {"digest": None, "payload": None}
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -2290,6 +2292,91 @@ def _local_inference_l2a_health() -> Dict[str, Any]:
     }
 
 
+def _local_inference_l2b_health_sync() -> Dict[str, Any]:
+    """Load, execute, cache, and sanitize committed L2B-A fixture health off-loop."""
+    default = {
+        "status": "unavailable", "mode": "shadow_fixture_only", "policy_version": None,
+        "adapter_version": None, "digest_version": None, "schema_status": "unavailable",
+        "payload_parity": "unavailable", "stream_parity": "unavailable",
+        "target_decisions": {}, "payload_vector_count": None, "stream_vector_count": None,
+        "digest": None, "freshness": "commit_fixture", "reason_code": "transport_assets_missing",
+    }
+    module_path = _repo_root() / "scripts" / "ai" / "lib" / "local_inference_transport.py"
+    try:
+        global _LOCAL_INFERENCE_TRANSPORT_MODULE
+        if _LOCAL_INFERENCE_TRANSPORT_MODULE is None:
+            spec = importlib.util.spec_from_file_location("aq_local_inference_transport", module_path)
+            if spec is None or spec.loader is None:
+                return default
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            _LOCAL_INFERENCE_TRANSPORT_MODULE = module
+        asset_digest = _LOCAL_INFERENCE_TRANSPORT_MODULE.transport_asset_digest(_repo_root())
+        if (
+            _LOCAL_INFERENCE_TRANSPORT_CACHE.get("digest") == asset_digest
+            and isinstance(_LOCAL_INFERENCE_TRANSPORT_CACHE.get("payload"), dict)
+        ):
+            return dict(_LOCAL_INFERENCE_TRANSPORT_CACHE["payload"])
+        raw = _LOCAL_INFERENCE_TRANSPORT_MODULE.transport_health(_repo_root())
+    except Exception:
+        return default
+    if not isinstance(raw, dict):
+        return {**default, "status": "degraded", "reason_code": "transport_fixture_invalid"}
+    status = raw.get("status")
+    policy_version = raw.get("policy_version")
+    adapter_version = raw.get("adapter_version")
+    digest_version = raw.get("digest_version")
+    schema_status = raw.get("schema_status")
+    payload_parity = raw.get("payload_parity")
+    stream_parity = raw.get("stream_parity")
+    decisions = raw.get("target_decisions")
+    payload_count = raw.get("payload_vector_count")
+    stream_count = raw.get("stream_vector_count")
+    digest = raw.get("digest")
+    reason_code = raw.get("reason_code")
+    expected_targets = {"direct_llama", "switchboard", "coordinator", "local_runtime", "ralph"}
+    decision_states = {"registered", "unavailable_route_contract"}
+    reason_codes = {
+        "transport_assets_missing", "transport_schema_invalid", "transport_fixture_missing",
+        "transport_fixture_invalid", "transport_fixture_parity_pass",
+    }
+    version_pattern = re.compile(r"[a-z0-9][a-z0-9.-]{1,63}")
+    if (
+        status not in {"healthy", "degraded", "unavailable"}
+        or schema_status not in {"valid", "invalid", "unavailable"}
+        or payload_parity not in {"pass", "fail", "unavailable"}
+        or stream_parity not in {"pass", "fail", "unavailable"}
+        or not isinstance(decisions, dict) or set(decisions) != expected_targets
+        or any(value not in decision_states for value in decisions.values())
+        or not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (payload_count, stream_count))
+        or not all(isinstance(value, str) and version_pattern.fullmatch(value) for value in (policy_version, adapter_version, digest_version))
+        or not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None
+        or reason_code not in reason_codes
+    ):
+        return {**default, "status": "degraded", "reason_code": "transport_fixture_invalid"}
+    if status == "healthy" and not (
+        schema_status == "valid" and payload_parity == "pass" and stream_parity == "pass"
+        and payload_count > 0 and stream_count > 0 and reason_code == "transport_fixture_parity_pass"
+    ):
+        return {**default, "status": "degraded", "reason_code": "transport_fixture_invalid"}
+    sanitized = {
+        "status": status, "mode": "shadow_fixture_only", "policy_version": policy_version,
+        "adapter_version": adapter_version, "digest_version": digest_version,
+        "schema_status": schema_status, "payload_parity": payload_parity,
+        "stream_parity": stream_parity,
+        "target_decisions": {name: decisions[name] for name in sorted(expected_targets)},
+        "payload_vector_count": payload_count, "stream_vector_count": stream_count,
+        "digest": digest, "freshness": "commit_fixture", "reason_code": reason_code,
+    }
+    _LOCAL_INFERENCE_TRANSPORT_CACHE.update({"digest": asset_digest, "payload": dict(sanitized)})
+    return sanitized
+
+
+async def _local_inference_l2b_health() -> Dict[str, Any]:
+    return await asyncio.to_thread(_local_inference_l2b_health_sync)
+
+
 def _loop_telemetry_dirs() -> List[Path]:
     return [
         Path(os.environ.get("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")),
@@ -2829,6 +2916,7 @@ async def get_harness_overview() -> Dict[str, Any]:
             "scorecard": harness_scorecard,
             "local_inference_contract": _local_inference_contract_health(),
             "local_inference_l2a": _local_inference_l2a_health(),
+            "local_inference_l2b": await _local_inference_l2b_health(),
             "capability_discovery": (
                 hybrid_health.get("capability_discovery")
                 or harness_scorecard.get("discovery")

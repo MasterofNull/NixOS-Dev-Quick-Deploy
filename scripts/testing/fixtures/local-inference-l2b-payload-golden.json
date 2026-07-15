@@ -1,0 +1,53 @@
+{
+  "contract_version": "1.0",
+  "builder_environment": {
+    "declared_names": ["FABLE_PARITY", "LLAMA_MAX_TOKENS"],
+    "forbidden_ambient_canary": "DIRECT_MAX_TOKENS"
+  },
+  "live_source_manifest": {
+    "scripts/ai/aq-chat": "4302af375b25aa98dfb6d923e671e9d7597c814759b45b5c12fe3c84cb6d8392",
+    "scripts/ai/lib/dispatch.py": "1b083b1025877385cb4e295234edd23a61a85aae554393fb87792c732e01dd92",
+    "ai-stack/mcp-servers/shared/llm_config.py": "be5a098687c92c4345c80307175144887c262174afbf6da9fc2ca8012d961905",
+    "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py": "8e0599b566983dabfbc7ebeb187980b3606e8028048df595bc0b2f4136f3427e",
+    "ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py": "7c6299c915f4348c47f94a1cf0d4325a1c4165ed5856ba18e311f54cb0839a6a",
+    "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py": "59c06e29b7d607712ed8f97288b734d9138d57e5302d6d210da5a9284f9e3ea0",
+    "ai-stack/agents/runtimes/local_agent_runtime.py": "5a95b74b2479bf4d05ea80ee927ed4741d64cd71fdee8d696fa4b59a9d6b97d3",
+    "ai-stack/switchboard/switchboard.py": "8744a455e6e3e196490d083ebb03bcb6caabc5d91157a17367cc11d6621ea230",
+    "ai-stack/mcp-servers/ralph-wiggum/server.py": "4ce2dda70c9a9e506f03b1b4f334173486b672202b351c0d261566af1fda714a"
+  },
+  "source_shapes": [
+    {"id": "canonical-builder", "path": "ai-stack/mcp-servers/shared/llm_config.py", "target": "direct_llama", "predicates": [{"kind": "contains", "literal": "def build_llama_payload(", "min_count": 1}]},
+    {"id": "dispatch-direct", "path": "scripts/ai/lib/dispatch.py", "target": "direct_llama", "predicates": [{"kind": "contains", "literal": "payload = build_llama_payload(", "min_count": 1}]},
+    {"id": "embedded-assist", "path": "scripts/ai/aq-chat", "target": "direct_llama", "predicates": [{"kind": "contains", "literal": "def _build_coordinator_delegate_payload(", "min_count": 1}]},
+    {"id": "aq-chat-fast-path", "path": "scripts/ai/aq-chat", "target": "switchboard", "predicates": [{"kind": "contains", "literal": "def _build_fast_path_payload(", "min_count": 1}]},
+    {"id": "coordinator-route", "path": "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py", "target": "coordinator", "predicates": [{"kind": "contains", "literal": "payload=build_llama_payload(", "min_count": 1}]},
+    {"id": "coordinator-client", "path": "ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py", "target": "coordinator", "predicates": [{"kind": "contains", "literal": "f\"{self.base_url}/chat/completions\"", "min_count": 1}]},
+    {"id": "coordinator-handler", "path": "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py", "target": "coordinator", "predicates": [{"kind": "contains", "literal": "/v1/chat/completions", "min_count": 1}]},
+    {"id": "local-runtime", "path": "ai-stack/agents/runtimes/local_agent_runtime.py", "target": "local_runtime", "predicates": [{"kind": "contains", "literal": "def _build_inference_payload(", "min_count": 1}]},
+    {"id": "switchboard", "path": "ai-stack/switchboard/switchboard.py", "target": "switchboard", "predicates": [{"kind": "contains", "literal": "payload = build_llama_payload(", "min_count": 1}]},
+    {"id": "ralph-unavailable", "path": "ai-stack/mcp-servers/ralph-wiggum/server.py", "target": "ralph", "predicates": [{"kind": "contains", "literal": "@app.post(\"/tasks\"", "min_count": 1}, {"kind": "absent", "literal": "local_inference_transport", "min_count": 1}]}
+  ],
+  "actual_ssot_vectors": [
+    {
+      "id": "actual-builder-fable-disabled",
+      "environment": {"FABLE_PARITY": "0", "LLAMA_MAX_TOKENS": "128"},
+      "expected_system_message_sha256": "6f1d503e5322704ab889b1be11379d2ea59530de4c42b8301a737e59c4562910",
+      "expected_chat_template_kwargs": {"enable_thinking": false},
+      "expected_canonical_wire_utf8": "{\"headers\":[{\"name\":\"accept\",\"value\":\"text/event-stream\"},{\"name\":\"content-type\",\"value\":\"application/json\"},{\"name\":\"x-agent-role\",\"value\":\"implementer\"},{\"name\":\"x-ai-profile\",\"value\":\"continue-local\"},{\"name\":\"x-profile-snapshot-revision\",\"value\":\"snapshot-v1\"}],\"payload\":{\"cache_prompt\":true,\"chat_template_kwargs\":{\"enable_thinking\":false},\"frequency_penalty\":0.0,\"max_tokens\":128,\"messages\":[{\"content\":\"[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.\",\"role\":\"system\"},{\"content\":\"hello\",\"role\":\"user\"}],\"model\":\"local-test\",\"repeat_last_n\":64,\"repeat_penalty\":1.08,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.0}}"
+    },
+    {
+      "id": "actual-builder-fable-enabled",
+      "environment": {"FABLE_PARITY": "1", "LLAMA_MAX_TOKENS": "128"},
+      "expected_system_message_sha256": "0b1e2fd0e7351527c7c18aaca1be3931671d4833cce490a0f6e732731c666c9b",
+      "expected_chat_template_kwargs": {"enable_thinking": false},
+      "expected_canonical_wire_utf8": "{\"headers\":[{\"name\":\"accept\",\"value\":\"text/event-stream\"},{\"name\":\"content-type\",\"value\":\"application/json\"},{\"name\":\"x-agent-role\",\"value\":\"implementer\"},{\"name\":\"x-ai-profile\",\"value\":\"continue-local\"},{\"name\":\"x-profile-snapshot-revision\",\"value\":\"snapshot-v1\"}],\"payload\":{\"cache_prompt\":true,\"chat_template_kwargs\":{\"enable_thinking\":false},\"frequency_penalty\":0.0,\"max_tokens\":128,\"messages\":[{\"content\":\"[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.\\n\\nBehavior: lead with the outcome; final answer self-contained. Act, don't ask, for reversible in-scope work. Never end on a plan — do it or name the blocker. Verify evidence before any state change. Report failures honestly with output; state verified work plainly.\",\"role\":\"system\"},{\"content\":\"hello\",\"role\":\"user\"}],\"model\":\"local-test\",\"repeat_last_n\":64,\"repeat_penalty\":1.08,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.0}}"
+    }
+  ],
+  "vectors": [
+    {"id": "direct-buffered", "target": "direct_llama", "mode": "buffered_json"},
+    {"id": "switchboard-stream", "target": "switchboard", "mode": "openai_sse"},
+    {"id": "coordinator-stream", "target": "coordinator", "mode": "openai_sse"},
+    {"id": "runtime-buffered", "target": "local_runtime", "mode": "buffered_json"},
+    {"id": "ralph-unavailable", "target": "ralph", "mode": null}
+  ]
+}

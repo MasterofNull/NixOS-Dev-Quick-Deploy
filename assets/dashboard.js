@@ -3934,6 +3934,7 @@ async function loadHarnessOv() {
   const card = (d.harness || {}).scorecard || {};
   const lic = (d.harness || {}).local_inference_contract || {};
   const l2a = (d.harness || {}).local_inference_l2a || {};
+  const l2b = (d.harness || {}).local_inference_l2b || {};
   const inf = card.inference_optimizations || {};
   const disc = card.discovery || {};
   if (badge) {
@@ -4018,6 +4019,25 @@ async function loadHarnessOv() {
       (l2a.redaction_vector_count || 0) > 0 && (l2a.compaction_vector_count || 0) > 0 ? "info" : "warn"
     ),
     fwRow("· mode", l2a.mode || "--", l2a.mode === "shadow_fixture_only" ? "info" : "warn"),
+    fwRow(
+      "Transport Shadow",
+      l2b.status || "unavailable",
+      l2b.status === "healthy" ? "ok" : "warn"
+    ),
+    fwRow("· policy", l2b.policy_version || "--", l2b.policy_version ? "info" : "warn"),
+    fwRow(
+      "· parity",
+      `${l2b.payload_parity || "unavailable"} payload · ${l2b.stream_parity || "unavailable"} stream`,
+      l2b.payload_parity === "pass" && l2b.stream_parity === "pass" ? "ok" : "warn"
+    ),
+    fwRow(
+      "· vectors",
+      Number.isInteger(l2b.payload_vector_count) && Number.isInteger(l2b.stream_vector_count)
+        ? `${l2b.payload_vector_count} payload · ${l2b.stream_vector_count} stream`
+        : "--",
+      (l2b.payload_vector_count || 0) > 0 && (l2b.stream_vector_count || 0) > 0 ? "info" : "warn"
+    ),
+    fwRow("· mode", l2b.mode || "--", l2b.mode === "shadow_fixture_only" ? "info" : "warn"),
   ]
     .filter(Boolean)
     .join("");

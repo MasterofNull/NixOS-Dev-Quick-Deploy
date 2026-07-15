@@ -1,0 +1,10 @@
+{
+  "contract_version": "1.0",
+  "vectors": [
+    {"id": "buffered-content", "mode": "buffered_json", "chunks": ["{\"choices\":[{\"message\":{\"content\":\"héllo\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1}}"]},
+    {"id": "sse-content-usage", "mode": "openai_sse", "chunks": ["data: {\"choices\":[{\"delta\":{\"content\":\"hé\"},\"finish_reason\":null}]}\r\n\r\n", "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1}}\n\ndata: [DONE]\n\n"]},
+    {"id": "sse-comment-heartbeat", "mode": "openai_sse", "chunks": [": keepalive\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"]},
+    {"id": "sse-upstream-error", "mode": "openai_sse", "chunks": ["data: {\"error\":{\"message\":\"unavailable\",\"type\":\"server_error\"}}\n\n"]},
+    {"id": "sse-tool-fragments", "mode": "openai_sse", "chunks": ["data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n"]}
+  ]
+}
