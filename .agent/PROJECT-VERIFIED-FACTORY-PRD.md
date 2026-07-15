@@ -1,14 +1,14 @@
 # PRD — Verified Factory Throughput Layer (VF)
 
-**Status**: DRAFT / PREPARED_ONLY — requires multi-agent ratification round `verified-factory`
-and explicit owner activation before any implementation.
+**Status**: REQUEST_REVISION / PREPARED_ONLY — amended after the `unified-program` aggregate;
+requires bounded re-review and explicit per-slice owner authorization before implementation.
 **Owner lane**: claude-fable-5 (analysis/orchestration; implementation delegated per role matrix +
 lane-eligibility policy). **Date**: 2026-07-13.
 **Companion meta-prompt**: `.agents/prompts/VERIFIED-FACTORY-CYCLE-META-PROMPT.md`
 **Program position**: Track V (cross-cutting) in `.agents/plans/UNIFIED-PROGRAM-PLAN.md`; VF-0
 folds into the consolidated `unified-program` ratification round.
 **Position**: proposed next dev cycle after the in-flight Codex local-inference cycle
-(L1A `0c171504`, L2A `499e5a26`, L2B in execution at drafting time). VF **feeds** the ratified
+(L1A `0c171504`, L2A `499e5a26`, L2B-A `fbeffbab`; L2B-B unauthorized). VF **feeds** the ratified
 reference architecture (`.agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md`,
 Cycles 1A–6); it forks nothing and supersedes nothing.
 
@@ -86,12 +86,18 @@ lane, a risk tier, and a rollback path. Lane assignments follow current measured
 adversarial critique only; local Qwen: bounded single-edit/audit slices — present in every phase).
 
 ### VF-1 — Oracle-required dispatch contract *(foundation; smallest, unblocks all)*
-Extend the task/backlog contract with an `oracle` block: `{cmd, timeout_s, expected_exit,
-artifacts[], tier, sealed_by, waiver?}`. `aq-loop`/delegation dispatch gains a gate: warn-mode
+Extend the task/backlog contract with an `oracle` block whose command is an argv array, never a shell
+string: `{argv[], cwd, env_allowlist[], network_profile, timeout_s, kill_grace_s, output_cap_bytes,
+expected_exit, artifacts[], tier, sealed_by, waiver?}`. `cwd` and artifact paths are normalized,
+contained in the leased workspace, and revalidated before use; undeclared environment, shell
+metacharacter interpretation, redirects, and ambient network are forbidden. Timeout terminates the
+bounded process group and records cleanup evidence. `aq-loop`/delegation dispatch gains a gate: warn-mode
 first (log oracle-less dispatches), enforce-mode behind a flag after one clean week.
 Oracle execution is zero-inference by construction.
-**Accept**: schema lands as L1A extension; 100% of new backlog items carry an oracle or an
-explicit reasoned waiver; enforce-mode refusal demonstrated live; gate observable on dashboard.
+**Accept**: schema lands as L1A extension; frozen warn/dry-run fixtures prove deterministic
+classification, zero side effects, waiver behavior, timeout cleanup, output caps, stable refusal
+reasons, and dashboard telemetry; 100% of new backlog items carry an oracle or explicit waiver;
+enforce-mode refusal is demonstrated only after the warn fixtures and live dry-run pass.
 **Lanes**: fable specs + seals template; codex implements; local audits backlog for retrofit list.
 
 ### VF-2 — Risk-tiered gate rubric *(makes zero trust affordable)*
@@ -107,21 +113,27 @@ measured per slice and rendered on the dashboard.
 
 ### VF-3 — Report ≠ record verifier path *(structural fix for E1)*
 A verifier step inside the existing harness_qa/tier0 path (NOT a new daemon) re-executes the
-task's sealed oracle post-implementation and writes the outcome record; agent self-reports become
+task's sealed oracle post-implementation; agent self-reports become
 non-authoritative annotations. Fail-closed: unverifiable ⇒ not accepted. Ships with a red-team
 regression fixture derived from the Opus incident: a deliberately false agent claim must not flip
 status.
-**Accept**: acceptance/status records writable only via the verifier path (enforced, not
-convention); incident fixture green in Phase-0; verdicts carry oracle output hash + lineage.
+VF-3 remains report-only until a separately ratified authority contract names the existing state
+spine, `vf.acceptance-record.v1` closed schema, subject/attempt/verifier identity, legal transitions,
+CAS/idempotency key, replay behavior, recovery owner, retention, and rollback. Only then may the
+verifier be the sole writer for that record type.
+**Accept**: incident fixture green in Phase-0; report-only verdicts carry canonical oracle argv,
+exit/timeout/truncation state, output/artifact hashes, subject lineage, and verifier identity. Writer
+promotion additionally requires the authority contract and transition/replay fixtures above.
 **Lanes**: codex implements; opus bounded sub-steps; fable reviews; local writes fixture variants.
 
 ### VF-4 — Golden-task bank *(dogfooding flywheel; feeds ref-arch Cycle 4)*
-Every merged slice banks its oracle + minimal repro context as a versioned eval case
+Every merged slice banks readable task/oracle/repro material separately from sealed answers and
+canaries as a versioned eval case
 (Cycle-4-compatible object model). `aq-eval replay` gates model/prompt/profile/routing-config
 changes: run the bank, compare pass-rates against the recorded baseline, block on regression.
 **Accept**: bank grows monotonically with merges (automatic, not manual); one real config change
-demonstrably gated by replay; scorecard visible on dashboard; sealed cases unreadable by
-implementer lanes (eval-integrity inheritance).
+demonstrably gated by replay; scorecard visible on dashboard; implementers can read the task and
+oracle needed to converge but cannot read sealed answers/canaries.
 **Lanes**: codex bank + replay; local generates candidate cases from closed backlog items;
 fable curates + seals.
 
@@ -129,8 +141,10 @@ fable curates + seals.
 Verifier path appends one record per completed task: task features, lane, oracle outcome,
 attempts, escalations, wall time, token cost. Storage = append-only JSONL projection under the
 existing telemetry surface (declared rebuild source; no new authority). Weekly generated routing
-report: per-task-class pass-rate/cost per lane + suggested routing-table deltas. **No live routing
-mutation this cycle.**
+report: per-task-class pass-rate/cost per lane + suggested routing-table deltas. Automated live
+routing mutation remains out of scope. An interim manual update is permitted only through the named
+routing authority with owner approval, exact before/after diff, evidence reference, rollback,
+expiry, and an explicit prohibition on model self-promotion.
 **Accept**: ledger written only by the verifier path; first weekly report generated from ≥20 real
 tasks; escalation triggers defined as verifier-failure counts (never model self-assessment).
 **Lanes**: codex ledger; fable report design; local report generation runs.
@@ -188,16 +202,16 @@ adversarially probes interrupt-rubric evasion.
 ```
 VF-0  Ratification & reconciliation round (consensus ≥3/4; owner activation; PREPARED_ONLY→ACTIVE)
       — waits for L2B close or proven non-overlap
-VF-1 + VF-7   (parallel; smallest; unblock everything)
+VF-1 + VF-7   (parallel only after L2B-B or exact hash-bound non-overlap; warn/evidence first)
+VF-3 report-only (immediately after VF-1/VF-7; writer promotion waits for authority contract)
 VF-2 + VF-9   (VF-2 needs VF-1 tier field; VF-9 needs VF-1 oracle schema + rubric ratified at VF-0)
-VF-3          (needs VF-1 oracles; delivers report≠record)
 VF-4 + VF-5   (parallel; need VF-3 verifier path)
 VF-6          (needs VF-5 ledger)
 VF-8          (independent; idle windows; anytime after VF-0)
 ```
 
-External dependencies: F2.5 wiring (aqos-v1 Beat 3.1) is a throughput dependency, not VF scope —
-owner decides whether it precedes or parallels VF. Cycle 1B state spine may land mid-cycle; VF
+External dependencies: F2.5 wiring state must be re-measured before sequencing; any missing scheduler
+path is a throughput dependency and requires its own authorization. Cycle 1B state spine may land mid-cycle; VF
 artifacts are spine-compatible projections by design (§3).
 
 ## 6. Factory KPIs (baseline at VF-0, re-measured at cycle close, dashboard-rendered)

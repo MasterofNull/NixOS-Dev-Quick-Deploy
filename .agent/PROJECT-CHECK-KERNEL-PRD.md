@@ -1,7 +1,7 @@
 # PRD — Check Kernel (CK): World-Class Lint + Agentic Verification SSOT
 
-**Status**: DRAFT / PREPARED_ONLY — for multi-agent review (round `check-kernel`, foldable into
-`unified-program`); explicit owner activation required before implementation.
+**Status**: REQUEST_REVISION / PREPARED_ONLY — amended after `unified-program`; bounded re-review
+and explicit per-slice owner activation are required before implementation.
 **Owner lane**: claude-fable-5 (analysis/orchestration). **Date**: 2026-07-13.
 **Origin**: owner request (research linters + agentic workflow; source video: IndyDevDan,
 "FORGET Loop Engineering. Agentic Engineering is about THIS") + Antigravity ARE plan (received
@@ -32,7 +32,7 @@ have world-class *coverage* and near-zero *unification*.
 |---|---|---|
 | `scripts/governance/` scripts | **80** | overlapping ad-hoc checkers; discovery via grep; no shared contract |
 | `tier0-validation-gate.sh` gates | **19** inline bash functions (9 language syntax + structure/header/env/contract/SSOT gates) | monolith; syntax-only depth (no lint/format/type); adding a gate = editing the monolith |
-| `config/validation-check-registry.json` | **99 checks**, has schema (id/trigger_paths/command) + `run-focused-ci-checks.sh` runner | the proto-SSOT — but only path-triggered CI checks; tier0 gates, QA phases, and lint tools live outside it |
+| `config/validation-check-registry.json` | **99 checks at `fbeffbab`**, legacy fields + `run-focused-ci-checks.sh` | migration must bind this snapshot and preserve legacy execution semantics |
 | `harness_qa` phases + `_aq-qa-bash` | dual Python/Bash registration | known bug pattern (0.10.x ID collisions, C0.3 amendment churn); registration is manual ×2 |
 | `.pre-commit-config.yaml` | wraps tier0 + hygiene hooks | fine as a shell; logic belongs below it |
 | Lint/format tools | ruff, shellcheck, statix, deadnix, alejandra, mypy **installed but NOT wired into any gate**; treefmt/shfmt/biome absent | Antigravity's availability claim verified ✅ |
@@ -44,12 +44,19 @@ it to the kernel and demoting everything else to entries or profiles of it.
 
 ## 3. Target design — one Check Kernel
 
-### 3.1 CheckSpec contract (extends the existing registry schema; L1A-style versioned schema)
+### 3.1 CheckSpec v2 contract and legacy compatibility
+
+The current registry is legacy v1. A versioned external Draft 2020-12 schema and pure normalizer must
+accept both legacy v1 and canonical v2 during migration. Operational legacy fields remain intact:
+`description`, argv `command`, `trigger_paths`, `timeout_seconds` and its documented legacy alias,
+`always_run`, `pass_staged_files`, `enabled`, and `require_tool`. The existing `tier` means
+structural/behavioral/security classification and is not reused for VF risk. Canonical v2 introduces
+`check_class` and `risk_tier`; conversion is explicit and parity-tested.
 
 ```yaml
 id: python-ruff-lint            # unique, kebab-case
-class: lint                     # syntax|format|lint|type|structure|contract|security|eval|oracle
-tier: T0                        # VF-2 risk tier of the FAILURE (what it blocks)
+check_class: lint               # syntax|format|lint|type|structure|contract|security|eval|oracle
+risk_tier: T0                   # VF-2 risk tier of the FAILURE (what it blocks)
 trigger: {paths: ["**/*.py"], mode: changed}   # changed|staged|all|event
 command: ["ruff", "check", "--output-format=json", "{files}"]
 fix_command: ["ruff", "check", "--fix-only", "{files}"]   # nullable; idempotent+safe fixes only
@@ -60,13 +67,25 @@ surfaces: [pre-commit, ci, agent-loop, phase0, dashboard]
 output: {format: json, findings_schema: ck.finding.v1}
 ```
 
+`ck.finding.v1` is a closed record with `schema_version`, `check_id`, `rule_id`, severity
+(`info|warning|error`), bounded message, optional normalized repo-relative path/line/column,
+`fixable`, `fix_applied`, and optional evidence digest. Its closed run envelope contains profile,
+scope, selected check IDs, deterministic status, bounded findings, exit classification, duration,
+truncation, and evidence digest. It never contains raw environment, secrets, or unrestricted output.
+
 ### 3.2 One runner, many surfaces
 
 `aq check [--profile pre-commit|ci|agent-loop|full] [--scope staged|changed|all] [--fix] [--json]`
 
+CK-1 lands the minimal compatibility runner first. It normalizes v1/v2 entries and delegates legacy
+execution to focused-CI while preserving selected IDs, argv, staged-file append, timeout, exit class,
+and diagnostics. It does not claim `--fix` or native structured findings until the relevant v2 entry
+and backend exist.
+
 - **tier0 gate** becomes a thin wrapper: `aq check --profile pre-commit --scope staged`. The 19
   inline gates migrate to registry entries (batched; the monolith shrinks to bootstrap + summary).
-- **Phase-0 registrations are GENERATED** from the registry for both `phase0.py` and
+- **Phase-0 registrations become GENERATED only after** a named generator, source owner, stable-ID
+  allocation rule, regeneration command, and drift check exist for both `phase0.py` and
   `_aq-qa-bash` — the dual-registration bug class (promoted pattern) is eliminated by
   construction, not discipline.
 - **Agent loop**: after every edit burst, the implementer lane runs
@@ -105,8 +124,8 @@ agree by construction.
    auto-files "promote to check" intake items. The promoted-bug-patterns file becomes a source of
    rule candidates, each with an owner and a test.
 3. **Ratchet policy** (the world-class part most rollouts miss): every new check starts
-   `enforce: warn` with a measured baseline; enforcement flips per-directory once that scope is
-   clean ("clean-list ratchet"), with a dated target. No big-bang red wall; the trajectory is
+   `enforce: warn` with a measured baseline; enforcement flips per stable owner/module once that
+   scope is clean, with directory fallback only where no module boundary exists, and a dated target. No big-bang red wall; the trajectory is
    monotonic and dashboard-visible.
 4. **Fix-first loop**: agents always run `--fix` before reporting; only unfixable findings consume
    model attention. Fixers must be idempotent and tool-native (`ruff format`, `ruff check
@@ -125,9 +144,9 @@ shell (kept) · VF oracles → CheckSpecs with `class: oracle` · future eval ga
 | Phase | Content | Gate |
 |---|---|---|
 | **CK-0** | Ratification round + **baseline measurement**: run all §3.3 tools repo-wide in report mode; publish violation counts per tool per directory (no blocking) | round consensus |
-| **CK-1** | Antigravity ARE plan, amended (§6): ruff/shellcheck/statix/deadnix/alejandra wired as registry-driven kernel entries with `--fix`, `enforce: warn`, staged-scope; JSON to dashboard | T1; owner activation |
-| **CK-2** | Registry unification: CheckSpec schema v1; tier0 gates migrate; Phase-0 dual registration generated; `aq check` runner | T2 (governance surface, subject-bound) |
-| **CK-3** | treefmt-nix + shfmt + biome added declaratively (flake devShell); format ratchet begins per-directory | T1 |
+| **CK-1** | External v1/v2 schema, pure compatibility normalizer, minimal `aq check`, and legacy/focused-CI parity vectors; no registry rewrite | T2 (governance contract, subject-bound) |
+| **CK-2** | Registry migration in four bounded ~25-entry batches; explicit legacy edge cases; generated Phase-0 design/proof before adoption | T2 per batch |
+| **CK-3** | ARE tools plus treefmt-nix/shfmt/biome declaratively; v2 native findings/fix backends; warn-only module ratchet | T1/T2 split by touched governance surface |
 | **CK-4** | Agent-loop wiring: `agent-loop` profile in delegation payloads + aq-loop; VF-3 verifier consumes kernel; steering rules wave 1 (HARD constraints); ratchet dashboard | T1 |
 
 Enforcement flips (warn→enforce) are separate, dated, per-check decisions — never bundled with
@@ -143,11 +162,10 @@ Amendments (blocking):
 
 1. **No new inline gates in the monolith.** ARE adds `gate_python_lint`/`gate_bash_lint`/
    `gate_nix_lint` as more bash functions — that deepens the 19-gate/80-script sprawl this PRD
-   exists to end. Implement as registry entries executed through the kernel path (CK-2 may land a
-   minimal runner first or CK-1 uses the focused-CI runner interim).
+   exists to end. CK-1 must land the minimal compatibility runner before new registry-driven tools.
 2. **No day-one strict blocking.** "Failing formatting checks will now block commits" across the
    repo without a baseline would halt all lanes on thousands of legacy violations. Baseline first
-   (CK-0), warn-mode, staged-files-only enforcement, then per-directory ratchet.
+   (CK-0), warn-mode, staged-files-only enforcement, then module/owner ratchet with directory fallback.
 3. **JS gap**: dashboard assets get biome (CK-3); ARE covers only Python/Bash/Nix.
 4. **mypy is a separate ratchet** (type debt ≠ style debt; different burn-down).
 5. **Lane eligibility**: Antigravity is currently implementation-INELIGIBLE (owner policy);
@@ -157,8 +175,11 @@ Amendments (blocking):
 
 ## 7. Acceptance criteria (program-level)
 
-- One schema validates every check; `aq check --list` enumerates 100% of live checks with owner,
-  tier, class, enforce state; zero checks defined outside the registry (CI-verified).
+- The compatibility schema validates all 99 bound legacy entries before migration; each migrated
+  batch proves identical selection, argv, timeout, staged-file behavior, exit class, and diagnostics.
+- `aq check --list` eventually enumerates every defined "live check" (a command that can block,
+  warn, fix, or produce a dashboard/CI finding). External service probes and tool-native subchecks
+  are inventoried as backends/evidence rather than falsely counted as independent registry entries.
 - Phase-0 lint/gate registrations generated — dual-registration bug class structurally impossible.
 - Pre-commit p95 wall time ≤ current tier0 baseline + 20% at CK-1, and ≤ baseline by CK-4
   (caching + changed-scope); budgets measured per C0.3-style protocol.

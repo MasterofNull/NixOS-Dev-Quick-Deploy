@@ -182,7 +182,8 @@ Control kernel: identity · intent/auth · policy/leases · lifecycle · schedul
         │ command/event authority + outbox + CAS + review/promotion ledger
 Execution: switchboard · local/remote adapters · tool brokers · execution cells
         │ typed effects, network profiles, receipts, traces, quarantined artifacts
-Knowledge/eval: artifact CAS · Postgres · Qdrant projections · datasets/scorers
+Knowledge/eval: artifact CAS · durable-authority hypothesis (Postgres/outbox or per-authority ADR)
+                · Qdrant projections · datasets/scorers
         │ certified eval → shadow/canary → review → atomic promotion/rollback
 Operator plane: health · traces · SLOs · budgets · approvals · revoke/recover
 ```
@@ -269,8 +270,9 @@ No slice passes because code exists, a model says PASS, or a service answers `/h
 Owner decisions still required:
 
 1. Ratify this synthesis as the parent architecture for future PRDs.
-2. Ratify Postgres/outbox plus artifact CAS as the Cycle 1 authority hypothesis subject to the C0.3
-   resource/operability evidence gate.
+2. Adjudicate the ten Cycle-0 authority rows, select one first shadow vertical, and ratify its exact
+   per-authority or Postgres/outbox hypothesis before any shadow writes. Evidence decides whether to
+   expand, replace, or retire that hypothesis.
 3. Ratify connected zero trust and the eight initial network profiles.
 4. Convert the named Fable behavior contract into a model-neutral versioned canon policy.
 5. Keep the role matrix model-neutral. Ratify a separate measured, expiring lane-eligibility registry;
