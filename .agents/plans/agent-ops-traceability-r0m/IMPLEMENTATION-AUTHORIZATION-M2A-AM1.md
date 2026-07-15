@@ -1,11 +1,13 @@
 # Prepared Implementation Authorization — Agent Ops Traceability M2A Amendment 1
 
-**Decision:** `implementation_authorized = PREPARED_ONLY_PENDING_FABLE_CONFIRMATION`
+**Decision:** `implementation_authorized = ACTIVE`
 **Authorization ID:** `auth-agent-ops-m2a-am1-20260715`
 **Idempotency key:** `m2a-am1-2d8fc2d7-20260715-single-use`
 **Prepared:** 2026-07-15 by Codex orchestrator
-**Activation:** requires (1) Fable flagship `PASS` or explicit owner waiver of that unavailable lane,
-then (2) explicit owner activation of this exact authorization ID
+**Activated:** 2026-07-15 by explicit owner command
+`Waive Fable confirmation and activate auth-agent-ops-m2a-am1-20260715`
+**Fable confirmation:** explicitly waived by owner after the monitored Fable lane hit its session limit;
+Antigravity's independent flagship `PASS` remains the amendment review evidence
 **Amendment binding:** `M2A-INVENTORY-AMENDMENT-1.md` SHA-256
 `2d8fc2d759bab8dc595f05fa09cfd5de331cf9466025e9a9470386b8d3883fa8`
 **Review evidence:** `antigravity-m2a-inventory-amendment-1-review.md` (`PASS`)
@@ -64,4 +66,4 @@ eleventh file. A third changed line is a hard stop.
 M2B, M3, local reliability R1–R4, inference R1–R4, live cutover, new stores, and all other files remain
 unauthorized.
 
-`RECORD: PREPARED_ONLY_PENDING_FABLE_CONFIRMATION for auth-agent-ops-m2a-am1-20260715; no implementation authority is granted or implied.`
+`RECORD: ACTIVE for auth-agent-ops-m2a-am1-20260715; exactly the two fixture scalar replacements named above may be applied once. M2B/M3/R1-R4 remain UNAUTHORIZED.`
