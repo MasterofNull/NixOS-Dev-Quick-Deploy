@@ -84,10 +84,21 @@ and backend exist.
 
 - **tier0 gate** becomes a thin wrapper: `aq check --profile pre-commit --scope staged`. The 19
   inline gates migrate to registry entries (batched; the monolith shrinks to bootstrap + summary).
-- **Phase-0 registrations become GENERATED only after** a named generator, source owner, stable-ID
-  allocation rule, regeneration command, and drift check exist for both `phase0.py` and
-  `_aq-qa-bash` — the dual-registration bug class (promoted pattern) is eliminated by
-  construction, not discipline.
+- **Phase-0 registrations become GENERATED**, closing the dual-registration bug class (promoted
+  pattern) by construction, not discipline. Named: generator `scripts/governance/canon-compile.py`
+  gains a `phase0-checks` mode; source-of-truth input is the CheckSpec registry itself (each entry's
+  `surfaces: [phase0]` membership + `id`); source owner is the CheckSpec entry's own `owner` field
+  (no separate ownership record). Stable-ID rule: the Python check ID is the CheckSpec `id` verbatim
+  (already unique/kebab-case); the Bash `_aq-qa-bash` ID is `0.10.<n>` where `<n>` is a monotonic
+  counter persisted in a `.agents/governance/phase0-id-ledger.json` sidecar keyed by CheckSpec `id`
+  (assigned once, never reused, so a retired check's number is never recycled onto a different
+  check). Regeneration command: `aq check --generate-phase0` writes both `phase0.py`'s registration
+  block and `_aq-qa-bash`'s parallel block from the same registry pass in one invocation (this is
+  what makes dual-registration structurally impossible — one command, one source, two outputs).
+  Drift check: a CK-2 CI gate re-runs the generator into a scratch path and diffs it byte-for-byte
+  against the committed registration blocks; any diff fails the gate with the exact command to fix
+  it. This generator/ledger/gate trio must exist and pass its own focused test before CK-2 claims
+  any registration as "generated."
 - **Agent loop**: after every edit burst, the implementer lane runs
   `aq check --profile agent-loop --scope changed --fix --json`; structured findings (file, line,
   rule, message, fix-applied?) feed the retry loop (Rule 6 budget). Exit code is the oracle.
@@ -203,10 +214,15 @@ Amendments (blocking):
 ## 9. Review protocol
 
 Lanes review this PRD + the ARE plan together: score §3 design 1–10, contest amendments in §6,
-claim CK phases per eligibility, and answer: (a) interim runner for CK-1 — focused-CI runner or
-minimal `aq check` first? (b) ratchet unit — directory or module? (c) biome vs eslint for the
-dashboard. Consensus ≥3/4 → owner activation per phase. Antigravity's ARE submission is recorded
-as the first review artifact.
+claim CK phases per eligibility. Three §9-era questions are now RESOLVED by round review and
+carried into §3/§5/§6 above — restated here for traceability, not re-opened: (a) interim runner
+for CK-1 is the minimal `aq check` compatibility runner, delegating legacy execution to focused-CI
+(§3.2, §5 CK-1) — not a direct reuse of focused-CI as the kernel; (b) ratchet unit is
+module-first with directory fallback only where no module boundary exists (§3.4 item 3); (c) JS
+tooling is Biome, not ESLint, for the current vanilla dashboard (§3.3, §6 item 3). Consensus ≥3/4
+→ owner activation per phase. Antigravity's ARE submission is recorded as the first review
+artifact; Codex's round review (`unified-program/codex.md`) supplied the registry-compatibility
+evidence behind (a).
 
 ## 10. Sources
 
