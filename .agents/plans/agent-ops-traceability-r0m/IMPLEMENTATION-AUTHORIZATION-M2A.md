@@ -1,10 +1,13 @@
 # Prepared Implementation Authorization — Agent Ops Traceability M2A
 
-**Decision:** `implementation_authorized = ACTIVE`
+**Decision:** `implementation_authorized = SUSPENDED_PENDING_INVENTORY_AMENDMENT`
 **Authorization ID:** `auth-agent-ops-m2a-20260715`
 **Idempotency key:** `m2a-2b4a2aad-20260715-single-use`
 **Prepared:** 2026-07-15 by Codex orchestrator
 **Activated:** 2026-07-15 by explicit owner command `Activate auth-agent-ops-m2a-20260715`
+**Suspended:** 2026-07-15 by Codex orchestrator after the implementer discovered that the mandatory
+R0 reliability source-manifest fixture must change when `task_registry.py` changes; that fixture is
+outside this authorization and cannot be edited without a reviewed owner-approved amendment
 **Design binding:** `M2-DESIGN-PACKET.md` SHA-256
 `2b4a2aad1960927554ec1f72af4e6bd458cbb0529fa7bea645a677c62fb52428`
 **Review evidence:** `claude-fable-m2-rev3-review.md` (`PASS`) and
@@ -80,4 +83,4 @@ gates, role matrix, web dashboard, inference path, service configuration, lifecy
 process-killing route. M2B, M3, local reliability R1–R4, inference R1–R4, and Q8 authority decisions
 remain unauthorized.
 
-`RECORD: implementation_authorized = ACTIVE for auth-agent-ops-m2a-20260715; one bounded M2A candidate may be produced. M2B/M3/R1-R4 remain UNAUTHORIZED.`
+`RECORD: implementation_authorized = SUSPENDED_PENDING_INVENTORY_AMENDMENT for auth-agent-ops-m2a-20260715. The unauthorized fixture edit was restored exactly; the eight-file candidate is retained but may not be accepted, revised, staged, or committed until a new reviewed grant explicitly adjudicates the reliability fixture. M2B/M3/R1-R4 remain UNAUTHORIZED.`
