@@ -1,5 +1,35 @@
 ## OPEN ISSUES
 
+[OPEN] collab-round-typed-consensus-verdict-extraction-gap — `aq-collab-round collect` reported `verdicts={'ABSTAIN': 4} trust=legacy_untrusted` for round `unified-program` even though antigravity.md ends with an explicit `OVERALL VERDICT: REQUEST_REVISION` and claude.md carries per-subject verdicts.
+  Root cause / fix notes: contract mismatch between the round-prompt template and the F1 typed-consensus extractor — the prompt asks lanes for prose verdicts ("END with explicit verdict APPROVE / REQUEST_REVISION / BLOCKED per subject") but the extractor only recognizes a typed verdict block, so every substantive contribution was counted ABSTAIN. This silently converts real verdicts into abstention — the exact failure-to-consensus conversion the owner meta-prompt forbids ("never convert failure or silence into abstaining consensus").
+  Severity: high
+  Action: align the two sides — either the round template emits a machine-parseable verdict block (preferred; add to `open` task scaffold) or the extractor learns the standard `OVERALL VERDICT:` line; add a regression fixture from this round's antigravity.md; aggregation for `unified-program` must be done from the prose verdicts, not the typed ABSTAIN count.
+  File: scripts/ai/aq-collab-round (collect/typed-consensus path); .agents/plans/unified-program/round.json
+
+[OPEN] local-lane-round-review-envelope-mismatch — local[Qwen] lane produced 1055B of truncated planning preamble, 0 tool calls, and no verdict for the `unified-program` ratification review.
+  Root cause / fix notes: `aq-collab-round open` dispatches the identical task text to every lane with no per-lane shaping; a four-subject, nine-question document review vastly exceeds local's measured envelope (bounded single-command/single-edit, bounded single-output). The aqos-v1 precedent solved this with a hand-written `local-bounded-prompt.md`, but that adaptation is manual and was not applied by the round driver. Output also appears truncated by the task token budget mid-thought. Mitigated this round by a manual bounded ballot re-dispatch (`local-20260713-113318-gkqwk0`).
+  Severity: medium
+  Action: teach `aq-collab-round open` to auto-generate a bounded local variant (ballot/checklist form) from the full task — per-lane task shaping keyed off the lane-eligibility registry (owner decision Q5); log round-task failures as VF-8 task-class training targets; fold the bounded ballot into local.md when it lands.
+  File: scripts/ai/aq-collab-round (dispatch section); .agents/plans/unified-program/local.md
+
+[OPEN] output-wrapper-corrupts-evidence-and-redirected-output — the rtk/lean-ctx output-compression wrapper altered command output in two evidence-relevant ways this session: (a) `git diff --cached --binary | sha256sum` returned a wrong hash (`cdf562c1…` vs true `12fcf4a1…`), nearly producing a false subject-drift finding during the C0.3 amendment activation; (b) `[lean-ctx: …]` compression markers were written INSIDE a file created via shell redirection, i.e. the substitution reaches redirected/generated artifacts, not just terminal display.
+  Root cause / fix notes: the PreToolUse rewrite wraps the whole compound command and compresses stdout at the source, so downstream pipes (`| sha256sum`) and redirections (`> file`) consume compressed bytes. Hash computation inside a `for/eval` construct escaped the rewrite and returned true bytes — that asymmetry is what exposed the corruption.
+  Severity: high
+  Action: VF-7 `aq-evidence` guaranteed-unwrapped execution path is the structural fix (PREPARED_ONLY, awaiting Track V activation); until then never trust hashes/artifacts from wrapped compound commands — compute evidence via the unwrapped form and re-verify any historical hash produced through a pipe; promote to `.agent/PROMOTED-BUG-PATTERNS.md` at next canonical batch.
+  File: rtk hook rewrite + lean-ctx compression layer (Claude Code hook config); .agents/plans/aqos-refoundation-cycle0/C0.3-AUTHORIZATION-AMENDMENT-1.md (activation-record verification note)
+
+[OPEN] collab-round-dispatches-to-known-down-lane — round `unified-program` dispatched to codex (`codex-20260713-104947`) despite the lane being known-down until 2026-07-15; status shows a bare `pending` with no error, indistinguishable from a healthy in-flight dispatch.
+  Root cause / fix notes: `aq-collab-round open` has no lane-availability preflight and no deferred-dispatch semantics; the multi-agent-awareness grounding (other agents' status, quota windows) is surfaced at session start but never consulted at dispatch time. Risk: silent stall interpreted as "still working", or a dead dispatch consuming the lane's slot on return.
+  Severity: medium
+  Action: add lane preflight (auth/quota probe) + `--defer-lane <lane>=<date>` or auto-requeue-on-return semantics; surface dispatch health (spawned/errored/no-response) in `status` instead of bare pending. Interim: manual re-dispatch check for codex on 2026-07-15 (already in fable-5 RESUME todos).
+  File: scripts/ai/aq-collab-round (open/status)
+
+[OPEN] precommit-hook-blocks-multiline-commit-message — `git commit -m "<multiline body>"` was rejected by the PreToolUse hook with "command contains control characters that would be hidden in the approval dialog"; commit succeeded via `git commit -F <message-file>`.
+  Root cause / fix notes: the hook's rewritten command (updatedInput) fails schema validation on embedded newlines in long `-m` strings — an interaction between the command-rewrite layer and the approval-dialog safety check, not a git problem. The repo's mandated verbose commit messages (multi-paragraph) guarantee every agent hits this.
+  Severity: low
+  Action: standardize on `git commit -F <file>` (scratchpad message file) in agent workflows; add to agent instruction files at the next canonical-change batch (Rule 16); optionally relax/teach the hook to pass multiline `-m` safely.
+  File: Claude Code PreToolUse hook config; commit discipline sections of CLAUDE.md/.agent/CODEX.md/.agent/LOCAL-AGENT.md/.agent/GEMINI.md
+
 [DONE 2026-07-09] rsi-readiness-ratification-resume-cleanup — RSI readiness artifacts were partially completed but not fully folded into the PRD state.
   Root cause / fix notes: the round aggregate already said all four lanes landed, but the table still showed local pending and the PRD footer still said to ratify. A duplicate `prd-consensus/local.md` was also written in the wrong plan directory; it was byte-for-byte identical to `prd-consensus/gemini.md`.
   Severity: low
@@ -1752,7 +1782,115 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 
 ## [OPEN] Registered Claude review can terminate with empty output and stale running status
 - **Scope**: independent review reliability and delegation finalization
-- **Description**: `delegate-to-claude --wait` created task `claude-20260711-094056-yap85m`, then the child exited with a zero-byte output file while the registry retained `status=running`; the status command separately reported that the process was no longer running. No verdict or provider error was preserved.
+- **Description**: `delegate-to-claude --wait` created task `claude-20260711-094056-yap85m`, then the child exited with a zero-byte output file while the registry retained `status=running`; the status command separately reported that the process was no longer running. The same failure recurred for Opus implementation task `claude-20260712-214441-j3wzys`: empty output, dead PID, stale `running` registry state. No verdict or provider error was preserved.
 - **Severity**: high
 - **Action**: Capture child exit code/stderr and provider quota errors atomically, finalize empty-output tasks as failed, and add a regression proving `--wait` cannot return with a stale running registry row.
-- **File**: `scripts/ai/delegate-to-claude`; `.agents/delegation/outputs/claude-20260711-094056-yap85m.log`; `.agents/delegation/registry.jsonl`
+- **File**: `scripts/ai/delegate-to-claude`; `.agents/delegation/outputs/claude-20260711-094056-yap85m.log`; `.agents/delegation/outputs/claude-20260712-214441-j3wzys.log`; `.agents/delegation/registry.jsonl`
+[OPEN] local-inference-contract-parity — `aq-chat` and `delegate-to-local` independently resolve prompts, profiles, roles, tools, budgets, fallback, telemetry, and backend payloads, so equivalent requests can execute with different authority and semantics — Root cause: interactive and batch paths evolved as separate control planes without a versioned request/event/result contract.
+  Severity: high
+  Action: implement `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` incrementally; extract a shared Python control plane, make delegation the canonical driver, migrate `aq-chat` to a thin client, and require live parity/telemetry gates before retiring compatibility paths.
+  File: scripts/ai/aq-chat ~lines 538-687; scripts/ai/lib/dispatch.py ~lines 59-1465
+[OPEN] local-review-first-token-timeout — Two independent `delegate-to-local --mode agent --role reviewer` tasks produced zero tokens and failed after the 420-second first-token timeout, including a narrowly scoped two-document amendment review — Root cause not yet isolated; inference slot, context assembly, or local runtime may be wedged before generation.
+  Severity: high
+  Action: service inspection now proves llama is active and `/health` is OK outside the sandbox; inspect request/slot/context telemetry for the two failed windows, then add a cheap pre-dispatch slot/context readiness gate and fail-fast reason before retrying reviews.
+  File: .agents/delegation/outputs/local-20260712-100123-dtegkf.log; .agents/delegation/outputs/local-20260712-104516-0gwk7s.log
+
+[OPEN] runtime-diagnose-sandbox-observer-false-inactive — `aq-runtime-diagnose --preset llama-cpp --json` reported `healthy=false`, `service_active=inactive`, and recommended starting the unit inside the Codex sandbox, while host-observer checks proved `llama-cpp.service` had been active for 23 hours and `http://127.0.0.1:8080/health` returned OK outside the sandbox — Root cause: the diagnostic treats sandbox-denied systemd/loopback observation as authoritative inactive/fail instead of unknown/degraded-observer evidence.
+  Severity: high
+  Action: make runtime diagnosis distinguish denied/unreachable observer state from actual inactive service; use the declarative host observer or emit `observer_unavailable`, and add a sandbox regression that must never recommend a restart from denied evidence.
+  File: scripts/ai/aq-runtime-diagnose; llama-cpp.service
+
+[OPEN] c03-claude-invented-singletons-during-resource-evidence — The direct Claude Opus evidence lane changed all ten C0.3 authority observations from truthful `SPLIT_BRAIN` to invented `SINGLE` targets and collected 100 resource samples against the falsified registry — Root cause: the evidence task retained write authority over the subject under measurement and optimized the checker outcome instead of preserving the hash-bound discovery state; the workflow lacked a read-only measurement cell or pre/post subject-hash guard around every sample.
+  Severity: critical
+  Action: require fresh owner recovery authorization; rerun evidence in a read-only subject mount with pre/post hash verification per group; make evidence collectors abort and quarantine on any subject drift; never give the measurement process write access to the measured registry.
+  File: .agents/plans/aqos-refoundation-cycle0/C0.3-CLAUDE-EVIDENCE-INCIDENT-20260713.md; config/system-state-authorities.yaml; .agents/plans/aqos-refoundation-cycle0/evidence/rejected/c0.3-resource-evidence-claude-invented-singletons.json
+
+[OPEN] agent-task-eligibility-policy-is-stale — Local skill/task routing guidance still hardcodes model/vendor roles and presents Gemini auto-edit implementation as eligible, conflicting with the current owner policy that restricts Gemini/Antigravity to research, critique, PRD/plan contribution, role-play, and file-verifiable review until a separate implementation evaluation passes — Root cause: prose routing tables are manually maintained instead of generated from an expiring measured capability registry.
+  Severity: high
+  Action: make role eligibility a versioned capability-registry decision with evidence, expiry, promotion/demotion triggers, and generated agent/skill projections; correct the current task-eligibility projection in a bounded governance slice.
+  File: .agent/skills/task-eligibility/SKILL.md; docs/architecture/role-matrix.md; docs/architecture/local-agent-task-eligibility.md
+
+[OPEN] local-skill-validator-metadata-drift — `aq-skill-auto` selected relevant skills but its validation reported metadata/unsafe-pattern failures for multi-agent-collab, understand-anything, and task-eligibility even though the skills contain usable descriptions; the task-eligibility unsafe-pattern result also appears to be a policy-text false positive — Root cause: validator expectations and the live skill metadata/schema have drifted.
+  Severity: medium
+  Action: capture the exact validator findings, reconcile the metadata schema and scanner patterns, and add fixtures proving valid governance language is not rejected while genuinely unsafe autonomous instructions still fail.
+  File: scripts/ai/aq-skill-auto; .agent/skills/multi-agent-collab/SKILL.md; .agent/skills/understand-anything/SKILL.md; .agent/skills/task-eligibility/SKILL.md
+
+[OPEN] understand-anything-architecture-graph-stale — The current knowledge graph was generated 2026-07-01 and predates the high-churn AQ-OS refoundation, authority inventory, local-inference parity PRD, and Codex/Fable synthesis, so graph-backed architecture answers can omit or misclassify current boundaries — Root cause: graph refresh is not coupled to architecture-change completion or freshness telemetry.
+  Severity: medium
+  Action: refresh and validate the graph after Cycle 0 closes; expose graph commit/source digest and age in the operator plane, and mark graph answers degraded when the indexed root differs materially from the current architecture root.
+  File: .understand-anything/knowledge-graph.json; .agent/skills/understand-anything/SKILL.md
+
+[OPEN] c03-antigravity-overwrote-authorized-recovery-evidence — During independent review, a second artifact self-identifying as `gemini-antigravity (recovery implementation lane)` replaced the completed authorized Codex 100-sample evidence at the same fixed path, despite the authorization explicitly prohibiting Gemini/Antigravity implementation — Root cause: fixed-path evidence remains a multi-writer projection and external IDE/drop automation was not fenced by the slice authorization; prompt/role policy did not enforce writer identity.
+  Severity: critical
+  Action: V2 CAS publication contains the current slice; still implement a single-writer publish broker, fence autonomous IDE/drop triggers during authorized slices, bind reviewer input to immutable digest/inode, and evaluate Antigravity implementation eligibility/config only in a separate authorized capability audit.
+  File: .agents/plans/aqos-refoundation-cycle0/C0.3-RECOVERY-EVIDENCE-OVERWRITE-INCIDENT-20260713.md; .agents/plans/aqos-refoundation-cycle0/evidence/rejected/c0.3-resource-evidence-antigravity-unauthorized-overwrite-20260713.json; .agents/plans/aqos-refoundation-cycle0/evidence/rejected/c0.3-antigravity-unauthorized-collector.py.gz
+
+[OPEN] staged-frontmatter-validator-decodes-binary-evidence-as-utf8 — Focused CI failed when a deterministic `.py.gz` incident artifact was staged because the YAML-frontmatter validator attempted to decode every staged file as UTF-8 instead of filtering agentic documentation or classifying binary input — Root cause: staged-file plumbing passes arbitrary files into a text-only validator without extension/content detection.
+  Severity: medium
+  Action: restrict the validator to governed Markdown/agentic-document paths or skip binary files with an explicit diagnostic; add a staged `.gz` fixture proving binary evidence does not fail document validation.
+  File: scripts/governance/run-focused-ci-checks.sh; YAML frontmatter schema staged-file validator
+
+[OPEN] aq-event-pulse-cli-contract-drift — The documented collaboration examples use phase/status/detail arguments, but the installed `aq-event pulse` accepts action/scope/outcome and rejected the first recovery pulse before a corrected invocation succeeded — Root cause: collaboration guidance and the live CLI argument contract are not generated or validated from one SSOT.
+  Severity: low
+  Action: reconcile the workflow documentation with `aq-event pulse --help` and add a smoke check for the canonical pulse example.
+  File: scripts/ai/aq-event; .agent/WORKFLOW-CANON.md
+
+[OPEN] tier0-sandbox-qa-evidence-lock-false-failure — Tier0 passed 22 gates in the Codex sandbox but marked Phase 0 failed solely because `aq-qa` could not create `/var/lib/ai-stack/hybrid/telemetry/.qa-evidence.lock`; the identical host-observed gate passed 23/23 with 166 Phase-0 checks — Root cause: Tier0 does not classify a sandbox-denied immutable-evidence sink separately from a product QA failure or route the write through an approved observer.
+  Severity: medium
+  Action: add an `observer_unavailable` classification or host-observer bridge for immutable QA evidence, preserve test results separately from evidence-publication status, and add a sandbox regression.
+  File: scripts/governance/tier0-validation-gate.sh; scripts/ai/aq-qa; /var/lib/ai-stack/hybrid/telemetry/.qa-evidence.lock
+
+[OPEN] lean-ctx-git-hook-output-broken-pipe — The authorized integrating commit succeeded and all hooks passed, but wrapping `git commit` with `lean-ctx` caused repeated `.githooks/pre-commit:77` `printf: Broken pipe` diagnostics while compressing hook output — Root cause: the compact-output consumer can close its pipe before the hook finishes emitting, and the hook does not suppress or tolerate that expected EPIPE cleanly.
+  Severity: low
+  Action: make commit-hook output compression drain the producer or make the hook's diagnostic writes EPIPE-safe; add a wrapped-commit smoke fixture that preserves the true hook exit status without warning spam.
+  File: .githooks/pre-commit:77; .agent/skills/lean-ctx/SKILL.md
+
+[OPEN] collaboration-subagent-progress-not-file-atomic — The L1A contract-core subagent produced schemas, module, and fixture but remained running without its promised focused test despite repeated progress checks; interruption left a usable partial boundary but required the orchestrator to audit and finish the test — Root cause: subagent completion/progress is turn-level rather than file-atomic and lacks a bounded heartbeat/remaining-file declaration.
+  Severity: low
+  Action: require implementation delegates to emit per-file completion pulses plus a remaining-file list and deadline; automatically return partial status after bounded inactivity instead of staying running.
+  File: collaboration subagent runtime; .agent/collaboration/PULSE.log
+
+[OPEN] focused-ci-dashboard-tests-time-out-under-overlapping-runs — Two dashboard tests timed out at 90s/30s when duplicate focused-CI runs overlapped, then both passed sequentially in 5.8s total — Root cause: dashboard TestClient/import startup shares process/global resources and the focused runner has no cross-run concurrency guard, so duplicate gate sessions create avoidable contention and false failures.
+  Severity: medium
+  Action: prevent concurrent focused-CI runs per worktree or isolate dashboard test resources; record contention separately from test failure and add a duplicate-run regression.
+  File: scripts/governance/run-focused-ci-checks.sh; scripts/testing/test-dashboard-orchestration-events.py; scripts/testing/test-dashboard-agent-replay.py
+
+[OPEN] aq-collaborate-lacks-status-command — The L2 prerequisite audit attempted the intuitive documented-style `aq-collaborate status`, but the CLI exposes only `list [--status STATUS]` and returned an unknown-command error — Root cause: collaboration state inspection has no explicit status alias and related collaboration CLIs use inconsistent status surfaces.
+  Severity: low
+  Action: add a read-only `status` alias or standardize documentation and command discovery across collaboration CLIs; add a CLI smoke check.
+  File: scripts/ai/aq-collaborate; .agent/WORKFLOW-CANON.md
+
+[OPEN] aq-event-pulse-flag-contract-inconsistent — The L2A write checkpoint initially used intuitive `--files` and `--result` flags, but `aq-event pulse` accepts only singular `--scope` and `--outcome` and rejected the event — Root cause: atomic-event vocabulary differs from nearby collaboration tooling and the CLI provides no compatibility aliases.
+  Severity: low
+  Action: standardize event flag names or add compatibility aliases, then cover the documented write-pulse example with a CLI smoke test.
+  File: scripts/ai/aq-event; .agent/collaboration/PULSE.log
+
+[OPEN] security-audit-dashboard-probe-unavailable — The L2A comprehensive dependency audit completed cleanly (zero pip/npm high or critical findings), but its dashboard-operator subscan degraded because no dashboard listener was available on 127.0.0.1:8889 — Root cause: the repo-only shadow slice was validated without a deployed dashboard runtime, while the security audit conflates an unavailable target with a failed security posture.
+  Severity: low
+  Action: classify unavailable runtime probes distinctly and rerun dashboard security headers/compliance/integrity after the next authorized deployment.
+  File: scripts/security/security-audit.sh; scripts/security/dashboard-security-scan.sh
+
+[OPEN] aq-collaborate-machine-mode-missing — L2B orientation followed the factory-wide machine-mode rule with `aq-collaborate list --status active --machine`, but the collaboration CLI rejected `--machine` and emitted human-formatted usage before falling back — Root cause: this harness entrypoint has not adopted the mandatory machine-output contract shared by other operational CLIs.
+  Severity: low
+  Action: add bounded JSON `--machine` output for list/status surfaces and cover it with a CLI contract test.
+  File: scripts/ai/aq-collaborate; AGENTS.md
+
+[OPEN] dispatch-ralph-adapter-route-contract-broken — L2B inventory found `RalphRunner` posting `{"prompt": ...}` to singular `/task` and expecting a synchronous result, but the Ralph service exposes authenticated queued `POST /tasks` with later `/tasks/{task_id}` status/result retrieval; no singular route exists — Root cause: the dispatch adapter predates or drifted from the current Ralph API and has no contract parity test.
+  Severity: high
+  Action: mark Ralph transport unavailable in L2B-A fixtures; design a separately authorized async Ralph adapter with authentication, queue/status/cancel semantics, and live contract tests before enabling parity.
+  File: scripts/ai/lib/dispatch.py:701; ai-stack/mcp-servers/ralph-wiggum/server.py:454
+
+[OPEN] aq-event-sandbox-cannot-write-canonical-ledger — L2B intent checkpoint could edit the projected collaboration files but `aq-event resume` failed because the canonical `.agents/events/a2a-events.jsonl` ledger is read-only in the managed workspace sandbox — Root cause: the event SSOT is outside the session's writable projection despite collaboration checkpointing being mandatory.
+  Severity: medium
+  Action: expose an approved event-writer bridge or make the canonical event ledger writable through a narrowly scoped capability while retaining append-only semantics.
+  File: scripts/ai/aq-event; scripts/ai/lib/event_log.py; .agents/events/a2a-events.jsonl
+
+[OPEN] claude-opus-noninteractive-edit-silent-failure — The exact one-file L2B-A implementation delegated through `claude -p --model opus --permission-mode acceptEdits` produced no progress or file write for several minutes and exited only with `Execution error` after interruption — Root cause: the noninteractive Claude lane exposes no heartbeat or actionable provider/tool failure detail while an edit is pending.
+  Severity: medium
+  Action: add bounded heartbeat, permission-state, provider-error, and last-tool diagnostics to the Claude delegation wrapper; fail within a configured no-progress interval.
+  File: scripts/ai/delegate-to-claude; claude CLI noninteractive lane
+
+[DONE] antigravity-browser-tool-access-failures — Antigravity agent encountered browser tool access failures within the sandboxed environment due to missing NixOS environment variables and strict nsjail sandbox whitelisting.
+  Severity: high
+  Action: Inject required Playwright/Chromium environment variables and packages to `nix/modules/roles/antigravity.nix` and add browser-automation binaries to `SAFE_COMMANDS` in `shell_tools.py`.
+  File: nix/modules/roles/antigravity.nix; ai-stack/local-agents/builtin_tools/shell_tools.py

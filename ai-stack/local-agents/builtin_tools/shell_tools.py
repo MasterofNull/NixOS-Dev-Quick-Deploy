@@ -111,6 +111,8 @@ SAFE_COMMANDS = {
     "jq", "yq",
     # File utilities
     "fd", "sort", "uniq", "cut", "awk", "sed", "tr", "printf", "tee",
+    # Browser / Javascript execution
+    "chromium", "playwright", "node", "lighthouse",
 }
 
 

@@ -34,12 +34,19 @@ in {
     environment.variables = {
       ANTIGRAVITY_COLLECTIVE_ENABLED = "1";
       DEFAULT_AI_PROFILE = "antigravity-collective";
+      PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+      CHROMIUM_PATH = "${pkgs.chromium}/bin/chromium";
+      CHROME_EXECUTABLE = "${pkgs.chromium}/bin/chromium";
     };
 
     # Dependencies for the collective.
     environment.systemPackages = with pkgs; [
       # Antigravity IDE is usually installed via Home Manager,
       # but system-level helpers go here.
+      nodejs_22
+      chromium
+      playwright-driver
     ];
   };
 }
