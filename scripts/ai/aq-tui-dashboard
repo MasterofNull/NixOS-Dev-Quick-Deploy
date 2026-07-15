@@ -30,7 +30,9 @@ mid-run RESPONSE injection is not yet available (headless dispatches have no inp
 import argparse
 import json
 import os
-import subprocess
+import re
+import stat
+import sys
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -44,6 +46,18 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from agent_ops_projection import (  # noqa: E402
+    MAX_INBOX,
+    MAX_ARGV,
+    MAX_PROCESSES,
+    MAX_REGISTRY,
+    MAX_TEXT,
+    ProjectionError,
+    contract_health,
+    project_agent_ops,
+)
+
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -52,6 +66,25 @@ OUTPUTS = REPO_ROOT / ".agents" / "delegation" / "outputs"
 STREAMS = REPO_ROOT / ".agents" / "delegation" / "streams"
 A2A_AUDIT = REPO_ROOT / ".agent" / "collaboration" / "a2a-audit.log"
 PULSE = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
+ANTIGRAVITY_INBOX = REPO_ROOT / ".agent" / "collaboration" / "antigravity-inbox"
+ANTIGRAVITY_ARCHIVE = REPO_ROOT / ".agent" / "archive"
+PROC_ROOT = Path("/proc")
+
+MAX_SOURCE_BYTES = 2 * 1024 * 1024
+MAX_PROC_STAT_BYTES = 4096
+MAX_PROC_CMDLINE_BYTES = 256 * 1024
+MAX_PROC_CGROUP_BYTES = 64 * 1024
+SAFE_TASK_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+OUTPUT_PATH = re.compile(r"`(?P<path>\.agents/plans/[A-Za-z0-9._/-]+\.md)`")
+TRUSTED_PROGRESS_PRODUCERS = {"dispatcher", "switchboard", "trusted_observer"}
+ACTIVE_REGISTRY_STATES = {"queued", "running", "waiting", "cancelling"}
+TERMINAL_HISTORY_LIMIT = 20
+INBOX_HISTORY_LIMIT = 20
+AGENT_EXECUTABLES = {
+    "bwrap", "codex", "claude", "gemini", "aq-agent-loop", "agent_executor.py",
+    "delegate-to-local", "delegate-to-claude", "delegate-to-codex",
+    "delegate-to-antigravity",
+}
 
 # A delegation still "running" older than this with no completion is flagged STALLED.
 STALL_S = int(os.getenv("AQ_OPS_STALL_S", "1200"))
@@ -64,10 +97,318 @@ SERVICES = [
     ("llama.cpp", int(os.getenv("LLAMA_CPP_PORT", "8080")), "/health"),
     ("aidb-qdrant", int(os.getenv("QDRANT_PORT", "6333")), "/"),
 ]
-PROC_PATTERN = r"codex|delegate-to-|aq-agent-loop|aq-loop|training_ingest|agent_executor"
-
 # short-TTL caches so per-tick file reads stay snappy and probes don't block the render
-_cache: dict = {"health": (0.0, []), "procs": (0.0, [])}
+_cache: dict = {"health": (0.0, []), "projection": (0.0, {})}
+
+
+class SourceReadError(ValueError):
+    """Bounded source-reader failure projected as typed blocked evidence."""
+
+
+def _bounded_regular_bytes(path: Path, max_bytes: int = MAX_SOURCE_BYTES) -> bytes:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return b""
+    except OSError as exc:
+        raise SourceReadError("source_unavailable") from exc
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise SourceReadError("source_not_regular")
+    if info.st_size > max_bytes:
+        raise SourceReadError("source_too_large")
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+    except OSError as exc:
+        raise SourceReadError("source_unavailable") from exc
+    if len(data) > max_bytes:
+        raise SourceReadError("source_too_large")
+    return data
+
+
+def _bounded_json(path: Path, max_bytes: int = 65536) -> dict:
+    raw = _bounded_regular_bytes(path, max_bytes)
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SourceReadError("source_malformed") from exc
+    if not isinstance(value, dict):
+        raise SourceReadError("source_malformed")
+    return value
+
+
+def _regular_file_present(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise SourceReadError("source_unavailable") from exc
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise SourceReadError("source_not_regular")
+    return info.st_size > 0
+
+
+def _mtime_or_zero(path: Path) -> float:
+    try:
+        return path.lstat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _read_proc_file(path: Path, max_bytes: int) -> bytes:
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+    except (FileNotFoundError, ProcessLookupError):
+        raise
+    except (PermissionError, OSError) as exc:
+        raise SourceReadError("proc_permission_denied") from exc
+    if len(data) > max_bytes:
+        raise SourceReadError("proc_record_too_large")
+    return data
+
+
+def _parse_proc_stat(raw: str) -> tuple[int, int, int, int, int]:
+    close = raw.rfind(")")
+    if close < 2:
+        raise SourceReadError("proc_stat_malformed")
+    try:
+        pid = int(raw[: raw.find(" ")])
+        fields = raw[close + 2 :].split()
+        return pid, int(fields[1]), int(fields[2]), int(fields[3]), int(fields[19])
+    except (ValueError, IndexError) as exc:
+        raise SourceReadError("proc_stat_malformed") from exc
+
+
+def read_proc_facts(proc_root: Path = PROC_ROOT) -> tuple[list[dict], list[str]]:
+    facts: list[dict] = []
+    errors: list[str] = []
+    unreadable_recorded = False
+    try:
+        pids = sorted((p for p in proc_root.iterdir() if p.name.isdigit()),
+                      key=lambda p: int(p.name))
+    except OSError:
+        return [], ["proc_root_unavailable"]
+    if len(pids) > MAX_PROCESSES:
+        return [], ["process_snapshot_too_large"]
+    for entry in pids:
+        pid = int(entry.name)
+        try:
+            parsed_pid, ppid, pgid, session, start_time = _parse_proc_stat(
+                _read_proc_file(entry / "stat", MAX_PROC_STAT_BYTES).decode("utf-8", "replace")
+            )
+            executable = os.readlink(entry / "exe")
+            if Path(executable).name.lower() not in AGENT_EXECUTABLES:
+                continue
+            cmdline_raw = _read_proc_file(entry / "cmdline", MAX_PROC_CMDLINE_BYTES)
+            argv = [part.decode("utf-8", "replace") for part in cmdline_raw.split(b"\0") if part]
+            if len(argv) > MAX_ARGV or any(len(arg) > MAX_TEXT for arg in argv):
+                raise SourceReadError("process_argv_invalid")
+            if len(executable) > 4096:
+                raise SourceReadError("proc_record_too_large")
+            cgroup_raw = _read_proc_file(entry / "cgroup", MAX_PROC_CGROUP_BYTES)
+            cgroup = None
+            for line in cgroup_raw.decode("utf-8", "replace").splitlines():
+                parts = line.split(":", 2)
+                if len(parts) == 3 and parts[2]:
+                    cgroup = parts[2]
+                    if parts[0] == "0":
+                        break
+            facts.append({
+                "pid": parsed_pid, "start_time": start_time, "ppid": ppid,
+                "pgid": pgid, "session": session, "cgroup": cgroup,
+                "executable": executable, "argv": argv,
+            })
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except PermissionError:
+            if not unreadable_recorded:
+                facts.append({"pid": pid, "error": "permission_denied"})
+                unreadable_recorded = True
+            errors.append("proc_permission_denied")
+        except SourceReadError as exc:
+            if not unreadable_recorded:
+                facts.append({"pid": pid, "error": "permission_denied"})
+                unreadable_recorded = True
+            errors.append(str(exc) or "proc_unavailable")
+        except OSError:
+            if not unreadable_recorded:
+                facts.append({"pid": pid, "error": "permission_denied"})
+                unreadable_recorded = True
+            errors.append("proc_unavailable")
+    return facts, sorted(set(errors))
+
+
+def read_registry_facts(registry_path: Path = REGISTRY,
+                        outputs_dir: Path = OUTPUTS) -> tuple[list[dict], list[str]]:
+    errors: list[str] = []
+    try:
+        raw = _bounded_regular_bytes(registry_path)
+    except SourceReadError as exc:
+        return [], [f"registry_{exc}"]
+    sources: list[dict] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        if len(sources) >= MAX_REGISTRY:
+            return [], ["registry_snapshot_too_large"]
+        try:
+            source = json.loads(line)
+        except json.JSONDecodeError:
+            errors.append("registry_record_malformed")
+            continue
+        if not isinstance(source, dict):
+            errors.append("registry_record_malformed")
+            continue
+        sources.append(source)
+
+    active = [source for source in sources
+              if str(source.get("status", "")).lower() in ACTIVE_REGISTRY_STATES]
+    terminal = [source for source in sources
+                if str(source.get("status", "")).lower() not in ACTIVE_REGISTRY_STATES]
+    selected = active + terminal[-TERMINAL_HISTORY_LIMIT:]
+    rows: list[dict] = []
+    for source in selected:
+        task_id = str(source.get("id", ""))
+        lane = str(source.get("agent", "unknown"))
+        if lane.startswith("local-"):
+            lane = "local"
+        elif lane in {"gemini", "local-antigravity"}:
+            lane = "antigravity"
+        status = str(source.get("status", "unknown")).lower()
+        status = {
+            "stale": "orphaned", "partial-success": "completed",
+            "failed_orphaned_no_output": "failed",
+        }.get(status, status)
+        rec = {key: source.get(key) for key in (
+            "id", "agent", "role", "profile", "status", "pid", "pid_start_time",
+            "artifact_present",
+        )}
+        rec["agent"] = lane
+        rec["status"] = status
+        task_id_valid = bool(SAFE_TASK_ID.fullmatch(task_id))
+        if task_id_valid:
+            output_path = outputs_dir / f"{task_id}.log"
+            try:
+                rec["artifact_present"] = _regular_file_present(output_path)
+            except SourceReadError as exc:
+                errors.append(f"output_{exc}")
+        if task_id_valid and status in ACTIVE_REGISTRY_STATES:
+            try:
+                progress = _bounded_json(outputs_dir / f"{task_id}.log.progress.json")
+                if progress:
+                    producer = progress.get("producer")
+                    rec["progress"] = {
+                        "trusted": progress.get("trusted") is True
+                        and producer in TRUSTED_PROGRESS_PRODUCERS,
+                        "producer": producer if producer in TRUSTED_PROGRESS_PRODUCERS else "untrusted",
+                        "phase": progress.get("phase") if isinstance(progress.get("phase"), str) else None,
+                        "observed_at": progress.get("observed_at")
+                        if isinstance(progress.get("observed_at"), int) else int(_now()),
+                    }
+            except SourceReadError as exc:
+                errors.append(f"progress_{exc}")
+        elif not task_id_valid:
+            errors.append("registry_task_id_invalid")
+        rows.append(rec)
+    return rows, sorted(set(errors))
+
+
+def _declared_output_present(task_path: Path, raw: bytes) -> bool:
+    match = OUTPUT_PATH.search(raw.decode("utf-8", "replace"))
+    if not match:
+        return False
+    plans_root = (REPO_ROOT / ".agents" / "plans").resolve()
+    candidate = (REPO_ROOT / match.group("path")).resolve()
+    try:
+        candidate.relative_to(plans_root)
+    except ValueError:
+        return False
+    try:
+        return _regular_file_present(candidate)
+    except SourceReadError:
+        return False
+
+
+def read_inbox_facts(inbox_dir: Path = ANTIGRAVITY_INBOX,
+                     archive_root: Path = ANTIGRAVITY_ARCHIVE) -> tuple[list[dict], list[str]]:
+    facts: list[dict] = []
+    errors: list[str] = []
+    pending_candidates: list[tuple[Path, bool, int | None]] = []
+    archived_candidates: list[tuple[Path, bool, int | None]] = []
+    try:
+        if inbox_dir.exists():
+            pending_candidates.extend((p, True, None) for p in sorted(inbox_dir.iterdir())
+                                      if p.name != ".lane-state.json")
+        if archive_root.exists():
+            for directory in sorted(archive_root.glob("antigravity-inbox-*")):
+                if directory.is_dir() and not directory.is_symlink():
+                    archived_at = int(directory.stat().st_mtime)
+                    archived_candidates.extend((p, False, archived_at)
+                                               for p in sorted(directory.iterdir()))
+    except OSError:
+        return [], ["inbox_root_unavailable"]
+    if len(pending_candidates) + len(archived_candidates) > MAX_INBOX:
+        return [], ["inbox_snapshot_too_large"]
+    archived_candidates.sort(key=lambda item: _mtime_or_zero(item[0]), reverse=True)
+    candidates = pending_candidates + archived_candidates[:INBOX_HISTORY_LIMIT]
+    for path, pending, archived_at in candidates:
+        try:
+            raw = _bounded_regular_bytes(path)
+            info = path.stat()
+            item = {
+                "name": path.name, "pending": pending, "dropped_at": int(info.st_mtime),
+                "output_present": _declared_output_present(path, raw),
+            }
+            if not pending:
+                item["archived_at"] = archived_at if archived_at is not None else int(info.st_mtime)
+            facts.append(item)
+        except SourceReadError as exc:
+            errors.append(f"inbox_{exc}")
+    return facts, sorted(set(errors))
+
+
+def _source_error_work(reason: str) -> dict:
+    safe = re.sub(r"[^a-z0-9_]+", "_", reason.lower()).strip("_") or "source_unavailable"
+    return {
+        "work_id": f"source:{safe}"[:128], "lane": "system", "role": "observer",
+        "model_profile": None, "authority": "collaboration_event", "state": "conflict",
+        "phase": None, "progress_age_s": None, "pid_identity": None, "dedup_group": None,
+        "access": "read_only", "terminal_reason": None, "artifact": "not_applicable",
+        "visibility": "blocked", "reason_code": safe, "freshness": "unavailable",
+    }
+
+
+def read_agent_ops_projection(*, proc_root: Path = PROC_ROOT, registry_path: Path = REGISTRY,
+                              outputs_dir: Path = OUTPUTS, inbox_dir: Path = ANTIGRAVITY_INBOX,
+                              archive_root: Path = ANTIGRAVITY_ARCHIVE, use_cache: bool = True) -> dict:
+    cached_at, cached = _cache["projection"]
+    if use_cache and cached and _now() - cached_at < 2:
+        return cached
+    processes, proc_errors = read_proc_facts(proc_root)
+    registry, registry_errors = read_registry_facts(registry_path, outputs_dir)
+    inbox, inbox_errors = read_inbox_facts(inbox_dir, archive_root)
+    try:
+        projection = project_agent_ops(now=int(_now()), registry=registry,
+                                       processes=processes, inbox=inbox)
+    except ProjectionError as exc:
+        projection = project_agent_ops(now=int(_now()), registry=[], processes=[], inbox=[])
+        proc_errors.append(str(exc))
+    source_errors = sorted(set(proc_errors + registry_errors + inbox_errors))
+    if source_errors:
+        projection["work"].extend(_source_error_work(reason) for reason in source_errors)
+        projection["work"].sort(key=lambda item: (item["visibility"] != "blocked", item["work_id"]))
+        projection["health"] = {
+            "verdict": "blocked",
+            "reason_codes": sorted(set(projection["health"]["reason_codes"] + source_errors)),
+            "source_freshness": "unavailable",
+        }
+    contract_health(projection)
+    _cache["projection"] = (_now(), projection)
+    return projection
 
 
 def _now() -> float:
@@ -93,11 +434,9 @@ def _age(ts) -> str:
 
 
 def _tail_json(path: Path, n: int) -> list:
-    if not path.exists():
-        return []
     out = []
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in _bounded_regular_bytes(path).decode("utf-8", "replace").splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -105,14 +444,14 @@ def _tail_json(path: Path, n: int) -> list:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-    except OSError:
+    except (OSError, SourceReadError):
         return []
     return out[-n:]
 
 
 def tail_output(task_id: str, n: int = 40, max_bytes: int = 8192) -> list:
     """Last n lines of a delegation's output log (bounded read for speed)."""
-    if not task_id:
+    if not task_id or not SAFE_TASK_ID.fullmatch(task_id):
         return []
     p = OUTPUTS / f"{task_id}.log"
     if not p.exists():
@@ -133,13 +472,12 @@ def _read_progress(task_id: str) -> dict:
     <output> is '<id>.log' — i.e. '<id>.log.progress.json'. Returns {} if absent/unparseable.
     Carries the agent_executor's INTERNAL task_id (used to key the live stream file) plus
     status/tool_call_count/llm_stream_chars."""
-    if not task_id:
+    if not task_id or not SAFE_TASK_ID.fullmatch(task_id):
         return {}
     p = OUTPUTS / f"{task_id}.log.progress.json"
     try:
-        if p.exists():
-            return json.loads(p.read_text(encoding="utf-8", errors="replace"))
-    except Exception:
+        return _bounded_json(p)
+    except SourceReadError:
         return {}
     return {}
 
@@ -151,10 +489,10 @@ def read_live_stream(task_id: str, n: int = 40) -> tuple:
     codex/others stream into their output log (which grows live). Returns (lines, src)."""
     prog = _read_progress(task_id)
     candidates = []
-    if task_id:
+    if task_id and SAFE_TASK_ID.fullmatch(task_id):
         candidates.append(task_id)               # lanes that key the stream by dispatch id
     inner = prog.get("task_id")
-    if inner and inner != task_id:
+    if isinstance(inner, str) and inner != task_id and SAFE_TASK_ID.fullmatch(inner):
         candidates.append(inner)                 # local: internal aq-<ts> id from the sidecar
     for sid in candidates:
         sf = STREAMS / f"{sid}.txt"
@@ -201,61 +539,45 @@ def assess_attention(rec: dict) -> tuple:
 
 
 def read_active_delegations(window_s: int = 900, limit: int = 10) -> list:
-    """registry entries that are running or created within window_s, newest first."""
+    """Sanitized registry-authority cards from the closed Agent Ops projection."""
     rows = []
-    now = _now()
-    for rec in _tail_json(REGISTRY, 400):
-        ts = _parse_ts(rec.get("created", ""))
-        status = rec.get("status", "?")
-        recent = ts is not None and (now - ts) < window_s
-        if status == "running" or recent:
-            level, reason = assess_attention(rec)
-            rows.append({
-                "agent": rec.get("agent", "?"),
-                "role": rec.get("role", "") or "",
-                "fid": rec.get("id", "") or "",
-                "id": (rec.get("id", "") or "")[-16:],
-                "status": status,
-                "age": _age(ts),
-                "ts": ts or 0,
-                "attn": level,
-                "attn_reason": reason,
-                "desc": (rec.get("description", "") or "")[:40],
-            })
-    # worst attention first, then running, then newest
+    _ = window_s
+    for item in read_agent_ops_projection()["work"]:
+        if item["authority"] != "delegation_registry":
+            continue
+        status = item["state"]
+        if status == "terminal":
+            continue
+        level = "ok" if item["visibility"] == "tracked" else (
+            "stalled" if status == "stale" else "failed"
+        )
+        rows.append({
+            "agent": item["lane"], "role": item.get("role") or "",
+            "fid": item["work_id"], "id": item["work_id"][-16:], "status": status,
+            "age": _age(_now() - item["progress_age_s"]) if item["progress_age_s"] is not None else "—",
+            "ts": 0, "attn": level,
+            "attn_reason": "" if level == "ok" else item["reason_code"],
+        })
     _rank = {"failed": 0, "loop": 1, "stalled": 2, "ok": 3}
     rows.sort(key=lambda r: (_rank.get(r["attn"], 3), r["status"] != "running", -r["ts"]))
     return rows[:limit]
 
 
 def read_running_procs() -> list:
-    ts, val = _cache["procs"]
-    if _now() - ts < 3:
-        return val
     procs = []
-    try:
-        out = subprocess.run(["pgrep", "-af", PROC_PATTERN], capture_output=True,
-                             text=True, timeout=1.5).stdout
-        self_pid = str(os.getpid())
-        for line in out.splitlines():
-            pid, _, cmd = line.partition(" ")
-            if pid == self_pid or "aq-tui-dashboard" in cmd or "pgrep" in cmd:
-                continue
-            # label by which agent lane
-            low = cmd.lower()
-            label = next((a for a in ("codex", "gemini", "antigravity", "aq-agent-loop",
-                                       "aq-loop", "training_ingest", "delegate-to")
-                          if a in low), "agent")
-            # Persistent backends (codex/gemini IDE + MCP app-servers) are DAEMONS, not active
-            # delegation work — a codex `exec`, aq-agent-loop, delegate-to-*, or agent_executor
-            # is active. Distinguishing them stops idle daemons from reading as "agents working".
-            daemon = ("app-server" in low or "mcp-server" in low
-                      or (label in ("codex", "gemini") and "exec" not in low
-                          and "delegate" not in low))
-            procs.append({"pid": pid, "label": label, "cmd": cmd[:52], "daemon": daemon})
-    except Exception:
-        pass
-    _cache["procs"] = (_now(), procs)
+    seen: set[str] = set()
+    for item in read_agent_ops_projection()["work"]:
+        identity = item.get("pid_identity")
+        group = item.get("dedup_group")
+        if not identity or item["state"] == "terminal" or (group and group in seen):
+            continue
+        if group:
+            seen.add(group)
+        procs.append({
+            "pid": str(identity["pid"]), "label": item["lane"],
+            "cmd": item["reason_code"], "daemon": item["reason_code"] == "idle_daemon",
+            "visibility": item["visibility"], "dedup_group": item["dedup_group"],
+        })
     return procs
 
 
@@ -362,8 +684,9 @@ def panel_procs() -> Panel:
     if not procs:
         t.add_row("—", "idle", "no agent processes running")
     for p in procs[:8]:
-        t.add_row(p["pid"], p["label"], p["cmd"])
-    return Panel(t, title="Running Processes", border_style="green")
+        style = "bold red" if p.get("visibility") == "blocked" else "white"
+        t.add_row(p["pid"], p["label"], Text(p["cmd"], style=style))
+    return Panel(t, title="Projected Processes (sanitized)", border_style="green")
 
 
 def panel_health() -> Panel:
@@ -556,9 +879,12 @@ def matrix_footer() -> Panel:
 
 def snapshot() -> dict:
     """Machine-readable state for programmable drill-in (cmux 'read screen' analog)."""
+    projection = read_agent_ops_projection()
     dele = read_active_delegations(limit=25)
     return {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "agent_ops": projection,
+        "agent_ops_contract": contract_health(projection),
         "delegations": dele,
         "attention": [
             {"agent": d["agent"], "id": d["fid"], "level": d["attn"], "reason": d["attn_reason"]}

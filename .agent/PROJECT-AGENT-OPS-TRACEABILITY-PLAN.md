@@ -1,6 +1,6 @@
 # Agent Ops Traceability R0M Plan
 
-Status: **M0 AUTHORIZED — M1–M3 BLOCKED; R1–R4 UNAUTHORIZED**
+Status: **M0 ACCEPTED — M1 CANDIDATE READY FOR FLAGSHIP ACCEPTANCE; M2–M3 BLOCKED; R1–R4 UNAUTHORIZED**
 Parent: `.agent/PROJECT-AGENT-OPS-TRACEABILITY-PRD.md`
 
 ## 1. Proposed exact inventory
@@ -22,10 +22,22 @@ Parent: `.agent/PROJECT-AGENT-OPS-TRACEABILITY-PRD.md`
 15. `scripts/ai/delegate-to-antigravity`
 16. `docs/architecture/role-matrix.md`
 
-No other file is authorized. The currently staged L2B-A inventory directly overlaps items 8–10 and
-shares dashboard acceptance concerns with item 7. M0 may be reviewed separately because its new files
-do not overlap, but M1–M3 must not begin until L2B-A is accepted/committed or safely separated by an
-owner-approved staging strategy.
+No other file is part of the R0M program inventory. L2B-A was accepted and committed as `fbeffbab`,
+removing the prior overlap blocker. Each remaining slice still requires its own exact authorization.
+
+### M1 exact candidate inventory
+
+1. `.agent/PROJECT-AGENT-OPS-TRACEABILITY-PRD.md`
+2. `.agent/PROJECT-AGENT-OPS-TRACEABILITY-PLAN.md`
+3. `config/schemas/agent-ops-projection.schema.json`
+4. `scripts/ai/lib/agent_ops_projection.py`
+5. `scripts/testing/fixtures/agent-ops-projection-golden.json`
+6. `scripts/testing/test-agent-ops-projection.py`
+7. `scripts/ai/aq-tui-dashboard`
+8. `docs/operations/agent-ops-window.md`
+
+M1 may not edit Phase-0, Bash QA, the validation registry, any delegation wrapper, role policy, web
+dashboard, lifecycle authority, or inference surface. Those are M2/M3 or separate-program concerns.
 
 ## 2. Slice sequence
 
@@ -38,6 +50,10 @@ adoption until adversarial tests pass.
 
 Replace raw process-string classification with the pure projector. Add ancestry/cgroup deduplication,
 registry/progress/inbox correlation, explicit untracked/conflict cards, and machine JSON health.
+Host facts are gathered by bounded read-only adapters and injected into the M0 projector. The
+projector never reads `/proc` itself. `/proc` permission loss, PID reuse, missing cgroup data, oversized
+registries/inboxes, and malformed JSON fail closed without preventing the TUI from rendering a
+sanitized degraded card. Default cards and metrics never expose raw argv, prompts, output, or secrets.
 
 ### M2 — Dispatch enforcement and gates
 
@@ -87,5 +103,11 @@ requires a file outside the exact inventory.
 
 ## 6. Authorization request
 
-Request flagship review of design and inventory only. M0–M3 remain unauthorized until review passes
-and the L2B-A overlap is resolved. R1–R4 remain unauthorized regardless of R0M planning status.
+Flagship review passed in `antigravity-m1-design-review.md`; the owner/orchestrator activated the
+single-use M1 authorization. M2–M3 and R1–R4 remain unauthorized regardless of M1 implementation
+status.
+
+Implementation evidence: focused M1 tests pass 19/19, R0 passes 16/16, L2B-A passes 8/8, and L2A
+passes 7/7. Host-backed Phase 0 wrote immutable evidence for 169 passed, 0 failed, and 9 skipped;
+Tier0's wrapper does not yet recognize evidence-only `aq-qa` output, so final acceptance must
+adjudicate that disclosed infrastructure blocker plus the mandatory host-visible smoke.
