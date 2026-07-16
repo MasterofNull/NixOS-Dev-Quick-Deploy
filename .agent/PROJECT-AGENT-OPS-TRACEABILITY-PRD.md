@@ -1,6 +1,12 @@
 # Agent Ops Traceability R0M PRD
 
-Status: **M0–M1 ACCEPTED — M1 COMMITTED `748c5a9c`; M2–M3 UNAUTHORIZED**
+Status: **M0–M1 ACCEPTED — M1 COMMITTED `748c5a9c`; M2A CANDIDATE READY 2026-07-15; M2B/M3 UNAUTHORIZED**
+
+**Activation deferral (2026-07-15):** M2A is dormant. The contract foundation (schema, transactional
+writer, queued grace projector, barrier primitive) is present in the nine authorized files but no live
+delegation wrapper imports or invokes it. Activation is M2B wrapper adoption, which requires a
+separately authorized and independently reviewed M2B authorization. No wrapper may consume M2A until
+that authorization is active.
 Parent: `.agent/PROJECT-LOCAL-DELEGATION-RELIABILITY-PRD.md`
 Trigger: R0 acceptance directive that monitored work must precede live R1
 

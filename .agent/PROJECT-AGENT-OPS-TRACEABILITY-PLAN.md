@@ -1,6 +1,12 @@
 # Agent Ops Traceability R0M Plan
 
-Status: **M0–M1 ACCEPTED — M1 COMMITTED `748c5a9c`; M2–M3 AND R1–R4 UNAUTHORIZED**
+Status: **M0–M1 ACCEPTED — M1 COMMITTED `748c5a9c`; M2A CANDIDATE READY 2026-07-15; M2B/M3/R1–R4 UNAUTHORIZED**
+
+**Activation deferral (2026-07-15):** M2A is dormant. The closed delegation-task-record schema,
+transactional TaskRegistry operations (begin/attach_process/transition_m2a/show_m2a/reconcile_m2a),
+queued-grace projector extension, and ExecBarrier primitive are present as the contract foundation
+only. No live wrapper imports or invokes M2A surfaces. Activation is separately authorized M2B
+wrapper adoption.
 Parent: `.agent/PROJECT-AGENT-OPS-TRACEABILITY-PRD.md`
 
 ## 1. Proposed exact inventory

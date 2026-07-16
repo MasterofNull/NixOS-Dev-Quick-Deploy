@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.delegation-task-record.v1",
+  "$comment": "Activation deferral 2026-07-15: M2A contract foundation only. Adoption (M2B wrapper integration) is separately unauthorized and remains INACTIVE. This schema is present as the closed input contract; no live wrapper may consume it until M2B is authorized.",
+  "title": "Delegation Task Record — M2A Closed Input Contract",
+  "description": "Closed Draft 2020-12 schema for new task records, process attachments, and state transitions. Forbidden at every nesting level: raw prompt text, argv, secret, path payload, environment value, and prompt-derived digest fields.",
+  "$defs": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "lane": {
+      "enum": ["local", "claude", "codex", "antigravity"]
+    },
+    "role": {
+      "enum": ["implementer", "reviewer", "researcher", "orchestrator", "validator"]
+    },
+    "access": {
+      "enum": ["writer", "read_only"]
+    },
+    "task_class": {
+      "description": "Safe operator task category enumeration. Never raw prompt text.",
+      "enum": [
+        "code_generation",
+        "code_review",
+        "research",
+        "planning",
+        "validation",
+        "analysis",
+        "documentation",
+        "testing",
+        "refactoring",
+        "debugging"
+      ]
+    },
+    "artifact_expectation": {
+      "enum": ["file_output", "json_output", "markdown_output", "none"]
+    },
+    "any_status": {
+      "enum": [
+        "queued", "running", "waiting", "cancelling",
+        "done", "failed", "cancelled", "stale"
+      ]
+    },
+    "terminal_reason": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]*$"}
+      ]
+    },
+    "new_record": {
+      "description": "Initial task record written by begin. Status is always queued; no PID field is present.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_version",
+        "task_id",
+        "lane",
+        "role",
+        "access",
+        "task_class",
+        "artifact_expectation",
+        "created_epoch",
+        "record_revision",
+        "admission_producer",
+        "status"
+      ],
+      "properties": {
+        "record_version": {"const": 1},
+        "task_id": {"$ref": "#/$defs/task_id"},
+        "lane": {"$ref": "#/$defs/lane"},
+        "role": {"$ref": "#/$defs/role"},
+        "access": {"$ref": "#/$defs/access"},
+        "task_class": {"$ref": "#/$defs/task_class"},
+        "artifact_expectation": {"$ref": "#/$defs/artifact_expectation"},
+        "created_epoch": {"type": "integer", "minimum": 0},
+        "record_revision": {"const": 1},
+        "admission_producer": {"const": "dispatcher"},
+        "status": {"const": "queued"}
+      }
+    },
+    "process_attachment": {
+      "description": "Attach-process request. Adds PID and start_time to a queued record; record_revision must equal current revision plus one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "task_id", "record_revision", "pid", "pid_start_time"],
+      "properties": {
+        "op": {"const": "attach_process"},
+        "task_id": {"$ref": "#/$defs/task_id"},
+        "record_revision": {"type": "integer", "minimum": 2, "maximum": 65535},
+        "pid": {"type": "integer", "minimum": 1, "maximum": 4194304},
+        "pid_start_time": {"type": "integer", "minimum": 0}
+      }
+    },
+    "transition_request": {
+      "description": "State transition request. record_revision must equal current revision plus one.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "task_id", "record_revision", "to_status"],
+      "properties": {
+        "op": {"const": "transition"},
+        "task_id": {"$ref": "#/$defs/task_id"},
+        "record_revision": {"type": "integer", "minimum": 2, "maximum": 65535},
+        "from_status": {"$ref": "#/$defs/any_status"},
+        "to_status": {"$ref": "#/$defs/any_status"},
+        "terminal_reason": {"$ref": "#/$defs/terminal_reason"}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/new_record"},
+    {"$ref": "#/$defs/process_attachment"},
+    {"$ref": "#/$defs/transition_request"}
+  ]
+}

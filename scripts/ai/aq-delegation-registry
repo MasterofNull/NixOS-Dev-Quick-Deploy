@@ -100,19 +100,118 @@ def list_entries(path: Path, status: str | None) -> int:
     return 0
 
 
+def _m2a_registry(path: Path) -> "TaskRegistry":
+    reg_dir = path.parent if path.suffix else path
+    return TaskRegistry(reg_dir, repo_root=ROOT)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
     sub = parser.add_subparsers(dest="cmd", required=True)
+
     r = sub.add_parser("reconcile", help="mark dead running entries as stale")
     r.add_argument("--dry-run", action="store_true")
     l = sub.add_parser("list", help="list registry entries")
     l.add_argument("--status")
+
+    # ── M2A dormant operations — machine JSON only ───────────────────────────
+    b = sub.add_parser(
+        "begin",
+        help="[M2A dormant] write a new queued M2A task record",
+    )
+    b.add_argument("task_id")
+    b.add_argument("--lane", required=True)
+    b.add_argument("--role", required=True)
+    b.add_argument("--access", required=True)
+    b.add_argument("--task-class", dest="task_class", required=True)
+    b.add_argument("--artifact", dest="artifact_expectation", required=True)
+
+    ap = sub.add_parser(
+        "attach-process",
+        help="[M2A dormant] attach PID+start-time to a queued record",
+    )
+    ap.add_argument("task_id")
+    ap.add_argument("--pid", type=int, required=True)
+    ap.add_argument("--start-time", dest="pid_start_time", type=int, required=True)
+    ap.add_argument("--expected-revision", dest="expected_revision", type=int, default=None)
+
+    tr = sub.add_parser(
+        "transition",
+        help="[M2A dormant] apply a state transition to a M2A record",
+    )
+    tr.add_argument("task_id")
+    tr.add_argument("--to-status", dest="to_status", required=True)
+    tr.add_argument("--terminal-reason", dest="terminal_reason", default=None)
+    tr.add_argument("--expected-revision", dest="expected_revision", type=int, default=None)
+
+    sh = sub.add_parser("show", help="[M2A dormant] show a single M2A record")
+    sh.add_argument("task_id")
+
+    sub.add_parser("reconcile-m2a", help="[M2A dormant] reconcile dead-PID active M2A records")
+
     args = parser.parse_args()
+
     if args.cmd == "reconcile":
         return reconcile(args.registry, args.dry_run)
     if args.cmd == "list":
         return list_entries(args.registry, args.status)
+
+    from task_registry import RegistryError  # noqa: E402
+    reg = _m2a_registry(args.registry)
+
+    if args.cmd == "begin":
+        try:
+            result = reg.begin(
+                args.task_id, args.lane, args.role, args.access,
+                args.task_class, args.artifact_expectation,
+            )
+            print(json.dumps({"ok": True, "record": result}, indent=2))
+            return 0
+        except RegistryError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+            return 1
+
+    if args.cmd == "attach-process":
+        try:
+            result = reg.attach_process(
+                args.task_id, args.pid, args.pid_start_time, args.expected_revision,
+            )
+            print(json.dumps({"ok": True, "record": result}, indent=2))
+            return 0
+        except RegistryError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+            return 1
+
+    if args.cmd == "transition":
+        try:
+            result = reg.transition_m2a(
+                args.task_id, args.to_status, args.terminal_reason, args.expected_revision,
+            )
+            print(json.dumps({"ok": True, "record": result}, indent=2))
+            return 0
+        except RegistryError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+            return 1
+
+    if args.cmd == "show":
+        try:
+            result = reg.show_m2a(args.task_id)
+            print(json.dumps({"ok": True, "record": result}, indent=2))
+            return 0
+        except RegistryError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+            return 1
+
+    if args.cmd == "reconcile-m2a":
+        try:
+            result = reg.reconcile_m2a()
+            print(json.dumps({"ok": True, **result}, indent=2))
+            return 0
+        except RegistryError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+            return 1
+
     return 2
 
 

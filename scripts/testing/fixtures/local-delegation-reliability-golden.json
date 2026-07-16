@@ -11,7 +11,7 @@
       {"kind": "block_absent", "start": "class AgentRunner:", "end": "def _service_ok", "pattern": "writer[_ -]lease|stable_descriptor_lock"},
       {"kind": "block_absent", "start": "heartbeat_path\\.with_suffix", "end": "_tmp\\.rename\\(heartbeat_path\\)", "pattern": "[\"']phase[\"']"}
     ]},
-    {"path": "scripts/ai/lib/task_registry.py", "sha256": "c6d2da793a2804d184567c4096eb20bd35677bb8e6a2652b18e0328eeff689ca", "defects": ["D8", "D11"], "characterizations": [
+    {"path": "scripts/ai/lib/task_registry.py", "sha256": "33bb715cf8c644b9e1cc14ef7190562976321d4cce5cf51fcf4cb435f1e7a496", "defects": ["D8", "D11"], "characterizations": [
       {"kind": "regex_present", "pattern": "os\\.kill\\(pid,\\s*signal\\.SIGTERM\\).*?update_status\\(task_id,\\s*\"cancelled\"\\).*?record_completion\\(task_id,\\s*\"cancelled\"\\)"},
       {"kind": "regex_present", "pattern": "heartbeat_liveness[\"']?\\]?[ ]*=\\s*True|observed\\[\"heartbeat_liveness\"\\]\\s*=\\s*True"}
     ]},
@@ -72,6 +72,6 @@
     "telemetry_integrity_rejections_total", "terminal_reasons_total",
     "compaction_bytes_saved", "compaction_cycles_total"
   ],
-  "stable_digests": {"vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822", "source_manifest": "22899166c0c127d80727cc337bee8b19cef1bde4d06178c401ccfe0ffbee1e68", "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"},
+  "stable_digests": {"vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822", "source_manifest": "3281a6234c8d64095d92bc57f1705f7d3e490755fae943e5455b8491b2d93a56", "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"},
   "sanitized_terminal_reasons": ["queue_timeout", "prefill_timeout", "generation_silence", "tool_timeout", "orphaned", "operator_cap", "cancelled", "cancel_failed", "context_overflow", "oom_cleanup", "phase_evidence_unavailable", "stagnation_duplicate_evidence", "capability_exhausted"]
 }

@@ -1,8 +1,13 @@
 # Agent Ops Window — `aq-tui-dashboard`
 
-Status: Active
+Status: Active (M2A contract foundation present — dormant; M2B wrapper adoption unauthorized)
 Owner: AI Stack Maintainers
 Last Updated: 2026-07-15
+
+**Activation deferral (2026-07-15):** The M2A delegation task-record schema, transactional writer
+surface, queued-grace projection, and ExecBarrier primitive are present as the closed contract
+foundation. They are dormant: no live dispatch wrapper imports or invokes them. Activation is M2B
+wrapper adoption, which requires a separately authorized review and M2B implementation grant.
 
 Live terminal matrix for monitoring agents, delegations, and operations. The Agentic Ops authority
 is the closed `aq.agent-ops-projection.v1` projection produced by bounded read-only adapters over
