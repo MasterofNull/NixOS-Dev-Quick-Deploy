@@ -24,6 +24,9 @@ METRICS = (
     "inbox_processing_duration_seconds",
     "cgroup_correlation_failures_total",
 )
+# M2A: queued grace window constants (dormant — used by projector for M2A new_record rows)
+_M2A_QUEUED_GRACE_S = 30   # fresh PID-less dispatcher row visible as degraded/queued
+_M2A_FUTURE_SKEW_S = 5     # created_epoch more than this many seconds in the future → stale
 MAX_PROCESSES = 4096
 MAX_REGISTRY = 4096
 MAX_INBOX = 1024
@@ -179,10 +182,14 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
             fact = next(ProcessFact.from_mapping(v) for v in processes if int(v["pid"]) == member)
             process_index[(fact.pid, fact.start_time)] = (group, fact)
     consumed: set[str] = set()
+    claimed_identities: set[tuple[int, int]] = set()
     work: list[dict[str, Any]] = []
 
     for rec in registry:
-        item = _base_work(str(rec.get("id", "registry-unknown")), str(rec.get("agent", "unknown")),
+        # M2A records use task_id/lane; legacy records use id/agent.
+        _work_id = rec.get("id") or rec.get("task_id") or "registry-unknown"
+        _lane = rec.get("agent") or rec.get("lane") or "unknown"
+        item = _base_work(str(_work_id), str(_lane),
                           "delegation_registry", role=rec.get("role"), model_profile=rec.get("profile"))
         status = str(rec.get("status", "unknown")).lower()
         item["access"] = "writer" if rec.get("role") in {"implement", "implementer"} else "read_only"
@@ -191,7 +198,12 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
         match = process_index.get(identity) if identity else None
         progress = rec.get("progress") if isinstance(rec.get("progress"), Mapping) else None
         trusted_progress = bool(progress and progress.get("trusted") is True and progress.get("producer") in {"dispatcher", "switchboard", "trusted_observer"})
-        if status in ACTIVE_STATES and match:
+        # A PID+start_time tuple is a single physical process: a second registry row claiming an
+        # already-claimed identity is a duplicate task record, not a second live task.
+        if status in ACTIVE_STATES and match and identity in claimed_identities:
+            item.update(state="conflict", visibility="blocked", reason_code="registry_duplicate_claim", freshness="fresh")
+        elif status in ACTIVE_STATES and match:
+            claimed_identities.add(identity)
             group, fact = match
             item.update(state=status, pid_identity=fact.identity(), dedup_group=group["dedup_group"],
                         visibility="tracked", reason_code="registry_process_correlated", freshness="fresh")
@@ -201,6 +213,25 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
                 item["progress_age_s"] = max(0, now - int(progress.get("observed_at", now)))
             elif progress:
                 item.update(visibility="degraded", reason_code="progress_untrusted")
+        elif status == "queued" and identity is None:
+            # M2A queued grace: fresh PID-less dispatcher rows are degraded/queued within the
+            # 30-second grace window. Not authoritative — never claimed tracked/running.
+            created_epoch = rec.get("created_epoch")
+            if isinstance(created_epoch, int):
+                skew = created_epoch - now
+                age = now - created_epoch
+                if skew > _M2A_FUTURE_SKEW_S:
+                    item.update(state="stale", visibility="blocked",
+                                reason_code="registry_queued_future_skew", freshness="stale")
+                elif age > _M2A_QUEUED_GRACE_S:
+                    item.update(state="stale", visibility="blocked",
+                                reason_code="registry_queued_expired", freshness="stale")
+                else:
+                    item.update(state="queued", visibility="degraded",
+                                reason_code="registry_queued_grace", freshness="fresh")
+            else:
+                item.update(state="stale", visibility="blocked",
+                            reason_code="registry_process_missing", freshness="stale")
         elif status in ACTIVE_STATES:
             item.update(state="stale", visibility="blocked", reason_code="registry_process_missing", freshness="stale")
         elif status in TERMINAL_STATES:

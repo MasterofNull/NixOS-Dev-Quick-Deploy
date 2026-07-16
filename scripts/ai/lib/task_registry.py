@@ -17,6 +17,9 @@ parallel.
 import fcntl
 import json
 import os
+import re as _re
+import select
+import stat as _stat
 import sys
 import time
 from datetime import datetime, timezone
@@ -27,9 +30,129 @@ from typing import Optional
 _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
 
+# ── M2A: bounds and vocabulary (dormant — activation requires M2B authorization) ──
+_M2A_MAX_REGISTRY_BYTES = 50 * 1024 * 1024
+_M2A_MAX_RECORD_BYTES = 4096
+_M2A_MAX_TASK_ID_LEN = 128
+_M2A_LOCK_TIMEOUT_S = 10.0
+_M2A_RECORD_SCHEMA_VERSION = 1
+_M2A_RELEASE_BYTE = b"\x01"
+
+_M2A_LANES = frozenset({"local", "claude", "codex", "antigravity"})
+_M2A_ROLES = frozenset({"implementer", "reviewer", "researcher", "orchestrator", "validator"})
+_M2A_ACCESS = frozenset({"writer", "read_only"})
+_M2A_TASK_CLASSES = frozenset({
+    "code_generation", "code_review", "research", "planning",
+    "validation", "analysis", "documentation", "testing", "refactoring", "debugging",
+})
+_M2A_ARTIFACT_EXPECTATIONS = frozenset({"file_output", "json_output", "markdown_output", "none"})
+
+_M2A_LEGAL_TRANSITIONS: dict[str, frozenset[str]] = {
+    "queued":     frozenset({"running", "failed", "cancelled"}),
+    "running":    frozenset({"waiting", "cancelling", "done", "failed", "cancelled", "stale"}),
+    "waiting":    frozenset({"running", "cancelling", "done", "failed", "cancelled", "stale"}),
+    "cancelling": frozenset({"cancelled", "failed", "stale"}),
+    "done":       frozenset({"done"}),
+    "failed":     frozenset({"failed"}),
+    "cancelled":  frozenset({"cancelled"}),
+    "stale":      frozenset({"stale"}),
+    "orphaned":   frozenset({"orphaned"}),
+    "error":      frozenset({"error"}),
+}
+_M2A_TERMINAL_STATES = frozenset({"done", "failed", "cancelled", "stale", "orphaned", "error"})
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+class RegistryError(ValueError):
+    """Raised by M2A transactional registry operations on contract violations."""
+
+
+class ExecBarrier:
+    """Dormant anonymous-pipe pre-exec barrier primitive — M2A contract foundation.
+
+    DORMANT: No live wrapper imports or invokes this class.
+    Activation requires separately authorized M2B wrapper adoption.
+
+    Protocol:
+    1. barrier = ExecBarrier()
+    2. child_pid = barrier.fork_child(provider_argv)
+       Child blocks on pipe read end; parent holds write end.
+    3. Parent attaches PID + start_time via TaskRegistry.attach_process().
+    4. barrier.release(child_pid, pid_start_time) — writes one bounded release byte.
+       Child receives byte, closes both descriptors, execs provider.
+    5. barrier.close_without_release() — closes write end (EOF path).
+       Child exits(1) without exec.
+
+    Failure modes that never exec the provider:
+    - EOF on read end (close_without_release or parent crash)
+    - Timeout (barrier_timeout_s seconds) before release byte arrives
+    - Malformed release (wrong byte value)
+    - Attachment failure (release not called before barrier closed)
+    """
+
+    def __init__(self, timeout_s: float = 30.0) -> None:
+        self._barrier_timeout_s = timeout_s
+        self._read_fd, self._write_fd = os.pipe()
+        self._child_pid: Optional[int] = None
+        self._released = False
+
+    def fork_child(self, provider_argv: list[str]) -> int:
+        """Fork supervisor child. Child blocks until released or failure. Returns child PID."""
+        if self._child_pid is not None:
+            raise RegistryError("barrier_already_forked")
+        if not provider_argv:
+            raise RegistryError("barrier_empty_provider_argv")
+
+        child_pid = os.fork()
+        if child_pid == 0:
+            # Child: close write end, block waiting for exactly one release byte.
+            try:
+                os.close(self._write_fd)
+                ready, _, _ = select.select([self._read_fd], [], [], self._barrier_timeout_s)
+                if not ready:
+                    os.close(self._read_fd)
+                    os._exit(1)
+                data = os.read(self._read_fd, 1)
+                os.close(self._read_fd)
+                if data != _M2A_RELEASE_BYTE:
+                    # EOF (b"") or wrong byte: never exec.
+                    os._exit(1)
+                os.execvp(provider_argv[0], provider_argv)
+            except Exception:
+                pass
+            os._exit(1)
+
+        # Parent: close read end, retain write end.
+        os.close(self._read_fd)
+        self._child_pid = child_pid
+        return child_pid
+
+    def release(self, pid: int, pid_start_time: int) -> None:
+        """Write one release byte after verified PID+start_time attachment. At most once."""
+        if self._released:
+            raise RegistryError("barrier_already_released")
+        if self._child_pid is None:
+            raise RegistryError("barrier_not_forked")
+        if pid != self._child_pid:
+            raise RegistryError("barrier_pid_mismatch")
+        if not isinstance(pid_start_time, int) or pid_start_time < 0:
+            raise RegistryError("barrier_invalid_start_time")
+        os.write(self._write_fd, _M2A_RELEASE_BYTE)
+        os.close(self._write_fd)
+        self._released = True
+
+    def close_without_release(self) -> None:
+        """Close write end without releasing — child exits without exec (EOF path)."""
+        if self._released:
+            return
+        try:
+            os.close(self._write_fd)
+        except OSError:
+            pass
+        self._released = True
 
 
 class TaskRegistry:
@@ -655,3 +778,267 @@ class TaskRegistry:
             killed += 1
         print(f"[task_registry] Killed {killed} running tasks")
         return 0
+
+    # ── M2A: transactional mutation surface (dormant — activation requires M2B) ──
+
+    def _m2a_lock_path(self) -> Path:
+        return self.registry_file.parent / (self.registry_file.name + ".lock")
+
+    @staticmethod
+    def _assert_regular_not_symlink(path: Path) -> None:
+        """Reject symlinks and non-regular files. Passes if path does not yet exist."""
+        try:
+            st = os.lstat(path)
+        except FileNotFoundError:
+            return
+        if _stat.S_ISLNK(st.st_mode):
+            raise RegistryError(f"registry_source_symlink: {path.name}")
+        if not _stat.S_ISREG(st.st_mode):
+            raise RegistryError(f"registry_source_not_regular: {path.name}")
+
+    def _m2a_acquire_lock(self) -> int:
+        """Open stable sibling lock inode and acquire LOCK_EX with bounded wait. Returns fd."""
+        lock_path = self._m2a_lock_path()
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._assert_regular_not_symlink(lock_path)
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+        deadline = time.monotonic() + _M2A_LOCK_TIMEOUT_S
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return fd
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    os.close(fd)
+                    raise RegistryError("registry_lock_timeout")
+                time.sleep(0.05)
+
+    def _m2a_read_records(self) -> list[dict]:
+        """Read and parse registry under caller-held lock. Enforces size and type bounds."""
+        if not self.registry_file.exists():
+            return []
+        self._assert_regular_not_symlink(self.registry_file)
+        if self.registry_file.stat().st_size > _M2A_MAX_REGISTRY_BYTES:
+            raise RegistryError("registry_file_too_large")
+        records: list[dict] = []
+        for raw_line in self.registry_file.read_bytes().split(b"\n"):
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            if len(raw_line) > _M2A_MAX_RECORD_BYTES:
+                raise RegistryError("registry_record_too_large")
+            try:
+                rec = json.loads(raw_line)
+            except json.JSONDecodeError as exc:
+                raise RegistryError(f"registry_record_malformed: {exc}") from exc
+            if not isinstance(rec, dict):
+                raise RegistryError("registry_record_not_object")
+            records.append(rec)
+        return records
+
+    def _m2a_write_records(self, records: list[dict]) -> None:
+        """Atomic write under caller-held lock: temp → fsync → rename → fsync parent."""
+        self.registry_file.parent.mkdir(parents=True, exist_ok=True)
+        content = (
+            "\n".join(json.dumps(r, separators=(",", ":"), ensure_ascii=False) for r in records)
+            + "\n"
+        ).encode("utf-8")
+        tmp_path = self.registry_file.parent / (self.registry_file.name + ".tmp")
+        tmp_fd = os.open(
+            str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC, 0o600
+        )
+        try:
+            os.write(tmp_fd, content)
+            os.fsync(tmp_fd)
+        finally:
+            os.close(tmp_fd)
+        os.replace(str(tmp_path), str(self.registry_file))
+        dir_fd = os.open(str(self.registry_file.parent), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+
+    def _m2a_transact(self, mutator) -> dict:
+        """Full transactional cycle: acquire lock → read → mutate → write → release lock."""
+        lock_fd = self._m2a_acquire_lock()
+        try:
+            records = self._m2a_read_records()
+            result, new_records = mutator(records)
+            if new_records is not records:
+                self._m2a_write_records(new_records)
+            return result
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
+
+    @staticmethod
+    def _m2a_validate_fields(task_id: str, lane: str, role: str, access: str,
+                              task_class: str, artifact_expectation: str) -> None:
+        if (not isinstance(task_id, str) or not task_id
+                or len(task_id) > _M2A_MAX_TASK_ID_LEN
+                or not _re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$", task_id)):
+            raise RegistryError("registry_task_id_invalid")
+        if lane not in _M2A_LANES:
+            raise RegistryError(f"registry_lane_invalid: {lane!r}")
+        if role not in _M2A_ROLES:
+            raise RegistryError(f"registry_role_invalid: {role!r}")
+        if access not in _M2A_ACCESS:
+            raise RegistryError(f"registry_access_invalid: {access!r}")
+        if task_class not in _M2A_TASK_CLASSES:
+            raise RegistryError(f"registry_task_class_invalid: {task_class!r}")
+        if artifact_expectation not in _M2A_ARTIFACT_EXPECTATIONS:
+            raise RegistryError(f"registry_artifact_expectation_invalid: {artifact_expectation!r}")
+
+    def begin(self, task_id: str, lane: str, role: str, access: str,
+              task_class: str, artifact_expectation: str) -> dict:
+        """Transactional begin: write a new queued M2A task record. Returns the new record.
+
+        DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
+        """
+        self._m2a_validate_fields(task_id, lane, role, access, task_class, artifact_expectation)
+        new_record: dict = {
+            "record_version": _M2A_RECORD_SCHEMA_VERSION,
+            "task_id": task_id,
+            "lane": lane,
+            "role": role,
+            "access": access,
+            "task_class": task_class,
+            "artifact_expectation": artifact_expectation,
+            "created_epoch": int(time.time()),
+            "record_revision": 1,
+            "admission_producer": "dispatcher",
+            "status": "queued",
+        }
+
+        def _mutate(records: list[dict]) -> tuple[dict, list[dict]]:
+            for rec in records:
+                if rec.get("task_id") == task_id or rec.get("id") == task_id:
+                    raise RegistryError(f"registry_duplicate_task_id: {task_id}")
+            return new_record, records + [new_record]
+
+        return self._m2a_transact(_mutate)
+
+    def attach_process(self, task_id: str, pid: int, pid_start_time: int,
+                       expected_revision: Optional[int] = None) -> dict:
+        """Transactional attach-process: add PID+start_time to queued record → running.
+
+        DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
+        """
+        if not isinstance(pid, int) or pid < 1 or pid > 4194304:
+            raise RegistryError("registry_pid_invalid")
+        if not isinstance(pid_start_time, int) or pid_start_time < 0:
+            raise RegistryError("registry_pid_start_time_invalid")
+
+        def _mutate(records: list[dict]) -> tuple[dict, list[dict]]:
+            for i, rec in enumerate(records):
+                if rec.get("task_id") != task_id and rec.get("id") != task_id:
+                    continue
+                if rec.get("record_version") != _M2A_RECORD_SCHEMA_VERSION:
+                    raise RegistryError("registry_legacy_record_cannot_attach")
+                current_rev = rec.get("record_revision", 0)
+                if expected_revision is not None and current_rev != expected_revision:
+                    raise RegistryError(
+                        f"registry_stale_revision: expected {expected_revision}, got {current_rev}"
+                    )
+                if rec.get("status") != "queued":
+                    raise RegistryError(
+                        f"registry_illegal_transition: attach_process requires queued, "
+                        f"got {rec.get('status')!r}"
+                    )
+                updated = dict(rec)
+                updated["pid"] = pid
+                updated["pid_start_time"] = pid_start_time
+                updated["status"] = "running"
+                updated["record_revision"] = current_rev + 1
+                new_records = list(records)
+                new_records[i] = updated
+                return updated, new_records
+            raise RegistryError(f"registry_task_not_found: {task_id}")
+
+        return self._m2a_transact(_mutate)
+
+    def transition_m2a(self, task_id: str, to_status: str,
+                       terminal_reason: Optional[str] = None,
+                       expected_revision: Optional[int] = None) -> dict:
+        """Transactional state transition for M2A records. Returns the updated record.
+
+        DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
+        """
+        if to_status not in _M2A_LEGAL_TRANSITIONS:
+            raise RegistryError(f"registry_illegal_to_status: {to_status!r}")
+        if terminal_reason is not None:
+            if (not isinstance(terminal_reason, str) or len(terminal_reason) > 128
+                    or not _re.match(r"^[a-z0-9_.-]*$", terminal_reason)):
+                raise RegistryError("registry_terminal_reason_invalid")
+
+        def _mutate(records: list[dict]) -> tuple[dict, list[dict]]:
+            for i, rec in enumerate(records):
+                if rec.get("task_id") != task_id and rec.get("id") != task_id:
+                    continue
+                if rec.get("record_version") != _M2A_RECORD_SCHEMA_VERSION:
+                    raise RegistryError("registry_legacy_record_cannot_transition")
+                current_rev = rec.get("record_revision", 0)
+                if expected_revision is not None and current_rev != expected_revision:
+                    raise RegistryError(
+                        f"registry_stale_revision: expected {expected_revision}, got {current_rev}"
+                    )
+                current_status = rec.get("status", "")
+                allowed = _M2A_LEGAL_TRANSITIONS.get(current_status, frozenset())
+                if to_status not in allowed:
+                    raise RegistryError(
+                        f"registry_illegal_transition: {current_status!r} -> {to_status!r}"
+                    )
+                updated = dict(rec)
+                updated["status"] = to_status
+                updated["record_revision"] = current_rev + 1
+                if terminal_reason is not None:
+                    updated["terminal_reason"] = terminal_reason
+                if to_status in _M2A_TERMINAL_STATES:
+                    updated["completed_epoch"] = int(time.time())
+                new_records = list(records)
+                new_records[i] = updated
+                return updated, new_records
+            raise RegistryError(f"registry_task_not_found: {task_id}")
+
+        return self._m2a_transact(_mutate)
+
+    def show_m2a(self, task_id: str) -> dict:
+        """Read a single M2A record by task_id. Enforces regular-file and size bounds.
+
+        DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
+        """
+        def _read_only(records: list[dict]) -> tuple[dict, list[dict]]:
+            for rec in records:
+                if rec.get("task_id") == task_id or rec.get("id") == task_id:
+                    return dict(rec), records
+            raise RegistryError(f"registry_task_not_found: {task_id}")
+
+        return self._m2a_transact(_read_only)
+
+    def reconcile_m2a(self) -> dict:
+        """Mark M2A active records with dead PIDs as stale via one transactional write.
+
+        DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
+        """
+        reconciled: list[str] = []
+
+        def _mutate(records: list[dict]) -> tuple[dict, list[dict]]:
+            new_records = list(records)
+            now_epoch = int(time.time())
+            for i, rec in enumerate(records):
+                if rec.get("record_version") != _M2A_RECORD_SCHEMA_VERSION:
+                    continue
+                if rec.get("status") not in {"running", "waiting", "cancelling"}:
+                    continue
+                if not self._pid_alive(rec.get("pid")):
+                    updated = dict(rec)
+                    updated["status"] = "stale"
+                    updated["record_revision"] = rec.get("record_revision", 0) + 1
+                    updated["stale_reason"] = "pid_not_alive"
+                    updated["stale_epoch"] = now_epoch
+                    new_records[i] = updated
+                    reconciled.append(str(rec.get("task_id") or rec.get("id", "?")))
+            return {"reconciled": reconciled, "count": len(reconciled)}, new_records
+
+        return self._m2a_transact(_mutate)
